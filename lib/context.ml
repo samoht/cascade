@@ -346,7 +346,7 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
 let media_feature_value name : Media.t -> Media.value option =
-  let ident s = Some (Media.Ident s) in
+  let ident s = Some (Media.Ident (Media.ident_of_string s)) in
   function
   | Media.Width l when String.equal name "width" -> Some (Media.Length l)
   | Media.Height l when String.equal name "height" -> Some (Media.Length l)
@@ -432,9 +432,10 @@ let media_feature_value name : Media.t -> Media.value option =
   | Media.Orientation v when String.equal name "orientation" ->
       ident (match v with `Portrait -> "portrait" | `Landscape -> "landscape")
   | Media.Range (feature_name, Media.Eq, value)
-    when String.equal name feature_name ->
+    when String.equal name (Media.string_of_name feature_name) ->
       Some value
-  | Media.Plain (feature_name, value) when String.equal name feature_name ->
+  | Media.Plain (feature_name, value)
+    when String.equal name (Media.string_of_name feature_name) ->
       Some value
   | _ -> None
 
@@ -1345,7 +1346,7 @@ module Media_value = struct
     | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
     | Ratio _ -> None
     | Resolution_value (n, _) -> Some n
-    | Ident _ | Function _ -> None
+    | Ident _ -> None
 
   let cmp_op : Media.cmp -> float -> float -> bool = function
     | Lt -> ( < )
@@ -1359,7 +1360,7 @@ module Media_value = struct
   let compare_with op (lhs : Media.value) (rhs : Media.value) : bool option =
     match (lhs, rhs) with
     | Ident a, Ident b ->
-        Some (op = Media.Eq && String.equal (String.trim a) (String.trim b))
+        Some (op = Media.Eq && Media.string_of_ident a = Media.string_of_ident b)
     | _ -> (
         match (to_number lhs, to_number rhs) with
         | Some la, Some lb -> Some (cmp_op op la lb)
@@ -1373,13 +1374,9 @@ end
     consult the explicit declaration/function tables. *)
 
 module Match_supports = struct
-  (* Leaves match against [q.supports] via the typed [Supports.equal], which
-     compares declaration values and function arguments after canonical
-     minification. So a leaf built with [Supports.property "display" "grid"]
-     matches a [@supports (display: grid)] query, and [Supports.func "selector"
-     ":is(.a, .b)"] matches [@supports selector(:is(.a,.b))]. *)
+  (* Leaves match against [q.supports] via the typed [Supports.equal]. *)
   let rec eval q : Supports.t -> bool = function
-    | (Property _ | Func _) as leaf ->
+    | (Property _ | Function _) as leaf ->
         List.exists (Supports.equal leaf) q.supports
     | Not c -> not (eval q c)
     | And (a, b) -> eval q a && eval q b
@@ -1399,20 +1396,17 @@ module Match_media = struct
 
   type feature_table = Media.t list
 
-  let strip_min_max name =
-    let len = String.length name in
-    if len > 4 && String.sub name 0 4 = "min-" then
-      Some (`Min, String.sub name 4 (len - 4))
-    else if len > 4 && String.sub name 0 4 = "max-" then
-      Some (`Max, String.sub name 4 (len - 4))
-    else None
+  let strip_min_max = function
+    | Media.Min name -> Some (`Min, name)
+    | Media.Max name -> Some (`Max, name)
+    | _ -> None
 
   let lookup_value (table : feature_table) feature_name : Media.value option =
     List.find_map (media_feature_value feature_name) table
 
   let eval_feature (table : feature_table) : Media.feature -> bool =
     let with_lookup name f =
-      match lookup_value table name with
+      match lookup_value table (Media.string_of_name name) with
       | None -> false
       | Some actual -> Option.value ~default:false (f actual)
     in
@@ -1420,8 +1414,10 @@ module Match_media = struct
     | Boolean name ->
         List.exists
           (function
-            | Boolean n -> String.equal n name
-            | feature -> Option.is_some (media_feature_value name feature))
+            | Boolean n -> n = name
+            | feature ->
+                Option.is_some
+                  (media_feature_value (Media.string_of_name name) feature))
           table
     | Plain (name, value) -> (
         match strip_min_max name with
@@ -1452,10 +1448,11 @@ module Match_media = struct
 
   let bool_feature q name expected =
     match lookup_value q.media_features name with
-    | Some (Ident s) -> String.equal s expected
+    | Some (Ident s) -> String.equal (Media.string_of_ident s) expected
     | _ -> false
 
-  let plain q name value = eval_feature q.media_features (Plain (name, value))
+  let plain q name value =
+    eval_feature q.media_features (Plain (Media.name_of_string name, value))
   let ident q name value = bool_feature q name value
   let integer q name value = plain q name (Integer value)
   let length q name value = plain q name (Length value)

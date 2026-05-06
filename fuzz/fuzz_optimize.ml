@@ -125,6 +125,8 @@ let rec boundary_shape = function
       ("starting-style" :: shapes_with_rule_runs block) @ [ "/starting-style" ]
   | Origin (_, block) ->
       ("origin" :: shapes_with_rule_runs block) @ [ "/origin" ]
+  | Moz_document (_, block) ->
+      ("moz-document" :: shapes_with_rule_runs block) @ [ "/moz-document" ]
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]

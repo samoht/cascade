@@ -111,13 +111,15 @@ let spec_media_vector buf =
       ("print", Print);
       ("not print", Negated Print);
       ("not all and (min-width: 40px)", Not_min_width 40.);
-      ("(width > 40em)", Range ("width", Gt, length (Css.Values.Em 40.)));
-      ("(40em < width)", Range_rev (length (Css.Values.Em 40.), Lt, "width"));
+      ( "(width > 40em)",
+        Range (Width, Gt, length (Css.Values.Em 40.)) );
+      ( "(40em < width)",
+        Range_rev (length (Css.Values.Em 40.), Lt, Width) );
       ( "(30em <= width < 60em)",
         Interval
           ( length (Css.Values.Em 30.),
             Le,
-            "width",
+            Width,
             Lt,
             length (Css.Values.Em 60.) ) );
       ( "screen and (hover: hover)",
@@ -131,7 +133,7 @@ let spec_media_vector buf =
                 prefix = None;
                 type_ = Screen;
                 trailing =
-                  Some (Range ("width", Ge, length (Css.Values.Em 40.)));
+                  Some (Range (Width, Ge, length (Css.Values.Em 40.)));
               };
             Print;
           ] );

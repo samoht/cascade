@@ -467,14 +467,41 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
         value
 
-and pp_raw_descriptor : raw_descriptor Pp.t =
- fun ctx desc ->
-  Pp.string ctx desc.descriptor_name;
-  Pp.string ctx ":";
-  Pp.space_if_pretty ctx ();
-  Pp.string ctx
-    (if Pp.minified ctx then Parser.to_string_minified desc.descriptor_value
-     else Parser.to_string desc.descriptor_value)
+and pp_font_palette_base ctx = function
+  | Light -> Pp.string ctx "light"
+  | Dark -> Pp.string ctx "dark"
+  | Index i -> Pp.string ctx (Int.to_string i)
+  | Palette_ident s -> Pp.string ctx s
+
+and pp_font_palette_descriptor : font_palette_descriptor Pp.t =
+ fun ctx -> function
+  | Palette_font_family families ->
+      Pp.string ctx "font-family:";
+      Pp.space_if_pretty ctx ();
+      Pp.list ~sep:Pp.comma Properties.pp_font_family ctx families
+  | Base_palette base ->
+      Pp.string ctx "base-palette:";
+      Pp.space_if_pretty ctx ();
+      pp_font_palette_base ctx base
+  | Override_colors entries ->
+      Pp.string ctx "override-colors:";
+      Pp.space_if_pretty ctx ();
+      Pp.list ~sep:Pp.comma
+        (fun ctx (index, color) ->
+          Pp.string ctx (Int.to_string index);
+          Pp.space ctx ();
+          Values.pp_color ctx color)
+        ctx entries
+
+and pp_view_transition_descriptor : view_transition_descriptor Pp.t =
+ fun ctx -> function
+  | Navigation `Auto -> Pp.string ctx "navigation:auto"
+  | Navigation `None -> Pp.string ctx "navigation:none"
+  | Types None -> Pp.string ctx "types:none"
+  | Types (Some types) ->
+      Pp.string ctx "types:";
+      Pp.space_if_pretty ctx ();
+      Pp.list ~sep:Pp.space Pp.string ctx types
 
 and pp_page_margin_rule : page_margin_rule Pp.t =
  fun ctx rule ->
@@ -489,7 +516,7 @@ and pp_page_margin_rule : page_margin_rule Pp.t =
            ~sep:(fun ctx () ->
              Pp.semicolon ctx ();
              Pp.cut ctx ())
-           pp_raw_descriptor)
+           Declaration.pp_declaration)
         ctx rule.margin_descriptors;
       Pp.cut ctx ())
     ctx ()
@@ -576,6 +603,13 @@ and pp_conditional : conditional Pp.t =
       pp_conditional ctx a;
       Pp.string ctx " or ";
       pp_conditional ctx b
+
+and pp_moz_document_condition ctx = function
+  | Url_prefix None -> Pp.string ctx "url-prefix()"
+  | Url_prefix (Some prefix) ->
+      Pp.string ctx "url-prefix(";
+      Pp.quoted_string ctx prefix;
+      Pp.char ctx ')'
 
 and pp_statement : statement Pp.t =
  fun ctx -> function
@@ -694,11 +728,17 @@ and pp_statement : statement Pp.t =
   | Supports (condition, content) ->
       Pp.string ctx "@supports ";
       (match condition with
-      | Supports.And (_, Supports.Func _) | Supports.And (Supports.Func _, _) ->
+      | Supports.And (_, Supports.Function _)
+      | Supports.And (Supports.Function _, _) ->
           Pp.char ctx '(';
           Supports.pp ctx condition;
           Pp.char ctx ')'
       | _ -> Supports.pp ctx condition);
+      Pp.sp ctx ();
+      Pp.braces pp_block ctx content
+  | Moz_document (conditions, content) ->
+      Pp.string ctx "@-moz-document ";
+      Pp.list ~sep:Pp.comma pp_moz_document_condition ctx conditions;
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Starting_style content ->
@@ -859,7 +899,7 @@ and pp_statement : statement Pp.t =
                 ~sep:(fun ctx () ->
                   Pp.semicolon ctx ();
                   Pp.cut ctx ())
-                pp_raw_descriptor ctx descriptors;
+                Declaration.pp_declaration ctx descriptors;
               if descriptors <> [] && margins <> [] then (
                 Pp.semicolon ctx ();
                 Pp.cut ctx ());
@@ -879,7 +919,7 @@ and pp_statement : statement Pp.t =
                ~sep:(fun ctx () ->
                  Pp.semicolon ctx ();
                  Pp.cut ctx ())
-               pp_raw_descriptor)
+               pp_font_palette_descriptor)
             ctx descriptors;
           Pp.cut ctx ())
         ctx ()
@@ -894,7 +934,7 @@ and pp_statement : statement Pp.t =
                ~sep:(fun ctx () ->
                  Pp.semicolon ctx ();
                  Pp.cut ctx ())
-               pp_raw_descriptor)
+               pp_view_transition_descriptor)
             ctx descriptors;
           Pp.cut ctx ())
         ctx ()
@@ -1283,6 +1323,26 @@ let read_moz_keyframes r =
     (fun name frames -> Moz_keyframes (name, frames))
     r
 
+let read_moz_document_condition r =
+  Cursor.ws r;
+  match Cursor.next r with
+  | Some (Component.Func { node = { name = "url-prefix"; arguments; _ }; _ }) ->
+      let arg_cursor = Cursor.of_components arguments in
+      Cursor.ws arg_cursor;
+      let prefix =
+        match Cursor.string_opt arg_cursor with
+        | Some "" -> None
+        | Some s -> Some s
+        | None ->
+            Cursor.ws arg_cursor;
+            if Cursor.is_done arg_cursor then None
+            else Cursor.err_expected arg_cursor "url-prefix string argument"
+      in
+      Cursor.ws arg_cursor;
+      Cursor.expect_eof arg_cursor;
+      Url_prefix prefix
+  | _ -> Cursor.err_expected r "url-prefix()"
+
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)
 let read_descriptor_value read_fn constructor r =
@@ -1294,57 +1354,23 @@ let read_descriptor_value read_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
-let raw_descriptor_value ?(minify = false) value =
-  if minify then Parser.to_string_minified value else Parser.to_string value
-
-let raw_descriptor name value =
-  {
-    descriptor_name = name;
-    descriptor_value = Cursor.remaining (Cursor.of_string value);
-  }
-
-let read_raw_descriptor (r : Cursor.t) : raw_descriptor option =
+let read_descriptor_declaration (r : Cursor.t) : Declaration.declaration option =
   Cursor.ws r;
   if Cursor.is_done r then None
   else if Cursor.peek_semicolon r then (
     Cursor.skip r;
     None)
-  else
-    let name = Cursor.ident ~keep_case:false r in
-    Cursor.ws r;
-    if not (Cursor.colon r) then Cursor.err_expected r "':'";
-    Cursor.ws r;
-    let value = Declaration.read_property_value r in
-    Cursor.ws r;
-    if Cursor.peek_semicolon r then Cursor.skip r;
-    Some (raw_descriptor name value)
+  else Declaration.read_declaration r
 
 let replace_descriptor desc acc =
   desc
   :: List.filter
-       (fun existing -> existing.descriptor_name <> desc.descriptor_name)
+       (fun existing -> Declaration.property_name existing <> Declaration.property_name desc)
        acc
-
-let order_raw_descriptors order descriptors =
-  let find_index pred =
-    let rec loop i = function
-      | [] -> None
-      | x :: xs -> if pred x then Some i else loop (i + 1) xs
-    in
-    loop 0
-  in
-  let rank name =
-    match find_index (( = ) name) order with
-    | Some i -> i
-    | None -> List.length order
-  in
-  List.stable_sort
-    (fun a b -> compare (rank a.descriptor_name) (rank b.descriptor_name))
-    descriptors
 
 let read_descriptor_block normalize inner =
   let rec loop acc =
-    match read_raw_descriptor inner with
+    match read_descriptor_declaration inner with
     | Some desc -> loop (normalize desc acc)
     | None ->
         Cursor.ws inner;
@@ -1551,12 +1577,13 @@ let allowed_page_margin_names =
     "left-top";
   ]
 
-let read_page_raw_descriptor r =
-  match read_raw_descriptor r with
-  | Some desc when List.mem desc.descriptor_name allowed_page_descriptors ->
+let read_page_descriptor r =
+  match read_descriptor_declaration r with
+  | Some desc when List.mem (Declaration.property_name desc) allowed_page_descriptors ->
       desc
   | Some desc ->
-      Cursor.err_invalid r ("invalid @page descriptor: " ^ desc.descriptor_name)
+      Cursor.err_invalid r
+        ("invalid @page descriptor: " ^ Declaration.property_name desc)
   | None -> Cursor.err_expected r "@page descriptor"
 
 let read_page_margin_rule r =
@@ -1568,9 +1595,10 @@ let read_page_margin_rule r =
       let margin_descriptors =
         Cursor.braces
           (read_descriptor_block (fun desc acc ->
-               if desc.descriptor_name <> "content" then
+               if Declaration.property_name desc <> "content" then
                  Cursor.err_invalid r
-                   ("invalid page margin descriptor: " ^ desc.descriptor_name);
+                   ("invalid page margin descriptor: "
+                  ^ Declaration.property_name desc);
                replace_descriptor desc acc))
           r
       in
@@ -1593,7 +1621,7 @@ let read_page_body inner =
         let margin = read_page_margin_rule inner in
         loop descriptors (margin :: margins)
     | Some _ ->
-        let desc = read_page_raw_descriptor inner in
+        let desc = read_page_descriptor inner in
         loop (replace_descriptor desc descriptors) margins
   in
   loop [] []
@@ -1623,37 +1651,82 @@ let read_font_palette_values (r : Cursor.t) : statement =
   let name = Cursor.ident ~keep_case:true r in
   validate_dashed_ident r name "@font-palette-values";
   Cursor.ws r;
-  let validate_descriptor desc acc =
-    match desc.descriptor_name with
-    | "font-family" ->
-        validate_nonempty_descriptor r "font-family"
-          (raw_descriptor_value desc.descriptor_value);
-        replace_descriptor desc acc
-    | "base-palette" ->
-        validate_nonempty_descriptor r "base-palette"
-          (raw_descriptor_value desc.descriptor_value);
-        replace_descriptor desc acc
-    | "override-colors" ->
-        let entry c =
-          let index = Cursor.number c in
-          if index < 0. || Float.floor index <> index then
-            Cursor.err_invalid c "override-colors index must be non-negative";
-          Cursor.ws c;
-          ignore (Values.read_color c);
-          Cursor.ws c
-        in
-        let c = Cursor.of_components desc.descriptor_value in
-        ignore (Cursor.list ~sep:Cursor.comma ~at_least:1 entry c);
-        Cursor.ws c;
-        Cursor.expect_eof c;
-        replace_descriptor desc acc
-    | name ->
-        Cursor.err_invalid r ("unknown font-palette-values descriptor: " ^ name)
+  let descriptor_kind = function
+    | Palette_font_family _ -> "font-family"
+    | Base_palette _ -> "base-palette"
+    | Override_colors _ -> "override-colors"
+  in
+  let replace desc acc =
+    desc :: List.filter (fun existing -> descriptor_kind existing <> descriptor_kind desc) acc
+  in
+  let read_one inner =
+    Cursor.ws inner;
+    if Cursor.is_done inner then None
+    else if Cursor.peek_semicolon inner then (
+      Cursor.skip inner;
+      None)
+    else
+      let desc_name = Cursor.ident ~keep_case:false inner in
+      Cursor.ws inner;
+      if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+      Cursor.ws inner;
+      let desc =
+        match desc_name with
+        | "font-family" ->
+            let families =
+              Cursor.list ~sep:Cursor.comma Properties.read_font_family inner
+            in
+            Palette_font_family families
+        | "base-palette" -> (
+            match Cursor.number inner with
+            | n ->
+                if n < 0. || Float.floor n <> n then
+                  Cursor.err_invalid inner "base-palette index must be non-negative";
+                Base_palette (Index (Float.to_int n))
+            | exception Cursor.Parse_error _ -> (
+                match Cursor.ident ~keep_case:false inner with
+                | "light" -> Base_palette Light
+                | "dark" -> Base_palette Dark
+                | ident when ident <> "" -> Base_palette (Palette_ident ident)
+                | _ -> Cursor.err_expected inner "base-palette value"))
+        | "override-colors" ->
+            let entry c =
+              let index = Cursor.number c in
+              if index < 0. || Float.floor index <> index then
+                Cursor.err_invalid c "override-colors index must be non-negative";
+              Cursor.ws c;
+              let color = Values.read_color c in
+              Cursor.ws c;
+              (Float.to_int index, color)
+            in
+            Override_colors
+              (Cursor.list ~sep:Cursor.comma ~at_least:1 entry inner)
+        | name ->
+            Cursor.err_invalid r ("unknown font-palette-values descriptor: " ^ name)
+      in
+      Cursor.ws inner;
+      if Cursor.peek_semicolon inner then Cursor.skip inner;
+      Some desc
   in
   let descriptors =
-    Cursor.braces (read_descriptor_block validate_descriptor) r
-    |> order_raw_descriptors
-         [ "font-family"; "base-palette"; "override-colors" ]
+    Cursor.braces
+      (fun inner ->
+        let rec loop acc =
+          match read_one inner with
+          | Some desc -> loop (replace desc acc)
+          | None ->
+              Cursor.ws inner;
+              if Cursor.is_done inner then List.rev acc else loop acc
+        in
+        loop [])
+      r
+    |> List.stable_sort (fun a b ->
+           let rank = function
+             | Palette_font_family _ -> 0
+             | Base_palette _ -> 1
+             | Override_colors _ -> 2
+           in
+           compare (rank a) (rank b))
   in
   if descriptors = [] then
     Cursor.err_invalid r "@font-palette-values requires descriptors";
@@ -1667,25 +1740,57 @@ let read_view_transition (r : Cursor.t) : statement =
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> ()
   | Some _ -> Cursor.err_invalid r "@view-transition does not take a prelude"
   | None -> Cursor.err_expected r "'{'");
-  let validate_descriptor desc acc =
-    match
-      ( desc.descriptor_name,
-        raw_descriptor_value ~minify:true desc.descriptor_value )
-    with
-    | "navigation", ("auto" | "none") -> replace_descriptor desc acc
-    | "navigation", _ ->
-        Cursor.err_invalid r "invalid @view-transition navigation descriptor"
-    | "types", value when value <> "" ->
-        (* CSS View Transitions 2 §3.1 [types: none | <custom-ident>+]. We
-           accept any non-empty token list - the descriptor body has already
-           parsed as valid CSS, and the spec lets ident-shaped names through
-           without further constraint. *)
-        replace_descriptor desc acc
-    | name, _ ->
-        Cursor.err_invalid r ("unknown @view-transition descriptor: " ^ name)
+  let replace desc acc =
+    let same a b =
+      match (a, b) with
+      | Navigation _, Navigation _ | Types _, Types _ -> true
+      | _ -> false
+    in
+    desc :: List.filter (fun existing -> not (same existing desc)) acc
   in
   let descriptors =
-    Cursor.braces (read_descriptor_block validate_descriptor) r
+    Cursor.braces
+      (fun inner ->
+        let rec loop acc =
+          Cursor.ws inner;
+          if Cursor.is_done inner then List.rev acc
+          else if Cursor.peek_semicolon inner then (
+            Cursor.skip inner;
+            loop acc)
+          else
+            let desc_name = Cursor.ident ~keep_case:false inner in
+            Cursor.ws inner;
+            if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+            Cursor.ws inner;
+            let desc =
+              match desc_name with
+              | "navigation" -> (
+                  match Cursor.ident ~keep_case:false inner with
+                  | "auto" -> Navigation `Auto
+                  | "none" -> Navigation `None
+                  | _ ->
+                      Cursor.err_invalid inner
+                        "invalid @view-transition navigation descriptor")
+              | "types" -> (
+                  match Cursor.ident ~keep_case:true inner with
+                  | "none" -> Types None
+                  | first ->
+                      let rec names acc =
+                        Cursor.ws inner;
+                        match Cursor.ident_opt inner with
+                        | Some name -> names (name :: acc)
+                        | None -> List.rev acc
+                      in
+                      Types (Some (names [ first ])))
+              | name ->
+                  Cursor.err_invalid r ("unknown @view-transition descriptor: " ^ name)
+            in
+            Cursor.ws inner;
+            if Cursor.peek_semicolon inner then Cursor.skip inner;
+            loop (replace desc acc)
+        in
+        loop [])
+      r
   in
   if descriptors = [] then
     Cursor.err_invalid r "@view-transition requires descriptors";
@@ -1827,6 +1932,7 @@ let rec read_statement (r : Cursor.t) : statement =
       ("media", read_media);
       ("container", read_container);
       ("supports", read_supports);
+      ("-moz-document", read_moz_document);
       ("when", read_when);
       ("else", read_else);
       ("supports-condition", read_supports_condition);
@@ -1945,6 +2051,21 @@ and read_supports (r : Cursor.t) : statement =
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Supports (supports_condition ~loc:cond_loc condition, content)
+
+and read_moz_document (r : Cursor.t) : statement =
+  Cursor.with_context r "@-moz-document" @@ fun () ->
+  Cursor.expect_at_keyword "-moz-document" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block_as_string ~trim:true r in
+  let prelude_cursor = Cursor.of_string prelude in
+  let conditions =
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_moz_document_condition
+      prelude_cursor
+  in
+  Cursor.ws prelude_cursor;
+  Cursor.expect_eof prelude_cursor;
+  let content = Cursor.braces (fun inner -> read_block inner) r in
+  Moz_document (conditions, content)
 
 and read_scope (r : Cursor.t) : statement =
   (* CSS Scoping section 3: [@scope <start> to <end> { ... }]. The two selectors
@@ -2446,6 +2567,7 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Media (_, block)
   | Container (_, _, block)
   | Supports (_, block)
+  | Moz_document (_, block)
   | When (_, block)
   | Else (_, block)
   | Layer (_, block)

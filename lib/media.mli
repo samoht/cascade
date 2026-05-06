@@ -2,21 +2,103 @@
 
 type cmp = Lt | Le | Eq | Gt | Ge
 
+type name =
+  | Width
+  | Height
+  | Inline_size
+  | Block_size
+  | Aspect_ratio
+  | Resolution
+  | Color
+  | Color_index
+  | Monochrome
+  | Grid
+  | Horizontal_viewport_segments
+  | Vertical_viewport_segments
+  | Orientation
+  | Hover
+  | Any_hover
+  | Pointer
+  | Any_pointer
+  | Update
+  | Overflow_block
+  | Overflow_inline
+  | Scan
+  | Color_gamut
+  | Video_color_gamut
+  | Dynamic_range
+  | Video_dynamic_range
+  | Display_mode
+  | Environment_blending
+  | Prefers_color_scheme
+  | Prefers_reduced_motion
+  | Prefers_reduced_transparency
+  | Prefers_reduced_data
+  | Prefers_contrast
+  | Forced_colors
+  | Inverted_colors
+  | Nav_controls
+  | Scripting
+  | Min of name
+  | Max of name
+  | Other of string
+
+type ident =
+  | Infinite
+  | Portrait
+  | Landscape
+  | None
+  | Hover
+  | Coarse
+  | Fine
+  | Slow
+  | Fast
+  | Interlace
+  | Progressive
+  | Srgb
+  | P3
+  | Rec2020
+  | Standard
+  | High
+  | Optional_paged
+  | Paged
+  | Scroll
+  | Fullscreen
+  | Standalone
+  | Minimal_ui
+  | Browser
+  | Picture_in_picture
+  | Opaque
+  | Additive
+  | Subtractive
+  | Light
+  | Dark
+  | No_preference
+  | Reduce
+  | Less
+  | More
+  | Custom
+  | Active
+  | Inverted
+  | Back
+  | Initial_only
+  | Enabled
+  | Other of string
+
 type value =
   | Length of Values.length
   | Integer of int
   | Number of float
   | Ratio of int * int
   | Resolution_value of float * string
-  | Ident of string
-  | Function of string * Component.t list
+  | Ident of ident
 
 type feature =
-  | Plain of string * value
-  | Boolean of string
-  | Range of string * cmp * value
-  | Range_rev of value * cmp * string
-  | Interval of value * cmp * string * cmp * value
+  | Plain of name * value
+  | Boolean of name
+  | Range of name * cmp * value
+  | Range_rev of value * cmp * name
+  | Interval of value * cmp * name * cmp * value
 
 type condition =
   | Feature of feature
@@ -51,42 +133,42 @@ type t =
   | Color of int
   | Color_index of int
   | Monochrome of int
-  | Color_gamut of [ `Srgb | `P3 | `Rec2020 ]
-  | Video_color_gamut of [ `Srgb | `P3 | `Rec2020 ]
-  | Dynamic_range of [ `Standard | `High ]
-  | Video_dynamic_range of [ `Standard | `High ]
-  | Scan of [ `Interlace | `Progressive ]
-  | Update of [ `None | `Slow | `Fast ]
-  | Overflow_block of [ `None | `Scroll | `Optional_paged | `Paged ]
-  | Overflow_inline of [ `None | `Scroll ]
-  | Prefers_reduced_motion of [ `No_preference | `Reduce ]
-  | Prefers_reduced_transparency of [ `No_preference | `Reduce ]
-  | Prefers_reduced_data of [ `No_preference | `Reduce ]
-  | Prefers_contrast of [ `No_preference | `Less | `More | `Custom ]
-  | Prefers_color_scheme of [ `Dark | `Light ]
-  | Forced_colors of [ `Active | `None ]
-  | Inverted_colors of [ `Inverted | `None ]
-  | Pointer of [ `None | `Coarse | `Fine ]
-  | Any_pointer of [ `None | `Coarse | `Fine ]
-  | Hover of [ `None | `Hover ]
-  | Any_hover of [ `None | `Hover ]
-  | Scripting of [ `None | `Initial_only | `Enabled ]
-  | Nav_controls of [ `None | `Back_button ]
+  | Color_gamut of ident
+  | Video_color_gamut of ident
+  | Dynamic_range of ident
+  | Video_dynamic_range of ident
+  | Scan of ident
+  | Update of ident
+  | Overflow_block of ident
+  | Overflow_inline of ident
+  | Prefers_reduced_motion of ident
+  | Prefers_reduced_transparency of ident
+  | Prefers_reduced_data of ident
+  | Prefers_contrast of ident
+  | Prefers_color_scheme of ident
+  | Forced_colors of ident
+  | Inverted_colors of ident
+  | Pointer of ident
+  | Any_pointer of ident
+  | Hover of ident
+  | Any_hover of ident
+  | Scripting of ident
+  | Nav_controls of ident
   | Print
-  | Orientation of [ `Portrait | `Landscape ]
+  | Orientation of ident
   | And of t * t
   | Or of t * t
   | Negated of t
-  | Range of string * cmp * value
-  | Range_rev of value * cmp * string
-  | Interval of value * cmp * string * cmp * value
+  | Range of name * cmp * value
+  | Range_rev of value * cmp * name
+  | Interval of value * cmp * name * cmp * value
   | Type_query of {
       prefix : prefix option;
       type_ : medium;
       trailing : t option;
     }
-  | Plain of string * value
-  | Boolean of string
+  | Plain of name * value
+  | Boolean of name
   | List of t list
 
 val of_string : string -> t
@@ -102,6 +184,11 @@ val of_function_body : string -> t
 
 val value_of_string : string -> value
 (** [value_of_string s] parses [s] as a media-feature value. *)
+
+val name_of_string : string -> name
+val string_of_name : name -> string
+val ident_of_string : string -> ident
+val string_of_ident : ident -> string
 
 val feature : string -> value -> t
 (** [feature name v] is the plain feature [(name: v)]. *)

@@ -60,6 +60,7 @@ type at_node =
   | Media of Media.t
   | Layer of string option
   | Supports of Supports.t
+  | Moz_document of moz_document_condition list
   | Container of string option * Container.t
   | Starting_style
   | When of conditional
@@ -82,6 +83,9 @@ let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
       Some ((Media q : at_node), b, fun b -> Stylesheet.Media (q, b))
   | Stylesheet.Supports (q, b) ->
       Some ((Supports q : at_node), b, fun b -> Stylesheet.Supports (q, b))
+  | Stylesheet.Moz_document (q, b) ->
+      Some
+        ((Moz_document q : at_node), b, fun b -> Stylesheet.Moz_document (q, b))
   | Stylesheet.Container (n, q, b) ->
       Some
         ( (Container (n, q) : at_node),
@@ -353,41 +357,18 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
             visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
           in
           let ctx = context_for visible in
-          let eval_descriptor (d : raw_descriptor) : raw_descriptor =
-            (* Round-trip the descriptor through a synthetic typed declaration
-               so [Context.eval] resolves any [var()] in its value. CSS at-rule
-               descriptors aren't true property declarations but their values
-               share the property-value grammar. *)
-            let synthetic_token kind =
-              Component.Preserved (Token.synthetic kind)
-            in
-            let components =
-              synthetic_token (Token.Ident d.descriptor_name)
-              :: synthetic_token Token.Colon
-              :: d.descriptor_value
-            in
-            match
-              Declaration.read_declaration (Cursor.of_components components)
-            with
-            | None -> d
-            | Some decl ->
-                let evaluated = eval_page_declaration visible ctx decl in
-                {
-                  descriptor_name = Declaration.property_name evaluated;
-                  descriptor_value =
-                    Cursor.remaining
-                      (Cursor.of_string
-                         (Declaration.string_of_value ~minify:true evaluated));
-                }
+          let new_descriptors =
+            List.map (eval_page_declaration visible ctx) descriptors
           in
-          let new_descriptors = List.map eval_descriptor descriptors in
           let new_margins =
             List.map
               (fun (m : page_margin_rule) ->
                 {
                   m with
                   margin_descriptors =
-                    List.map eval_descriptor m.margin_descriptors;
+                    List.map
+                      (eval_page_declaration visible ctx)
+                      m.margin_descriptors;
                 })
               margins
           in
@@ -465,13 +446,11 @@ let names_of_vars vars =
   List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
 
 let refs_of_media_value : Media.value -> string list = function
-  | Ident value -> refs_of_component_string value
-  | Function (name, args) ->
-      let func : Component.func =
-        { name; arguments = args; terminated = true }
-      in
-      refs_of_components [ Component.Func { node = func; loc = Loc.dummy } ]
-  | Length _ | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
+  | Ident value -> refs_of_component_string (Media.string_of_ident value)
+  | Length value ->
+      refs_of_component_string
+        (Pp.to_string (Values.pp_length ~always:true) value)
+  | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
 
 let rec refs_of_media : Media.t -> string list = function
   | Width _ | Height _ | Min_width _ | Max_width _ | Not_min_width _
@@ -499,12 +478,11 @@ let rec refs_of_media : Media.t -> string list = function
 let refs_of_supports_feature : Supports.declaration_feature -> string list =
   function
   | Declaration decl -> names_of_vars (Variables.vars_of_declarations [ decl ])
-  | Unparseable { value; _ } -> refs_of_components value
   | Empty _ | Vendor_flag_enabled -> []
 
 let rec refs_of_supports : Supports.t -> string list = function
   | Property feature -> refs_of_supports_feature feature
-  | Func (_, args) -> refs_of_components args
+  | Function _ -> []
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 

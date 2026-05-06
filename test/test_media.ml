@@ -76,12 +76,12 @@ let spec_media_structural_vectors () =
   check "negated min-width shorthand" "not all and (min-width: 40px)"
     (Not_min_width 40.);
   check "name first range" "(width > 40em)"
-    (Range ("width", Gt, length (Css.Values.Em 40.)));
+    (Range (Width, Gt, length (Css.Values.Em 40.)));
   check "value first range" "(40em < width)"
-    (Range_rev (length (Css.Values.Em 40.), Lt, "width"));
+    (Range_rev (length (Css.Values.Em 40.), Lt, Width));
   check "interval range" "(30em <= width < 60em)"
     (Interval
-       (length (Css.Values.Em 30.), Le, "width", Lt, length (Css.Values.Em 60.)));
+       (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.)));
   check "media type with trailing condition" "screen and (hover: hover)"
     (Type_query
        { prefix = None; type_ = Screen; trailing = Some (Hover `Hover) });
@@ -92,7 +92,7 @@ let spec_media_structural_vectors () =
            {
              prefix = None;
              type_ = Screen;
-             trailing = Some (Range ("width", Ge, length (Css.Values.Em 40.)));
+             trailing = Some (Range (Width, Ge, length (Css.Values.Em 40.)));
            };
          Print;
        ])

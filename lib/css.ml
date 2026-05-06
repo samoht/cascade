@@ -33,36 +33,12 @@ module Selector = Selector
 module Stylesheet = struct
   include Stylesheet
 
-  let synthetic kind = Component.Preserved (Token.synthetic kind)
-
-  let declaration_of_descriptor descriptor =
-    let components =
-      synthetic (Token.Ident descriptor.descriptor_name)
-      :: synthetic Token.Colon :: descriptor.descriptor_value
-    in
-    Declaration.read_declaration (Cursor.of_components components)
-
-  let descriptor_of_declaration decl =
-    {
-      descriptor_name = Declaration.property_name decl;
-      descriptor_value =
-        Cursor.remaining
-          (Cursor.of_string (Declaration.string_of_value ~minify:true decl));
-    }
-
-  let eval_descriptor ~layer_order ?layer ctx descriptor =
-    match declaration_of_descriptor descriptor with
-    | Some decl ->
-        Declaration.eval ~layer_order ?layer ctx decl
-        |> descriptor_of_declaration
-    | None -> descriptor
-
   let eval_page_margin_rule ~layer_order ?layer ctx rule =
     {
       rule with
       margin_descriptors =
         List.map
-          (eval_descriptor ~layer_order ?layer ctx)
+          (Declaration.eval ~layer_order ?layer ctx)
           rule.margin_descriptors;
     }
 
@@ -100,6 +76,7 @@ module Stylesheet = struct
           List.fold_left (statement layer) acc block
       | Media (_, block)
       | Supports (_, block)
+      | Moz_document (_, block)
       | When (_, block)
       | Else (_, block)
       | Starting_style block
@@ -143,6 +120,12 @@ module Stylesheet = struct
     | Supports (condition, block) ->
         Supports
           ( condition,
+            List.map
+              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
+              block )
+    | Moz_document (conditions, block) ->
+        Moz_document
+          ( conditions,
             List.map
               (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
               block )
@@ -224,7 +207,7 @@ module Stylesheet = struct
     | Page_with_margins (selector, descriptors, margins) ->
         Page_with_margins
           ( selector,
-            List.map (eval_descriptor ~layer_order ?layer ctx) descriptors,
+            List.map (Declaration.eval ~layer_order ?layer ctx) descriptors,
             List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
     | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
       | Font_face _ | Font_palette_values _ | View_transition _ ) as statement
@@ -729,6 +712,8 @@ let rec statements_for_inline = function
       [ Media (condition, List.concat_map statements_for_inline block) ]
   | Supports (condition, block) ->
       [ Supports (condition, List.concat_map statements_for_inline block) ]
+  | Moz_document (conditions, block) ->
+      [ Moz_document (conditions, List.concat_map statements_for_inline block) ]
   | Container (name, condition, block) ->
       [ Container (name, condition, List.concat_map statements_for_inline block) ]
   | Scope (start, end_, block) ->

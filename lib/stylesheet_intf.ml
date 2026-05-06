@@ -143,6 +143,8 @@ and statement =
   | Container of string option * Container.t * block
       (** [@container name? (...) { ... }] *)
   | Supports of Supports.t * block  (** [@supports (...) { ... }] *)
+  | Moz_document of moz_document_condition list * block
+      (** [@-moz-document url-prefix(...) { ... }] *)
   | Starting_style of block  (** [@starting-style { ... }] *)
   | When of conditional * block  (** [@when media(...) { ... }] *)
   | Else of conditional option * block  (** [@else supports(...)? { ... }] *)
@@ -163,11 +165,11 @@ and statement =
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)
   | Page_with_margins of
-      string option * raw_descriptor list * page_margin_rule list
+      string option * page_descriptor list * page_margin_rule list
       (** [@page :first { margin: 1cm; @top-left { content: ... } }] *)
-  | Font_palette_values of string * raw_descriptor list
+  | Font_palette_values of string * font_palette_descriptor list
       (** [@font-palette-values --name { ... }] *)
-  | View_transition of raw_descriptor list
+  | View_transition of view_transition_descriptor list
       (** [@view-transition { navigation: auto }] *)
   | Position_try of string * Declaration.declaration list
       (** [@position-try --name { top: anchor(...) }] *)
@@ -181,6 +183,8 @@ and conditional =
   | And of conditional * conditional
   | Or of conditional * conditional
 
+and moz_document_condition = Url_prefix of string option
+
 and keyframe = {
   keyframe_selector : Keyframe.selector;
       (** e.g., [From], [To], [Percent 50.] *)
@@ -188,15 +192,22 @@ and keyframe = {
 }
 (** A single keyframe within [\@keyframes] *)
 
-and raw_descriptor = {
-  descriptor_name : string;
-  descriptor_value : Component.t list;
-}
-(** Raw descriptor used by descriptor-only at-rules. *)
+and page_descriptor = Declaration.declaration
+
+and font_palette_base = Light | Dark | Index of int | Palette_ident of string
+
+and font_palette_descriptor =
+  | Palette_font_family of Properties.font_family list
+  | Base_palette of font_palette_base
+  | Override_colors of (int * Values.color) list
+
+and view_transition_descriptor =
+  | Navigation of [ `Auto | `None ]
+  | Types of string list option
 
 and page_margin_rule = {
   margin_name : string;
-  margin_descriptors : raw_descriptor list;
+  margin_descriptors : Declaration.declaration list;
 }
 (** CSS page margin at-rule inside [@page]. *)
 

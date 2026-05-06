@@ -206,7 +206,11 @@ let unresolved_media_feature s =
           |> String.trim
         in
         if name <> "" && value <> "" && contains_var_function value then
-          Some (Feature_query (Media.Plain (name, Media.Ident value)))
+          Some
+            (Feature_query
+               (Media.Plain
+                  ( Media.name_of_string name,
+                    Media.Ident (Media.ident_of_string value) )))
         else None
     | None -> None
   else None

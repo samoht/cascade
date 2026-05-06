@@ -24,7 +24,7 @@ let check_matches name pattern text =
 
 let px value = Css.Media.Length (Css.Values.Px value)
 let rem value = Css.Media.Length (Css.Values.Rem value)
-let ident value = Css.Media.Ident value
+let ident value = Css.Media.Ident (Css.Media.ident_of_string value)
 let feature = Css.Media.feature
 let container_feature = Css.Container.feature
 
@@ -457,8 +457,8 @@ let declaration_shape decl =
   Css.Declaration.property_name decl
   ^ if Css.Declaration.is_important decl then " !important" else ""
 
-let raw_descriptor_shape (descriptor : Css.Stylesheet.raw_descriptor) =
-  descriptor.descriptor_name
+let raw_descriptor_shape (descriptor : Css.Stylesheet.page_descriptor) =
+  Css.Declaration.property_name descriptor
 
 let rec conditional_shape = function
   | Css.Stylesheet.Media_condition condition ->
@@ -520,6 +520,7 @@ let rec statement_shape stmt =
       ^ string_of_int
           (Css.Stylesheet.origin_importance_rank ~important:false origin))
       :: block_lines block
+  | Moz_document (_, block) -> "moz-document" :: block_lines block
   | Scope (start, boundary, block) ->
       ("scope:"
       ^ Option.value ~default:"" start
@@ -572,12 +573,12 @@ let rec statement_shape stmt =
   | Font_palette_values (name, descriptors) ->
       [
         "font-palette-values:" ^ name ^ ":"
-        ^ String.concat "," (List.map raw_descriptor_shape descriptors);
+        ^ String.concat "," (List.map (fun _ -> "descriptor") descriptors);
       ]
   | View_transition descriptors ->
       [
         "view-transition:"
-        ^ String.concat "," (List.map raw_descriptor_shape descriptors);
+        ^ String.concat "," (List.map (fun _ -> "descriptor") descriptors);
       ]
   | Position_try (name, declarations) ->
       ("position-try:" ^ name) :: declaration_lines declarations
@@ -734,6 +735,9 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
         ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
           None )
     | Origin (origin, block) ->
+        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
+    | Moz_document (_, block) ->
         ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
           None )
     | Scope (start, boundary, block) ->
