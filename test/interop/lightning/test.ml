@@ -144,6 +144,9 @@ let external_candidates input =
       | Ok css -> Some { tool; css }
       | Error _ -> None)
 
+let all_candidate_outputs input expected =
+  { tool = "lightningcss-trace"; css = expected } :: external_candidates input
+
 let shortest_length (candidates : candidate list) =
   List.fold_left
     (fun acc ({ css; _ } : candidate) -> min acc (String.length css))
@@ -263,15 +266,45 @@ let format_rejected_candidates input rejected =
           rejection.tool rejection.reason input rejection.css)
     |> String.concat "\n")
 
+let format_source_parse_diagnostics input expected =
+  let candidates = all_candidate_outputs input expected in
+  let parseable = ref 0 in
+  let reports =
+    candidates
+    |> List.map (fun ({ tool; css } : candidate) ->
+        match canonical_minified css with
+        | Ok canonical ->
+            incr parseable;
+            Printf.sprintf
+              "    %s: output parses with Cascade\n\
+              \      output:    %s\n\
+              \      canonical: %s"
+              tool css canonical
+        | Error msg ->
+            Printf.sprintf
+              "    %s: output also fails Cascade parser\n\
+              \      output: %s\n\
+              \      error:  %s"
+              tool css msg)
+    |> String.concat "\n"
+  in
+  Printf.sprintf
+    "%s\n\
+    \    SOURCE PARSE DIAGNOSTICS: Cascade could not parse the source fixture. \
+     External outputs are diagnostics only; they are not accepted as proof of \
+     semantic equivalence without a successful source parse.\n\
+    \    parseable_external_outputs=%d/%d\n\
+     %s"
+    input !parseable (List.length candidates) reports
+
 let classify (input, expected) =
   match cascade_minify input with
-  | Parse_error _ as e -> (e, [])
+  | Parse_error msg ->
+      let diagnostics = format_source_parse_diagnostics input expected in
+      (Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics), [])
   | Pass -> assert false
   | Mismatch actual ->
-      let candidates =
-        { tool = "lightningcss-trace"; css = expected }
-        :: external_candidates input
-      in
+      let candidates = all_candidate_outputs input expected in
       let candidates, rejected = split_equivalent_candidates input candidates in
       let best = shortest_length candidates in
       let outcome =
