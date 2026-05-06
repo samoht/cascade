@@ -20,6 +20,11 @@ type bracket =
   | Paren  (** [( ... )] *)
   | Square  (** [[ ... ]] *)
 
+type unicode_range_form =
+  | Single of { width : int }
+  | Range of { start_width : int; end_width : int }
+  | Wildcard of { prefix_width : int; wildcards : int }
+
 (** Token payload: the section 4.2 variants without the location wrapper. *)
 type kind =
   | Ident of string
@@ -47,11 +52,15 @@ type kind =
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
   | Whitespace  (** Any run of whitespace characters. *)
-  | Unicode_range of { start_value : int; end_value : int }
+  | Unicode_range of {
+      start_value : int;
+      end_value : int;
+      form : unicode_range_form;
+    }
       (** [U+XXXX] / [U+XXXX-YYYY] / [U+XX??] (CSS Syntax section 4.3.14). The
           three syntactic forms are normalised to the [[start_value, end_value]]
           inclusive range; [start_value = end_value] for the single-codepoint
-          form. *)
+          form. [form] keeps the typed token shape for non-minified fidelity. *)
   | Cdo  (** [<!--] at top level. *)
   | Cdc  (** [-->] at top level. *)
   | Colon

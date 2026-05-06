@@ -7,6 +7,11 @@ type number_flag = Integer | Number
 type number = { value : float; repr : string; number_flag : number_flag }
 type bracket = Curly | Paren | Square
 
+type unicode_range_form =
+  | Single of { width : int }
+  | Range of { start_width : int; end_width : int }
+  | Wildcard of { prefix_width : int; wildcards : int }
+
 type kind =
   | Ident of string
   | Function of string
@@ -21,7 +26,11 @@ type kind =
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
   | Whitespace
-  | Unicode_range of { start_value : int; end_value : int }
+  | Unicode_range of {
+      start_value : int;
+      end_value : int;
+      form : unicode_range_form;
+    }
   | Cdo
   | Cdc
   | Colon
@@ -82,7 +91,7 @@ let pp_kind : kind Pp.t =
       Pp.string ctx unit_;
       Pp.char ctx '>'
   | Whitespace -> Pp.string ctx "<ws>"
-  | Unicode_range { start_value; end_value } ->
+  | Unicode_range { start_value; end_value; _ } ->
       Pp.string ctx "<unicode-range U+";
       Pp.hex ctx start_value;
       if end_value <> start_value then (
