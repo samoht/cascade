@@ -322,8 +322,7 @@ let pp_unit ?(always = true) ctx f suffix =
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
        fractional values ([.25rem], not [0.25rem]); we follow that canonical
        form in both minified and pretty output. *)
-    Pp.string ctx
-      (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f));
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
     Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -2011,16 +2010,46 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let pp_pct_num_hue_alpha : (percentage * float * hue * alpha) Pp.t =
+let space_after_color_percentage ctx (l : percentage) =
+  match (Pp.minified ctx, l) with true, Pct _ -> () | _ -> Pp.space ctx ()
+
+(** Lab-like float string with precision control. Non-minified: fixed decimal
+    places (matching upstream Tailwind test expectations). Minified: 6
+    significant digits (matching Tailwind's minified output). *)
+let string_of_lab_float ~max_decimals ctx f =
+  Pp.string_of_float ~drop_leading_zero:true ~max_decimals
+    (if ctx.Pp.minify then Pp.round_sig 6 f else f)
+
+let pp_lab_float ~max_decimals ctx f =
+  Buffer.add_string ctx.Pp.buf (string_of_lab_float ~max_decimals ctx f)
+
+let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
+  let n = string_of_lab_float ~max_decimals ctx f in
+  if ctx.Pp.minify then
+    let pct =
+      string_of_lab_float ~max_decimals ctx (f /. pct_scale) ^ "%"
+    in
+    if String.length pct < String.length n then pct else n
+  else n
+
+let ends_with_pct s =
+  let len = String.length s in
+  len > 0 && s.[len - 1] = '%'
+
+let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
+    (percentage * float * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   pp_percentage ctx l;
-  Pp.space ctx ();
-  Pp.float ctx c;
-  Pp.space ctx ();
+  space_after_color_percentage ctx l;
+  let c =
+    string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale ctx c
+  in
+  Pp.string ctx c;
+  if not (ctx.Pp.minify && ends_with_pct c) then Pp.space ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
-let pp_oklch = Pp.call "oklch" pp_pct_num_hue_alpha
+let pp_oklch = Pp.call "oklch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004)
 
 let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
@@ -2034,7 +2063,7 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
 let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
 let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
-(** Print a float always dropping leading zeros (for oklab a/b values) *)
+(** Print a float always dropping leading zeros (for lab-like color axes) *)
 let pp_float_drop_zero ctx f =
   Buffer.add_string ctx.Pp.buf (Pp.string_of_float ~drop_leading_zero:true f)
 
@@ -2046,31 +2075,26 @@ let pp_alpha_drop_zero : alpha Pp.t =
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
 
-(** Oklab-specific float printer with precision control. Non-minified: fixed
-    decimal places (matching upstream Tailwind test expectations). Minified: 6
-    significant digits (matching Tailwind's minified output). *)
-let pp_oklab_float ~max_decimals ctx f =
-  if ctx.Pp.minify then pp_float_drop_zero ctx (Pp.round_sig 6 f)
-  else
-    Buffer.add_string ctx.Pp.buf
-      (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
+let string_of_lab_axis ~pct_scale ctx f =
+  string_of_scaled_color_axis ~max_decimals:3 ~pct_scale ctx f
 
-let pp_oklab_ab ctx = function
-  | Some f -> pp_oklab_float ~max_decimals:3 ctx f
+let pp_lab_axis ~pct_scale ctx = function
+  | Some f -> Buffer.add_string ctx.Pp.buf (string_of_lab_axis ~pct_scale ctx f)
   | None -> Pp.string ctx "none"
 
-let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
+let pp_lab_like_args ~axis_pct_scale :
+    (percentage * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   (* Oklab L: percentage with controlled precision *)
   (match l with
   | Pct f ->
-      pp_oklab_float ~max_decimals:4 ctx f;
+      pp_lab_float ~max_decimals:4 ctx f;
       Pp.char ctx '%'
   | _ -> pp_percentage ctx l);
+  space_after_color_percentage ctx l;
+  pp_lab_axis ~pct_scale:axis_pct_scale ctx a;
   Pp.space ctx ();
-  pp_oklab_ab ctx a;
-  Pp.space ctx ();
-  pp_oklab_ab ctx b;
+  pp_lab_axis ~pct_scale:axis_pct_scale ctx b;
   match alpha with
   | None -> ()
   | a when ctx.Pp.minify && alpha_is_full a -> ()
@@ -2078,9 +2102,9 @@ let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
       Pp.op_char ctx '/';
       pp_alpha_drop_zero ctx a
 
-let pp_lab = Pp.call "lab" pp_oklab_args
-let pp_oklab = Pp.call "oklab" pp_oklab_args
-let pp_lch = Pp.call "lch" pp_pct_num_hue_alpha
+let pp_lab = Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25)
+let pp_oklab = Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004)
+let pp_lch = Pp.call "lch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:1.5)
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -3552,6 +3576,28 @@ let read_optional_percentage t : percentage option =
 
 let rec read_color_mix t : color =
   Cursor.ws t;
+  let read_color_mix_component t =
+    let read_prefix_percentage t =
+      match read_optional_percentage t with
+      | None -> Cursor.err_expected t "color-mix percentage"
+      | Some percent ->
+          let color = read_color t in
+          Cursor.ws t;
+          (match read_optional_percentage t with
+          | None -> (color, Some percent)
+          | Some _ ->
+              Cursor.err_invalid t
+                "color-mix component cannot have two percentages")
+    in
+    match Cursor.option read_prefix_percentage t with
+    | Some component -> component
+    | None ->
+        let color = read_color t in
+        Cursor.ws t;
+        (match read_optional_percentage t with
+        | None -> (color, None)
+        | Some percent -> (color, Some percent))
+  in
 
   (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
   let in_space, hue =
@@ -3589,17 +3635,13 @@ let rec read_color_mix t : color =
   Cursor.ws t;
 
   (* Parse first color and optional percentage *)
-  let color1 = read_color t in
-  Cursor.ws t;
-  let percent1 = read_optional_percentage t in
+  let color1, percent1 = read_color_mix_component t in
 
   Cursor.comma t;
   Cursor.ws t;
 
   (* Parse second color and optional percentage *)
-  let color2 = read_color t in
-  Cursor.ws t;
-  let percent2 = read_optional_percentage t in
+  let color2, percent2 = read_color_mix_component t in
 
   Cursor.ws t;
   Mix { in_space; hue; color1; percent1; color2; percent2 }
