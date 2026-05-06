@@ -2021,16 +2021,10 @@ let read_caret_animation_component t : caret_animation =
 let read_caret_shape_component t : caret_shape =
   Cursor.enum "caret-shape component"
     [
-      ("bar", (Bar : caret_shape)); ("block", Block); ("underscore", Underscore);
-    ]
-    t
-
-let read_caret_component t =
-  Cursor.one_of
-    [
-      (fun t -> `Animation (read_caret_animation_component t));
-      (fun t -> `Shape (read_caret_shape_component t));
-      (fun t -> `Color (read_color t));
+      ("auto", (Auto : caret_shape));
+      ("bar", Bar);
+      ("block", Block);
+      ("underscore", Underscore);
     ]
     t
 
@@ -2040,24 +2034,34 @@ let read_caret_shorthand t : caret =
       if count = 0 then Cursor.err_expected t "caret"
       else (Caret (color, animation, shape) : caret)
     else
-      match read_caret_component t with
-      | `Color value ->
-          if Option.is_some color then Cursor.err_invalid t "caret";
-          loop (Some value) animation shape (count + 1)
-      | `Animation value ->
-          if Option.is_some animation then Cursor.err_invalid t "caret";
-          loop color (Some value) shape (count + 1)
-      | `Shape value ->
-          if Option.is_some shape then Cursor.err_invalid t "caret";
-          loop color animation (Some value) (count + 1)
+      let try_each =
+        let attempts =
+          List.filter_map Fun.id
+            [
+              (if Option.is_none animation then
+                 Some (fun t -> `Animation (read_caret_animation_component t))
+               else None);
+              (if Option.is_none color then
+                 Some (fun t -> `Color (read_color t))
+               else None);
+              (if Option.is_none shape then
+                 Some (fun t -> `Shape (read_caret_shape_component t))
+               else None);
+            ]
+        in
+        Cursor.one_of attempts t
+      in
+      match try_each with
+      | `Color value -> loop (Some value) animation shape (count + 1)
+      | `Animation value -> loop color (Some value) shape (count + 1)
+      | `Shape value -> loop color animation (Some value) (count + 1)
   in
   loop None None None 0
 
 let rec read_caret t : caret =
   Cursor.enum_or_var "caret"
     [
-      ("auto", (Auto : caret));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : caret));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
