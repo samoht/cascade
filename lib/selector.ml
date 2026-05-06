@@ -869,9 +869,9 @@ let pseudo_class_base_idents =
 
 let pseudo_element_legacy_idents form =
   [
-    (* Legacy pseudo-elements: parser records [Single] or [Double] colon
-       depending on the entry point so the printer round-trips the source
-       spelling under non-minified output. *)
+    (* Legacy pseudo-elements: parser records [Single] or [Double] colon for
+       tests and compatibility, but the printer canonicalizes pretty output to
+       the modern double-colon spelling. *)
     ("before", Before form);
     ("after", After form);
     ("first-letter", First_letter form);
@@ -1461,18 +1461,10 @@ let vendor ctx name = Pp.string ctx (":-" ^ name)
 let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
 (* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
-   spelling for the four original pseudo-elements. In minified output we use it
-   because it is shorter; otherwise emit the modern double-colon pseudo-element
-   syntax. *)
-(* Emit a CSS 2.1 / CSS 3 pseudo-element. Under [--minify] the [Single]-colon
-   form always wins (one byte shorter, valid alias per CSS Selectors 4 3.6.1).
-   In non-minified output the printer keeps the source spelling so a [::before]
-   stays [::before] and a [:before] stays [:before]. *)
-let legacy_elem ctx form name =
-  let prefix =
-    if Pp.minified ctx then ":"
-    else match form with Single -> ":" | Double -> "::"
-  in
+   spelling for the four original pseudo-elements. Minified output uses the
+   shorter valid alias; pretty output uses the modern double-colon spelling. *)
+let legacy_elem ctx _form name =
+  let prefix = if Pp.minified ctx then ":" else "::" in
   Pp.string ctx (prefix ^ name)
 
 let func ctx name pp_content value =
