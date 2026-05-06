@@ -1650,6 +1650,12 @@ let read_view_transition (r : Cursor.t) : statement =
     | "navigation", ("auto" | "none") -> replace_descriptor desc acc
     | "navigation", _ ->
         Cursor.err_invalid r "invalid @view-transition navigation descriptor"
+    | "types", value when value <> "" ->
+        (* CSS View Transitions 2 §3.1 [types: none | <custom-ident>+]. We
+           accept any non-empty token list - the descriptor body has already
+           parsed as valid CSS, and the spec lets ident-shaped names through
+           without further constraint. *)
+        replace_descriptor desc acc
     | name, _ ->
         Cursor.err_invalid r ("unknown @view-transition descriptor: " ^ name)
   in
