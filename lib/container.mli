@@ -16,7 +16,8 @@ type t =
               lowercase spelling. *)
     }
       (** Style query: [style(--flag)], [style(property: value)], or a
-          custom-property range query. *)
+          custom-property range query, optionally composed with [and], [or], or
+          [not]. *)
   | Scroll_state of {
       query : scroll_state_query;
       uppercase : bool;
@@ -34,6 +35,9 @@ and style_query =
   | Boolean of string
   | Declaration of { name : string; value : Component.t list }
   | Range of style_range
+  | All of style_query * style_query
+  | Any of style_query * style_query
+  | Neg of style_query
 
 and style_range = {
   lower : Component.t list;
@@ -75,7 +79,7 @@ val feature : string -> Media.value -> t
 
 val style : ?value:string -> string -> t
 (** [style ?value prop] is a [style()] query. With no [value] it matches the
-    boolean form [style(--flag)]; with a value it matches [style(prop: value)].
+    boolean form [style(prop)]; with a value it matches [style(prop: value)].
     Constructs the canonical lowercase form. *)
 
 val scroll_state : string -> string -> t
