@@ -124,7 +124,7 @@ type length =
   | Round of string * length * length
   | Mod of length * length
   | Rem_fn of length * length
-  | Hypot of length * length
+  | Hypot of length list
   | Abs of length
   | Sign of length
   | Calc_size of length * length calc

@@ -297,8 +297,8 @@ let rec vars_of_length (value : Values.length) : any_var list =
   | Var v -> [ V v ]
   | Calc calc -> vars_of_calc calc
   | Round (_, value, step) -> vars_of_length value @ vars_of_length step
-  | Mod (a, b) | Rem_fn (a, b) | Hypot (a, b) ->
-      vars_of_length a @ vars_of_length b
+  | Mod (a, b) | Rem_fn (a, b) -> vars_of_length a @ vars_of_length b
+  | Hypot values -> List.concat_map vars_of_length values
   | Abs value | Sign value -> vars_of_length value
   | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
   | Anchor (_, _, Some fallback) -> vars_of_length fallback
