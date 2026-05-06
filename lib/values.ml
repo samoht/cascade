@@ -30,9 +30,13 @@ let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
 let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
 let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
 let hwba h w b a = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = Num a }
-let oklch l c h = Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+
+let oklch l c h =
+  Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+
 let oklcha l c h a =
   Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
+
 let oklab l a b =
   Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = None }
 
@@ -44,9 +48,12 @@ let oklaba_none_zeros l a b alpha =
   let b = if b = 0.0 then Stdlib.Option.None else Stdlib.Option.Some b in
   Oklab { l = Some (Pct l); a; b; alpha = Num alpha }
 
-let lch l c h = Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+let lch l c h =
+  Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+
 let lcha l c h a =
   Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
+
 let color_name n = Named n
 let current_color = Current
 let transparent = Transparent
@@ -2052,7 +2059,7 @@ let space_after_color_percentage ctx (l : percentage option) ~next =
   match (Pp.minified ctx, l, next) with
   | true, Some (Pct _), Some s
     when String.length s > 0 && s.[0] >= '0' && s.[0] <= '9' ->
-      ()
+      Pp.space ctx ()
   | _ -> Pp.space ctx ()
 
 (** Lab-like float string with precision control. Non-minified: fixed decimal
@@ -2068,9 +2075,7 @@ let pp_lab_float ~max_decimals ctx f =
 let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   let n = string_of_lab_float ~max_decimals ctx f in
   if ctx.Pp.minify then
-    let pct =
-      string_of_lab_float ~max_decimals ctx (f /. pct_scale) ^ "%"
-    in
+    let pct = string_of_lab_float ~max_decimals ctx (f /. pct_scale) ^ "%" in
     if String.length pct < String.length n then pct else n
   else n
 
@@ -2081,15 +2086,13 @@ let ends_with_pct s =
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
-  (match l with
-  | Some l -> pp_percentage ctx l
-  | None -> Pp.string ctx "none");
+  (match l with Some l -> pp_percentage ctx l | None -> Pp.string ctx "none");
   let c_ends_with_pct =
     match c with
     | Some c ->
         let c =
-          string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale
-            ctx c
+          string_of_scaled_color_axis ~max_decimals:8
+            ~pct_scale:chroma_pct_scale ctx c
         in
         space_after_color_percentage ctx l ~next:(Some c);
         Pp.string ctx c;
@@ -2807,12 +2810,7 @@ let read_length_unit ?(allow_negative = true) t =
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
-  | _ ->
-      (* Cascade preserves dimensions with unrecognised units rather than
-         rejecting them outright: every other minifier round-trips [1x] /
-         [10qoo] etc. as written, and the strict spec view is more useful as a
-         diagnostic than as a hard parse failure. *)
-      Unknown_dimension (n, unit)
+  | _ -> Cursor.err_invalid t ("length unit: " ^ unit)
 
 let read_length_keyword t : length =
   Cursor.enum "length"
@@ -2962,8 +2960,7 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
           Num
             (Cursor.call "min" t (fun inner ->
                  let nums =
-                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
-                     inner
+                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
                  in
                  Cursor.ws inner;
                  Cursor.expect_eof inner;
@@ -2972,8 +2969,7 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
           Num
             (Cursor.call "max" t (fun inner ->
                  let nums =
-                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
-                     inner
+                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
                  in
                  Cursor.ws inner;
                  Cursor.expect_eof inner;
@@ -2994,90 +2990,103 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
          time to a [Num] so the surrounding [calc()] can fold further. *)
       | "sqrt" ->
-          Num (Cursor.call "sqrt" t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Float.sqrt v))
+          Num
+            (Cursor.call "sqrt" t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.sqrt v))
       | "abs" ->
-          Num (Cursor.call "abs" t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Float.abs v))
+          Num
+            (Cursor.call "abs" t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.abs v))
       | "sign" ->
-          Num (Cursor.call "sign" t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              if v > 0. then 1. else if v < 0. then -1. else 0.))
+          Num
+            (Cursor.call "sign" t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 if v > 0. then 1. else if v < 0. then -1. else 0.))
       | "exp" ->
-          Num (Cursor.call "exp" t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Float.exp v))
+          Num
+            (Cursor.call "exp" t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.exp v))
       | "log" ->
-          Num (Cursor.call "log" t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              let base =
-                if Cursor.comma_opt inner then Some (read_num_expr inner)
-                else None
-              in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              match base with
-              | None -> Float.log v
-              | Some b -> Float.log v /. Float.log b))
+          Num
+            (Cursor.call "log" t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 let base =
+                   if Cursor.comma_opt inner then Some (read_num_expr inner)
+                   else None
+                 in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 match base with
+                 | None -> Float.log v
+                 | Some b -> Float.log v /. Float.log b))
       | "pow" ->
-          Num (Cursor.call "pow" t (fun inner ->
-              let a = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let b = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Float.pow a b))
+          Num
+            (Cursor.call "pow" t (fun inner ->
+                 let a = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let b = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.pow a b))
       | "hypot" ->
-          Num (Cursor.call "hypot" t (fun inner ->
-              let nums = Cursor.list ~sep:Cursor.comma ~at_least:1
-                  read_num_expr inner in
-              Cursor.expect_eof inner;
-              let sum_sq = List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums in
-              Float.sqrt sum_sq))
+          Num
+            (Cursor.call "hypot" t (fun inner ->
+                 let nums =
+                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
+                 in
+                 Cursor.expect_eof inner;
+                 let sum_sq =
+                   List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums
+                 in
+                 Float.sqrt sum_sq))
       | ("sin" | "cos" | "tan") as fn ->
-          Num (Cursor.call fn t (fun inner ->
-              let radians = read_trig_arg inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              match fn with
-              | "sin" -> Float.sin radians
-              | "cos" -> Float.cos radians
-              | "tan" -> Float.tan radians
-              | _ -> assert false))
+          Num
+            (Cursor.call fn t (fun inner ->
+                 let radians = read_trig_arg inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 match fn with
+                 | "sin" -> Float.sin radians
+                 | "cos" -> Float.cos radians
+                 | "tan" -> Float.tan radians
+                 | _ -> assert false))
       | ("asin" | "acos" | "atan") as fn ->
-          Num (Cursor.call fn t (fun inner ->
-              let v = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              let result_rad =
-                match fn with
-                | "asin" -> Float.asin v
-                | "acos" -> Float.acos v
-                | "atan" -> Float.atan v
-                | _ -> assert false
-              in
-              result_rad *. 180. /. Float.pi))
+          Num
+            (Cursor.call fn t (fun inner ->
+                 let v = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 let result_rad =
+                   match fn with
+                   | "asin" -> Float.asin v
+                   | "acos" -> Float.acos v
+                   | "atan" -> Float.atan v
+                   | _ -> assert false
+                 in
+                 result_rad *. 180. /. Float.pi))
       | "atan2" ->
-          Num (Cursor.call "atan2" t (fun inner ->
-              let y = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let x = read_num_expr inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Float.atan2 y x *. 180. /. Float.pi))
+          Num
+            (Cursor.call "atan2" t (fun inner ->
+                 let y = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let x = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.atan2 y x *. 180. /. Float.pi))
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
 
@@ -3092,9 +3101,9 @@ and read_num_expr t : float =
   | None -> Cursor.err_invalid t "non-numeric calc expression"
 
 (* CSS Values 4 §10.7.1: trig functions accept [<angle> | <number>] - a bare
-   number is treated as radians. We support arithmetic over the input
-   ([sin(pi / 4)], [sin(22deg + 23deg)]) by recognising both shapes at every
-   leaf and folding through a generic float-leaf calc evaluator. *)
+   number is treated as radians. We support arithmetic over the input ([sin(pi /
+   4)], [sin(22deg + 23deg)]) by recognising both shapes at every leaf and
+   folding through a generic float-leaf calc evaluator. *)
 and read_trig_arg t : float =
   let read_leaf t =
     let snap = Cursor.save t in
@@ -3402,7 +3411,9 @@ let rec read_alpha t : alpha =
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
     Num (max 0. (min 1. n))
   in
-  Cursor.one_of [ read_var_alpha; read_calc_alpha; read_none; read_pct; read_num ] t
+  Cursor.one_of
+    [ read_var_alpha; read_calc_alpha; read_none; read_pct; read_num ]
+    t
 
 (** Read optional alpha component *)
 and read_optional_alpha t : alpha =
@@ -3426,8 +3437,7 @@ let rec read_channel t : channel =
       when String.lowercase_ascii name <> "var" ->
         true
     | _ -> false
-  then
-    Int (int_of_float (max 0. (min 255. (read_num_expr t))))
+  then Int (int_of_float (max 0. (min 255. (read_num_expr t))))
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -3889,10 +3899,10 @@ let rec read_color_mix t : color =
     let read_prefix_percentage t =
       match read_optional_percentage t with
       | None -> Cursor.err_expected t "color-mix percentage"
-      | Some percent ->
+      | Some percent -> (
           let color = read_color t in
           Cursor.ws t;
-          (match read_optional_percentage t with
+          match read_optional_percentage t with
           | None -> (color, Some percent)
           | Some _ ->
               Cursor.err_invalid t
@@ -3900,10 +3910,10 @@ let rec read_color_mix t : color =
     in
     match Cursor.option read_prefix_percentage t with
     | Some component -> component
-    | None ->
+    | None -> (
         let color = read_color t in
         Cursor.ws t;
-        (match read_optional_percentage t with
+        match read_optional_percentage t with
         | None -> (color, None)
         | Some percent -> (color, Some percent))
   in
@@ -3918,7 +3928,8 @@ let rec read_color_mix t : color =
       (* For cylindrical color spaces, check for hue interpolation *)
       let hue =
         match Cursor.peek_ident t with
-        | Some name when hue_interpolation_start (String.lowercase_ascii name) ->
+        | Some name when hue_interpolation_start (String.lowercase_ascii name)
+          ->
             read_full_hue_interpolation t
         | _ -> Default
       in

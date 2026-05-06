@@ -83,8 +83,7 @@ let spec_media_structural_vectors () =
     (Interval
        (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.)));
   check "media type with trailing condition" "screen and (hover: hover)"
-    (Type_query
-       { prefix = None; type_ = Screen; trailing = Some (Hover Hover) });
+    (Type_query { prefix = None; type_ = Screen; trailing = Some (Hover Hover) });
   check "media query list" "screen and (width >= 40em), print"
     (List
        [

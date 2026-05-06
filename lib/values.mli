@@ -20,8 +20,8 @@ val syntax_fallback : string -> 'a fallback
     [var()] reference. *)
 
 val string_of_number_percentage : number_percentage -> string
-(** [string_of_number_percentage value] serializes a number/percentage value
-    for CSS custom-property initial values. *)
+(** [string_of_number_percentage value] serializes a number/percentage value for
+    CSS custom-property initial values. *)
 
 (** {1 Constructor Functions} *)
 

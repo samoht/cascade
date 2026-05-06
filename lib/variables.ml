@@ -573,8 +573,8 @@ let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_webkit_gradient_stop = function
-  | Properties.Webkit_gradient.From color
-  | Properties.Webkit_gradient.To color ->
+  | Properties.Webkit_gradient.From color | Properties.Webkit_gradient.To color
+    ->
       vars_of_color color
   | Properties.Webkit_gradient.Color_stop (position, color) ->
       vars_of_percentage position @ vars_of_color color

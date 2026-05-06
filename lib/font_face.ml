@@ -184,10 +184,10 @@ let rec read_src_entry t =
       modifiers None None
 
 (** Parse a src string into a list of typed entries. CSS Fonts 4 §4.3 spells
-    [src] as a comma-separated list, but real-world input occasionally drops
-    the comma between entries ([src: local("") url(test.woff)]). Match
-    cleancss / lightningcss / esbuild and accept the whitespace-only form
-    too, treating it as if a comma were present. *)
+    [src] as a comma-separated list, but real-world input occasionally drops the
+    comma between entries ([src: local("") url(test.woff)]). Match cleancss /
+    lightningcss / esbuild and accept the whitespace-only form too, treating it
+    as if a comma were present. *)
 and read_src t =
   let sep t =
     Cursor.ws t;

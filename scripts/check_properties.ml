@@ -17,6 +17,7 @@ let read_file filename =
 let extract_property_constructors content =
   let is_static_property_constructor = function
     | "Custom_property" -> false
+    | "Opaque_property" -> false
     | _ -> true
   in
   let lines = String.split_on_char '\n' content in

@@ -65,10 +65,10 @@ let position_of_string s =
     match parse_percent s with
     | Some p when p >= 0. && p <= 100. -> Some (Percent p)
     | Some _ -> None
-    | None ->
-        (* Try [<timeline-range-name> <percentage>] (Scroll-Driven Animations
-           1 §8.1). *)
-        (match String.index_opt s ' ' with
+    | None -> (
+        (* Try [<timeline-range-name> <percentage>] (Scroll-Driven Animations 1
+           §8.1). *)
+        match String.index_opt s ' ' with
         | None -> None
         | Some i ->
             let name = String.sub s 0 i in

@@ -107,6 +107,34 @@ let validate_complete_declaration_value t =
   if not (List.for_all component_is_complete (declaration_value_components t))
   then Cursor.err_invalid t "unterminated component value"
 
+let rec component_has_curly_block = function
+  | Component.Block { node = { opening = Token.Curly; _ }; _ } -> true
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists component_has_curly_block value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      List.exists component_has_curly_block arguments
+  | Component.Preserved _ -> false
+
+let validate_no_curly_block_declaration_value t =
+  if List.exists component_has_curly_block (declaration_value_components t) then
+    Cursor.err_invalid t "curly block in declaration value"
+
+let rec component_has_unterminated_string = function
+  | Component.Preserved { kind = Token.String { terminated = false; _ }; _ }
+  | Component.Preserved { kind = Token.Bad_string; _ } ->
+      true
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists component_has_unterminated_string value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      List.exists component_has_unterminated_string arguments
+  | Component.Preserved _ -> false
+
+let validate_no_unterminated_string_declaration_value t =
+  if
+    List.exists component_has_unterminated_string
+      (declaration_value_components t)
+  then Cursor.err_invalid t "unterminated string in declaration value"
+
 let css_wide_keywords =
   [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
@@ -158,8 +186,8 @@ let is_plain_property_name name =
   let len = String.length name in
   len > 0
   && is_start name.[0]
-  && not (len = 1 && name.[0] = '-')
-  && not (len >= 2 && name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9')
+  && (not (len = 1 && name.[0] = '-'))
+  && (not (len >= 2 && name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9'))
   && String.for_all is_continue name
 
 let validate_printable_property_name t name =
@@ -304,15 +332,6 @@ let read_text_decoration_lines t =
   in
   if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
   lines
-
-(* CSS [<dashed-ident>]: an ident that begins with two dashes. Used for custom
-   properties and [@property]-style names like [--tooltip] in
-   anchor-positioning, view-timeline, font-palette, etc. *)
-let read_dashed_ident t =
-  let s = Cursor.ident ~keep_case:true t in
-  if String.length s <= 2 || s.[0] <> '-' || s.[1] <> '-' then
-    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
-  else s
 
 let read_shape_outside t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
@@ -1412,12 +1431,13 @@ let split_custom_important value =
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
-  (try
-     let name_cursor = Cursor.of_string name in
-     ignore (read_dashed_ident name_cursor);
-     Cursor.expect_eof name_cursor
-   with Cursor.Parse_error _ ->
-     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name));
+  (* CSS Syntax 3 §4.3.7 lets [\X] escapes carry any code point into an ident,
+     so the name may contain characters ([/], whitespace, etc.) that don't
+     tokenize as a bare ident on a string round-trip. We trust the original
+     lexer's tokenization: the only validation we still run is the
+     [<dashed-ident>] prefix check. *)
+  if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
+    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
@@ -1451,16 +1471,13 @@ let validate_legacy_page_break t name raw_value =
         Cursor.err_invalid t "invalid legacy page-break-inside value"
     | _ -> ()
 
-(* Properties whose grammar allows multi-token values where a CSS-wide
-   keyword can legitimately appear as a non-special ident. [font-family] is
-   the prototypical case ([font-family: inherit test] is two custom-idents);
-   [font] shorthand inherits the same allowance, and [animation-name] /
-   [grid-area] / [will-change] / etc. accept arbitrary ident lists too. *)
+(* Properties whose grammar allows multi-token values where a CSS-wide keyword
+   can legitimately appear as a non-special ident. [animation-name] /
+   [grid-area] / [will-change] / etc. accept arbitrary ident lists. *)
 let property_allows_keyword_as_ident = function
-  | "font-family" | "font" | "animation-name" | "animation"
-  | "grid-area" | "grid-row" | "grid-column" | "grid-row-start" | "grid-row-end"
-  | "grid-column-start" | "grid-column-end" | "will-change" | "view-transition-name"
-    ->
+  | "animation-name" | "grid-area" | "grid-row" | "grid-column"
+  | "grid-row-start" | "grid-row-end" | "grid-column-start" | "grid-column-end"
+  | "will-change" | "view-transition-name" ->
       true
   | _ -> false
 
@@ -1473,8 +1490,49 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
+let contains_substring s needle =
+  let len = String.length s in
+  let nlen = String.length needle in
+  let rec loop i =
+    i + nlen <= len && (String.sub s i nlen = needle || loop (i + 1))
+  in
+  nlen = 0 || loop 0
+
+let is_ws_component = function
+  | Component.Preserved { kind = Token.Whitespace; _ } -> true
+  | _ -> false
+
+let color_fallback_function raw_value =
+  let components =
+    Cursor.of_string raw_value |> Cursor.remaining
+    |> List.filter (fun component -> not (is_ws_component component))
+  in
+  match components with
+  | [ Component.Func { node = { name; _ }; _ } ] ->
+      let fn = String.lowercase_ascii name in
+      if fn = "color-mix" then
+        contains_substring (String.lowercase_ascii raw_value) "specified hue"
+      else
+        not
+          (List.mem fn
+             [
+               "rgb";
+               "rgba";
+               "hsl";
+               "hsla";
+               "hwb";
+               "lab";
+               "lch";
+               "oklab";
+               "oklch";
+               "color";
+               "light-dark";
+               "var";
+             ])
+  | _ -> false
+
 let is_unsupported_color_fallback name raw_value =
-  String.contains raw_value '('
+  color_fallback_function raw_value
   &&
   match name with
   | "color" | "background-color" | "border-color" | "border-top-color"
@@ -1495,8 +1553,37 @@ let is_unknown_property_name name =
   | Prop _ -> false
   | exception Cursor.Parse_error _ -> false
 
+let rec components_have_invalid_var components =
+  List.exists component_has_invalid_var components
+
+and component_has_invalid_var = function
+  | Component.Func { node = { name; arguments; terminated; _ }; _ }
+    when String.lowercase_ascii name = "var" ->
+      (not terminated)
+      || invalid_var_arguments arguments
+      || components_have_invalid_var arguments
+  | Component.Func { node = { arguments; _ }; _ } ->
+      components_have_invalid_var arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_have_invalid_var value
+  | Component.Preserved _ -> false
+
+and invalid_var_arguments arguments =
+  match
+    List.filter (fun component -> not (is_ws_component component)) arguments
+  with
+  | Component.Preserved { kind = Token.Ident name; _ } :: _
+    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
+      false
+  | _ -> true
+
+let raw_value_has_invalid_var raw_value =
+  Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
+
 let can_fallback_to_opaque name raw_value =
-  is_unknown_property_name name || is_unsupported_color_fallback name raw_value
+  (not (raw_value_has_invalid_var raw_value))
+  && (is_unknown_property_name name
+     || is_unsupported_color_fallback name raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
@@ -1509,6 +1596,8 @@ let read_font_src_declaration t raw_value =
 let read_opaque_property_declaration t name =
   validate_printable_property_name t name;
   validate_complete_declaration_value t;
+  validate_no_curly_block_declaration_value t;
+  validate_no_unterminated_string_declaration_value t;
   let raw_value = Cursor.consume_to_decl_end ~trim:true t in
   let is_important = read_importance t in
   validate_no_extra_tokens t;

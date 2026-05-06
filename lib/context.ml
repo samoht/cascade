@@ -345,8 +345,7 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | Some _ as v -> v
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
-let media_feature_value name : Media.t -> Media.value option =
-  function
+let media_feature_value name : Media.t -> Media.value option = function
   | Media.Width l when String.equal name "width" -> Some (Media.Length l)
   | Media.Height l when String.equal name "height" -> Some (Media.Length l)
   | Media.Aspect_ratio (a, b) when String.equal name "aspect-ratio" ->
@@ -390,16 +389,12 @@ let media_feature_value name : Media.t -> Media.value option =
       Some (Media.Ident v)
   | Media.Inverted_colors v when String.equal name "inverted-colors" ->
       Some (Media.Ident v)
-  | Media.Pointer v when String.equal name "pointer" ->
-      Some (Media.Ident v)
+  | Media.Pointer v when String.equal name "pointer" -> Some (Media.Ident v)
   | Media.Any_pointer v when String.equal name "any-pointer" ->
       Some (Media.Ident v)
-  | Media.Hover v when String.equal name "hover" ->
-      Some (Media.Ident v)
-  | Media.Any_hover v when String.equal name "any-hover" ->
-      Some (Media.Ident v)
-  | Media.Scripting v when String.equal name "scripting" ->
-      Some (Media.Ident v)
+  | Media.Hover v when String.equal name "hover" -> Some (Media.Ident v)
+  | Media.Any_hover v when String.equal name "any-hover" -> Some (Media.Ident v)
+  | Media.Scripting v when String.equal name "scripting" -> Some (Media.Ident v)
   | Media.Nav_controls v when String.equal name "nav-controls" ->
       Some (Media.Ident v)
   | Media.Orientation v when String.equal name "orientation" ->
@@ -1426,6 +1421,7 @@ module Match_media = struct
 
   let plain q name value =
     eval_feature q.media_features (Plain (Media.name_of_string name, value))
+
   let ident q name value = bool_feature q name (Media.string_of_ident value)
   let integer q name value = plain q name (Integer value)
   let length q name value = plain q name (Length value)
@@ -1567,7 +1563,8 @@ module Match_container = struct
     let prop, value = style_value query in
     List.exists
       (function
-        | Container.Style { query = Range _ | All _ | Any _ | Neg _; _ } -> false
+        | Container.Style { query = Range _ | All _ | Any _ | Neg _; _ } ->
+            false
         | Container.Style { query; _ }
           when String.equal (fst (style_value query)) prop -> (
             match (value, snd (style_value query)) with
@@ -2837,13 +2834,23 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
           { l = Option.map percentage l; a; b; alpha = alpha_value value }
     | Values.Oklch { l; c; h; alpha = value } ->
         Values.Oklch
-          { l = Option.map percentage l; c; h = hue h; alpha = alpha_value value }
+          {
+            l = Option.map percentage l;
+            c;
+            h = hue h;
+            alpha = alpha_value value;
+          }
     | Values.Oklab { l; a; b; alpha = value } ->
         Values.Oklab
           { l = Option.map percentage l; a; b; alpha = alpha_value value }
     | Values.Lch { l; c; h; alpha = value } ->
         Values.Lch
-          { l = Option.map percentage l; c; h = hue h; alpha = alpha_value value }
+          {
+            l = Option.map percentage l;
+            c;
+            h = hue h;
+            alpha = alpha_value value;
+          }
     | Values.Current -> (
         match ctx.current_color with
         | Some color -> color

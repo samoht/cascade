@@ -71,17 +71,11 @@ let rec string_of_style_query ~minify = function
   | All (a, b) ->
       String.concat ""
         [
-          style_query_operand ~minify a;
-          " and ";
-          style_query_operand ~minify b;
+          style_query_operand ~minify a; " and "; style_query_operand ~minify b;
         ]
   | Any (a, b) ->
       String.concat ""
-        [
-          style_query_operand ~minify a;
-          " or ";
-          style_query_operand ~minify b;
-        ]
+        [ style_query_operand ~minify a; " or "; style_query_operand ~minify b ]
   | Neg q -> String.concat "" [ "not "; style_query_operand ~minify q ]
 
 and style_query_operand ~minify q =
@@ -113,15 +107,14 @@ let rec string_of_scroll_state_query ~minify = function
       String.concat "" [ "not ("; string_of_scroll_state_query ~minify q; ")" ]
 
 let rec minified_condition = function
-  | And (a, b) ->
-      minified_operand a ^ " and " ^ minified_operand b
+  | And (a, b) -> minified_operand a ^ " and " ^ minified_operand b
   | Or (a, b) -> minified_operand a ^ " or " ^ minified_operand b
   | Not c -> "not " ^ minified_operand c
   | t -> to_string_with ~minify:true t
 
 and minified_operand = function
-  | Min_width_rem _ | Min_width_px _ | Style _ | Scroll_state _ | Feature_query _
-    as t ->
+  | ( Min_width_rem _ | Min_width_px _ | Style _ | Scroll_state _
+    | Feature_query _ ) as t ->
       to_string_with ~minify:true t
   | t -> "(" ^ minified_condition t ^ ")"
 
@@ -142,13 +135,15 @@ and to_string_with ~minify t =
   | And (a, b) ->
       if minify then minified_condition t
       else
-        "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
+        "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b
+        ^ ")"
   | Or (a, b) ->
       if minify then minified_condition t
       else
         "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
   | Not c ->
-      if minify then minified_condition t else "(not " ^ to_string_with ~minify c ^ ")"
+      if minify then minified_condition t
+      else "(not " ^ to_string_with ~minify c ^ ")"
   | Feature_query f -> Media.to_string ~minify f
 
 let to_string ?(minify = false) t = to_string_with ~minify t
@@ -307,8 +302,7 @@ let style_leaf_body body =
       | [ name_component ], stripped_value
         when not (has_semicolon_component value) -> (
           match ident_component name_component with
-          | Some name
-            when stripped_value <> [] || is_custom_property name ->
+          | Some name when stripped_value <> [] || is_custom_property name ->
               Declaration { name; value }
           | Some _ | None -> failwith "invalid style() container query")
       | _ -> failwith "invalid style() container query")

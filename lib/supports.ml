@@ -59,6 +59,7 @@ type function_feature =
   | At_rule of string
   | Named_feature of string
   | Env of string
+  | General of string * string
 
 type t =
   | Property of declaration_feature
@@ -147,7 +148,7 @@ let property prop value = Property (declaration_feature prop value)
 
 let single_ident name args =
   let cursor = Cursor.of_string args in
-  let ident = Cursor.ident ~keep_case:false cursor in
+  let ident = Cursor.ident ~keep_case:false cursor |> String.lowercase_ascii in
   Cursor.ws cursor;
   Cursor.expect_eof cursor;
   if ident = "" then invalid_arg ("empty " ^ name ^ "() in @supports");
@@ -166,11 +167,11 @@ let func name args =
     | "font-format" -> (
         match font_format_of_string (single_ident name args) with
         | Some format -> Font_format format
-        | None -> invalid_arg ("invalid font-format() in @supports"))
+        | None -> invalid_arg "invalid font-format() in @supports")
     | "font-tech" -> (
         match font_tech_of_string (single_ident name args) with
         | Some tech -> Font_tech tech
-        | None -> invalid_arg ("invalid font-tech() in @supports"))
+        | None -> invalid_arg "invalid font-tech() in @supports")
     | "at-rule" ->
         let cursor = Cursor.of_string args in
         let at_rule =
@@ -183,7 +184,7 @@ let func name args =
         At_rule at_rule
     | "named-feature" -> Named_feature (single_ident name args)
     | "env" -> Env (single_ident name args)
-    | _ -> invalid_arg ("unsupported @supports function: " ^ name)
+    | _ -> General (lower_name, String.trim args)
   in
   Function feature
 
@@ -222,6 +223,7 @@ and render_function_feature = function
   | At_rule rule -> "at-rule(@" ^ rule ^ ")"
   | Named_feature feature -> "named-feature(" ^ feature ^ ")"
   | Env name -> "env(" ^ name ^ ")"
+  | General (name, args) -> name ^ "(" ^ args ^ ")"
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
@@ -242,6 +244,7 @@ let pp_function_feature ctx = function
   | At_rule rule -> Pp.call "at-rule" Pp.string ctx ("@" ^ rule)
   | Named_feature feature -> Pp.call "named-feature" Pp.string ctx feature
   | Env name -> Pp.call "env" Pp.string ctx name
+  | General (name, args) -> Pp.call name Pp.string ctx args
 
 let rec pp_aux ~in_and ctx = function
   | Property feature ->
@@ -436,16 +439,18 @@ and unwrapped_declaration t =
   | None -> failwith "Expected supports feature"
 
 let of_string ?(allow_unwrapped_decl = false) s =
-  let cursor, cond =
-    let cursor = Cursor.of_string s in
-    try (cursor, condition cursor)
-    with Failure _ when allow_unwrapped_decl ->
+  try
+    let cursor, cond =
       let cursor = Cursor.of_string s in
-      (cursor, in_parens ~allow_unwrapped_decl cursor)
-  in
-  Cursor.ws cursor;
-  if not (Cursor.is_done cursor) then failwith "trailing content in @supports";
-  cond
+      try (cursor, condition cursor)
+      with Failure _ when allow_unwrapped_decl ->
+        let cursor = Cursor.of_string s in
+        (cursor, in_parens ~allow_unwrapped_decl cursor)
+    in
+    Cursor.ws cursor;
+    if not (Cursor.is_done cursor) then failwith "trailing content in @supports";
+    cond
+  with Cursor.Parse_error _ -> failwith "Invalid @supports condition"
 
 (* ===== Comparison ===== *)
 
