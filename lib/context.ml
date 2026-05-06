@@ -1319,7 +1319,7 @@ module Media_value = struct
     | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
     | Ratio _ -> None
     | Resolution_value (n, _) -> Some n
-    | Ident _ -> None
+    | Ident _ | Function _ -> None
 
   let cmp_op : Media.cmp -> float -> float -> bool = function
     | Lt -> ( < )

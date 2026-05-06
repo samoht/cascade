@@ -92,6 +92,9 @@ type value =
   | Ratio of int * int
   | Resolution_value of float * string
   | Ident of ident
+  | Function of string * string
+      (** [env(--name)] / [var(...)] / [calc(...)] etc. captured as a function
+          name plus its raw argument body. *)
 
 type feature =
   | Plain of name * value
