@@ -4071,9 +4071,9 @@ and read_color_attr t : color =
   Attribute (name, fallback)
 
 and read_relative_color name t : color =
-  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2>
-     <c3> [/ <alpha>]?]. We capture the body verbatim so the printer
-     re-emits the function name + parenthesised tail unchanged. *)
+  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2> <c3>
+     [/ <alpha>]?]. We capture the body verbatim so the printer re-emits the
+     function name + parenthesised tail unchanged. *)
   Cursor.ws t;
   Cursor.expect_string "from" t;
   Cursor.ws t;

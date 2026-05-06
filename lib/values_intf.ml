@@ -373,9 +373,9 @@ type color =
   | Relative_rgb of string
   | Relative_color of string * string
       (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for any color
-          function other than [rgb()] (CSS Color 5 §2). The first string is
-          the function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb],
-          [color]), the second is the parenthesised body verbatim. *)
+          function other than [rgb()] (CSS Color 5 §2). The first string is the
+          function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb], [color]),
+          the second is the parenthesised body verbatim. *)
   | Contrast_color of color
   | Light_dark of color * color
   | Attribute of string * color option
