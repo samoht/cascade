@@ -531,7 +531,7 @@ let rec statement_shape stmt =
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
              ("  keyframe:"
-             ^ Css.Keyframe.selector_to_string keyframe.keyframe_selector)
+             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
              :: prefixed "    "
                   (declaration_lines keyframe.keyframe_declarations))
          |> List.concat)
@@ -540,7 +540,7 @@ let rec statement_shape stmt =
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
              ("  keyframe:"
-             ^ Css.Keyframe.selector_to_string keyframe.keyframe_selector)
+             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
              :: prefixed "    "
                   (declaration_lines keyframe.keyframe_declarations))
          |> List.concat)

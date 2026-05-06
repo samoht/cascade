@@ -151,9 +151,9 @@ val option : ?none:unit t -> 'a t -> 'a option t
     CSS number formatters that handle minification rules like dropping leading
     zeros and avoiding scientific notation *)
 
-val float_to_string :
+val string_of_float :
   ?drop_leading_zero:bool -> ?max_decimals:int -> float -> string
-(** [float_to_string ?drop_leading_zero ?max_decimals f] converts a float to a
+(** [string_of_float ?drop_leading_zero ?max_decimals f] converts a float to a
     string.
     - [drop_leading_zero]: if true, omits leading zero for 0 < |n| < 1 (.5
       instead of 0.5)

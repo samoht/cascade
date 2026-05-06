@@ -89,17 +89,17 @@ val position : t -> Loc.t
 val remaining : t -> Component.t list
 (** [remaining t] is the un-consumed tail (still includes whitespace). *)
 
-val components_to_string : ?trim:bool -> Component.t list -> string
-(** [components_to_string ?trim cvs] serializes a component-value list. This is
+val string_of_components : ?trim:bool -> Component.t list -> string
+(** [string_of_components ?trim cvs] serializes a component-value list. This is
     useful for at-rule preludes that must be split structurally before being
     preserved as raw CSS text. *)
 
-val remaining_to_string : ?trim:bool -> t -> string
-(** [remaining_to_string t] serializes the unconsumed tail without advancing
+val string_of_remaining : ?trim:bool -> t -> string
+(** [string_of_remaining t] serializes the unconsumed tail without advancing
     [t]. *)
 
-val consume_remaining_to_string : ?trim:bool -> t -> string
-(** [consume_remaining_to_string t] serializes and consumes the unconsumed tail.
+val consume_remaining_as_string : ?trim:bool -> t -> string
+(** [consume_remaining_as_string t] serializes and consumes the unconsumed tail.
 *)
 
 val ws : t -> unit
@@ -285,7 +285,7 @@ val drain_until_block : t -> Component.t list
     block or semicolon, returning the drained components. Used for at-rule
     preludes. *)
 
-val drain_until_block_to_string : ?trim:bool -> t -> string
+val drain_until_block_as_string : ?trim:bool -> t -> string
 (** Like {!drain_until_block}, but serializes the drained components. *)
 
 val consume_to_semicolon : ?trim:bool -> t -> string

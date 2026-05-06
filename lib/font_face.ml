@@ -6,16 +6,16 @@
     ascent-override, descent-override, line-gap-override. *)
 type metric_override = Normal | Percent of float
 
-let metric_override_to_string = function
+let string_of_metric_override = function
   | Normal -> "normal"
-  | Percent p -> Pp.float_to_string p ^ "%"
+  | Percent p -> Pp.string_of_float p ^ "%"
 
 (** {1 Size Adjust} *)
 
 type size_adjust = float
 (** Size adjustment percentage. *)
 
-let size_adjust_to_string p = Pp.float_to_string p ^ "%"
+let string_of_size_adjust p = Pp.string_of_float p ^ "%"
 
 (** {1 Font Source} *)
 
@@ -91,10 +91,10 @@ and pp_src_entry ctx = function
       Pp.string ctx name;
       Pp.string ctx "\")"
 
-and src_entry_to_string entry =
+and string_of_src_entry entry =
   Pp.to_string ~minify:false (fun ctx e -> pp_src_entry ctx e) entry
 
-let src_to_string ?(minify = false) entries =
+let string_of_src ?(minify = false) entries =
   Pp.to_string ~minify pp_src entries
 
 (** {1 Parsing} *)
@@ -124,7 +124,7 @@ let read_function_arg name t =
   let value =
     match Cursor.string_opt inner with
     | Some s -> s
-    | None -> Cursor.consume_remaining_to_string ~trim:true inner
+    | None -> Cursor.consume_remaining_as_string ~trim:true inner
   in
   Cursor.expect_eof inner;
   if value = "" then Cursor.err_invalid inner (name ^ "() argument");
@@ -139,7 +139,7 @@ let read_url t =
       let value =
         match Cursor.string_with_quote_opt inner with
         | Some (url, quote) -> `Quoted (url, quote)
-        | None -> `Bare (Cursor.consume_remaining_to_string ~trim:true inner)
+        | None -> `Bare (Cursor.consume_remaining_as_string ~trim:true inner)
       in
       Cursor.expect_eof inner;
       match value with

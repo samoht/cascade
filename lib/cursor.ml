@@ -120,17 +120,17 @@ let position t =
 
 let remaining t = t.cvs
 
-let components_to_string ?(trim = false) cvs =
+let string_of_components ?(trim = false) cvs =
   let s = Parser.to_string cvs in
   if trim then String.trim s else s
 
-let remaining_to_string ?(trim = false) t =
-  components_to_string ~trim (remaining t)
+let string_of_remaining ?(trim = false) t =
+  string_of_components ~trim (remaining t)
 
-let consume_remaining_to_string ?(trim = false) t =
+let consume_remaining_as_string ?(trim = false) t =
   let cvs = remaining t in
   t.cvs <- [];
-  components_to_string ~trim cvs
+  string_of_components ~trim cvs
 
 let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
 
@@ -339,8 +339,8 @@ let drain_until_block t =
   in
   loop []
 
-let drain_until_block_to_string ?(trim = false) t =
-  components_to_string ~trim (drain_until_block t)
+let drain_until_block_as_string ?(trim = false) t =
+  string_of_components ~trim (drain_until_block t)
 
 let drain_until_raw stop t =
   let rec loop acc =
@@ -362,10 +362,10 @@ let is_bang_cv = function
   | _ -> false
 
 let consume_to_semicolon ?(trim = false) t =
-  components_to_string ~trim (drain_until_raw is_semicolon_cv t)
+  string_of_components ~trim (drain_until_raw is_semicolon_cv t)
 
 let consume_to_decl_end ?(trim = false) t =
-  components_to_string ~trim
+  string_of_components ~trim
     (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
 
 let is_slash_cv = function
@@ -373,7 +373,7 @@ let is_slash_cv = function
   | _ -> false
 
 let consume_to_slash_or_semicolon ?(trim = false) t =
-  components_to_string ~trim
+  string_of_components ~trim
     (drain_until_raw (fun cv -> is_slash_cv cv || is_semicolon_cv cv) t)
 
 (** {1 Token-shape helpers - raising variants} *)

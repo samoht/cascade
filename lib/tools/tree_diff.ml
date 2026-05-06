@@ -1914,7 +1914,7 @@ and keyframe_frames_diff frames1 frames2 =
 
   (* Convert frame changes to rule_diff format *)
   let selector_str (frame : Css.keyframe) =
-    Css.Keyframe.selector_to_string frame.keyframe_selector
+    Css.Keyframe.string_of_selector frame.keyframe_selector
   in
   let added_changes =
     List.map

@@ -6,7 +6,7 @@ type position =
   | To  (** [to] or [100%] *)
   | Percent of float  (** Percentage like [50%] *)
 
-let position_to_string = function
+let string_of_position = function
   | From -> "from"
   | To -> "to"
   | Percent p ->
@@ -19,9 +19,9 @@ let position_to_string = function
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list
 
-let selector_to_string = function
+let string_of_selector = function
   | Positions positions ->
-      String.concat ", " (List.map position_to_string positions)
+      String.concat ", " (List.map string_of_position positions)
 
 let position_to_percent = function From -> 0. | To -> 100. | Percent p -> p
 
@@ -48,4 +48,4 @@ let selector_of_string s =
     Positions positions
   else invalid_arg ("invalid keyframe selector: " ^ s)
 
-let selector_equal a b = selector_to_string a = selector_to_string b
+let selector_equal a b = string_of_selector a = string_of_selector b
