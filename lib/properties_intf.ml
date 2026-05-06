@@ -4052,6 +4052,12 @@ type 'a property =
   | Grid_template_rows : grid_template property
   | Grid_template_areas : grid_template_areas property
   | Grid_template : grid_template property
+  | Grid : grid_template property
+      (** CSS Grid 1 §8 [grid] shorthand. Cascade treats it as a free-form
+          [grid_template] for now: the simple cases (track-list, grid-template
+          syntax with area strings) round-trip through the same AST as
+          [grid-template], and inputs that exercise the auto-flow branches
+          fall back to the raw [Template] preservation arm. *)
   | Grid_area : string property
   | Grid_auto_flow : grid_auto_flow property
   | Grid_auto_columns : grid_template property

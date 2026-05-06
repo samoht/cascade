@@ -5063,6 +5063,7 @@ let pp_property : type a. a property Pp.t =
   | Grid_template_rows -> Pp.string ctx "grid-template-rows"
   | Grid_template_areas -> Pp.string ctx "grid-template-areas"
   | Grid_template -> Pp.string ctx "grid-template"
+  | Grid -> Pp.string ctx "grid"
   | Grid_area -> Pp.string ctx "grid-area"
   | Grid_auto_flow -> Pp.string ctx "grid-auto-flow"
   | Grid_auto_columns -> Pp.string ctx "grid-auto-columns"
@@ -15119,6 +15120,7 @@ let read_any_property t =
   | "grid-row" -> Prop Grid_row
   | "grid-row-end" -> Prop Grid_row_end
   | "grid-row-start" -> Prop Grid_row_start
+  | "grid" -> Prop Grid
   | "grid-template" -> Prop Grid_template
   | "grid-template-areas" -> Prop Grid_template_areas
   | "hyphens" -> Prop Hyphens
@@ -16500,6 +16502,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_template_rows -> pp pp_grid_template
   | Grid_template_areas -> pp pp_grid_template_areas
   | Grid_template -> pp pp_grid_template
+  | Grid -> pp pp_grid_template
   | Grid_area -> pp Pp.string
   | Grid_auto_columns -> pp pp_grid_template
   | Grid_auto_rows -> pp pp_grid_template
