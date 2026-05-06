@@ -1,0 +1,22 @@
+(test
+ (name test)
+ (libraries cascade alcotest unix re.str)
+ (modules test)
+ (deps
+  (source_tree traces)))
+
+(executable
+ (name bench)
+ (libraries cascade unix memtrace)
+ (modules bench))
+
+; Regenerate traces against Lightning CSS: dune build @regen-traces
+
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))
