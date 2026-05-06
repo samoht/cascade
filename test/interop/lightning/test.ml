@@ -14,10 +14,11 @@
 
     {v >>> <input_len> <expected_len>\n<input bytes><expected bytes>\n v}
 
-    The suite is split into slow Alcotest cases by broad CSS feature. Each case
-    still batches many pairs so logs stay useful without creating thousands of
-    tiny tests. The summary surfaces enough longer-than-industry outputs to
-    drive arbitrage; for full drilldown re-run with [VERBOSE=1] in the env.
+    The suite is split into Alcotest groups by broad CSS feature and then into
+    slow fixed-size shard cases. Each case batches enough pairs for useful logs
+    without forcing one feature bucket to run for minutes. The summary surfaces
+    enough longer-than-industry outputs to drive arbitrage; for full drilldown
+    re-run with [VERBOSE=1] in the env.
 
     Extra minifier commands can be supplied with [CASCADE_INTEROP_MINIFIERS],
     separated by [;;]. Commands must read CSS from stdin and write minified CSS
@@ -27,8 +28,8 @@
     CASCADE_INTEROP_MINIFIERS='esbuild --loader=css --minify;;cleancss -O2 -'
     v}
 
-    For local iteration, run one Alcotest case, e.g. [interop/color] or
-    [interop/animation]. *)
+    For local iteration, run one Alcotest case from [dune exec ... -- list],
+    e.g. [dune exec test/interop/lightning/test.exe -- test color 0]. *)
 
 open Cascade
 
@@ -59,6 +60,7 @@ let read_pairs path =
 
 type outcome = Pass | Parse_error of string | Mismatch of string
 type candidate = { tool : string; css : string }
+type rejected_candidate = { tool : string; css : string; reason : string }
 
 let cascade_minify input =
   match Css.of_string input with
@@ -73,6 +75,12 @@ let split_commands s =
   Re.Str.split (Re.Str.regexp_string ";;") s
   |> List.map String.trim
   |> List.filter (fun part -> part <> "")
+
+let contains_substring ~needle haystack =
+  try
+    let _ = Re.Str.search_forward (Re.Str.regexp_string needle) haystack 0 in
+    true
+  with Not_found -> false
 
 let default_minifier_commands =
   [
@@ -136,32 +144,151 @@ let external_candidates input =
       | Ok css -> Some { tool; css }
       | Error _ -> None)
 
-let shortest_length candidates =
+let shortest_length (candidates : candidate list) =
   List.fold_left
-    (fun acc { css; _ } -> min acc (String.length css))
+    (fun acc ({ css; _ } : candidate) -> min acc (String.length css))
     max_int candidates
+
+let canonical_minified css =
+  match Css.of_string css with
+  | Error e -> Error (Css.pp_parse_error e)
+  | Ok css -> (
+      match Css.to_string ~minify:true ~optimize:true ~newline:false css with
+      | s -> Ok s
+      | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
+
+let at_rule_fingerprint css =
+  try
+    let sheet = Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css) in
+    let rec statements acc = List.fold_left statement acc
+    and statement acc = function
+      | Css.Stylesheet.Rule rule -> statements acc rule.nested
+      | Charset _ -> "charset" :: acc
+      | Import _ -> "import" :: acc
+      | Namespace _ -> "namespace" :: acc
+      | Property _ -> "property" :: acc
+      | Layer_decl _ -> "layer-decl" :: acc
+      | Layer (_, block) -> statements ("layer" :: acc) block
+      | Media (_, block) -> statements ("media" :: acc) block
+      | Container (_, _, block) -> statements ("container" :: acc) block
+      | Supports (_, block) -> statements ("supports" :: acc) block
+      | Starting_style block -> statements ("starting-style" :: acc) block
+      | When (_, block) -> statements ("when" :: acc) block
+      | Else (_, block) -> statements ("else" :: acc) block
+      | Supports_condition _ -> "supports-condition" :: acc
+      | Origin (_, block) -> statements ("origin" :: acc) block
+      | Scope (_, _, block) -> statements ("scope" :: acc) block
+      | Keyframes _ -> "keyframes" :: acc
+      | Webkit_keyframes _ -> "webkit-keyframes" :: acc
+      | Font_face _ -> "font-face" :: acc
+      | Page _ -> "page" :: acc
+      | Page_with_margins _ -> "page" :: acc
+      | Font_palette_values _ -> "font-palette-values" :: acc
+      | View_transition _ -> "view-transition" :: acc
+      | Position_try _ -> "position-try" :: acc
+      | Declarations _ -> acc
+    in
+    Some (List.rev (statements [] sheet))
+  with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+
+let validate_candidate input (candidate : candidate) =
+  match
+    ( at_rule_fingerprint input,
+      at_rule_fingerprint candidate.css,
+      canonical_minified input,
+      canonical_minified candidate.css )
+  with
+  | Some source, Some output, Ok source_css, Ok output_css
+    when source = output && source_css = output_css ->
+      Ok candidate
+  | Some source, Some output, _, _ when source <> output ->
+      Error
+        {
+          tool = candidate.tool;
+          css = candidate.css;
+          reason =
+            Printf.sprintf "at-rule fingerprint changed: [%s] -> [%s]"
+              (String.concat ", " source)
+              (String.concat ", " output);
+        }
+  | Some _, None, _, _ ->
+      Error
+        {
+          tool = candidate.tool;
+          css = candidate.css;
+          reason = "candidate output failed Cascade parser roundtrip";
+        }
+  | _, _, Ok source_css, Ok output_css ->
+      Error
+        {
+          tool = candidate.tool;
+          css = candidate.css;
+          reason =
+            Printf.sprintf
+              "semantic fingerprint changed after Cascade parse: %s -> %s"
+              source_css output_css;
+        }
+  | _, _, Ok _, Error msg ->
+      Error
+        {
+          tool = candidate.tool;
+          css = candidate.css;
+          reason = "candidate output failed Cascade semantic roundtrip: " ^ msg;
+        }
+  | None, _, _, _ | _, _, Error _, _ ->
+      Error
+        {
+          tool = candidate.tool;
+          css = candidate.css;
+          reason = "source input failed Cascade parser roundtrip";
+        }
+
+let split_equivalent_candidates input (candidates : candidate list) =
+  List.fold_right
+    (fun candidate (accepted, rejected) ->
+      match validate_candidate input candidate with
+      | Ok candidate -> (candidate :: accepted, rejected)
+      | Error rejection -> (accepted, rejection :: rejected))
+    candidates ([], [])
+
+let format_rejected_candidates input rejected =
+  "UPSTREAM MINIFIER BUGS: rejected non-equivalent candidates\n"
+  ^ (rejected
+    |> List.map (fun rejection ->
+        Printf.sprintf
+          "    UPSTREAM BUG in: %s\n\
+          \    reason: %s\n\
+          \    input:  %s\n\
+          \    output: %s"
+          rejection.tool rejection.reason input rejection.css)
+    |> String.concat "\n")
 
 let classify (input, expected) =
   match cascade_minify input with
-  | Parse_error _ as e -> e
+  | Parse_error _ as e -> (e, [])
   | Pass -> assert false
   | Mismatch actual ->
       let candidates =
         { tool = "lightningcss-trace"; css = expected }
         :: external_candidates input
       in
+      let candidates, rejected = split_equivalent_candidates input candidates in
       let best = shortest_length candidates in
-      if String.length actual <= best then Pass
-      else
-        let shortest =
-          candidates
-          |> List.filter (fun c -> String.length c.css = best)
-          |> List.map (fun c -> c.tool ^ ":" ^ c.css)
-          |> String.concat " | "
-        in
-        Mismatch
-          (Printf.sprintf "%s\n    shortest: %s\n    actual_len=%d best_len=%d"
-             actual shortest (String.length actual) best)
+      let outcome =
+        if String.length actual <= best then Pass
+        else
+          let shortest =
+            candidates
+            |> List.filter (fun (c : candidate) -> String.length c.css = best)
+            |> List.map (fun (c : candidate) -> c.tool ^ ":" ^ c.css)
+            |> String.concat " | "
+          in
+          Mismatch
+            (Printf.sprintf
+               "%s\n    shortest: %s\n    actual_len=%d best_len=%d" actual
+               shortest (String.length actual) best)
+      in
+      (outcome, rejected)
 
 let available_minifier_names () =
   match Lazy.force available_minifiers with
@@ -183,12 +310,6 @@ let format_divergence i (input, expected) outcome =
 
 let verbose =
   match Sys.getenv_opt "VERBOSE" with Some "1" -> true | _ -> false
-
-let contains_substring ~needle haystack =
-  try
-    let _ = Re.Str.search_forward (Re.Str.regexp_string needle) haystack 0 in
-    true
-  with Not_found -> false
 
 let feature_of_input input =
   let has s = contains_substring ~needle:s input in
@@ -222,26 +343,47 @@ let features =
     "misc";
   ]
 
-let selected_pairs ?feature pairs =
-  let indexed = List.mapi (fun i pair -> (i, pair)) pairs in
-  match feature with
-  | None -> indexed
-  | Some feature ->
-      List.filter
-        (fun (_, (input, _)) -> feature_of_input input = feature)
-        indexed
+let shard_size = 1
 
-let test_pairs ?feature () =
-  let pairs = read_pairs trace_path in
-  let selected = selected_pairs ?feature pairs in
+let pairs_by_feature pairs =
+  let indexed = List.mapi (fun i pair -> (i, pair)) pairs in
+  List.map
+    (fun feature ->
+      ( feature,
+        List.filter
+          (fun (_, (input, _)) -> feature_of_input input = feature)
+          indexed ))
+    features
+
+let shard_count selected =
+  let n = List.length selected in
+  if n = 0 then 0 else (n + shard_size - 1) / shard_size
+
+let selected_shard selected shard =
+  selected
+  |> List.filteri (fun i _ ->
+      let start = shard * shard_size in
+      i >= start && i < start + shard_size)
+
+let test_pairs ~total_pairs selected ~feature ~shard ~shards () =
+  let selected = selected_shard selected shard in
   let total = List.length selected in
   let pass = ref 0 in
   let parse_err = ref 0 in
   let mismatch = ref 0 in
+  let external_bug = ref 0 in
+  let external_bug_reports = ref [] in
   let divergences = ref [] in
   List.iter
     (fun (i, pair) ->
-      match classify pair with
+      let outcome, rejected = classify pair in
+      if rejected <> [] then begin
+        external_bug := !external_bug + List.length rejected;
+        external_bug_reports :=
+          (i, pair, format_rejected_candidates (fst pair) rejected)
+          :: !external_bug_reports
+      end;
+      match outcome with
       | Pass -> incr pass
       | Parse_error _ as o ->
           incr parse_err;
@@ -251,15 +393,35 @@ let test_pairs ?feature () =
           divergences := (i, pair, o) :: !divergences)
     selected;
   let divergences = List.rev !divergences in
+  let external_bug_reports = List.rev !external_bug_reports in
   let summary =
     Printf.sprintf
       "minifier interop%s: %d/%d selected pass (%d total pairs; %d parse \
-       errors, %d longer-than-shortest mismatches; external minifiers: %s)"
-      (match feature with None -> "" | Some f -> " [" ^ f ^ "]")
-      !pass total (List.length pairs) !parse_err !mismatch
+       errors, %d longer-than-shortest mismatches, %d external minifier bugs; \
+       external minifiers: %s)"
+      (Printf.sprintf " [%s %d/%d]" feature (shard + 1) shards)
+      !pass total total_pairs !parse_err !mismatch !external_bug
       (available_minifier_names ())
   in
   print_endline summary;
+  if external_bug_reports <> [] then begin
+    let limit = if verbose then List.length external_bug_reports else 20 in
+    let head =
+      List.filteri (fun i _ -> i < limit) external_bug_reports
+      |> List.map (fun (i, _pair, report) ->
+          Printf.sprintf "  pair_%04d: external minifier bug warning\n%s" i
+            report)
+      |> String.concat "\n"
+    in
+    let tail =
+      if List.length external_bug_reports > limit then
+        Printf.sprintf
+          "\n  ... (%d more upstream bugs; set VERBOSE=1 for full list)"
+          (List.length external_bug_reports - limit)
+      else ""
+    in
+    prerr_endline (summary ^ "\n" ^ head ^ tail)
+  end;
   if divergences <> [] then begin
     let limit = if verbose then List.length divergences else 20 in
     let head =
@@ -276,12 +438,21 @@ let test_pairs ?feature () =
     Alcotest.failf "%s\n%s%s" summary head tail
   end
 
+let test_groups pairs =
+  let total_pairs = List.length pairs in
+  pairs_by_feature pairs
+  |> List.filter_map (fun (feature, selected) ->
+      let shards = shard_count selected in
+      if shards = 0 then None
+      else
+        let cases =
+          List.init shards (fun shard ->
+              let name = Printf.sprintf "%02d/%02d" (shard + 1) shards in
+              Alcotest.test_case name `Slow
+                (test_pairs ~total_pairs selected ~feature ~shard ~shards))
+        in
+        Some (feature, cases))
+
 let () =
-  Alcotest.run "lightning_minify"
-    [
-      ( "interop",
-        List.map
-          (fun feature ->
-            Alcotest.test_case feature `Slow (test_pairs ~feature))
-          features );
-    ]
+  let pairs = read_pairs trace_path in
+  Alcotest.run "lightning_minify" (test_groups pairs)
