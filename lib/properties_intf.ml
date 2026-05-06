@@ -1476,6 +1476,9 @@ type hyphens =
   | Var of hyphens var
 
 (* List Types *)
+type symbols_type = Cyclic | Numeric | Alphabetic | Symbolic | Fixed
+type list_style_symbol = String of string | Url of string
+
 type list_style_type =
   | None
   | Disc
@@ -1487,6 +1490,7 @@ type list_style_type =
   | Lower_roman
   | Upper_roman
   | String of string
+  | Symbols of symbols_type option * list_style_symbol list
   | Inherit
   | Initial
   | Unset
