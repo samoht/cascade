@@ -68,11 +68,11 @@ let pp_rules ctx rules = Css.Pp.list ~sep:Css.Pp.sp pp_rule ctx rules
 
 let parse_ss css =
   let r = Css.Reader.of_string css in
-  (Css.Parser.parse_stylesheet r).value
+  (Css.Parser.stylesheet r).value
 
 let parse_rules css =
   let r = Css.Reader.of_string css in
-  (Css.Parser.parse_list_of_rules r).value
+  (Css.Parser.list_of_rules r).value
 
 let parse_cvs css =
   let p = Css.Parser.of_string css in
@@ -172,8 +172,7 @@ let spec_parse_grammar_entry_points () =
     | _ -> false
   in
   let parse_one css =
-    (Css.Parser.parse_according_to_grammar (Css.Reader.of_string css)
-       single_ident)
+    (Css.Parser.according_to_grammar (Css.Reader.of_string css) single_ident)
       .value
   in
   Alcotest.(check bool)
@@ -185,8 +184,7 @@ let spec_parse_grammar_entry_points () =
     "multiple components do not match grammar" true
     (parse_one "foo bar" = None);
   let parse_groups css =
-    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) single_ident)
-      .value
+    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) single_ident).value
   in
   let show_group = function
     | None -> "<no-match>"
@@ -206,7 +204,7 @@ let spec_grammar_empty_commas () =
      comma. *)
   let empty_only = function [] -> true | _ -> false in
   let parse_empty css =
-    (Css.Parser.parse_according_to_grammar (Css.Reader.of_string css) empty_only)
+    (Css.Parser.according_to_grammar (Css.Reader.of_string css) empty_only)
       .value
   in
   Alcotest.(check bool)
@@ -217,8 +215,7 @@ let spec_grammar_empty_commas () =
     | _ -> false
   in
   let parse_groups css =
-    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) single_ident)
-      .value
+    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) single_ident).value
   in
   let show_group = function
     | None -> "<no-match>"
@@ -228,8 +225,7 @@ let spec_grammar_empty_commas () =
     "empty interior comma group is matched independently" "a|<no-match>|b"
     (parse_groups " a, , b " |> List.map show_group |> String.concat "|");
   let parse_empty_groups css =
-    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) empty_only)
-      .value
+    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) empty_only).value
   in
   Alcotest.(check bool)
     "single comma produces one empty group" true
@@ -256,9 +252,7 @@ let spec_parse_rule_entry_point () =
   (* CSS Syntax Level 3 section 5.4.6: a rule entry point trims surrounding
      whitespace, requires one rule, and rejects empty input or trailing
      rules. *)
-  let parse_one_rule css =
-    (Css.Parser.parse_rule (Css.Reader.of_string css)).value
-  in
+  let parse_one_rule css = (Css.Parser.rule (Css.Reader.of_string css)).value in
   Alcotest.(check bool)
     "empty input is syntax error" true
     (parse_one_rule "  " = None);
@@ -299,7 +293,7 @@ let spec_block_mixed_items () =
   (* CSS Syntax Level 3 section 5.4.5 / 5.5.5: block contents return runs of
      declarations interleaved with nested rules, preserving order. *)
   let out =
-    Css.Parser.parse_block_contents
+    Css.Parser.block_contents
       (Css.Reader.of_string "color: red; @media screen {}; & .x {}; width: 1px")
   in
   match out.value with
@@ -319,7 +313,7 @@ let spec_block_discard_branches () =
   (* CSS Syntax Level 3 section 5.5.5: whitespace and semicolons are discarded;
      EOF and right brace terminate the block contents. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   Alcotest.(check int)
     "whitespace and semicolons discarded" 0
@@ -332,7 +326,7 @@ let spec_block_nested_errors () =
   (* CSS Syntax Level 3 section 5.5.5 delegates failed declaration attempts to
      nested qualified-rule parsing with semicolon as a stop token. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   Alcotest.(check int)
     "invalid rule does not poison following declaration" 1
@@ -346,7 +340,7 @@ let spec_block_nested_boundaries () =
      terminates nested at-rules/qualified rules, and a semicolon terminates a
      nested qualified-rule attempt without consuming following content. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   (match parse "@media screen } width: 1px" with
   | [ `Rule (Css.Component.At { node = { name = "media"; prelude; _ }; _ }) ] ->
@@ -364,7 +358,7 @@ let spec_block_reparse_examples () =
      parse. The implementation note calls out these declaration/rule boundary
      shapes. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   (match parse "foo: bar; baz {} qux: 1px" with
   | [
@@ -409,7 +403,7 @@ let spec_block_flush_stop () =
      nested rules, flushes before invalid nested-rule errors, and stops at a
      right brace without consuming later input. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   (match parse "color: red; .bad ; width: 1px" with
   | [
@@ -437,7 +431,7 @@ let spec_block_custom_props () =
   (* CSS Syntax Level 3 section 5.5.5 treats custom-property-shaped input as a
      declaration attempt, so it is not reparsed as a qualified rule. *)
   let parse css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   match parse "--foo:hover { color: blue; }; width: 1px" with
   | [
@@ -459,7 +453,7 @@ let spec_parse_declaration_entry_point () =
      and component-value entry points, this algorithm does not require EOF after
      the declaration. *)
   let parse_one_decl css =
-    (Css.Parser.parse_declaration (Css.Reader.of_string css)).value
+    (Css.Parser.declaration (Css.Reader.of_string css)).value
   in
   Alcotest.(check bool)
     "basic declaration accepted" true
@@ -485,7 +479,7 @@ let spec_component_entry_point () =
   (* CSS Syntax Level 3 section 5.4.8: surrounding whitespace is ignored, but
      the input must contain exactly one component value. *)
   let parse_one_cv css =
-    (Css.Parser.parse_component_value (Css.Reader.of_string css)).value
+    (Css.Parser.component_value (Css.Reader.of_string css)).value
   in
   let check_some input expected =
     match parse_one_cv input with
@@ -512,7 +506,7 @@ let spec_list_components_entry () =
   (* CSS Syntax Level 3 section 5.4.9: consume component values until EOF,
      preserving whitespace and grouping blocks/functions. *)
   let parse_list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   Alcotest.(check string)
     "component value list" "a [b c] rgb(1, 2) }"
@@ -532,7 +526,7 @@ let spec_csv_components () =
   (* CSS Syntax Level 3 section 5.4.10: split only on top-level commas; a
      trailing comma is consumed and does not synthesize an empty final group. *)
   let parse_groups css =
-    (Css.Parser.parse_csv_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.csv_component_values (Css.Reader.of_string css)).value
   in
   let show groups =
     List.map Css.Parser.to_string_minified groups |> String.concat "|"
@@ -565,11 +559,9 @@ let spec_arbitrary_value_productions () =
      closing tokens. <declaration-value> additionally rejects top-level
      semicolons and top-level "!" delimiters. *)
   let parse_decl css =
-    (Css.Parser.parse_declaration_value (Css.Reader.of_string css)).value
+    (Css.Parser.declaration_value (Css.Reader.of_string css)).value
   in
-  let parse_any css =
-    (Css.Parser.parse_any_value (Css.Reader.of_string css)).value
-  in
+  let parse_any css = (Css.Parser.any_value (Css.Reader.of_string css)).value in
   let accepted = function Some _ -> true | None -> false in
   Alcotest.(check bool)
     "declaration value accepts ordinary values" true
@@ -625,7 +617,7 @@ let spec_serialization_string_escaping () =
      round-trips, escaping quote and backslash characters and not emitting raw
      newlines inside the string token. *)
   let parse_one css =
-    (Css.Parser.parse_component_value (Css.Reader.of_string css)).value
+    (Css.Parser.component_value (Css.Reader.of_string css)).value
   in
   let string_value = function
     | Some (Css.Component.Preserved { kind = Css.Token.String { value; _ }; _ })
@@ -660,7 +652,7 @@ let spec_serialization_roundtrip_boundaries () =
      tokenization. These pairs are from the consecutive-token separation table:
      dropping all separation would merge or reinterpret the pair. *)
   let parse_list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   let non_ws cvs =
     List.filter
@@ -700,7 +692,7 @@ let spec_serialization_roundtrip_boundaries () =
 let spec_wpt_unclosed_construct_edges () =
   (* WPT unclosed-constructs vectors at the component parser layer. *)
   let list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   Alcotest.(check string)
     "unclosed function and block auto-close" "calc(1px + [2em])"
@@ -713,7 +705,7 @@ let spec_wpt_trailing_brace_edges () =
   (* WPT trailing-braces vectors: component-value list parsing preserves
      unmatched closing tokens instead of swallowing later input. *)
   let list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   Alcotest.(check string)
     "trailing right braces are preserved in component lists" "a}}"
@@ -735,7 +727,7 @@ let wpt_at_rule_boundary_edges () =
   ] ->
       ()
   | _ -> Alcotest.fail "semicolon at-rule should not consume following rule");
-  match Css.Parser.parse_rule (Css.Reader.of_string "@bad ; .ok{}") with
+  match Css.Parser.rule (Css.Reader.of_string "@bad ; .ok{}") with
   | { value = None; _ } -> ()
   | _ -> Alcotest.fail "parse-rule rejects at-rule plus trailing qualified rule"
 
@@ -744,10 +736,10 @@ let spec_wpt_parser_branch_matrix () =
      blocks/functions, invalid declarations, CDO/CDC contexts, and list/rule
      entry-point boundaries. *)
   let list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   let block_items css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   Alcotest.(check string)
     "mixed unmatched closers preserved at component layer" "a)]}b"
@@ -785,15 +777,14 @@ let spec_wpt_parser_branch_matrix () =
   | _ -> Alcotest.fail "expected block declaration/rule recovery branches");
   Alcotest.(check bool)
     "parse-rule rejects declaration-looking input" true
-    ((Css.Parser.parse_rule (Css.Reader.of_string "color: red")).value = None);
+    ((Css.Parser.rule (Css.Reader.of_string "color: red")).value = None);
   Alcotest.(check bool)
     "parse component rejects two comma-separated values" true
-    ((Css.Parser.parse_component_value (Css.Reader.of_string "a,b")).value
-   = None)
+    ((Css.Parser.component_value (Css.Reader.of_string "a,b")).value = None)
 
 let spec_wpt_declaration_recovery_matrix () =
   let decls css =
-    (Css.Parser.parse_list_of_declarations (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_declarations (Css.Reader.of_string css)).value
   in
   let names css =
     decls css
@@ -828,7 +819,7 @@ let spec_security_resource_exhaustion_regressions () =
      DoS classes: unterminated nesting, bad-url remnants, and many discarded
      comments. *)
   let parse_list css =
-    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
   in
   let check_completes name f =
     let exception Timeout in
@@ -865,10 +856,10 @@ let spec12_parsing_checklist () =
   (* CSS Syntax Level 3 section 12 is non-normative. These vectors assert the
      current normative parser behavior it lists as changed or clarified. *)
   let block_items css =
-    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+    (Css.Parser.block_contents (Css.Reader.of_string css)).value
   in
   let parse_decls css =
-    (Css.Parser.parse_list_of_declarations (Css.Reader.of_string css)).value
+    (Css.Parser.list_of_declarations (Css.Reader.of_string css)).value
   in
   (match
      block_items
@@ -916,8 +907,7 @@ let spec_stylesheet_contents_cdo_cdc () =
   (* CSS Syntax Level 3 section 5.5.1: CDO/CDC are discarded only by the
      stylesheet/top-level rule-list algorithm. *)
   let top =
-    (Css.Parser.parse_stylesheet_contents
-       (Css.Reader.of_string "<!-- .a{} --> .b{}"))
+    (Css.Parser.stylesheet_contents (Css.Reader.of_string "<!-- .a{} --> .b{}"))
       .value
   in
   Alcotest.(check int) "top-level rules" 2 (List.length top);
@@ -1079,7 +1069,7 @@ let spec_function_branches () =
 
 let parse_decls input =
   let r = Css.Reader.of_string input in
-  (Css.Parser.parse_list_of_declarations r).value
+  (Css.Parser.list_of_declarations r).value
 
 let basic_declaration () =
   match parse_decls "color: red" with
@@ -1153,7 +1143,7 @@ let declaration_bad_token_dropped () =
 
 let unterminated_rule_warns () =
   let r = Css.Reader.of_string "h1" in
-  let out = Css.Parser.parse_stylesheet r in
+  let out = Css.Parser.stylesheet r in
   Alcotest.(check int) "no rules" 0 (List.length out.value);
   Alcotest.(check int) "one warning" 1 (List.length out.warnings);
   match out.warnings with
@@ -1164,7 +1154,7 @@ let unterminated_rule_warns () =
 
 let missing_colon_warns () =
   let r = Css.Reader.of_string "color red" in
-  let out = Css.Parser.parse_list_of_declarations r in
+  let out = Css.Parser.list_of_declarations r in
   Alcotest.(check int) "no decls" 0 (List.length out.value);
   match out.warnings with
   | [ { sort = Css.Sort.Declaration; kind = Css.Error.Missing_token "':'"; _ } ]
@@ -1174,7 +1164,7 @@ let missing_colon_warns () =
 
 let unexpected_token_warns () =
   let r = Css.Reader.of_string ": red; color: blue" in
-  let out = Css.Parser.parse_list_of_declarations r in
+  let out = Css.Parser.list_of_declarations r in
   Alcotest.(check int) "one survivor" 1 (List.length out.value);
   match out.warnings with
   | [ { sort = Css.Sort.Declaration; kind = Css.Error.Unexpected_token _; _ } ]
@@ -1188,7 +1178,7 @@ let warning_carries_snippet () =
      pointing at the EOF position, just like a Cursor-raised error would. *)
   let input = "h1" in
   let r = Css.Reader.of_string input in
-  let out = Css.Parser.parse_stylesheet r in
+  let out = Css.Parser.stylesheet r in
   match out.warnings with
   | [ w ] -> (
       match Css.Error.snippet w with
@@ -1299,15 +1289,13 @@ let spec_csv_nested_edges () =
   (* CSS Syntax Level 3 section 5.4.10: top-level commas split groups, but
      commas inside blocks and functions remain part of that group's component
      value list. Empty interior groups are preserved for grammar matching. *)
-  let groups =
-    Css.Parser.parse_csv_component_values (Css.Reader.of_string "a,,b")
-  in
+  let groups = Css.Parser.csv_component_values (Css.Reader.of_string "a,,b") in
   Alcotest.(check int) "a,,b has three groups" 3 (List.length groups.value);
   Alcotest.(check string)
     "empty interior group" "a||b"
     (groups.value |> List.map Css.Parser.to_string_minified |> String.concat "|");
   let groups =
-    Css.Parser.parse_csv_component_values
+    Css.Parser.csv_component_values
       (Css.Reader.of_string "rgb(1, 2, 3), [a,b], {c:d,e:f}")
   in
   Alcotest.(check int) "nested commas not split" 3 (List.length groups.value);

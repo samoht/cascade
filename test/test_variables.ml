@@ -42,7 +42,7 @@ let test_any_var () =
   | None -> Alcotest.fail "Expected custom declaration for theme color");
 
   (* Test negative cases *)
-  neg_cursor parse_var_reference "not-a-var()"
+  neg_cursor read_reference "not-a-var()"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -255,12 +255,12 @@ let test_syntax () =
   (* Syntax checking is not available in current implementation *)
   ()
 
-(* ignore-test: parse_var_reference is a function, not a type *)
+(* ignore-test: read_reference is a function, not a type *)
 let test_parse_var_reference () =
   (* Test parsing CSS var() references - just extracts name and fallback *)
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
-    let name, fallback = parse_var_reference r in
+    let name, fallback = read_reference r in
     Alcotest.(check string) "variable name" expected_name name;
     Alcotest.(check (option string)) "fallback" expected_fallback fallback
   in
@@ -284,7 +284,7 @@ let test_parse_var_reference () =
   let neg input =
     let r = Css.Cursor.of_string input in
     try
-      let _ = parse_var_reference r in
+      let _ = read_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
     | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
@@ -305,7 +305,7 @@ let test_parse_var_reference () =
 let spec_custom_fallback_edges () =
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
-    let name, fallback = parse_var_reference r in
+    let name, fallback = read_reference r in
     Alcotest.(check string) (input ^ " name") expected_name name;
     Alcotest.(check (option string))
       (input ^ " fallback") expected_fallback fallback
@@ -327,7 +327,7 @@ let spec_custom_fallback_edges () =
   let neg input =
     let r = Css.Cursor.of_string input in
     try
-      let _ = parse_var_reference r in
+      let _ = read_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
     | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
@@ -354,7 +354,7 @@ let spec_custom_computed_edges () =
   check_context "--invalid-fallback" "var(--missing, 10px)";
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
-    let name, fallback = parse_var_reference r in
+    let name, fallback = read_reference r in
     Alcotest.(check string) (input ^ " name") expected_name name;
     Alcotest.(check (option string))
       (input ^ " fallback") expected_fallback fallback
@@ -379,7 +379,7 @@ let tests =
     ("compare vars by name", `Quick, test_compare_vars_by_name);
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
-    ("parse_var_reference", `Quick, test_parse_var_reference);
+    ("read_reference", `Quick, test_parse_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
     ( "spec custom property computed-time edges",
       `Quick,
