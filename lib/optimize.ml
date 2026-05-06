@@ -1300,7 +1300,7 @@ let drop_misplaced_imports stmts =
   let seen_body = ref false in
   List.filter
     (function
-      | Charset _ | Import _ | Namespace _ when not !seen_body -> true
+      | (Charset _ | Import _ | Namespace _) when not !seen_body -> true
       | Import _ -> false
       | Charset _ | Namespace _ -> true
       | _ ->

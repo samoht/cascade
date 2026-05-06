@@ -175,6 +175,18 @@ val pp_color_space : color_space Pp.t
 val read_color_space : Cursor.t -> color_space
 (** [read_color_space] reads a {!color_space} value. *)
 
+val pp_attr_syntax : attr_syntax Pp.t
+(** [pp_attr_syntax] pretty-prints an [attr()] type() syntax keyword. *)
+
+val read_attr_syntax : Cursor.t -> attr_syntax
+(** [read_attr_syntax] reads an [attr()] type() syntax keyword. *)
+
+val pp_attr_type : attr_type Pp.t
+(** [pp_attr_type] pretty-prints an [attr()] type hint. *)
+
+val read_attr_type : Cursor.t -> attr_type
+(** [read_attr_type] reads an [attr()] type hint. *)
+
 (** {2 Helper Functions} *)
 
 val pp_var : 'a Pp.t -> 'a var Pp.t

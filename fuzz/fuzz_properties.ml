@@ -823,6 +823,7 @@ let test_property_value_branch_depth_positive buf =
         "width:calc-size(auto,size + 1rem)";
         "width:attr(data-w px,10px)";
         "width:attr(data-w px,calc(100% - 1rem))";
+        "width:attr(data-w px,calc(10px + 0px))";
         "width:attr(data-w px,var(--fallback,10px))";
         "height:attr(data-h type(<length>),1rem)";
         "opacity:sign(var(--delta))";

@@ -251,11 +251,13 @@ let string_of_attr_syntax : attr_syntax -> string = function
   | Number -> "<number>"
   | Percentage -> "<percentage>"
 
+let pp_attr_syntax ctx syntax = Pp.string ctx (string_of_attr_syntax syntax)
+
 let pp_attr_type ctx (type_ : attr_type) =
   match type_ with
   | Type syntax ->
       Pp.string ctx "type(";
-      Pp.string ctx (string_of_attr_syntax syntax);
+      pp_attr_syntax ctx syntax;
       Pp.char ctx ')'
   | Unit unit_ -> Pp.string ctx unit_
   | Raw_string -> Pp.string ctx "raw-string"
@@ -282,6 +284,32 @@ let attr_syntax_of_string : string -> attr_syntax option = function
   | "<number>" -> Some Number
   | "<percentage>" -> Some Percentage
   | _ -> None
+
+let read_attr_syntax t : attr_syntax =
+  Cursor.ws t;
+  let body = Cursor.consume_remaining_as_string ~trim:true t in
+  match attr_syntax_of_string body with
+  | Some syntax -> syntax
+  | None -> Cursor.err_invalid t ("attr() type: " ^ body)
+
+let read_attr_type t : attr_type =
+  Cursor.ws t;
+  let type_ =
+    if Cursor.looking_at_func "type" t then
+      Type (Cursor.call "type" t read_attr_syntax)
+    else
+      match Cursor.ident_opt t with
+      | Some "raw-string" -> Raw_string
+      | Some "number" -> Number_type
+      | Some unit_ -> Unit unit_
+      | None when Cursor.peek_delim t = Some '%' ->
+          Cursor.expect '%' t;
+          Unit "%"
+      | None -> Cursor.err_expected t "attr() type"
+  in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  type_
 
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
