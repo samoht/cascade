@@ -197,6 +197,12 @@ type t =
       (** ::view-transition-old with optional name and class suffixes. *)
   | View_transition_new of vt_class_selector
       (** ::view-transition-new with optional name and class suffixes. *)
+  | Unknown_pseudo_element of string
+      (** Vendor / prerelease pseudo-elements cascade doesn't recognise
+          (e.g. [::deep], [::unknown]). Preserved as the raw ident. *)
+  | Unknown_pseudo_element_call of string * Component.t list
+      (** Functional form: [::unknown(<arbitrary tokens>)]. Argument list
+          captured as raw component values so the printer re-emits verbatim. *)
   | Compound of t list
   | Combined of t * combinator * t
   | Relative of combinator * t

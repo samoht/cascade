@@ -939,9 +939,9 @@ let is_pseudo_element_selector = function
   | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
   | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
   | Webkit_details_marker | Details_content | Part _ | Slotted _ | Cue _
-  | Cue_region _ | Highlight _ | View_transition_group _
+  | Cue_region _ | Highlight _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-    ->
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ ->
       true
   | _ -> false
 
@@ -1289,9 +1289,24 @@ and read_pseudo_element t =
       ("view-transition-new", read_view_transition_new);
     ]
     ~default:(fun t ->
+      let read_unknown_call t =
+        (* Unknown functional pseudo-element: keep the call body verbatim so
+           the printer can re-emit the exact same source. *)
+        match Cursor.peek t with
+        | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+            Cursor.skip t;
+            Unknown_pseudo_element_call (name, arguments)
+        | _ -> Cursor.err_expected t "pseudo-element call"
+      in
+      let read_unknown_ident t =
+        match Cursor.ident_opt t with
+        | Some name -> Unknown_pseudo_element name
+        | None -> Cursor.err_expected t "pseudo-element"
+      in
       Cursor.enum "pseudo-element"
         (pseudo_element_modern_idents @ pseudo_vendor_idents
         @ pseudo_element_legacy_idents Double)
+        ~default:(fun t -> Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
         t)
     t
 
@@ -1896,6 +1911,14 @@ and pp : t Pp.t =
       pp_func ctx ~prefix:"::" "view-transition-old" pp_vt_class_selector sel
   | View_transition_new sel ->
       pp_func ctx ~prefix:"::" "view-transition-new" pp_vt_class_selector sel
+  | Unknown_pseudo_element name -> elem ctx name
+  | Unknown_pseudo_element_call (name, args) ->
+      pp_func ctx ~prefix:"::" name
+        (fun ctx args ->
+          Pp.string ctx
+            (if Pp.minified ctx then Parser.to_string_minified args
+             else Parser.to_string args))
+        args
   | Compound selectors ->
       let to_print =
         if Pp.minified ctx then drop_redundant_universal selectors
@@ -2073,6 +2096,7 @@ let rec specificity = function
   | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
     ->
       { ids = 0; classes = 0; elements = 1 }
   | Where _ -> zero_specificity
