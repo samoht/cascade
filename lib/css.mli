@@ -3401,6 +3401,20 @@ val column_gap : length -> declaration
     1 §7.2.3.1). *)
 type repeat_count = Count of int | Auto_fill | Auto_fit
 
+(** CSS grid-auto-flow values *)
+type grid_auto_flow =
+  | Row
+  | Column
+  | Dense
+  | Row_dense
+  | Column_dense
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of grid_auto_flow var
+
 (** CSS grid template values *)
 type grid_template =
   | None
@@ -3427,6 +3441,10 @@ type grid_template =
   | Repeat of repeat_count * grid_template list
   | Tracks of grid_template list
   | Split of grid_template * grid_template
+  | Auto_flow_columns of grid_template * grid_auto_flow * grid_template option
+      (** [<grid-template-rows> / auto-flow [dense]? <grid-auto-columns>?]. *)
+  | Auto_flow_rows of grid_auto_flow * grid_template option * grid_template
+      (** [auto-flow [dense]? <grid-auto-rows>? / <grid-template-columns>]. *)
   | Named_tracks of (string option * grid_template) list
   | Line_names of string list
       (** [[col-start a b]] line-names block, kept as its own track-list element
@@ -3489,20 +3507,6 @@ val grid_auto_rows : grid_template -> declaration
 (** [grid_auto_rows rows] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-rows}
      grid-auto-rows} property. *)
-
-(** CSS grid-auto-flow values *)
-type grid_auto_flow =
-  | Row
-  | Column
-  | Dense
-  | Row_dense
-  | Column_dense
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of grid_auto_flow var
 
 val grid_auto_flow : grid_auto_flow -> declaration
 (** [grid_auto_flow flow] is the
