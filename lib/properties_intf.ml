@@ -1757,6 +1757,14 @@ type font_display =
 type unicode_range =
   | Single of int  (** U+xxxx *)
   | Range of int * int  (** U+xxxx-yyyy *)
+  | Padded_single of int * int
+  | Padded_range of {
+      start : int;
+      end_ : int;
+      start_width : int;
+      end_width : int;
+    }
+  | Wildcard of { prefix : int; prefix_width : int; wildcards : int }
   | Var of unicode_range var
 
 type font_variant_numeric_token =

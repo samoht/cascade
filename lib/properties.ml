@@ -7448,17 +7448,82 @@ let rec pp_font_display : font_display Pp.t =
   | Fallback -> Pp.string ctx "fallback"
   | Optional -> Pp.string ctx "optional"
 
+let hex_string n =
+  let rec loop n acc =
+    let digit n =
+      if n < 10 then Char.chr (Char.code '0' + n)
+      else Char.chr (Char.code 'A' + n - 10)
+    in
+    if n = 0 && acc = [] then "0"
+    else if n = 0 then String.of_seq (List.to_seq acc)
+    else loop (n / 16) (digit (n mod 16) :: acc)
+  in
+  loop n []
+
+let padded_hex width n =
+  let hex = hex_string n in
+  if String.length hex >= width then hex
+  else String.make (width - String.length hex) '0' ^ hex
+
+let pp_unicode_range_range ctx start end_ =
+  Pp.string ctx "U+";
+  Pp.hex ctx start;
+  Pp.char ctx '-';
+  Pp.hex ctx end_
+
+let unicode_range_wildcard start end_ : string option =
+  let rec loop q =
+    if q > 6 then (None : string option)
+    else
+      let size = 1 lsl (4 * q) in
+      if start mod size = 0 && end_ = start + size - 1 then
+        let prefix = start / size in
+        let prefix = if prefix = 0 then "" else hex_string prefix in
+        let wildcard = "U+" ^ prefix ^ String.make q '?' in
+        let range = "U+" ^ hex_string start ^ "-" ^ hex_string end_ in
+        if String.length wildcard < String.length range then
+          (Some wildcard : string option)
+        else (None : string option)
+      else loop (q + 1)
+  in
+  loop 1
+
 let rec pp_unicode_range : unicode_range Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_unicode_range ctx v
   | Single hex ->
       Pp.string ctx "U+";
       Pp.hex ctx hex
-  | Range (start, end_) ->
-      Pp.string ctx "U+";
-      Pp.hex ctx start;
-      Pp.char ctx '-';
-      Pp.hex ctx end_
+  | Range (start, end_) -> (
+      let pp_range () = pp_unicode_range_range ctx start end_ in
+      if not (Pp.minified ctx) then pp_range ()
+      else
+        match unicode_range_wildcard start end_ with
+        | Some wildcard -> Pp.string ctx wildcard
+        | None -> pp_range ())
+  | Padded_single (value, width) ->
+      if Pp.minified ctx then pp_unicode_range ctx (Single value)
+      else (
+        Pp.string ctx "U+";
+        Pp.string ctx (padded_hex width value))
+  | Padded_range { start; end_; start_width; end_width } ->
+      if Pp.minified ctx then pp_unicode_range ctx (Range (start, end_))
+      else (
+        Pp.string ctx "U+";
+        Pp.string ctx (padded_hex start_width start);
+        Pp.char ctx '-';
+        Pp.string ctx (padded_hex end_width end_))
+  | Wildcard { prefix; prefix_width; wildcards } ->
+      let start = prefix lsl (4 * wildcards) in
+      let end_ = start + (1 lsl (4 * wildcards)) - 1 in
+      if Pp.minified ctx then
+        match unicode_range_wildcard start end_ with
+        | Some wildcard -> Pp.string ctx wildcard
+        | None -> pp_unicode_range_range ctx start end_
+      else (
+        Pp.string ctx "U+";
+        if prefix_width > 0 then Pp.string ctx (padded_hex prefix_width prefix);
+        Pp.string ctx (String.make wildcards '?'))
 
 let rec pp_font_variant_numeric_token : font_variant_numeric_token Pp.t =
  fun ctx -> function
@@ -12372,12 +12437,33 @@ let rec read_unicode_range t : unicode_range =
       (Var (Values.read_var read_unicode_range t) : unicode_range)
   | Some
       (Component.Preserved
-         { kind = Token.Unicode_range { start_value; end_value }; _ }) ->
+         { kind = Token.Unicode_range { start_value; end_value; form }; _ })
+    -> (
       Cursor.skip t;
       if start_value > end_value then
         Cursor.err_invalid t "unicode range: start > end"
-      else if start_value = end_value then (Single start_value : unicode_range)
-      else Range (start_value, end_value)
+      else
+        match form with
+        | Token.Single { width } ->
+            if width > String.length (hex_string start_value) then
+              (Padded_single (start_value, width) : unicode_range)
+            else Single start_value
+        | Token.Range { start_width; end_width } ->
+            if
+              start_width > String.length (hex_string start_value)
+              || end_width > String.length (hex_string end_value)
+            then
+              Padded_range
+                {
+                  start = start_value;
+                  end_ = end_value;
+                  start_width;
+                  end_width;
+                }
+            else Range (start_value, end_value)
+        | Token.Wildcard { prefix_width; wildcards } ->
+            let prefix = start_value lsr (4 * wildcards) in
+            Wildcard { prefix; prefix_width; wildcards })
   | _ -> Cursor.err_expected t "unicode-range"
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
