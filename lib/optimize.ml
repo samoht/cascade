@@ -878,7 +878,8 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
-let flatten_rule_ref : (rule -> statement list) ref = ref (fun _ -> assert false)
+let flatten_rule_ref : (rule -> statement list) ref =
+  ref (fun _ -> assert false)
 
 (* Shared predicates for media block optimization *)
 let rec should_consolidate cond =
@@ -1346,13 +1347,16 @@ and process_statements (acc : statement list) (remaining : statement list) :
             else [ Rule rule ])
           plain_rules
       in
-      if List.exists (function Rule _ -> false | _ -> true) flattened_scope_rules
+      if
+        List.exists
+          (function Rule _ -> false | _ -> true)
+          flattened_scope_rules
       then
         let optimized = statements flattened_scope_rules in
         process_statements (List.rev_append optimized acc) rest
       else
-      (* Optimize this batch of consecutive rules, including their nested
-         statements *)
+        (* Optimize this batch of consecutive rules, including their nested
+           statements *)
         let rules =
           List.map
             (function Rule rule -> rule | _ -> assert false)
@@ -1541,7 +1545,6 @@ and flatten_block (block : statement list) : statement list =
   List.concat_map flatten_top_statement block
 
 let flatten_nesting (stylesheet : t) : t = flatten_block stylesheet
-
 let () = flatten_rule_ref := flatten_rule
 
 (** {1 Stylesheet Optimization} *)

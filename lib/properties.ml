@@ -14488,11 +14488,11 @@ let read_conic_gradient_config t : conic_gradient_config =
 
 let read_linear_gradient_body t =
   Cursor.ws t;
-  (* CSS Images 4 §6.1 [linear-gradient] prelude:
-       [ <angle> | to <side-or-corner> ]? || <color-interpolation-method>
-     A bare interpolation, a bare direction, or both in either order are all
-     valid. After the prelude the comma separating it from the colour-stop
-     list is required if and only if the prelude consumed any tokens. *)
+  (* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to
+     <side-or-corner> ]? || <color-interpolation-method> A bare interpolation, a
+     bare direction, or both in either order are all valid. After the prelude
+     the comma separating it from the colour-stop list is required if and only
+     if the prelude consumed any tokens. *)
   let direction : gradient_direction option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
   let try_direction () =
