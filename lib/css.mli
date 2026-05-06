@@ -575,9 +575,6 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mul | Div
 
-(** CSS custom-property token stream. *)
-type custom_value = Component.t list
-
 (** CSS calc values. *)
 type 'a calc =
   | Var of 'a var  (** CSS variable *)
@@ -596,7 +593,7 @@ type 'a fallback =
           likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
-  | Syntax_fallback of custom_value
+  | Syntax_fallback of Component.t list
       (** Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
@@ -7104,30 +7101,6 @@ val read_transform_origin : Cursor.t -> transform_origin
 
 val read_transform : Cursor.t -> transform
 (** [read_transform t] parses a transform value. *)
-
-val syntax_fallback : string -> 'a fallback
-(** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
-    [var()] reference. *)
-
-val custom_value_ident : string -> custom_value
-(** [custom_value_ident name] is a custom-property value made from one CSS
-    ident. *)
-
-val custom_value_var_empty_fallback : string -> custom_value
-(** [custom_value_var_empty_fallback name] is [var(--name,)] as structured CSS
-    components, used for empty-fallback custom-property channels. *)
-
-val string_of_custom_value : custom_value -> string
-(** [string_of_custom_value value] serializes a custom-property token stream. *)
-
-val string_of_number_percentage : number_percentage -> string
-(** [string_of_number_percentage value] serializes a number/percentage value
-    for CSS custom-property initial values. *)
-
-val string_of_kind_value : 'a kind -> 'a -> string
-(** [string_of_kind_value kind value] serializes a typed CSS value for a custom
-    property initial value. Values that cannot be represented as a concrete
-    initial value serialize to ["initial"]. *)
 
 module Container = Container
 module Supports = Supports

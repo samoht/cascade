@@ -971,6 +971,9 @@ let rec any p = function
 
 let has_pseudo_element sel = any is_pseudo_element_selector sel
 
+let has_unknown_pseudo_class =
+  any (function Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true | _ -> false)
+
 (* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
    valid argument matches nothing, and a compound or combined selector that
    contains such a sub-selector inherits the same behaviour. A selector list
@@ -1019,6 +1022,7 @@ and read_forgiving_complex_list t =
 and read_forgiving_complex_item t =
   let sel = read_complex t in
   if has_pseudo_element sel then Cursor.err t "pseudo-element not allowed here";
+  if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
   sel
 
 and read_forgiving_list read_item t =
@@ -1241,36 +1245,36 @@ and read_view_transition_new t =
   Cursor.call "view-transition-new" t read_view_transition_new_content
 
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
-and read_pseudo_class t =
+and read_pseudo_class ?(allow_unknown = false) t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   let all_idents =
     pseudo_class_base_idents
     @ pseudo_element_legacy_idents Single
     @ pseudo_element_modern_idents @ pseudo_vendor_idents
   in
-  Cursor.enum_or_calls "pseudo-class" all_idents
-    ~calls:
-      [
-        ("is", read_is);
-        ("has", read_has);
-        ("not", read_not);
-        ("where", read_where);
-        ("nth-child", read_nth_child);
-        ("nth-last-child", read_nth_last_child);
-        ("nth-of-type", read_nth_of_type);
-        ("nth-last-of-type", read_nth_last_of_type);
-        ("nth-col", read_nth_col);
-        ("nth-last-col", read_nth_last_col);
-        ("lang", read_lang);
-        ("dir", read_dir);
-        ("state", read_state);
-        ("host", read_host);
-        ("host-context", read_host_context);
-        ("current", read_current);
-        ("heading", read_heading);
-        ("active-view-transition-type", read_active_view_transition_type);
-      ]
-    ~default:(fun t ->
+  let calls =
+    [
+      ("is", read_is);
+      ("has", read_has);
+      ("not", read_not);
+      ("where", read_where);
+      ("nth-child", read_nth_child);
+      ("nth-last-child", read_nth_last_child);
+      ("nth-of-type", read_nth_of_type);
+      ("nth-last-of-type", read_nth_last_of_type);
+      ("nth-col", read_nth_col);
+      ("nth-last-col", read_nth_last_col);
+      ("lang", read_lang);
+      ("dir", read_dir);
+      ("state", read_state);
+      ("host", read_host);
+      ("host-context", read_host_context);
+      ("current", read_current);
+      ("heading", read_heading);
+      ("active-view-transition-type", read_active_view_transition_type);
+    ]
+  in
+  let read_unknown t =
       let read_unknown_call t =
         match Cursor.peek t with
         | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
@@ -1283,8 +1287,11 @@ and read_pseudo_class t =
         | Some name -> Unknown_pseudo_class name
         | None -> Cursor.err_expected t "pseudo-class"
       in
-      Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
-    t
+      Cursor.one_of [ read_unknown_call; read_unknown_ident ] t
+  in
+  if allow_unknown then
+    Cursor.enum_or_calls "pseudo-class" all_idents ~calls ~default:read_unknown t
+  else Cursor.enum_or_calls "pseudo-class" all_idents ~calls t
 
 (** Parse pseudo-element (::before, ::after, etc.) *)
 and read_pseudo_element t =
@@ -1327,7 +1334,7 @@ and read_pseudo_element t =
 (** Parse a simple selector (one part). Does not skip leading whitespace — the
     caller (read_compound) uses whitespace as a compound / descendant boundary
     marker. *)
-and read_simple t =
+and read_simple ?(allow_unknown_pseudo_class = false) t =
   match Cursor.peek_delim t with
   | Some '.' -> read_class t
   | Some ('*' | '|') -> read_type_or_universal t
@@ -1343,7 +1350,7 @@ and read_simple t =
         if Cursor.try_kind_pair Token.Colon Token.Colon t then (
           Cursor.restore t snap;
           read_pseudo_element t)
-        else read_pseudo_class t
+        else read_pseudo_class ~allow_unknown:allow_unknown_pseudo_class t
       else
         match Cursor.peek_ident t with
         | Some _ -> read_type_or_universal t
@@ -1368,7 +1375,11 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    let s = read_simple t in
+    let s =
+      read_simple
+        ~allow_unknown_pseudo_class:(List.exists is_pseudo_element_selector acc)
+        t
+    in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
     else s :: acc
@@ -1521,8 +1532,11 @@ let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 (* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
    spelling for the four original pseudo-elements. Minified output uses the
    shorter valid alias; pretty output uses the modern double-colon spelling. *)
-let legacy_elem ctx _form name =
-  let prefix = if Pp.minified ctx then ":" else "::" in
+let legacy_elem ctx form name =
+  let prefix =
+    if Pp.minified ctx then ":"
+    else match form with Single -> ":" | Double -> "::"
+  in
   Pp.string ctx (prefix ^ name)
 
 let func ctx name pp_content value =
@@ -1570,11 +1584,10 @@ let pp_relative_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
-(* :lang() canonically serialises with a space after each comma per CSS
-   Selectors 4 §6.4.1, even in minified output, so the printer matches what
-   authors typically write. *)
 let strs_spaced ctx strings =
-  let sep ctx () = Pp.string ctx ", " in
+  let sep ctx () =
+    if Pp.minified ctx then Pp.char ctx ',' else Pp.string ctx ", "
+  in
   Pp.list ~sep Pp.string ctx strings
 
 (** Escape a class or ID name for use inside a selector, following CSS section

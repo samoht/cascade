@@ -319,24 +319,9 @@ let style_leaf_body body =
           match style_strip_ws components with
           | [ name_component ] -> (
               match ident_component name_component with
-              | Some name -> Boolean name
-              | _ -> failwith "invalid style() container query")
+              | Some name when is_custom_property name -> Boolean name
+              | Some _ | None -> failwith "invalid style() container query")
           | _ -> failwith "invalid style() container query"))
-
-(* Find the position of [keyword] at parenthesis depth 0 inside [s]. The keyword
-   is matched literally (caller passes [" and "], [" or "], etc.). *)
-let top_level_keyword s keyword =
-  let len = String.length s in
-  let klen = String.length keyword in
-  let depth = ref 0 in
-  let result = ref None in
-  let i = ref 0 in
-  while !result = None && !i + klen <= len do
-    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
-    if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
-    incr i
-  done;
-  !result
 
 let top_level_word s word =
   let len = String.length s in
@@ -555,7 +540,7 @@ let classify_query_surface raw =
       | _ -> Other_query)
 
 (* Lift a typed [Media.t] into a [Feature_query]. The container parser only
-   produces single-feature media leaves at this point (compound forms are peeled
+   accepts single-feature media leaves at this point (compound forms are peeled
    off by [unnamed_of_string] before [atom_of_string]), so anything that's not a
    single feature is a parse error. *)
 let single_feature_of_media (media : Media.t) =
@@ -582,19 +567,19 @@ let rec unnamed_of_string s =
   if has_top_level_word stripped "and" && has_top_level_word stripped "or" then
     failwith "mixed container query operators require grouping"
   else
-    match top_level_keyword stripped " or " with
+    match top_level_word stripped "or" with
     | Some i ->
         let lhs = String.sub stripped 0 i in
         let rhs =
-          String.sub stripped (i + 4) (String.length stripped - i - 4)
+          String.sub stripped (i + 2) (String.length stripped - i - 2)
         in
         Or (unnamed_of_string lhs, unnamed_of_string rhs)
     | None -> (
-        match top_level_keyword stripped " and " with
+        match top_level_word stripped "and" with
         | Some i ->
             let lhs = String.sub stripped 0 i in
             let rhs =
-              String.sub stripped (i + 5) (String.length stripped - i - 5)
+              String.sub stripped (i + 3) (String.length stripped - i - 3)
             in
             And (unnamed_of_string lhs, unnamed_of_string rhs)
         | None ->
@@ -622,14 +607,14 @@ and atom_of_string s =
       | None -> container_specific_of_string s)
   | Style_func _ | Scroll_state_func _ -> container_specific_of_string s
   | Parenthesized_feature | Other_query -> (
-      match Media.of_string s with
+      match Media.of_string_strict s with
       | Media.Min_width_rem rem -> Min_width_rem rem
       | Media.Min_width px when Float.is_integer px ->
           Min_width_px (int_of_float px)
       | media -> (
           match single_feature_of_media media with
           | Some f -> Feature_query f
-          | None -> Feature_query media)
+          | None -> failwith "not a container feature query")
       | exception Failure _ -> container_specific_of_string s)
 
 let of_string s =

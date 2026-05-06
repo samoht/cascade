@@ -268,7 +268,6 @@ module Font_face = Font_face
 (* CSS Parsing *)
 
 type parse_error = Error.t * string
-type custom_value = Component.t list
 
 let pp_parse_error (err, filename) =
   String.concat "" [ filename; ": "; Error.to_string err ]
@@ -342,75 +341,6 @@ let parse_background_image s =
     let imgs = Properties.read_background_images r in
     if Cursor.is_done r then Some imgs else None
   with Cursor.Parse_error _ | Invalid_argument _ -> None
-
-let syntax_fallback s = Syntax_fallback (Cursor.remaining (Cursor.of_string s))
-
-let custom_value_ident name =
-  [ Component.Preserved (Token.synthetic (Token.Ident name)) ]
-
-let custom_value_var_empty_fallback name =
-  let loc = Loc.dummy in
-  let ident =
-    Component.Preserved (Token.synthetic (Token.Ident ("--" ^ name)))
-  in
-  let comma = Component.Preserved (Token.synthetic Token.Comma) in
-  [
-    Component.Func
-      {
-        node = { name = "var"; arguments = [ ident; comma ]; terminated = true };
-        loc;
-      };
-  ]
-
-let string_of_custom_value = Parser.to_string_custom
-
-let string_of_number_percentage (np : number_percentage) =
-  match np with Num f | Pct f -> Pp.string_of_float f | _ -> "initial"
-
-let string_of_channel : channel -> string = function
-  | Int i -> string_of_int i
-  | Num f -> Pp.string_of_float f
-  | Pct p -> Pp.string_of_float p ^ "%"
-  | Var _ -> "0"
-
-let string_of_kind_value : type a. a kind -> a -> string =
- fun kind value ->
-  match kind with
-  | Length -> Pp.to_string (pp_length ~always:false) value
-  | Color -> Pp.to_string pp_color value
-  | Angle -> Pp.to_string pp_angle value
-  | Duration -> Pp.to_string pp_duration value
-  | Float -> Pp.string_of_float value
-  | Percentage -> ( match value with Pct f -> Pp.string_of_float f | _ -> "initial")
-  | Number_percentage -> string_of_number_percentage value
-  | Int -> string_of_int value
-  | Value -> string_of_custom_value value
-  | Content -> (
-      match value with
-      | String "" -> "\"\""
-      | String s -> "\"" ^ s ^ "\""
-      | Quoted (s, quote) -> String.make 1 quote ^ s ^ String.make 1 quote
-      | None -> "none"
-      | Normal -> "normal"
-      | Open_quote -> "open-quote"
-      | Close_quote -> "close-quote"
-      | Attr _ | Counter _ | Counters _ | Content_list _ | Inherit | Initial
-      | Unset | Revert | Revert_layer | Var _ ->
-          "initial")
-  | Font_weight -> Pp.to_string pp_font_weight value
-  | Shadow -> "0 0 #0000"
-  | Border_style -> Pp.to_string pp_border_style value
-  | Outline_style -> Pp.to_string pp_outline_style value
-  | Scroll_snap_strictness -> Pp.to_string pp_scroll_snap_strictness value
-  | Rgb -> (
-      match value with
-      | Channels { r; g; b } ->
-          string_of_channel r ^ " " ^ string_of_channel g ^ " "
-          ^ string_of_channel b
-      | Var _ -> "initial")
-  | Animation -> Pp.to_string pp_animation value
-  | Gradient_direction -> Pp.to_string pp_gradient_direction value
-  | _ -> "initial"
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)

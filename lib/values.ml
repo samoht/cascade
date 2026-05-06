@@ -2048,8 +2048,12 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let space_after_color_percentage ctx (l : percentage option) =
-  match (Pp.minified ctx, l) with true, Some (Pct _) -> () | _ -> Pp.space ctx ()
+let space_after_color_percentage ctx (l : percentage option) ~next =
+  match (Pp.minified ctx, l, next) with
+  | true, Some (Pct _), Some s
+    when String.length s > 0 && s.[0] >= '0' && s.[0] <= '9' ->
+      ()
+  | _ -> Pp.space ctx ()
 
 (** Lab-like float string with precision control. Non-minified: fixed decimal
     places (matching upstream Tailwind test expectations). Minified: 6
@@ -2080,7 +2084,6 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
   (match l with
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
-  space_after_color_percentage ctx l;
   let c_ends_with_pct =
     match c with
     | Some c ->
@@ -2088,9 +2091,11 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
           string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale
             ctx c
         in
+        space_after_color_percentage ctx l ~next:(Some c);
         Pp.string ctx c;
         ends_with_pct c
     | None ->
+        space_after_color_percentage ctx l ~next:(Some "none");
         Pp.string ctx "none";
         false
   in
@@ -2137,17 +2142,20 @@ let pp_lab_like_args ~axis_pct_scale :
       Pp.char ctx '%'
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
-  space_after_color_percentage ctx l;
   let string_of_axis = function
     | Some f -> string_of_lab_axis ~pct_scale:axis_pct_scale ctx f
     | None -> "none"
   in
   let a = string_of_axis a in
   let b = string_of_axis b in
+  space_after_color_percentage ctx l ~next:(Some a);
   Pp.string ctx a;
   if
     not
       (ctx.Pp.minify
+      && String.length a > 0
+      && a.[0] >= '0'
+      && a.[0] <= '9'
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
   then Pp.space ctx ();

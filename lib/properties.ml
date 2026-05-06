@@ -2975,23 +2975,15 @@ let is_font_family_ident_word s =
   && not (len >= 2 && s.[0] = '-' && is_digit s.[1])
   && String.for_all is_ident_char s
 
-let is_font_family_reserved_word s =
-  match String.lowercase_ascii s with
-  | "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "serif"
-  | "sans-serif" | "monospace" | "cursive" | "fantasy" | "system-ui"
-  | "ui-serif" | "ui-sans-serif" | "ui-monospace" | "ui-rounded" | "emoji"
-  | "math" | "fangsong" ->
-      true
-  | _ -> false
-
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
-      List.for_all
-        (fun word ->
-          is_font_family_ident_word word
-          && not (is_font_family_reserved_word word))
-        words
+      (* CSS Fonts 4 §4.1: a [<family-name>] formed of two or more
+         [<custom-ident>]s is unambiguous - none of its words can be picked up
+         as a property-level CSS-wide keyword once the parser has committed
+         to a multi-token value. So [inherit test] / [revert serif] etc.
+         round-trip unquoted, just like [Times New Roman]. *)
+      List.for_all is_font_family_ident_word words
   | _ -> false
 
 let rec pp_font_family : font_family Pp.t =
@@ -7807,6 +7799,10 @@ let rec pp_grid_template : grid_template Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Min_max (min, max) ->
       Pp.call_2 "minmax" pp_grid_template pp_grid_template ctx (min, max)
   | Fit_content l -> Pp.call "fit-content" pp_length ctx l
@@ -9627,6 +9623,10 @@ module Grid_template = struct
         ("subgrid", Subgrid);
         ("masonry", Masonry);
         ("inherit", Inherit);
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
       ~calls:
         [
@@ -12212,12 +12212,9 @@ let rec read_color_scheme t : color_scheme =
     | [ "light" ] -> Light
     | [ "dark" ] -> Dark
     | [ "light"; "dark" ] | [ "dark"; "light" ] -> Light_dark
-    | [ "only"; "light" ] | [ "light"; "only" ] -> Only_light
-    | [ "only"; "dark" ] | [ "dark"; "only" ] -> Only_dark
-    | [ "only"; "light"; "dark" ]
-    | [ "only"; "dark"; "light" ]
-    | [ "light"; "dark"; "only" ]
-    | [ "dark"; "light"; "only" ] ->
+    | [ "only"; "light" ] -> Only_light
+    | [ "only"; "dark" ] -> Only_dark
+    | [ "only"; "light"; "dark" ] | [ "only"; "dark"; "light" ] ->
         Only_light_dark
     | [ "inherit" ] -> Inherit
     | [ "initial" ] -> Initial
@@ -12225,7 +12222,7 @@ let rec read_color_scheme t : color_scheme =
     | [ "revert" ] -> Revert
     | [ "revert-layer" ] -> Revert_layer
     | [] -> Cursor.err t "empty color-scheme"
-    | names -> Custom names
+    | _ -> Cursor.err_invalid t "color-scheme"
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
@@ -13463,11 +13460,6 @@ module Animation = struct
     let play_seen = ref false in
     let timeline_seen = ref false in
     let component_seen = ref false in
-    let set_name (acc : animation_shorthand) (name : animation_name) =
-      if !name_seen then Cursor.err t "duplicate animation-name";
-      name_seen := true;
-      { acc with name = Some name }
-    in
     let apply (acc : animation_shorthand) component =
       component_seen := true;
       match component with
@@ -13484,42 +13476,32 @@ module Animation = struct
           else if !duration_count = 1 then { acc with duration = Some d }
           else { acc with delay = Some d }
       | Timing_function tf ->
-          if !timing_seen then
-            match timing_name tf with
-            | Some name -> set_name acc (Ambiguous name)
-            | None -> Cursor.err t "duplicate animation-timing-function"
+          ignore (timing_name tf);
+          if !timing_seen then Cursor.err t "duplicate animation-timing-function"
           else (
             timing_seen := true;
             { acc with timing_function = Some tf })
       | Iteration_count ic ->
-          if !iteration_seen then
-            match iteration_name ic with
-            | Some name -> set_name acc (Ambiguous name)
-            | None -> Cursor.err t "duplicate animation-iteration-count"
+          ignore (iteration_name ic);
+          if !iteration_seen then Cursor.err t "duplicate animation-iteration-count"
           else (
             iteration_seen := true;
             { acc with iteration_count = Some ic })
       | Direction dir ->
-          if !direction_seen then
-            match direction_name dir with
-            | Some name -> set_name acc (Ambiguous name)
-            | None -> Cursor.err t "duplicate animation-direction"
+          ignore (direction_name dir);
+          if !direction_seen then Cursor.err t "duplicate animation-direction"
           else (
             direction_seen := true;
             { acc with direction = Some dir })
       | Fill_mode fm ->
-          if !fill_seen then
-            match fill_name fm with
-            | Some name -> set_name acc name
-            | None -> Cursor.err t "duplicate animation-fill-mode"
+          ignore (fill_name fm);
+          if !fill_seen then Cursor.err t "duplicate animation-fill-mode"
           else (
             fill_seen := true;
             { acc with fill_mode = Some fm })
       | Play_state ps ->
-          if !play_seen then
-            match play_name ps with
-            | Some name -> set_name acc (Ambiguous name)
-            | None -> Cursor.err t "duplicate animation-play-state"
+          ignore (play_name ps);
+          if !play_seen then Cursor.err t "duplicate animation-play-state"
           else (
             play_seen := true;
             { acc with play_state = Some ps })
