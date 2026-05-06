@@ -3766,6 +3766,53 @@ let rec read_angle t : angle =
         Cursor.ws inner;
         Cursor.expect_eof inner;
         (Mod (a, b) : angle))
+  else if
+    let kind =
+      if Cursor.looking_at_func "asin" t then Option.Some `Asin
+      else if Cursor.looking_at_func "acos" t then Option.Some `Acos
+      else if Cursor.looking_at_func "atan" t then Option.Some `Atan
+      else Option.None
+    in
+    Option.is_some kind
+  then
+    let kind, name =
+      if Cursor.looking_at_func "asin" t then (`Asin, "asin")
+      else if Cursor.looking_at_func "acos" t then (`Acos, "acos")
+      else (`Atan, "atan")
+    in
+    Cursor.call name t (fun inner ->
+        let v = read_num_expr inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        let radians =
+          match kind with
+          | `Asin -> Float.asin v
+          | `Acos -> Float.acos v
+          | `Atan -> Float.atan v
+        in
+        (Deg (radians *. 180. /. Float.pi) : angle))
+  else if Cursor.looking_at_func "atan2" t then
+    Cursor.call "atan2" t (fun inner ->
+        (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
+           <percentage> for both arguments (must match types). When both share a
+           unit, the ratio is unit-free and the result folds to a constant. Read
+           each argument as [number-with-unit] and require unit equality
+           (case-insensitive) to compute. *)
+        let read_scalar inner =
+          let n, u = Cursor.number_with_unit inner in
+          let u = String.lowercase_ascii (Option.value ~default:"" u) in
+          (n, u)
+        in
+        let y, uy = read_scalar inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        Cursor.ws inner;
+        let x, ux = read_scalar inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        if uy <> ux then
+          Cursor.err_invalid inner "atan2 arguments have mismatched units";
+        (Deg (Float.atan2 y x *. 180. /. Float.pi) : angle))
   else
     let n, unit_raw = Cursor.number_with_unit t in
     let unit_raw = Option.value unit_raw ~default:"" in
