@@ -2386,6 +2386,22 @@ type conic_gradient_config = {
   conic_position : position_value option;  (** [at <position>] center *)
 }
 
+module Webkit_gradient = struct
+  type point = Left_top | Left_bottom | Center | Position of position_value
+
+  type stop = From of color | Color_stop of percentage * color | To of color
+
+  type t =
+    | Linear of { start : point; finish : point; stops : stop list }
+    | Radial of {
+        inner_center : point;
+        inner_radius : float;
+        outer_center : point;
+        outer_radius : float;
+        stops : stop list;
+      }
+end
+
 type background_image =
   | Url of string
   | Linear_gradient of gradient_direction * gradient_stop list
@@ -2404,6 +2420,7 @@ type background_image =
       (** [image-set(<source>#)] CSS Images 4 *)
   | Cross_fade of cross_fade_option list
       (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
+  | Webkit_gradient of Webkit_gradient.t
   | List of background_image list
       (** Comma-separated list of background images *)
   | None
@@ -2452,6 +2469,7 @@ type background =
   | None
   | Shorthand of background_shorthand
   | Var of background var
+  | Vars of background var list
 (* Mask Types *)
 
 (** Webkit-prefixed mask-composite values *)
@@ -3664,6 +3682,7 @@ type color_scheme =
   | Only_light
   | Only_dark
   | Only_light_dark
+  | Custom of string list
   | Inherit
   | Initial
   | Unset

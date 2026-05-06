@@ -2932,6 +2932,39 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
                  Cursor.ws inner;
                  Cursor.expect_eof inner;
                  mod_value a b))
+      | "min" ->
+          Num
+            (Cursor.call "min" t (fun inner ->
+                 let nums =
+                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                     inner
+                 in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 List.fold_left Float.min Float.infinity nums))
+      | "max" ->
+          Num
+            (Cursor.call "max" t (fun inner ->
+                 let nums =
+                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                     inner
+                 in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 List.fold_left Float.max Float.neg_infinity nums))
+      | "clamp" ->
+          Num
+            (Cursor.call "clamp" t (fun inner ->
+                 let min_value = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let value = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let max_value = read_num_expr inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.max min_value (Float.min value max_value)))
       (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
          time to a [Num] so the surrounding [calc()] can fold further. *)
       | "sqrt" ->
@@ -3361,6 +3394,14 @@ let rec read_channel t : channel =
   else if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
     Int 0)
+  else if
+    match Cursor.peek t with
+    | Some (Component.Func { node = { name; _ }; _ })
+      when String.lowercase_ascii name <> "var" ->
+        true
+    | _ -> false
+  then
+    Int (int_of_float (max 0. (min 255. (read_num_expr t))))
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -4417,6 +4458,42 @@ and read_number_function t =
       match name with
       | "var" -> Some (Var (read_var read_number t))
       | "calc" -> Some (Calc (read_calc read_number t))
+      | "min" ->
+          Some
+            (Num
+               (Cursor.call "min" t (fun inner ->
+                    let nums =
+                      Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                        inner
+                    in
+                    Cursor.ws inner;
+                    Cursor.expect_eof inner;
+                    List.fold_left Float.min Float.infinity nums)))
+      | "max" ->
+          Some
+            (Num
+               (Cursor.call "max" t (fun inner ->
+                    let nums =
+                      Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                        inner
+                    in
+                    Cursor.ws inner;
+                    Cursor.expect_eof inner;
+                    List.fold_left Float.max Float.neg_infinity nums)))
+      | "clamp" ->
+          Some
+            (Num
+               (Cursor.call "clamp" t (fun inner ->
+                    let min_value = read_num_expr inner in
+                    Cursor.ws inner;
+                    Cursor.comma inner;
+                    let value = read_num_expr inner in
+                    Cursor.ws inner;
+                    Cursor.comma inner;
+                    let max_value = read_num_expr inner in
+                    Cursor.ws inner;
+                    Cursor.expect_eof inner;
+                    Float.max min_value (Float.min value max_value))))
       | "round" -> Some (read_round_number t)
       | _ -> read_math_number_function t name)
   | _ -> None

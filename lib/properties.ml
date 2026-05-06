@@ -2801,6 +2801,67 @@ let pp_conic_gradient_config : conic_gradient_config Pp.t =
       pp_position_value ctx p
   | None -> ()
 
+let pp_webkit_gradient_point ctx = function
+  | Webkit_gradient.Left_top ->
+      Pp.string ctx (if Pp.minified ctx then "0 0" else "left top")
+  | Webkit_gradient.Left_bottom ->
+      Pp.string ctx (if Pp.minified ctx then "0 100%" else "left bottom")
+  | Webkit_gradient.Center ->
+      Pp.string ctx (if Pp.minified ctx then "50% 50%" else "center center")
+  | Webkit_gradient.Position position -> pp_position_value ctx position
+
+let pp_webkit_gradient_position ctx (pct : percentage) =
+  match (Pp.minified ctx, pct) with
+  | true, Pct value -> Pp.float ctx (value /. 100.)
+  | _ -> pp_percentage ctx pct
+
+let pp_webkit_gradient_stop ctx = function
+  | Webkit_gradient.From color -> Pp.call "from" pp_color ctx color
+  | Webkit_gradient.To color -> Pp.call "to" pp_color ctx color
+  | Webkit_gradient.Color_stop (Pct 0., color)
+  | Webkit_gradient.Color_stop (Num 0., color) ->
+      Pp.call "from" pp_color ctx color
+  | Webkit_gradient.Color_stop (Pct 100., color)
+  | Webkit_gradient.Color_stop (Num 1., color) ->
+      Pp.call "to" pp_color ctx color
+  | Webkit_gradient.Color_stop (position, color) ->
+      Pp.call "color-stop"
+        (fun ctx (position, color) ->
+          pp_webkit_gradient_position ctx position;
+          Pp.comma ctx ();
+          pp_color ctx color)
+        ctx (position, color)
+
+let pp_webkit_gradient : Webkit_gradient.t Pp.t =
+ fun ctx -> function
+  | Webkit_gradient.Linear { start; finish; stops } ->
+      Pp.call "-webkit-gradient"
+        (fun ctx (start, finish, stops) ->
+          Pp.string ctx "linear";
+          Pp.comma ctx ();
+          pp_webkit_gradient_point ctx start;
+          Pp.comma ctx ();
+          pp_webkit_gradient_point ctx finish;
+          Pp.comma ctx ();
+          Pp.list ~sep:Pp.comma pp_webkit_gradient_stop ctx stops)
+        ctx (start, finish, stops)
+  | Webkit_gradient.Radial
+      { inner_center; inner_radius; outer_center; outer_radius; stops } ->
+      Pp.call "-webkit-gradient"
+        (fun ctx (inner_center, inner_radius, outer_center, outer_radius, stops) ->
+          Pp.string ctx "radial";
+          Pp.comma ctx ();
+          pp_webkit_gradient_point ctx inner_center;
+          Pp.comma ctx ();
+          Pp.float ctx inner_radius;
+          Pp.comma ctx ();
+          pp_webkit_gradient_point ctx outer_center;
+          Pp.comma ctx ();
+          Pp.float ctx outer_radius;
+          Pp.comma ctx ();
+          Pp.list ~sep:Pp.comma pp_webkit_gradient_stop ctx stops)
+        ctx (inner_center, inner_radius, outer_center, outer_radius, stops)
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
@@ -2865,6 +2926,7 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "cross-fade"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_cross_fade_option ctx os)
         ctx options
+  | Webkit_gradient gradient -> pp_webkit_gradient ctx gradient
   | Var v -> pp_var pp_background_image ctx v
   | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
   | None -> Pp.string ctx "none"
@@ -5988,6 +6050,7 @@ let rec pp_background : background Pp.t =
   | Unset -> Pp.string ctx "unset"
   | None -> Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
   | Var v -> pp_var pp_background ctx v
+  | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_background) ctx vars
   | Shorthand s -> pp_background_shorthand ctx s
 
 (* Helpers for transform-origin *)
@@ -6136,6 +6199,7 @@ let rec pp_color_scheme : color_scheme Pp.t =
       Pp.string ctx "light";
       Pp.space ctx ();
       Pp.string ctx "dark"
+  | Custom names -> Pp.list ~sep:Pp.space Pp.string ctx names
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -9038,12 +9102,15 @@ let rec read_flex_flow t : flex_flow =
       Flow (!direction, !wrap))
     t
 
+let read_non_negative_flex_number t =
+  match (Values.read_number t : Values.number) with
+  | Num value ->
+      if value < 0. then Cursor.err_invalid t "negative number not allowed";
+      value
+  | _ -> Cursor.err_invalid t "flex number must resolve to a number"
+
 let rec read_flex_factor t : flex_factor =
-  let read_number t =
-    let value = Cursor.number t in
-    if value < 0. then Cursor.err_invalid t "negative number not allowed";
-    (Number value : flex_factor)
-  in
+  let read_number t = (Number (read_non_negative_flex_number t) : flex_factor) in
   Cursor.enum_or_calls "flex factor"
     [
       ("inherit", (Inherit : flex_factor));
@@ -9129,9 +9196,10 @@ module Flex = struct
   let read_basis_only t = Basis (read_flex_basis t)
 
   let read_grow_shrink_basis t =
-    (* Parse grow [shrink] [basis]. [Cursor.number] matches only bare
-       [Number_tok] tokens, so a [50%] or [10px] would already fail here. *)
-    let grow = Cursor.number t in
+    (* Parse grow [shrink] [basis]. A [50%] or [10px] still fails here because
+       the flex factors must be unitless numbers, but static CSS math functions
+       like [clamp(1, 5.2, 20)] may resolve to a number. *)
+    let grow = read_non_negative_flex_number t in
     let _ = () in
     match () with
     | () -> (
@@ -9139,7 +9207,7 @@ module Flex = struct
           Cursor.option
             (fun t ->
               Cursor.ws t;
-              Cursor.number t)
+              read_non_negative_flex_number t)
             t
         in
 
@@ -12034,47 +12102,37 @@ let rec read_appearance t : appearance =
     t
 
 let rec read_color_scheme t : color_scheme =
-  let read_only t =
+  let rec read_idents acc =
     Cursor.ws t;
-    match Cursor.ident t with
-    | "light" -> (
-        Cursor.ws t;
-        match Cursor.option Cursor.ident t with
-        | Some "dark" -> Only_light_dark
-        | Some s ->
-            Cursor.err t ("invalid color-scheme value after only light: " ^ s)
-        | None -> Only_light)
-    | "dark" -> Only_dark
-    | s -> Cursor.err t ("invalid color-scheme value after only: " ^ s)
+    if Cursor.is_done t || Cursor.peek_semicolon t then List.rev acc
+    else read_idents (Cursor.ident t :: acc)
   in
-  let read_keyword t =
-    let first = Cursor.ident t in
-    match first with
-    | "normal" -> Normal
-    | "light" -> (
-        Cursor.ws t;
-        match Cursor.option Cursor.ident t with
-        | Some "dark" -> Light_dark
-        | Some s -> Cursor.err t ("invalid color-scheme value after light: " ^ s)
-        | _ -> Light)
-    | "dark" -> (
-        Cursor.ws t;
-        match Cursor.option Cursor.ident t with
-        | Some s -> Cursor.err t ("invalid color-scheme value after dark: " ^ s)
-        | _ -> Dark)
-    | "only" -> read_only t
-    | "inherit" -> Inherit
-    | "initial" -> Initial
-    | "unset" -> Unset
-    | "revert" -> Revert
-    | "revert-layer" -> Revert_layer
-    | _ -> Cursor.err t ("invalid color-scheme value: " ^ first)
+  let known_or_custom names =
+    match names with
+    | [ "normal" ] -> Normal
+    | [ "light" ] -> Light
+    | [ "dark" ] -> Dark
+    | [ "light"; "dark" ] | [ "dark"; "light" ] -> Light_dark
+    | [ "only"; "light" ] | [ "light"; "only" ] -> Only_light
+    | [ "only"; "dark" ] | [ "dark"; "only" ] -> Only_dark
+    | [ "only"; "light"; "dark" ]
+    | [ "only"; "dark"; "light" ]
+    | [ "light"; "dark"; "only" ]
+    | [ "dark"; "light"; "only" ] ->
+        Only_light_dark
+    | [ "inherit" ] -> Inherit
+    | [ "initial" ] -> Initial
+    | [ "unset" ] -> Unset
+    | [ "revert" ] -> Revert
+    | [ "revert-layer" ] -> Revert_layer
+    | [] -> Cursor.err t "empty color-scheme"
+    | names -> Custom names
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
     when String.equal (String.lowercase_ascii name) "var" ->
       Var (Values.read_var read_color_scheme t)
-  | _ -> read_keyword t
+  | _ -> known_or_custom (read_idents [])
 
 let rec read_print_color_adjust t : print_color_adjust =
   Cursor.enum_or_var "print-color-adjust"
@@ -14411,11 +14469,103 @@ let rec read_bg_image t : background_image =
                 fun t -> Cursor.call "image-set" t read_image_set_body );
               ( "cross-fade",
                 fun t -> Cursor.call "cross-fade" t read_cross_fade_body );
+              ( "-webkit-gradient",
+                fun t ->
+                  Cursor.call "-webkit-gradient" t read_webkit_gradient_body );
               ("var", fun t -> Var (Values.read_var read_bg_image t));
             ]
           t);
     ]
     t
+
+and read_webkit_gradient_point t =
+  match read_position_value t with
+  | Left_top | Top_left -> Webkit_gradient.Left_top
+  | Left_bottom | Bottom_left -> Webkit_gradient.Left_bottom
+  | Center -> Webkit_gradient.Center
+  | position -> Webkit_gradient.Position position
+
+and read_webkit_gradient_stop t =
+  let color_arg name inner =
+    Cursor.ws inner;
+    let color = read_color inner in
+    Cursor.ws inner;
+    Cursor.expect_eof inner;
+    match name with
+    | "from" -> Webkit_gradient.From color
+    | "to" -> Webkit_gradient.To color
+    | _ -> assert false
+  in
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = ("from" | "to") as name; _ }; _ }) ->
+      Cursor.call name t (color_arg name)
+  | Some (Component.Func { node = { name = "color-stop"; _ }; _ }) ->
+      Cursor.call "color-stop" t (fun inner ->
+          Cursor.ws inner;
+          let position = read_percentage inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          Cursor.ws inner;
+          let color = read_color inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Webkit_gradient.Color_stop (position, color))
+  | _ -> Cursor.err_expected t "-webkit-gradient color stop"
+
+and read_webkit_gradient_radius t =
+  match Cursor.number_opt t with
+  | Some radius -> radius
+  | None -> Cursor.err_expected t "-webkit-gradient radius"
+
+and read_webkit_gradient_body t =
+  Cursor.ws t;
+  let kind = Cursor.ident t |> String.lowercase_ascii in
+  Cursor.ws t;
+  Cursor.comma t;
+  match kind with
+  | "linear" ->
+      Cursor.ws t;
+      let start = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let finish = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let stops =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
+      in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Webkit_gradient (Webkit_gradient.Linear { start; finish; stops })
+  | "radial" ->
+      Cursor.ws t;
+      let inner_center = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let inner_radius = read_webkit_gradient_radius t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let outer_center = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let outer_radius = read_webkit_gradient_radius t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let stops =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
+      in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Webkit_gradient
+        (Webkit_gradient.Radial
+           { inner_center; inner_radius; outer_center; outer_radius; stops })
+  | _ -> Cursor.err_invalid t ("-webkit-gradient kind: " ^ kind)
 
 and read_image_set_body t : background_image =
   Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
@@ -14530,6 +14680,12 @@ let minify_gradient_stop : gradient_stop -> gradient_stop = function
   | Color_percentage (c, p1, p2) -> Color_percentage (minify_color c, p1, p2)
   | s -> s
 
+let minify_webkit_gradient_stop = function
+  | Webkit_gradient.From color -> Webkit_gradient.From (minify_color color)
+  | Webkit_gradient.To color -> Webkit_gradient.To (minify_color color)
+  | Webkit_gradient.Color_stop (position, color) ->
+      Webkit_gradient.Color_stop (position, minify_color color)
+
 let minify_background_image : background_image -> background_image = function
   | Linear_gradient (dir, stops) ->
       Linear_gradient (dir, List.map minify_gradient_stop stops)
@@ -14537,6 +14693,14 @@ let minify_background_image : background_image -> background_image = function
       Radial_gradient (config, List.map minify_gradient_stop stops)
   | Conic_gradient (config, stops) ->
       Conic_gradient (config, List.map minify_gradient_stop stops)
+  | Webkit_gradient (Webkit_gradient.Linear ({ stops; _ } as gradient)) ->
+      Webkit_gradient
+        (Webkit_gradient.Linear
+           { gradient with stops = List.map minify_webkit_gradient_stop stops })
+  | Webkit_gradient (Webkit_gradient.Radial ({ stops; _ } as gradient)) ->
+      Webkit_gradient
+        (Webkit_gradient.Radial
+           { gradient with stops = List.map minify_webkit_gradient_stop stops })
   | img -> img
 
 let read_any_property t =
@@ -15505,7 +15669,33 @@ let read_background_shorthand t : background_shorthand =
   acc
 
 let rec read_background t : background =
-  let read_var_call t : background = Var (read_var read_background t) in
+  let read_var_call t : background =
+    let first = read_var read_background t in
+    let rec loop acc =
+      Cursor.ws t;
+      if Cursor.looking_at_func "var" t then
+        loop (read_var read_background t :: acc)
+      else List.rev acc
+    in
+    match loop [ first ] with
+    | [ var ] -> Var var
+    | vars -> Vars vars
+  in
+  let read_var_sequence t : background =
+    let rec loop acc =
+      Cursor.ws t;
+      if Cursor.looking_at_func "var" t then
+        loop (read_var read_background t :: acc)
+      else List.rev acc
+    in
+    let snap = Cursor.save t in
+    let vars = loop [] in
+    match vars with
+    | _ :: _ :: _ -> Vars vars
+    | _ ->
+        Cursor.restore t snap;
+        Cursor.err_expected t "background var() sequence"
+  in
   let read_keyword_or_shorthand t =
     let snap = Cursor.save t in
     match Cursor.ident_opt t with
@@ -15535,7 +15725,8 @@ let rec read_background t : background =
   Cursor.enum_or_calls "background"
     [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
     ~calls:[ ("var", read_var_call) ]
-    ~default:read_keyword_or_shorthand t
+    ~default:(fun t -> Cursor.one_of [ read_var_sequence; read_keyword_or_shorthand ] t)
+    t
 
 let read_backgrounds t : background list =
   Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
