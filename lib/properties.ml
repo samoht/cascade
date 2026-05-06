@@ -13501,66 +13501,88 @@ let rec read_overlay t : overlay =
     t
 
 let read_transition_shorthand t : transition_shorthand =
-  (* Parse transition shorthand: property duration timing-function delay. CSS
-     Transitions 2 8.1: every component is optional, so when the first token is
-     not an [<ident>] / [var()] (e.g. a [<duration>] like [0.3s]) the property
-     defaults to [all]. *)
-  let starts_with_property t =
+  (* CSS Transitions 2 §8.1: a [<single-transition>] is the unordered
+     juxtaposition [<transition-property>? || <time>? || <easing-function>? ||
+     <time>?]. The two [<time>] slots are duration then delay in document order,
+     but property and easing can appear anywhere. *)
+  let property = ref Option.None in
+  let times : duration list ref = ref [] in
+  let timing_function = ref Option.None in
+  let behavior = ref Option.None in
+  let try_property t =
     match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
-    | Some (Component.Func { node = { name = "var"; _ }; _ }) -> true
+    | Some (Component.Preserved { kind = Token.Ident _; _ })
+    | Some (Component.Func { node = { name = "var"; _ }; _ })
+      when Option.is_none !property -> (
+        let snap = Cursor.save t in
+        try
+          let p = read_transition_property_value t in
+          property := Option.Some p;
+          true
+        with Cursor.Parse_error _ ->
+          Cursor.restore t snap;
+          false)
     | _ -> false
   in
+  let try_timing t =
+    if Option.is_some !timing_function then false
+    else
+      let snap = Cursor.save t in
+      try
+        let v = read_timing_function t in
+        timing_function := Option.Some v;
+        true
+      with Cursor.Parse_error _ ->
+        Cursor.restore t snap;
+        false
+  in
+  let try_behavior t =
+    if Option.is_some !behavior then false
+    else
+      let snap = Cursor.save t in
+      try
+        let v = read_transition_behavior t in
+        behavior := Option.Some v;
+        true
+      with Cursor.Parse_error _ ->
+        Cursor.restore t snap;
+        false
+  in
+  let try_time t =
+    if List.length !times >= 2 then false
+    else
+      let snap = Cursor.save t in
+      try
+        let v = read_duration t in
+        times := v :: !times;
+        true
+      with Cursor.Parse_error _ ->
+        Cursor.restore t snap;
+        false
+  in
+  let consumed = ref true in
+  while !consumed do
+    Cursor.ws t;
+    consumed := try_timing t || try_time t || try_behavior t || try_property t
+  done;
   let property =
-    if starts_with_property t then read_transition_property_value t
-    else (All : transition_property_value)
+    match !property with
+    | Option.Some p -> p
+    | Option.None -> (All : transition_property_value)
   in
-
-  (* Duration: required for regular properties, optional for 'all', 'none', and
-     var() *)
-  let duration =
-    match property with
-    | All | None | Initial | Inherit | Unset | Revert | Revert_layer | Var _ ->
-        (* For 'all', 'none', and var(), duration is optional *)
-        Cursor.option
-          (fun t ->
-            Cursor.ws t;
-            read_duration t)
-          t
-    | Property _ ->
-        (* For regular properties, duration is required *)
-        Cursor.ws t;
-        Some (read_duration t)
+  let duration, delay =
+    match List.rev !times with
+    | [] -> (Option.None, Option.None)
+    | [ d ] -> (Option.Some d, Option.None)
+    | d :: l :: _ -> (Option.Some d, Option.Some l)
   in
-
-  (* Optional timing function *)
-  let timing_function =
-    Cursor.option
-      (fun t ->
-        Cursor.ws t;
-        read_timing_function t)
-      t
-  in
-
-  (* Optional delay *)
-  let delay =
-    Cursor.option
-      (fun t ->
-        Cursor.ws t;
-        read_duration t)
-      t
-  in
-
-  (* Optional behavior (transition-behavior, Transitions Level 2) *)
-  let behavior =
-    Cursor.option
-      (fun t ->
-        Cursor.ws t;
-        read_transition_behavior t)
-      t
-  in
-
-  { property; duration; timing_function; delay; behavior }
+  {
+    property;
+    duration;
+    timing_function = !timing_function;
+    delay;
+    behavior = !behavior;
+  }
 
 let rec read_transition t : transition =
   Cursor.enum "transition"
