@@ -450,6 +450,7 @@ let refs_of_media_value : Media.value -> string list = function
   | Length value ->
       refs_of_component_string
         (Pp.to_string (Values.pp_length ~always:true) value)
+  | Function (_, args) -> refs_of_component_string args
   | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
 
 let rec refs_of_media : Media.t -> string list = function

@@ -725,8 +725,10 @@ and pp_statement : statement Pp.t =
           Pp.char ctx ' ';
           Pp.string ctx n
       | None -> ());
-      Pp.string ctx " ";
-      Pp.string ctx (Container.to_string ~minify:ctx.minify condition);
+      let condition_str = Container.to_string ~minify:ctx.minify condition in
+      if condition_str <> "" then (
+        Pp.char ctx ' ';
+        Pp.string ctx condition_str);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->

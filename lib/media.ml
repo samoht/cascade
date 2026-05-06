@@ -109,6 +109,10 @@ type value =
   | Ratio of int * int
   | Resolution_value of float * string
   | Ident of ident
+  | Function of string * string
+      (** [env(--name)] / [var(--name)] / [attr(...)] / [calc(...)] etc.
+          captured as a function name plus its raw argument body for
+          round-trip; cascade doesn't yet evaluate them at parse time. *)
 
 type feature =
   | Plain of name * value
@@ -404,12 +408,17 @@ let pp_value : value Pp.t =
       Pp.string ctx (format_float n);
       Pp.string ctx unit
   | Ident s -> Pp.string ctx (string_of_ident s)
+  | Function (name, args) ->
+      Pp.string ctx name;
+      Pp.char ctx '(';
+      Pp.string ctx args;
+      Pp.char ctx ')'
 
-(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
-   form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
-   name in one place so the typed and string-valued printers below share the
-   same parsing - the only [String.sub] / [String.length] arithmetic in the
-   file. *)
+(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the
+   range form [X >= V] / [X <= V]. [as_min_max] returns the comparison and
+   stripped name in one place so the typed and string-valued printers below
+   share the same parsing - the only [String.sub] / [String.length]
+   arithmetic in the file. *)
 type min_max_view = Range_view of cmp * name | Plain_view
 
 let as_min_max name =
@@ -905,7 +914,6 @@ let read_value sc : value option =
                   Some (Resolution_value (f, unit))
                 else None))
   | Some _ ->
-      let mark = sc.pos in
       let id = read_ident sc in
       if id = "" then None
       else (
@@ -916,9 +924,7 @@ let read_value sc : value option =
             let args = read_balanced sc in
             match typed_function_value id args with
             | Some _ as value -> value
-            | None ->
-                sc.pos <- mark;
-                None)
+            | None -> Some (Function (id, args)))
         | _ -> Some (Ident (ident_of_string id)))
 
 let value_of_string s =
@@ -974,7 +980,14 @@ let validate_plain_feature (name : name) value =
     | Some _ -> name
     | None -> name
   in
+  (* [env()] / [var()] / [calc()] etc. produce a typed value at use time;
+     cascade can't determine the resolved type at parse time, so accept them
+     wherever a typed numeric is allowed and let the consumer do its own
+     validation. *)
+  let is_typed_function = function Function _ -> true | _ -> false in
   let valid_numeric_value (name : name) value =
+    is_typed_function value
+    ||
     match (name, value) with
     | (Width | Height | Inline_size | Block_size), Length _ -> true
     | Aspect_ratio, (Ratio _ | Integer _) -> true
@@ -986,6 +999,8 @@ let validate_plain_feature (name : name) value =
     | _ -> false
   in
   let valid_plain_numeric_value (name : name) value =
+    is_typed_function value
+    ||
     match (name, value) with
     | ( (Width | Height | Min Width | Max Width | Inline_size | Block_size),
         Length _ ) ->
@@ -1596,6 +1611,7 @@ let value_sort_key = function
   | Ratio _ -> (0, 0.)
   | Resolution_value (f, _) -> (0, f)
   | Ident _ -> (100, 0.)
+  | Function _ -> (200, 0.)
 
 let rec kind : t -> kind = function
   | Hover _ | Any_hover _ -> Hover
