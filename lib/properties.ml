@@ -9551,16 +9551,28 @@ module Grid_template = struct
 end
 
 let grid_template_needs_raw_template cvs =
-  let rec has_string = function
+  (* The typed grid-template AST handles minmax / fit-content / repeat with
+     integer counts and bare track sizes. Round-trip through the raw
+     [Template] string when the input includes a feature the typed shape
+     doesn't preserve: a string token (used by [grid-template-areas]),
+     square-bracket line names ([col-start] etc.), or [auto-fill] /
+     [auto-fit] inside [repeat()]. *)
+  let rec needs = function
     | [] -> false
     | Component.Preserved { kind = Token.String _; _ } :: _ -> true
+    | Component.Preserved { kind = Token.Ident s; _ } :: rest
+      when String.lowercase_ascii s = "auto-fill"
+           || String.lowercase_ascii s = "auto-fit" ->
+        let _ = rest in
+        true
+    | Component.Block { node = { opening = Token.Square; _ }; _ } :: _ -> true
     | Component.Block { node = { value; _ }; _ } :: rest ->
-        has_string value || has_string rest
+        needs value || needs rest
     | Component.Func { node = { arguments; _ }; _ } :: rest ->
-        has_string arguments || has_string rest
-    | _ :: rest -> has_string rest
+        needs arguments || needs rest
+    | _ :: rest -> needs rest
   in
-  has_string cvs
+  needs cvs
 
 let grid_template_top_level_slashes cvs =
   List.fold_left

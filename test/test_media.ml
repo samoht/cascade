@@ -10,10 +10,10 @@ let test_to_string () =
     (to_string (Max_width 768.));
   Alcotest.(check string)
     "prefers-color-scheme" "(prefers-color-scheme: dark)"
-    (to_string (Prefers_color_scheme `Dark));
+    (to_string (Prefers_color_scheme Dark));
   Alcotest.(check string)
     "prefers-reduced-motion" "(prefers-reduced-motion: reduce)"
-    (to_string (Prefers_reduced_motion `Reduce));
+    (to_string (Prefers_reduced_motion Reduce));
   Alcotest.(check string) "print" "print" (to_string Print);
   Alcotest.(check string)
     "media queries 5 dynamic range" "(dynamic-range: high)"
@@ -69,7 +69,7 @@ let spec_media_structural_vectors () =
   check "min-width plain feature" "(min-width: 640px)" (Min_width 640.);
   check "max-width plain feature" "(max-width: 768px)" (Max_width 768.);
   check "reduced motion feature" "(prefers-reduced-motion: reduce)"
-    (Prefers_reduced_motion `Reduce);
+    (Prefers_reduced_motion Reduce);
   check "print media type" "print" Print;
   check "empty media query list" "" (List []);
   check "negated print media type" "not print" (Negated Print);
@@ -84,7 +84,7 @@ let spec_media_structural_vectors () =
        (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.)));
   check "media type with trailing condition" "screen and (hover: hover)"
     (Type_query
-       { prefix = None; type_ = Screen; trailing = Some (Hover `Hover) });
+       { prefix = None; type_ = Screen; trailing = Some (Hover Hover) });
   check "media query list" "screen and (width >= 40em), print"
     (List
        [
@@ -118,12 +118,12 @@ let test_kind () =
     (match kind (Min_width 640.) with Responsive _ -> true | _ -> false);
   Alcotest.(check bool)
     "prefers-color-scheme is appearance" true
-    (match kind (Prefers_color_scheme `Dark) with
+    (match kind (Prefers_color_scheme Dark) with
     | Preference_appearance -> true
     | _ -> false);
   Alcotest.(check bool)
     "prefers-reduced-motion is accessibility" true
-    (match kind (Prefers_reduced_motion `Reduce) with
+    (match kind (Prefers_reduced_motion Reduce) with
     | Preference_accessibility -> true
     | _ -> false)
 
@@ -135,11 +135,11 @@ let test_spec_media_sorting_edges () =
   let sorted =
     List.sort compare
       [
-        Prefers_color_scheme `Dark;
+        Prefers_color_scheme Dark;
         Min_width 768.;
-        Hover `Hover;
+        Hover Hover;
         Max_width 1024.;
-        Prefers_reduced_motion `Reduce;
+        Prefers_reduced_motion Reduce;
         Print;
         Not_min_width 768.;
         Min_width 320.;

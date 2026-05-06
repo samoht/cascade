@@ -16,22 +16,22 @@ let media buf i =
   | 2 -> Not_min_width (Float.of_int (byte_at buf (i + 1)))
   | 3 -> Min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
   | 4 -> Not_min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
-  | 5 -> Prefers_reduced_motion `No_preference
-  | 6 -> Prefers_reduced_motion `Reduce
-  | 7 -> Prefers_contrast `More
-  | 8 -> Prefers_contrast `Less
-  | 9 -> Prefers_color_scheme `Dark
-  | 10 -> Prefers_color_scheme `Light
-  | 11 -> Forced_colors `Active
-  | 12 -> Forced_colors `None
-  | 13 -> Inverted_colors `Inverted
-  | 14 -> Pointer `Coarse
-  | 15 -> Pointer `Fine
-  | 16 -> Any_pointer `Coarse
-  | 17 -> Scripting `Enabled
-  | 18 -> Hover `Hover
+  | 5 -> Prefers_reduced_motion No_preference
+  | 6 -> Prefers_reduced_motion Reduce
+  | 7 -> Prefers_contrast More
+  | 8 -> Prefers_contrast Less
+  | 9 -> Prefers_color_scheme Dark
+  | 10 -> Prefers_color_scheme Light
+  | 11 -> Forced_colors Active
+  | 12 -> Forced_colors Css.Media.None
+  | 13 -> Inverted_colors Inverted
+  | 14 -> Pointer Coarse
+  | 15 -> Pointer Fine
+  | 16 -> Any_pointer Coarse
+  | 17 -> Scripting Enabled
+  | 18 -> Hover Hover
   | 19 -> Print
-  | 20 -> Orientation `Landscape
+  | 20 -> Orientation Landscape
   | _ ->
       of_string
         (pick
@@ -107,24 +107,19 @@ let spec_media_vector buf =
     [
       ("(min-width: 640px)", Min_width 640.);
       ("(max-width: 768px)", Max_width 768.);
-      ("(prefers-reduced-motion: reduce)", Prefers_reduced_motion `Reduce);
+      ("(prefers-reduced-motion: reduce)", Prefers_reduced_motion Reduce);
       ("print", Print);
       ("not print", Negated Print);
       ("not all and (min-width: 40px)", Not_min_width 40.);
-      ( "(width > 40em)",
-        Range (Width, Gt, length (Css.Values.Em 40.)) );
-      ( "(40em < width)",
-        Range_rev (length (Css.Values.Em 40.), Lt, Width) );
+      ("(width > 40em)", Range (Width, Gt, length (Css.Values.Em 40.)));
+      ("(40em < width)", Range_rev (length (Css.Values.Em 40.), Lt, Width));
       ( "(30em <= width < 60em)",
         Interval
-          ( length (Css.Values.Em 30.),
-            Le,
-            Width,
-            Lt,
-            length (Css.Values.Em 60.) ) );
+          (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.))
+      );
       ( "screen and (hover: hover)",
         Type_query
-          { prefix = None; type_ = Screen; trailing = Some (Hover `Hover) } );
+          { prefix = None; type_ = Screen; trailing = Some (Hover Hover) } );
       ( "screen and (width >= 40em), print",
         List
           [
@@ -132,8 +127,7 @@ let spec_media_vector buf =
               {
                 prefix = None;
                 type_ = Screen;
-                trailing =
-                  Some (Range (Width, Ge, length (Css.Values.Em 40.)));
+                trailing = Some (Range (Width, Ge, length (Css.Values.Em 40.)));
               };
             Print;
           ] );
