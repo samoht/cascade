@@ -575,6 +575,9 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mul | Div
 
+(** CSS custom-property token stream. *)
+type custom_value = Component.t list
+
 (** CSS calc values. *)
 type 'a calc =
   | Var of 'a var  (** CSS variable *)
@@ -593,7 +596,7 @@ type 'a fallback =
           likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
-  | Syntax_fallback of Component.t list
+  | Syntax_fallback of custom_value
       (** Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
@@ -6723,7 +6726,9 @@ val to_string :
       whitespace).
     - If [optimize] is [true], rule-level optimizations are applied
       (deduplication, merging consecutive rules, combining identical rules).
-    - [mode] controls variable layer emission behavior.
+    - [mode] controls variable rendering. [Inline] substitutes resolvable
+      custom-property references and drops dead custom-property definitions
+      before printing.
     - If [newline] is [true] (default), adds a trailing newline for POSIX
       compliance.
     - [theme] is the set of theme-defined variable names. When a variable name
@@ -7059,15 +7064,15 @@ val syntax_fallback : string -> 'a fallback
 (** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
     [var()] reference. *)
 
-val custom_value_ident : string -> Component.t list
+val custom_value_ident : string -> custom_value
 (** [custom_value_ident name] is a custom-property value made from one CSS
     ident. *)
 
-val custom_value_var_empty_fallback : string -> Component.t list
+val custom_value_var_empty_fallback : string -> custom_value
 (** [custom_value_var_empty_fallback name] is [var(--name,)] as structured CSS
     components, used for empty-fallback custom-property channels. *)
 
-val string_of_custom_value : Component.t list -> string
+val string_of_custom_value : custom_value -> string
 (** [string_of_custom_value value] serializes a custom-property token stream. *)
 
 module Container = Container
