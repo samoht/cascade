@@ -6610,7 +6610,7 @@ type 'a syntax =
   | Custom_ident : string syntax
   | String : string syntax
   | Url : string syntax
-  | Image : string syntax
+  | Image : background_image syntax
   | Transform_function : string syntax
   | Transform_list : string syntax
   | Universal : string syntax
