@@ -15,6 +15,9 @@ and style_query =
   | Boolean of string
   | Declaration of { name : string; value : Component.t list }
   | Range of style_range
+  | All of style_query * style_query
+  | Any of style_query * style_query
+  | Neg of style_query
 
 and style_range = {
   lower : Component.t list;
@@ -46,7 +49,7 @@ let string_of_range_operator = function
   | Gt -> ">"
   | Gte -> ">="
 
-let string_of_style_query ~minify = function
+let rec string_of_style_query ~minify = function
   | Boolean name -> name
   | Declaration { name; value } ->
       let sep = if minify then ":" else ": " in
@@ -65,6 +68,24 @@ let string_of_style_query ~minify = function
           sep;
           string_of_components upper;
         ]
+  | All (a, b) ->
+      String.concat ""
+        [
+          style_query_operand ~minify a;
+          " and ";
+          style_query_operand ~minify b;
+        ]
+  | Any (a, b) ->
+      String.concat ""
+        [
+          style_query_operand ~minify a;
+          " or ";
+          style_query_operand ~minify b;
+        ]
+  | Neg q -> String.concat "" [ "not "; style_query_operand ~minify q ]
+
+and style_query_operand ~minify q =
+  String.concat "" [ "("; string_of_style_query ~minify q; ")" ]
 
 let rec string_of_scroll_state_query ~minify = function
   | State { name; value } ->
@@ -91,7 +112,20 @@ let rec string_of_scroll_state_query ~minify = function
   | Negated q ->
       String.concat "" [ "not ("; string_of_scroll_state_query ~minify q; ")" ]
 
-let rec to_string_with ~minify t =
+let rec minified_condition = function
+  | And (a, b) ->
+      minified_operand a ^ " and " ^ minified_operand b
+  | Or (a, b) -> minified_operand a ^ " or " ^ minified_operand b
+  | Not c -> "not " ^ minified_operand c
+  | t -> to_string_with ~minify:true t
+
+and minified_operand = function
+  | Min_width_rem _ | Min_width_px _ | Style _ | Scroll_state _ | Feature_query _
+    as t ->
+      to_string_with ~minify:true t
+  | t -> "(" ^ minified_condition t ^ ")"
+
+and to_string_with ~minify t =
   match t with
   (* The typed [Min_width_*] shorthand always prints in its compact no-space
      form: it predates the [?minify] argument and existing direct callers expect
@@ -106,10 +140,15 @@ let rec to_string_with ~minify t =
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
       String.concat "" [ head; string_of_scroll_state_query ~minify query; ")" ]
   | And (a, b) ->
-      "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
+      if minify then minified_condition t
+      else
+        "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
   | Or (a, b) ->
-      "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
-  | Not c -> "(not " ^ to_string_with ~minify c ^ ")"
+      if minify then minified_condition t
+      else
+        "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
+  | Not c ->
+      if minify then minified_condition t else "(not " ^ to_string_with ~minify c ^ ")"
   | Feature_query f -> Media.to_string ~minify f
 
 let to_string ?(minify = false) t = to_string_with ~minify t
@@ -254,28 +293,29 @@ let style_range_query cvs =
       | _ -> None)
   | _ -> None
 
-let style_body ~uppercase body =
+let style_leaf_body body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
   let components = Cursor.remaining (Cursor.of_string body) in
   match split_declaration_components components with
   | Some (name_components, value) -> (
       match (style_strip_ws name_components, style_strip_ws value) with
-      | [ name_component ], _ :: _ when not (has_semicolon_component value) -> (
+      | [ name_component ], stripped_value
+        when not (has_semicolon_component value) -> (
           match ident_component name_component with
-          | Some name ->
-              Style { query = Declaration { name; value }; uppercase }
-          | None -> failwith "invalid style() container query")
+          | Some name
+            when stripped_value <> [] || is_custom_property name ->
+              Declaration { name; value }
+          | Some _ | None -> failwith "invalid style() container query")
       | _ -> failwith "invalid style() container query")
   | None -> (
       match style_range_query components with
-      | Some query -> Style { query; uppercase }
+      | Some query -> query
       | None -> (
           match style_strip_ws components with
           | [ name_component ] -> (
               match ident_component name_component with
-              | Some name when is_custom_property name ->
-                  Style { query = Boolean name; uppercase }
+              | Some name -> Boolean name
               | _ -> failwith "invalid style() container query")
           | _ -> failwith "invalid style() container query"))
 
@@ -328,11 +368,39 @@ let outer_parens_wrap_all s =
   in
   len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
 
-let strip_outer_parens s =
+let rec strip_outer_parens s =
   let s = String.trim s in
   if outer_parens_wrap_all s then
-    String.sub s 1 (String.length s - 2) |> String.trim
+    String.sub s 1 (String.length s - 2) |> strip_outer_parens
   else s
+
+let rec style_query_body body =
+  let body = strip_outer_parens body in
+  if String.length body >= 4 && String.sub body 0 4 = "not " then
+    Neg
+      (style_query_body
+         (String.sub body 4 (String.length body - 4) |> String.trim))
+  else if has_top_level_word body "and" && has_top_level_word body "or" then
+    failwith "mixed style() operators require grouping"
+  else
+    match top_level_word body "or" with
+    | Some i ->
+        let lhs = String.sub body 0 i in
+        let rhs = String.sub body (i + 2) (String.length body - i - 2) in
+        Any (style_query_body lhs, style_query_body rhs)
+    | None -> (
+        match top_level_word body "and" with
+        | Some i ->
+            let lhs = String.sub body 0 i in
+            let rhs = String.sub body (i + 3) (String.length body - i - 3) in
+            All (style_query_body lhs, style_query_body rhs)
+        | None -> style_leaf_body body)
+
+let style_body ~uppercase body =
+  let body = String.trim body in
+  if body = "" then failwith "empty style() container query";
+  try Style { query = style_query_body body; uppercase }
+  with Failure msg -> failwith (msg ^ ": " ^ body)
 
 let scroll_state_value_allowed name value =
   match name with
