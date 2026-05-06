@@ -39,15 +39,6 @@ let url_needs_quotes s =
     (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
     s
 
-let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-
-let is_ident_cont c =
-  is_ident_start c || (c >= '0' && c <= '9')
-
-let can_print_bare_ident s =
-  String.length s > 0 && is_ident_start s.[0] && String.for_all is_ident_cont s
-
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
    Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
    doesn't require whitespace between the function calls. *)
@@ -56,11 +47,9 @@ let pp_src_modifiers ctx ~format ~tech =
   | Some f ->
       Pp.sp ctx ();
       Pp.string ctx "format(";
-      if Pp.minified ctx && can_print_bare_ident f then Pp.string ctx f
-      else (
-        Pp.char ctx '"';
-        Pp.string ctx f;
-        Pp.char ctx '"');
+      Pp.char ctx '"';
+      Pp.string ctx f;
+      Pp.char ctx '"';
       Pp.char ctx ')'
   | None -> ());
   match tech with
@@ -140,6 +129,7 @@ let read_function_arg name t =
     | None -> Cursor.consume_remaining_as_string ~trim:true inner
   in
   Cursor.expect_eof inner;
+  let _ = name in
   if value = "" then Cursor.err_invalid inner (name ^ "() argument");
   value
 
@@ -193,9 +183,20 @@ let rec read_src_entry t =
       in
       modifiers None None
 
-(** Parse a src string into a list of typed entries. *)
+(** Parse a src string into a list of typed entries. CSS Fonts 4 §4.3 spells
+    [src] as a comma-separated list, but real-world input occasionally drops
+    the comma between entries ([src: local("") url(test.woff)]). Match
+    cleancss / lightningcss / esbuild and accept the whitespace-only form
+    too, treating it as if a comma were present. *)
 and read_src t =
-  let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
+  let sep t =
+    Cursor.ws t;
+    if not (Cursor.comma_opt t) then
+      (* No comma - whitespace alone separates entries; succeed silently so
+         [Cursor.list]'s peeker calls back into [read_src_entry]. *)
+      ()
+  in
+  let entries = Cursor.list ~at_least:1 ~sep read_src_entry t in
   Cursor.ws t;
   if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
     Cursor.err t "unexpected tokens after font src";

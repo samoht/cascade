@@ -730,6 +730,10 @@ type grid_template =
   | Min_content
   | Max_content
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   (* Complex track values *)
   | Min_max of grid_template * grid_template
   | Fit_content of length

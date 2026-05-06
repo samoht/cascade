@@ -84,6 +84,29 @@ let read_property_value t =
   Cursor.with_context t "property-value" @@ fun () ->
   Cursor.consume_to_decl_end ~trim:true t
 
+let is_decl_value_stop = function
+  | Component.Preserved { kind = Token.Semicolon | Token.Delim "!"; _ } -> true
+  | _ -> false
+
+let declaration_value_components t =
+  let rec take acc = function
+    | [] -> List.rev acc
+    | cv :: _ when is_decl_value_stop cv -> List.rev acc
+    | cv :: rest -> take (cv :: acc) rest
+  in
+  take [] (Cursor.remaining t)
+
+let rec component_is_complete = function
+  | Component.Preserved _ -> true
+  | Component.Block { node = { closed; value; _ }; _ } ->
+      closed && List.for_all component_is_complete value
+  | Component.Func { node = { terminated; arguments; _ }; _ } ->
+      terminated && List.for_all component_is_complete arguments
+
+let validate_complete_declaration_value t =
+  if not (List.for_all component_is_complete (declaration_value_components t))
+  then Cursor.err_invalid t "unterminated component value"
+
 let css_wide_keywords =
   [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
@@ -121,6 +144,27 @@ let read_importance t =
       if String.lowercase_ascii ident = "important" then true
       else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
   | _ -> false
+
+let is_plain_property_name name =
+  let is_start = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+    | '-' -> true
+    | _ -> false
+  in
+  let is_continue = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
+    | _ -> false
+  in
+  let len = String.length name in
+  len > 0
+  && is_start name.[0]
+  && not (len = 1 && name.[0] = '-')
+  && not (len >= 2 && name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9')
+  && String.for_all is_continue name
+
+let validate_printable_property_name t name =
+  if not (is_plain_property_name name) then
+    Cursor.err_invalid t ("unprintable property name: " ^ name)
 
 (** Check if a declaration is marked as important *)
 let rec is_important = function
@@ -1407,12 +1451,52 @@ let validate_legacy_page_break t name raw_value =
         Cursor.err_invalid t "invalid legacy page-break-inside value"
     | _ -> ()
 
+(* Properties whose grammar allows multi-token values where a CSS-wide
+   keyword can legitimately appear as a non-special ident. [font-family] is
+   the prototypical case ([font-family: inherit test] is two custom-idents);
+   [font] shorthand inherits the same allowance, and [animation-name] /
+   [grid-area] / [will-change] / etc. accept arbitrary ident lists too. *)
+let property_allows_keyword_as_ident = function
+  | "font-family" | "font" | "animation-name" | "animation"
+  | "grid-area" | "grid-row" | "grid-column" | "grid-row-start" | "grid-row-end"
+  | "grid-column-start" | "grid-column-end" | "will-change" | "view-transition-name"
+    ->
+      true
+  | _ -> false
+
 let validate_regular_property_raw t name raw_value =
-  if value_has_css_wide_mix raw_value then
-    Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+  if
+    (not (property_allows_keyword_as_ident name))
+    && value_has_css_wide_mix raw_value
+  then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
   if name = "all" && not (is_css_wide_value raw_value) then
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
+
+let is_unsupported_color_fallback name raw_value =
+  String.contains raw_value '('
+  &&
+  match name with
+  | "color" | "background-color" | "border-color" | "border-top-color"
+  | "border-right-color" | "border-bottom-color" | "border-left-color"
+  | "border-inline-start-color" | "border-inline-end-color"
+  | "text-decoration-color" | "-webkit-text-decoration-color"
+  | "-webkit-tap-highlight-color" | "outline-color" | "accent-color"
+  | "caret-color" | "fill" | "stroke" ->
+      true
+  | _ -> false
+
+let is_unknown_property_name name =
+  let r = Cursor.of_string name in
+  match read_any_property r with
+  | Prop (Opaque_property _) ->
+      Cursor.ws r;
+      Cursor.is_done r
+  | Prop _ -> false
+  | exception Cursor.Parse_error _ -> false
+
+let can_fallback_to_opaque name raw_value =
+  is_unknown_property_name name || is_unsupported_color_fallback name raw_value
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
@@ -1423,6 +1507,8 @@ let read_font_src_declaration t raw_value =
   if is_important then important decl else decl
 
 let read_opaque_property_declaration t name =
+  validate_printable_property_name t name;
+  validate_complete_declaration_value t;
   let raw_value = Cursor.consume_to_decl_end ~trim:true t in
   let is_important = read_importance t in
   validate_no_extra_tokens t;
@@ -1461,7 +1547,8 @@ let read_regular_property_declaration t : declaration =
   if String.equal name "src" then read_font_src_declaration t raw_value
   else
     try read_typed_property_declaration t start
-    with Cursor.Parse_error _ ->
+    with Cursor.Parse_error _ as exn ->
+      if not (can_fallback_to_opaque name raw_value) then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii (read_property_name t) in
       Cursor.ws t;

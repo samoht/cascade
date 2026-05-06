@@ -226,7 +226,8 @@ and font_face_descriptor =
   | Font_stretch_range of string  (** variable font stretch range *)
   | Font_display of Properties.font_display
       (** auto, block, swap, fallback, optional *)
-  | Unicode_range of Properties.unicode_range  (** Unicode range *)
+  | Unicode_range of Properties.unicode_range list
+      (** CSS Fonts 4 §4.5 comma-separated [unicode-range] list. *)
   | Font_variant of string  (** Font variant settings - TODO: proper type *)
   | Font_feature_settings of string
       (** OpenType feature settings - TODO: proper type *)

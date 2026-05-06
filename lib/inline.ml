@@ -254,8 +254,8 @@ let simplify_unicode_range_descriptor visible (value : Properties.unicode_range)
 
 let simplify_font_face_descriptor visible = function
   | Src value -> Src (simplify_font_src_descriptor visible value)
-  | Unicode_range value ->
-      Unicode_range (simplify_unicode_range_descriptor visible value)
+  | Unicode_range values ->
+      Unicode_range (List.map (simplify_unicode_range_descriptor visible) values)
   | descriptor -> descriptor
 
 let eval_page_declaration visible ctx decl =

@@ -442,8 +442,10 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_stretch_range value -> pp_descriptor "font-stretch" Pp.string value
   | Font_display value ->
       pp_descriptor "font-display" Properties.pp_font_display value
-  | Unicode_range value ->
-      pp_descriptor "unicode-range" Properties.pp_unicode_range value
+  | Unicode_range values ->
+      pp_descriptor "unicode-range"
+        (fun ctx vs -> Pp.list ~sep:Pp.comma Properties.pp_unicode_range ctx vs)
+        values
   | Font_variant value -> pp_descriptor "font-variant" Pp.string value
   | Font_feature_settings value ->
       pp_descriptor "font-feature-settings" Pp.string value
@@ -634,19 +636,8 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "\";"
   | Import { url; layer; supports; media } ->
       Pp.string ctx "@import";
-      (* Drop the space when minified output starts the URL with a string
-         literal: a quote is a self-delimiting token boundary, so emitting
-         [@import] immediately followed by the string token tokenises the
-         same as the spaced form. *)
       let url_str = Pp.to_string ~minify:ctx.Pp.minify pp_import_url url in
-      let needs_space =
-        (not (Pp.minified ctx))
-        || String.length url_str = 0
-        ||
-        let c = url_str.[0] in
-        c <> '"' && c <> '\''
-      in
-      if needs_space then Pp.char ctx ' ';
+      Pp.char ctx ' ';
       Pp.string ctx url_str;
       (match layer with
       | Some l ->
@@ -821,8 +812,7 @@ and pp_statement : statement Pp.t =
       | None -> ());
       (match end_ with
       | Some e ->
-          if Option.is_some start && Pp.minified ctx then Pp.string ctx "to("
-          else Pp.string ctx " to (";
+          Pp.string ctx " to (";
           pp_scope_selector ctx e;
           Pp.string ctx ")"
       | None -> ());
@@ -1469,8 +1459,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
             (fun v -> Font_display v)
             r
       | "unicode-range" ->
-          read_descriptor_value Properties.read_unicode_range
-            (fun v -> Unicode_range v)
+          read_descriptor_value
+            (fun cur ->
+              Cursor.list ~at_least:1 ~sep:Cursor.comma
+                Properties.read_unicode_range cur)
+            (fun vs -> Unicode_range vs)
             r
       | "font-variant" ->
           read_descriptor_value Declaration.read_property_value

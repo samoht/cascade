@@ -40,6 +40,9 @@ type any_syntax = Syntax : 'a syntax -> any_syntax
 
 (** {1 Types} *)
 
+type custom_value = Component.t list
+(** CSS custom-property token stream. *)
+
 type any_var =
   | V : 'a var -> any_var
       (** Existential wrapper for CSS variables of any type *)

@@ -1720,6 +1720,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Grid template *)
   | Grid_auto_columns, value -> vars_of_grid_template value
   | Grid_auto_rows, value -> vars_of_grid_template value
+  | Grid, value -> vars_of_grid_template value
   | Grid_template, value -> vars_of_grid_template value
   | Grid_template_columns, value -> vars_of_grid_template value
   | Grid_template_rows, value -> vars_of_grid_template value
