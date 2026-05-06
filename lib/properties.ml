@@ -1869,7 +1869,7 @@ module Cursor_prop = struct
     let url =
       match Cursor.string_opt t with
       | Some s -> String.trim s
-      | None -> Cursor.consume_remaining_to_string ~trim:true t
+      | None -> Cursor.consume_remaining_as_string ~trim:true t
     in
     Cursor.ws t;
     let hotspot =
@@ -8840,7 +8840,7 @@ let rec read_baseline_shift t : baseline_shift =
       Shift (Values.read_length_percentage ~with_keywords:false t))
     t
 
-let calc_to_string (type a) (expr : a calc) : string =
+let string_of_calc (type a) (expr : a calc) : string =
   let buf = Buffer.create 32 in
   let add = Buffer.add_string buf in
   let rec pp_expr : type a. a calc -> unit = function
@@ -8895,7 +8895,7 @@ let rec read_z_index t : z_index =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)
     | Some _ -> Cursor.err_invalid t "z-index calc must evaluate to integer"
-    | None -> Calc (calc_to_string expr)
+    | None -> Calc (string_of_calc expr)
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
   Cursor.enum_or_calls "z-index"
@@ -8923,7 +8923,7 @@ let rec read_order t : order =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> (Int (int_of_float f) : order)
     | Some _ -> Cursor.err_invalid t "order calc must evaluate to integer"
-    | None -> (Calc (calc_to_string expr) : order)
+    | None -> (Calc (string_of_calc expr) : order)
   in
   let read_var t : order = Var (read_var read_order t) in
   Cursor.enum_or_calls "order"
@@ -9333,7 +9333,7 @@ let rec read_grid_line t : grid_line =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Num (int_of_float f)
     | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
-    | None -> Calc (calc_to_string expr)
+    | None -> Calc (string_of_calc expr)
   in
   Cursor.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
@@ -12739,7 +12739,7 @@ module Timing_function = struct
 
   let read_linear_function t : timing_function =
     Cursor.call "linear" t (fun t ->
-        let body = Cursor.consume_remaining_to_string ~trim:true t in
+        let body = Cursor.consume_remaining_as_string ~trim:true t in
         if body = "" then Cursor.err t "linear() requires at least one stop";
         Linear_function body)
 
@@ -13078,7 +13078,7 @@ let animation_shorthand_kind = function
 
 let animation_quoted_or_name s =
   match animation_reserved_string_name (String.lowercase_ascii s) with
-  | Some _ -> Quoted s
+  | Some _ -> (Quoted s : animation_name)
   | None -> (
       match animation_shorthand_kind (String.lowercase_ascii s) with
       | Some _ -> Ambiguous s
@@ -15706,7 +15706,7 @@ let read_clip_path_rect t =
 
 let read_clip_path_shape t =
   Cursor.call "shape" t (fun inner ->
-      Clip_path_shape (Cursor.consume_remaining_to_string ~trim:true inner))
+      Clip_path_shape (Cursor.consume_remaining_as_string ~trim:true inner))
 
 let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;

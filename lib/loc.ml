@@ -41,12 +41,12 @@ module Path = struct
   let to_list t = t
   let of_labels labels = List.map (fun label -> Label label) labels
 
-  let step_to_string = function
+  let string_of_step = function
     | Mem s -> s
     | Nth n -> "[" ^ string_of_int n ^ "]"
     | Label s -> s
 
-  let to_labels t = List.map step_to_string t
+  let to_labels t = List.map string_of_step t
   let pp : t Pp.t = fun ctx t -> Pp.string ctx (String.concat "/" (to_labels t))
 end
 

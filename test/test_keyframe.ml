@@ -7,7 +7,7 @@ let test_position_roundtrip () =
     (fun (str, expected) ->
       Alcotest.(check string)
         ("position " ^ str) str
-        (position_to_string expected))
+        (string_of_position expected))
     cases
 
 let test_position_parse () =
@@ -88,7 +88,7 @@ let test_spec_keyframe_selector_vectors () =
 
 let test_selector_roundtrip () =
   let sel = Positions [ From; To ] in
-  let s = selector_to_string sel in
+  let s = string_of_selector sel in
   Alcotest.(check string) "from, to" "from, to" s
 
 let spec_keyframe_duplicate_offsets () =
@@ -98,7 +98,7 @@ let spec_keyframe_duplicate_offsets () =
   let check input expected =
     Alcotest.(check string)
       input expected
-      (selector_of_string input |> selector_to_string)
+      (selector_of_string input |> string_of_selector)
   in
   check "50%, 50%" "50%, 50%";
   check "from, 0%, 100%, to" "from, 0%, 100%, to";

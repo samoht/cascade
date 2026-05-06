@@ -276,7 +276,7 @@ let read_shape_outside t =
   let accept_var () =
     let _ : string var =
       Values.read_var
-        (fun inner -> Cursor.consume_remaining_to_string ~trim:true inner)
+        (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)
         t
     in
     Cursor.expect_eof t;

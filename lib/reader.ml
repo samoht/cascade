@@ -752,40 +752,40 @@ let take max_count parser t =
 (* New enhanced combinators *)
 
 let css_value ~stops t =
-  let rec parse_until acc depth in_quote quote_char =
+  let rec collect_until acc depth in_quote quote_char =
     match peek t with
     | None -> String.concat "" (List.rev acc)
     | Some c when in_quote ->
         skip t;
         if c = quote_char then
-          parse_until (String.make 1 c :: acc) depth false '\000'
+          collect_until (String.make 1 c :: acc) depth false '\000'
         else if c = '\\' then (
           (* Handle escape sequence *)
           match peek t with
           | None ->
-              parse_until (String.make 1 c :: acc) depth in_quote quote_char
+              collect_until (String.make 1 c :: acc) depth in_quote quote_char
           | Some next_c ->
               skip t;
-              parse_until
+              collect_until
                 (String.make 1 next_c :: String.make 1 c :: acc)
                 depth in_quote quote_char)
-        else parse_until (String.make 1 c :: acc) depth in_quote quote_char
+        else collect_until (String.make 1 c :: acc) depth in_quote quote_char
     | Some (('"' | '\'') as q) ->
         skip t;
-        parse_until (String.make 1 q :: acc) depth true q
+        collect_until (String.make 1 q :: acc) depth true q
     | Some (('(' | '[' | '{') as c) ->
         skip t;
-        parse_until (String.make 1 c :: acc) (depth + 1) in_quote quote_char
+        collect_until (String.make 1 c :: acc) (depth + 1) in_quote quote_char
     | Some ((')' | ']' | '}') as c) when depth > 0 ->
         skip t;
-        parse_until (String.make 1 c :: acc) (depth - 1) in_quote quote_char
+        collect_until (String.make 1 c :: acc) (depth - 1) in_quote quote_char
     | Some c when depth = 0 && List.mem c stops ->
         String.concat "" (List.rev acc)
     | Some c ->
         skip t;
-        parse_until (String.make 1 c :: acc) depth in_quote quote_char
+        collect_until (String.make 1 c :: acc) depth in_quote quote_char
   in
-  String.trim (parse_until [] 0 false '\000')
+  String.trim (collect_until [] 0 false '\000')
 
 let enum_impl ?default label mapping t =
   (* Try to match enum value first using option combinator *)

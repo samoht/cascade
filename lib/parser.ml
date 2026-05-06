@@ -177,7 +177,7 @@ let escape_string ~quote ~terminated s =
   if terminated then Buffer.add_char buf quote;
   Buffer.contents buf
 
-let token_kind_to_string : Token.kind -> string = function
+let string_of_token_kind : Token.kind -> string = function
   | Token.Ident s -> escape_ident s
   | Token.Function s -> escape_ident s ^ "("
   | Token.At_keyword s -> "@" ^ escape_ident s
@@ -331,7 +331,7 @@ let normal_pair_needs_token_boundary prev next =
   | _ -> false
 
 let rec cv_to_buffer buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer buf value;
@@ -422,7 +422,7 @@ let word_like_start : Component.t -> bool = function
   | Block _ -> false
 
 let rec cv_to_buffer_min buf = function
-  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min buf value;
@@ -543,7 +543,7 @@ let to_string_minified cvs =
     Buffer.contents buf
 
 let rec cv_to_buffer_custom buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_custom buf value;
@@ -606,7 +606,7 @@ let url_args_as_bare_string args =
   | _ -> None
 
 let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom buf value;

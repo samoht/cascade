@@ -6,14 +6,14 @@ type position =
   | To  (** [to] or [100%] *)
   | Percent of float  (** Percentage like [50%] *)
 
-val position_to_string : position -> string
-(** [position_to_string pos] renders a position as CSS string. *)
+val string_of_position : position -> string
+(** [string_of_position pos] renders a position as CSS string. *)
 
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list
 
-val selector_to_string : selector -> string
-(** [selector_to_string sel] renders a selector as CSS string. *)
+val string_of_selector : selector -> string
+(** [string_of_selector sel] renders a selector as CSS string. *)
 
 val position_compare : position -> position -> int
 (** [position_compare a b] compares two positions for sorting. *)

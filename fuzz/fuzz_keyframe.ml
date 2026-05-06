@@ -20,7 +20,7 @@ let test_position_roundtrip buf =
   match Css.Keyframe.position_of_string buf with
   | None -> ()
   | Some pos -> (
-      let s = Css.Keyframe.position_to_string pos in
+      let s = Css.Keyframe.string_of_position pos in
       match Css.Keyframe.position_of_string s with
       | None -> fail "position roundtrip failed"
       | Some pos2 ->
@@ -32,7 +32,7 @@ let test_selector_roundtrip buf =
   match Css.Keyframe.selector_of_string buf with
   | exception Invalid_argument _ -> ()
   | sel ->
-      let s = Css.Keyframe.selector_to_string sel in
+      let s = Css.Keyframe.string_of_selector sel in
       let sel2 = Css.Keyframe.selector_of_string s in
       if not (Css.Keyframe.selector_equal sel sel2) then
         fail "selector roundtrip mismatch"
@@ -60,11 +60,11 @@ let test_position_serialization_idempotent buf =
   match Css.Keyframe.position_of_string buf with
   | None -> ()
   | Some pos -> (
-      let once = Css.Keyframe.position_to_string pos in
+      let once = Css.Keyframe.string_of_position pos in
       match Css.Keyframe.position_of_string once with
       | None -> fail "serialized keyframe position did not re-parse"
       | Some pos2 ->
-          let twice = Css.Keyframe.position_to_string pos2 in
+          let twice = Css.Keyframe.string_of_position pos2 in
           if once <> twice then fail "keyframe position serialization drifted")
 
 (** position_compare — must not crash on any valid pair. *)
@@ -86,9 +86,9 @@ let test_generated_duplicate_selector_preserved buf =
       ((if String.length buf = 0 then 0 else Char.code buf.[0]) mod 101)
   in
   let input =
-    Css.Keyframe.position_to_string (Css.Keyframe.Percent pct)
+    Css.Keyframe.string_of_position (Css.Keyframe.Percent pct)
     ^ ", "
-    ^ Css.Keyframe.position_to_string (Css.Keyframe.Percent pct)
+    ^ Css.Keyframe.string_of_position (Css.Keyframe.Percent pct)
   in
   match Css.Keyframe.selector_of_string input with
   | exception Invalid_argument _ ->

@@ -36,8 +36,8 @@ let safe_component_input buf =
 let test_cursor_crash_safety buf =
   let c = cursor buf in
   ignore (Css.Cursor.peek c);
-  ignore (Css.Cursor.remaining_to_string c);
-  ignore (Css.Cursor.consume_remaining_to_string c);
+  ignore (Css.Cursor.string_of_remaining c);
+  ignore (Css.Cursor.consume_remaining_as_string c);
   ignore (Css.Cursor.is_done c)
 
 let test_save_restore_remaining_stable buf =
@@ -46,38 +46,38 @@ let test_save_restore_remaining_stable buf =
   ignore (Css.Cursor.next c);
   ignore (Css.Cursor.next c);
   Css.Cursor.restore c snap;
-  let before = Css.Cursor.remaining_to_string c in
+  let before = Css.Cursor.string_of_remaining c in
   let snap2 = Css.Cursor.save c in
   ignore (Css.Cursor.next c);
   ignore (Css.Cursor.next c);
   Css.Cursor.restore c snap2;
-  let after = Css.Cursor.remaining_to_string c in
+  let after = Css.Cursor.string_of_remaining c in
   if before <> after then
     fail
       (Fmt.str "cursor restore changed remaining text: %S -> %S" before after)
 
 let test_lookahead_does_not_advance buf =
   let c = cursor buf in
-  let before = Css.Cursor.remaining_to_string c in
+  let before = Css.Cursor.string_of_remaining c in
   ignore (Css.Cursor.lookahead (fun c -> Css.Cursor.next c) c);
-  let after = Css.Cursor.remaining_to_string c in
+  let after = Css.Cursor.string_of_remaining c in
   if before <> after then fail "cursor lookahead advanced the stream"
 
 let test_option_rewinds_on_failure buf =
   let c = cursor buf in
-  let before = Css.Cursor.remaining_to_string c in
+  let before = Css.Cursor.string_of_remaining c in
   ignore (Css.Cursor.option (fun c -> Css.Cursor.expect '\000' c) c);
-  let after = Css.Cursor.remaining_to_string c in
+  let after = Css.Cursor.string_of_remaining c in
   if before <> after then fail "cursor option did not rewind after failure"
 
 let test_components_to_string_idempotent buf =
   let input = safe_component_input buf in
   let c = Css.Cursor.of_string input in
-  let once = Css.Cursor.remaining_to_string c in
+  let once = Css.Cursor.string_of_remaining c in
   let c2 = Css.Cursor.of_string once in
-  let twice = Css.Cursor.remaining_to_string c2 in
+  let twice = Css.Cursor.string_of_remaining c2 in
   let c3 = Css.Cursor.of_string twice in
-  let thrice = Css.Cursor.remaining_to_string c3 in
+  let thrice = Css.Cursor.string_of_remaining c3 in
   if twice <> thrice then
     fail
       (Fmt.str "cursor component serialization did not stabilize: %S -> %S"
@@ -104,7 +104,7 @@ let test_list_bounds_stable _buf =
       Css.Cursor.ident c
   in
   if List.length parsed > 2 then fail "cursor list ignored at_most";
-  let remaining = Css.Cursor.remaining_to_string c in
+  let remaining = Css.Cursor.string_of_remaining c in
   if remaining = "" then fail "cursor list overconsumed after at_most"
 
 let suite =

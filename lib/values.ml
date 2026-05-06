@@ -322,7 +322,8 @@ let pp_unit ?(always = true) ctx f suffix =
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
        fractional values ([.25rem], not [0.25rem]); we follow that canonical
        form in both minified and pretty output. *)
-    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f));
+    Pp.string ctx
+      (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f));
     Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -399,7 +400,7 @@ let top_level_arg_count s =
    are left untouched. *)
 (* Parse a [<number><unit>] dimension, like "1px" or "-.5em". Returns
    [Some (value, unit)] for a clean numeric dimension, [None] otherwise. *)
-let parse_simple_dimension s : (float * string) option =
+let simple_dimension_of_string s : (float * string) option =
   let s = String.trim s in
   let len = String.length s in
   if len = 0 then Option.None
@@ -444,9 +445,9 @@ let split_top_level_commas s =
 
 (* Parse one [min()] / [max()] argument: either a simple dimension or a nested
    [min()] / [max()] that itself reduces to a constant. *)
-let rec parse_min_max_arg s : (float * string) option =
+let rec min_max_arg_of_string s : (float * string) option =
   let s = String.trim s in
-  match parse_simple_dimension s with
+  match simple_dimension_of_string s with
   | Option.Some _ as r -> r
   | Option.None ->
       let len = String.length s in
@@ -467,7 +468,7 @@ let rec parse_min_max_arg s : (float * string) option =
 
 and try_reduce_min_max op args : (float * string) option =
   let parts = split_top_level_commas args in
-  let parsed = List.map parse_min_max_arg parts in
+  let parsed = List.map min_max_arg_of_string parts in
   if List.exists Option.is_none parsed then Option.None
   else
     match List.filter_map (fun x -> x) parsed with
@@ -489,17 +490,17 @@ and try_reduce_min_max op args : (float * string) option =
     | _ -> Option.None
 
 let format_simple_dimension f unit =
-  Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
+  Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
 
 let try_reduce_min_max_args op args =
   let parts = split_top_level_commas args in
-  let parsed = List.map parse_simple_dimension parts in
+  let parsed = List.map simple_dimension_of_string parts in
   if List.exists Option.is_none parsed then Option.None
   else
     let groups = Hashtbl.create 4 in
     List.iteri
       (fun pos part ->
-        match parse_simple_dimension part with
+        match simple_dimension_of_string part with
         | Option.None -> ()
         | Option.Some (n, unit) -> (
             match Hashtbl.find_opt groups unit with
@@ -1500,7 +1501,7 @@ let minify_relative_color_alpha body =
             String.concat ""
               [
                 String.sub body 0 (slash + 1);
-                Pp.float_to_string ~drop_leading_zero:true (f /. 100.);
+                Pp.string_of_float ~drop_leading_zero:true (f /. 100.);
               ]
         | None -> body)
 
@@ -2038,7 +2039,7 @@ let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
 (** Print a float always dropping leading zeros (for oklab a/b values) *)
 let pp_float_drop_zero ctx f =
-  Buffer.add_string ctx.Pp.buf (Pp.float_to_string ~drop_leading_zero:true f)
+  Buffer.add_string ctx.Pp.buf (Pp.string_of_float ~drop_leading_zero:true f)
 
 let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
@@ -2055,7 +2056,7 @@ let pp_oklab_float ~max_decimals ctx f =
   if ctx.Pp.minify then pp_float_drop_zero ctx (Pp.round_sig 6 f)
   else
     Buffer.add_string ctx.Pp.buf
-      (Pp.float_to_string ~drop_leading_zero:true ~max_decimals f)
+      (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
 
 let pp_oklab_ab ctx = function
   | Some f -> pp_oklab_float ~max_decimals:3 ctx f
@@ -2405,8 +2406,8 @@ let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
     pp_unit ctx f suffix
   else
     let in_seconds = f /. 1000. in
-    let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
-    let s_str = Pp.float_to_string ~drop_leading_zero:true in_seconds in
+    let ms_str = Pp.string_of_float ~drop_leading_zero:true f in
+    let s_str = Pp.string_of_float ~drop_leading_zero:true in_seconds in
     if String.length s_str + 1 <= String.length ms_str + 2 then (
       Pp.string ctx s_str;
       Pp.string ctx "s")
@@ -2925,7 +2926,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
           match String.lowercase_ascii name with
           | "clamp" ->
               let s =
-                Cursor.consume_remaining_to_string inner |> normalize_math_args
+                Cursor.consume_remaining_as_string inner |> normalize_math_args
               in
               let groups = top_level_arg_count s in
               if groups <> 3 then
@@ -2934,7 +2935,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               else Clamp s
           | "minmax" ->
               let s =
-                Cursor.consume_remaining_to_string inner |> normalize_math_args
+                Cursor.consume_remaining_as_string inner |> normalize_math_args
               in
               if top_level_arg_count s <> 2 then
                 Cursor.err_invalid inner
@@ -2942,14 +2943,14 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               else Minmax s
           | "min" ->
               let s =
-                Cursor.consume_remaining_to_string inner |> normalize_math_args
+                Cursor.consume_remaining_as_string inner |> normalize_math_args
               in
               if top_level_arg_count s < 1 then
                 Cursor.err_invalid inner "min() requires at least one argument"
               else Min s
           | "max" ->
               let s =
-                Cursor.consume_remaining_to_string inner |> normalize_math_args
+                Cursor.consume_remaining_as_string inner |> normalize_math_args
               in
               if top_level_arg_count s < 1 then
                 Cursor.err_invalid inner "max() requires at least one argument"
@@ -3030,7 +3031,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               Cursor.expect_eof inner;
               Calc_size (basis, calc)
           | "anchor-size" ->
-              let size = Cursor.consume_remaining_to_string ~trim:true inner in
+              let size = Cursor.consume_remaining_as_string ~trim:true inner in
               if size = "" then Cursor.err_expected inner "anchor-size argument";
               Anchor_size size
           | "anchor" ->
@@ -3670,7 +3671,7 @@ and read_relative_rgb t : color =
   if relative_color_has_empty_alpha tail_components then
     Cursor.err_expected t "relative rgb alpha";
   let tail =
-    Cursor.consume_remaining_to_string ~trim:true t
+    Cursor.consume_remaining_as_string ~trim:true t
     |> normalize_relative_color_tail
   in
   if tail = "" then Cursor.err_expected t "relative rgb channels";

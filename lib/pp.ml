@@ -219,7 +219,7 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let s = trim_decimal_suffix s in
   format_decimal ~drop_leading_zero s max_decimals is_neg
 
-let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
+let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
   match classify_float f with
   | FP_zero -> "0"
@@ -243,13 +243,13 @@ let round_sig n f =
     Float.round (f *. factor) /. factor
 
 let float ctx f =
-  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
+  Buffer.add_string ctx.buf (string_of_float ~drop_leading_zero:true f)
 
 let float_compact ctx f =
-  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
+  Buffer.add_string ctx.buf (string_of_float ~drop_leading_zero:true f)
 
 let float_n n ctx f =
-  let s = float_to_string ~drop_leading_zero:true ~max_decimals:n f in
+  let s = string_of_float ~drop_leading_zero:true ~max_decimals:n f in
   Buffer.add_string ctx.buf s
 
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
