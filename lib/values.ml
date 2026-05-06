@@ -2000,6 +2000,35 @@ and pp_hue_interpolation : hue_interpolation Pp.t =
   | Decreasing -> Pp.string ctx "decreasing"
   | Default -> ()
 
+let static_component_can_touch_negative (component : component) =
+  match component with
+  | Num _ | Pct _ -> true
+  | Angle _ | Var _ | Calc _ | Component_none -> false
+
+let static_component_starts_negative (component : component) =
+  match component with
+  | Num f | Pct f -> f < 0.
+  | Angle _ | Var _ | Calc _ | Component_none -> false
+
+let pp_color_components : component list Pp.t =
+ fun ctx -> function
+  | [] -> ()
+  | first :: rest ->
+      pp_component ctx first;
+      let rec loop prev = function
+        | [] -> ()
+        | component :: rest ->
+            if
+              not
+                (Pp.minified ctx
+                && static_component_can_touch_negative prev
+                && static_component_starts_negative component)
+            then Pp.space ctx ();
+            pp_component ctx component;
+            loop component rest
+      in
+      loop first rest
+
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
  fun ctx (r, g, b, alpha) ->
@@ -2183,7 +2212,7 @@ and pp_color' ctx space components alpha =
       | [] -> ()
       | _ ->
           Pp.space ctx ();
-          Pp.list ~sep:Pp.space pp_component ctx components);
+          pp_color_components ctx components);
       pp_opt_alpha ctx alpha)
     ctx (space, components, alpha)
 
@@ -2892,8 +2921,112 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
                  Cursor.ws inner;
                  Cursor.expect_eof inner;
                  mod_value a b))
+      (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
+         time to a [Num] so the surrounding [calc()] can fold further. The
+         input syntax for trig is [<angle> | <number>]; a bare number is
+         treated as radians per the spec. *)
+      | "sqrt" ->
+          Num (Cursor.call "sqrt" t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Float.sqrt v))
+      | "abs" ->
+          Num (Cursor.call "abs" t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Float.abs v))
+      | "sign" ->
+          Num (Cursor.call "sign" t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              if v > 0. then 1. else if v < 0. then -1. else 0.))
+      | "exp" ->
+          Num (Cursor.call "exp" t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Float.exp v))
+      | "log" ->
+          Num (Cursor.call "log" t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              let base =
+                if Cursor.comma_opt inner then Some (Cursor.number inner)
+                else None
+              in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              match base with
+              | None -> Float.log v
+              | Some b -> Float.log v /. Float.log b))
+      | "pow" ->
+          Num (Cursor.call "pow" t (fun inner ->
+              let a = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let b = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Float.pow a b))
+      | "hypot" ->
+          Num (Cursor.call "hypot" t (fun inner ->
+              let nums = Cursor.list ~sep:Cursor.comma ~at_least:1
+                  Cursor.number inner in
+              Cursor.expect_eof inner;
+              let sum_sq = List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums in
+              Float.sqrt sum_sq))
+      | ("sin" | "cos" | "tan") as fn ->
+          Num (Cursor.call fn t (fun inner ->
+              let radians = read_angle_or_radians inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              match fn with
+              | "sin" -> Float.sin radians
+              | "cos" -> Float.cos radians
+              | "tan" -> Float.tan radians
+              | _ -> assert false))
+      | ("asin" | "acos" | "atan") as fn ->
+          Num (Cursor.call fn t (fun inner ->
+              let v = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              let result_rad =
+                match fn with
+                | "asin" -> Float.asin v
+                | "acos" -> Float.acos v
+                | "atan" -> Float.atan v
+                | _ -> assert false
+              in
+              result_rad *. 180. /. Float.pi))
+      | "atan2" ->
+          Num (Cursor.call "atan2" t (fun inner ->
+              let y = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let x = Cursor.number inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Float.atan2 y x *. 180. /. Float.pi))
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
+
+(* CSS Values 4 §10.7.1: trig functions accept [<angle>] (degrees, radians,
+   turns, gradians) or a bare [<number>] interpreted as radians. *)
+and read_angle_or_radians t =
+  Cursor.ws t;
+  let snap = Cursor.save t in
+  match Cursor.number_with_unit t with
+  | n, Some "deg" -> n *. Float.pi /. 180.
+  | n, Some "rad" -> n
+  | n, Some "turn" -> n *. 2. *. Float.pi
+  | n, Some "grad" -> n *. Float.pi /. 200.
+  | n, None -> n
+  | _, Some _ ->
+      Cursor.restore t snap;
+      Cursor.err_invalid t "expected angle or number"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -2916,12 +3049,37 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       else
         let read_val t = Val (read_a t) in
         let read_num t = (Num (Cursor.number t) : a calc) in
+        (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity],
+           [-infinity], [NaN]) appear as bare identifiers inside [calc()]. *)
+        let read_math_constant t : a calc =
+          let snap = Cursor.save t in
+          match Cursor.ident_opt t with
+          | Some name -> (
+              match String.lowercase_ascii name with
+              | "pi" -> Num Float.pi
+              | "e" -> Num (Float.exp 1.)
+              | "infinity" -> Num Float.infinity
+              | "-infinity" -> Num Float.neg_infinity
+              | "nan" -> Num Float.nan
+              | _ ->
+                  Cursor.restore t snap;
+                  Cursor.err t "expected math constant")
+          | None ->
+              Cursor.restore t snap;
+              Cursor.err t "expected math constant"
+        in
         (* CSS Values 4 10.7: a dimension factor like [-1px] or [-5em] should be
            read as [Val] (full dimension) before falling back to [Num] (a raw
            number). Otherwise [Cursor.number] consumes the [-1] and leaves [px]
            hanging in the input. *)
         Cursor.one_of
-          [ read_calc_zero; read_calc_numeric_function; read_val; read_num ]
+          [
+            read_calc_zero;
+            read_calc_numeric_function;
+            read_val;
+            read_num;
+            read_math_constant;
+          ]
           t
 
 and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
@@ -3129,6 +3287,10 @@ let rec read_alpha t : alpha =
   Cursor.ws t;
   let read_var_alpha t : alpha = Var (read_var read_alpha t) in
   let read_calc_alpha t : alpha = Calc (read_calc read_alpha t) in
+  let read_none t : alpha =
+    Cursor.expect_string "none" t;
+    None
+  in
   let read_pct t : alpha =
     (* Alpha percentages are clamped to 0-100 per CSS spec *)
     Pct (Cursor.pct ~clamp:true t)
@@ -3139,7 +3301,7 @@ let rec read_alpha t : alpha =
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
     Num (max 0. (min 1. n))
   in
-  Cursor.one_of [ read_var_alpha; read_calc_alpha; read_pct; read_num ] t
+  Cursor.one_of [ read_var_alpha; read_calc_alpha; read_none; read_pct; read_num ] t
 
 (** Read optional alpha component *)
 and read_optional_alpha t : alpha =
