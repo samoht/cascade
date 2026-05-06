@@ -2190,8 +2190,23 @@ let test_color_interpolation () =
 let test_background_image () =
   check_background_image "none";
   check_background_image "url(image.jpg)";
+  (* CSS Images 4 linear-gradient prelude: [ <angle> | to <side-or-corner> ]? ||
+     <color-interpolation-method>. A direction, an interpolation method, or both
+     in either order are valid. *)
+  check_background_image ~expected:"linear-gradient(in oklab,red,#00f)"
+    "linear-gradient(in oklab, red, blue)";
   check_background_image ~expected:"linear-gradient(to right,red,#00f)"
     "linear-gradient(to right, red, blue)";
+  check_background_image ~expected:"linear-gradient(to right in oklab,red,#00f)"
+    "linear-gradient(to right in oklab, red, blue)";
+  check_background_image ~expected:"linear-gradient(to right in oklab,red,#00f)"
+    "linear-gradient(in oklab to right, red, blue)";
+  check_background_image ~minify:false
+    ~expected:"linear-gradient(in oklab, red, blue)"
+    "linear-gradient(in oklab, red, blue)";
+  check_background_image ~minify:false
+    ~expected:"linear-gradient(to right in oklab, red, blue)"
+    "linear-gradient(in oklab to right, red, blue)";
   neg_cursor read_background_image "invalid-image"
 
 let test_radial_shape () =

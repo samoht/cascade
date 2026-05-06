@@ -353,7 +353,14 @@ let property_grammar_vectors =
       [ "1s 2s 3s"; "infinite infinite" ];
     vector "background-image" Css.Properties.read_background_image
       Css.Properties.pp_background_image
-      [ "none"; "url(a.png)"; "linear-gradient(red, blue)" ]
+      [
+        "none";
+        "url(a.png)";
+        "linear-gradient(red, blue)";
+        "linear-gradient(in oklab, red, blue)";
+        "linear-gradient(to right in oklab, red, blue)";
+        "linear-gradient(in oklab to right, red, blue)";
+      ]
       [ "linear-gradient()"; "image-set()" ];
     vector "background" Css.Properties.read_background
       Css.Properties.pp_background
@@ -786,6 +793,9 @@ let test_property_value_branch_depth_positive buf =
          content-box";
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
          1x,url(a.png) type(\"image/png\") 1x)";
+        "background-image:linear-gradient(in oklab,red,blue)";
+        "background-image:linear-gradient(to right in oklab,red,blue)";
+        "background-image:linear-gradient(in oklab to right,red,blue)";
         "background-image:cross-fade(url(a.png) 40%,url(b.png))";
         "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
         "mask-border:url(mask.svg) 30 fill";

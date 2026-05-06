@@ -1021,6 +1021,9 @@ type color =
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
   | Relative_rgb of string
+  | Relative_color of string * string
+      (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for relative
+          color functions other than [rgb()]. *)
   | Contrast_color of color
   | Light_dark of color * color
   | Attribute of string * color option

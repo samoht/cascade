@@ -399,7 +399,10 @@ let pp_value : value Pp.t =
   | Length l -> pp_length ctx l
   | Integer i -> Pp.string ctx (Int.to_string i)
   | Number f -> Pp.string ctx (format_float f)
-  | Ratio (n, 1) -> Pp.string ctx (Int.to_string n)
+  | Ratio (n, 1) when Pp.minified ctx -> Pp.string ctx (Int.to_string n)
+  | Ratio (n, 1) ->
+      Pp.string ctx (Int.to_string n);
+      Pp.string ctx "/1"
   | Ratio (n, d) ->
       Pp.string ctx (Int.to_string n);
       Pp.char ctx '/';

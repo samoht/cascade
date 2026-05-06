@@ -878,6 +878,8 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
+let flatten_rule_ref : (rule -> statement list) ref = ref (fun _ -> assert false)
+
 (* Shared predicates for media block optimization *)
 let rec should_consolidate cond =
   match cond with
@@ -1272,23 +1274,6 @@ let merge_layer_declarations (stmts : statement list) : statement list =
   in
   merge [] stmts
 
-(* CSS Cascade L6 paragraph 2: [@import] must precede style rules, [@namespace],
-   and any non-conditional content. An [@import] appearing later is invalid and
-   contributes nothing. The recovering parser keeps it in the AST for fidelity;
-   the optimizer drops it so [--minify] output is valid. *)
-let drop_misplaced_imports stmts =
-  let body_seen = ref false in
-  List.filter
-    (fun stmt ->
-      match stmt with
-      | Charset _ | Layer_decl _ -> true
-      | Import _ when !body_seen -> false
-      | Import _ | Namespace _ -> true
-      | _ ->
-          body_seen := true;
-          true)
-    stmts
-
 (* Main statement processing function with layer optimization *)
 (* CSS Cascade 6.1: a rule with no declarations and no nested rules
    contributes nothing to the cascade. Drop it under [~optimize:true]
@@ -1323,7 +1308,7 @@ let rec statements (stmts : statement list) : statement list =
   |> drop_empty_rules
 
 and statements_top_level (stmts : statement list) : statement list =
-  drop_misplaced_imports stmts |> statements |> merge_consecutive_layers
+  statements stmts |> merge_consecutive_layers
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
@@ -1337,11 +1322,45 @@ and process_statements (acc : statement list) (remaining : statement list) :
         | rest -> (List.rev rules_acc, rest)
       in
       let plain_rules, rest = collect_rules [ r ] rest in
+      let rec statement_has_scope = function
+        | Scope _ -> true
+        | Rule rule -> List.exists statement_has_scope rule.nested
+        | Media (_, block)
+        | Container (_, _, block)
+        | Supports (_, block)
+        | Layer (_, block)
+        | Origin (_, block)
+        | Starting_style block
+        | When (_, block)
+        | Else (_, block) ->
+            List.exists statement_has_scope block
+        | _ -> false
+      in
+      let rule_has_scope_nested rule =
+        List.exists statement_has_scope rule.nested
+      in
+      let flattened_scope_rules =
+        List.concat_map
+          (fun rule ->
+            if rule_has_scope_nested rule then !flatten_rule_ref rule
+            else [ Rule rule ])
+          plain_rules
+      in
+      if List.exists (function Rule _ -> false | _ -> true) flattened_scope_rules
+      then
+        let optimized = statements flattened_scope_rules in
+        process_statements (List.rev_append optimized acc) rest
+      else
       (* Optimize this batch of consecutive rules, including their nested
          statements *)
-      let optimized = rules_aux plain_rules in
-      let as_statements = List.map (fun r -> Rule r) optimized in
-      process_statements (List.rev_append as_statements acc) rest
+        let rules =
+          List.map
+            (function Rule rule -> rule | _ -> assert false)
+            flattened_scope_rules
+        in
+        let optimized = rules_aux rules in
+        let as_statements = List.map (fun r -> Rule r) optimized in
+        process_statements (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
       (* Just optimize the block and pass through - grouping happens later *)
       let optimized_block = statements block in
@@ -1522,6 +1541,8 @@ and flatten_block (block : statement list) : statement list =
   List.concat_map flatten_top_statement block
 
 let flatten_nesting (stylesheet : t) : t = flatten_block stylesheet
+
+let () = flatten_rule_ref := flatten_rule
 
 (** {1 Stylesheet Optimization} *)
 

@@ -131,6 +131,9 @@ let matrix =
           "none";
           "url(a.png)";
           "linear-gradient(red, blue)";
+          "linear-gradient(in oklab, red, blue)";
+          "linear-gradient(to right in oklab, red, blue)";
+          "linear-gradient(in oklab to right, red, blue)";
           "image-set(url(a.avif) type(\"image/avif\") 1x, url(a.png) \
            type(\"image/png\") 1x)";
           "cross-fade(url(a.png) 40%, url(b.png))";

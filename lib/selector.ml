@@ -1534,9 +1534,12 @@ let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
 (* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
    spelling for the four original pseudo-elements. Minified output uses the
-   shorter valid alias; pretty output uses the modern double-colon spelling. *)
-let legacy_elem ctx _form name =
-  let prefix = if Pp.minified ctx then ":" else "::" in
+   shorter valid alias; pretty output preserves the parsed colon form. *)
+let legacy_elem ctx form name =
+  let prefix =
+    if Pp.minified ctx then ":"
+    else match form with Single -> ":" | Double -> "::"
+  in
   Pp.string ctx (prefix ^ name)
 
 let func ctx name pp_content value =
