@@ -283,7 +283,7 @@ let rec boundary_shape = function
       (("origin:" ^ origin) :: List.concat_map boundary_shape block)
       @ [ "/origin" ]
   | Charset _ -> [ "charset" ]
-  | Keyframes _ | Webkit_keyframes _ -> [ "keyframes" ]
+  | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
@@ -308,7 +308,8 @@ let anonymous_layer_count ss =
     | Origin (_, block) ->
         block_count block
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
-    | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
+    | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+    | Font_face _ | Page _
     | Page_with_margins _ | Font_palette_values _ | View_transition _
     | Position_try _ | Property _ | Supports_condition _ ->
         0

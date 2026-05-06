@@ -198,6 +198,17 @@ module Stylesheet = struct
           }
         in
         Webkit_keyframes (name, List.map eval_frame frames)
+    | Moz_keyframes (name, frames) ->
+        let eval_frame frame =
+          {
+            frame with
+            keyframe_declarations =
+              List.map
+                (Declaration.eval ~layer_order ?layer ctx)
+                frame.keyframe_declarations;
+          }
+        in
+        Moz_keyframes (name, List.map eval_frame frames)
     | Page (selector, declarations) ->
         Page
           ( selector,
