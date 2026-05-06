@@ -3214,18 +3214,31 @@ let simplify_font_src ?layer_order ?layer ctx value =
   Var_residual.simplify ?layer_order ?layer ctx ops value
 
 let simplify_animation_item ?layer_order ?layer ctx duration value =
+  let name_from_timing_var (var : Properties.timing_function Values.var) =
+    Option.bind
+      (lookup_custom_property ?layer ?layer_order ctx var.Values.name)
+      (read_custom_components Properties.read_animation_name)
+  in
   let simplify_leaf _simplify ~authored:_ ~visited:_
       (value : Properties.animation) =
     match value with
     | Properties.Shorthand (shorthand : Properties.animation_shorthand) ->
+        let name, timing_function =
+          match (shorthand.name, shorthand.timing_function) with
+          | None, Some (Properties.Var var) -> (
+              match name_from_timing_var var with
+              | Some name -> (Some name, None)
+              | None -> (shorthand.name, shorthand.timing_function))
+          | _ -> (shorthand.name, shorthand.timing_function)
+        in
         let shorthand : Properties.animation_shorthand =
           {
             name =
               Option.map
                 (simplify_animation_name ?layer_order ?layer ctx)
-                shorthand.name;
+                name;
             duration = Option.map duration shorthand.duration;
-            timing_function = shorthand.timing_function;
+            timing_function;
             delay = Option.map duration shorthand.delay;
             iteration_count = shorthand.iteration_count;
             direction = shorthand.direction;

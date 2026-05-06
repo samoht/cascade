@@ -360,6 +360,10 @@ let property_grammar_vectors =
         "linear-gradient(in oklab, red, blue)";
         "linear-gradient(to right in oklab, red, blue)";
         "linear-gradient(in oklab to right, red, blue)";
+        "radial-gradient(in oklab, red, blue)";
+        "radial-gradient(circle at center in oklab, red, blue)";
+        "conic-gradient(in hsl longer hue, red, blue)";
+        "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
       ]
       [ "linear-gradient()"; "image-set()" ];
     vector "background" Css.Properties.read_background
@@ -367,7 +371,13 @@ let property_grammar_vectors =
       [ "red"; "url(a.png) no-repeat center/cover"; "none" ]
       [ "red blue"; "url(" ];
     vector "content" Css.Properties.read_content Css.Properties.pp_content
-      [ "normal"; "\"hello\""; "attr(title)" ]
+      [
+        "normal";
+        "\"hello\"";
+        "attr(title)";
+        "attr(data-label string, \"x y\")";
+        "attr(data-label string, var(--label, \"x y\"))";
+      ]
       [ "attr()"; "open-quote close-quote none" ];
     vector "container" Css.Properties.read_container_shorthand
       Css.Properties.pp_container_shorthand
@@ -796,6 +806,11 @@ let test_property_value_branch_depth_positive buf =
         "background-image:linear-gradient(in oklab,red,blue)";
         "background-image:linear-gradient(to right in oklab,red,blue)";
         "background-image:linear-gradient(in oklab to right,red,blue)";
+        "background-image:radial-gradient(in oklab,red,blue)";
+        "background-image:radial-gradient(circle at center in oklab,red,blue)";
+        "background-image:conic-gradient(in hsl longer hue,red,blue)";
+        "background-image:conic-gradient(from 45deg at center in hsl longer \
+         hue,red,blue)";
         "background-image:cross-fade(url(a.png) 40%,url(b.png))";
         "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
         "mask-border:url(mask.svg) 30 fill";
@@ -806,9 +821,17 @@ let test_property_value_branch_depth_positive buf =
         "width:clamp(10px,5vw,100px)";
         "width:round(nearest,10px,3px)";
         "width:calc-size(auto,size + 1rem)";
+        "width:attr(data-w px,10px)";
+        "width:attr(data-w px,calc(100% - 1rem))";
+        "width:attr(data-w px,var(--fallback,10px))";
+        "height:attr(data-h type(<length>),1rem)";
         "opacity:sign(var(--delta))";
+        "color:attr(data-color type(<color>),red)";
+        "color:attr(data-color type(<color>),var(--fallback-color,red))";
         "color:rgb(from var(--c) r g b/50%)";
         "color:color-mix(in lch longer hue,red 30%,#00f)";
+        "content:attr(data-label string,\"x y\")";
+        "content:attr(data-label string,var(--label,\"x y\"))";
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
         "font-synthesis-style:oblique-only";
         "font-synthesis-small-caps:auto";

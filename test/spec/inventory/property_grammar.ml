@@ -134,6 +134,12 @@ let matrix =
           "linear-gradient(in oklab, red, blue)";
           "linear-gradient(to right in oklab, red, blue)";
           "linear-gradient(in oklab to right, red, blue)";
+          "radial-gradient(in oklab, red, blue)";
+          "radial-gradient(in oklab circle at center, red, blue)";
+          "radial-gradient(circle at center in oklab, red, blue)";
+          "conic-gradient(in hsl longer hue, red, blue)";
+          "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
+          "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
           "image-set(url(a.avif) type(\"image/avif\") 1x, url(a.png) \
            type(\"image/png\") 1x)";
           "cross-fade(url(a.png) 40%, url(b.png))";
@@ -170,6 +176,7 @@ let matrix =
           "oklab(50% 0.1 0.2)";
           "oklch(50% 0.1 20 / .5)";
           "color-mix(in lch longer hue, red 30%, blue)";
+          "attr(data-color type(<color>), var(--fallback-color, red))";
         ];
       negatives =
         [
@@ -336,6 +343,9 @@ let matrix =
           "normal";
           "\"hello\"";
           "open-quote attr(title) close-quote";
+          "attr(data-label)";
+          "attr(data-label string, \"x y\")";
+          "attr(data-label string, var(--label, \"x y\"))";
           "counter(section)";
           "counters(section, \".\")";
         ];

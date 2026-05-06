@@ -26,8 +26,8 @@ let process_css ~input_path ~minify ~inline_imports_flag ~inline_vars_flag
       if minify then Css.optimize ~flatten_nesting:true stylesheet
       else stylesheet
     in
-    let mode = if inline_vars_flag then Css.Inline else Css.Variables in
-    Cli_io.print_output (Css.to_string ~minify ~mode stylesheet)
+    let output = Css.to_string ~minify ~mode:Css.Variables stylesheet in
+    Cli_io.print_output output
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;

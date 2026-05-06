@@ -598,6 +598,22 @@ type 'a fallback =
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
 
+type attr_syntax = Length | Length_percentage | Color | Number | Percentage
+
+type attr_type =
+  | Type of attr_syntax
+  | Unit of string
+  | Raw_string
+  | Number_type
+
+type 'a attr_fallback = No_fallback | Empty_fallback | Attr_fallback of 'a
+
+type 'a attr_call = {
+  name : string;
+  type_ : attr_type option;
+  fallback : 'a attr_fallback;
+}
+
 (** {2:values CSS Values & Units}
 
     Core value types used across CSS properties.
@@ -692,6 +708,8 @@ type length =
   | Anchor_size of string  (** CSS [anchor-size()] function *)
   | Anchor of string option * string * length option
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
+  | Attr of length attr_call
+      (** CSS [attr()] in typed value contexts (CSS Values 5 §10). *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
 

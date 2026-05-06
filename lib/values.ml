@@ -244,6 +244,45 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
+let string_of_attr_syntax : attr_syntax -> string = function
+  | Length -> "<length>"
+  | Length_percentage -> "<length-percentage>"
+  | Color -> "<color>"
+  | Number -> "<number>"
+  | Percentage -> "<percentage>"
+
+let pp_attr_type ctx (type_ : attr_type) =
+  match type_ with
+  | Type syntax ->
+      Pp.string ctx "type(";
+      Pp.string ctx (string_of_attr_syntax syntax);
+      Pp.char ctx ')'
+  | Unit unit_ -> Pp.string ctx unit_
+  | Raw_string -> Pp.string ctx "raw-string"
+  | Number_type -> Pp.string ctx "number"
+
+let pp_attr_call pp_value ctx (attr : _ attr_call) =
+  Pp.string ctx attr.name;
+  Option.iter
+    (fun type_ ->
+      Pp.space ctx ();
+      pp_attr_type ctx type_)
+    attr.type_;
+  match attr.fallback with
+  | No_fallback -> ()
+  | Empty_fallback -> Pp.comma ctx ()
+  | Attr_fallback value ->
+      Pp.comma ctx ();
+      pp_value ctx value
+
+let attr_syntax_of_string : string -> attr_syntax option = function
+  | "<length>" -> Some Length
+  | "<length-percentage>" -> Some Length_percentage
+  | "<color>" -> Some Color
+  | "<number>" -> Some Number
+  | "<percentage>" -> Some Percentage
+  | _ -> None
+
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
@@ -1256,6 +1295,7 @@ let rec pp_length ?(always = false) : length Pp.t =
               Pp.comma ctx ();
               pp_length ~always ctx fallback)
         ctx (name, side, fallback)
+  | Attr attr -> Pp.call "attr" (pp_attr_call (pp_length ~always)) ctx attr
   | Var v -> pp_var (pp_length ~always) ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -3362,6 +3402,48 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Anchor (name, side, fallback)
+          | "attr" ->
+              let read_type inner =
+                Cursor.ws inner;
+                let body =
+                  Cursor.consume_remaining_as_string ~trim:true inner
+                in
+                match attr_syntax_of_string body with
+                | Some syntax -> Type syntax
+                | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
+              in
+              let read_type_hint inner : attr_type option =
+                Cursor.ws inner;
+                if Cursor.is_done inner || Cursor.peek_comma inner then
+                  Option.None
+                else if Cursor.looking_at_func "type" inner then
+                  Option.Some (Cursor.call "type" inner read_type)
+                else
+                  match Cursor.ident_opt inner with
+                  | Some "raw-string" -> Option.Some Raw_string
+                  | Some "number" -> Option.Some Number_type
+                  | Some unit_ -> Option.Some (Unit unit_)
+                  | None when Cursor.peek_delim inner = Some '%' ->
+                      Cursor.expect '%' inner;
+                      Option.Some (Unit "%")
+                  | None -> Cursor.err_expected inner "attr() type"
+              in
+              Cursor.ws inner;
+              let name = Cursor.ident ~keep_case:true inner in
+              let type_ = read_type_hint inner in
+              Cursor.ws inner;
+              let fallback =
+                if Cursor.comma_opt inner then (
+                  Cursor.ws inner;
+                  if Cursor.is_done inner then Empty_fallback
+                  else
+                    Attr_fallback
+                      (read_length ~allow_negative ~with_keywords inner))
+                else No_fallback
+              in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Attr { name; type_; fallback }
           | _ -> Cursor.err t ("unknown function " ^ name))
         t
     with
@@ -4764,11 +4846,11 @@ let rec read_component t : component =
         Num (max 0. (min 255. n))
 
 (* Var helper functions *)
-let var_name v = v.name
-let var_layer v = v.layer
-let var_meta v = v.meta
+let var_name (v : 'a var) = v.name
+let var_layer (v : 'a var) = v.layer
+let var_meta (v : 'a var) = v.meta
 
-let with_fallback v fallback_value =
+let with_fallback (v : 'a var) fallback_value : 'a var =
   { v with fallback = Fallback fallback_value }
 
 (** Read padding shorthand property (1-4 values) *)

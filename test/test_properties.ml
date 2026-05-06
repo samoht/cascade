@@ -2207,6 +2207,28 @@ let test_background_image () =
   check_background_image ~minify:false
     ~expected:"linear-gradient(to right in oklab, red, blue)"
     "linear-gradient(in oklab to right, red, blue)";
+  check_background_image ~expected:"radial-gradient(in oklab,red,#00f)"
+    "radial-gradient(in oklab, red, blue)";
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,#00f)"
+    "radial-gradient(in oklab circle at center, red, blue)";
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,#00f)"
+    "radial-gradient(circle at center in oklab, red, blue)";
+  check_background_image ~expected:"conic-gradient(in hsl longer hue,red,#00f)"
+    "conic-gradient(in hsl longer hue, red, blue)";
+  check_background_image
+    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
+  check_background_image
+    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
+  check_background_image ~minify:false
+    ~expected:"radial-gradient(in oklab, red, blue)"
+    "radial-gradient(in oklab, red, blue)";
+  check_background_image ~minify:false
+    ~expected:"conic-gradient(in hsl longer hue, red, blue)"
+    "conic-gradient(in hsl longer hue, red, blue)";
   neg_cursor read_background_image "invalid-image"
 
 let test_radial_shape () =
@@ -2325,6 +2347,16 @@ let test_content () =
   check_content "normal";
   check_content "open-quote";
   check_content "close-quote";
+  check_content ~expected:"attr(data-label)" "attr(data-label)";
+  check_content ~expected:"attr(data-label string,\"x y\")"
+    "attr(data-label string, \"x y\")";
+  check_content ~expected:"attr(data-label string,var(--label,\"x y\"))"
+    "attr(data-label string, var(--label, \"x y\"))";
+  check_content ~minify:false ~expected:"attr(data-label string, \"x y\")"
+    "attr(data-label string, \"x y\")";
+  check_content ~minify:false
+    ~expected:"attr(data-label string, var(--label, \"x y\"))"
+    "attr(data-label string, var(--label, \"x y\"))";
   neg_cursor read_content "invalid-content"
 
 let test_content_visibility () =
