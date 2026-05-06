@@ -61,11 +61,13 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Resolution -> Pp.string ctx value
   | Custom_ident -> Pp.string ctx value
   | String -> Pp.quoted ctx value
-  | Url ->
-      Pp.string ctx "url(";
-      Pp.quoted ctx value;
-      Pp.string ctx ")"
-  | Image -> Pp.string ctx value
+  | Url -> Pp.url ctx value
+  | Image ->
+      let value =
+        if Pp.minified ctx then Properties.minify_background_image value
+        else value
+      in
+      Properties.pp_background_image ctx value
   | Transform_function -> Pp.string ctx value
   | Transform_list -> Pp.string ctx value
   | Universal -> Pp.string ctx value
@@ -82,7 +84,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Hash syn ->
       List.iteri
         (fun i v ->
-          if i > 0 then Pp.string ctx ", ";
+          if i > 0 then Pp.comma ctx ();
           pp_value syn ctx v)
         value
   | Ident_keyword name -> Pp.string ctx name
@@ -178,14 +180,14 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Universal ->
       (* For universal syntax "*", accept any CSS value — serialise the
          remaining components back to source text. *)
-      Cursor.remaining_to_string ~trim:true reader
+      Cursor.string_of_remaining ~trim:true reader
   | String -> Cursor.string ~trim:true reader
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader
-  | Image -> Cursor.remaining_to_string ~trim:true reader
-  | Transform_function -> Cursor.remaining_to_string ~trim:true reader
-  | Transform_list -> Cursor.remaining_to_string ~trim:true reader
-  | Resolution -> Cursor.remaining_to_string ~trim:true reader
+  | Image -> Properties.read_background_image reader
+  | Transform_function -> Cursor.string_of_remaining ~trim:true reader
+  | Transform_list -> Cursor.string_of_remaining ~trim:true reader
+  | Resolution -> Cursor.string_of_remaining ~trim:true reader
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader
@@ -1979,11 +1981,11 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
    the original source between the first and last fallback component instead of
    re-serialising tokens. Falls back to component-based serialisation when the
    source is not retained on the cursor. *)
-let fallback_to_string inner =
+let string_of_fallback inner =
   let cvs = Cursor.remaining inner in
   match (cvs, Cursor.source inner) with
   | [], _ -> ""
-  | _, None -> Cursor.remaining_to_string ~trim:true inner
+  | _, None -> Cursor.string_of_remaining ~trim:true inner
   | first :: _, Some src ->
       let start_pos = (Component.source_loc first).start_pos in
       let last = List.nth cvs (List.length cvs - 1) in
@@ -2027,7 +2029,7 @@ let read_reference (r : Cursor.t) : string * string option =
         let name = String.sub raw_name 2 (String.length raw_name - 2) in
         Cursor.ws inner;
         let fallback =
-          if Cursor.comma_opt inner then Some (fallback_to_string inner)
+          if Cursor.comma_opt inner then Some (string_of_fallback inner)
           else None
         in
         (name, fallback))
