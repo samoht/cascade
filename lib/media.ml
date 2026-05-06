@@ -19,21 +19,103 @@
 
 type cmp = Lt | Le | Eq | Gt | Ge
 
+type name =
+  | Width
+  | Height
+  | Inline_size
+  | Block_size
+  | Aspect_ratio
+  | Resolution
+  | Color
+  | Color_index
+  | Monochrome
+  | Grid
+  | Horizontal_viewport_segments
+  | Vertical_viewport_segments
+  | Orientation
+  | Hover
+  | Any_hover
+  | Pointer
+  | Any_pointer
+  | Update
+  | Overflow_block
+  | Overflow_inline
+  | Scan
+  | Color_gamut
+  | Video_color_gamut
+  | Dynamic_range
+  | Video_dynamic_range
+  | Display_mode
+  | Environment_blending
+  | Prefers_color_scheme
+  | Prefers_reduced_motion
+  | Prefers_reduced_transparency
+  | Prefers_reduced_data
+  | Prefers_contrast
+  | Forced_colors
+  | Inverted_colors
+  | Nav_controls
+  | Scripting
+  | Min of name
+  | Max of name
+  | Other of string
+
+type ident =
+  | Infinite
+  | Portrait
+  | Landscape
+  | None
+  | Hover
+  | Coarse
+  | Fine
+  | Slow
+  | Fast
+  | Interlace
+  | Progressive
+  | Srgb
+  | P3
+  | Rec2020
+  | Standard
+  | High
+  | Optional_paged
+  | Paged
+  | Scroll
+  | Fullscreen
+  | Standalone
+  | Minimal_ui
+  | Browser
+  | Picture_in_picture
+  | Opaque
+  | Additive
+  | Subtractive
+  | Light
+  | Dark
+  | No_preference
+  | Reduce
+  | Less
+  | More
+  | Custom
+  | Active
+  | Inverted
+  | Back
+  | Initial_only
+  | Enabled
+  | Other of string
+
 type value =
   | Length of Values_intf.length
   | Integer of int
   | Number of float
   | Ratio of int * int
   | Resolution_value of float * string
-  | Ident of string
-  | Function of string * Component.t list
+  | Ident of ident
 
 type feature =
-  | Plain of string * value
-  | Boolean of string
-  | Range of string * cmp * value
-  | Range_rev of value * cmp * string
-  | Interval of value * cmp * string * cmp * value
+  | Plain of name * value
+  | Boolean of name
+  | Range of name * cmp * value
+  | Range_rev of value * cmp * name
+  | Interval of value * cmp * name * cmp * value
 
 type condition =
   | Feature of feature
@@ -68,42 +150,42 @@ type t =
   | Color of int
   | Color_index of int
   | Monochrome of int
-  | Color_gamut of [ `Srgb | `P3 | `Rec2020 ]
-  | Video_color_gamut of [ `Srgb | `P3 | `Rec2020 ]
-  | Dynamic_range of [ `Standard | `High ]
-  | Video_dynamic_range of [ `Standard | `High ]
-  | Scan of [ `Interlace | `Progressive ]
-  | Update of [ `None | `Slow | `Fast ]
-  | Overflow_block of [ `None | `Scroll | `Optional_paged | `Paged ]
-  | Overflow_inline of [ `None | `Scroll ]
-  | Prefers_reduced_motion of [ `No_preference | `Reduce ]
-  | Prefers_reduced_transparency of [ `No_preference | `Reduce ]
-  | Prefers_reduced_data of [ `No_preference | `Reduce ]
-  | Prefers_contrast of [ `No_preference | `Less | `More | `Custom ]
-  | Prefers_color_scheme of [ `Dark | `Light ]
-  | Forced_colors of [ `Active | `None ]
-  | Inverted_colors of [ `Inverted | `None ]
-  | Pointer of [ `None | `Coarse | `Fine ]
-  | Any_pointer of [ `None | `Coarse | `Fine ]
-  | Hover of [ `None | `Hover ]
-  | Any_hover of [ `None | `Hover ]
-  | Scripting of [ `None | `Initial_only | `Enabled ]
-  | Nav_controls of [ `None | `Back_button ]
+  | Color_gamut of ident
+  | Video_color_gamut of ident
+  | Dynamic_range of ident
+  | Video_dynamic_range of ident
+  | Scan of ident
+  | Update of ident
+  | Overflow_block of ident
+  | Overflow_inline of ident
+  | Prefers_reduced_motion of ident
+  | Prefers_reduced_transparency of ident
+  | Prefers_reduced_data of ident
+  | Prefers_contrast of ident
+  | Prefers_color_scheme of ident
+  | Forced_colors of ident
+  | Inverted_colors of ident
+  | Pointer of ident
+  | Any_pointer of ident
+  | Hover of ident
+  | Any_hover of ident
+  | Scripting of ident
+  | Nav_controls of ident
   | Print
-  | Orientation of [ `Portrait | `Landscape ]
+  | Orientation of ident
   | And of t * t
   | Or of t * t
   | Negated of t
-  | Range of string * cmp * value
-  | Range_rev of value * cmp * string
-  | Interval of value * cmp * string * cmp * value
+  | Range of name * cmp * value
+  | Range_rev of value * cmp * name
+  | Interval of value * cmp * name * cmp * value
   | Type_query of {
       prefix : prefix option;
       type_ : medium;
       trailing : t option;
     }
-  | Plain of string * value
-  | Boolean of string
+  | Plain of name * value
+  | Boolean of name
   | List of t list
 
 (* ===== Formatting helpers ===== *)
@@ -128,6 +210,182 @@ let string_of_medium : medium -> string = function
   | Print -> "print"
   | Other s -> s
 
+let rec string_of_name : name -> string = function
+  | Width -> "width"
+  | Height -> "height"
+  | Inline_size -> "inline-size"
+  | Block_size -> "block-size"
+  | Aspect_ratio -> "aspect-ratio"
+  | Resolution -> "resolution"
+  | Color -> "color"
+  | Color_index -> "color-index"
+  | Monochrome -> "monochrome"
+  | Grid -> "grid"
+  | Horizontal_viewport_segments -> "horizontal-viewport-segments"
+  | Vertical_viewport_segments -> "vertical-viewport-segments"
+  | Orientation -> "orientation"
+  | Hover -> "hover"
+  | Any_hover -> "any-hover"
+  | Pointer -> "pointer"
+  | Any_pointer -> "any-pointer"
+  | Update -> "update"
+  | Overflow_block -> "overflow-block"
+  | Overflow_inline -> "overflow-inline"
+  | Scan -> "scan"
+  | Color_gamut -> "color-gamut"
+  | Video_color_gamut -> "video-color-gamut"
+  | Dynamic_range -> "dynamic-range"
+  | Video_dynamic_range -> "video-dynamic-range"
+  | Display_mode -> "display-mode"
+  | Environment_blending -> "environment-blending"
+  | Prefers_color_scheme -> "prefers-color-scheme"
+  | Prefers_reduced_motion -> "prefers-reduced-motion"
+  | Prefers_reduced_transparency -> "prefers-reduced-transparency"
+  | Prefers_reduced_data -> "prefers-reduced-data"
+  | Prefers_contrast -> "prefers-contrast"
+  | Forced_colors -> "forced-colors"
+  | Inverted_colors -> "inverted-colors"
+  | Nav_controls -> "nav-controls"
+  | Scripting -> "scripting"
+  | Min name -> "min-" ^ string_of_name name
+  | Max name -> "max-" ^ string_of_name name
+  | Other s -> s
+
+let rec name_of_string s : name =
+  let s = String.lowercase_ascii s in
+  let starts_with ~prefix =
+    let len = String.length prefix in
+    String.length s > len && String.sub s 0 len = prefix
+  in
+  if starts_with ~prefix:"min-" then
+    Min (name_of_string (String.sub s 4 (String.length s - 4)))
+  else if starts_with ~prefix:"max-" then
+    Max (name_of_string (String.sub s 4 (String.length s - 4)))
+  else
+    match s with
+    | "width" -> Width
+    | "height" -> Height
+    | "inline-size" -> Inline_size
+    | "block-size" -> Block_size
+    | "aspect-ratio" -> Aspect_ratio
+    | "resolution" -> Resolution
+    | "color" -> Color
+    | "color-index" -> Color_index
+    | "monochrome" -> Monochrome
+    | "grid" -> Grid
+    | "horizontal-viewport-segments" -> Horizontal_viewport_segments
+    | "vertical-viewport-segments" -> Vertical_viewport_segments
+    | "orientation" -> Orientation
+    | "hover" -> Hover
+    | "any-hover" -> Any_hover
+    | "pointer" -> Pointer
+    | "any-pointer" -> Any_pointer
+    | "update" -> Update
+    | "overflow-block" -> Overflow_block
+    | "overflow-inline" -> Overflow_inline
+    | "scan" -> Scan
+    | "color-gamut" -> Color_gamut
+    | "video-color-gamut" -> Video_color_gamut
+    | "dynamic-range" -> Dynamic_range
+    | "video-dynamic-range" -> Video_dynamic_range
+    | "display-mode" -> Display_mode
+    | "environment-blending" -> Environment_blending
+    | "prefers-color-scheme" -> Prefers_color_scheme
+    | "prefers-reduced-motion" -> Prefers_reduced_motion
+    | "prefers-reduced-transparency" -> Prefers_reduced_transparency
+    | "prefers-reduced-data" -> Prefers_reduced_data
+    | "prefers-contrast" -> Prefers_contrast
+    | "forced-colors" -> Forced_colors
+    | "inverted-colors" -> Inverted_colors
+    | "nav-controls" -> Nav_controls
+    | "scripting" -> Scripting
+    | _ -> Other s
+
+let string_of_ident : ident -> string = function
+  | Infinite -> "infinite"
+  | Portrait -> "portrait"
+  | Landscape -> "landscape"
+  | None -> "none"
+  | Hover -> "hover"
+  | Coarse -> "coarse"
+  | Fine -> "fine"
+  | Slow -> "slow"
+  | Fast -> "fast"
+  | Interlace -> "interlace"
+  | Progressive -> "progressive"
+  | Srgb -> "srgb"
+  | P3 -> "p3"
+  | Rec2020 -> "rec2020"
+  | Standard -> "standard"
+  | High -> "high"
+  | Optional_paged -> "optional-paged"
+  | Paged -> "paged"
+  | Scroll -> "scroll"
+  | Fullscreen -> "fullscreen"
+  | Standalone -> "standalone"
+  | Minimal_ui -> "minimal-ui"
+  | Browser -> "browser"
+  | Picture_in_picture -> "picture-in-picture"
+  | Opaque -> "opaque"
+  | Additive -> "additive"
+  | Subtractive -> "subtractive"
+  | Light -> "light"
+  | Dark -> "dark"
+  | No_preference -> "no-preference"
+  | Reduce -> "reduce"
+  | Less -> "less"
+  | More -> "more"
+  | Custom -> "custom"
+  | Active -> "active"
+  | Inverted -> "inverted"
+  | Back -> "back"
+  | Initial_only -> "initial-only"
+  | Enabled -> "enabled"
+  | Other s -> s
+
+let ident_of_string s : ident =
+  match String.lowercase_ascii s with
+  | "infinite" -> Infinite
+  | "portrait" -> Portrait
+  | "landscape" -> Landscape
+  | "none" -> None
+  | "hover" -> Hover
+  | "coarse" -> Coarse
+  | "fine" -> Fine
+  | "slow" -> Slow
+  | "fast" -> Fast
+  | "interlace" -> Interlace
+  | "progressive" -> Progressive
+  | "srgb" -> Srgb
+  | "p3" -> P3
+  | "rec2020" -> Rec2020
+  | "standard" -> Standard
+  | "high" -> High
+  | "optional-paged" -> Optional_paged
+  | "paged" -> Paged
+  | "scroll" -> Scroll
+  | "fullscreen" -> Fullscreen
+  | "standalone" -> Standalone
+  | "minimal-ui" -> Minimal_ui
+  | "browser" -> Browser
+  | "picture-in-picture" -> Picture_in_picture
+  | "opaque" -> Opaque
+  | "additive" -> Additive
+  | "subtractive" -> Subtractive
+  | "light" -> Light
+  | "dark" -> Dark
+  | "no-preference" -> No_preference
+  | "reduce" -> Reduce
+  | "less" -> Less
+  | "more" -> More
+  | "custom" -> Custom
+  | "active" -> Active
+  | "inverted" -> Inverted
+  | "back" -> Back
+  | "initial-only" -> Initial_only
+  | "enabled" -> Enabled
+  | other -> Other other
+
 (* ===== Pretty printing ===== *)
 
 let pp_length ctx l = Values.pp_length ~always:true ctx l
@@ -145,35 +403,20 @@ let pp_value : value Pp.t =
   | Resolution_value (n, unit) ->
       Pp.string ctx (format_float n);
       Pp.string ctx unit
-  | Ident s -> Pp.string ctx s
-  | Function (name, args) ->
-      Pp.string ctx name;
-      Pp.char ctx '(';
-      Pp.string ctx
-        (if Pp.minified ctx then Parser.to_string_minified args
-         else Parser.to_string args);
-      Pp.char ctx ')'
+  | Ident s -> Pp.string ctx (string_of_ident s)
 
 (* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
    form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
    name in one place so the typed and string-valued printers below share the
    same parsing - the only [String.sub] / [String.length] arithmetic in the
    file. *)
-type min_max_view = Range_view of cmp * string | Plain_view
+type min_max_view = Range_view of cmp * name | Plain_view
 
 let as_min_max name =
-  let strip prefix =
-    let plen = String.length prefix in
-    if String.length name > plen && String.sub name 0 plen = prefix then
-      Some (String.sub name plen (String.length name - plen))
-    else None
-  in
-  match strip "min-" with
-  | Some base -> Range_view (Ge, base)
-  | None -> (
-      match strip "max-" with
-      | Some base -> Range_view (Le, base)
-      | None -> Plain_view)
+  match name with
+  | Min base -> Range_view (Ge, base)
+  | Max base -> Range_view (Le, base)
+  | _ -> Plain_view
 
 let rec pp_feature : feature Pp.t =
  fun ctx -> function
@@ -182,26 +425,26 @@ let rec pp_feature : feature Pp.t =
       | Range_view (op, base) -> pp_feature ctx (Range (base, op, value))
       | Plain_view ->
           Pp.char ctx '(';
-          Pp.string ctx name;
+          Pp.string ctx (string_of_name name);
           Pp.char ctx ':';
           pp_value ctx value;
           Pp.char ctx ')')
   | Plain (name, value) ->
       Pp.char ctx '(';
-      Pp.string ctx name;
+      Pp.string ctx (string_of_name name);
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
   | Boolean name ->
       Pp.char ctx '(';
-      Pp.string ctx name;
+      Pp.string ctx (string_of_name name);
       Pp.char ctx ')'
   | Range (name, op, value) ->
       (* CSS Media Queries 4 3.2: relational operators are their own tokens, so
          the surrounding whitespace is optional and minify drops it. *)
       Pp.char ctx '(';
-      Pp.string ctx name;
+      Pp.string ctx (string_of_name name);
       Pp.sp ctx ();
       Pp.string ctx (string_of_cmp op);
       Pp.sp ctx ();
@@ -213,7 +456,7 @@ let rec pp_feature : feature Pp.t =
       Pp.sp ctx ();
       Pp.string ctx (string_of_cmp op);
       Pp.sp ctx ();
-      Pp.string ctx name;
+      Pp.string ctx (string_of_name name);
       Pp.char ctx ')'
   | Interval (a, op1, name, op2, b) ->
       Pp.char ctx '(';
@@ -221,7 +464,7 @@ let rec pp_feature : feature Pp.t =
       Pp.sp ctx ();
       Pp.string ctx (string_of_cmp op1);
       Pp.sp ctx ();
-      Pp.string ctx name;
+      Pp.string ctx (string_of_name name);
       Pp.sp ctx ();
       Pp.string ctx (string_of_cmp op2);
       Pp.sp ctx ();
@@ -273,10 +516,10 @@ let rec pp_query : query Pp.t =
    [(min-width: 768px)] emerges as [(width>=768px)] - same rule the typed
    [pp_feature] applies above. *)
 let pp_named_feature ctx name value =
-  match as_min_max name with
+  match as_min_max (name_of_string name) with
   | Range_view (op, base) when Pp.minified ctx ->
       Pp.char ctx '(';
-      Pp.string ctx base;
+      Pp.string ctx (string_of_name base);
       Pp.string ctx (string_of_cmp op);
       Pp.string ctx value;
       Pp.char ctx ')'
@@ -289,10 +532,10 @@ let pp_named_feature ctx name value =
       Pp.char ctx ')'
 
 let pp_length_feature ctx name l =
-  match as_min_max name with
+  match as_min_max (name_of_string name) with
   | Range_view (op, base) when Pp.minified ctx ->
       Pp.char ctx '(';
-      Pp.string ctx base;
+      Pp.string ctx (string_of_name base);
       Pp.string ctx (string_of_cmp op);
       pp_length ctx l;
       Pp.char ctx ')'
@@ -333,75 +576,45 @@ let rec pp ctx = function
   | Color n -> pp_named_feature ctx "color" (Int.to_string n)
   | Color_index n -> pp_named_feature ctx "color-index" (Int.to_string n)
   | Monochrome n -> pp_named_feature ctx "monochrome" (Int.to_string n)
-  | Color_gamut `Srgb -> pp_named_feature ctx "color-gamut" "srgb"
-  | Color_gamut `P3 -> pp_named_feature ctx "color-gamut" "p3"
-  | Color_gamut `Rec2020 -> pp_named_feature ctx "color-gamut" "rec2020"
-  | Video_color_gamut `Srgb -> pp_named_feature ctx "video-color-gamut" "srgb"
-  | Video_color_gamut `P3 -> pp_named_feature ctx "video-color-gamut" "p3"
-  | Video_color_gamut `Rec2020 ->
-      pp_named_feature ctx "video-color-gamut" "rec2020"
-  | Dynamic_range `Standard -> pp_named_feature ctx "dynamic-range" "standard"
-  | Dynamic_range `High -> pp_named_feature ctx "dynamic-range" "high"
-  | Video_dynamic_range `Standard ->
-      pp_named_feature ctx "video-dynamic-range" "standard"
-  | Video_dynamic_range `High ->
-      pp_named_feature ctx "video-dynamic-range" "high"
-  | Scan `Interlace -> pp_named_feature ctx "scan" "interlace"
-  | Scan `Progressive -> pp_named_feature ctx "scan" "progressive"
-  | Update `None -> pp_named_feature ctx "update" "none"
-  | Update `Slow -> pp_named_feature ctx "update" "slow"
-  | Update `Fast -> pp_named_feature ctx "update" "fast"
-  | Overflow_block `None -> pp_named_feature ctx "overflow-block" "none"
-  | Overflow_block `Scroll -> pp_named_feature ctx "overflow-block" "scroll"
-  | Overflow_block `Optional_paged ->
-      pp_named_feature ctx "overflow-block" "optional-paged"
-  | Overflow_block `Paged -> pp_named_feature ctx "overflow-block" "paged"
-  | Overflow_inline `None -> pp_named_feature ctx "overflow-inline" "none"
-  | Overflow_inline `Scroll -> pp_named_feature ctx "overflow-inline" "scroll"
-  | Prefers_reduced_motion `No_preference ->
-      pp_named_feature ctx "prefers-reduced-motion" "no-preference"
-  | Prefers_reduced_motion `Reduce ->
-      pp_named_feature ctx "prefers-reduced-motion" "reduce"
-  | Prefers_reduced_transparency `No_preference ->
-      pp_named_feature ctx "prefers-reduced-transparency" "no-preference"
-  | Prefers_reduced_transparency `Reduce ->
-      pp_named_feature ctx "prefers-reduced-transparency" "reduce"
-  | Prefers_reduced_data `No_preference ->
-      pp_named_feature ctx "prefers-reduced-data" "no-preference"
-  | Prefers_reduced_data `Reduce ->
-      pp_named_feature ctx "prefers-reduced-data" "reduce"
-  | Prefers_contrast `No_preference ->
-      pp_named_feature ctx "prefers-contrast" "no-preference"
-  | Prefers_contrast `More -> pp_named_feature ctx "prefers-contrast" "more"
-  | Prefers_contrast `Less -> pp_named_feature ctx "prefers-contrast" "less"
-  | Prefers_contrast `Custom -> pp_named_feature ctx "prefers-contrast" "custom"
-  | Prefers_color_scheme `Dark ->
-      pp_named_feature ctx "prefers-color-scheme" "dark"
-  | Prefers_color_scheme `Light ->
-      pp_named_feature ctx "prefers-color-scheme" "light"
-  | Forced_colors `Active -> pp_named_feature ctx "forced-colors" "active"
-  | Forced_colors `None -> pp_named_feature ctx "forced-colors" "none"
-  | Inverted_colors `Inverted ->
-      pp_named_feature ctx "inverted-colors" "inverted"
-  | Inverted_colors `None -> pp_named_feature ctx "inverted-colors" "none"
-  | Pointer `None -> pp_named_feature ctx "pointer" "none"
-  | Pointer `Coarse -> pp_named_feature ctx "pointer" "coarse"
-  | Pointer `Fine -> pp_named_feature ctx "pointer" "fine"
-  | Any_pointer `None -> pp_named_feature ctx "any-pointer" "none"
-  | Any_pointer `Coarse -> pp_named_feature ctx "any-pointer" "coarse"
-  | Any_pointer `Fine -> pp_named_feature ctx "any-pointer" "fine"
-  | Hover `None -> pp_named_feature ctx "hover" "none"
-  | Hover `Hover -> pp_named_feature ctx "hover" "hover"
-  | Any_hover `None -> pp_named_feature ctx "any-hover" "none"
-  | Any_hover `Hover -> pp_named_feature ctx "any-hover" "hover"
-  | Scripting `None -> pp_named_feature ctx "scripting" "none"
-  | Scripting `Initial_only -> pp_named_feature ctx "scripting" "initial-only"
-  | Scripting `Enabled -> pp_named_feature ctx "scripting" "enabled"
-  | Nav_controls `None -> pp_named_feature ctx "nav-controls" "none"
-  | Nav_controls `Back_button -> pp_named_feature ctx "nav-controls" "back"
+  | Color_gamut ident ->
+      pp_named_feature ctx "color-gamut" (string_of_ident ident)
+  | Video_color_gamut ident ->
+      pp_named_feature ctx "video-color-gamut" (string_of_ident ident)
+  | Dynamic_range ident ->
+      pp_named_feature ctx "dynamic-range" (string_of_ident ident)
+  | Video_dynamic_range ident ->
+      pp_named_feature ctx "video-dynamic-range" (string_of_ident ident)
+  | Scan ident -> pp_named_feature ctx "scan" (string_of_ident ident)
+  | Update ident -> pp_named_feature ctx "update" (string_of_ident ident)
+  | Overflow_block ident ->
+      pp_named_feature ctx "overflow-block" (string_of_ident ident)
+  | Overflow_inline ident ->
+      pp_named_feature ctx "overflow-inline" (string_of_ident ident)
+  | Prefers_reduced_motion ident ->
+      pp_named_feature ctx "prefers-reduced-motion" (string_of_ident ident)
+  | Prefers_reduced_transparency ident ->
+      pp_named_feature ctx "prefers-reduced-transparency" (string_of_ident ident)
+  | Prefers_reduced_data ident ->
+      pp_named_feature ctx "prefers-reduced-data" (string_of_ident ident)
+  | Prefers_contrast ident ->
+      pp_named_feature ctx "prefers-contrast" (string_of_ident ident)
+  | Prefers_color_scheme ident ->
+      pp_named_feature ctx "prefers-color-scheme" (string_of_ident ident)
+  | Forced_colors ident ->
+      pp_named_feature ctx "forced-colors" (string_of_ident ident)
+  | Inverted_colors ident ->
+      pp_named_feature ctx "inverted-colors" (string_of_ident ident)
+  | Pointer ident -> pp_named_feature ctx "pointer" (string_of_ident ident)
+  | Any_pointer ident ->
+      pp_named_feature ctx "any-pointer" (string_of_ident ident)
+  | Hover ident -> pp_named_feature ctx "hover" (string_of_ident ident)
+  | Any_hover ident -> pp_named_feature ctx "any-hover" (string_of_ident ident)
+  | Scripting ident -> pp_named_feature ctx "scripting" (string_of_ident ident)
+  | Nav_controls ident ->
+      pp_named_feature ctx "nav-controls" (string_of_ident ident)
   | Print -> Pp.string ctx "print"
-  | Orientation `Portrait -> pp_named_feature ctx "orientation" "portrait"
-  | Orientation `Landscape -> pp_named_feature ctx "orientation" "landscape"
+  | Orientation ident ->
+      pp_named_feature ctx "orientation" (string_of_ident ident)
   | And (a, b) ->
       pp ctx a;
       Pp.string ctx " and ";
@@ -463,7 +676,8 @@ exception Parse_error of recovery_scope * string
 let fail_parse ?(scope = Branch) reason = raise (Parse_error (scope, reason))
 let mk_scanner s = { s = String.trim s; pos = 0 }
 let at_end sc = sc.pos >= String.length sc.s
-let peek sc = if at_end sc then None else Some sc.s.[sc.pos]
+let peek sc : char option =
+  if at_end sc then Option.None else Some sc.s.[sc.pos]
 let advance sc = sc.pos <- sc.pos + 1
 
 let skip_ws sc =
@@ -534,7 +748,7 @@ let consume_exponent sc =
       if not (consume_digits sc) then sc.pos <- mark
   | _ -> ()
 
-let read_number_lit sc =
+let read_number_lit sc : ([ `Int of int | `Float of float ] * string) option =
   let start = sc.pos in
   consume_sign sc;
   let saw_int = consume_digits sc in
@@ -572,7 +786,7 @@ let read_unit sc =
     String.sub sc.s start (sc.pos - start))
   else ""
 
-let length_of_value f unit =
+let length_of_value f unit : Values_intf.length option =
   let module L = Values_intf in
   match String.lowercase_ascii unit with
   | "px" -> Some (L.Px f)
@@ -639,7 +853,7 @@ let read_balanced sc =
   done;
   Buffer.contents buf
 
-let typed_function_value name args =
+let typed_function_value name args : value option =
   let raw = name ^ "(" ^ args ^ ")" in
   let cursor = Cursor.of_string raw in
   try
@@ -649,7 +863,7 @@ let typed_function_value name args =
     Some (Length length)
   with _ -> None
 
-let read_value sc =
+let read_value sc : value option =
   skip_ws sc;
   match peek sc with
   | None -> None
@@ -705,7 +919,7 @@ let read_value sc =
             | None ->
                 sc.pos <- mark;
                 None)
-        | _ -> Some (Ident id))
+        | _ -> Some (Ident (ident_of_string id)))
 
 let value_of_string s =
   let sc = mk_scanner s in
@@ -717,7 +931,7 @@ let value_of_string s =
 
 let boolean_feature name : feature = Boolean name
 
-let read_cmp sc =
+let read_cmp sc : cmp option =
   skip_ws sc;
   match peek sc with
   | Some '<' ->
@@ -742,65 +956,50 @@ let interval_ops_compatible op1 op2 =
   | (Lt | Le), (Lt | Le) | (Gt | Ge), (Gt | Ge) -> true
   | _ -> false
 
-let starts_with ~prefix s =
-  let len = String.length prefix in
-  String.length s >= len && String.sub s 0 len = prefix
-
-let range_feature_name name =
-  match String.lowercase_ascii name with
-  | "width" | "height" | "inline-size" | "block-size" | "aspect-ratio"
-  | "resolution" | "color" | "color-index" | "monochrome"
-  | "horizontal-viewport-segments" | "vertical-viewport-segments" ->
+let range_feature_name (name : name) =
+  match name with
+  | Width | Height | Inline_size | Block_size | Aspect_ratio | Resolution
+  | Color | Color_index | Monochrome | Horizontal_viewport_segments
+  | Vertical_viewport_segments ->
       true
   | _ -> false
 
-let prefixed_range_feature_name name =
-  let name = String.lowercase_ascii name in
-  if starts_with ~prefix:"min-" name || starts_with ~prefix:"max-" name then
-    let base = String.sub name 4 (String.length name - 4) in
-    Some base
-  else None
+let prefixed_range_feature_name name : name option =
+  match name with Min base | Max base -> Some base | _ -> Option.None
 
-let validate_plain_feature name value =
+let validate_plain_feature (name : name) value =
   let plain_name =
     match prefixed_range_feature_name name with
     | Some base when range_feature_name base -> base
     | Some _ -> name
     | None -> name
   in
-  let valid_numeric_value name value =
-    match (String.lowercase_ascii name, value) with
-    | _, Function _ -> true
-    | ("width" | "height" | "inline-size" | "block-size"), Length _ -> true
-    | "aspect-ratio", Ratio _ | "aspect-ratio", Integer _ -> true
-    | "resolution", Resolution_value _ -> true
-    | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
-    | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
-    | ("horizontal-viewport-segments" | "vertical-viewport-segments"), Integer n
-      ->
+  let valid_numeric_value (name : name) value =
+    match (name, value) with
+    | (Width | Height | Inline_size | Block_size), Length _ -> true
+    | Aspect_ratio, (Ratio _ | Integer _) -> true
+    | Resolution, Resolution_value _ -> true
+    | Resolution, Ident Infinite -> true
+    | (Color | Color_index | Monochrome), Integer n -> n >= 0
+    | (Horizontal_viewport_segments | Vertical_viewport_segments), Integer n ->
         n >= 0
     | _ -> false
   in
-  let valid_plain_numeric_value name value =
-    match (String.lowercase_ascii name, value) with
-    | _, Function _ -> true
-    | ( ( "width" | "height" | "min-width" | "max-width" | "inline-size"
-        | "block-size" ),
+  let valid_plain_numeric_value (name : name) value =
+    match (name, value) with
+    | ( (Width | Height | Min Width | Max Width | Inline_size | Block_size),
         Length _ ) ->
         true
-    | "aspect-ratio", Ratio _ | "aspect-ratio", Integer _ -> true
-    | "resolution", Resolution_value _ -> true
-    | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
-    | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
-    | "grid", Integer (0 | 1) -> true
-    | ("horizontal-viewport-segments" | "vertical-viewport-segments"), Integer n
-      ->
+    | Aspect_ratio, (Ratio _ | Integer _) -> true
+    | Resolution, Resolution_value _ -> true
+    | Resolution, Ident Infinite -> true
+    | (Color | Color_index | Monochrome), Integer n -> n >= 0
+    | Grid, Integer (0 | 1) -> true
+    | (Horizontal_viewport_segments | Vertical_viewport_segments), Integer n ->
         n >= 0
     | _ -> false
   in
-  let ident_value =
-    match value with Ident s -> Some (String.lowercase_ascii s) | _ -> None
-  in
+  let ident_value = match value with Ident s -> Some s | _ -> None in
   let one_of values =
     match ident_value with Some s -> List.mem s values | None -> false
   in
@@ -808,42 +1007,40 @@ let validate_plain_feature name value =
   | Some base when range_feature_name base -> valid_numeric_value base value
   | Some _ -> false
   | None -> (
-      match String.lowercase_ascii plain_name with
-      | "width" | "height" | "min-width" | "max-width" | "inline-size"
-      | "block-size" | "aspect-ratio" | "resolution" | "color" | "color-index"
-      | "monochrome" | "grid" | "horizontal-viewport-segments"
-      | "vertical-viewport-segments" ->
+      match plain_name with
+      | Width | Height | Inline_size | Block_size | Aspect_ratio | Resolution
+      | Color | Color_index | Monochrome | Grid
+      | Horizontal_viewport_segments | Vertical_viewport_segments | Min Width
+      | Max Width ->
           valid_plain_numeric_value name value
-      | "orientation" -> one_of [ "portrait"; "landscape" ]
-      | "hover" | "any-hover" -> one_of [ "none"; "hover" ]
-      | "pointer" | "any-pointer" -> one_of [ "none"; "coarse"; "fine" ]
-      | "update" -> one_of [ "none"; "slow"; "fast" ]
-      | "overflow-block" -> one_of [ "none"; "scroll"; "paged" ]
-      | "overflow-inline" -> one_of [ "none"; "scroll" ]
-      | "scan" -> one_of [ "interlace"; "progressive" ]
-      | "color-gamut" | "video-color-gamut" ->
-          one_of [ "srgb"; "p3"; "rec2020" ]
-      | "dynamic-range" | "video-dynamic-range" -> one_of [ "standard"; "high" ]
-      | "display-mode" ->
+      | Orientation -> one_of [ Portrait; Landscape ]
+      | Hover | Any_hover -> one_of [ None; Hover ]
+      | Pointer | Any_pointer -> one_of [ None; Coarse; Fine ]
+      | Update -> one_of [ None; Slow; Fast ]
+      | Overflow_block -> one_of [ None; Scroll; Paged ]
+      | Overflow_inline -> one_of [ None; Scroll ]
+      | Scan -> one_of [ Interlace; Progressive ]
+      | Color_gamut | Video_color_gamut -> one_of [ Srgb; P3; Rec2020 ]
+      | Dynamic_range | Video_dynamic_range -> one_of [ Standard; High ]
+      | Display_mode ->
           one_of
             [
-              "fullscreen";
-              "standalone";
-              "minimal-ui";
-              "browser";
-              "picture-in-picture";
+              Fullscreen;
+              Standalone;
+              Minimal_ui;
+              Browser;
+              Picture_in_picture;
             ]
-      | "environment-blending" -> one_of [ "opaque"; "additive"; "subtractive" ]
-      | "prefers-color-scheme" -> one_of [ "light"; "dark" ]
-      | "prefers-reduced-motion" | "prefers-reduced-transparency"
-      | "prefers-reduced-data" ->
-          one_of [ "no-preference"; "reduce" ]
-      | "prefers-contrast" ->
-          one_of [ "no-preference"; "less"; "more"; "custom" ]
-      | "forced-colors" -> one_of [ "none"; "active" ]
-      | "inverted-colors" -> one_of [ "none"; "inverted" ]
-      | "nav-controls" -> one_of [ "none"; "back" ]
-      | "scripting" -> one_of [ "none"; "initial-only"; "enabled" ]
+      | Environment_blending -> one_of [ Opaque; Additive; Subtractive ]
+      | Prefers_color_scheme -> one_of [ Light; Dark ]
+      | Prefers_reduced_motion | Prefers_reduced_transparency
+      | Prefers_reduced_data ->
+          one_of [ No_preference; Reduce ]
+      | Prefers_contrast -> one_of [ No_preference; Less; More; Custom ]
+      | Forced_colors -> one_of [ None; Active ]
+      | Inverted_colors -> one_of [ None; Inverted ]
+      | Nav_controls -> one_of [ None; Back ]
+      | Scripting -> one_of [ None; Initial_only; Enabled ]
       | _ -> true)
 
 let validate_range_feature name value =
@@ -855,8 +1052,8 @@ let validate_range_feature name value =
 let plain_feature name value : feature =
   if not (validate_plain_feature name value) then
     invalid_arg
-      ("Media.feature: value rejected by " ^ name ^ "'s grammar (see "
-     ^ "Media.validate_plain_feature)");
+      ("Media.feature: value rejected by " ^ string_of_name name
+     ^ "'s grammar (see Media.validate_plain_feature)");
   Plain (name, value)
 
 (* Parse content already inside parens (no surrounding parens). *)
@@ -875,6 +1072,7 @@ let value_first_feature content : feature option =
             sc.pos <- mark;
             None)
           else
+            let name = name_of_string name in
             match read_cmp sc with
             | Some op2 -> (
                 skip_ws sc;
@@ -899,7 +1097,7 @@ let value_first_feature content : feature option =
           None)
   | None -> None
 
-let feature_in_parens content =
+let feature_in_parens content : feature option =
   let sc = mk_scanner content in
   skip_ws sc;
   if at_end sc then None
@@ -909,43 +1107,24 @@ let feature_in_parens content =
       skip_ws sc;
       match peek sc with
       | None ->
-          if starts_with ~prefix:"min-" id || starts_with ~prefix:"max-" id then
+          if
+            Option.is_some
+              (prefixed_range_feature_name (name_of_string id))
+          then
             None
-          else Some (boolean_feature id)
+          else Some (boolean_feature (name_of_string id))
       | Some ':' -> (
           advance sc;
           skip_ws sc;
-          let value_start = sc.pos in
           let v = read_value sc in
-          let function_value () =
-            let raw_value =
-              String.sub sc.s value_start (String.length sc.s - value_start)
-              |> String.trim
-            in
-            match Cursor.remaining (Cursor.of_string raw_value) with
-            | [
-             Component.Func { node = { name; arguments; terminated = true }; _ };
-            ] ->
-                Some (Function (name, arguments) : value)
-            | _ -> None
-            | exception _ -> None
-          in
           match v with
           | Some value ->
               skip_ws sc;
-              if at_end sc && validate_plain_feature id value then
-                Some (plain_feature id value)
-              else
-                Option.bind (function_value ()) (fun value ->
-                    if validate_plain_feature id value then
-                      Some (plain_feature id value)
-                    else None)
-          | None ->
-              let value = function_value () in
-              Option.bind value (fun value ->
-                  if validate_plain_feature id value then
-                    Some (plain_feature id value)
-                  else None))
+              let name = name_of_string id in
+              if at_end sc && validate_plain_feature name value then
+                Some (plain_feature name value)
+              else None
+          | None -> None)
       | Some _ -> (
           match read_cmp sc with
           | Some op -> (
@@ -955,8 +1134,9 @@ let feature_in_parens content =
                   match read_cmp sc with
                   | None ->
                       skip_ws sc;
-                      if at_end sc && validate_range_feature id v2 then
-                        Some (Range (id, op, v2))
+                      let name = name_of_string id in
+                      if at_end sc && validate_range_feature name v2 then
+                        Some (Range (name, op, v2))
                       else None
                   | Some _ -> None)
               | None -> None)
@@ -1047,7 +1227,7 @@ let starts_with_condition sc =
   else if lookahead_ident sc "not" then
     let p = sc.pos + 3 in
     let len = String.length sc.s in
-    let rec next_non_ws i =
+    let rec next_non_ws i : char option =
       if i >= len then None
       else
         let c = sc.s.[i] in
@@ -1184,38 +1364,38 @@ let normalise_preference_value name s =
   match name with
   | "prefers-reduced-motion" -> (
       match s with
-      | "no-preference" -> Some (Prefers_reduced_motion `No_preference)
-      | "reduce" -> Some (Prefers_reduced_motion `Reduce)
+      | "no-preference" -> Some (Prefers_reduced_motion No_preference)
+      | "reduce" -> Some (Prefers_reduced_motion Reduce)
       | _ -> None)
   | "prefers-contrast" -> (
       match s with
-      | "more" -> Some (Prefers_contrast `More)
-      | "less" -> Some (Prefers_contrast `Less)
+      | "more" -> Some (Prefers_contrast More)
+      | "less" -> Some (Prefers_contrast Less)
       | _ -> None)
   | "prefers-color-scheme" -> (
       match s with
-      | "dark" -> Some (Prefers_color_scheme `Dark)
-      | "light" -> Some (Prefers_color_scheme `Light)
+      | "dark" -> Some (Prefers_color_scheme Dark)
+      | "light" -> Some (Prefers_color_scheme Light)
       | _ -> None)
   | "prefers-reduced-transparency" -> (
       match s with
-      | "no-preference" -> Some (Prefers_reduced_transparency `No_preference)
-      | "reduce" -> Some (Prefers_reduced_transparency `Reduce)
+      | "no-preference" -> Some (Prefers_reduced_transparency No_preference)
+      | "reduce" -> Some (Prefers_reduced_transparency Reduce)
       | _ -> None)
   | "prefers-reduced-data" -> (
       match s with
-      | "no-preference" -> Some (Prefers_reduced_data `No_preference)
-      | "reduce" -> Some (Prefers_reduced_data `Reduce)
+      | "no-preference" -> Some (Prefers_reduced_data No_preference)
+      | "reduce" -> Some (Prefers_reduced_data Reduce)
       | _ -> None)
   | "forced-colors" -> (
       match s with
-      | "active" -> Some (Forced_colors `Active)
-      | "none" -> Some (Forced_colors `None)
+      | "active" -> Some (Forced_colors Active)
+      | "none" -> Some (Forced_colors None)
       | _ -> None)
   | "inverted-colors" -> (
       match s with
-      | "inverted" -> Some (Inverted_colors `Inverted)
-      | "none" -> Some (Inverted_colors `None)
+      | "inverted" -> Some (Inverted_colors Inverted)
+      | "none" -> Some (Inverted_colors None)
       | _ -> None)
   | _ -> None
 
@@ -1223,41 +1403,41 @@ let normalise_capability_value name s =
   match name with
   | "pointer" -> (
       match s with
-      | "none" -> Some (Pointer `None)
-      | "coarse" -> Some (Pointer `Coarse)
-      | "fine" -> Some (Pointer `Fine)
+      | "none" -> Some (Pointer None)
+      | "coarse" -> Some (Pointer Coarse)
+      | "fine" -> Some (Pointer Fine)
       | _ -> None)
   | "any-pointer" -> (
       match s with
-      | "none" -> Some (Any_pointer `None)
-      | "coarse" -> Some (Any_pointer `Coarse)
-      | "fine" -> Some (Any_pointer `Fine)
+      | "none" -> Some (Any_pointer None)
+      | "coarse" -> Some (Any_pointer Coarse)
+      | "fine" -> Some (Any_pointer Fine)
       | _ -> None)
   | "hover" -> (
       match s with
-      | "none" -> Some (Hover `None)
-      | "hover" -> Some (Hover `Hover)
+      | "none" -> Some (Hover None)
+      | "hover" -> Some (Hover Hover)
       | _ -> None)
   | "any-hover" -> (
       match s with
-      | "none" -> Some (Any_hover `None)
-      | "hover" -> Some (Any_hover `Hover)
+      | "none" -> Some (Any_hover None)
+      | "hover" -> Some (Any_hover Hover)
       | _ -> None)
   | "scripting" -> (
       match s with
-      | "none" -> Some (Scripting `None)
-      | "initial-only" -> Some (Scripting `Initial_only)
-      | "enabled" -> Some (Scripting `Enabled)
+      | "none" -> Some (Scripting None)
+      | "initial-only" -> Some (Scripting Initial_only)
+      | "enabled" -> Some (Scripting Enabled)
       | _ -> None)
   | "nav-controls" -> (
       match s with
-      | "none" -> Some (Nav_controls `None)
-      | "back" -> Some (Nav_controls `Back_button)
+      | "none" -> Some (Nav_controls None)
+      | "back" -> Some (Nav_controls Back)
       | _ -> None)
   | "orientation" -> (
       match s with
-      | "portrait" -> Some (Orientation `Portrait)
-      | "landscape" -> Some (Orientation `Landscape)
+      | "portrait" -> Some (Orientation Portrait)
+      | "landscape" -> Some (Orientation Landscape)
       | _ -> None)
   | _ -> None
 
@@ -1265,48 +1445,48 @@ let normalise_display_value name s =
   match name with
   | "color-gamut" -> (
       match s with
-      | "srgb" -> Some (Color_gamut `Srgb)
-      | "p3" -> Some (Color_gamut `P3)
-      | "rec2020" -> Some (Color_gamut `Rec2020)
+      | "srgb" -> Some (Color_gamut Srgb)
+      | "p3" -> Some (Color_gamut P3)
+      | "rec2020" -> Some (Color_gamut Rec2020)
       | _ -> None)
   | "video-color-gamut" -> (
       match s with
-      | "srgb" -> Some (Video_color_gamut `Srgb)
-      | "p3" -> Some (Video_color_gamut `P3)
-      | "rec2020" -> Some (Video_color_gamut `Rec2020)
+      | "srgb" -> Some (Video_color_gamut Srgb)
+      | "p3" -> Some (Video_color_gamut P3)
+      | "rec2020" -> Some (Video_color_gamut Rec2020)
       | _ -> None)
   | "dynamic-range" -> (
       match s with
-      | "standard" -> Some (Dynamic_range `Standard)
-      | "high" -> Some (Dynamic_range `High)
+      | "standard" -> Some (Dynamic_range Standard)
+      | "high" -> Some (Dynamic_range High)
       | _ -> None)
   | "video-dynamic-range" -> (
       match s with
-      | "standard" -> Some (Video_dynamic_range `Standard)
-      | "high" -> Some (Video_dynamic_range `High)
+      | "standard" -> Some (Video_dynamic_range Standard)
+      | "high" -> Some (Video_dynamic_range High)
       | _ -> None)
   | "scan" -> (
       match s with
-      | "interlace" -> Some (Scan `Interlace)
-      | "progressive" -> Some (Scan `Progressive)
+      | "interlace" -> Some (Scan Interlace)
+      | "progressive" -> Some (Scan Progressive)
       | _ -> None)
   | "update" -> (
       match s with
-      | "none" -> Some (Update `None)
-      | "slow" -> Some (Update `Slow)
-      | "fast" -> Some (Update `Fast)
+      | "none" -> Some (Update None)
+      | "slow" -> Some (Update Slow)
+      | "fast" -> Some (Update Fast)
       | _ -> None)
   | "overflow-block" -> (
       match s with
-      | "none" -> Some (Overflow_block `None)
-      | "scroll" -> Some (Overflow_block `Scroll)
-      | "optional-paged" -> Some (Overflow_block `Optional_paged)
-      | "paged" -> Some (Overflow_block `Paged)
+      | "none" -> Some (Overflow_block None)
+      | "scroll" -> Some (Overflow_block Scroll)
+      | "optional-paged" -> Some (Overflow_block Optional_paged)
+      | "paged" -> Some (Overflow_block Paged)
       | _ -> None)
   | "overflow-inline" -> (
       match s with
-      | "none" -> Some (Overflow_inline `None)
-      | "scroll" -> Some (Overflow_inline `Scroll)
+      | "none" -> Some (Overflow_inline None)
+      | "scroll" -> Some (Overflow_inline Scroll)
       | _ -> None)
   | _ -> None
 
@@ -1335,12 +1515,12 @@ let normalise_value name value =
   | "color", Integer n -> Some (Color n)
   | "color-index", Integer n -> Some (Color_index n)
   | "monochrome", Integer n -> Some (Monochrome n)
-  | name, Ident s -> normalise_ident_value name s
+  | name, Ident s -> normalise_ident_value name (string_of_ident s)
   | _ -> None
 
 let rec feature_to_t : feature -> t = function
   | Plain (name, value) -> (
-      match normalise_value name value with
+      match normalise_value (string_of_name name) value with
       | Some t -> t
       | None -> Plain (name, value))
   | Boolean name -> (Boolean name : t)
@@ -1378,8 +1558,11 @@ let of_function_body s =
   | Some feature -> feature_to_t feature
   | None -> of_string s
 
-let feature name value : t = feature_to_t (plain_feature name value)
-let boolean name : t = feature_to_t (Boolean name : feature)
+let feature name value : t =
+  feature_to_t (plain_feature (name_of_string name) value)
+
+let boolean name : t =
+  feature_to_t (Boolean (name_of_string name) : feature)
 
 (* ===== Sorting / classification ===== *)
 
@@ -1412,7 +1595,7 @@ let value_sort_key = function
   | Ratio (n, d) when d <> 0 -> (0, float_of_int n /. float_of_int d)
   | Ratio _ -> (0, 0.)
   | Resolution_value (f, _) -> (0, f)
-  | Ident _ | Function _ -> (100, 0.)
+  | Ident _ -> (100, 0.)
 
 let rec kind : t -> kind = function
   | Hover _ | Any_hover _ -> Hover
@@ -1442,25 +1625,25 @@ let rec kind : t -> kind = function
     ->
       Other
   | Plain (name, value) -> (
-      match String.lowercase_ascii name with
-      | "min-width" | "max-width" | "width" ->
+      match name with
+      | Min Width | Max Width | Width ->
           let u, v = value_sort_key value in
           Responsive (u, v)
-      | "prefers-color-scheme" -> Preference_appearance
-      | "prefers-reduced-motion" | "prefers-contrast" | "forced-colors"
-      | "inverted-colors" | "pointer" | "any-pointer" | "scripting" ->
+      | Prefers_color_scheme -> Preference_appearance
+      | Prefers_reduced_motion | Prefers_contrast | Forced_colors
+      | Inverted_colors | Pointer | Any_pointer | Scripting ->
           Preference_accessibility
-      | "hover" -> Hover
+      | Hover -> Hover
       | _ -> Other)
   | Range (name, _, value) | Range_rev (value, _, name) -> (
-      match String.lowercase_ascii name with
-      | "width" | "min-width" | "max-width" ->
+      match name with
+      | Width | Min Width | Max Width ->
           let u, v = value_sort_key value in
           Responsive (u, v)
       | _ -> Other)
   | Interval (lo, _, name, _, _) -> (
-      match String.lowercase_ascii name with
-      | "width" | "min-width" | "max-width" ->
+      match name with
+      | Width | Min Width | Max Width ->
           let u, v = value_sort_key lo in
           Responsive (u, v)
       | _ -> Other)
@@ -1481,27 +1664,27 @@ let group_order = function
   | Preference_appearance -> (3000, 0.)
 
 let rec preference_order = function
-  | Prefers_reduced_motion `No_preference -> 0
-  | Prefers_reduced_motion `Reduce -> 1
-  | Prefers_contrast `More -> 2
-  | Prefers_contrast `Less -> 3
+  | Prefers_reduced_motion No_preference -> 0
+  | Prefers_reduced_motion Reduce -> 1
+  | Prefers_contrast More -> 2
+  | Prefers_contrast Less -> 3
   | Prefers_color_scheme _ -> 4
   | Forced_colors _ -> 5
   | Inverted_colors _ -> 6
-  | Pointer `None -> 7
-  | Pointer `Coarse -> 8
-  | Pointer `Fine -> 9
-  | Any_pointer `None -> 10
-  | Any_pointer `Coarse -> 11
-  | Any_pointer `Fine -> 12
-  | Scripting `None -> 13
-  | Scripting `Initial_only -> 14
-  | Scripting `Enabled -> 15
+  | Pointer None -> 7
+  | Pointer Coarse -> 8
+  | Pointer Fine -> 9
+  | Any_pointer None -> 10
+  | Any_pointer Coarse -> 11
+  | Any_pointer Fine -> 12
+  | Scripting None -> 13
+  | Scripting Initial_only -> 14
+  | Scripting Enabled -> 15
   | Hover _ | Any_hover _ -> 16
-  | Prefers_reduced_transparency `No_preference -> 17
-  | Prefers_reduced_transparency `Reduce -> 18
-  | Prefers_reduced_data `No_preference -> 19
-  | Prefers_reduced_data `Reduce -> 20
+  | Prefers_reduced_transparency No_preference -> 17
+  | Prefers_reduced_transparency Reduce -> 18
+  | Prefers_reduced_data No_preference -> 19
+  | Prefers_reduced_data Reduce -> 20
   | Nav_controls _ -> 21
   | And (a, _) | Or (a, _) -> preference_order a
   | Negated inner -> preference_order inner

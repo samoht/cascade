@@ -195,6 +195,7 @@ let at_rule_fingerprint css =
         | View_transition _ -> "view-transition" :: acc
         | Position_try _ -> "position-try" :: acc
         | Declarations _ -> acc
+        | _ -> "unknown" :: acc
       in
       Some (List.rev (statements [] sheet))
     with Css.Cursor.Parse_error _ | Invalid_argument _ -> None

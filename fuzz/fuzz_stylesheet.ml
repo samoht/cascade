@@ -282,6 +282,9 @@ let rec boundary_shape = function
       in
       (("origin:" ^ origin) :: List.concat_map boundary_shape block)
       @ [ "/origin" ]
+  | Moz_document (_, block) ->
+      ("moz-document" :: List.concat_map boundary_shape block)
+      @ [ "/moz-document" ]
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
@@ -305,13 +308,13 @@ let anonymous_layer_count ss =
     | Else (_, block)
     | Scope (_, _, block)
     | Starting_style block
+    | Moz_document (_, block)
     | Origin (_, block) ->
         block_count block
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
     | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-    | Font_face _ | Page _
-    | Page_with_margins _ | Font_palette_values _ | View_transition _
-    | Position_try _ | Property _ | Supports_condition _ ->
+    | Font_face _ | Page _ | Page_with_margins _ | Font_palette_values _
+    | View_transition _ | Position_try _ | Property _ | Supports_condition _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss

@@ -29,37 +29,92 @@ type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
   | Vendor_flag_enabled
-  | Unparseable of { property : property_name; value : Component.t list }
-      (** A [(<property>: <value>)] feature whose [<value>] does not parse as a
-          typed declaration value for [<property>]. CSS Conditional Rules 4 §3.5
-          routes this through the [<general-enclosed>] production: it is
-          preserved verbatim and always evaluates to [false], rather than being
-          a parse error in the API surface. *)
+
+type font_format =
+  | Collection
+  | Embedded_opentype
+  | Opentype
+  | Svg
+  | Truetype
+  | Woff
+  | Woff2
+
+type font_tech =
+  | Features_opentype
+  | Features_aat
+  | Features_graphite
+  | Color_colrv0
+  | Color_colrv1
+  | Color_svg
+  | Color_sbix
+  | Color_cbdt
+  | Variations
+  | Palettes
+  | Incremental
+
+type function_feature =
+  | Selector of Selector.t
+  | Font_format of font_format
+  | Font_tech of font_tech
+  | At_rule of string
+  | Named_feature of string
+  | Env of string
 
 type t =
   | Property of declaration_feature
       (** [(property: value)] declaration feature test *)
-  | Func of string * Component.t list
-      (** [name(args)] function test (selector, font-format, font-tech, var,
-          etc.) *)
+  | Function of function_feature
+      (** Function feature test (selector, font-format, font-tech, at-rule,
+          named-feature, or env). *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
 
-let component_values s = Cursor.of_string s |> Cursor.remaining
+let font_format_of_string = function
+  | "collection" -> Some Collection
+  | "embedded-opentype" -> Some Embedded_opentype
+  | "opentype" -> Some Opentype
+  | "svg" -> Some Svg
+  | "truetype" -> Some Truetype
+  | "woff" -> Some Woff
+  | "woff2" -> Some Woff2
+  | _ -> None
 
-let is_font_format = function
-  | "collection" | "embedded-opentype" | "opentype" | "svg" | "truetype"
-  | "woff" | "woff2" ->
-      true
-  | _ -> false
+let string_of_font_format = function
+  | Collection -> "collection"
+  | Embedded_opentype -> "embedded-opentype"
+  | Opentype -> "opentype"
+  | Svg -> "svg"
+  | Truetype -> "truetype"
+  | Woff -> "woff"
+  | Woff2 -> "woff2"
 
-let is_font_tech = function
-  | "features-opentype" | "features-aat" | "features-graphite" | "color-colrv0"
-  | "color-colrv1" | "color-svg" | "color-sbix" | "color-cbdt" | "variations"
-  | "palettes" | "incremental" ->
-      true
-  | _ -> false
+let font_tech_of_string = function
+  | "features-opentype" -> Some Features_opentype
+  | "features-aat" -> Some Features_aat
+  | "features-graphite" -> Some Features_graphite
+  | "color-colrv0" -> Some Color_colrv0
+  | "color-colrv1" -> Some Color_colrv1
+  | "color-svg" -> Some Color_svg
+  | "color-sbix" -> Some Color_sbix
+  | "color-cbdt" -> Some Color_cbdt
+  | "variations" -> Some Variations
+  | "palettes" -> Some Palettes
+  | "incremental" -> Some Incremental
+  | _ -> None
+
+let string_of_font_tech = function
+  | Features_opentype -> "features-opentype"
+  | Features_aat -> "features-aat"
+  | Features_graphite -> "features-graphite"
+  | Color_colrv0 -> "color-colrv0"
+  | Color_colrv1 -> "color-colrv1"
+  | Color_svg -> "color-svg"
+  | Color_sbix -> "color-sbix"
+  | Color_cbdt -> "color-cbdt"
+  | Variations -> "variations"
+  | Palettes -> "palettes"
+  | Incremental -> "incremental"
 
 let starts_with ~prefix s =
   let prefix_len = String.length prefix in
@@ -86,22 +141,51 @@ let declaration_feature prop value =
   match (String.lowercase_ascii prop, String.lowercase_ascii value) with
   | _, "" -> Empty (property_name prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
-  | _ -> (
-      match Declaration.of_string (prop ^ ":" ^ value) with
-      | Declaration.Declaration _ as decl -> Declaration decl
-      | _ ->
-          Unparseable
-            { property = property_name prop; value = component_values value }
-      | exception Error.Parse_error _ ->
-          Unparseable
-            { property = property_name prop; value = component_values value })
+  | _ -> Declaration (Declaration.of_string (prop ^ ":" ^ value))
 
 let property prop value = Property (declaration_feature prop value)
-let func name args = Func (name, component_values args)
 
-(* Selector is subsumed by [Func ("selector", ...)] for simplicity. The argument
-   is still a CSS component stream, because arbitrary selector text is not a
-   declaration value. *)
+let single_ident name args =
+  let cursor = Cursor.of_string args in
+  let ident = Cursor.ident ~keep_case:false cursor in
+  Cursor.ws cursor;
+  Cursor.expect_eof cursor;
+  if ident = "" then invalid_arg ("empty " ^ name ^ "() in @supports");
+  ident
+
+let func name args =
+  let lower_name = String.lowercase_ascii name in
+  let feature =
+    match lower_name with
+    | "selector" ->
+        let cursor = Cursor.of_string args in
+        let selector = Selector.read cursor in
+        Cursor.ws cursor;
+        Cursor.expect_eof cursor;
+        Selector selector
+    | "font-format" -> (
+        match font_format_of_string (single_ident name args) with
+        | Some format -> Font_format format
+        | None -> invalid_arg ("invalid font-format() in @supports"))
+    | "font-tech" -> (
+        match font_tech_of_string (single_ident name args) with
+        | Some tech -> Font_tech tech
+        | None -> invalid_arg ("invalid font-tech() in @supports"))
+    | "at-rule" ->
+        let cursor = Cursor.of_string args in
+        let at_rule =
+          match Cursor.at_keyword_opt cursor with
+          | Some name -> name
+          | None -> invalid_arg "invalid at-rule() in @supports"
+        in
+        Cursor.ws cursor;
+        Cursor.expect_eof cursor;
+        At_rule at_rule
+    | "named-feature" -> Named_feature (single_ident name args)
+    | "env" -> Env (single_ident name args)
+    | _ -> invalid_arg ("unsupported @supports function: " ^ name)
+  in
+  Function feature
 
 (* ===== Pretty printing ===== *)
 
@@ -109,7 +193,7 @@ let rec to_string condition = render `Root condition
 
 and render context = function
   | Property feature -> "(" ^ render_declaration_feature feature ^ ")"
-  | Func (name, args) -> name ^ "(" ^ Parser.to_string args ^ ")"
+  | Function feature -> render_function_feature feature
   | Not cond ->
       let rendered = "not " ^ render_not_operand cond in
       if context = `Operand then "(" ^ rendered ^ ")" else rendered
@@ -130,8 +214,14 @@ and render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
   | Empty name -> string_of_property_name name ^ ":"
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
-  | Unparseable { property; value } ->
-      string_of_property_name property ^ ": " ^ Parser.to_string value
+
+and render_function_feature = function
+  | Selector selector -> "selector(" ^ Selector.to_string selector ^ ")"
+  | Font_format format -> "font-format(" ^ string_of_font_format format ^ ")"
+  | Font_tech tech -> "font-tech(" ^ string_of_font_tech tech ^ ")"
+  | At_rule rule -> "at-rule(@" ^ rule ^ ")"
+  | Named_feature feature -> "named-feature(" ^ feature ^ ")"
+  | Env name -> "env(" ^ name ^ ")"
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
@@ -142,26 +232,23 @@ let pp_declaration_feature ctx = function
       Pp.string ctx "-vendor-flag:";
       Pp.space_if_pretty ctx ();
       Pp.string ctx "enabled"
-  | Unparseable { property; value } ->
-      Pp.string ctx (string_of_property_name property);
-      Pp.char ctx ':';
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx
-        (if Pp.minified ctx then Parser.to_string_minified value
-         else Parser.to_string value)
+
+let pp_function_feature ctx = function
+  | Selector selector -> Pp.call "selector" Selector.pp ctx selector
+  | Font_format format ->
+      Pp.call "font-format" Pp.string ctx (string_of_font_format format)
+  | Font_tech tech ->
+      Pp.call "font-tech" Pp.string ctx (string_of_font_tech tech)
+  | At_rule rule -> Pp.call "at-rule" Pp.string ctx ("@" ^ rule)
+  | Named_feature feature -> Pp.call "named-feature" Pp.string ctx feature
+  | Env name -> Pp.call "env" Pp.string ctx name
 
 let rec pp_aux ~in_and ctx = function
   | Property feature ->
       Pp.char ctx '(';
       pp_declaration_feature ctx feature;
       Pp.char ctx ')'
-  | Func (name, args) ->
-      Pp.string ctx name;
-      Pp.char ctx '(';
-      Pp.string ctx
-        (if Pp.minified ctx then Parser.to_string_minified args
-         else Parser.to_string args);
-      Pp.char ctx ')'
+  | Function feature -> pp_function_feature ctx feature
   | Not cond -> pp_not ~in_and ctx cond
   | And (a, b) -> pp_and ctx a b
   | Or (a, b) -> pp_or ctx a b
@@ -265,51 +352,12 @@ let declaration_from_components prop value =
       property prop value
   | None -> failwith "Invalid declaration in @supports"
 
-let validate_ident_components name args is_valid =
-  match strip_components args with
-  | [ Component.Preserved { kind = Token.Ident ident; _ } ]
-    when is_valid (String.lowercase_ascii ident) ->
-      ()
-  | _ -> failwith ("Invalid " ^ name ^ "() in @supports")
-
-let validate_single_ident_components name args =
-  match strip_components args with
-  | [ Component.Preserved { kind = Token.Ident _; _ } ] -> ()
-  | _ -> failwith ("Invalid " ^ name ^ "() in @supports")
-
-let validate_at_rule_components args =
-  match strip_components args with
-  | [ Component.Preserved { kind = Token.At_keyword _; _ } ] -> ()
-  | _ -> failwith "Invalid at-rule() in @supports"
-
-let validate_selector_components args =
-  try
-    let cursor = Cursor.of_components args in
-    ignore (Selector.read cursor : Selector.t)
-  with Error.Parse_error _ -> failwith "Invalid selector() in @supports"
-
 let function_call (fn : Component.func Component.node) =
   let name = fn.node.name in
   let args = fn.node.arguments in
   if not (fn.node.terminated && components_are_closed args) then
     failwith ("Unterminated " ^ name ^ "() in @supports");
-  let lower_name = String.lowercase_ascii name in
-  if
-    strip_components args = []
-    && (lower_name = "selector" || lower_name = "font-format"
-      || lower_name = "font-tech" || lower_name = "at-rule"
-       || lower_name = "named-feature"
-       || lower_name = "env")
-  then failwith ("Empty " ^ name ^ "() in @supports");
-  if lower_name = "selector" then validate_selector_components args;
-  if lower_name = "font-format" then
-    validate_ident_components name args is_font_format;
-  if lower_name = "font-tech" then
-    validate_ident_components name args is_font_tech;
-  if lower_name = "at-rule" then validate_at_rule_components args;
-  if lower_name = "named-feature" || lower_name = "env" then
-    validate_single_ident_components name args;
-  Func (name, args)
+  func name (Cursor.string_of_components ~trim:true args)
 
 let peek_ident t =
   match Cursor.peek t with
@@ -416,32 +464,21 @@ let compare_declaration_feature d1 d2 =
     | Empty _ -> 0
     | Vendor_flag_enabled -> 1
     | Declaration _ -> 2
-    | Unparseable _ -> 3
   in
   match (d1, d2) with
   | Empty n1, Empty n2 ->
       String.compare (string_of_property_name n1) (string_of_property_name n2)
   | Vendor_flag_enabled, Vendor_flag_enabled -> 0
   | Declaration d1, Declaration d2 -> compare_declaration d1 d2
-  | ( Unparseable { property = p1; value = v1 },
-      Unparseable { property = p2; value = v2 } ) ->
-      let cp =
-        String.compare (string_of_property_name p1) (string_of_property_name p2)
-      in
-      if cp <> 0 then cp
-      else String.compare (Parser.to_string v1) (Parser.to_string v2)
   | _ -> Stdlib.compare (order d1) (order d2)
+
+let compare_function_feature a b =
+  String.compare (render_function_feature a) (render_function_feature b)
 
 let rec compare t1 t2 =
   match (t1, t2) with
   | Property d1, Property d2 -> compare_declaration_feature d1 d2
-  | Func (n1, a1), Func (n2, a2) ->
-      let c = String.compare n1 n2 in
-      if c <> 0 then c
-      else
-        String.compare
-          (Parser.to_string_minified a1)
-          (Parser.to_string_minified a2)
+  | Function f1, Function f2 -> compare_function_feature f1 f2
   | Not a, Not b -> compare a b
   | And (a1, b1), And (a2, b2) ->
       let c = compare a1 a2 in
@@ -449,11 +486,11 @@ let rec compare t1 t2 =
   | Or (a1, b1), Or (a2, b2) ->
       let c = compare a1 a2 in
       if c <> 0 then c else compare b1 b2
-  (* Order: Property < Func < Not < And < Or *)
+  (* Order: Property < Function < Not < And < Or *)
   | Property _, _ -> -1
   | _, Property _ -> 1
-  | Func _, _ -> -1
-  | _, Func _ -> 1
+  | Function _, _ -> -1
+  | _, Function _ -> 1
   | Not _, _ -> -1
   | _, Not _ -> 1
   | And _, _ -> -1

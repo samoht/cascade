@@ -10,7 +10,7 @@ let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let name prefix buf i = prefix ^ string_of_int (byte_at buf i)
 let css_value pp value = Css.Pp.to_string ~minify:true pp value
 let px value = Css.Media.Length (Css.Values.Px value)
-let ident value = Css.Media.Ident value
+let ident value = Css.Media.Ident (Css.Media.ident_of_string value)
 let feature = Css.Media.feature
 let container_feature = Css.Container.feature
 

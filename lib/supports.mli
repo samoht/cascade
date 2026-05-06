@@ -9,18 +9,42 @@ type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
   | Vendor_flag_enabled
-  | Unparseable of { property : property_name; value : Component.t list }
-      (** A [(<property>: <value>)] feature whose [<value>] does not parse as a
-          typed declaration value for [<property>]. CSS Conditional Rules 4 §3.5
-          routes this through the [<general-enclosed>] production: it is
-          preserved verbatim and always evaluates to [false], rather than being
-          a parse error in the API surface. *)
+
+type font_format =
+  | Collection
+  | Embedded_opentype
+  | Opentype
+  | Svg
+  | Truetype
+  | Woff
+  | Woff2
+
+type font_tech =
+  | Features_opentype
+  | Features_aat
+  | Features_graphite
+  | Color_colrv0
+  | Color_colrv1
+  | Color_svg
+  | Color_sbix
+  | Color_cbdt
+  | Variations
+  | Palettes
+  | Incremental
+
+type function_feature =
+  | Selector of Selector.t
+  | Font_format of font_format
+  | Font_tech of font_tech
+  | At_rule of string
+  | Named_feature of string
+  | Env of string
 
 type t =
   | Property of declaration_feature  (** [(property: value)] feature test *)
-  | Func of string * Component.t list
-      (** [name(args)] function test: [selector()], [font-format()],
-          [font-tech()], [var()], etc. *)
+  | Function of function_feature
+      (** Function feature test: [selector()], [font-format()],
+          [font-tech()], [at-rule()], [named-feature()], or [env()]. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
