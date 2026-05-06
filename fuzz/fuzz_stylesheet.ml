@@ -293,6 +293,7 @@ let rec boundary_shape = function
   | Font_palette_values _ -> [ "font-palette-values" ]
   | View_transition _ -> [ "view-transition" ]
   | Position_try _ -> [ "position-try" ]
+  | Viewport _ -> [ "viewport" ]
   | Property _ -> [ "property" ]
 
 let boundary_shapes ss = List.concat_map boundary_shape ss
@@ -314,7 +315,8 @@ let anonymous_layer_count ss =
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
     | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
     | Font_face _ | Page _ | Page_with_margins _ | Font_palette_values _
-    | View_transition _ | Position_try _ | Property _ | Supports_condition _ ->
+    | View_transition _ | Position_try _ | Property _ | Supports_condition _
+    | Viewport _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss

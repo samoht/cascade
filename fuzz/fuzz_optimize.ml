@@ -135,6 +135,7 @@ let rec boundary_shape = function
   | Font_palette_values _ -> [ "font-palette-values" ]
   | View_transition _ -> [ "view-transition" ]
   | Position_try _ -> [ "position-try" ]
+  | Viewport _ -> [ "viewport" ]
   | Property _ -> [ "property" ]
 
 (* The optimizer is allowed to merge a contiguous run of [Rule]s into fewer

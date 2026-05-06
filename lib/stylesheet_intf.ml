@@ -173,6 +173,9 @@ and statement =
       (** [@view-transition { navigation: auto }] *)
   | Position_try of string * Declaration.declaration list
       (** [@position-try --name { top: anchor(...) }] *)
+  | Viewport of viewport_prefix * viewport_descriptor list
+      (** [@viewport { ... }] / [@-ms-viewport { ... }] (CSS Device Adaptation
+          1, deprecated but still emitted by minifiers for legacy IE). *)
 
 and block = statement list
 (** A block contains a list of statements *)
@@ -184,6 +187,13 @@ and conditional =
   | Or of conditional * conditional
 
 and moz_document_condition = Url_prefix of string option
+and viewport_prefix = Standard | Ms_prefixed
+
+and viewport_descriptor = { name : string; value : string }
+(** Raw [<name>:<value>] pair inside [@viewport] / [@-ms-viewport]; viewport
+    descriptors share names with regular CSS properties (e.g., [width]) but take
+    a viewport-specific value grammar that includes [device-width],
+    [device-height], so they aren't typed against the property reader. *)
 
 and keyframe = {
   keyframe_selector : Keyframe.selector;
