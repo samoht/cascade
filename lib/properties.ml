@@ -6043,7 +6043,14 @@ let rec pp_animation_name : animation_name Pp.t =
   | None -> Pp.string ctx "none"
   | Name name -> Pp.string ctx name
   | Ambiguous name -> Pp.string ctx name
-  | Quoted name -> Pp.quoted_string ctx name
+  | Quoted name ->
+      (* CSS Animations 1 §3.3: [<keyframes-name>] excludes [none], the CSS-wide
+         keywords, and [default]. A source [animation-name: "none"] therefore
+         can't refer to a real [@keyframes none] - it's invalid input that
+         browsers tolerate. Minified output drops the quotes so the value
+         collapses to the equivalent (and shorter) keyword form. *)
+      if Pp.minified ctx then Pp.string ctx name
+      else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -13258,7 +13265,6 @@ module Animation = struct
     in
     Cursor.one_of
       [
-        read_var_name;
         read_duration;
         read_timing;
         read_iteration;
@@ -13266,6 +13272,7 @@ module Animation = struct
         read_fill;
         read_play;
         read_timeline;
+        read_var_name;
         read_string_name;
         (* Animation name - parse this LAST since it accepts any non-reserved
            identifier *)
@@ -13524,10 +13531,21 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     pp ctx x
   in
   let has_any_non_default = Animation.has_non_defaults ctx anim in
-  (match (anim.name, has_any_non_default) with
-  | None, false -> Pp.string ctx "none"
-  | None, true -> ()
-  | Some _, _ -> ());
+  (* An explicit animation-name [none] is redundant when another shorthand slot
+     is non-default. *)
+  let name_is_default_none =
+    match anim.name with
+    | Some (None : animation_name) -> true
+    | Some (Quoted s) when Pp.minified ctx && String.lowercase_ascii s = "none"
+      ->
+        true
+    | _ -> false
+  in
+  (match (anim.name, name_is_default_none, has_any_non_default) with
+  | _, true, true -> ()
+  | None, _, false -> Pp.string ctx "none"
+  | None, _, true -> ()
+  | Some _, _, _ -> ());
   Pp.option (space_before pp_duration) ctx (Animation.duration anim);
   (match Animation.timing ctx anim with
   | Some tf ->
@@ -13544,7 +13562,8 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     (space_before pp_animation_play_state)
     ctx
     (Animation.play_state anim);
-  Option.iter (space_before pp_animation_name ctx) anim.name;
+  if not name_is_default_none then
+    Option.iter (space_before pp_animation_name ctx) anim.name;
   Pp.option (space_before pp_animation_timeline) ctx (Animation.timeline anim)
 
 and pp_animation : animation Pp.t =
