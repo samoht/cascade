@@ -2895,14 +2895,17 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
             alpha = alpha_value alpha;
           }
     | Values.Lab { l; a; b; alpha = value } ->
-        Values.Lab { l = percentage l; a; b; alpha = alpha_value value }
+        Values.Lab
+          { l = Option.map percentage l; a; b; alpha = alpha_value value }
     | Values.Oklch { l; c; h; alpha = value } ->
         Values.Oklch
-          { l = percentage l; c; h = hue h; alpha = alpha_value value }
+          { l = Option.map percentage l; c; h = hue h; alpha = alpha_value value }
     | Values.Oklab { l; a; b; alpha = value } ->
-        Values.Oklab { l = percentage l; a; b; alpha = alpha_value value }
+        Values.Oklab
+          { l = Option.map percentage l; a; b; alpha = alpha_value value }
     | Values.Lch { l; c; h; alpha = value } ->
-        Values.Lch { l = percentage l; c; h = hue h; alpha = alpha_value value }
+        Values.Lch
+          { l = Option.map percentage l; c; h = hue h; alpha = alpha_value value }
     | Values.Current -> (
         match ctx.current_color with
         | Some color -> color

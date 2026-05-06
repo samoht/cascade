@@ -374,12 +374,16 @@ let rec vars_of_color (value : Values.color) : any_var list =
   | Relative_rgb _ -> []
   | Contrast_color color -> vars_of_color color
   | Light_dark (light, dark) -> vars_of_color light @ vars_of_color dark
-  | Lab { l; alpha; _ } -> vars_of_percentage l @ vars_of_alpha alpha
+  | Lab { l; alpha; _ } ->
+      Option.fold ~none:[] ~some:vars_of_percentage l @ vars_of_alpha alpha
   | Oklch { l; h; alpha; _ } ->
-      vars_of_percentage l @ vars_of_hue h @ vars_of_alpha alpha
-  | Oklab { l; alpha; _ } -> vars_of_percentage l @ vars_of_alpha alpha
+      Option.fold ~none:[] ~some:vars_of_percentage l
+      @ vars_of_hue h @ vars_of_alpha alpha
+  | Oklab { l; alpha; _ } ->
+      Option.fold ~none:[] ~some:vars_of_percentage l @ vars_of_alpha alpha
   | Lch { l; h; alpha; _ } ->
-      vars_of_percentage l @ vars_of_hue h @ vars_of_alpha alpha
+      Option.fold ~none:[] ~some:vars_of_percentage l
+      @ vars_of_hue h @ vars_of_alpha alpha
   | Mix { color1; percent1; color2; percent2; _ } ->
       let c1_vars = vars_of_color color1 in
       let c2_vars = vars_of_color color2 in

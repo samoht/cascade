@@ -1023,20 +1023,35 @@ type color =
   | Relative_rgb of string
   | Contrast_color of color
   | Light_dark of color * color
-  | Lab of { l : percentage; a : float option; b : float option; alpha : alpha }
-      (** Lab color space. a and b can be [None] to represent CSS [none]. *)
-  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
-      (** OKLCH color space *)
-  | Oklab of {
-      l : percentage;
+  | Lab of {
+      l : percentage option;
       a : float option;
       b : float option;
       alpha : alpha;
     }
-      (** Oklab color space. a and b can be [None] to represent CSS 'none'
+      (** Lab color space. l, a and b can be [None] to represent CSS [none]. *)
+  | Oklch of {
+      l : percentage option;
+      c : float option;
+      h : hue;
+      alpha : alpha;
+    }
+      (** OKLCH color space. l and c can be [None] to represent CSS [none]. *)
+  | Oklab of {
+      l : percentage option;
+      a : float option;
+      b : float option;
+      alpha : alpha;
+    }
+      (** Oklab color space. l, a and b can be [None] to represent CSS 'none'
           keyword. *)
-  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
-      (** LCH color space *)
+  | Lch of {
+      l : percentage option;
+      c : float option;
+      h : hue;
+      alpha : alpha;
+    }
+      (** LCH color space. l and c can be [None] to represent CSS [none]. *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | System of system_color
       (** CSS system colors like Button_text, Canvas, etc. *)
