@@ -181,6 +181,7 @@ type t =
   | Cue_region of t list (* ::cue-region(...) - takes selectors *)
   | Highlight of
       string list (* ::highlight(...) - takes custom highlight names *)
+  | View_transition (* ::view-transition (CSS View Transitions 1 §3.2) *)
   | View_transition_group of string (* ::view-transition-group(name) *)
   | View_transition_image_pair of
       string (* ::view-transition-image-pair(name) *)

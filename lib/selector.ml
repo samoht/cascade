@@ -889,6 +889,7 @@ let pseudo_element_modern_idents =
     ("spelling-error", Spelling_error);
     ("grammar-error", Grammar_error);
     ("file-selector-button", File_selector_button);
+    ("view-transition", View_transition);
   ]
 
 let pseudo_vendor_idents =
@@ -1174,23 +1175,31 @@ and read_highlight_content t =
   ensure_call_done t "highlight";
   Highlight [ name ]
 
+and read_vt_name t =
+  (* CSS View Transitions 1 §3.4.1 [<vt-name>] is [<custom-ident> | *]. *)
+  match Cursor.peek_delim t with
+  | Some '*' ->
+      Cursor.skip t;
+      "*"
+  | _ -> Cursor.ident t
+
 and read_view_transition_group_content t =
-  let name = Cursor.ident t in
+  let name = read_vt_name t in
   ensure_call_done t "view transition group";
   View_transition_group name
 
 and read_vt_image_pair_content t =
-  let name = Cursor.ident t in
+  let name = read_vt_name t in
   ensure_call_done t "view transition image pair";
   View_transition_image_pair name
 
 and read_view_transition_old_content t =
-  let name = Cursor.ident t in
+  let name = read_vt_name t in
   ensure_call_done t "view transition old";
   View_transition_old name
 
 and read_view_transition_new_content t =
-  let name = Cursor.ident t in
+  let name = read_vt_name t in
   ensure_call_done t "view transition new";
   View_transition_new name
 
@@ -1606,7 +1615,24 @@ let rec pp_nth_func ctx name expr of_sel =
   pp_nth ctx expr;
   (match of_sel with
   | Some sels ->
-      Pp.string ctx " of ";
+      Pp.string ctx " of";
+      (* The trailing space between [of] and the selector list is only needed
+         when the leading selector starts with an ident-continue character.
+         Class / id / attribute / universal / nesting / pseudo-* selectors
+         all open with a self-delimiting token, so [of.foo] tokenises the
+         same as [of .foo] under minify. *)
+      let rec starts_with_self_delim : t -> bool = function
+        | Element _ -> false
+        | Combined (left, _, _) -> starts_with_self_delim left
+        | Compound (first :: _) -> starts_with_self_delim first
+        | List (first :: _) -> starts_with_self_delim first
+        | Relative _ -> false
+        | _ -> true
+      in
+      let head_self_delim =
+        match sels with first :: _ -> starts_with_self_delim first | _ -> false
+      in
+      if not (Pp.minified ctx && head_self_delim) then Pp.char ctx ' ';
       Pp.list ~sep:Pp.comma pp ctx sels
   | None -> ());
   Pp.char ctx ')'
@@ -1833,6 +1859,7 @@ and pp : t Pp.t =
   | Active_view_transition_type (Some t) ->
       func ctx "active-view-transition-type" strs t
   | Highlight names -> elem_func ctx "highlight" strs names
+  | View_transition -> elem ctx "view-transition"
   | View_transition_group name ->
       elem_func ctx "view-transition-group" Pp.string name
   | View_transition_image_pair name ->
@@ -2016,7 +2043,7 @@ let rec specificity = function
   | Universal _ | Nesting -> zero_specificity
   | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
   | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
-  | File_selector_button | Part _ | View_transition_group _
+  | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
     ->
       { ids = 0; classes = 0; elements = 1 }
