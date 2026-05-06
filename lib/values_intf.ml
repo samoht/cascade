@@ -74,6 +74,7 @@ type length =
   | Cqmax of float
   | Ch of float
   | Lh of float
+  | Unknown_dimension of float * string
   | Size
   | Auto
   | None

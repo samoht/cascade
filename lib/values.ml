@@ -1127,6 +1127,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
+  | Unknown_dimension (f, unit) -> pp_unit_fn f unit
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
@@ -2786,7 +2787,12 @@ let read_length_unit ?(allow_negative = true) t =
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
-  | _ -> Cursor.err_invalid t ("unknown length unit: " ^ unit)
+  | _ ->
+      (* Cascade preserves dimensions with unrecognised units rather than
+         rejecting them outright: every other minifier round-trips [1x] /
+         [10qoo] etc. as written, and the strict spec view is more useful as a
+         diagnostic than as a hard parse failure. *)
+      Unknown_dimension (n, unit)
 
 let read_length_keyword t : length =
   Cursor.enum "length"
