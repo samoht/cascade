@@ -2676,6 +2676,23 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
       pp_color_interpolation ctx interp
   | Var v -> pp_var pp_gradient_direction ctx v
 
+let rec pp_webkit_gradient_direction : gradient_direction Pp.t =
+ fun ctx -> function
+  | To_top -> Pp.string ctx "top"
+  | To_top_right -> Pp.string ctx "top right"
+  | To_right -> Pp.string ctx "right"
+  | To_bottom_right -> Pp.string ctx "bottom right"
+  | To_bottom -> Pp.string ctx "bottom"
+  | To_bottom_left -> Pp.string ctx "bottom left"
+  | To_left -> Pp.string ctx "left"
+  | To_top_left -> Pp.string ctx "top left"
+  | Angle a -> pp_angle ctx a
+  | With_interpolation (dir, interp) ->
+      pp_webkit_gradient_direction ctx dir;
+      Pp.space ctx ();
+      pp_color_interpolation ctx interp
+  | Var v -> pp_var pp_webkit_gradient_direction ctx v
+
 let rec pp_radial_shape : radial_shape Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_radial_shape ctx v
@@ -2920,68 +2937,21 @@ let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
   | Linear_gradient (dir, stops) ->
-      Pp.call "linear-gradient"
-        (fun ctx (dir, stops) ->
-          (* Only print direction if it's not the default "to bottom" *)
-          let print_direction =
-            match dir with To_bottom -> false | _ -> true
-          in
-          if print_direction then (
-            pp_gradient_direction ctx dir;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (dir, stops)
+      pp_linear_gradient_named "linear-gradient" ctx (dir, stops)
   | Linear_gradient_var var_ref ->
       Pp.call "linear-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
   | Repeating_linear_gradient (dir, stops) ->
-      Pp.call "repeating-linear-gradient"
-        (fun ctx (dir, stops) ->
-          let print_direction =
-            match dir with To_bottom -> false | _ -> true
-          in
-          if print_direction then (
-            pp_gradient_direction ctx dir;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (dir, stops)
+      pp_linear_gradient_named "repeating-linear-gradient" ctx (dir, stops)
   | Radial_gradient (config, stops) ->
-      Pp.call "radial-gradient"
-        (fun ctx (config, stops) ->
-          let has_config =
-            config.shape <> None || config.size <> None
-            || config.position <> None
-          in
-          if has_config then (
-            pp_radial_gradient_config ctx config;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (config, stops)
+      pp_radial_gradient_named "radial-gradient" ctx (config, stops)
   | Radial_gradient_var var_ref ->
       Pp.call "radial-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
   | Repeating_radial_gradient (config, stops) ->
-      Pp.call "repeating-radial-gradient"
-        (fun ctx (config, stops) ->
-          let has_config =
-            config.shape <> None || config.size <> None
-            || config.position <> None
-          in
-          if has_config then (
-            pp_radial_gradient_config ctx config;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (config, stops)
+      pp_radial_gradient_named "repeating-radial-gradient" ctx (config, stops)
   | Conic_gradient (config, stops) ->
       Pp.call "conic-gradient"
         (fun ctx (config, stops) ->
@@ -3012,6 +2982,35 @@ let rec pp_background_image : background_image Pp.t =
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx (config, stops)
+  | Webkit_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-webkit-linear-gradient" ctx (dir, stops)
+  | Webkit_repeating_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-webkit-repeating-linear-gradient" ctx
+        (dir, stops)
+  | Webkit_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-webkit-radial-gradient" ctx (config, stops)
+  | Webkit_repeating_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-webkit-repeating-radial-gradient" ctx
+        (config, stops)
+  | Moz_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-moz-linear-gradient" ctx (dir, stops)
+  | Moz_repeating_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-moz-repeating-linear-gradient" ctx
+        (dir, stops)
+  | Moz_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-moz-radial-gradient" ctx (config, stops)
+  | Moz_repeating_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-moz-repeating-radial-gradient" ctx
+        (config, stops)
+  | O_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-o-linear-gradient" ctx (dir, stops)
+  | O_repeating_linear_gradient (dir, stops) ->
+      pp_webkit_linear_gradient_named "-o-repeating-linear-gradient" ctx
+        (dir, stops)
+  | O_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-o-radial-gradient" ctx (config, stops)
+  | O_repeating_radial_gradient (config, stops) ->
+      pp_radial_gradient_named "-o-repeating-radial-gradient" ctx (config, stops)
   | Image_set options ->
       Pp.call "image-set"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
@@ -3029,6 +3028,44 @@ let rec pp_background_image : background_image Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+and pp_linear_gradient_named name ctx (dir, stops) =
+  Pp.call name
+    (fun ctx (dir, stops) ->
+      let print_direction = match dir with To_bottom -> false | _ -> true in
+      if print_direction then (
+        pp_gradient_direction ctx dir;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (dir, stops)
+
+and pp_webkit_linear_gradient_named name ctx (dir, stops) =
+  Pp.call name
+    (fun ctx (dir, stops) ->
+      let print_direction = match dir with To_bottom -> false | _ -> true in
+      if print_direction then (
+        pp_webkit_gradient_direction ctx dir;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (dir, stops)
+
+and pp_radial_gradient_named name ctx (config, stops) =
+  Pp.call name
+    (fun ctx (config, stops) ->
+      let has_config =
+        config.shape <> None || config.size <> None || config.position <> None
+      in
+      if has_config then (
+        pp_radial_gradient_config ctx config;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (config, stops)
 
 and pp_image_set_option ctx
     { image_set_source; image_set_resolution; image_set_mime_type } =
@@ -14287,6 +14324,12 @@ module Gradient_direction = struct
     let directions, _ = Cursor.many read_keyword t in
     merge_keywords t directions
 
+  let read_legacy t =
+    let directions, _ = Cursor.many read_keyword t in
+    match directions with
+    | [] -> Cursor.err_expected t "legacy gradient direction"
+    | _ -> merge_keywords t directions
+
   let read_angle t = (Angle (Values.read_angle t) : gradient_direction)
 
   let read t : gradient_direction =
@@ -14661,6 +14704,25 @@ let read_linear_gradient_body t =
     Cursor.err_expected t "at least one color stop in linear-gradient()";
   Linear_gradient (direction, stops)
 
+let read_webkit_linear_gradient_body t =
+  Cursor.ws t;
+  let direction =
+    Cursor.option
+      (fun t ->
+        Cursor.one_of
+          [ Gradient_direction.read_legacy; Gradient_direction.read_angle ]
+          t)
+      t
+  in
+  if direction <> None then (
+    Cursor.ws t;
+    if not (Cursor.comma_opt t) then
+      Cursor.err_expected t "',' after -webkit-linear-gradient direction");
+  let stops = read_gradient_stops t in
+  if stops = [] then
+    Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
+  Webkit_linear_gradient (Option.value ~default:To_bottom direction, stops)
+
 let read_radial_gradient_body t =
   Cursor.ws t;
   let config =
@@ -14754,6 +14816,106 @@ let rec read_bg_image t : background_image =
                   with
                   | Conic_gradient (c, stops) ->
                       Repeating_conic_gradient (c, stops)
+                  | other -> other );
+              ( "-webkit-linear-gradient",
+                fun t ->
+                  Cursor.call "-webkit-linear-gradient" t
+                    read_webkit_linear_gradient_body );
+              ( "-webkit-repeating-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-webkit-repeating-linear-gradient" t
+                      read_webkit_linear_gradient_body
+                  with
+                  | Webkit_linear_gradient (d, stops) ->
+                      Webkit_repeating_linear_gradient (d, stops)
+                  | other -> other );
+              ( "-webkit-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-webkit-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) ->
+                      Webkit_radial_gradient (c, stops)
+                  | other -> other );
+              ( "-webkit-repeating-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-webkit-repeating-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) ->
+                      Webkit_repeating_radial_gradient (c, stops)
+                  | other -> other );
+              ( "-moz-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-moz-linear-gradient" t
+                      read_webkit_linear_gradient_body
+                  with
+                  | Webkit_linear_gradient (d, stops) ->
+                      Moz_linear_gradient (d, stops)
+                  | other -> other );
+              ( "-moz-repeating-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-moz-repeating-linear-gradient" t
+                      read_webkit_linear_gradient_body
+                  with
+                  | Webkit_linear_gradient (d, stops) ->
+                      Moz_repeating_linear_gradient (d, stops)
+                  | other -> other );
+              ( "-moz-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-moz-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) -> Moz_radial_gradient (c, stops)
+                  | other -> other );
+              ( "-moz-repeating-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-moz-repeating-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) ->
+                      Moz_repeating_radial_gradient (c, stops)
+                  | other -> other );
+              ( "-o-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-o-linear-gradient" t
+                      read_webkit_linear_gradient_body
+                  with
+                  | Webkit_linear_gradient (d, stops) ->
+                      O_linear_gradient (d, stops)
+                  | other -> other );
+              ( "-o-repeating-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-o-repeating-linear-gradient" t
+                      read_webkit_linear_gradient_body
+                  with
+                  | Webkit_linear_gradient (d, stops) ->
+                      O_repeating_linear_gradient (d, stops)
+                  | other -> other );
+              ( "-o-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-o-radial-gradient" t read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) -> O_radial_gradient (c, stops)
+                  | other -> other );
+              ( "-o-repeating-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "-o-repeating-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) ->
+                      O_repeating_radial_gradient (c, stops)
                   | other -> other );
               ( "image-set",
                 fun t -> Cursor.call "image-set" t read_image_set_body );
@@ -14976,19 +15138,50 @@ let minify_webkit_gradient_stop = function
   | Webkit_gradient.Color_stop (position, color) ->
       Webkit_gradient.Color_stop (position, minify_color color)
 
+let minify_conic_gradient_config config = config
+
 let minify_background_image : background_image -> background_image = function
   | Linear_gradient (dir, stops) ->
       Linear_gradient (dir, List.map minify_gradient_stop stops)
   | Repeating_linear_gradient (dir, stops) ->
       Repeating_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Webkit_linear_gradient (dir, stops) ->
+      Webkit_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Webkit_repeating_linear_gradient (dir, stops) ->
+      Webkit_repeating_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Moz_linear_gradient (dir, stops) ->
+      Moz_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Moz_repeating_linear_gradient (dir, stops) ->
+      Moz_repeating_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | O_linear_gradient (dir, stops) ->
+      O_linear_gradient (dir, List.map minify_gradient_stop stops)
+  | O_repeating_linear_gradient (dir, stops) ->
+      O_repeating_linear_gradient (dir, List.map minify_gradient_stop stops)
   | Radial_gradient (config, stops) ->
       Radial_gradient (config, List.map minify_gradient_stop stops)
   | Repeating_radial_gradient (config, stops) ->
       Repeating_radial_gradient (config, List.map minify_gradient_stop stops)
+  | Webkit_radial_gradient (config, stops) ->
+      Webkit_radial_gradient (config, List.map minify_gradient_stop stops)
+  | Webkit_repeating_radial_gradient (config, stops) ->
+      Webkit_repeating_radial_gradient
+        (config, List.map minify_gradient_stop stops)
+  | Moz_radial_gradient (config, stops) ->
+      Moz_radial_gradient (config, List.map minify_gradient_stop stops)
+  | Moz_repeating_radial_gradient (config, stops) ->
+      Moz_repeating_radial_gradient (config, List.map minify_gradient_stop stops)
+  | O_radial_gradient (config, stops) ->
+      O_radial_gradient (config, List.map minify_gradient_stop stops)
+  | O_repeating_radial_gradient (config, stops) ->
+      O_repeating_radial_gradient (config, List.map minify_gradient_stop stops)
   | Conic_gradient (config, stops) ->
-      Conic_gradient (config, List.map minify_gradient_stop stops)
+      Conic_gradient
+        ( minify_conic_gradient_config config,
+          List.map minify_gradient_stop stops )
   | Repeating_conic_gradient (config, stops) ->
-      Repeating_conic_gradient (config, List.map minify_gradient_stop stops)
+      Repeating_conic_gradient
+        ( minify_conic_gradient_config config,
+          List.map minify_gradient_stop stops )
   | Webkit_gradient (Webkit_gradient.Linear ({ stops; _ } as gradient)) ->
       Webkit_gradient
         (Webkit_gradient.Linear
