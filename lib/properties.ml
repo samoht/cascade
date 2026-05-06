@@ -14488,20 +14488,50 @@ let read_conic_gradient_config t : conic_gradient_config =
 
 let read_linear_gradient_body t =
   Cursor.ws t;
-  let direction =
-    match
-      Cursor.option
-        (fun t ->
-          let direction = read_gradient_direction t in
-          Cursor.ws t;
-          if not (Cursor.comma_opt t) then
-            Cursor.err_expected t "',' after linear-gradient direction";
-          direction)
-        t
-    with
-    | Some d -> d
-    | None -> To_bottom
+  (* CSS Images 4 §6.1 [linear-gradient] prelude:
+       [ <angle> | to <side-or-corner> ]? || <color-interpolation-method>
+     A bare interpolation, a bare direction, or both in either order are all
+     valid. After the prelude the comma separating it from the colour-stop
+     list is required if and only if the prelude consumed any tokens. *)
+  let direction : gradient_direction option ref = ref Option.None in
+  let interpolation : color_interpolation option ref = ref Option.None in
+  let try_direction () =
+    if !direction <> Option.None then false
+    else
+      match Cursor.option read_gradient_direction t with
+      | Some d ->
+          direction := Option.Some d;
+          true
+      | Option.None -> false
   in
+  let try_interpolation () =
+    if !interpolation <> Option.None then false
+    else
+      match Cursor.option read_color_interpolation t with
+      | Some i ->
+          interpolation := Option.Some i;
+          true
+      | Option.None -> false
+  in
+  let rec loop () =
+    Cursor.ws t;
+    if try_direction () || try_interpolation () then loop ()
+  in
+  loop ();
+  let prelude_consumed =
+    !direction <> Option.None || !interpolation <> Option.None
+  in
+  let direction =
+    match (!direction, !interpolation) with
+    | Some d, Some i -> With_interpolation (d, i)
+    | Some d, None -> d
+    | None, Some i -> With_interpolation (To_bottom, i)
+    | None, None -> To_bottom
+  in
+  if prelude_consumed then (
+    Cursor.ws t;
+    if not (Cursor.comma_opt t) then
+      Cursor.err_expected t "',' after linear-gradient direction");
   let stops = read_gradient_stops t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in linear-gradient()";

@@ -2373,6 +2373,11 @@ and pp_color : color Pp.t =
         if Pp.minified ctx then minify_relative_color_alpha body else body
       in
       Pp.call "rgb" (fun ctx body -> Pp.string ctx body) ctx body
+  | Relative_color (name, body) ->
+      let body =
+        if Pp.minified ctx then minify_relative_color_alpha body else body
+      in
+      Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
   | Contrast_color color -> Pp.call "contrast-color" pp_color ctx color
   | Light_dark (light, dark) ->
       Pp.call "light-dark"
@@ -4065,6 +4070,27 @@ and read_color_attr t : color =
   Cursor.expect_eof t;
   Attribute (name, fallback)
 
+and read_relative_color name t : color =
+  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2>
+     <c3> [/ <alpha>]?]. We capture the body verbatim so the printer
+     re-emits the function name + parenthesised tail unchanged. *)
+  Cursor.ws t;
+  Cursor.expect_string "from" t;
+  Cursor.ws t;
+  let origin = read_color t in
+  Cursor.ws t;
+  let tail =
+    Cursor.consume_remaining_as_string ~trim:true t
+    |> normalize_relative_color_tail
+  in
+  if tail = "" then Cursor.err_expected t (name ^ " channels");
+  let origin = Pp.to_string ~minify:true pp_color origin in
+  Relative_color (name, "from " ^ origin ^ " " ^ tail)
+
+and with_relative_fallback name fallback t =
+  Cursor.ws t;
+  if Cursor.looking_at t "from" then read_relative_color name t else fallback t
+
 and color_parsers =
   [
     ( "rgb",
@@ -4079,14 +4105,14 @@ and color_parsers =
         Cursor.ws t;
         Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
     );
-    ("hsl", read_hsl);
-    ("hsla", read_hsl);
-    ("hwb", read_hwb);
-    ("oklch", read_oklch);
-    ("lab", read_lab);
-    ("oklab", read_oklab);
-    ("lch", read_lch);
-    ("color", read_color_function);
+    ("hsl", fun t -> with_relative_fallback "hsl" read_hsl t);
+    ("hsla", fun t -> with_relative_fallback "hsl" read_hsl t);
+    ("hwb", fun t -> with_relative_fallback "hwb" read_hwb t);
+    ("oklch", fun t -> with_relative_fallback "oklch" read_oklch t);
+    ("lab", fun t -> with_relative_fallback "lab" read_lab t);
+    ("oklab", fun t -> with_relative_fallback "oklab" read_oklab t);
+    ("lch", fun t -> with_relative_fallback "lch" read_lch t);
+    ("color", fun t -> with_relative_fallback "color" read_color_function t);
     ("contrast-color", read_contrast_color);
     ("light-dark", read_light_dark);
     ("attr", read_color_attr);
