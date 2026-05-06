@@ -115,14 +115,14 @@ let format_float f =
 let format_px = format_float
 let format_rem = format_float
 
-let cmp_to_string = function
+let string_of_cmp = function
   | Lt -> "<"
   | Le -> "<="
   | Eq -> "="
   | Gt -> ">"
   | Ge -> ">="
 
-let medium_to_string : medium -> string = function
+let string_of_medium : medium -> string = function
   | All -> "all"
   | Screen -> "screen"
   | Print -> "print"
@@ -202,7 +202,7 @@ let rec pp_feature : feature Pp.t =
       Pp.char ctx '(';
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.string ctx (cmp_to_string op);
+      Pp.string ctx (string_of_cmp op);
       Pp.sp ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
@@ -210,7 +210,7 @@ let rec pp_feature : feature Pp.t =
       Pp.char ctx '(';
       pp_value ctx value;
       Pp.sp ctx ();
-      Pp.string ctx (cmp_to_string op);
+      Pp.string ctx (string_of_cmp op);
       Pp.sp ctx ();
       Pp.string ctx name;
       Pp.char ctx ')'
@@ -218,11 +218,11 @@ let rec pp_feature : feature Pp.t =
       Pp.char ctx '(';
       pp_value ctx a;
       Pp.sp ctx ();
-      Pp.string ctx (cmp_to_string op1);
+      Pp.string ctx (string_of_cmp op1);
       Pp.sp ctx ();
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.string ctx (cmp_to_string op2);
+      Pp.string ctx (string_of_cmp op2);
       Pp.sp ctx ();
       pp_value ctx b;
       Pp.char ctx ')'
@@ -250,7 +250,7 @@ let rec pp_query : query Pp.t =
       | None -> ()
       | Some Not -> Pp.string ctx "not "
       | Some Only -> Pp.string ctx "only ");
-      Pp.string ctx (medium_to_string type_);
+      Pp.string ctx (string_of_medium type_);
       match trailing with
       | None -> ()
       | Some c ->
@@ -276,7 +276,7 @@ let pp_named_feature ctx name value =
   | Range_view (op, base) when Pp.minified ctx ->
       Pp.char ctx '(';
       Pp.string ctx base;
-      Pp.string ctx (cmp_to_string op);
+      Pp.string ctx (string_of_cmp op);
       Pp.string ctx value;
       Pp.char ctx ')'
   | _ ->
@@ -292,7 +292,7 @@ let pp_length_feature ctx name l =
   | Range_view (op, base) when Pp.minified ctx ->
       Pp.char ctx '(';
       Pp.string ctx base;
-      Pp.string ctx (cmp_to_string op);
+      Pp.string ctx (string_of_cmp op);
       pp_length ctx l;
       Pp.char ctx ')'
   | _ ->
@@ -420,7 +420,7 @@ let rec pp ctx = function
       | None -> ()
       | Some Not -> Pp.string ctx "not "
       | Some Only -> Pp.string ctx "only ");
-      Pp.string ctx (medium_to_string type_);
+      Pp.string ctx (string_of_medium type_);
       match trailing with
       | None -> ()
       | Some cond -> (
@@ -457,7 +457,7 @@ type recovery_scope = Branch | Query_list
 
 exception Parse_error of recovery_scope * string
 
-let parse_error ?(scope = Branch) reason = raise (Parse_error (scope, reason))
+let fail_parse ?(scope = Branch) reason = raise (Parse_error (scope, reason))
 let mk_scanner s = { s = String.trim s; pos = 0 }
 let at_end sc = sc.pos >= String.length sc.s
 let peek sc = if at_end sc then None else Some sc.s.[sc.pos]
@@ -834,7 +834,7 @@ let plain_feature name value : feature =
   Plain (name, value)
 
 (* Parse content already inside parens (no surrounding parens). *)
-let parse_inside_parens content : feature option =
+let value_first_feature content : feature option =
   let sc = mk_scanner content in
   skip_ws sc;
   (* Try value-first form: V op name [op V] *)
@@ -873,7 +873,7 @@ let parse_inside_parens content : feature option =
           None)
   | None -> None
 
-let parse_feature_in_parens content =
+let feature_in_parens content =
   let sc = mk_scanner content in
   skip_ws sc;
   if at_end sc then None
@@ -898,8 +898,7 @@ let parse_feature_in_parens content =
             in
             match Cursor.remaining (Cursor.of_string raw_value) with
             | [
-             Component.Func
-               { node = { name; arguments; terminated = true }; _ };
+             Component.Func { node = { name; arguments; terminated = true }; _ };
             ] ->
                 Some (Function (name, arguments) : value)
             | _ -> None
@@ -936,10 +935,10 @@ let parse_feature_in_parens content =
                   | Some _ -> None)
               | None -> None)
           | None -> None))
-    else parse_inside_parens content
+    else value_first_feature content
 
 (* Parser for media-condition (sequence of (...) with and/or/not). *)
-let rec parse_in_parens sc =
+let rec condition_in_parens sc =
   skip_ws sc;
   match peek sc with
   | Some '(' -> (
@@ -956,33 +955,33 @@ let rec parse_in_parens sc =
       then Feature (extract_feature_or_fail trimmed)
       else
         let starts_with_paren = peek inner = Some '(' in
-        if starts_with_paren then parse_condition_str trimmed
+        if starts_with_paren then condition_of_string trimmed
         else
-          match parse_feature_in_parens trimmed with
+          match feature_in_parens trimmed with
           | Some f -> Feature f
           | None -> failwith ("invalid media feature: " ^ trimmed))
   | _ -> failwith "expected '(' in media condition"
 
 and extract_feature_or_fail content =
-  match parse_feature_in_parens content with
+  match feature_in_parens content with
   | Some f -> f
   | None -> failwith ("invalid media feature: " ^ content)
 
-and parse_condition_str s =
+and condition_of_string s =
   let sc = mk_scanner s in
-  parse_condition sc
+  condition sc
 
-and parse_condition sc =
+and condition sc =
   skip_ws sc;
   if lookahead_ident sc "not" then (
     consume_keyword sc "not";
     skip_ws sc;
-    let inner = parse_in_parens sc in
+    let inner = condition_in_parens sc in
     skip_ws sc;
     if at_end sc then Not inner
     else failwith "trailing content after 'not <media-in-parens>'")
   else
-    let left = parse_in_parens sc in
+    let left = condition_in_parens sc in
     chain sc left
 
 and chain sc (acc : condition) =
@@ -994,14 +993,14 @@ and chain sc (acc : condition) =
       | Some `Or -> failwith "mixed 'and'/'or' media condition"
       | _ -> ());
       consume_keyword sc "and";
-      let right = parse_in_parens sc in
+      let right = condition_in_parens sc in
       loop (Some `And) (And (acc, right) : condition))
     else if lookahead_ident sc "or" then (
       (match op with
       | Some `And -> failwith "mixed 'and'/'or' media condition"
       | _ -> ());
       consume_keyword sc "or";
-      let right = parse_in_parens sc in
+      let right = condition_in_parens sc in
       loop (Some `Or) (Or (acc, right) : condition))
     else acc
   in
@@ -1048,7 +1047,7 @@ let read_media_type_query sc =
   let prefix = read_query_prefix sc in
   (match prefix with
   | Some _ when lookahead_ident sc "not" || lookahead_ident sc "only" ->
-      parse_error ~scope:Query_list "duplicate media query prefix"
+      fail_parse ~scope:Query_list "duplicate media query prefix"
   | _ -> ());
   let id = read_ident sc in
   if id = "" then failwith "expected media type or condition"
@@ -1061,7 +1060,7 @@ let read_media_type_query sc =
       Type { prefix; type_; trailing = None }
     else if lookahead_ident sc "and" then (
       consume_keyword sc "and";
-      let cond = parse_in_parens sc in
+      let cond = condition_in_parens sc in
       let cond = chain sc cond in
       Type { prefix; type_; trailing = Some cond })
     else
@@ -1072,10 +1071,10 @@ let read_media_type_query sc =
              String.sub sc.s sc.pos (String.length sc.s - sc.pos);
            ])
 
-let parse_single_query sc =
+let single_query sc =
   skip_ws sc;
   if at_end sc then failwith "empty media query"
-  else if starts_with_condition sc then Cond (parse_condition sc)
+  else if starts_with_condition sc then Cond (condition sc)
   else read_media_type_query sc
 
 let not_all_query : query =
@@ -1097,10 +1096,10 @@ let skip_recovery_branch sc =
     | None -> continue := false
   done
 
-let parse_query_branch ~recover ~recovered_at_eof sc =
+let query_branch ~recover ~recovered_at_eof sc =
   let mark = sc.pos in
   try
-    let query = parse_single_query sc in
+    let query = single_query sc in
     skip_ws sc;
     match peek sc with
     | None | Some ',' -> query
@@ -1131,12 +1130,12 @@ let trailing_content_failure sc =
          String.sub sc.s sc.pos (String.length sc.s - sc.pos);
        ])
 
-let parse_query_str ?(recover = true) s : query =
+let query_of_string ?(recover = true) s : query =
   let sc = mk_scanner s in
   if at_end sc then (List [] : query)
   else
     let recovered_at_eof = ref false in
-    let branch () = parse_query_branch ~recover ~recovered_at_eof sc in
+    let branch () = query_branch ~recover ~recovered_at_eof sc in
     let first = branch () in
     skip_ws sc;
     if at_end sc then first
@@ -1346,11 +1345,11 @@ let rec collapse_query (q : query) : t =
         { prefix; type_; trailing = Option.map condition_to_t trailing }
   | List qs -> List (List.map collapse_query qs)
 
-let of_string s = collapse_query (parse_query_str s)
-let of_string_strict s = collapse_query (parse_query_str ~recover:false s)
+let of_string s = collapse_query (query_of_string s)
+let of_string_strict s = collapse_query (query_of_string ~recover:false s)
 
 let of_function_body s =
-  match parse_feature_in_parens s with
+  match feature_in_parens s with
   | Some feature -> feature_to_t feature
   | None -> of_string s
 

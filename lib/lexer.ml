@@ -419,17 +419,17 @@ let consume_unicode_range_token r =
   in
   let n_q = consume_q 0 in
   let start_repr = Buffer.contents buf in
-  let parse_hex s = int_of_string ("0x" ^ s) in
+  let hex_value s = int_of_string ("0x" ^ s) in
   if n_q > 0 then
-    let start_value = parse_hex (start_repr ^ String.make n_q '0') in
-    let end_value = parse_hex (start_repr ^ String.make n_q 'F') in
+    let start_value = hex_value (start_repr ^ String.make n_q '0') in
+    let end_value = hex_value (start_repr ^ String.make n_q 'F') in
     let form =
       Token.Wildcard
         { prefix_width = String.length start_repr; wildcards = n_q }
     in
     Unicode_range { start_value; end_value; form }
   else
-    let start_value = parse_hex start_repr in
+    let start_value = hex_value start_repr in
     let has_range_tail =
       match Reader.peek_string r 2 with
       | s when String.length s = 2 && s.[0] = '-' && is_hex s.[1] -> true
@@ -450,7 +450,7 @@ let consume_unicode_range_token r =
       in
       consume_end 0;
       let end_repr = Buffer.contents end_buf in
-      let end_value = parse_hex end_repr in
+      let end_value = hex_value end_repr in
       let form =
         Token.Range
           {

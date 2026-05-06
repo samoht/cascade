@@ -463,7 +463,7 @@ let registered_property name registry =
 
 let validate_value_against_syntax (Variables.Syntax syntax) value =
   match syntax with
-  | Variables.Universal | Variables.Image | Variables.Transform_function
+  | Variables.Universal | Variables.Transform_function
   | Variables.Transform_list | Variables.Resolution ->
       if String.trim value = "" then Error "registered value is empty"
       else Ok ()
@@ -476,7 +476,7 @@ let validate_value_against_syntax (Variables.Syntax syntax) value =
           if Cursor.is_done cursor then Ok ()
           else
             Error
-              ("value has trailing tokens: " ^ Cursor.remaining_to_string cursor)
+              ("value has trailing tokens: " ^ Cursor.string_of_remaining cursor)
         with Error.Parse_error e -> Error (Error.to_string e)
       with
       | Ok () -> Ok ()
@@ -818,7 +818,7 @@ let map_var_fallback f = function
 
 let combine_numeric_values ~to_number ~of_number left op right =
   let canonical f =
-    try float_of_string (Pp.float_to_string f) with Failure _ -> f
+    try float_of_string (Pp.string_of_float f) with Failure _ -> f
   in
   match (to_number left, op, to_number right) with
   | Some a, Values.Add, Some b -> Some (of_number (canonical (a +. b)))
@@ -827,7 +827,7 @@ let combine_numeric_values ~to_number ~of_number left op right =
 
 let combine_numeric_value_num ~to_number ~of_number value op num =
   let canonical f =
-    try float_of_string (Pp.float_to_string f) with Failure _ -> f
+    try float_of_string (Pp.string_of_float f) with Failure _ -> f
   in
   match (to_number value, op) with
   | Some n, Values.Mul -> Some (of_number (canonical (n *. num)))
@@ -837,7 +837,7 @@ let combine_numeric_value_num ~to_number ~of_number value op num =
 let normalize_numeric_value ~to_number ~of_number value =
   match to_number value with
   | Some n -> (
-      try of_number (float_of_string (Pp.float_to_string n))
+      try of_number (float_of_string (Pp.string_of_float n))
       with Failure _ -> of_number n)
   | None -> value
 
@@ -869,7 +869,7 @@ module Var_residual = struct
         a option =
       if List.mem var.name visited then None
       else
-        let parse_decl () =
+        let read_decl () =
           Option.bind
             (lookup_custom_property ?layer ?layer_order cascade var.name)
             read_custom
@@ -878,7 +878,7 @@ module Var_residual = struct
           match Hashtbl.find_opt parsed_custom var.name with
           | Some value -> value
           | None ->
-              let value = parse_decl () in
+              let value = read_decl () in
               Hashtbl.add parsed_custom var.name value;
               value
         in
@@ -1630,7 +1630,7 @@ module Match_container = struct
   let style_value = function
     | Container.Boolean name -> (name, None)
     | Declaration { name; value } ->
-        (name, Some (Cursor.components_to_string ~trim:true value))
+        (name, Some (Cursor.string_of_components ~trim:true value))
     | Range _ -> ("", None)
 
   let style_match q ~query =
