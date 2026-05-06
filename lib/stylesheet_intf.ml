@@ -157,6 +157,8 @@ and statement =
   | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)
   | Webkit_keyframes of string * keyframe list
       (** [@-webkit-keyframes name { ... }] *)
+  | Moz_keyframes of string * keyframe list
+      (** [@-moz-keyframes name { ... }] *)
   | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)

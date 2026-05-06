@@ -62,6 +62,8 @@ type outcome = Pass | Parse_error of string | Mismatch of string
 type candidate = { tool : string; css : string }
 type rejected_candidate = { tool : string; css : string; reason : string }
 
+let display_css css = if css = "" then "<empty>" else css
+
 let cascade_minify input =
   match Css.of_string input with
   | Error e -> Parse_error (Css.pp_parse_error e)
@@ -117,9 +119,7 @@ let run_command command input =
   let stdout = read_all ic in
   let stderr = read_all ec in
   match Unix.close_process_full (ic, oc, ec) with
-  | Unix.WEXITED 0 ->
-      let css = String.trim stdout in
-      if css = "" then Error "empty stdout" else Ok css
+  | Unix.WEXITED 0 -> Ok (String.trim stdout)
   | Unix.WEXITED n ->
       Error
         (Printf.sprintf "exit %d%s" n
@@ -153,46 +153,51 @@ let shortest_length (candidates : candidate list) =
     max_int candidates
 
 let canonical_minified css =
-  match Css.of_string css with
-  | Error e -> Error (Css.pp_parse_error e)
-  | Ok css -> (
-      match Css.to_string ~minify:true ~optimize:true ~newline:false css with
-      | s -> Ok s
-      | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
+  if css = "" then Ok ""
+  else
+    match Css.of_string css with
+    | Error e -> Error (Css.pp_parse_error e)
+    | Ok css -> (
+        match Css.to_string ~minify:true ~optimize:true ~newline:false css with
+        | s -> Ok s
+        | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 
 let at_rule_fingerprint css =
-  try
-    let sheet = Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css) in
-    let rec statements acc = List.fold_left statement acc
-    and statement acc = function
-      | Css.Stylesheet.Rule rule -> statements acc rule.nested
-      | Charset _ -> "charset" :: acc
-      | Import _ -> "import" :: acc
-      | Namespace _ -> "namespace" :: acc
-      | Property _ -> "property" :: acc
-      | Layer_decl _ -> "layer-decl" :: acc
-      | Layer (_, block) -> statements ("layer" :: acc) block
-      | Media (_, block) -> statements ("media" :: acc) block
-      | Container (_, _, block) -> statements ("container" :: acc) block
-      | Supports (_, block) -> statements ("supports" :: acc) block
-      | Starting_style block -> statements ("starting-style" :: acc) block
-      | When (_, block) -> statements ("when" :: acc) block
-      | Else (_, block) -> statements ("else" :: acc) block
-      | Supports_condition _ -> "supports-condition" :: acc
-      | Origin (_, block) -> statements ("origin" :: acc) block
-      | Scope (_, _, block) -> statements ("scope" :: acc) block
-      | Keyframes _ -> "keyframes" :: acc
-      | Webkit_keyframes _ -> "webkit-keyframes" :: acc
-      | Font_face _ -> "font-face" :: acc
-      | Page _ -> "page" :: acc
-      | Page_with_margins _ -> "page" :: acc
-      | Font_palette_values _ -> "font-palette-values" :: acc
-      | View_transition _ -> "view-transition" :: acc
-      | Position_try _ -> "position-try" :: acc
-      | Declarations _ -> acc
-    in
-    Some (List.rev (statements [] sheet))
-  with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+  if css = "" then Some []
+  else
+    try
+      let sheet = Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css) in
+      let rec statements acc = List.fold_left statement acc
+      and statement acc = function
+        | Css.Stylesheet.Rule rule -> statements acc rule.nested
+        | Charset _ -> "charset" :: acc
+        | Import _ -> "import" :: acc
+        | Namespace _ -> "namespace" :: acc
+        | Property _ -> "property" :: acc
+        | Layer_decl _ -> "layer-decl" :: acc
+        | Layer (_, block) -> statements ("layer" :: acc) block
+        | Media (_, block) -> statements ("media" :: acc) block
+        | Container (_, _, block) -> statements ("container" :: acc) block
+        | Supports (_, block) -> statements ("supports" :: acc) block
+        | Starting_style block -> statements ("starting-style" :: acc) block
+        | When (_, block) -> statements ("when" :: acc) block
+        | Else (_, block) -> statements ("else" :: acc) block
+        | Supports_condition _ -> "supports-condition" :: acc
+        | Origin (_, block) -> statements ("origin" :: acc) block
+        | Scope (_, _, block) -> statements ("scope" :: acc) block
+        | Keyframes _ -> "keyframes" :: acc
+        | Webkit_keyframes _ -> "webkit-keyframes" :: acc
+        | Moz_keyframes _ -> "moz-keyframes" :: acc
+        | Font_face _ -> "font-face" :: acc
+        | Page _ -> "page" :: acc
+        | Page_with_margins _ -> "page" :: acc
+        | Font_palette_values _ -> "font-palette-values" :: acc
+        | View_transition _ -> "view-transition" :: acc
+        | Position_try _ -> "position-try" :: acc
+        | Declarations _ -> acc
+      in
+      Some (List.rev (statements [] sheet))
+    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let validate_candidate input (candidate : candidate) =
   match
@@ -201,6 +206,7 @@ let validate_candidate input (candidate : candidate) =
       canonical_minified input,
       canonical_minified candidate.css )
   with
+  | _, _, Ok "", Ok "" -> Ok candidate
   | Some source, Some output, Ok source_css, Ok output_css
     when source = output && source_css = output_css ->
       Ok candidate
@@ -229,7 +235,7 @@ let validate_candidate input (candidate : candidate) =
           reason =
             Printf.sprintf
               "semantic fingerprint changed after Cascade parse: %s -> %s"
-              source_css output_css;
+              (display_css source_css) (display_css output_css);
         }
   | _, _, Ok _, Error msg ->
       Error
@@ -263,7 +269,8 @@ let format_rejected_candidates input rejected =
           \    reason: %s\n\
           \    input:  %s\n\
           \    output: %s"
-          rejection.tool rejection.reason input rejection.css)
+          rejection.tool rejection.reason input
+          (display_css rejection.css))
     |> String.concat "\n")
 
 let format_source_parse_diagnostics input expected =
@@ -279,13 +286,13 @@ let format_source_parse_diagnostics input expected =
               "    %s: output parses with Cascade\n\
               \      output:    %s\n\
               \      canonical: %s"
-              tool css canonical
+              tool (display_css css) (display_css canonical)
         | Error msg ->
             Printf.sprintf
               "    %s: output also fails Cascade parser\n\
               \      output: %s\n\
               \      error:  %s"
-              tool css msg)
+              tool (display_css css) msg)
     |> String.concat "\n"
   in
   Printf.sprintf
@@ -313,7 +320,8 @@ let classify (input, expected) =
           let shortest =
             candidates
             |> List.filter (fun (c : candidate) -> String.length c.css = best)
-            |> List.map (fun (c : candidate) -> c.tool ^ ":" ^ c.css)
+            |> List.map (fun (c : candidate) ->
+                c.tool ^ ":" ^ display_css c.css)
             |> String.concat " | "
           in
           Mismatch

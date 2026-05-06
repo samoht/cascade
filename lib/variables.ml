@@ -374,6 +374,7 @@ let rec vars_of_color (value : Values.color) : any_var list =
   | Relative_rgb _ -> []
   | Contrast_color color -> vars_of_color color
   | Light_dark (light, dark) -> vars_of_color light @ vars_of_color dark
+  | Attribute (_, fallback) -> Option.fold ~none:[] ~some:vars_of_color fallback
   | Lab { l; alpha; _ } ->
       Option.fold ~none:[] ~some:vars_of_percentage l @ vars_of_alpha alpha
   | Oklch { l; h; alpha; _ } ->
@@ -504,7 +505,10 @@ let vars_of_filter (value : Properties.filter) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_background (value : Properties.background) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Vars vars -> List.map (fun v -> V v) vars
+  | _ -> []
 
 let vars_of_content_visibility (value : Properties.content_visibility) :
     any_var list =
@@ -549,9 +553,21 @@ let vars_of_scroll_snap_type (value : Properties.scroll_snap_type) :
 let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_webkit_gradient_stop = function
+  | Properties.Webkit_gradient.From color
+  | Properties.Webkit_gradient.To color ->
+      vars_of_color color
+  | Properties.Webkit_gradient.Color_stop (position, color) ->
+      vars_of_percentage position @ vars_of_color color
+
 let vars_of_background_image (value : Properties.background_image) :
     any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Webkit_gradient (Webkit_gradient.Linear { stops; _ })
+  | Webkit_gradient (Webkit_gradient.Radial { stops; _ }) ->
+      List.concat_map vars_of_webkit_gradient_stop stops
+  | _ -> []
 
 let vars_of_background_size (value : Properties.background_size) : any_var list
     =

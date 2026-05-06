@@ -126,7 +126,7 @@ let rec boundary_shape = function
   | Origin (_, block) ->
       ("origin" :: shapes_with_rule_runs block) @ [ "/origin" ]
   | Charset _ -> [ "charset" ]
-  | Keyframes _ | Webkit_keyframes _ -> [ "keyframes" ]
+  | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]

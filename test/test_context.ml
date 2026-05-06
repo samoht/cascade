@@ -544,6 +544,15 @@ let rec statement_shape stmt =
              :: prefixed "    "
                   (declaration_lines keyframe.keyframe_declarations))
          |> List.concat)
+  | Moz_keyframes (name, keyframes) ->
+      ("moz-keyframes:" ^ name)
+      :: (keyframes
+         |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
+             ("  keyframe:"
+             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
+             :: prefixed "    "
+                  (declaration_lines keyframe.keyframe_declarations))
+         |> List.concat)
   | Font_face descriptors ->
       "font-face" :: List.map (fun _ -> "descriptor") descriptors
   | Page (selector, declarations) ->
@@ -734,7 +743,7 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
             None )
         else (acc, None)
     | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-    | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
+    | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Page _
     | Page_with_margins _ | Font_palette_values _ | View_transition _
     | Position_try _ | Supports_condition _ ->
         (acc, None)

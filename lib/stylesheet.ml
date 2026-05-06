@@ -247,6 +247,7 @@ let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
 
 let keyframes name frames = Keyframes (name, frames)
+
 let v statements : stylesheet = statements
 let empty_stylesheet : stylesheet = []
 
@@ -801,6 +802,16 @@ and pp_statement : statement Pp.t =
           Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
           Pp.cut ctx ())
         ctx ()
+  | Moz_keyframes (name, frames) ->
+      Pp.string ctx "@-moz-keyframes ";
+      pp_keyframes_name ctx name;
+      Pp.sp ctx ();
+      Pp.braces
+        (fun ctx () ->
+          Pp.cut ctx ();
+          Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
+          Pp.cut ctx ())
+        ctx ()
   | Font_face descriptors ->
       Pp.string ctx "@font-face";
       Pp.sp ctx ();
@@ -904,8 +915,22 @@ and pp_statement : statement Pp.t =
           Pp.cut ctx ())
         ctx ()
 
+and font_face_participates descriptors =
+  List.exists (function Font_family _ -> true | _ -> false) descriptors
+  && List.exists (function Src _ -> true | _ -> false) descriptors
+
+and should_print_statement ctx = function
+  | Font_face descriptors when Pp.minified ctx ->
+      font_face_participates descriptors
+  | _ -> true
+
+and printable_statements ctx statements =
+  if Pp.minified ctx then List.filter (should_print_statement ctx) statements
+  else statements
+
 and pp_block : block Pp.t =
  fun ctx statements ->
+  let statements = printable_statements ctx statements in
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
      adds nest 1 and indent for the first item only. Subsequent items need
      explicit indentation and blank line separation to match Tailwind format. *)
@@ -925,6 +950,7 @@ let is_layer_block = function Layer _ -> true | _ -> false
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
+  let statements = printable_statements ctx statements in
   let rec loop = function
     | [] -> ()
     | [ s ] -> pp_statement ctx s
@@ -1252,6 +1278,11 @@ let read_webkit_keyframes r =
     (fun name frames -> Webkit_keyframes (name, frames))
     r
 
+let read_moz_keyframes r =
+  read_keyframes_named "-moz-keyframes"
+    (fun name frames -> Moz_keyframes (name, frames))
+    r
+
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)
 let read_descriptor_value read_fn constructor r =
@@ -1460,12 +1491,6 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
   let descriptors = Cursor.braces read_font_face_block r in
-  if
-    not
-      (List.exists (function Font_family _ -> true | _ -> false) descriptors)
-  then Cursor.err_invalid r "@font-face requires font-family";
-  if not (List.exists (function Src _ -> true | _ -> false) descriptors) then
-    Cursor.err_invalid r "@font-face requires src";
   Font_face descriptors
 
 (* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
@@ -1809,6 +1834,7 @@ let rec read_statement (r : Cursor.t) : statement =
       ("scope", read_scope);
       ("keyframes", read_keyframes);
       ("-webkit-keyframes", read_webkit_keyframes);
+      ("-moz-keyframes", read_moz_keyframes);
       ("font-face", read_font_face);
       ("page", read_page);
       ("font-palette-values", read_font_palette_values);
@@ -2434,7 +2460,7 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
       Variables.vars_of_declarations decls
   | Font_palette_values _ | View_transition _ | Charset _ | Import _
   | Namespace _ | Property _ | Layer_decl _ | Keyframes _ | Webkit_keyframes _
-    ->
+  | Moz_keyframes _ ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =
