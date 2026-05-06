@@ -2834,6 +2834,7 @@ type object_view_box =
 (* Content Types *)
 type content =
   | String of string
+  | Quoted of string * char
   | None
   | Normal
   | Open_quote
