@@ -260,6 +260,26 @@ let nested (rule : rule) = rule.nested
 
 let pp_property_rule : 'a property_rule Pp.t =
  fun ctx { name; syntax; inherits; initial_value } ->
+  let is_empty_universal_initial : type a.
+      a Variables.syntax -> a option -> bool =
+   fun syntax initial_value ->
+    match (syntax, initial_value) with
+    | Variables.Universal, Some "" -> true
+    | _ -> false
+  in
+  let pp_initial_value ctx v =
+    Pp.semicolon ctx ();
+    Pp.cut ctx ();
+    Pp.string ctx "initial-value:";
+    Pp.space_if_pretty ctx ();
+    Variables.pp_value syntax ctx v
+  in
+  let pp_initial_value_opt ctx =
+    if Pp.minified ctx && is_empty_universal_initial syntax initial_value then
+      ()
+    else
+      match initial_value with None -> () | Some v -> pp_initial_value ctx v
+  in
   Pp.string ctx "@property ";
   Pp.string ctx name;
   Pp.sp ctx ();
@@ -276,14 +296,7 @@ let pp_property_rule : 'a property_rule Pp.t =
           Pp.string ctx "inherits:";
           Pp.space_if_pretty ctx ();
           Pp.string ctx (if inherits then "true" else "false");
-          match initial_value with
-          | None -> ()
-          | Some v ->
-              Pp.semicolon ctx ();
-              Pp.cut ctx ();
-              Pp.string ctx "initial-value:";
-              Pp.space_if_pretty ctx ();
-              Variables.pp_value syntax ctx v)
+          pp_initial_value_opt ctx)
         ctx ();
       Pp.cut ctx ())
     ctx ()
@@ -334,7 +347,7 @@ and pp_keyframe_position : Keyframe.position Pp.t =
   match (pos, Pp.minified ctx) with
   | Keyframe.From, true -> Pp.string ctx "0%"
   | Keyframe.Percent 100., true -> Pp.string ctx "to"
-  | _ -> Pp.string ctx (Keyframe.position_to_string pos)
+  | _ -> Pp.string ctx (Keyframe.string_of_position pos)
 
 and pp_keyframe_selector : Keyframe.selector Pp.t =
  fun ctx sel ->
@@ -376,7 +389,7 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Src value ->
       pp_descriptor "src"
         (fun ctx v ->
-          Pp.string ctx (Font_face.src_to_string ~minify:(Pp.minified ctx) v))
+          Pp.string ctx (Font_face.string_of_src ~minify:(Pp.minified ctx) v))
         value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
@@ -411,19 +424,19 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_tech value -> pp_descriptor "font-tech" Pp.string value
   | Size_adjust value ->
       pp_descriptor "size-adjust"
-        (fun ctx v -> Pp.string ctx (Font_face.size_adjust_to_string v))
+        (fun ctx v -> Pp.string ctx (Font_face.string_of_size_adjust v))
         value
   | Ascent_override value ->
       pp_descriptor "ascent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
         value
   | Descent_override value ->
       pp_descriptor "descent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
         value
   | Line_gap_override value ->
       pp_descriptor "line-gap-override"
-        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
         value
 
 and pp_raw_descriptor : raw_descriptor Pp.t =
@@ -474,8 +487,8 @@ and pp_import_url ctx url =
   let url_inner_string () =
     (* Lift the inner string out of [url(...)] - either the quoted form
        [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
-       unquoted body so the [@import] / [@namespace] minify path can re-emit
-       it as a bare double-quoted string. *)
+       unquoted body so the [@import] / [@namespace] minify path can re-emit it
+       as a bare double-quoted string. *)
     if not (starts_with_url ()) then None
     else if len < 5 || url.[len - 1] <> ')' then None
     else
@@ -947,7 +960,7 @@ let container_queries t = extract_container_queries t
 
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
-  let selector_str = Cursor.drain_until_block_to_string ~trim:true r in
+  let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
   let declarations =
     Cursor.braces
       (fun inner ->
@@ -1074,7 +1087,7 @@ let read_import_supports (r : Cursor.t) =
       let loc = Cursor.position inner in
       try
         Supports.of_string ~allow_unwrapped_decl:true
-          (Cursor.remaining_to_string ~trim:true inner)
+          (Cursor.string_of_remaining ~trim:true inner)
       with Failure reason ->
         Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
     r
@@ -1498,7 +1511,7 @@ let read_page (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "page" r;
   Cursor.ws r;
   let selector =
-    let s = Cursor.drain_until_block_to_string ~trim:true r in
+    let s = Cursor.drain_until_block_as_string ~trim:true r in
     if s = "" then None
     else (
       validate_page_selector r s;
@@ -1625,7 +1638,7 @@ type property_reader_state = {
 
 let conditional_args (fn : Component.func Component.node) =
   if not fn.node.terminated then failwith "unterminated conditional function";
-  Cursor.components_to_string ~trim:true fn.node.arguments
+  Cursor.string_of_components ~trim:true fn.node.arguments
 
 let conditional_atom (fn : Component.func Component.node) =
   match String.lowercase_ascii fn.Component.node.name with
@@ -1676,7 +1689,7 @@ let conditional_components components =
 let follows_conditional = function When _ | Else _ -> true | _ -> false
 
 let scope_prelude r prelude_components =
-  let prelude = Cursor.components_to_string ~trim:true prelude_components in
+  let prelude = Cursor.string_of_components ~trim:true prelude_components in
   let rec split_at_to seen rest =
     match rest with
     | [] -> (List.rev seen, [])
@@ -1686,7 +1699,7 @@ let scope_prelude r prelude_components =
     | hd :: tail -> split_at_to (hd :: seen) tail
   in
   let strip_parens cvs =
-    match Cursor.components_to_string ~trim:true cvs with
+    match Cursor.string_of_components ~trim:true cvs with
     | s
       when String.length s >= 2 && s.[0] = '(' && s.[String.length s - 1] = ')'
       ->
@@ -1813,7 +1826,7 @@ and read_supports_condition (r : Cursor.t) : statement =
 and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
     if String.length condition_str = 0 then Media.List []
@@ -1828,7 +1841,7 @@ and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
   Cursor.ws r;
   let cond_loc = Cursor.position r in
-  let condition = Cursor.drain_until_block_to_string ~trim:true r in
+  let condition = Cursor.drain_until_block_as_string ~trim:true r in
   if String.length condition = 0 then
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
@@ -1849,7 +1862,7 @@ and read_container (r : Cursor.t) : statement =
   Cursor.ws r;
   let container_name = Cursor.option Cursor.ident r in
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
     try Container.of_string condition_str
@@ -1973,16 +1986,16 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   | "@container" ->
       let container_name = Cursor.option Cursor.ident r in
       Cursor.ws r;
-      let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+      let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Container (container_name, Container.of_string condition_str, content)
   | "@supports" ->
       let cond_loc = Cursor.position r in
-      let condition = Cursor.drain_until_block_to_string ~trim:true r in
+      let condition = Cursor.drain_until_block_as_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Supports (supports_condition ~loc:cond_loc condition, content)
   | "@media" ->
-      let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+      let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       let condition =
         if String.length condition_str = 0 then Media.List []
