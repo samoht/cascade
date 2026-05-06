@@ -343,12 +343,13 @@ let values_relative_lengths () =
 (* SS 10.1 - calc() expressions. Per CSS Values 4 section 10.7 the printer
    simplifies all-constant calc subexpressions and reduces a single
    multiplicative operand to its product. Mixed-unit forms that cannot reduce at
-   parse time round-trip preserved. *)
+   parse time still drop redundant nested calc() under minify when doing so is
+   shorter and spec-equivalent. *)
 let values_calc () =
   roundtrip ".x { width: calc(100% - 2rem) }" ".x{width:calc(100% - 2rem)}";
   roundtrip ".x { width: calc(2 * 3rem) }" ".x{width:6rem}";
   roundtrip ".x { width: calc(100% - calc(2rem + 10px)) }"
-    ".x{width:calc(100% - calc(2rem + 10px))}"
+    ".x{width:calc(100% - 2rem - 10px)}"
 
 (* SS 6.3 - Angle units *)
 let values_angles () =
@@ -706,6 +707,9 @@ let non_minified_preserves_value_forms () =
     [ "url(\"hero.png\")" ]
 
 let non_minified_preserves_color_forms () =
+  (* CSSOM serialization and the minifier set canonicalize leading-zero decimals
+     instead of preserving the original token spelling. Prettier is the pretty
+     outlier, so use the shortest valid decimal spelling here too. *)
   preserves_non_minified ".x { color: rebeccapurple }" [ "rebeccapurple" ];
   preserves_non_minified ".x { color: #ff0000 }" [ "#ff0000" ];
   preserves_non_minified ".x { color: #f00f }" [ "#f00f" ];
@@ -717,11 +721,11 @@ let non_minified_preserves_color_forms () =
     [ "hsl(120 100% 50% / 50%)" ];
   preserves_non_minified ".x { color: hwb(90 10% 20%) }" [ "hwb(90 10% 20%)" ];
   preserves_non_minified ".x { color: hwb(90 10% 20% / 0.25) }"
-    [ "hwb(90 10% 20% / 0.25)" ];
+    [ "hwb(90 10% 20% / .25)" ];
   preserves_non_minified ".x { color: oklch(50% 0.2 30) }"
-    [ "oklch(50% 0.2 30)" ];
+    [ "oklch(50% .2 30)" ];
   preserves_non_minified ".x { color: oklab(50% 0.1 -0.05) }"
-    [ "oklab(50% 0.1 -0.05)" ];
+    [ "oklab(50% .1 -.05)" ];
   preserves_non_minified ".x { color: color-mix(in srgb, red, blue) }"
     [ "color-mix(in srgb, red, blue)" ];
   preserves_non_minified ".x { color: transparent }" [ "transparent" ];

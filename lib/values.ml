@@ -319,13 +319,10 @@ let pp_unit ?(always = true) ctx f suffix =
   let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
   else (
-    (* CSS Values 4 6.5: dropping a leading zero ([.25rem] vs [0.25rem]) is a
-       minify-only canonicalisation - the bare-decimal form is one byte
-       shorter. Pretty mode keeps the leading zero so a source [0.1] reads
-       back as [0.1]. *)
-    let drop_leading_zero = Pp.minified ctx in
-    Pp.string ctx
-      (Pp.float_to_string ~drop_leading_zero (Pp.round_sig 6 f));
+    (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
+       fractional values ([.25rem], not [0.25rem]); we follow that canonical
+       form in both minified and pretty output. *)
+    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f));
     Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -2058,7 +2055,7 @@ let pp_oklab_float ~max_decimals ctx f =
   if ctx.Pp.minify then pp_float_drop_zero ctx (Pp.round_sig 6 f)
   else
     Buffer.add_string ctx.Pp.buf
-      (Pp.float_to_string ~drop_leading_zero:false ~max_decimals f)
+      (Pp.float_to_string ~drop_leading_zero:true ~max_decimals f)
 
 let pp_oklab_ab ctx = function
   | Some f -> pp_oklab_float ~max_decimals:3 ctx f
@@ -2225,8 +2222,8 @@ and pp_color : color Pp.t =
           | _ -> pp_rgb_func ctx (r, g, b, a))
       | Channels { r; g; b } ->
           (* CSS Color 4 1.4 unified [rgba()] under [rgb()] with the [/] alpha
-             separator. Non-minified output emits the modern [rgb()] keyword
-             so a source [rgb(R G B / A)] round-trips unchanged. *)
+             separator. Non-minified output emits the modern [rgb()] keyword so
+             a source [rgb(R G B / A)] round-trips unchanged. *)
           pp_rgb_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
@@ -3324,7 +3321,8 @@ let rec read_angle t : angle =
         (Mod (a, b) : angle))
   else
     let n, unit_raw = Cursor.number_with_unit t in
-    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
+    let unit_raw = Option.value unit_raw ~default:"" in
+    let unit = String.lowercase_ascii unit_raw in
     match unit with
     | "deg" -> Deg n
     | "rad" -> Rad n

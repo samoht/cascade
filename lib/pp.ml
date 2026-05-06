@@ -243,13 +243,13 @@ let round_sig n f =
     Float.round (f *. factor) /. factor
 
 let float ctx f =
-  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)
+  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
 
 let float_compact ctx f =
   Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
 
 let float_n n ctx f =
-  let s = float_to_string ~drop_leading_zero:ctx.minify ~max_decimals:n f in
+  let s = float_to_string ~drop_leading_zero:true ~max_decimals:n f in
   Buffer.add_string ctx.buf s
 
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
