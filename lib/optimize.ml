@@ -986,7 +986,7 @@ let route_consolidated ~should_reposition_hover ~is_top_level
     ~pending_hover_blocks ~pending_motion_blocks:_ consolidated (cond : Media.t)
     acc =
   match cond with
-  | Media.Hover `Hover when should_reposition_hover ->
+  | Media.Hover Media.Hover when should_reposition_hover ->
       (* For hover at top-level, add to pending list for repositioning. Append
          to maintain order (first occurrence stays first). *)
       pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];

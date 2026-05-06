@@ -346,7 +346,6 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
 let media_feature_value name : Media.t -> Media.value option =
-  let ident s = Some (Media.Ident (Media.ident_of_string s)) in
   function
   | Media.Width l when String.equal name "width" -> Some (Media.Length l)
   | Media.Height l when String.equal name "height" -> Some (Media.Length l)
@@ -360,77 +359,51 @@ let media_feature_value name : Media.t -> Media.value option =
   | Media.Monochrome n when String.equal name "monochrome" ->
       Some (Media.Integer n)
   | Media.Color_gamut g when String.equal name "color-gamut" ->
-      ident
-        (match g with `Srgb -> "srgb" | `P3 -> "p3" | `Rec2020 -> "rec2020")
+      Some (Media.Ident g)
   | Media.Video_color_gamut g when String.equal name "video-color-gamut" ->
-      ident
-        (match g with `Srgb -> "srgb" | `P3 -> "p3" | `Rec2020 -> "rec2020")
+      Some (Media.Ident g)
   | Media.Dynamic_range r when String.equal name "dynamic-range" ->
-      ident (match r with `Standard -> "standard" | `High -> "high")
+      Some (Media.Ident r)
   | Media.Video_dynamic_range r when String.equal name "video-dynamic-range" ->
-      ident (match r with `Standard -> "standard" | `High -> "high")
-  | Media.Scan s when String.equal name "scan" ->
-      ident
-        (match s with
-        | `Interlace -> "interlace"
-        | `Progressive -> "progressive")
-  | Media.Update u when String.equal name "update" ->
-      ident (match u with `None -> "none" | `Slow -> "slow" | `Fast -> "fast")
+      Some (Media.Ident r)
+  | Media.Scan s when String.equal name "scan" -> Some (Media.Ident s)
+  | Media.Update u when String.equal name "update" -> Some (Media.Ident u)
   | Media.Overflow_block o when String.equal name "overflow-block" ->
-      ident
-        (match o with
-        | `None -> "none"
-        | `Scroll -> "scroll"
-        | `Optional_paged -> "optional-paged"
-        | `Paged -> "paged")
+      Some (Media.Ident o)
   | Media.Overflow_inline o when String.equal name "overflow-inline" ->
-      ident (match o with `None -> "none" | `Scroll -> "scroll")
+      Some (Media.Ident o)
   | Media.Prefers_reduced_motion v
     when String.equal name "prefers-reduced-motion" ->
-      ident
-        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+      Some (Media.Ident v)
   | Media.Prefers_reduced_transparency v
     when String.equal name "prefers-reduced-transparency" ->
-      ident
-        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+      Some (Media.Ident v)
   | Media.Prefers_reduced_data v when String.equal name "prefers-reduced-data"
     ->
-      ident
-        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+      Some (Media.Ident v)
   | Media.Prefers_contrast v when String.equal name "prefers-contrast" ->
-      ident
-        (match v with
-        | `No_preference -> "no-preference"
-        | `Less -> "less"
-        | `More -> "more"
-        | `Custom -> "custom")
+      Some (Media.Ident v)
   | Media.Prefers_color_scheme v when String.equal name "prefers-color-scheme"
     ->
-      ident (match v with `Light -> "light" | `Dark -> "dark")
+      Some (Media.Ident v)
   | Media.Forced_colors v when String.equal name "forced-colors" ->
-      ident (match v with `None -> "none" | `Active -> "active")
+      Some (Media.Ident v)
   | Media.Inverted_colors v when String.equal name "inverted-colors" ->
-      ident (match v with `None -> "none" | `Inverted -> "inverted")
+      Some (Media.Ident v)
   | Media.Pointer v when String.equal name "pointer" ->
-      ident
-        (match v with `None -> "none" | `Coarse -> "coarse" | `Fine -> "fine")
+      Some (Media.Ident v)
   | Media.Any_pointer v when String.equal name "any-pointer" ->
-      ident
-        (match v with `None -> "none" | `Coarse -> "coarse" | `Fine -> "fine")
+      Some (Media.Ident v)
   | Media.Hover v when String.equal name "hover" ->
-      ident (match v with `None -> "none" | `Hover -> "hover")
+      Some (Media.Ident v)
   | Media.Any_hover v when String.equal name "any-hover" ->
-      ident (match v with `None -> "none" | `Hover -> "hover")
+      Some (Media.Ident v)
   | Media.Scripting v when String.equal name "scripting" ->
-      ident
-        (match v with
-        | `None -> "none"
-        | `Initial_only -> "initial-only"
-        | `Enabled -> "enabled")
+      Some (Media.Ident v)
   | Media.Nav_controls v when String.equal name "nav-controls" ->
-      ident (match v with `None -> "none" | `Back_button -> "back-button")
+      Some (Media.Ident v)
   | Media.Orientation v when String.equal name "orientation" ->
-      ident (match v with `Portrait -> "portrait" | `Landscape -> "landscape")
+      Some (Media.Ident v)
   | Media.Range (feature_name, Media.Eq, value)
     when String.equal name (Media.string_of_name feature_name) ->
       Some value
@@ -1453,7 +1426,7 @@ module Match_media = struct
 
   let plain q name value =
     eval_feature q.media_features (Plain (Media.name_of_string name, value))
-  let ident q name value = bool_feature q name value
+  let ident q name value = bool_feature q name (Media.string_of_ident value)
   let integer q name value = plain q name (Integer value)
   let length q name value = plain q name (Length value)
   let ratio q name a b = plain q name (Ratio (a, b))
@@ -1486,79 +1459,38 @@ module Match_media = struct
     | Color n -> Some (integer q "color" n)
     | Color_index n -> Some (integer q "color-index" n)
     | Monochrome n -> Some (integer q "monochrome" n)
-    | Color_gamut `Srgb -> Some (ident q "color-gamut" "srgb")
-    | Color_gamut `P3 -> Some (ident q "color-gamut" "p3")
-    | Color_gamut `Rec2020 -> Some (ident q "color-gamut" "rec2020")
-    | Video_color_gamut `Srgb -> Some (ident q "video-color-gamut" "srgb")
-    | Video_color_gamut `P3 -> Some (ident q "video-color-gamut" "p3")
-    | Video_color_gamut `Rec2020 -> Some (ident q "video-color-gamut" "rec2020")
-    | Dynamic_range `Standard -> Some (ident q "dynamic-range" "standard")
-    | Dynamic_range `High -> Some (ident q "dynamic-range" "high")
-    | Video_dynamic_range `Standard ->
-        Some (ident q "video-dynamic-range" "standard")
-    | Video_dynamic_range `High -> Some (ident q "video-dynamic-range" "high")
+    | Color_gamut v -> Some (ident q "color-gamut" v)
+    | Video_color_gamut v -> Some (ident q "video-color-gamut" v)
+    | Dynamic_range v -> Some (ident q "dynamic-range" v)
+    | Video_dynamic_range v -> Some (ident q "video-dynamic-range" v)
     | _ -> None
 
   let eval_user_prefs q = function
-    | Prefers_reduced_motion `No_preference ->
-        Some (ident q "prefers-reduced-motion" "no-preference")
-    | Prefers_reduced_motion `Reduce ->
-        Some (ident q "prefers-reduced-motion" "reduce")
-    | Prefers_reduced_transparency `No_preference ->
-        Some (ident q "prefers-reduced-transparency" "no-preference")
-    | Prefers_reduced_transparency `Reduce ->
-        Some (ident q "prefers-reduced-transparency" "reduce")
-    | Prefers_reduced_data `No_preference ->
-        Some (ident q "prefers-reduced-data" "no-preference")
-    | Prefers_reduced_data `Reduce ->
-        Some (ident q "prefers-reduced-data" "reduce")
-    | Prefers_contrast `No_preference ->
-        Some (ident q "prefers-contrast" "no-preference")
-    | Prefers_contrast `More -> Some (ident q "prefers-contrast" "more")
-    | Prefers_contrast `Less -> Some (ident q "prefers-contrast" "less")
-    | Prefers_contrast `Custom -> Some (ident q "prefers-contrast" "custom")
-    | Prefers_color_scheme `Dark -> Some (ident q "prefers-color-scheme" "dark")
-    | Prefers_color_scheme `Light ->
-        Some (ident q "prefers-color-scheme" "light")
-    | Forced_colors `Active -> Some (ident q "forced-colors" "active")
-    | Forced_colors `None -> Some (ident q "forced-colors" "none")
-    | Inverted_colors `Inverted -> Some (ident q "inverted-colors" "inverted")
-    | Inverted_colors `None -> Some (ident q "inverted-colors" "none")
+    | Prefers_reduced_motion v -> Some (ident q "prefers-reduced-motion" v)
+    | Prefers_reduced_transparency v ->
+        Some (ident q "prefers-reduced-transparency" v)
+    | Prefers_reduced_data v -> Some (ident q "prefers-reduced-data" v)
+    | Prefers_contrast v -> Some (ident q "prefers-contrast" v)
+    | Prefers_color_scheme v -> Some (ident q "prefers-color-scheme" v)
+    | Forced_colors v -> Some (ident q "forced-colors" v)
+    | Inverted_colors v -> Some (ident q "inverted-colors" v)
     | _ -> None
 
   let eval_interaction q = function
-    | Pointer `None -> Some (ident q "pointer" "none")
-    | Pointer `Coarse -> Some (ident q "pointer" "coarse")
-    | Pointer `Fine -> Some (ident q "pointer" "fine")
-    | Any_pointer `None -> Some (ident q "any-pointer" "none")
-    | Any_pointer `Coarse -> Some (ident q "any-pointer" "coarse")
-    | Any_pointer `Fine -> Some (ident q "any-pointer" "fine")
-    | Hover `None -> Some (ident q "hover" "none")
-    | Hover `Hover -> Some (ident q "hover" "hover")
-    | Any_hover `None -> Some (ident q "any-hover" "none")
-    | Any_hover `Hover -> Some (ident q "any-hover" "hover")
-    | Scripting `None -> Some (ident q "scripting" "none")
-    | Scripting `Initial_only -> Some (ident q "scripting" "initial-only")
-    | Scripting `Enabled -> Some (ident q "scripting" "enabled")
-    | Nav_controls `None -> Some (ident q "nav-controls" "none")
-    | Nav_controls `Back_button -> Some (ident q "nav-controls" "back-button")
+    | Pointer v -> Some (ident q "pointer" v)
+    | Any_pointer v -> Some (ident q "any-pointer" v)
+    | Hover v -> Some (ident q "hover" v)
+    | Any_hover v -> Some (ident q "any-hover" v)
+    | Scripting v -> Some (ident q "scripting" v)
+    | Nav_controls v -> Some (ident q "nav-controls" v)
     | _ -> None
 
   let eval_output q = function
-    | Scan `Interlace -> Some (ident q "scan" "interlace")
-    | Scan `Progressive -> Some (ident q "scan" "progressive")
-    | Update `None -> Some (ident q "update" "none")
-    | Update `Slow -> Some (ident q "update" "slow")
-    | Update `Fast -> Some (ident q "update" "fast")
-    | Overflow_block `None -> Some (ident q "overflow-block" "none")
-    | Overflow_block `Scroll -> Some (ident q "overflow-block" "scroll")
-    | Overflow_block `Optional_paged ->
-        Some (ident q "overflow-block" "optional-paged")
-    | Overflow_block `Paged -> Some (ident q "overflow-block" "paged")
-    | Overflow_inline `None -> Some (ident q "overflow-inline" "none")
-    | Overflow_inline `Scroll -> Some (ident q "overflow-inline" "scroll")
-    | Orientation `Portrait -> Some (ident q "orientation" "portrait")
-    | Orientation `Landscape -> Some (ident q "orientation" "landscape")
+    | Scan v -> Some (ident q "scan" v)
+    | Update v -> Some (ident q "update" v)
+    | Overflow_block v -> Some (ident q "overflow-block" v)
+    | Overflow_inline v -> Some (ident q "overflow-inline" v)
+    | Orientation v -> Some (ident q "orientation" v)
     | _ -> None
 
   let eval_range q = function
