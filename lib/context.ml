@@ -1629,15 +1629,16 @@ module Match_container = struct
 
   let style_value = function
     | Container.Boolean name -> (name, None)
-    | Declaration { name; value } ->
+    | Container.Declaration { name; value } ->
         (name, Some (Cursor.string_of_components ~trim:true value))
-    | Range _ -> ("", None)
+    | Container.Range _ | Container.All _ | Container.Any _ | Container.Neg _ ->
+        ("", None)
 
-  let style_match q ~query =
+  let style_leaf_match q ~query =
     let prop, value = style_value query in
     List.exists
       (function
-        | Container.Style { query = Range _; _ } -> false
+        | Container.Style { query = Range _ | All _ | Any _ | Neg _; _ } -> false
         | Container.Style { query; _ }
           when String.equal (fst (style_value query)) prop -> (
             match (value, snd (style_value query)) with
@@ -1647,6 +1648,14 @@ module Match_container = struct
                 String.equal (String.trim asked) (String.trim actual))
         | _ -> false)
       q.container_features
+
+  let rec style_match q ~query =
+    match query with
+    | Container.Boolean _ | Container.Declaration _ | Container.Range _ ->
+        style_leaf_match q ~query
+    | Container.All (a, b) -> style_match q ~query:a && style_match q ~query:b
+    | Container.Any (a, b) -> style_match q ~query:a || style_match q ~query:b
+    | Container.Neg query -> not (style_match q ~query)
 
   let rec eval_scroll_state_query q = function
     | Container.State { name = prop; value } ->
@@ -2915,6 +2924,9 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
     | Values.Light_dark (light, dark) ->
         Values.Light_dark
           (simplify ~authored ~visited light, simplify ~authored ~visited dark)
+    | Values.Attribute (name, fallback) ->
+        Values.Attribute
+          (name, Option.map (simplify ~authored ~visited) fallback)
     | Values.Mix mix ->
         Values.Mix
           {
