@@ -709,8 +709,8 @@ type grid_auto_flow =
   | Revert_layer
   | Var of grid_auto_flow var
 
-(** [repeat()] count argument: an explicit integer or one of the
-    auto-track-list keywords (CSS Grid 1 §7.2.3.1 / 2). *)
+(** [repeat()] count argument: an explicit integer or one of the auto-track-list
+    keywords (CSS Grid 1 §7.2.3.1 / 2). *)
 type repeat_count = Count of int | Auto_fill | Auto_fit
 
 type grid_template =
@@ -2400,7 +2400,6 @@ type conic_gradient_config = {
 
 module Webkit_gradient = struct
   type point = Left_top | Left_bottom | Center | Position of position_value
-
   type stop = From of color | Color_stop of percentage * color | To of color
 
   type t =
@@ -2872,6 +2871,7 @@ type content =
   | Attr of string
   | Counter of string
   | Counters of string * string
+  | String_ref of string
   | Content_list of content list
   | Inherit
   | Initial
@@ -4060,8 +4060,8 @@ type 'a property =
       (** CSS Grid 1 §8 [grid] shorthand. Cascade treats it as a free-form
           [grid_template] for now: the simple cases (track-list, grid-template
           syntax with area strings) round-trip through the same AST as
-          [grid-template], and inputs that exercise the auto-flow branches
-          fall back to the raw [Template] preservation arm. *)
+          [grid-template], and inputs that exercise the auto-flow branches fall
+          back to the raw [Template] preservation arm. *)
   | Grid_area : string property
   | Grid_auto_flow : grid_auto_flow property
   | Grid_auto_columns : grid_template property

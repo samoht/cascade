@@ -193,7 +193,6 @@ and keyframe = {
 (** A single keyframe within [\@keyframes] *)
 
 and page_descriptor = Declaration.declaration
-
 and font_palette_base = Light | Dark | Index of int | Palette_ident of string
 
 and font_palette_descriptor =

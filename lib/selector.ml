@@ -972,7 +972,9 @@ let rec any p = function
 let has_pseudo_element sel = any is_pseudo_element_selector sel
 
 let has_unknown_pseudo_class =
-  any (function Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true | _ -> false)
+  any (function
+    | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true
+    | _ -> false)
 
 (* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
    valid argument matches nothing, and a compound or combined selector that
@@ -989,12 +991,11 @@ let rec matches_nothing = function
   | _ -> false
 
 (* CSS Pseudo-Elements 4 §3.5 / Selectors 4 §3.6.4: a pseudo-element compound
-   may be followed by user-action pseudo-classes ([:hover] / [:focus] etc.),
-   structural pseudo-classes ([:nth-*], [:only-child], [:first-child] ...),
-   logical pseudo-classes ([:is], [:not]), and the [:state(...)] custom-state
-   query. Stay permissive: anything that isn't itself a pseudo-element is
-   allowed in the trailing slot. *)
-let is_pe_action sel = not (is_pseudo_element_selector sel)
+   may only be followed by pseudo-classes. Class/id/type/attribute selectors
+   after the pseudo-element still make the compound invalid. *)
+let is_pe_action = function
+  | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
+  | sel -> not (is_pseudo_element_selector sel)
 
 (* Forward declarations for mutually recursive functions *)
 let rec read_selector_list_with read_item t =
@@ -1185,8 +1186,8 @@ and read_highlight_content t =
 
 and read_vt_class_selector t : vt_class_selector =
   (* CSS View Transitions 2 §3.4.1 [<vt-class-selector>] = [<vt-name>?
-     [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name
-     or at least one class must be present. *)
+     [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name or
+     at least one class must be present. *)
   Cursor.ws t;
   let name =
     match Cursor.peek_delim t with
@@ -1275,22 +1276,23 @@ and read_pseudo_class ?(allow_unknown = false) t =
     ]
   in
   let read_unknown t =
-      let read_unknown_call t =
-        match Cursor.peek t with
-        | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
-            Cursor.skip t;
-            Unknown_pseudo_class_call (name, arguments)
-        | _ -> Cursor.err_expected t "pseudo-class call"
-      in
-      let read_unknown_ident t =
-        match Cursor.ident_opt t with
-        | Some name -> Unknown_pseudo_class name
-        | None -> Cursor.err_expected t "pseudo-class"
-      in
-      Cursor.one_of [ read_unknown_call; read_unknown_ident ] t
+    let read_unknown_call t =
+      match Cursor.peek t with
+      | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+          Cursor.skip t;
+          Unknown_pseudo_class_call (name, arguments)
+      | _ -> Cursor.err_expected t "pseudo-class call"
+    in
+    let read_unknown_ident t =
+      match Cursor.ident_opt t with
+      | Some name -> Unknown_pseudo_class name
+      | None -> Cursor.err_expected t "pseudo-class"
+    in
+    Cursor.one_of [ read_unknown_call; read_unknown_ident ] t
   in
   if allow_unknown then
-    Cursor.enum_or_calls "pseudo-class" all_idents ~calls ~default:read_unknown t
+    Cursor.enum_or_calls "pseudo-class" all_idents ~calls ~default:read_unknown
+      t
   else Cursor.enum_or_calls "pseudo-class" all_idents ~calls t
 
 (** Parse pseudo-element (::before, ::after, etc.) *)
@@ -1311,8 +1313,8 @@ and read_pseudo_element t =
     ]
     ~default:(fun t ->
       let read_unknown_call t =
-        (* Unknown functional pseudo-element: keep the call body verbatim so
-           the printer can re-emit the exact same source. *)
+        (* Unknown functional pseudo-element: keep the call body verbatim so the
+           printer can re-emit the exact same source. *)
         match Cursor.peek t with
         | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
             Cursor.skip t;
@@ -1327,7 +1329,8 @@ and read_pseudo_element t =
       Cursor.enum "pseudo-element"
         (pseudo_element_modern_idents @ pseudo_vendor_idents
         @ pseudo_element_legacy_idents Double)
-        ~default:(fun t -> Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
+        ~default:(fun t ->
+          Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
         t)
     t
 
@@ -1532,11 +1535,8 @@ let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 (* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
    spelling for the four original pseudo-elements. Minified output uses the
    shorter valid alias; pretty output uses the modern double-colon spelling. *)
-let legacy_elem ctx form name =
-  let prefix =
-    if Pp.minified ctx then ":"
-    else match form with Single -> ":" | Double -> "::"
-  in
+let legacy_elem ctx _form name =
+  let prefix = if Pp.minified ctx then ":" else "::" in
   Pp.string ctx (prefix ^ name)
 
 let func ctx name pp_content value =
@@ -1584,11 +1584,8 @@ let pp_relative_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
-let strs_spaced ctx strings =
-  let sep ctx () =
-    if Pp.minified ctx then Pp.char ctx ',' else Pp.string ctx ", "
-  in
-  Pp.list ~sep Pp.string ctx strings
+let langs ctx strings =
+  Pp.list ~sep:(fun ctx () -> Pp.string ctx ", ") Pp.string ctx strings
 
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
@@ -1686,23 +1683,7 @@ let rec pp_nth_func ctx name expr of_sel =
   (match of_sel with
   | Some sels ->
       Pp.string ctx " of";
-      (* The trailing space between [of] and the selector list is only needed
-         when the leading selector starts with an ident-continue character.
-         Class / id / attribute / universal / nesting / pseudo-* selectors
-         all open with a self-delimiting token, so [of.foo] tokenises the
-         same as [of .foo] under minify. *)
-      let rec starts_with_self_delim : t -> bool = function
-        | Element _ -> false
-        | Combined (left, _, _) -> starts_with_self_delim left
-        | Compound (first :: _) -> starts_with_self_delim first
-        | List (first :: _) -> starts_with_self_delim first
-        | Relative _ -> false
-        | _ -> true
-      in
-      let head_self_delim =
-        match sels with first :: _ -> starts_with_self_delim first | _ -> false
-      in
-      if not (Pp.minified ctx && head_self_delim) then Pp.char ctx ' ';
+      Pp.char ctx ' ';
       Pp.list ~sep:Pp.comma pp ctx sels
   | None -> ());
   Pp.char ctx ')'
@@ -1924,7 +1905,7 @@ and pp : t Pp.t =
   | Nth_col expr -> pp_nth_col_func ctx "nth-col" expr
   | Nth_last_col expr -> pp_nth_col_func ctx "nth-last-col" expr
   | Dir dir -> func ctx "dir" Pp.string dir
-  | Lang langs -> func ctx "lang" strs_spaced langs
+  | Lang names -> func ctx "lang" langs names
   | State name -> func ctx "state" Pp.string name
   | Current_of selectors -> func ctx "current" sels selectors
   | Host None -> pseudo ctx "host"
@@ -2111,20 +2092,19 @@ let rec specificity = function
   | Picture_in_picture | Left | Right | First | Defined | Playing | Paused
   | Seeking | Buffering | Stalled | Muted | Volume_locked | Future | Past
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
-  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _
-  | Moz_placeholder | Webkit_input_placeholder | Ms_input_placeholder
-  | Moz_ui_invalid | Moz_ui_valid | Webkit_scrollbar
-  | Webkit_search_cancel_button | Webkit_search_decoration
-  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
-  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
-  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
-  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
-  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
-  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
-  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
-  | Webkit_details_marker | Details_content | Nth_col _ | Nth_last_col _ | Dir _
-  | Lang _ | State _ | Active_view_transition | Active_view_transition_type _
-  | Heading ->
+  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_placeholder
+  | Webkit_input_placeholder | Ms_input_placeholder | Moz_ui_invalid
+  | Moz_ui_valid | Webkit_scrollbar | Webkit_search_cancel_button
+  | Webkit_search_decoration | Webkit_datetime_edit_fields_wrapper
+  | Webkit_date_and_time_value | Webkit_datetime_edit
+  | Webkit_datetime_edit_year_field | Webkit_datetime_edit_month_field
+  | Webkit_datetime_edit_day_field | Webkit_datetime_edit_hour_field
+  | Webkit_datetime_edit_minute_field | Webkit_datetime_edit_second_field
+  | Webkit_datetime_edit_millisecond_field | Webkit_datetime_edit_meridiem_field
+  | Webkit_inner_spin_button | Webkit_outer_spin_button
+  | Webkit_calendar_picker_indicator | Webkit_details_marker | Details_content
+  | Nth_col _ | Nth_last_col _ | Dir _ | Lang _ | State _
+  | Active_view_transition | Active_view_transition_type _ | Heading ->
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
@@ -2132,8 +2112,7 @@ let rec specificity = function
   | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
-    ->
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ ->
       { ids = 0; classes = 0; elements = 1 }
   | Where _ -> zero_specificity
   | Is xs | Not xs | Has xs | Current_of xs ->

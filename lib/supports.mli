@@ -39,12 +39,14 @@ type function_feature =
   | At_rule of string
   | Named_feature of string
   | Env of string
+  | General of string * string
 
 type t =
   | Property of declaration_feature  (** [(property: value)] feature test *)
   | Function of function_feature
-      (** Function feature test: [selector()], [font-format()],
-          [font-tech()], [at-rule()], [named-feature()], or [env()]. *)
+      (** Function feature test: [selector()], [font-format()], [font-tech()],
+          [at-rule()], [named-feature()], [env()], or a general-enclosed
+          function. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)

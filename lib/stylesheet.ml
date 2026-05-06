@@ -247,7 +247,6 @@ let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
 
 let keyframes name frames = Keyframes (name, frames)
-
 let v statements : stylesheet = statements
 let empty_stylesheet : stylesheet = []
 
@@ -321,11 +320,13 @@ let pp_keyframes_name ctx name =
   let is_safe_ident =
     len > 0
     && (is_ident_start name.[0]
-       || (name.[0] = '-' && len >= 2
-          && (is_ident_start name.[1] || name.[1] = '-')))
-    && (let ok = ref true in
-        String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
-        !ok)
+       || name.[0] = '-'
+          && len >= 2
+          && (is_ident_start name.[1] || name.[1] = '-'))
+    &&
+    let ok = ref true in
+    String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
+    !ok
   in
   if is_safe_ident then Pp.string ctx name else Pp.quoted_string ctx name
 
@@ -967,6 +968,11 @@ and printable_statements ctx statements =
 and pp_block : block Pp.t =
  fun ctx statements ->
   let statements = printable_statements ctx statements in
+  let pp_statement_sep ctx = function
+    | Declarations decls when decls <> [] && Pp.minified ctx ->
+        Pp.semicolon ctx ()
+    | _ -> ()
+  in
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
      adds nest 1 and indent for the first item only. Subsequent items need
      explicit indentation and blank line separation to match Tailwind format. *)
@@ -975,23 +981,38 @@ and pp_block : block Pp.t =
   | [ s ] -> pp_statement ctx s
   | s :: rest ->
       pp_statement ctx s;
-      List.iter
-        (fun stmt ->
-          Pp.cut ctx ();
-          if not ctx.Pp.minify then Pp.cut ctx ();
-          Pp.indent pp_statement ctx stmt)
-        rest
+      pp_statement_sep ctx s;
+      let rec pp_rest = function
+        | [] -> ()
+        | [ stmt ] ->
+            Pp.cut ctx ();
+            if not ctx.Pp.minify then Pp.cut ctx ();
+            Pp.indent pp_statement ctx stmt
+        | stmt :: rest ->
+            Pp.cut ctx ();
+            if not ctx.Pp.minify then Pp.cut ctx ();
+            Pp.indent pp_statement ctx stmt;
+            pp_statement_sep ctx stmt;
+            pp_rest rest
+      in
+      pp_rest rest
 
 let is_layer_block = function Layer _ -> true | _ -> false
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
   let statements = printable_statements ctx statements in
+  let pp_statement_sep ctx = function
+    | Declarations decls when decls <> [] && Pp.minified ctx ->
+        Pp.semicolon ctx ()
+    | _ -> ()
+  in
   let rec loop = function
     | [] -> ()
     | [ s ] -> pp_statement ctx s
     | s :: (next :: _ as rest) ->
         pp_statement ctx s;
+        pp_statement_sep ctx s;
         Pp.cut ctx ();
         (* Add blank line between consecutive @layer { } blocks *)
         if (not (Pp.minified ctx)) && is_layer_block s && is_layer_block next
@@ -1263,20 +1284,28 @@ let read_namespace (r : Cursor.t) : statement =
 
 let read_keyframes_block inner =
   (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
-     selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only
-     drops that rule, the surrounding block keeps parsing. *)
+     selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only drops
+     that rule, the surrounding block keeps parsing. *)
+  let saw_invalid = ref false in
   let rec read_frames acc =
     Cursor.ws inner;
-    if Cursor.is_done inner then List.rev acc
+    if Cursor.is_done inner then (
+      let frames = List.rev acc in
+      if !saw_invalid && frames = [] then
+        Cursor.err_invalid inner "invalid keyframes block";
+      frames)
     else
       let snap = Cursor.save inner in
       match read_keyframe inner with
       | frame -> read_frames (frame :: acc)
       | exception Cursor.Parse_error _ ->
+          saw_invalid := true;
           Cursor.restore inner snap;
           (* Skip the malformed selector tokens up to the rule body, then
              swallow the brace-enclosed block so the next frame can parse. *)
-          let _ : string = Cursor.drain_until_block_as_string ~trim:true inner in
+          let _ : string =
+            Cursor.drain_until_block_as_string ~trim:true inner
+          in
           (try ignore (Cursor.braces (fun _ -> ()) inner : unit)
            with Cursor.Parse_error _ -> ());
           read_frames acc
@@ -1286,10 +1315,9 @@ let read_keyframes_block inner =
 (* CSS Animations 1 §3: [@keyframes <keyframes-name> { ... }], where
    [<keyframes-name> = <custom-ident> | <string>]. The reserved spellings
    ([none], the CSS-wide keywords, and [default]) are excluded from
-   [<keyframes-name>] per the spec, but every mainstream minifier accepts
-   them in [<string>] form, so cascade keeps them in the AST too: rejecting
-   would leak unparsable input that tools downstream already preserve
-   verbatim. *)
+   [<keyframes-name>] per the spec, but every mainstream minifier accepts them
+   in [<string>] form, so cascade keeps them in the AST too: rejecting would
+   leak unparsable input that tools downstream already preserve verbatim. *)
 let read_keyframes_name r =
   Cursor.ws r;
   match Cursor.string_opt r with
@@ -1350,7 +1378,8 @@ let read_descriptor_value read_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
-let read_descriptor_declaration (r : Cursor.t) : Declaration.declaration option =
+let read_descriptor_declaration (r : Cursor.t) : Declaration.declaration option
+    =
   Cursor.ws r;
   if Cursor.is_done r then None
   else if Cursor.peek_semicolon r then (
@@ -1361,7 +1390,8 @@ let read_descriptor_declaration (r : Cursor.t) : Declaration.declaration option 
 let replace_descriptor desc acc =
   desc
   :: List.filter
-       (fun existing -> Declaration.property_name existing <> Declaration.property_name desc)
+       (fun existing ->
+         Declaration.property_name existing <> Declaration.property_name desc)
        acc
 
 let read_descriptor_block normalize inner =
@@ -1516,6 +1546,18 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
   let descriptors = Cursor.braces read_font_face_block r in
+  let has_font_family =
+    List.exists
+      (function (Font_family _ : font_face_descriptor) -> true | _ -> false)
+      descriptors
+  in
+  let has_src =
+    List.exists
+      (function (Src _ : font_face_descriptor) -> true | _ -> false)
+      descriptors
+  in
+  if not (has_font_family && has_src) then
+    Cursor.err_invalid r "@font-face requires font-family and src";
   Font_face descriptors
 
 (* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
@@ -1578,7 +1620,8 @@ let allowed_page_margin_names =
 
 let read_page_descriptor r =
   match read_descriptor_declaration r with
-  | Some desc when List.mem (Declaration.property_name desc) allowed_page_descriptors ->
+  | Some desc
+    when List.mem (Declaration.property_name desc) allowed_page_descriptors ->
       desc
   | Some desc ->
       Cursor.err_invalid r
@@ -1597,7 +1640,7 @@ let read_page_margin_rule r =
                if Declaration.property_name desc <> "content" then
                  Cursor.err_invalid r
                    ("invalid page margin descriptor: "
-                  ^ Declaration.property_name desc);
+                   ^ Declaration.property_name desc);
                replace_descriptor desc acc))
           r
       in
@@ -1656,7 +1699,10 @@ let read_font_palette_values (r : Cursor.t) : statement =
     | Override_colors _ -> "override-colors"
   in
   let replace desc acc =
-    desc :: List.filter (fun existing -> descriptor_kind existing <> descriptor_kind desc) acc
+    desc
+    :: List.filter
+         (fun existing -> descriptor_kind existing <> descriptor_kind desc)
+         acc
   in
   let read_one inner =
     Cursor.ws inner;
@@ -1680,7 +1726,8 @@ let read_font_palette_values (r : Cursor.t) : statement =
             match Cursor.number inner with
             | n ->
                 if n < 0. || Float.floor n <> n then
-                  Cursor.err_invalid inner "base-palette index must be non-negative";
+                  Cursor.err_invalid inner
+                    "base-palette index must be non-negative";
                 Base_palette (Index (Float.to_int n))
             | exception Cursor.Parse_error _ -> (
                 match Cursor.ident ~keep_case:false inner with
@@ -1692,7 +1739,8 @@ let read_font_palette_values (r : Cursor.t) : statement =
             let entry c =
               let index = Cursor.number c in
               if index < 0. || Float.floor index <> index then
-                Cursor.err_invalid c "override-colors index must be non-negative";
+                Cursor.err_invalid c
+                  "override-colors index must be non-negative";
               Cursor.ws c;
               let color = Values.read_color c in
               Cursor.ws c;
@@ -1701,7 +1749,8 @@ let read_font_palette_values (r : Cursor.t) : statement =
             Override_colors
               (Cursor.list ~sep:Cursor.comma ~at_least:1 entry inner)
         | name ->
-            Cursor.err_invalid r ("unknown font-palette-values descriptor: " ^ name)
+            Cursor.err_invalid r
+              ("unknown font-palette-values descriptor: " ^ name)
       in
       Cursor.ws inner;
       if Cursor.peek_semicolon inner then Cursor.skip inner;
@@ -1720,12 +1769,12 @@ let read_font_palette_values (r : Cursor.t) : statement =
         loop [])
       r
     |> List.stable_sort (fun a b ->
-           let rank = function
-             | Palette_font_family _ -> 0
-             | Base_palette _ -> 1
-             | Override_colors _ -> 2
-           in
-           compare (rank a) (rank b))
+        let rank = function
+          | Palette_font_family _ -> 0
+          | Base_palette _ -> 1
+          | Override_colors _ -> 2
+        in
+        compare (rank a) (rank b))
   in
   if descriptors = [] then
     Cursor.err_invalid r "@font-palette-values requires descriptors";
@@ -1782,7 +1831,8 @@ let read_view_transition (r : Cursor.t) : statement =
                       in
                       Types (Some (names [ first ])))
               | name ->
-                  Cursor.err_invalid r ("unknown @view-transition descriptor: " ^ name)
+                  Cursor.err_invalid r
+                    ("unknown @view-transition descriptor: " ^ name)
             in
             Cursor.ws inner;
             if Cursor.peek_semicolon inner then Cursor.skip inner;

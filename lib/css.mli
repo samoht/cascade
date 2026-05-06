@@ -1029,14 +1029,8 @@ type color =
       a : float option;
       b : float option;
       alpha : alpha;
-    }
-      (** Lab color space. l, a and b can be [None] to represent CSS [none]. *)
-  | Oklch of {
-      l : percentage option;
-      c : float option;
-      h : hue;
-      alpha : alpha;
-    }
+    }  (** Lab color space. l, a and b can be [None] to represent CSS [none]. *)
+  | Oklch of { l : percentage option; c : float option; h : hue; alpha : alpha }
       (** OKLCH color space. l and c can be [None] to represent CSS [none]. *)
   | Oklab of {
       l : percentage option;
@@ -1046,12 +1040,7 @@ type color =
     }
       (** Oklab color space. l, a and b can be [None] to represent CSS 'none'
           keyword. *)
-  | Lch of {
-      l : percentage option;
-      c : float option;
-      h : hue;
-      alpha : alpha;
-    }
+  | Lch of { l : percentage option; c : float option; h : hue; alpha : alpha }
       (** LCH color space. l and c can be [None] to represent CSS [none]. *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | System of system_color
@@ -1985,6 +1974,7 @@ type content =
   | Attr of string
   | Counter of string
   | Counters of string * string
+  | String_ref of string
   | Content_list of content list
   | Inherit
   | Initial
@@ -2601,7 +2591,6 @@ val object_view_box : object_view_box -> declaration
 (** Background image values *)
 module Webkit_gradient : sig
   type point = Left_top | Left_bottom | Center | Position of position_value
-
   type stop = From of color | Color_stop of percentage * color | To of color
 
   type t =
@@ -3364,8 +3353,8 @@ val column_gap : length -> declaration
     @see <https://www.w3.org/TR/css-grid-1/> CSS Grid Layout Module Level 1
     @see <https://www.w3.org/TR/css-grid-2/> CSS Grid Layout Module Level 2 *)
 
-(** [repeat()] count argument: an integer or [auto-fill] / [auto-fit]
-    (CSS Grid 1 §7.2.3.1). *)
+(** [repeat()] count argument: an integer or [auto-fill] / [auto-fit] (CSS Grid
+    1 §7.2.3.1). *)
 type repeat_count = Count of int | Auto_fill | Auto_fit
 
 (** CSS grid template values *)
@@ -3385,6 +3374,10 @@ type grid_template =
   | Min_content
   | Max_content
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Min_max of grid_template * grid_template
   | Fit_content of length
   | Repeat of repeat_count * grid_template list
@@ -3392,8 +3385,8 @@ type grid_template =
   | Split of grid_template * grid_template
   | Named_tracks of (string option * grid_template) list
   | Line_names of string list
-      (** [[col-start a b]] line-names block, kept as its own track-list
-          element so the printer preserves the surrounding track positions. *)
+      (** [[col-start a b]] line-names block, kept as its own track-list element
+          so the printer preserves the surrounding track positions. *)
   | Template of string
   | Subgrid
   | Masonry
@@ -7101,6 +7094,26 @@ val read_transform_origin : Cursor.t -> transform_origin
 
 val read_transform : Cursor.t -> transform
 (** [read_transform t] parses a transform value. *)
+
+val syntax_fallback : string -> 'a fallback
+(** [syntax_fallback s] is {!Values.syntax_fallback}. *)
+
+val custom_value_ident : string -> Component.t list
+(** [custom_value_ident name] is {!Variables.custom_value_ident}. *)
+
+val custom_value_var_empty_fallback : string -> Component.t list
+(** [custom_value_var_empty_fallback name] is
+    {!Variables.custom_value_var_empty_fallback}. *)
+
+val string_of_custom_value : Component.t list -> string
+(** [string_of_custom_value value] is {!Variables.string_of_custom_value}. *)
+
+val string_of_number_percentage : number_percentage -> string
+(** [string_of_number_percentage value] is
+    {!Values.string_of_number_percentage}. *)
+
+val string_of_kind_value : 'a kind -> 'a -> string
+(** [string_of_kind_value kind value] is {!Properties.string_of_kind_value}. *)
 
 module Container = Container
 module Supports = Supports

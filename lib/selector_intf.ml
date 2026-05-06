@@ -39,12 +39,11 @@ type nth =
   | Index of int (* Just B: matches a single index *)
   | An_plus_b of int * int (* An+B: a is coefficient, b is offset *)
 
-(** CSS View Transitions 2 §3.4.1 [<vt-class-selector>]: an optional vt-name
-    ([<custom-ident>] or [*]) followed by zero or more [.<custom-ident>]
-    class qualifiers. The empty case (no name and no classes) does not
-    appear in cascade output - the parser always reads at least one
-    component. *)
 type vt_class_selector = { name : string option; classes : string list }
+(** CSS View Transitions 2 §3.4.1 [<vt-class-selector>]: an optional vt-name
+    ([<custom-ident>] or [*]) followed by zero or more [.<custom-ident>] class
+    qualifiers. The empty case (no name and no classes) does not appear in
+    cascade output - the parser always reads at least one component. *)
 
 type t =
   | Element of ns option * string
@@ -114,14 +113,14 @@ type t =
   | Unknown_pseudo_class of string
       (** Vendor / prerelease pseudo-classes cascade doesn't recognise. *)
   | Unknown_pseudo_class_call of string * Component.t list
-      (** Functional vendor / prerelease pseudo-classes with opaque arguments. *)
+      (** Functional vendor / prerelease pseudo-classes with opaque arguments.
+      *)
   (* CSS Selectors 4 3.6.1: [::before] / [::after] / [::first-letter] /
      [::first-line] are the modern double-colon pseudo-element forms; the CSS
      2.1 single-colon spelling is preserved as a backwards-compatibility alias.
-     The [colon_form] field records which form the source used so the
-     pretty-printer round-trips the same spelling under non-minified output;
-     minified output always picks the [Single]-colon form since it is one
-     character shorter. *)
+     The [colon_form] field records which form the source used. Minified output
+     always picks the [Single]-colon form since it is one character shorter;
+     pretty output uses the modern double-colon spelling. *)
   | Before of colon_form
   | After of colon_form
   | First_letter of colon_form
@@ -202,8 +201,8 @@ type t =
   | View_transition_new of vt_class_selector
       (** ::view-transition-new with optional name and class suffixes. *)
   | Unknown_pseudo_element of string
-      (** Vendor / prerelease pseudo-elements cascade doesn't recognise
-          (e.g. [::deep], [::unknown]). Preserved as the raw ident. *)
+      (** Vendor / prerelease pseudo-elements cascade doesn't recognise (e.g.
+          [::deep], [::unknown]). Preserved as the raw ident. *)
   | Unknown_pseudo_element_call of string * Component.t list
       (** Functional form: [::unknown(<arbitrary tokens>)]. Argument list
           captured as raw component values so the printer re-emits verbatim. *)

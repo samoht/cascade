@@ -342,6 +342,13 @@ let parse_background_image s =
     if Cursor.is_done r then Some imgs else None
   with Cursor.Parse_error _ | Invalid_argument _ -> None
 
+let syntax_fallback = Values.syntax_fallback
+let custom_value_ident = Variables.custom_value_ident
+let custom_value_var_empty_fallback = Variables.custom_value_var_empty_fallback
+let string_of_custom_value = Variables.string_of_custom_value
+let string_of_number_percentage = Values.string_of_number_percentage
+let string_of_kind_value = Properties.string_of_kind_value
+
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
   | _ -> None
@@ -693,7 +700,9 @@ let rec statements_for_inline = function
   | Moz_document (conditions, block) ->
       [ Moz_document (conditions, List.concat_map statements_for_inline block) ]
   | Container (name, condition, block) ->
-      [ Container (name, condition, List.concat_map statements_for_inline block) ]
+      [
+        Container (name, condition, List.concat_map statements_for_inline block);
+      ]
   | Scope (start, end_, block) ->
       [ Scope (start, end_, List.concat_map statements_for_inline block) ]
   | Origin (origin, block) ->
@@ -711,8 +720,7 @@ let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
     =
   let stylesheet =
     match mode with
-    | Inline ->
-        Inline.vars stylesheet |> List.concat_map statements_for_inline
+    | Inline -> Inline.vars stylesheet |> List.concat_map statements_for_inline
     | Variables -> stylesheet
   in
   let stylesheet =

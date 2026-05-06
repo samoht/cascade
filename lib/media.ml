@@ -111,8 +111,8 @@ type value =
   | Ident of ident
   | Function of string * string
       (** [env(--name)] / [var(--name)] / [attr(...)] / [calc(...)] etc.
-          captured as a function name plus its raw argument body for
-          round-trip; cascade doesn't yet evaluate them at parse time. *)
+          captured as a function name plus its raw argument body for round-trip;
+          cascade doesn't yet evaluate them at parse time. *)
 
 type feature =
   | Plain of name * value
@@ -414,11 +414,11 @@ let pp_value : value Pp.t =
       Pp.string ctx args;
       Pp.char ctx ')'
 
-(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the
-   range form [X >= V] / [X <= V]. [as_min_max] returns the comparison and
-   stripped name in one place so the typed and string-valued printers below
-   share the same parsing - the only [String.sub] / [String.length]
-   arithmetic in the file. *)
+(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
+   form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
+   name in one place so the typed and string-valued printers below share the
+   same parsing - the only [String.sub] / [String.length] arithmetic in the
+   file. *)
 type min_max_view = Range_view of cmp * name | Plain_view
 
 let as_min_max name =
@@ -575,8 +575,7 @@ let rec pp ctx = function
   | Not_min_width_length l ->
       Pp.string ctx "not all and ";
       pp_min_width_length ctx l
-  | Aspect_ratio (a, 1) ->
-      pp_named_feature ctx "aspect-ratio" (Int.to_string a)
+  | Aspect_ratio (a, 1) -> pp_named_feature ctx "aspect-ratio" (Int.to_string a)
   | Aspect_ratio (a, b) ->
       pp_named_feature ctx "aspect-ratio"
         (Int.to_string a ^ "/" ^ Int.to_string b)
@@ -602,7 +601,8 @@ let rec pp ctx = function
   | Prefers_reduced_motion ident ->
       pp_named_feature ctx "prefers-reduced-motion" (string_of_ident ident)
   | Prefers_reduced_transparency ident ->
-      pp_named_feature ctx "prefers-reduced-transparency" (string_of_ident ident)
+      pp_named_feature ctx "prefers-reduced-transparency"
+        (string_of_ident ident)
   | Prefers_reduced_data ident ->
       pp_named_feature ctx "prefers-reduced-data" (string_of_ident ident)
   | Prefers_contrast ident ->
@@ -685,8 +685,10 @@ exception Parse_error of recovery_scope * string
 let fail_parse ?(scope = Branch) reason = raise (Parse_error (scope, reason))
 let mk_scanner s = { s = String.trim s; pos = 0 }
 let at_end sc = sc.pos >= String.length sc.s
+
 let peek sc : char option =
   if at_end sc then Option.None else Some sc.s.[sc.pos]
+
 let advance sc = sc.pos <- sc.pos + 1
 
 let skip_ws sc =
@@ -1024,8 +1026,9 @@ let validate_plain_feature (name : name) value =
   | None -> (
       match plain_name with
       | Width | Height | Inline_size | Block_size | Aspect_ratio | Resolution
-      | Color | Color_index | Monochrome | Grid
-      | Horizontal_viewport_segments | Vertical_viewport_segments | Min Width
+      | Color | Color_index | Monochrome | Grid | Horizontal_viewport_segments
+      | Vertical_viewport_segments
+      | Min Width
       | Max Width ->
           valid_plain_numeric_value name value
       | Orientation -> one_of [ Portrait; Landscape ]
@@ -1039,13 +1042,7 @@ let validate_plain_feature (name : name) value =
       | Dynamic_range | Video_dynamic_range -> one_of [ Standard; High ]
       | Display_mode ->
           one_of
-            [
-              Fullscreen;
-              Standalone;
-              Minimal_ui;
-              Browser;
-              Picture_in_picture;
-            ]
+            [ Fullscreen; Standalone; Minimal_ui; Browser; Picture_in_picture ]
       | Environment_blending -> one_of [ Opaque; Additive; Subtractive ]
       | Prefers_color_scheme -> one_of [ Light; Dark ]
       | Prefers_reduced_motion | Prefers_reduced_transparency
@@ -1122,11 +1119,8 @@ let feature_in_parens content : feature option =
       skip_ws sc;
       match peek sc with
       | None ->
-          if
-            Option.is_some
-              (prefixed_range_feature_name (name_of_string id))
-          then
-            None
+          if Option.is_some (prefixed_range_feature_name (name_of_string id))
+          then None
           else Some (boolean_feature (name_of_string id))
       | Some ':' -> (
           advance sc;
@@ -1576,8 +1570,7 @@ let of_function_body s =
 let feature name value : t =
   feature_to_t (plain_feature (name_of_string name) value)
 
-let boolean name : t =
-  feature_to_t (Boolean (name_of_string name) : feature)
+let boolean name : t = feature_to_t (Boolean (name_of_string name) : feature)
 
 (* ===== Sorting / classification ===== *)
 

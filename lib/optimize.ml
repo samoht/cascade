@@ -166,27 +166,44 @@ let is_padding_shorthand = function
 let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
   let rec loop sides acc = function
     | [] -> (sides, List.rev acc)
-    | d :: rest when is_same_shorthand d ->
-        (sides, List.rev_append acc (d :: rest))
-    | d :: rest -> (
+    | (i, d) :: rest when is_same_shorthand d ->
+        (sides, List.rev_append acc ((i, d) :: rest))
+    | (i, d) :: rest -> (
         match absorb sides d with
         | Some sides' -> loop sides' acc rest
-        | None -> loop sides (d :: acc) rest)
+        | None -> loop sides ((i, d) :: acc) rest)
   in
   loop sides [] rest
+
+let box_shorthand_had_prior_longhand source idx shorthand =
+  let shorthand_prop = property_name shorthand in
+  let shorthand_important = is_important shorthand in
+  let rec loop i = function
+    | [] -> false
+    | d :: rest ->
+        i < idx
+        &&
+        let prop = property_name d in
+        List.mem prop (shorthand_longhands shorthand_prop)
+        && (shorthand_important || not (is_important d))
+        || loop (i + 1) rest
+  in
+  loop 0 source
 
 (* Fold subsequent margin/padding corner longhands into the preceding box
    shorthand. Tailwind / Lightning-CSS / cssnano all do this; the dead-code
    suite asserts it for [margin: 10px; margin-top: 20px] -> [margin: 20px 10px
    10px]. *)
-let merge_box_shorthand_longhands decls =
+let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
-    | Declaration { property = Margin; value = vs; important } :: rest -> (
+    | (idx, (Declaration { property = Margin; value = vs; important } as d))
+      :: rest
+      when not (box_shorthand_had_prior_longhand source idx d) -> (
         match expand_box vs with
         | None ->
             let d = Declaration { property = Margin; value = vs; important } in
-            go (d :: acc) rest
+            go ((idx, d) :: acc) rest
         | Some sides ->
             let (top, right, bottom, left), rest =
               absorb_box_longhands
@@ -201,12 +218,14 @@ let merge_box_shorthand_longhands decls =
                   important;
                 }
             in
-            go (merged :: acc) rest)
-    | Declaration { property = Padding; value = vs; important } :: rest -> (
+            go ((idx, merged) :: acc) rest)
+    | (idx, (Declaration { property = Padding; value = vs; important } as d))
+      :: rest
+      when not (box_shorthand_had_prior_longhand source idx d) -> (
         match expand_box vs with
         | None ->
             let d = Declaration { property = Padding; value = vs; important } in
-            go (d :: acc) rest
+            go ((idx, d) :: acc) rest
         | Some sides ->
             let (top, right, bottom, left), rest =
               absorb_box_longhands
@@ -221,15 +240,15 @@ let merge_box_shorthand_longhands decls =
                   important;
                 }
             in
-            go (merged :: acc) rest)
+            go ((idx, merged) :: acc) rest)
     | d :: rest -> go (d :: acc) rest
   in
   go [] decls
 
-let deduplicate_declarations props =
+let deduplicate_declarations_with ?(merge_box = true) props =
   let covered_by_important kept prop_name =
     List.exists
-      (fun decl ->
+      (fun (_, decl) ->
         (not (is_intentionally_duplicated (property_name decl)))
         && is_important decl
         && declaration_covers (property_name decl) prop_name)
@@ -254,35 +273,39 @@ let deduplicate_declarations props =
     && (is_important new_decl || not (is_important existing))
     && not (legacy_fallback new_decl existing)
   in
+  let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept =
     List.fold_left
-      (fun kept decl ->
+      (fun kept (idx, decl) ->
         let prop_name = property_name decl in
-        if is_intentionally_duplicated prop_name then kept @ [ decl ]
+        if is_intentionally_duplicated prop_name then kept @ [ (idx, decl) ]
         else if (not (is_important decl)) && covered_by_important kept prop_name
         then kept
         else
           let kept =
-            List.filter (fun old -> not (covered_by_new decl old)) kept
+            List.filter (fun (_, old) -> not (covered_by_new decl old)) kept
           in
           if prop_name = "all" then
             let before, after =
               List.partition
-                (fun old ->
+                (fun (_, old) ->
                   not (all_preserved_reorder_property (property_name old)))
                 kept
             in
-            before @ [ decl ] @ after
-          else kept @ [ decl ])
-      [] props
+            before @ [ (idx, decl) ] @ after
+          else kept @ [ (idx, decl) ])
+      [] indexed_props
   in
-  duplicate_buggy_properties (merge_box_shorthand_longhands kept)
+  let kept =
+    let kept =
+      if merge_box then merge_box_shorthand_longhands props kept else kept
+    in
+    List.map (fun (_, decl) -> decl) kept
+  in
+  duplicate_buggy_properties kept
 
-let sort_commuting_declarations decls =
-  let commuting_property name = name = "color" || name = "display" in
-  if List.for_all (fun decl -> commuting_property (property_name decl)) decls
-  then List.sort (fun a b -> compare (property_name a) (property_name b)) decls
-  else decls
+let deduplicate_declarations props = deduplicate_declarations_with props
+let sort_commuting_declarations decls = decls
 
 (** {1 Rule Optimization} *)
 
@@ -344,6 +367,14 @@ let single_rule_without_nested (rule : rule) : rule =
   {
     rule with
     declarations =
+      deduplicate_declarations_with ~merge_box:false rule.declarations
+      |> sort_commuting_declarations;
+  }
+
+let finalize_rule_without_nested (rule : rule) : rule =
+  {
+    rule with
+    declarations =
       deduplicate_declarations rule.declarations |> sort_commuting_declarations;
   }
 
@@ -365,28 +396,17 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
             (* First rule - just store it *)
             merge_adjacent acc (Some rule) rest
         | Some prev ->
-            let conflicting_property =
-              let prev_props = List.map property_name prev.declarations in
-              List.exists
-                (fun d -> List.mem (property_name d) prev_props)
-                rule.declarations
-            in
             if
               prev.selector = rule.selector
-              && (not (contains_vendor_pseudo_element rule.selector))
-              && not conflicting_property
+              && not (contains_vendor_pseudo_element rule.selector)
             then
-              (* Same selector, no overlapping property names - safe to merge
-                 into a single block. When both rules set the same property
-                 (e.g. [.x\{color:red\}][.x\{color:blue\}]) we keep them
-                 separate so source order remains visible after [@import]
-                 inlining. *)
+              (* Same selector and adjacent source position: merge into one
+                 block, then re-run declaration optimization over the combined
+                 source-ordered declarations. *)
               let merged : Stylesheet.rule =
                 {
                   selector = prev.selector;
-                  declarations =
-                    deduplicate_declarations
-                      (prev.declarations @ rule.declarations);
+                  declarations = prev.declarations @ rule.declarations;
                   nested = prev.nested @ rule.nested;
                   merge_key = prev.merge_key;
                 }
@@ -1373,7 +1393,9 @@ and rules_aux (rules : rule list) : rule list =
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
   List.map single_rule_without_nested with_optimized_nested
-  |> merge_rules |> combine_identical_rules
+  |> merge_rules
+  |> List.map finalize_rule_without_nested
+  |> combine_identical_rules
 
 let single_rule (rule : rule) : rule =
   {

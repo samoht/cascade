@@ -2848,7 +2848,8 @@ let pp_webkit_gradient : Webkit_gradient.t Pp.t =
   | Webkit_gradient.Radial
       { inner_center; inner_radius; outer_center; outer_radius; stops } ->
       Pp.call "-webkit-gradient"
-        (fun ctx (inner_center, inner_radius, outer_center, outer_radius, stops) ->
+        (fun ctx (inner_center, inner_radius, outer_center, outer_radius, stops)
+           ->
           Pp.string ctx "radial";
           Pp.comma ctx ();
           pp_webkit_gradient_point ctx inner_center;
@@ -2860,7 +2861,8 @@ let pp_webkit_gradient : Webkit_gradient.t Pp.t =
           Pp.float ctx outer_radius;
           Pp.comma ctx ();
           Pp.list ~sep:Pp.comma pp_webkit_gradient_stop ctx stops)
-        ctx (inner_center, inner_radius, outer_center, outer_radius, stops)
+        ctx
+        (inner_center, inner_radius, outer_center, outer_radius, stops)
 
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
@@ -2972,7 +2974,7 @@ let is_font_family_ident_word s =
   in
   len > 0
   && (is_alpha s.[0] || s.[0] = '_' || s.[0] = '-')
-  && not (len >= 2 && s.[0] = '-' && is_digit s.[1])
+  && (not (len >= 2 && s.[0] = '-' && is_digit s.[1]))
   && String.for_all is_ident_char s
 
 let can_unquote_font_family_name s =
@@ -2980,9 +2982,9 @@ let can_unquote_font_family_name s =
   | _ :: _ :: _ as words ->
       (* CSS Fonts 4 §4.1: a [<family-name>] formed of two or more
          [<custom-ident>]s is unambiguous - none of its words can be picked up
-         as a property-level CSS-wide keyword once the parser has committed
-         to a multi-token value. So [inherit test] / [revert serif] etc.
-         round-trip unquoted, just like [Times New Roman]. *)
+         as a property-level CSS-wide keyword once the parser has committed to a
+         multi-token value. So [inherit test] / [revert serif] etc. round-trip
+         unquoted, just like [Times New Roman]. *)
       List.for_all is_font_family_ident_word words
   | _ -> false
 
@@ -6139,8 +6141,7 @@ let rec pp_animation_name : animation_name Pp.t =
          can't refer to a real [@keyframes none] - it's invalid input that
          browsers tolerate. Minified output drops the quotes so the value
          collapses to the equivalent (and shorter) keyword form. *)
-      if Pp.minified ctx then Pp.string ctx name
-      else Pp.quoted_string ctx name
+      if Pp.minified ctx then Pp.string ctx name else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -6643,22 +6644,14 @@ let pp_animation_range_name : animation_range_name Pp.t =
   | Entry_crossing -> Pp.string ctx "entry-crossing"
   | Exit_crossing -> Pp.string ctx "exit-crossing"
 
-let default_animation_range_offset = function
-  | Exit | Exit_crossing -> (Pct 100. : length_percentage)
-  | Cover | Contain | Entry | Entry_crossing -> Pct 0.
-
-let is_default_animation_range_offset name offset =
-  offset = default_animation_range_offset name
-
 let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Offset lp -> pp_length_percentage ~always:true ctx lp
   | Named (name, lp) ->
       pp_animation_range_name ctx name;
-      if not (is_default_animation_range_offset name lp) then (
-        Pp.space ctx ();
-        pp_length_percentage ~always:true ctx lp)
+      Pp.space ctx ();
+      pp_length_percentage ~always:true ctx lp
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -6679,10 +6672,10 @@ let rec pp_animation_range : animation_range Pp.t =
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
       (* Names like [exit] / [entry] / [normal] start with an ident-start
-         character, so the inter-item space is only needed for tokenization
-         when the previous item ended on an ident-continue char. After a
-         percentage / length / function call (e.g. [10%], [3px], [calc(...)])
-         minified output can drop the space. *)
+         character, so the inter-item space is only needed for tokenization when
+         the previous item ended on an ident-continue char. After a percentage /
+         length / function call (e.g. [10%], [3px], [calc(...)]) minified output
+         can drop the space. *)
       let needs_space =
         if not (Pp.minified ctx) then true
         else
@@ -6981,6 +6974,7 @@ let rec pp_content : content Pp.t =
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr name -> Pp.call "attr" Pp.string ctx name
   | Counter name -> Pp.call "counter" Pp.string ctx name
+  | String_ref name -> Pp.call "string" Pp.string ctx name
   | Counters (name, separator) ->
       Pp.string ctx "counters(";
       Pp.string ctx name;
@@ -7844,11 +7838,11 @@ let rec pp_grid_template : grid_template Pp.t =
 
 and pp_grid_track_list ctx tracks =
   (* Track-list items are separated by whitespace, but [[...]] blocks have
-     self-delimiting brackets, so [[col-start]minmax(...)] tokenises the same
-     as [[col-start] minmax(...)]. Drop the inter-item space whenever the
-     previous output ends with [\]] or [\)] (line-name block / function call)
-     or the next item is a line-name block - matching the lightning / csso
-     minified spelling. *)
+     self-delimiting brackets, so [[col-start]minmax(...)] tokenises the same as
+     [[col-start] minmax(...)]. Drop the inter-item space whenever the previous
+     output ends with [\]] or [\)] (line-name block / function call) or the next
+     item is a line-name block - matching the lightning / csso minified
+     spelling. *)
   let buf_last_char ctx : char option =
     let buf = ctx.Pp.buf in
     let len = Buffer.length buf in
@@ -9174,14 +9168,25 @@ let rec read_flex_flow t : flex_flow =
     t
 
 let read_non_negative_flex_number t =
-  match (Values.read_number t : Values.number) with
-  | Num value ->
-      if value < 0. then Cursor.err_invalid t "negative number not allowed";
-      value
-  | _ -> Cursor.err_invalid t "flex number must resolve to a number"
+  let value =
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Number_tok _; _ }) -> (
+        let n, unit = Cursor.number_with_unit t in
+        match unit with
+        | None -> n
+        | Some u -> Cursor.err_invalid t ("flex factor unit: " ^ u))
+    | _ -> (
+        match (Values.read_number t : Values.number) with
+        | Values.Num value -> value
+        | _ -> Cursor.err_invalid t "flex number must resolve to a number")
+  in
+  if value < 0. then Cursor.err_invalid t "negative number not allowed";
+  value
 
 let rec read_flex_factor t : flex_factor =
-  let read_number t = (Number (read_non_negative_flex_number t) : flex_factor) in
+  let read_number t =
+    (Number (read_non_negative_flex_number t) : flex_factor)
+  in
   Cursor.enum_or_calls "flex factor"
     [
       ("inherit", (Inherit : flex_factor));
@@ -9259,7 +9264,13 @@ let rec read_flex_basis t : flex_basis =
         ("calc", fun t -> Calc (read_calc read_flex_basis t));
       ]
     ~default:(fun t ->
-      read_length ~allow_negative:false t |> flex_basis_of_length t)
+      let pos = Cursor.save t in
+      match Cursor.option Cursor.number_with_unit t with
+      | Some (0.0, None) -> (Zero : flex_basis)
+      | Some _ ->
+          Cursor.restore t pos;
+          read_length ~allow_negative:false t |> flex_basis_of_length t
+      | None -> read_length ~allow_negative:false t |> flex_basis_of_length t)
     t
 
 module Flex = struct
@@ -9614,39 +9625,41 @@ module Grid_template = struct
   let rec read_single_track t =
     if Cursor.peek_block t = Some Token.Square then read_line_names t
     else
-    Cursor.enum_or_calls "grid-template"
-      [
-        ("none", (None : grid_template));
-        ("auto", Auto);
-        ("min-content", Min_content);
-        ("max-content", Max_content);
-        ("subgrid", Subgrid);
-        ("masonry", Masonry);
-        ("inherit", Inherit);
-        ("initial", Initial);
-        ("unset", Unset);
-        ("revert", Revert);
-        ("revert-layer", Revert_layer);
-      ]
-      ~calls:
+      Cursor.enum_or_calls "grid-template"
         [
-          ("minmax", read_minmax);
-          ("fit-content", read_fit_content);
-          ( "repeat",
-            fun t ->
-              Cursor.call "repeat" t @@ fun inner ->
-              Cursor.ws inner;
-              let count = read_repeat_count inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              Cursor.ws inner;
-              let tracks =
-                Cursor.list ~sep:(fun i -> Cursor.ws i) read_single_track inner
-              in
-              (Repeat (count, tracks) : grid_template) );
+          ("none", (None : grid_template));
+          ("auto", Auto);
+          ("min-content", Min_content);
+          ("max-content", Max_content);
+          ("subgrid", Subgrid);
+          ("masonry", Masonry);
+          ("inherit", Inherit);
+          ("initial", Initial);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
         ]
-      ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
-      t
+        ~calls:
+          [
+            ("minmax", read_minmax);
+            ("fit-content", read_fit_content);
+            ( "repeat",
+              fun t ->
+                Cursor.call "repeat" t @@ fun inner ->
+                Cursor.ws inner;
+                let count = read_repeat_count inner in
+                Cursor.ws inner;
+                Cursor.comma inner;
+                Cursor.ws inner;
+                let tracks =
+                  Cursor.list
+                    ~sep:(fun i -> Cursor.ws i)
+                    read_single_track inner
+                in
+                (Repeat (count, tracks) : grid_template) );
+          ]
+        ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
+        t
 end
 
 let grid_template_needs_raw_template cvs =
@@ -10679,6 +10692,14 @@ let rec read_content t : content =
         Cursor.expect_eof inner;
         Counter name)
   in
+  let read_string_ref t =
+    Cursor.call "string" t (fun inner ->
+        Cursor.ws inner;
+        let name = Cursor.ident inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        String_ref name)
+  in
   let read_counters t =
     Cursor.call "counters" t (fun inner ->
         Cursor.ws inner;
@@ -10709,6 +10730,7 @@ let rec read_content t : content =
           ("var", read_var);
           ("attr", read_attr);
           ("counter", read_counter);
+          ("string", read_string_ref);
           ("counters", read_counters);
         ]
       ~default:read_string t
@@ -11824,30 +11846,32 @@ let read_page_size_orientation t : page_size_orientation =
 
 let rec read_page_size t : page_size =
   let read_var_ps t : page_size = Var (read_var read_page_size t) in
+  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
+  let expect_value_end t = if not (at_end t) then Cursor.expect_eof t in
   let read_named t =
     let name = read_page_size_name t in
     Cursor.ws t;
-    if Cursor.is_done t then Named name
+    if at_end t then Named name
     else
       let orientation = read_page_size_orientation t in
       Cursor.ws t;
-      Cursor.expect_eof t;
+      expect_value_end t;
       Named_oriented (name, orientation)
   in
   let read_oriented t =
     let orientation = read_page_size_orientation t in
     Cursor.ws t;
-    Cursor.expect_eof t;
+    expect_value_end t;
     Oriented orientation
   in
   let read_lengths t =
     let first = read_length t in
     Cursor.ws t;
-    if Cursor.is_done t then Single first
+    if at_end t then Single first
     else
       let second = read_length t in
       Cursor.ws t;
-      Cursor.expect_eof t;
+      expect_value_end t;
       Pair (first, second)
   in
   Cursor.enum_or_calls "page-size"
@@ -13477,13 +13501,15 @@ module Animation = struct
           else { acc with delay = Some d }
       | Timing_function tf ->
           ignore (timing_name tf);
-          if !timing_seen then Cursor.err t "duplicate animation-timing-function"
+          if !timing_seen then
+            Cursor.err t "duplicate animation-timing-function"
           else (
             timing_seen := true;
             { acc with timing_function = Some tf })
       | Iteration_count ic ->
           ignore (iteration_name ic);
-          if !iteration_seen then Cursor.err t "duplicate animation-iteration-count"
+          if !iteration_seen then
+            Cursor.err t "duplicate animation-iteration-count"
           else (
             iteration_seen := true;
             { acc with iteration_count = Some ic })
@@ -13621,9 +13647,9 @@ module Animation = struct
 
   (* When the colliding shorthand slot already carries an explicit non-default
      value, the bare-ident form of the ambiguous name is unambiguous on
-     re-parse: the slot fills first, and the second occurrence falls through
-     to the keyframes-name. In that case the printer can skip the quoting
-     trick entirely. *)
+     re-parse: the slot fills first, and the second occurrence falls through to
+     the keyframes-name. In that case the printer can skip the quoting trick
+     entirely. *)
   let bare_ambiguous_safe ctx (anim : animation_shorthand) =
     match ambiguous_name_kind anim with
     | None -> false
@@ -13648,9 +13674,7 @@ module Animation = struct
 
   let timing ?(quote_name = false) ctx (anim : animation_shorthand) :
       timing_function option =
-    match
-      (anim.timing_function, effective_ambiguous_kind ~quote_name anim)
-    with
+    match (anim.timing_function, effective_ambiguous_kind ~quote_name anim) with
     | (Some Ease | None), Some Timing -> Some Ease
     | Some tf, _ when is_default_timing ctx tf -> None
     | None, _ -> None
@@ -13663,9 +13687,7 @@ module Animation = struct
 
   let iteration ?(quote_name = false) (anim : animation_shorthand) :
       animation_iteration_count option =
-    match
-      (anim.iteration_count, effective_ambiguous_kind ~quote_name anim)
-    with
+    match (anim.iteration_count, effective_ambiguous_kind ~quote_name anim) with
     | (Some (Num 1.) | None), Some Iteration -> Some (Num 1.)
     | Some (Num 1.), _ | None, _ -> None
     | Some c, _ -> Some c
@@ -13736,10 +13758,10 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
         true
     | _ -> false
   in
-  (* Quote ambiguous animation names in minified output when the colliding
-     slot would otherwise need a default-value placeholder. When the slot
-     already carries an explicit non-default value the bare ident is
-     unambiguous on re-parse, so leave the printer alone. *)
+  (* Quote ambiguous animation names in minified output when the colliding slot
+     would otherwise need a default-value placeholder. When the slot already
+     carries an explicit non-default value the bare ident is unambiguous on
+     re-parse, so leave the printer alone. *)
   let quote_ambiguous_name =
     Pp.minified ctx
     && Animation.ambiguous_name_kind anim <> None
@@ -13761,9 +13783,13 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     (space_before Animation.pp_iter_count)
     ctx
     (Animation.iteration ~quote_name:quote_ambiguous_name anim);
-  Pp.option (space_before pp_animation_direction) ctx
+  Pp.option
+    (space_before pp_animation_direction)
+    ctx
     (Animation.direction ~quote_name:quote_ambiguous_name anim);
-  Pp.option (space_before pp_animation_fill_mode) ctx
+  Pp.option
+    (space_before pp_animation_fill_mode)
+    ctx
     (Animation.fill_mode ~quote_name:quote_ambiguous_name anim);
   Pp.option
     (space_before pp_animation_play_state)
@@ -13781,7 +13807,9 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
               Pp.quoted_string ctx s
         | _ -> space_before pp_animation_name ctx name)
       anim.name;
-  Pp.option (space_before pp_animation_timeline) ctx
+  Pp.option
+    (space_before pp_animation_timeline)
+    ctx
     (Animation.timeline ~quote_name:quote_ambiguous_name anim)
 
 and pp_animation : animation Pp.t =
@@ -15759,9 +15787,7 @@ let rec read_background t : background =
         loop (read_var read_background t :: acc)
       else List.rev acc
     in
-    match loop [ first ] with
-    | [ var ] -> Var var
-    | vars -> Vars vars
+    match loop [ first ] with [ var ] -> Var var | vars -> Vars vars
   in
   let read_var_sequence t : background =
     let rec loop acc =
@@ -15807,7 +15833,8 @@ let rec read_background t : background =
   Cursor.enum_or_calls "background"
     [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
     ~calls:[ ("var", read_var_call) ]
-    ~default:(fun t -> Cursor.one_of [ read_var_sequence; read_keyword_or_shorthand ] t)
+    ~default:(fun t ->
+      Cursor.one_of [ read_var_sequence; read_keyword_or_shorthand ] t)
     t
 
 let read_backgrounds t : background list =
@@ -16304,7 +16331,8 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Angle -> Pp.to_string pp_angle value
   | Duration -> Pp.to_string pp_duration value
   | Float -> Pp.string_of_float value
-  | Percentage -> ( match value with Pct f -> Pp.string_of_float f | _ -> "initial")
+  | Percentage -> (
+      match value with Pct f -> Pp.string_of_float f | _ -> "initial")
   | Number_percentage -> Values.string_of_number_percentage value
   | Int -> string_of_int value
   | Value -> Parser.to_string_custom value
@@ -16317,8 +16345,8 @@ let string_of_kind_value : type a. a kind -> a -> string =
       | Normal -> "normal"
       | Open_quote -> "open-quote"
       | Close_quote -> "close-quote"
-      | Attr _ | Counter _ | Counters _ | Content_list _ | Inherit | Initial
-      | Unset | Revert | Revert_layer | Var _ ->
+      | Attr _ | Counter _ | Counters _ | String_ref _ | Content_list _
+      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
           "initial")
   | Font_weight -> Pp.to_string pp_font_weight value
   | Shadow -> "0 0 #0000"
@@ -17392,16 +17420,16 @@ let rec read_offset_path t : offset_path =
 let animation_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
 
-let read_animation_range_offset_opt t name =
+let read_animation_range_offset t =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_semicolon t then
-    default_animation_range_offset name
-  else
-    match Cursor.peek_ident t with
-    | Some "normal" -> default_animation_range_offset name
-    | Some next when List.mem next animation_range_names ->
-        default_animation_range_offset name
-    | _ -> Values.read_length_percentage t
+    Cursor.err_invalid t "animation range name requires an offset";
+  match Cursor.peek_ident t with
+  | Some "normal" ->
+      Cursor.err_invalid t "animation range name requires an offset"
+  | Some next when List.mem next animation_range_names ->
+      Cursor.err_invalid t "animation range name requires an offset"
+  | _ -> Values.read_length_percentage t
 
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
@@ -17419,7 +17447,7 @@ let rec read_animation_range_item t : animation_range_item =
     match Cursor.peek_ident t with
     | Some name when List.mem name animation_range_names ->
         let name : animation_range_name = read_animation_range_name t in
-        let lp = read_animation_range_offset_opt t name in
+        let lp = read_animation_range_offset t in
         (Named (name, lp) : animation_range_item)
     | _ ->
         let lp = Values.read_length_percentage t in
@@ -17449,7 +17477,7 @@ let rec read_animation_range t : animation_range =
           (Normal : animation_range_item)
       | Some name when List.mem name animation_range_names ->
           let name : animation_range_name = read_animation_range_name t in
-          let lp = read_animation_range_offset_opt t name in
+          let lp = read_animation_range_offset t in
           (Named (name, lp) : animation_range_item)
       | _ ->
           let lp = Values.read_length_percentage t in

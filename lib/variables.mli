@@ -90,6 +90,6 @@ val read_any_syntax : Cursor.t -> any_syntax
 (** [read_any_syntax t] parses a CSS syntax descriptor. *)
 
 val read_reference : Cursor.t -> string * string option
-(** [read_reference t] parses a CSS var() function and returns the variable
-    name (without -- prefix) and optional fallback string. This is a lower-level
+(** [read_reference t] parses a CSS var() function and returns the variable name
+    (without -- prefix) and optional fallback string. This is a lower-level
     function that doesn't create a variable handle. *)

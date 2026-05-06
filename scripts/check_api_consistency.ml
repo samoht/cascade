@@ -27,6 +27,20 @@ let ignored_types =
     "property_value_kind";
     (* Phantom GADT used to dispatch typed property values; it has no standalone
        CSS syntax to parse. *)
+    "t";
+    (* Module-level AST aliases are parsed and printed by the module-level API
+       when they are standalone syntax. *)
+    "repeat_count";
+    "stop";
+    "point";
+    (* Helper fragments parsed only inside their owning structured values. *)
+    "colon_form";
+    "vt_class_selector";
+    "url_form";
+    (* Serialization metadata, not standalone CSS syntax. *)
+    "custom_value";
+    (* Token-stream custom properties are parsed through declarations and
+       variables helpers, not as a standalone typed grammar. *)
     "specificity";
     (* Derived selector metric, not a CSS syntax value. *)
     "cascade_origin";
