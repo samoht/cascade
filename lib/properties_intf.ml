@@ -2427,6 +2427,10 @@ type background_image =
   | Conic_gradient_var of gradient_stop var
       (** Conic gradient using a single variable for all stops. Outputs:
           conic-gradient(var(--tw-gradient-stops)) *)
+  | Repeating_linear_gradient of gradient_direction * gradient_stop list
+  | Repeating_radial_gradient of radial_gradient_config * gradient_stop list
+  | Repeating_conic_gradient of conic_gradient_config * gradient_stop list
+      (** [repeating-{linear,radial,conic}-gradient()] CSS Images 4 §3. *)
   | Image_set of image_set_option list
       (** [image-set(<source>#)] CSS Images 4 *)
   | Cross_fade of cross_fade_option list

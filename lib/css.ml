@@ -750,5 +750,6 @@ let inline_vars ?keep_vars stylesheet =
   match keep_vars with
   | None -> Inline.vars stylesheet
   | Some keep_vars -> Inline.vars ~keep_vars stylesheet
+
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

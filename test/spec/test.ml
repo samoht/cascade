@@ -734,6 +734,8 @@ let non_minified_preserves_color_forms () =
     [ "attr(data-w px, 10px)" ];
   preserves_non_minified ".x { width: attr(data-w px, calc(100% - 1rem)) }"
     [ "attr(data-w px, calc(100% - 1rem))" ];
+  preserves_non_minified ".x { width: attr(data-w px, calc(10px + 0px)) }"
+    [ "attr(data-w px, calc(10px + 0px))" ];
   preserves_non_minified ".x { width: attr(data-w px, var(--fallback, 10px)) }"
     [ "attr(data-w px, var(--fallback, 10px))" ];
   preserves_non_minified

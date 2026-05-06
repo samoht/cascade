@@ -119,9 +119,7 @@ let custom_name = Variables.custom_declaration_name
 let local_customs ~kept decls =
   List.filter
     (fun d ->
-      match custom_name d with
-      | None -> false
-      | Some n -> not (List.mem n kept))
+      match custom_name d with None -> false | Some n -> not (List.mem n kept))
     decls
 
 let property_initial_custom_decl : type a.
@@ -457,12 +455,14 @@ let refs_of_media_value : Media.value -> string list = function
   | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
 
 let rec refs_of_media : Media.t -> string list = function
-  | Width value | Height value | Min_width_length value
+  | Width value
+  | Height value
+  | Min_width_length value
   | Not_min_width_length value ->
       refs_of_media_value (Length value)
   | Min_width _ | Max_width _ | Not_min_width _ | Min_width_rem _
-  | Not_min_width_rem _ | Aspect_ratio _ | Resolution _ | Color _ | Color_index _
-  | Monochrome _ | Color_gamut _ | Video_color_gamut _
+  | Not_min_width_rem _ | Aspect_ratio _ | Resolution _ | Color _
+  | Color_index _ | Monochrome _ | Color_gamut _ | Video_color_gamut _
   | Dynamic_range _ | Video_dynamic_range _ | Scan _ | Update _
   | Overflow_block _ | Overflow_inline _ | Prefers_reduced_motion _
   | Prefers_reduced_transparency _ | Prefers_reduced_data _ | Prefers_contrast _

@@ -2885,6 +2885,19 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "linear-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
+  | Repeating_linear_gradient (dir, stops) ->
+      Pp.call "repeating-linear-gradient"
+        (fun ctx (dir, stops) ->
+          let print_direction =
+            match dir with To_bottom -> false | _ -> true
+          in
+          if print_direction then (
+            pp_gradient_direction ctx dir;
+            match stops with [] -> () | _ -> Pp.comma ctx ());
+          match stops with
+          | [] -> ()
+          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+        ctx (dir, stops)
   | Radial_gradient (config, stops) ->
       Pp.call "radial-gradient"
         (fun ctx (config, stops) ->
@@ -2903,6 +2916,20 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "radial-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
+  | Repeating_radial_gradient (config, stops) ->
+      Pp.call "repeating-radial-gradient"
+        (fun ctx (config, stops) ->
+          let has_config =
+            config.shape <> None || config.size <> None
+            || config.position <> None
+          in
+          if has_config then (
+            pp_radial_gradient_config ctx config;
+            match stops with [] -> () | _ -> Pp.comma ctx ());
+          match stops with
+          | [] -> ()
+          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+        ctx (config, stops)
   | Conic_gradient (config, stops) ->
       Pp.call "conic-gradient"
         (fun ctx (config, stops) ->
@@ -2920,6 +2947,19 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "conic-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
+  | Repeating_conic_gradient (config, stops) ->
+      Pp.call "repeating-conic-gradient"
+        (fun ctx (config, stops) ->
+          let has_config =
+            config.from_angle <> None || config.conic_position <> None
+          in
+          if has_config then (
+            pp_conic_gradient_config ctx config;
+            match stops with [] -> () | _ -> Pp.comma ctx ());
+          match stops with
+          | [] -> ()
+          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+        ctx (config, stops)
   | Image_set options ->
       Pp.call "image-set"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
@@ -14604,6 +14644,33 @@ let rec read_bg_image t : background_image =
               ( "conic-gradient",
                 fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
               );
+              ( "repeating-linear-gradient",
+                fun t ->
+                  match
+                    Cursor.call "repeating-linear-gradient" t
+                      read_linear_gradient_body
+                  with
+                  | Linear_gradient (d, stops) ->
+                      Repeating_linear_gradient (d, stops)
+                  | other -> other );
+              ( "repeating-radial-gradient",
+                fun t ->
+                  match
+                    Cursor.call "repeating-radial-gradient" t
+                      read_radial_gradient_body
+                  with
+                  | Radial_gradient (c, stops) ->
+                      Repeating_radial_gradient (c, stops)
+                  | other -> other );
+              ( "repeating-conic-gradient",
+                fun t ->
+                  match
+                    Cursor.call "repeating-conic-gradient" t
+                      read_conic_gradient_body
+                  with
+                  | Conic_gradient (c, stops) ->
+                      Repeating_conic_gradient (c, stops)
+                  | other -> other );
               ( "image-set",
                 fun t -> Cursor.call "image-set" t read_image_set_body );
               ( "cross-fade",
@@ -14828,10 +14895,16 @@ let minify_webkit_gradient_stop = function
 let minify_background_image : background_image -> background_image = function
   | Linear_gradient (dir, stops) ->
       Linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Repeating_linear_gradient (dir, stops) ->
+      Repeating_linear_gradient (dir, List.map minify_gradient_stop stops)
   | Radial_gradient (config, stops) ->
       Radial_gradient (config, List.map minify_gradient_stop stops)
+  | Repeating_radial_gradient (config, stops) ->
+      Repeating_radial_gradient (config, List.map minify_gradient_stop stops)
   | Conic_gradient (config, stops) ->
       Conic_gradient (config, List.map minify_gradient_stop stops)
+  | Repeating_conic_gradient (config, stops) ->
+      Repeating_conic_gradient (config, List.map minify_gradient_stop stops)
   | Webkit_gradient (Webkit_gradient.Linear ({ stops; _ } as gradient)) ->
       Webkit_gradient
         (Webkit_gradient.Linear

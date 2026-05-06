@@ -3234,9 +3234,7 @@ let simplify_animation_item ?layer_order ?layer ctx duration value =
         let shorthand : Properties.animation_shorthand =
           {
             name =
-              Option.map
-                (simplify_animation_name ?layer_order ?layer ctx)
-                name;
+              Option.map (simplify_animation_name ?layer_order ?layer ctx) name;
             duration = Option.map duration shorthand.duration;
             timing_function;
             delay = Option.map duration shorthand.delay;

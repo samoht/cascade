@@ -131,8 +131,8 @@ type length =
   | Anchor_size of string
   | Anchor of string option * string * length option
   | Attr of length attr_call
-      (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)]
-          for typed-value contexts. *)
+      (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
+          typed-value contexts. *)
   | Var of length var
   | Calc of length calc
 

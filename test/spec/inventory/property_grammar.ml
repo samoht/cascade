@@ -82,6 +82,7 @@ let matrix =
           "fit-content(20rem)";
           "stretch";
           "calc(1rem + 2px)";
+          "attr(data-w px, calc(10px + 0px))";
         ];
       negatives = [ "red"; "fit-content()" ];
     };
