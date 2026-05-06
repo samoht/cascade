@@ -831,6 +831,9 @@ let test_property_value_branch_depth_positive buf =
         "color:attr(data-color type(<color>),var(--fallback-color,red))";
         "color:rgb(from var(--c) r g b/50%)";
         "color:color-mix(in lch longer hue,red 30%,#00f)";
+        "grid-template-areas:\"nav  main\" \".    foot\"";
+        "grid-template-areas:\".  .\"";
+        "content:\"nav  main\"";
         "content:attr(data-label string,\"x y\")";
         "content:attr(data-label string,var(--label,\"x y\"))";
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
@@ -1010,6 +1013,8 @@ let test_property_value_branch_depth_negative buf =
         "nav-right:#next current root";
         "nav-down:#next \"_self\"";
         "nav-left:auto #next";
+        "grid-template-areas:\"nav/main\"";
+        "grid-template-areas:\"nav main\" \"foot\"";
         "grid-template:none/1fr";
         "animation:1s 2s 3s";
         "animation-composition:add replace";

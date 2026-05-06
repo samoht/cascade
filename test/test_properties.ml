@@ -2343,6 +2343,7 @@ let test_object_fit () =
 
 let test_content () =
   check_content "\"text\"";
+  check_content ~roundtrip:true "\"nav  main\"";
   check_content "none";
   check_content "normal";
   check_content "open-quote";
@@ -2682,6 +2683,13 @@ let test_grid_template () =
   check_grid_template "1fr 2fr";
   check_grid_template "auto auto";
   check_grid_template "inherit";
+  check_grid_template_areas ~expected:"\"nav main\"\". foot\""
+    "\"nav  main\" \".    foot\"";
+  check_grid_template_areas ~expected:"\". .\"" "\".  .\"";
+  check_grid_template_areas ~minify:false
+    ~expected:"\"nav  main\" \".    foot\"" "\"nav  main\" \".    foot\"";
+  neg_cursor read_grid_template_areas "\"nav/main\"";
+  neg_cursor read_grid_template_areas "\"nav main\" \"foot\"";
   neg_cursor read_grid_template "invalid-template"
 
 let test_justify_content () =

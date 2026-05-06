@@ -93,6 +93,7 @@ let quoted_strings () =
   (* Simple quoted strings *)
   check_declaration ~expected:"content:\"hello\"" "content: \"hello\";";
   check_declaration ~expected:"content:\"world\"" "content: 'world';";
+  check_declaration ~expected:"content:\"nav  main\"" "content: \"nav  main\";";
 
   (* Escaped quotes *)
   check_declaration ~expected:"content:\"a\\\"b\"" "content: \"a\\\"b\";";
@@ -680,8 +681,12 @@ let grid () =
 
   (* Grid areas *)
   check_declaration
-    ~expected:"grid-template-areas:\"header header\" \"sidebar main\""
+    ~expected:"grid-template-areas:\"header header\"\"sidebar main\""
     "grid-template-areas: \"header header\" \"sidebar main\"";
+  check_declaration ~expected:"grid-template-areas:\"nav main\"\". foot\""
+    "grid-template-areas: \"nav  main\" \".    foot\"";
+  check_declaration ~expected:"grid-template-areas:\". .\""
+    "grid-template-areas: \".  .\"";
   check_declaration ~expected:"grid-area:header" "grid-area: header";
 
   (* Grid lines *)
