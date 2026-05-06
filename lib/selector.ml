@@ -985,9 +985,13 @@ let rec matches_nothing = function
   | List xs -> List.for_all matches_nothing xs
   | _ -> false
 
-let is_pe_action = function
-  | Hover | Active | Focus | Focus_visible | Focus_within -> true
-  | _ -> false
+(* CSS Pseudo-Elements 4 §3.5 / Selectors 4 §3.6.4: a pseudo-element compound
+   may be followed by user-action pseudo-classes ([:hover] / [:focus] etc.),
+   structural pseudo-classes ([:nth-*], [:only-child], [:first-child] ...),
+   logical pseudo-classes ([:is], [:not]), and the [:state(...)] custom-state
+   query. Stay permissive: anything that isn't itself a pseudo-element is
+   allowed in the trailing slot. *)
+let is_pe_action sel = not (is_pseudo_element_selector sel)
 
 (* Forward declarations for mutually recursive functions *)
 let rec read_selector_list_with read_item t =
