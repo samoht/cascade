@@ -4879,6 +4879,46 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
   | String s -> Pp.quoted_string ctx s
+  | Symbols (kind, symbols) ->
+      let pp_symbols_type ctx (kind : symbols_type) =
+        match kind with
+        | Cyclic -> Pp.string ctx "cyclic"
+        | Numeric -> Pp.string ctx "numeric"
+        | Alphabetic -> Pp.string ctx "alphabetic"
+        | Symbolic -> Pp.string ctx "symbolic"
+        | Fixed -> Pp.string ctx "fixed"
+      in
+      let pp_symbol ctx (symbol : list_style_symbol) =
+        match symbol with
+        | String symbol -> Pp.quoted_string ctx symbol
+        | Url url -> Pp.url ctx url
+      in
+      Pp.call "symbols"
+        (fun ctx (kind, symbols) ->
+          let first = ref true in
+          let sep (symbol : list_style_symbol) =
+            if !first then first := false
+            else
+              match symbol with
+              | String _ when Pp.minified ctx -> ()
+              | _ -> Pp.space ctx ()
+          in
+          let kind =
+            match kind with
+            | Option.Some Symbolic when Pp.minified ctx -> Option.None
+            | kind -> (kind : symbols_type option)
+          in
+          Option.iter
+            (fun kind ->
+              sep (String "");
+              pp_symbols_type ctx kind)
+            kind;
+          List.iter
+            (fun symbol ->
+              sep symbol;
+              pp_symbol ctx symbol)
+            symbols)
+        ctx (kind, symbols)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -10744,6 +10784,31 @@ let rec read_line_height t : line_height =
 
 let rec read_list_style_type t : list_style_type =
   let read_var t : list_style_type = Var (read_var read_list_style_type t) in
+  let read_symbols_type t : symbols_type =
+    Cursor.enum "symbols type"
+      [
+        ("cyclic", (Cyclic : symbols_type));
+        ("numeric", Numeric);
+        ("alphabetic", Alphabetic);
+        ("symbolic", Symbolic);
+        ("fixed", Fixed);
+      ]
+      t
+  in
+  let read_symbols_body t : list_style_type =
+    let kind = Cursor.option read_symbols_type t in
+    Cursor.ws t;
+    let read_symbol t : list_style_symbol =
+      Cursor.one_of
+        [
+          (fun t -> (Url (Cursor.url t) : list_style_symbol));
+          (fun t -> String (Cursor.string t));
+        ]
+        t
+    in
+    let symbols = Cursor.list ~sep:Cursor.ws ~at_least:1 read_symbol t in
+    Symbols (kind, symbols)
+  in
   Cursor.enum_or_var "list-style-type"
     [
       ("none", (None : list_style_type));
@@ -10762,7 +10827,12 @@ let rec read_list_style_type t : list_style_type =
       ("revert-layer", Revert_layer);
     ]
     ~var:read_var
-    ~default:(fun t -> (String (Cursor.string t) : list_style_type))
+    ~default:
+      (Cursor.one_of
+         [
+           (fun t -> Cursor.call "symbols" t read_symbols_body);
+           (fun t -> (String (Cursor.string t) : list_style_type));
+         ])
     t
 
 let rec read_list_style_position t : list_style_position =
