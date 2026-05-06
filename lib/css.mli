@@ -651,7 +651,6 @@ type length =
   | Cqmax of float  (** Larger container query dimension units *)
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
-  | Unknown_dimension of float * string
   | Size  (** [size] keyword inside [calc-size()]. *)
   | Auto
   | None  (** none keyword (e.g., for max-width) *)

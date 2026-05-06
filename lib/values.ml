@@ -607,7 +607,6 @@ let length_is_zero = function
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
   | Em f | Rem f | Ex f | Cap f | Ic f | Ric f | Rlh f -> f = 0.
   | Ch f | Lh f -> f = 0.
-  | Unknown_dimension (f, _) -> f = 0.
   | Pct f -> f = 0.
   | Vw f | Vh f | Vmin f | Vmax f | Vi f | Vb f -> f = 0.
   | Dvh f | Dvw f | Dvmin f | Dvmax f -> f = 0.
@@ -803,7 +802,6 @@ let length_to_unit = function
   | Cqb n -> Some (U_cqb, n)
   | Cqmin n -> Some (U_cqmin, n)
   | Cqmax n -> Some (U_cqmax, n)
-  | Unknown_dimension _ -> None
   | _ -> None
 
 let unit_to_length unit n =
@@ -1127,7 +1125,6 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
-  | Unknown_dimension (f, unit) -> pp_unit_fn f unit
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
@@ -2710,7 +2707,7 @@ let read_length_unit ?(allow_negative = true) t =
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
-  | _ -> Unknown_dimension (n, unit)
+  | _ -> Cursor.err_invalid t ("unknown length unit: " ^ unit)
 
 let read_length_keyword t : length =
   Cursor.enum "length"
