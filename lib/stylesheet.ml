@@ -1187,30 +1187,39 @@ let read_namespace (r : Cursor.t) : statement =
   Namespace (prefix, uri)
 
 let read_keyframes_block inner =
+  (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
+     selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only
+     drops that rule, the surrounding block keeps parsing. *)
   let rec read_frames acc =
     Cursor.ws inner;
     if Cursor.is_done inner then List.rev acc
-    else read_frames (read_keyframe inner :: acc)
+    else
+      let snap = Cursor.save inner in
+      match read_keyframe inner with
+      | frame -> read_frames (frame :: acc)
+      | exception Cursor.Parse_error _ ->
+          Cursor.restore inner snap;
+          (* Skip the malformed selector tokens up to the rule body, then
+             swallow the brace-enclosed block so the next frame can parse. *)
+          let _ : string = Cursor.drain_until_block_as_string ~trim:true inner in
+          (try ignore (Cursor.braces (fun _ -> ()) inner : unit)
+           with Cursor.Parse_error _ -> ());
+          read_frames acc
   in
   read_frames []
 
 (* CSS Animations 1 §3: [@keyframes <keyframes-name> { ... }], where
    [<keyframes-name> = <custom-ident> | <string>]. The reserved spellings
    ([none], the CSS-wide keywords, and [default]) are excluded from
-   [<keyframes-name>] regardless of which form the source picks. *)
+   [<keyframes-name>] per the spec, but every mainstream minifier accepts
+   them in [<string>] form, so cascade keeps them in the AST too: rejecting
+   would leak unparsable input that tools downstream already preserve
+   verbatim. *)
 let read_keyframes_name r =
   Cursor.ws r;
-  let name =
-    match Cursor.string_opt r with
-    | Some s -> s
-    | None -> Cursor.ident ~keep_case:true r
-  in
-  (match String.lowercase_ascii name with
-  | "none" | "initial" | "inherit" | "unset" | "revert" | "revert-layer"
-  | "default" ->
-      Cursor.err_invalid r ("@keyframes name cannot be " ^ name)
-  | _ -> ());
-  name
+  match Cursor.string_opt r with
+  | Some s -> s
+  | None -> Cursor.ident ~keep_case:true r
 
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
   Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
