@@ -94,6 +94,10 @@ type length =
   | Size
   | Auto
   | None
+  | Normal
+      (** [normal] keyword used by [letter-spacing], [word-spacing],
+          [line-height], etc. when their value falls back to the user-agent
+          default. *)
   | Zero
   | Inherit
   | Initial

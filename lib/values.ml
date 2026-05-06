@@ -1210,6 +1210,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
+  | Normal -> Pp.string ctx "normal"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
   | Fit_content_arg arg ->
@@ -2901,6 +2902,7 @@ let read_length_keyword t : length =
     [
       ("auto", (Auto : length));
       ("none", None);
+      ("normal", Normal);
       ("size", Size);
       ("max-content", Max_content);
       ("min-content", Min_content);
