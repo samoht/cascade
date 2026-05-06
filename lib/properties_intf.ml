@@ -78,7 +78,12 @@ type display =
   | Ruby_base_container
   | Ruby_text_container
   | Math
+  | Webkit_flex
+  | Webkit_inline_flex
+  | Ms_flexbox
   | Webkit_box
+  | Moz_box
+  | Moz_inline_box
   | Inherit
   | Initial
   | Unset

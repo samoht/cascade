@@ -53,13 +53,16 @@ let display_outside_idents : (string * display) list =
 
 let display_inside_idents : (string * display) list =
   [
-    (* CSS Display 3 §2.1 [<display-inside>]: only [flow] and [flow-root] are
-       accepted in the explicit two-value form. The legacy single-value
-       spellings ([flex], [grid], [table]) remain canonical, so [block flex] is
-       intentionally rejected even though the spec also recognises it. *)
     ("flow", Block);
     ("flow-root", Flow_root);
+    ("table", Table);
+    ("flex", Flex);
+    ("grid", Grid);
+    ("ruby", Ruby);
   ]
+
+let list_item_inside_idents : (string * display) list =
+  [ ("flow", Block); ("flow-root", Flow_root) ]
 
 let read_display_legacy t : display =
   Cursor.enum "display"
@@ -92,7 +95,12 @@ let read_display_legacy t : display =
       ("ruby-base-container", Ruby_base_container);
       ("ruby-text-container", Ruby_text_container);
       ("math", Math);
+      ("-webkit-flex", Webkit_flex);
+      ("-webkit-inline-flex", Webkit_inline_flex);
+      ("-ms-flexbox", Ms_flexbox);
       ("-webkit-box", Webkit_box);
+      ("-moz-box", Moz_box);
+      ("-moz-inline-box", Moz_inline_box);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -113,15 +121,55 @@ let read_display_two_value t : display =
       Multi (outside, inside)
   | _ -> Cursor.err_expected t "<display-inside>"
 
+let read_display_list_item t : display =
+  let outside = ref Option.None in
+  let inside = ref Option.None in
+  let list_item = ref false in
+  let consume_slot () =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "list-item" when not !list_item ->
+        ignore (Cursor.ident t : string);
+        list_item := true;
+        true
+    | Some s when Option.is_none !outside -> (
+        match List.assoc_opt s display_outside_idents with
+        | Some value ->
+            ignore (Cursor.ident t : string);
+            outside := Option.Some value;
+            true
+        | Option.None -> false)
+    | Some s when Option.is_none !inside -> (
+        match List.assoc_opt s list_item_inside_idents with
+        | Some value ->
+            ignore (Cursor.ident t : string);
+            inside := Option.Some value;
+            true
+        | Option.None -> false)
+    | _ -> false
+  in
+  while consume_slot () do
+    ()
+  done;
+  if not !list_item then Cursor.err_expected t "list-item";
+  if Option.is_none !outside && Option.is_none !inside then
+    Cursor.err_expected t "list-item with outside or inside display";
+  let outside = Option.value !outside ~default:Block in
+  let inside = Option.value !inside ~default:Block in
+  Multi (Multi (outside, inside), List_item)
+
 let rec read_display t : display =
   let read_var t : display = Var (read_var read_display t) in
   Cursor.ws t;
   match Cursor.peek t with
   | Some (Component.Func { node = { name = "var"; _ }; _ }) -> read_var t
   | _ -> (
-      match Cursor.option read_display_two_value t with
+      match Cursor.option read_display_list_item t with
       | Some d -> d
-      | None -> read_display_legacy t)
+      | None -> (
+          match Cursor.option read_display_two_value t with
+          | Some d -> d
+          | None -> read_display_legacy t))
 
 let rec read_position t : position =
   Cursor.enum_or_var "position"
@@ -3614,17 +3662,47 @@ let rec pp_display : display Pp.t =
   | Ruby_base_container -> Pp.string ctx "ruby-base-container"
   | Ruby_text_container -> Pp.string ctx "ruby-text-container"
   | Math -> Pp.string ctx "math"
+  | Webkit_flex -> Pp.string ctx "-webkit-flex"
+  | Webkit_inline_flex -> Pp.string ctx "-webkit-inline-flex"
+  | Ms_flexbox -> Pp.string ctx "-ms-flexbox"
   | Webkit_box -> Pp.string ctx "-webkit-box"
+  | Moz_box -> Pp.string ctx "-moz-box"
+  | Moz_inline_box -> Pp.string ctx "-moz-inline-box"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_display ctx v
+  | Multi (Multi (Block, Block), List_item) when Pp.minified ctx ->
+      Pp.string ctx "list-item"
+  | Multi (Multi (outside, Block), List_item) when Pp.minified ctx ->
+      pp_display ctx outside;
+      Pp.space ctx ();
+      Pp.string ctx "list-item"
+  | Multi (Multi (outside, inside), List_item) ->
+      pp_display ctx outside;
+      Pp.space ctx ();
+      pp_display_inside ctx inside;
+      Pp.space ctx ();
+      Pp.string ctx "list-item"
+  | Multi (Block, Flow_root) when Pp.minified ctx -> Pp.string ctx "flow-root"
+  | Multi (Block, Flex) when Pp.minified ctx -> Pp.string ctx "flex"
+  | Multi (Inline, Flex) when Pp.minified ctx -> Pp.string ctx "inline-flex"
+  | Multi (Block, Grid) when Pp.minified ctx -> Pp.string ctx "grid"
+  | Multi (Inline, Grid) when Pp.minified ctx -> Pp.string ctx "inline-grid"
+  | Multi (Block, Table) when Pp.minified ctx -> Pp.string ctx "table"
+  | Multi (Inline, Table) when Pp.minified ctx -> Pp.string ctx "inline-table"
+  | Multi (Block, Ruby) when Pp.minified ctx -> Pp.string ctx "ruby"
   | Multi (outside, inside) ->
       pp_display ctx outside;
       Pp.space ctx ();
-      pp_display ctx inside
+      pp_display_inside ctx inside
+
+and pp_display_inside ctx = function
+  | Block -> Pp.string ctx "flow"
+  | Flow_root -> Pp.string ctx "flow-root"
+  | display -> pp_display ctx display
 
 let rec pp_position : position Pp.t =
  fun ctx -> function
