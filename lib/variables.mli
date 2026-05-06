@@ -7,6 +7,17 @@ include module type of Variables_intf
 
 (** {1 Custom Property Support} *)
 
+val custom_value_ident : string -> Component.t list
+(** [custom_value_ident name] is a custom-property value made from one CSS
+    ident. *)
+
+val custom_value_var_empty_fallback : string -> Component.t list
+(** [custom_value_var_empty_fallback name] is [var(--name,)] as structured CSS
+    components, used for empty-fallback custom-property channels. *)
+
+val string_of_custom_value : Component.t list -> string
+(** [string_of_custom_value value] serializes a custom-property token stream. *)
+
 val pp_syntax : 'a syntax Pp.t
 (** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)
 

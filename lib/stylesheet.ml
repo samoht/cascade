@@ -489,8 +489,12 @@ and pp_font_palette_descriptor : font_palette_descriptor Pp.t =
       Pp.list ~sep:Pp.comma
         (fun ctx (index, color) ->
           Pp.string ctx (Int.to_string index);
-          Pp.space ctx ();
-          Values.pp_color ctx color)
+          let rendered =
+            Pp.to_string ~minify:(Pp.minified ctx) Values.pp_color color
+          in
+          if (not (Pp.minified ctx)) || rendered = "" || rendered.[0] <> '#'
+          then Pp.space ctx ();
+          Pp.string ctx rendered)
         ctx entries
 
 and pp_view_transition_descriptor : view_transition_descriptor Pp.t =

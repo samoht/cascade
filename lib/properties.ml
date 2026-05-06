@@ -2962,6 +2962,38 @@ and pp_cross_fade_option ctx { cross_fade_image; cross_fade_percent } =
       Values.pp_percentage ~always:true ctx pct)
     cross_fade_percent
 
+let is_font_family_ident_word s =
+  let len = String.length s in
+  let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false in
+  let is_digit = function '0' .. '9' -> true | _ -> false in
+  let is_ident_char = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+    | _ -> false
+  in
+  len > 0
+  && (is_alpha s.[0] || s.[0] = '_' || s.[0] = '-')
+  && not (len >= 2 && s.[0] = '-' && is_digit s.[1])
+  && String.for_all is_ident_char s
+
+let is_font_family_reserved_word s =
+  match String.lowercase_ascii s with
+  | "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "serif"
+  | "sans-serif" | "monospace" | "cursive" | "fantasy" | "system-ui"
+  | "ui-serif" | "ui-sans-serif" | "ui-monospace" | "ui-rounded" | "emoji"
+  | "math" | "fangsong" ->
+      true
+  | _ -> false
+
+let can_unquote_font_family_name s =
+  match String.split_on_char ' ' s with
+  | _ :: _ :: _ as words ->
+      List.for_all
+        (fun word ->
+          is_font_family_ident_word word
+          && not (is_font_family_reserved_word word))
+        words
+  | _ -> false
+
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
   (* Generic CSS font families *)
@@ -3060,7 +3092,8 @@ let rec pp_font_family : font_family Pp.t =
         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
         | _ -> false
       in
-      if s = "" || not (String.for_all safe_ident_char s) then
+      if Pp.minified ctx && can_unquote_font_family_name s then Pp.string ctx s
+      else if s = "" || not (String.for_all safe_ident_char s) then
         Pp.quoted_string ctx s
       else Pp.string ctx s
   | Var v -> pp_var pp_font_family ctx v
@@ -16274,6 +16307,51 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Z_index -> pp pp_z_index
   | Filter -> pp pp_filter
   | Font_src -> pp pp_font_src
+
+let string_of_channel : channel -> string = function
+  | Int i -> string_of_int i
+  | Num f -> Pp.string_of_float f
+  | Pct p -> Pp.string_of_float p ^ "%"
+  | Var _ -> "0"
+
+let string_of_kind_value : type a. a kind -> a -> string =
+ fun kind value ->
+  match kind with
+  | Length -> Pp.to_string (pp_length ~always:false) value
+  | Color -> Pp.to_string pp_color value
+  | Angle -> Pp.to_string pp_angle value
+  | Duration -> Pp.to_string pp_duration value
+  | Float -> Pp.string_of_float value
+  | Percentage -> ( match value with Pct f -> Pp.string_of_float f | _ -> "initial")
+  | Number_percentage -> Values.string_of_number_percentage value
+  | Int -> string_of_int value
+  | Value -> Parser.to_string_custom value
+  | Content -> (
+      match value with
+      | String "" -> "\"\""
+      | String s -> "\"" ^ s ^ "\""
+      | Quoted (s, quote) -> String.make 1 quote ^ s ^ String.make 1 quote
+      | None -> "none"
+      | Normal -> "normal"
+      | Open_quote -> "open-quote"
+      | Close_quote -> "close-quote"
+      | Attr _ | Counter _ | Counters _ | Content_list _ | Inherit | Initial
+      | Unset | Revert | Revert_layer | Var _ ->
+          "initial")
+  | Font_weight -> Pp.to_string pp_font_weight value
+  | Shadow -> "0 0 #0000"
+  | Border_style -> Pp.to_string pp_border_style value
+  | Outline_style -> Pp.to_string pp_outline_style value
+  | Scroll_snap_strictness -> Pp.to_string pp_scroll_snap_strictness value
+  | Rgb -> (
+      match value with
+      | Channels { r; g; b } ->
+          string_of_channel r ^ " " ^ string_of_channel g ^ " "
+          ^ string_of_channel b
+      | Var _ -> "initial")
+  | Animation -> Pp.to_string pp_animation value
+  | Gradient_direction -> Pp.to_string pp_gradient_direction value
+  | _ -> "initial"
 
 let pp_custom_property_value ctx (Custom_value { kind; value; layer; _ }) =
   match (layer, kind) with
