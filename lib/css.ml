@@ -200,6 +200,7 @@ module Stylesheet = struct
         Position_try
           ( name,
             List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
+    | Viewport _ as statement -> statement
     | Supports_condition (name, declarations) ->
         Supports_condition
           ( name,

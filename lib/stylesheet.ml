@@ -638,19 +638,21 @@ and pp_statement : statement Pp.t =
   | Import { url; layer; supports; media } ->
       Pp.string ctx "@import";
       let url_str = Pp.to_string ~minify:ctx.Pp.minify pp_import_url url in
-      Pp.char ctx ' ';
+      Pp.sp ctx ();
       Pp.string ctx url_str;
       (match layer with
       | Some l ->
-          if l = "" then Pp.string ctx " layer"
+          Pp.sp ctx ();
+          if l = "" then Pp.string ctx "layer"
           else (
-            Pp.string ctx " layer(";
+            Pp.string ctx "layer(";
             Pp.string ctx l;
             Pp.string ctx ")")
       | None -> ());
       (match supports with
       | Some s ->
-          Pp.string ctx " supports(";
+          Pp.sp ctx ();
+          Pp.string ctx "supports(";
           (match s with
           | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
           | _ -> Supports.pp ctx s);
@@ -658,7 +660,7 @@ and pp_statement : statement Pp.t =
       | None -> ());
       (match media with
       | Some m ->
-          Pp.space ctx ();
+          Pp.sp ctx ();
           Media.pp ctx m
       | None -> ());
       Pp.semicolon ctx ()
@@ -949,6 +951,27 @@ and pp_statement : statement Pp.t =
                  Pp.cut ctx ())
                Declaration.pp_declaration)
             ctx declarations;
+          Pp.cut ctx ())
+        ctx ()
+  | Viewport (prefix, descriptors) ->
+      Pp.string ctx
+        (match prefix with
+        | Standard -> "@viewport"
+        | Ms_prefixed -> "@-ms-viewport");
+      Pp.sp ctx ();
+      Pp.braces
+        (fun ctx () ->
+          Pp.cut ctx ();
+          Pp.nest 2
+            (Pp.list
+               ~sep:(fun ctx () ->
+                 Pp.semicolon ctx ();
+                 Pp.cut ctx ())
+               (fun ctx { name; value } ->
+                 Pp.string ctx name;
+                 Pp.char ctx ':';
+                 Pp.string ctx value))
+            ctx descriptors;
           Pp.cut ctx ())
         ctx ()
 
@@ -1882,6 +1905,45 @@ let read_position_try (r : Cursor.t) : statement =
     Cursor.err_invalid r "@position-try requires descriptors";
   Position_try (name, declarations)
 
+let rec read_viewport_descriptor (r : Cursor.t) : viewport_descriptor option =
+  Cursor.ws r;
+  match Cursor.peek r with
+  | None -> None
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      ignore (Cursor.next_raw r);
+      read_viewport_descriptor r
+  | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
+      ignore (Cursor.next_raw r);
+      Cursor.ws r;
+      if not (Cursor.colon r) then Cursor.err_expected r "':'";
+      Cursor.ws r;
+      let value = String.trim (Cursor.consume_to_semicolon ~trim:true r) in
+      Some { name; value }
+  | Some _ -> Cursor.err_expected r "<viewport-descriptor>"
+
+let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
+  Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
+  Cursor.expect_at_keyword at_keyword r;
+  Cursor.ws r;
+  let descriptors =
+    Cursor.braces
+      (fun inner ->
+        let rec loop acc =
+          match read_viewport_descriptor inner with
+          | None -> List.rev acc
+          | Some d -> loop (d :: acc)
+        in
+        let descriptors = loop [] in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        descriptors)
+      r
+  in
+  Viewport (prefix, descriptors)
+
+let read_viewport = read_viewport_with_prefix Standard "viewport"
+let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
+
 type property_reader_state = {
   syntax : Variables.any_syntax option;
   inherits : bool option;
@@ -1995,6 +2057,8 @@ let rec read_statement (r : Cursor.t) : statement =
       ("font-palette-values", read_font_palette_values);
       ("view-transition", read_view_transition);
       ("position-try", read_position_try);
+      ("viewport", read_viewport);
+      ("-ms-viewport", read_ms_viewport);
       ("property", read_property_rule);
     ]
   in
@@ -2629,9 +2693,9 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Page_with_margins (_, _, _) -> []
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       Variables.vars_of_declarations decls
-  | Font_palette_values _ | View_transition _ | Charset _ | Import _
-  | Namespace _ | Property _ | Layer_decl _ | Keyframes _ | Webkit_keyframes _
-  | Moz_keyframes _ ->
+  | Viewport _ | Font_palette_values _ | View_transition _ | Charset _
+  | Import _ | Namespace _ | Property _ | Layer_decl _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =
@@ -2646,19 +2710,22 @@ let read = read_stylesheet
 (* Pretty-printer for import_rule *)
 let pp_import_rule : import_rule Pp.t =
  fun ctx { url; layer; supports; media } ->
-  Pp.string ctx "@import ";
+  Pp.string ctx "@import";
+  Pp.sp ctx ();
   pp_import_url ctx url;
   Option.iter
     (fun l ->
-      if l = "" then Pp.string ctx " layer"
+      Pp.sp ctx ();
+      if l = "" then Pp.string ctx "layer"
       else (
-        Pp.string ctx " layer(";
+        Pp.string ctx "layer(";
         Pp.string ctx l;
         Pp.char ctx ')'))
     layer;
   Option.iter
     (fun s ->
-      Pp.string ctx " supports(";
+      Pp.sp ctx ();
+      Pp.string ctx "supports(";
       (* CSS Imports section 2 [@import supports(...)] keeps the same
          <supports-condition> grammar as the standalone at-rule, but a single
          declaration inside [supports()] is conventionally written without outer
@@ -2672,7 +2739,7 @@ let pp_import_rule : import_rule Pp.t =
     supports;
   Option.iter
     (fun m ->
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Media.pp ctx m)
     media;
   Pp.string ctx ";"
