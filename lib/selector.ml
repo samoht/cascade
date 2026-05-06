@@ -1356,7 +1356,7 @@ let read_selector_list t =
   Cursor.with_context t "list" @@ fun () ->
   Cursor.ws t;
   (* Parse the selector list manually to properly handle trailing commas *)
-  let rec parse_list acc =
+  let rec collect_list acc =
     let sel = read_complex t in
     let acc = sel :: acc in
     Cursor.ws t;
@@ -1364,10 +1364,10 @@ let read_selector_list t =
       Cursor.ws t;
       (* After a comma, we must have another selector - trailing commas are
          invalid *)
-      parse_list acc)
+      collect_list acc)
     else List.rev acc
   in
-  let selectors = parse_list [] in
+  let selectors = collect_list [] in
   match selectors with [ s ] -> s | selectors -> List selectors
 
 let read t =

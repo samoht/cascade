@@ -88,10 +88,7 @@ let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
           b,
           fun b -> Stylesheet.Container (n, q, b) )
   | Stylesheet.Starting_style b ->
-      Some
-        ( (Starting_style : at_node),
-          b,
-          fun b -> Stylesheet.Starting_style b )
+      Some ((Starting_style : at_node), b, fun b -> Stylesheet.Starting_style b)
   | Stylesheet.When (c, b) ->
       Some ((When c : at_node), b, fun b -> Stylesheet.When (c, b))
   | Stylesheet.Else (c, b) ->
@@ -405,7 +402,8 @@ let rec refs_of_components components =
   in
   let rec split_fallback acc = function
     | [] -> []
-    | Component.Preserved { kind = Token.Comma; _ } :: rest -> List.rev_append acc rest
+    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+        List.rev_append acc rest
     | cv :: rest -> split_fallback (cv :: acc) rest
   in
   let refs_of_var_args args =
@@ -431,33 +429,35 @@ let rec refs_of_components components =
     | Some refs -> refs
     | None -> []
     | exception _ -> (
-    match strip_ws args with
-    | Component.Preserved { kind = Token.Ident name; _ } :: rest
-      when String.length name >= 2 && String.sub name 0 2 = "--" ->
-        name :: refs_of_components (split_fallback [] rest)
-    | Component.Preserved { kind = Token.Delim "--"; _ }
-      :: Component.Preserved { kind = Token.Ident name; _ }
-      :: rest ->
-        ("--" ^ name) :: refs_of_components (split_fallback [] rest)
-    | Component.Preserved { kind = Token.Delim "-"; _ }
-      :: Component.Preserved { kind = Token.Delim "-"; _ }
-      :: Component.Preserved { kind = Token.Ident name; _ }
-      :: rest ->
-        ("--" ^ name) :: refs_of_components (split_fallback [] rest)
-    | rest -> refs_of_components rest)
+        match strip_ws args with
+        | Component.Preserved { kind = Token.Ident name; _ } :: rest
+          when String.length name >= 2 && String.sub name 0 2 = "--" ->
+            name :: refs_of_components (split_fallback [] rest)
+        | Component.Preserved { kind = Token.Delim "--"; _ }
+          :: Component.Preserved { kind = Token.Ident name; _ }
+          :: rest ->
+            ("--" ^ name) :: refs_of_components (split_fallback [] rest)
+        | Component.Preserved { kind = Token.Delim "-"; _ }
+          :: Component.Preserved { kind = Token.Delim "-"; _ }
+          :: Component.Preserved { kind = Token.Ident name; _ }
+          :: rest ->
+            ("--" ^ name) :: refs_of_components (split_fallback [] rest)
+        | rest -> refs_of_components rest)
   in
   List.concat_map
     (function
       | Component.Func { node = { name; arguments; _ }; _ }
         when String.lowercase_ascii name = "var" ->
           refs_of_var_args arguments
-      | Component.Func { node = { arguments; _ }; _ } -> refs_of_components arguments
+      | Component.Func { node = { arguments; _ }; _ } ->
+          refs_of_components arguments
       | Component.Block { node = { value; _ }; _ } -> refs_of_components value
       | Component.Preserved _ -> [])
     components
 
 let refs_of_component_string value =
-  try refs_of_components (Cursor.remaining (Cursor.of_string value)) with _ -> []
+  try refs_of_components (Cursor.remaining (Cursor.of_string value))
+  with _ -> []
 
 let names_of_vars vars =
   List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
@@ -465,7 +465,9 @@ let names_of_vars vars =
 let refs_of_media_value : Media.value -> string list = function
   | Ident value -> refs_of_component_string value
   | Function (name, args) ->
-      let func : Component.func = { name; arguments = args; terminated = true } in
+      let func : Component.func =
+        { name; arguments = args; terminated = true }
+      in
       refs_of_components [ Component.Func { node = func; loc = Loc.dummy } ]
   | Length _ | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
 
@@ -478,8 +480,8 @@ let rec refs_of_media : Media.t -> string list = function
   | Overflow_block _ | Overflow_inline _ | Prefers_reduced_motion _
   | Prefers_reduced_transparency _ | Prefers_reduced_data _ | Prefers_contrast _
   | Prefers_color_scheme _ | Forced_colors _ | Inverted_colors _ | Pointer _
-  | Any_pointer _ | Hover _ | Any_hover _ | Scripting _ | Nav_controls _
-  | Print | Orientation _ ->
+  | Any_pointer _ | Hover _ | Any_hover _ | Scripting _ | Nav_controls _ | Print
+  | Orientation _ ->
       []
   | And (a, b) | Or (a, b) -> refs_of_media a @ refs_of_media b
   | Negated query -> refs_of_media query
@@ -507,7 +509,8 @@ let rec refs_of_supports : Supports.t -> string list = function
 let refs_of_style_query : Container.style_query -> string list = function
   | Boolean _ -> []
   | Declaration { value; _ } -> refs_of_components value
-  | Range { lower; upper; _ } -> refs_of_components lower @ refs_of_components upper
+  | Range { lower; upper; _ } ->
+      refs_of_components lower @ refs_of_components upper
 
 let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
   function
@@ -760,7 +763,9 @@ let strip_url_suffix url =
 
 let wrap_import_body (ir : import_rule) body =
   let body =
-    match ir.media with None -> body | Some m -> [ Stylesheet.Media (m, body) ]
+    match ir.media with
+    | None -> body
+    | Some m -> [ Stylesheet.Media (m, body) ]
   in
   let body =
     match ir.supports with
