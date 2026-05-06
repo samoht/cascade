@@ -1156,6 +1156,13 @@ let vars_of_break_value (value : Properties.break_value) =
 let vars_of_break_inside_value (value : Properties.break_inside_value) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_page_break_value (value : Properties.page_break_value) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_page_break_inside_value (value : Properties.page_break_inside_value)
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_page_size_name (value : Properties.page_size_name) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1732,6 +1739,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Break_after, value -> vars_of_break_value value
   | Break_before, value -> vars_of_break_value value
   | Break_inside, value -> vars_of_break_inside_value value
+  | Page_break_after, value -> vars_of_page_break_value value
+  | Page_break_before, value -> vars_of_page_break_value value
+  | Page_break_inside, value -> vars_of_page_break_inside_value value
   | Caption_side, value -> vars_of_caption_side value
   | Clear, value -> vars_of_clear value
   | Clip, value -> vars_of_clip value
