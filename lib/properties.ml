@@ -6587,7 +6587,23 @@ let rec pp_animation_range : animation_range Pp.t =
       pp_animation_range_item ctx (Named (start_name, start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
-      Pp.space ctx ();
+      (* Names like [exit] / [entry] / [normal] start with an ident-start
+         character, so the inter-item space is only needed for tokenization
+         when the previous item ended on an ident-continue char. After a
+         percentage / length / function call (e.g. [10%], [3px], [calc(...)])
+         minified output can drop the space. *)
+      let needs_space =
+        if not (Pp.minified ctx) then true
+        else
+          let buf = ctx.Pp.buf in
+          let len = Buffer.length buf in
+          if len = 0 then true
+          else
+            match Buffer.nth buf (len - 1) with
+            | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+            | _ -> false
+      in
+      if needs_space then Pp.space ctx ();
       pp_animation_range_item ctx second
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"

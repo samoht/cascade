@@ -301,6 +301,33 @@ let pp_property_rule : 'a property_rule Pp.t =
       Pp.cut ctx ())
     ctx ()
 
+(* CSS Animations 1 §3 [<keyframes-name>] is [<custom-ident> | <string>]. The
+   reader normalizes either form to a plain OCaml string; on output we prefer
+   the bare identifier when the value is a syntactically valid CSS ident
+   (shorter than the quoted form), falling back to a double-quoted string when
+   the name contains characters that would otherwise need escaping. *)
+let pp_keyframes_name ctx name =
+  let len = String.length name in
+  let is_ident_continue c =
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9')
+    || c = '-' || c = '_'
+  in
+  let is_ident_start c =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
+  in
+  let is_safe_ident =
+    len > 0
+    && (is_ident_start name.[0]
+       || (name.[0] = '-' && len >= 2
+          && (is_ident_start name.[1] || name.[1] = '-')))
+    && (let ok = ref true in
+        String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
+        !ok)
+  in
+  if is_safe_ident then Pp.string ctx name else Pp.quoted_string ctx name
+
 let rec pp_rule : rule Pp.t =
  fun ctx rule ->
   Selector.pp ctx rule.selector;
@@ -734,7 +761,8 @@ and pp_statement : statement Pp.t =
       | None -> ());
       (match end_ with
       | Some e ->
-          Pp.string ctx " to (";
+          if Option.is_some start && Pp.minified ctx then Pp.string ctx "to("
+          else Pp.string ctx " to (";
           pp_scope_selector ctx e;
           Pp.string ctx ")"
       | None -> ());
@@ -742,7 +770,7 @@ and pp_statement : statement Pp.t =
       Pp.braces pp_block ctx content
   | Keyframes (name, frames) ->
       Pp.string ctx "@keyframes ";
-      Pp.string ctx name;
+      pp_keyframes_name ctx name;
       Pp.sp ctx ();
       Pp.braces
         (fun ctx () ->
@@ -752,7 +780,7 @@ and pp_statement : statement Pp.t =
         ctx ()
   | Webkit_keyframes (name, frames) ->
       Pp.string ctx "@-webkit-keyframes ";
-      Pp.string ctx name;
+      pp_keyframes_name ctx name;
       Pp.sp ctx ();
       Pp.braces
         (fun ctx () ->
@@ -1166,11 +1194,28 @@ let read_keyframes_block inner =
   in
   read_frames []
 
+(* CSS Animations 1 §3: [@keyframes <keyframes-name> { ... }], where
+   [<keyframes-name> = <custom-ident> | <string>]. The reserved spellings
+   ([none], the CSS-wide keywords, and [default]) are excluded from
+   [<keyframes-name>] regardless of which form the source picks. *)
+let read_keyframes_name r =
+  Cursor.ws r;
+  let name =
+    match Cursor.string_opt r with
+    | Some s -> s
+    | None -> Cursor.ident ~keep_case:true r
+  in
+  (match String.lowercase_ascii name with
+  | "none" | "initial" | "inherit" | "unset" | "revert" | "revert-layer"
+  | "default" ->
+      Cursor.err_invalid r ("@keyframes name cannot be " ^ name)
+  | _ -> ());
+  name
+
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
   Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
   Cursor.expect_at_keyword at_keyword r;
-  Cursor.ws r;
-  let name = Cursor.ident ~keep_case:true r in
+  let name = read_keyframes_name r in
   Cursor.ws r;
   let frames = Cursor.braces read_keyframes_block r in
   make_statement name frames
