@@ -3,4 +3,5 @@
 
 open Cascade
 
-let run ~keep_vars stylesheet = Css.inline_vars ~keep_vars stylesheet
+let run ~keep_vars stylesheet =
+  Css.inline_vars ?keep_vars:(Some keep_vars) stylesheet

@@ -1296,6 +1296,18 @@ let drop_empty_rules stmts =
       | _ -> true)
     stmts
 
+let drop_misplaced_imports stmts =
+  let seen_body = ref false in
+  List.filter
+    (function
+      | Charset _ | Import _ | Namespace _ when not !seen_body -> true
+      | Import _ -> false
+      | Charset _ | Namespace _ -> true
+      | _ ->
+          seen_body := true;
+          true)
+    stmts
+
 (* CSS Cascade 6.4: consecutive same-name [@layer] blocks merge only at the
    level the user wrote them at. Two [@layer foo] siblings inside the same
    [@layer { ... }] anonymous parent stay distinct because re-ordering them
@@ -1306,7 +1318,7 @@ let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
   |> merge_consecutive_media |> merge_consecutive_supports
   |> merge_consecutive_containers |> merge_layer_declarations
-  |> drop_empty_rules
+  |> drop_misplaced_imports |> drop_empty_rules
 
 and statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers

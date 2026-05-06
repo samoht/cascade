@@ -1392,6 +1392,19 @@ let spec_platform_property_vectors () =
          url(a.png) type(\"image/png\") 1x)",
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
          1x,url(a.png) type(\"image/png\") 1x)" );
+      ("width: attr(data-w px, 10px)", "width:attr(data-w px,10px)");
+      ( "width: attr(data-w px, calc(100% - 1rem))",
+        "width:attr(data-w px,calc(100% - 1rem))" );
+      ( "width: attr(data-w px, var(--fallback, 10px))",
+        "width:attr(data-w px,var(--fallback,10px))" );
+      ( "height: attr(data-h type(<length>), 1rem)",
+        "height:attr(data-h type(<length>),1rem)" );
+      ( "color: attr(data-color type(<color>), red)",
+        "color:attr(data-color type(<color>),red)" );
+      ( "content: attr(data-label string, \"x y\")",
+        "content:attr(data-label string,\"x y\")" );
+      ( "content: attr(data-label string, var(--label, \"x y\"))",
+        "content:attr(data-label string,var(--label,\"x y\"))" );
       ( "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch",
         "border-image:linear-gradient(red,#00f) 30 fill/10px/1 stretch" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",

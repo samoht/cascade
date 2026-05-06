@@ -728,6 +728,20 @@ let non_minified_preserves_color_forms () =
     [ "oklab(50% .1 -.05)" ];
   preserves_non_minified ".x { color: color-mix(in srgb, red, blue) }"
     [ "color-mix(in srgb, red, blue)" ];
+  preserves_non_minified ".x { color: attr(data-color type(<color>), red) }"
+    [ "attr(data-color type(<color>), red)" ];
+  preserves_non_minified ".x { width: attr(data-w px, 10px) }"
+    [ "attr(data-w px, 10px)" ];
+  preserves_non_minified ".x { width: attr(data-w px, calc(100% - 1rem)) }"
+    [ "attr(data-w px, calc(100% - 1rem))" ];
+  preserves_non_minified ".x { width: attr(data-w px, var(--fallback, 10px)) }"
+    [ "attr(data-w px, var(--fallback, 10px))" ];
+  preserves_non_minified
+    ".x::before { content: attr(data-label string, \"x y\") }"
+    [ "attr(data-label string, \"x y\")" ];
+  preserves_non_minified
+    ".x::before { content: attr(data-label string, var(--label, \"x y\")) }"
+    [ "attr(data-label string, var(--label, \"x y\"))" ];
   preserves_non_minified ".x { color: transparent }" [ "transparent" ];
   preserves_non_minified ".x { color: currentColor }" [ "currentColor" ]
 

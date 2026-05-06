@@ -32,6 +32,22 @@ type 'a calc =
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
 
+type attr_syntax = Length | Length_percentage | Color | Number | Percentage
+
+type attr_type =
+  | Type of attr_syntax
+  | Unit of string
+  | Raw_string
+  | Number_type
+
+type 'a attr_fallback = No_fallback | Empty_fallback | Attr_fallback of 'a
+
+type 'a attr_call = {
+  name : string;
+  type_ : attr_type option;
+  fallback : 'a attr_fallback;
+}
+
 type length =
   | Px of float
   | Cm of float
@@ -114,6 +130,9 @@ type length =
   | Calc_size of length * length calc
   | Anchor_size of string
   | Anchor of string option * string * length option
+  | Attr of length attr_call
+      (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)]
+          for typed-value contexts. *)
   | Var of length var
   | Calc of length calc
 
