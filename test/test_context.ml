@@ -595,6 +595,7 @@ let rec statement_shape stmt =
                (fun (d : Css.Stylesheet.viewport_descriptor) -> d.name)
                descriptors);
       ]
+  | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
 
 let stylesheet_shape sheet = List.concat_map statement_shape sheet
 
@@ -762,7 +763,7 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
     | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
     | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Page _
     | Page_with_margins _ | Font_palette_values _ | View_transition _
-    | Position_try _ | Supports_condition _ | Viewport _ ->
+    | Position_try _ | Supports_condition _ | Viewport _ | Unknown_at_rule _ ->
         (acc, None)
   in
   let candidates =

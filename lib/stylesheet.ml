@@ -974,6 +974,19 @@ and pp_statement : statement Pp.t =
             ctx descriptors;
           Pp.cut ctx ())
         ctx ()
+  | Unknown_at_rule { name; prelude; block } -> (
+      Pp.char ctx '@';
+      Pp.string ctx name;
+      if prelude <> "" then (
+        Pp.sp ctx ();
+        Pp.string ctx prelude);
+      match block with
+      | None -> Pp.semicolon ctx ()
+      | Some body ->
+          Pp.sp ctx ();
+          Pp.char ctx '{';
+          Pp.string ctx body;
+          Pp.char ctx '}')
 
 and font_face_participates descriptors =
   List.exists (function Font_family _ -> true | _ -> false) descriptors
@@ -1944,6 +1957,39 @@ let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
+(* CSS Syntax 3 §5.4.2 "consume an at-rule": after the at-keyword has been
+   consumed, walk components until we hit [;] (no block) or [{...}] (block). The
+   raw prelude/block strings are reconstructed from captured components so the
+   at-rule round-trips even when its grammar is unknown. *)
+let read_unknown_at_rule name (r : Cursor.t) : statement =
+  let prelude_buf = Buffer.create 32 in
+  let block = ref Option.None in
+  let rec gather () =
+    match Cursor.peek r with
+    | None -> ()
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+        ignore (Cursor.next_raw r)
+    | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
+      ->
+        let body_buf = Buffer.create 32 in
+        List.iter
+          (fun c -> Buffer.add_string body_buf (Component.to_string c))
+          value;
+        block := Option.Some (Buffer.contents body_buf);
+        ignore (Cursor.next_raw r)
+    | Some comp ->
+        Buffer.add_string prelude_buf (Component.to_string comp);
+        ignore (Cursor.next_raw r);
+        gather ()
+  in
+  gather ();
+  Unknown_at_rule
+    {
+      name;
+      prelude = String.trim (Buffer.contents prelude_buf);
+      block = !block;
+    }
+
 type property_reader_state = {
   syntax : Variables.any_syntax option;
   inherits : bool option;
@@ -2063,16 +2109,15 @@ let rec read_statement (r : Cursor.t) : statement =
     ]
   in
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; loc }) -> (
+  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) -> (
       match List.assoc_opt name table with
       | Some p -> p r
       | None ->
-          (* Section 5.4.1: an at-rule with no registered handler is invalid.
-             Raise a typed [Unknown_at_rule] error -- the outer partial-parse
-             catch turns it into a warning and drops the rule (section 5.4.2
-             "consume an at-rule" has already captured the prelude/block bounds
-             for us). *)
-          Error.fail (Error.unknown_at_rule loc name))
+          (* CSS Syntax 3 §5.4.2 "consume an at-rule": for an at-rule with no
+             registered handler we still consume its prelude (up to [;] or
+             [{...}]) and preserve it as a raw [Unknown_at_rule]. *)
+          ignore (Cursor.next_raw r);
+          read_unknown_at_rule name r)
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =
@@ -2695,7 +2740,7 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
       Variables.vars_of_declarations decls
   | Viewport _ | Font_palette_values _ | View_transition _ | Charset _
   | Import _ | Namespace _ | Property _ | Layer_decl _ | Keyframes _
-  | Webkit_keyframes _ | Moz_keyframes _ ->
+  | Webkit_keyframes _ | Moz_keyframes _ | Unknown_at_rule _ ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =

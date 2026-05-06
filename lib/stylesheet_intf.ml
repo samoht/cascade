@@ -176,6 +176,14 @@ and statement =
   | Viewport of viewport_prefix * viewport_descriptor list
       (** [@viewport { ... }] / [@-ms-viewport { ... }] (CSS Device Adaptation
           1, deprecated but still emitted by minifiers for legacy IE). *)
+  | Unknown_at_rule of {
+      name : string;
+      prelude : string;
+      block : string option;
+    }
+      (** CSS Syntax 3 §5.4.2 "consume an at-rule" preserves any unrecognised
+          at-rule as raw text so authors can ship unknown vendor or future
+          at-rules without dropping the whole stylesheet. *)
 
 and block = statement list
 (** A block contains a list of statements *)
