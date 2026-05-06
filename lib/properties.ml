@@ -4962,6 +4962,7 @@ and pp_clip_path_round ctx = function
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
   | Custom_property name -> Pp.string ctx name
+  | Opaque_property name -> Pp.string ctx name
   | All -> Pp.string ctx "all"
   | Background_color -> Pp.string ctx "background-color"
   | Color -> Pp.string ctx "color"
@@ -7749,6 +7750,12 @@ let rec pp_scroll_snap_type : scroll_snap_type Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_scroll_snap_type ctx v
 
+let pp_repeat_count ctx (count : repeat_count) =
+  match count with
+  | Count n -> Pp.int ctx n
+  | Auto_fill -> Pp.string ctx "auto-fill"
+  | Auto_fit -> Pp.string ctx "auto-fit"
+
 let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -7772,11 +7779,11 @@ let rec pp_grid_template : grid_template Pp.t =
   | Repeat (count, sizes) ->
       Pp.call "repeat"
         (fun ctx (count, sizes) ->
-          Pp.int ctx count;
+          pp_repeat_count ctx count;
           Pp.comma ctx ();
-          Pp.list ~sep:Pp.space pp_grid_template ctx sizes)
+          pp_grid_track_list ctx sizes)
         ctx (count, sizes)
-  | Tracks sizes -> Pp.list ~sep:Pp.space pp_grid_template ctx sizes
+  | Tracks sizes -> pp_grid_track_list ctx sizes
   | Split (rows, columns) ->
       pp_grid_template ctx rows;
       Pp.slash ctx ();
@@ -7792,6 +7799,10 @@ let rec pp_grid_template : grid_template Pp.t =
         pp_grid_template ctx size
       in
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
+  | Line_names names ->
+      Pp.char ctx '[';
+      Pp.list ~sep:Pp.space Pp.string ctx names;
+      Pp.char ctx ']'
   | Template raw ->
       (* The complex grid-template syntax (with [<grid-template-areas>] string
          tracks) is stored as a canonical component-value slice because the
@@ -7800,6 +7811,36 @@ let rec pp_grid_template : grid_template Pp.t =
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
+
+and pp_grid_track_list ctx tracks =
+  (* Track-list items are separated by whitespace, but [[...]] blocks have
+     self-delimiting brackets, so [[col-start]minmax(...)] tokenises the same
+     as [[col-start] minmax(...)]. Drop the inter-item space whenever the
+     previous output ends with [\]] or [\)] (line-name block / function call)
+     or the next item is a line-name block - matching the lightning / csso
+     minified spelling. *)
+  let buf_last_char ctx : char option =
+    let buf = ctx.Pp.buf in
+    let len = Buffer.length buf in
+    if len = 0 then Option.None else Option.Some (Buffer.nth buf (len - 1))
+  in
+  let starts_with_bracket = function Line_names _ -> true | _ -> false in
+  let rec loop = function
+    | [] -> ()
+    | [ x ] -> pp_grid_template ctx x
+    | x :: y :: rest ->
+        pp_grid_template ctx x;
+        let needs_space =
+          if not (Pp.minified ctx) then true
+          else
+            match buf_last_char ctx with
+            | Some (']' | ')') -> false
+            | _ -> not (starts_with_bracket y)
+        in
+        if needs_space then Pp.space ctx ();
+        loop (y :: rest)
+  in
+  loop tracks
 
 let rec pp_grid_template_areas : grid_template_areas Pp.t =
  fun ctx -> function
@@ -9477,7 +9518,7 @@ module Grid_template = struct
     | Vmax n -> Vmax n
     | Pct n -> Pct n
     | Zero -> Zero
-    | _ -> Auto
+    | _ -> Cursor.err_expected t "<length-percentage>"
 
   let read_fr t : grid_template =
     (* [1fr] lexes as a single [Dimension] with unit "fr". *)
@@ -9489,8 +9530,8 @@ module Grid_template = struct
     (* Accept a single breadth: length, fr, or keywords *)
     Cursor.one_of
       [
-        read_length_as_grid;
         read_fr;
+        read_length_as_grid;
         (fun t ->
           Cursor.enum "grid-breadth"
             [
@@ -9518,7 +9559,31 @@ module Grid_template = struct
     Cursor.ws inner;
     Fit_content (read_length inner)
 
+  let read_repeat_count t : repeat_count =
+    match Cursor.option Cursor.int t with
+    | Some n -> Count n
+    | None -> (
+        match Cursor.ident t with
+        | "auto-fill" -> Auto_fill
+        | "auto-fit" -> Auto_fit
+        | ident -> Cursor.err_invalid t ("repeat count: " ^ ident))
+
+  let read_line_names t : grid_template =
+    Cursor.brackets
+      (fun inner ->
+        Cursor.ws inner;
+        let names =
+          Cursor.list
+            ~sep:(fun i -> Cursor.ws i)
+            (fun i -> Cursor.ident i)
+            inner
+        in
+        Line_names names)
+      t
+
   let rec read_single_track t =
+    if Cursor.peek_block t = Some Token.Square then read_line_names t
+    else
     Cursor.enum_or_calls "grid-template"
       [
         ("none", (None : grid_template));
@@ -9537,7 +9602,7 @@ module Grid_template = struct
             fun t ->
               Cursor.call "repeat" t @@ fun inner ->
               Cursor.ws inner;
-              let count = Cursor.int inner in
+              let count = read_repeat_count inner in
               Cursor.ws inner;
               Cursor.comma inner;
               Cursor.ws inner;
@@ -9551,28 +9616,16 @@ module Grid_template = struct
 end
 
 let grid_template_needs_raw_template cvs =
-  (* The typed grid-template AST handles minmax / fit-content / repeat with
-     integer counts and bare track sizes. Round-trip through the raw
-     [Template] string when the input includes a feature the typed shape
-     doesn't preserve: a string token (used by [grid-template-areas]),
-     square-bracket line names ([col-start] etc.), or [auto-fill] /
-     [auto-fit] inside [repeat()]. *)
-  let rec needs = function
+  let rec has_string = function
     | [] -> false
     | Component.Preserved { kind = Token.String _; _ } :: _ -> true
-    | Component.Preserved { kind = Token.Ident s; _ } :: rest
-      when String.lowercase_ascii s = "auto-fill"
-           || String.lowercase_ascii s = "auto-fit" ->
-        let _ = rest in
-        true
-    | Component.Block { node = { opening = Token.Square; _ }; _ } :: _ -> true
     | Component.Block { node = { value; _ }; _ } :: rest ->
-        needs value || needs rest
+        has_string value || has_string rest
     | Component.Func { node = { arguments; _ }; _ } :: rest ->
-        needs arguments || needs rest
-    | _ :: rest -> needs rest
+        has_string arguments || has_string rest
+    | _ :: rest -> has_string rest
   in
-  needs cvs
+  has_string cvs
 
 let grid_template_top_level_slashes cvs =
   List.fold_left
@@ -15170,7 +15223,7 @@ let read_any_property t =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
-  | _ -> Cursor.err_invalid t ("read_property: unknown property " ^ prop_name)
+  | _ -> Prop (Opaque_property prop_name)
 
 (* Helper functions for property types *)
 
@@ -16230,6 +16283,12 @@ let pp_property_value : type a. (a property * a) Pp.t =
   let pp pp_a = pp_a ctx value in
   match prop with
   | Custom_property _ -> pp pp_custom_property_value
+  | Opaque_property _ ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_minified value
+        else Parser.to_string value
+      in
+      Pp.string ctx rendered
   | All -> pp pp_css_wide
   | Background_color -> pp pp_color
   | Color -> pp pp_color
