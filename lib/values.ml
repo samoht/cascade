@@ -3721,6 +3721,51 @@ let _read_hex_color t =
   else if len = 3 || len = 4 || len = 6 || len = 8 then hex
   else Cursor.err_invalid t ("invalid hex color length: " ^ string_of_int len)
 
+(** Argument category for [atan2(y, x)]: both arguments must share a category
+    for the result to be unit-free. The float is the value already reduced into
+    the category's canonical base ([px] for length, [ms] for time, [Hz] for
+    frequency, [deg] for angle, raw fraction for percent). *)
+type atan2_category =
+  | At_number
+  | At_percentage
+  | At_length
+  | At_angle
+  | At_time
+  | At_frequency
+
+let read_atan2_scalar t : atan2_category * float =
+  let n, unit_raw = Cursor.number_with_unit t in
+  let unit = String.lowercase_ascii (Option.value ~default:"" unit_raw) in
+  match unit with
+  | "" -> (At_number, n)
+  | "%" -> (At_percentage, n)
+  (* CSS Values 4 §6.2 absolute lengths converted to [px]. *)
+  | "px" -> (At_length, n)
+  | "cm" -> (At_length, n *. (96. /. 2.54))
+  | "mm" -> (At_length, n *. (96. /. 25.4))
+  | "q" -> (At_length, n *. (96. /. 101.6))
+  | "in" -> (At_length, n *. 96.)
+  | "pt" -> (At_length, n *. (96. /. 72.))
+  | "pc" -> (At_length, n *. 16.)
+  (* Relative lengths share the [<length>] type but cannot reduce to a constant
+     scalar at parse time; group them so [atan2(1vw, -1vw)] succeeds via
+     raw-value ratio while [atan2(1vw, 1px)] is rejected. *)
+  | "em" | "rem" | "ex" | "cap" | "ch" | "ic" | "lh" | "rlh" | "vw" | "vh"
+  | "vmin" | "vmax" | "vi" | "vb" | "dvh" | "dvw" | "dvmin" | "dvmax" | "lvh"
+  | "lvw" | "lvmin" | "lvmax" | "svh" | "svw" | "svmin" | "svmax" | "cqw"
+  | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" ->
+      (At_length, n)
+  (* Angles, times, frequencies in their canonical units. *)
+  | "deg" -> (At_angle, n)
+  | "rad" -> (At_angle, n *. 180. /. Float.pi)
+  | "turn" -> (At_angle, n *. 360.)
+  | "grad" -> (At_angle, n *. 0.9)
+  | "ms" -> (At_time, n)
+  | "s" -> (At_time, n *. 1000.)
+  | "hz" -> (At_frequency, n)
+  | "khz" -> (At_frequency, n *. 1000.)
+  | _ -> Cursor.err_invalid t ("invalid atan2 argument unit: " ^ unit)
+
 (** Read an angle value *)
 let rec read_angle t : angle =
   Cursor.ws t;
@@ -3794,44 +3839,22 @@ let rec read_angle t : angle =
   else if Cursor.looking_at_func "atan2" t then
     Cursor.call "atan2" t (fun inner ->
         (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
-           <percentage> for both arguments (must match types). When both share a
-           unit, the ratio is unit-free; when both are absolute [<length>] units
-           we convert to [px] and divide. *)
-        let abs_to_px = function
-          | "px" -> Option.Some 1.
-          | "cm" -> Option.Some (96. /. 2.54)
-          | "mm" -> Option.Some (96. /. 25.4)
-          | "q" -> Option.Some (96. /. 101.6)
-          | "in" -> Option.Some 96.
-          | "pt" -> Option.Some (96. /. 72.)
-          | "pc" -> Option.Some 16.
-          | _ -> Option.None
-        in
-        let read_scalar inner =
-          let n, u = Cursor.number_with_unit inner in
-          let u = String.lowercase_ascii (Option.value ~default:"" u) in
-          (n, u)
-        in
-        let y, uy = read_scalar inner in
+           <percentage> for both arguments (must match types). When both
+           arguments reduce to a scalar in a shared category, the ratio is
+           unit-free and the result folds to a [Deg] constant. Each [scalar] arm
+           captures the category so we can reject mismatched-type pairs without
+           inspecting raw unit strings. *)
+        let y = read_atan2_scalar inner in
         Cursor.ws inner;
         Cursor.comma inner;
         Cursor.ws inner;
-        let x, ux = read_scalar inner in
+        let x = read_atan2_scalar inner in
         Cursor.ws inner;
         Cursor.expect_eof inner;
-        let y_x =
-          if uy = ux then Option.Some (y, x)
-          else
-            match (abs_to_px uy, abs_to_px ux) with
-            | Option.Some sy, Option.Some sx -> Option.Some (y *. sy, x *. sx)
-            | _ -> Option.None
-        in
-        match y_x with
-        | Option.Some (y, x) ->
-            (Deg (Float.atan2 y x *. 180. /. Float.pi) : angle)
-        | Option.None ->
-            Cursor.err_invalid inner
-              "atan2 arguments have mismatched non-absolute units")
+        match (y, x) with
+        | (yk, yv), (xk, xv) when yk = xk ->
+            (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
+        | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
   else
     let n, unit_raw = Cursor.number_with_unit t in
     let unit_raw = Option.value unit_raw ~default:"" in
