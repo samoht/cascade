@@ -3795,9 +3795,18 @@ let rec read_angle t : angle =
     Cursor.call "atan2" t (fun inner ->
         (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
            <percentage> for both arguments (must match types). When both share a
-           unit, the ratio is unit-free and the result folds to a constant. Read
-           each argument as [number-with-unit] and require unit equality
-           (case-insensitive) to compute. *)
+           unit, the ratio is unit-free; when both are absolute [<length>] units
+           we convert to [px] and divide. *)
+        let abs_to_px = function
+          | "px" -> Option.Some 1.
+          | "cm" -> Option.Some (96. /. 2.54)
+          | "mm" -> Option.Some (96. /. 25.4)
+          | "q" -> Option.Some (96. /. 101.6)
+          | "in" -> Option.Some 96.
+          | "pt" -> Option.Some (96. /. 72.)
+          | "pc" -> Option.Some 16.
+          | _ -> Option.None
+        in
         let read_scalar inner =
           let n, u = Cursor.number_with_unit inner in
           let u = String.lowercase_ascii (Option.value ~default:"" u) in
@@ -3810,9 +3819,19 @@ let rec read_angle t : angle =
         let x, ux = read_scalar inner in
         Cursor.ws inner;
         Cursor.expect_eof inner;
-        if uy <> ux then
-          Cursor.err_invalid inner "atan2 arguments have mismatched units";
-        (Deg (Float.atan2 y x *. 180. /. Float.pi) : angle))
+        let y_x =
+          if uy = ux then Option.Some (y, x)
+          else
+            match (abs_to_px uy, abs_to_px ux) with
+            | Option.Some sy, Option.Some sx -> Option.Some (y *. sy, x *. sx)
+            | _ -> Option.None
+        in
+        match y_x with
+        | Option.Some (y, x) ->
+            (Deg (Float.atan2 y x *. 180. /. Float.pi) : angle)
+        | Option.None ->
+            Cursor.err_invalid inner
+              "atan2 arguments have mismatched non-absolute units")
   else
     let n, unit_raw = Cursor.number_with_unit t in
     let unit_raw = Option.value unit_raw ~default:"" in
