@@ -423,7 +423,11 @@ let consume_unicode_range_token r =
   if n_q > 0 then
     let start_value = parse_hex (start_repr ^ String.make n_q '0') in
     let end_value = parse_hex (start_repr ^ String.make n_q 'F') in
-    Unicode_range { start_value; end_value }
+    let form =
+      Token.Wildcard
+        { prefix_width = String.length start_repr; wildcards = n_q }
+    in
+    Unicode_range { start_value; end_value; form }
   else
     let start_value = parse_hex start_repr in
     let has_range_tail =
@@ -445,9 +449,19 @@ let consume_unicode_range_token r =
           | _ -> ()
       in
       consume_end 0;
-      let end_value = parse_hex (Buffer.contents end_buf) in
-      Unicode_range { start_value; end_value })
-    else Unicode_range { start_value; end_value = start_value }
+      let end_repr = Buffer.contents end_buf in
+      let end_value = parse_hex end_repr in
+      let form =
+        Token.Range
+          {
+            start_width = String.length start_repr;
+            end_width = String.length end_repr;
+          }
+      in
+      Unicode_range { start_value; end_value; form })
+    else
+      let form = Token.Single { width = String.length start_repr } in
+      Unicode_range { start_value; end_value = start_value; form }
 
 (* 4.3.10 Consume an ident-like token. *)
 let consume_ident_like_token ?(force_url_function = false) r =

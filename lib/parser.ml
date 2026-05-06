@@ -235,22 +235,19 @@ let token_kind_to_string : Token.kind -> string = function
       in
       number.repr ^ unit_serialized
   | Token.Whitespace -> " "
-  | Token.Unicode_range { start_value; end_value } ->
-      let hex_digits = "0123456789ABCDEF" in
-      let to_hex n =
-        let buf = Buffer.create 6 in
-        let rec emit n =
-          if n = 0 then ()
-          else (
-            emit (n / 16);
-            Buffer.add_char buf hex_digits.[n mod 16])
-        in
-        if n = 0 then Buffer.add_char buf '0' else emit n;
-        Buffer.contents buf
+  | Token.Unicode_range { start_value; end_value; _ } ->
+      let buf = Buffer.create 16 in
+      Buffer.add_string buf "U+";
+      let rec add_hex n acc =
+        if n = 0 && acc = [] then Buffer.add_char buf '0'
+        else if n = 0 then List.iter (Buffer.add_char buf) acc
+        else add_hex (n / 16) (hex_digit (n mod 16) :: acc)
       in
-      if start_value = end_value then
-        String.concat "" [ "U+"; to_hex start_value ]
-      else String.concat "" [ "U+"; to_hex start_value; "-"; to_hex end_value ]
+      add_hex start_value [];
+      if end_value <> start_value then (
+        Buffer.add_char buf '-';
+        add_hex end_value []);
+      Buffer.contents buf
   | Token.Cdo -> "<!--"
   | Token.Cdc -> "-->"
   | Token.Colon -> ":"
