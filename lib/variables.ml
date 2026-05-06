@@ -696,6 +696,12 @@ let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
   | Tracks ts -> List.concat_map vars_of_grid_template ts
   | Split (rows, columns) ->
       vars_of_grid_template rows @ vars_of_grid_template columns
+  | Auto_flow_columns (rows, _, auto_columns) ->
+      vars_of_grid_template rows
+      @ Option.fold ~none:[] ~some:vars_of_grid_template auto_columns
+  | Auto_flow_rows (_, auto_rows, columns) ->
+      Option.fold ~none:[] ~some:vars_of_grid_template auto_rows
+      @ vars_of_grid_template columns
   | Named_tracks ts ->
       List.concat_map (fun (_, t) -> vars_of_grid_template t) ts
   | _ -> []

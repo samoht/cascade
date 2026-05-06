@@ -676,6 +676,9 @@ val pp_grid_template_areas : grid_template_areas Pp.t
 val read_grid_template : Cursor.t -> grid_template
 (** [read_grid_template t] is the [grid_template] parsed from [t]. *)
 
+val read_grid : Cursor.t -> grid_template
+(** [read_grid t] is the [grid] shorthand parsed from [t]. *)
+
 val pp_grid_line : grid_line Pp.t
 (** [pp_grid_line] is the pretty-printer for [grid_line]. *)
 

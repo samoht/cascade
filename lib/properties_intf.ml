@@ -745,6 +745,10 @@ type grid_template =
   | Repeat of repeat_count * grid_template list
   | Tracks of grid_template list
   | Split of grid_template * grid_template
+  | Auto_flow_columns of grid_template * grid_auto_flow * grid_template option
+      (** [<grid-template-rows> / auto-flow [dense]? <grid-auto-columns>?]. *)
+  | Auto_flow_rows of grid_auto_flow * grid_template option * grid_template
+      (** [auto-flow [dense]? <grid-auto-rows>? / <grid-template-columns>]. *)
   | Named_tracks of (string option * grid_template) list
   | Line_names of string list
       (** Square-bracket line-names block ([[col-start]], [[a b]]). Stored as

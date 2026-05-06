@@ -1000,7 +1000,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Place_self -> read_place_self_value t
   (* Additional grid properties *)
   | Grid_template -> v Grid_template (read_grid_template t)
-  | Grid -> v Grid (read_grid_template t)
+  | Grid -> v Grid (read_grid t)
   | Grid_area -> v Grid_area (read_grid_area t)
   | Grid_auto_columns ->
       let value = read_grid_template t in

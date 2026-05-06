@@ -7971,6 +7971,28 @@ let rec pp_grid_template : grid_template Pp.t =
       pp_grid_template ctx rows;
       Pp.slash ctx ();
       pp_grid_template ctx columns
+  | Auto_flow_columns (rows, flow, auto_columns) ->
+      pp_grid_template ctx rows;
+      Pp.slash ctx ();
+      pp_grid_auto_flow_shorthand ctx flow;
+      Option.iter
+        (fun columns ->
+          Pp.space ctx ();
+          pp_grid_template ctx columns)
+        auto_columns
+  | Auto_flow_rows (Row, None, columns) ->
+      Pp.string ctx "none";
+      Pp.slash ctx ();
+      pp_grid_template ctx columns
+  | Auto_flow_rows (flow, auto_rows, columns) ->
+      pp_grid_auto_flow_shorthand ctx flow;
+      Option.iter
+        (fun rows ->
+          Pp.space ctx ();
+          pp_grid_template ctx rows)
+        auto_rows;
+      Pp.slash ctx ();
+      pp_grid_template ctx columns
   | Named_tracks tracks ->
       let pp_named_track ctx (name, size) =
         (match name with
@@ -7994,6 +8016,23 @@ let rec pp_grid_template : grid_template Pp.t =
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
+
+and pp_grid_auto_flow_shorthand ctx = function
+  | Row | Column -> Pp.string ctx "auto-flow"
+  | Row_dense | Column_dense ->
+      Pp.string ctx "auto-flow";
+      Pp.space ctx ();
+      Pp.string ctx "dense"
+  | Dense ->
+      Pp.string ctx "auto-flow";
+      Pp.space ctx ();
+      Pp.string ctx "dense"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_grid_auto_flow ctx v
 
 and pp_grid_track_list ctx tracks =
   (* Track-list items are separated by whitespace, but [[...]] blocks have
@@ -8025,10 +8064,61 @@ and pp_grid_track_list ctx tracks =
   in
   loop tracks
 
+let minify_grid_template_areas_string value =
+  let len = String.length value in
+  let buf = Buffer.create len in
+  let is_row_ws = function
+    | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+    | _ -> false
+  in
+  let row_cells row =
+    let row_len = String.length row in
+    let rec skip_ws i =
+      if i < row_len && is_row_ws row.[i] then skip_ws (i + 1) else i
+    in
+    let rec take_cell start i =
+      if i < row_len && not (is_row_ws row.[i]) then take_cell start (i + 1)
+      else (String.sub row start (i - start), i)
+    in
+    let rec loop acc i =
+      let start = skip_ws i in
+      if start >= row_len then List.rev acc
+      else
+        let cell, next = take_cell start start in
+        loop (cell :: acc) next
+    in
+    loop [] 0
+  in
+  let minify_row row = String.concat " " (row_cells row) in
+  let rec take_quoted quote start i =
+    if i >= len then (String.sub value start (i - start), i)
+    else if value.[i] = quote then (String.sub value start (i - start), i + 1)
+    else take_quoted quote start (i + 1)
+  in
+  let rec loop i =
+    if i < len then
+      match value.[i] with
+      | ('"' | '\'') as quote ->
+          let row, next = take_quoted quote (i + 1) (i + 1) in
+          Buffer.add_char buf '"';
+          Buffer.add_string buf (minify_row row);
+          Buffer.add_char buf '"';
+          loop next
+      | ' ' | '\t' | '\n' | '\r' | '\012' -> loop (i + 1)
+      | c ->
+          Buffer.add_char buf c;
+          loop (i + 1)
+  in
+  loop 0;
+  Buffer.contents buf
+
 let rec pp_grid_template_areas : grid_template_areas Pp.t =
  fun ctx -> function
   | No_areas -> Pp.string ctx "none"
-  | Areas value -> Pp.string ctx value
+  | Areas value ->
+      if Pp.minified ctx then
+        Pp.string ctx (minify_grid_template_areas_string value)
+      else Pp.string ctx value
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -9893,6 +9983,63 @@ let rec read_grid_template t : grid_template =
           err_invalid_value t "grid-template" "none in slash form"
       | _ -> Split (rows, columns))
     else rows
+
+let read_grid_auto_flow_shorthand_clause side t =
+  let rec loop seen_auto_flow seen_dense =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "auto-flow" when not seen_auto_flow ->
+        let _ = Cursor.ident t in
+        loop true seen_dense
+    | Some "dense" when not seen_dense ->
+        let _ = Cursor.ident t in
+        loop seen_auto_flow true
+    | _ -> (
+        if not seen_auto_flow then Cursor.err_expected t "auto-flow";
+        match (side, seen_dense) with
+        | `Rows, false -> (Row : grid_auto_flow)
+        | `Rows, true -> Row_dense
+        | `Columns, false -> Column
+        | `Columns, true -> Column_dense)
+  in
+  loop false false
+
+let read_grid_auto_flow_tracks t : grid_template option =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Delim "/"; _ }) | None -> None
+  | Some _ -> Cursor.option read_grid_template_tracks t
+
+let rec read_grid t : grid_template =
+  if Cursor.looking_at_func "var" t then
+    (Var (Values.read_var read_grid t) : grid_template)
+  else
+    match Cursor.peek_ident t with
+    | Some ("auto-flow" | "dense") ->
+        let flow = read_grid_auto_flow_shorthand_clause `Rows t in
+        let auto_rows = read_grid_auto_flow_tracks t in
+        Cursor.ws t;
+        Cursor.slash t;
+        Cursor.ws t;
+        let columns = read_grid_template_tracks t in
+        Auto_flow_rows (flow, auto_rows, columns)
+    | _ ->
+        let rows = read_grid_template_tracks t in
+        Cursor.ws t;
+        if Cursor.slash_opt t then (
+          Cursor.ws t;
+          match Cursor.peek_ident t with
+          | Some ("auto-flow" | "dense") ->
+              let flow = read_grid_auto_flow_shorthand_clause `Columns t in
+              let auto_columns = read_grid_auto_flow_tracks t in
+              Auto_flow_columns (rows, flow, auto_columns)
+          | _ -> (
+              let columns = read_grid_template_tracks t in
+              match (rows, columns) with
+              | None, _ | _, None ->
+                  err_invalid_value t "grid" "none in slash form"
+              | _ -> Split (rows, columns)))
+        else rows
 
 let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
