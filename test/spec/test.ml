@@ -53,6 +53,20 @@ let preserves_non_minified css fragments =
         fragments
   | Error e -> Alcotest.fail (pp_parse_error e)
 
+let preserves_non_minified_exact css fragments =
+  match of_string css with
+  | Ok sheet ->
+      let output = to_string ~minify:false ~newline:false sheet in
+      List.iter
+        (fun fragment ->
+          if not (contains_substring ~needle:fragment output) then
+            Alcotest.failf
+              "non-minified output for %S did not preserve exact fragment %S\n\
+               output: %S"
+              css fragment output)
+        fragments
+  | Error e -> Alcotest.fail (pp_parse_error e)
+
 let rejects_non_minified_fragments css fragments =
   match of_string css with
   | Ok sheet ->
@@ -512,6 +526,18 @@ let conditional_container () =
   rejects_invalid "@container style() { .card { color: red } }";
   rejects_invalid "@container scroll-state() { .card { color: red } }"
 
+(* {2 CSS Grid Layout Level 2}
+   https://www.w3.org/TR/css-grid/#grid-template-areas-property *)
+
+let grid_template_areas () =
+  roundtrip ".x { grid-template-areas: \"nav  main\" \".    foot\" }"
+    ".x{grid-template-areas:\"nav main\"\". foot\"}";
+  roundtrip ".x { grid-template-areas: \".  .\" }"
+    ".x{grid-template-areas:\". .\"}";
+  roundtrip ".x { content: \"nav  main\" }" ".x{content:\"nav  main\"}";
+  rejects_invalid ".x { grid-template-areas: \"nav/main\" }";
+  rejects_invalid ".x { grid-template-areas: \"nav main\" \"foot\" }"
+
 (* {2 CSS Nesting Level 1} https://www.w3.org/TR/css-nesting-1/ *)
 
 let nesting_rules () =
@@ -704,7 +730,14 @@ let non_minified_preserves_value_forms () =
   rejects_non_minified_fragments
     ".x { background-image: url(\"hero image.png\") }" [ "url(hero image.png)" ];
   rejects_non_minified_fragments ".x { background-image: url(hero.png) }"
-    [ "url(\"hero.png\")" ]
+    [ "url(\"hero.png\")" ];
+  preserves_non_minified_exact ".x { content: \"nav  main\" }"
+    [ "\"nav  main\"" ]
+
+let non_minified_preserves_grid_forms () =
+  preserves_non_minified_exact
+    ".x { grid-template-areas: \"nav  main\" \".    foot\" }"
+    [ "\"nav  main\""; "\".    foot\"" ]
 
 let non_minified_preserves_color_forms () =
   (* CSSOM serialization and the minifier set canonicalize leading-zero decimals
@@ -970,6 +1003,7 @@ let () =
             conditional_supports;
           Alcotest.test_case "conditional: @container" `Quick
             conditional_container;
+          Alcotest.test_case "grid: template areas" `Quick grid_template_areas;
           Alcotest.test_case "stylesheet: at-rules" `Quick stylesheet_at_rules;
           (* CSS Cascade and Inheritance Level 4 *)
           Alcotest.test_case "cascade: CSS-wide keywords" `Quick
@@ -996,6 +1030,8 @@ let () =
             non_minified_preserves_selector_forms;
           Alcotest.test_case "fidelity: value forms" `Quick
             non_minified_preserves_value_forms;
+          Alcotest.test_case "fidelity: grid forms" `Quick
+            non_minified_preserves_grid_forms;
           Alcotest.test_case "fidelity: color forms" `Quick
             non_minified_preserves_color_forms;
           Alcotest.test_case "fidelity: conditional forms" `Quick

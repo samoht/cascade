@@ -943,8 +943,8 @@ let matrix =
       };
       {
         property = "grid-template-areas";
-        positives = [ "none"; "\"a a\" \"b c\"" ];
-        negatives = [ "\"a\" \"a a\""; "a b" ];
+        positives = [ "none"; "\"a a\" \"b c\""; "\"nav  main\" \".    foot\"" ];
+        negatives = [ "\"a\" \"a a\""; "a b"; "\"nav/main\"" ];
       };
       {
         property = "grid-template";
