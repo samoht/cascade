@@ -39,6 +39,13 @@ type nth =
   | Index of int (* Just B: matches a single index *)
   | An_plus_b of int * int (* An+B: a is coefficient, b is offset *)
 
+(** CSS View Transitions 2 §3.4.1 [<vt-class-selector>]: an optional vt-name
+    ([<custom-ident>] or [*]) followed by zero or more [.<custom-ident>]
+    class qualifiers. The empty case (no name and no classes) does not
+    appear in cascade output - the parser always reads at least one
+    component. *)
+type vt_class_selector = { name : string option; classes : string list }
+
 type t =
   | Element of ns option * string
   | Class of string
@@ -182,11 +189,14 @@ type t =
   | Highlight of
       string list (* ::highlight(...) - takes custom highlight names *)
   | View_transition (* ::view-transition (CSS View Transitions 1 §3.2) *)
-  | View_transition_group of string (* ::view-transition-group(name) *)
-  | View_transition_image_pair of
-      string (* ::view-transition-image-pair(name) *)
-  | View_transition_old of string (* ::view-transition-old(name) *)
-  | View_transition_new of string (* ::view-transition-new(name) *)
+  | View_transition_group of vt_class_selector
+      (** ::view-transition-group with optional name and class suffixes. *)
+  | View_transition_image_pair of vt_class_selector
+      (** ::view-transition-image-pair with optional name and class suffixes. *)
+  | View_transition_old of vt_class_selector
+      (** ::view-transition-old with optional name and class suffixes. *)
+  | View_transition_new of vt_class_selector
+      (** ::view-transition-new with optional name and class suffixes. *)
   | Compound of t list
   | Combined of t * combinator * t
   | Relative of combinator * t
