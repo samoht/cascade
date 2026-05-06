@@ -340,6 +340,8 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
           Keyframes (n, map_keyframe_decls universal_frame frames)
       | Webkit_keyframes (n, frames) ->
           Webkit_keyframes (n, map_keyframe_decls universal_frame frames)
+      | Moz_keyframes (n, frames) ->
+          Moz_keyframes (n, map_keyframe_decls universal_frame frames)
       | Font_face descriptors ->
           let visible =
             visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
@@ -506,11 +508,13 @@ let rec refs_of_supports : Supports.t -> string list = function
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 
-let refs_of_style_query : Container.style_query -> string list = function
+let rec refs_of_style_query : Container.style_query -> string list = function
   | Boolean _ -> []
   | Declaration { value; _ } -> refs_of_components value
   | Range { lower; upper; _ } ->
       refs_of_components lower @ refs_of_components upper
+  | All (a, b) | Any (a, b) -> refs_of_style_query a @ refs_of_style_query b
+  | Neg query -> refs_of_style_query query
 
 let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
   function
@@ -583,7 +587,8 @@ let collect_scoped_refs stylesheet =
         | Page (_, decls) | Position_try (_, decls) ->
             let sel = Selector.Universal None in
             List.iter (record_decl ~at_path ~selector:sel) decls
-        | Keyframes (_, frames) | Webkit_keyframes (_, frames) ->
+        | Keyframes (_, frames) | Webkit_keyframes (_, frames)
+        | Moz_keyframes (_, frames) ->
             let sel = Selector.Universal None in
             List.iter
               (fun fr ->
