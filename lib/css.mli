@@ -701,7 +701,7 @@ type length =
   | Round of string * length * length  (** CSS [round()] math function *)
   | Mod of length * length  (** CSS [mod()] math function *)
   | Rem_fn of length * length  (** CSS [rem()] math function *)
-  | Hypot of length * length  (** CSS [hypot()] math function *)
+  | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
   | Sign of length  (** CSS [sign()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)

@@ -1284,14 +1284,25 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_length ~always ctx b)
         ctx (a, b)
-  | Hypot (Px a, Px b) when Pp.minified ctx -> pp_unit_fn (Float.hypot a b) "px"
-  | Hypot (a, b) ->
-      Pp.call "hypot"
-        (fun ctx (a, b) ->
-          pp_length ~always ctx a;
-          Pp.comma ctx ();
-          pp_length ~always ctx b)
-        ctx (a, b)
+  | Hypot [ (Px _ as value) ] when Pp.minified ctx ->
+      pp_length ~always ctx value
+  | Hypot values when Pp.minified ctx -> (
+      let px_values =
+        List.fold_right
+          (fun value acc ->
+            match (value, acc) with
+            | Px f, Some values -> Some (f :: values)
+            | _ -> None)
+          values (Some [])
+      in
+      match px_values with
+      | Some (_ :: _ as values) ->
+          let sum_sq =
+            List.fold_left (fun acc f -> acc +. (f *. f)) 0. values
+          in
+          pp_unit_fn (Float.sqrt sum_sq) "px"
+      | _ -> Pp.call_list "hypot" (pp_length ~always) ctx values)
+  | Hypot values -> Pp.call_list "hypot" (pp_length ~always) ctx values
   | Abs (Px x) when Pp.minified ctx -> pp_unit_fn (Float.abs x) "px"
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
   | Sign v ->
@@ -3378,13 +3389,13 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               Cursor.expect_eof inner;
               Rem_fn (a, b)
           | "hypot" ->
-              let a = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let b = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
+              let values =
+                Cursor.list ~sep:Cursor.comma
+                  (read_length ~allow_negative ~with_keywords)
+                  inner
+              in
               Cursor.expect_eof inner;
-              Hypot (a, b)
+              Hypot values
           | "abs" ->
               let value = read_length ~allow_negative ~with_keywords inner in
               Cursor.ws inner;

@@ -1248,8 +1248,8 @@ module Length = struct
           Values.Mod (simplify ~visited left, simplify ~visited right)
       | Values.Rem_fn (left, right) ->
           Values.Rem_fn (simplify ~visited left, simplify ~visited right)
-      | Values.Hypot (left, right) ->
-          Values.Hypot (simplify ~visited left, simplify ~visited right)
+      | Values.Hypot values ->
+          Values.Hypot (List.map (simplify ~visited) values)
       | Values.Abs value -> Values.Abs (simplify ~visited value)
       | Values.Sign value -> Values.Sign (simplify ~visited value)
       | Values.Calc_size (basis, calc) ->
