@@ -274,6 +274,7 @@ module Font_face = Font_face
 (* CSS Parsing *)
 
 type parse_error = Error.t * string
+type custom_value = Component.t list
 
 let pp_parse_error (err, filename) =
   String.concat "" [ filename; ": "; Error.to_string err ]
@@ -710,9 +711,36 @@ let parse ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
   let warnings = List.map (fun e -> (e, filename)) warnings in
   { stylesheet; warnings }
 
+let rec statements_for_inline = function
+  | Layer (_, block) -> List.concat_map statements_for_inline block
+  | Layer_decl _ | Property _ -> []
+  | Media (condition, block) ->
+      [ Media (condition, List.concat_map statements_for_inline block) ]
+  | Supports (condition, block) ->
+      [ Supports (condition, List.concat_map statements_for_inline block) ]
+  | Container (name, condition, block) ->
+      [ Container (name, condition, List.concat_map statements_for_inline block) ]
+  | Scope (start, end_, block) ->
+      [ Scope (start, end_, List.concat_map statements_for_inline block) ]
+  | Origin (origin, block) ->
+      [ Origin (origin, List.concat_map statements_for_inline block) ]
+  | When (condition, block) ->
+      [ When (condition, List.concat_map statements_for_inline block) ]
+  | Else (condition, block) ->
+      [ Else (condition, List.concat_map statements_for_inline block) ]
+  | Starting_style block ->
+      [ Starting_style (List.concat_map statements_for_inline block) ]
+  | statement -> [ statement ]
+
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
     ?(newline = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) stylesheet
     =
+  let stylesheet =
+    match mode with
+    | Inline ->
+        Inline.vars stylesheet |> List.concat_map statements_for_inline
+    | Variables -> stylesheet
+  in
   let stylesheet =
     if optimize then Optimize.stylesheet stylesheet
     else if minify then Optimize.apply_property_duplication stylesheet
