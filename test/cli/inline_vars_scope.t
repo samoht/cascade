@@ -23,7 +23,7 @@ that @media block.
   > .b { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars media.css
-  @media (min-width:30em){.a{color:red}}.b{color:var(--brand)}
+  @media (width>=30em){.a{color:red}}.b{color:var(--brand)}
 
 A variable declared inside @layer applies to consumers within the same
 layer; outside-layer use stays as var().
@@ -43,7 +43,7 @@ queries evaluate at layout time, not at the syntax layer).
   > @container (min-width: var(--bp)) { .x { color: red } }
   > EOF
   $ cascade --minify --inline-vars container.css 2>&1 | grep -v "warning"
-  :root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}
+  :root{--bp:30em}@container (width>=var(--bp)){.x{color:red}}
 
 A variable used in a @media query value is preserved. Custom property
 substitution only happens in property values, not media query syntax.
@@ -53,7 +53,7 @@ substitution only happens in property values, not media query syntax.
   > @media (min-width: var(--bp)) { .x { color: red } }
   > EOF
   $ cascade --minify --inline-vars media-query-var.css 2>&1 | grep -v "warning"
-  :root{--bp:30em}@media (min-width:var(--bp)){.x{color:red}}
+  :root{--bp:30em}@media (width>=var(--bp)){.x{color:red}}
 
 A variable used in an @supports condition is preserved for the same
 reason.

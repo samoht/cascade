@@ -30,14 +30,15 @@ A shorthand-valued variable inlines and the printer canonicalizes.
 
 The Tailwind opacity-guard pattern: alpha component reads from a guard
 variable. With both vars defined, the rgba() collapses to a fully-opaque
-form per CSS Color L4 §1.3.
+form per CSS Color L4 §1.3, then minifies to the shortest equivalent
+hex spelling.
 
   $ cat > opacity-guard.css <<EOF
   > :root { --tw-bg-opacity: 1; --tw-color: 248 113 113 }
   > .bg-red { background-color: rgba(var(--tw-color) / var(--tw-bg-opacity)) }
   > EOF
   $ cascade --minify --inline-vars opacity-guard.css
-  .bg-red{background-color:rgb(248 113 113)}
+  .bg-red{background-color:#f87171}
 
 A var() consumer with !important keeps the importance after substitution.
 
