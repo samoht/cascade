@@ -92,7 +92,7 @@ let generated_condition_stylesheet buf =
         Css.Media.of_string "(width >= 40em)";
         Css.Media.of_string "(30em <= width < 60em)";
         Css.Media.of_string "(dynamic-range: high)";
-        Css.Media.Prefers_reduced_motion `Reduce;
+        Css.Media.Prefers_reduced_motion Css.Media.Reduce;
       ]
       buf 0
   in
