@@ -13480,6 +13480,24 @@ module Animation = struct
   let effective_ambiguous_kind ~quote_name anim =
     if quote_name then Option.None else ambiguous_name_kind anim
 
+  (* When the colliding shorthand slot already carries an explicit non-default
+     value, the bare-ident form of the ambiguous name is unambiguous on
+     re-parse: the slot fills first, and the second occurrence falls through
+     to the keyframes-name. In that case the printer can skip the quoting
+     trick entirely. *)
+  let bare_ambiguous_safe ctx (anim : animation_shorthand) =
+    match ambiguous_name_kind anim with
+    | None -> false
+    | Some Timing -> (
+        match anim.timing_function with
+        | Some tf -> not (is_default_timing ctx tf)
+        | None -> false)
+    | Some Iteration -> is_iteration anim.iteration_count
+    | Some Direction -> is_direction anim.direction
+    | Some Fill -> is_fill_mode anim.fill_mode
+    | Some Play -> is_play_state anim.play_state
+    | Some Timeline -> is_timeline anim.timeline
+
   let duration (anim : animation_shorthand) : duration option =
     match (anim.duration, anim.delay) with
     | Some d, Some delay when is_zero_duration d && is_duration (Some delay) ->
@@ -13579,10 +13597,14 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
         true
     | _ -> false
   in
-  (* Quote ambiguous animation names in minified output when that is shorter
-     than printing default-value placeholders. *)
+  (* Quote ambiguous animation names in minified output when the colliding
+     slot would otherwise need a default-value placeholder. When the slot
+     already carries an explicit non-default value the bare ident is
+     unambiguous on re-parse, so leave the printer alone. *)
   let quote_ambiguous_name =
-    Pp.minified ctx && Animation.ambiguous_name_kind anim <> None
+    Pp.minified ctx
+    && Animation.ambiguous_name_kind anim <> None
+    && not (Animation.bare_ambiguous_safe ctx anim)
   in
   (match (anim.name, name_is_default_none, has_any_non_default) with
   | _, true, true -> ()
