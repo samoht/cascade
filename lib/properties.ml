@@ -5194,6 +5194,15 @@ let pp_property : type a. a property Pp.t =
   | Break_before -> Pp.string ctx "break-before"
   | Break_after -> Pp.string ctx "break-after"
   | Break_inside -> Pp.string ctx "break-inside"
+  | Page_break_before ->
+      Pp.string ctx
+        (if Pp.minified ctx then "break-before" else "page-break-before")
+  | Page_break_after ->
+      Pp.string ctx
+        (if Pp.minified ctx then "break-after" else "page-break-after")
+  | Page_break_inside ->
+      Pp.string ctx
+        (if Pp.minified ctx then "break-inside" else "page-break-inside")
   | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
   | Column_rule -> Pp.string ctx "column-rule"
@@ -7144,6 +7153,24 @@ let rec pp_page_break_inside_value : page_break_inside_value Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
   | Inherit -> Pp.string ctx "inherit"
+
+let break_of_page_break (value : page_break_value) : break_value =
+  match value with
+  | Auto -> Auto
+  | Always -> Page
+  | Avoid -> Avoid
+  | Left -> Left
+  | Right -> Right
+  | Inherit -> Inherit
+  | Var _ -> invalid_arg "page-break value var cannot be converted"
+
+let break_inside_of_page_break (value : page_break_inside_value) :
+    break_inside_value =
+  match value with
+  | Auto -> Auto
+  | Avoid -> Avoid
+  | Inherit -> Inherit
+  | Var _ -> invalid_arg "page-break-inside value var cannot be converted"
 
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function
@@ -14640,12 +14667,12 @@ let read_any_property t =
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
   | "size" -> Prop Page_size
-  (* CSS Fragmentation 3 §6 page-break-* aliases. The legacy values map onto the
-     modern [break-*] vocabulary at parse time so the canonical output emits
-     [break-before/after/inside]. *)
-  | "page-break-before" -> Prop Break_before
-  | "page-break-after" -> Prop Break_after
-  | "page-break-inside" -> Prop Break_inside
+  (* CSS Fragmentation 3 §6 page-break-* aliases. Keep them as typed legacy
+     properties so pretty output preserves the authored property name; minified
+     output still serializes through the shorter modern break-* spelling. *)
+  | "page-break-before" -> Prop Page_break_before
+  | "page-break-after" -> Prop Page_break_after
+  | "page-break-inside" -> Prop Page_break_inside
   | "columns" -> Prop Columns
   | "column-rule" -> Prop Column_rule
   | "column-span" -> Prop Column_span
@@ -16012,6 +16039,16 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
+  | Page_break_before ->
+      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
+      else pp_page_break_value ctx value
+  | Page_break_after ->
+      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
+      else pp_page_break_value ctx value
+  | Page_break_inside ->
+      if Pp.minified ctx then
+        pp_break_inside_value ctx (break_inside_of_page_break value)
+      else pp_page_break_inside_value ctx value
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Column_rule -> pp pp_border

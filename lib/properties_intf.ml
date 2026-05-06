@@ -4214,6 +4214,9 @@ type 'a property =
   | Break_before : break_value property
   | Break_after : break_value property
   | Break_inside : break_inside_value property
+  | Page_break_before : page_break_value property
+  | Page_break_after : page_break_value property
+  | Page_break_inside : page_break_inside_value property
   | Page_size : page_size property
   | Columns : columns_value property
   | Column_rule : border property

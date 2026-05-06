@@ -1140,6 +1140,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Break_before -> v Break_before (read_break_value t)
   | Break_after -> v Break_after (read_break_value t)
   | Break_inside -> v Break_inside (read_break_inside_value t)
+  | Page_break_before -> v Page_break_before (read_page_break_value t)
+  | Page_break_after -> v Page_break_after (read_page_break_value t)
+  | Page_break_inside -> v Page_break_inside (read_page_break_inside_value t)
   | Page_size -> v Page_size (read_page_size t)
   | Columns -> v Columns (read_columns_value t)
   | Column_rule -> v Column_rule (read_border t)
@@ -2010,28 +2013,9 @@ let isolation value = v Isolation value
 let break_before value = v Break_before value
 let break_after value = v Break_after value
 let break_inside value = v Break_inside value
-
-let break_of_page_break (value : page_break_value) : break_value =
-  match value with
-  | Auto -> Auto
-  | Always -> Page
-  | Avoid -> Avoid
-  | Left -> Left
-  | Right -> Right
-  | Inherit -> Inherit
-  | Var _ -> invalid_arg "page-break value var cannot be converted"
-
-let break_inside_of_page_break (value : page_break_inside_value) :
-    break_inside_value =
-  match value with
-  | Auto -> Auto
-  | Avoid -> Avoid
-  | Inherit -> Inherit
-  | Var _ -> invalid_arg "page-break-inside value var cannot be converted"
-
-let page_break_before value = v Break_before (break_of_page_break value)
-let page_break_after value = v Break_after (break_of_page_break value)
-let page_break_inside value = v Break_inside (break_inside_of_page_break value)
+let page_break_before value = v Page_break_before value
+let page_break_after value = v Page_break_after value
+let page_break_inside value = v Page_break_inside value
 let columns value = v Columns value
 let column_rule value = v Column_rule value
 let column_span value = v Column_span value
