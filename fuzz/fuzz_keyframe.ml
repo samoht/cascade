@@ -40,6 +40,8 @@ let test_selector_roundtrip buf =
 let position_in_spec_range = function
   | Css.Keyframe.From | Css.Keyframe.To -> true
   | Css.Keyframe.Percent p -> Float.is_finite p && p >= 0. && p <= 100.
+  | Css.Keyframe.Timeline_range (_, p) ->
+      Float.is_finite p && p >= 0. && p <= 100.
 
 let test_position_spec_range buf =
   match Css.Keyframe.position_of_string buf with

@@ -13475,6 +13475,11 @@ module Animation = struct
         animation_shorthand_kind (String.lowercase_ascii name)
     | _ -> None
 
+  (* If the caller will quote an ambiguous animation name, the placeholder slot
+     used for unquoted disambiguation is no longer needed. *)
+  let effective_ambiguous_kind ~quote_name anim =
+    if quote_name then Option.None else ambiguous_name_kind anim
+
   let duration (anim : animation_shorthand) : duration option =
     match (anim.duration, anim.delay) with
     | Some d, Some delay when is_zero_duration d && is_duration (Some delay) ->
@@ -13484,8 +13489,11 @@ module Animation = struct
         | Some d when not (is_zero_duration d) -> Some d
         | _ -> None)
 
-  let timing ctx (anim : animation_shorthand) : timing_function option =
-    match (anim.timing_function, ambiguous_name_kind anim) with
+  let timing ?(quote_name = false) ctx (anim : animation_shorthand) :
+      timing_function option =
+    match
+      (anim.timing_function, effective_ambiguous_kind ~quote_name anim)
+    with
     | (Some Ease | None), Some Timing -> Some Ease
     | Some tf, _ when is_default_timing ctx tf -> None
     | None, _ -> None
@@ -13496,33 +13504,39 @@ module Animation = struct
     | Some d when not (is_zero_duration d) -> Some d
     | _ -> None
 
-  let iteration (anim : animation_shorthand) : animation_iteration_count option
-      =
-    match (anim.iteration_count, ambiguous_name_kind anim) with
+  let iteration ?(quote_name = false) (anim : animation_shorthand) :
+      animation_iteration_count option =
+    match
+      (anim.iteration_count, effective_ambiguous_kind ~quote_name anim)
+    with
     | (Some (Num 1.) | None), Some Iteration -> Some (Num 1.)
     | Some (Num 1.), _ | None, _ -> None
     | Some c, _ -> Some c
 
-  let direction (anim : animation_shorthand) : animation_direction option =
-    match (anim.direction, ambiguous_name_kind anim) with
+  let direction ?(quote_name = false) (anim : animation_shorthand) :
+      animation_direction option =
+    match (anim.direction, effective_ambiguous_kind ~quote_name anim) with
     | (Some Normal | None), Some Direction -> Some Normal
     | Some Normal, _ | None, _ -> None
     | Some d, _ -> Some d
 
-  let fill_mode (anim : animation_shorthand) : animation_fill_mode option =
-    match (anim.fill_mode, ambiguous_name_kind anim) with
+  let fill_mode ?(quote_name = false) (anim : animation_shorthand) :
+      animation_fill_mode option =
+    match (anim.fill_mode, effective_ambiguous_kind ~quote_name anim) with
     | (Some None | None), Some Fill -> Some None
     | Some None, _ | None, _ -> None
     | Some m, _ -> Some m
 
-  let play_state (anim : animation_shorthand) : animation_play_state option =
-    match (anim.play_state, ambiguous_name_kind anim) with
+  let play_state ?(quote_name = false) (anim : animation_shorthand) :
+      animation_play_state option =
+    match (anim.play_state, effective_ambiguous_kind ~quote_name anim) with
     | (Some Running | None), Some Play -> Some Running
     | Some Running, _ | None, _ -> None
     | Some s, _ -> Some s
 
-  let timeline (anim : animation_shorthand) : animation_timeline option =
-    match (anim.timeline, ambiguous_name_kind anim) with
+  let timeline ?(quote_name = false) (anim : animation_shorthand) :
+      animation_timeline option =
+    match (anim.timeline, effective_ambiguous_kind ~quote_name anim) with
     | (Some Auto | None), Some Timeline -> Some Auto
     | Some Auto, _ | None, _ -> None
     | Some tl, _ -> Some tl
@@ -13537,13 +13551,21 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
   (* Track if the previous value ends with ')' - timing functions end with
      ')' *)
   let prev_ends_with_paren = ref false in
-  let space_before ?(ends_with_paren = false) pp ctx x =
+  let prev_ends_with_quote = ref false in
+  let space_before ?(ends_with_paren = false) ?(ends_with_quote = false)
+      ?(starts_with_quote = false) pp ctx x =
     if !first then first := false
-    else if Pp.minified ctx && !prev_ends_with_paren then
-      (* In minified mode, no space needed after ')' before an identifier *)
+    else if
+      Pp.minified ctx
+      && (!prev_ends_with_paren || !prev_ends_with_quote || starts_with_quote)
+    then
+      (* Minified output drops the inter-token space when one side already
+         carries a self-delimiting boundary - a closing function paren, a
+         closing string quote, or an upcoming opening string quote. *)
       ()
     else Pp.char ctx ' ';
     prev_ends_with_paren := ends_with_paren;
+    prev_ends_with_quote := ends_with_quote;
     pp ctx x
   in
   let has_any_non_default = Animation.has_non_defaults ctx anim in
@@ -13557,13 +13579,18 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
         true
     | _ -> false
   in
+  (* Quote ambiguous animation names in minified output when that is shorter
+     than printing default-value placeholders. *)
+  let quote_ambiguous_name =
+    Pp.minified ctx && Animation.ambiguous_name_kind anim <> None
+  in
   (match (anim.name, name_is_default_none, has_any_non_default) with
   | _, true, true -> ()
   | None, _, false -> Pp.string ctx "none"
   | None, _, true -> ()
   | Some _, _, _ -> ());
   Pp.option (space_before pp_duration) ctx (Animation.duration anim);
-  (match Animation.timing ctx anim with
+  (match Animation.timing ~quote_name:quote_ambiguous_name ctx anim with
   | Some tf ->
       let ends = Animation.ends_with_paren ctx tf in
       space_before ~ends_with_paren:ends Animation.pp_timing ctx tf
@@ -13571,16 +13598,30 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
   Pp.option (space_before pp_duration) ctx (Animation.delay anim);
   Pp.option
     (space_before Animation.pp_iter_count)
-    ctx (Animation.iteration anim);
-  Pp.option (space_before pp_animation_direction) ctx (Animation.direction anim);
-  Pp.option (space_before pp_animation_fill_mode) ctx (Animation.fill_mode anim);
+    ctx
+    (Animation.iteration ~quote_name:quote_ambiguous_name anim);
+  Pp.option (space_before pp_animation_direction) ctx
+    (Animation.direction ~quote_name:quote_ambiguous_name anim);
+  Pp.option (space_before pp_animation_fill_mode) ctx
+    (Animation.fill_mode ~quote_name:quote_ambiguous_name anim);
   Pp.option
     (space_before pp_animation_play_state)
     ctx
-    (Animation.play_state anim);
+    (Animation.play_state ~quote_name:quote_ambiguous_name anim);
   if not name_is_default_none then
-    Option.iter (space_before pp_animation_name ctx) anim.name;
-  Pp.option (space_before pp_animation_timeline) ctx (Animation.timeline anim)
+    Option.iter
+      (fun (name : animation_name) ->
+        match name with
+        | Ambiguous s when quote_ambiguous_name ->
+            space_before ~starts_with_quote:true ~ends_with_quote:true
+              Pp.quoted_string ctx s
+        | Quoted s ->
+            space_before ~starts_with_quote:true ~ends_with_quote:true
+              Pp.quoted_string ctx s
+        | _ -> space_before pp_animation_name ctx name)
+      anim.name;
+  Pp.option (space_before pp_animation_timeline) ctx
+    (Animation.timeline ~quote_name:quote_ambiguous_name anim)
 
 and pp_animation : animation Pp.t =
  fun ctx -> function
