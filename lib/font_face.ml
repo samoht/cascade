@@ -39,6 +39,15 @@ let url_needs_quotes s =
     (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
     s
 
+let is_ident_start c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+
+let is_ident_cont c =
+  is_ident_start c || (c >= '0' && c <= '9')
+
+let can_print_bare_ident s =
+  String.length s > 0 && is_ident_start s.[0] && String.for_all is_ident_cont s
+
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
    Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
    doesn't require whitespace between the function calls. *)
@@ -46,9 +55,13 @@ let pp_src_modifiers ctx ~format ~tech =
   (match format with
   | Some f ->
       Pp.sp ctx ();
-      Pp.string ctx "format(\"";
-      Pp.string ctx f;
-      Pp.string ctx "\")"
+      Pp.string ctx "format(";
+      if Pp.minified ctx && can_print_bare_ident f then Pp.string ctx f
+      else (
+        Pp.char ctx '"';
+        Pp.string ctx f;
+        Pp.char ctx '"');
+      Pp.char ctx ')'
   | None -> ());
   match tech with
   | Some t ->
