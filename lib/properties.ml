@@ -12218,7 +12218,7 @@ let rec read_outline t : outline =
       Cursor.is_done t || Cursor.peek_semicolon t
       || Cursor.peek_delim t = Some '!'
     in
-    let rec parse_parts () =
+    let rec read_parts () =
       Cursor.ws t;
       if at_end () then ()
       else
@@ -12230,7 +12230,7 @@ let rec read_outline t : outline =
         in
         if found_style then (
           style := Some (read_outline_style t);
-          parse_parts ())
+          read_parts ())
         else
           let is_length_start =
             Option.is_some
@@ -12241,12 +12241,12 @@ let rec read_outline t : outline =
           in
           if Option.is_none !width && is_length_start then (
             width := Some (read_length t);
-            parse_parts ())
+            read_parts ())
           else if Option.is_none !color && not (at_end ()) then (
             color := Some (read_color t);
-            parse_parts ())
+            read_parts ())
     in
-    parse_parts ();
+    read_parts ();
     match (!width, !style, !color) with
     | Option.None, Some (None : outline_style), Option.None -> None
     | _ ->

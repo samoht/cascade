@@ -1998,7 +1998,7 @@ let fallback_to_string inner =
     variable handle for parsing purposes only - it doesn't have type or layer
     information which would need to be resolved from a variable registry or
     context. *)
-let parse_var_reference (r : Cursor.t) : string * string option =
+let read_reference (r : Cursor.t) : string * string option =
   (* CSS Syntax 3 §4.3.6: EOF inside a function is a parse error. We tolerate it
      only when the fallback list was opened with a comma — the trailing
      [<string-token>] from §4.3.5 may have eaten the function's closing [)] — so

@@ -4,10 +4,10 @@ open Cascade
 open Alcobar
 
 let parse_list input =
-  (Css.Parser.parse_list_of_component_values (Css.Reader.of_string input)).value
+  (Css.Parser.list_of_component_values (Css.Reader.of_string input)).value
 
 let parse_comma_list input =
-  (Css.Parser.parse_csv_component_values (Css.Reader.of_string input)).value
+  (Css.Parser.csv_component_values (Css.Reader.of_string input)).value
 
 let cssish buf =
   let alphabet =
@@ -89,9 +89,9 @@ let string_rev s =
 (** Component-value parsing must not crash on decoded CSS-shaped input. *)
 let test_component_value_crash_safety buf =
   let buf = cssish buf in
-  ignore (Css.Parser.parse_component_value (Css.Reader.of_string buf));
-  ignore (Css.Parser.parse_list_of_component_values (Css.Reader.of_string buf));
-  ignore (Css.Parser.parse_csv_component_values (Css.Reader.of_string buf))
+  ignore (Css.Parser.component_value (Css.Reader.of_string buf));
+  ignore (Css.Parser.list_of_component_values (Css.Reader.of_string buf));
+  ignore (Css.Parser.csv_component_values (Css.Reader.of_string buf))
 
 (** Minified serialization should be idempotent after reparsing. *)
 let test_component_value_minified_idempotent buf =

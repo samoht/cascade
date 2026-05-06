@@ -988,7 +988,7 @@ let read_charset (r : Cursor.t) : statement =
    into a typed [Error.Parse_error] so the partial-parse catch in
    [read_statement_from_rule] surfaces it as a warning instead of escaping to
    the [Css.parse] caller. *)
-let parse_supports_condition ~loc condition =
+let supports_condition ~loc condition =
   try Supports.of_string condition
   with Failure reason ->
     Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
@@ -1173,13 +1173,13 @@ let read_webkit_keyframes r =
     r
 
 (* Read a font-face descriptor *)
-(* Helper to parse descriptor value after colon *)
-let read_descriptor_value parse_fn constructor r =
+(* Helper to read descriptor value after colon *)
+let read_descriptor_value read_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
   try
-    let value = parse_fn r in
+    let value = read_fn r in
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
@@ -1635,7 +1635,7 @@ let conditional_atom (fn : Component.func Component.node) =
         (Supports.of_string ~allow_unwrapped_decl:true (conditional_args fn))
   | name -> failwith ("unknown conditional function: " ^ name)
 
-let parse_conditional_components components =
+let conditional_components components =
   let cursor = Cursor.of_components components in
   let peek_ident () =
     match Cursor.peek cursor with
@@ -1675,7 +1675,7 @@ let parse_conditional_components components =
 
 let follows_conditional = function When _ | Else _ -> true | _ -> false
 
-let parse_scope_prelude r prelude_components =
+let scope_prelude r prelude_components =
   let prelude = Cursor.components_to_string ~trim:true prelude_components in
   let rec split_at_to seen rest =
     match rest with
@@ -1774,7 +1774,7 @@ and read_when (r : Cursor.t) : statement =
   if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
   then Cursor.err_invalid r "@when: missing condition";
   let condition =
-    try parse_conditional_components prelude
+    try conditional_components prelude
     with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
   in
   let content = Cursor.braces (fun inner -> read_block inner) r in
@@ -1794,7 +1794,7 @@ and read_else (r : Cursor.t) : statement =
     with
     | [] -> None
     | _ -> (
-        try Some (parse_conditional_components prelude)
+        try Some (conditional_components prelude)
         with Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
   in
   let content = Cursor.braces (fun inner -> read_block inner) r in
@@ -1832,7 +1832,7 @@ and read_supports (r : Cursor.t) : statement =
   if String.length condition = 0 then
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Supports (parse_supports_condition ~loc:cond_loc condition, content)
+  Supports (supports_condition ~loc:cond_loc condition, content)
 
 and read_scope (r : Cursor.t) : statement =
   (* CSS Scoping section 3: [@scope <start> to <end> { ... }]. The two selectors
@@ -1840,7 +1840,7 @@ and read_scope (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
   let prelude_components = Cursor.drain_until_block r in
-  let scope_start, scope_end = parse_scope_prelude r prelude_components in
+  let scope_start, scope_end = scope_prelude r prelude_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Scope (scope_start, scope_end, content)
 
@@ -1980,7 +1980,7 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       let cond_loc = Cursor.position r in
       let condition = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Supports (parse_supports_condition ~loc:cond_loc condition, content)
+      Supports (supports_condition ~loc:cond_loc condition, content)
   | "@media" ->
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
@@ -1993,7 +1993,7 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       Media (condition, content)
   | "@scope" ->
       let prelude_components = Cursor.drain_until_block r in
-      let scope_start, scope_end = parse_scope_prelude r prelude_components in
+      let scope_start, scope_end = scope_prelude r prelude_components in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Scope (scope_start, scope_end, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
@@ -2263,11 +2263,11 @@ let read_stylesheet_from_rules ?source ?meta (rules : Component.rule list) :
   (statements, List.rev !warnings)
 
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
-   from [Parser.parse_stylesheet] with per-rule typed-validation warnings. *)
+   from [Parser.stylesheet] with per-rule typed-validation warnings. *)
 let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
     : stylesheet * Error.t list =
   let reader = Reader.of_string source in
-  let out = Parser.parse_stylesheet ~meta reader in
+  let out = Parser.stylesheet ~meta reader in
   (* Snippets must be sliced from the preprocessed buffer so their offsets line
      up with the locs the lexer produced (see Cursor.of_string). *)
   let sheet, typed_warnings =
