@@ -25,20 +25,23 @@ let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
 let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
 let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
 let hwba h w b a = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = Num a }
-let oklch l c h = Oklch { l = Pct l; c; h = Unitless h; alpha = None }
-let oklcha l c h a = Oklch { l = Pct l; c; h = Unitless h; alpha = Num a }
-let oklab l a b = Oklab { l = Pct l; a = Some a; b = Some b; alpha = None }
+let oklch l c h = Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+let oklcha l c h a =
+  Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
+let oklab l a b =
+  Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = None }
 
 let oklaba l a b alpha =
-  Oklab { l = Pct l; a = Some a; b = Some b; alpha = Num alpha }
+  Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = Num alpha }
 
 let oklaba_none_zeros l a b alpha =
   let a = if a = 0.0 then Stdlib.Option.None else Stdlib.Option.Some a in
   let b = if b = 0.0 then Stdlib.Option.None else Stdlib.Option.Some b in
-  Oklab { l = Pct l; a; b; alpha = Num alpha }
+  Oklab { l = Some (Pct l); a; b; alpha = Num alpha }
 
-let lch l c h = Lch { l = Pct l; c; h = Unitless h; alpha = None }
-let lcha l c h a = Lch { l = Pct l; c; h = Unitless h; alpha = Num a }
+let lch l c h = Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+let lcha l c h a =
+  Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
 let color_name n = Named n
 let current_color = Current
 let transparent = Transparent
@@ -2010,8 +2013,8 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let space_after_color_percentage ctx (l : percentage) =
-  match (Pp.minified ctx, l) with true, Pct _ -> () | _ -> Pp.space ctx ()
+let space_after_color_percentage ctx (l : percentage option) =
+  match (Pp.minified ctx, l) with true, Some (Pct _) -> () | _ -> Pp.space ctx ()
 
 (** Lab-like float string with precision control. Non-minified: fixed decimal
     places (matching upstream Tailwind test expectations). Minified: 6
@@ -2037,15 +2040,26 @@ let ends_with_pct s =
   len > 0 && s.[len - 1] = '%'
 
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
-    (percentage * float * hue * alpha) Pp.t =
+    (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
-  pp_percentage ctx l;
+  (match l with
+  | Some l -> pp_percentage ctx l
+  | None -> Pp.string ctx "none");
   space_after_color_percentage ctx l;
-  let c =
-    string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale ctx c
+  let c_ends_with_pct =
+    match c with
+    | Some c ->
+        let c =
+          string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale
+            ctx c
+        in
+        Pp.string ctx c;
+        ends_with_pct c
+    | None ->
+        Pp.string ctx "none";
+        false
   in
-  Pp.string ctx c;
-  if not (ctx.Pp.minify && ends_with_pct c) then Pp.space ctx ();
+  if not (ctx.Pp.minify && c_ends_with_pct) then Pp.space ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
@@ -2083,14 +2097,15 @@ let pp_lab_axis ~pct_scale ctx = function
   | None -> Pp.string ctx "none"
 
 let pp_lab_like_args ~axis_pct_scale :
-    (percentage * float option * float option * alpha) Pp.t =
+    (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   (* Oklab L: percentage with controlled precision *)
   (match l with
-  | Pct f ->
+  | Some (Pct f) ->
       pp_lab_float ~max_decimals:4 ctx f;
       Pp.char ctx '%'
-  | _ -> pp_percentage ctx l);
+  | Some l -> pp_percentage ctx l
+  | None -> Pp.string ctx "none");
   space_after_color_percentage ctx l;
   pp_lab_axis ~pct_scale:axis_pct_scale ctx a;
   Pp.space ctx ();
@@ -3431,32 +3446,19 @@ let read_hwb t : color =
   Cursor.expect_eof t;
   Hwb { h; w = Pct w; b = Pct b; a }
 
-let read_oklch t : color =
+let read_ok_lightness t : percentage option =
   Cursor.ws t;
-  (* L can be 0-1 or 0%-100% per CSS spec *)
-  let l =
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    Option.None)
+  else
     let n, unit = Cursor.number_with_unit t in
     match unit with
-    | Some "%" -> n (* Already a percentage value *)
-    | None when n >= 0. && n <= 1. -> n *. 100. (* Convert 0-1 *)
+    | Some "%" -> Some (Pct n : percentage)
+    | None when n >= 0. && n <= 1. -> Some (Pct (n *. 100.) : percentage)
     | _ ->
         Cursor.err_invalid t
           ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
-  in
-  Cursor.ws t;
-  let c =
-    let n, unit = Cursor.number_with_unit t in
-    match unit with
-    | Some "%" -> n *. 0.004
-    | None -> n
-    | Some unit -> Cursor.err_invalid t ("invalid oklch chroma unit: " ^ unit)
-  in
-  Cursor.ws t;
-  let h = read_hue t in
-  let alpha = read_optional_alpha t in
-  Cursor.ws t;
-  Cursor.expect_eof t;
-  Oklch { l = Pct l; c; h; alpha }
 
 let read_number_or_none ?pct_scale t : float option =
   Cursor.ws t;
@@ -3476,53 +3478,68 @@ let read_number_or_none ?pct_scale t : float option =
     | None -> Some n
     | Some unit -> Cursor.err_invalid t ("invalid unit: " ^ unit)
 
+let read_oklch t : color =
+  Cursor.ws t;
+  (* L can be 0-1 or 0%-100% per CSS spec. *)
+  let l = read_ok_lightness t in
+  Cursor.ws t;
+  let c = read_number_or_none ~pct_scale:0.004 t in
+  Cursor.ws t;
+  let h = read_hue t in
+  let alpha = read_optional_alpha t in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Oklch { l; c; h; alpha }
+
 let read_oklab t : color =
   Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec *)
-  let l =
-    let n, unit = Cursor.number_with_unit t in
-    match unit with
-    | Some "%" -> n (* Already a percentage value *)
-    | None when n >= 0. && n <= 1. -> n *. 100. (* Convert 0-1 *)
-    | _ ->
-        Cursor.err_invalid t
-          ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
-  in
+  let l = read_ok_lightness t in
   let a = read_number_or_none ~pct_scale:0.004 t in
   let b = read_number_or_none ~pct_scale:0.004 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
-  Oklab { l = Pct l; a; b; alpha }
+  Oklab { l; a; b; alpha }
 
 let read_lab t : color =
   Cursor.ws t;
   (* CSS Color 4 10: [lab()]'s L axis accepts either [<percentage>] or
      [<number>]; the [Lab L*] coordinate is the same range either way, so a bare
      number is folded into the [Pct] storage. *)
-  let l = Cursor.one_of [ read_percentage_float; Cursor.number ] t in
+  let l : percentage option =
+    if Cursor.looking_at t "none" then (
+      Cursor.expect_string "none" t;
+      Option.None)
+    else
+      Some
+        (Pct (Cursor.one_of [ read_percentage_float; Cursor.number ] t)
+          : percentage)
+  in
   let a = read_number_or_none ~pct_scale:1.25 t in
   let b = read_number_or_none ~pct_scale:1.25 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
-  Lab { l = Pct l; a; b; alpha }
+  Lab { l; a; b; alpha }
 
 let read_lch t : color =
   Cursor.ws t;
-  let read_l_axis = Cursor.one_of [ read_percentage_float; Cursor.number ] in
-  let read_c t =
-    let n, unit = Cursor.number_with_unit t in
-    match unit with
-    | Some "%" -> n *. 1.5
-    | None -> n
-    | Some unit -> Cursor.err_invalid t ("invalid lch chroma unit: " ^ unit)
+  let read_l_axis t : percentage option =
+    if Cursor.looking_at t "none" then (
+      Cursor.expect_string "none" t;
+      Option.None)
+    else
+      Some
+        (Pct (Cursor.one_of [ read_percentage_float; Cursor.number ] t)
+          : percentage)
   in
+  let read_c = read_number_or_none ~pct_scale:1.5 in
   let l, c, h = Cursor.triple ~sep:Cursor.ws read_l_axis read_c read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
-  Lch { l = Pct l; c; h; alpha }
+  Lch { l; c; h; alpha }
 
 let read_color_function t : color =
   Cursor.ws t;
@@ -3574,6 +3591,27 @@ let read_optional_percentage t : percentage option =
             (Pct (n *. 100.0) : percentage))
           t
 
+let hue_interpolation_start = function
+  | "shorter" | "longer" | "increasing" | "decreasing" -> true
+  | _ -> false
+
+let read_hue_interpolation_direction t : hue_interpolation =
+  Cursor.enum "hue-interpolation"
+    [
+      ("shorter", Shorter);
+      ("longer", Longer);
+      ("increasing", Increasing);
+      ("decreasing", Decreasing);
+    ]
+    t
+
+let read_full_hue_interpolation t : hue_interpolation =
+  let hue = read_hue_interpolation_direction t in
+  Cursor.ws t;
+  Cursor.expect_string "hue" t;
+  Cursor.ws t;
+  hue
+
 let rec read_color_mix t : color =
   Cursor.ws t;
   let read_color_mix_component t =
@@ -3609,21 +3647,8 @@ let rec read_color_mix t : color =
       (* For cylindrical color spaces, check for hue interpolation *)
       let hue =
         match Cursor.peek_ident t with
-        | Some ("shorter" | "longer" | "increasing" | "decreasing") ->
-            let hue =
-              Cursor.enum "hue-interpolation"
-                [
-                  ("shorter", Shorter);
-                  ("longer", Longer);
-                  ("increasing", Increasing);
-                  ("decreasing", Decreasing);
-                ]
-                t
-            in
-            Cursor.ws t;
-            Cursor.expect_string "hue" t;
-            Cursor.ws t;
-            hue
+        | Some name when hue_interpolation_start (String.lowercase_ascii name) ->
+            read_full_hue_interpolation t
         | _ -> Default
       in
       (Some space, hue))
@@ -4320,15 +4345,23 @@ let read_color_name t : color_name =
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =
   Cursor.ws t;
-  Cursor.enum "hue-interpolation"
-    [
-      ("shorter", Shorter);
-      ("longer", Longer);
-      ("increasing", Increasing);
-      ("decreasing", Decreasing);
-      ("default", Default);
-    ]
-    t
+  let hue =
+    Cursor.enum "hue-interpolation"
+      [
+        ("shorter", Shorter);
+        ("longer", Longer);
+        ("increasing", Increasing);
+        ("decreasing", Decreasing);
+        ("default", Default);
+      ]
+      t
+  in
+  (match hue with
+  | Default -> ()
+  | _ ->
+      Cursor.ws t;
+      ignore (Cursor.option (Cursor.expect_string "hue") t));
+  hue
 
 (** Read calc_op *)
 let read_calc_op t : calc_op =

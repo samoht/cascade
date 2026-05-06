@@ -372,15 +372,30 @@ type color =
   | Relative_rgb of string
   | Contrast_color of color
   | Light_dark of color * color
-  | Lab of { l : percentage; a : float option; b : float option; alpha : alpha }
-  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
-  | Oklab of {
-      l : percentage;
+  | Lab of {
+      l : percentage option;
       a : float option;
       b : float option;
       alpha : alpha;
     }
-  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Oklch of {
+      l : percentage option;
+      c : float option;
+      h : hue;
+      alpha : alpha;
+    }
+  | Oklab of {
+      l : percentage option;
+      a : float option;
+      b : float option;
+      alpha : alpha;
+    }
+  | Lch of {
+      l : percentage option;
+      c : float option;
+      h : hue;
+      alpha : alpha;
+    }
   | Named of color_name
   | System of system_color
   | Var of color var
