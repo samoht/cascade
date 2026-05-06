@@ -773,6 +773,7 @@ type grid_line =
   | Auto
   | Num of int
   | Name of string
+  | Num_name of int * string
   | Span of int
   | Span_name of string
   | Span_num_name of int * string

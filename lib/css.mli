@@ -3468,6 +3468,7 @@ type grid_line =
   | Auto  (** auto *)
   | Num of int  (** 1, 2, 3, ... or -1, -2, ... *)
   | Name of string  (** "header-start", "main-end", etc. *)
+  | Num_name of int * string  (** <integer> <custom-ident> *)
   | Span of int  (** span 2, span 3, etc. *)
   | Span_name of string  (** span <custom-ident> *)
   | Span_num_name of int * string  (** span <integer> <custom-ident> *)
