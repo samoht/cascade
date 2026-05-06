@@ -579,10 +579,63 @@ let vars_of_webkit_gradient_stop = function
   | Properties.Webkit_gradient.Color_stop (position, color) ->
       vars_of_percentage position @ vars_of_color color
 
+let vars_of_color_interpolation (value : Properties.color_interpolation) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let rec vars_of_gradient_direction (value : Properties.gradient_direction) :
+    any_var list =
+  match value with
+  | Angle angle -> vars_of_angle angle
+  | With_interpolation (direction, interpolation) ->
+      vars_of_gradient_direction direction
+      @ vars_of_color_interpolation interpolation
+  | Var v -> [ V v ]
+  | _ -> []
+
+let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Color_percentage (color, first, second) ->
+      vars_of_color color
+      @ Option.fold ~none:[] ~some:vars_of_length_percentage first
+      @ Option.fold ~none:[] ~some:vars_of_length_percentage second
+  | Color_length (color, first, second) ->
+      vars_of_color color
+      @ Option.fold ~none:[] ~some:vars_of_length first
+      @ Option.fold ~none:[] ~some:vars_of_length second
+  | Length length -> vars_of_length length
+  | Channel channel -> vars_of_channel channel
+  | Percentage percentage -> vars_of_percentage percentage
+  | List stops -> List.concat_map vars_of_gradient_stop stops
+  | Direction direction -> vars_of_gradient_direction direction
+
 let vars_of_background_image (value : Properties.background_image) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Linear_gradient (direction, stops)
+  | Repeating_linear_gradient (direction, stops)
+  | Webkit_linear_gradient (direction, stops)
+  | Webkit_repeating_linear_gradient (direction, stops)
+  | Moz_linear_gradient (direction, stops)
+  | Moz_repeating_linear_gradient (direction, stops)
+  | O_linear_gradient (direction, stops)
+  | O_repeating_linear_gradient (direction, stops) ->
+      vars_of_gradient_direction direction
+      @ List.concat_map vars_of_gradient_stop stops
+  | Radial_gradient (_, stops)
+  | Repeating_radial_gradient (_, stops)
+  | Webkit_radial_gradient (_, stops)
+  | Webkit_repeating_radial_gradient (_, stops)
+  | Moz_radial_gradient (_, stops)
+  | Moz_repeating_radial_gradient (_, stops)
+  | O_radial_gradient (_, stops)
+  | O_repeating_radial_gradient (_, stops)
+  | Conic_gradient (_, stops)
+  | Repeating_conic_gradient (_, stops) ->
+      List.concat_map vars_of_gradient_stop stops
   | Webkit_gradient (Webkit_gradient.Linear { stops; _ })
   | Webkit_gradient (Webkit_gradient.Radial { stops; _ }) ->
       List.concat_map vars_of_webkit_gradient_stop stops

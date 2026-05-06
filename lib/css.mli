@@ -2649,6 +2649,19 @@ type background_image =
   | Repeating_radial_gradient of radial_gradient_config * gradient_stop list
   | Repeating_conic_gradient of conic_gradient_config * gradient_stop list
       (** [repeating-{linear,radial,conic}-gradient()] CSS Images 4 §3. *)
+  | Webkit_linear_gradient of gradient_direction * gradient_stop list
+  | Webkit_repeating_linear_gradient of gradient_direction * gradient_stop list
+  | Webkit_radial_gradient of radial_gradient_config * gradient_stop list
+  | Webkit_repeating_radial_gradient of
+      radial_gradient_config * gradient_stop list
+  | Moz_linear_gradient of gradient_direction * gradient_stop list
+  | Moz_repeating_linear_gradient of gradient_direction * gradient_stop list
+  | Moz_radial_gradient of radial_gradient_config * gradient_stop list
+  | Moz_repeating_radial_gradient of radial_gradient_config * gradient_stop list
+  | O_linear_gradient of gradient_direction * gradient_stop list
+  | O_repeating_linear_gradient of gradient_direction * gradient_stop list
+  | O_radial_gradient of radial_gradient_config * gradient_stop list
+  | O_repeating_radial_gradient of radial_gradient_config * gradient_stop list
   | Image_set of image_set_option list
       (** [image-set(<source>#)] CSS Images 4 *)
   | Cross_fade of cross_fade_option list
