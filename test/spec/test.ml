@@ -536,7 +536,8 @@ let grid_template_areas () =
     ".x{grid-template-areas:\". .\"}";
   roundtrip ".x { content: \"nav  main\" }" ".x{content:\"nav  main\"}";
   rejects_invalid ".x { grid-template-areas: \"nav/main\" }";
-  rejects_invalid ".x { grid-template-areas: \"nav main\" \"foot\" }"
+  rejects_invalid ".x { grid-template-areas: \"nav main\" \"foot\" }";
+  rejects_invalid ".x { grid-template-areas: \"a .\" \". a\" }"
 
 (* {2 CSS Nesting Level 1} https://www.w3.org/TR/css-nesting-1/ *)
 

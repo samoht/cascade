@@ -2690,6 +2690,7 @@ let test_grid_template () =
     ~expected:"\"nav  main\" \".    foot\"" "\"nav  main\" \".    foot\"";
   neg_cursor read_grid_template_areas "\"nav/main\"";
   neg_cursor read_grid_template_areas "\"nav main\" \"foot\"";
+  neg_cursor read_grid_template_areas "\"a .\" \". a\"";
   neg_cursor read_grid_template "invalid-template"
 
 let test_justify_content () =
