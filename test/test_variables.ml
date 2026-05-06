@@ -256,7 +256,7 @@ let test_syntax () =
   ()
 
 (* ignore-test: read_reference is a function, not a type *)
-let test_parse_var_reference () =
+let test_read_var_reference () =
   (* Test parsing CSS var() references - just extracts name and fallback *)
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
@@ -379,7 +379,7 @@ let tests =
     ("compare vars by name", `Quick, test_compare_vars_by_name);
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
-    ("read_reference", `Quick, test_parse_var_reference);
+    ("read_reference", `Quick, test_read_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
     ( "spec custom property computed-time edges",
       `Quick,
