@@ -19,6 +19,10 @@ let rec meta_of_declaration : declaration -> meta option = function
 let v ?(important = false) property value =
   Declaration { property; value; important }
 
+let opaque_property ?(important = false) name value =
+  let components = Cursor.remaining (Cursor.of_string value) in
+  v ~important (Opaque_property name) components
+
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
    restricts the name to dashed idents: an ident-token whose first two code
    points are U+002D HYPHEN-MINUS, followed by a name body. *)
@@ -683,6 +687,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Custom_property name ->
       Cursor.err_invalid t
         ("custom property read through regular property: " ^ name)
+  | Opaque_property name ->
+      Cursor.err_invalid t ("opaque property read through typed parser: " ^ name)
   | Color -> v Color (read_color t)
   | Background_color -> v Background_color (read_color t)
   | Border_color -> v Border_color (read_color t)
@@ -1415,20 +1421,32 @@ let read_font_src_declaration t raw_value =
   validate_no_extra_tokens t;
   if is_important then important decl else decl
 
+let read_opaque_property_declaration t name =
+  let raw_value = Cursor.consume_to_decl_end ~trim:true t in
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  (match Cursor.peek_delim t with
+  | Some '!' -> Cursor.err_invalid t "duplicate !important"
+  | _ -> ());
+  opaque_property ~important:is_important name raw_value
+
 let read_typed_property_declaration t start =
   Cursor.restore t start;
   let (Prop prop_type) = read_any_property t in
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  let decl = read_value prop_type t in
-  validate_no_extra_tokens t;
-  let is_important = read_importance t in
-  validate_no_extra_tokens t;
-  (match Cursor.peek_delim t with
-  | Some '!' -> Cursor.err_invalid t "duplicate !important"
-  | _ -> ());
-  if is_important then important decl else decl
+  match prop_type with
+  | Opaque_property name -> read_opaque_property_declaration t name
+  | _ ->
+      let decl = read_value prop_type t in
+      validate_no_extra_tokens t;
+      let is_important = read_importance t in
+      validate_no_extra_tokens t;
+      (match Cursor.peek_delim t with
+      | Some '!' -> Cursor.err_invalid t "duplicate !important"
+      | _ -> ());
+      if is_important then important decl else decl
 
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
@@ -1440,7 +1458,15 @@ let read_regular_property_declaration t : declaration =
   let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
   validate_regular_property_raw t name raw_value;
   if String.equal name "src" then read_font_src_declaration t raw_value
-  else read_typed_property_declaration t start
+  else
+    try read_typed_property_declaration t start
+    with Cursor.Parse_error _ ->
+      Cursor.restore t start;
+      let name = String.lowercase_ascii (read_property_name t) in
+      Cursor.ws t;
+      if not (Cursor.colon t) then Cursor.err_expected t "':'";
+      Cursor.ws t;
+      read_opaque_property_declaration t name
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =

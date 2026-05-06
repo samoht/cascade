@@ -709,6 +709,10 @@ type grid_auto_flow =
   | Revert_layer
   | Var of grid_auto_flow var
 
+(** [repeat()] count argument: an explicit integer or one of the
+    auto-track-list keywords (CSS Grid 1 §7.2.3.1 / 2). *)
+type repeat_count = Count of int | Auto_fill | Auto_fit
+
 type grid_template =
   | None
   (* Single track values *)
@@ -729,10 +733,14 @@ type grid_template =
   (* Complex track values *)
   | Min_max of grid_template * grid_template
   | Fit_content of length
-  | Repeat of int * grid_template list
+  | Repeat of repeat_count * grid_template list
   | Tracks of grid_template list
   | Split of grid_template * grid_template
   | Named_tracks of (string option * grid_template) list
+  | Line_names of string list
+      (** Square-bracket line-names block ([[col-start]], [[a b]]). Stored as
+          its own track-list element so the printer can place it before /
+          between / after the surrounding track sizes. *)
   | Template of string
   | Subgrid
   | Masonry
@@ -3944,6 +3952,7 @@ type css_wide =
 (* Property type definition *)
 type 'a property =
   | Custom_property : string -> custom_property property
+  | Opaque_property : string -> Component.t list property
   | All : css_wide property
   | Background_color : color property
   | Color : color property

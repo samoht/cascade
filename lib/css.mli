@@ -3367,6 +3367,10 @@ val column_gap : length -> declaration
     @see <https://www.w3.org/TR/css-grid-1/> CSS Grid Layout Module Level 1
     @see <https://www.w3.org/TR/css-grid-2/> CSS Grid Layout Module Level 2 *)
 
+(** [repeat()] count argument: an integer or [auto-fill] / [auto-fit]
+    (CSS Grid 1 §7.2.3.1). *)
+type repeat_count = Count of int | Auto_fill | Auto_fit
+
 (** CSS grid template values *)
 type grid_template =
   | None
@@ -3386,10 +3390,13 @@ type grid_template =
   | Inherit
   | Min_max of grid_template * grid_template
   | Fit_content of length
-  | Repeat of int * grid_template list
+  | Repeat of repeat_count * grid_template list
   | Tracks of grid_template list
   | Split of grid_template * grid_template
   | Named_tracks of (string option * grid_template) list
+  | Line_names of string list
+      (** [[col-start a b]] line-names block, kept as its own track-list
+          element so the printer preserves the surrounding track positions. *)
   | Template of string
   | Subgrid
   | Masonry
