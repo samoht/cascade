@@ -257,17 +257,15 @@ let rec pp_aux ~in_and ctx = function
   | Or (a, b) -> pp_or ctx a b
 
 and pp_not ~in_and ctx cond =
-  let extra_parens = Pp.minified ctx && not in_and in
-  Pp.string ctx "(not ";
-  if extra_parens then Pp.char ctx '(';
+  if in_and then Pp.char ctx '(';
+  Pp.string ctx "not ";
   (match cond with
   | And _ | Or _ ->
       Pp.char ctx '(';
       pp_aux ~in_and ctx cond;
       Pp.char ctx ')'
   | _ -> pp_aux ~in_and ctx cond);
-  if extra_parens then Pp.char ctx ')';
-  Pp.char ctx ')'
+  if in_and then Pp.char ctx ')'
 
 and pp_and_branch ctx = function
   | Or _ as branch ->
@@ -288,6 +286,7 @@ and pp_or_branch ~is_left ctx = function
       Pp.string ctx " and ";
       pp_aux ~in_and:true ctx b;
       Pp.char ctx ')'
+  | Not _ as branch -> pp_aux ~in_and:true ctx branch
   | branch -> pp_aux ~in_and:false ctx branch
 
 and pp_or_and_left ~is_left ctx = function
