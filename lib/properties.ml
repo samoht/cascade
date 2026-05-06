@@ -3015,6 +3015,10 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "image-set"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
         ctx options
+  | Webkit_image_set options ->
+      Pp.call "-webkit-image-set"
+        (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
+        ctx options
   | Cross_fade options ->
       Pp.call "cross-fade"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_cross_fade_option ctx os)
@@ -15113,6 +15117,13 @@ let rec read_bg_image t : background_image =
                   | other -> other );
               ( "image-set",
                 fun t -> Cursor.call "image-set" t read_image_set_body );
+              ( "-webkit-image-set",
+                fun t ->
+                  match
+                    Cursor.call "-webkit-image-set" t read_image_set_body
+                  with
+                  | Image_set options -> Webkit_image_set options
+                  | other -> other );
               ( "cross-fade",
                 fun t -> Cursor.call "cross-fade" t read_cross_fade_body );
               ( "-webkit-gradient",

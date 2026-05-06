@@ -2456,6 +2456,8 @@ type background_image =
   | O_repeating_radial_gradient of radial_gradient_config * gradient_stop list
   | Image_set of image_set_option list
       (** [image-set(<source>#)] CSS Images 4 *)
+  | Webkit_image_set of image_set_option list
+      (** [-webkit-image-set(<source>#)] legacy spelling *)
   | Cross_fade of cross_fade_option list
       (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
   | Webkit_gradient of Webkit_gradient.t
