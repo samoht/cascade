@@ -38,35 +38,35 @@ let format_rem f =
   if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
   else s
 
-let components_to_string cvs = Cursor.components_to_string ~trim:true cvs
+let string_of_components cvs = Cursor.string_of_components ~trim:true cvs
 
-let range_operator_to_string = function
+let string_of_range_operator = function
   | Lt -> "<"
   | Lte -> "<="
   | Gt -> ">"
   | Gte -> ">="
 
-let style_query_to_string ~minify = function
+let string_of_style_query ~minify = function
   | Boolean name -> name
   | Declaration { name; value } ->
       let sep = if minify then ":" else ": " in
-      String.concat "" [ name; sep; components_to_string value ]
+      String.concat "" [ name; sep; string_of_components value ]
   | Range { lower; lower_op; name; upper_op; upper } ->
       let sep = if minify then "" else " " in
       String.concat ""
         [
-          components_to_string lower;
+          string_of_components lower;
           sep;
-          range_operator_to_string lower_op;
+          string_of_range_operator lower_op;
           sep;
           name;
           sep;
-          range_operator_to_string upper_op;
+          string_of_range_operator upper_op;
           sep;
-          components_to_string upper;
+          string_of_components upper;
         ]
 
-let rec scroll_state_query_to_string ~minify = function
+let rec string_of_scroll_state_query ~minify = function
   | State { name; value } ->
       let sep = if minify then ":" else ": " in
       String.concat "" [ name; sep; value ]
@@ -74,22 +74,22 @@ let rec scroll_state_query_to_string ~minify = function
       String.concat ""
         [
           "(";
-          scroll_state_query_to_string ~minify a;
+          string_of_scroll_state_query ~minify a;
           ") and (";
-          scroll_state_query_to_string ~minify b;
+          string_of_scroll_state_query ~minify b;
           ")";
         ]
   | Either (a, b) ->
       String.concat ""
         [
           "(";
-          scroll_state_query_to_string ~minify a;
+          string_of_scroll_state_query ~minify a;
           ") or (";
-          scroll_state_query_to_string ~minify b;
+          string_of_scroll_state_query ~minify b;
           ")";
         ]
   | Negated q ->
-      String.concat "" [ "not ("; scroll_state_query_to_string ~minify q; ")" ]
+      String.concat "" [ "not ("; string_of_scroll_state_query ~minify q; ")" ]
 
 let rec to_string_with ~minify t =
   match t with
@@ -101,10 +101,10 @@ let rec to_string_with ~minify t =
   | Named (name, cond) -> name ^ " " ^ to_string_with ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
-      head ^ style_query_to_string ~minify query ^ ")"
+      head ^ string_of_style_query ~minify query ^ ")"
   | Scroll_state { query; uppercase } ->
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
-      String.concat "" [ head; scroll_state_query_to_string ~minify query; ")" ]
+      String.concat "" [ head; string_of_scroll_state_query ~minify query; ")" ]
   | And (a, b) ->
       "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
   | Or (a, b) ->
@@ -465,7 +465,7 @@ let classify_query_surface raw =
           if not terminated then failwith "unmatched container query function";
           let lower = String.lowercase_ascii name in
           let canonical_name = name = lower in
-          let body = Cursor.components_to_string ~trim:true arguments in
+          let body = Cursor.string_of_components ~trim:true arguments in
           match lower with
           | "style" -> Style_func { canonical_name; body }
           | "scroll-state" -> Scroll_state_func { canonical_name; body }
@@ -484,8 +484,8 @@ let classify_query_surface raw =
 
 (* Lift a typed [Media.t] into a [Feature_query]. The container parser only
    produces single-feature media leaves at this point (compound forms are peeled
-   off by [parse_unnamed] before [parse_atom]), so anything that's not a single
-   feature is a parse error. *)
+   off by [unnamed_of_string] before [atom_of_string]), so anything that's not a
+   single feature is a parse error. *)
 let single_feature_of_media (media : Media.t) =
   match media with
   | Media.And _ | Media.Or _ | Media.Negated _ | Media.List _
@@ -493,7 +493,7 @@ let single_feature_of_media (media : Media.t) =
       None
   | _ -> Some media
 
-let parse_container_specific raw =
+let container_specific_of_string raw =
   let raw = String.trim raw in
   if raw = "" then failwith "empty container query";
   match classify_query_surface raw with
@@ -504,7 +504,7 @@ let parse_container_specific raw =
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
-let rec parse_unnamed s =
+let rec unnamed_of_string s =
   let s = String.trim s in
   let stripped = strip_outer_parens s in
   if has_top_level_word stripped "and" && has_top_level_word stripped "or" then
@@ -516,7 +516,7 @@ let rec parse_unnamed s =
         let rhs =
           String.sub stripped (i + 4) (String.length stripped - i - 4)
         in
-        Or (parse_unnamed lhs, parse_unnamed rhs)
+        Or (unnamed_of_string lhs, unnamed_of_string rhs)
     | None -> (
         match top_level_keyword stripped " and " with
         | Some i ->
@@ -524,7 +524,7 @@ let rec parse_unnamed s =
             let rhs =
               String.sub stripped (i + 5) (String.length stripped - i - 5)
             in
-            And (parse_unnamed lhs, parse_unnamed rhs)
+            And (unnamed_of_string lhs, unnamed_of_string rhs)
         | None ->
             if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
             then
@@ -539,16 +539,16 @@ let rec parse_unnamed s =
               if String.length inner = 0 || inner.[0] <> '(' then
                 failwith
                   "container query: 'not' requires a parenthesised operand"
-              else Not (parse_unnamed inner)
-            else parse_atom s)
+              else Not (unnamed_of_string inner)
+            else atom_of_string s)
 
-and parse_atom s =
+and atom_of_string s =
   match classify_query_surface (String.trim s) with
   | _ when String.contains s 'v' && contains_var_function s -> (
       match unresolved_media_feature s with
       | Some query -> query
-      | None -> parse_container_specific s)
-  | Style_func _ | Scroll_state_func _ -> parse_container_specific s
+      | None -> container_specific_of_string s)
+  | Style_func _ | Scroll_state_func _ -> container_specific_of_string s
   | Parenthesized_feature | Other_query -> (
       match Media.of_string s with
       | Media.Min_width_rem rem -> Min_width_rem rem
@@ -558,12 +558,12 @@ and parse_atom s =
           match single_feature_of_media media with
           | Some f -> Feature_query f
           | None -> Feature_query media)
-      | exception Failure _ -> parse_container_specific s)
+      | exception Failure _ -> container_specific_of_string s)
 
 let of_string s =
   match split_named s with
-  | Some (name, raw) -> Named (name, parse_unnamed raw)
-  | None -> parse_unnamed s
+  | Some (name, raw) -> Named (name, unnamed_of_string raw)
+  | None -> unnamed_of_string s
 
 let feature name value = Feature_query (Media.feature name value)
 

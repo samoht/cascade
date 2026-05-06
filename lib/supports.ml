@@ -261,7 +261,7 @@ let declaration_from_components prop value =
     failwith "Invalid declaration in @supports";
   match property_ident (strip_components prop) with
   | Some prop ->
-      let value = Cursor.components_to_string ~trim:true value in
+      let value = Cursor.string_of_components ~trim:true value in
       property prop value
   | None -> failwith "Invalid declaration in @supports"
 
@@ -317,17 +317,17 @@ let peek_ident t =
       Some (String.lowercase_ascii name)
   | _ -> None
 
-let rec parse_condition t =
+let rec condition t =
   Cursor.ws t;
   match peek_ident t with
   | Some "not" ->
       Cursor.skip t;
-      Not (parse_in_parens ~allow_unwrapped_decl:false t)
+      Not (in_parens ~allow_unwrapped_decl:false t)
   | _ ->
-      let left = parse_in_parens ~allow_unwrapped_decl:false t in
-      parse_chain t None left
+      let left = in_parens ~allow_unwrapped_decl:false t in
+      chain t None left
 
-and parse_chain t op acc =
+and chain t op acc =
   Cursor.ws t;
   match peek_ident t with
   | Some "and" ->
@@ -336,19 +336,19 @@ and parse_chain t op acc =
           failwith "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
-      let right = parse_in_parens ~allow_unwrapped_decl:false t in
-      parse_chain t (Some `And) (And (acc, right))
+      let right = in_parens ~allow_unwrapped_decl:false t in
+      chain t (Some `And) (And (acc, right))
   | Some "or" ->
       (match op with
       | Some `And ->
           failwith "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
-      let right = parse_in_parens ~allow_unwrapped_decl:false t in
-      parse_chain t (Some `Or) (Or (acc, right))
+      let right = in_parens ~allow_unwrapped_decl:false t in
+      chain t (Some `Or) (Or (acc, right))
   | _ -> acc
 
-and parse_in_parens ~allow_unwrapped_decl t =
+and in_parens ~allow_unwrapped_decl t =
   Cursor.ws t;
   match Cursor.peek t with
   | Some
@@ -357,14 +357,14 @@ and parse_in_parens ~allow_unwrapped_decl t =
       if not (closed_block cv) then
         failwith "Unmatched parenthesis in @supports condition";
       Cursor.skip t;
-      parse_paren_components value
+      paren_components value
   | Some (Component.Func fn) ->
       Cursor.skip t;
       function_call fn
-  | _ when allow_unwrapped_decl -> parse_unwrapped_declaration t
+  | _ when allow_unwrapped_decl -> unwrapped_declaration t
   | _ -> failwith "Expected supports feature"
 
-and parse_paren_components value =
+and paren_components value =
   if strip_components value = [] then failwith "Empty parentheses in @supports";
   if not (components_are_closed value) then
     failwith "Unmatched parenthesis in @supports condition";
@@ -372,28 +372,28 @@ and parse_paren_components value =
   | Some (prop, value) -> declaration_from_components prop value
   | None ->
       let inner = Cursor.of_components value in
-      let condition = parse_condition inner in
+      let condition = condition inner in
       Cursor.ws inner;
       if not (Cursor.is_done inner) then
         failwith "trailing content in @supports group";
       condition
 
-and parse_unwrapped_declaration t =
+and unwrapped_declaration t =
   let components = Cursor.remaining t in
   match split_top_level_colon components with
   | Some (prop, value) ->
       let decl = declaration_from_components prop value in
-      ignore (Cursor.consume_remaining_to_string t : string);
+      ignore (Cursor.consume_remaining_as_string t : string);
       decl
   | None -> failwith "Expected supports feature"
 
 let of_string ?(allow_unwrapped_decl = false) s =
   let cursor, cond =
     let cursor = Cursor.of_string s in
-    try (cursor, parse_condition cursor)
+    try (cursor, condition cursor)
     with Failure _ when allow_unwrapped_decl ->
       let cursor = Cursor.of_string s in
-      (cursor, parse_in_parens ~allow_unwrapped_decl cursor)
+      (cursor, in_parens ~allow_unwrapped_decl cursor)
   in
   Cursor.ws cursor;
   if not (Cursor.is_done cursor) then failwith "trailing content in @supports";
