@@ -594,8 +594,21 @@ and pp_statement : statement Pp.t =
       Pp.string ctx encoding;
       Pp.string ctx "\";"
   | Import { url; layer; supports; media } ->
-      Pp.string ctx "@import ";
-      pp_import_url ctx url;
+      Pp.string ctx "@import";
+      (* Drop the space when minified output starts the URL with a string
+         literal: a quote is a self-delimiting token boundary, so emitting
+         [@import] immediately followed by the string token tokenises the
+         same as the spaced form. *)
+      let url_str = Pp.to_string ~minify:ctx.Pp.minify pp_import_url url in
+      let needs_space =
+        (not (Pp.minified ctx))
+        || String.length url_str = 0
+        ||
+        let c = url_str.[0] in
+        c <> '"' && c <> '\''
+      in
+      if needs_space then Pp.char ctx ' ';
+      Pp.string ctx url_str;
       (match layer with
       | Some l ->
           if l = "" then Pp.string ctx " layer"
