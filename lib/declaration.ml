@@ -524,6 +524,34 @@ let read_nn_length_or_global t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+(* CSS Text 3 §10: [letter-spacing] is [normal | <length>], [word-spacing] is
+   [normal | <length-percentage>]; both accept negative values. *)
+let read_letter_spacing t =
+  Cursor.enum "letter-spacing"
+    [
+      ("normal", (Normal : length));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(Values.read_length ~with_keywords:false)
+    t
+
+let read_word_spacing t =
+  Cursor.enum "word-spacing"
+    [
+      ("normal", (Normal : length));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(Values.read_length ~with_keywords:false)
+    t
+
 (* CSS Logical Properties 1 3.5: [padding-block] / [padding-inline] are 2-value
    shorthands. A bare CSS-wide keyword counts as a single value (not a list
    element). *)
@@ -952,7 +980,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Text_emphasis_position (read_text_emphasis_position t)
   | Text_emphasis_skip -> v Text_emphasis_skip (read_text_emphasis_skip t)
   | Text_orientation -> v Text_orientation (read_text_orientation t)
-  | Letter_spacing -> v Letter_spacing (read_nn_length_or_global t)
+  | Letter_spacing -> v Letter_spacing (read_letter_spacing t)
   (* List properties *)
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
@@ -1094,7 +1122,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Overflow_wrap -> v Overflow_wrap (read_overflow_wrap t)
   | Line_break -> v Line_break (read_line_break t)
   | Hyphens -> v Hyphens (read_hyphens t)
-  | Word_spacing -> v Word_spacing (read_nn_length_or_global t)
+  | Word_spacing -> v Word_spacing (read_word_spacing t)
   (* Container properties *)
   | Container_type -> v Container_type (read_container_type t)
   | Container_name -> v Container_name (read_container_name t)

@@ -673,6 +673,7 @@ type length =
   | Size  (** [size] keyword inside [calc-size()]. *)
   | Auto
   | None  (** none keyword (e.g., for max-width) *)
+  | Normal  (** [normal] keyword (letter-spacing, word-spacing, line-height) *)
   | Zero
   | Inherit
   | Initial
