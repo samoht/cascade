@@ -613,6 +613,42 @@ let length_of_value f unit =
 
 let resolution_units = [ "dpi"; "dpcm"; "dppx"; "x" ]
 
+(* Read balanced parens content into a string. Assumes '(' already consumed. *)
+let read_balanced sc =
+  let buf = Buffer.create 32 in
+  let depth = ref 1 in
+  let continue = ref true in
+  while !continue do
+    match peek sc with
+    | None -> failwith "Unmatched parenthesis in @media condition"
+    | Some '(' ->
+        incr depth;
+        Buffer.add_char buf '(';
+        advance sc
+    | Some ')' ->
+        decr depth;
+        if !depth = 0 then (
+          advance sc;
+          continue := false)
+        else (
+          Buffer.add_char buf ')';
+          advance sc)
+    | Some c ->
+        Buffer.add_char buf c;
+        advance sc
+  done;
+  Buffer.contents buf
+
+let typed_function_value name args =
+  let raw = name ^ "(" ^ args ^ ")" in
+  let cursor = Cursor.of_string raw in
+  try
+    let length = Values.read_length cursor in
+    Cursor.ws cursor;
+    Cursor.expect_eof cursor;
+    Some (Length length)
+  with _ -> None
+
 let read_value sc =
   skip_ws sc;
   match peek sc with
@@ -655,8 +691,21 @@ let read_value sc =
                   Some (Resolution_value (f, unit))
                 else None))
   | Some _ ->
+      let mark = sc.pos in
       let id = read_ident sc in
-      if id = "" then None else Some (Ident id)
+      if id = "" then None
+      else (
+        skip_ws sc;
+        match peek sc with
+        | Some '(' -> (
+            advance sc;
+            let args = read_balanced sc in
+            match typed_function_value id args with
+            | Some _ as value -> value
+            | None ->
+                sc.pos <- mark;
+                None)
+        | _ -> Some (Ident id))
 
 let value_of_string s =
   let sc = mk_scanner s in
@@ -667,32 +716,6 @@ let value_of_string s =
   | None -> failwith ("invalid media value: " ^ s)
 
 let boolean_feature name : feature = Boolean name
-
-(* Read balanced parens content into a string. Assumes '(' already consumed. *)
-let read_balanced sc =
-  let buf = Buffer.create 32 in
-  let depth = ref 1 in
-  let continue = ref true in
-  while !continue do
-    match peek sc with
-    | None -> failwith "Unmatched parenthesis in @media condition"
-    | Some '(' ->
-        incr depth;
-        Buffer.add_char buf '(';
-        advance sc
-    | Some ')' ->
-        decr depth;
-        if !depth = 0 then (
-          advance sc;
-          continue := false)
-        else (
-          Buffer.add_char buf ')';
-          advance sc)
-    | Some c ->
-        Buffer.add_char buf c;
-        advance sc
-  done;
-  Buffer.contents buf
 
 let read_cmp sc =
   skip_ws sc;
