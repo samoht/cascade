@@ -8423,10 +8423,13 @@ let rec pp_timing_function : timing_function Pp.t =
   | Ease_in_out -> Pp.string ctx "ease-in-out"
   | Step_start -> Pp.string ctx "step-start"
   | Step_end -> Pp.string ctx "step-end"
-  | Steps (1, Some Jump_start) when Pp.minified ctx ->
-      (* CSS Easing 1 2: [steps(1, jump-start)] is the [step-start] alias. *)
+  | Steps (1, Some (Jump_start | Start)) when Pp.minified ctx ->
+      (* CSS Easing 1 §2: [steps(1, jump-start)] = [steps(1, start)] = the
+         [step-start] alias; the [end] / [jump-end] equivalents fold to
+         [step-end]. *)
       Pp.string ctx "step-start"
-  | Steps (1, Some Jump_end) when Pp.minified ctx -> Pp.string ctx "step-end"
+  | Steps (1, Some (Jump_end | End)) when Pp.minified ctx ->
+      Pp.string ctx "step-end"
   | Steps (n, jump_term_opt) ->
       Pp.string ctx "steps(";
       Pp.int ctx n;
