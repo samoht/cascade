@@ -1175,33 +1175,49 @@ and read_highlight_content t =
   ensure_call_done t "highlight";
   Highlight [ name ]
 
-and read_vt_name t =
-  (* CSS View Transitions 1 §3.4.1 [<vt-name>] is [<custom-ident> | *]. *)
-  match Cursor.peek_delim t with
-  | Some '*' ->
-      Cursor.skip t;
-      "*"
-  | _ -> Cursor.ident t
+and read_vt_class_selector t : vt_class_selector =
+  (* CSS View Transitions 2 §3.4.1 [<vt-class-selector>] = [<vt-name>?
+     [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name
+     or at least one class must be present. *)
+  Cursor.ws t;
+  let name =
+    match Cursor.peek_delim t with
+    | Some '*' ->
+        Cursor.skip t;
+        Some "*"
+    | Some '.' -> None
+    | _ -> Some (Cursor.ident t)
+  in
+  let rec read_classes acc =
+    match Cursor.peek_delim t with
+    | Some '.' ->
+        Cursor.skip t;
+        let cls = Cursor.ident t in
+        read_classes (cls :: acc)
+    | _ -> List.rev acc
+  in
+  let classes = read_classes [] in
+  { name; classes }
 
 and read_view_transition_group_content t =
-  let name = read_vt_name t in
+  let sel = read_vt_class_selector t in
   ensure_call_done t "view transition group";
-  View_transition_group name
+  View_transition_group sel
 
 and read_vt_image_pair_content t =
-  let name = read_vt_name t in
+  let sel = read_vt_class_selector t in
   ensure_call_done t "view transition image pair";
-  View_transition_image_pair name
+  View_transition_image_pair sel
 
 and read_view_transition_old_content t =
-  let name = read_vt_name t in
+  let sel = read_vt_class_selector t in
   ensure_call_done t "view transition old";
-  View_transition_old name
+  View_transition_old sel
 
 and read_view_transition_new_content t =
-  let name = read_vt_name t in
+  let sel = read_vt_class_selector t in
   ensure_call_done t "view transition new";
-  View_transition_new name
+  View_transition_new sel
 
 and read_slotted t = Cursor.call "slotted" t read_slotted_content
 and read_cue t = Cursor.call "cue" t read_cue_content
@@ -1481,6 +1497,14 @@ let func ctx name pp_content value =
 
 let elem_func ctx name pp_content value =
   pp_func ctx ~prefix:"::" name pp_content value
+
+let pp_vt_class_selector ctx (sel : vt_class_selector) =
+  (match sel.name with Some n -> Pp.string ctx n | None -> ());
+  List.iter
+    (fun cls ->
+      Pp.char ctx '.';
+      Pp.string ctx cls)
+    sel.classes
 
 let pp_combinator ctx = function
   | Descendant -> Pp.space ctx ()
@@ -1860,14 +1884,14 @@ and pp : t Pp.t =
       func ctx "active-view-transition-type" strs t
   | Highlight names -> elem_func ctx "highlight" strs names
   | View_transition -> elem ctx "view-transition"
-  | View_transition_group name ->
-      elem_func ctx "view-transition-group" Pp.string name
-  | View_transition_image_pair name ->
-      elem_func ctx "view-transition-image-pair" Pp.string name
-  | View_transition_old name ->
-      pp_func ctx ~prefix:"::" "view-transition-old" Pp.string name
-  | View_transition_new name ->
-      pp_func ctx ~prefix:"::" "view-transition-new" Pp.string name
+  | View_transition_group sel ->
+      elem_func ctx "view-transition-group" pp_vt_class_selector sel
+  | View_transition_image_pair sel ->
+      elem_func ctx "view-transition-image-pair" pp_vt_class_selector sel
+  | View_transition_old sel ->
+      pp_func ctx ~prefix:"::" "view-transition-old" pp_vt_class_selector sel
+  | View_transition_new sel ->
+      pp_func ctx ~prefix:"::" "view-transition-new" pp_vt_class_selector sel
   | Compound selectors ->
       let to_print =
         if Pp.minified ctx then drop_redundant_universal selectors
