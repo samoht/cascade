@@ -774,7 +774,7 @@ and pp_statement : statement Pp.t =
       let pp_scope_selector ctx s =
         let s =
           try Selector.(to_string ~minify:(Pp.minified ctx) (of_string s))
-          with _ -> s
+          with Cursor.Parse_error _ | Invalid_argument _ -> s
         in
         let s = String.trim s in
         let s = compact_scope_combinators s in
@@ -1619,6 +1619,85 @@ let validate_dashed_ident r name context =
   if not (String.starts_with ~prefix:"--" name) then
     Cursor.err_invalid r (context ^ " name must be a dashed ident")
 
+let font_palette_descriptor_kind = function
+  | Palette_font_family _ -> "font-family"
+  | Base_palette _ -> "base-palette"
+  | Override_colors _ -> "override-colors"
+
+let replace_font_palette_descriptor desc acc =
+  desc
+  :: List.filter
+       (fun existing ->
+         font_palette_descriptor_kind existing
+         <> font_palette_descriptor_kind desc)
+       acc
+
+let read_base_palette_value inner =
+  match Cursor.number inner with
+  | n ->
+      if n < 0. || Float.floor n <> n then
+        Cursor.err_invalid inner "base-palette index must be non-negative";
+      Index (Float.to_int n)
+  | exception Cursor.Parse_error _ -> (
+      match Cursor.ident ~keep_case:false inner with
+      | "light" -> Light
+      | "dark" -> Dark
+      | ident when ident <> "" -> Palette_ident ident
+      | _ -> Cursor.err_expected inner "base-palette value")
+
+let read_override_color_entry c =
+  let index = Cursor.number c in
+  if index < 0. || Float.floor index <> index then
+    Cursor.err_invalid c "override-colors index must be non-negative";
+  Cursor.ws c;
+  let color = Values.read_color c in
+  Cursor.ws c;
+  (Float.to_int index, color)
+
+let read_font_palette_descriptor outer inner =
+  Cursor.ws inner;
+  if Cursor.is_done inner then None
+  else if Cursor.peek_semicolon inner then (
+    Cursor.skip inner;
+    None)
+  else
+    let desc_name = Cursor.ident ~keep_case:false inner in
+    Cursor.ws inner;
+    if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+    Cursor.ws inner;
+    let desc =
+      match desc_name with
+      | "font-family" ->
+          Palette_font_family
+            (Cursor.list ~sep:Cursor.comma Properties.read_font_family inner)
+      | "base-palette" -> Base_palette (read_base_palette_value inner)
+      | "override-colors" ->
+          Override_colors
+            (Cursor.list ~sep:Cursor.comma ~at_least:1 read_override_color_entry
+               inner)
+      | name ->
+          Cursor.err_invalid outer
+            ("unknown font-palette-values descriptor: " ^ name)
+    in
+    Cursor.ws inner;
+    if Cursor.peek_semicolon inner then Cursor.skip inner;
+    Some desc
+
+let read_font_palette_descriptors outer =
+  let rec loop inner acc =
+    match read_font_palette_descriptor outer inner with
+    | Some desc -> loop inner (replace_font_palette_descriptor desc acc)
+    | None ->
+        Cursor.ws inner;
+        if Cursor.is_done inner then List.rev acc else loop inner acc
+  in
+  Cursor.braces (fun inner -> loop inner []) outer
+
+let font_palette_descriptor_rank = function
+  | Palette_font_family _ -> 0
+  | Base_palette _ -> 1
+  | Override_colors _ -> 2
+
 let read_font_palette_values (r : Cursor.t) : statement =
   Cursor.with_context r "@font-palette-values" @@ fun () ->
   Cursor.expect_at_keyword "font-palette-values" r;
@@ -1626,154 +1705,95 @@ let read_font_palette_values (r : Cursor.t) : statement =
   let name = Cursor.ident ~keep_case:true r in
   validate_dashed_ident r name "@font-palette-values";
   Cursor.ws r;
-  let descriptor_kind = function
-    | Palette_font_family _ -> "font-family"
-    | Base_palette _ -> "base-palette"
-    | Override_colors _ -> "override-colors"
-  in
-  let replace desc acc =
-    desc
-    :: List.filter
-         (fun existing -> descriptor_kind existing <> descriptor_kind desc)
-         acc
-  in
-  let read_one inner =
-    Cursor.ws inner;
-    if Cursor.is_done inner then None
-    else if Cursor.peek_semicolon inner then (
-      Cursor.skip inner;
-      None)
-    else
-      let desc_name = Cursor.ident ~keep_case:false inner in
-      Cursor.ws inner;
-      if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
-      Cursor.ws inner;
-      let desc =
-        match desc_name with
-        | "font-family" ->
-            let families =
-              Cursor.list ~sep:Cursor.comma Properties.read_font_family inner
-            in
-            Palette_font_family families
-        | "base-palette" -> (
-            match Cursor.number inner with
-            | n ->
-                if n < 0. || Float.floor n <> n then
-                  Cursor.err_invalid inner
-                    "base-palette index must be non-negative";
-                Base_palette (Index (Float.to_int n))
-            | exception Cursor.Parse_error _ -> (
-                match Cursor.ident ~keep_case:false inner with
-                | "light" -> Base_palette Light
-                | "dark" -> Base_palette Dark
-                | ident when ident <> "" -> Base_palette (Palette_ident ident)
-                | _ -> Cursor.err_expected inner "base-palette value"))
-        | "override-colors" ->
-            let entry c =
-              let index = Cursor.number c in
-              if index < 0. || Float.floor index <> index then
-                Cursor.err_invalid c
-                  "override-colors index must be non-negative";
-              Cursor.ws c;
-              let color = Values.read_color c in
-              Cursor.ws c;
-              (Float.to_int index, color)
-            in
-            Override_colors
-              (Cursor.list ~sep:Cursor.comma ~at_least:1 entry inner)
-        | name ->
-            Cursor.err_invalid r
-              ("unknown font-palette-values descriptor: " ^ name)
-      in
-      Cursor.ws inner;
-      if Cursor.peek_semicolon inner then Cursor.skip inner;
-      Some desc
-  in
   let descriptors =
-    Cursor.braces
-      (fun inner ->
-        let rec loop acc =
-          match read_one inner with
-          | Some desc -> loop (replace desc acc)
-          | None ->
-              Cursor.ws inner;
-              if Cursor.is_done inner then List.rev acc else loop acc
-        in
-        loop [])
-      r
+    read_font_palette_descriptors r
     |> List.stable_sort (fun a b ->
-        let rank = function
-          | Palette_font_family _ -> 0
-          | Base_palette _ -> 1
-          | Override_colors _ -> 2
-        in
-        compare (rank a) (rank b))
+        compare
+          (font_palette_descriptor_rank a)
+          (font_palette_descriptor_rank b))
   in
   if descriptors = [] then
     Cursor.err_invalid r "@font-palette-values requires descriptors";
   Font_palette_values (name, descriptors)
 
+let expect_view_transition_block r =
+  match Cursor.peek r with
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> ()
+  | Some _ -> Cursor.err_invalid r "@view-transition does not take a prelude"
+  | None -> Cursor.err_expected r "'{'"
+
+let same_view_transition_descriptor a b =
+  match (a, b) with
+  | Navigation _, Navigation _ | Types _, Types _ -> true
+  | _ -> false
+
+let replace_view_transition_descriptor desc acc =
+  desc
+  :: List.filter
+       (fun existing -> not (same_view_transition_descriptor existing desc))
+       acc
+
+let read_view_transition_navigation inner =
+  match Cursor.ident ~keep_case:false inner with
+  | "auto" -> Navigation `Auto
+  | "none" -> Navigation `None
+  | _ ->
+      Cursor.err_invalid inner "invalid @view-transition navigation descriptor"
+
+let read_view_transition_types inner =
+  match Cursor.ident ~keep_case:true inner with
+  | "none" -> Types None
+  | first ->
+      let rec names acc =
+        Cursor.ws inner;
+        match Cursor.ident_opt inner with
+        | Some name -> names (name :: acc)
+        | None -> List.rev acc
+      in
+      Types (Some (names [ first ]))
+
+let read_view_transition_descriptor outer inner =
+  Cursor.ws inner;
+  if Cursor.is_done inner then None
+  else if Cursor.peek_semicolon inner then (
+    Cursor.skip inner;
+    None)
+  else
+    let desc_name = Cursor.ident ~keep_case:false inner in
+    Cursor.ws inner;
+    if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+    Cursor.ws inner;
+    let desc =
+      match desc_name with
+      | "navigation" -> read_view_transition_navigation inner
+      | "types" -> read_view_transition_types inner
+      | name ->
+          Cursor.err_invalid outer
+            ("unknown @view-transition descriptor: " ^ name)
+    in
+    Cursor.ws inner;
+    if Cursor.peek_semicolon inner then Cursor.skip inner;
+    Some desc
+
+let read_view_transition_descriptors outer =
+  Cursor.braces
+    (fun inner ->
+      let rec loop acc =
+        match read_view_transition_descriptor outer inner with
+        | Some desc -> loop (replace_view_transition_descriptor desc acc)
+        | None ->
+            Cursor.ws inner;
+            if Cursor.is_done inner then List.rev acc else loop acc
+      in
+      loop [])
+    outer
+
 let read_view_transition (r : Cursor.t) : statement =
   Cursor.with_context r "@view-transition" @@ fun () ->
   Cursor.expect_at_keyword "view-transition" r;
   Cursor.ws r;
-  (match Cursor.peek r with
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> ()
-  | Some _ -> Cursor.err_invalid r "@view-transition does not take a prelude"
-  | None -> Cursor.err_expected r "'{'");
-  let replace desc acc =
-    let same a b =
-      match (a, b) with
-      | Navigation _, Navigation _ | Types _, Types _ -> true
-      | _ -> false
-    in
-    desc :: List.filter (fun existing -> not (same existing desc)) acc
-  in
-  let descriptors =
-    Cursor.braces
-      (fun inner ->
-        let rec loop acc =
-          Cursor.ws inner;
-          if Cursor.is_done inner then List.rev acc
-          else if Cursor.peek_semicolon inner then (
-            Cursor.skip inner;
-            loop acc)
-          else
-            let desc_name = Cursor.ident ~keep_case:false inner in
-            Cursor.ws inner;
-            if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
-            Cursor.ws inner;
-            let desc =
-              match desc_name with
-              | "navigation" -> (
-                  match Cursor.ident ~keep_case:false inner with
-                  | "auto" -> Navigation `Auto
-                  | "none" -> Navigation `None
-                  | _ ->
-                      Cursor.err_invalid inner
-                        "invalid @view-transition navigation descriptor")
-              | "types" -> (
-                  match Cursor.ident ~keep_case:true inner with
-                  | "none" -> Types None
-                  | first ->
-                      let rec names acc =
-                        Cursor.ws inner;
-                        match Cursor.ident_opt inner with
-                        | Some name -> names (name :: acc)
-                        | None -> List.rev acc
-                      in
-                      Types (Some (names [ first ])))
-              | name ->
-                  Cursor.err_invalid r
-                    ("unknown @view-transition descriptor: " ^ name)
-            in
-            Cursor.ws inner;
-            if Cursor.peek_semicolon inner then Cursor.skip inner;
-            loop (replace desc acc)
-        in
-        loop [])
-      r
-  in
+  expect_view_transition_block r;
+  let descriptors = read_view_transition_descriptors r in
   if descriptors = [] then
     Cursor.err_invalid r "@view-transition requires descriptors";
   View_transition descriptors
@@ -1831,25 +1851,25 @@ let rec read_viewport_descriptor (r : Cursor.t) : viewport_descriptor option =
       Some { name; value }
   | Some _ -> Cursor.err_expected r "<viewport-descriptor>"
 
+let read_viewport_descriptors r =
+  Cursor.braces
+    (fun inner ->
+      let rec loop acc =
+        match read_viewport_descriptor inner with
+        | None -> List.rev acc
+        | Some d -> loop (d :: acc)
+      in
+      let descriptors = loop [] in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      descriptors)
+    r
+
 let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
   Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
   Cursor.expect_at_keyword at_keyword r;
   Cursor.ws r;
-  let descriptors =
-    Cursor.braces
-      (fun inner ->
-        let rec loop acc =
-          match read_viewport_descriptor inner with
-          | None -> List.rev acc
-          | Some d -> loop (d :: acc)
-        in
-        let descriptors = loop [] in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        descriptors)
-      r
-  in
-  Viewport (prefix, descriptors)
+  Viewport (prefix, read_viewport_descriptors r)
 
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"

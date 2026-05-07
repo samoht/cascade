@@ -285,6 +285,22 @@ include Stylesheet
 let radius value = Radius { horizontal = [ Length value ]; vertical = None }
 let gaps ?column row : gap = Lengths { row_gap = Some row; column_gap = column }
 let font_stack fonts = (List fonts : font_family)
+let ratio width height = (Ratio (width, height) : aspect_ratio)
+let auto_ratio width height = (Auto_ratio (width, height) : aspect_ratio)
+let columns_count count = (Count count : columns_value)
+let columns_width width = (Width width : columns_value)
+let columns_both width count = (Both (width, count) : columns_value)
+let counter_item ?value name = { name; value }
+let counter_set items = (Counters items : counter_set)
+
+let mask_layer ?image ?position ?size ?repeat ?origin ?clip ?mode ?composite ()
+    =
+  { image; position; size; repeat; origin; clip; mode; composite }
+
+let mask_layers layers = (Layers layers : mask)
+
+let outline_shorthand ?width ?style ?color () : outline =
+  Shorthand { width; style; color }
 
 let text_shadow_value ?blur ?color h_offset v_offset : text_shadow =
   Text_shadow { h_offset; v_offset; blur; color }
