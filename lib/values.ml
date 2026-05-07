@@ -1106,7 +1106,7 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (U_pct, n)
   | Length l -> unit_of_length l
-  | Var _ | Calc _ -> None
+  | Var _ | Calc _ | Invalid _ -> None
 
 let lp_of_unit unit n : length_percentage =
   match unit with U_pct -> Pct n | unit -> Length (length_of_unit unit n)
@@ -2071,6 +2071,7 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
         else c
       in
       pp_calc (pp_length_percentage ~always) ctx c
+  | Invalid tokens -> List.iter (Component.pp ctx) tokens
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
@@ -3815,21 +3816,8 @@ let angle_trig_function t =
   else if Cursor.looking_at_func "atan" t then Some (`Atan, "atan")
   else None
 
-(* Capture the full source token for the function-call at the cursor's current
-   position so we can preserve it verbatim if the typed reader refuses the
-   argument. *)
-let snapshot_function_call t =
-  match Cursor.peek t with
-  | Some (Component.Func _ as comp) -> comp
-  | _ ->
-      (* The trig dispatch already saw [Cursor.looking_at_func name], so the
-         next component is always a [Func]. *)
-      assert false
-
 let read_angle_trig kind name t =
-  let snap = Cursor.save t in
-  let original = snapshot_function_call t in
-  try
+  let typed t =
     Cursor.call name t (fun inner ->
         let v = read_num_expr inner in
         Cursor.ws inner;
@@ -3841,15 +3829,13 @@ let read_angle_trig kind name t =
           | `Atan -> Float.atan v
         in
         (Deg (radians *. 180. /. Float.pi) : angle))
-  with Cursor.Parse_error _ ->
-    Cursor.restore t snap;
-    Cursor.skip t;
-    Invalid [ original ]
+  in
+  match Cursor.try_typed_call typed t with
+  | Ok value -> value
+  | Error comp -> Invalid [ comp ]
 
 let read_angle_atan2 t =
-  let snap = Cursor.save t in
-  let original = snapshot_function_call t in
-  try
+  let typed t =
     Cursor.call "atan2" t (fun inner ->
         (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
            <percentage> for both arguments (must match types). When both
@@ -3866,10 +3852,10 @@ let read_angle_atan2 t =
         | (yk, yv), (xk, xv) when yk = xk ->
             (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
         | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
-  with Cursor.Parse_error _ ->
-    Cursor.restore t snap;
-    Cursor.skip t;
-    Invalid [ original ]
+  in
+  match Cursor.try_typed_call typed t with
+  | Ok value -> value
+  | Error comp -> Invalid [ comp ]
 
 let read_angle_unit t =
   let n, unit_raw = Cursor.number_with_unit t in
@@ -4884,6 +4870,16 @@ let rec read_percentage t : percentage =
   else if Cursor.looking_at t "calc(" then Calc (read_calc read_percentage t)
   else Pct (Cursor.pct t)
 
+(* CSS Values 5 §10: math functions that produce a non-length type ([asin] /
+   [acos] / [atan] / [atan2] return angles, [sin] / [cos] / [tan] return
+   numbers). Used in a [<length-percentage>] context they are spec-invalid;
+   lightning et al. preserve verbatim, so cascade captures the original call as
+   [Invalid [<call>]]. *)
+let length_invalid_function_name name =
+  match String.lowercase_ascii name with
+  | "asin" | "acos" | "atan" | "atan2" | "sin" | "cos" | "tan" -> true
+  | _ -> false
+
 (** Read length_percentage value *)
 let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
     t : length_percentage =
@@ -4897,16 +4893,23 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
        operands. *)
     Calc (read_calc (read_length_percentage ~with_keywords) t)
   else
-    (* Try to read as percentage or length *)
-    let read_pct t : length_percentage =
-      let n = Cursor.pct t in
-      if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
-      Pct n
-    in
-    let read_length_as_lp t : length_percentage =
-      Length (read_length ~allow_negative ~with_keywords t)
-    in
-    Cursor.one_of [ read_pct; read_length_as_lp ] t
+    match Cursor.peek t with
+    | Some (Component.Func { node = { name; _ }; _ } as comp)
+      when length_invalid_function_name name ->
+        Cursor.skip t;
+        Invalid [ comp ]
+    | _ ->
+        (* Try to read as percentage or length *)
+        let read_pct t : length_percentage =
+          let n = Cursor.pct t in
+          if (not allow_negative) && n < 0.0 then
+            Cursor.err_invalid t "negative";
+          Pct n
+        in
+        let read_length_as_lp t : length_percentage =
+          Length (read_length ~allow_negative ~with_keywords t)
+        in
+        Cursor.one_of [ read_pct; read_length_as_lp ] t
 
 (** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw
     number is modelled at the calc level as the [Num x] node rather than

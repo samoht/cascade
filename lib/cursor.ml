@@ -197,6 +197,22 @@ let lookahead p t =
   restore t snap;
   v
 
+(* Common shape for "typed reader for a [<basic-shape>] / math call, with a
+   verbatim-preserve fallback when the typed reduction refuses the input":
+   snapshot the cursor, capture the function call, run the typed reader, and on
+   [Parse_error] restore + skip + return the captured call so the caller can
+   wrap it in an [Invalid] arm. *)
+let try_typed_call (typed : t -> 'a) (t : t) : ('a, Component.t) result =
+  let snap = save t in
+  match peek t with
+  | Some (Component.Func _ as comp) -> (
+      try Ok (typed t)
+      with Parse_error _ ->
+        restore t snap;
+        skip t;
+        Error comp)
+  | _ -> Ok (typed t)
+
 (** {1 Token-shape helpers - option variants} *)
 
 let take_token_if (f : Token.kind -> 'a option) t : 'a option =

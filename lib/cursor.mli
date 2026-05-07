@@ -146,6 +146,14 @@ val lookahead : (t -> 'a) -> t -> 'a
 (** [lookahead p t] runs [p t] and then restores the cursor, returning the
     result. *)
 
+val try_typed_call : (t -> 'a) -> t -> ('a, Component.t) result
+(** [try_typed_call typed t] runs the typed reader [typed] when the next
+    component is a [Func]. On success, returns [Ok value]. On [Parse_error],
+    restores the cursor, skips past the function call, and returns
+    [Error <captured-call>] so callers can wrap it in their type's [Invalid]
+    arm. When the next component isn't a [Func] the typed reader is run directly
+    (errors propagate). *)
+
 (** {1 Errors} *)
 
 exception Parse_error of Error.t
