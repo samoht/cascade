@@ -2130,19 +2130,6 @@ let rec read_nav t : nav =
     t
 
 module Shadow = struct
-  type component = Inset | Color of color | Length of length
-
-  let read_component t =
-    Cursor.one_of
-      [
-        (fun t ->
-          Cursor.expect_string "inset" t;
-          Inset);
-        (fun t -> Color (read_color t));
-        (fun t -> Length (read_length t));
-      ]
-      t
-
   let read_lengths lengths =
     match lengths with
     | h_offset :: v_offset :: rest ->
@@ -2154,23 +2141,6 @@ module Shadow = struct
         in
         Some (h_offset, v_offset, blur, spread)
     | _ -> None
-
-  type components = {
-    inset : bool;
-    lengths : length list;
-    color : color option;
-  }
-
-  let fold components =
-    List.fold_left
-      (fun (acc : components) comp ->
-        match comp with
-        | Inset -> { acc with inset = true }
-        | Color c ->
-            if acc.color = None then { acc with color = Some c } else acc
-        | Length l -> { acc with lengths = l :: acc.lengths })
-      { inset = false; lengths = []; color = None }
-      components
 
   let read t =
     (* Drive [inset? && <length>{2,4} && <color>?] positionally so a trailing
@@ -2243,9 +2213,6 @@ module Shadow = struct
            }
           : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
-
-  let _ = fold
-  let _ = read_component
 end
 
 let rec read_shadow_single t : shadow =
