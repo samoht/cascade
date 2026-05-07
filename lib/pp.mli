@@ -234,6 +234,17 @@ val braces : 'a t -> 'a t
 
 (** {2 Generic Helpers} *)
 
+val semicolon_cut : unit t
+(** [semicolon_cut] outputs a semicolon followed by a layout cut. *)
+
+val braced_list : ?sep:unit t -> 'a t -> 'a list t
+(** [braced_list formatter] wraps a list in braces using the same multiline
+    layout as CSS at-rule bodies. *)
+
+val braced_semicolon_list : 'a t -> 'a list t
+(** [braced_semicolon_list formatter] wraps a list in braces and separates items
+    with [semicolon_cut]. *)
+
 val call : string -> 'a t -> 'a t
 (** [call name args] formats a function call: [name( args )]. *)
 

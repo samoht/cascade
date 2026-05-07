@@ -282,6 +282,13 @@ include Variables
 include Optimize
 include Stylesheet
 
+let radius value = Radius { horizontal = [ Length value ]; vertical = None }
+let gaps ?column row = Lengths { row_gap = Some row; column_gap = column }
+let font_stack fonts = (List fonts : font_family)
+
+let text_shadow_value ?blur ?color h_offset v_offset =
+  Text_shadow { h_offset; v_offset; blur; color }
+
 (* Declaration accessor functions *)
 let declaration_is_important = Declaration.is_important
 let declaration_name = Declaration.property_name
@@ -380,6 +387,27 @@ let as_origin = function
   | Origin (origin, content) -> Some (origin, content)
   | _ -> None
 
+let map_container_block f = function
+  | Media (condition, content) -> Some (media ~condition (f content))
+  | Supports (condition, content) -> Some (supports ~condition (f content))
+  | Layer (name, content) -> Some (layer ?name (f content))
+  | Container (name, condition, content) ->
+      Some (container ?name ~condition (f content))
+  | Origin (origin, content) -> Some (Origin (origin, f content))
+  | _ -> None
+
+let statement_children = function
+  | Rule rule -> rule.nested
+  | Layer (_, nested)
+  | Media (_, nested)
+  | Supports (_, nested)
+  | Origin (_, nested)
+  | Starting_style nested
+  | Scope (_, _, nested) ->
+      nested
+  | Container (_, _, nested) -> nested
+  | _ -> []
+
 let rec map f stmts =
   List.map
     (fun stmt ->
@@ -396,23 +424,9 @@ let rec map f stmts =
                  trust it and replace the original. *)
               other)
       | None -> (
-          match as_media stmt with
-          | Some (condition, content) -> media ~condition (map f content)
-          | None -> (
-              match as_supports stmt with
-              | Some (condition, content) -> supports ~condition (map f content)
-              | None -> (
-                  match as_layer stmt with
-                  | Some (name, content) -> layer ?name (map f content)
-                  | None -> (
-                      match as_container stmt with
-                      | Some (name, condition, content) ->
-                          container ?name ~condition (map f content)
-                      | None -> (
-                          match as_origin stmt with
-                          | Some (origin, content) ->
-                              Origin (origin, map f content)
-                          | None -> stmt))))))
+          match map_container_block (map f) stmt with
+          | Some stmt -> stmt
+          | None -> stmt))
     stmts
 
 let rec sort cmp stmts =
@@ -423,24 +437,9 @@ let rec sort cmp stmts =
         match stmt with
         | Rule rule -> Rule { rule with nested = sort cmp rule.nested }
         | _ -> (
-            match as_media stmt with
-            | Some (condition, content) -> media ~condition (sort cmp content)
-            | None -> (
-                match as_supports stmt with
-                | Some (condition, content) ->
-                    supports ~condition (sort cmp content)
-                | None -> (
-                    match as_layer stmt with
-                    | Some (name, content) -> layer ?name (sort cmp content)
-                    | None -> (
-                        match as_container stmt with
-                        | Some (name, condition, content) ->
-                            container ?name ~condition (sort cmp content)
-                        | None -> (
-                            match as_origin stmt with
-                            | Some (origin, content) ->
-                                Origin (origin, sort cmp content)
-                            | None -> stmt))))))
+            match map_container_block (sort cmp) stmt with
+            | Some stmt -> stmt
+            | None -> stmt))
       stmts
   in
 
@@ -502,31 +501,7 @@ let rec fold f acc t =
     (fun acc stmt ->
       let acc' = f acc stmt in
       (* Recursively fold over nested statements *)
-      let nested =
-        match as_rule stmt with
-        | Some (_, _, nested) -> nested
-        | None -> (
-            match as_layer stmt with
-            | Some (_, nested) -> nested
-            | None -> (
-                match as_media stmt with
-                | Some (_, nested) -> nested
-                | None -> (
-                    match as_container stmt with
-                    | Some (_, _, nested) -> nested
-                    | None -> (
-                        match as_supports stmt with
-                        | Some (_, nested) -> nested
-                        | None -> (
-                            match as_origin stmt with
-                            | Some (_, nested) -> nested
-                            | None -> (
-                                match stmt with
-                                | Starting_style nested -> nested
-                                | Scope (_, _, nested) -> nested
-                                | _ -> []))))))
-      in
-      fold f acc' nested)
+      fold f acc' (statement_children stmt))
     acc t
 
 let media_queries t =
@@ -691,29 +666,22 @@ let parse ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
   let warnings = List.map (fun e -> (e, filename)) warnings in
   { stylesheet; warnings }
 
-let rec statements_for_inline = function
+let rec statements_for_inline statement =
+  let inline_block block = List.concat_map statements_for_inline block in
+  match statement with
   | Layer (_, block) -> List.concat_map statements_for_inline block
   | Layer_decl _ | Property _ -> []
-  | Media (condition, block) ->
-      [ Media (condition, List.concat_map statements_for_inline block) ]
-  | Supports (condition, block) ->
-      [ Supports (condition, List.concat_map statements_for_inline block) ]
+  | Media (condition, block) -> [ Media (condition, inline_block block) ]
+  | Supports (condition, block) -> [ Supports (condition, inline_block block) ]
   | Moz_document (conditions, block) ->
-      [ Moz_document (conditions, List.concat_map statements_for_inline block) ]
+      [ Moz_document (conditions, inline_block block) ]
   | Container (name, condition, block) ->
-      [
-        Container (name, condition, List.concat_map statements_for_inline block);
-      ]
-  | Scope (start, end_, block) ->
-      [ Scope (start, end_, List.concat_map statements_for_inline block) ]
-  | Origin (origin, block) ->
-      [ Origin (origin, List.concat_map statements_for_inline block) ]
-  | When (condition, block) ->
-      [ When (condition, List.concat_map statements_for_inline block) ]
-  | Else (condition, block) ->
-      [ Else (condition, List.concat_map statements_for_inline block) ]
-  | Starting_style block ->
-      [ Starting_style (List.concat_map statements_for_inline block) ]
+      [ Container (name, condition, inline_block block) ]
+  | Scope (start, end_, block) -> [ Scope (start, end_, inline_block block) ]
+  | Origin (origin, block) -> [ Origin (origin, inline_block block) ]
+  | When (condition, block) -> [ When (condition, inline_block block) ]
+  | Else (condition, block) -> [ Else (condition, inline_block block) ]
+  | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)

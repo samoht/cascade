@@ -323,6 +323,20 @@ let braces pp =
   in
   surround ~left:open_ ~right:close_ (nest 1 (indent pp))
 
+let semicolon_cut ctx () =
+  semicolon ctx ();
+  cut ctx ()
+
+let braced_list ?sep pp_item ctx items =
+  braces
+    (fun ctx () ->
+      cut ctx ();
+      nest 2 (list ?sep pp_item) ctx items;
+      cut ctx ())
+    ctx ()
+
+let braced_semicolon_list pp_item = braced_list ~sep:semicolon_cut pp_item
+
 let call name pp_args ctx args =
   string ctx name;
   char ctx '(';
