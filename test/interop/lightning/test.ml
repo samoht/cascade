@@ -93,12 +93,12 @@ let default_minifier_commands =
     ("lightningcss-cli", "lightningcss --minify");
   ]
 
-let env_minifier_commands () =
+let custom_minifier_commands () =
   match Sys.getenv_opt "CASCADE_INTEROP_MINIFIERS" with
   | None | Some "" -> []
   | Some s ->
       split_commands s
-      |> List.mapi (fun i command -> (Fmt.str "env%d" (i + 1), command))
+      |> List.mapi (fun i command -> (Fmt.str "custom%d" (i + 1), command))
 
 let read_all ic =
   let buf = Buffer.create 4096 in
@@ -138,7 +138,7 @@ let command_works command =
 
 let available_minifiers =
   lazy
-    (let commands = env_minifier_commands () @ default_minifier_commands in
+    (let commands = custom_minifier_commands () @ default_minifier_commands in
      commands |> List.filter (fun (_, command) -> command_works command))
 
 let external_candidates input =
