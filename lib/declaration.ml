@@ -1499,11 +1499,14 @@ let validate_legacy_page_break t name raw_value =
 
 (* Properties whose grammar allows multi-token values where a CSS-wide keyword
    can legitimately appear as a non-special ident. [animation-name] /
-   [grid-area] / [will-change] / etc. accept arbitrary ident lists. *)
+   [grid-area] / [will-change] / etc. accept arbitrary ident lists.
+   [font-family] also takes a [<custom-ident>#] list, so a CSS-wide keyword
+   inside the list is invalid CSS (CSS Cascade 5 §7.3) but upstream tools
+   (lightningcss, csso) preserve the source verbatim. *)
 let property_allows_keyword_as_ident = function
   | "animation-name" | "grid-area" | "grid-row" | "grid-column"
   | "grid-row-start" | "grid-row-end" | "grid-column-start" | "grid-column-end"
-  | "will-change" | "view-transition-name" ->
+  | "will-change" | "view-transition-name" | "font-family" | "font" ->
       true
   | _ -> false
 

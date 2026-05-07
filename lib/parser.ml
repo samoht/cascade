@@ -318,13 +318,6 @@ let normal_pair_needs_token_boundary prev next =
           _;
         } ) ->
       true
-  | ( Component.Preserved { kind = Token.Percentage _; _ },
-      Component.Preserved
-        {
-          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
-          _;
-        } ) ->
-      true
   | ( Component.Preserved { kind = Token.Delim ("-" | "#" | "@"); _ },
       ( Component.Preserved { kind = Token.Ident _ | Token.Function _; _ }
       | Component.Func _ ) ) ->
@@ -493,13 +486,6 @@ and pair_needs_token_boundary prev next =
           kind =
             ( Token.Ident _ | Token.Function _ | Token.Number_tok _
             | Token.Percentage _ | Token.Dimension _ );
-          _;
-        } ) ->
-      true
-  | ( Component.Preserved { kind = Token.Percentage _; _ },
-      Component.Preserved
-        {
-          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
           _;
         } ) ->
       true
