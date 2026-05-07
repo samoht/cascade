@@ -140,7 +140,7 @@ and statement =
   | Layer_decl of string list  (** [@layer theme, base, utilities;] *)
   | Layer of string option * block  (** [@layer name? { ... }] *)
   | Media of Media.t * block  (** [@media (...) { ... }] *)
-  | Container of string option * Container.t * block
+  | Container of string option * Container.t option * block
       (** [@container name? (...) { ... }] *)
   | Supports of Supports.t * block  (** [@supports (...) { ... }] *)
   | Moz_document of moz_document_condition list * block

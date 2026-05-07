@@ -45,7 +45,7 @@ val media_nested :
     nesting, containing bare declarations (no selector). Used inside rules where
     the selector is inherited from the parent. *)
 
-val container : ?name:string -> condition:Container.t -> block -> statement
+val container : ?name:string -> ?condition:Container.t -> block -> statement
 (** [container ?name ~condition content] creates a [@container] rule. *)
 
 val supports : condition:Supports.t -> block -> statement
@@ -308,7 +308,8 @@ val layers : t -> string list
 val media_queries : t -> (Media.t * rule list) list
 (** [media_queries t] returns the media queries from the stylesheet. *)
 
-val container_queries : t -> (string option * Container.t * rule list) list
+val container_queries :
+  t -> (string option * Container.t option * rule list) list
 (** [container_queries t] returns the container queries from the stylesheet. *)
 
 (** {1 Parsing and Pretty-printing} *)

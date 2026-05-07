@@ -126,7 +126,7 @@ let nested_condition_block buf media supports container =
             ( supports,
               [
                 Css.Stylesheet.Container
-                  (Some "card", container, [ rule buf 12 ]);
+                  (Some "card", Some container, [ rule buf 12 ]);
               ] );
         ] );
     Css.Stylesheet.When
