@@ -309,75 +309,78 @@ let test_modern_math_stable buf =
           if once <> twice then
             fail (Fmt.str "modern math length changed: %S -> %S" once twice))
 
-let test_spec_valid_value_vectors buf =
-  let parse_print parse pp input =
-    match parse_whole parse input with
-    | None -> fail (Fmt.str "valid CSS value vector did not parse: %S" input)
-    | Some value -> (
-        let once = Css.Pp.to_string ~minify:true pp value in
-        match parse_whole parse once with
-        | None ->
+let valid_length_vectors =
+  [
+    "1cqw";
+    "1cqh";
+    "1cqi";
+    "1cqb";
+    "1cqmin";
+    "1cqmax";
+    "anchor-size(width)";
+    "anchor(--tooltip width, 10px)";
+    "calc-size(auto, size + 1rem)";
+  ]
+
+let valid_color_vectors =
+  [
+    "lab(50% 10 20)";
+    "lch(50% 20 30)";
+    "oklab(50% 0.1 0.2)";
+    "oklch(50% 0.1 20 / 0.5)";
+    "color(rec2020 0.1 0.2 0.3)";
+    "rgb(from var(--c) r g b / 50%)";
+    "color-mix(in lch longer hue, red 30%, blue)";
+  ]
+
+let valid_number_vectors =
+  [
+    "round(up, 1.2, 1)";
+    "mod(10, 3)";
+    "hypot(3, 4)";
+    "pow(2, 3)";
+    "sqrt(4)";
+    "sin(30deg)";
+  ]
+
+let assert_parse_print parse pp input =
+  match parse_whole parse input with
+  | None -> fail (Fmt.str "valid CSS value vector did not parse: %S" input)
+  | Some value -> (
+      let once = Css.Pp.to_string ~minify:true pp value in
+      match parse_whole parse once with
+      | None ->
+          fail
+            (Fmt.str "valid CSS value serialization did not reparse: %S -> %S"
+               input once)
+      | Some reparsed ->
+          let twice = Css.Pp.to_string ~minify:true pp reparsed in
+          if once <> twice then
             fail
-              (Fmt.str "valid CSS value serialization did not reparse: %S -> %S"
-                 input once)
-        | Some reparsed ->
-            let twice = Css.Pp.to_string ~minify:true pp reparsed in
-            if once <> twice then
-              fail
-                (Fmt.str "valid CSS value serialization drifted: %S -> %S" once
-                   twice))
-  in
+              (Fmt.str "valid CSS value serialization drifted: %S -> %S" once
+                 twice))
+
+let test_spec_valid_value_vectors buf =
   match byte_at buf 0 mod 6 with
   | 0 ->
-      parse_print Css.Values.read_length Css.Values.pp_length
-        (pick
-           [
-             "1cqw";
-             "1cqh";
-             "1cqi";
-             "1cqb";
-             "1cqmin";
-             "1cqmax";
-             "anchor-size(width)";
-             "anchor(--tooltip width, 10px)";
-             "calc-size(auto, size + 1rem)";
-           ]
-           buf 1)
+      assert_parse_print Css.Values.read_length Css.Values.pp_length
+        (pick valid_length_vectors buf 1)
   | 1 ->
-      parse_print Css.Values.read_color Css.Values.pp_color
-        (pick
-           [
-             "lab(50% 10 20)";
-             "lch(50% 20 30)";
-             "oklab(50% 0.1 0.2)";
-             "oklch(50% 0.1 20 / 0.5)";
-             "color(rec2020 0.1 0.2 0.3)";
-             "rgb(from var(--c) r g b / 50%)";
-             "color-mix(in lch longer hue, red 30%, blue)";
-           ]
-           buf 1)
+      assert_parse_print Css.Values.read_color Css.Values.pp_color
+        (pick valid_color_vectors buf 1)
   | 2 ->
-      parse_print Css.Values.read_angle Css.Values.pp_angle
+      assert_parse_print Css.Values.read_angle Css.Values.pp_angle
         (pick [ "45deg"; ".25turn"; "100grad"; "3.14159rad" ] buf 1)
   | 3 ->
-      parse_print Css.Values.read_duration Css.Values.pp_duration
+      assert_parse_print Css.Values.read_duration Css.Values.pp_duration
         (pick [ "1s"; "150ms"; ".25s"; "1ms" ] buf 1)
   | 4 ->
-      parse_print Css.Values.read_percentage
+      assert_parse_print Css.Values.read_percentage
         Css.Values.(pp_percentage ~always:true)
         (pick [ "0%"; "50%"; ".5%"; "200%" ] buf 1)
   | _ ->
-      parse_print Css.Values.read_number Css.Values.pp_number
-        (pick
-           [
-             "round(up, 1.2, 1)";
-             "mod(10, 3)";
-             "hypot(3, 4)";
-             "pow(2, 3)";
-             "sqrt(4)";
-             "sin(30deg)";
-           ]
-           buf 1)
+      assert_parse_print Css.Values.read_number Css.Values.pp_number
+        (pick valid_number_vectors buf 1)
 
 let test_spec_invalid_value_vectors buf =
   let rejected parse input =
@@ -422,33 +425,31 @@ let test_spec_invalid_value_vectors buf =
       rejected Css.Values.read_number
         (pick [ "pow(2)"; "sqrt()"; "sin()"; "round(up)" ] buf 1)
 
-let test_spec_color_branch_vectors buf =
-  let input =
-    pick
-      [
-        "#fff";
-        "#ffff";
-        "#112233";
-        "#11223344";
-        "transparent";
-        "currentColor";
-        "CanvasText";
-        "rgb(255, 0, 0)";
-        "rgba(255, 0, 0, .5)";
-        "hsl(120, 100%, 50%)";
-        "hsla(120, 100%, 50%, .5)";
-        "hwb(90 10% 20%)";
-        "lab(50% 10 20 / .5)";
-        "lch(50% 20 30)";
-        "oklab(50% 0.1 0.2)";
-        "oklch(50% 0.1 20 / 0.5)";
-        "color(display-p3 1 0 0 / .5)";
-        "color-mix(in srgb, red 40%, blue)";
-        "light-dark(black, white)";
-        "rgb(from rebeccapurple r g b / 50%)";
-      ]
-      buf 2
-  in
+let color_branch_vectors =
+  [
+    "#fff";
+    "#ffff";
+    "#112233";
+    "#11223344";
+    "transparent";
+    "currentColor";
+    "CanvasText";
+    "rgb(255, 0, 0)";
+    "rgba(255, 0, 0, .5)";
+    "hsl(120, 100%, 50%)";
+    "hsla(120, 100%, 50%, .5)";
+    "hwb(90 10% 20%)";
+    "lab(50% 10 20 / .5)";
+    "lch(50% 20 30)";
+    "oklab(50% 0.1 0.2)";
+    "oklch(50% 0.1 20 / 0.5)";
+    "color(display-p3 1 0 0 / .5)";
+    "color-mix(in srgb, red 40%, blue)";
+    "light-dark(black, white)";
+    "rgb(from rebeccapurple r g b / 50%)";
+  ]
+
+let assert_color_branch input =
   let r = Css.Cursor.of_string input in
   match
     try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
@@ -480,6 +481,9 @@ let test_spec_color_branch_vectors buf =
             fail
               (Fmt.str "CSS color branch not idempotent: %S -> %S -> %S" input
                  serialized reserialized))
+
+let test_spec_color_branch_vectors buf =
+  assert_color_branch (pick color_branch_vectors buf 2)
 
 let test_invalid_color_branches buf =
   let input =
@@ -639,54 +643,61 @@ let test_invalid_value_mutations buf =
   let kind, input = invalid_value_mutation buf in
   assert_value_reject kind input
 
-let suite =
-  ( "values",
-    [
-      test_case "read_color crash safety" [ bytes ] test_read_color;
-      test_case "read_length crash safety" [ bytes ] test_read_length;
-      test_case "read_angle crash safety" [ bytes ] test_read_angle;
-      test_case "read_duration crash safety" [ bytes ] test_read_duration;
-      test_case "read_time crash safety" [ bytes ] test_read_time;
-      test_case "read_number crash safety" [ bytes ] test_read_number;
-      test_case "read_percentage crash safety" [ bytes ] test_read_percentage;
-      test_case "read_length_percentage crash safety" [ bytes ]
-        test_read_length_percentage;
-      test_case "read_number_percentage crash safety" [ bytes ]
-        test_read_number_percentage;
-      test_case "read_color_name crash safety" [ bytes ] test_read_color_name;
-      test_case "read_color_space crash safety" [ bytes ] test_read_color_space;
-      test_case "read_system_color crash safety" [ bytes ]
-        test_read_system_color;
-      test_case "read_hue crash safety" [ bytes ] test_read_hue;
-      test_case "read_alpha crash safety" [ bytes ] test_read_alpha;
-      test_case "read_hue_interpolation crash safety" [ bytes ]
-        test_read_hue_interpolation;
-      test_case "read_calc crash safety" [ bytes ] test_read_calc;
-      test_case "read_channel crash safety" [ bytes ] test_read_channel;
-      test_case "read_component crash safety" [ bytes ] test_read_component;
-      test_case "read_rgb crash safety" [ bytes ] test_read_rgb;
-      test_case "read_transition_behavior crash safety" [ bytes ]
-        test_read_transition_behavior;
-      test_case "color roundtrip" [ bytes ] test_color_roundtrip;
-      test_case "length serialization idempotent" [ bytes ]
-        test_length_serialization_idempotent;
-      test_case "angle serialization idempotent" [ bytes ]
-        test_angle_serialization_idempotent;
-      test_case "percentage serialization idempotent" [ bytes ]
-        test_percentage_serialization_idempotent;
-      test_case "duration serialization idempotent" [ bytes ]
-        test_duration_serialization_idempotent;
-      test_case "modern color stable" [ bytes ] test_modern_color_stable;
-      test_case "modern math stable" [ bytes ] test_modern_math_stable;
-      test_case "spec valid value vectors" [ bytes ]
-        test_spec_valid_value_vectors;
-      test_case "spec invalid value vectors rejected" [ bytes ]
-        test_spec_invalid_value_vectors;
-      test_case "spec color branch vectors" [ bytes ]
-        test_spec_color_branch_vectors;
-      test_case "spec invalid color branch vectors rejected" [ bytes ]
-        test_invalid_color_branches;
-      test_case "generated value grammar" [ bytes ] test_generated_value_grammar;
-      test_case "invalid value mutations rejected" [ bytes ]
-        test_invalid_value_mutations;
-    ] )
+let reader_cases =
+  [
+    test_case "read_color crash safety" [ bytes ] test_read_color;
+    test_case "read_length crash safety" [ bytes ] test_read_length;
+    test_case "read_angle crash safety" [ bytes ] test_read_angle;
+    test_case "read_duration crash safety" [ bytes ] test_read_duration;
+    test_case "read_time crash safety" [ bytes ] test_read_time;
+    test_case "read_number crash safety" [ bytes ] test_read_number;
+    test_case "read_percentage crash safety" [ bytes ] test_read_percentage;
+    test_case "read_length_percentage crash safety" [ bytes ]
+      test_read_length_percentage;
+    test_case "read_number_percentage crash safety" [ bytes ]
+      test_read_number_percentage;
+    test_case "read_color_name crash safety" [ bytes ] test_read_color_name;
+    test_case "read_color_space crash safety" [ bytes ] test_read_color_space;
+    test_case "read_system_color crash safety" [ bytes ] test_read_system_color;
+    test_case "read_hue crash safety" [ bytes ] test_read_hue;
+    test_case "read_alpha crash safety" [ bytes ] test_read_alpha;
+    test_case "read_hue_interpolation crash safety" [ bytes ]
+      test_read_hue_interpolation;
+    test_case "read_calc crash safety" [ bytes ] test_read_calc;
+    test_case "read_channel crash safety" [ bytes ] test_read_channel;
+    test_case "read_component crash safety" [ bytes ] test_read_component;
+    test_case "read_rgb crash safety" [ bytes ] test_read_rgb;
+    test_case "read_transition_behavior crash safety" [ bytes ]
+      test_read_transition_behavior;
+  ]
+
+let roundtrip_cases =
+  [
+    test_case "color roundtrip" [ bytes ] test_color_roundtrip;
+    test_case "length serialization idempotent" [ bytes ]
+      test_length_serialization_idempotent;
+    test_case "angle serialization idempotent" [ bytes ]
+      test_angle_serialization_idempotent;
+    test_case "percentage serialization idempotent" [ bytes ]
+      test_percentage_serialization_idempotent;
+    test_case "duration serialization idempotent" [ bytes ]
+      test_duration_serialization_idempotent;
+    test_case "modern color stable" [ bytes ] test_modern_color_stable;
+    test_case "modern math stable" [ bytes ] test_modern_math_stable;
+  ]
+
+let grammar_cases =
+  [
+    test_case "spec valid value vectors" [ bytes ] test_spec_valid_value_vectors;
+    test_case "spec invalid value vectors rejected" [ bytes ]
+      test_spec_invalid_value_vectors;
+    test_case "spec color branch vectors" [ bytes ]
+      test_spec_color_branch_vectors;
+    test_case "spec invalid color branch vectors rejected" [ bytes ]
+      test_invalid_color_branches;
+    test_case "generated value grammar" [ bytes ] test_generated_value_grammar;
+    test_case "invalid value mutations rejected" [ bytes ]
+      test_invalid_value_mutations;
+  ]
+
+let suite = ("values", reader_cases @ roundtrip_cases @ grammar_cases)
