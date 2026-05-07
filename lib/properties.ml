@@ -778,6 +778,9 @@ let rec read_text_decoration_line t : text_decoration_line =
       ("underline", Underline);
       ("overline", Overline);
       ("line-through", Line_through);
+      ("blink", Blink);
+      ("spelling-error", Spelling_error);
+      ("grammar-error", Grammar_error);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -849,6 +852,9 @@ module Text_decoration = struct
             | Underline -> "underline"
             | Overline -> "overline"
             | Line_through -> "line-through"
+            | Blink -> "blink"
+            | Spelling_error -> "spelling-error"
+            | Grammar_error -> "grammar-error"
             | Inherit -> "inherit"
             | Initial -> "initial"
             | Unset -> "unset"
@@ -3291,7 +3297,7 @@ let border_width_to_length : border_width -> length option = function
   | Zero -> Some Zero
   | _ -> None
 
-let border_width_calc_to_length calc =
+let length_of_border_width_calc calc =
   let rec aux : border_width calc -> length calc option = function
     | Val width ->
         Option.map (fun length -> Val length) (border_width_to_length width)
@@ -3384,9 +3390,9 @@ let simplify_border_width_length_calc calc =
             (Val (make n))
             rest)
 
-let simplified_border_width_calc_to_length calc =
+let length_of_simplified_border_width_calc calc =
   Option.map simplify_border_width_length_calc
-    (border_width_calc_to_length calc)
+    (length_of_border_width_calc calc)
 
 let pp_length_calc_op ctx (op : calc_op) =
   match op with
@@ -3465,7 +3471,7 @@ let comparable_border_width_length length :
   | key, n -> Some (key, n)
 
 let reduce_border_width_minmax kind args : length calc list option =
-  let simplified = List.map simplified_border_width_calc_to_length args in
+  let simplified = List.map length_of_simplified_border_width_calc args in
   if List.exists Option.is_none simplified then None
   else
     let vals = List.map Option.get simplified in
@@ -3498,9 +3504,9 @@ let reduce_border_width_minmax kind args : length calc list option =
 
 let reduce_border_width_clamp lower value upper =
   match
-    ( simplified_border_width_calc_to_length lower,
-      simplified_border_width_calc_to_length value,
-      simplified_border_width_calc_to_length upper )
+    ( length_of_simplified_border_width_calc lower,
+      length_of_simplified_border_width_calc value,
+      length_of_simplified_border_width_calc upper )
   with
   | Some (Val lower), Some (Val value), Some (Val upper) -> (
       match
@@ -3556,7 +3562,7 @@ let rec pp_border_width : border_width Pp.t =
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
   | Calc cv -> (
-      match (Pp.minified ctx, border_width_calc_to_length cv) with
+      match (Pp.minified ctx, length_of_border_width_calc cv) with
       | true, Some cv -> pp_length ctx (Calc cv)
       | _ -> pp_calc pp_border_width ctx cv)
   | Min args -> pp_border_width_minmax "min" `Min ctx args
@@ -3570,7 +3576,7 @@ let rec pp_border_width : border_width Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 and pp_border_width_calc_contents ctx calc =
-  match simplified_border_width_calc_to_length calc with
+  match length_of_simplified_border_width_calc calc with
   | Some (Val length) -> pp_length ctx length
   | Some calc -> pp_length_calc_contents ctx calc
   | None -> pp_calc pp_border_width ctx calc
@@ -4332,6 +4338,9 @@ let rec pp_text_decoration_line : text_decoration_line Pp.t =
   | Underline -> Pp.string ctx "underline"
   | Overline -> Pp.string ctx "overline"
   | Line_through -> Pp.string ctx "line-through"
+  | Blink -> Pp.string ctx "blink"
+  | Spelling_error -> Pp.string ctx "spelling-error"
+  | Grammar_error -> Pp.string ctx "grammar-error"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -13559,88 +13568,92 @@ let rec read_overlay t : overlay =
     ~var:(fun t -> (Var (Values.read_var read_overlay t) : overlay))
     t
 
+type transition_parts = {
+  mutable transition_property : transition_property_value option;
+  mutable transition_times : duration list;
+  mutable transition_timing : timing_function option;
+  mutable transition_behavior : transition_behavior option;
+}
+
+let read_transition_part t read set =
+  let snap = Cursor.save t in
+  try
+    set (read t);
+    true
+  with Cursor.Parse_error _ ->
+    Cursor.restore t snap;
+    false
+
+let transition_property_start t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident _; _ })
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      true
+  | _ -> false
+
+let read_transition_property_part parts t =
+  if
+    Option.is_some parts.transition_property
+    || not (transition_property_start t)
+  then false
+  else
+    read_transition_part t read_transition_property_value (fun v ->
+        parts.transition_property <- Option.Some v)
+
+let read_transition_timing_part parts t =
+  if Option.is_some parts.transition_timing then false
+  else
+    read_transition_part t read_timing_function (fun v ->
+        parts.transition_timing <- Option.Some v)
+
+let read_transition_behavior_part parts t =
+  if Option.is_some parts.transition_behavior then false
+  else
+    read_transition_part t read_transition_behavior (fun v ->
+        parts.transition_behavior <- Option.Some v)
+
+let read_transition_time_part parts t =
+  if List.length parts.transition_times >= 2 then false
+  else
+    read_transition_part t read_duration (fun v ->
+        parts.transition_times <- v :: parts.transition_times)
+
+let transition_duration_delay parts =
+  match List.rev parts.transition_times with
+  | [] -> (Option.None, Option.None)
+  | [ d ] -> (Option.Some d, Option.None)
+  | d :: l :: _ -> (Option.Some d, Option.Some l)
+
 let read_transition_shorthand t : transition_shorthand =
-  (* CSS Transitions 2 §8.1: a [<single-transition>] is the unordered
-     juxtaposition [<transition-property>? || <time>? || <easing-function>? ||
-     <time>?]. The two [<time>] slots are duration then delay in document order,
-     but property and easing can appear anywhere. *)
-  let property = ref Option.None in
-  let times : duration list ref = ref [] in
-  let timing_function = ref Option.None in
-  let behavior = ref Option.None in
-  let try_property t =
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Ident _; _ })
-    | Some (Component.Func { node = { name = "var"; _ }; _ })
-      when Option.is_none !property -> (
-        let snap = Cursor.save t in
-        try
-          let p = read_transition_property_value t in
-          property := Option.Some p;
-          true
-        with Cursor.Parse_error _ ->
-          Cursor.restore t snap;
-          false)
-    | _ -> false
-  in
-  let try_timing t =
-    if Option.is_some !timing_function then false
-    else
-      let snap = Cursor.save t in
-      try
-        let v = read_timing_function t in
-        timing_function := Option.Some v;
-        true
-      with Cursor.Parse_error _ ->
-        Cursor.restore t snap;
-        false
-  in
-  let try_behavior t =
-    if Option.is_some !behavior then false
-    else
-      let snap = Cursor.save t in
-      try
-        let v = read_transition_behavior t in
-        behavior := Option.Some v;
-        true
-      with Cursor.Parse_error _ ->
-        Cursor.restore t snap;
-        false
-  in
-  let try_time t =
-    if List.length !times >= 2 then false
-    else
-      let snap = Cursor.save t in
-      try
-        let v = read_duration t in
-        times := v :: !times;
-        true
-      with Cursor.Parse_error _ ->
-        Cursor.restore t snap;
-        false
+  let parts =
+    {
+      transition_property = Option.None;
+      transition_times = [];
+      transition_timing = Option.None;
+      transition_behavior = Option.None;
+    }
   in
   let consumed = ref true in
   while !consumed do
     Cursor.ws t;
-    consumed := try_timing t || try_time t || try_behavior t || try_property t
+    consumed :=
+      read_transition_timing_part parts t
+      || read_transition_time_part parts t
+      || read_transition_behavior_part parts t
+      || read_transition_property_part parts t
   done;
   let property =
-    match !property with
+    match parts.transition_property with
     | Option.Some p -> p
     | Option.None -> (All : transition_property_value)
   in
-  let duration, delay =
-    match List.rev !times with
-    | [] -> (Option.None, Option.None)
-    | [ d ] -> (Option.Some d, Option.None)
-    | d :: l :: _ -> (Option.Some d, Option.Some l)
-  in
+  let duration, delay = transition_duration_delay parts in
   {
     property;
     duration;
-    timing_function = !timing_function;
+    timing_function = parts.transition_timing;
     delay;
-    behavior = !behavior;
+    behavior = parts.transition_behavior;
   }
 
 let rec read_transition t : transition =

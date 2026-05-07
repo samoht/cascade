@@ -3791,6 +3791,9 @@ type text_decoration_line =
   | Underline
   | Overline
   | Line_through
+  | Blink
+  | Spelling_error
+  | Grammar_error
   | Inherit
   | Initial
   | Unset

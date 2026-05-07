@@ -828,6 +828,15 @@ type text_decoration_line =
   | Underline
   | Overline
   | Line_through
+  | Blink
+      (** CSS Text Decoration 4 §2.1: deprecated but still part of the
+          [<text-decoration-line>] grammar; UAs typically render it as no-op. *)
+  | Spelling_error
+      (** CSS Text Decoration 4 §2.1 [spelling-error]: lets authors style the
+          UA's spelling-error mark via [text-decoration]. *)
+  | Grammar_error
+      (** CSS Text Decoration 4 §2.1 [grammar-error]: parallel to
+          [spelling-error]. *)
   | Inherit
   | Initial
   | Unset

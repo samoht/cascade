@@ -122,6 +122,41 @@ let pp_syntax_fallback ctx value =
     (if Pp.minified ctx then Parser.to_string_custom_minified value
      else Parser.to_string_custom value)
 
+let pp_var_ref ctx name =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  Pp.char ctx ')'
+
+let pp_empty_var ctx name =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  Pp.char ctx ',';
+  Pp.char ctx ')'
+
+let pp_empty2_var ctx name =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  Pp.string ctx ",  )"
+
+let pp_theme_default_or ctx name none =
+  match ctx.Pp.theme_defaults name with
+  | Some resolved -> Pp.string ctx resolved
+  | Option.None -> none ()
+
+let pp_typed_var_fallback pp_value ctx name value =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  Pp.comma ctx ();
+  pp_value { ctx with in_function = true } value;
+  Pp.char ctx ')'
+
+let pp_syntax_var_fallback ctx name value =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  Pp.comma ctx ();
+  pp_syntax_fallback { ctx with in_function = true } value;
+  Pp.char ctx ')'
+
 let first_top_level_comma_segment s =
   let len = String.length s in
   let rec loop i depth (quote : char option) =
@@ -144,82 +179,50 @@ let first_top_level_comma_segment s =
   in
   loop 0 0 Option.None
 
+let pp_inline_var : type a. a Pp.t -> a var Pp.t =
+ fun pp_value ctx v ->
+  match v.default with
+  | Some value -> pp_value ctx value
+  | Option.None -> (
+      match v.fallback with
+      | Fallback value -> pp_value ctx value
+      | Var_fallback name ->
+          pp_theme_default_or ctx name (fun () -> pp_var_ref ctx v.name)
+      | Syntax_fallback value ->
+          pp_syntax_fallback { ctx with in_function = true } value
+      | Empty | Empty2 -> ()
+      | None -> pp_var_ref ctx v.name)
+
+let pp_var_without_fallback : type a. a Pp.t -> a var Pp.t =
+ fun pp_value ctx v ->
+  if in_theme ctx v.name then pp_var_ref ctx v.name
+  else
+    pp_theme_default_or ctx v.name (fun () ->
+        match v.default with
+        | Some value -> pp_value ctx value
+        | Option.None -> pp_var_ref ctx v.name)
+
+let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
+ fun pp_value ctx v ->
+  match v.fallback with
+  | None -> pp_var_without_fallback pp_value ctx v
+  | Empty -> pp_empty_var ctx v.name
+  | Empty2 -> pp_empty2_var ctx v.name
+  | Fallback value ->
+      if in_theme ctx v.name then
+        pp_typed_var_fallback pp_value ctx v.name value
+      else pp_theme_default_or ctx v.name (fun () -> pp_value ctx value)
+  | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value
+  | Var_fallback fallback_name ->
+      Pp.string ctx "var(--";
+      Pp.string ctx v.name;
+      Pp.comma ctx ();
+      pp_var_fallback ctx fallback_name
+
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
-  let emit_var_ref () =
-    Pp.string ctx "var(--";
-    Pp.string ctx v.name;
-    Pp.char ctx ')'
-  in
-  if ctx.inline then
-    match v.default with
-    | Some value -> pp_value ctx value
-    | Option.None -> (
-        match v.fallback with
-        | Fallback value -> pp_value ctx value
-        | Var_fallback fallback_name -> (
-            match ctx.theme_defaults fallback_name with
-            | Some resolved -> Pp.string ctx resolved
-            | Option.None -> emit_var_ref ())
-        | Syntax_fallback value ->
-            pp_syntax_fallback { ctx with in_function = true } value
-        | Empty | Empty2 -> ()
-        | None -> emit_var_ref ())
-  else
-    match v.fallback with
-    | None -> (
-        if
-          (* CSS Custom Properties L1: when the printer is given a theme set and
-             a [theme_defaults] resolver, a [var()] whose name is in the theme
-             set keeps its [var()] reference; one not in the theme set inlines
-             to the resolved value supplied by the caller. With no theme
-             provided ([ctx.theme = None]), [in_theme] returns [true] so the
-             [var()] reference is preserved unchanged. *)
-          in_theme ctx v.name
-        then emit_var_ref ()
-        else
-          match ctx.theme_defaults v.name with
-          | Some resolved -> Pp.string ctx resolved
-          | Option.None -> (
-              match v.default with
-              | Some value -> pp_value ctx value
-              | Option.None -> emit_var_ref ()))
-    | Empty ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.char ctx ',';
-        Pp.char ctx ')'
-    | Empty2 ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.string ctx ",  )"
-    | Fallback value -> (
-        if
-          (* Same theme-driven inlining as the no-fallback path: when the var
-             name is not in the theme set the printer prefers the typed fallback
-             over emitting [var(--name, fallback)]. *)
-          in_theme ctx v.name
-        then (
-          Pp.string ctx "var(--";
-          Pp.string ctx v.name;
-          Pp.comma ctx ();
-          pp_value { ctx with in_function = true } value;
-          Pp.char ctx ')')
-        else
-          match ctx.theme_defaults v.name with
-          | Some resolved -> Pp.string ctx resolved
-          | Option.None -> pp_value ctx value)
-    | Syntax_fallback value ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.comma ctx ();
-        pp_syntax_fallback { ctx with in_function = true } value;
-        Pp.char ctx ')'
-    | Var_fallback fallback_name ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.comma ctx ();
-        pp_var_fallback ctx fallback_name
+  if ctx.inline then pp_inline_var pp_value ctx v
+  else pp_stylesheet_var pp_value ctx v
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
@@ -835,7 +838,7 @@ let length_unit_negative_rank = function
   | unit when length_unit_is_font_relative unit -> 0
   | _ -> 1
 
-let length_to_unit = function
+let unit_of_length = function
   | Zero -> Some (U_px, 0.)
   | Px n -> Some (U_px, n)
   | Cm n -> Some (U_cm, n)
@@ -880,7 +883,7 @@ let length_to_unit = function
   | Cqmax n -> Some (U_cqmax, n)
   | _ -> None
 
-let unit_to_length unit n =
+let length_of_unit unit n =
   match unit with
   | U_px -> if n = 0. then Zero else Px n
   | U_cm -> Cm n
@@ -991,7 +994,7 @@ let linear_length_terms calc =
     List.map (fun (unit, n) -> (unit, factor *. n)) terms
   in
   let rec aux = function
-    | Val length -> Option.map (fun term -> [ term ]) (length_to_unit length)
+    | Val length -> Option.map (fun term -> [ term ]) (unit_of_length length)
     | Num 0. -> Some []
     | Num _ | Var _ | Sibling_index | Sibling_count -> None
     | Nested inner | Parens inner -> aux inner
@@ -1024,8 +1027,8 @@ let linear_length_calc calc =
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op first_unit first_value unit n in
-              Expr (acc, op, Val (unit_to_length unit n)))
-            (Val (unit_to_length unit n))
+              Expr (acc, op, Val (length_of_unit unit n)))
+            (Val (length_of_unit unit n))
             rest)
 
 let lp_is_zero (v : length_percentage) =
@@ -1100,20 +1103,20 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
       | _ -> Expr (l, op, r))
 
-let lp_to_unit : length_percentage -> (length_unit * float) option = function
+let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (U_pct, n)
-  | Length l -> length_to_unit l
+  | Length l -> unit_of_length l
   | Var _ | Calc _ -> None
 
-let unit_to_lp unit n : length_percentage =
-  match unit with U_pct -> Pct n | unit -> Length (unit_to_length unit n)
+let lp_of_unit unit n : length_percentage =
+  match unit with U_pct -> Pct n | unit -> Length (length_of_unit unit n)
 
 let linear_lp_terms calc =
   let scale factor terms =
     List.map (fun (unit, n) -> (unit, factor *. n)) terms
   in
   let rec aux = function
-    | Val value -> Option.map (fun term -> [ term ]) (lp_to_unit value)
+    | Val value -> Option.map (fun term -> [ term ]) (unit_of_lp value)
     | Num 0. -> Some []
     | Num _ | Var _ | Sibling_index | Sibling_count -> None
     | Nested inner | Parens inner -> aux inner
@@ -1146,8 +1149,8 @@ let linear_lp_calc calc =
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op first_unit first_value unit n in
-              Expr (acc, op, Val (unit_to_lp unit n)))
-            (Val (unit_to_lp unit n))
+              Expr (acc, op, Val (lp_of_unit unit n)))
+            (Val (lp_of_unit unit n))
             rest)
 
 let rec pp_length ?(always = false) : length Pp.t =
@@ -1637,6 +1640,8 @@ let mod_value a b =
   else
     let q = Float.floor (a /. b) in
     a -. (q *. b)
+
+let sign_float x = if x > 0. then 1. else if x < 0. then -1. else 0.
 
 (* Byte value [0..255] for an alpha component, when the alpha is a static number
    or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
@@ -3000,181 +3005,180 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
       match String.lowercase_ascii name with
-      | "round" ->
-          Num
-            (Cursor.call "round" t (fun inner ->
-                 let snap = Cursor.save inner in
-                 let strategy =
-                   match Cursor.peek_ident inner with
-                   | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-                       Cursor.skip inner;
-                       Cursor.ws inner;
-                       Cursor.comma inner;
-                       kw
-                   | _ ->
-                       Cursor.restore inner snap;
-                       "nearest"
-                 in
-                 let value = Cursor.number inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let step = Cursor.number inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 round_to_step strategy value step))
-      | "rem" ->
-          Num
-            (Cursor.call "rem" t (fun inner ->
-                 let a = Cursor.number inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let b = Cursor.number inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.rem a b))
-      | "mod" ->
-          Num
-            (Cursor.call "mod" t (fun inner ->
-                 let a = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let b = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 mod_value a b))
-      | "min" ->
-          Num
-            (Cursor.call "min" t (fun inner ->
-                 let nums =
-                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
-                 in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 List.fold_left Float.min Float.infinity nums))
-      | "max" ->
-          Num
-            (Cursor.call "max" t (fun inner ->
-                 let nums =
-                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
-                 in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 List.fold_left Float.max Float.neg_infinity nums))
-      | "clamp" ->
-          Num
-            (Cursor.call "clamp" t (fun inner ->
-                 let min_value = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let value = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let max_value = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.max min_value (Float.min value max_value)))
+      | "round" -> read_numeric_round t
+      | "rem" -> read_numeric_rem t
+      | "mod" -> read_numeric_binary_call "mod" mod_value t
+      | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
+      | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
+      | "clamp" -> read_numeric_clamp t
       (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
          time to a [Num] so the surrounding [calc()] can fold further. *)
-      | "sqrt" ->
-          Num
-            (Cursor.call "sqrt" t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.sqrt v))
-      | "abs" ->
-          Num
-            (Cursor.call "abs" t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.abs v))
-      | "sign" ->
-          Num
-            (Cursor.call "sign" t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 if v > 0. then 1. else if v < 0. then -1. else 0.))
-      | "exp" ->
-          Num
-            (Cursor.call "exp" t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.exp v))
-      | "log" ->
-          Num
-            (Cursor.call "log" t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 let base =
-                   if Cursor.comma_opt inner then Some (read_num_expr inner)
-                   else None
-                 in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 match base with
-                 | None -> Float.log v
-                 | Some b -> Float.log v /. Float.log b))
-      | "pow" ->
-          Num
-            (Cursor.call "pow" t (fun inner ->
-                 let a = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let b = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.pow a b))
-      | "hypot" ->
-          Num
-            (Cursor.call "hypot" t (fun inner ->
-                 let nums =
-                   Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
-                 in
-                 Cursor.expect_eof inner;
-                 let sum_sq =
-                   List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums
-                 in
-                 Float.sqrt sum_sq))
-      | ("sin" | "cos" | "tan") as fn ->
-          Num
-            (Cursor.call fn t (fun inner ->
-                 let radians = read_trig_arg inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 match fn with
-                 | "sin" -> Float.sin radians
-                 | "cos" -> Float.cos radians
-                 | "tan" -> Float.tan radians
-                 | _ -> assert false))
-      | ("asin" | "acos" | "atan") as fn ->
-          Num
-            (Cursor.call fn t (fun inner ->
-                 let v = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 let result_rad =
-                   match fn with
-                   | "asin" -> Float.asin v
-                   | "acos" -> Float.acos v
-                   | "atan" -> Float.atan v
-                   | _ -> assert false
-                 in
-                 result_rad *. 180. /. Float.pi))
-      | "atan2" ->
-          Num
-            (Cursor.call "atan2" t (fun inner ->
-                 let y = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.comma inner;
-                 let x = read_num_expr inner in
-                 Cursor.ws inner;
-                 Cursor.expect_eof inner;
-                 Float.atan2 y x *. 180. /. Float.pi))
+      | "sqrt" -> read_numeric_unary_call "sqrt" Float.sqrt t
+      | "abs" -> read_numeric_unary_call "abs" Float.abs t
+      | "sign" -> read_numeric_unary_call "sign" sign_float t
+      | "exp" -> read_numeric_unary_call "exp" Float.exp t
+      | "log" -> read_numeric_log t
+      | "pow" -> read_numeric_binary_call "pow" Float.pow t
+      | "hypot" -> read_numeric_hypot t
+      | ("sin" | "cos" | "tan") as fn -> read_numeric_trig fn t
+      | ("asin" | "acos" | "atan") as fn -> read_numeric_inverse_trig fn t
+      | "atan2" -> read_numeric_atan2 t
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
+
+and read_numeric_unary_call : type a.
+    string -> (float -> float) -> Cursor.t -> a calc =
+ fun name fn t ->
+  Num
+    (Cursor.call name t (fun inner ->
+         let v = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         fn v))
+
+and read_numeric_binary_call : type a.
+    string -> (float -> float -> float) -> Cursor.t -> a calc =
+ fun name fn t ->
+  Num
+    (Cursor.call name t (fun inner ->
+         let a = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let b = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         fn a b))
+
+and read_numeric_list_call : type a.
+    string -> (float -> float -> float) -> float -> Cursor.t -> a calc =
+ fun name fn initial t ->
+  Num
+    (Cursor.call name t (fun inner ->
+         let nums =
+           Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
+         in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         List.fold_left fn initial nums))
+
+and read_numeric_round : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "round" t (fun inner ->
+         let snap = Cursor.save inner in
+         let strategy =
+           match Cursor.peek_ident inner with
+           | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+               Cursor.skip inner;
+               Cursor.ws inner;
+               Cursor.comma inner;
+               kw
+           | _ ->
+               Cursor.restore inner snap;
+               "nearest"
+         in
+         let value = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let step = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         round_to_step strategy value step))
+
+and read_numeric_rem : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "rem" t (fun inner ->
+         let a = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let b = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         Float.rem a b))
+
+and read_numeric_clamp : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "clamp" t (fun inner ->
+         let min_value = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let value = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let max_value = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         Float.max min_value (Float.min value max_value)))
+
+and read_numeric_log : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "log" t (fun inner ->
+         let v = read_num_expr inner in
+         Cursor.ws inner;
+         let base =
+           if Cursor.comma_opt inner then Some (read_num_expr inner) else None
+         in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         match base with
+         | None -> Float.log v
+         | Some b -> Float.log v /. Float.log b))
+
+and read_numeric_hypot : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "hypot" t (fun inner ->
+         let nums =
+           Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
+         in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         let sum_sq = List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums in
+         Float.sqrt sum_sq))
+
+and read_numeric_trig : type a. string -> Cursor.t -> a calc =
+ fun fn t ->
+  Num
+    (Cursor.call fn t (fun inner ->
+         let radians = read_trig_arg inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         match fn with
+         | "sin" -> Float.sin radians
+         | "cos" -> Float.cos radians
+         | "tan" -> Float.tan radians
+         | _ -> assert false))
+
+and read_numeric_inverse_trig : type a. string -> Cursor.t -> a calc =
+ fun fn t ->
+  Num
+    (Cursor.call fn t (fun inner ->
+         let v = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         let result_rad =
+           match fn with
+           | "asin" -> Float.asin v
+           | "acos" -> Float.acos v
+           | "atan" -> Float.atan v
+           | _ -> assert false
+         in
+         result_rad *. 180. /. Float.pi))
+
+and read_numeric_atan2 : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "atan2" t (fun inner ->
+         let y = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let x = read_num_expr inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         Float.atan2 y x *. 180. /. Float.pi))
 
 (* Read a number-typed calc expression and fold it to a float. Used as the
    argument reader for [sqrt]/[pow]/[hypot]/etc. so [pow(2, sqrt(100))] and

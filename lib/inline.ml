@@ -288,6 +288,40 @@ let map_keyframe_decls f frames =
       })
     frames
 
+let universal_selector = Selector.Universal None
+let selector_for_parents = function [] -> universal_selector | p :: _ -> p
+
+let universal_visible_customs ~scopes ~at_path =
+  visible_customs ~scopes ~at_path ~selector:universal_selector
+
+let eval_decls ~scopes ~at_path selector decls =
+  let visible = visible_customs ~scopes ~at_path ~selector in
+  List.map (Context.eval (context_for visible)) decls
+
+(* @page, @keyframes, and @position-try declarations apply to elements whose
+   effective selector is universal at this at-path. Customs declared on [:root],
+   [html], or [*] cover any element and remain reachable. *)
+let eval_universal_decls ~scopes ~at_path decls =
+  let visible = universal_visible_customs ~scopes ~at_path in
+  List.map (Context.eval (context_for visible)) decls
+
+let universal_eval ~scopes ~at_path =
+  let visible = universal_visible_customs ~scopes ~at_path in
+  Context.eval (context_for visible)
+
+let substitute_font_face ~scopes ~at_path descriptors =
+  let visible = universal_visible_customs ~scopes ~at_path in
+  List.map (simplify_font_face_descriptor visible) descriptors
+
+let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
+  let visible = universal_visible_customs ~scopes ~at_path in
+  let eval_page = eval_page_declaration visible (context_for visible) in
+  let update_margin (m : page_margin_rule) =
+    { m with margin_descriptors = List.map eval_page m.margin_descriptors }
+  in
+  Page_with_margins
+    (sel, List.map eval_page descriptors, List.map update_margin margins)
+
 let rec substitute ~scopes ~parents ~at_path stmts =
   List.map (substitute_stmt ~scopes ~parents ~at_path) stmts
 
@@ -296,84 +330,39 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
   | Some (node, body, rebuild) ->
       rebuild (substitute ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
   | None -> (
-      let eval_with sel decls =
-        let visible = visible_customs ~scopes ~at_path ~selector:sel in
-        let ctx = context_for visible in
-        List.map (Context.eval ctx) decls
-      in
-      (* @page, @keyframes, and @position-try declarations apply to elements
-         whose effective selector is universal at this at-path, so use the
-         universal selector for visibility. Customs declared on [:root] / [html]
-         / [*] cover any element and remain reachable. *)
-      let universal_decls decls =
-        let visible =
-          visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
-        in
-        let ctx = context_for visible in
-        List.map (Context.eval ctx) decls
-      in
-      let universal_frame =
-        Context.eval
-          (context_for
-             (visible_customs ~scopes ~at_path
-                ~selector:(Selector.Universal None)))
-      in
       match stmt with
       | Rule rule ->
           let eff = effective_selector ~parents rule.selector in
           Rule
             {
               rule with
-              declarations = eval_with eff rule.declarations;
+              declarations = eval_decls ~scopes ~at_path eff rule.declarations;
               nested =
                 substitute ~scopes ~parents:(eff :: parents) ~at_path
                   rule.nested;
             }
       | Declarations decls ->
-          let sel =
-            match parents with p :: _ -> p | [] -> Selector.Universal None
-          in
-          Declarations (eval_with sel decls)
+          Declarations
+            (eval_decls ~scopes ~at_path (selector_for_parents parents) decls)
       | Page (sel, decls) ->
-          let visible =
-            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
-          in
+          let visible = universal_visible_customs ~scopes ~at_path in
           let ctx = context_for visible in
           Page (sel, List.map (eval_page_declaration visible ctx) decls)
-      | Position_try (n, decls) -> Position_try (n, universal_decls decls)
+      | Position_try (n, decls) ->
+          Position_try (n, eval_universal_decls ~scopes ~at_path decls)
       | Keyframes (n, frames) ->
-          Keyframes (n, map_keyframe_decls universal_frame frames)
+          Keyframes
+            (n, map_keyframe_decls (universal_eval ~scopes ~at_path) frames)
       | Webkit_keyframes (n, frames) ->
-          Webkit_keyframes (n, map_keyframe_decls universal_frame frames)
+          Webkit_keyframes
+            (n, map_keyframe_decls (universal_eval ~scopes ~at_path) frames)
       | Moz_keyframes (n, frames) ->
-          Moz_keyframes (n, map_keyframe_decls universal_frame frames)
+          Moz_keyframes
+            (n, map_keyframe_decls (universal_eval ~scopes ~at_path) frames)
       | Font_face descriptors ->
-          let visible =
-            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
-          in
-          Font_face
-            (List.map (simplify_font_face_descriptor visible) descriptors)
+          Font_face (substitute_font_face ~scopes ~at_path descriptors)
       | Page_with_margins (sel, descriptors, margins) ->
-          let visible =
-            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
-          in
-          let ctx = context_for visible in
-          let new_descriptors =
-            List.map (eval_page_declaration visible ctx) descriptors
-          in
-          let new_margins =
-            List.map
-              (fun (m : page_margin_rule) ->
-                {
-                  m with
-                  margin_descriptors =
-                    List.map
-                      (eval_page_declaration visible ctx)
-                      m.margin_descriptors;
-                })
-              margins
-          in
-          Page_with_margins (sel, new_descriptors, new_margins)
+          substitute_page_with_margins ~scopes ~at_path sel descriptors margins
       | other -> other)
 
 (** {1 Pass 3 - dead-code elimination} *)
@@ -595,44 +584,51 @@ let collect_scoped_refs stylesheet =
    [.theme] element), so we keep the custom-prop declaration in source. The
    at-rule path is a hard barrier though - a [@media]-wrapped declaration cannot
    affect anything outside that block. *)
+let visible_refs ~path_visible consumers path =
+  List.concat_map
+    (fun (cp, _cs, refs) ->
+      if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
+    consumers
+
+let marked_live live (path, sel, name) =
+  List.exists (fun (p, s, n) -> p = path && s = sel && n = name) !live
+
+let mark_live live entry =
+  if not (marked_live live entry) then live := entry :: !live
+
+let live_at_scope live ~path ~sel =
+  List.exists (fun (p, s, _) -> p = path && s = sel) !live
+
+let mark_referenced_custom ~path_visible ~live ~consumer_path ref_name
+    (b_path, b_sel, b_name, _) =
+  if
+    b_name = ref_name
+    && path_visible ~scope_path:b_path ~consumer_path
+    && not (marked_live live (b_path, b_sel, b_name))
+  then mark_live live (b_path, b_sel, b_name)
+
 let live_customs ~consumers ~customs =
   let path_visible ~scope_path ~consumer_path =
     at_path_prefix ~outer:scope_path ~inner:consumer_path
   in
-  let directly_visible (path, _sel) =
-    List.concat_map
-      (fun (cp, _cs, refs) ->
-        if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
-      consumers
-  in
   let live = ref [] in
-  let is_live (path, sel, name) =
-    List.exists (fun (p, s, n) -> p = path && s = sel && n = name) !live
-  in
-  let mark entry = if not (is_live entry) then live := entry :: !live in
   (* Seed: every custom whose scope has a path-compatible consumer referencing
      its name is directly live. *)
   List.iter
     (fun (path, sel, name, _) ->
-      if List.mem name (directly_visible (path, sel)) then mark (path, sel, name))
+      if List.mem name (visible_refs ~path_visible consumers path) then
+        mark_live live (path, sel, name))
     customs;
   (* Propagate: if a live custom [A] references a name [N], any custom [B] named
      [N] at a path that contains [A]'s path is also live. Iterate to
      fixpoint. *)
-  let any_at_scope ~path ~sel =
-    List.exists (fun (p, s, _) -> p = path && s = sel) !live
-  in
   let propagate_from (a_path, a_sel, _, a_refs) =
-    if any_at_scope ~path:a_path ~sel:a_sel then
+    if live_at_scope live ~path:a_path ~sel:a_sel then
       List.iter
         (fun ref_name ->
           List.iter
-            (fun (b_path, b_sel, b_name, _) ->
-              if
-                b_name = ref_name
-                && path_visible ~scope_path:b_path ~consumer_path:a_path
-                && not (is_live (b_path, b_sel, b_name))
-              then mark (b_path, b_sel, b_name))
+            (mark_referenced_custom ~path_visible ~live ~consumer_path:a_path
+               ref_name)
             customs)
         a_refs
   in
@@ -644,39 +640,45 @@ let live_customs ~consumers ~customs =
   done;
   !live
 
+let normalize_custom_value decl =
+  match custom_name decl with
+  | None -> decl
+  | Some name -> (
+      let value = Declaration.string_of_value ~minify:true decl in
+      let important = Declaration.is_important decl in
+      try
+        let cursor = Cursor.of_string value in
+        let color = Values.read_color cursor in
+        Cursor.ws cursor;
+        Cursor.expect_eof cursor;
+        let decl =
+          Declaration.custom_property name
+            (Pp.to_string ~minify:true Values.pp_color color)
+        in
+        if important then Declaration.important decl else decl
+      with Cursor.Parse_error _ -> decl)
+
+let custom_is_live ~keep ~live_set ~at_path ~selector name =
+  List.mem name keep
+  || List.exists
+       (fun (p, s, n) -> p = at_path && s = selector && n = name)
+       live_set
+
+let filter_live_custom_decls ~keep ~live_set ~at_path ~selector =
+  List.filter_map (fun d ->
+      match custom_name d with
+      | None -> Some d
+      | Some name ->
+          if custom_is_live ~keep ~live_set ~at_path ~selector name then
+            Some (normalize_custom_value d)
+          else None)
+
+let property_is_live ~keep ~live_set ~at_path name =
+  custom_is_live ~keep ~live_set ~at_path ~selector:universal_selector name
+
 let strip_dead ~keep ~live_set stmts =
-  let normalize_custom_value decl =
-    match custom_name decl with
-    | None -> decl
-    | Some name -> (
-        let value = Declaration.string_of_value ~minify:true decl in
-        let important = Declaration.is_important decl in
-        try
-          let cursor = Cursor.of_string value in
-          let color = Values.read_color cursor in
-          Cursor.ws cursor;
-          Cursor.expect_eof cursor;
-          let decl =
-            Declaration.custom_property name
-              (Pp.to_string ~minify:true Values.pp_color color)
-          in
-          if important then Declaration.important decl else decl
-        with Cursor.Parse_error _ -> decl)
-  in
-  let is_live ~at_path ~selector ~name =
-    List.mem name keep
-    || List.exists
-         (fun (p, s, n) -> p = at_path && s = selector && n = name)
-         live_set
-  in
   let filter_decls ~at_path ~selector =
-    List.filter_map (fun d ->
-        match custom_name d with
-        | None -> Some d
-        | Some name ->
-            if is_live ~at_path ~selector ~name then
-              Some (normalize_custom_value d)
-            else None)
+    filter_live_custom_decls ~keep ~live_set ~at_path ~selector
   in
   let rec map_stmts ~parents ~at_path stmts =
     List.filter_map (map_stmt ~parents ~at_path) stmts
@@ -697,27 +699,18 @@ let strip_dead ~keep ~live_set stmts =
             if decls = [] && nested = [] then None
             else Some (Rule { rule with declarations = decls; nested })
         | Property rule ->
-            if
-              List.mem rule.name keep
-              || List.exists
-                   (fun (p, s, n) ->
-                     p = at_path && s = Selector.Universal None && n = rule.name)
-                   live_set
-            then Some stmt
+            if property_is_live ~keep ~live_set ~at_path rule.name then
+              Some stmt
             else None
         | Declarations decls -> (
-            let sel =
-              match parents with p :: _ -> p | [] -> Selector.Universal None
-            in
+            let sel = selector_for_parents parents in
             match filter_decls ~at_path ~selector:sel decls with
             | [] -> None
             | decls -> Some (Declarations decls))
         | Page (sel, decls) ->
             Some
               (Page
-                 ( sel,
-                   filter_decls ~at_path ~selector:(Selector.Universal None)
-                     decls ))
+                 (sel, filter_decls ~at_path ~selector:universal_selector decls))
         | other -> Some other)
   in
   map_stmts ~parents:[] ~at_path:[] stmts
@@ -795,6 +788,18 @@ let strip_evaluated_guards ~query (rule : import_rule) =
   | None -> rule
   | Some _ -> { rule with media = None; supports = None }
 
+let parse_import_content content =
+  let cursor = Cursor.of_string content in
+  try Some (read_stylesheet cursor)
+  with Cursor.Parse_error _ -> (
+    try
+      let inner, _warnings = parse_stylesheet_partial content in
+      Some inner
+    with Invalid_argument _ -> None)
+
+let strip_import_charset =
+  List.filter (function Charset _ -> false | _ -> true)
+
 let imports ?query ?(layer_order = []) (loader : Context.loader) stylesheet =
   let imports = loader.imports in
   let resolve ~base url =
@@ -824,23 +829,10 @@ let imports ?query ?(layer_order = []) (loader : Context.loader) stylesheet =
             if List.mem resolved stack then []
             else
               let content = List.assoc resolved imports in
-              let parsed =
-                let cursor = Cursor.of_string content in
-                try Some (read_stylesheet cursor)
-                with Cursor.Parse_error _ -> (
-                  try
-                    let inner, _warnings = parse_stylesheet_partial content in
-                    Some inner
-                  with Invalid_argument _ -> None)
-              in
-              match parsed with
+              match parse_import_content content with
               | None -> [ Import import_rule ]
               | Some inner ->
-                  let inner =
-                    List.filter
-                      (function Charset _ -> false | _ -> true)
-                      inner
-                  in
+                  let inner = strip_import_charset inner in
                   let processed =
                     replace_stmts ~base:(Some resolved)
                       ~stack:(resolved :: stack) inner
