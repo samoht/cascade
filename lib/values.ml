@@ -2011,6 +2011,7 @@ let rec pp_angle : angle Pp.t =
         ctx (a, b)
   | Calc c -> pp_calc pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
+  | Invalid tokens -> List.iter (Component.pp ctx) tokens
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
@@ -2141,13 +2142,14 @@ let rec pp_rgb : rgb Pp.t =
   | Var v -> pp_var pp_rgb ctx v
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
-  let starts_number = function
+  let can_follow_percentage_without_space = function
     | '0' .. '9' | '.' | '+' | '-' -> true
+    | 'A' .. 'Z' | 'a' .. 'z' | '_' -> true
     | _ -> false
   in
   match (Pp.minified ctx, l, next) with
-  | true, Some (Pct _), Some s when String.length s > 0 && starts_number s.[0]
-    ->
+  | true, Some (Pct _), Some s
+    when String.length s > 0 && can_follow_percentage_without_space s.[0] ->
       ()
   | _ -> Pp.space ctx ()
 
@@ -3812,38 +3814,61 @@ let angle_trig_function t =
   else if Cursor.looking_at_func "atan" t then Some (`Atan, "atan")
   else None
 
+(* Capture the full source token for the function-call at the cursor's current
+   position so we can preserve it verbatim if the typed reader refuses the
+   argument. *)
+let snapshot_function_call t =
+  match Cursor.peek t with
+  | Some (Component.Func _ as comp) -> comp
+  | _ ->
+      (* The trig dispatch already saw [Cursor.looking_at_func name], so the
+         next component is always a [Func]. *)
+      assert false
+
 let read_angle_trig kind name t =
-  Cursor.call name t (fun inner ->
-      let v = read_num_expr inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      let radians =
-        match kind with
-        | `Asin -> Float.asin v
-        | `Acos -> Float.acos v
-        | `Atan -> Float.atan v
-      in
-      (Deg (radians *. 180. /. Float.pi) : angle))
+  let snap = Cursor.save t in
+  let original = snapshot_function_call t in
+  try
+    Cursor.call name t (fun inner ->
+        let v = read_num_expr inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        let radians =
+          match kind with
+          | `Asin -> Float.asin v
+          | `Acos -> Float.acos v
+          | `Atan -> Float.atan v
+        in
+        (Deg (radians *. 180. /. Float.pi) : angle))
+  with Cursor.Parse_error _ ->
+    Cursor.restore t snap;
+    Cursor.skip t;
+    Invalid [ original ]
 
 let read_angle_atan2 t =
-  Cursor.call "atan2" t (fun inner ->
-      (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
-         <percentage> for both arguments (must match types). When both arguments
-         reduce to a scalar in a shared category, the ratio is unit-free and the
-         result folds to a [Deg] constant. Each [scalar] arm captures the
-         category so we can reject mismatched-type pairs without inspecting raw
-         unit strings. *)
-      let y = read_atan2_scalar inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      Cursor.ws inner;
-      let x = read_atan2_scalar inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      match (y, x) with
-      | (yk, yv), (xk, xv) when yk = xk ->
-          (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
-      | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
+  let snap = Cursor.save t in
+  let original = snapshot_function_call t in
+  try
+    Cursor.call "atan2" t (fun inner ->
+        (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
+           <percentage> for both arguments (must match types). When both
+           arguments reduce to a scalar in a shared category, the ratio is
+           unit-free and the result folds to a [Deg] constant. *)
+        let y = read_atan2_scalar inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        Cursor.ws inner;
+        let x = read_atan2_scalar inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        match (y, x) with
+        | (yk, yv), (xk, xv) when yk = xk ->
+            (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
+        | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
+  with Cursor.Parse_error _ ->
+    Cursor.restore t snap;
+    Cursor.skip t;
+    Invalid [ original ]
 
 let read_angle_unit t =
   let n, unit_raw = Cursor.number_with_unit t in
