@@ -48,6 +48,7 @@ let read_input path =
   parse_css ~filename css
 
 let print_output output =
+  let output = if output = "\n" then "" else output in
   print_string output;
   if output <> "" && output.[String.length output - 1] <> '\n' then
     print_newline ()
