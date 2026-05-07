@@ -1152,7 +1152,7 @@ let feature_in_parens content : feature option =
                       else None
                   | Some _ -> None)
               | None -> None)
-          | None -> None))
+          | None -> value_first_feature content))
     else value_first_feature content
 
 (* Parser for media-condition (sequence of (...) with and/or/not). *)

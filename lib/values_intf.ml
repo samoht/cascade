@@ -323,6 +323,12 @@ type angle =
   | Rem of angle * angle
   | Calc of angle calc
   | Var of angle var
+  | Invalid of Component.t list
+      (** Spec-invalid [<angle>] input (e.g. [asin(<angle>)] - inverse trig
+          takes [<number>], not [<angle>]) that upstream tools preserve
+          verbatim. The pretty-printer emits the tokens unchanged; the
+          [Optimize.drop_invalid] pass removes any declaration whose typed value
+          reduces to this arm under [--minify]. *)
 
 type alpha =
   | None

@@ -12937,7 +12937,7 @@ let rec read_color_scheme t : color_scheme =
     | [ "revert" ] -> Revert
     | [ "revert-layer" ] -> Revert_layer
     | [] -> Cursor.err t "empty color-scheme"
-    | _ -> Cursor.err_invalid t "color-scheme"
+    | _ -> Custom names
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })

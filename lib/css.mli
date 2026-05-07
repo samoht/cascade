@@ -1188,6 +1188,9 @@ type angle =
   | Rem of angle * angle
   | Calc of angle calc  (** Calculated angle expressions *)
   | Var of angle var
+  | Invalid of Component.t list
+      (** Spec-invalid input preserved verbatim for round-trip; dropped by
+          [Optimize.drop_invalid] under [--minify]. *)
 
 (** CSS aspect-ratio values *)
 type aspect_ratio =

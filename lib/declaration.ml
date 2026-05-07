@@ -1621,19 +1621,14 @@ let raw_value_contains_var raw_value =
   in
   Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
 
-(* CSS Values 5 §10 [<calc>] error handling: math expressions whose argument
-   types / ranges produce an undefined result must be preserved literally rather
-   than dropped, so authoring round-trips through the minifier. Cascade's typed
-   readers refuse the type-mismatching forms ([rotate: asin(45deg)] - [asin]
-   takes [<number>], not [<angle>]; [width: asin(sin(45deg))] - [width] takes
-   [<length>], not [<angle>]). When the typed parse fails on a known property
-   and the value contains one of these resolution-deferring functions, fall back
-   to preserving the raw declaration text; a future spec-based optimizer step is
-   what eliminates them.
+(* CSS Shapes 1 [<basic-shape>]: the [<position>] tail in [circle()] /
+   [ellipse()] / [polygon()] can have more values than the spec explicitly
+   accepts, but upstream tools roundtrip verbatim. When the typed parse fails
+   for one of these calls, preserve the raw declaration text; a future
+   spec-based optimizer step is what eliminates them.
 
-   Basic-shape constructors get the same treatment because the [<position>] tail
-   in [circle()] / [ellipse()] / [polygon()] can have more values than CSS
-   Shapes 1 explicitly accepts but upstream tools still roundtrip verbatim. *)
+   Trig math ([asin] / [acos] / [atan] / [atan2]) is handled by the typed
+   reader's own [Opaque] arm so it does not need a fallback here. *)
 let raw_value_has_preservable_function raw_value =
   let lower = String.lowercase_ascii raw_value in
   let contains needle =
@@ -1646,8 +1641,7 @@ let raw_value_has_preservable_function raw_value =
     in
     loop 0
   in
-  contains "asin(" || contains "acos(" || contains "atan(" || contains "atan2("
-  || contains "circle(" || contains "ellipse(" || contains "polygon("
+  contains "circle(" || contains "ellipse(" || contains "polygon("
 
 let allows_opaque_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
