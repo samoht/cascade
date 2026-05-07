@@ -42,22 +42,25 @@ A fallback containing a calc() reduces after the var() wrapper drops.
 
 A multi-comma fallback list (font-family fallback chain) is preserved -
 commas inside the fallback are part of the fallback's token stream per
-Custom Properties L1 §2.
+Custom Properties L1 §2. If that token stream is invalid for the
+destination property, the declaration is invalid and drops under
+minification.
 
   $ cat > list.css <<EOF
   > .a { font-family: var(--font, "Helvetica Neue", sans-serif) }
   > .b { color: var(--undef, red, blue) }
   > EOF
   $ cascade --minify --inline-vars list.css
-  .a{font-family:"Helvetica Neue",sans-serif}.b{color:red}
+  .a{font-family:"Helvetica Neue",sans-serif}
 
-An empty fallback collapses to an empty value when the wrapper drops.
+An empty fallback collapses to an empty value when the wrapper drops;
+for a property that does not accept an empty value, minification drops
+the invalid declaration.
 
   $ cat > empty.css <<EOF
   > .a { color: var(--undef,) }
   > EOF
-  $ cascade --minify --inline-vars empty.css 2>&1 | grep -v "warning"
-  .a{color:}
+  $ cascade --minify --inline-vars empty.css 2>&1 | grep -v "warning" || true
 
 A non-trivial fallback is NOT eagerly inlined when the var() name
 resolves elsewhere - only an unresolvable reference emits the fallback.
