@@ -8692,13 +8692,19 @@ let rec pp_rotate_value : rotate_value Pp.t =
       Pp.space ctx ();
       pp_angle ctx a
   | Axis (x, y, z, a) ->
+      (* CSS Transforms 2 §3.3 [rotate] [<angle> <number>{3}] is shorter under
+         minify when the angle leads (csso convention) and the second / third
+         numbers drop the separator if they start with a sign. *)
+      let pp_sep ctx (next : float) =
+        if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
+      in
+      pp_angle ctx a;
+      pp_sep ctx x;
       Pp.float ctx x;
-      Pp.space ctx ();
+      pp_sep ctx y;
       Pp.float ctx y;
-      Pp.space ctx ();
-      Pp.float ctx z;
-      Pp.space ctx ();
-      pp_angle ctx a
+      pp_sep ctx z;
+      Pp.float ctx z
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -8735,8 +8741,32 @@ let rec read_rotate_value t : rotate_value =
     let angle = read_angle t in
     Axis (first, second, third, angle)
   in
-  (* Read a simple angle (z-axis rotation) *)
-  let read_simple_angle t : rotate_value = Angle (read_angle t) in
+  (* CSS Transforms 2 §3.3 [rotate] also accepts angle then axis: [<angle>
+     x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
+     consume the angle, then look for a trailing axis. *)
+  let read_angle_then_axis t : rotate_value =
+    let angle = read_angle t in
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_semicolon t then Angle angle
+    else
+      match Cursor.peek_ident t with
+      | Some "x" ->
+          Cursor.skip t;
+          X angle
+      | Some "y" ->
+          Cursor.skip t;
+          Y angle
+      | Some "z" ->
+          Cursor.skip t;
+          Z angle
+      | _ ->
+          let first = Cursor.number t in
+          Cursor.ws t;
+          let second = Cursor.number t in
+          Cursor.ws t;
+          let third = Cursor.number t in
+          Axis (first, second, third, angle)
+  in
   Cursor.enum_or_calls "rotate"
     [
       ("none", (None : rotate_value));
@@ -8753,7 +8783,7 @@ let rec read_rotate_value t : rotate_value =
       ]
     ~default:(fun t ->
       Cursor.one_of
-        [ read_x; read_y; read_z; read_axis_angle; read_simple_angle ]
+        [ read_x; read_y; read_z; read_axis_angle; read_angle_then_axis ]
         t)
     t
 
