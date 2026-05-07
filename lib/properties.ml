@@ -10295,6 +10295,12 @@ let read_grid_auto_flow_tracks t : grid_template option =
 let rec read_grid t : grid_template =
   if Cursor.looking_at_func "var" t then
     (Var (Values.read_var read_grid t) : grid_template)
+  else if grid_template_needs_raw_template (Cursor.remaining t) then
+    (* CSS Grid 1 §10.1 [<'grid-template'>] form of [grid]: when the input
+       contains a [<string>] token, the value is the [<line-names>? <string>
+       <track-size>? <line-names>?]+ form, which [read_grid_template] already
+       handles. *)
+    read_grid_template t
   else
     match Cursor.peek_ident t with
     | Some ("auto-flow" | "dense") ->
