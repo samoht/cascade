@@ -22,6 +22,10 @@ val drop_invalid : t -> t
     cascade preserved verbatim for round-trip). Run as part of minify-time
     spec-based optimization. *)
 
+val drop_empty_rules : t -> t
+(** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
+    is empty (no declarations and no nested rules). *)
+
 (** {1 Rule Optimization} *)
 
 val single_rule : rule -> rule

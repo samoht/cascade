@@ -1636,4 +1636,6 @@ let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   let stylesheet =
     if flatten_nesting then flatten_block stylesheet else stylesheet
   in
-  drop_invalid (statements_top_level stylesheet)
+  (* [drop_invalid] runs before the main optimisation passes so the resulting
+     empty rules are picked up by [drop_empty_rules]. *)
+  statements_top_level (drop_invalid stylesheet)
