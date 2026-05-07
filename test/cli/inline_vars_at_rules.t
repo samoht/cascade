@@ -62,4 +62,4 @@ A variable used inside @scope inlines.
   > @scope (.card) to (.boundary) { .item { color: var(--c) } }
   > EOF
   $ cascade --minify --inline-vars scope.css
-  @scope(.card) to (.boundary){.item{color:red}}
+  @scope(.card)to (.boundary){.item{color:red}}

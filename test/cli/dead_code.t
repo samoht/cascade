@@ -501,4 +501,4 @@ Nested rules must not merge across a nested @scope boundary either.
   > }
   > EOF
   $ cascade --minify nested-scope-boundary.css
-  .card .title{color:red}@scope(.card) to (.boundary){.card .title{display:block}}.card .title{padding:1rem}
+  .card .title{color:red}@scope(.card)to (.boundary){.card .title{display:block}}.card .title{padding:1rem}
