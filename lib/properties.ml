@@ -5251,6 +5251,7 @@ let rec pp_clip_path : clip_path Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+  | Invalid tokens -> List.iter (Component.pp ctx) tokens
   | Clip_path_none -> Pp.string ctx "none"
   | Clip_path_url url ->
       Pp.string ctx "url(";
@@ -16978,80 +16979,99 @@ let read_clip_path_position_clause inner =
       Some (read_position_value inner)
   | _ -> None
 
-let read_clip_path_circle t : clip_path =
-  Cursor.call "circle" t @@ fun inner ->
-  Cursor.ws inner;
-  let radius : clip_path_extent option =
-    if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
-    else Some (read_clip_path_extent inner)
+(* Snapshot the function call at the cursor so we can fall back to [Invalid
+   [<original>]] when the typed reduction refuses an admittedly-invalid input
+   that upstream tools preserve verbatim. *)
+let with_basic_shape_fallback t f : clip_path =
+  let snap = Cursor.save t in
+  let original =
+    match Cursor.peek t with
+    | Some (Component.Func _ as comp) -> comp
+    | _ -> assert false
   in
-  let position = read_clip_path_position_clause inner in
-  Cursor.ws inner;
-  Cursor.expect_eof inner;
-  Clip_path_circle { radius; position }
+  try f t
+  with Cursor.Parse_error _ ->
+    Cursor.restore t snap;
+    Cursor.skip t;
+    (Invalid [ original ] : clip_path)
+
+let read_clip_path_circle t : clip_path =
+  with_basic_shape_fallback t (fun t ->
+      Cursor.call "circle" t @@ fun inner ->
+      Cursor.ws inner;
+      let radius : clip_path_extent option =
+        if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+        else Some (read_clip_path_extent inner)
+      in
+      let position = read_clip_path_position_clause inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Clip_path_circle { radius; position })
 
 let read_clip_path_ellipse t : clip_path =
-  Cursor.call "ellipse" t @@ fun inner ->
-  Cursor.ws inner;
-  let rx : clip_path_extent option =
-    if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
-    else Some (read_clip_path_extent inner)
-  in
-  Cursor.ws inner;
-  let ry : clip_path_extent option =
-    if
-      Option.is_none rx || Cursor.is_done inner
-      || Cursor.peek_ident inner = Some "at"
-    then None
-    else Some (read_clip_path_extent inner)
-  in
-  let position = read_clip_path_position_clause inner in
-  Cursor.ws inner;
-  Cursor.expect_eof inner;
-  Clip_path_ellipse { rx; ry; position }
+  with_basic_shape_fallback t (fun t ->
+      Cursor.call "ellipse" t @@ fun inner ->
+      Cursor.ws inner;
+      let rx : clip_path_extent option =
+        if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+        else Some (read_clip_path_extent inner)
+      in
+      Cursor.ws inner;
+      let ry : clip_path_extent option =
+        if
+          Option.is_none rx || Cursor.is_done inner
+          || Cursor.peek_ident inner = Some "at"
+        then None
+        else Some (read_clip_path_extent inner)
+      in
+      let position = read_clip_path_position_clause inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Clip_path_ellipse { rx; ry; position })
 
 let read_clip_path_polygon t : clip_path =
-  Cursor.call "polygon" t @@ fun inner ->
-  Cursor.ws inner;
-  let fill_rule : clip_path_fill_rule option =
-    match Cursor.peek_ident inner with
-    | Some "nonzero" ->
-        Cursor.skip inner;
-        Cursor.ws inner;
-        Cursor.comma inner;
-        Some Nonzero
-    | Some "evenodd" ->
-        Cursor.skip inner;
-        Cursor.ws inner;
-        Cursor.comma inner;
-        Some Evenodd
-    | _ -> None
-  in
-  Cursor.ws inner;
-  let read_point inner =
-    let x = read_length inner in
-    Cursor.ws inner;
-    let y = read_length inner in
-    (x, y)
-  in
-  let first = read_point inner in
-  let has_ws_after_comma inner =
-    match Cursor.peek_raw inner with
-    | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
-    | _ -> false
-  in
-  let rec loop acc spaced =
-    Cursor.ws inner;
-    if Cursor.comma_opt inner then (
-      let spaced = spaced || has_ws_after_comma inner in
+  with_basic_shape_fallback t (fun t ->
+      Cursor.call "polygon" t @@ fun inner ->
       Cursor.ws inner;
-      loop (read_point inner :: acc) spaced)
-    else (List.rev acc, spaced)
-  in
-  let points, spaced = loop [ first ] false in
-  Cursor.ws inner;
-  Cursor.expect_eof inner;
-  Clip_path_polygon { fill_rule; points; spaced }
+      let fill_rule : clip_path_fill_rule option =
+        match Cursor.peek_ident inner with
+        | Some "nonzero" ->
+            Cursor.skip inner;
+            Cursor.ws inner;
+            Cursor.comma inner;
+            Some Nonzero
+        | Some "evenodd" ->
+            Cursor.skip inner;
+            Cursor.ws inner;
+            Cursor.comma inner;
+            Some Evenodd
+        | _ -> None
+      in
+      Cursor.ws inner;
+      let read_point inner =
+        let x = read_length inner in
+        Cursor.ws inner;
+        let y = read_length inner in
+        (x, y)
+      in
+      let first = read_point inner in
+      let has_ws_after_comma inner =
+        match Cursor.peek_raw inner with
+        | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
+        | _ -> false
+      in
+      let rec loop acc spaced =
+        Cursor.ws inner;
+        if Cursor.comma_opt inner then (
+          let spaced = spaced || has_ws_after_comma inner in
+          Cursor.ws inner;
+          loop (read_point inner :: acc) spaced)
+        else (List.rev acc, spaced)
+      in
+      let points, spaced = loop [ first ] false in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Clip_path_polygon { fill_rule; points; spaced })
 
 let read_clip_path_path t =
   Cursor.call "path" t @@ fun inner ->

@@ -1621,34 +1621,15 @@ let raw_value_contains_var raw_value =
   in
   Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
 
-(* CSS Shapes 1 [<basic-shape>]: the [<position>] tail in [circle()] /
-   [ellipse()] / [polygon()] can have more values than the spec explicitly
-   accepts, but upstream tools roundtrip verbatim. When the typed parse fails
-   for one of these calls, preserve the raw declaration text; a future
-   spec-based optimizer step is what eliminates them.
-
-   Trig math ([asin] / [acos] / [atan] / [atan2]) is handled by the typed
-   reader's own [Opaque] arm so it does not need a fallback here. *)
-let raw_value_has_preservable_function raw_value =
-  let lower = String.lowercase_ascii raw_value in
-  let contains needle =
-    let n = String.length needle in
-    let m = String.length lower in
-    let rec loop i =
-      if i + n > m then false
-      else if String.sub lower i n = needle then true
-      else loop (i + 1)
-    in
-    loop 0
-  in
-  contains "circle(" || contains "ellipse(" || contains "polygon("
-
+(* The typed readers carry their own [Invalid] arms for spec-violations they
+   detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
+   declaration-level opaque fallback only needs to handle truly unknown
+   properties or property-specific colour fallback edges. *)
 let allows_opaque_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
-     || raw_value_contains_var raw_value
-     || raw_value_has_preservable_function raw_value)
+     || raw_value_contains_var raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;

@@ -399,7 +399,8 @@ let scroll_state_value_allowed name value =
       | _ -> false)
   | "scrollable" -> (
       match value with
-      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y" ->
+      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y"
+      | "block-start" | "block-end" | "inline-start" | "inline-end" ->
           true
       | _ -> false)
   | "scrolled" -> (
@@ -594,12 +595,14 @@ let rec unnamed_of_string s =
             else atom_of_string s)
 
 and atom_of_string s =
-  match classify_query_surface (String.trim s) with
+  let s = String.trim s in
+  let stripped = strip_outer_parens s in
+  match classify_query_surface stripped with
   | _ when String.contains s 'v' && contains_var_function s -> (
       match unresolved_media_feature s with
       | Some query -> query
       | None -> specific_of_string s)
-  | Style_func _ | Scroll_state_func _ -> specific_of_string s
+  | Style_func _ | Scroll_state_func _ -> specific_of_string stripped
   | Parenthesized_feature | Other_query -> (
       match Media.of_string_strict s with
       | Media.Min_width_rem rem -> Min_width_rem rem
