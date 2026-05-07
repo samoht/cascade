@@ -1026,7 +1026,7 @@ let selector_changes all_added_candidates all_removed_candidates =
 
 (* Filter other_modified to exclude changes already captured as selector
    changes *)
-let exclude_selector_changes_from_modified sel_changes other_modified =
+let exclude_modified_selector_changes sel_changes other_modified =
   let sel_change_selectors =
     List.map
       (fun (sel1, sel2, _, _) ->
@@ -1059,7 +1059,7 @@ let handle_structural_diff rules1 rules2 =
 
   let other_modified = rules_modified_diff rules1 rules2 in
   let filtered_other_modified =
-    exclude_selector_changes_from_modified sel_changes other_modified
+    exclude_modified_selector_changes sel_changes other_modified
   in
 
   let modified = sel_changes @ filtered_other_modified in
