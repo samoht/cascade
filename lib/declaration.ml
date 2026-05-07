@@ -147,6 +147,49 @@ let is_css_wide_value value =
       Cursor.is_done reader
   | exception Cursor.Parse_error _ -> false
 
+let is_ws_component = function
+  | Component.Preserved { kind = Token.Whitespace; _ } -> true
+  | _ -> false
+
+let rec components_have_invalid_var components =
+  List.exists component_has_invalid_var components
+
+and component_has_invalid_var = function
+  | Component.Func { node = { name; arguments; terminated; _ }; _ }
+    when String.lowercase_ascii name = "var" ->
+      (not terminated)
+      || invalid_var_arguments arguments
+      || components_have_invalid_var arguments
+  | Component.Func { node = { arguments; _ }; _ } ->
+      components_have_invalid_var arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_have_invalid_var value
+  | Component.Preserved _ -> false
+
+and invalid_var_arguments arguments =
+  match
+    List.filter (fun component -> not (is_ws_component component)) arguments
+  with
+  | Component.Preserved { kind = Token.Ident name; _ } :: _
+    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
+      false
+  | _ -> true
+
+let raw_value_has_invalid_var raw_value =
+  Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
+
+let raw_value_contains_var raw_value =
+  let rec component = function
+    | Component.Func { node = { name; _ }; _ }
+      when String.lowercase_ascii name = "var" ->
+        true
+    | Component.Func { node = { arguments; _ }; _ } ->
+        List.exists component arguments
+    | Component.Block { node = { value; _ }; _ } -> List.exists component value
+    | Component.Preserved _ -> false
+  in
+  Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
+
 let value_has_css_wide_mix value =
   let trimmed = String.trim value in
   (not (is_css_wide_keyword trimmed))
@@ -762,6 +805,18 @@ let read_place_self_value t =
 let read_background_blend_mode_value t =
   v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
+let read_lp_or_invalid read t : length_percentage =
+  let start = Cursor.save t in
+  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  try read t
+  with Cursor.Parse_error _ as exn ->
+    if raw = "" || raw_value_has_invalid_var raw then (
+      Cursor.restore t start;
+      raise exn);
+    Cursor.restore t start;
+    ignore (Cursor.consume_to_decl_end ~trim:true t);
+    Invalid (Cursor.of_string raw |> Cursor.remaining)
+
 let prop_name (type a) (prop_type : a property) =
   let buf = Buffer.create 32 in
   let ctx =
@@ -795,23 +850,40 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
   (* Length/percentage properties *)
-  | Width -> v Width (read_length_percentage t)
-  | Height -> v Height (read_length_percentage ~allow_negative:false t)
-  | Min_width -> v Min_width (read_length_percentage ~allow_negative:false t)
-  | Min_height -> v Min_height (read_length_percentage ~allow_negative:false t)
-  | Max_width -> v Max_width (read_length_percentage ~allow_negative:false t)
-  | Max_height -> v Max_height (read_length_percentage ~allow_negative:false t)
+  | Width -> v Width (read_lp_or_invalid read_length_percentage t)
+  | Height ->
+      v Height
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Min_width ->
+      v Min_width
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Min_height ->
+      v Min_height
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Max_width ->
+      v Max_width
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Max_height ->
+      v Max_height
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Inline_size ->
-      v Inline_size (read_length_percentage ~allow_negative:false t)
+      v Inline_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Min_inline_size ->
-      v Min_inline_size (read_length_percentage ~allow_negative:false t)
+      v Min_inline_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Max_inline_size ->
-      v Max_inline_size (read_length_percentage ~allow_negative:false t)
-  | Block_size -> v Block_size (read_length_percentage ~allow_negative:false t)
+      v Max_inline_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Block_size ->
+      v Block_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Min_block_size ->
-      v Min_block_size (read_length_percentage ~allow_negative:false t)
+      v Min_block_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Max_block_size ->
-      v Max_block_size (read_length_percentage ~allow_negative:false t)
+      v Max_block_size
+        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
   | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_border_radius t)
   | Border_top_left_radius ->
@@ -1527,10 +1599,6 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
-let is_ws_component = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> true
-  | _ -> false
-
 (* CSS Color 5 §13 includes [specified hue], but evaluating that form needs the
    surrounding colour context. The typed colour parser rejects it; stylesheet
    parsing preserves the declaration as an opaque colour value so author input
@@ -1606,45 +1674,6 @@ let is_unknown_property_name name =
       Cursor.is_done r
   | Prop _ -> false
   | exception Cursor.Parse_error _ -> false
-
-let rec components_have_invalid_var components =
-  List.exists component_has_invalid_var components
-
-and component_has_invalid_var = function
-  | Component.Func { node = { name; arguments; terminated; _ }; _ }
-    when String.lowercase_ascii name = "var" ->
-      (not terminated)
-      || invalid_var_arguments arguments
-      || components_have_invalid_var arguments
-  | Component.Func { node = { arguments; _ }; _ } ->
-      components_have_invalid_var arguments
-  | Component.Block { node = { value; _ }; _ } ->
-      components_have_invalid_var value
-  | Component.Preserved _ -> false
-
-and invalid_var_arguments arguments =
-  match
-    List.filter (fun component -> not (is_ws_component component)) arguments
-  with
-  | Component.Preserved { kind = Token.Ident name; _ } :: _
-    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
-      false
-  | _ -> true
-
-let raw_value_has_invalid_var raw_value =
-  Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
-
-let raw_value_contains_var raw_value =
-  let rec component = function
-    | Component.Func { node = { name; _ }; _ }
-      when String.lowercase_ascii name = "var" ->
-        true
-    | Component.Func { node = { arguments; _ }; _ } ->
-        List.exists component arguments
-    | Component.Block { node = { value; _ }; _ } -> List.exists component value
-    | Component.Preserved _ -> false
-  in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
 
 (* The typed readers carry their own [Invalid] arms for spec-violations they
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
