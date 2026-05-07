@@ -1006,7 +1006,11 @@ let rec read_text_indent_value t : text_indent_value =
       let length = ref Option.None in
       let hanging = ref false in
       let each_line = ref false in
-      while not (Cursor.is_done t) do
+      let at_end t =
+        Cursor.is_done t || Cursor.peek_semicolon t
+        || Cursor.peek_delim t = Some '!'
+      in
+      while not (at_end t) do
         Cursor.ws t;
         match Cursor.peek_ident t with
         | Some "hanging" when not !hanging ->
