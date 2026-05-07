@@ -35,6 +35,7 @@ let () =
       Test_properties.suite;
       Test_stylesheet.suite;
       Test_variables.suite;
+      Test_inline.suite;
       Test_optimize.suite;
       Test_font_face.suite;
       Test_keyframe.suite;
