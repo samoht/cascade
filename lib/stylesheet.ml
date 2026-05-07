@@ -666,10 +666,20 @@ and pp_statement : statement Pp.t =
       Pp.semicolon ctx ()
   | Namespace (prefix, uri) ->
       Pp.string ctx "@namespace ";
+      (* CSS Namespaces 3: when the URI is a quoted string the leading
+         double-quote delimits the prefix unambiguously, so the separator can be
+         elided under minify. The bare [url(...)] form starts with [u] and still
+         needs the space. *)
+      let uri_is_quoted =
+        match uri with
+        | Url (_, _) when Pp.minified ctx -> true
+        | Quoted _ -> true
+        | _ -> false
+      in
       (match prefix with
       | Some p ->
           Pp.string ctx p;
-          Pp.space ctx ()
+          if not uri_is_quoted then Pp.space ctx ()
       | None -> ());
       (match uri with
       | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
