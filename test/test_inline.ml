@@ -72,7 +72,7 @@ let test_inline_vars_fallback_edges () =
   check_inline_case "resolved var ignores fallback"
     ":root{--gap:10px}.a{padding:var(--gap,20px)}" ".a{padding:10px}"
 
-let test_inline_vars_fallback_token_lists () =
+let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
     ".a{font-family:var(--font,\"Helvetica Neue\",sans-serif)}"
     ".a{font-family:\"Helvetica Neue\",sans-serif}";
@@ -82,7 +82,7 @@ let test_inline_vars_fallback_token_lists () =
   check_inline_case "empty fallback makes invalid color declaration drop"
     ".a{color:var(--undef,)}" ""
 
-let test_inline_vars_cycle_fallback_edges () =
+let test_inline_cycle_fallbacks () =
   check_inline_case "self-cycle uses consumer fallback and strips dead var"
     ":root{--x:var(--x)}.a{color:var(--x,red)}" ".a{color:red}";
   check_inline_case "two-cycle uses consumer fallback"
@@ -92,7 +92,7 @@ let test_inline_vars_cycle_fallback_edges () =
     ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}"
     ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}"
 
-let test_inline_vars_shorthand_and_function_edges () =
+let test_inline_shorthand_functions () =
   check_inline_case "transition variable resolves into property slot"
     ":root{--prop:opacity}.a{transition:var(--prop) .3s ease}"
     ".a{transition:opacity .3s}";
@@ -132,11 +132,11 @@ let suite =
       Alcotest.test_case "inline vars fallback edges" `Quick
         test_inline_vars_fallback_edges;
       Alcotest.test_case "inline vars fallback token lists" `Quick
-        test_inline_vars_fallback_token_lists;
+        test_inline_fallback_lists;
       Alcotest.test_case "inline vars cycle fallback edges" `Quick
-        test_inline_vars_cycle_fallback_edges;
+        test_inline_cycle_fallbacks;
       Alcotest.test_case "inline vars shorthand and function edges" `Quick
-        test_inline_vars_shorthand_and_function_edges;
+        test_inline_shorthand_functions;
       Alcotest.test_case "inline vars runtime boundaries" `Quick
         test_inline_vars_runtime_boundaries;
     ] )
