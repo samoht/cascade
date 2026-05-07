@@ -58,6 +58,7 @@ and vendor-prefixed properties.
 
 ## Installation
 
+<!-- $MDX skip -->
 ```bash
 opam install cascade
 ```
@@ -65,18 +66,18 @@ opam install cascade
 ## Quick start
 
 ```ocaml
-open Cascade.Css
-
-let button =
+# open Cascade.Css;;
+# let button =
   rule ~selector:(Selector.class_ "btn")
     [ display Inline_block
     ; background_color (hex "#3b82f6")
     ; color (hex "#ffffff")
     ; padding [ Rem 0.5 ]
-    ; border_radius (Rem 0.375)
-    ]
-
-let () = print_string (to_string (v [ button ]))
+    ; border_radius (radius (Rem 0.375))
+    ];;
+# to_string (v [ button ]);;
+- : string =
+".btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #fff;\n  padding: 0.5rem;\n  border-radius: 0.375rem;\n}\n"
 ```
 
 Output:
@@ -102,6 +103,7 @@ cascade [--minify] [--optimize] [--pretty] [FILE]
 Reads a CSS file (or stdin with `-`) and outputs formatted CSS. The
 `--optimize` flag merges duplicate rules and removes redundant declarations.
 
+<!-- $MDX skip -->
 ```bash
 cascade style.css                        # pretty-print
 cascade --minify style.css               # minify
@@ -121,6 +123,7 @@ modes are available: `auto` (default -- uses tree diff for structural changes,
 string diff otherwise), `tree` (force structural comparison), and `string`
 (character-level comparison).
 
+<!-- $MDX skip -->
 ```bash
 cssdiff reference.css output.css
 cssdiff --diff=tree reference.css output.css

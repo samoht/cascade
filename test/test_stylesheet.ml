@@ -4378,6 +4378,64 @@ let custom_props1_2_var_inlining_preserved () =
     ":root{--brand:red}.x{color:var(--brand)}"
     (normalize ":root { --brand: red } .x { color: var(--brand) }")
 
+(* CSS Custom Properties L1 section 3 (Using Cascading Variables): normal CSS
+   minifiers do not know the computed value of [var()] references. Lightning,
+   cssnano, csso, clean-css, and esbuild all preserve the wrapper and only
+   minify tokens that are still syntax-local, such as color fallbacks. *)
+let custom_props1_2_normal_minify_keeps_runtime_vars () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "font-family var survives normal minification"
+    ".font-sans{font-family:var(--font-sans)}"
+    (normalize ".font-sans { font-family: var(--font-sans) }");
+  Alcotest.(check string)
+    "authored fallback survives normal minification"
+    ".font-sans{font-family:var(--font-sans,Arial,sans-serif)}"
+    (normalize ".font-sans { font-family: var(--font-sans, Arial, sans-serif) }");
+  Alcotest.(check string)
+    "fallback tokens still canonicalize to shortest valid CSS"
+    ".accent{color:var(--brand,red)}"
+    (normalize ".accent { color: var(--brand, #ff0000) }");
+  Alcotest.(check string)
+    "custom property definition is not substituted into its use"
+    ":root{--font-sans:ui-sans-serif,system-ui,sans-serif}.font-sans{font-family:var(--font-sans)}"
+    (normalize
+       ":root { --font-sans: ui-sans-serif, system-ui, sans-serif } .font-sans \
+        { font-family: var(--font-sans) }");
+  Alcotest.(check bool)
+    "runtime var is not rewritten to a static font stack" false
+    (let out =
+       normalize
+         ":root { --font-sans: ui-sans-serif, system-ui, sans-serif } \
+          .font-sans { font-family: var(--font-sans) }"
+     in
+     Astring.String.is_infix
+       ~affix:".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}" out)
+
+(* CSS Custom Properties L1 section 3 only substitutes actual [var()] function
+   references. Text that merely contains the characters "var(...)" is ordinary
+   string or URL payload and remains outside variable inlining. *)
+let custom_props1_2_var_text_payload_not_inlined () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.empty in
+  let resolve = function "brand" -> Some "red" | _ -> None in
+  Alcotest.(check bool)
+    "string payload is not treated as a var() reference" true
+    (let out =
+       Css.to_string ~minify:true ~theme ~theme_defaults:resolve
+         (parse ".x { content: \"var(--brand)\" }")
+     in
+     Astring.String.is_infix ~affix:"var(--brand)" out
+     && not (Astring.String.is_infix ~affix:"red" out))
+
 (* CSS Custom Properties L1 section 5 (Resolving Dependency Cycles): a variable
    that references itself directly or indirectly is invalid at computed time. At
    syntax time the chain is preserved - the cycle detection happens in the
@@ -5595,6 +5653,12 @@ let additional_tests =
     ( "spec custom-properties 1 2 var inlining preserved",
       `Quick,
       custom_props1_2_var_inlining_preserved );
+    ( "spec custom-properties 1 2 normal minify keeps runtime vars",
+      `Quick,
+      custom_props1_2_normal_minify_keeps_runtime_vars );
+    ( "spec custom-properties 1 2 var text payload not inlined",
+      `Quick,
+      custom_props1_2_var_text_payload_not_inlined );
     ( "spec custom-properties 1 5 var cycle preserved",
       `Quick,
       custom_props1_5_var_cycle_preserved );

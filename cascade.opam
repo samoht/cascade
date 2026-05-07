@@ -12,12 +12,13 @@ homepage: "https://github.com/samoht/cascade"
 bug-reports: "https://github.com/samoht/cascade/issues"
 depends: [
   "ocaml" {>= "4.14"}
-  "dune" {>= "3.0"}
+  "dune" {>= "3.8"}
   "dune-build-info"
   "alcotest" {with-test}
   "alcobar" {with-test}
   "astring" {with-test}
   "lambdasoup" {with-test}
+  "mdx" {with-test}
   "re" {with-test}
   "fmt"
   "uutf"
