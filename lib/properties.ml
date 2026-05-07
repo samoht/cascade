@@ -1444,11 +1444,6 @@ let rec read_text_transform t : text_transform =
   Cursor.enum_or_var "text-transform"
     [
       ("none", (None : text_transform));
-      ("uppercase", Uppercase);
-      ("lowercase", Lowercase);
-      ("capitalize", Capitalize);
-      ("full-width", Full_width);
-      ("full-size-kana", Full_size_kana);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -1456,6 +1451,42 @@ let rec read_text_transform t : text_transform =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_text_transform t))
+    ~default:(fun t ->
+      let case : text_transform_case option ref = ref Option.None in
+      let full_width = ref false in
+      let full_size_kana = ref false in
+      let consumed = ref true in
+      while !consumed do
+        consumed := false;
+        Cursor.ws t;
+        match Cursor.peek_ident t with
+        | Some "uppercase" when Option.is_none !case ->
+            Cursor.skip t;
+            case := Option.Some Uppercase;
+            consumed := true
+        | Some "lowercase" when Option.is_none !case ->
+            Cursor.skip t;
+            case := Option.Some Lowercase;
+            consumed := true
+        | Some "capitalize" when Option.is_none !case ->
+            Cursor.skip t;
+            case := Option.Some Capitalize;
+            consumed := true
+        | Some "full-width" when not !full_width ->
+            Cursor.skip t;
+            full_width := true;
+            consumed := true
+        | Some "full-size-kana" when not !full_size_kana ->
+            Cursor.skip t;
+            full_size_kana := true;
+            consumed := true
+        | _ -> ()
+      done;
+      match (!case, !full_width, !full_size_kana) with
+      | None, false, false -> Cursor.err_expected t "text-transform"
+      | Some c, false, false -> Case c
+      | case, full_width, full_size_kana ->
+          Combo { case; full_width; full_size_kana })
     t
 
 let rec pp_line_break : line_break Pp.t =
@@ -4508,14 +4539,29 @@ let rec pp_text_decoration_skip_spaces : text_decoration_skip_spaces Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_text_decoration_skip_spaces ctx v
 
+let pp_text_transform_case ctx = function
+  | (Capitalize : text_transform_case) -> Pp.string ctx "capitalize"
+  | Uppercase -> Pp.string ctx "uppercase"
+  | Lowercase -> Pp.string ctx "lowercase"
+
 let rec pp_text_transform : text_transform Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Capitalize -> Pp.string ctx "capitalize"
-  | Uppercase -> Pp.string ctx "uppercase"
-  | Lowercase -> Pp.string ctx "lowercase"
-  | Full_width -> Pp.string ctx "full-width"
-  | Full_size_kana -> Pp.string ctx "full-size-kana"
+  | Case c -> pp_text_transform_case ctx c
+  | Combo { case; full_width; full_size_kana } ->
+      let first = ref true in
+      let space () = if !first then first := false else Pp.space ctx () in
+      Option.iter
+        (fun c ->
+          space ();
+          pp_text_transform_case ctx c)
+        case;
+      if full_width then (
+        space ();
+        Pp.string ctx "full-width");
+      if full_size_kana then (
+        space ();
+        Pp.string ctx "full-size-kana")
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"

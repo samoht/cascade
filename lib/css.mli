@@ -3928,13 +3928,16 @@ type font_style =
   | Revert_layer
   | Var of font_style var  (** CSS text transform values. *)
 
+type text_transform_case = Capitalize | Uppercase | Lowercase
+
 type text_transform =
   | None
-  | Capitalize
-  | Uppercase
-  | Lowercase
-  | Full_width
-  | Full_size_kana
+  | Case of text_transform_case
+  | Combo of {
+      case : text_transform_case option;
+      full_width : bool;
+      full_size_kana : bool;
+    }
   | Inherit
   | Initial
   | Unset

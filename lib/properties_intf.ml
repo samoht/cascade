@@ -1016,13 +1016,21 @@ type glyph_orientation_vertical =
   | Revert_layer
   | Var of glyph_orientation_vertical var
 
+(** CSS Text 4 §6.3
+    [text-transform = none | [capitalize | uppercase | lowercase] || full-width
+     || full-size-kana]: case + width + kana width are independent and can
+    combine. *)
+type text_transform_case = Capitalize | Uppercase | Lowercase
+
 type text_transform =
   | None
-  | Capitalize
-  | Uppercase
-  | Lowercase
-  | Full_width
-  | Full_size_kana
+  | Case of text_transform_case
+      (** Single case keyword without [full-width] / [full-size-kana]. *)
+  | Combo of {
+      case : text_transform_case option;
+      full_width : bool;
+      full_size_kana : bool;
+    }  (** Multi-keyword form, e.g. [uppercase full-width full-size-kana]. *)
   | Inherit
   | Initial
   | Unset
