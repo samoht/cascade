@@ -29,7 +29,7 @@ merged the namespace must travel with its rules.
   > .e { color: blue }
   > EOF
   $ cascade --minify --inline-imports entry-ns.css
-  @namespace svg "http://www.w3.org/2000/svg";svg|circle{fill:red}.e{color:#00f}
+  @namespace svg"http://www.w3.org/2000/svg";svg|circle{fill:red}.e{color:#00f}
 
 A UTF-8 BOM at the start of an imported file is stripped during parsing
 and not propagated.
@@ -64,4 +64,4 @@ preserved as-is.
   > .a { color: red }
   > EOF
   $ cascade --minify --inline-imports remote.css
-  @import "https://example.test/reset.css";@import "data:text/css;base64,LmRhdGEgeyBjb2xvcjogcmVkIH0=";.a{color:red}
+  @import"https://example.test/reset.css";@import"data:text/css;base64,LmRhdGEgeyBjb2xvcjogcmVkIH0=";.a{color:red}
