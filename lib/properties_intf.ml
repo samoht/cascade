@@ -4000,6 +4000,12 @@ type clip_path =
   | Revert
   | Revert_layer
   | Var of clip_path var
+  | Invalid of Component.t list
+      (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
+          [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
+          The pretty-printer round-trips the captured tokens; the
+          [Optimize.drop_invalid] pass removes the declaration under [--minify].
+      *)
 
 type _ kind =
   | Length : length kind

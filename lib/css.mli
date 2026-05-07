@@ -5796,6 +5796,8 @@ type clip_path =
   | Revert
   | Revert_layer
   | Var of clip_path var
+  | Invalid of Component.t list
+      (** Spec-invalid [<basic-shape>] preserved verbatim. *)
 
 val clip : clip -> declaration
 (** [clip clip] is the

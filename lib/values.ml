@@ -2174,6 +2174,10 @@ let ends_with_pct s =
   let len = String.length s in
   len > 0 && s.[len - 1] = '%'
 
+let starts_unsigned_number s =
+  String.length s > 0
+  && match s.[0] with '0' .. '9' | '.' -> true | _ -> false
+
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
@@ -2246,10 +2250,7 @@ let pp_lab_like_args ~axis_pct_scale :
   Pp.string ctx a;
   if
     not
-      (ctx.Pp.minify
-      && String.length a > 0
-      && a.[0] >= '0'
-      && a.[0] <= '9'
+      (ctx.Pp.minify && starts_unsigned_number a
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
   then Pp.space ctx ();
@@ -4229,15 +4230,23 @@ and normalize_relative_color_tail tail =
   loop 0 false;
   Buffer.contents buf
 
-and relative_color_channel_count tail =
-  let channel_part =
-    match String.index_opt tail '/' with
-    | Some i -> String.sub tail 0 i
-    | None -> tail
+and relative_color_channel_count cvs =
+  let is_ws = function
+    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | _ -> false
   in
-  channel_part |> String.split_on_char ' '
-  |> List.filter (fun s -> s <> "")
-  |> List.length
+  let is_alpha_sep = function
+    | Component.Preserved { Token.kind = Delim "/"; _ } -> true
+    | _ -> false
+  in
+  let rec loop count in_channel = function
+    | [] -> if in_channel then count + 1 else count
+    | cv :: _ when is_alpha_sep cv -> if in_channel then count + 1 else count
+    | cv :: rest when is_ws cv ->
+        loop (if in_channel then count + 1 else count) false rest
+    | _ :: rest -> loop count true rest
+  in
+  loop 0 false cvs
 
 and relative_color_has_empty_alpha cvs =
   let is_ws = function
@@ -4270,7 +4279,7 @@ and read_relative_rgb t : color =
     |> normalize_relative_color_tail
   in
   if tail = "" then Cursor.err_expected t "relative rgb channels";
-  if relative_color_channel_count tail <> 3 then
+  if relative_color_channel_count tail_components <> 3 then
     Cursor.err_expected t "relative rgb channels";
   let origin = Pp.to_string ~minify:true pp_color origin in
   Relative_rgb ("from " ^ origin ^ " " ^ tail)
