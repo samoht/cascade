@@ -899,8 +899,6 @@ module Calc_residual = struct
     visited:string list -> 'a Values.calc -> 'a Values.calc
 
   type 'a ops = {
-    to_number : 'a -> float option;
-    of_number : float -> 'a;
     of_unitless_number : float -> 'a option;
     combine_values : 'a -> Values.calc_op -> 'a -> 'a option;
     combine_value_num : 'a -> Values.calc_op -> float -> 'a option;
@@ -1262,8 +1260,6 @@ module Length = struct
       let to_number = to_px ctx in
       let of_number px = Values.Px px in
       {
-        Calc_residual.to_number;
-        of_number;
         of_unitless_number = (fun _ -> None);
         combine_values = combine_numeric_values ~to_number ~of_number;
         combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -1900,9 +1896,7 @@ let simplify_length_percentage ?layer_order ?layer cascade length_ctx value =
       | _ -> combine_numeric_value_num ~to_number:to_px ~of_number value op num
     in
     {
-      Calc_residual.to_number = to_px;
-      of_number;
-      of_unitless_number = (fun _ -> None);
+      Calc_residual.of_unitless_number = (fun _ -> None);
       combine_values;
       combine_value_num;
       normalize_value = normalize_numeric_value ~to_number:to_px ~of_number;
@@ -1945,8 +1939,6 @@ let simplify_border_width ?layer_order ?layer cascade (length_ctx : Length.ctx)
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Properties.border_width Calc_residual.ops =
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun _ -> None);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -1992,8 +1984,6 @@ let simplify_font_size ?layer_order ?layer cascade (length_ctx : Length.ctx)
   in
   let ops : Properties.font_size Calc_residual.ops =
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun _ -> None);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -2030,8 +2020,6 @@ let simplify_opacity ?layer_order ?layer cascade value =
   let ops : Properties.opacity Calc_residual.ops =
     let of_number n = Properties.Opacity_number n in
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun n -> Some (Properties.Opacity_number n));
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -2070,8 +2058,6 @@ let simplify_angle ?layer_order ?layer cascade value =
     let to_number = angle_to_degrees in
     let of_number deg = Values.Deg deg in
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun _ -> None);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -2100,8 +2086,6 @@ let simplify_duration ?layer_order ?layer cascade value =
     let to_number = duration_to_seconds in
     let of_number seconds = Values.S seconds in
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun _ -> None);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -2149,9 +2133,8 @@ let simplify_number_percentage ?layer_order ?layer cascade value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.number_percentage Calc_residual.ops =
     {
-      Calc_residual.to_number = (fun _ -> None);
-      of_number = number_percentage_num;
-      of_unitless_number = (fun n -> Some (number_percentage_num n));
+      Calc_residual.of_unitless_number =
+        (fun n -> Some (number_percentage_num n));
       combine_values;
       combine_value_num;
       normalize_value = (fun value -> value);
@@ -2662,9 +2645,7 @@ let simplify_component ?layer_order ?layer ctx value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.component Calc_residual.ops =
     {
-      Calc_residual.to_number = (fun _ -> None);
-      of_number = (fun n -> Values.Num n);
-      of_unitless_number = (fun n -> Some (Values.Num n));
+      Calc_residual.of_unitless_number = (fun n -> Some (Values.Num n));
       combine_values;
       combine_value_num;
       normalize_value = Fun.id;
@@ -2690,8 +2671,6 @@ let simplify_percentage ?layer_order ?layer ctx value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.percentage Calc_residual.ops =
     {
-      Calc_residual.to_number;
-      of_number;
       of_unitless_number = (fun n -> Some (Values.Num n));
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -2734,8 +2713,6 @@ let simplify_alpha ?layer_order ?layer ctx value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.alpha Calc_residual.ops =
     {
-      Calc_residual.to_number;
-      of_number = alpha_num;
       of_unitless_number = (fun n -> Some (alpha_num n));
       combine_values;
       combine_value_num;

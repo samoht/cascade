@@ -692,7 +692,9 @@ let () =
   (* Summary with counts *)
   print_string (String.make 50 '-' ^ "\n");
 
-  let api_missing = stats.missing_read + stats.missing_pp in
+  let api_missing =
+    stats.missing_read + stats.missing_pp + stats.missing_vars_of
+  in
   let test_missing = stats.missing_check in
 
   if api_missing > 0 then
