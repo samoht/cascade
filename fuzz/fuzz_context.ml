@@ -425,7 +425,7 @@ let assert_document_lookup ctx class_name id attr =
   if Css.Context.attribute (attr ^ "-missing") ctx <> None then
     fail "document context attribute lookup stopped being exact"
 
-let assert_document_fields ctx =
+let assert_document_fields (ctx : Css.Context.document) =
   if ctx.element <> Some "div" then fail "document context lost element";
   if ctx.pseudo_classes <> [ "hover" ] then
     fail "document context lost pseudo-class list";
@@ -487,7 +487,7 @@ let assert_query_supports ctx =
   then
     fail "query context support property lookup stopped being case-insensitive"
 
-let assert_query_fields ctx =
+let assert_query_fields (ctx : Css.Context.query) =
   if ctx.media_type <> Some "screen" then fail "query context lost media type";
   if ctx.supports <> query_supports then fail "query context lost supports list";
   if ctx.container_name <> Some "card" then
