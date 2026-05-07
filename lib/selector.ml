@@ -488,22 +488,51 @@ let read_type_or_universal t =
       | Some ns -> Element (Some ns, name))
 
 (** Parse attribute selector [attr] or [attr=value] *)
+let try_shadow_piercing t =
+  (* Legacy [>>>]: three consecutive [>] delims; emit Shadow_piercing only when
+     the entire run matches. *)
+  let snap = Cursor.save t in
+  if
+    Cursor.try_kind (Token.Delim ">") t
+    && Cursor.try_kind (Token.Delim ">") t
+    && Cursor.try_kind (Token.Delim ">") t
+  then true
+  else (
+    Cursor.restore t snap;
+    false)
+
+let try_shadow_deep t =
+  (* Legacy [/deep/]: [/] [ident "deep"] [/]. *)
+  let snap = Cursor.save t in
+  if
+    Cursor.try_kind (Token.Delim "/") t
+    && Cursor.try_kind (Token.Ident "deep") t
+    && Cursor.try_kind (Token.Delim "/") t
+  then true
+  else (
+    Cursor.restore t snap;
+    false)
+
 let read_combinator t =
-  match Cursor.peek_delim t with
-  | Some '>' ->
-      Cursor.skip t;
-      Child
-  | Some '+' ->
-      Cursor.skip t;
-      Next_sibling
-  | Some '~' ->
-      Cursor.skip t;
-      Subsequent_sibling
-  | Some '|' when Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t ->
-      Column
-  | Some '!' -> Cursor.err t "invalid combinator character"
-  | None when Cursor.is_done t -> Cursor.err t "empty combinator"
-  | _ -> Descendant
+  if try_shadow_piercing t then Shadow_piercing
+  else if try_shadow_deep t then Shadow_deep
+  else
+    match Cursor.peek_delim t with
+    | Some '>' ->
+        Cursor.skip t;
+        Child
+    | Some '+' ->
+        Cursor.skip t;
+        Next_sibling
+    | Some '~' ->
+        Cursor.skip t;
+        Subsequent_sibling
+    | Some '|' when Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t
+      ->
+        Column
+    | Some '!' -> Cursor.err t "invalid combinator character"
+    | None when Cursor.is_done t -> Cursor.err t "empty combinator"
+    | _ -> Descendant
 
 let read_attribute_match t : attribute_match =
   let try_eq c (cons : string -> attribute_match) : attribute_match option =
@@ -844,6 +873,9 @@ let pseudo_class_base_idents =
     ("picture-in-picture", Picture_in_picture);
     ("popover-open", Popover_open);
     ("open", Open);
+    (* CSS Modules scope keywords - non-standard but emitted by tooling *)
+    ("local", Local_scope);
+    ("global", Global_scope);
     (* Paged *)
     ("left", Left);
     ("right", Right);
@@ -1115,6 +1147,8 @@ and read_has_content t =
 
 and read_not_content t = Not (read_complex_list t)
 and read_where_content t = Where (read_forgiving_complex_list t)
+and read_local_content t = Local_call (read_complex_list t)
+and read_global_content t = Global_call (read_complex_list t)
 
 and read_nth_child_content t =
   let expr, of_sel = read_nth_selector t in
@@ -1143,6 +1177,8 @@ and read_is t = Cursor.call "is" t read_is_content
 and read_has t = Cursor.call "has" t read_has_content
 and read_not t = Cursor.call "not" t read_not_content
 and read_where t = Cursor.call "where" t read_where_content
+and read_local t = Cursor.call "local" t read_local_content
+and read_global t = Cursor.call "global" t read_global_content
 and read_nth_child t = Cursor.call "nth-child" t read_nth_child_content
 
 and read_nth_last_child t =
@@ -1259,6 +1295,8 @@ and read_pseudo_class ?(allow_unknown = false) t =
       ("has", read_has);
       ("not", read_not);
       ("where", read_where);
+      ("local", read_local);
+      ("global", read_global);
       ("nth-child", read_nth_child);
       ("nth-last-child", read_nth_last_child);
       ("nth-of-type", read_nth_of_type);
@@ -1562,6 +1600,8 @@ let pp_combinator ctx = function
   | Next_sibling -> pp_token ctx "+"
   | Subsequent_sibling -> pp_token ctx "~"
   | Column -> pp_token ctx "||"
+  | Shadow_piercing -> pp_token ctx ">>>"
+  | Shadow_deep -> pp_token ctx "/deep/"
 
 let pp_spaced_combinator ctx = function
   | Descendant -> Pp.space ctx ()
@@ -1569,6 +1609,8 @@ let pp_spaced_combinator ctx = function
   | Next_sibling -> Pp.string ctx " + "
   | Subsequent_sibling -> Pp.string ctx " ~ "
   | Column -> Pp.string ctx " || "
+  | Shadow_piercing -> Pp.string ctx " >>> "
+  | Shadow_deep -> Pp.string ctx " /deep/ "
 
 let pp_relative_combinator ctx = function
   | Descendant -> Pp.space ctx ()
@@ -1583,6 +1625,12 @@ let pp_relative_combinator ctx = function
       Pp.space_if_pretty ctx ()
   | Column ->
       Pp.string ctx "||";
+      Pp.space_if_pretty ctx ()
+  | Shadow_piercing ->
+      Pp.string ctx ">>>";
+      Pp.space_if_pretty ctx ()
+  | Shadow_deep ->
+      Pp.string ctx "/deep/";
       Pp.space_if_pretty ctx ()
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
@@ -1818,6 +1866,10 @@ and pp : t Pp.t =
             (if Pp.minified ctx then Parser.to_string_minified args
              else Parser.to_string args))
         args
+  | Local_scope -> pseudo ctx "local"
+  | Global_scope -> pseudo ctx "global"
+  | Local_call selectors -> func ctx "local" sels selectors
+  | Global_call selectors -> func ctx "global" sels selectors
   (* Legacy pseudo-elements (use single colon in minified mode) *)
   | Before form -> legacy_elem ctx form "before"
   | After form -> legacy_elem ctx form "after"
@@ -2107,7 +2159,8 @@ let rec specificity = function
   | Webkit_inner_spin_button | Webkit_outer_spin_button
   | Webkit_calendar_picker_indicator | Webkit_details_marker | Details_content
   | Nth_col _ | Nth_last_col _ | Dir _ | Lang _ | State _
-  | Active_view_transition | Active_view_transition_type _ | Heading ->
+  | Active_view_transition | Active_view_transition_type _ | Heading
+  | Local_scope | Global_scope ->
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
@@ -2138,6 +2191,8 @@ let rec specificity = function
       add_specificity
         { ids = 0; classes = 0; elements = 1 }
         (xs |> List.map specificity |> max_specificity)
+  | Local_call xs | Global_call xs ->
+      xs |> List.map specificity |> max_specificity
   | Highlight _ -> { ids = 0; classes = 0; elements = 1 }
   | Compound xs ->
       List.fold_left
