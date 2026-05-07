@@ -283,10 +283,10 @@ include Optimize
 include Stylesheet
 
 let radius value = Radius { horizontal = [ Length value ]; vertical = None }
-let gaps ?column row = Lengths { row_gap = Some row; column_gap = column }
+let gaps ?column row : gap = Lengths { row_gap = Some row; column_gap = column }
 let font_stack fonts = (List fonts : font_family)
 
-let text_shadow_value ?blur ?color h_offset v_offset =
+let text_shadow_value ?blur ?color h_offset v_offset : text_shadow =
   Text_shadow { h_offset; v_offset; blur; color }
 
 (* Declaration accessor functions *)
