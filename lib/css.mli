@@ -30,7 +30,7 @@
           ; background_color (hex "#3b82f6")
           ; color (hex "#ffffff")
           ; padding [ Rem 0.5 ]
-          ; border_radius (Rem 0.375)
+          ; border_radius (radius (Rem 0.375))
           ]
       in
       to_string (v [ button ])
@@ -2588,6 +2588,12 @@ type border_radius =
   | Revert_layer
   | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
 
+val radius : length -> border_radius
+(** [radius len] is a one-value [border-radius] shorthand value.
+
+    For example, [border_radius (radius (Rem 0.375))] renders
+    [border-radius: 0.375rem]. *)
+
 type object_view_box =
   | None
   | Inset of length * length option * length option * length option
@@ -3376,6 +3382,10 @@ type gap =
   | Revert_layer
   | Var of gap var  (** CSS gap shorthand type. *)
 
+val gaps : ?column:length -> length -> gap
+(** [gaps row] is a one-value [gap] shorthand value. [gaps ~column row] is a
+    two-value [gap] shorthand value with separate row and column gaps. *)
+
 val gap : gap -> declaration
 (** [gap gap] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/gap} gap} property
@@ -3913,6 +3923,9 @@ type font_family =
   (* List of fonts for composition *)
   | List of font_family list
   | Var of font_family var
+
+val font_stack : font_family list -> font_family
+(** [font_stack fonts] is a comma-separated [font-family] stack. *)
 
 val font_family : font_family -> declaration
 (** [font_family fonts] is the
@@ -4514,6 +4527,10 @@ type text_shadow =
   | Revert
   | Revert_layer
   | Var of text_shadow var
+
+val text_shadow_value :
+  ?blur:length -> ?color:color -> length -> length -> text_shadow
+(** [text_shadow_value ?blur ?color x y] is a single [text-shadow] value. *)
 
 val text_shadow : text_shadow -> declaration
 (** [text_shadow shadow] is the
@@ -6751,7 +6768,8 @@ val var :
     Example:
     {[
     let def_radius, radius_var = var "radius-md" Length (Rem 0.5) in
-    rule ~selector:".card" [ def_radius; border_radius (Var radius_var) ]
+    rule ~selector:(Selector.class_ "card")
+      [ def_radius; border_top_left_radius (Var radius_var) ]
     ]}
 
     The returned [radius_var] must be wrapped with [Var] when used in CSS
