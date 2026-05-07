@@ -211,6 +211,189 @@ let lookup_visible_custom visible name read =
       | _ -> None)
     visible
 
+let custom_value_components = function
+  | Declaration.Declaration
+      {
+        property = Properties.Custom_property _;
+        value =
+          Properties.Custom_value
+            { kind = Properties.Value; value : Component.t list; _ };
+        _;
+      } ->
+      Some value
+  | _ -> None
+
+let lookup_visible_custom_components visible name =
+  let dashed =
+    if String.length name >= 2 && String.sub name 0 2 = "--" then name
+    else "--" ^ name
+  in
+  let choose idx best decl =
+    match decl with
+    | Declaration.Declaration { property = Properties.Custom_property n; _ }
+      when n = name || n = dashed -> (
+        match custom_value_components decl with
+        | None -> best
+        | Some value ->
+            let important = Declaration.is_important decl in
+            let candidate = (important, idx, value) in
+            let better =
+              match best with
+              | None -> true
+              | Some (best_important, best_idx, _) ->
+                  (important && not best_important)
+                  || (important = best_important && idx > best_idx)
+            in
+            if better then Some candidate else best)
+    | _ -> best
+  in
+  let rec loop idx best = function
+    | [] -> best
+    | decl :: rest -> loop (idx + 1) (choose idx best decl) rest
+  in
+  loop 0 None visible |> Option.map (fun (_, _, value) -> value)
+
+let trim_components components =
+  let is_ws = function
+    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | _ -> false
+  in
+  let rec drop = function hd :: tl when is_ws hd -> drop tl | xs -> xs in
+  List.rev (drop (List.rev (drop components)))
+
+type subst_result = Components of Component.t list | Cycle
+
+let rec components_contain preserved components =
+  List.exists
+    (function
+      | Component.Preserved token -> preserved token
+      | Component.Func { node = { arguments; _ }; _ } ->
+          components_contain preserved arguments
+      | Component.Block { node = { value; _ }; _ } ->
+          components_contain preserved value)
+    components
+
+let parse_var_components args =
+  try
+    let cursor = Cursor.of_components args in
+    let raw_name = Cursor.ident ~keep_case:true cursor in
+    if
+      not
+        (String.length raw_name >= 3
+        && raw_name.[0] = '-'
+        && raw_name.[1] = '-'
+        && raw_name.[2] <> '-')
+    then None
+    else
+      let name = String.sub raw_name 2 (String.length raw_name - 2) in
+      let fallback =
+        Cursor.ws cursor;
+        if Cursor.comma_opt cursor then Some (Cursor.remaining cursor) else None
+      in
+      Some (name, Option.map trim_components fallback)
+  with Cursor.Parse_error _ -> None
+
+let rec substitute_components visible ~visited components =
+  let one = function
+    | Component.Func ({ node = { name; arguments; _ }; _ } as fn)
+      when String.lowercase_ascii name = "var" -> (
+        match parse_var_components arguments with
+        | None -> Components [ Component.Func fn ]
+        | Some (name, fallback) ->
+            substitute_var visible ~visited fn name fallback)
+    | Component.Func fn -> (
+        match substitute_components visible ~visited fn.node.arguments with
+        | Components arguments ->
+            Components
+              [ Component.Func { fn with node = { fn.node with arguments } } ]
+        | Cycle -> Cycle)
+    | Component.Block block -> (
+        match substitute_components visible ~visited block.node.value with
+        | Components value ->
+            Components
+              [
+                Component.Block { block with node = { block.node with value } };
+              ]
+        | Cycle -> Cycle)
+    | Component.Preserved _ as cv -> Components [ cv ]
+  in
+  let rec loop acc = function
+    | [] -> Components (List.rev acc)
+    | cv :: rest -> (
+        match one cv with
+        | Components cvs -> loop (List.rev_append cvs acc) rest
+        | Cycle -> Cycle)
+  in
+  loop [] components
+
+and substitute_var visible ~visited original name fallback =
+  let fallback_or_original () =
+    match fallback with
+    | None -> Components [ Component.Func original ]
+    | Some components -> substitute_components visible ~visited components
+  in
+  if List.mem name visited then
+    match fallback with None -> Cycle | Some _ -> fallback_or_original ()
+  else
+    match lookup_visible_custom_components visible name with
+    | None -> fallback_or_original ()
+    | Some value -> (
+        match
+          substitute_components visible ~visited:(name :: visited) value
+        with
+        | Components _ as resolved -> resolved
+        | Cycle -> (
+            match fallback with
+            | None -> Cycle
+            | Some _ -> fallback_or_original ()))
+
+let declaration_with_components decl components =
+  let property = Declaration.property_name decl in
+  let value = Parser.to_string_custom_minified components in
+  if String.trim value = "" then None
+  else
+    let important =
+      if Declaration.is_important decl then "!important" else ""
+    in
+    let has_string =
+      components_contain (function
+        | { kind = Token.String _; _ } -> true
+        | _ -> false)
+    in
+    let has_comma =
+      components_contain (function
+        | { kind = Token.Comma; _ } -> true
+        | _ -> false)
+    in
+    let opaque () =
+      let fallback =
+        Declaration.v (Properties.Opaque_property property)
+          (Cursor.remaining (Cursor.of_string value))
+      in
+      Some
+        (if Declaration.is_important decl then Declaration.important fallback
+         else fallback)
+    in
+    if property = "font-family" && has_string components then opaque ()
+    else
+      let source = String.concat "" [ property; ":"; value; important ] in
+      try Some (Declaration.read (Cursor.of_string source))
+      with Cursor.Parse_error _ ->
+        if has_comma components then None else opaque ()
+
+let substitute_declaration visible ctx decl =
+  match custom_name decl with
+  | Some _ -> Some decl
+  | None -> (
+      let value = Declaration.string_of_value ~minify:false decl in
+      let components = Cursor.remaining (Cursor.of_string value) in
+      match substitute_components visible ~visited:[] components with
+      | Cycle -> Some (Context.eval ctx decl)
+      | Components components -> (
+          match declaration_with_components decl components with
+          | None -> None
+          | Some decl -> Some (Context.eval ctx decl)))
+
 let simplify_font_src_descriptor visible entries =
   let normalize_entry = function
     | Font_face.Quoted_url { url; format; tech; _ } ->
@@ -296,7 +479,8 @@ let universal_visible_customs ~scopes ~at_path =
 
 let eval_decls ~scopes ~at_path selector decls =
   let visible = visible_customs ~scopes ~at_path ~selector in
-  List.map (Context.eval (context_for visible)) decls
+  let ctx = context_for visible in
+  List.filter_map (substitute_declaration visible ctx) decls
 
 (* @page, @keyframes, and @position-try declarations apply to elements whose
    effective selector is universal at this at-path. Customs declared on [:root],
@@ -640,6 +824,36 @@ let live_customs ~consumers ~customs =
   done;
   !live
 
+let cyclic_live_customs ~consumers ~customs =
+  let initially_live = live_customs ~consumers ~customs in
+  let path_visible ~scope_path ~consumer_path =
+    at_path_prefix ~outer:scope_path ~inner:consumer_path
+  in
+  let same_entry (a_path, a_sel, a_name) (b_path, b_sel, b_name, _) =
+    a_path = b_path && a_sel = b_sel && a_name = b_name
+  in
+  let rec reaches target seen (path, sel, name, refs) =
+    let key = (path, sel, name) in
+    if List.mem key seen then false
+    else
+      List.exists
+        (fun ref_name ->
+          List.exists
+            (fun ((next_path, _, next_name, _) as next) ->
+              next_name = ref_name
+              && path_visible ~scope_path:next_path ~consumer_path:path
+              && ((seen <> [] && same_entry target next)
+                 || reaches target (key :: seen) next))
+            customs)
+        refs
+  in
+  List.filter
+    (fun entry ->
+      List.exists
+        (fun custom -> same_entry entry custom && reaches entry [] custom)
+        customs)
+    initially_live
+
 let normalize_custom_value decl =
   match custom_name decl with
   | None -> decl
@@ -722,9 +936,13 @@ let normalise_var_name name =
 let vars ?(keep_vars = []) stylesheet =
   let keep = List.map normalise_var_name keep_vars in
   let scopes = collect_scopes ~kept:keep stylesheet in
+  let original_consumers, original_customs = collect_scoped_refs stylesheet in
+  let cyclic_live_set =
+    cyclic_live_customs ~consumers:original_consumers ~customs:original_customs
+  in
   let substituted = substitute ~scopes ~parents:[] ~at_path:[] stylesheet in
   let consumers, customs = collect_scoped_refs substituted in
-  let live_set = live_customs ~consumers ~customs in
+  let live_set = live_customs ~consumers ~customs @ cyclic_live_set in
   strip_dead ~keep ~live_set substituted
 
 (** {1 [@import] inlining helpers} *)

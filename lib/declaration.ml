@@ -1606,6 +1606,18 @@ and invalid_var_arguments arguments =
 let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
+let raw_value_contains_var raw_value =
+  let rec component = function
+    | Component.Func { node = { name; _ }; _ }
+      when String.lowercase_ascii name = "var" ->
+        true
+    | Component.Func { node = { arguments; _ }; _ } ->
+        List.exists component arguments
+    | Component.Block { node = { value; _ }; _ } -> List.exists component value
+    | Component.Preserved _ -> false
+  in
+  Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
+
 (* CSS Values 5 §10 [<calc>] error handling: math expressions whose argument
    types / ranges produce an undefined result must be preserved literally rather
    than dropped, so authoring round-trips through the minifier. Cascade's typed
@@ -1638,6 +1650,7 @@ let allows_opaque_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
+     || raw_value_contains_var raw_value
      || raw_value_has_preservable_function raw_value)
 
 let read_font_src_declaration t raw_value =
