@@ -8447,12 +8447,17 @@ let rec pp_svg_paint : svg_paint Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Current_color -> Pp.string ctx "currentcolor"
   | Color c -> pp_color ctx c
+  | Context_fill -> Pp.string ctx "context-fill"
+  | Context_stroke -> Pp.string ctx "context-stroke"
   | Url (u, fallback) -> (
       Pp.url ctx u;
       match fallback with
       | None -> ()
       | Some fb ->
-          Pp.space ctx ();
+          (* CSS Syntax 3 §5.4.6: a [url(...)] token closes with [)], so the
+             whitespace before a fallback keyword/colour can be elided under
+             minify. *)
+          Pp.sp ctx ();
           pp_svg_paint ctx fb)
 
 let rec pp_transition_property_value : transition_property_value Pp.t =
@@ -12446,6 +12451,8 @@ let read_svg_paint t : svg_paint =
             ("none", (None : svg_paint));
             ("inherit", Inherit);
             ("currentcolor", Current_color);
+            ("context-fill", Context_fill);
+            ("context-stroke", Context_stroke);
           ]
           ~default:(fun t -> (Color (read_color t) : svg_paint))
           t);

@@ -3573,6 +3573,11 @@ type svg_paint =
   | Current_color
   | Color of color
   | Url of string * svg_paint option
+  | Context_fill
+      (** SVG2 §11.2 [context-fill] - inherits the fill paint of the context
+          element, used in marker / pattern / use trees. *)
+  | Context_stroke
+      (** SVG2 §11.2 [context-stroke] - mirror of [Context_fill]. *)
   | Var of svg_paint var
 
 (* Direction Types *)

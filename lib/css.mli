@@ -6263,6 +6263,8 @@ type svg_paint =
   | Current_color  (** Current color value *)
   | Color of color  (** Specific color value *)
   | Url of string * svg_paint option  (** url(#id) with optional fallback *)
+  | Context_fill  (** SVG2 [context-fill] keyword *)
+  | Context_stroke  (** SVG2 [context-stroke] keyword *)
   | Var of svg_paint var
 
 val fill : svg_paint -> declaration
