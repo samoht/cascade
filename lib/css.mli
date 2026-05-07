@@ -526,6 +526,9 @@ val starting_style_nested : declaration list -> statement
 type 'a var
 (** The type of CSS variable holding values of type ['a]. *)
 
+type 'a env = { name : string; indices : int list; fallback : 'a option }
+(** CSS [env()] reference. *)
+
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without [--]). *)
 
@@ -709,6 +712,7 @@ type length =
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
       (** CSS [attr()] in typed value contexts (CSS Values 5 §10). *)
+  | Env of length env  (** CSS [env()] reference. *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
 
@@ -990,6 +994,7 @@ type percentage =
 type length_percentage =
   | Length of length
   | Pct of float
+  | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
   | Invalid of Component.t list  (** Spec-invalid input preserved verbatim. *)

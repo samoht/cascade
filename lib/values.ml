@@ -224,6 +224,22 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
   if ctx.inline then pp_inline_var pp_value ctx v
   else pp_stylesheet_var pp_value ctx v
 
+let pp_env : type a. a Pp.t -> a env Pp.t =
+ fun pp_value ctx (env : a env) ->
+  Pp.string ctx "env(";
+  Pp.string ctx env.name;
+  List.iter
+    (fun i ->
+      Pp.sp ctx ();
+      Pp.string ctx (string_of_int i))
+    env.indices;
+  (match env.fallback with
+  | Some fallback ->
+      Pp.comma ctx ();
+      pp_value ctx fallback
+  | Option.None -> ());
+  Pp.char ctx ')'
+
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
 (** Pretty print calc_op *)
@@ -1106,7 +1122,7 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (U_pct, n)
   | Length l -> unit_of_length l
-  | Var _ | Calc _ | Invalid _ -> None
+  | Env _ | Var _ | Calc _ | Invalid _ -> None
 
 let lp_of_unit unit n : length_percentage =
   match unit with U_pct -> Pct n | unit -> Length (length_of_unit unit n)
@@ -1338,6 +1354,7 @@ let rec pp_length ?(always = false) : length Pp.t =
               pp_length ~always ctx fallback)
         ctx (name, side, fallback)
   | Attr attr -> Pp.call "attr" (pp_attr_call (pp_length ~always)) ctx attr
+  | Env env -> pp_env (pp_length ~always) ctx env
   | Var v -> pp_var (pp_length ~always) ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2065,6 +2082,7 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
   | Pct f -> Pp.pct ~always ctx f
+  | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
       let c =
@@ -2867,6 +2885,32 @@ let read_var : type a. (Cursor.t -> a) -> Cursor.t -> a var =
     entry point and is kept so call sites stay source-compatible. *)
 let read_var_after_ident = read_var
 
+let read_body : type a. (Cursor.t -> a) -> Cursor.t -> a env =
+ fun read_value t ->
+  Cursor.ws t;
+  let name = Cursor.ident ~keep_case:true t in
+  let rec indices acc =
+    Cursor.ws t;
+    match Cursor.integer_opt t with
+    | Some i -> indices (i :: acc)
+    | Option.None -> List.rev acc
+  in
+  let indices = indices [] in
+  Cursor.ws t;
+  let fallback =
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      if Cursor.is_done t then Option.None else Some (read_value t))
+    else Option.None
+  in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  ({ name; indices; fallback } : a env)
+
+let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
+ fun read_value t ->
+  Cursor.call "env" t (fun inner -> read_body read_value inner)
+
 let read_length_unit ?(allow_negative = true) t =
   let n, unit_raw = Cursor.number_with_unit t in
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
@@ -3326,6 +3370,9 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
        non-negative constraint applies to the resolved value. *)
     Calc (read_calc (read_length ~with_keywords) t)
   in
+  let read_as_length t : length =
+    Env (read_env (read_length ~allow_negative ~with_keywords) t)
+  in
   let read_function_length t : length =
     (* [clamp(...)], [min(...)], [max(...)], [minmax(...)] arrive as a single
        [Func] component; consume the whole call and serialise the arguments. *)
@@ -3514,6 +3561,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     [
       read_var_length;
       read_calc_length;
+      read_as_length;
       read_function_length;
       read_length_unit ~allow_negative;
     ]
@@ -4894,6 +4942,8 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
     Var (read_var (read_length_percentage ~allow_negative ~with_keywords) t)
+  else if Cursor.looking_at t "env(" then
+    Env (read_env (read_length_percentage ~allow_negative ~with_keywords) t)
   else if Cursor.looking_at t "calc(" then
     (* CSS Values 4 10 (calc): inside [calc()] negative operands are always
        allowed even when the surrounding property is non-negative; the

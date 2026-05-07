@@ -20,6 +20,7 @@ type 'a var = {
   meta : meta option;
 }
 
+type 'a env = { name : string; indices : int list; fallback : 'a option }
 type calc_op = Add | Sub | Mul | Div
 
 type 'a calc =
@@ -137,6 +138,7 @@ type length =
   | Attr of length attr_call
       (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
           typed-value contexts. *)
+  | Env of length env
   | Var of length var
   | Calc of length calc
 
@@ -356,6 +358,7 @@ type percentage =
 type length_percentage =
   | Length of length
   | Pct of float
+  | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
   | Invalid of Component.t list
