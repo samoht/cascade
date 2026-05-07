@@ -10,7 +10,7 @@ Default --minify keeps @import references unchanged (open-world default).
   > .a { padding: 10px }
   > EOF
   $ cascade --minify entry.css
-  @import "base.css";.a{padding:10px}
+  @import"base.css";.a{padding:10px}
 
 --inline-imports resolves the reference and merges the content in source
 order.
