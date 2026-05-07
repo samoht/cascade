@@ -98,7 +98,7 @@ let env_minifier_commands () =
   | None | Some "" -> []
   | Some s ->
       split_commands s
-      |> List.mapi (fun i command -> (Printf.sprintf "env%d" (i + 1), command))
+      |> List.mapi (fun i command -> (Fmt.str "env%d" (i + 1), command))
 
 let read_all ic =
   let buf = Buffer.create 4096 in
@@ -112,6 +112,13 @@ let read_all ic =
   in
   loop ()
 
+let err_process_status label code = Error (Fmt.str "%s %d" label code)
+
+let err_exit_status n stderr =
+  Error
+    (Fmt.str "exit %d%s" n
+       (if stderr = "" then "" else ": " ^ String.trim stderr))
+
 let run_command command input =
   let ic, oc, ec = Unix.open_process_full command (Unix.environment ()) in
   output_string oc input;
@@ -120,12 +127,9 @@ let run_command command input =
   let stderr = read_all ec in
   match Unix.close_process_full (ic, oc, ec) with
   | Unix.WEXITED 0 -> Ok (String.trim stdout)
-  | Unix.WEXITED n ->
-      Error
-        (Printf.sprintf "exit %d%s" n
-           (if stderr = "" then "" else ": " ^ String.trim stderr))
-  | Unix.WSIGNALED n -> Error (Printf.sprintf "signal %d" n)
-  | Unix.WSTOPPED n -> Error (Printf.sprintf "stopped %d" n)
+  | Unix.WEXITED n -> err_exit_status n stderr
+  | Unix.WSIGNALED n -> err_process_status "signal" n
+  | Unix.WSTOPPED n -> err_process_status "stopped" n
 
 let command_works command =
   match run_command command ".x{color:red}" with
@@ -217,7 +221,7 @@ let validate_candidate input (candidate : candidate) =
           tool = candidate.tool;
           css = candidate.css;
           reason =
-            Printf.sprintf "at-rule fingerprint changed: [%s] -> [%s]"
+            Fmt.str "at-rule fingerprint changed: [%s] -> [%s]"
               (String.concat ", " source)
               (String.concat ", " output);
         }
@@ -234,8 +238,7 @@ let validate_candidate input (candidate : candidate) =
           tool = candidate.tool;
           css = candidate.css;
           reason =
-            Printf.sprintf
-              "semantic fingerprint changed after Cascade parse: %s -> %s"
+            Fmt.str "semantic fingerprint changed after Cascade parse: %s -> %s"
               (display_css source_css) (display_css output_css);
         }
   | _, _, Ok _, Error msg ->
@@ -265,7 +268,7 @@ let format_rejected_candidates input rejected =
   "UPSTREAM MINIFIER BUGS: rejected non-equivalent candidates\n"
   ^ (rejected
     |> List.map (fun rejection ->
-        Printf.sprintf
+        Fmt.str
           "    UPSTREAM BUG in: %s\n\
           \    reason: %s\n\
           \    input:  %s\n\
@@ -283,20 +286,20 @@ let format_source_parse_diagnostics input expected =
         match canonical_minified css with
         | Ok canonical ->
             incr parseable;
-            Printf.sprintf
+            Fmt.str
               "    %s: output parses with Cascade\n\
               \      output:    %s\n\
               \      canonical: %s"
               tool (display_css css) (display_css canonical)
         | Error msg ->
-            Printf.sprintf
+            Fmt.str
               "    %s: output also fails Cascade parser\n\
               \      output: %s\n\
               \      error:  %s"
               tool (display_css css) msg)
     |> String.concat "\n"
   in
-  Printf.sprintf
+  Fmt.str
     "%s\n\
     \    SOURCE PARSE DIAGNOSTICS: Cascade could not parse the source fixture. \
      External outputs are diagnostics only; they are not accepted as proof of \
@@ -326,9 +329,8 @@ let classify (input, expected) =
             |> String.concat " | "
           in
           Mismatch
-            (Printf.sprintf
-               "%s\n    shortest: %s\n    actual_len=%d best_len=%d" actual
-               shortest (String.length actual) best)
+            (Fmt.str "%s\n    shortest: %s\n    actual_len=%d best_len=%d"
+               actual shortest (String.length actual) best)
       in
       (outcome, rejected)
 
@@ -341,9 +343,9 @@ let format_divergence i (input, expected) outcome =
   match outcome with
   | Pass -> assert false
   | Parse_error msg ->
-      Printf.sprintf "  pair_%04d: parse error: %s\n    input: %s" i msg input
+      Fmt.str "  pair_%04d: parse error: %s\n    input: %s" i msg input
   | Mismatch actual ->
-      Printf.sprintf
+      Fmt.str
         "  pair_%04d: mismatch\n\
         \    input:    %s\n\
         \    trace:    %s\n\
@@ -407,7 +409,7 @@ let selected_shard selected shard =
       let start = shard * shard_size in
       i >= start && i < start + shard_size)
 
-let test_pairs ~total_pairs selected ~feature ~shard ~shards () =
+let pair_cases ~total_pairs selected ~feature ~shard ~shards () =
   let selected = selected_shard selected shard in
   let total = List.length selected in
   let pass = ref 0 in
@@ -437,11 +439,11 @@ let test_pairs ~total_pairs selected ~feature ~shard ~shards () =
   let divergences = List.rev !divergences in
   let external_bug_reports = List.rev !external_bug_reports in
   let summary =
-    Printf.sprintf
+    Fmt.str
       "minifier interop%s: %d/%d selected pass (%d total pairs; %d parse \
        errors, %d longer-than-shortest mismatches, %d external minifier bugs; \
        external minifiers: %s)"
-      (Printf.sprintf " [%s %d/%d]" feature (shard + 1) shards)
+      (Fmt.str " [%s %d/%d]" feature (shard + 1) shards)
       !pass total total_pairs !parse_err !mismatch !external_bug
       (available_minifier_names ())
   in
@@ -451,14 +453,12 @@ let test_pairs ~total_pairs selected ~feature ~shard ~shards () =
     let head =
       List.filteri (fun i _ -> i < limit) external_bug_reports
       |> List.map (fun (i, _pair, report) ->
-          Printf.sprintf "  pair_%04d: external minifier bug warning\n%s" i
-            report)
+          Fmt.str "  pair_%04d: external minifier bug warning\n%s" i report)
       |> String.concat "\n"
     in
     let tail =
       if List.length external_bug_reports > limit then
-        Printf.sprintf
-          "\n  ... (%d more upstream bugs; set VERBOSE=1 for full list)"
+        Fmt.str "\n  ... (%d more upstream bugs; set VERBOSE=1 for full list)"
           (List.length external_bug_reports - limit)
       else ""
     in
@@ -473,14 +473,14 @@ let test_pairs ~total_pairs selected ~feature ~shard ~shards () =
     in
     let tail =
       if List.length divergences > limit then
-        Printf.sprintf "\n  ... (%d more; set VERBOSE=1 for full list)"
+        Fmt.str "\n  ... (%d more; set VERBOSE=1 for full list)"
           (List.length divergences - limit)
       else ""
     in
     Alcotest.failf "%s\n%s%s" summary head tail
   end
 
-let test_groups pairs =
+let grouped_cases pairs =
   let total_pairs = List.length pairs in
   pairs_by_feature pairs
   |> List.filter_map (fun (feature, selected) ->
@@ -489,12 +489,12 @@ let test_groups pairs =
       else
         let cases =
           List.init shards (fun shard ->
-              let name = Printf.sprintf "%02d/%02d" (shard + 1) shards in
+              let name = Fmt.str "%02d/%02d" (shard + 1) shards in
               Alcotest.test_case name `Slow
-                (test_pairs ~total_pairs selected ~feature ~shard ~shards))
+                (pair_cases ~total_pairs selected ~feature ~shard ~shards))
         in
         Some (feature, cases))
 
 let () =
   let pairs = read_pairs trace_path in
-  Alcotest.run "lightning_minify" (test_groups pairs)
+  Alcotest.run "lightning_minify" (grouped_cases pairs)
