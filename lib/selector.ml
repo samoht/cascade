@@ -966,6 +966,11 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
+let is_deep_piercing_pseudo name =
+  match String.lowercase_ascii name with
+  | "deep" | "v-deep" | "ng-deep" -> true
+  | _ -> false
+
 let is_pseudo_element_selector = function
   | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
   | Placeholder | Selection | File_selector_button | Moz_placeholder
@@ -981,8 +986,9 @@ let is_pseudo_element_selector = function
   | Webkit_details_marker | Details_content | Part _ | Slotted _ | Cue _
   | Cue_region _ | Highlight _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ ->
+  | Unknown_pseudo_element_call _ ->
       true
+  | Unknown_pseudo_element name -> not (is_deep_piercing_pseudo name)
   | _ -> false
 
 let rec any p = function
