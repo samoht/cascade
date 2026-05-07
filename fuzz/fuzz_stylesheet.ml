@@ -1156,99 +1156,118 @@ let test_invalid_prelude_order buf =
         (Fmt.str "invalid stylesheet prelude order parsed: %S -> %S" input
            (String.concat " " (boundary_shapes ss)))
 
-let suite =
-  ( "stylesheet",
-    [
-      test_case "read_stylesheet crash safety" [ bytes ] test_read_stylesheet;
-      test_case "read_rule crash safety" [ bytes ] test_read_rule;
-      test_case "read_block crash safety" [ bytes ] test_read_block;
-      test_case "read crash safety" [ bytes ] test_read;
-      test_case "read_import_rule crash safety" [ bytes ] test_read_import_rule;
-      test_case "read_config crash safety" [ bytes ] test_read_config;
-      test_case "read_declaration crash safety" [ bytes ] test_read_declaration;
-      test_case "read_declarations crash safety" [ bytes ]
-        test_read_declarations;
-      test_case "read_property_name crash safety" [ bytes ]
-        test_read_property_name;
-      test_case "read_property_value crash safety" [ bytes ]
-        test_read_property_value;
-      test_case "roundtrip" [ bytes ] test_stylesheet_roundtrip;
-      test_case "minified serialization idempotent" [ bytes ]
-        test_stylesheet_minified_idempotent;
-      test_case "pretty serialization idempotent" [ bytes ]
-        test_stylesheet_pretty_idempotent;
-      test_case "generated layer stylesheet roundtrip" [ bytes ]
-        test_generated_layer_stylesheet_roundtrip;
-      test_case "generated condition stylesheet roundtrip" [ bytes ]
-        test_generated_condition_stylesheet_roundtrip;
-      test_case "generated pretty stylesheet roundtrip" [ bytes ]
-        test_generated_stylesheets_pretty_roundtrip;
-      test_case "layer boundary shape invariant" [ bytes ]
-        test_layer_boundary_shape_invariant;
-      test_case "anonymous layer count invariant" [ bytes ]
-        test_anonymous_layer_count_invariant;
-      test_case "condition boundary shape invariant" [ bytes ]
-        test_condition_boundary_shape_invariant;
-      test_case "shorthand CSS-wide keyword invariant" [ bytes ]
-        test_shorthand_wide_keyword;
-      test_case "shorthand CSS-wide keyword mix rejected" [ bytes ]
-        test_shorthand_wide_mix;
-      test_case "legacy shorthand alias serialization invariant" [ bytes ]
-        test_legacy_alias_stable;
-      test_case "declared values source order invariant" [ bytes ]
-        test_declared_order_stable;
-      test_case "specified value unset inheritance invariant" [ bytes ]
-        test_unset_inheritance;
-      test_case "integrated cascade source order invariant" [ bytes ]
-        test_cascade_source_order;
-      test_case "revert-layer specified value invariant" [ bytes ]
-        test_revert_layer_value;
-      test_case "platform declaration property name invariant" [ bytes ]
-        test_platform_decl_name;
-      test_case "invalid platform declaration rejected" [ bytes ]
-        test_invalid_platform_declaration_rejected;
-      test_case "import and URL syntax roundtrip" [ bytes ]
-        test_import_url_syntax;
-      test_case "namespace prefix separator invariant" [ bytes ]
-        test_namespace_prefix_separator;
-      test_case "valid at-rule descriptor vectors" [ bytes ]
-        test_valid_atrule_descriptor;
-      test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
-        test_invalid_atrule_descriptor;
-      test_case "shared at-rule inventory valid vectors" [ bytes ]
-        test_atrule_inventory_valid;
-      test_case "shared at-rule inventory invalid vectors rejected" [ bytes ]
-        test_atrule_inventory_invalid;
-      test_case "font-face descriptor matrix" [ bytes ]
-        test_font_face_descriptor_matrix;
-      test_case "invalid font-face descriptor matrix rejected" [ bytes ]
-        test_invalid_font_face;
-      test_case "page margin descriptor matrix" [ bytes ]
-        test_page_margin_descriptor_matrix;
-      test_case "invalid page margin descriptor matrix rejected" [ bytes ]
-        test_invalid_page_margin;
-      test_case "font-palette-values descriptor matrix" [ bytes ]
-        test_palette_descriptor_matrix;
-      test_case "invalid font-palette-values descriptor matrix rejected"
-        [ bytes ] test_invalid_palette_descriptor;
-      test_case "view-transition descriptor matrix" [ bytes ]
-        test_view_transition_descriptor_matrix;
-      test_case "invalid view-transition descriptor matrix rejected" [ bytes ]
-        test_invalid_view_transition;
-      test_case "position-try descriptor matrix" [ bytes ]
-        test_position_try_descriptor_matrix;
-      test_case "invalid position-try descriptor matrix rejected" [ bytes ]
-        test_invalid_position_try;
-      test_case "property value context invariant" [ bytes ]
-        test_property_value_context;
-      test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
-        test_recovery_keeps_rules;
-      test_case "CSS Syntax recovery invalid rule boundary" [ bytes ]
-        test_recovery_invalid_rule_boundary;
-      test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
-        test_recovery_bad_declaration;
-      test_case "stylesheet prelude order vectors" [ bytes ]
-        test_stylesheet_prelude_order_vectors;
-      test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]
-        test_invalid_prelude_order;
-    ] )
+let parser_cases =
+  [
+    test_case "read_stylesheet crash safety" [ bytes ] test_read_stylesheet;
+    test_case "read_rule crash safety" [ bytes ] test_read_rule;
+    test_case "read_block crash safety" [ bytes ] test_read_block;
+    test_case "read crash safety" [ bytes ] test_read;
+    test_case "read_import_rule crash safety" [ bytes ] test_read_import_rule;
+    test_case "read_config crash safety" [ bytes ] test_read_config;
+    test_case "read_declaration crash safety" [ bytes ] test_read_declaration;
+    test_case "read_declarations crash safety" [ bytes ] test_read_declarations;
+    test_case "read_property_name crash safety" [ bytes ]
+      test_read_property_name;
+    test_case "read_property_value crash safety" [ bytes ]
+      test_read_property_value;
+  ]
+
+let roundtrip_cases =
+  [
+    test_case "roundtrip" [ bytes ] test_stylesheet_roundtrip;
+    test_case "minified serialization idempotent" [ bytes ]
+      test_stylesheet_minified_idempotent;
+    test_case "pretty serialization idempotent" [ bytes ]
+      test_stylesheet_pretty_idempotent;
+    test_case "generated layer stylesheet roundtrip" [ bytes ]
+      test_generated_layer_stylesheet_roundtrip;
+    test_case "generated condition stylesheet roundtrip" [ bytes ]
+      test_generated_condition_stylesheet_roundtrip;
+    test_case "generated pretty stylesheet roundtrip" [ bytes ]
+      test_generated_stylesheets_pretty_roundtrip;
+  ]
+
+let invariant_cases =
+  [
+    test_case "layer boundary shape invariant" [ bytes ]
+      test_layer_boundary_shape_invariant;
+    test_case "anonymous layer count invariant" [ bytes ]
+      test_anonymous_layer_count_invariant;
+    test_case "condition boundary shape invariant" [ bytes ]
+      test_condition_boundary_shape_invariant;
+    test_case "shorthand CSS-wide keyword invariant" [ bytes ]
+      test_shorthand_wide_keyword;
+    test_case "shorthand CSS-wide keyword mix rejected" [ bytes ]
+      test_shorthand_wide_mix;
+    test_case "legacy shorthand alias serialization invariant" [ bytes ]
+      test_legacy_alias_stable;
+    test_case "declared values source order invariant" [ bytes ]
+      test_declared_order_stable;
+    test_case "specified value unset inheritance invariant" [ bytes ]
+      test_unset_inheritance;
+    test_case "integrated cascade source order invariant" [ bytes ]
+      test_cascade_source_order;
+    test_case "revert-layer specified value invariant" [ bytes ]
+      test_revert_layer_value;
+    test_case "platform declaration property name invariant" [ bytes ]
+      test_platform_decl_name;
+    test_case "invalid platform declaration rejected" [ bytes ]
+      test_invalid_platform_declaration_rejected;
+    test_case "import and URL syntax roundtrip" [ bytes ] test_import_url_syntax;
+    test_case "namespace prefix separator invariant" [ bytes ]
+      test_namespace_prefix_separator;
+  ]
+
+let descriptor_cases =
+  [
+    test_case "valid at-rule descriptor vectors" [ bytes ]
+      test_valid_atrule_descriptor;
+    test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
+      test_invalid_atrule_descriptor;
+    test_case "shared at-rule inventory valid vectors" [ bytes ]
+      test_atrule_inventory_valid;
+    test_case "shared at-rule inventory invalid vectors rejected" [ bytes ]
+      test_atrule_inventory_invalid;
+    test_case "font-face descriptor matrix" [ bytes ]
+      test_font_face_descriptor_matrix;
+    test_case "invalid font-face descriptor matrix rejected" [ bytes ]
+      test_invalid_font_face;
+    test_case "page margin descriptor matrix" [ bytes ]
+      test_page_margin_descriptor_matrix;
+    test_case "invalid page margin descriptor matrix rejected" [ bytes ]
+      test_invalid_page_margin;
+    test_case "font-palette-values descriptor matrix" [ bytes ]
+      test_palette_descriptor_matrix;
+    test_case "invalid font-palette-values descriptor matrix rejected" [ bytes ]
+      test_invalid_palette_descriptor;
+    test_case "view-transition descriptor matrix" [ bytes ]
+      test_view_transition_descriptor_matrix;
+    test_case "invalid view-transition descriptor matrix rejected" [ bytes ]
+      test_invalid_view_transition;
+    test_case "position-try descriptor matrix" [ bytes ]
+      test_position_try_descriptor_matrix;
+    test_case "invalid position-try descriptor matrix rejected" [ bytes ]
+      test_invalid_position_try;
+  ]
+
+let recovery_cases =
+  [
+    test_case "property value context invariant" [ bytes ]
+      test_property_value_context;
+    test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
+      test_recovery_keeps_rules;
+    test_case "CSS Syntax recovery invalid rule boundary" [ bytes ]
+      test_recovery_invalid_rule_boundary;
+    test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
+      test_recovery_bad_declaration;
+    test_case "stylesheet prelude order vectors" [ bytes ]
+      test_stylesheet_prelude_order_vectors;
+    test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]
+      test_invalid_prelude_order;
+  ]
+
+let suite_cases =
+  parser_cases @ roundtrip_cases @ invariant_cases @ descriptor_cases
+  @ recovery_cases
+
+let suite = ("stylesheet", suite_cases)
