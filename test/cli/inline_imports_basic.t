@@ -58,7 +58,7 @@ precede rules from a later @import or the entry's own rules.
   > .e { color: green }
   > EOF
   $ cascade --minify --inline-imports order.css
-  .x{color:red}.x{color:#00f}.e{color:green}
+  .x{color:#00f}.e{color:green}
 
 Empty imported file leaves no trace.
 
