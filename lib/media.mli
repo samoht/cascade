@@ -189,9 +189,16 @@ val value_of_string : string -> value
 (** [value_of_string s] parses [s] as a media-feature value. *)
 
 val name_of_string : string -> name
+(** [name_of_string s] parses a media feature name. *)
+
 val string_of_name : name -> string
+(** [string_of_name name] serializes a media feature name. *)
+
 val ident_of_string : string -> ident
+(** [ident_of_string s] parses a media identifier value. *)
+
 val string_of_ident : ident -> string
+(** [string_of_ident ident] serializes a media identifier value. *)
 
 val feature : string -> value -> t
 (** [feature name v] is the plain feature [(name: v)]. *)

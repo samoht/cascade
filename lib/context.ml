@@ -2043,7 +2043,7 @@ let simplify_opacity ?layer_order ?layer cascade value =
   in
   Calc_residual.simplify ?layer_order ?layer cascade ops value
 
-let angle_to_degrees (value : Values.angle) =
+let degrees_of_angle (value : Values.angle) =
   let pi = 4. *. atan 1. in
   match value with
   | Values.Deg n -> Some n
@@ -2055,7 +2055,7 @@ let angle_to_degrees (value : Values.angle) =
 let simplify_angle ?layer_order ?layer cascade value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.angle Calc_residual.ops =
-    let to_number = angle_to_degrees in
+    let to_number = degrees_of_angle in
     let of_number deg = Values.Deg deg in
     {
       of_unitless_number = (fun _ -> None);
@@ -2074,7 +2074,7 @@ let simplify_angle ?layer_order ?layer cascade value =
   in
   Calc_residual.simplify ?layer_order ?layer cascade ops value
 
-let duration_to_seconds (value : Values.duration) =
+let seconds_of_duration (value : Values.duration) =
   match value with
   | Values.S n -> Some n
   | Values.Ms n -> Some (n /. 1000.)
@@ -2083,7 +2083,7 @@ let duration_to_seconds (value : Values.duration) =
 let simplify_duration ?layer_order ?layer cascade value =
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.duration Calc_residual.ops =
-    let to_number = duration_to_seconds in
+    let to_number = seconds_of_duration in
     let of_number seconds = Values.S seconds in
     {
       of_unitless_number = (fun _ -> None);

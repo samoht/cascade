@@ -6132,10 +6132,30 @@ let pp_border_image_repeat_keyword ctx (value : border_image_repeat_keyword) =
   | Round -> Pp.string ctx "round"
   | Space -> Pp.string ctx "space"
 
+let pp_mask_border_mode ctx = function
+  | (Alpha : mask_border_mode) -> Pp.string ctx "alpha"
+  | Luminance -> Pp.string ctx "luminance"
+
 let pp_border_image : border_image Pp.t =
- fun ctx { source; slice; width; outset; repeat } ->
+ fun ctx { source; slice; width; outset; repeat; mode } ->
   let first = ref true in
-  let maybe_space () = if !first then first := false else Pp.space ctx () in
+  (* CSS Syntax 3 §5.4.6: tokens ending with [)] are self-delimiting, so the
+     inter-slot space after [url(...)] / [<image>] can be elided under
+     minify. *)
+  let last_is_self_delim () =
+    let buf = ctx.Pp.buf in
+    let len = Buffer.length buf in
+    len > 0
+    &&
+    match Buffer.nth buf (len - 1) with
+    | ')' | ']' | '}' -> true
+    | _ -> false
+  in
+  let maybe_space () =
+    if !first then first := false
+    else if Pp.minified ctx && last_is_self_delim () then ()
+    else Pp.space ctx ()
+  in
   pp_bg_prop maybe_space pp_background_image ctx source;
   pp_bg_prop maybe_space pp_border_image_slice ctx slice;
   (match width with
@@ -6150,7 +6170,15 @@ let pp_border_image : border_image Pp.t =
       Pp.list ~sep:Pp.space pp_border_image_outset_item ctx outset);
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
-    ctx repeat
+    ctx repeat;
+  (* CSS Masking 1 §6: [alpha] is the default mode, so drop it under minify;
+     [luminance] always prints. *)
+  let mode =
+    match mode with
+    | Some Alpha when Pp.minified ctx -> (None : mask_border_mode option)
+    | _ -> mode
+  in
+  pp_bg_prop maybe_space pp_mask_border_mode ctx mode
 
 (* CSS Backgrounds 3 2.1: the [background] shorthand's default position is [0%
    0%]; when no [<bg-size>] is also set the position is redundant and elided
@@ -9828,85 +9856,86 @@ let rec read_grid_auto_flow t : grid_auto_flow =
 
 (* CSS Grid template - flattened type with direct constructors *)
 
+let grid_line_at_end t =
+  Cursor.is_done t || Cursor.peek_semicolon t
+  ||
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
+  | _ -> false
+
+let read_grid_line_name t =
+  let name = Cursor.ident t in
+  if name = "span" then Cursor.err_invalid t "duplicate span grid line"
+  else name
+
+let read_grid_span t =
+  let span_word = Cursor.ident t in
+  if span_word <> "span" then
+    Cursor.err t ("Expected 'span' but got " ^ span_word);
+  Cursor.ws t;
+  let first_int : int option = Cursor.option Cursor.int t in
+  Cursor.ws t;
+  let first_name : string option =
+    if Option.is_none first_int && not (grid_line_at_end t) then
+      Cursor.option read_grid_line_name t
+    else None
+  in
+  Cursor.ws t;
+  let second : [ `Name of string | `Num of int ] option =
+    if grid_line_at_end t then None
+    else
+      match first_int with
+      | Some _ ->
+          Option.map
+            (fun name -> `Name name)
+            (Cursor.option read_grid_line_name t)
+      | None -> Option.map (fun n -> `Num n) (Cursor.option Cursor.int t)
+  in
+  match (first_int, first_name, second) with
+  | Some n, None, Some (`Name name) -> Span_num_name (n, name)
+  | Some n, None, None -> Span n
+  | None, Some name, Some (`Num n) -> Span_num_name (n, name)
+  | None, Some name, None -> Span_name name
+  | _ -> Cursor.err_invalid t "invalid span grid line"
+
+let read_grid_line_number t : grid_line =
+  let n = Cursor.int t in
+  Cursor.ws t;
+  let name : string option =
+    if grid_line_at_end t then None else Cursor.option read_grid_line_name t
+  in
+  match name with Some name -> Num_name (n, name) | None -> Num n
+
+let read_grid_line_name_value t : grid_line =
+  let name = read_grid_line_name t in
+  Cursor.ws t;
+  let n : int option =
+    if grid_line_at_end t then None else Cursor.option Cursor.int t
+  in
+  match n with Some n -> Num_name (n, name) | None -> Name name
+
+let read_grid_line_calc t : grid_line =
+  (* read_calc handles the calc(...) wrapper itself *)
+  let expr =
+    read_calc (fun _ -> Cursor.err t "unexpected value in grid-line calc") t
+  in
+  match eval_numeric_calc expr with
+  | Some f when Float.is_integer f -> Num (int_of_float f)
+  | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
+  | None -> Calc (string_of_calc expr)
+
 let rec read_grid_line t : grid_line =
-  let at_end t =
-    Cursor.is_done t || Cursor.peek_semicolon t
-    ||
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
-    | _ -> false
-  in
-  let read_line_name t =
-    let name = Cursor.ident t in
-    if name = "span" then Cursor.err_invalid t "duplicate span grid line"
-    else name
-  in
-  let read_span_num t =
-    let span_word = Cursor.ident t in
-    if span_word = "span" then (
-      Cursor.ws t;
-      let first_int = Cursor.option Cursor.int t in
-      Cursor.ws t;
-      let first_name =
-        if Option.is_none first_int && not (at_end t) then
-          Cursor.option read_line_name t
-        else Option.None
-      in
-      Cursor.ws t;
-      let second =
-        if at_end t then Option.None
-        else
-          match first_int with
-          | Option.Some _ ->
-              Option.map
-                (fun name -> `Name name)
-                (Cursor.option read_line_name t)
-          | Option.None ->
-              Option.map (fun n -> `Num n) (Cursor.option Cursor.int t)
-      in
-      match (first_int, first_name, second) with
-      | Option.Some n, Option.None, Option.Some (`Name name) ->
-          Span_num_name (n, name)
-      | Option.Some n, Option.None, Option.None -> Span n
-      | Option.None, Option.Some name, Option.Some (`Num n) ->
-          Span_num_name (n, name)
-      | Option.None, Option.Some name, Option.None -> Span_name name
-      | _ -> Cursor.err_invalid t "invalid span grid line")
-    else Cursor.err t ("Expected 'span' but got " ^ span_word)
-  in
-  let read_number t : grid_line =
-    let n = Cursor.int t in
-    Cursor.ws t;
-    match if at_end t then Option.None else Cursor.option read_line_name t with
-    | Option.Some name -> Num_name (n, name)
-    | Option.None -> Num n
-  in
-  let read_name t : grid_line =
-    let name = read_line_name t in
-    Cursor.ws t;
-    match if at_end t then Option.None else Cursor.option Cursor.int t with
-    | Option.Some n -> Num_name (n, name)
-    | Option.None -> Name name
-  in
-  let read_calc_int t : grid_line =
-    (* read_calc handles the calc(...) wrapper itself *)
-    let expr =
-      read_calc (fun _ -> Cursor.err t "unexpected value in grid-line calc") t
-    in
-    match eval_numeric_calc expr with
-    | Some f when Float.is_integer f -> Num (int_of_float f)
-    | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
-    | None -> Calc (string_of_calc expr)
-  in
   Cursor.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
     ~calls:
       [
-        ("calc", read_calc_int);
+        ("calc", read_grid_line_calc);
         ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line));
       ]
     ~default:(fun t ->
-      Cursor.one_of [ read_number; read_span_num; read_name ] t)
+      Cursor.one_of
+        [ read_grid_line_number; read_grid_span; read_grid_line_name_value ]
+        t)
     t
 
 let read_grid_line_pair t : grid_line_pair =
@@ -10182,147 +10211,124 @@ let rec read_grid t : grid_template =
               | _ -> Split (rows, columns)))
         else rows
 
+let sign_float x = if x > 0. then 1. else if x < 0. then -1. else 0.
+
+let rec read_aspect_ratio_calc_expr inner =
+  let l = read_aspect_ratio_calc_term inner in
+  Cursor.ws inner;
+  match Cursor.peek_delim inner with
+  | Some '+' ->
+      Cursor.skip inner;
+      l +. read_aspect_ratio_calc_expr inner
+  | Some '-' ->
+      Cursor.skip inner;
+      l -. read_aspect_ratio_calc_expr inner
+  | _ -> l
+
+and read_aspect_ratio_calc_term inner =
+  let rec loop l =
+    Cursor.ws inner;
+    match Cursor.peek_delim inner with
+    | Some '*' ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        loop (l *. read_aspect_ratio_calc_factor inner)
+    | Some '/' ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        let r = read_aspect_ratio_calc_factor inner in
+        if r = 0. then Cursor.err inner "calc: division by zero"
+        else loop (l /. r)
+    | _ -> l
+  in
+  loop (read_aspect_ratio_calc_factor inner)
+
+and read_aspect_ratio_calc_factor inner =
+  Cursor.ws inner;
+  match Cursor.peek_block inner with
+  | Some Token.Paren -> Cursor.parens read_aspect_ratio_calc_expr inner
+  | _ -> (
+      match peek_math_function inner with
+      | Some "abs" -> read_fixed_math_call inner "abs" Float.abs
+      | Some "sign" -> read_fixed_math_call inner "sign" sign_float
+      | Some "sqrt" -> read_fixed_math_call inner "sqrt" Float.sqrt
+      | Some "pow" -> read_binary_math_call inner "pow" (fun a b -> a ** b)
+      | Some "hypot" ->
+          read_variable_math_call inner "hypot" (fun vs ->
+              Float.sqrt (List.fold_left (fun a x -> a +. (x *. x)) 0. vs))
+      | Some "mod" ->
+          read_binary_math_call inner "mod" (fun a b ->
+              if b = 0. then Cursor.err inner "mod: divisor is zero"
+              else a -. (Float.floor (a /. b) *. b))
+      | Some "rem" ->
+          read_binary_math_call inner "rem" (fun a b ->
+              if b = 0. then Cursor.err inner "rem: divisor is zero"
+              else Float.rem a b)
+      | Some "min" ->
+          read_variable_math_call inner "min"
+            (List.fold_left Float.min infinity)
+      | Some "max" ->
+          read_variable_math_call inner "max"
+            (List.fold_left Float.max neg_infinity)
+      | _ -> Cursor.number inner)
+
+and peek_math_function inner =
+  match Cursor.peek inner with
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      Some (String.lowercase_ascii name)
+  | _ -> None
+
+and read_fixed_math_call inner name f =
+  Cursor.call name inner (fun args ->
+      let v = read_aspect_ratio_calc_expr args in
+      Cursor.ws args;
+      Cursor.expect_eof args;
+      f v)
+
+and read_binary_math_call inner name f =
+  Cursor.call name inner (fun args ->
+      let a = read_aspect_ratio_calc_expr args in
+      Cursor.ws args;
+      Cursor.comma args;
+      let b = read_aspect_ratio_calc_expr args in
+      Cursor.ws args;
+      Cursor.expect_eof args;
+      f a b)
+
+and read_variable_math_call inner name f =
+  Cursor.call name inner (fun args ->
+      let first = read_aspect_ratio_calc_expr args in
+      let rec rest acc =
+        Cursor.ws args;
+        if Cursor.peek_comma args then (
+          Cursor.comma args;
+          rest (read_aspect_ratio_calc_expr args :: acc))
+        else List.rev acc
+      in
+      let vs = first :: rest [] in
+      Cursor.ws args;
+      Cursor.expect_eof args;
+      f vs)
+
+let read_aspect_ratio_number t =
+  (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
+     resolves to a constant number. Evaluate the [calc] body as a number
+     expression at parse time and reject calc that does not reduce. *)
+  if Cursor.looking_at t "calc(" then
+    Cursor.call "calc" t read_aspect_ratio_calc_expr
+  else Cursor.number t
+
 let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
     (Var (read_var read_aspect_ratio t) : aspect_ratio)
   in
-  (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
-     resolves to a constant number. Evaluate the [calc] body as a number
-     expression at parse time and reject calc that does not reduce. *)
-  let read_number_or_calc t =
-    if Cursor.looking_at t "calc(" then
-      Cursor.call "calc" t (fun inner ->
-          let rec read_expr inner =
-            let l = read_term inner in
-            Cursor.ws inner;
-            match Cursor.peek_delim inner with
-            | Some '+' ->
-                Cursor.skip inner;
-                let r = read_expr inner in
-                l +. r
-            | Some '-' ->
-                Cursor.skip inner;
-                let r = read_expr inner in
-                l -. r
-            | _ -> l
-          and read_term inner =
-            let l = read_factor inner in
-            let rec loop l =
-              Cursor.ws inner;
-              match Cursor.peek_delim inner with
-              | Some '*' ->
-                  Cursor.skip inner;
-                  Cursor.ws inner;
-                  let r = read_factor inner in
-                  loop (l *. r)
-              | Some '/' ->
-                  Cursor.skip inner;
-                  Cursor.ws inner;
-                  let r = read_factor inner in
-                  if r = 0. then Cursor.err inner "calc: division by zero"
-                  else loop (l /. r)
-              | _ -> l
-            in
-            loop l
-          and read_factor inner =
-            Cursor.ws inner;
-            (* CSS Values 4 10.7: math functions over numbers reduce to a
-               constant when their arguments are constants. The aspect-ratio
-               context only sees number-typed [calc], so all math reduces here
-               at parse time. *)
-            let read_call name f arity =
-              Cursor.call name inner (fun args ->
-                  let rec collect acc remaining =
-                    if remaining = 0 then List.rev acc
-                    else
-                      let v = read_expr args in
-                      Cursor.ws args;
-                      if remaining > 1 then Cursor.comma args;
-                      collect (v :: acc) (remaining - 1)
-                  in
-                  let vs = collect [] arity in
-                  Cursor.ws args;
-                  Cursor.expect_eof args;
-                  f vs)
-            in
-            let read_var_args name f =
-              Cursor.call name inner (fun args ->
-                  let first = read_expr args in
-                  let rec rest acc =
-                    Cursor.ws args;
-                    if Cursor.peek_comma args then (
-                      Cursor.comma args;
-                      let v = read_expr args in
-                      rest (v :: acc))
-                    else List.rev acc
-                  in
-                  let vs = first :: rest [] in
-                  Cursor.ws args;
-                  Cursor.expect_eof args;
-                  f vs)
-            in
-            let peek_func_name () =
-              match Cursor.peek inner with
-              | Some (Component.Func { node = { name; _ }; _ }) ->
-                  Some (String.lowercase_ascii name)
-              | _ -> None
-            in
-            match Cursor.peek_block inner with
-            | Some Token.Paren -> Cursor.parens read_expr inner
-            | _ -> (
-                match peek_func_name () with
-                | Some "abs" ->
-                    read_call "abs" (fun vs -> Float.abs (List.hd vs)) 1
-                | Some "sign" ->
-                    read_call "sign"
-                      (fun vs ->
-                        let x = List.hd vs in
-                        if x > 0. then 1. else if x < 0. then -1. else 0.)
-                      1
-                | Some "sqrt" ->
-                    read_call "sqrt" (fun vs -> Float.sqrt (List.hd vs)) 1
-                | Some "pow" ->
-                    read_call "pow"
-                      (fun vs ->
-                        match vs with [ a; b ] -> a ** b | _ -> assert false)
-                      2
-                | Some "hypot" ->
-                    read_var_args "hypot" (fun vs ->
-                        Float.sqrt
-                          (List.fold_left (fun a x -> a +. (x *. x)) 0. vs))
-                | Some "mod" ->
-                    read_call "mod"
-                      (fun vs ->
-                        match vs with
-                        | [ a; b ] when b <> 0. ->
-                            a -. (Float.floor (a /. b) *. b)
-                        | _ -> Cursor.err inner "mod: divisor is zero")
-                      2
-                | Some "rem" ->
-                    read_call "rem"
-                      (fun vs ->
-                        match vs with
-                        | [ a; b ] when b <> 0. -> Float.rem a b
-                        | _ -> Cursor.err inner "rem: divisor is zero")
-                      2
-                | Some "min" ->
-                    read_var_args "min" (fun vs ->
-                        List.fold_left Float.min infinity vs)
-                | Some "max" ->
-                    read_var_args "max" (fun vs ->
-                        List.fold_left Float.max neg_infinity vs)
-                | _ -> Cursor.number inner)
-          in
-          read_expr inner)
-    else Cursor.number t
-  in
   let read_ratio t =
-    let w = read_number_or_calc t in
+    let w = read_aspect_ratio_number t in
     Cursor.ws t;
     if Cursor.peek_delim t = Some '/' then (
       Cursor.expect '/' t;
       Cursor.ws t;
-      let h = read_number_or_calc t in
+      let h = read_aspect_ratio_number t in
       (w, h))
     else (w, 1.0)
   in
@@ -18504,8 +18510,19 @@ let read_border_image_repeat t =
   | None -> [ first ]
   | Some second -> [ first; second ]
 
+let read_mask_border_mode t =
+  Cursor.enum "mask-border-mode"
+    [ ("alpha", (Alpha : mask_border_mode)); ("luminance", Luminance) ]
+    t
+
 let read_border_image t : border_image =
   let source = Cursor.option read_background_image t in
+  Cursor.ws t;
+  (* CSS Masking 1 §6 [mask-border-mode] is in [&&] juxtaposition with the other
+     slots, so the keyword may appear after [<source>] (before the slice) or
+     after [<repeat>]. Try the early slot first; combine with the trailing slot
+     below. *)
+  let mode_early = Cursor.option read_mask_border_mode t in
   Cursor.ws t;
   let slice = Cursor.option read_border_image_slice t in
   let width, outset =
@@ -18527,7 +18544,13 @@ let read_border_image t : border_image =
   in
   Cursor.ws t;
   let repeat = Cursor.option read_border_image_repeat t in
+  Cursor.ws t;
+  let mode_late : mask_border_mode option =
+    if Option.is_some mode_early then (None : mask_border_mode option)
+    else Cursor.option read_mask_border_mode t
+  in
+  let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
   (match (source, slice) with
   | None, None -> Cursor.err_expected t "border-image source or slice"
   | _ -> ());
-  { source; slice; width; outset; repeat }
+  { source; slice; width; outset; repeat; mode }

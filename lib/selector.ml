@@ -223,7 +223,7 @@ let attribute ?ns ?flag name match_type =
 (* Convenience: build a class selector from a raw class token. Escaping happens
    in [pp]/[to_string]. Equivalent to [class_]. *)
 (* Convert a hex digit character to its integer value *)
-let hex_to_int c =
+let int_of_hex c =
   match c with
   | '0' .. '9' -> Char.code c - Char.code '0'
   | 'a' .. 'f' -> Char.code c - Char.code 'a' + 10
@@ -236,7 +236,7 @@ let hex_to_int c =
 let process_hex_escape s i len =
   let rec consume_hex acc n idx =
     if n = 6 || idx >= len || not (is_hex_char s.[idx]) then (acc, idx)
-    else consume_hex ((acc * 16) + hex_to_int s.[idx]) (n + 1) (idx + 1)
+    else consume_hex ((acc * 16) + int_of_hex s.[idx]) (n + 1) (idx + 1)
   in
   let codepoint, next_idx = consume_hex 0 0 (i + 1) in
   (* Skip optional whitespace after hex escape *)

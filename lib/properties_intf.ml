@@ -2631,12 +2631,18 @@ type border_image_width_item =
 type border_image_outset_item = Number of float | Length of length
 type border_image_repeat_keyword = Stretch | Repeat | Round | Space
 
+(** CSS Masking 1 §6 [<mask-border-mode>]: shared with the [border_image] record
+    because [mask-border] is otherwise the same shorthand as [border-image] (the
+    mode is always [None] for the latter). *)
+type mask_border_mode = Alpha | Luminance
+
 type border_image = {
   source : background_image option;
   slice : border_image_slice option;
   width : border_image_width_item list option;
   outset : border_image_outset_item list option;
   repeat : border_image_repeat_keyword list option;
+  mode : mask_border_mode option;
 }
 
 (* Gap shorthand type *)

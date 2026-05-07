@@ -1465,7 +1465,7 @@ let scope_selector_in_context (parent : Selector.t) s =
       else selector
     in
     Selector.to_string ~minify:true selector
-  with _ -> s
+  with Cursor.Parse_error _ | Invalid_argument _ -> s
 
 let rec flatten_rule ?(parent : Selector.t option) (rule : rule) :
     statement list =
