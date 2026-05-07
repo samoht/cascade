@@ -3354,6 +3354,22 @@ and resolve_typed : type b.
            ~property_name:(property_name property) keyword))
     ~default:(Declaration.Declaration { property; value; important })
 
+and simplify_lengths_value ~layer_order ?layer ctx length_ctx value =
+  let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
+  match value with
+  | [ (Values.Var var : Values.length) ] -> (
+      match
+        Option.bind
+          (lookup_custom_property ?layer ~layer_order ctx var.Values.name)
+          (read_custom_components Values.read_margin_shorthand)
+      with
+      | Some lengths -> List.map simplify_one lengths
+      | None -> (
+          match var.Values.fallback with
+          | Values.Fallback fallback -> [ simplify_one fallback ]
+          | _ -> [ simplify_one (Values.Var var) ]))
+  | _ -> List.map simplify_one value
+
 and eval_kind : type a.
     layer_order:string list ->
     ?layer:string ->
@@ -3374,23 +3390,9 @@ and eval_kind : type a.
         (Length.simplify ~layer_order ?layer ctx length_ctx)
         css_wide_of_length
   | Properties.Lengths ->
-      let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
-      let simplify_lengths value =
-        match value with
-        | [ (Values.Var var : Values.length) ] -> (
-            match
-              Option.bind
-                (lookup_custom_property ?layer ~layer_order ctx var.Values.name)
-                (read_custom_components Values.read_margin_shorthand)
-            with
-            | Some lengths -> List.map simplify_one lengths
-            | None -> (
-                match var.Values.fallback with
-                | Values.Fallback fallback -> [ simplify_one fallback ]
-                | _ -> [ simplify_one (Values.Var var) ]))
-        | _ -> List.map simplify_one value
-      in
-      resolve simplify_lengths css_wide_of_length_list
+      resolve
+        (simplify_lengths_value ~layer_order ?layer ctx length_ctx)
+        css_wide_of_length_list
   | Properties.Length_percentage ->
       resolve
         (simplify_length_percentage ~layer_order ?layer ctx length_ctx)

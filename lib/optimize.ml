@@ -245,57 +245,58 @@ let merge_box_shorthand_longhands source decls =
   in
   go [] decls
 
-let deduplicate_declarations_with ?(merge_box = true) props =
-  let covered_by_important kept prop_name =
-    List.exists
-      (fun (_, decl) ->
-        (not (is_intentionally_duplicated (property_name decl)))
-        && is_important decl
-        && declaration_covers (property_name decl) prop_name)
+let property_covered_by_important kept prop_name =
+  List.exists
+    (fun (_, decl) ->
+      (not (is_intentionally_duplicated (property_name decl)))
+      && is_important decl
+      && declaration_covers (property_name decl) prop_name)
+    kept
+
+let same_minified_value new_decl existing =
+  string_of_value ~minify:true new_decl = string_of_value ~minify:true existing
+
+let legacy_vendor_fallback new_decl existing =
+  (* Different-value duplicates are kept when one value is vendor-prefixed: the
+     cascade may pick whichever the browser understands. *)
+  property_name new_decl = property_name existing
+  && (not (same_minified_value new_decl existing))
+  && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
+
+let covered_by_new_declaration new_decl existing =
+  let new_prop = property_name new_decl in
+  let existing_prop = property_name existing in
+  (not (is_intentionally_duplicated existing_prop))
+  && declaration_covers new_prop existing_prop
+  && (is_important new_decl || not (is_important existing))
+  && not (legacy_vendor_fallback new_decl existing)
+
+let append_all_declaration idx decl kept =
+  let before, after =
+    List.partition
+      (fun (_, old) -> not (all_preserved_reorder_property (property_name old)))
       kept
   in
-  let same_value new_decl existing =
-    string_of_value ~minify:true new_decl
-    = string_of_value ~minify:true existing
-  in
-  let legacy_fallback new_decl existing =
-    (* Different-value duplicates are kept when one value is vendor-prefixed:
-       the cascade may pick whichever the browser understands. *)
-    property_name new_decl = property_name existing
-    && (not (same_value new_decl existing))
-    && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
-  in
-  let covered_by_new new_decl existing =
-    let new_prop = property_name new_decl in
-    let existing_prop = property_name existing in
-    (not (is_intentionally_duplicated existing_prop))
-    && declaration_covers new_prop existing_prop
-    && (is_important new_decl || not (is_important existing))
-    && not (legacy_fallback new_decl existing)
-  in
+  before @ [ (idx, decl) ] @ after
+
+let deduplicate_step kept (idx, decl) =
+  let prop_name = property_name decl in
+  if is_intentionally_duplicated prop_name then kept @ [ (idx, decl) ]
+  else if
+    (not (is_important decl)) && property_covered_by_important kept prop_name
+  then kept
+  else
+    let kept =
+      List.filter
+        (fun (_, old) -> not (covered_by_new_declaration decl old))
+        kept
+    in
+    if prop_name = "all" then append_all_declaration idx decl kept
+    else kept @ [ (idx, decl) ]
+
+let deduplicate_declarations_with ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
-  let kept =
-    List.fold_left
-      (fun kept (idx, decl) ->
-        let prop_name = property_name decl in
-        if is_intentionally_duplicated prop_name then kept @ [ (idx, decl) ]
-        else if (not (is_important decl)) && covered_by_important kept prop_name
-        then kept
-        else
-          let kept =
-            List.filter (fun (_, old) -> not (covered_by_new decl old)) kept
-          in
-          if prop_name = "all" then
-            let before, after =
-              List.partition
-                (fun (_, old) ->
-                  not (all_preserved_reorder_property (property_name old)))
-                kept
-            in
-            before @ [ (idx, decl) ] @ after
-          else kept @ [ (idx, decl) ])
-      [] indexed_props
-  in
+  let kept = List.fold_left deduplicate_step [] indexed_props in
   let kept =
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
