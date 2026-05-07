@@ -442,11 +442,10 @@ val layer_block : string -> t -> statement list option
     [@layer name] in the stylesheet. Returns [None] if the layer is not found.
 *)
 
-val rules_from_statements :
-  statement list -> (Selector.t * declaration list) list
-(** [rules_from_statements stmts] extracts all CSS rules (selector +
-    declarations) from a list of statements, filtering out at-rules and other
-    non-rule statements. *)
+val rules_of_statements : statement list -> (Selector.t * declaration list) list
+(** [rules_of_statements stmts] extracts all CSS rules (selector + declarations)
+    from a list of statements, filtering out at-rules and other non-rule
+    statements. *)
 
 val custom_prop_names : declaration list -> string list
 (** [custom_prop_names decls] extracts all custom property names from a list of
@@ -464,9 +463,8 @@ val as_theme_guarded : declaration -> (string * declaration) option
 (** [as_theme_guarded decl] returns [Some (var_name, inner_decl)] if [decl] is a
     theme-guarded declaration, [None] otherwise. *)
 
-val custom_props_from_rules :
-  (Selector.t * declaration list) list -> string list
-(** [custom_props_from_rules rules] extracts all custom property names from the
+val custom_props_of_rules : (Selector.t * declaration list) list -> string list
+(** [custom_props_of_rules rules] extracts all custom property names from the
     declarations in the rules. *)
 
 val custom_props : ?layer:string -> t -> string list

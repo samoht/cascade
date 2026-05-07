@@ -345,7 +345,7 @@ let property_ident = function
   | [ Component.Preserved { kind = Token.Ident name; _ } ] -> Some name
   | _ -> None
 
-let declaration_from_components prop value =
+let declaration_of_components prop value =
   if contains_top_level_semicolon value then
     failwith "Invalid declaration in @supports";
   match property_ident (strip_components prop) with
@@ -419,7 +419,7 @@ and paren_components value =
   if not (components_are_closed value) then
     failwith "Unmatched parenthesis in @supports condition";
   match split_top_level_colon value with
-  | Some (prop, value) -> declaration_from_components prop value
+  | Some (prop, value) -> declaration_of_components prop value
   | None ->
       let inner = Cursor.of_components value in
       let condition = condition inner in
@@ -432,7 +432,7 @@ and unwrapped_declaration t =
   let components = Cursor.remaining t in
   match split_top_level_colon components with
   | Some (prop, value) ->
-      let decl = declaration_from_components prop value in
+      let decl = declaration_of_components prop value in
       ignore (Cursor.consume_remaining_as_string t : string);
       decl
   | None -> failwith "Expected supports feature"

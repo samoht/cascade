@@ -634,7 +634,7 @@ let layers t =
   in
   List.filter_map dedup (from_blocks @ from_decls)
 
-let rules_from_statements stmts =
+let rules_of_statements stmts =
   List.filter_map
     (fun stmt ->
       match as_rule stmt with
@@ -644,7 +644,7 @@ let rules_from_statements stmts =
 
 let custom_prop_names decls = List.filter_map custom_declaration_name decls
 
-let custom_props_from_rules rules =
+let custom_props_of_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
 let custom_props ?layer sheet =

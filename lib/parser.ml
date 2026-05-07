@@ -899,7 +899,7 @@ let value_has_invalid_block ~is_custom value =
       if is_custom then before_has && after_has else before_has || after_has
 
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
-let declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
+let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
   match drop_leading_ws cvs with
@@ -960,7 +960,7 @@ let consume_list_of_declarations ~meta lexer ~warnings :
     | Token.Ident name -> (
         let body = consume_declaration_body lexer in
         match
-          declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+          declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
             body
         with
         | Some d -> loop (`Decl d :: acc)
@@ -1035,7 +1035,7 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
         let body = consume_declaration_body lexer in
         let warnings_snapshot = !warnings in
         (match
-           declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+           declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
              body
          with
         | Some d ->
@@ -1107,7 +1107,7 @@ let declaration ?(meta = Loc.default_meta_level) r =
       | Token.Ident name ->
           let tok = Lexer.next lexer in
           let body = consume_declaration_body lexer in
-          declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+          declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
             body
       | _ -> None)
 
