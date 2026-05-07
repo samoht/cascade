@@ -5727,6 +5727,18 @@ type clip =
   | Revert_layer
   | Var of clip var  (** CSS clip-path property values for clipping regions. *)
 
+type clip_geometry_box =
+  | Margin_box
+  | Border_box
+  | Padding_box
+  | Content_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+
+type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
+type clip_path_fill_rule = Nonzero | Evenodd
+
 type clip_path =
   | Clip_path_none
   | Clip_path_url of string
@@ -5736,13 +5748,29 @@ type clip_path =
       bottom : length_percentage option;
       left : length_percentage option;
       rounded : border_radius option;
-    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
-  | Clip_path_circle of length  (** Circle with radius *)
-  | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
-  | Clip_path_polygon of (length * length) list
-  | Clip_path_polygon_spaced of (length * length) list
-  | Clip_path_path of string  (** SVG path data *)
+    }
+  | Clip_path_circle of {
+      radius : clip_path_extent option;
+      position : position_value option;
+    }
+  | Clip_path_ellipse of {
+      rx : clip_path_extent option;
+      ry : clip_path_extent option;
+      position : position_value option;
+    }
+  | Clip_path_polygon of {
+      fill_rule : clip_path_fill_rule option;
+      points : (length * length) list;
+      spaced : bool;
+    }
+  | Clip_path_path of string
   | Clip_path_shape of string
+  | Clip_path_box of clip_geometry_box
+  | Clip_path_with_box of {
+      shape : clip_path;
+      box : clip_geometry_box;
+      box_first : bool;
+    }
   | Clip_path_xywh of {
       x : length_percentage;
       y : length_percentage;

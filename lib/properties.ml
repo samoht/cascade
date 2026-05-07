@@ -5181,6 +5181,64 @@ let rec pp_clip : clip Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_clip_geometry_box ctx = function
+  | (Margin_box : clip_geometry_box) -> Pp.string ctx "margin-box"
+  | Border_box -> Pp.string ctx "border-box"
+  | Padding_box -> Pp.string ctx "padding-box"
+  | Content_box -> Pp.string ctx "content-box"
+  | Fill_box -> Pp.string ctx "fill-box"
+  | Stroke_box -> Pp.string ctx "stroke-box"
+  | View_box -> Pp.string ctx "view-box"
+
+let pp_clip_path_extent ctx = function
+  | (Extent_length l : clip_path_extent) -> pp_length ctx l
+  | Closest_side -> Pp.string ctx "closest-side"
+  | Farthest_side -> Pp.string ctx "farthest-side"
+
+let pp_clip_path_fill_rule ctx = function
+  | (Nonzero : clip_path_fill_rule) -> Pp.string ctx "nonzero"
+  | Evenodd -> Pp.string ctx "evenodd"
+
+let pp_clip_path_circle_args ctx radius position =
+  let printed = ref false in
+  Option.iter
+    (fun r ->
+      pp_clip_path_extent ctx r;
+      printed := true)
+    radius;
+  Option.iter
+    (fun p ->
+      if !printed then Pp.space ctx ();
+      Pp.string ctx "at ";
+      pp_position_value ctx p;
+      printed := true)
+    position;
+  ignore !printed
+
+let pp_clip_path_ellipse_args ctx rx ry position =
+  let printed = ref false in
+  (match (rx, ry) with
+  | Some rx, Some ry ->
+      pp_clip_path_extent ctx rx;
+      Pp.space ctx ();
+      pp_clip_path_extent ctx ry;
+      printed := true
+  | Some rx, None ->
+      pp_clip_path_extent ctx rx;
+      printed := true
+  | None, Some ry ->
+      pp_clip_path_extent ctx ry;
+      printed := true
+  | None, None -> ());
+  Option.iter
+    (fun p ->
+      if !printed then Pp.space ctx ();
+      Pp.string ctx "at ";
+      pp_position_value ctx p;
+      printed := true)
+    position;
+  ignore !printed
+
 let rec pp_clip_path : clip_path Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_clip_path ctx v
@@ -5214,32 +5272,30 @@ let rec pp_clip_path : clip_path Pp.t =
                   pp_length_percentage ctx l)));
       pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
-  | Clip_path_circle radius ->
+  | Clip_path_circle { radius; position } ->
       Pp.string ctx "circle(";
-      pp_length ctx radius;
+      pp_clip_path_circle_args ctx radius position;
       Pp.char ctx ')'
-  | Clip_path_ellipse (rx, ry) ->
+  | Clip_path_ellipse { rx; ry; position } ->
       Pp.string ctx "ellipse(";
-      pp_length ctx rx;
-      Pp.space ctx ();
-      pp_length ctx ry;
+      pp_clip_path_ellipse_args ctx rx ry position;
       Pp.char ctx ')'
-  | Clip_path_polygon points ->
+  | Clip_path_polygon { fill_rule; points; spaced } ->
       Pp.string ctx "polygon(";
-      Pp.list
-        ~sep:(fun ctx () -> Pp.char ctx ',')
-        (fun ctx (x, y) ->
-          pp_length ctx x;
-          Pp.space ctx ();
-          pp_length ctx y)
-        ctx points;
-      Pp.char ctx ')'
-  | Clip_path_polygon_spaced points ->
-      Pp.string ctx "polygon(";
-      Pp.list
-        ~sep:(fun ctx () ->
+      Option.iter
+        (fun rule ->
+          pp_clip_path_fill_rule ctx rule;
+          if points <> [] then (
+            Pp.char ctx ',';
+            if not (Pp.minified ctx) then Pp.space ctx ()))
+        fill_rule;
+      let sep =
+        if spaced && not (Pp.minified ctx) then (fun ctx () ->
           Pp.char ctx ',';
           Pp.space ctx ())
+        else fun ctx () -> Pp.char ctx ','
+      in
+      Pp.list ~sep
         (fun ctx (x, y) ->
           pp_length ctx x;
           Pp.space ctx ();
@@ -5254,6 +5310,16 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.string ctx "shape(";
       Pp.string ctx body;
       Pp.char ctx ')'
+  | Clip_path_box box -> pp_clip_geometry_box ctx box
+  | Clip_path_with_box { shape; box; box_first } ->
+      if box_first then (
+        pp_clip_geometry_box ctx box;
+        Pp.space ctx ();
+        pp_clip_path ctx shape)
+      else (
+        pp_clip_path ctx shape;
+        Pp.space ctx ();
+        pp_clip_geometry_box ctx box)
   | Clip_path_xywh { x; y; width; height; rounded } ->
       Pp.string ctx "xywh(";
       pp_clip_path_inset_quad ctx x y width height;
@@ -15053,7 +15119,7 @@ module Radial_config = struct
   let read_size_keyword t : radial_size =
     Cursor.enum "radial-size"
       [
-        ("closest-side", Closest_side);
+        ("closest-side", (Closest_side : radial_size));
         ("farthest-side", Farthest_side);
         ("closest-corner", Closest_corner);
         ("farthest-corner", Farthest_corner);
@@ -16543,7 +16609,7 @@ let rec read_transform_origin (t : Cursor.t) : transform_origin =
 let rec read_transform_box (t : Cursor.t) : transform_box =
   Cursor.enum_or_var "transform-box"
     [
-      ("content-box", Content_box);
+      ("content-box", (Content_box : transform_box));
       ("border-box", Border_box);
       ("fill-box", Fill_box);
       ("stroke-box", Stroke_box);
@@ -16876,22 +16942,74 @@ let read_clip_path_inset t =
       Cursor.expect_eof t;
       Clip_path_inset { top; right; bottom; left; rounded })
 
-let read_clip_path_circle t =
+let read_clip_path_extent inner : clip_path_extent =
+  match Cursor.peek_ident inner with
+  | Some "closest-side" ->
+      Cursor.skip inner;
+      Closest_side
+  | Some "farthest-side" ->
+      Cursor.skip inner;
+      Farthest_side
+  | _ -> Extent_length (read_length inner)
+
+let read_clip_path_position_clause inner =
+  Cursor.ws inner;
+  match Cursor.peek_ident inner with
+  | Some "at" ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Some (read_position_value inner)
+  | _ -> None
+
+let read_clip_path_circle t : clip_path =
   Cursor.call "circle" t @@ fun inner ->
   Cursor.ws inner;
-  let radius = read_length inner in
-  Clip_path_circle radius
+  let radius : clip_path_extent option =
+    if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+    else Some (read_clip_path_extent inner)
+  in
+  let position = read_clip_path_position_clause inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Clip_path_circle { radius; position }
 
-let read_clip_path_ellipse t =
+let read_clip_path_ellipse t : clip_path =
   Cursor.call "ellipse" t @@ fun inner ->
   Cursor.ws inner;
-  let rx = read_length inner in
+  let rx : clip_path_extent option =
+    if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+    else Some (read_clip_path_extent inner)
+  in
   Cursor.ws inner;
-  let ry = read_length inner in
-  Clip_path_ellipse (rx, ry)
+  let ry : clip_path_extent option =
+    if
+      Option.is_none rx || Cursor.is_done inner
+      || Cursor.peek_ident inner = Some "at"
+    then None
+    else Some (read_clip_path_extent inner)
+  in
+  let position = read_clip_path_position_clause inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Clip_path_ellipse { rx; ry; position }
 
-let read_clip_path_polygon t =
+let read_clip_path_polygon t : clip_path =
   Cursor.call "polygon" t @@ fun inner ->
+  Cursor.ws inner;
+  let fill_rule : clip_path_fill_rule option =
+    match Cursor.peek_ident inner with
+    | Some "nonzero" ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        Cursor.comma inner;
+        Some Nonzero
+    | Some "evenodd" ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        Cursor.comma inner;
+        Some Evenodd
+    | _ -> None
+  in
   Cursor.ws inner;
   let read_point inner =
     let x = read_length inner in
@@ -16916,7 +17034,7 @@ let read_clip_path_polygon t =
   let points, spaced = loop [ first ] false in
   Cursor.ws inner;
   Cursor.expect_eof inner;
-  if spaced then Clip_path_polygon_spaced points else Clip_path_polygon points
+  Clip_path_polygon { fill_rule; points; spaced }
 
 let read_clip_path_path t =
   Cursor.call "path" t @@ fun inner ->
@@ -16968,37 +17086,80 @@ let read_clip_path_shape t =
   Cursor.call "shape" t (fun inner ->
       Clip_path_shape (Cursor.consume_remaining_as_string ~trim:true inner))
 
+let read_clip_geometry_box_opt t : clip_geometry_box option =
+  match Cursor.peek_ident t with
+  | Some "margin-box" ->
+      Cursor.skip t;
+      Some Margin_box
+  | Some "border-box" ->
+      Cursor.skip t;
+      Some Border_box
+  | Some "padding-box" ->
+      Cursor.skip t;
+      Some Padding_box
+  | Some "content-box" ->
+      Cursor.skip t;
+      Some Content_box
+  | Some "fill-box" ->
+      Cursor.skip t;
+      Some Fill_box
+  | Some "stroke-box" ->
+      Cursor.skip t;
+      Some Stroke_box
+  | Some "view-box" ->
+      Cursor.skip t;
+      Some View_box
+  | _ -> None
+
 let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;
-  Cursor.one_of
-    [
-      (fun t -> Clip_path_url (Cursor.url t));
-      (fun t ->
-        Cursor.enum_or_calls "clip-path"
-          [
-            ("none", Clip_path_none);
-            ("inherit", Inherit);
-            ("initial", Initial);
-            ("unset", Unset);
-            ("revert", Revert);
-            ("revert-layer", Revert_layer);
-          ]
-          ~calls:
+  let read_basic_shape t : clip_path =
+    Cursor.one_of
+      [
+        (fun t -> Clip_path_url (Cursor.url t));
+        (fun t ->
+          Cursor.enum_or_calls "clip-path"
             [
-              ("inset", read_clip_path_inset);
-              ("circle", read_clip_path_circle);
-              ("ellipse", read_clip_path_ellipse);
-              ("polygon", read_clip_path_polygon);
-              ("path", read_clip_path_path);
-              ("xywh", read_clip_path_xywh);
-              ("rect", read_clip_path_rect);
-              ("shape", read_clip_path_shape);
-              ( "var",
-                fun t -> (Var (Values.read_var read_clip_path t) : clip_path) );
+              ("none", Clip_path_none);
+              ("inherit", Inherit);
+              ("initial", Initial);
+              ("unset", Unset);
+              ("revert", Revert);
+              ("revert-layer", Revert_layer);
             ]
-          t);
-    ]
-    t
+            ~calls:
+              [
+                ("inset", read_clip_path_inset);
+                ("circle", read_clip_path_circle);
+                ("ellipse", read_clip_path_ellipse);
+                ("polygon", read_clip_path_polygon);
+                ("path", read_clip_path_path);
+                ("xywh", read_clip_path_xywh);
+                ("rect", read_clip_path_rect);
+                ("shape", read_clip_path_shape);
+                ( "var",
+                  fun t -> (Var (Values.read_var read_clip_path t) : clip_path)
+                );
+              ]
+            t);
+      ]
+      t
+  in
+  (* CSS Masking 1 §3.6 [<basic-shape> || <geometry-box>]: a shape and a
+     reference box may appear in either order, or just a box on its own. *)
+  match read_clip_geometry_box_opt t with
+  | Some box ->
+      Cursor.ws t;
+      if Cursor.is_done t then Clip_path_box box
+      else
+        let shape = read_basic_shape t in
+        Clip_path_with_box { shape; box; box_first = true }
+  | None -> (
+      let shape = read_basic_shape t in
+      Cursor.ws t;
+      match read_clip_geometry_box_opt t with
+      | Some box -> Clip_path_with_box { shape; box; box_first = false }
+      | None -> shape)
 
 let read_object_view_box_inset t =
   Cursor.call "inset" t (fun t ->
