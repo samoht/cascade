@@ -992,6 +992,7 @@ type length_percentage =
   | Pct of float
   | Var of length_percentage var
   | Calc of length_percentage calc
+  | Invalid of Component.t list  (** Spec-invalid input preserved verbatim. *)
 
 (** CSS number or percentage values (for properties like scale, brightness) *)
 type number_percentage =

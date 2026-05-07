@@ -6195,7 +6195,7 @@ let pp_background_position_value : position_value Pp.t =
   let length_of_lp : length_percentage -> length option = function
     | Length l -> Some l
     | Pct n -> Some (pct n)
-    | Var _ | Calc _ -> None
+    | Var _ | Calc _ | Invalid _ -> None
   in
   let pp_pair ctx x y =
     pp_length ctx x;
@@ -16979,21 +16979,13 @@ let read_clip_path_position_clause inner =
       Some (read_position_value inner)
   | _ -> None
 
-(* Snapshot the function call at the cursor so we can fall back to [Invalid
-   [<original>]] when the typed reduction refuses an admittedly-invalid input
-   that upstream tools preserve verbatim. *)
+(* Wrap a typed [<basic-shape>] reader so it falls back to [Invalid
+   [<original-call>]] when the typed reduction refuses an admittedly-invalid
+   input that upstream tools preserve verbatim. *)
 let with_basic_shape_fallback t f : clip_path =
-  let snap = Cursor.save t in
-  let original =
-    match Cursor.peek t with
-    | Some (Component.Func _ as comp) -> comp
-    | _ -> assert false
-  in
-  try f t
-  with Cursor.Parse_error _ ->
-    Cursor.restore t snap;
-    Cursor.skip t;
-    (Invalid [ original ] : clip_path)
+  match Cursor.try_typed_call f t with
+  | Ok value -> value
+  | Error comp -> (Invalid [ comp ] : clip_path)
 
 let read_clip_path_circle t : clip_path =
   with_basic_shape_fallback t (fun t ->

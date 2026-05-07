@@ -358,6 +358,11 @@ type length_percentage =
   | Pct of float
   | Var of length_percentage var
   | Calc of length_percentage calc
+  | Invalid of Component.t list
+      (** Spec-invalid input cascade detected (e.g. [width: asin(sin(45deg))]
+          - the inner reduction yields an angle, but [<length-percentage>]
+            doesn't accept angles). Pretty-printer emits the tokens verbatim;
+            [Optimize.drop_invalid] removes the declaration under [--minify]. *)
 
 type number_percentage =
   | Num of float
