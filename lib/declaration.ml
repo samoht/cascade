@@ -1673,6 +1673,34 @@ let read_regular_property_declaration t : declaration =
       Cursor.ws t;
       read_opaque_property_declaration t name
 
+(* CSS Nesting 1: distinguish a declaration ([<ident> : <value>]) from a nested
+   rule whose selector starts with an ident ([html &:hover { ... }]). The
+   starts-with-ident shape isn't conclusive on its own, so look at the next
+   non-ident component: if it's [:] this is a declaration, otherwise walk the
+   lookahead window for a [{ ... }] block before the next [;]. *)
+let is_nested_rule t =
+  Cursor.lookahead
+    (fun t ->
+      (match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Ident _; _ }) -> Cursor.skip t
+      | _ -> ());
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Colon; _ }) -> false
+      | _ ->
+          let rec scan () =
+            match Cursor.peek t with
+            | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+                false
+            | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
+              ->
+                true
+            | Some _ ->
+                Cursor.skip t;
+                scan ()
+          in
+          scan ())
+    t
+
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
   let read_one () =
@@ -1696,7 +1724,12 @@ let read_declaration t : declaration option =
   | Some (Component.Preserved { kind = Token.Delim ("." | "*" | "&"); _ }) ->
       (* Selector-like components indicate a nested rule. *)
       None
-  | Some _ -> Some (read_one ())
+  | Some _ ->
+      (* CSS Nesting 1: a nested rule may start with an ident-shaped selector
+         ([html &:hover], [li:nth-child(2)]). A declaration always starts with
+         [<ident> :]; anything else followed by a [{ ... }] block (before the
+         next [;]) is a nested rule. *)
+      if is_nested_rule t then None else Some (read_one ())
 
 (* Skip from the current cursor position to just past the next top-level [;], or
    stop at EOF. Used to recover from a failed declaration inside a block: per

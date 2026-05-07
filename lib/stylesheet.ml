@@ -341,10 +341,7 @@ let rec pp_rule : rule Pp.t =
   | decls, nested ->
       let ctx = { ctx with indent = ctx.indent + 1 } in
       let pp_declarations ctx () =
-        Pp.list
-          ~sep:(fun ctx () ->
-            Pp.semicolon ctx ();
-            Pp.cut ctx ())
+        Pp.list ~sep:Pp.semicolon_cut
           (Pp.indent Declaration.pp_declaration)
           ctx decls
       in
@@ -388,18 +385,8 @@ and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
   pp_keyframe_selector ctx kf.keyframe_selector;
   Pp.sp ctx ();
-  Pp.braces
-    (fun ctx () ->
-      Pp.cut ctx ();
-      Pp.nest 2
-        (Pp.list
-           ~sep:(fun ctx () ->
-             Pp.semicolon ctx ();
-             Pp.cut ctx ())
-           Declaration.pp_declaration)
-        ctx kf.keyframe_declarations;
-      Pp.cut ctx ())
-    ctx ()
+  Pp.braced_semicolon_list Declaration.pp_declaration ctx
+    kf.keyframe_declarations
 
 and pp_font_face_descriptor : font_face_descriptor Pp.t =
  fun ctx desc ->
@@ -515,18 +502,8 @@ and pp_page_margin_rule : page_margin_rule Pp.t =
   Pp.string ctx "@";
   Pp.string ctx rule.margin_name;
   Pp.sp ctx ();
-  Pp.braces
-    (fun ctx () ->
-      Pp.cut ctx ();
-      Pp.nest 2
-        (Pp.list
-           ~sep:(fun ctx () ->
-             Pp.semicolon ctx ();
-             Pp.cut ctx ())
-           Declaration.pp_declaration)
-        ctx rule.margin_descriptors;
-      Pp.cut ctx ())
-    ctx ()
+  Pp.braced_semicolon_list Declaration.pp_declaration ctx
+    rule.margin_descriptors
 
 and pp_page_selector ctx selector =
   match selector with
@@ -582,6 +559,33 @@ and pp_import_url ctx url =
   then Pp.string ctx url
   else Pp.quoted_string ctx url
 
+and pp_import_layer ctx layer =
+  Pp.sp ctx ();
+  if layer = "" then Pp.string ctx "layer"
+  else (
+    Pp.string ctx "layer(";
+    Pp.string ctx layer;
+    Pp.char ctx ')')
+
+and pp_import_supports ctx supports =
+  Pp.sp ctx ();
+  Pp.string ctx "supports(";
+  (match supports with
+  | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
+  | _ -> Supports.pp ctx supports);
+  Pp.char ctx ')'
+
+and pp_import_components ctx { url; layer; supports; media } =
+  Pp.sp ctx ();
+  pp_import_url ctx url;
+  Option.iter (pp_import_layer ctx) layer;
+  Option.iter (pp_import_supports ctx) supports;
+  Option.iter
+    (fun media ->
+      Pp.sp ctx ();
+      Media.pp ctx media)
+    media
+
 and strip_outer_parens s =
   let s = String.trim s in
   let len = String.length s in
@@ -625,11 +629,7 @@ and pp_statement : statement Pp.t =
       (* Bare declarations for CSS nesting - no selector/braces, just
          declarations. No extra indent since the containing block handles it *)
       let decls = Declaration.resolve_theme_guards ctx raw_decls in
-      Pp.list
-        ~sep:(fun ctx () ->
-          Pp.semicolon ctx ();
-          Pp.cut ctx ())
-        Declaration.pp_declaration ctx decls;
+      Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
       if decls <> [] && not ctx.minify then Pp.semicolon ctx ()
   | Charset encoding ->
       Pp.string ctx "@charset \"";
@@ -637,32 +637,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "\";"
   | Import { url; layer; supports; media } ->
       Pp.string ctx "@import";
-      let url_str = Pp.to_string ~minify:ctx.Pp.minify pp_import_url url in
-      Pp.sp ctx ();
-      Pp.string ctx url_str;
-      (match layer with
-      | Some l ->
-          Pp.sp ctx ();
-          if l = "" then Pp.string ctx "layer"
-          else (
-            Pp.string ctx "layer(";
-            Pp.string ctx l;
-            Pp.string ctx ")")
-      | None -> ());
-      (match supports with
-      | Some s ->
-          Pp.sp ctx ();
-          Pp.string ctx "supports(";
-          (match s with
-          | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
-          | _ -> Supports.pp ctx s);
-          Pp.string ctx ")"
-      | None -> ());
-      (match media with
-      | Some m ->
-          Pp.sp ctx ();
-          Media.pp ctx m
-      | None -> ());
+      pp_import_components ctx { url; layer; supports; media };
       Pp.semicolon ctx ()
   | Namespace (prefix, uri) ->
       Pp.string ctx "@namespace ";
@@ -772,18 +747,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@supports-condition ";
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               Declaration.pp_declaration)
-            ctx declarations;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) ->
       Pp.string ctx "@scope";
@@ -835,47 +799,21 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@keyframes ";
       pp_keyframes_name ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
   | Webkit_keyframes (name, frames) ->
       Pp.string ctx "@-webkit-keyframes ";
       pp_keyframes_name ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
   | Moz_keyframes (name, frames) ->
       Pp.string ctx "@-moz-keyframes ";
       pp_keyframes_name ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
   | Font_face descriptors ->
       Pp.string ctx "@font-face";
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               pp_font_face_descriptor)
-            ctx descriptors;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list pp_font_face_descriptor ctx descriptors
   | Page (selector, raw_declarations) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
@@ -883,18 +821,7 @@ and pp_statement : statement Pp.t =
       let declarations =
         Declaration.resolve_theme_guards ctx raw_declarations
       in
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               Declaration.pp_declaration)
-            ctx declarations;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Page_with_margins (selector, descriptors, margins) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
@@ -904,11 +831,8 @@ and pp_statement : statement Pp.t =
           Pp.cut ctx ();
           Pp.nest 2
             (fun ctx () ->
-              Pp.list
-                ~sep:(fun ctx () ->
-                  Pp.semicolon ctx ();
-                  Pp.cut ctx ())
-                Declaration.pp_declaration ctx descriptors;
+              Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx
+                descriptors;
               if descriptors <> [] && margins <> [] then (
                 Pp.semicolon ctx ();
                 Pp.cut ctx ());
@@ -920,70 +844,28 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@font-palette-values ";
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               pp_font_palette_descriptor)
-            ctx descriptors;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list pp_font_palette_descriptor ctx descriptors
   | View_transition descriptors ->
       Pp.string ctx "@view-transition";
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               pp_view_transition_descriptor)
-            ctx descriptors;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list pp_view_transition_descriptor ctx descriptors
   | Position_try (name, declarations) ->
       Pp.string ctx "@position-try ";
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               Declaration.pp_declaration)
-            ctx declarations;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Viewport (prefix, descriptors) ->
       Pp.string ctx
         (match prefix with
         | Standard -> "@viewport"
         | Ms_prefixed -> "@-ms-viewport");
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               (fun ctx { name; value } ->
-                 Pp.string ctx name;
-                 Pp.char ctx ':';
-                 Pp.string ctx value))
-            ctx descriptors;
-          Pp.cut ctx ())
-        ctx ()
+      Pp.braced_semicolon_list
+        (fun ctx { name; value } ->
+          Pp.string ctx name;
+          Pp.char ctx ':';
+          Pp.string ctx value)
+        ctx descriptors
   | Unknown_at_rule { name; prelude; block } -> (
       Pp.char ctx '@';
       Pp.string ctx name;
@@ -2782,39 +2664,9 @@ let read = read_stylesheet
 
 (* Pretty-printer for import_rule *)
 let pp_import_rule : import_rule Pp.t =
- fun ctx { url; layer; supports; media } ->
+ fun ctx rule ->
   Pp.string ctx "@import";
-  Pp.sp ctx ();
-  pp_import_url ctx url;
-  Option.iter
-    (fun l ->
-      Pp.sp ctx ();
-      if l = "" then Pp.string ctx "layer"
-      else (
-        Pp.string ctx "layer(";
-        Pp.string ctx l;
-        Pp.char ctx ')'))
-    layer;
-  Option.iter
-    (fun s ->
-      Pp.sp ctx ();
-      Pp.string ctx "supports(";
-      (* CSS Imports section 2 [@import supports(...)] keeps the same
-         <supports-condition> grammar as the standalone at-rule, but a single
-         declaration inside [supports()] is conventionally written without outer
-         parens (e.g. [supports(display:grid)]). Emit the inner declaration
-         directly when the condition is a bare [Property]; fall through to the
-         structured printer otherwise. *)
-      (match s with
-      | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
-      | _ -> Supports.pp ctx s);
-      Pp.char ctx ')')
-    supports;
-  Option.iter
-    (fun m ->
-      Pp.sp ctx ();
-      Media.pp ctx m)
-    media;
+  pp_import_components ctx rule;
   Pp.string ctx ";"
 
 (* Reader for import_rule *)
