@@ -172,8 +172,7 @@ let spec_parse_grammar_entry_points () =
     | _ -> false
   in
   let parse_one css =
-    (Css.Parser.according_to_grammar (Css.Reader.of_string css) single_ident)
-      .value
+    (Css.Parser.matches_grammar (Css.Reader.of_string css) single_ident).value
   in
   Alcotest.(check bool)
     "single ident matches grammar" true
@@ -204,8 +203,7 @@ let spec_grammar_empty_commas () =
      comma. *)
   let empty_only = function [] -> true | _ -> false in
   let parse_empty css =
-    (Css.Parser.according_to_grammar (Css.Reader.of_string css) empty_only)
-      .value
+    (Css.Parser.matches_grammar (Css.Reader.of_string css) empty_only).value
   in
   Alcotest.(check bool)
     "empty grammar accepts whitespace-only input" true
