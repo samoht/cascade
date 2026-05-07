@@ -2141,10 +2141,14 @@ let rec pp_rgb : rgb Pp.t =
   | Var v -> pp_var pp_rgb ctx v
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
+  let starts_number = function
+    | '0' .. '9' | '.' | '+' | '-' -> true
+    | _ -> false
+  in
   match (Pp.minified ctx, l, next) with
-  | true, Some (Pct _), Some s
-    when String.length s > 0 && s.[0] >= '0' && s.[0] <= '9' ->
-      Pp.space ctx ()
+  | true, Some (Pct _), Some s when String.length s > 0 && starts_number s.[0]
+    ->
+      ()
   | _ -> Pp.space ctx ()
 
 (** Lab-like float string with precision control. Non-minified: fixed decimal

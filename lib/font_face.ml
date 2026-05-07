@@ -130,7 +130,6 @@ let read_function_arg name t =
   in
   Cursor.expect_eof inner;
   let _ = name in
-  if value = "" then Cursor.err_invalid inner (name ^ "() argument");
   value
 
 let read_url t =
