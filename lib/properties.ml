@@ -5282,6 +5282,13 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.char ctx ')'
   | Clip_path_polygon { fill_rule; points; spaced } ->
       Pp.string ctx "polygon(";
+      (* CSS Shapes 1 §3.6: [nonzero] is the [<fill-rule>] default, so drop it
+         under minify when the fill-rule is the only redundant token. *)
+      let fill_rule : clip_path_fill_rule option =
+        match fill_rule with
+        | Some Nonzero when Pp.minified ctx -> None
+        | other -> other
+      in
       Option.iter
         (fun rule ->
           pp_clip_path_fill_rule ctx rule;
@@ -5295,12 +5302,18 @@ let rec pp_clip_path : clip_path Pp.t =
           Pp.space ctx ())
         else fun ctx () -> Pp.char ctx ','
       in
-      Pp.list ~sep
-        (fun ctx (x, y) ->
-          pp_length ctx x;
-          Pp.space ctx ();
-          pp_length ctx y)
-        ctx points;
+      let pp_axis_pair ctx (x, y) =
+        pp_length ctx x;
+        (* CSS Syntax 3 §5.4.6: the [%] suffix delimits the previous token, so
+           the space before the [<y>] can drop under minify when [<x>] ends with
+           a unit. *)
+        let drop_space =
+          Pp.minified ctx && match x with Pct _ -> true | _ -> false
+        in
+        if not drop_space then Pp.space ctx ();
+        pp_length ctx y
+      in
+      Pp.list ~sep pp_axis_pair ctx points;
       Pp.char ctx ')'
   | Clip_path_path d ->
       Pp.string ctx "path(\"";
@@ -17147,19 +17160,22 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
   in
   (* CSS Masking 1 §3.6 [<basic-shape> || <geometry-box>]: a shape and a
      reference box may appear in either order, or just a box on its own. *)
+  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
   match read_clip_geometry_box_opt t with
   | Some box ->
       Cursor.ws t;
-      if Cursor.is_done t then Clip_path_box box
+      if at_end t then Clip_path_box box
       else
         let shape = read_basic_shape t in
         Clip_path_with_box { shape; box; box_first = true }
   | None -> (
       let shape = read_basic_shape t in
       Cursor.ws t;
-      match read_clip_geometry_box_opt t with
-      | Some box -> Clip_path_with_box { shape; box; box_first = false }
-      | None -> shape)
+      if at_end t then shape
+      else
+        match read_clip_geometry_box_opt t with
+        | Some box -> Clip_path_with_box { shape; box; box_first = false }
+        | None -> shape)
 
 let read_object_view_box_inset t =
   Cursor.call "inset" t (fun t ->
