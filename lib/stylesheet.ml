@@ -17,7 +17,7 @@ let media ~condition content = Media (condition, content)
 let media_nested ~condition declarations =
   Media (condition, [ Declarations declarations ])
 
-let container ?name ~condition content = Container (name, condition, content)
+let container ?name ?condition content = Container (name, condition, content)
 let supports ~condition content = Supports (condition, content)
 let starting_style content = Starting_style content
 let with_origin cascade_origin content = Origin (cascade_origin, content)
@@ -704,10 +704,15 @@ and pp_statement : statement Pp.t =
           Pp.char ctx ' ';
           Pp.string ctx n
       | None -> ());
-      let condition_str = Container.to_string ~minify:ctx.minify condition in
-      if condition_str <> "" then (
-        Pp.char ctx ' ';
-        Pp.string ctx condition_str);
+      (match condition with
+      | Some condition ->
+          let condition_str =
+            Container.to_string ~minify:ctx.minify condition
+          in
+          if condition_str <> "" then (
+            Pp.char ctx ' ';
+            Pp.string ctx condition_str)
+      | None -> ());
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->
@@ -2191,8 +2196,10 @@ and read_container (r : Cursor.t) : statement =
   let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
-    try Container.of_string condition_str
-    with Failure msg -> Cursor.err_invalid r msg
+    if condition_str = "" then None
+    else
+      try Some (Container.of_string condition_str)
+      with Failure msg -> Cursor.err_invalid r msg
   in
   Container (container_name, condition, content)
 
@@ -2314,7 +2321,11 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       Cursor.ws r;
       let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Container (container_name, Container.of_string condition_str, content)
+      let condition =
+        if condition_str = "" then None
+        else Some (Container.of_string condition_str)
+      in
+      Container (container_name, condition, content)
   | "@supports" ->
       let cond_loc = Cursor.position r in
       let condition = Cursor.drain_until_block_as_string ~trim:true r in

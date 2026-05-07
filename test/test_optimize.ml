@@ -1644,7 +1644,7 @@ let c61_no_merge_container () =
         };
       Css.Stylesheet.Container
         ( None,
-          Css.Container.Min_width_px 48,
+          Some (Css.Container.Min_width_px 48),
           [
             Css.Stylesheet.Rule
               {

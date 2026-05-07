@@ -502,7 +502,8 @@ let rec statement_shape stmt =
   | Container (name, condition, block) ->
       ("container:"
       ^ Option.value ~default:"" name
-      ^ ":" ^ Css.Container.pp condition)
+      ^ ":"
+      ^ Option.fold ~none:"" ~some:Css.Container.pp condition)
       :: block_lines block
   | Supports (condition, block) ->
       ("supports:" ^ Css.Pp.to_string ~minify:true Css.Supports.pp condition)
@@ -721,9 +722,13 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
           ~scope_hops acc block
           (Css.Context.matches_supports query condition)
     | Container (name, condition, block) ->
+        let matches =
+          match condition with
+          | Some c -> Css.Context.matches_container query ?name c
+          | None -> true
+        in
         collect_conditional_block ~origin ~layer ~current_specificity
-          ~scope_hops acc block
-          (Css.Context.matches_container query ?name condition)
+          ~scope_hops acc block matches
     | When (condition, block) ->
         collect_conditional_block ~origin ~layer ~current_specificity
           ~scope_hops acc block

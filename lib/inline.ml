@@ -61,7 +61,7 @@ type at_node =
   | Layer of string option
   | Supports of Supports.t
   | Moz_document of moz_document_condition list
-  | Container of string option * Container.t
+  | Container of string option * Container.t option
   | Starting_style
   | When of conditional
   | Else of conditional option
@@ -710,7 +710,8 @@ let collect_scoped_refs stylesheet =
   let refs_of_at_node = function
     | Media query -> refs_of_media query
     | Supports query -> refs_of_supports query
-    | Container (_, query) -> refs_of_container query
+    | Container (_, Some query) -> refs_of_container query
+    | Container (_, None) -> []
     | _ -> []
   in
   let record_decl ~at_path ~selector decl =

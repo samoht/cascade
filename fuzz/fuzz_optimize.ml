@@ -48,7 +48,7 @@ let generated_media buf =
             [
               Css.Stylesheet.Container
                 ( Some "card",
-                  Css.Container.of_string "(inline-size > 30em)",
+                  Some (Css.Container.of_string "(inline-size > 30em)"),
                   [ rule buf 8 ] );
             ] );
       ] )

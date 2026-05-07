@@ -152,7 +152,7 @@ val as_media : statement -> (Media.t * statement list) option
     media query, [None] otherwise. *)
 
 val as_container :
-  statement -> (string option * Container.t * statement list) option
+  statement -> (string option * Container.t option * statement list) option
 (** [as_container stmt] returns [Some (name, condition, statements)] if the
     statement is a container query, [None] otherwise. *)
 
@@ -500,7 +500,7 @@ val layer_of : ?name:string -> t -> t
     preserving [@supports] and other at-rules within it. *)
 
 val container :
-  ?name:string -> condition:Container.t -> statement list -> statement
+  ?name:string -> ?condition:Container.t -> statement list -> statement
 (** [container ?name ~condition statements] creates a [@container] statement
     with the given statements. *)
 

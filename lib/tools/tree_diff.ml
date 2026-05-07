@@ -1150,7 +1150,10 @@ let describe_statement stmt =
         Option.map
           (fun (n, c, _) ->
             let prefix = match n with Some n -> n ^ " " | None -> "" in
-            "@container " ^ prefix ^ Css.Container.to_string c)
+            let cond_str =
+              match c with Some c -> Css.Container.to_string c | None -> ""
+            in
+            "@container " ^ prefix ^ cond_str)
           (Css.as_container s));
       (fun s ->
         Option.map
@@ -1587,7 +1590,9 @@ and process_nested_layers ~depth stmts1 stmts2 =
 and container_diff items1 items2 =
   let key_of (name_opt, condition, _) =
     (* Use both name and condition as key to distinguish different containers *)
-    let cond_str = Css.Container.to_string condition in
+    let cond_str =
+      match condition with Some c -> Css.Container.to_string c | None -> ""
+    in
     match name_opt with Some name -> name ^ ":" ^ cond_str | None -> cond_str
   in
   let key_equal = String.equal in
@@ -1607,7 +1612,11 @@ and container_diff items1 items2 =
   let added =
     List.map
       (fun (name_opt, condition, rules) ->
-        let cond_str = Css.Container.to_string condition in
+        let cond_str =
+          match condition with
+          | Some c -> Css.Container.to_string c
+          | None -> ""
+        in
         let condition_str =
           match name_opt with
           | Some name -> name ^ " " ^ cond_str
@@ -1619,7 +1628,11 @@ and container_diff items1 items2 =
   let removed =
     List.map
       (fun (name_opt, condition, rules) ->
-        let cond_str = Css.Container.to_string condition in
+        let cond_str =
+          match condition with
+          | Some c -> Css.Container.to_string c
+          | None -> ""
+        in
         let condition_str =
           match name_opt with
           | Some name -> name ^ " " ^ cond_str
@@ -1631,7 +1644,11 @@ and container_diff items1 items2 =
   let modified =
     List.map
       (fun ((name_opt, condition, rules1), (_, _, rules2)) ->
-        let cond_str = Css.Container.to_string condition in
+        let cond_str =
+          match condition with
+          | Some c -> Css.Container.to_string c
+          | None -> ""
+        in
         let condition_str =
           match name_opt with
           | Some name -> name ^ " " ^ cond_str

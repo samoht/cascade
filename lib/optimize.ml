@@ -1215,6 +1215,13 @@ let merge_consecutive_supports (stmts : statement list) : statement list =
 
 let merge_consecutive_containers (stmts : statement list) : statement list =
   let optimize_merged_block block = !statements_ref block in
+  let compare_condition a b =
+    match (a, b) with
+    | None, None -> 0
+    | None, Some _ -> -1
+    | Some _, None -> 1
+    | Some a, Some b -> Container.compare a b
+  in
   let rec merge result prev = function
     | [] -> (
         match prev with
@@ -1224,7 +1231,7 @@ let merge_consecutive_containers (stmts : statement list) : statement list =
     | Container (name, cond, block) :: rest -> (
         match prev with
         | Some (prev_name, prev_cond, prev_block)
-          when prev_name = name && Container.compare prev_cond cond = 0 ->
+          when prev_name = name && compare_condition prev_cond cond = 0 ->
             merge result (Some (name, cond, prev_block @ block)) rest
         | Some (prev_name, prev_cond, prev_block) ->
             merge

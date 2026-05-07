@@ -461,7 +461,7 @@ let map_container_block f = function
   | Supports (condition, content) -> Some (supports ~condition (f content))
   | Layer (name, content) -> Some (layer ?name (f content))
   | Container (name, condition, content) ->
-      Some (container ?name ~condition (f content))
+      Some (container ?name ?condition (f content))
   | Origin (origin, content) -> Some (Origin (origin, f content))
   | _ -> None
 
@@ -702,7 +702,7 @@ let layer_of ?name stylesheet =
   (* Wrap the stylesheet statements in a layer *)
   [ Layer (name, stylesheet) ]
 
-let container ?name ~condition statements =
+let container ?name ?condition statements =
   Container (name, condition, statements)
 
 let supports ~condition statements = Supports (condition, statements)

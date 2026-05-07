@@ -48,9 +48,12 @@ let at_rule_path_and_inner stmt =
                   let prefix =
                     match name_opt with Some n -> n ^ " " | None -> ""
                   in
-                  Some
-                    ( "@container " ^ prefix ^ Css.Container.to_string cond,
-                      inner )
+                  let cond_str =
+                    match cond with
+                    | Some c -> Css.Container.to_string c
+                    | None -> ""
+                  in
+                  Some ("@container " ^ prefix ^ cond_str, inner)
               | None -> None)))
 
 let strip_header css =
