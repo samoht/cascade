@@ -789,7 +789,7 @@ and pp_statement : statement Pp.t =
       | None -> ());
       (match end_ with
       | Some e ->
-          Pp.string ctx " to (";
+          Pp.string ctx (if Pp.minified ctx then "to (" else " to (");
           pp_scope_selector ctx e;
           Pp.string ctx ")"
       | None -> ());
@@ -1473,19 +1473,12 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
+  (* CSS Fonts 4 §11.2.1: an [@font-face] rule is invalid without a
+     [font-family] and [src] descriptor, but the descriptors that ARE present
+     are still well-formed CSS. Authoring tools and minifiers preserve the
+     partial rule verbatim, so cascade keeps the parse successful and lets a
+     later optimizer / validator step decide whether to drop the rule. *)
   let descriptors = Cursor.braces read_font_face_block r in
-  let has_font_family =
-    List.exists
-      (function (Font_family _ : font_face_descriptor) -> true | _ -> false)
-      descriptors
-  in
-  let has_src =
-    List.exists
-      (function (Src _ : font_face_descriptor) -> true | _ -> false)
-      descriptors
-  in
-  if not (has_font_family && has_src) then
-    Cursor.err_invalid r "@font-face requires font-family and src";
   Font_face descriptors
 
 (* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
