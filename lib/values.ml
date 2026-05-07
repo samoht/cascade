@@ -2011,7 +2011,10 @@ let rec pp_angle : angle Pp.t =
         ctx (a, b)
   | Calc c -> pp_calc pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
-  | Invalid tokens -> List.iter (Component.pp ctx) tokens
+  | Invalid tokens ->
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified tokens
+         else Parser.to_string tokens)
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
@@ -2071,7 +2074,10 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
         else c
       in
       pp_calc (pp_length_percentage ~always) ctx c
-  | Invalid tokens -> List.iter (Component.pp ctx) tokens
+  | Invalid tokens ->
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified tokens
+         else Parser.to_string tokens)
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function

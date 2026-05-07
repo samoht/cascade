@@ -4063,6 +4063,9 @@ type font_family =
   (* List of fonts for composition *)
   | List of font_family list
   | Var of font_family var
+  | Invalid of Component.t list
+      (** CSS-wide keyword mixed in a [<custom-ident>#] list, preserved verbatim
+          and dropped by [Optimize.drop_invalid] under minify. *)
 
 val font_stack : font_family list -> font_family
 (** [font_stack fonts] is a comma-separated [font-family] stack. *)
