@@ -13,6 +13,12 @@ type combinator =
   | Next_sibling
   | Subsequent_sibling
   | Column
+  | Shadow_piercing
+      (** Legacy [>>>] (Vue / Angular pre-Shadow-DOM-v1) shadow-piercing
+          combinator. Not part of any current spec but still emitted by tooling,
+          so cascade preserves it as its own combinator arm. *)
+  | Shadow_deep
+      (** Legacy [/deep/] alias for [>>>]; same scope and rationale. *)
 
 type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
@@ -115,6 +121,13 @@ type t =
   | Unknown_pseudo_class_call of string * Component.t list
       (** Functional vendor / prerelease pseudo-classes with opaque arguments.
       *)
+  | Local_scope
+      (** CSS Modules [:local] - non-standard but emitted by the css-modules /
+          postcss-modules toolchain to mark a class as locally scoped. *)
+  | Local_call of t list
+      (** CSS Modules [:local(<selector-list>)] - functional form. *)
+  | Global_scope  (** CSS Modules [:global] - opposite of [:local]. *)
+  | Global_call of t list  (** CSS Modules [:global(<selector-list>)]. *)
   (* CSS Selectors 4 3.6.1: [::before] / [::after] / [::first-letter] /
      [::first-line] are the modern double-colon pseudo-element forms; the CSS
      2.1 single-colon spelling is preserved as a backwards-compatibility alias.
