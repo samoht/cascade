@@ -100,7 +100,6 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
 
 (** Pretty-printing functions *)
 
-let is_theme_var v = v.layer = Some "theme"
 let in_theme = Pp.in_theme
 
 let pp_var_fallback ctx fallback_name =
@@ -177,12 +176,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
              provided ([ctx.theme = None]), [in_theme] returns [true] so the
              [var()] reference is preserved unchanged. *)
           in_theme ctx v.name
-        then
-          if is_theme_var v then
-            match v.default with
-            | Some value -> pp_value ctx value
-            | Option.None -> emit_var_ref ()
-          else emit_var_ref ()
+        then emit_var_ref ()
         else
           match ctx.theme_defaults v.name with
           | Some resolved -> Pp.string ctx resolved
