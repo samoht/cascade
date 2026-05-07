@@ -149,7 +149,9 @@ type t =
   | File_selector_button
   (* Known vendor-specific pseudo-classes *)
   | Moz_focusring
+  | Moz_any_call of t list
   | Webkit_any
+  | Webkit_any_call of t list
   | Webkit_autofill
   | Moz_placeholder
   | Webkit_input_placeholder
