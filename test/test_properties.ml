@@ -696,9 +696,9 @@ let check_font_variant_east_asian =
   check_value_cursor "font_variant_east_asian" read_font_variant_east_asian
     pp_font_variant_east_asian
 
-let check_font_variant_east_asian_feature =
-  check_value_cursor "font_variant_east_asian_feature"
-    read_font_variant_east_asian_feature pp_font_variant_east_asian_feature
+let check_east_asian_feature =
+  check_value_cursor "font_variant_east_asian_feature" read_east_asian_feature
+    pp_east_asian_feature
 
 let check_font_variant_emoji =
   check_value_cursor "font_variant_emoji" read_font_variant_emoji
@@ -3020,7 +3020,7 @@ let spec_generated_animation_font_edges () =
   check_font_synthesis_weight "auto";
   check_font_variant_caps "small-caps";
   check_font_variant_east_asian "jis78 ruby";
-  check_font_variant_east_asian_feature "jis04";
+  check_east_asian_feature "jis04";
   check_font_variant_emoji "unicode";
   check_font_variant_ligature "common-ligatures";
   check_font_variant_ligatures "common-ligatures contextual";
@@ -3050,7 +3050,7 @@ let spec_generated_animation_font_edges () =
   neg_cursor read_font_synthesis_weight "manual";
   neg_cursor read_font_variant_caps "caps";
   neg_cursor read_font_variant_east_asian "jis78 jis78";
-  neg_cursor read_font_variant_east_asian_feature "jis05";
+  neg_cursor read_east_asian_feature "jis05";
   neg_cursor read_font_variant_emoji "emoji text";
   neg_cursor read_font_variant_ligature "common";
   neg_cursor read_font_variant_ligatures "common-ligatures common-ligatures";
