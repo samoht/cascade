@@ -4133,7 +4133,16 @@ val text_transform : text_transform -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform}
      text-transform} property. *)
 
-val text_indent : length -> declaration
+type text_indent_value =
+  | Indent of { length : length_percentage; hanging : bool; each_line : bool }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_indent_value var
+
+val text_indent : text_indent_value -> declaration
 (** [text_indent indent] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent}
      text-indent} property. *)

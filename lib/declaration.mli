@@ -1472,7 +1472,7 @@ val webkit_text_decoration_color : color -> declaration
 (** [webkit_text_decoration_color v] is the WebKit-only
     [-webkit-text-decoration- color] property. *)
 
-val text_indent : length -> declaration
+val text_indent : text_indent_value -> declaration
 (** [text_indent v] is the CSS [text-indent] property. *)
 
 val border_collapse : border_collapse -> declaration
