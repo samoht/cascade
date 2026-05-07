@@ -484,7 +484,13 @@ let cascade_keywords () =
   roundtrip ".x { color: initial }" ".x{color:initial}";
   roundtrip ".x { color: unset }" ".x{color:unset}";
   roundtrip ".x { color: revert }" ".x{color:revert}";
-  roundtrip ".x { color: revert-layer }" ".x{color:revert-layer}"
+  roundtrip ".x { color: revert-layer }" ".x{color:revert-layer}";
+  (* CSS Cascade 5 section 7.3: CSS-wide keywords are whole-property values.
+     Inside a comma-separated list, [inherit] is invalid CSS. Token-level
+     minifiers such as Lightning CSS and CSSO preserve it verbatim, but
+     spec-aware minification may drop the invalid declaration as browsers do. *)
+  roundtrip ".x { font-family: Arial, inherit }.y { color: red }"
+    ".y{color:red}"
 
 (* SS 6.6 - @layer declarations and blocks *)
 let cascade_layers () =
@@ -781,6 +787,13 @@ let non_minified_preserves_color_forms () =
   preserves_non_minified ".x { color: transparent }" [ "transparent" ];
   preserves_non_minified ".x { color: currentColor }" [ "currentColor" ]
 
+let fidelity_bad_css_wide_list () =
+  (* Authoring/fidelity mode preserves invalid-but-syntactically-recoverable
+     declaration source; the minifier-only [cascade_keywords] test above covers
+     dropping it when optimizing for spec-equivalent shortest output. *)
+  preserves_non_minified ".x { font-family: Arial, inherit }"
+    [ "font-family: Arial, inherit" ]
+
 let non_minified_preserves_conditional_forms () =
   preserves_non_minified "@media (min-width: 768px) { .btn { display: block } }"
     [ "(min-width: 768px)" ];
@@ -1035,6 +1048,8 @@ let () =
             non_minified_preserves_grid_forms;
           Alcotest.test_case "fidelity: color forms" `Quick
             non_minified_preserves_color_forms;
+          Alcotest.test_case "fidelity: invalid CSS-wide list forms" `Quick
+            fidelity_bad_css_wide_list;
           Alcotest.test_case "fidelity: conditional forms" `Quick
             non_minified_preserves_conditional_forms;
           Alcotest.test_case "fidelity: cascade forms" `Quick
