@@ -8553,37 +8553,53 @@ let rec pp_transition : transition Pp.t =
   | Shorthand s -> pp_transition_shorthand ctx s
 
 let rec pp_scale : scale Pp.t =
- fun ctx -> function
-  | X n -> pp_number_percentage ctx n
-  | XY (Var x, Var y) ->
-      (* In minified mode, Tailwind omits spaces between var() values *)
-      pp_number_percentage ctx (Var x);
-      Pp.space_if_pretty ctx ();
-      pp_number_percentage ctx (Var y)
-  | XY (x, y) ->
-      pp_number_percentage ctx x;
-      Pp.space ctx ();
-      pp_number_percentage ctx y
-  | XYZ (Var x, Var y, Var z) ->
-      (* In minified mode, Tailwind omits spaces between var() values *)
-      pp_number_percentage ctx (Var x);
-      Pp.space_if_pretty ctx ();
-      pp_number_percentage ctx (Var y);
-      Pp.space_if_pretty ctx ();
-      pp_number_percentage ctx (Var z)
-  | XYZ (x, y, z) ->
-      pp_number_percentage ctx x;
-      Pp.space ctx ();
-      pp_number_percentage ctx y;
-      Pp.space ctx ();
-      pp_number_percentage ctx z
-  | None -> Pp.string ctx "none"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_scale ctx v
+  (* Two adjacent [<number-percentage>] values must be separated by whitespace
+     unless the boundary between their tokens is unambiguous: - the previous
+     token ends with a unit ([%]) and tokenisation stops there, or - the next
+     token starts with an explicit sign ([-]/[+]) which begins a new number. *)
+  let is_negative : number_percentage -> bool = function
+    | Num n | Pct n -> n < 0.
+    | _ -> false
+  in
+  let ends_with_unit : number_percentage -> bool = function
+    | Pct _ -> true
+    | _ -> false
+  in
+  let pp_sep ctx prev next =
+    if Pp.minified ctx && (ends_with_unit prev || is_negative next) then ()
+    else Pp.space ctx ()
+  in
+  fun ctx -> function
+    | X n -> pp_number_percentage ctx n
+    | XY (Var x, Var y) ->
+        (* In minified mode, Tailwind omits spaces between var() values *)
+        pp_number_percentage ctx (Var x);
+        Pp.space_if_pretty ctx ();
+        pp_number_percentage ctx (Var y)
+    | XY (x, y) ->
+        pp_number_percentage ctx x;
+        pp_sep ctx x y;
+        pp_number_percentage ctx y
+    | XYZ (Var x, Var y, Var z) ->
+        (* In minified mode, Tailwind omits spaces between var() values *)
+        pp_number_percentage ctx (Var x);
+        Pp.space_if_pretty ctx ();
+        pp_number_percentage ctx (Var y);
+        Pp.space_if_pretty ctx ();
+        pp_number_percentage ctx (Var z)
+    | XYZ (x, y, z) ->
+        pp_number_percentage ctx x;
+        pp_sep ctx x y;
+        pp_number_percentage ctx y;
+        pp_sep ctx y z;
+        pp_number_percentage ctx z
+    | None -> Pp.string ctx "none"
+    | Inherit -> Pp.string ctx "inherit"
+    | Initial -> Pp.string ctx "initial"
+    | Unset -> Pp.string ctx "unset"
+    | Revert -> Pp.string ctx "revert"
+    | Revert_layer -> Pp.string ctx "revert-layer"
+    | Var v -> pp_var pp_scale ctx v
 
 let rec pp_translate_value : translate_value Pp.t =
  fun ctx -> function
