@@ -361,7 +361,7 @@ let is_bang_cv = function
   | Component.Preserved { kind = Token.Delim "!"; _ } -> true
   | _ -> false
 
-let consume_to_semicolon ?(trim = false) t =
+let consume_until_semicolon ?(trim = false) t =
   string_of_components ~trim (drain_until_raw is_semicolon_cv t)
 
 let consume_to_decl_end ?(trim = false) t =

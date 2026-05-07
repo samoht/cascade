@@ -1926,14 +1926,13 @@ val read_font_variant_position : Cursor.t -> font_variant_position
 (** [read_font_variant_position t] is the [font_variant_position] parsed from
     [t]. *)
 
-val pp_font_variant_east_asian_feature : font_variant_east_asian_feature Pp.t
-(** [pp_font_variant_east_asian_feature] is the pretty-printer for
+val pp_east_asian_feature : font_variant_east_asian_feature Pp.t
+(** [pp_east_asian_feature] is the pretty-printer for
     [font_variant_east_asian_feature]. *)
 
-val read_font_variant_east_asian_feature :
-  Cursor.t -> font_variant_east_asian_feature
-(** [read_font_variant_east_asian_feature t] is the
-    [font_variant_east_asian_feature] parsed from [t]. *)
+val read_east_asian_feature : Cursor.t -> font_variant_east_asian_feature
+(** [read_east_asian_feature t] is the [font_variant_east_asian_feature] parsed
+    from [t]. *)
 
 val pp_font_variant_east_asian : font_variant_east_asian Pp.t
 (** [pp_font_variant_east_asian] is the pretty-printer for

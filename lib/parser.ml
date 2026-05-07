@@ -1185,7 +1185,7 @@ let component_values_are_whitespace_only cvs =
     (function Preserved { kind = Token.Whitespace; _ } -> true | _ -> false)
     cvs
 
-let according_to_grammar r grammar =
+let matches_grammar r grammar =
   let out = list_of_component_values r in
   let value = trim_component_value_whitespace out.value in
   if grammar value then { out with value = Some value }

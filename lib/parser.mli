@@ -72,9 +72,9 @@ type grammar = Component.t list -> bool
     CSS Syntax; Cascade returns the component-value group when this predicate
     accepts it. *)
 
-val according_to_grammar : Reader.t -> grammar -> Component.t list option output
-(** [according_to_grammar r grammar] runs section 5.4.1: parse a list of
-    component values, then return it only if [grammar] accepts it. *)
+val matches_grammar : Reader.t -> grammar -> Component.t list option output
+(** [matches_grammar r grammar] runs section 5.4.1: parse a list of component
+    values, then return it only if [grammar] accepts it. *)
 
 val csv_by_grammar : Reader.t -> grammar -> Component.t list option list output
 (** [csv_by_grammar r grammar] runs section 5.4.2: split into top-level comma

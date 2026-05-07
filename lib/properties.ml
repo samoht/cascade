@@ -1834,7 +1834,7 @@ let rec read_font_variant_position t : font_variant_position =
     ~var:(fun t -> Var (read_var read_font_variant_position t))
     t
 
-let pp_font_variant_east_asian_feature ctx = function
+let pp_east_asian_feature ctx = function
   | Jis78 -> Pp.string ctx "jis78"
   | Jis83 -> Pp.string ctx "jis83"
   | Jis90 -> Pp.string ctx "jis90"
@@ -1849,7 +1849,7 @@ let rec pp_font_variant_east_asian : font_variant_east_asian Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Features features ->
-      Pp.list ~sep:Pp.space pp_font_variant_east_asian_feature ctx features
+      Pp.list ~sep:Pp.space pp_east_asian_feature ctx features
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1857,7 +1857,7 @@ let rec pp_font_variant_east_asian : font_variant_east_asian Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_variant_east_asian ctx v
 
-let read_font_variant_east_asian_feature t =
+let read_east_asian_feature t =
   Cursor.enum "font-variant-east-asian-feature"
     [
       ("jis78", Jis78);
@@ -1900,7 +1900,7 @@ let rec read_font_variant_east_asian t : font_variant_east_asian =
     ]
     ~var:(fun t -> Var (read_var read_font_variant_east_asian t))
     ~default:(fun t ->
-      match Cursor.many read_font_variant_east_asian_feature t with
+      match Cursor.many read_east_asian_feature t with
       | [], _ -> Cursor.err_invalid t "font-variant-east-asian"
       | features, _ when invalid_feature_set features ->
           Cursor.err_invalid t "font-variant-east-asian"
@@ -3454,7 +3454,7 @@ let simplify_border_width_length_calc calc =
             (Val (make n))
             rest)
 
-let length_of_simplified_border_width_calc calc =
+let simplified_border_width_length calc =
   Option.map simplify_border_width_length_calc
     (length_of_border_width_calc calc)
 
@@ -3535,7 +3535,7 @@ let comparable_border_width_length length :
   | key, n -> Some (key, n)
 
 let reduce_border_width_minmax kind args : length calc list option =
-  let simplified = List.map length_of_simplified_border_width_calc args in
+  let simplified = List.map simplified_border_width_length args in
   if List.exists Option.is_none simplified then None
   else
     let vals = List.map Option.get simplified in
@@ -3568,9 +3568,9 @@ let reduce_border_width_minmax kind args : length calc list option =
 
 let reduce_border_width_clamp lower value upper =
   match
-    ( length_of_simplified_border_width_calc lower,
-      length_of_simplified_border_width_calc value,
-      length_of_simplified_border_width_calc upper )
+    ( simplified_border_width_length lower,
+      simplified_border_width_length value,
+      simplified_border_width_length upper )
   with
   | Some (Val lower), Some (Val value), Some (Val upper) -> (
       match
@@ -3640,7 +3640,7 @@ let rec pp_border_width : border_width Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 and pp_border_width_calc_contents ctx calc =
-  match length_of_simplified_border_width_calc calc with
+  match simplified_border_width_length calc with
   | Some (Val length) -> pp_length ctx length
   | Some calc -> pp_length_calc_contents ctx calc
   | None -> pp_calc pp_border_width ctx calc
@@ -10266,7 +10266,7 @@ let rec read_grid_template t : grid_template =
       | _ -> Split (rows, columns))
     else rows
 
-let read_grid_auto_flow_shorthand_clause side t =
+let read_grid_auto_flow_clause side t =
   let rec loop seen_auto_flow seen_dense =
     Cursor.ws t;
     match Cursor.peek_ident t with
@@ -10298,7 +10298,7 @@ let rec read_grid t : grid_template =
   else
     match Cursor.peek_ident t with
     | Some ("auto-flow" | "dense") ->
-        let flow = read_grid_auto_flow_shorthand_clause `Rows t in
+        let flow = read_grid_auto_flow_clause `Rows t in
         let auto_rows = read_grid_auto_flow_tracks t in
         Cursor.ws t;
         Cursor.slash t;
@@ -10312,7 +10312,7 @@ let rec read_grid t : grid_template =
           Cursor.ws t;
           match Cursor.peek_ident t with
           | Some ("auto-flow" | "dense") ->
-              let flow = read_grid_auto_flow_shorthand_clause `Columns t in
+              let flow = read_grid_auto_flow_clause `Columns t in
               let auto_columns = read_grid_auto_flow_tracks t in
               Auto_flow_columns (rows, flow, auto_columns)
           | _ -> (
