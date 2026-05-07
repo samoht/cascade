@@ -849,7 +849,7 @@ let check_resolved_property ?layer_order name ~ctx ~document ~query ~property
   in
   Alcotest.(check (option decl_t)) name (Some expected) actual
 
-let check_resolved_property_from_ast ?layer_order name ~ctx ~document ~query
+let check_ast_resolved_property ?layer_order name ~ctx ~document ~query
     ~property ~expected stylesheet =
   let expected = Css.Declaration.of_string expected in
   let actual =
@@ -2363,7 +2363,7 @@ let cascade_rule_resolver_contract () =
         [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: yellow" ]) ];
     ]
   in
-  check_resolved_property_from_ast
+  check_ast_resolved_property
     "origin and animation/transition ranks are applied" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
     ~expected:"color: #ff0" origin_sheet;
@@ -2377,7 +2377,7 @@ let cascade_rule_resolver_contract () =
         [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: revert" ]) ];
     ]
   in
-  check_resolved_property_from_ast
+  check_ast_resolved_property
     "revert rolls back to the next lower cascade origin" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
     ~expected:"color: #00f" revert_origin_sheet;

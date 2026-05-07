@@ -142,7 +142,7 @@ let test_spec_media_structural_vectors buf =
       (Fmt.str "media vector parsed to wrong AST: %S -> %S" input
          (Css.Media.to_string actual))
 
-let test_spec_media_error_recovery_vectors buf =
+let test_media_error_recovery buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_negative buf 0 in
   let input = row.input in
   let actual = Css.Media.to_string (Css.Media.of_string input) in
@@ -151,7 +151,7 @@ let test_spec_media_error_recovery_vectors buf =
       (Fmt.str "invalid media vector did not recover to not all: %S -> %S" input
          actual)
 
-let test_spec_media_list_recovery_vectors buf =
+let test_media_list_recovery buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_recovery buf 0 in
   let actual = Css.Media.to_string (Css.Media.of_string row.input) in
   if actual <> row.expected then
@@ -159,7 +159,7 @@ let test_spec_media_list_recovery_vectors buf =
       (Fmt.str "media list recovery drifted: %S -> %S, expected %S" row.input
          actual row.expected)
 
-let test_spec_media_feature_family_vectors buf =
+let test_media_feature_family buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_positive buf 2 in
   let input = row.input in
   let once = Css.Media.to_string (Css.Media.of_string input) in
@@ -168,7 +168,7 @@ let test_spec_media_feature_family_vectors buf =
     fail
       (Fmt.str "media feature family serialization drifted: %S -> %S" once twice)
 
-let test_spec_media_feature_family_recovery_vectors buf =
+let test_media_feature_recovery buf =
   let valid = pick Cascade_spec_inventory.Query_grammar.media_positive buf 3 in
   let input =
     if byte_at buf 4 mod 2 = 0 then
@@ -197,11 +197,11 @@ let suite =
       test_case "spec media structural vectors" [ bytes ]
         test_spec_media_structural_vectors;
       test_case "spec media error recovery vectors" [ bytes ]
-        test_spec_media_error_recovery_vectors;
+        test_media_error_recovery;
       test_case "spec media list recovery vectors" [ bytes ]
-        test_spec_media_list_recovery_vectors;
+        test_media_list_recovery;
       test_case "spec media feature family vectors" [ bytes ]
-        test_spec_media_feature_family_vectors;
+        test_media_feature_family;
       test_case "spec media feature family recovery vectors" [ bytes ]
-        test_spec_media_feature_family_recovery_vectors;
+        test_media_feature_recovery;
     ] )

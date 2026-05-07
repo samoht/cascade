@@ -73,7 +73,7 @@ let diff_property_changed () =
     (Css_tools.Tree_diff.is_empty d);
   Alcotest.(check bool) "has rule diffs" true (d.rules <> [])
 
-let diff_property_added_to_rule () =
+let diff_rule_added_property () =
   let expected = parse ".a { color: red }" in
   let actual = parse ".a { color: red; margin: 0 }" in
   let d = Css_tools.Tree_diff.diff ~expected ~actual in
@@ -291,7 +291,7 @@ let suite =
       Alcotest.test_case "rule removed" `Quick diff_rule_removed;
       Alcotest.test_case "property changed" `Quick diff_property_changed;
       Alcotest.test_case "property added to rule" `Quick
-        diff_property_added_to_rule;
+        diff_rule_added_property;
       Alcotest.test_case "rule reordered" `Quick diff_rule_reordered;
       Alcotest.test_case "media added" `Quick diff_media_added;
       Alcotest.test_case "media removed" `Quick diff_media_removed;

@@ -592,7 +592,7 @@ let test_media_merge_in_layers () =
       | _ -> fail "Expected Media inside layer")
   | _ -> fail "Expected Layer statement"
 
-let test_positive_empty_named_layers_to_statement () =
+let test_empty_layers_statement () =
   (* Positive optimization case: empty named @layer blocks establish order but
      contain no declarations, so consecutive empty named blocks can be
      represented by the statement form from CSS Cascade 5. *)
@@ -619,7 +619,7 @@ let test_positive_empty_named_layers_to_statement () =
     "empty named layer blocks canonicalize to layer statement"
     "@layer reset,theme;@layer components{.card{display:flex}}" output
 
-let test_tailwind_empty_components_utilities_layers_to_statement () =
+let test_tw_empty_layers_statement () =
   (* Tailwind's layered output commonly leaves empty components/utilities layer
      markers. CSS Cascade allows a statement form for named empty layers, and
      the shortest faithful spelling combines adjacent declarations. *)
@@ -635,7 +635,7 @@ let test_tailwind_empty_components_utilities_layers_to_statement () =
     "empty components/utilities collapse to one layer statement"
     "@layer components,utilities;" output
 
-let test_tailwind_conditionals_merge_inside_layer () =
+let test_tw_conditionals_layer () =
   (* Tailwind emits utility rules inside @layer utilities. Cascade owns the
      generic CSS optimization: adjacent identical conditions merge inside that
      layer, but the utility layer remains the boundary. *)
@@ -657,7 +657,7 @@ let test_tailwind_conditionals_merge_inside_layer () =
      (inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
     output
 
-let test_tailwind_non_adjacent_conditionals_in_layer_stay_split () =
+let test_tw_conditionals_split () =
   (* The optimizer must not collect same-condition blocks across an intervening
      utility rule: Tailwind's sort order can intentionally interleave base and
      variant rules to preserve source-order ties. *)
@@ -705,16 +705,16 @@ let optimize_tests =
     ("media merge in layers", `Quick, test_media_merge_in_layers);
     ( "positive empty named layers to statement",
       `Quick,
-      test_positive_empty_named_layers_to_statement );
+      test_empty_layers_statement );
     ( "tailwind empty components/utilities layers to statement",
       `Quick,
-      test_tailwind_empty_components_utilities_layers_to_statement );
+      test_tw_empty_layers_statement );
     ( "tailwind conditionals merge inside layer",
       `Quick,
-      test_tailwind_conditionals_merge_inside_layer );
+      test_tw_conditionals_layer );
     ( "tailwind non-adjacent conditionals in layer stay split",
       `Quick,
-      test_tailwind_non_adjacent_conditionals_in_layer_stay_split );
+      test_tw_conditionals_split );
   ]
 
 (** {1 Selector merging tests (cascade semantics)} *)
@@ -997,7 +997,7 @@ let c61_decl_order_shorthand_boundary () =
     "later longhand stays after shorthand" ".box{margin:2px;margin-left:3px}"
     output
 
-let c61_merge_adjacent_preserves_shorthand_order () =
+let c61_adjacent_shorthand_order () =
   (* CSS Cascade sections 3 and 6.1: merging adjacent equal-selector rules is
      only semantics-preserving when the declaration sequence stays in source
      order, because a shorthand in the later rule resets earlier longhands. *)
@@ -1029,7 +1029,7 @@ let c61_merge_adjacent_preserves_shorthand_order () =
     "adjacent same-selector merge keeps shorthand/longhand source order"
     ".box{margin:2px;margin-left:3px}" output
 
-let c61_positive_adjacent_merge_with_later_dedup () =
+let c61_adjacent_later_dedup () =
   (* Positive merge case: adjacent same-selector rules in the same cascade slot
      may merge, and ordinary duplicate declarations inside the merged rule still
      reduce by source order. *)
@@ -1176,7 +1176,7 @@ let c61_no_merge_atrule () =
      (min-width:48px){.m{color:#0f0}}.a{background-color:#00f}"
     output
 
-let c61_no_media_merge_across_layer_statement () =
+let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
      queries still establishes layer order at that point. Media-query merging
      must not cross it. *)
@@ -1270,7 +1270,7 @@ let c61_no_merge_layer () =
     "@layer reset{.btn{display:block}}@layer components{.btn{display:flex}}"
     output
 
-let c64_layer_statement_is_ordering_boundary () =
+let c64_layer_order_boundary () =
   (* CSS Cascade section 6.4.4.2: a statement @layer rule establishes layer
      order at its source position. Rule merging must not move style rules across
      that ordering point, even when their selectors match. *)
@@ -1746,7 +1746,7 @@ let c61_import_substitution_point () =
     "same selector is not merged across import substitution point"
     ".theme{color:red}@import \"base.css\";.theme{display:flex}" output
 
-let c61_no_merge_across_name_defining_atrules () =
+let c61_no_named_atrule_merge () =
   (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
      statements, not rule declarations. Optimizing adjacent rules must preserve
      their source positions instead of treating them as transparent
@@ -1776,7 +1776,7 @@ let c61_no_merge_across_name_defining_atrules () =
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
 
-let c61_no_merge_across_scope_page_nested_boundaries () =
+let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
      is true when @scope appears as a nested group rule inside a style rule. *)
   let check_case label css expected =
@@ -1802,7 +1802,7 @@ let c61_no_merge_across_scope_page_nested_boundaries () =
     ".card .title{color:red}@scope(.card) to (.boundary){.card \
      .title{display:block}}.card .title{padding:1rem}"
 
-let c61_no_group_across_pseudo_competitor () =
+let c61_no_pseudo_group () =
   (* Grouping equal declarations across an overlapping pseudo-class competitor
      can move source-order ties for elements matching both selectors. *)
   let input =
@@ -1816,7 +1816,7 @@ let c61_no_group_across_pseudo_competitor () =
     "equal declarations do not group across pseudo-class competitor"
     ".btn{color:red}.btn:hover{color:#00f}.link{color:red}" output
 
-let c61_no_merge_conditional_boundaries_cli_shape () =
+let c61_no_conditional_cli_merge () =
   (* Surrounding rules must stay split across supports/container/starting-style
      boundaries; each condition filters declarations independently. *)
   let css =
@@ -1861,7 +1861,7 @@ let c61_important_blocks_longhand () =
     "important shorthand keeps priority over later normal longhand"
     ".box{margin:2px!important}" output
 
-let c63_mixed_importance_shorthand_longhand_edges () =
+let c63_mixed_importance_edges () =
   (* CSS Cascade section 6.3: importance is applied per declaration. A normal
      shorthand still contributes the longhands not overridden by an important
      longhand, so neither declaration is dead in either source-order
@@ -3105,10 +3105,10 @@ let selector_merging_tests =
       c61_decl_order_shorthand_boundary );
     ( "spec cascade 6.1 adjacent merge preserves shorthand order",
       `Quick,
-      c61_merge_adjacent_preserves_shorthand_order );
+      c61_adjacent_shorthand_order );
     ( "spec cascade 6.1 positive adjacent merge with later dedup",
       `Quick,
-      c61_positive_adjacent_merge_with_later_dedup );
+      c61_adjacent_later_dedup );
     ( "spec cascade 6.1 no merge across intervening rule",
       `Quick,
       c61_no_merge_intervening );
@@ -3120,7 +3120,7 @@ let selector_merging_tests =
       c61_no_merge_atrule );
     ( "spec cascade 6.1 no media merge across layer statement",
       `Quick,
-      c61_no_media_merge_across_layer_statement );
+      c61_no_layer_media_merge );
     ( "spec cascade 6.1 all property reset boundary",
       `Quick,
       c61_all_property_reset_boundary );
@@ -3129,7 +3129,7 @@ let selector_merging_tests =
       c61_no_merge_layer );
     ( "spec cascade 6.4 layer statement is ordering boundary",
       `Quick,
-      c64_layer_statement_is_ordering_boundary );
+      c64_layer_order_boundary );
     ( "spec cascade 6.1 unlayered rule stays outside layer",
       `Quick,
       c61_unlayered_outside_layer );
@@ -3168,22 +3168,22 @@ let selector_merging_tests =
       c61_import_substitution_point );
     ( "spec cascade 6.1 at-rule boundaries are opaque",
       `Quick,
-      c61_no_merge_across_name_defining_atrules );
+      c61_no_named_atrule_merge );
     ( "spec cascade 6.1 scope/page/nested boundaries are opaque",
       `Quick,
-      c61_no_merge_across_scope_page_nested_boundaries );
+      c61_no_nested_boundary_merge );
     ( "spec cascade 6.1 no group across pseudo competitor",
       `Quick,
-      c61_no_group_across_pseudo_competitor );
+      c61_no_pseudo_group );
     ( "spec cascade 6.1 conditional boundaries are opaque",
       `Quick,
-      c61_no_merge_conditional_boundaries_cli_shape );
+      c61_no_conditional_cli_merge );
     ( "spec cascade 6.1 important shorthand blocks normal longhand",
       `Quick,
       c61_important_blocks_longhand );
     ( "spec cascade 6.3 mixed importance shorthand longhand edges",
       `Quick,
-      c63_mixed_importance_shorthand_longhand_edges );
+      c63_mixed_importance_edges );
     ( "spec cascade 6.2 origin importance precedence rank",
       `Quick,
       c62_origin_importance_rank );

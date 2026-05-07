@@ -162,7 +162,7 @@ let test_spec_supports_invalid_vectors buf =
         (Fmt.str "invalid supports vector parsed: %S -> %S" input
            (Css.Supports.to_string actual))
 
-let test_spec_supports_condition_family_vectors buf =
+let test_supports_conditions buf =
   let row = pick Supports_inventory.rows buf 2 in
   let input = row.input in
   let once = Css.Supports.to_string (Css.Supports.of_string input) in
@@ -172,7 +172,7 @@ let test_spec_supports_condition_family_vectors buf =
       (Fmt.str "supports condition family serialization drifted: %S -> %S" once
          twice)
 
-let test_spec_supports_invalid_condition_family_vectors buf =
+let test_supports_invalid_conditions buf =
   let row = pick Supports_inventory.rows buf 3 in
   let input = Supports_inventory.mutate_invalid row (byte_at buf 4) in
   match
@@ -206,7 +206,7 @@ let suite =
       test_case "spec supports invalid vectors rejected" [ bytes ]
         test_spec_supports_invalid_vectors;
       test_case "spec supports condition family vectors" [ bytes ]
-        test_spec_supports_condition_family_vectors;
+        test_supports_conditions;
       test_case "spec invalid supports condition family vectors rejected"
-        [ bytes ] test_spec_supports_invalid_condition_family_vectors;
+        [ bytes ] test_supports_invalid_conditions;
     ] )

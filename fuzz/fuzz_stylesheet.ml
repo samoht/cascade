@@ -85,39 +85,39 @@ let generated_layer_stylesheet buf =
     rule buf 32;
   ]
 
-let generated_condition_stylesheet buf =
-  let media =
-    pick
-      [
-        Css.Media.of_string "(width >= 40em)";
-        Css.Media.of_string "(30em <= width < 60em)";
-        Css.Media.of_string "(dynamic-range: high)";
-        Css.Media.Prefers_reduced_motion Css.Media.Reduce;
-      ]
-      buf 0
-  in
-  let supports =
-    pick
-      [
-        Css.Supports.property "display" "grid";
-        Css.Supports.func "selector" ":has(img)";
-        Css.Supports.func "font-tech" "variations";
-        Css.Supports.And
-          ( Css.Supports.property "display" "grid",
-            Css.Supports.func "selector" ":has(img)" );
-      ]
-      buf 4
-  in
-  let container =
-    pick
-      [
-        Css.Container.of_string "(inline-size > 30em)";
-        Css.Container.of_string "(30em <= inline-size < 60em)";
-        Css.Container.of_string "style(--variant: featured)";
-        Css.Container.of_string "scroll-state(stuck: top)";
-      ]
-      buf 8
-  in
+let generated_media_condition buf =
+  pick
+    [
+      Css.Media.of_string "(width >= 40em)";
+      Css.Media.of_string "(30em <= width < 60em)";
+      Css.Media.of_string "(dynamic-range: high)";
+      Css.Media.Prefers_reduced_motion Css.Media.Reduce;
+    ]
+    buf 0
+
+let generated_supports_condition buf =
+  pick
+    [
+      Css.Supports.property "display" "grid";
+      Css.Supports.func "selector" ":has(img)";
+      Css.Supports.func "font-tech" "variations";
+      Css.Supports.And
+        ( Css.Supports.property "display" "grid",
+          Css.Supports.func "selector" ":has(img)" );
+    ]
+    buf 4
+
+let generated_container_condition buf =
+  pick
+    [
+      Css.Container.of_string "(inline-size > 30em)";
+      Css.Container.of_string "(30em <= inline-size < 60em)";
+      Css.Container.of_string "style(--variant: featured)";
+      Css.Container.of_string "scroll-state(stuck: top)";
+    ]
+    buf 8
+
+let nested_condition_block buf media supports container =
   [
     Css.Stylesheet.Media
       ( media,
@@ -147,6 +147,12 @@ let generated_condition_stylesheet buf =
         Some ".boundary",
         [ Css.Stylesheet.Starting_style [ rule buf 16 ] ] );
   ]
+
+let generated_condition_stylesheet buf =
+  let media = generated_media_condition buf in
+  let supports = generated_supports_condition buf in
+  let container = generated_container_condition buf in
+  nested_condition_block buf media supports container
 
 let parse_stylesheet input =
   let r = Css.Cursor.of_string input in
@@ -748,7 +754,7 @@ let test_namespace_prefix_separator buf =
                "CSS Namespaces serialization emitted unparsable CSS: %S -> %S"
                input output))
 
-let test_valid_at_rule_descriptor_vector buf =
+let test_valid_atrule_descriptor buf =
   let input =
     pick
       [
@@ -786,7 +792,7 @@ let test_valid_at_rule_descriptor_vector buf =
       if output = "" then
         fail (Fmt.str "valid at-rule serialized empty: %S" input)
 
-let test_invalid_at_rule_descriptor_vector buf =
+let test_invalid_atrule_descriptor buf =
   let input =
     pick
       [
@@ -821,7 +827,7 @@ let test_invalid_at_rule_descriptor_vector buf =
         (Fmt.str "invalid spec at-rule vector parsed: %S -> %S" input
            (minified_stylesheet ss))
 
-let test_shared_at_rule_inventory_valid buf =
+let test_atrule_inventory_valid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.positive buf 0 in
   match parse_stylesheet row.input with
   | None ->
@@ -850,7 +856,7 @@ let test_shared_at_rule_inventory_valid buf =
                   %S"
                  output twice))
 
-let test_shared_at_rule_inventory_invalid buf =
+let test_atrule_inventory_invalid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.negative buf 0 in
   match parse_stylesheet row.input with
   | None -> ()
@@ -880,7 +886,7 @@ let test_font_face_descriptor_matrix buf =
       if minified_stylesheet ss = "" then
         fail "font-face vector serialized empty"
 
-let test_invalid_font_face_descriptor_matrix buf =
+let test_invalid_font_face buf =
   let input =
     pick
       [
@@ -916,7 +922,7 @@ let test_page_margin_descriptor_matrix buf =
   | Some ss ->
       if minified_stylesheet ss = "" then fail "page vector serialized empty"
 
-let test_invalid_page_margin_descriptor_matrix buf =
+let test_invalid_page_margin buf =
   let input =
     pick
       [
@@ -932,7 +938,7 @@ let test_invalid_page_margin_descriptor_matrix buf =
         (Fmt.str "invalid page descriptor parsed: %S -> %S" input
            (minified_stylesheet ss))
 
-let test_font_palette_values_descriptor_matrix buf =
+let test_palette_descriptor_matrix buf =
   let input =
     pick
       [
@@ -949,7 +955,7 @@ let test_font_palette_values_descriptor_matrix buf =
       if minified_stylesheet ss = "" then
         fail "font-palette-values vector serialized empty"
 
-let test_invalid_font_palette_values_descriptor_matrix buf =
+let test_invalid_palette_descriptor buf =
   let input =
     pick
       [
@@ -982,7 +988,7 @@ let test_view_transition_descriptor_matrix buf =
       if minified_stylesheet ss = "" then
         fail "view-transition vector serialized empty"
 
-let test_invalid_view_transition_descriptor_matrix buf =
+let test_invalid_view_transition buf =
   let input =
     pick
       [
@@ -1016,7 +1022,7 @@ let test_position_try_descriptor_matrix buf =
       if minified_stylesheet ss = "" then
         fail "position-try vector serialized empty"
 
-let test_invalid_position_try_descriptor_matrix buf =
+let test_invalid_position_try buf =
   let input =
     pick
       [
@@ -1091,7 +1097,7 @@ let test_recovery_invalid_rule_boundary buf =
          css);
   if warnings = [] then fail (Fmt.str "invalid rule emitted no warning: %S" css)
 
-let test_recovery_bad_declaration_then_good buf =
+let test_recovery_bad_declaration buf =
   let bad_decl =
     pick
       [ "color:rgb(300)"; "background-color:rgb(999)"; "width:calc(1px + )" ]
@@ -1130,7 +1136,7 @@ let test_stylesheet_prelude_order_vectors buf =
         fail
           (Fmt.str "valid stylesheet prelude produced no statements: %S" input)
 
-let test_invalid_stylesheet_prelude_order_vectors buf =
+let test_invalid_prelude_order buf =
   let input =
     pick
       [
@@ -1206,33 +1212,33 @@ let suite =
       test_case "namespace prefix separator invariant" [ bytes ]
         test_namespace_prefix_separator;
       test_case "valid at-rule descriptor vectors" [ bytes ]
-        test_valid_at_rule_descriptor_vector;
+        test_valid_atrule_descriptor;
       test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
-        test_invalid_at_rule_descriptor_vector;
+        test_invalid_atrule_descriptor;
       test_case "shared at-rule inventory valid vectors" [ bytes ]
-        test_shared_at_rule_inventory_valid;
+        test_atrule_inventory_valid;
       test_case "shared at-rule inventory invalid vectors rejected" [ bytes ]
-        test_shared_at_rule_inventory_invalid;
+        test_atrule_inventory_invalid;
       test_case "font-face descriptor matrix" [ bytes ]
         test_font_face_descriptor_matrix;
       test_case "invalid font-face descriptor matrix rejected" [ bytes ]
-        test_invalid_font_face_descriptor_matrix;
+        test_invalid_font_face;
       test_case "page margin descriptor matrix" [ bytes ]
         test_page_margin_descriptor_matrix;
       test_case "invalid page margin descriptor matrix rejected" [ bytes ]
-        test_invalid_page_margin_descriptor_matrix;
+        test_invalid_page_margin;
       test_case "font-palette-values descriptor matrix" [ bytes ]
-        test_font_palette_values_descriptor_matrix;
+        test_palette_descriptor_matrix;
       test_case "invalid font-palette-values descriptor matrix rejected"
-        [ bytes ] test_invalid_font_palette_values_descriptor_matrix;
+        [ bytes ] test_invalid_palette_descriptor;
       test_case "view-transition descriptor matrix" [ bytes ]
         test_view_transition_descriptor_matrix;
       test_case "invalid view-transition descriptor matrix rejected" [ bytes ]
-        test_invalid_view_transition_descriptor_matrix;
+        test_invalid_view_transition;
       test_case "position-try descriptor matrix" [ bytes ]
         test_position_try_descriptor_matrix;
       test_case "invalid position-try descriptor matrix rejected" [ bytes ]
-        test_invalid_position_try_descriptor_matrix;
+        test_invalid_position_try;
       test_case "property value context invariant" [ bytes ]
         test_property_value_context;
       test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
@@ -1240,9 +1246,9 @@ let suite =
       test_case "CSS Syntax recovery invalid rule boundary" [ bytes ]
         test_recovery_invalid_rule_boundary;
       test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
-        test_recovery_bad_declaration_then_good;
+        test_recovery_bad_declaration;
       test_case "stylesheet prelude order vectors" [ bytes ]
         test_stylesheet_prelude_order_vectors;
       test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]
-        test_invalid_stylesheet_prelude_order_vectors;
+        test_invalid_prelude_order;
     ] )

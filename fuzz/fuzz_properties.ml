@@ -71,83 +71,83 @@ let check_reader_crash_safety reader printer input =
         (try Some (reader r2)
          with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None)
 
-let generated_property_vector buf =
-  pick
-    [
-      ( "display",
-        fun input ->
-          check_reader Css.Properties.read_display Css.Properties.pp_display
-            input );
-      ( "position",
-        fun input ->
-          check_reader Css.Properties.read_position Css.Properties.pp_position
-            input );
-      ( "overflow",
-        fun input ->
-          check_reader Css.Properties.read_overflow Css.Properties.pp_overflow
-            input );
-      ( "border",
-        fun input ->
-          check_reader Css.Properties.read_border Css.Properties.pp_border input
-      );
-      ( "font-family",
-        fun input ->
-          check_reader Css.Properties.read_font_family
-            Css.Properties.pp_font_family input );
-      ( "font-weight",
-        fun input ->
-          check_reader Css.Properties.read_font_weight
-            Css.Properties.pp_font_weight input );
-      ( "font-feature-settings",
-        fun input ->
-          check_reader Css.Properties.read_font_feature_settings
-            Css.Properties.pp_font_feature_settings input );
-      ( "transform",
-        fun input ->
-          check_reader Css.Properties.read_transform Css.Properties.pp_transform
-            input );
-      ( "transforms",
-        fun input ->
-          check_reader Css.Properties.read_transforms
-            Css.Properties.pp_transforms input );
-      ( "timing-function",
-        fun input ->
-          check_reader Css.Properties.read_timing_function
-            Css.Properties.pp_timing_function input );
-      ( "transition",
-        fun input ->
-          check_reader Css.Properties.read_transition
-            Css.Properties.pp_transition input );
-      ( "animation",
-        fun input ->
-          check_reader Css.Properties.read_animation Css.Properties.pp_animation
-            input );
-      ( "background-image",
-        fun input ->
-          check_reader Css.Properties.read_background_image
-            Css.Properties.pp_background_image input );
-      ( "background",
-        fun input ->
-          check_reader Css.Properties.read_background
-            Css.Properties.pp_background input );
-      ( "content",
-        fun input ->
-          check_reader Css.Properties.read_content Css.Properties.pp_content
-            input );
-      ( "container",
-        fun input ->
-          check_reader Css.Properties.read_container_shorthand
-            Css.Properties.pp_container_shorthand input );
-      ( "scroll-snap-type",
-        fun input ->
-          check_reader Css.Properties.read_scroll_snap_type
-            Css.Properties.pp_scroll_snap_type input );
-      ( "clip-path",
-        fun input ->
-          check_reader Css.Properties.read_clip_path Css.Properties.pp_clip_path
-            input );
-    ]
-    buf 0
+let property_vectors =
+  [
+    ( "display",
+      fun input ->
+        check_reader Css.Properties.read_display Css.Properties.pp_display input
+    );
+    ( "position",
+      fun input ->
+        check_reader Css.Properties.read_position Css.Properties.pp_position
+          input );
+    ( "overflow",
+      fun input ->
+        check_reader Css.Properties.read_overflow Css.Properties.pp_overflow
+          input );
+    ( "border",
+      fun input ->
+        check_reader Css.Properties.read_border Css.Properties.pp_border input
+    );
+    ( "font-family",
+      fun input ->
+        check_reader Css.Properties.read_font_family
+          Css.Properties.pp_font_family input );
+    ( "font-weight",
+      fun input ->
+        check_reader Css.Properties.read_font_weight
+          Css.Properties.pp_font_weight input );
+    ( "font-feature-settings",
+      fun input ->
+        check_reader Css.Properties.read_font_feature_settings
+          Css.Properties.pp_font_feature_settings input );
+    ( "transform",
+      fun input ->
+        check_reader Css.Properties.read_transform Css.Properties.pp_transform
+          input );
+    ( "transforms",
+      fun input ->
+        check_reader Css.Properties.read_transforms Css.Properties.pp_transforms
+          input );
+    ( "timing-function",
+      fun input ->
+        check_reader Css.Properties.read_timing_function
+          Css.Properties.pp_timing_function input );
+    ( "transition",
+      fun input ->
+        check_reader Css.Properties.read_transition Css.Properties.pp_transition
+          input );
+    ( "animation",
+      fun input ->
+        check_reader Css.Properties.read_animation Css.Properties.pp_animation
+          input );
+    ( "background-image",
+      fun input ->
+        check_reader Css.Properties.read_background_image
+          Css.Properties.pp_background_image input );
+    ( "background",
+      fun input ->
+        check_reader Css.Properties.read_background Css.Properties.pp_background
+          input );
+    ( "content",
+      fun input ->
+        check_reader Css.Properties.read_content Css.Properties.pp_content input
+    );
+    ( "container",
+      fun input ->
+        check_reader Css.Properties.read_container_shorthand
+          Css.Properties.pp_container_shorthand input );
+    ( "scroll-snap-type",
+      fun input ->
+        check_reader Css.Properties.read_scroll_snap_type
+          Css.Properties.pp_scroll_snap_type input );
+    ( "clip-path",
+      fun input ->
+        check_reader Css.Properties.read_clip_path Css.Properties.pp_clip_path
+          input );
+  ]
+
+let generated_property_vector buf = pick property_vectors buf 0
 
 let generated_property_crash_vector buf =
   pick
@@ -525,7 +525,7 @@ let test_property_grammar_manifest_invalid buf =
   let row = pick property_grammar_vectors buf 0 in
   row.reject (pick row.negatives buf 1)
 
-let test_property_grammar_manifest_has_both_kinds _buf =
+let test_property_manifest_kinds _buf =
   let names = List.map (fun row -> row.property) property_grammar_vectors in
   let unique_names = List.sort_uniq String.compare names in
   if List.length names <> List.length unique_names then
@@ -538,77 +538,89 @@ let test_property_grammar_manifest_has_both_kinds _buf =
         fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
     property_grammar_vectors
 
-let assert_shared_inventory_shape () =
-  let rows = property_inventory in
+let normalize_value = String.trim
+
+let shared_property_names rows =
+  List.map
+    (fun (row : Cascade_spec_inventory.Property_grammar.row) -> row.property)
+    rows
+
+let assert_inventory_size rows =
   if List.length rows < 431 then
     fail
       (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length rows));
-  let names =
-    List.map
-      (fun (row : Cascade_spec_inventory.Property_grammar.row) -> row.property)
-      rows
-  in
+         (List.length rows))
+
+let assert_unique_property_names rows =
+  let names = shared_property_names rows in
   let unique_names = List.sort_uniq String.compare names in
   if List.length names <> List.length unique_names then
-    fail "shared property grammar inventory has duplicate property rows";
-  let normalize_value = String.trim in
+    fail "shared property grammar inventory has duplicate property rows"
+
+let assert_css_property_name property =
+  if String.trim property <> property then
+    fail
+      (Fmt.str "%S has leading or trailing property-name whitespace" property);
+  if property = "" then fail "shared inventory has empty property row";
+  String.iter
+    (function
+      | 'a' .. 'z' | '0' .. '9' | '-' -> ()
+      | c ->
+          fail
+            (Fmt.str "%s contains non-CSS property-name character %C" property c))
+    property
+
+let duplicate_values values =
+  let normalized = List.map normalize_value values in
+  List.length normalized
+  <> List.length (List.sort_uniq String.compare normalized)
+
+let assert_branch_inventory row =
+  if row.positives = [] then
+    fail (Fmt.str "%s shared row has no positive vectors" row.property);
+  if row.negatives = [] then
+    fail (Fmt.str "%s shared row has no negative vectors" row.property);
+  if List.length row.positives < 2 then
+    fail
+      (Fmt.str "%s shared row needs at least two positive branch vectors"
+         row.property);
+  if List.length row.negatives < 2 then
+    fail
+      (Fmt.str "%s shared row needs at least two negative branch vectors"
+         row.property);
+  if duplicate_values row.positives then
+    fail (Fmt.str "%s shared row has duplicate positive vectors" row.property);
+  if duplicate_values row.negatives then
+    fail (Fmt.str "%s shared row has duplicate negative vectors" row.property)
+
+let assert_branch_disjoint row =
+  let positive_set =
+    List.sort_uniq String.compare (List.map normalize_value row.positives)
+  in
   List.iter
-    (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
-      if String.trim row.property <> row.property then
+    (fun value ->
+      if normalize_value value = "" then
+        fail (Fmt.str "%s shared row has an empty vector" row.property))
+    (row.positives @ row.negatives);
+  List.iter
+    (fun negative ->
+      let normalized = normalize_value negative in
+      if List.mem normalized positive_set then
         fail
-          (Fmt.str "%S has leading or trailing property-name whitespace"
-             row.property);
-      if row.property = "" then fail "shared inventory has empty property row";
-      String.iter
-        (function
-          | 'a' .. 'z' | '0' .. '9' | '-' -> ()
-          | c ->
-              fail
-                (Fmt.str "%s contains non-CSS property-name character %C"
-                   row.property c))
-        row.property;
-      if row.positives = [] then
-        fail (Fmt.str "%s shared row has no positive vectors" row.property);
-      if row.negatives = [] then
-        fail (Fmt.str "%s shared row has no negative vectors" row.property);
-      if List.length row.positives < 2 then
-        fail
-          (Fmt.str "%s shared row needs at least two positive branch vectors"
-             row.property);
-      if List.length row.negatives < 2 then
-        fail
-          (Fmt.str "%s shared row needs at least two negative branch vectors"
-             row.property);
-      let duplicate_values values =
-        let normalized = List.map normalize_value values in
-        List.length normalized
-        <> List.length (List.sort_uniq String.compare normalized)
-      in
-      if duplicate_values row.positives then
-        fail
-          (Fmt.str "%s shared row has duplicate positive vectors" row.property);
-      if duplicate_values row.negatives then
-        fail
-          (Fmt.str "%s shared row has duplicate negative vectors" row.property);
-      let positive_set =
-        List.sort_uniq String.compare (List.map normalize_value row.positives)
-      in
-      List.iter
-        (fun value ->
-          if normalize_value value = "" then
-            fail (Fmt.str "%s shared row has an empty vector" row.property))
-        (row.positives @ row.negatives);
-      List.iter
-        (fun negative ->
-          let normalized = normalize_value negative in
-          if List.mem normalized positive_set then
-            fail
-              (Fmt.str
-                 "%s shared grammar vector is both positive and negative: %S"
-                 row.property normalized))
-        row.negatives)
-    rows
+          (Fmt.str "%s shared grammar vector is both positive and negative: %S"
+             row.property normalized))
+    row.negatives
+
+let assert_shared_row row =
+  assert_css_property_name row.property;
+  assert_branch_inventory row;
+  assert_branch_disjoint row
+
+let assert_shared_inventory_shape () =
+  let rows = property_inventory in
+  assert_inventory_size rows;
+  assert_unique_property_names rows;
+  List.iter assert_shared_row rows
 
 let test_shared_inventory_row_shape _buf = assert_shared_inventory_shape ()
 
@@ -795,133 +807,131 @@ let test_inventory_invalid_mutation buf =
   assert_decl_reject "shared-inventory generated invalid"
     (row.property ^ ":" ^ invalid)
 
-let test_property_value_branch_depth_positive buf =
-  let input =
-    pick
-      [
-        "background:url(bg.png) no-repeat left 10px top 20%/cover border-box \
-         content-box";
-        "background-image:image-set(url(a.avif) type(\"image/avif\") \
-         1x,url(a.png) type(\"image/png\") 1x)";
-        "background-image:linear-gradient(in oklab,red,blue)";
-        "background-image:linear-gradient(to right in oklab,red,blue)";
-        "background-image:linear-gradient(in oklab to right,red,blue)";
-        "background-image:radial-gradient(in oklab,red,blue)";
-        "background-image:radial-gradient(circle at center in oklab,red,blue)";
-        "background-image:conic-gradient(in hsl longer hue,red,blue)";
-        "background-image:conic-gradient(from 45deg at center in hsl longer \
-         hue,red,blue)";
-        "background-image:cross-fade(url(a.png) 40%,url(b.png))";
-        "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
-        "mask-border:url(mask.svg) 30 fill";
-        "border-block:1px solid red";
-        "border-inline-color:red blue";
-        "clip-path:xywh(0 0 100% 100% round 10px)";
-        "shape-outside:inset(10px round 2px)";
-        "width:clamp(10px,5vw,100px)";
-        "width:round(nearest,10px,3px)";
-        "width:calc-size(auto,size + 1rem)";
-        "width:attr(data-w px,10px)";
-        "width:attr(data-w px,calc(100% - 1rem))";
-        "width:attr(data-w px,calc(10px + 0px))";
-        "width:attr(data-w px,var(--fallback,10px))";
-        "height:attr(data-h type(<length>),1rem)";
-        "opacity:sign(var(--delta))";
-        "color:attr(data-color type(<color>),red)";
-        "color:attr(data-color type(<color>),var(--fallback-color,red))";
-        "color:rgb(from var(--c) r g b/50%)";
-        "color:color-mix(in lch longer hue,red 30%,#00f)";
-        "grid-template-areas:\"nav  main\" \".    foot\"";
-        "grid-template-areas:\".  .\"";
-        "content:\"nav  main\"";
-        "content:attr(data-label string,\"x y\")";
-        "content:attr(data-label string,var(--label,\"x y\"))";
-        "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
-        "font-synthesis-style:oblique-only";
-        "font-synthesis-small-caps:auto";
-        "font-synthesis-position:none";
-        "font-variant-ligatures:common-ligatures no-discretionary-ligatures \
-         historical-ligatures contextual";
-        "font-variant-numeric:oldstyle-nums tabular-nums stacked-fractions \
-         ordinal slashed-zero";
-        "font-variant-east-asian:traditional proportional-width ruby";
-        "column-rule:thin solid currentColor";
-        "column-span:all";
-        "text-emphasis:filled dot red";
-        "text-emphasis-style:open sesame";
-        "text-emphasis-color:currentColor";
-        "text-emphasis-position:under left";
-        "text-emphasis-skip:punctuation symbols";
-        "text-underline-position:under left";
-        "text-combine-upright:digits 4";
-        "counter-reset:section 2 page -1";
-        "counter-increment:section 2";
-        "content:open-quote counters(section,\".\") close-quote";
-        "glyph-orientation-vertical:90deg";
-        "text-decoration-skip:auto";
-        "text-decoration-skip-self:objects";
-        "text-decoration-skip-box:none";
-        "text-decoration-skip-inset:auto";
-        "text-decoration-skip-spaces:start end";
-        "text-orientation:upright";
-        "line-break:anywhere";
-        "text-box:trim-both cap alphabetic";
-        "text-box-edge:cap alphabetic";
-        "line-fit-edge:ideographic-ink";
-        "inline-sizing:stretch";
-        "initial-letter-align:border-box hanging";
-        "initial-letter-wrap:grid";
-        "dominant-baseline:mathematical";
-        "baseline-source:last";
-        "alignment-baseline:central";
-        "baseline-shift:10%";
-        "ruby-position:alternate over";
-        "ruby-align:space-between";
-        "ruby-merge:merge";
-        "ruby-overhang:none";
-        "caret:red manual block";
-        "caret-animation:manual";
-        "caret-shape:underscore";
-        "interactivity:inert";
-        "interest-delay:200ms 1s";
-        "interest-delay-start:200ms";
-        "interest-delay-end:1s";
-        "nav-up:#next current";
-        "nav-right:#next root";
-        "nav-down:#next \"sidebar\"";
-        "nav-left:#next";
-        "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr";
-        "animation:fade 1s linear .2s 2 alternate both running";
-        "animation-composition:accumulate,replace";
-        "animation-range-start:entry 10%";
-        "animation-range-end:exit 90%";
-        "transition:opacity 1s ease-in .2s allow-discrete";
-        "overscroll-behavior-inline:none";
-        "overscroll-behavior-block:contain";
-        "scroll-snap-align:none start";
-        "scroll-timeline:--scroller block";
-        "scroll-timeline-name:--scroller";
-        "scroll-timeline-axis:inline";
-        "view-timeline:--reveal inline";
-        "view-timeline-inset:auto 10%";
-        "container:card/inline-size";
-        "position-area:top span-left";
-        "position-try-fallbacks:--below,flip-block,--above";
-        "position-try-order:most-width";
-        "position-visibility:anchors-visible no-overflow";
-        "overlay:auto";
-        "interpolate-size:allow-keywords";
-        "min-intrinsic-sizing:zero-if-scroll zero-if-extrinsic";
-        "contain-intrinsic-width:auto 300px";
-        "contain-intrinsic-inline-size:100px";
-        "object-view-box:inset(0 0 10% 0)";
-        "image-rendering:pixelated";
-        "image-resolution:from-image 2dppx";
-        "offset-rotate:reverse 45deg";
-        "view-transition-class:card primary";
-      ]
-      buf 2
-  in
+let positive_branch_vectors =
+  [
+    "background:url(bg.png) no-repeat left 10px top 20%/cover border-box \
+     content-box";
+    "background-image:image-set(url(a.avif) type(\"image/avif\") 1x,url(a.png) \
+     type(\"image/png\") 1x)";
+    "background-image:linear-gradient(in oklab,red,blue)";
+    "background-image:linear-gradient(to right in oklab,red,blue)";
+    "background-image:linear-gradient(in oklab to right,red,blue)";
+    "background-image:radial-gradient(in oklab,red,blue)";
+    "background-image:radial-gradient(circle at center in oklab,red,blue)";
+    "background-image:conic-gradient(in hsl longer hue,red,blue)";
+    "background-image:conic-gradient(from 45deg at center in hsl longer \
+     hue,red,blue)";
+    "background-image:cross-fade(url(a.png) 40%,url(b.png))";
+    "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
+    "mask-border:url(mask.svg) 30 fill";
+    "border-block:1px solid red";
+    "border-inline-color:red blue";
+    "clip-path:xywh(0 0 100% 100% round 10px)";
+    "shape-outside:inset(10px round 2px)";
+    "width:clamp(10px,5vw,100px)";
+    "width:round(nearest,10px,3px)";
+    "width:calc-size(auto,size + 1rem)";
+    "width:attr(data-w px,10px)";
+    "width:attr(data-w px,calc(100% - 1rem))";
+    "width:attr(data-w px,calc(10px + 0px))";
+    "width:attr(data-w px,var(--fallback,10px))";
+    "height:attr(data-h type(<length>),1rem)";
+    "opacity:sign(var(--delta))";
+    "color:attr(data-color type(<color>),red)";
+    "color:attr(data-color type(<color>),var(--fallback-color,red))";
+    "color:rgb(from var(--c) r g b/50%)";
+    "color:color-mix(in lch longer hue,red 30%,#00f)";
+    "grid-template-areas:\"nav  main\" \".    foot\"";
+    "grid-template-areas:\".  .\"";
+    "content:\"nav  main\"";
+    "content:attr(data-label string,\"x y\")";
+    "content:attr(data-label string,var(--label,\"x y\"))";
+    "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
+    "font-synthesis-style:oblique-only";
+    "font-synthesis-small-caps:auto";
+    "font-synthesis-position:none";
+    "font-variant-ligatures:common-ligatures no-discretionary-ligatures \
+     historical-ligatures contextual";
+    "font-variant-numeric:oldstyle-nums tabular-nums stacked-fractions ordinal \
+     slashed-zero";
+    "font-variant-east-asian:traditional proportional-width ruby";
+    "column-rule:thin solid currentColor";
+    "column-span:all";
+    "text-emphasis:filled dot red";
+    "text-emphasis-style:open sesame";
+    "text-emphasis-color:currentColor";
+    "text-emphasis-position:under left";
+    "text-emphasis-skip:punctuation symbols";
+    "text-underline-position:under left";
+    "text-combine-upright:digits 4";
+    "counter-reset:section 2 page -1";
+    "counter-increment:section 2";
+    "content:open-quote counters(section,\".\") close-quote";
+    "glyph-orientation-vertical:90deg";
+    "text-decoration-skip:auto";
+    "text-decoration-skip-self:objects";
+    "text-decoration-skip-box:none";
+    "text-decoration-skip-inset:auto";
+    "text-decoration-skip-spaces:start end";
+    "text-orientation:upright";
+    "line-break:anywhere";
+    "text-box:trim-both cap alphabetic";
+    "text-box-edge:cap alphabetic";
+    "line-fit-edge:ideographic-ink";
+    "inline-sizing:stretch";
+    "initial-letter-align:border-box hanging";
+    "initial-letter-wrap:grid";
+    "dominant-baseline:mathematical";
+    "baseline-source:last";
+    "alignment-baseline:central";
+    "baseline-shift:10%";
+    "ruby-position:alternate over";
+    "ruby-align:space-between";
+    "ruby-merge:merge";
+    "ruby-overhang:none";
+    "caret:red manual block";
+    "caret-animation:manual";
+    "caret-shape:underscore";
+    "interactivity:inert";
+    "interest-delay:200ms 1s";
+    "interest-delay-start:200ms";
+    "interest-delay-end:1s";
+    "nav-up:#next current";
+    "nav-right:#next root";
+    "nav-down:#next \"sidebar\"";
+    "nav-left:#next";
+    "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr";
+    "animation:fade 1s linear .2s 2 alternate both running";
+    "animation-composition:accumulate,replace";
+    "animation-range-start:entry 10%";
+    "animation-range-end:exit 90%";
+    "transition:opacity 1s ease-in .2s allow-discrete";
+    "overscroll-behavior-inline:none";
+    "overscroll-behavior-block:contain";
+    "scroll-snap-align:none start";
+    "scroll-timeline:--scroller block";
+    "scroll-timeline-name:--scroller";
+    "scroll-timeline-axis:inline";
+    "view-timeline:--reveal inline";
+    "view-timeline-inset:auto 10%";
+    "container:card/inline-size";
+    "position-area:top span-left";
+    "position-try-fallbacks:--below,flip-block,--above";
+    "position-try-order:most-width";
+    "position-visibility:anchors-visible no-overflow";
+    "overlay:auto";
+    "interpolate-size:allow-keywords";
+    "min-intrinsic-sizing:zero-if-scroll zero-if-extrinsic";
+    "contain-intrinsic-width:auto 300px";
+    "contain-intrinsic-inline-size:100px";
+    "object-view-box:inset(0 0 10% 0)";
+    "image-rendering:pixelated";
+    "image-resolution:from-image 2dppx";
+    "offset-rotate:reverse 45deg";
+    "view-transition-class:card primary";
+  ]
+
+let assert_branch_roundtrip input =
   match parse_declaration input with
   | None ->
       fail
@@ -942,112 +952,113 @@ let test_property_value_branch_depth_positive buf =
                 roundtrip: %S -> %S"
                input serialized))
 
-let test_property_value_branch_depth_negative buf =
-  let input =
-    pick
-      [
-        "background:red blue";
-        "background-image:image-set(url(a.png))";
-        "background-image:cross-fade(url(a.png),)";
-        "border-image:linear-gradient(red,blue) fill fill";
-        "mask-border:fill fill";
-        "border-block:solid solid";
-        "border-inline-color:red blue green";
-        "clip-path:xywh(0 0)";
-        "shape-outside:circle()";
-        "width:clamp(10px,20px)";
-        "width:round(10px)";
-        "width:calc-size()";
-        "opacity:sign()";
-        "color:rgb(from red r g)";
-        "color:color-mix(in bogus,red,blue)";
-        "font:bold serif";
-        "font-synthesis-style:auto none";
-        "font-synthesis-small-caps:auto none";
-        "font-synthesis-position:normal";
-        "font-variant-ligatures:normal common-ligatures";
-        "font-variant-numeric:normal tabular-nums";
-        "font-variant-east-asian:jis78 jis83";
-        "column-rule:solid solid";
-        "column-span:none all";
-        "text-emphasis:filled open";
-        "text-emphasis-style:dot circle";
-        "text-emphasis-color:red blue";
-        "text-emphasis-position:over under";
-        "text-emphasis-skip:spaces spaces";
-        "text-underline-position:auto under";
-        "text-combine-upright:digits 5";
-        "counter-reset:none section";
-        "counter-increment:section 1.5";
-        "content:counter()";
-        "glyph-orientation-vertical:45deg";
-        "text-decoration-skip:none auto";
-        "text-decoration-skip-self:auto";
-        "text-decoration-skip-box:all none";
-        "text-decoration-skip-inset:1px";
-        "text-decoration-skip-spaces:start start";
-        "text-orientation:mixed upright";
-        "line-break:anywhere strict";
-        "text-box:cap trim-both";
-        "text-box-edge:cap";
-        "line-fit-edge:leading text";
-        "inline-sizing:normal stretch";
-        "initial-letter-align:alphabetic ideographic";
-        "initial-letter-wrap:none first";
-        "dominant-baseline:alphabetic ideographic";
-        "baseline-source:first last";
-        "alignment-baseline:baseline middle";
-        "baseline-shift:sub super";
-        "ruby-position:over under";
-        "ruby-align:start center";
-        "ruby-merge:merge separate";
-        "ruby-overhang:auto none";
-        "caret:block underscore";
-        "caret-animation:manual auto";
-        "caret-shape:bar block";
-        "interactivity:auto inert";
-        "interest-delay:1s 2s 3s";
-        "interest-delay-start:-1s";
-        "interest-delay-end:auto";
-        "nav-up:current";
-        "nav-right:#next current root";
-        "nav-down:#next \"_self\"";
-        "nav-left:auto #next";
-        "grid-template-areas:\"nav/main\"";
-        "grid-template-areas:\"nav main\" \"foot\"";
-        "grid-template-areas:\"a .\" \". a\"";
-        "grid-template:none/1fr";
-        "animation:1s 2s 3s";
-        "animation-composition:add replace";
-        "animation-range-start:entry exit";
-        "animation-range-end:10% 20%";
-        "transition:allow-discrete allow-discrete";
-        "overscroll-behavior-inline:contain none";
-        "overscroll-behavior-block:hidden";
-        "scroll-snap-align:start center end";
-        "scroll-timeline:block --scroller";
-        "scroll-timeline-name:scroller";
-        "scroll-timeline-axis:block inline";
-        "view-timeline:inline --reveal";
-        "view-timeline-inset:auto auto auto";
-        "container:card/inline-size/size";
-        "position-area:top bottom";
-        "position-try-fallbacks:flip-block --below";
-        "position-try-order:most-width normal";
-        "position-visibility:always anchors-visible";
-        "overlay:auto none";
-        "interpolate-size:numeric-only allow-keywords";
-        "min-intrinsic-sizing:zero-if-scroll zero-if-scroll";
-        "contain-intrinsic-width:auto";
-        "contain-intrinsic-inline-size:1px 2px";
-        "object-view-box:inset()";
-        "image-rendering:pixelated smooth";
-        "image-resolution:from-image from-image";
-        "offset-rotate:reverse reverse";
-        "view-transition-class:none card";
-      ]
-      buf 3
-  in
+let test_value_branch_positive buf =
+  assert_branch_roundtrip (pick positive_branch_vectors buf 2)
+
+let negative_branch_vectors =
+  [
+    "background:red blue";
+    "background-image:image-set(url(a.png))";
+    "background-image:cross-fade(url(a.png),)";
+    "border-image:linear-gradient(red,blue) fill fill";
+    "mask-border:fill fill";
+    "border-block:solid solid";
+    "border-inline-color:red blue green";
+    "clip-path:xywh(0 0)";
+    "shape-outside:circle()";
+    "width:clamp(10px,20px)";
+    "width:round(10px)";
+    "width:calc-size()";
+    "opacity:sign()";
+    "color:rgb(from red r g)";
+    "color:color-mix(in bogus,red,blue)";
+    "font:bold serif";
+    "font-synthesis-style:auto none";
+    "font-synthesis-small-caps:auto none";
+    "font-synthesis-position:normal";
+    "font-variant-ligatures:normal common-ligatures";
+    "font-variant-numeric:normal tabular-nums";
+    "font-variant-east-asian:jis78 jis83";
+    "column-rule:solid solid";
+    "column-span:none all";
+    "text-emphasis:filled open";
+    "text-emphasis-style:dot circle";
+    "text-emphasis-color:red blue";
+    "text-emphasis-position:over under";
+    "text-emphasis-skip:spaces spaces";
+    "text-underline-position:auto under";
+    "text-combine-upright:digits 5";
+    "counter-reset:none section";
+    "counter-increment:section 1.5";
+    "content:counter()";
+    "glyph-orientation-vertical:45deg";
+    "text-decoration-skip:none auto";
+    "text-decoration-skip-self:auto";
+    "text-decoration-skip-box:all none";
+    "text-decoration-skip-inset:1px";
+    "text-decoration-skip-spaces:start start";
+    "text-orientation:mixed upright";
+    "line-break:anywhere strict";
+    "text-box:cap trim-both";
+    "text-box-edge:cap";
+    "line-fit-edge:leading text";
+    "inline-sizing:normal stretch";
+    "initial-letter-align:alphabetic ideographic";
+    "initial-letter-wrap:none first";
+    "dominant-baseline:alphabetic ideographic";
+    "baseline-source:first last";
+    "alignment-baseline:baseline middle";
+    "baseline-shift:sub super";
+    "ruby-position:over under";
+    "ruby-align:start center";
+    "ruby-merge:merge separate";
+    "ruby-overhang:auto none";
+    "caret:block underscore";
+    "caret-animation:manual auto";
+    "caret-shape:bar block";
+    "interactivity:auto inert";
+    "interest-delay:1s 2s 3s";
+    "interest-delay-start:-1s";
+    "interest-delay-end:auto";
+    "nav-up:current";
+    "nav-right:#next current root";
+    "nav-down:#next \"_self\"";
+    "nav-left:auto #next";
+    "grid-template-areas:\"nav/main\"";
+    "grid-template-areas:\"nav main\" \"foot\"";
+    "grid-template-areas:\"a .\" \". a\"";
+    "grid-template:none/1fr";
+    "animation:1s 2s 3s";
+    "animation-composition:add replace";
+    "animation-range-start:entry exit";
+    "animation-range-end:10% 20%";
+    "transition:allow-discrete allow-discrete";
+    "overscroll-behavior-inline:contain none";
+    "overscroll-behavior-block:hidden";
+    "scroll-snap-align:start center end";
+    "scroll-timeline:block --scroller";
+    "scroll-timeline-name:scroller";
+    "scroll-timeline-axis:block inline";
+    "view-timeline:inline --reveal";
+    "view-timeline-inset:auto auto auto";
+    "container:card/inline-size/size";
+    "position-area:top bottom";
+    "position-try-fallbacks:flip-block --below";
+    "position-try-order:most-width normal";
+    "position-visibility:always anchors-visible";
+    "overlay:auto none";
+    "interpolate-size:numeric-only allow-keywords";
+    "min-intrinsic-sizing:zero-if-scroll zero-if-scroll";
+    "contain-intrinsic-width:auto";
+    "contain-intrinsic-inline-size:1px 2px";
+    "object-view-box:inset()";
+    "image-rendering:pixelated smooth";
+    "image-resolution:from-image from-image";
+    "offset-rotate:reverse reverse";
+    "view-transition-class:none card";
+  ]
+
+let assert_branch_reject input =
   match parse_declaration input with
   | None -> ()
   | Some decl ->
@@ -1055,6 +1066,9 @@ let test_property_value_branch_depth_negative buf =
         (Fmt.str "property branch-depth negative declaration parsed: %S -> %S"
            input
            (Css.Declaration.string_of_declaration ~minify:true decl))
+
+let test_value_branch_negative buf =
+  assert_branch_reject (pick negative_branch_vectors buf 3)
 
 let suite =
   ( "properties",
@@ -1072,7 +1086,7 @@ let suite =
       test_case "property grammar manifest invalid vectors" [ bytes ]
         test_property_grammar_manifest_invalid;
       test_case "property grammar manifest row shape" [ bytes ]
-        test_property_grammar_manifest_has_both_kinds;
+        test_property_manifest_kinds;
       test_case "shared inventory row shape invariants" [ bytes ]
         test_shared_inventory_row_shape;
       test_case "shared inventory CSS-wide generated vectors" [ bytes ]
@@ -1088,7 +1102,7 @@ let suite =
       test_case "shared inventory invalid declaration mutations" [ bytes ]
         test_inventory_invalid_mutation;
       test_case "property value branch-depth positive vectors" [ bytes ]
-        test_property_value_branch_depth_positive;
+        test_value_branch_positive;
       test_case "property value branch-depth negative vectors" [ bytes ]
-        test_property_value_branch_depth_negative;
+        test_value_branch_negative;
     ] )

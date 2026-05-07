@@ -244,7 +244,7 @@ let test_where_specificity_zero buf =
         fail
           (Fmt.str ":where() specificity was not zero after parsing: %S" branch)
 
-let test_selector_specificity_preserved_by_minify buf =
+let test_selector_specificity_minify buf =
   let input =
     pick
       [
@@ -455,7 +455,7 @@ let suite =
       test_case "where specificity zero invariant" [ bytes ]
         test_where_specificity_zero;
       test_case "selector specificity preserved by minify" [ bytes ]
-        test_selector_specificity_preserved_by_minify;
+        test_selector_specificity_minify;
       test_case "pseudo-class family vectors" [ bytes ]
         test_pseudo_class_family_vectors;
       test_case "pseudo-element family vectors" [ bytes ]
