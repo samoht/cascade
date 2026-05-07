@@ -575,7 +575,8 @@ let duplicate_values values =
   List.length normalized
   <> List.length (List.sort_uniq String.compare normalized)
 
-let assert_branch_inventory row =
+let assert_branch_inventory (row : Cascade_spec_inventory.Property_grammar.row)
+    =
   if row.positives = [] then
     fail (Fmt.str "%s shared row has no positive vectors" row.property);
   if row.negatives = [] then
@@ -593,7 +594,7 @@ let assert_branch_inventory row =
   if duplicate_values row.negatives then
     fail (Fmt.str "%s shared row has duplicate negative vectors" row.property)
 
-let assert_branch_disjoint row =
+let assert_branch_disjoint (row : Cascade_spec_inventory.Property_grammar.row) =
   let positive_set =
     List.sort_uniq String.compare (List.map normalize_value row.positives)
   in
@@ -611,7 +612,7 @@ let assert_branch_disjoint row =
              row.property normalized))
     row.negatives
 
-let assert_shared_row row =
+let assert_shared_row (row : Cascade_spec_inventory.Property_grammar.row) =
   assert_css_property_name row.property;
   assert_branch_inventory row;
   assert_branch_disjoint row
