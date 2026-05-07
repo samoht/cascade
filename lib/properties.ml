@@ -10307,7 +10307,12 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   in
   let read_number_or_ratio t : aspect_ratio =
     let w, h = read_ratio t in
-    Ratio (w, h)
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "auto" ->
+        Cursor.skip t;
+        Auto_ratio (w, h)
+    | _ -> Ratio (w, h)
   in
   let read_auto t : aspect_ratio =
     match Cursor.peek_ident t with
