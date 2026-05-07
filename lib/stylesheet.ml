@@ -1148,7 +1148,7 @@ let read_import_media (r : Cursor.t) =
   if Cursor.peek_semicolon r || Cursor.is_done r then None
   else
     let loc = Cursor.position r in
-    let raw = Cursor.consume_to_semicolon ~trim:true r in
+    let raw = Cursor.consume_until_semicolon ~trim:true r in
     try Some (Media.of_string_strict raw)
     with Failure reason ->
       Error.fail_bad_condition loc ~at_rule:"@media" ~reason
@@ -1847,7 +1847,7 @@ let rec read_viewport_descriptor (r : Cursor.t) : viewport_descriptor option =
       Cursor.ws r;
       if not (Cursor.colon r) then Cursor.err_expected r "':'";
       Cursor.ws r;
-      let value = String.trim (Cursor.consume_to_semicolon ~trim:true r) in
+      let value = String.trim (Cursor.consume_until_semicolon ~trim:true r) in
       Some { name; value }
   | Some _ -> Cursor.err_expected r "<viewport-descriptor>"
 
@@ -2475,7 +2475,7 @@ and read_property_descriptors (r : Cursor.t) : property_reader_state =
           let inherits_value = Cursor.bool r in
           state := { !state with inherits = Some inherits_value }
       | "initial-value" ->
-          let value_str = Cursor.consume_to_semicolon ~trim:true r in
+          let value_str = Cursor.consume_until_semicolon ~trim:true r in
           state := { !state with initial_value = Some value_str }
       | _ -> Cursor.err_invalid r "unknown property descriptor");
       Cursor.ws r;

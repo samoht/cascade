@@ -544,7 +544,7 @@ let single_feature_of_media (media : Media.t) =
       None
   | _ -> Some media
 
-let container_specific_of_string raw =
+let specific_of_string raw =
   let raw = String.trim raw in
   if raw = "" then failwith "empty container query";
   match classify_query_surface raw with
@@ -598,8 +598,8 @@ and atom_of_string s =
   | _ when String.contains s 'v' && contains_var_function s -> (
       match unresolved_media_feature s with
       | Some query -> query
-      | None -> container_specific_of_string s)
-  | Style_func _ | Scroll_state_func _ -> container_specific_of_string s
+      | None -> specific_of_string s)
+  | Style_func _ | Scroll_state_func _ -> specific_of_string s
   | Parenthesized_feature | Other_query -> (
       match Media.of_string_strict s with
       | Media.Min_width_rem rem -> Min_width_rem rem
@@ -609,7 +609,7 @@ and atom_of_string s =
           match single_feature_of_media media with
           | Some f -> Feature_query f
           | None -> failwith "not a container feature query")
-      | exception Failure _ -> container_specific_of_string s)
+      | exception Failure _ -> specific_of_string s)
 
 let of_string s =
   match split_named s with

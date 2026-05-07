@@ -88,7 +88,7 @@ let is_decl_value_stop = function
   | Component.Preserved { kind = Token.Semicolon | Token.Delim "!"; _ } -> true
   | _ -> false
 
-let declaration_value_components t =
+let value_components t =
   let rec take acc = function
     | [] -> List.rev acc
     | cv :: _ when is_decl_value_stop cv -> List.rev acc
@@ -104,8 +104,8 @@ let rec component_is_complete = function
       terminated && List.for_all component_is_complete arguments
 
 let validate_complete_declaration_value t =
-  if not (List.for_all component_is_complete (declaration_value_components t))
-  then Cursor.err_invalid t "unterminated component value"
+  if not (List.for_all component_is_complete (value_components t)) then
+    Cursor.err_invalid t "unterminated component value"
 
 let rec component_has_curly_block = function
   | Component.Block { node = { opening = Token.Curly; _ }; _ } -> true
@@ -115,8 +115,8 @@ let rec component_has_curly_block = function
       List.exists component_has_curly_block arguments
   | Component.Preserved _ -> false
 
-let validate_no_curly_block_declaration_value t =
-  if List.exists component_has_curly_block (declaration_value_components t) then
+let reject_curly_block_value t =
+  if List.exists component_has_curly_block (value_components t) then
     Cursor.err_invalid t "curly block in declaration value"
 
 let rec component_has_unterminated_string = function
@@ -129,11 +129,9 @@ let rec component_has_unterminated_string = function
       List.exists component_has_unterminated_string arguments
   | Component.Preserved _ -> false
 
-let validate_no_unterminated_string_declaration_value t =
-  if
-    List.exists component_has_unterminated_string
-      (declaration_value_components t)
-  then Cursor.err_invalid t "unterminated string in declaration value"
+let reject_unterminated_string_value t =
+  if List.exists component_has_unterminated_string (value_components t) then
+    Cursor.err_invalid t "unterminated string in declaration value"
 
 let css_wide_keywords =
   [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
@@ -399,7 +397,7 @@ let generic_font_family_keywords =
     "fangsong";
   ]
 
-let font_shorthand_starts_long_family_with_generic r =
+let long_generic_family_start r =
   let is_ws = function
     | Component.Preserved { kind = Token.Whitespace; _ } -> true
     | _ -> false
@@ -448,7 +446,7 @@ let read_font_shorthand_body r =
                   Cursor.skip r;
                   read_shorthand_line_height r
               | _ -> ());
-              if font_shorthand_starts_long_family_with_generic r then
+              if long_generic_family_start r then
                 Cursor.err_invalid r
                   "generic font family must be a standalone family item";
               ignore (read_font_family r : font_family);
@@ -1469,7 +1467,7 @@ let read_custom_property_declaration t : declaration =
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  let raw_value = Cursor.consume_to_semicolon ~trim:true t in
+  let raw_value = Cursor.consume_until_semicolon ~trim:true t in
   let value_str, is_important = split_custom_important raw_value in
   (* custom_property may raise Failure for invalid names like "--" *)
   try
@@ -1608,7 +1606,7 @@ and invalid_var_arguments arguments =
 let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
-let can_fallback_to_opaque name raw_value =
+let allows_opaque_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value)
@@ -1624,8 +1622,8 @@ let read_font_src_declaration t raw_value =
 let read_opaque_property_declaration t name =
   validate_printable_property_name t name;
   validate_complete_declaration_value t;
-  validate_no_curly_block_declaration_value t;
-  validate_no_unterminated_string_declaration_value t;
+  reject_curly_block_value t;
+  reject_unterminated_string_value t;
   let raw_value = Cursor.consume_to_decl_end ~trim:true t in
   let is_important = read_importance t in
   validate_no_extra_tokens t;
@@ -1665,7 +1663,7 @@ let read_regular_property_declaration t : declaration =
   else
     try read_typed_property_declaration t start
     with Cursor.Parse_error _ as exn ->
-      if not (can_fallback_to_opaque name raw_value) then raise exn;
+      if not (allows_opaque_fallback name raw_value) then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii (read_property_name t) in
       Cursor.ws t;
