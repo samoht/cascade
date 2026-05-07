@@ -1519,18 +1519,13 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
-let contains_substring s needle =
-  let len = String.length s in
-  let nlen = String.length needle in
-  let rec loop i =
-    i + nlen <= len && (String.sub s i nlen = needle || loop (i + 1))
-  in
-  nlen = 0 || loop 0
-
 let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
+(* Color functions cascade types directly; anything else (e.g. a vendor color
+   function or a typed value cascade hasn't grown yet) is treated as a [color]
+   declaration cascade should preserve verbatim. *)
 let color_fallback_function raw_value =
   let components =
     Cursor.of_string raw_value |> Cursor.remaining
@@ -1539,25 +1534,23 @@ let color_fallback_function raw_value =
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
       let fn = String.lowercase_ascii name in
-      if fn = "color-mix" then
-        contains_substring (String.lowercase_ascii raw_value) "specified hue"
-      else
-        not
-          (List.mem fn
-             [
-               "rgb";
-               "rgba";
-               "hsl";
-               "hsla";
-               "hwb";
-               "lab";
-               "lch";
-               "oklab";
-               "oklch";
-               "color";
-               "light-dark";
-               "var";
-             ])
+      not
+        (List.mem fn
+           [
+             "rgb";
+             "rgba";
+             "hsl";
+             "hsla";
+             "hwb";
+             "lab";
+             "lch";
+             "oklab";
+             "oklch";
+             "color";
+             "color-mix";
+             "light-dark";
+             "var";
+           ])
   | _ -> false
 
 let is_unsupported_color_fallback name raw_value =

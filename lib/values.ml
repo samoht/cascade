@@ -2098,6 +2098,7 @@ and pp_hue_interpolation : hue_interpolation Pp.t =
   | Longer -> Pp.string ctx "longer"
   | Increasing -> Pp.string ctx "increasing"
   | Decreasing -> Pp.string ctx "decreasing"
+  | Specified -> Pp.string ctx "specified"
   | Default -> ()
 
 let static_component_can_touch_negative (component : component) =
@@ -4119,6 +4120,7 @@ let read_hue_interpolation_direction t : hue_interpolation =
       ("longer", Longer);
       ("increasing", Increasing);
       ("decreasing", Decreasing);
+      ("specified", Specified);
     ]
     t
 
@@ -4975,6 +4977,7 @@ let read_hue_interpolation t : hue_interpolation =
         ("longer", Longer);
         ("increasing", Increasing);
         ("decreasing", Decreasing);
+        ("specified", Specified);
         ("default", Default);
       ]
       t

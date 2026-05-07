@@ -14112,6 +14112,22 @@ module Animation = struct
     | Paused -> Some "paused"
     | _ -> None
 
+  let timeline_name : animation_timeline -> string option = function
+    | Auto -> Some "auto"
+    | _ -> None
+
+  let set_name name_seen (acc : animation_shorthand) (name : animation_name) =
+    name_seen := true;
+    { acc with name = Some name }
+
+  let set_string_name t label name_seen acc = function
+    | Some name when not !name_seen -> set_name name_seen acc (Ambiguous name)
+    | _ -> Cursor.err t ("duplicate " ^ label)
+
+  let set_animation_name t label name_seen acc = function
+    | Some name when not !name_seen -> set_name name_seen acc name
+    | _ -> Cursor.err t ("duplicate " ^ label)
+
   let read_component t =
     let read_duration t = Duration (read_duration t) in
     let read_timing t = Timing_function (read_timing_function t) in
@@ -14218,41 +14234,47 @@ module Animation = struct
           else if !duration_count = 1 then { acc with duration = Some d }
           else { acc with delay = Some d }
       | Timing_function tf ->
-          ignore (timing_name tf);
           if !timing_seen then
-            Cursor.err t "duplicate animation-timing-function"
+            set_string_name t "animation-timing-function" name_seen acc
+              (timing_name tf)
           else (
             timing_seen := true;
             { acc with timing_function = Some tf })
       | Iteration_count ic ->
-          ignore (iteration_name ic);
           if !iteration_seen then
-            Cursor.err t "duplicate animation-iteration-count"
+            set_string_name t "animation-iteration-count" name_seen acc
+              (iteration_name ic)
           else (
             iteration_seen := true;
             { acc with iteration_count = Some ic })
       | Direction dir ->
-          ignore (direction_name dir);
-          if !direction_seen then Cursor.err t "duplicate animation-direction"
+          if !direction_seen then
+            set_string_name t "animation-direction" name_seen acc
+              (direction_name dir)
           else (
             direction_seen := true;
             { acc with direction = Some dir })
       | Fill_mode fm ->
-          ignore (fill_name fm);
-          if !fill_seen then Cursor.err t "duplicate animation-fill-mode"
+          if !fill_seen then
+            set_animation_name t "animation-fill-mode" name_seen acc
+              (fill_name fm)
           else (
             fill_seen := true;
             { acc with fill_mode = Some fm })
       | Play_state ps ->
-          ignore (play_name ps);
-          if !play_seen then Cursor.err t "duplicate animation-play-state"
+          if !play_seen then
+            set_string_name t "animation-play-state" name_seen acc
+              (play_name ps)
           else (
             play_seen := true;
             { acc with play_state = Some ps })
       | Timeline tl ->
-          if !timeline_seen then Cursor.err t "duplicate animation-timeline";
-          timeline_seen := true;
-          { acc with timeline = Some tl }
+          if !timeline_seen then
+            set_string_name t "animation-timeline" name_seen acc
+              (timeline_name tl)
+          else (
+            timeline_seen := true;
+            { acc with timeline = Some tl })
     in
 
     let init =

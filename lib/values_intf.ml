@@ -370,7 +370,15 @@ type number_percentage =
   | Var of number_percentage var
   | Calc of number_percentage calc
 
-type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+type hue_interpolation =
+  | Shorter
+  | Longer
+  | Increasing
+  | Decreasing
+  | Specified
+      (** CSS Color 5 §13 [specified hue] - keep authored hue values without
+          interpolation rotation. *)
+  | Default
 
 (** CSS system colors - case-insensitive keywords that map to OS/browser colors
 *)
