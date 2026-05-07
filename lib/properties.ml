@@ -5839,7 +5839,14 @@ let rec pp_text_shadow : text_shadow Pp.t =
       | None -> ());
       match color with
       | Some c ->
-          Pp.space ctx ();
+          (* CSS Syntax 3 §5.4.6: an [#]-led colour literal already delimits
+             itself from the preceding token, so the inter-component space can
+             be elided under minify (csso emits [1px 1px 0#ff0]). For non-hex
+             colours the leading [<ident>] still needs the space. *)
+          let elide_space =
+            Pp.minified ctx && match c with Hex _ -> true | _ -> false
+          in
+          if not elide_space then Pp.space ctx ();
           pp_color ctx c
       | None -> ())
 
