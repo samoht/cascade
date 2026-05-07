@@ -1002,7 +1002,13 @@ type number_percentage =
   | Calc of number_percentage calc
 
 (** CSS hue interpolation options *)
-type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+type hue_interpolation =
+  | Shorter
+  | Longer
+  | Increasing
+  | Decreasing
+  | Specified
+  | Default
 
 (** CSS system colors - case-insensitive keywords that map to OS/browser colors.
     These are semantic colors that adapt to user preferences and system
