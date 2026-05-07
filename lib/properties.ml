@@ -2435,6 +2435,14 @@ module Transform = struct
                 m44 )
         | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
 
+  let read_perspective t : transform =
+    Cursor.call "perspective" t (fun inner ->
+        Cursor.ws inner;
+        let len = read_length inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Perspective len : transform))
+
   let parsers =
     [
       ("translatex", read_translate_x);
@@ -2457,6 +2465,7 @@ module Transform = struct
       ("skew", read_skew);
       ("matrix", read_matrix);
       ("matrix3d", read_matrix3d);
+      ("perspective", read_perspective);
     ]
 end
 
