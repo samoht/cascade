@@ -1610,6 +1610,9 @@ let read_font_face (r : Cursor.t) : statement =
    one pseudo-page from [:first | :left | :right | :blank]. Combining multiple
    pseudo-pages (e.g. [:first:left]) is not part of CSS 2.x. *)
 let validate_page_selector r selector =
+  (* CSS Paged Media §3.3 [<page-selector> = <ident-token>? [':'
+     <pseudo-page>]*] where each [<pseudo-page>] is one of [left], [right],
+     [first], [blank]. Multiple pseudo-pages may chain (e.g. [:blank:first]). *)
   let s = String.trim selector in
   let len = String.length s in
   let is_ident_char c =
@@ -1621,18 +1624,22 @@ let validate_page_selector r selector =
   let rec consume_ident i =
     if i < len && is_ident_char s.[i] then consume_ident (i + 1) else i
   in
-  let after_ident = consume_ident 0 in
-  let pseudo_start =
-    if after_ident < len && s.[after_ident] = ':' then after_ident else -1
+  let rec consume_pseudo_pages i =
+    if i >= len then ()
+    else if s.[i] <> ':' then
+      Cursor.err_invalid r ("invalid @page selector: " ^ s)
+    else
+      let start = i + 1 in
+      let stop = consume_ident start in
+      if stop = start then Cursor.err_invalid r ("invalid @page selector: " ^ s);
+      let name = String.sub s start (stop - start) in
+      (match name with
+      | "first" | "left" | "right" | "blank" -> ()
+      | _ -> Cursor.err_invalid r ("invalid @page selector: " ^ s));
+      consume_pseudo_pages stop
   in
-  let body_end = if pseudo_start < 0 then after_ident else pseudo_start in
-  if body_end <> after_ident then ()
-  else if pseudo_start < 0 then ()
-  else
-    let rest = String.sub s (pseudo_start + 1) (len - pseudo_start - 1) in
-    match rest with
-    | "first" | "left" | "right" | "blank" -> ()
-    | _ -> Cursor.err_invalid r ("invalid @page selector: " ^ s)
+  let after_ident = consume_ident 0 in
+  consume_pseudo_pages after_ident
 
 let page_descriptor_order =
   [
@@ -1680,14 +1687,12 @@ let read_page_margin_rule r =
     when List.mem name allowed_page_margin_names ->
       Cursor.skip r;
       Cursor.ws r;
+      (* CSS Paged Media §5: a page-margin box accepts every descriptor that is
+         valid in [@page] plus [content], so do not gate the descriptor list on
+         a single property name. *)
       let margin_descriptors =
         Cursor.braces
-          (read_descriptor_block (fun desc acc ->
-               if Declaration.property_name desc <> "content" then
-                 Cursor.err_invalid r
-                   ("invalid page margin descriptor: "
-                   ^ Declaration.property_name desc);
-               replace_descriptor desc acc))
+          (read_descriptor_block (fun desc acc -> replace_descriptor desc acc))
           r
       in
       if margin_descriptors = [] then
