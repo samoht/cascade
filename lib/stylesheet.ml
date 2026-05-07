@@ -1492,9 +1492,10 @@ let read_font_face (r : Cursor.t) : statement =
    one pseudo-page from [:first | :left | :right | :blank]. Combining multiple
    pseudo-pages (e.g. [:first:left]) is not part of CSS 2.x. *)
 let validate_page_selector r selector =
-  (* CSS Paged Media §3.3 [<page-selector> = <ident-token>? [':'
-     <pseudo-page>]*] where each [<pseudo-page>] is one of [left], [right],
-     [first], [blank]. Multiple pseudo-pages may chain (e.g. [:blank:first]). *)
+  (* CSS Paged Media §3.1 [<page-selector-list> = <page-selector>#] where each
+     [<page-selector> = <ident-token>? [':' <pseudo-page>]*] and the
+     [<pseudo-page>] is one of [left], [right], [first], [blank]. Multiple
+     pseudo-pages may chain (e.g. [:blank:first]). *)
   let s = String.trim selector in
   let len = String.length s in
   let is_ident_char c =
@@ -1503,11 +1504,15 @@ let validate_page_selector r selector =
     || (c >= '0' && c <= '9')
     || c = '-' || c = '_'
   in
+  let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r' in
   let rec consume_ident i =
     if i < len && is_ident_char s.[i] then consume_ident (i + 1) else i
   in
+  let rec skip_ws i = if i < len && is_ws s.[i] then skip_ws (i + 1) else i in
   let rec consume_pseudo_pages i =
-    if i >= len then ()
+    if i >= len then i
+    else if s.[i] = ',' then i
+    else if is_ws s.[i] then skip_ws i
     else if s.[i] <> ':' then
       Cursor.err_invalid r ("invalid @page selector: " ^ s)
     else
@@ -1520,8 +1525,18 @@ let validate_page_selector r selector =
       | _ -> Cursor.err_invalid r ("invalid @page selector: " ^ s));
       consume_pseudo_pages stop
   in
-  let after_ident = consume_ident 0 in
-  consume_pseudo_pages after_ident
+  let rec consume_selectors i =
+    let i = skip_ws i in
+    if i >= len then ()
+    else
+      let after_ident = consume_ident i in
+      let after_pseudo = consume_pseudo_pages after_ident in
+      let after_pseudo = skip_ws after_pseudo in
+      if after_pseudo >= len then ()
+      else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
+      else Cursor.err_invalid r ("invalid @page selector: " ^ s)
+  in
+  consume_selectors 0
 
 let page_descriptor_order =
   [

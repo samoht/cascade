@@ -85,7 +85,7 @@ let test_components_to_string_idempotent buf =
 
 let test_consume_to_boundaries_reparse buf =
   let input = cssish buf ^ "; tail { x: y } / rest" in
-  let semi = Css.Cursor.of_string input |> Css.Cursor.consume_to_semicolon in
+  let semi = Css.Cursor.of_string input |> Css.Cursor.consume_until_semicolon in
   ignore (Css.Cursor.of_string semi);
   let decl =
     Css.Cursor.of_string input |> Css.Cursor.consume_to_decl_end ~trim:true
