@@ -1606,10 +1606,39 @@ and invalid_var_arguments arguments =
 let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
+(* CSS Values 5 §10 [<calc>] error handling: math expressions whose argument
+   types / ranges produce an undefined result must be preserved literally rather
+   than dropped, so authoring round-trips through the minifier. Cascade's typed
+   readers refuse the type-mismatching forms ([rotate: asin(45deg)] - [asin]
+   takes [<number>], not [<angle>]; [width: asin(sin(45deg))] - [width] takes
+   [<length>], not [<angle>]). When the typed parse fails on a known property
+   and the value contains one of these resolution-deferring functions, fall back
+   to preserving the raw declaration text; a future spec-based optimizer step is
+   what eliminates them.
+
+   Basic-shape constructors get the same treatment because the [<position>] tail
+   in [circle()] / [ellipse()] / [polygon()] can have more values than CSS
+   Shapes 1 explicitly accepts but upstream tools still roundtrip verbatim. *)
+let raw_value_has_preservable_function raw_value =
+  let lower = String.lowercase_ascii raw_value in
+  let contains needle =
+    let n = String.length needle in
+    let m = String.length lower in
+    let rec loop i =
+      if i + n > m then false
+      else if String.sub lower i n = needle then true
+      else loop (i + 1)
+    in
+    loop 0
+  in
+  contains "asin(" || contains "acos(" || contains "atan(" || contains "atan2("
+  || contains "circle(" || contains "ellipse(" || contains "polygon("
+
 let allows_opaque_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
-     || is_unsupported_color_fallback name raw_value)
+     || is_unsupported_color_fallback name raw_value
+     || raw_value_has_preservable_function raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
