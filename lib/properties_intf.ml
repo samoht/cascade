@@ -1750,6 +1750,12 @@ type font_family =
   (* List of fonts for composition *)
   | List of font_family list
   | Var of font_family var
+  | Invalid of Component.t list
+      (** CSS Cascade 5 §7.3: a CSS-wide keyword (e.g. [inherit]) is only valid
+          as a sole top-level value. [font-family: Arial, inherit] mixes it
+          inside a [<custom-ident>#] list and is therefore invalid. Cascade
+          preserves the source verbatim for round-trip; [Optimize.drop_invalid]
+          removes the declaration under [--minify]. *)
 
 type font_stretch =
   | Pct of float

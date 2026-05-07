@@ -3282,6 +3282,12 @@ let rec pp_font_family : font_family Pp.t =
       Pp.list_wrap ~threshold:90 ~sep:Pp.comma
         ~wrap_indent:((2 * ctx.Pp.indent) + 2)
         pp_font_family ctx fonts
+  | Invalid tokens ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_minified tokens
+        else Parser.to_string tokens
+      in
+      Pp.string ctx rendered
 
 (* pp_font_families is no longer needed since Fonts is now part of
    font_family *)
@@ -5251,7 +5257,12 @@ let rec pp_clip_path : clip_path Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Invalid tokens -> List.iter (Component.pp ctx) tokens
+  | Invalid tokens ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_minified tokens
+        else Parser.to_string tokens
+      in
+      Pp.string ctx rendered
   | Clip_path_none -> Pp.string ctx "none"
   | Clip_path_url url ->
       Pp.string ctx "url(";
@@ -13313,6 +13324,10 @@ let rec read_font_family_single t : font_family =
   | None -> Cursor.err t "expected font-family value"
 
 and read_font_family t : font_family =
+  (* CSS Cascade 5 §7.3: a CSS-wide keyword ([inherit] / [initial] / [unset] /
+     [revert] / [revert-layer]) must stand alone; mixed inside a
+     [<custom-ident>#] list it makes the whole declaration invalid. *)
+  let before = Cursor.remaining t in
   let rec loop acc =
     Cursor.ws t;
     if Cursor.comma_opt t then (
@@ -13321,7 +13336,23 @@ and read_font_family t : font_family =
     else List.rev acc
   in
   let first = read_font_family_single t in
-  match loop [ first ] with [ x ] -> x | l -> List l
+  let items = loop [ first ] in
+  let is_css_wide = function
+    | (Inherit : font_family) | Initial | Unset -> true
+    | _ -> false
+  in
+  match items with
+  | [ x ] -> x
+  | _ when List.exists is_css_wide items ->
+      let after = Cursor.remaining t in
+      let consumed_count = List.length before - List.length after in
+      let rec take n = function
+        | [] -> []
+        | _ when n <= 0 -> []
+        | x :: xs -> x :: take (n - 1) xs
+      in
+      Invalid (take consumed_count before)
+  | l -> List l
 
 let rec read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
@@ -18026,6 +18057,7 @@ let is_invalid_value : type a. a property -> a -> bool =
   | Max_inline_size -> invalid_length_percentage value
   | Clip_path -> invalid_clip_path value
   | Text_indent -> invalid_text_indent_value value
+  | Font_family -> ( match value with Invalid _ -> true | _ -> false)
   | _ -> false
 
 let property_value_kind : type a. a property -> a property_value_kind option =
