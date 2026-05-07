@@ -201,7 +201,7 @@ let test_layer_block () =
   let theme_stmts = layer_block "theme" stylesheet in
   Alcotest.(check bool) "theme layer found" true (Option.is_some theme_stmts);
 
-  let theme_rules = theme_stmts |> Option.get |> rules_from_statements in
+  let theme_rules = theme_stmts |> Option.get |> rules_of_statements in
   Alcotest.(check int) "theme has one rule" 1 (List.length theme_rules);
 
   (* Test extracting non-existent layer *)
@@ -219,7 +219,7 @@ let test_rules_from_statements () =
     ]
   in
 
-  let rules = rules_from_statements stmts in
+  let rules = rules_of_statements stmts in
   Alcotest.(check int) "extracts 2 rules from statements" 2 (List.length rules);
 
   let selectors = List.map (fun (sel, _) -> Selector.to_string sel) rules in
@@ -254,7 +254,7 @@ let test_custom_props_from_rules () =
     ]
   in
 
-  let prop_names = custom_props_from_rules rules in
+  let prop_names = custom_props_of_rules rules in
 
   Alcotest.(check int)
     "finds 2 custom properties total" 2 (List.length prop_names);
@@ -777,10 +777,9 @@ let suite =
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
-      Alcotest.test_case "rules_from_statements" `Quick
-        test_rules_from_statements;
+      Alcotest.test_case "rules_of_statements" `Quick test_rules_from_statements;
       Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
-      Alcotest.test_case "custom_props_from_rules" `Quick
+      Alcotest.test_case "custom_props_of_rules" `Quick
         test_custom_props_from_rules;
       (* Statement transformation helpers *)
       Alcotest.test_case "map transforms rules" `Quick test_map;

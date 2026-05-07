@@ -2640,7 +2640,7 @@ let c6_2_import_preserved_verbatim () =
    declaration block, and inside an at-rule's block). They must not survive into
    the AST or the serialized output, and they must not influence the surrounding
    rule. *)
-let s3_4_3_2_source_map_pragma_is_a_comment () =
+let s3432_sourcemap_comment () =
   let cases =
     [
       ( "pragma at top of file",
@@ -2679,7 +2679,7 @@ let s3_4_3_2_source_map_pragma_is_a_comment () =
    named layer with an empty block in the same order. The two surface shapes
    must therefore parse to the same effective layer order and produce the same
    serialization once empty blocks are normalized. *)
-let c6_4_4_2_statement_equiv_empty_blocks () =
+let c6442_empty_blocks_equiv () =
   let parse css =
     Css.Stylesheet.read (Css.Cursor.of_string css)
     |> Css.Optimize.stylesheet
@@ -2708,7 +2708,7 @@ let c6_4_4_2_statement_equiv_empty_blocks () =
    ... }] declares the same nested layer as [@layer foo { @layer bar { ... } }],
    so the rule placed inside either form must end up in the same effective
    cascade layer named [foo.bar]. *)
-let c6_4_3_dotted_equiv_nested_layer () =
+let c643_dotted_nested_layer () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -2734,7 +2734,7 @@ let c6_4_3_dotted_equiv_nested_layer () =
    never emit them on output regardless of what was in the input. The absence of
    the [/*#] sequence in the printed stylesheet is an implementation-independent
    guarantee that there is no source-map support. *)
-let s3_4_3_2_printer_never_emits_source_map () =
+let s3432_no_sourcemap_print () =
   let inputs =
     [
       ".a{color:red}";
@@ -2768,7 +2768,7 @@ let s3_4_3_2_printer_never_emits_source_map () =
    spelling of a zero length are spec-equivalent, so the optimizer is free to
    pick any of them - but parsing two equivalent forms must produce the same
    computed declaration after a round-trip through the optimizer. *)
-let v4_6_1_zero_length_equivalence () =
+let v461_zero_length_equiv () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -2790,7 +2790,7 @@ let v4_6_1_zero_length_equivalence () =
    same character) denote the identical sRGB color. They are spec- equivalent
    forms; the optimizer may choose either, but a round trip must yield the same
    color regardless of input spelling. *)
-let color4_12_1_hex_shorthand_equivalence () =
+let color4121_hex_equiv () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -2820,7 +2820,7 @@ let color4_12_1_hex_shorthand_equivalence () =
    in a way that changes the cascaded result. A round trip through the optimizer
    must preserve the winning value when two declarations of the same property
    tie on origin, importance, layer and specificity. *)
-let c6_1_optimizer_preserves_winning_value () =
+let c61_keeps_winner () =
   let winning_color css =
     match Css.of_string css with
     | Ok sheet ->
@@ -2863,7 +2863,7 @@ let c6_1_optimizer_preserves_winning_value () =
    minification (cssnano / Lightning CSS / clean-css) the printer canonicalizes
    to the shortest equivalent form, so all of these resolve to the same
    serialized output. *)
-let color4_1_4_color_form_equivalence () =
+let color414_form_equiv () =
   let parsed s =
     match Css.parse_color s with
     | Some c -> c
@@ -2896,7 +2896,7 @@ let color4_1_4_color_form_equivalence () =
    matches the pinned Lightning CSS trace for equal-length examples such as
    [yellow] -> [#ff0] and keeps parse -> minify -> parse -> minify idempotent
    for [blue] / [#00f] and [lime] / [#0f0]. *)
-let color4_named_hex_minification_tie_policy () =
+let color4_hex_tie_policy () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -2926,7 +2926,7 @@ let color4_named_hex_minification_tie_policy () =
    Dimensions): [<length-percentage>] accepts either a length or a percentage.
    When the value is zero, [0], [0%], [0px] are all spec-valid representations
    of the same computed value. *)
-let v4_6_5_zero_percentage_length_equivalence () =
+let v465_zero_percentage_equiv () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -2946,7 +2946,7 @@ let v4_6_5_zero_percentage_length_equivalence () =
    minified mode, and "!important" follows the value with no extra whitespace.
    The property name is serialized as-is (already lowercased by the syntax layer
    per CSS Syntax §3.3) regardless of input case. *)
-let cssom_6_6_2_declaration_serialization () =
+let cssom662_decl_serialization () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -2995,7 +2995,7 @@ let color4_6_4_transparent_equivalence () =
 (* CSS Color Module Level 4, section 6.1 (Named Colors): "CSS named colors are
    ASCII case-insensitive." [RED], [Red], and [red] all denote the same color
    and must serialize identically. *)
-let color4_6_1_named_color_case_insensitive () =
+let color461_named_case () =
   let canonical s =
     match Css.parse_color s with
     | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
@@ -3021,7 +3021,7 @@ let color4_6_1_named_color_case_insensitive () =
    numeric value. [.5], [0.5] and [0.50] all denote 0.5; [1.0] and [1] denote
    the integer 1. The optimizer is free to pick the shortest spelling, but a
    round trip must yield the same numeric value regardless of input format. *)
-let v4_8_1_number_format_equivalence () =
+let v481_number_format () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -3045,7 +3045,7 @@ let v4_8_1_number_format_equivalence () =
    universal selector is not the only component of a compound selector, the [*]
    may be omitted." So [*.foo] and [.foo] are spec-equivalent compound
    selectors, and [*#id] and [#id] are equivalent. *)
-let s4_3_5_universal_in_compound_redundant () =
+let s435_universal_redundant () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3096,7 +3096,7 @@ let color4_3_hue_modulo_canonicalization () =
    value may be expressed as a [<number>] in the closed interval [\[0, 1\]] or
    as a [<percentage>] in [\[0%, 100%\]]; the two forms are spec-equivalent.
    [rgb(255 0 0 / .5)] and [rgb(255 0 0 / 50%)] denote the identical color. *)
-let color4_1_3_alpha_number_percentage_equivalence () =
+let color413_alpha_equiv () =
   let canonical s =
     match Css.parse_color s with
     | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
@@ -3121,7 +3121,7 @@ let color4_1_3_alpha_number_percentage_equivalence () =
    respectively. A round trip through the parser and printer therefore places
    the rule in the same logical keyframe regardless of which spelling was used
    in the input. *)
-let anim1_7_1_keyframe_from_to_equivalence () =
+let anim171_keyframe_equiv () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3159,7 +3159,7 @@ let color4_12_rgb_clamp_canonicalization () =
    color as the form without an alpha channel. So [rgba(255, 0, 0, 1)] is
    spec-equivalent to [rgb(255, 0, 0)] and to [red]. Both Lightning CSS and
    cssnano collapse the redundant alpha. *)
-let color4_1_3_fully_opaque_alpha_collapse () =
+let color413_opaque_alpha_collapse () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3179,7 +3179,7 @@ let color4_1_3_fully_opaque_alpha_collapse () =
    with trailing zeroes after a decimal point ([1.000], [1.500]) are equivalent
    to the same value without the trailing zeroes ([1], [1.5]). Both Lightning
    CSS and cssnano normalise these. *)
-let v4_8_1_number_trailing_zero_canonicalization () =
+let v481_trailing_zero () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3199,7 +3199,7 @@ let v4_8_1_number_trailing_zero_canonicalization () =
    keywords [normal] and [bold] for [font-weight] are defined as numeric values
    [400] and [700] respectively. Both Lightning CSS and cssnano canonicalize to
    the numeric form. *)
-let fonts4_5_1_2_font_weight_keyword_to_number () =
+let fonts4512_weight_number () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3242,7 +3242,7 @@ let box4_margin_shorthand_collapse () =
    [#0000]) denote the same color. The spec leaves the canonical serialized form
    to implementations; the printer canonicalizes to the shortest spec-equivalent
    spelling, matching Lightning CSS. *)
-let color4_6_4_transparent_canonical_shortest () =
+let color464_transparent_shortest () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3264,7 +3264,7 @@ let color4_6_4_transparent_canonical_shortest () =
    [0px], [0em], or [0%]; all denote the same computed value when the value is
    zero. The spec lets implementations canonicalize, and cssnano picks the bare
    [0] form for length contexts. *)
-let v4_6_5_zero_length_canonical_shortest () =
+let v465_zero_length_shortest () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3289,7 +3289,7 @@ let v4_6_5_zero_length_canonical_shortest () =
    sides are equal, the shorthand collapses to a single value. The spec does not
    mandate the collapsed form; the printer takes the freedom and picks the
    single-value shorthand, matching Lightning CSS. *)
-let bg3_5_border_radius_collapse_shortest () =
+let bg35_radius_collapse () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3307,7 +3307,7 @@ let bg3_5_border_radius_collapse_shortest () =
    the identity in that dimension. The spec permits the implementation to
    simplify - cssnano takes the freedom; the shortest spec-equivalent form is
    the bare dimension. *)
-let v4_10_calc_add_zero_simplification () =
+let v410_calc_add_zero () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3327,7 +3327,7 @@ let v4_10_calc_add_zero_simplification () =
    (background-position): the two-value form [<x> <y>] collapses to the
    single-value form when [x = y]. The single-value form is the shortest
    spec-equivalent spelling that Lightning CSS picks. *)
-let bg3_3_6_background_position_collapse_shortest () =
+let bg336_bgpos_collapse () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3478,7 +3478,7 @@ let s4_14_nth_child_canonicalization () =
    [<ident-token>] grammar, the quotes are redundant and may be dropped; both
    single and double quotes are equivalent. Both minifiers strip redundant
    quotes. *)
-let s4_6_2_attribute_quote_canonicalization () =
+let s462_attr_quote_canonical () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3497,7 +3497,7 @@ let s4_6_2_attribute_quote_canonicalization () =
    notation [<number>] tokens like [1e3] and [1.5e2] are spec-equivalent to
    their decimal expansion. Both minifiers expand these to the decimal form when
    shorter. *)
-let v4_8_1_scientific_notation_expansion () =
+let v481_scientific_notation () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3513,7 +3513,7 @@ let v4_8_1_scientific_notation_expansion () =
 (* CSS Values and Units Module Level 4, section 8.1 (Numbers): negative zero is
    the same value as zero; [-0px] is the same length as [0]. Both minifiers
    normalise. *)
-let v4_8_1_negative_zero_canonical () =
+let v481_negative_zero () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3547,7 +3547,7 @@ let v4_7_url_quote_canonicalization () =
    when all operands of [calc()] are dimensions in the same unit (or numbers),
    the expression simplifies to a single value. Nested [calc()] collapses to a
    single [calc()] (and to a bare value when constant). *)
-let v4_10_calc_nested_constant_simplification () =
+let v410_calc_nested_constant () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3565,7 +3565,7 @@ let v4_10_calc_nested_constant_simplification () =
    [@layer]) may be merged into one block, since the cascade evaluates them
    identically. The merge is spec-allowed when no rule with conflicting
    conditions appears between them. *)
-let c6_1_consecutive_same_condition_merge () =
+let c61_same_condition_merge () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -3588,7 +3588,7 @@ let c6_1_consecutive_same_condition_merge () =
    alternate ([.a; .b; .a]), the second [.a] cannot be merged with the first
    because [.b] is between them and depending on cascade rules might affect the
    same property at the same specificity. *)
-let c6_1_no_merge_across_intervening_rule_pair () =
+let c61_no_intervening_merge () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -3678,7 +3678,7 @@ let c6_1_empty_rule_removed () =
    valid for every property. Implementations must preserve them through
    serialization since they have observable cascade semantics that no shorter
    spelling captures. *)
-let c6_7_css_wide_keywords_preserved () =
+let c67_css_wide_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3698,7 +3698,7 @@ let c6_7_css_wide_keywords_preserved () =
    Shorthand): the [all] property is a shorthand that sets every CSS-wide
    keyword for all properties. It only accepts CSS-wide keywords as values and
    must round-trip through the printer unchanged. *)
-let c6_3_2_all_shorthand_preserved () =
+let c632_all_shorthand_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3718,7 +3718,7 @@ let c6_3_2_all_shorthand_preserved () =
    named layers preserve their declared order. Two non-adjacent [@layer base]
    blocks separated by an [@layer theme] block must NOT merge, because the theme
    block establishes a layer ordering that affects the cascade. *)
-let c6_4_named_layers_preserve_order () =
+let c64_named_layers_order () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -3767,7 +3767,7 @@ let css_var_fallback_preserved () =
 (* CSS Cascade L6 section 6.4.4 (anonymous @layer): two anonymous layers are
    distinct - they must NOT merge, because the spec states that each [@layer {
    ... }] without a name creates a new, independent layer. *)
-let c6_4_4_anonymous_layers_distinct () =
+let c644_anonymous_layers_distinct () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
@@ -3809,7 +3809,7 @@ let fidelity_css_wide_keywords_preserved () =
    same position as [0% 0%], and [bottom right] denotes [100% 100%]. Both
    Lightning CSS and cssnano canonicalize the keyword form to the numeric
    one. *)
-let bg3_3_6_position_keyword_canonicalization () =
+let bg336_position_keyword () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3877,7 +3877,7 @@ let vendor_prefix_preservation () =
    negation matching anything that's not A or B, the second chains two
    negations. Both forms must round-trip preserved through the minifier (both
    Lightning CSS and cssnano keep them). *)
-let s4_4_3_not_form_preserved () =
+let s443_not_form_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3937,7 +3937,7 @@ let fidelity_not_form_preserved () =
    are the two units of [<time>], with [1s = 1000ms]. Both minifiers
    canonicalize to the shorter spelling - [0s] for any zero, [1s] over [1000ms],
    [.1s] over [100ms]. *)
-let v4_6_6_time_unit_canonicalization () =
+let v466_time_unit_canonical () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3962,7 +3962,7 @@ let v4_6_6_time_unit_canonicalization () =
    decimals or longer spellings in most cases. Industry minifiers (Lightning CSS
    and cssnano) preserve the source unit; the CSSOM-style specified value should
    round-trip unchanged. *)
-let v4_6_1_absolute_units_preserved_under_minify () =
+let v461_absolute_units_minify () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -3988,7 +3988,7 @@ let v4_6_1_absolute_units_preserved_under_minify () =
    and percentages are valid in many contexts (margin, transform translate,
    etc.) and must round-trip preserved. The leading [-] is part of the value,
    not a separate token. *)
-let v4_8_1_negative_units_preserved () =
+let v481_negative_units_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4047,7 +4047,7 @@ let sizing4_5_aspect_ratio_preservation () =
 (* CSS Values and Units Module Level 4, section 8.1 + spec rejection: a bare
    number without a unit is not a valid [<length>] outside of zero. Both parsers
    reject [width: 10] (no unit), [margin: 5] (no unit). *)
-let v4_8_1_negative_unit_required_for_length () =
+let v481_negative_unit_length () =
   Alcotest.(check bool)
     "width: 10 (no unit) is rejected" true
     (match Css.of_string ".x { width: 10 }" with Error _ -> true | _ -> false);
@@ -4064,7 +4064,7 @@ let v4_8_1_negative_unit_required_for_length () =
    number is not a valid [<time>] - units [s] or [ms] are required. Exception:
    [0] is valid as zero in some contexts but [transition-duration: 1] (no unit)
    must be rejected. *)
-let v4_6_6_time_unit_required () =
+let v466_time_unit_required () =
   Alcotest.(check bool)
     "transition-duration: 1 (no unit) is rejected" true
     (match Css.of_string ".x { transition-duration: 1 }" with
@@ -4078,7 +4078,7 @@ let v4_6_6_time_unit_required () =
 
 (* CSS Values and Units Module Level 4, section 6.1 + spec rejection: unknown
    length units like [10pp], [10foo] must be rejected as parse errors. *)
-let v4_6_1_unknown_length_unit_rejected () =
+let v461_unknown_length_unit () =
   Alcotest.(check bool)
     "width: 10pp (unknown unit) is rejected" true
     (match Css.of_string ".x { width: 10pp }" with
@@ -4125,7 +4125,7 @@ let fidelity_aspect_ratio_preserved () =
    fold to the result; calc() with a [var()] reference must be preserved because
    the value is unknown at parse time. Both Lightning CSS and cssnano agree on
    these simplifications. *)
-let v4_10_2_calc_single_operand () =
+let v4102_calc_single () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4166,7 +4166,7 @@ let v4_10_2_calc_arithmetic () =
     "calc(0 + 0) -> 0" ".x{width:0}"
     (normalize ".x { width: calc(0 + 0) }")
 
-let v4_10_2_calc_same_unit_addition () =
+let v4102_calc_addition () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4182,7 +4182,7 @@ let v4_10_2_calc_same_unit_addition () =
     "calc(1px*2 + 3px*4) -> 14px" ".x{width:14px}"
     (normalize ".x { width: calc(1px*2 + 3px*4) }")
 
-let v4_10_2_calc_same_unit_percentage () =
+let v4102_calc_percentage () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4200,7 +4200,7 @@ let v4_10_2_calc_same_unit_percentage () =
    [calc(100vh - 50px)] (mixed viewport + absolute), [calc(100% - 10px)] (mixed
    percentage + absolute), and any expression containing [var()] - their values
    are not known until resolution time. *)
-let v4_10_2_calc_mixed_unit_preserved () =
+let v4102_calc_mixed_unit () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4252,7 +4252,7 @@ let fidelity_calc_mixed_unit_preserved () =
 (* CSS Values L4 section 10.2: nested calc() collapses to a single calc() and
    all-constant nested forms reduce to a single value. Both minifiers fully
    unwrap. *)
-let v4_10_2_calc_nested_collapse () =
+let v4102_calc_nested () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4271,7 +4271,7 @@ let v4_10_2_calc_nested_collapse () =
 (* CSS Values L4 section 10.7 (min(), max()): when all arguments are constants
    reducible at parse time the result is a single value. Per shortest-wins
    cascade picks the reduced form. *)
-let v4_10_7_min_max_constant_reduction () =
+let v4107_minmax_reduction () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4290,7 +4290,7 @@ let v4_10_7_min_max_constant_reduction () =
 (* CSS Selectors L4 section 17 (:is()): a single-argument [:is(.x)] matches the
    same elements as bare [.x] with the same specificity. Per shortest-wins
    cascade picks the unwrapped form. *)
-let s4_17_is_single_argument_unwrap () =
+let s417_is_unwrap () =
   (* CSS Selectors L4 §17: a single-argument [:is(.a)] is spec-equivalent to
      bare [.a] (same match set, same specificity). Under [~minify:true] the
      printer picks the shortest spec-equivalent spelling - the unwrapped form,
@@ -4316,7 +4316,7 @@ let s4_17_is_single_argument_unwrap () =
 
 (* CSS Selectors L4 section 6.2: attribute compound selectors drop quotes per
    attribute when the value is a valid identifier. *)
-let s4_6_2_compound_attribute_canonicalization () =
+let s462_compound_attr () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4329,7 +4329,7 @@ let s4_6_2_compound_attribute_canonicalization () =
 
 (* CSS Selectors L4 section 4.2 (compound selector): chained pseudo- classes
    preserve their order and do not deduplicate. *)
-let s4_4_2_compound_pseudo_preserved () =
+let s442_compound_pseudo_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4358,7 +4358,7 @@ let transforms1_11_chain_whitespace_dropped () =
    optimizer cannot inline a variable without a context that resolves it (a
    [theme] map keyed on custom property names). At syntax time, [var(--x,
    fallback)] must round-trip preserved. *)
-let custom_props1_2_var_inlining_preserved () =
+let customprops12_inlining () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4382,7 +4382,7 @@ let custom_props1_2_var_inlining_preserved () =
    minifiers do not know the computed value of [var()] references. Lightning,
    cssnano, csso, clean-css, and esbuild all preserve the wrapper and only
    minify tokens that are still syntax-local, such as color fallbacks. *)
-let custom_props1_2_normal_minify_keeps_runtime_vars () =
+let customprops12_runtime_vars () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4419,7 +4419,7 @@ let custom_props1_2_normal_minify_keeps_runtime_vars () =
 (* CSS Custom Properties L1 section 3 only substitutes actual [var()] function
    references. Text that merely contains the characters "var(...)" is ordinary
    string or URL payload and remains outside variable inlining. *)
-let custom_props1_2_var_text_payload_not_inlined () =
+let customprops12_text_payload () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -4440,7 +4440,7 @@ let custom_props1_2_var_text_payload_not_inlined () =
    that references itself directly or indirectly is invalid at computed time. At
    syntax time the chain is preserved - the cycle detection happens in the
    cascade. *)
-let custom_props1_5_var_cycle_preserved () =
+let customprops15_cycle () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4528,7 +4528,7 @@ let fidelity_easing_preserved () =
    = [0% 0%], [background-repeat] = [repeat], etc.) may be elided in the
    serialized form. Both minifiers drop default position [0% 0%] when no other
    components require it; per shortest- wins cascade picks the elided form. *)
-let bg3_2_1_default_position_elision () =
+let bg321_default_pos_elision () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4538,7 +4538,7 @@ let bg3_2_1_default_position_elision () =
     "background: red 0% 0% -> background: red" ".x{background:red}"
     (normalize ".x { background: red 0% 0% }")
 
-let bg3_2_1_multi_layer_preserved () =
+let bg321_multi_layer_kept () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4563,7 +4563,7 @@ let fidelity_background_preserved () =
    whitespace after a 1-6 digit escape is consumed. The decoded string is
    shorter than the escape; Lightning CSS decodes printable ASCII characters
    where safe. *)
-let s3_4_3_7_string_escape_decoding () =
+let s3437_string_escape () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4940,7 +4940,7 @@ let v4_10_7_double_negative () =
     "calc(1px - -2px) -> 3px" ".x{width:3px}"
     (normalize ".x { width: calc(1px - -2px) }")
 
-let v4_10_7_mixed_relative_units_preserved () =
+let v4107_mixed_units () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4956,7 +4956,7 @@ let v4_10_7_mixed_relative_units_preserved () =
     "calc(1rem + 2px) preserved" ".x{width:calc(1rem + 2px)}"
     (normalize ".x { width: calc(1rem + 2px) }")
 
-let v4_10_7_math_functions_reduction () =
+let v4107_math_reduction () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4972,7 +4972,7 @@ let v4_10_7_math_functions_reduction () =
     "calc(max(1px, 2px, 3px)) -> 3px" ".x{width:3px}"
     (normalize ".x { width: calc(max(1px, 2px, 3px)) }")
 
-let v4_10_7_numeric_math_reduction () =
+let v4107_numeric_reduction () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4991,7 +4991,7 @@ let v4_10_7_numeric_math_reduction () =
     "calc(sign(5)) -> 1" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: calc(sign(5)) }")
 
-let v4_10_7_mod_rem_reduction () =
+let v4107_mod_rem () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5014,7 +5014,7 @@ let v4_10_7_round_reduction () =
     "calc(round(5.5px, 1px)) -> 6px" ".x{width:6px}"
     (normalize ".x { width: calc(round(5.5px, 1px)) }")
 
-let v4_10_7_division_by_zero_preserved () =
+let v4107_division_zero () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5026,7 +5026,7 @@ let v4_10_7_division_by_zero_preserved () =
     ".x{width:calc(1px/0)}"
     (normalize ".x { width: calc(1px / 0) }")
 
-let v4_10_invalid_calc_extra_rejected () =
+let v410_invalid_calc_extra () =
   Alcotest.(check bool)
     "calc(1px ++ 2px) double operator rejected" true
     (match Css.of_string ".x { width: calc(1px ++ 2px) }" with
@@ -5071,7 +5071,7 @@ let fidelity_calc_math_functions_preserved () =
 
 (* {2 var() fallback edges (CSS Custom Properties L1)} *)
 
-let custom_props1_2_empty_fallback_preserved () =
+let customprops12_empty_fallback () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5089,7 +5089,7 @@ let custom_props1_2_empty_fallback_preserved () =
     "var(--x) (no fallback) preserved" ".x{color:var(--x)}"
     (normalize ".x { color: var(--x) }")
 
-let custom_props1_2_color_in_fallback_canonicalizes () =
+let customprops12_color_fallback () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5105,7 +5105,7 @@ let custom_props1_2_color_in_fallback_canonicalizes () =
     "var(--x, transparent) -> var(--x, #0000)" ".x{color:var(--x,#0000)}"
     (normalize ".x { color: var(--x, transparent) }")
 
-let custom_props1_2_nested_var_fallback_preserved () =
+let customprops12_nested_fallback () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5118,7 +5118,7 @@ let custom_props1_2_nested_var_fallback_preserved () =
     "three-level var chain preserved" ".x{color:var(--x,var(--y,var(--z)))}"
     (normalize ".x { color: var(--x, var(--y, var(--z))) }")
 
-let custom_props1_2_calc_in_fallback () =
+let customprops12_calc_fallback () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5128,7 +5128,7 @@ let custom_props1_2_calc_in_fallback () =
     "var(--x, calc(1px + 2px)) reduces inner calc" ".x{width:var(--x,3px)}"
     (normalize ".x { width: var(--x, calc(1px + 2px)) }")
 
-let custom_props1_2_multi_comma_fallback_preserved () =
+let customprops12_multi_comma () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5148,7 +5148,7 @@ let custom_props1_2_multi_comma_fallback_preserved () =
      Astring.String.is_infix ~affix:"Helvetica Neue" out
      && Astring.String.is_infix ~affix:"sans-serif" out)
 
-let custom_props1_2_var_whitespace_dropped () =
+let customprops12_whitespace () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5158,7 +5158,7 @@ let custom_props1_2_var_whitespace_dropped () =
     "var( --x , red ) drops surrounding whitespace" ".x{color:var(--x,red)}"
     (normalize ".x { color: var( --x , red ) }")
 
-let custom_props1_2_name_case_sensitive () =
+let customprops12_case_sensitive () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5168,7 +5168,7 @@ let custom_props1_2_name_case_sensitive () =
     "--My-Var preserved with original case" ".x{color:var(--My-Var,red)}"
     (normalize ".x { color: var(--My-Var, red) }")
 
-let custom_props1_3_custom_property_declaration () =
+let customprops13_declaration () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5185,7 +5185,7 @@ let custom_props1_3_custom_property_declaration () =
     (let out = normalize ".x { --x: }" in
      Astring.String.is_infix ~affix:"--x:" out)
 
-let custom_props1_2_invalid_var_rejected () =
+let customprops12_invalid_var () =
   Alcotest.(check bool)
     "var() with no arguments is rejected" true
     (match Css.of_string ".x { color: var() }" with
@@ -5202,7 +5202,7 @@ let custom_props1_2_invalid_var_rejected () =
     | Error _ -> true
     | _ -> false)
 
-let custom_props1_2_var_in_shorthand_and_calc () =
+let customprops12_shorthand_calc () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5225,11 +5225,11 @@ let fidelity_var_fallback_preserved () =
   pretty_preserves ".x { color: var(--x, var(--y, red)) }"
     [ "var(--x, var(--y, red))" ]
 
-let fidelity_var_calc_in_fallback_preserved () =
+let fidelity_calc_fallback () =
   pretty_preserves ".x { width: var(--x, calc(1px + 2px)) }"
     [ "var(--x, calc(1px + 2px))" ]
 
-let fidelity_var_multi_comma_fallback_preserved () =
+let fidelity_multi_comma () =
   pretty_preserves ".x { color: var(--x, red, blue) }" [ "var(--x, red, blue)" ];
   pretty_preserves
     ".x { font-family: var(--font, \"Helvetica Neue\", sans-serif) }"
@@ -5281,7 +5281,7 @@ let custom_props1_theme_inlining () =
 (* CSS Custom Properties L1 section 2: when a [var()] reference cannot resolve
    (variable name unknown) and a fallback is present, the fallback is used. The
    print-time inliner applies the same rule. *)
-let custom_props1_fallback_used_when_unresolved () =
+let customprops1_unresolved_fallback () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -5303,7 +5303,7 @@ let custom_props1_fallback_used_when_unresolved () =
 (* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
    resolves the variable, and the resulting all-constant calc reduces under
    minify. *)
-let custom_props1_inlined_var_in_calc_simplifies () =
+let customprops1_calc_inline () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -5319,7 +5319,7 @@ let custom_props1_inlined_var_in_calc_simplifies () =
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
    ([var(--font, "Helvetica", sans-serif)]) inlines if the variable resolves,
    otherwise the fallback list is kept intact. *)
-let custom_props1_fallback_list_with_inlining () =
+let customprops1_fallback_list () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -5347,7 +5347,7 @@ let custom_props1_fallback_list_with_inlining () =
    contain [var()] references. Inlining a chain [--accent: var(--brand)]
    requires resolving the inner variable first. The Context-based eval handles
    this; the print-time theme_defaults callback resolves a single level. *)
-let custom_props1_var_in_value_position () =
+let customprops1_value_position () =
   let parse css =
     match Css.of_string css with
     | Ok sheet -> sheet
@@ -5471,7 +5471,7 @@ let custom_props1_theme_protects_var () =
     (let out = inlined ".x { color: var(--brand, red) }" in
      Astring.String.is_infix ~affix:"var(--brand" out)
 
-let cssom_6_7_no_trailing_semicolon () =
+let cssom67_no_trailing_semicolon () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5522,83 +5522,75 @@ let additional_tests =
       c6_2_import_preserved_verbatim );
     ( "spec CSS Syntax 4.3.2 source-map pragma is a comment",
       `Quick,
-      s3_4_3_2_source_map_pragma_is_a_comment );
+      s3432_sourcemap_comment );
     ( "spec cascade 6.4.4.2 layer statement equiv empty blocks",
       `Quick,
-      c6_4_4_2_statement_equiv_empty_blocks );
+      c6442_empty_blocks_equiv );
     ( "spec cascade 6.4.3 dotted layer equiv nested layer",
       `Quick,
-      c6_4_3_dotted_equiv_nested_layer );
+      c643_dotted_nested_layer );
     ( "spec CSS Syntax 4.3.2 printer never emits source-map",
       `Quick,
-      s3_4_3_2_printer_never_emits_source_map );
-    ( "spec values 4 6.1 zero length equivalence",
-      `Quick,
-      v4_6_1_zero_length_equivalence );
-    ( "spec color 4 12.1 hex shorthand equivalence",
-      `Quick,
-      color4_12_1_hex_shorthand_equivalence );
+      s3432_no_sourcemap_print );
+    ("spec values 4 6.1 zero length equivalence", `Quick, v461_zero_length_equiv);
+    ("spec color 4 12.1 hex shorthand equivalence", `Quick, color4121_hex_equiv);
     ( "spec cascade 6.1 optimizer preserves winning value",
       `Quick,
-      c6_1_optimizer_preserves_winning_value );
-    ( "spec color 4 1.4 color form equivalence",
-      `Quick,
-      color4_1_4_color_form_equivalence );
+      c61_keeps_winner );
+    ("spec color 4 1.4 color form equivalence", `Quick, color414_form_equiv);
     ( "spec color 4 named/hex minification tie policy",
       `Quick,
-      color4_named_hex_minification_tie_policy );
+      color4_hex_tie_policy );
     ( "spec values 4 6.5 zero percentage length equivalence",
       `Quick,
-      v4_6_5_zero_percentage_length_equivalence );
+      v465_zero_percentage_equiv );
     ( "spec CSSOM 6.6.2 declaration serialization",
       `Quick,
-      cssom_6_6_2_declaration_serialization );
+      cssom662_decl_serialization );
     ( "spec CSSOM 6.7 no trailing semicolon",
       `Quick,
-      cssom_6_7_no_trailing_semicolon );
+      cssom67_no_trailing_semicolon );
     ( "spec color 4 6.4 transparent equivalence",
       `Quick,
       color4_6_4_transparent_equivalence );
     ( "spec color 4 6.1 named color case insensitive",
       `Quick,
-      color4_6_1_named_color_case_insensitive );
-    ( "spec values 4 8.1 number format equivalence",
-      `Quick,
-      v4_8_1_number_format_equivalence );
+      color461_named_case );
+    ("spec values 4 8.1 number format equivalence", `Quick, v481_number_format);
     ( "spec selectors 4 3.5 universal in compound redundant",
       `Quick,
-      s4_3_5_universal_in_compound_redundant );
+      s435_universal_redundant );
     ( "spec color 4 3 hue modulo canonicalization",
       `Quick,
       color4_3_hue_modulo_canonicalization );
     ( "spec color 4 1.3 alpha number percentage equivalence",
       `Quick,
-      color4_1_3_alpha_number_percentage_equivalence );
+      color413_alpha_equiv );
     ( "spec animations 1 7.1 keyframe from/to equivalence",
       `Quick,
-      anim1_7_1_keyframe_from_to_equivalence );
+      anim171_keyframe_equiv );
     ( "spec values 4 6.1 absolute units preserved under minify",
       `Quick,
-      v4_6_1_absolute_units_preserved_under_minify );
+      v461_absolute_units_minify );
     ( "spec values 4 6.6 time unit canonicalization",
       `Quick,
-      v4_6_6_time_unit_canonicalization );
+      v466_time_unit_canonical );
     ( "spec values 4 8.1 negative units preserved",
       `Quick,
-      v4_8_1_negative_units_preserved );
+      v481_negative_units_kept );
     ("spec values 4 8 trailing zero drop", `Quick, v4_8_trailing_zero_drop);
     ( "spec sizing 4 5 aspect-ratio preservation",
       `Quick,
       sizing4_5_aspect_ratio_preservation );
     ( "spec values 4 8.1 unit required for length (negative)",
       `Quick,
-      v4_8_1_negative_unit_required_for_length );
+      v481_negative_unit_length );
     ( "spec values 4 6.6 time unit required (negative)",
       `Quick,
-      v4_6_6_time_unit_required );
+      v466_time_unit_required );
     ( "spec values 4 6.1 unknown length unit rejected (negative)",
       `Quick,
-      v4_6_1_unknown_length_unit_rejected );
+      v461_unknown_length_unit );
     ("fidelity time unit preserved", `Quick, fidelity_time_unit_preserved);
     ( "fidelity absolute units preserved",
       `Quick,
@@ -5610,19 +5602,15 @@ let additional_tests =
       `Quick,
       fidelity_trailing_zero_preserved );
     ("fidelity aspect-ratio preserved", `Quick, fidelity_aspect_ratio_preserved);
-    ( "spec values 4 10.2 calc single operand",
-      `Quick,
-      v4_10_2_calc_single_operand );
+    ("spec values 4 10.2 calc single operand", `Quick, v4102_calc_single);
     ("spec values 4 10.2 calc arithmetic", `Quick, v4_10_2_calc_arithmetic);
-    ( "spec values 4 10.2 calc same-unit addition",
-      `Quick,
-      v4_10_2_calc_same_unit_addition );
+    ("spec values 4 10.2 calc same-unit addition", `Quick, v4102_calc_addition);
     ( "spec values 4 10.2 calc same-unit percentage",
       `Quick,
-      v4_10_2_calc_same_unit_percentage );
+      v4102_calc_percentage );
     ( "spec values 4 10.2 calc mixed-unit preserved",
       `Quick,
-      v4_10_2_calc_mixed_unit_preserved );
+      v4102_calc_mixed_unit );
     ( "spec values 4 10 invalid calc rejected (negative)",
       `Quick,
       v4_10_invalid_calc_rejected );
@@ -5632,36 +5620,32 @@ let additional_tests =
     ( "fidelity calc mixed-unit preserved",
       `Quick,
       fidelity_calc_mixed_unit_preserved );
-    ( "spec values 4 10.2 calc nested collapse",
-      `Quick,
-      v4_10_2_calc_nested_collapse );
+    ("spec values 4 10.2 calc nested collapse", `Quick, v4102_calc_nested);
     ( "spec values 4 10.7 min/max constant reduction",
       `Quick,
-      v4_10_7_min_max_constant_reduction );
-    ( "spec selectors 4 17 :is single-argument unwrap",
-      `Quick,
-      s4_17_is_single_argument_unwrap );
+      v4107_minmax_reduction );
+    ("spec selectors 4 17 :is single-argument unwrap", `Quick, s417_is_unwrap);
     ( "spec selectors 4 6.2 compound attribute canonicalization",
       `Quick,
-      s4_6_2_compound_attribute_canonicalization );
+      s462_compound_attr );
     ( "spec selectors 4 4.2 compound pseudo preserved",
       `Quick,
-      s4_4_2_compound_pseudo_preserved );
+      s442_compound_pseudo_kept );
     ( "spec transforms 1 11 chain whitespace dropped",
       `Quick,
       transforms1_11_chain_whitespace_dropped );
     ( "spec custom-properties 1 2 var inlining preserved",
       `Quick,
-      custom_props1_2_var_inlining_preserved );
+      customprops12_inlining );
     ( "spec custom-properties 1 2 normal minify keeps runtime vars",
       `Quick,
-      custom_props1_2_normal_minify_keeps_runtime_vars );
+      customprops12_runtime_vars );
     ( "spec custom-properties 1 2 var text payload not inlined",
       `Quick,
-      custom_props1_2_var_text_payload_not_inlined );
+      customprops12_text_payload );
     ( "spec custom-properties 1 5 var cycle preserved",
       `Quick,
-      custom_props1_5_var_cycle_preserved );
+      customprops15_cycle );
     ("fidelity nested calc preserved", `Quick, fidelity_nested_calc_preserved);
     ("fidelity nested :is preserved", `Quick, fidelity_nested_is_preserved);
     ("fidelity min/max preserved", `Quick, fidelity_min_max_preserved);
@@ -5677,16 +5661,10 @@ let additional_tests =
       easing1_2_named_alias_canonicalization );
     ("spec easing 1 2 invalid (negative)", `Quick, easing1_2_invalid_rejected);
     ("fidelity easing preserved", `Quick, fidelity_easing_preserved);
-    ( "spec bg 3 2.1 default position elision",
-      `Quick,
-      bg3_2_1_default_position_elision );
-    ( "spec bg 3 2.1 multi-layer preserved",
-      `Quick,
-      bg3_2_1_multi_layer_preserved );
+    ("spec bg 3 2.1 default position elision", `Quick, bg321_default_pos_elision);
+    ("spec bg 3 2.1 multi-layer preserved", `Quick, bg321_multi_layer_kept);
     ("fidelity background preserved", `Quick, fidelity_background_preserved);
-    ( "spec syntax 3 4.3.7 string escape decoding",
-      `Quick,
-      s3_4_3_7_string_escape_decoding );
+    ("spec syntax 3 4.3.7 string escape decoding", `Quick, s3437_string_escape);
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );
@@ -5745,21 +5723,19 @@ let additional_tests =
     ("spec values 4 10.7 double negative", `Quick, v4_10_7_double_negative);
     ( "spec values 4 10.7 mixed relative units preserved",
       `Quick,
-      v4_10_7_mixed_relative_units_preserved );
-    ( "spec values 4 10.7 math functions reduction",
-      `Quick,
-      v4_10_7_math_functions_reduction );
+      v4107_mixed_units );
+    ("spec values 4 10.7 math functions reduction", `Quick, v4107_math_reduction);
     ( "spec values 4 10.7 numeric math reduction",
       `Quick,
-      v4_10_7_numeric_math_reduction );
-    ("spec values 4 10.7 mod/rem reduction", `Quick, v4_10_7_mod_rem_reduction);
+      v4107_numeric_reduction );
+    ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
       `Quick,
-      v4_10_7_division_by_zero_preserved );
+      v4107_division_zero );
     ( "spec values 4 10 invalid calc extra rejected (negative)",
       `Quick,
-      v4_10_invalid_calc_extra_rejected );
+      v410_invalid_calc_extra );
     ( "fidelity calc negative preserved",
       `Quick,
       fidelity_calc_negative_preserved );
@@ -5775,41 +5751,37 @@ let additional_tests =
       fidelity_calc_math_functions_preserved );
     ( "spec custom-properties 1 2 empty fallback preserved",
       `Quick,
-      custom_props1_2_empty_fallback_preserved );
+      customprops12_empty_fallback );
     ( "spec custom-properties 1 2 color in fallback canonicalizes",
       `Quick,
-      custom_props1_2_color_in_fallback_canonicalizes );
+      customprops12_color_fallback );
     ( "spec custom-properties 1 2 nested var fallback preserved",
       `Quick,
-      custom_props1_2_nested_var_fallback_preserved );
+      customprops12_nested_fallback );
     ( "spec custom-properties 1 2 calc in fallback",
       `Quick,
-      custom_props1_2_calc_in_fallback );
+      customprops12_calc_fallback );
     ( "spec custom-properties 1 2 multi-comma fallback preserved",
       `Quick,
-      custom_props1_2_multi_comma_fallback_preserved );
+      customprops12_multi_comma );
     ( "spec custom-properties 1 2 var whitespace dropped",
       `Quick,
-      custom_props1_2_var_whitespace_dropped );
+      customprops12_whitespace );
     ( "spec custom-properties 1 2 name case sensitive",
       `Quick,
-      custom_props1_2_name_case_sensitive );
+      customprops12_case_sensitive );
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
-      custom_props1_3_custom_property_declaration );
+      customprops13_declaration );
     ( "spec custom-properties 1 2 invalid var rejected (negative)",
       `Quick,
-      custom_props1_2_invalid_var_rejected );
+      customprops12_invalid_var );
     ( "spec custom-properties 1 2 var in shorthand and calc",
       `Quick,
-      custom_props1_2_var_in_shorthand_and_calc );
+      customprops12_shorthand_calc );
     ("fidelity var fallback preserved", `Quick, fidelity_var_fallback_preserved);
-    ( "fidelity var calc in fallback preserved",
-      `Quick,
-      fidelity_var_calc_in_fallback_preserved );
-    ( "fidelity var multi-comma fallback preserved",
-      `Quick,
-      fidelity_var_multi_comma_fallback_preserved );
+    ("fidelity var calc in fallback preserved", `Quick, fidelity_calc_fallback);
+    ("fidelity var multi-comma fallback preserved", `Quick, fidelity_multi_comma);
     ( "fidelity var name case preserved",
       `Quick,
       fidelity_var_name_case_preserved );
@@ -5821,16 +5793,16 @@ let additional_tests =
       custom_props1_theme_inlining );
     ( "spec custom-properties 1 fallback used when unresolved",
       `Quick,
-      custom_props1_fallback_used_when_unresolved );
+      customprops1_unresolved_fallback );
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
-      custom_props1_inlined_var_in_calc_simplifies );
+      customprops1_calc_inline );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
-      custom_props1_fallback_list_with_inlining );
+      customprops1_fallback_list );
     ( "spec custom-properties 1 var in value position",
       `Quick,
-      custom_props1_var_in_value_position );
+      customprops1_value_position );
     ( "spec custom-properties 1 inlined color canonicalizes",
       `Quick,
       custom_props1_inlined_color_canonicalizes );
@@ -5848,31 +5820,27 @@ let additional_tests =
       color4_12_rgb_clamp_canonicalization );
     ( "spec color 4 1.3 fully opaque alpha collapse",
       `Quick,
-      color4_1_3_fully_opaque_alpha_collapse );
+      color413_opaque_alpha_collapse );
     ( "spec values 4 8.1 number trailing zero canonicalization",
       `Quick,
-      v4_8_1_number_trailing_zero_canonicalization );
+      v481_trailing_zero );
     ( "spec fonts 4 5.1.2 font-weight keyword to number",
       `Quick,
-      fonts4_5_1_2_font_weight_keyword_to_number );
+      fonts4512_weight_number );
     ( "spec box 4 margin shorthand collapse",
       `Quick,
       box4_margin_shorthand_collapse );
     ( "spec color 4 6.4 transparent canonical shortest",
       `Quick,
-      color4_6_4_transparent_canonical_shortest );
+      color464_transparent_shortest );
     ( "spec values 4 6.5 zero length canonical shortest",
       `Quick,
-      v4_6_5_zero_length_canonical_shortest );
-    ( "spec bg 3 5 border-radius collapse shortest",
-      `Quick,
-      bg3_5_border_radius_collapse_shortest );
-    ( "spec values 4 10 calc add zero simplification",
-      `Quick,
-      v4_10_calc_add_zero_simplification );
+      v465_zero_length_shortest );
+    ("spec bg 3 5 border-radius collapse shortest", `Quick, bg35_radius_collapse);
+    ("spec values 4 10 calc add zero simplification", `Quick, v410_calc_add_zero);
     ( "spec bg 3 3.6 background-position collapse shortest",
       `Quick,
-      bg3_3_6_background_position_collapse_shortest );
+      bg336_bgpos_collapse );
     (* Non-minified fidelity: pretty printer preserves the source spelling. *)
     ("fidelity hex form preserved", `Quick, fidelity_hex_form_preserved);
     ("fidelity color form preserved", `Quick, fidelity_color_form_preserved);
@@ -5895,25 +5863,23 @@ let additional_tests =
       s4_14_nth_child_canonicalization );
     ( "spec selectors 4 6.2 attribute quote canonicalization",
       `Quick,
-      s4_6_2_attribute_quote_canonicalization );
+      s462_attr_quote_canonical );
     ( "spec values 4 8.1 scientific notation expansion",
       `Quick,
-      v4_8_1_scientific_notation_expansion );
-    ( "spec values 4 8.1 negative zero canonical",
-      `Quick,
-      v4_8_1_negative_zero_canonical );
+      v481_scientific_notation );
+    ("spec values 4 8.1 negative zero canonical", `Quick, v481_negative_zero);
     ( "spec values 4 7 url quote canonicalization",
       `Quick,
       v4_7_url_quote_canonicalization );
     ( "spec values 4 10 calc nested constant simplification",
       `Quick,
-      v4_10_calc_nested_constant_simplification );
+      v410_calc_nested_constant );
     ( "spec cascade 6.1 consecutive same-condition merge",
       `Quick,
-      c6_1_consecutive_same_condition_merge );
+      c61_same_condition_merge );
     ( "spec cascade 6.1 no merge across intervening rule pair",
       `Quick,
-      c6_1_no_merge_across_intervening_rule_pair );
+      c61_no_intervening_merge );
     ( "fidelity nth-child form preserved",
       `Quick,
       fidelity_nth_child_form_preserved );
@@ -5927,12 +5893,10 @@ let additional_tests =
     ("fidelity calc form preserved", `Quick, fidelity_calc_form_preserved);
     ( "spec bg 3 3.6 position keyword canonicalization",
       `Quick,
-      bg3_3_6_position_keyword_canonicalization );
+      bg336_position_keyword );
     ("spec cascade 6.1 selector grouping", `Quick, c6_1_selector_grouping);
     ("vendor prefix preservation", `Quick, vendor_prefix_preservation);
-    ( "spec selectors 4 4.3 not form preserved",
-      `Quick,
-      s4_4_3_not_form_preserved );
+    ("spec selectors 4 4.3 not form preserved", `Quick, s443_not_form_kept);
     ( "spec display 3 border keyword preservation",
       `Quick,
       display3_border_keyword_preservation );
@@ -5953,20 +5917,18 @@ let additional_tests =
     ("css var fallback preserved", `Quick, css_var_fallback_preserved);
     ( "spec cascade 6.4.4 anonymous layers distinct",
       `Quick,
-      c6_4_4_anonymous_layers_distinct );
+      c644_anonymous_layers_distinct );
     ( "spec cascade 6.3.2 all shorthand preserved",
       `Quick,
-      c6_3_2_all_shorthand_preserved );
+      c632_all_shorthand_kept );
     ( "spec cascade 6.4 named layers preserve order",
       `Quick,
-      c6_4_named_layers_preserve_order );
+      c64_named_layers_order );
     ( "spec cascade 6.1 dead shorthand removed",
       `Quick,
       c6_1_dead_shorthand_removed );
     ("spec cascade 6.1 empty rule removed", `Quick, c6_1_empty_rule_removed);
-    ( "spec cascade 6.7 css-wide keywords preserved",
-      `Quick,
-      c6_7_css_wide_keywords_preserved );
+    ("spec cascade 6.7 css-wide keywords preserved", `Quick, c67_css_wide_kept);
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);

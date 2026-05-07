@@ -481,7 +481,7 @@ let test_spec_color_branch_vectors buf =
               (Fmt.str "CSS color branch not idempotent: %S -> %S -> %S" input
                  serialized reserialized))
 
-let test_spec_invalid_color_branch_vectors buf =
+let test_invalid_color_branches buf =
   let input =
     pick
       [
@@ -685,7 +685,7 @@ let suite =
       test_case "spec color branch vectors" [ bytes ]
         test_spec_color_branch_vectors;
       test_case "spec invalid color branch vectors rejected" [ bytes ]
-        test_spec_invalid_color_branch_vectors;
+        test_invalid_color_branches;
       test_case "generated value grammar" [ bytes ] test_generated_value_grammar;
       test_case "invalid value mutations rejected" [ bytes ]
         test_invalid_value_mutations;

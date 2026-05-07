@@ -23,77 +23,98 @@ let rule buf i =
   Css.Stylesheet.Rule
     (Css.Stylesheet.rule ~selector:(selector buf i) [ declaration buf (i + 1) ])
 
-let generated_stylesheet buf =
+let generated_import =
+  Css.Stylesheet.Import
+    {
+      url = "theme.css";
+      layer = Some "theme";
+      supports = Some (Css.Supports.property "display" "grid");
+      media = Some (Css.Media.of_string "(width >= 40em)");
+    }
+
+let generated_namespace =
+  Css.Stylesheet.Namespace
+    ( Some "svg",
+      Css.Stylesheet.Url ("http://www.w3.org/2000/svg", Css.Stylesheet.Url_bare)
+    )
+
+let generated_media buf =
+  Css.Stylesheet.Media
+    ( Css.Media.of_string "(width >= 40em)",
+      [
+        rule buf 4;
+        Css.Stylesheet.Supports
+          ( Css.Supports.property "display" "grid",
+            [
+              Css.Stylesheet.Container
+                ( Some "card",
+                  Css.Container.of_string "(inline-size > 30em)",
+                  [ rule buf 8 ] );
+            ] );
+      ] )
+
+let generated_when buf =
+  Css.Stylesheet.When
+    ( Css.Stylesheet.And
+        ( Css.Stylesheet.Media_condition (Css.Media.of_string "(width >= 48em)"),
+          Css.Stylesheet.Supports_condition_test
+            (Css.Supports.property "display" "grid") ),
+      [ rule buf 10 ] )
+
+let generated_else buf =
+  Css.Stylesheet.Else
+    ( Some
+        (Css.Stylesheet.Supports_condition_test
+           (Css.Supports.property "display" "flex")),
+      [ rule buf 11 ] )
+
+let generated_keyframes =
+  Css.Stylesheet.Keyframes
+    ( "fade",
+      [
+        {
+          keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.Percent 0. ];
+          keyframe_declarations =
+            [ Css.Declaration.opacity (Css.Properties.Opacity_number 0.) ];
+        };
+        {
+          keyframe_selector =
+            Css.Keyframe.Positions [ Css.Keyframe.Percent 100. ];
+          keyframe_declarations =
+            [ Css.Declaration.opacity (Css.Properties.Opacity_number 1.) ];
+        };
+      ] )
+
+let generated_sheet_prelude =
   [
     Css.Stylesheet.Charset "UTF-8";
     Css.Stylesheet.Layer_decl [ "reset"; "theme"; "components" ];
-    Css.Stylesheet.Import
-      {
-        url = "theme.css";
-        layer = Some "theme";
-        supports = Some (Css.Supports.property "display" "grid");
-        media = Some (Css.Media.of_string "(width >= 40em)");
-      };
-    Css.Stylesheet.Namespace
-      ( Some "svg",
-        Css.Stylesheet.Url
-          ("http://www.w3.org/2000/svg", Css.Stylesheet.Url_bare) );
+    generated_import;
+    generated_namespace;
     Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
-    rule buf 0;
-    rule buf 0;
-    Css.Stylesheet.Media
-      ( Css.Media.of_string "(width >= 40em)",
-        [
-          rule buf 4;
-          Css.Stylesheet.Supports
-            ( Css.Supports.property "display" "grid",
-              [
-                Css.Stylesheet.Container
-                  ( Some "card",
-                    Css.Container.of_string "(inline-size > 30em)",
-                    [ rule buf 8 ] );
-              ] );
-        ] );
-    Css.Stylesheet.When
-      ( Css.Stylesheet.And
-          ( Css.Stylesheet.Media_condition
-              (Css.Media.of_string "(width >= 48em)"),
-            Css.Stylesheet.Supports_condition_test
-              (Css.Supports.property "display" "grid") ),
-        [ rule buf 10 ] );
-    Css.Stylesheet.Else
-      ( Some
-          (Css.Stylesheet.Supports_condition_test
-             (Css.Supports.property "display" "flex")),
-        [ rule buf 11 ] );
-    Css.Stylesheet.Supports_condition
-      ("--fuzz-condition", [ declaration buf 12 ]);
-    Css.Stylesheet.Layer
-      ( Some (pick [ "base"; "theme"; "components" ] buf 12),
-        [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
-    Css.Stylesheet.Scope (Some ".card", Some ".limit", [ rule buf 24 ]);
-    Css.Stylesheet.Starting_style [ rule buf 28 ];
-    Css.Stylesheet.with_origin Css.Stylesheet.Author
-      [ rule buf 32; rule buf 32 ];
-    Css.Stylesheet.Page
-      (Some ":first", [ Css.Declaration.margin [ Css.Values.Px 10. ] ]);
-    Css.Stylesheet.Keyframes
-      ( "fade",
-        [
-          {
-            keyframe_selector =
-              Css.Keyframe.Positions [ Css.Keyframe.Percent 0. ];
-            keyframe_declarations =
-              [ Css.Declaration.opacity (Css.Properties.Opacity_number 0.) ];
-          };
-          {
-            keyframe_selector =
-              Css.Keyframe.Positions [ Css.Keyframe.Percent 100. ];
-            keyframe_declarations =
-              [ Css.Declaration.opacity (Css.Properties.Opacity_number 1.) ];
-          };
-        ] );
   ]
+
+let generated_stylesheet buf =
+  generated_sheet_prelude
+  @ [
+      rule buf 0;
+      rule buf 0;
+      generated_media buf;
+      generated_when buf;
+      generated_else buf;
+      Css.Stylesheet.Supports_condition
+        ("--fuzz-condition", [ declaration buf 12 ]);
+      Css.Stylesheet.Layer
+        ( Some (pick [ "base"; "theme"; "components" ] buf 12),
+          [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
+      Css.Stylesheet.Scope (Some ".card", Some ".limit", [ rule buf 24 ]);
+      Css.Stylesheet.Starting_style [ rule buf 28 ];
+      Css.Stylesheet.with_origin Css.Stylesheet.Author
+        [ rule buf 32; rule buf 32 ];
+      Css.Stylesheet.Page
+        (Some ":first", [ Css.Declaration.margin [ Css.Values.Px 10. ] ]);
+      generated_keyframes;
+    ]
 
 let minified ss = Css.Stylesheet.to_string ~minify:true ss |> String.trim
 
@@ -218,76 +239,78 @@ let test_import_namespace_counts buf =
 let count_kind f ss =
   List.fold_left (fun acc stmt -> if f stmt then acc + 1 else acc) 0 ss
 
+let atrule_count_checks =
+  [
+    ("property", function Css.Stylesheet.Property _ -> true | _ -> false);
+    ("charset", function Css.Stylesheet.Charset _ -> true | _ -> false);
+    ( "starting-style",
+      function Css.Stylesheet.Starting_style _ -> true | _ -> false );
+    ("origin", function Css.Stylesheet.Origin _ -> true | _ -> false);
+    ("page", function Css.Stylesheet.Page _ -> true | _ -> false);
+    ("keyframes", function Css.Stylesheet.Keyframes _ -> true | _ -> false);
+    ("when", function Css.Stylesheet.When _ -> true | _ -> false);
+    ("else", function Css.Stylesheet.Else _ -> true | _ -> false);
+    ( "supports-condition",
+      function Css.Stylesheet.Supports_condition _ -> true | _ -> false );
+  ]
+
 let test_atrule_counts_stable buf =
   let ss = generated_stylesheet buf in
   let optimized = Css.Optimize.stylesheet ss in
-  let same label pred =
+  let check (label, pred) =
     let before = count_kind pred ss in
     let after = count_kind pred optimized in
     if before <> after then
       fail
         (Fmt.str "optimization changed %s count: %d -> %d" label before after)
   in
-  same "property" (function Css.Stylesheet.Property _ -> true | _ -> false);
-  same "charset" (function Css.Stylesheet.Charset _ -> true | _ -> false);
-  same "starting-style" (function
-    | Css.Stylesheet.Starting_style _ -> true
-    | _ -> false);
-  same "origin" (function Css.Stylesheet.Origin _ -> true | _ -> false);
-  same "page" (function Css.Stylesheet.Page _ -> true | _ -> false);
-  same "keyframes" (function Css.Stylesheet.Keyframes _ -> true | _ -> false);
-  same "when" (function Css.Stylesheet.When _ -> true | _ -> false);
-  same "else" (function Css.Stylesheet.Else _ -> true | _ -> false);
-  same "supports-condition" (function
-    | Css.Stylesheet.Supports_condition _ -> true
-    | _ -> false)
+  List.iter check atrule_count_checks
 
-let test_cascade_positive_negative_merge_vectors buf =
-  let media_rule selector color =
-    Css.Stylesheet.Media
-      ( Css.Media.Min_width 48.,
-        [
-          Css.Stylesheet.Rule
-            (Css.Stylesheet.rule
-               ~selector:(Css.Selector.class_ selector)
-               [ Css.Declaration.color (Css.Values.hex color) ]);
-        ] )
-  in
-  let input =
-    pick
+let media_rule selector color =
+  Css.Stylesheet.Media
+    ( Css.Media.Min_width 48.,
       [
-        [
-          Css.Stylesheet.Rule
-            (Css.Stylesheet.rule
-               ~selector:(Css.Selector.class_ "box")
-               [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
-          Css.Stylesheet.Rule
-            (Css.Stylesheet.rule
-               ~selector:(Css.Selector.class_ "box")
-               [
-                 Css.Declaration.display Css.Properties.Flex;
-                 Css.Declaration.color (Css.Values.hex "#0000ff");
-               ]);
-        ];
-        [
-          Css.Stylesheet.Rule
-            (Css.Stylesheet.rule
-               ~selector:(Css.Selector.class_ "box")
-               [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
-          Css.Stylesheet.Layer_decl [ "reset"; "components" ];
-          Css.Stylesheet.Rule
-            (Css.Stylesheet.rule
-               ~selector:(Css.Selector.class_ "box")
-               [ Css.Declaration.display Css.Properties.Flex ]);
-        ];
-        [
-          media_rule "a" "#ff0000";
-          Css.Stylesheet.Layer_decl [ "theme" ];
-          media_rule "b" "#0000ff";
-        ];
-      ]
-      buf 0
-  in
+        Css.Stylesheet.Rule
+          (Css.Stylesheet.rule
+             ~selector:(Css.Selector.class_ selector)
+             [ Css.Declaration.color (Css.Values.hex color) ]);
+      ] )
+
+let cascade_merge_vectors =
+  [
+    [
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "box")
+           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "box")
+           [
+             Css.Declaration.display Css.Properties.Flex;
+             Css.Declaration.color (Css.Values.hex "#0000ff");
+           ]);
+    ];
+    [
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "box")
+           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+      Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "box")
+           [ Css.Declaration.display Css.Properties.Flex ]);
+    ];
+    [
+      media_rule "a" "#ff0000";
+      Css.Stylesheet.Layer_decl [ "theme" ];
+      media_rule "b" "#0000ff";
+    ];
+  ]
+
+let test_cascade_merge_vectors buf =
+  let input = pick cascade_merge_vectors buf 0 in
   let optimized = Css.Optimize.stylesheet input in
   let before = boundary_shapes input in
   let after = boundary_shapes optimized in
@@ -400,7 +423,7 @@ let suite =
       test_case "import namespace counts" [ bytes ] test_import_namespace_counts;
       test_case "at-rule counts stable" [ bytes ] test_atrule_counts_stable;
       test_case "cascade positive negative merge vectors" [ bytes ]
-        test_cascade_positive_negative_merge_vectors;
+        test_cascade_merge_vectors;
       test_case "cascade shorthand importance vectors" [ bytes ]
         test_cascade_shorthand_importance_vectors;
       test_case "positive layer statement vectors" [ bytes ]

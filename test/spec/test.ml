@@ -627,7 +627,7 @@ let non_minified_preserves_css2_forms () =
     "table > caption + colgroup col { visibility: collapse }"
     [ "table > caption + colgroup col"; "visibility: collapse" ]
 
-let non_minified_preserves_syntax_at_rule_forms () =
+let normal_keeps_at_rule_forms () =
   preserves_non_minified "@import 'legacy.css';" [ "@import 'legacy.css'" ];
   preserves_non_minified "@import \"legacy.css\";" [ "@import \"legacy.css\"" ];
   preserves_non_minified "@import url(\"reset.css\");"
@@ -829,7 +829,7 @@ let non_minified_preserves_cascade_forms () =
     [ "@starting-style"; "opacity: 0" ];
   preserves_non_minified ".x { color: revert-layer }" [ "revert-layer" ]
 
-let non_minified_preserves_nesting_variable_forms () =
+let normal_keeps_nesting_vars () =
   preserves_non_minified ".card { color: red; & > img { display: block } }"
     [ "& > img" ];
   preserves_non_minified
@@ -843,7 +843,7 @@ let non_minified_preserves_nesting_variable_forms () =
   preserves_non_minified ".x { color: var(--primary-color) }"
     [ "var(--primary-color)" ]
 
-let non_minified_preserves_font_animation_property_forms () =
+let normal_keeps_font_anim_forms () =
   preserves_non_minified
     "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
      format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
@@ -1026,7 +1026,7 @@ let () =
           Alcotest.test_case "fidelity: CSS2 forms" `Quick
             non_minified_preserves_css2_forms;
           Alcotest.test_case "fidelity: syntax and at-rule forms" `Quick
-            non_minified_preserves_syntax_at_rule_forms;
+            normal_keeps_at_rule_forms;
           Alcotest.test_case "fidelity: selector forms" `Quick
             non_minified_preserves_selector_forms;
           Alcotest.test_case "fidelity: value forms" `Quick
@@ -1040,9 +1040,9 @@ let () =
           Alcotest.test_case "fidelity: cascade forms" `Quick
             non_minified_preserves_cascade_forms;
           Alcotest.test_case "fidelity: nesting and variable forms" `Quick
-            non_minified_preserves_nesting_variable_forms;
+            normal_keeps_nesting_vars;
           Alcotest.test_case "fidelity: font animation property forms" `Quick
-            non_minified_preserves_font_animation_property_forms;
+            normal_keeps_font_anim_forms;
           Alcotest.test_case "fidelity: serialization invariants" `Quick
             serialization_invariants;
           Alcotest.test_case "minify: shortest spec edges" `Quick
