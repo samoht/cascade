@@ -16,6 +16,12 @@ val deduplicate_declarations : declaration list -> declaration list
     CSS cascade rules: !important wins over normal, and among same importance
     the last one wins. *)
 
+val drop_invalid : t -> t
+(** [drop_invalid ss] removes every declaration whose typed value contains an
+    [Invalid] arm cascade detected at parse time (CSS spec violations that
+    cascade preserved verbatim for round-trip). Run as part of minify-time
+    spec-based optimization. *)
+
 (** {1 Rule Optimization} *)
 
 val single_rule : rule -> rule

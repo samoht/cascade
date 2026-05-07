@@ -63,6 +63,12 @@ val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
 
+val is_invalid : declaration -> bool
+(** [is_invalid decl] is [true] when [decl]'s typed value is a CSS
+    spec-violation cascade detected at parse time. The minify-time
+    [Optimize.drop_invalid] pass uses this predicate to remove the declaration.
+*)
+
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 

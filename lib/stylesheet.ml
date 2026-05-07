@@ -1214,20 +1214,14 @@ let read_keyframes_block inner =
   (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
      selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only drops
      that rule, the surrounding block keeps parsing. *)
-  let saw_invalid = ref false in
   let rec read_frames acc =
     Cursor.ws inner;
-    if Cursor.is_done inner then (
-      let frames = List.rev acc in
-      if !saw_invalid && frames = [] then
-        Cursor.err_invalid inner "invalid keyframes block";
-      frames)
+    if Cursor.is_done inner then List.rev acc
     else
       let snap = Cursor.save inner in
       match read_keyframe inner with
       | frame -> read_frames (frame :: acc)
       | exception Cursor.Parse_error _ ->
-          saw_invalid := true;
           Cursor.restore inner snap;
           (* Skip the malformed selector tokens up to the rule body, then
              swallow the brace-enclosed block so the next frame can parse. *)

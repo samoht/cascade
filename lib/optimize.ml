@@ -1588,8 +1588,52 @@ let apply_property_duplication (stylesheet : t) : t =
   in
   apply_to_statements stylesheet
 
+(** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
+    nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
+    [@position-try]) and removes declarations whose typed value contains an
+    [Invalid] arm. *)
+let drop_invalid (stylesheet : t) : t =
+  let filter_decls = List.filter (fun d -> not (Declaration.is_invalid d)) in
+  let rec statement = function
+    | Rule rule ->
+        Rule
+          {
+            rule with
+            declarations = filter_decls rule.declarations;
+            nested = List.map statement rule.nested;
+          }
+    | Declarations decls -> Declarations (filter_decls decls)
+    | Layer (name, block) -> Layer (name, List.map statement block)
+    | Media (m, block) -> Media (m, List.map statement block)
+    | Container (n, c, block) -> Container (n, c, List.map statement block)
+    | Supports (s, block) -> Supports (s, List.map statement block)
+    | Moz_document (c, block) -> Moz_document (c, List.map statement block)
+    | When (c, block) -> When (c, List.map statement block)
+    | Else (c, block) -> Else (c, List.map statement block)
+    | Starting_style block -> Starting_style (List.map statement block)
+    | Origin (o, block) -> Origin (o, List.map statement block)
+    | Scope (a, b, block) -> Scope (a, b, List.map statement block)
+    | Page (sel, decls) -> Page (sel, filter_decls decls)
+    | Page_with_margins (sel, descs, margins) ->
+        Page_with_margins
+          ( sel,
+            filter_decls descs,
+            List.map
+              (fun (m : page_margin_rule) ->
+                {
+                  m with
+                  margin_descriptors = filter_decls m.margin_descriptors;
+                })
+              margins )
+    | Position_try (name, decls) -> Position_try (name, filter_decls decls)
+    | Supports_condition (name, decls) ->
+        Supports_condition (name, filter_decls decls)
+    | other -> other
+  in
+  List.map statement stylesheet
+
 let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   let stylesheet =
     if flatten_nesting then flatten_block stylesheet else stylesheet
   in
-  statements_top_level stylesheet
+  drop_invalid (statements_top_level stylesheet)

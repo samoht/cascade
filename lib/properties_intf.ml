@@ -3182,7 +3182,7 @@ type animation_range_name =
 type animation_range_item =
   | Normal
   | Offset of length_percentage
-  | Named of animation_range_name * length_percentage
+  | Named of animation_range_name * length_percentage option
   | Initial
   | Inherit
   | Unset
