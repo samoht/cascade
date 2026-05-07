@@ -6055,7 +6055,23 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
 let pp_mask_layer : mask_layer Pp.t =
  fun ctx layer ->
   let first = ref true in
-  let maybe_space () = if !first then first := false else Pp.space ctx () in
+  (* CSS Syntax 3 §5.4.6: a token ending with [)], [\]] or [}] is
+     self-delimiting, so under minify we can drop the inter-slot space after
+     [url(...)] / [<image>]. *)
+  let last_is_self_delim () =
+    let buf = ctx.Pp.buf in
+    let len = Buffer.length buf in
+    len > 0
+    &&
+    match Buffer.nth buf (len - 1) with
+    | ')' | ']' | '}' -> true
+    | _ -> false
+  in
+  let maybe_space () =
+    if !first then first := false
+    else if Pp.minified ctx && last_is_self_delim () then ()
+    else Pp.space ctx ()
+  in
   pp_bg_prop maybe_space pp_background_image ctx layer.image;
   (match (layer.position, layer.size) with
   | Some position, Some size ->

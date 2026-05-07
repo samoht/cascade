@@ -287,20 +287,73 @@ let gaps ?column row : gap = Lengths { row_gap = Some row; column_gap = column }
 let font_stack fonts = (List fonts : font_family)
 let ratio width height = (Ratio (width, height) : aspect_ratio)
 let auto_ratio width height = (Auto_ratio (width, height) : aspect_ratio)
+let position_xy x y = (XY (x, y) : position_value)
+let position_length value = (Single value : position_value)
+let text_overflow_string value = (String value : text_overflow)
+let text_overflow_pair start end_ = (Pair (start, end_) : text_overflow)
+let content_string value = (String value : content)
+let content_attr name = (Attr name : content)
+let content_counter name = (Counter name : content)
+let content_counters name separator = (Counters (name, separator) : content)
+let content_list items = (Content_list items : content)
 let columns_count count = (Count count : columns_value)
 let columns_width width = (Width width : columns_value)
 let columns_both width count = (Both (width, count) : columns_value)
-let counter_item ?value name = { name; value }
+let counter_item ?value name : counter_item = { name; value }
 let counter_set items = (Counters items : counter_set)
+let background_size_pair width height = (Size (width, height) : background_size)
 
 let mask_layer ?image ?position ?size ?repeat ?origin ?clip ?mode ?composite ()
     =
   { image; position; size; repeat; origin; clip; mode; composite }
 
 let mask_layers layers = (Layers layers : mask)
+let gradient_stops stops = (List stops : gradient_stop)
+let gradient_hint_length value = (Length value : gradient_stop)
+let gradient_hint_percentage value = (Percentage value : gradient_stop)
+let radial_gradient_config ?shape ?size ?position () = { shape; size; position }
+
+let conic_gradient_config ?from_angle ?position () =
+  { from_angle; conic_position = position }
+
+let conic_gradient ?(config = { from_angle = None; conic_position = None })
+    stops =
+  (Conic_gradient (config, stops) : background_image)
+
+let object_view_box_inset ?right ?bottom ?left top : object_view_box =
+  Inset (top, right, bottom, left)
+
+let grid_tracks tracks = (Tracks tracks : grid_template)
+let grid_repeat count tracks = (Repeat (count, tracks) : grid_template)
+let grid_line_num value = (Num value : grid_line)
+let grid_line_name value = (Name value : grid_line)
+let grid_line_span value = (Span value : grid_line)
+let grid_line_span_name value = (Span_name value : grid_line)
+let grid_lines start end_ = (Lines (start, end_) : grid_line_pair)
 
 let outline_shorthand ?width ?style ?color () : outline =
   Shorthand { width; style; color }
+
+let logical_border_color value = (Single value : logical_border_color)
+
+let logical_border_colors start end_ =
+  (Pair (start, end_) : logical_border_color)
+
+let transform_list items = (List items : transform)
+let filter_list items = (List items : filter)
+let cursor_url ?hotspot ~fallback url = (Url (url, hotspot, fallback) : cursor)
+let contain_list items = (List items : contain)
+let border_spacing_values values = (Lengths values : border_spacing)
+let list_style_symbol_string value = (String value : list_style_symbol)
+let list_style_symbol_url value = (Url value : list_style_symbol)
+let list_style_string value = (String value : list_style_type)
+
+let list_style_symbols ?kind symbols =
+  (Symbols (kind, symbols) : list_style_type)
+
+let list_style_image_url value = (Url value : list_style_image)
+let svg_paint_color value = (Color value : svg_paint)
+let svg_paint_url ?fallback value = (Url (value, fallback) : svg_paint)
 
 let text_shadow_value ?blur ?color h_offset v_offset : text_shadow =
   Text_shadow { h_offset; v_offset; blur; color }

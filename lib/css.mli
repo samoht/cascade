@@ -1203,6 +1203,13 @@ type aspect_ratio =
   | Revert_layer
   | Var of aspect_ratio var  (** CSS blend-mode values *)
 
+val ratio : float -> float -> aspect_ratio
+(** [ratio width height] is an [aspect-ratio] value such as [16 / 9]. *)
+
+val auto_ratio : float -> float -> aspect_ratio
+(** [auto_ratio width height] is an [aspect-ratio] value such as [auto 16 / 9].
+*)
+
 type blend_mode =
   | Normal
   | Multiply
@@ -1911,6 +1918,17 @@ type columns_value =
   | Revert_layer
   | Var of columns_value var
 
+val columns_count : int -> columns_value
+(** [columns_count count] is a column-count value for the [columns] shorthand.
+*)
+
+val columns_width : length -> columns_value
+(** [columns_width width] is a column-width value for the [columns] shorthand.
+*)
+
+val columns_both : length -> int -> columns_value
+(** [columns_both width count] is a combined [columns] shorthand value. *)
+
 type column_span =
   | None
   | All
@@ -2010,7 +2028,26 @@ type content =
   | Revert_layer
   | Var of content var
 
+val content_string : string -> content
+(** [content_string value] is a quoted string content item. *)
+
+val content_attr : string -> content
+(** [content_attr name] is an [attr(name)] content item. *)
+
+val content_counter : string -> content
+(** [content_counter name] is a [counter(name)] content item. *)
+
+val content_counters : string -> string -> content
+(** [content_counters name separator] is a [counters(name, separator)] content
+    item. *)
+
+val content_list : content list -> content
+(** [content_list items] is a space-separated content value. *)
+
 type counter_item = { name : string; value : int option }
+
+val counter_item : ?value:int -> string -> counter_item
+(** [counter_item ?value name] is one named counter item. *)
 
 type counter_set =
   | None
@@ -2021,6 +2058,9 @@ type counter_set =
   | Revert
   | Revert_layer
   | Var of counter_set var
+
+val counter_set : counter_item list -> counter_set
+(** [counter_set items] is a counter-reset/increment/set list. *)
 
 val content : content -> declaration
 (** [content c] is the
@@ -2101,6 +2141,18 @@ type text_overflow =
   | Revert
   | Revert_layer
   | Var of text_overflow var
+
+val position_xy : length -> length -> position_value
+(** [position_xy x y] is a two-axis position value. *)
+
+val position_length : length -> position_value
+(** [position_length value] is a one-value position. *)
+
+val text_overflow_string : string -> text_overflow
+(** [text_overflow_string value] is a custom text-overflow marker. *)
+
+val text_overflow_pair : text_overflow -> text_overflow -> text_overflow
+(** [text_overflow_pair start end_] is the two-value text-overflow form. *)
 
 val text_overflow : text_overflow -> declaration
 (** [text_overflow ov] is the
@@ -2493,6 +2545,9 @@ type background_size =
   | Revert_layer
   | Var of background_size var  (** CSS background-attachment values. *)
 
+val background_size_pair : length -> length -> background_size
+(** [background_size_pair width height] is a two-value [background-size]. *)
+
 type background_attachment =
   | Scroll
   | Fixed
@@ -2544,6 +2599,16 @@ type gradient_stop =
       (** Gradient direction for stops, e.g., "to right" or Var *)
   | Var of gradient_stop var
 
+val gradient_stops : gradient_stop list -> gradient_stop
+(** [gradient_stops stops] groups multiple gradient stops, usually for variable
+    fallbacks. *)
+
+val gradient_hint_length : length -> gradient_stop
+(** [gradient_hint_length value] is a length interpolation hint. *)
+
+val gradient_hint_percentage : percentage -> gradient_stop
+(** [gradient_hint_percentage value] is a percentage interpolation hint. *)
+
 (** Shape of a radial gradient *)
 type radial_shape =
   | Circle
@@ -2571,6 +2636,20 @@ type conic_gradient_config = {
   conic_position : position_value option;  (** [at <position>] center *)
 }
 (** Configuration for conic-gradient prefix: starting angle and center. *)
+
+val radial_gradient_config :
+  ?shape:radial_shape ->
+  ?size:radial_size ->
+  ?position:position_value ->
+  unit ->
+  radial_gradient_config
+(** [radial_gradient_config ?shape ?size ?position ()] builds a radial-gradient
+    prefix. *)
+
+val conic_gradient_config :
+  ?from_angle:angle -> ?position:position_value -> unit -> conic_gradient_config
+(** [conic_gradient_config ?from_angle ?position ()] builds a conic-gradient
+    prefix. *)
 
 type border_radius =
   | Radius of {
@@ -2617,6 +2696,11 @@ type object_view_box =
   | Revert
   | Revert_layer
   | Var of object_view_box var
+
+val object_view_box_inset :
+  ?right:length -> ?bottom:length -> ?left:length -> length -> object_view_box
+(** [object_view_box_inset ?right ?bottom ?left top] is an [inset()] object view
+    box. *)
 
 val object_view_box : object_view_box -> declaration
 (** [object_view_box box] is the CSS [object-view-box] property. *)
@@ -2807,6 +2891,23 @@ type mask =
   | Revert_layer
   | Var of mask var
 
+val mask_layer :
+  ?image:background_image ->
+  ?position:position_value ->
+  ?size:background_size ->
+  ?repeat:background_repeat ->
+  ?origin:mask_box ->
+  ?clip:mask_box ->
+  ?mode:mask_mode ->
+  ?composite:mask_composite ->
+  unit ->
+  mask_layer
+(** [mask_layer ?image ?position ?size ?repeat ?origin ?clip ?mode ?composite
+     ()] is one layer for the [mask] shorthand. *)
+
+val mask_layers : mask_layer list -> mask
+(** [mask_layers layers] is a comma-separated [mask] shorthand value. *)
+
 type background_shorthand = {
   color : color option;
   image : background_image option;
@@ -2905,6 +3006,10 @@ val linear_gradient :
 val radial_gradient :
   ?config:radial_gradient_config -> gradient_stop list -> background_image
 (** [radial_gradient ?config stops] is a radial gradient background. *)
+
+val conic_gradient :
+  ?config:conic_gradient_config -> gradient_stop list -> background_image
+(** [conic_gradient ?config stops] is a conic gradient background. *)
 
 val color_stop : color -> gradient_stop
 (** [color_stop c] is a simple color stop. *)
@@ -3490,6 +3595,27 @@ type grid_line =
 type grid_line_pair =
   | Lines of grid_line * grid_line
   | Var of grid_line_pair var
+
+val grid_tracks : grid_template list -> grid_template
+(** [grid_tracks tracks] is a track list. *)
+
+val grid_repeat : repeat_count -> grid_template list -> grid_template
+(** [grid_repeat count tracks] is a [repeat(...)] track list item. *)
+
+val grid_line_num : int -> grid_line
+(** [grid_line_num n] is a numeric grid line. *)
+
+val grid_line_name : string -> grid_line
+(** [grid_line_name name] is a named grid line. *)
+
+val grid_line_span : int -> grid_line
+(** [grid_line_span n] is [span n]. *)
+
+val grid_line_span_name : string -> grid_line
+(** [grid_line_span_name name] is [span name]. *)
+
+val grid_lines : grid_line -> grid_line -> grid_line_pair
+(** [grid_lines start end_] is a grid line pair for row/column shorthands. *)
 
 val grid_template_columns : grid_template -> declaration
 (** [grid_template_columns cols] is the
@@ -4692,6 +4818,12 @@ type logical_border_color =
   | Revert_layer
   | Var of logical_border_color var
 
+val logical_border_color : color -> logical_border_color
+(** [logical_border_color color] is a one-value logical border color. *)
+
+val logical_border_colors : color -> color -> logical_border_color
+(** [logical_border_colors start end_] is a two-value logical border color. *)
+
 type outline_style =
   | None
   | Solid
@@ -4727,6 +4859,10 @@ type outline =
   | None
   | Shorthand of outline_shorthand
   | Var of outline var
+
+val outline_shorthand :
+  ?width:length -> ?style:outline_style -> ?color:color -> unit -> outline
+(** [outline_shorthand ?width ?style ?color ()] is the outline shorthand. *)
 
 val border_shorthand :
   ?width:border_width -> ?style:border_style -> ?color:color -> unit -> border
@@ -5010,6 +5146,9 @@ type transform =
   | Revert_layer
   | List of transform list
   | Var of transform var
+
+val transform_list : transform list -> transform
+(** [transform_list items] is a multi-function transform value. *)
 
 val transform : transform -> declaration
 (** [transform t] is the
@@ -5525,6 +5664,9 @@ type filter =
   | Revert_layer
   | Var of filter var
 
+val filter_list : filter list -> filter
+(** [filter_list items] is a multi-function filter value. *)
+
 val filter : filter -> declaration
 (** [filter values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/filter} filter}
@@ -5739,6 +5881,10 @@ type cursor =
   | Revert
   | Revert_layer
   | Var of cursor var  (** CSS user-select values. *)
+
+val cursor_url : ?hotspot:float * float -> fallback:cursor -> string -> cursor
+(** [cursor_url ?hotspot ~fallback url] is a URL cursor with its required
+    fallback. *)
 
 type user_select =
   | None
@@ -6017,6 +6163,9 @@ type contain =
   | Revert_layer
   | Var of contain var
 
+val contain_list : contain list -> contain
+(** [contain_list items] is a combined [contain] value. *)
+
 val contain : contain -> declaration
 (** [contain contain] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/contain} contain}
@@ -6162,6 +6311,12 @@ type symbols_type = Cyclic | Numeric | Alphabetic | Symbolic | Fixed
 
 type list_style_symbol = String of string | Url of string
 
+val list_style_symbol_string : string -> list_style_symbol
+(** [list_style_symbol_string value] is a string symbol for [symbols()]. *)
+
+val list_style_symbol_url : string -> list_style_symbol
+(** [list_style_symbol_url value] is a URL symbol for [symbols()]. *)
+
 type list_style_type =
   | None
   | Disc
@@ -6181,6 +6336,13 @@ type list_style_type =
   | Revert_layer
   | Var of list_style_type var  (** CSS list-style-image values *)
 
+val list_style_string : string -> list_style_type
+(** [list_style_string value] is a string [list-style-type]. *)
+
+val list_style_symbols :
+  ?kind:symbols_type -> list_style_symbol list -> list_style_type
+(** [list_style_symbols ?kind symbols] is a [symbols(...)] list-style type. *)
+
 type list_style_image =
   | None
   | Url of string
@@ -6190,6 +6352,9 @@ type list_style_image =
   | Revert
   | Revert_layer
   | Var of list_style_image var
+
+val list_style_image_url : string -> list_style_image
+(** [list_style_image_url value] is a URL [list-style-image]. *)
 
 val list_style_type : list_style_type -> declaration
 (** [list_style_type lst] is the
@@ -6252,6 +6417,9 @@ val border_spacing : border_spacing -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
      border-spacing} property. Accepts 1 or 2 length values. *)
 
+val border_spacing_values : length list -> border_spacing
+(** [border_spacing_values values] is a one- or two-value [border-spacing]. *)
+
 (** {2:svg_properties SVG Properties}
 
     Properties specific to SVG rendering and styling. *)
@@ -6266,6 +6434,13 @@ type svg_paint =
   | Context_fill  (** SVG2 [context-fill] keyword *)
   | Context_stroke  (** SVG2 [context-stroke] keyword *)
   | Var of svg_paint var
+
+val svg_paint_color : color -> svg_paint
+(** [svg_paint_color color] is a color paint value. *)
+
+val svg_paint_url : ?fallback:svg_paint -> string -> svg_paint
+(** [svg_paint_url ?fallback url] is a URL paint value with an optional
+    fallback. *)
 
 val fill : svg_paint -> declaration
 (** [fill paint] is the SVG fill property. *)
