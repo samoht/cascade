@@ -3694,6 +3694,26 @@ let c67_css_wide_kept () =
         expected (normalize css))
     cases
 
+(* CSS Cascading and Inheritance Module Level 6, section 7.3: CSS-wide keywords
+   are whole-property values. They are invalid inside normal value lists such as
+   [font-family: Arial, inherit]. Authoring mode preserves the
+   syntactically-recoverable declaration for fidelity, but spec-aware minified
+   optimization can drop it because browsers ignore invalid declarations. *)
+let c67_bad_css_wide_list () =
+  let minified css =
+    match Css.of_string css with
+    | Ok sheet ->
+        sheet
+        |> Css.optimize ~flatten_nesting:true
+        |> Css.to_string ~minify:true ~newline:false
+    | Error e -> Alcotest.fail (Css.pp_parse_error e)
+  in
+  Alcotest.(check string)
+    "invalid CSS-wide list item drops under minify" ".y{color:red}"
+    (minified ".x { font-family: Arial, inherit }.y { color: red }");
+  pretty_preserves ".x { font-family: Arial, inherit }"
+    [ "font-family: Arial, inherit" ]
+
 (* CSS Cascading and Inheritance Module Level 6, section 3.2 (The all
    Shorthand): the [all] property is a shorthand that sets every CSS-wide
    keyword for all properties. It only accepts CSS-wide keywords as values and
@@ -5929,6 +5949,9 @@ let additional_tests =
       c6_1_dead_shorthand_removed );
     ("spec cascade 6.1 empty rule removed", `Quick, c6_1_empty_rule_removed);
     ("spec cascade 6.7 css-wide keywords preserved", `Quick, c67_css_wide_kept);
+    ( "spec cascade 6.7 css-wide keyword inside list",
+      `Quick,
+      c67_bad_css_wide_list );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);
