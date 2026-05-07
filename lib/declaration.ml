@@ -1100,7 +1100,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_variant_east_asian ->
       v Font_variant_east_asian (read_font_variant_east_asian t)
   (* Text properties *)
-  | Text_indent -> v Text_indent (read_nn_length_or_global t)
+  | Text_indent -> v Text_indent (read_text_indent_value t)
   | Text_overflow -> v Text_overflow (read_text_overflow t)
   | Text_wrap -> v Text_wrap (read_text_wrap t)
   | Text_decoration_thickness ->
@@ -2108,7 +2108,7 @@ let font_variation_settings value = v Font_variation_settings value
 let webkit_tap_highlight_color value = v Webkit_tap_highlight_color value
 let webkit_text_decoration value = v Webkit_text_decoration value
 let webkit_text_decoration_color value = v Webkit_text_decoration_color value
-let text_indent len = v Text_indent len
+let text_indent value = v Text_indent value
 let border_collapse value = v Border_collapse value
 let list_style value = v List_style value
 let font value = v Font value

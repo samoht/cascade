@@ -992,6 +992,39 @@ let rec read_text_decoration_skip_spaces t : text_decoration_skip_spaces =
       | _ -> Cursor.err_invalid t "text-decoration-skip-spaces")
     t
 
+let rec read_text_indent_value t : text_indent_value =
+  Cursor.enum_or_var "text-indent"
+    [
+      ("inherit", (Inherit : text_indent_value));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_text_indent_value t))
+    ~default:(fun t ->
+      let length = ref Option.None in
+      let hanging = ref false in
+      let each_line = ref false in
+      while not (Cursor.is_done t) do
+        Cursor.ws t;
+        match Cursor.peek_ident t with
+        | Some "hanging" when not !hanging ->
+            Cursor.skip t;
+            hanging := true
+        | Some "each-line" when not !each_line ->
+            Cursor.skip t;
+            each_line := true
+        | _ when Option.is_none !length ->
+            length := Some (read_length_percentage ~with_keywords:false t)
+        | _ -> Cursor.err_invalid t "text-indent"
+      done;
+      match !length with
+      | Some length ->
+          Indent { length; hanging = !hanging; each_line = !each_line }
+      | None -> Cursor.err_invalid t "text-indent")
+    t
+
 let pp_text_emphasis_fill ctx = function
   | Filled -> Pp.string ctx "filled"
   | Open -> Pp.string ctx "open"
@@ -4325,6 +4358,23 @@ let rec pp_text_align : text_align Pp.t =
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
   | Match_parent -> Pp.string ctx "match-parent"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_text_indent_value : text_indent_value Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_indent_value ctx v
+  | Indent { length; hanging; each_line } ->
+      pp_length_percentage ctx length;
+      if hanging then (
+        Pp.space ctx ();
+        Pp.string ctx "hanging");
+      if each_line then (
+        Pp.space ctx ();
+        Pp.string ctx "each-line")
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -17249,7 +17299,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Text_decoration_color -> pp pp_color
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
-  | Text_indent -> pp pp_length
+  | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
@@ -17709,7 +17759,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Border_block_start_width -> Some Border_width
   | Border_block_end_width -> Some Border_width
   | Outline_offset -> Some Length
-  | Text_indent -> Some Length
+  | Text_indent -> None
   | Line_height_step -> Some Length
   | Perspective -> Some Length
   | Text_decoration_thickness -> Some Length

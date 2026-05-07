@@ -970,6 +970,18 @@ type text_emphasis_position =
   | Revert_layer
   | Var of text_emphasis_position var
 
+(** CSS Text 4 §6.1
+    [text-indent: <length-percentage> && hanging? && each-line?]. Each component
+    is optional except the length, but the three may appear in any order. *)
+type text_indent_value =
+  | Indent of { length : length_percentage; hanging : bool; each_line : bool }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_indent_value var
+
 type text_underline_position_keyword = Under | Left | Right
 
 type text_underline_position =
@@ -4207,7 +4219,7 @@ type 'a property =
   | Moz_user_select : user_select property
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
-  | Text_indent : length property
+  | Text_indent : text_indent_value property
   | List_style : string property
   | Font : string property
   | Source : Font_face.src property

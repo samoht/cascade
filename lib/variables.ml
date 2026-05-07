@@ -330,6 +330,13 @@ let vars_of_length_percentage (value : Values.length_percentage) : any_var list
     | Calc calc -> `Calc calc
     | _ -> `Other)
 
+let vars_of_text_indent_value (value : Properties.text_indent_value) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Indent { length; _ } -> vars_of_length_percentage length
+  | Inherit | Initial | Unset | Revert | Revert_layer -> []
+
 let vars_of_font_size (value : Properties.font_size) : any_var list =
   vars_of_lvc
     (match value with
@@ -1653,7 +1660,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Outline_offset, value -> vars_of_length value
   | Flex_basis, value -> vars_of_flex_basis value
   (* Text and font properties *)
-  | Text_indent, value -> vars_of_length value
+  | Text_indent, value -> vars_of_text_indent_value value
   | Text_decoration_thickness, value -> vars_of_length value
   | Word_spacing, value -> vars_of_length value
   (* Other length properties *)

@@ -1811,6 +1811,12 @@ val read_text_emphasis_position : Cursor.t -> text_emphasis_position
 (** [read_text_emphasis_position t] is the [text_emphasis_position] parsed from
     [t]. *)
 
+val pp_text_indent_value : text_indent_value Pp.t
+(** [pp_text_indent_value] is the pretty-printer for [text_indent_value]. *)
+
+val read_text_indent_value : Cursor.t -> text_indent_value
+(** [read_text_indent_value t] is the [text_indent_value] parsed from [t]. *)
+
 val pp_text_emphasis_skip_keyword : text_emphasis_skip_keyword Pp.t
 (** [pp_text_emphasis_skip_keyword] is the pretty-printer for
     [text_emphasis_skip_keyword]. *)
