@@ -285,8 +285,16 @@ let ensure_call_done t name =
   Cursor.ws t;
   if not (Cursor.is_done t) then Cursor.err t ("unexpected tokens after " ^ name)
 
+let read_lang_range t =
+  match Cursor.ident_opt t with
+  | Some lang -> lang
+  | None -> (
+      match Cursor.string_opt t with
+      | Some lang -> lang
+      | None -> Cursor.err_expected t "language range")
+
 let read_lang_content t =
-  let langs = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
+  let langs = Cursor.list ~sep:Cursor.comma ~at_least:1 read_lang_range t in
   ensure_call_done t "lang";
   Lang langs
 
@@ -986,6 +994,8 @@ let rec any p = function
     | Where xs
     | Not xs
     | Has xs
+    | Moz_any_call xs
+    | Webkit_any_call xs
     | Slotted xs
     | Cue xs
     | Cue_region xs
@@ -1133,6 +1143,8 @@ and read_relative_selector_list t =
 
 (* Helper readers for functional pseudo-class content *)
 and read_is_content t = Is (read_forgiving_complex_list t)
+and read_moz_any_content t = Moz_any_call (read_forgiving_complex_list t)
+and read_webkit_any_content t = Webkit_any_call (read_forgiving_complex_list t)
 
 and read_has_content t =
   let selectors = read_relative_selector_list t in
@@ -1174,6 +1186,8 @@ and read_current_content t = Current_of (read_complex_list t)
 
 (* Read helper functions for functional pseudo-classes *)
 and read_is t = Cursor.call "is" t read_is_content
+and read_moz_any t = Cursor.call "-moz-any" t read_moz_any_content
+and read_webkit_any t = Cursor.call "-webkit-any" t read_webkit_any_content
 and read_has t = Cursor.call "has" t read_has_content
 and read_not t = Cursor.call "not" t read_not_content
 and read_where t = Cursor.call "where" t read_where_content
@@ -1292,6 +1306,8 @@ and read_pseudo_class ?(allow_unknown = false) t =
   let calls =
     [
       ("is", read_is);
+      ("-moz-any", read_moz_any);
+      ("-webkit-any", read_webkit_any);
       ("has", read_has);
       ("not", read_not);
       ("where", read_where);
@@ -1416,11 +1432,7 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    let s =
-      read_simple
-        ~allow_unknown_pseudo_class:(List.exists is_pseudo_element_selector acc)
-        t
-    in
+    let s = read_simple ~allow_unknown_pseudo_class:true t in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
     else s :: acc
@@ -1635,8 +1647,11 @@ let pp_relative_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
-let langs ctx strings =
-  Pp.list ~sep:(fun ctx () -> Pp.string ctx ", ") Pp.string ctx strings
+let lang_range ctx string =
+  if attr_value_needs_quoting string then Pp.quoted_string ctx string
+  else Pp.string ctx string
+
+let langs ctx strings = Pp.list ~sep:Pp.comma lang_range ctx strings
 
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
@@ -1886,7 +1901,9 @@ and pp : t Pp.t =
   | File_selector_button -> elem ctx "file-selector-button"
   (* Vendor-specific pseudo-classes *)
   | Moz_focusring -> vendor ctx "moz-focusring"
+  | Moz_any_call selectors -> func ctx "-moz-any" sels selectors
   | Webkit_any -> vendor ctx "webkit-any"
+  | Webkit_any_call selectors -> func ctx "-webkit-any" sels selectors
   | Webkit_autofill -> vendor ctx "webkit-autofill"
   | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
   | Moz_ui_valid -> vendor ctx "moz-ui-valid"
@@ -2060,6 +2077,12 @@ let rec map f = function
   | Has selectors ->
       let selectors' = List.map (map f) selectors in
       f (Has selectors')
+  | Moz_any_call selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Moz_any_call selectors')
+  | Webkit_any_call selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Webkit_any_call selectors')
   | List selectors ->
       let selectors' = List.map (map f) selectors in
       f (List selectors')
@@ -2171,7 +2194,12 @@ let rec specificity = function
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ ->
       { ids = 0; classes = 0; elements = 1 }
   | Where _ -> zero_specificity
-  | Is xs | Not xs | Has xs | Current_of xs ->
+  | Is xs
+  | Moz_any_call xs
+  | Webkit_any_call xs
+  | Not xs
+  | Has xs
+  | Current_of xs ->
       xs |> List.map specificity |> max_specificity
   | Nth_child (_, of_)
   | Nth_last_child (_, of_)
@@ -2214,6 +2242,8 @@ let rec first_class = function
   | Where xs
   | Not xs
   | Has xs
+  | Moz_any_call xs
+  | Webkit_any_call xs
   | Slotted xs
   | Cue xs
   | Cue_region xs
@@ -2245,7 +2275,14 @@ let rec has_group_marker = function
   | Combined (a, _, b) -> has_group_marker a || has_group_marker b
   | Relative (_, b) -> has_group_marker b
   | List xs -> List.exists has_group_marker xs
-  | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
+  | Is xs
+  | Not xs
+  | Has xs
+  | Moz_any_call xs
+  | Webkit_any_call xs
+  | Slotted xs
+  | Cue xs
+  | Cue_region xs ->
       List.exists has_group_marker xs
   | Current_of xs -> List.exists has_group_marker xs
   | _ -> false
@@ -2267,7 +2304,14 @@ let rec has_peer_marker = function
   | Combined (a, _, b) -> has_peer_marker a || has_peer_marker b
   | Relative (_, b) -> has_peer_marker b
   | List xs -> List.exists has_peer_marker xs
-  | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
+  | Is xs
+  | Not xs
+  | Has xs
+  | Moz_any_call xs
+  | Webkit_any_call xs
+  | Slotted xs
+  | Cue xs
+  | Cue_region xs ->
       List.exists has_peer_marker xs
   | Current_of xs -> List.exists has_peer_marker xs
   | _ -> false
@@ -2297,7 +2341,7 @@ let rec has_newer_pseudo_class = function
   (* Stop recursion at forgiving selectors — :is()/:where() have forgiving
      parsing, so newer pseudo-classes inside them don't cause the whole rule to
      fail *)
-  | Is _ | Where _ -> false
+  | Is _ | Where _ | Moz_any_call _ | Webkit_any_call _ -> false
   | Not xs | Has xs -> List.exists has_newer_pseudo_class xs
   | _ -> false
 
