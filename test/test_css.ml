@@ -597,6 +597,142 @@ let public_theme_edges () =
     "guarded declaration shown" ".card{color:red;background-color:#fff}\n"
     (to_string ~minify:true ~theme:brand_theme sheet)
 
+let public_value_combinator_edges () =
+  let sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "card")
+          [
+            border_radius (radius (Rem 0.375));
+            gap (gaps ~column:(Rem 0.75) (Rem 0.5));
+            font_family (font_stack [ Ui_sans_serif; System_ui; Sans_serif ]);
+            text_shadow
+              (text_shadow_value ~blur:(Px 4.) ~color:(hex "#000000") (Px 1.)
+                 (Px 2.));
+            aspect_ratio (ratio 16. 9.);
+            columns (columns_both (Rem 12.) 3);
+            counter_reset (counter_set [ counter_item ~value:1 "section" ]);
+            mask (mask_layers [ mask_layer ~image:(url "mask.svg") () ]);
+            outline
+              (outline_shorthand ~width:(Px 2.) ~style:Solid
+                 ~color:(hex "#0000ff") ());
+          ];
+        rule
+          ~selector:(Selector.class_ "helpers")
+          [
+            object_position (position_xy (Px 10.) (Px 20.));
+            text_overflow (text_overflow_pair Clip (text_overflow_string "..."));
+            content
+              (content_list
+                 [ content_string "Section "; content_counter "section" ]);
+            background_image
+              (conic_gradient
+                 ~config:
+                   (conic_gradient_config ~from_angle:(Deg 45.)
+                      ~position:(position_length (Pct 50.))
+                      ())
+                 [ color_stop (hex "#ff0000"); color_stop (hex "#0000ff") ]);
+            background_size (background_size_pair (Px 20.) (Px 30.));
+            object_view_box (object_view_box_inset ~right:(Px 1.) (Px 0.));
+            grid_template_columns
+              (grid_tracks
+                 [ Fr 1.; grid_repeat (Count 2) [ Min_max (Px 0., Fr 1.) ] ]);
+            grid_row (grid_line_span 2, grid_line_name "footer");
+            transform
+              (transform_list
+                 [ Translate (Px 1., Some (Px 2.)); Rotate (Deg 45.) ]);
+            filter (filter_list [ Blur (Px 4.); Opacity (Pct 50.) ]);
+            cursor (cursor_url ~hotspot:(1., 2.) ~fallback:Pointer "cursor.svg");
+            contain (contain_list [ Layout; Paint ]);
+            border_spacing (border_spacing_values [ Px 1.; Px 2. ]);
+            border_inline_color
+              (logical_border_colors (hex "#ffffff") (hex "#000000"));
+            list_style_type
+              (list_style_symbols ~kind:Cyclic
+                 [
+                   list_style_symbol_string "*"; list_style_symbol_url "dot.svg";
+                 ]);
+            list_style_image (list_style_image_url "bullet.svg");
+            fill
+              (svg_paint_url
+                 ~fallback:(svg_paint_color (hex "#ff0000"))
+                 "#paint");
+          ];
+      ]
+  in
+  Alcotest.(check string)
+    "simple value helpers"
+    ".card{border-radius:.375rem;gap:.5rem \
+     .75rem;font-family:ui-sans-serif,system-ui,sans-serif;text-shadow:1px 2px \
+     4px #000;aspect-ratio:16/9;columns:12rem 3;counter-reset:section \
+     1;mask:url(mask.svg);outline:2px solid #00f}.helpers{object-position:10px \
+     20px;text-overflow:clip \"...\";content:\"Section \" \
+     counter(section);background-image:conic-gradient(from 45deg at \
+     50%,red,#00f);background-size:20px 30px;object-view-box:inset(0 \
+     1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
+     2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
+     1 2,pointer;contain:layout paint;border-spacing:1px \
+     2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \
+     url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)red}\n"
+    (to_string ~minify:true sheet)
+
+let public_theme_var_rendering_edges () =
+  let sans_stack : font_family =
+    font_stack [ Ui_sans_serif; System_ui; Sans_serif ]
+  in
+  let fallback_stack : font_family = font_stack [ Arial; Sans_serif ] in
+  let _font_decl, font_sans = var "font-sans" Font_family sans_stack in
+  let _font_fb_decl, font_fallback =
+    var "font-fallback" Font_family ~fallback:(Fallback fallback_stack)
+      sans_stack
+  in
+  let sheet_for decl =
+    v [ rule ~selector:(Selector.class_ "font-sans") [ font_family decl ] ]
+  in
+  let empty_theme = Css.Pp.String_set.empty in
+  let font_theme = Css.Pp.String_set.add "font-sans" empty_theme in
+  let fallback_theme = Css.Pp.String_set.add "font-fallback" empty_theme in
+  let resolve_font = function
+    | "font-sans" -> Some "Arial,sans-serif"
+    | "font-fallback" -> Some "Arial,sans-serif"
+    | _ -> None
+  in
+  Alcotest.(check string)
+    "normal stylesheet keeps theme var reference"
+    ".font-sans{font-family:var(--font-sans)}\n"
+    (to_string ~minify:true ~theme:font_theme ~theme_defaults:resolve_font
+       (sheet_for (Var font_sans)));
+  Alcotest.(check string)
+    "normal stylesheet keeps theme var fallback reference"
+    ".font-sans{font-family:var(--font-fallback,Arial,sans-serif)}\n"
+    (to_string ~minify:true ~theme:fallback_theme ~theme_defaults:resolve_font
+       (sheet_for (Var font_fallback)));
+  Alcotest.(check string)
+    "normal stylesheet without explicit theme keeps var reference"
+    ".font-sans{font-family:var(--font-sans)}\n"
+    (to_string ~minify:true ~theme_defaults:resolve_font
+       (sheet_for (Var font_sans)));
+  Alcotest.(check string)
+    "inline stylesheet may use typed default"
+    ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
+    (to_string ~minify:true ~mode:Inline ~theme:font_theme
+       (sheet_for (Var font_sans)));
+  Alcotest.(check string)
+    "inline stylesheet may use typed fallback default"
+    ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
+    (to_string ~minify:true ~mode:Inline ~theme:fallback_theme
+       (sheet_for (Var font_fallback)));
+  Alcotest.(check string)
+    "theme_defaults still resolves non-theme vars"
+    ".font-sans{font-family:Arial,sans-serif}\n"
+    (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
+       (sheet_for (Var font_sans)));
+  Alcotest.(check string)
+    "theme_defaults still resolves non-theme vars with fallback"
+    ".font-sans{font-family:Arial,sans-serif}\n"
+    (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
+       (sheet_for (Var font_fallback)))
+
 let public_parse_edges () =
   match of_string ~filename:"spec.css" ".a{color:rgb(300)}" with
   | Ok _ -> Alcotest.fail "strict parser accepted invalid declaration"
@@ -661,5 +797,9 @@ let suite =
       Alcotest.test_case "public property introspection" `Quick
         public_property_edges;
       Alcotest.test_case "public theme guards" `Quick public_theme_edges;
+      Alcotest.test_case "public value combinators" `Quick
+        public_value_combinator_edges;
+      Alcotest.test_case "public theme var rendering" `Quick
+        public_theme_var_rendering_edges;
       Alcotest.test_case "public parse recovery edges" `Quick public_parse_edges;
     ] )

@@ -1,4 +1,5 @@
-(lang dune 3.0)
+(lang dune 3.8)
+(using mdx 0.4)
 (name cascade)
 (generate_opam_files true)
 (source (github samoht/cascade))
@@ -21,6 +22,7 @@
   (alcobar :with-test)
   (astring :with-test)
   (lambdasoup :with-test)
+  (mdx :with-test)
   (re :with-test)
   fmt
   uutf
