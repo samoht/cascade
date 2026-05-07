@@ -2,3 +2,7 @@
  (public_name cascade)
  (name cascade)
  (libraries fmt uutf))
+
+(mdx
+ (files css.mli)
+ (libraries cascade))

@@ -494,7 +494,8 @@ let simple_dimension_of_string s : (float * string) option =
     else
       let num_s = String.sub s 0 !i in
       let unit_s = String.sub s !i (len - !i) in
-      try Option.Some (float_of_string num_s, unit_s) with _ -> Option.None
+      try Option.Some (float_of_string num_s, unit_s)
+      with Failure _ -> Option.None
 
 (* Split [s] on top-level commas, ignoring commas inside nested parens. *)
 let split_top_level_commas s =
@@ -930,6 +931,32 @@ type linear_term = {
   count : int;
 }
 
+let linear_term_priority ~first_pos term =
+  match (term.value > 0., length_unit_is_pct term.unit) with
+  | true, true -> 0
+  | true, false when term.first_pos = first_pos && term.count = 1 -> 1
+  | false, false when not (length_unit_is_viewport term.unit) -> 2
+  | true, false when term.count = 1 -> 3
+  | true, false -> 4
+  | false, false -> 5
+  | false, true -> 6
+
+let compare_negative_linear_term a b =
+  let c =
+    compare
+      (length_unit_negative_rank a.unit)
+      (length_unit_negative_rank b.unit)
+  in
+  if c <> 0 then c else compare a.first_pos b.first_pos
+
+let compare_linear_term ~first_pos a b =
+  let a_priority = linear_term_priority ~first_pos a in
+  let b_priority = linear_term_priority ~first_pos b in
+  let c = compare a_priority b_priority in
+  if c <> 0 then c
+  else if a_priority = 2 then compare_negative_linear_term a b
+  else compare a.first_pos b.first_pos
+
 let ordered_linear_terms terms =
   let table = Hashtbl.create 8 in
   List.iteri
@@ -949,29 +976,7 @@ let ordered_linear_terms terms =
   let first_pos =
     List.fold_left (fun acc term -> min acc term.first_pos) max_int terms
   in
-  let priority term =
-    if term.value > 0. then
-      if length_unit_is_pct term.unit then 0
-      else if term.first_pos = first_pos && term.count = 1 then 1
-      else if term.count = 1 then 3
-      else 4
-    else if length_unit_is_pct term.unit then 6
-    else if length_unit_is_viewport term.unit then 5
-    else 2
-  in
-  List.sort
-    (fun a b ->
-      let c = compare (priority a) (priority b) in
-      if c <> 0 then c
-      else if priority a = 2 then
-        let c =
-          compare
-            (length_unit_negative_rank a.unit)
-            (length_unit_negative_rank b.unit)
-        in
-        if c <> 0 then c else compare a.first_pos b.first_pos
-      else compare a.first_pos b.first_pos)
-    terms
+  List.sort (compare_linear_term ~first_pos) terms
 
 let linear_calc_op first_unit first_value unit n =
   if
@@ -1595,7 +1600,7 @@ let minify_relative_color_alpha body =
    numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
    [grad]/[var]/[calc]/[none]) return [None] so the printer keeps the authored
    representation. *)
-let hue_to_deg = function
+let deg_of_hue = function
   | Unitless f -> Some f
   | Angle (Deg f) -> Some f
   | Angle (Turn f) -> Some (f *. 360.)
@@ -1603,7 +1608,7 @@ let hue_to_deg = function
   | Angle (Rad f) -> Some (f *. 180. /. Float.pi)
   | _ -> None
 
-let percentage_to_float = function
+let float_of_percentage = function
   | (Pct f : percentage) -> Some f
   | (Num f : percentage) -> Some (f *. 100.)
   | _ -> None
@@ -1780,7 +1785,7 @@ let static_color_to_srgb_bytes : color -> (int * int * int * int) option =
       | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
       | _ -> Option.None)
   | Hsl { h; s; l; a } -> (
-      match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
+      match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness -> (
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
@@ -1789,7 +1794,7 @@ let static_color_to_srgb_bytes : color -> (int * int * int * int) option =
           | Option.None -> Option.None)
       | _ -> Option.None)
   | Hwb { h; w; b; a } -> (
-      match (hue_to_deg h, percentage_to_float w, percentage_to_float b) with
+      match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
       | Some hue, Some whiteness, Some blackness -> (
           let hue = normalize_hue hue in
           let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
@@ -2009,7 +2014,7 @@ let rec pp_hue : hue Pp.t =
       (* During minification, omit 'deg' since it's the default unit *)
       Pp.float ctx f
   | Angle a when ctx.minify -> (
-      match hue_to_deg (Angle a) with
+      match deg_of_hue (Angle a) with
       | Some f -> Pp.float ctx (normalize_hue f)
       | None -> pp_angle ctx a)
   | Angle a -> pp_angle ctx a
@@ -2409,7 +2414,7 @@ and pp_color : color Pp.t =
          the shortest spec-equivalent spelling - either [#rrggbb] (or its
          3-digit shorthand), [#rrggbbaa] (alpha included), or a named colour
          when one matches. Symbolic components fall through to [pp_hsl]. *)
-      match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
+      match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness -> (
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
@@ -2427,7 +2432,7 @@ and pp_color : color Pp.t =
   | Hwb { h; w; b; a } when Pp.minified ctx -> (
       (* CSS Color 4 4.2.5: like [hsl()], an [hwb()] with all-static components
          folds to its sRGB byte channels and routes through [Hex]. *)
-      match (hue_to_deg h, percentage_to_float w, percentage_to_float b) with
+      match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
       | Some hue, Some whiteness, Some blackness -> (
           let hue = normalize_hue hue in
           let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
@@ -2530,13 +2535,13 @@ and pp_color : color Pp.t =
          resolves to the named [purple]). Symbolic percentages or inputs that
          can't fold fall through to the structural [pp_color_mix] form. *)
       let p1 =
-        match percent1 with None -> Some 50. | Some p -> percentage_to_float p
+        match percent1 with None -> Some 50. | Some p -> float_of_percentage p
       in
       let p2 =
         match (percent1, percent2) with
-        | _, Some p -> percentage_to_float p
+        | _, Some p -> float_of_percentage p
         | Some _, None ->
-            Option.bind (Option.bind percent1 percentage_to_float) (fun p1 ->
+            Option.bind (Option.bind percent1 float_of_percentage) (fun p1 ->
                 Some (Float.max 0. (100. -. p1)))
         | None, None -> Some 50.
       in
@@ -3761,108 +3766,106 @@ let read_atan2_scalar t : atan2_category * float =
   | _ -> Cursor.err_invalid t ("invalid atan2 argument unit: " ^ unit)
 
 (** Read an angle value *)
+let read_angle_round read_angle t =
+  Cursor.call "round" t (fun inner ->
+      let snap = Cursor.save inner in
+      let strategy =
+        match Cursor.peek_ident inner with
+        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+            Cursor.skip inner;
+            Cursor.ws inner;
+            Cursor.comma inner;
+            kw
+        | _ ->
+            Cursor.restore inner snap;
+            "nearest"
+      in
+      let value = read_angle inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let step = read_angle inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Round (strategy, value, step) : angle))
+
+let read_angle_binary name make read_angle t =
+  Cursor.call name t (fun inner ->
+      let a = read_angle inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let b = read_angle inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make a b)
+
+let angle_trig_function t =
+  if Cursor.looking_at_func "asin" t then Some (`Asin, "asin")
+  else if Cursor.looking_at_func "acos" t then Some (`Acos, "acos")
+  else if Cursor.looking_at_func "atan" t then Some (`Atan, "atan")
+  else None
+
+let read_angle_trig kind name t =
+  Cursor.call name t (fun inner ->
+      let v = read_num_expr inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      let radians =
+        match kind with
+        | `Asin -> Float.asin v
+        | `Acos -> Float.acos v
+        | `Atan -> Float.atan v
+      in
+      (Deg (radians *. 180. /. Float.pi) : angle))
+
+let read_angle_atan2 t =
+  Cursor.call "atan2" t (fun inner ->
+      (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
+         <percentage> for both arguments (must match types). When both arguments
+         reduce to a scalar in a shared category, the ratio is unit-free and the
+         result folds to a [Deg] constant. Each [scalar] arm captures the
+         category so we can reject mismatched-type pairs without inspecting raw
+         unit strings. *)
+      let y = read_atan2_scalar inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Cursor.ws inner;
+      let x = read_atan2_scalar inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      match (y, x) with
+      | (yk, yv), (xk, xv) when yk = xk ->
+          (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
+      | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
+
+let read_angle_unit t =
+  let n, unit_raw = Cursor.number_with_unit t in
+  let unit_raw = Option.value unit_raw ~default:"" in
+  match String.lowercase_ascii unit_raw with
+  | "deg" -> Deg n
+  | "rad" -> Rad n
+  | "turn" -> Turn n
+  | "grad" -> Grad n
+  | "" when n = 0. -> Deg 0.
+  | "" ->
+      Cursor.err_invalid t
+        "angle values must have units (deg, rad, turn, or grad)"
+  | unit -> Cursor.err_invalid t ("invalid angle unit: " ^ unit)
+
 let rec read_angle t : angle =
   Cursor.ws t;
-  (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_angle t)
   else if Cursor.looking_at t "calc(" then Calc (read_calc read_angle t)
-  else if Cursor.looking_at_func "round" t then
-    Cursor.call "round" t (fun inner ->
-        let snap = Cursor.save inner in
-        let strategy =
-          match Cursor.peek_ident inner with
-          | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-              Cursor.skip inner;
-              Cursor.ws inner;
-              Cursor.comma inner;
-              kw
-          | _ ->
-              Cursor.restore inner snap;
-              "nearest"
-        in
-        let value = read_angle inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let step = read_angle inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Round (strategy, value, step) : angle))
+  else if Cursor.looking_at_func "round" t then read_angle_round read_angle t
   else if Cursor.looking_at_func "rem" t then
-    Cursor.call "rem" t (fun inner ->
-        let a = read_angle inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_angle inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Rem (a, b) : angle))
+    read_angle_binary "rem" (fun a b -> (Rem (a, b) : angle)) read_angle t
   else if Cursor.looking_at_func "mod" t then
-    Cursor.call "mod" t (fun inner ->
-        let a = read_angle inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_angle inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Mod (a, b) : angle))
-  else if
-    let kind =
-      if Cursor.looking_at_func "asin" t then Option.Some `Asin
-      else if Cursor.looking_at_func "acos" t then Option.Some `Acos
-      else if Cursor.looking_at_func "atan" t then Option.Some `Atan
-      else Option.None
-    in
-    Option.is_some kind
-  then
-    let kind, name =
-      if Cursor.looking_at_func "asin" t then (`Asin, "asin")
-      else if Cursor.looking_at_func "acos" t then (`Acos, "acos")
-      else (`Atan, "atan")
-    in
-    Cursor.call name t (fun inner ->
-        let v = read_num_expr inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        let radians =
-          match kind with
-          | `Asin -> Float.asin v
-          | `Acos -> Float.acos v
-          | `Atan -> Float.atan v
-        in
-        (Deg (radians *. 180. /. Float.pi) : angle))
-  else if Cursor.looking_at_func "atan2" t then
-    Cursor.call "atan2" t (fun inner ->
-        (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
-           <percentage> for both arguments (must match types). When both
-           arguments reduce to a scalar in a shared category, the ratio is
-           unit-free and the result folds to a [Deg] constant. Each [scalar] arm
-           captures the category so we can reject mismatched-type pairs without
-           inspecting raw unit strings. *)
-        let y = read_atan2_scalar inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        Cursor.ws inner;
-        let x = read_atan2_scalar inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        match (y, x) with
-        | (yk, yv), (xk, xv) when yk = xk ->
-            (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
-        | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
+    read_angle_binary "mod" (fun a b -> (Mod (a, b) : angle)) read_angle t
   else
-    let n, unit_raw = Cursor.number_with_unit t in
-    let unit_raw = Option.value unit_raw ~default:"" in
-    let unit = String.lowercase_ascii unit_raw in
-    match unit with
-    | "deg" -> Deg n
-    | "rad" -> Rad n
-    | "turn" -> Turn n
-    | "grad" -> Grad n
-    | "" when n = 0. -> Deg 0.
-    | "" ->
-        Cursor.err_invalid t
-          "angle values must have units (deg, rad, turn, or grad)"
-    | _ -> Cursor.err_invalid t ("invalid angle unit: " ^ unit)
+    match angle_trig_function t with
+    | Some (kind, name) -> read_angle_trig kind name t
+    | None ->
+        if Cursor.looking_at_func "atan2" t then read_angle_atan2 t
+        else read_angle_unit t
 
 (** Normalize hue value to 0-360 range *)
 let normalize_hue (degrees : float) : float =

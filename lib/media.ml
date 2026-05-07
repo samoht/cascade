@@ -875,7 +875,7 @@ let typed_function_value name args : value option =
     Cursor.ws cursor;
     Cursor.expect_eof cursor;
     Some (Length length)
-  with _ -> None
+  with Cursor.Parse_error _ -> None
 
 let read_value sc : value option =
   skip_ws sc;

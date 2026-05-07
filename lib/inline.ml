@@ -441,7 +441,7 @@ let rec refs_of_components components =
 
 let refs_of_component_string value =
   try refs_of_components (Cursor.remaining (Cursor.of_string value))
-  with _ -> []
+  with Cursor.Parse_error _ -> []
 
 let names_of_vars vars =
   List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
@@ -661,7 +661,7 @@ let strip_dead ~keep ~live_set stmts =
               (Pp.to_string ~minify:true Values.pp_color color)
           in
           if important then Declaration.important decl else decl
-        with _ -> decl)
+        with Cursor.Parse_error _ -> decl)
   in
   let is_live ~at_path ~selector ~name =
     List.mem name keep

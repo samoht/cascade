@@ -28,7 +28,7 @@ let string_of_selector = function
   | Positions positions ->
       String.concat ", " (List.map string_of_position positions)
 
-let position_to_percent = function
+let percent_of_position = function
   | From -> 0.
   | To -> 100.
   | Percent p -> p
@@ -45,7 +45,7 @@ let position_compare a b =
       if c <> 0 then c else Float.compare p1 p2
   | Timeline_range _, _ -> 1
   | _, Timeline_range _ -> -1
-  | _ -> Float.compare (position_to_percent a) (position_to_percent b)
+  | _ -> Float.compare (percent_of_position a) (percent_of_position b)
 
 let timeline_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
