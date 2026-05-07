@@ -6206,7 +6206,7 @@ let pp_background_position_value : position_value Pp.t =
   let length_of_lp : length_percentage -> length option = function
     | Length l -> Some l
     | Pct n -> Some (pct n)
-    | Var _ | Calc _ | Invalid _ -> None
+    | Env _ | Var _ | Calc _ | Invalid _ -> None
   in
   let pp_pair ctx x y =
     pp_length ctx x;
