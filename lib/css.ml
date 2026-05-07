@@ -763,7 +763,12 @@ let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
   in
   let stylesheet =
     if optimize then Optimize.stylesheet stylesheet
-    else if minify then Optimize.apply_property_duplication stylesheet
+    else if minify then
+      (* CSS-spec-based eliminations: invalid declarations drop under [--minify]
+         even without the full optimization pass; the empty rules they leave
+         behind drop too. *)
+      stylesheet |> Optimize.drop_invalid |> Optimize.apply_property_duplication
+      |> Optimize.drop_empty_rules
     else stylesheet
   in
   Stylesheet.to_string ~minify ~mode ~newline ?theme ~theme_defaults stylesheet
