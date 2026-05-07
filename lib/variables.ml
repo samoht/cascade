@@ -1400,7 +1400,10 @@ let vars_of_border_radius (value : Properties.border_radius) =
 let vars_of_perspective_origin (value : Properties.perspective_origin) =
   vars_of_position_value value
 
-let vars_of_clip_path (value : Properties.clip_path) =
+let vars_of_clip_path_extent (value : Properties.clip_path_extent) =
+  match value with Extent_length l -> vars_of_length l | _ -> []
+
+let rec vars_of_clip_path (value : Properties.clip_path) =
   match value with
   | Var v -> [ V v ]
   | Clip_path_inset { top; right; bottom; left; rounded } ->
@@ -1409,10 +1412,15 @@ let vars_of_clip_path (value : Properties.clip_path) =
       @ Option.value ~default:[] (Option.map vars_of_length_percentage bottom)
       @ Option.value ~default:[] (Option.map vars_of_length_percentage left)
       @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
-  | Clip_path_circle l -> vars_of_length l
-  | Clip_path_ellipse (a, b) -> vars_of_length a @ vars_of_length b
-  | Clip_path_polygon points | Clip_path_polygon_spaced points ->
+  | Clip_path_circle { radius; _ } ->
+      Option.value ~default:[] (Option.map vars_of_clip_path_extent radius)
+  | Clip_path_ellipse { rx; ry; _ } ->
+      Option.value ~default:[] (Option.map vars_of_clip_path_extent rx)
+      @ Option.value ~default:[] (Option.map vars_of_clip_path_extent ry)
+  | Clip_path_polygon { points; _ } ->
       List.concat_map (fun (a, b) -> vars_of_length a @ vars_of_length b) points
+  | Clip_path_box _ -> []
+  | Clip_path_with_box { shape; _ } -> vars_of_clip_path shape
   | Clip_path_xywh { x; y; width; height; rounded }
   | Clip_path_rect
       { top = x; right = y; bottom = width; left = height; rounded } ->

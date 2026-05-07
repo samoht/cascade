@@ -3921,6 +3921,23 @@ type clip =
   | Revert_layer
   | Var of clip var
 
+(** CSS Masking 1 §3.6 [<geometry-box>] reference box for [clip-path]: the
+    [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
+type clip_geometry_box =
+  | Margin_box
+  | Border_box
+  | Padding_box
+  | Content_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+
+(** CSS Shapes 1 §3.1 [<shape-radius>] for [circle()] / [ellipse()]: a
+    [<length-percentage>] or one of the extent keywords. *)
+type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
+
+type clip_path_fill_rule = Nonzero | Evenodd
+
 (* clip-path property for clipping regions *)
 type clip_path =
   | Clip_path_none
@@ -3932,12 +3949,33 @@ type clip_path =
       left : length_percentage option;
       rounded : border_radius option;
     }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
-  | Clip_path_circle of length  (** Circle with radius *)
-  | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
-  | Clip_path_polygon of (length * length) list
-  | Clip_path_polygon_spaced of (length * length) list
+  | Clip_path_circle of {
+      radius : clip_path_extent option;
+      position : position_value option;
+    }  (** [circle(<shape-radius>? [at <position>]?)] *)
+  | Clip_path_ellipse of {
+      rx : clip_path_extent option;
+      ry : clip_path_extent option;
+      position : position_value option;
+    }  (** [ellipse(<shape-radius>{2}? [at <position>]?)] *)
+  | Clip_path_polygon of {
+      fill_rule : clip_path_fill_rule option;
+      points : (length * length) list;
+      spaced : bool;
+          (** [true] if the source emitted points without explicit commas. *)
+    }
   | Clip_path_path of string  (** SVG path data *)
   | Clip_path_shape of string
+  | Clip_path_box of clip_geometry_box
+      (** Bare reference box, e.g. [clip-path: margin-box]. *)
+  | Clip_path_with_box of {
+      shape : clip_path;
+      box : clip_geometry_box;
+      box_first : bool;
+          (** Source order: [true] if the box appeared before the shape
+              ([padding-box circle(...)]), [false] for
+              [circle(...) padding-box]. *)
+    }
   | Clip_path_xywh of {
       x : length_percentage;
       y : length_percentage;
