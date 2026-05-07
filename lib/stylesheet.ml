@@ -1491,6 +1491,34 @@ let read_font_face (r : Cursor.t) : statement =
 (* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
    one pseudo-page from [:first | :left | :right | :blank]. Combining multiple
    pseudo-pages (e.g. [:first:left]) is not part of CSS 2.x. *)
+let page_selector_error r s =
+  Cursor.err_invalid r ("invalid @page selector: " ^ s)
+
+let page_selector_is_ident_char c =
+  (c >= 'a' && c <= 'z')
+  || (c >= 'A' && c <= 'Z')
+  || (c >= '0' && c <= '9')
+  || c = '-' || c = '_'
+
+let page_selector_is_ws = function
+  | ' ' | '\t' | '\n' | '\r' -> true
+  | _ -> false
+
+let rec page_selector_consume_ident s len i =
+  if i < len && page_selector_is_ident_char s.[i] then
+    page_selector_consume_ident s len (i + 1)
+  else i
+
+let rec page_selector_skip_ws s len i =
+  if i < len && page_selector_is_ws s.[i] then
+    page_selector_skip_ws s len (i + 1)
+  else i
+
+let validate_pseudo_page r s name =
+  match name with
+  | "first" | "left" | "right" | "blank" -> ()
+  | _ -> page_selector_error r s
+
 let validate_page_selector r selector =
   (* CSS Paged Media §3.1 [<page-selector-list> = <page-selector>#] where each
      [<page-selector> = <ident-token>? [':' <pseudo-page>]*] and the
@@ -1498,31 +1526,19 @@ let validate_page_selector r selector =
      pseudo-pages may chain (e.g. [:blank:first]). *)
   let s = String.trim selector in
   let len = String.length s in
-  let is_ident_char c =
-    (c >= 'a' && c <= 'z')
-    || (c >= 'A' && c <= 'Z')
-    || (c >= '0' && c <= '9')
-    || c = '-' || c = '_'
-  in
-  let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r' in
-  let rec consume_ident i =
-    if i < len && is_ident_char s.[i] then consume_ident (i + 1) else i
-  in
-  let rec skip_ws i = if i < len && is_ws s.[i] then skip_ws (i + 1) else i in
+  let consume_ident = page_selector_consume_ident s len in
+  let skip_ws = page_selector_skip_ws s len in
   let rec consume_pseudo_pages i =
     if i >= len then i
     else if s.[i] = ',' then i
-    else if is_ws s.[i] then skip_ws i
-    else if s.[i] <> ':' then
-      Cursor.err_invalid r ("invalid @page selector: " ^ s)
+    else if page_selector_is_ws s.[i] then skip_ws i
+    else if s.[i] <> ':' then page_selector_error r s
     else
       let start = i + 1 in
       let stop = consume_ident start in
-      if stop = start then Cursor.err_invalid r ("invalid @page selector: " ^ s);
+      if stop = start then page_selector_error r s;
       let name = String.sub s start (stop - start) in
-      (match name with
-      | "first" | "left" | "right" | "blank" -> ()
-      | _ -> Cursor.err_invalid r ("invalid @page selector: " ^ s));
+      validate_pseudo_page r s name;
       consume_pseudo_pages stop
   in
   let rec consume_selectors i =
@@ -1534,7 +1550,7 @@ let validate_page_selector r selector =
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then ()
       else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
-      else Cursor.err_invalid r ("invalid @page selector: " ^ s)
+      else page_selector_error r s
   in
   consume_selectors 0
 
