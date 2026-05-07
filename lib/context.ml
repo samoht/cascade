@@ -826,13 +826,13 @@ module Var_residual = struct
     (* The cache key is only [var.name] because [layer] and [layer_order] are
        fixed for one simplification call. If callers ever vary scope inside a
        single call, the key must include that scope. *)
-    let simplify_var_record ~(simplify : a simplifier) (var : a Values.var) :
-        a Values.var =
+    let simplify_var_record ~(simplify : a simplifier) ~visited
+        (var : a Values.var) : a Values.var =
       {
         var with
         Values.fallback =
-          map_var_fallback (simplify ~authored:false ~visited:[]) var.fallback;
-        default = Option.map (simplify ~authored:false ~visited:[]) var.default;
+          map_var_fallback (simplify ~authored:false ~visited) var.fallback;
+        default = Option.map (simplify ~authored:false ~visited) var.default;
       }
     and resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
@@ -877,7 +877,7 @@ module Var_residual = struct
               match var.fallback with
               | Values.Fallback fb -> simplify ~authored:false ~visited fb
               | Values.Syntax_fallback _ | Values.Var_fallback _ ->
-                  ops.of_var (simplify_var_record ~simplify var)
+                  ops.of_var (simplify_var_record ~simplify ~visited var)
               | _ -> result)
           | Some result -> result
           | None -> (
@@ -885,8 +885,9 @@ module Var_residual = struct
               | Values.Fallback fb -> simplify ~authored:false ~visited fb
               | Values.Syntax_fallback _ | Values.Var_fallback _ | Values.Empty
               | Values.Empty2 ->
-                  ops.of_var (simplify_var_record ~simplify var)
-              | Values.None -> ops.of_var (simplify_var_record ~simplify var)))
+                  ops.of_var (simplify_var_record ~simplify ~visited var)
+              | Values.None ->
+                  ops.of_var (simplify_var_record ~simplify ~visited var)))
       | None -> ops.simplify_leaf simplify ~authored ~visited value
     in
     simplify ~authored:true ~visited:[] value
@@ -936,7 +937,8 @@ module Calc_residual = struct
           match resolve_var ~simplify:simplify_resolved ~visited var with
           | Some value -> calc_of_value ~visited value
           | None ->
-              Values.Var (simplify_var_record ~simplify:simplify_resolved var))
+              Values.Var
+                (simplify_var_record ~simplify:simplify_resolved ~visited var))
       | Values.Num _ as leaf -> leaf
       | Values.Sibling_index -> Values.Sibling_index
       | Values.Sibling_count -> Values.Sibling_count
@@ -992,7 +994,8 @@ module Calc_residual = struct
           match resolve_var ~simplify:simplify_resolved ~visited var with
           | Some value -> value
           | None ->
-              ops.of_var (simplify_var_record ~simplify:simplify_resolved var))
+              ops.of_var
+                (simplify_var_record ~simplify:simplify_resolved ~visited var))
       | None -> (
           match ops.as_calc value with
           | Some calc -> (
