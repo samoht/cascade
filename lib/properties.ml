@@ -7079,7 +7079,8 @@ let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Offset lp -> pp_length_percentage ~always:true ctx lp
-  | Named (name, lp) ->
+  | Named (name, None) -> pp_animation_range_name ctx name
+  | Named (name, Some lp) ->
       pp_animation_range_name ctx name;
       Pp.space ctx ();
       pp_length_percentage ~always:true ctx lp
@@ -7095,11 +7096,13 @@ let rec pp_animation_range : animation_range Pp.t =
   | Var v -> pp_var pp_animation_range ctx v
   | Range (first, None) -> pp_animation_range_item ctx first
   | Range (first, Some Normal) -> pp_animation_range_item ctx first
-  | Range (Named (start_name, start_offset), Some (Named (end_name, end_offset)))
+  | Range
+      ( Named (start_name, Some start_offset),
+        Some (Named (end_name, Some end_offset)) )
     when start_name = end_name
          && start_offset = (Pct 0. : length_percentage)
          && end_offset = (Pct 100. : length_percentage) ->
-      pp_animation_range_item ctx (Named (start_name, start_offset))
+      pp_animation_range_item ctx (Named (start_name, Some start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
       (* Names like [exit] / [entry] / [normal] start with an ident-start
@@ -17984,6 +17987,47 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Font_family -> pp pp_font_family
 
+(* Cascade detected the value is spec-invalid (an [Invalid] arm in one of the
+   typed value types). The minify-time [Optimize.drop_invalid] pass uses this to
+   discard the declaration. *)
+let invalid_angle : angle -> bool = function Invalid _ -> true | _ -> false
+
+let invalid_length_percentage : length_percentage -> bool = function
+  | Invalid _ -> true
+  | _ -> false
+
+let invalid_rotate_value : rotate_value -> bool = function
+  | Angle a | X a | Y a | Z a | Axis (_, _, _, a) -> invalid_angle a
+  | _ -> false
+
+let invalid_clip_path : clip_path -> bool = function
+  | Invalid _ -> true
+  | _ -> false
+
+let invalid_text_indent_value : text_indent_value -> bool = function
+  | Indent { length; _ } -> invalid_length_percentage length
+  | _ -> false
+
+let is_invalid_value : type a. a property -> a -> bool =
+ fun prop value ->
+  match prop with
+  | Rotate -> invalid_rotate_value value
+  | Width -> invalid_length_percentage value
+  | Height -> invalid_length_percentage value
+  | Min_width -> invalid_length_percentage value
+  | Min_height -> invalid_length_percentage value
+  | Max_width -> invalid_length_percentage value
+  | Max_height -> invalid_length_percentage value
+  | Block_size -> invalid_length_percentage value
+  | Inline_size -> invalid_length_percentage value
+  | Min_block_size -> invalid_length_percentage value
+  | Min_inline_size -> invalid_length_percentage value
+  | Max_block_size -> invalid_length_percentage value
+  | Max_inline_size -> invalid_length_percentage value
+  | Clip_path -> invalid_clip_path value
+  | Text_indent -> invalid_text_indent_value value
+  | _ -> false
+
 let property_value_kind : type a. a property -> a property_value_kind option =
   function
   | Padding_left -> Some Length
@@ -18497,16 +18541,16 @@ let rec read_offset_path t : offset_path =
 let animation_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
 
-let read_animation_range_offset t =
+let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_semicolon t then
-    Cursor.err_invalid t "animation range name requires an offset";
-  match Cursor.peek_ident t with
-  | Some "normal" ->
-      Cursor.err_invalid t "animation range name requires an offset"
-  | Some next when List.mem next animation_range_names ->
-      Cursor.err_invalid t "animation range name requires an offset"
-  | _ -> Values.read_length_percentage t
+    (None : length_percentage option)
+  else
+    match Cursor.peek_ident t with
+    | Some "normal" -> (None : length_percentage option)
+    | Some next when List.mem next animation_range_names ->
+        (None : length_percentage option)
+    | _ -> (Some (Values.read_length_percentage t) : length_percentage option)
 
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =

@@ -917,7 +917,8 @@ let vars_of_animation_range_item (value : Properties.animation_range_item) =
   match value with
   | Var v -> [ V v ]
   | Normal -> []
-  | Offset lp | Named (_, lp) -> vars_of_length_percentage lp
+  | Offset lp | Named (_, Some lp) -> vars_of_length_percentage lp
+  | Named (_, None) -> []
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_animation_range (value : Properties.animation_range) =

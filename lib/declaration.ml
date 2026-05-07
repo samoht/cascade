@@ -197,6 +197,14 @@ let rec is_important = function
   | Declaration { important; _ } -> important
   | Theme_guarded { decl; _ } -> is_important decl
 
+(** [is_invalid decl] is [true] when [decl]'s typed value is a known
+    spec-violation cascade detected at parse time. The minify-time
+    [Optimize.drop_invalid] pass removes such declarations. *)
+let rec is_invalid = function
+  | Declaration { property; value; _ } ->
+      Properties.is_invalid_value property value
+  | Theme_guarded { decl; _ } -> is_invalid decl
+
 (** Get the property name as a string from a declaration *)
 let rec property_name decl =
   let ctx =
@@ -1523,6 +1531,28 @@ let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
+(* CSS Color 5 §13 includes [specified hue], but evaluating that form needs the
+   surrounding colour context. The typed colour parser rejects it; stylesheet
+   parsing preserves the declaration as an opaque colour value so author input
+   still round-trips. *)
+let color_mix_uses_specified_hue arguments =
+  let rec walk = function
+    | [] -> false
+    | Component.Preserved { kind = Token.Ident s; _ } :: rest
+      when String.lowercase_ascii s = "specified" -> (
+        match List.filter (fun c -> not (is_ws_component c)) rest with
+        | Component.Preserved { kind = Token.Ident s; _ } :: _
+          when String.lowercase_ascii s = "hue" ->
+            true
+        | _ -> walk rest)
+    | Component.Func { node = { arguments; _ }; _ } :: rest ->
+        walk arguments || walk rest
+    | Component.Block { node = { value; _ }; _ } :: rest ->
+        walk value || walk rest
+    | _ :: rest -> walk rest
+  in
+  walk arguments
+
 (* Color functions cascade types directly; anything else (e.g. a vendor color
    function or a typed value cascade hasn't grown yet) is treated as a [color]
    declaration cascade should preserve verbatim. *)
@@ -1532,25 +1562,27 @@ let color_fallback_function raw_value =
     |> List.filter (fun component -> not (is_ws_component component))
   in
   match components with
-  | [ Component.Func { node = { name; _ }; _ } ] ->
+  | [ Component.Func { node = { name; arguments; _ }; _ } ] ->
       let fn = String.lowercase_ascii name in
-      not
-        (List.mem fn
-           [
-             "rgb";
-             "rgba";
-             "hsl";
-             "hsla";
-             "hwb";
-             "lab";
-             "lch";
-             "oklab";
-             "oklch";
-             "color";
-             "color-mix";
-             "light-dark";
-             "var";
-           ])
+      if fn = "color-mix" then color_mix_uses_specified_hue arguments
+      else
+        not
+          (List.mem fn
+             [
+               "rgb";
+               "rgba";
+               "hsl";
+               "hsla";
+               "hwb";
+               "lab";
+               "lch";
+               "oklab";
+               "oklch";
+               "color";
+               "color-mix";
+               "light-dark";
+               "var";
+             ])
   | _ -> false
 
 let is_unsupported_color_fallback name raw_value =
