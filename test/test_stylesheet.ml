@@ -6095,6 +6095,40 @@ let additional_tests =
         | [ (_, fname) ] ->
             Alcotest.(check string) "default filename" "<string>" fname
         | _ -> Alcotest.fail "expected one warning" );
+    ( "of_string ~strict:true rejects unknown at-rule",
+      `Quick,
+      fun () ->
+        match
+          Css.of_string ~strict:true
+            "@unknown { color: red } .a { color: blue }"
+        with
+        | Ok _ ->
+            Alcotest.fail "strict mode should reject @unknown as a warning"
+        | Error _ -> () );
+    ( "of_string ~strict:true accepts clean CSS",
+      `Quick,
+      fun () ->
+        match
+          Css.of_string ~strict:true ".a { color: red } .b { color: blue }"
+        with
+        | Ok _ -> ()
+        | Error (e, _) ->
+            Alcotest.failf "strict mode rejected clean CSS: %s"
+              (Error.to_string e) );
+    ( "of_string ~strict:false accepts unknown at-rule (unchanged default)",
+      `Quick,
+      fun () ->
+        match Css.of_string "@unknown { color: red } .a { color: blue }" with
+        | Ok _ -> ()
+        | Error (e, _) ->
+            Alcotest.failf "non-strict mode should not promote warnings: %s"
+              (Error.to_string e) );
+    ( "of_string ~strict:true rejects bad declaration value",
+      `Quick,
+      fun () ->
+        match Css.of_string ~strict:true ".a { color: rgb(300); }" with
+        | Ok _ -> Alcotest.fail "strict mode should reject invalid colour value"
+        | Error _ -> () );
     ( "partial recovery: unclosed brace recovered per 5.3.7",
       `Quick,
       fun () ->
