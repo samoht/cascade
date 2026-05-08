@@ -151,6 +151,7 @@ let rec boundary_shape = function
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
   | Font_palette_values _ -> [ "font-palette-values" ]
+  | Font_feature_values _ -> [ "font-feature-values" ]
   | View_transition _ -> [ "view-transition" ]
   | Position_try _ -> [ "position-try" ]
   | Viewport _ -> [ "viewport" ]

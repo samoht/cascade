@@ -1753,7 +1753,16 @@ let pp_ns ctx = function
       Pp.char ctx '|'
 
 (** Pretty print nth function with optional "of" clause *)
-let rec pp_nth_func ctx name expr of_sel =
+let rec can_follow_nth_of_without_space = function
+  | Element (None, _)
+  | Element (Some (Prefix _), _)
+  | Universal (Some (Prefix _)) ->
+      false
+  | Compound (first :: _) | Combined (first, _, _) | List (first :: _) ->
+      can_follow_nth_of_without_space first
+  | _ -> true
+
+and pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
   Pp.string ctx name;
   Pp.char ctx '(';
@@ -1761,7 +1770,11 @@ let rec pp_nth_func ctx name expr of_sel =
   (match of_sel with
   | Some sels ->
       Pp.string ctx " of";
-      Pp.char ctx ' ';
+      (match sels with
+      | first :: _ when Pp.minified ctx && can_follow_nth_of_without_space first
+        ->
+          ()
+      | _ -> Pp.char ctx ' ');
       Pp.list ~sep:Pp.comma pp ctx sels
   | None -> ());
   Pp.char ctx ')'

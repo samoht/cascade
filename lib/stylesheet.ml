@@ -487,6 +487,18 @@ and pp_font_palette_descriptor : font_palette_descriptor Pp.t =
           Pp.string ctx rendered)
         ctx entries
 
+and pp_font_feature_value ctx (name, indexes) =
+  Pp.string ctx name;
+  Pp.char ctx ':';
+  Pp.space_if_pretty ctx ();
+  Pp.list ~sep:Pp.space Pp.int ctx indexes
+
+and pp_font_feature_values_block ctx (name, values) =
+  Pp.char ctx '@';
+  Pp.string ctx name;
+  Pp.sp ctx ();
+  Pp.braced_semicolon_list pp_font_feature_value ctx values
+
 and pp_view_transition_descriptor : view_transition_descriptor Pp.t =
  fun ctx -> function
   | Navigation `Auto -> Pp.string ctx "navigation:auto"
@@ -850,6 +862,11 @@ and pp_statement : statement Pp.t =
       Pp.string ctx name;
       Pp.sp ctx ();
       Pp.braced_semicolon_list pp_font_palette_descriptor ctx descriptors
+  | Font_feature_values (families, blocks) ->
+      Pp.string ctx "@font-feature-values ";
+      Pp.list ~sep:Pp.comma Properties.pp_font_family ctx families;
+      Pp.sp ctx ();
+      Pp.braced_list ~sep:Pp.cut pp_font_feature_values_block ctx blocks
   | View_transition descriptors ->
       Pp.string ctx "@view-transition";
       Pp.sp ctx ();
@@ -1739,6 +1756,93 @@ let read_font_palette_values (r : Cursor.t) : statement =
     Cursor.err_invalid r "@font-palette-values requires descriptors";
   Font_palette_values (name, descriptors)
 
+let valid_font_feature_values_block = function
+  | "styleset" | "character-variant" | "stylistic" | "swash" | "ornaments"
+  | "annotation" ->
+      true
+  | _ -> false
+
+let read_font_feature_value_entry outer inner =
+  Cursor.ws inner;
+  if Cursor.is_done inner then None
+  else if Cursor.peek_semicolon inner then (
+    Cursor.skip inner;
+    None)
+  else
+    let name = Cursor.ident ~keep_case:true inner in
+    Cursor.ws inner;
+    if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+    Cursor.ws inner;
+    let indexes = Cursor.list ~at_least:1 Cursor.int inner in
+    List.iter
+      (fun index ->
+        if index <= 0 then
+          Cursor.err_invalid outer
+            "@font-feature-values indexes must be positive")
+      indexes;
+    Cursor.ws inner;
+    if Cursor.peek_semicolon inner then Cursor.skip inner;
+    Some (name, indexes)
+
+let replace_font_feature_value ((name, _) as entry) acc =
+  entry :: List.filter (fun (existing, _) -> existing <> name) acc
+
+let skip_to_semicolon inner =
+  let rec loop () =
+    match Cursor.next_raw inner with
+    | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+    | Some _ -> loop ()
+  in
+  loop ()
+
+let read_font_feature_values_entries outer =
+  let rec loop inner acc =
+    match
+      try Ok (read_font_feature_value_entry outer inner)
+      with Error.Parse_error e -> Error e
+    with
+    | Ok (Some entry) -> loop inner (replace_font_feature_value entry acc)
+    | Ok None ->
+        Cursor.ws inner;
+        if Cursor.is_done inner then List.rev acc else loop inner acc
+    | Error e ->
+        Cursor.push_warning inner e;
+        skip_to_semicolon inner;
+        loop inner acc
+  in
+  Cursor.braces (fun inner -> loop inner []) outer
+
+let read_font_feature_values_block outer inner =
+  Cursor.ws inner;
+  match Cursor.at_keyword_opt inner with
+  | None -> Cursor.err_expected inner "@font-feature-values nested at-rule"
+  | Some name ->
+      let name = String.lowercase_ascii name in
+      if not (valid_font_feature_values_block name) then
+        Cursor.err_invalid outer ("unknown @font-feature-values block: @" ^ name);
+      (name, read_font_feature_values_entries inner)
+
+let read_font_feature_values_blocks outer =
+  let rec loop inner acc =
+    Cursor.ws inner;
+    if Cursor.is_done inner then List.rev acc
+    else loop inner (read_font_feature_values_block outer inner :: acc)
+  in
+  Cursor.braces (fun inner -> loop inner []) outer
+
+let read_font_feature_values (r : Cursor.t) : statement =
+  Cursor.with_context r "@font-feature-values" @@ fun () ->
+  Cursor.expect_at_keyword "font-feature-values" r;
+  Cursor.ws r;
+  let families =
+    Cursor.list ~sep:Cursor.comma ~at_least:1 Properties.read_font_family r
+  in
+  Cursor.ws r;
+  let blocks = read_font_feature_values_blocks r in
+  if blocks = [] then
+    Cursor.err_invalid r "@font-feature-values requires feature blocks";
+  Font_feature_values (families, blocks)
+
 let expect_view_transition_block r =
   match Cursor.peek r with
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> ()
@@ -2054,6 +2158,7 @@ let rec read_statement (r : Cursor.t) : statement =
       ("font-face", read_font_face);
       ("page", read_page);
       ("font-palette-values", read_font_palette_values);
+      ("font-feature-values", read_font_feature_values);
       ("view-transition", read_view_transition);
       ("position-try", read_position_try);
       ("viewport", read_viewport);
@@ -2699,9 +2804,10 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Page_with_margins (_, _, _) -> []
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       Variables.vars_of_declarations decls
-  | Viewport _ | Font_palette_values _ | View_transition _ | Charset _
-  | Import _ | Namespace _ | Property _ | Layer_decl _ | Keyframes _
-  | Webkit_keyframes _ | Moz_keyframes _ | Unknown_at_rule _ ->
+  | Viewport _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Charset _ | Import _ | Namespace _ | Property _
+  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Unknown_at_rule _ ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =
