@@ -27,6 +27,7 @@ type line_height =
   | Em of float
   | Pct of float
   | Num of float
+  | Number of { value : float; unit : string option; repr : string }
   | Inherit
   | Initial
   | Unset

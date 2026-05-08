@@ -102,6 +102,7 @@ type length =
   | Cqmax of float
   | Ch of float
   | Lh of float
+  | Dimension of { value : float; unit : string; repr : string }
   | Unknown_dimension of float * string
   | Size
   | Auto

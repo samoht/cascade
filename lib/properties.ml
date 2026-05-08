@@ -6,15 +6,16 @@ let err_invalid_value ?got t prop_name value =
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
-  let n, unit = Cursor.number_with_unit t in
+  let n, repr, unit = Cursor.number_repr_with_unit t in
   if n < 0. then Cursor.err_invalid t "line-height cannot be negative"
   else
+    let authored () : line_height = Number { value = n; unit; repr } in
     match unit with
-    | Some "px" -> Px n
-    | Some "rem" -> Rem n
-    | Some "em" -> Em n
-    | Some "%" -> Pct n
-    | None -> Num n (* unitless number *)
+    | Some "px" -> if Pp.string_of_float n = repr then Px n else authored ()
+    | Some "rem" -> if Pp.string_of_float n = repr then Rem n else authored ()
+    | Some "em" -> if Pp.string_of_float n = repr then Em n else authored ()
+    | Some "%" -> if Pp.string_of_float n = repr then Pct n else authored ()
+    | None -> if Pp.string_of_float n = repr then Num n else authored ()
     | Some u -> Cursor.err_invalid t ("invalid line-height unit: " ^ u)
 
 let read_vertical_align_length t : vertical_align =
@@ -9261,6 +9262,15 @@ let rec pp_line_height : line_height Pp.t =
   | Em f -> Pp.unit ctx f "em"
   | Pct p -> Pp.pct ctx p
   | Num n -> Pp.float ctx n
+  | Number { value; unit; repr } -> (
+      match (ctx.minify, unit) with
+      | false, None -> Pp.string ctx repr
+      | false, Some unit ->
+          Pp.string ctx repr;
+          Pp.string ctx unit
+      | true, None -> Pp.float ctx value
+      | true, Some "%" -> Pp.pct ctx value
+      | true, Some unit -> Pp.unit ctx value unit)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
