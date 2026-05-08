@@ -2235,11 +2235,11 @@ let space_after_color_percentage ctx (l : percentage option) ~next =
       ()
   | _ -> Pp.space ctx ()
 
-(** Lab-like float string with precision control. Non-minified: fixed decimal
-    places (matching upstream Tailwind test expectations). Minified: 6
-    significant digits (matching Tailwind's minified output). *)
+(** Lab-like float string with precision control. Non-minified output keeps the
+    regular leading zero; minified output uses the shorter leading-zero-free
+    spelling. *)
 let string_of_lab_float ~max_decimals ctx f =
-  Pp.string_of_float ~drop_leading_zero:true ~max_decimals
+  Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) ~max_decimals
     (if ctx.Pp.minify then Pp.round_sig 6 f else f)
 
 let pp_lab_float ~max_decimals ctx f =
