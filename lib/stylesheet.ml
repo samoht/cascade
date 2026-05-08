@@ -1307,16 +1307,20 @@ let read_keyframes_block inner =
     Cursor.ws inner;
     if Cursor.is_done inner then List.rev acc
     else
-      let snap = Cursor.save inner in
-      match read_keyframe inner with
-      | frame -> read_frames (frame :: acc)
-      | exception Cursor.Parse_error e ->
-          (* Invalid keyframe rules are ignored, but the surrounding block keeps
-             parsing. *)
-          Cursor.restore inner snap;
-          Cursor.push_warning inner e;
-          skip_bad_item ();
-          read_frames acc
+      match Cursor.peek inner with
+      | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
+          Cursor.err_invalid inner ("@keyframes nested @" ^ name)
+      | _ ->
+          let snap = Cursor.save inner in
+          match read_keyframe inner with
+          | frame -> read_frames (frame :: acc)
+          | exception Cursor.Parse_error e ->
+              (* Invalid keyframe rules are ignored, but the surrounding block keeps
+                 parsing. *)
+              Cursor.restore inner snap;
+              Cursor.push_warning inner e;
+              skip_bad_item ();
+              read_frames acc
   in
   read_frames []
 
