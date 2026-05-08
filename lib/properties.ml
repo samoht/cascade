@@ -2984,9 +2984,24 @@ let pp_webkit_gradient : Webkit_gradient.t Pp.t =
         ctx
         (inner_center, inner_radius, outer_center, outer_radius, stops)
 
+let pp_quoted_url quote ctx url =
+  Pp.string ctx "url(";
+  Pp.char ctx quote;
+  String.iter
+    (fun c ->
+      if c = quote then (
+        Pp.char ctx '\\';
+        Pp.char ctx c)
+      else Pp.char ctx c)
+    url;
+  Pp.char ctx quote;
+  Pp.char ctx ')'
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
+  | Url_quoted (url, quote) ->
+      if Pp.minified ctx then Pp.url ctx url else pp_quoted_url quote ctx url
   | Linear_gradient (dir, stops) ->
       pp_linear_gradient_named "linear-gradient" ctx (dir, stops)
   | Linear_gradient_var var_ref ->
@@ -15411,12 +15426,29 @@ let read_conic_gradient_body t =
   in
   Conic_gradient (config, stops)
 
+let read_bg_url t : background_image =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Url _; _ }) -> Url (Cursor.url t)
+  | Some (Component.Func { node = { name = "url"; terminated; _ }; _ }) ->
+      if not terminated then Cursor.err_expected t "terminated url";
+      Cursor.call "url" t (fun inner ->
+          Cursor.ws inner;
+          match Cursor.string_with_quote_opt inner with
+          | Some (url, quote) ->
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Url_quoted (url, quote)
+          | None ->
+              let url = Cursor.consume_remaining_as_string ~trim:true inner in
+              if url = "" then Cursor.err_expected t "url argument" else Url url)
+  | _ -> Cursor.err_expected t "url"
+
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
      explicitly before dispatching on the function/ident shape. *)
   Cursor.one_of
     [
-      (fun t -> (Url (Cursor.url t) : background_image));
+      read_bg_url;
       (fun t ->
         Cursor.enum_or_calls "background-image"
           [

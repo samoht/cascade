@@ -2789,6 +2789,7 @@ end
 
 type background_image =
   | Url of string
+  | Url_quoted of string * char
   | Linear_gradient of gradient_direction * gradient_stop list
   | Linear_gradient_var of gradient_stop var
       (** Linear gradient using a single variable for all stops including
