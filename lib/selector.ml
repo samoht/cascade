@@ -1504,6 +1504,10 @@ let read_selector_list t =
   let selectors = collect_list [] in
   match selectors with [ s ] -> s | selectors -> List selectors
 
+let read_strict_selector_list t =
+  Cursor.with_context t "list" @@ fun () ->
+  match read_complex_list t with [ s ] -> s | selectors -> List selectors
+
 let read t =
   let selector = read_selector_list t in
   (* Ensure we've consumed all input - any remaining non-whitespace is an

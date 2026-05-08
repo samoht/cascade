@@ -132,6 +132,10 @@ val read_selector_list : Cursor.t -> t
 (** [read_selector_list r] reads a selector list without checking for end of
     input. Used when parsing selectors as part of a larger CSS structure. *)
 
+val read_strict_selector_list : Cursor.t -> t
+(** [read_strict_selector_list r] reads a non-forgiving selector list, rejecting
+    unknown pseudo-classes and other invalid selector-list arms. *)
+
 val read : Cursor.t -> t
 (** [read r] parses a CSS selector. *)
 
