@@ -2603,6 +2603,18 @@ let is_zero_length : length -> bool = function
       true
   | _ -> false
 
+let pp_color_after_length ctx color =
+  if Pp.minified ctx then
+    let rendered = Pp.to_string ~minify:true pp_color color in
+    if String.length rendered > 0 && rendered.[0] = '#' then
+      Pp.string ctx rendered
+    else (
+      Pp.space ctx ();
+      Pp.string ctx rendered)
+  else (
+    Pp.space ctx ();
+    pp_color ctx color)
+
 let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     color =
   (* If inset_var is set, output var(--<name>,) or var(--<name>) before shadow
@@ -2645,15 +2657,7 @@ let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
   in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
-  match color with
-  | Some c ->
-      (* Space before color can be omitted in minified mode when the previous
-         token ends with ')' (e.g., calc(...)var(...)), since ')' is a token
-         delimiter. When spread is present it always ends with ')' in ring
-         shadows. Use space_if_pretty for safety in the inset_var case. *)
-      if has_inset_var then Pp.space_if_pretty ctx () else Pp.space ctx ();
-      pp_color ctx c
-  | None -> ()
+  match color with Some c -> pp_color_after_length ctx c | None -> ()
 
 let rec pp_shadow : shadow Pp.t =
  fun ctx -> function
@@ -6034,11 +6038,7 @@ let rec pp_text_shadow : text_shadow Pp.t =
           Pp.space ctx ();
           pp_length ctx b
       | None -> ());
-      match color with
-      | Some c ->
-          Pp.space ctx ();
-          pp_color ctx c
-      | None -> ())
+      match color with Some c -> pp_color_after_length ctx c | None -> ())
 
 let rec pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
