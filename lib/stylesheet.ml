@@ -1557,14 +1557,10 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
-  (* CSS Fonts 4 §11.2.1: an [@font-face] rule is invalid without a
-     [font-family] and [src] descriptor, but the descriptors that ARE present
-     are still well-formed CSS. Authoring tools and minifiers preserve the
-     partial rule verbatim, so cascade keeps the parse successful and lets a
-     later optimizer / validator step decide whether to drop the rule. *)
+  (* CSS Fonts 4 §11.2.1: missing [font-family] / [src] is a semantic mismatch,
+     not a syntax one. [validate_partial_statement] flags it; the syntactic
+     reader accepts. *)
   let descriptors = Cursor.braces read_font_face_block r in
-  if (not (Cursor.recover r)) && not (font_face_participates descriptors) then
-    Cursor.err_invalid r "@font-face requires font-family and src descriptors";
   Font_face descriptors
 
 let read_counter_style_system_value r =
