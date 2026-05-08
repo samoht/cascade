@@ -1035,16 +1035,16 @@ let container_queries t = extract_container_queries t
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
   let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let keyframe_selector =
+    try Keyframe.selector_of_string selector_str
+    with Invalid_argument msg -> Cursor.err_invalid r msg
+  in
   let declarations =
     Cursor.braces
       (fun inner ->
         Declaration.read_declarations inner
         |> List.filter (fun decl -> not (Declaration.is_important decl)))
       r
-  in
-  let keyframe_selector =
-    try Keyframe.selector_of_string selector_str
-    with Invalid_argument msg -> Cursor.err_invalid r msg
   in
   { keyframe_selector; keyframe_declarations = declarations }
 
@@ -1236,6 +1236,20 @@ let read_keyframes_block inner =
   (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
      selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only drops
      that rule, the surrounding block keeps parsing. *)
+  let skip_bad_item () =
+    let rec skip () =
+      match Cursor.peek_raw inner with
+      | None -> ()
+      | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+          ignore (Cursor.next_raw inner : Component.t option)
+      | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
+          ignore (Cursor.next_raw inner : Component.t option)
+      | Some _ ->
+          ignore (Cursor.next_raw inner : Component.t option);
+          skip ()
+    in
+    skip ()
+  in
   let rec read_frames acc =
     Cursor.ws inner;
     if Cursor.is_done inner then List.rev acc
@@ -1243,15 +1257,11 @@ let read_keyframes_block inner =
       let snap = Cursor.save inner in
       match read_keyframe inner with
       | frame -> read_frames (frame :: acc)
-      | exception Cursor.Parse_error _ ->
+      | exception Cursor.Parse_error e ->
           Cursor.restore inner snap;
-          (* Skip the malformed selector tokens up to the rule body, then
-             swallow the brace-enclosed block so the next frame can parse. *)
-          let _ : string =
-            Cursor.drain_until_block_as_string ~trim:true inner
-          in
-          (try ignore (Cursor.braces (fun _ -> ()) inner : unit)
-           with Cursor.Parse_error _ -> ());
+          if not (Cursor.recover inner) then raise (Cursor.Parse_error e);
+          Cursor.push_warning inner e;
+          skip_bad_item ();
           read_frames acc
   in
   read_frames []
