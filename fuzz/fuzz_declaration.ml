@@ -15,6 +15,37 @@ let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+let ident buf i = pick [ "brand"; "gap"; "fg"; "accent"; "item"; "panel" ] buf i
+
+let declaration_text buf i =
+  pick
+    [
+      "color:red";
+      "color:var(--" ^ ident buf (i + 1) ^ ", #000)";
+      "background-color:rgb(255 0 0 / .5)";
+      "display:grid";
+      "margin:1px 2px 3px 4px";
+      "padding:clamp(1rem,2vw,2rem)";
+      "width:calc(100% - 2rem)";
+      "font:italic 700 1rem/1.5 \"Brand\", sans-serif";
+      "background-image:url(../img/" ^ ident buf (i + 1) ^ ".svg)";
+      "--" ^ ident buf (i + 1) ^ ":[a,b] (c) { d:e }";
+      "color:red!important";
+    ]
+    buf i
+
+let invalid_declaration_text buf i =
+  pick
+    [
+      "color red";
+      ":red";
+      "color:rgb(255 0)";
+      "width:calc(1px + )";
+      "margin:1px 2px 3px 4px 5px";
+      "font-family:Brand,";
+      "color:red !important !important";
+    ]
+    buf i
 
 let parse_declaration input =
   let r = Cursor.of_string input in
@@ -30,7 +61,7 @@ let test_read_declaration_crash_safety buf =
   ignore (parse_declaration (cssish buf))
 
 let test_serialization_idempotent buf =
-  match parse_declaration (cssish buf) with
+  match parse_declaration (declaration_text buf 0) with
   | None -> ()
   | Some decl -> (
       let once = serialize decl in
@@ -44,7 +75,7 @@ let test_serialization_idempotent buf =
       )
 
 let test_property_name_stable buf =
-  match parse_declaration (cssish buf) with
+  match parse_declaration (declaration_text buf 0) with
   | None -> ()
   | Some decl -> (
       let property = Css.Declaration.property_name decl in
@@ -59,7 +90,7 @@ let test_property_name_stable buf =
                  reparsed_property))
 
 let test_important_flag_stable buf =
-  match parse_declaration (cssish buf) with
+  match parse_declaration (declaration_text buf 0) with
   | None -> ()
   | Some decl -> (
       let important = Css.Declaration.is_important decl in
@@ -87,7 +118,11 @@ let test_custom_property_serialization_shape buf =
         fail "custom property name changed after reparse"
 
 let test_block_declarations_serialize_individually buf =
-  let input = "{color:red;" ^ cssish buf ^ ";margin:1px}" in
+  let middle =
+    if byte_at buf 0 mod 4 = 0 then invalid_declaration_text buf 1
+    else declaration_text buf 1
+  in
+  let input = "{color:red;" ^ middle ^ ";margin:1px}" in
   let r = Cursor.of_string input in
   try
     let declarations = Css.Declaration.read_block r in

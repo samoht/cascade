@@ -475,7 +475,7 @@ let stylesheet_at_rules () =
   roundtrip "@namespace url(http://www.w3.org/1999/xhtml);"
     "@namespace \"http://www.w3.org/1999/xhtml\";";
   roundtrip "@namespace svg url(http://www.w3.org/2000/svg);"
-    "@namespace svg\"http://www.w3.org/2000/svg\";";
+    "@namespace svg \"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}";
   (* CSS Paged Media 3 allows non-conflicting pseudo-page combinations. *)
@@ -946,7 +946,7 @@ let minified_shortest_spec_edges () =
       ( "@namespace url(http://www.w3.org/1999/xhtml);",
         "@namespace \"http://www.w3.org/1999/xhtml\";" );
       ( "@namespace svg url(http://www.w3.org/2000/svg);",
-        "@namespace svg\"http://www.w3.org/2000/svg\";" );
+        "@namespace svg \"http://www.w3.org/2000/svg\";" );
       ( "@scope (.card) { .title { color: red } }",
         "@scope(.card){.title{color:red}}" );
       ( "@scope (.card) to (.footer, .aside) { .title { color: blue } }",

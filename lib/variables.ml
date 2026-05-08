@@ -584,8 +584,11 @@ let rec vars_of_number_value (value : Values.number) : any_var list =
   match value with
   | Var v -> [ V v ]
   | Calc calc -> vars_of_number_calc calc
-  | Round (_, value, step) | Mod (value, step) | Rem (value, step)
-  | Hypot (value, step) | Pow (value, step) ->
+  | Round (_, value, step)
+  | Mod (value, step)
+  | Rem (value, step)
+  | Hypot (value, step)
+  | Pow (value, step) ->
       vars_of_number_value value @ vars_of_number_value step
   | Sqrt value | Abs value | Sign value -> vars_of_number_value value
   | Sin angle -> vars_of_angle angle
@@ -595,7 +598,8 @@ and vars_of_number_calc (calc : Values.number calc) : any_var list =
   match calc with
   | Var v -> [ V v ]
   | Val value -> vars_of_number_value value
-  | Expr (left, _, right) -> vars_of_number_calc left @ vars_of_number_calc right
+  | Expr (left, _, right) ->
+      vars_of_number_calc left @ vars_of_number_calc right
   | Nested inner | Parens inner -> vars_of_number_calc inner
   | Num _ | Sibling_index | Sibling_count -> []
 

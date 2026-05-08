@@ -71,8 +71,32 @@ let safe_component_input buf =
       "[" ^ ident ^ "=" ^ number ^ "]";
       "{" ^ ident ^ ":" ^ length ^ "}";
       "var(--" ^ ident ^ "," ^ length ^ ")";
+      "color-mix(in srgb, red, blue)";
+      "attr(data-size px, calc(1px + " ^ length ^ "))";
+      "url(../img/" ^ ident ^ ".svg)";
+      "\"nav main\"";
+      ":is(.card,:where([data-state=open]))";
     ]
     buf 4
+
+let css_like_component_input buf =
+  pick
+    [
+      safe_component_input buf;
+      safe_component_input buf ^ " " ^ safe_component_input (buf ^ "x");
+      "calc(100% - " ^ safe_component_input buf ^ ")";
+      "rgb(from var(--brand) r g b / .5)";
+      "var(--" ^ safe_component_input buf ^ ", "
+      ^ safe_component_input (buf ^ "x")
+      ^ ")";
+      "[" ^ safe_component_input buf ^ ","
+      ^ safe_component_input (buf ^ "y")
+      ^ "]";
+      "{" ^ safe_component_input buf ^ ":"
+      ^ safe_component_input (buf ^ "z")
+      ^ "}";
+    ]
+    buf 9
 
 let safe_component_pair buf =
   let left = safe_component_input buf in
@@ -94,7 +118,7 @@ let test_component_value_crash_safety buf =
 
 (** Minified serialization should be idempotent after reparsing. *)
 let test_component_value_minified_idempotent buf =
-  let buf = safe_component_input buf in
+  let buf = css_like_component_input buf in
   let once = minified buf in
   let twice = minified once in
   if once <> twice then
@@ -104,7 +128,7 @@ let test_component_value_minified_idempotent buf =
 
 (** Non-minified serialization should be idempotent after reparsing. *)
 let test_component_value_serialized_idempotent buf =
-  let buf = safe_component_input buf in
+  let buf = css_like_component_input buf in
   let once = serialized buf in
   let twice = serialized once in
   if once <> twice then
@@ -114,7 +138,7 @@ let test_component_value_serialized_idempotent buf =
 
 (** Serialization output should always be accepted by the component parser. *)
 let test_component_value_serialized_reparse buf =
-  let buf = cssish buf in
+  let buf = css_like_component_input buf in
   let css = serialized buf in
   ignore (parse_list css);
   let css = minified buf in

@@ -583,10 +583,10 @@ let namespace_case () =
   (* Test namespace roundtrips *)
   check_stylesheet ~expected:"@namespace \"http://www.w3.org/1999/xhtml\";"
     "@namespace url(http://www.w3.org/1999/xhtml);";
-  check_stylesheet ~expected:"@namespace svg\"http://www.w3.org/2000/svg\";"
+  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
-    ~expected:"@namespace math\"http://www.w3.org/1998/Math/MathML\";"
+    ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
     "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
   neg_cursor read_stylesheet "@namespace { url(http://example.test); }";
   neg_cursor read_stylesheet "@namespace svg;"
@@ -616,11 +616,15 @@ let test_keyframes_spec_edge_vectors () =
   check_stylesheet
     ~expected:"@-webkit-keyframes fade{0%{opacity:0}to{opacity:1}}"
     "@-webkit-keyframes fade { from { opacity: 0 } to { opacity: 1 } }";
-  neg_cursor read_stylesheet "@keyframes missing-block";
-  neg_cursor read_stylesheet "@keyframes bad { -1% { opacity: 0 } }";
-  neg_cursor read_stylesheet "@keyframes bad { 101% { opacity: 1 } }";
-  neg_cursor read_stylesheet "@keyframes bad { 50px { opacity: 1 } }";
-  neg_cursor read_stylesheet "@keyframes bad { from, { opacity: 1 } }"
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { -1% { opacity: 0 } }";
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { 101% { opacity: 1 } }";
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { 50px { opacity: 1 } }";
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { from, { opacity: 1 } }";
+  neg_cursor read_stylesheet "@keyframes missing-block"
 
 (** Test [@font-face] rules *)
 let font_face_case () =
@@ -774,12 +778,10 @@ let spec_keyframes_selector_matrix () =
        20px}to{translate:20px 0}}"
     "@keyframes move { from { translate: none } 50% { translate: 10px 20px } \
      to { translate: 20px 0 } }";
-  List.iter
-    (neg_cursor read_stylesheet)
-    [
-      "@keyframes bad { 50%, { opacity: 1 } }";
-      "@keyframes bad { from, 120% { opacity: 1 } }";
-    ]
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { 50%, { opacity: 1 } }";
+  check_stylesheet ~expected:"@keyframes bad{}"
+    "@keyframes bad { from, 120% { opacity: 1 } }"
 
 let spec_page_margin_descriptor_matrix () =
   check_stylesheet
@@ -832,7 +834,7 @@ let sheet_item_case () =
   let test_statements =
     [
       ("@charset \"UTF-8\";", "@charset \"UTF-8\";");
-      ("@import 'test.css';", "@import 'test.css';");
+      ("@import 'test.css';", "@import\"test.css\";");
       (".class { color: red; }", ".class{color:red}");
       ( "@media print { .class { color: black; } }",
         "@media print{.class{color:#000}}" );
@@ -854,7 +856,7 @@ let ordering () =
     "@charset \"UTF-8\";\n@import 'base.css';\n.btn { color: red; }"
   in
   check_stylesheet
-    ~expected:"@charset \"UTF-8\";@import 'base.css';.btn{color:red}" input
+    ~expected:"@charset \"UTF-8\";@import\"base.css\";.btn{color:red}" input
 
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
@@ -904,7 +906,16 @@ let strict_error_to_string (e, filename) = filename ^ ": " ^ Error.to_string e
 
 let strict_accept name css =
   match Css.of_string ~strict:true css with
-  | Ok sheet -> ignore (Css.to_string ~minify:true sheet : string)
+  | Ok sheet ->
+      let strict_output = Css.to_string ~minify:true sheet in
+      let { Css.stylesheet; warnings } = Css.parse css in
+      Alcotest.(check int)
+        ("lenient parse is warning-free for valid " ^ name)
+        0 (List.length warnings);
+      Alcotest.(check string)
+        ("strict/lenient serialization agree for " ^ name)
+        strict_output
+        (Css.to_string ~minify:true stylesheet)
   | Error err ->
       Alcotest.failf "strict parser rejected valid %s: %s" name
         (strict_error_to_string err)
@@ -950,6 +961,9 @@ let spec_strict_accepts_valid_stylesheets () =
       ("multiple qualified rules", ".btn { color: red } .card { margin: 10px }");
       ( "comments between declarations",
         ".x { color: red /* keep */ ; margin: 0 }" );
+      ("four-value margin shorthand", ".x { margin: 1px 2px 3px 4px }");
+      ( "font shorthand with line-height and family list",
+        ".x { font: italic small-caps 700 1rem/1.5 \"Brand\", sans-serif }" );
       ("unknown vendor-prefixed declaration", ".x { -webkit-line-clamp: 2 }");
       ( "unknown future declaration",
         ".x { view-transition-class: card primary }" );
@@ -975,31 +989,60 @@ let spec_strict_accepts_valid_stylesheets () =
         ".card:where(:has(> img), .featured) { color: red }" );
       ( "forgiving selector list keeps valid branch",
         ".x:is(.a,:future) { color: red }" );
+      ( "not selector list",
+        ".x:not(.disabled, [aria-disabled=\"true\"]) { color: red }" );
+      ( "nth-child of selector list",
+        ".x:nth-child(2n+1 of .item, :not(.skip)) { color: red }" );
       ("nested style rule", ".card { color: red; &:hover { color: blue } }");
       ( "nested conditional style rule",
         ".card { @media (width >= 30em) { color: red } }" );
       ( "combined supports and media import",
         "@import url(theme.css) supports(display: grid) screen;" );
+      ( "anonymous import layer with supports and media",
+        "@import url(theme.css) layer() supports((display: grid)) screen and \
+         (color);" );
       ( "layer statement before import",
         "@layer reset, theme; @import url(theme.css) layer(theme);" );
+      ("anonymous layer block", "@layer { .anonymous { color: red } }");
+      ( "nested layer block",
+        "@layer framework { @layer theme { .title { color: red } } }" );
       ( "charset import namespace prelude order",
         "@charset \"UTF-8\"; @import url(base.css); @namespace svg \
          url(http://www.w3.org/2000/svg); svg|a { fill: currentColor }" );
       ( "namespace before qualified rule",
         "@namespace svg url(http://www.w3.org/2000/svg); svg|a { color: red }"
       );
+      ( "namespaced universal selector",
+        "@namespace svg url(http://www.w3.org/2000/svg); *|a { color: red }" );
       ( "media not with feature",
         "@media not screen and (color) { .x { color: red } }" );
+      ( "media range interval",
+        "@media (400px <= width <= 1000px) { .x { color: red } }" );
+      ( "media query list",
+        "@media only screen and (hover: hover), print and (color) { .x { \
+         color: red } }" );
       ( "supports font-tech",
         "@supports font-tech(variations) { .x { font-variation-settings: \
          \"wght\" 700 } }" );
+      ( "supports grouped boolean logic",
+        "@supports ((display: grid) or (display: flex)) and (not (display: \
+         subgrid)) { .x { display: grid } }" );
       ( "container named style query",
-        "@container card style(--variant: featured) { .x { display: grid } }"
-      );
+        "@container card style(--variant: featured) { .x { display: grid } }" );
+      ( "container range query",
+        "@container sidebar (inline-size > 30em) { .x { display: grid } }" );
       ( "paged media combined pseudo-page selector",
         "@page :blank:first { margin: 1cm }" );
+      ( "paged media first left selector",
+        "@page :first:left { margin-left: 2cm }" );
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
+      ( "font-face wildcard unicode range",
+        "@font-face { font-family: Icons; src: url(icons.woff2); \
+         unicode-range: U+4?? }" );
+      ( "counter-style cyclic",
+        "@counter-style thumbs { system: cyclic; symbols: \"*\" \"x\"; suffix: \
+         \" \" }" );
     ]
 
 let spec_strict_rejects_invalid_stylesheets () =
@@ -1017,11 +1060,20 @@ let spec_strict_rejects_invalid_stylesheets () =
         ".x { color: red } @import url(late.css);" );
       ( "namespace after qualified rule",
         ".x { color: red } @namespace svg url(http://www.w3.org/2000/svg);" );
+      ( "namespace before import",
+        "@namespace svg url(http://www.w3.org/2000/svg); @import url(late.css);"
+      );
       ("import inside style rule", ".x { @import url(inner.css); color: red }");
       ("import inside media rule", "@media screen { @import url(inner.css); }");
       ("import with block", "@import url(theme.css) { .x { color: red } }");
       ( "import layer after condition",
         "@import url(theme.css) screen layer(theme);" );
+      ( "import duplicate layer condition",
+        "@import url(theme.css) layer(theme) layer(base);" );
+      ( "import supports after media condition",
+        "@import url(theme.css) screen supports(display: grid);" );
+      ("invalid layer list comma", "@layer reset,,base;");
+      ("invalid css-wide layer name", "@layer initial { .x { color: red } }");
       ("qualified rule without block", ".x");
       ("declaration missing colon", ".x { color red }");
       ("declaration missing property", ".x { : red }");
@@ -1029,10 +1081,15 @@ let spec_strict_rejects_invalid_stylesheets () =
       ("empty class selector", ". { color: red }");
       ("empty id selector", "# { color: red }");
       ("invalid attribute operator", ".x[data-value ~~ test] { color: red }");
+      ("unforgiving selector list", ".a, :future-pseudo { color: red }");
       ("all-invalid forgiving selector", ".x:is(:future-pseudo) { color: red }");
+      ("empty is pseudo", ".x:is() { color: red }");
+      ("empty has pseudo", ".x:has() { color: red }");
+      ("invalid has relative selector", ".x:has(>) { color: red }");
       ("empty functional pseudo", ".x:not() { color: red }");
       ("invalid nth-child argument", ".x:nth-child(foo) { color: red }");
       ("invalid nth-child of selector list", ".x:nth-child(2 of) { color: red }");
+      ("invalid nth-child An+B", ".x:nth-child(2n+ of .item) { color: red }");
       (* Cascade and declaration grammar. *)
       ("css-wide keyword mixed with ordinary value", ".x { color: inherit red }");
       ("all shorthand non-css-wide value", ".x { all: auto }");
@@ -1044,9 +1101,14 @@ let spec_strict_rejects_invalid_stylesheets () =
       (* Values and property grammars. *)
       ("width missing unit", ".x { width: 10 }");
       ("unknown length unit", ".x { width: 10pp }");
+      ("margin too many components", ".x { margin: 1px 2px 3px 4px 5px }");
       ("negative padding", ".x { padding: -1px }");
       ("negative line-height", ".x { line-height: -1 }");
+      ("negative animation duration", ".x { animation-duration: -1s }");
+      ("negative transition duration", ".x { transition-duration: -1s }");
       ("font-weight outside range", ".x { font-weight: 0 }");
+      ("integer property rejects number", ".x { order: 1.5 }");
+      ("font-family trailing comma", ".x { font-family: Brand, }");
       ("z-index rejects length", ".x { z-index: 1px }");
       ("invalid aspect-ratio", ".x { aspect-ratio: 16 / }");
       ("invalid calc operator", ".x { width: calc(1px + ) }");
@@ -1054,13 +1116,16 @@ let spec_strict_rejects_invalid_stylesheets () =
         ".x { width: calc(1px * 2px) }" );
       ("invalid min function empty", ".x { width: min() }");
       ("invalid clamp arity", ".x { width: clamp(1px, 2px) }");
+      ("invalid short hex color", ".x { color: #12 }");
       ("invalid color function arity", ".x { color: rgb(255 0) }");
       ("mixed legacy and modern rgb syntax", ".x { color: rgb(255 0 0, .5) }");
+      ("invalid hsl arity", ".x { color: hsl(0 100%) }");
       ("invalid lab channel", ".x { color: lab(50% 20) }");
       ( "invalid color-mix hue keyword",
         ".x { color: color-mix(in hsl specified hue, red, blue) }" );
       ("invalid transform angle", ".x { transform: rotate(45) }");
       ("invalid translate length", ".x { translate: 10 }");
+      ("invalid scale arity", ".x { scale: 1 2 3 4 }");
       ("invalid filter function", ".x { filter: blur(red) }");
       ( "invalid grid area row shape",
         ".x { grid-template-areas: \"a a\" \"a b\" }" );
@@ -1073,8 +1138,8 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@property --x { syntax: \"<angle>\"; inherits: false; initial-value: \
          0 }" );
       ( "property angle-list initial-value requires angle unit",
-        "@property --x { syntax: \"<angle>#\"; inherits: false; \
-         initial-value: 0 }" );
+        "@property --x { syntax: \"<angle>#\"; inherits: false; initial-value: \
+         0 }" );
       ( "property invalid inherits descriptor",
         "@property --x { syntax: \"<length>\"; inherits: maybe; initial-value: \
          0px }" );
@@ -1083,12 +1148,20 @@ let spec_strict_rejects_invalid_stylesheets () =
          inherit }" );
       ("font-face missing font-family", "@font-face { src: url(font.woff2) }");
       ( "font-face unicode-range out of range",
-        "@font-face { font-family: Brand; src: url(font.woff2); \
-         unicode-range: U+110000 }" );
+        "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
+         U+110000 }" );
+      ( "font-face unicode-range descending range",
+        "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
+         U+20-10 }" );
+      ( "font-face invalid font-display list",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
+         block swap }" );
       ( "font-palette missing base-palette",
         "@font-palette-values --brand { override-colors: 0 red }" );
       ( "counter-style missing system",
         "@counter-style thumbs { symbols: \"*\" }" );
+      ( "counter-style cyclic missing symbols",
+        "@counter-style thumbs { system: cyclic }" );
       ( "page margin invalid declaration",
         "@page { @top-left { display: block } }" );
       ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
@@ -1101,11 +1174,14 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "media bad range interval",
         "@media (30em < width > 60em) { .x { color: red } }" );
       ("media dangling not", "@media not { .x { color: red } }");
+      ("media dangling and", "@media screen and { .x { color: red } }");
+      ("media missing range value", "@media (width >= ) { .x { color: red } }");
       ("container empty style query", "@container style() { .x { color: red } }");
       ( "container empty scroll-state query",
         "@container scroll-state() { .x { color: red } }" );
       ( "supports empty selector function",
         "@supports selector() { .x { color: red } }" );
+      ("supports dangling not", "@supports not { .x { color: red } }");
       ( "supports dangling operator",
         "@supports (display: grid) and { .x { color: red } }" );
       ( "supports mixed operators without grouping",
@@ -2180,11 +2256,11 @@ let spec_current_at_rules () =
     ~expected:".card{color:red;@media (width>=40em){&>img{display:block}}}"
     ".card { color: red; @media (width >= 40em) { & > img { display: block } } \
      }";
-  check_stylesheet ~expected:"@scope(.card) to (.footer){.title{color:red}}"
+  check_stylesheet ~expected:"@scope(.card)to (.footer){.title{color:red}}"
     "@scope (.card) to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
-  check_stylesheet ~expected:"@scope(:root) to (.stop,.end){.title{color:#00f}}"
+  check_stylesheet ~expected:"@scope(:root)to (.stop,.end){.title{color:#00f}}"
     "@scope (:root) to (.stop, .end) { .title { color: blue } }";
   check_stylesheet
     ~expected:
@@ -2329,7 +2405,7 @@ let spec_at_rule_descriptor_matrix () =
          display: grid } }" );
       ( "@container card style(--variant:featured){.card{color:red}}",
         "@container card style(--variant: featured) { .card { color: red } }" );
-      ( "@scope(.card) to (.boundary){.title{color:red}}",
+      ( "@scope(.card)to (.boundary){.title{color:red}}",
         "@scope (.card) to (.boundary) { .title { color: red } }" );
       ( "@starting-style{.dialog{opacity:0}}",
         "@starting-style { .dialog { opacity: 0 } }" );
@@ -2591,15 +2667,15 @@ let spec_nesting_selector_edges () =
      @container (inline-size > 30em) { & > .media { display: block } } }";
   check_stylesheet
     ~expected:
-      "@scope(.card) to (.boundary){.title{color:red;&:hover{color:#00f}}}"
+      "@scope(.card)to (.boundary){.title{color:red;&:hover{color:#00f}}}"
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
      blue } } }";
   check_stylesheet
-    ~expected:".card{@scope(&) to (.boundary){& .title{color:#00f}}}"
+    ~expected:".card{@scope(&)to (.boundary){& .title{color:#00f}}}"
     ".card { @scope (&) to (.boundary) { & .title { color: blue } } }";
   check_stylesheet
     ~expected:
-      ".card{color:red;@scope(.feature) to (.boundary){&>.title{display:grid}}}"
+      ".card{color:red;@scope(.feature)to (.boundary){&>.title{display:grid}}}"
     ".card { color: red; @scope (.feature) to (.boundary) { & > .title { \
      display: grid } } }";
   check_stylesheet

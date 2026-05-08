@@ -66,7 +66,8 @@ let pp_attr_value ?quote ctx value =
     Pp.string ctx value
   else
     match quote with
-    | Some quote when not (Pp.minified ctx) -> pp_quoted_attr_value quote ctx value
+    | Some quote when not (Pp.minified ctx) ->
+        pp_quoted_attr_value quote ctx value
     | _ -> Pp.quoted_string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
@@ -575,7 +576,9 @@ let read_combinator t =
 
 let read_attribute_match t : attribute_match =
   let make cons cons_quoted (value, quote) =
-    match quote with Some quote -> cons_quoted value quote | None -> cons value
+    match quote with
+    | Some quote -> cons_quoted value quote
+    | None -> cons value
   in
   let try_eq c cons cons_quoted : attribute_match option =
     if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
@@ -1504,7 +1507,14 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    let s = read_simple t in
+    (* CSS Selectors 4 §3.5: at non-forgiving sites we still tolerate unknown
+       pseudo-classes for forward compatibility - vendor pseudos like
+       [::-webkit-scrollbar:horizontal] and authored future-pseudos must
+       round-trip through the parser. The non-forgiving rejection lives where
+       the spec actually requires it: inside [:not()] / [:has()] (see
+       [read_not_content] / [read_has_content]) and inside the rule reader when
+       an entire selector list is unknown. *)
+    let s = read_simple ~allow_unknown_pseudo_class:true t in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
     else s :: acc
