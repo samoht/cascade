@@ -29,7 +29,7 @@ let check_config = check_value_cursor "config" read_config pp_config
 let check_stylesheet =
   check_value_cursor "stylesheet" read_stylesheet pp_stylesheet
 
-(* Legacy alias *)
+(* Short alias for stylesheet serialization checks. *)
 let check = check_stylesheet
 
 (* Not a roundtrip test *)
@@ -109,13 +109,6 @@ let test_stylesheet () =
     "@media { .test { color: red } }";
   check_stylesheet ~expected:"@media{}" "@media { }";
   neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
-
-let of_string css =
-  try
-    let r = Cursor.of_string css in
-    Ok (read_stylesheet r)
-    (* Internal API *)
-  with Cursor.Parse_error _ -> Error "boom"
 
 let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
@@ -812,6 +805,10 @@ let spec_property_descriptor_matrix () =
         "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
          initial-value: 0deg }" );
       ( "@property \
+         --angle-zero{syntax:\"<angle>\";inherits:false;initial-value:0deg}",
+        "@property --angle-zero { syntax: \"<angle>\"; inherits: false; \
+         initial-value: 0deg }" );
+      ( "@property \
          --ident-or-color{syntax:\"<custom-ident>|<color>\";inherits:true;initial-value:currentColor}",
         "@property --ident-or-color { syntax: \"<custom-ident> | <color>\"; \
          inherits: true; initial-value: currentColor }" );
@@ -821,6 +818,10 @@ let spec_property_descriptor_matrix () =
     [
       "@property --bad { syntax: \"<angle>#\"; inherits: false; initial-value: \
        red }";
+      "@property --bad { syntax: \"<angle>\"; inherits: false; initial-value: \
+       0 }";
+      "@property --bad { syntax: \"<angle>#\"; inherits: false; initial-value: \
+       0 }";
       "@property --bad { syntax: \"<length> || <color>\"; inherits: false; \
        initial-value: 1px }";
     ]
@@ -899,198 +900,235 @@ let test_read_stylesheet_with_comments () =
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
 
-(* Not a roundtrip test *)
-let test_read_stylesheet_error_recovery () =
-  (* According to CSS spec, element selectors can be any valid identifier.
-     "invalid-css-here .card" is valid CSS (element selector + descendant
-     combinator + class). We need actual invalid CSS syntax to test error
-     handling. *)
-  let css = ".btn { color: red; } { margin: 5px; }" in
-  (* Missing selector before { *)
-  let reader = Cursor.of_string css in
-  (* Should fail on invalid CSS without recovery *)
-  try
-    let _sheet = read_stylesheet reader in
-    Alcotest.fail "Expected parsing to fail on invalid CSS"
-  with Cursor.Parse_error _ ->
-    (* This is expected - parsing should fail *)
-    ()
+let strict_error_to_string (e, filename) = filename ^ ": " ^ Error.to_string e
 
-(* Not a roundtrip test *)
-let test_of_string () =
-  let css = ".btn { color: red; }" in
-  match of_string css with
+let strict_accept name css =
+  match Css.of_string ~strict:true css with
+  | Ok sheet -> ignore (Css.to_string ~minify:true sheet : string)
+  | Error err ->
+      Alcotest.failf "strict parser rejected valid %s: %s" name
+        (strict_error_to_string err)
+
+let strict_reject name css =
+  match Css.of_string ~strict:true css with
   | Ok sheet ->
-      let rules = rules sheet in
-      Alcotest.(check int) "of_string works" 1 (List.length rules)
-  | Error msg -> Alcotest.fail ("of_string failed: " ^ msg)
+      Alcotest.failf "strict parser accepted invalid %s: %S -> %S" name css
+        (Css.to_string ~minify:true sheet)
+  | Error err ->
+      Alcotest.(check bool)
+        ("strict error carries detail for " ^ name)
+        true
+        (String.length (strict_error_to_string err) > 0);
+      let { Css.stylesheet; warnings } = Css.parse css in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      Alcotest.(check bool)
+        ("lenient parse warns for " ^ name)
+        true
+        (List.length warnings > 0)
 
-(* Not a roundtrip test *)
-let test_of_string_positive () =
-  (* Test valid CSS - simple rule *)
-  let css1 = ".btn { color: red; }" in
-  (match of_string css1 with
-  | Ok sheet ->
-      let rules = rules sheet in
-      Alcotest.(check int) "single rule parsed" 1 (List.length rules)
-  | Error msg -> Alcotest.fail ("valid CSS failed: " ^ msg));
+let lenient_recover name css expected min_warnings =
+  let { Css.stylesheet; warnings } = Css.parse css in
+  Alcotest.(check string)
+    (name ^ " recovered stylesheet")
+    expected
+    (Css.to_string ~minify:true stylesheet |> String.trim);
+  Alcotest.(check bool)
+    (name ^ " warning count") true
+    (List.length warnings >= min_warnings)
 
-  (* Test valid CSS - multiple rules *)
-  let css2 = ".btn { color: red; } .card { margin: 10px; }" in
-  (match of_string css2 with
-  | Ok sheet ->
-      let rules = rules sheet in
-      Alcotest.(check int) "multiple rules parsed" 2 (List.length rules)
-  | Error msg -> Alcotest.fail ("multiple rules failed: " ^ msg));
+let spec_strict_accepts_valid_stylesheets () =
+  List.iter
+    (fun (name, css) -> strict_accept name css)
+    [
+      ("empty stylesheet", "");
+      ("whitespace-only stylesheet", "   \n\t  ");
+      ( "top-level CDO and CDC ignored",
+        "<!-- .x { color: red } --> .y { color: blue }" );
+      ("charset first", "@charset \"UTF-8\"; .x { color: red }");
+      ("simple qualified rule", ".btn { color: red; }");
+      ("empty qualified rule", ".empty { }");
+      ("multiple qualified rules", ".btn { color: red } .card { margin: 10px }");
+      ( "comments between declarations",
+        ".x { color: red /* keep */ ; margin: 0 }" );
+      ("unknown vendor-prefixed declaration", ".x { -webkit-line-clamp: 2 }");
+      ( "unknown future declaration",
+        ".x { view-transition-class: card primary }" );
+      ( "custom property token stream",
+        ".x { --token-list: [a, b] (c) { d: e } }" );
+      ("custom property digit dashed-ident", ".x { font-size: var(--1A202C) }");
+      ("valid escape in string", ".x { content: '\\gggg' }");
+      ("unterminated block auto-closes at EOF", ".x { color: red");
+      ("out-of-range rgb channels clamp", ".x { color: rgb(300, 300, 300) }");
+      ("mixed numeric rgb channels", ".x { color: rgb(50%, 100, 50%) }");
+      ( "transparent currentColor color-mix",
+        ".x { color: color-mix(in srgb, currentColor 25%, transparent) }" );
+      ( "hsl color-mix hue interpolation",
+        ".x { color: color-mix(in hsl longer hue, red, blue) }" );
+      ( "relative color syntax",
+        ".x { color: rgb(from var(--brand) r g b / .5) }" );
+      ( "typed attr fallback with calc",
+        ".x { width: attr(data-w px, calc(10px + 0px)) }" );
+      ( "rectangular grid template areas",
+        ".x { grid-template-areas: \"head head\" \"nav main\" }" );
+      ("escaped selector identifiers", ".\\31 0\\% { color: red }");
+      ( "selector list with where and has",
+        ".card:where(:has(> img), .featured) { color: red }" );
+      ( "forgiving selector list keeps valid branch",
+        ".x:is(.a,:future) { color: red }" );
+      ("nested style rule", ".card { color: red; &:hover { color: blue } }");
+      ( "nested conditional style rule",
+        ".card { @media (width >= 30em) { color: red } }" );
+      ( "combined supports and media import",
+        "@import url(theme.css) supports(display: grid) screen;" );
+      ( "layer statement before import",
+        "@layer reset, theme; @import url(theme.css) layer(theme);" );
+      ( "charset import namespace prelude order",
+        "@charset \"UTF-8\"; @import url(base.css); @namespace svg \
+         url(http://www.w3.org/2000/svg); svg|a { fill: currentColor }" );
+      ( "namespace before qualified rule",
+        "@namespace svg url(http://www.w3.org/2000/svg); svg|a { color: red }"
+      );
+      ( "media not with feature",
+        "@media not screen and (color) { .x { color: red } }" );
+      ( "supports font-tech",
+        "@supports font-tech(variations) { .x { font-variation-settings: \
+         \"wght\" 700 } }" );
+      ( "container named style query",
+        "@container card style(--variant: featured) { .x { display: grid } }"
+      );
+      ( "paged media combined pseudo-page selector",
+        "@page :blank:first { margin: 1cm }" );
+      ( "scope with end boundary",
+        "@scope (.card) to (.footer) { .title { color: red } }" );
+    ]
 
-  (* Test valid CSS - empty stylesheet *)
-  let css3 = "" in
-  (match of_string css3 with
-  | Ok sheet ->
-      let rules = rules sheet in
-      Alcotest.(check int) "empty stylesheet" 0 (List.length rules)
-  | Error msg -> Alcotest.fail ("empty stylesheet failed: " ^ msg));
+let spec_strict_rejects_invalid_stylesheets () =
+  List.iter
+    (fun (name, css) -> strict_reject name css)
+    [
+      (* CSS Syntax and stylesheet grammar. *)
+      ("top-level bare block", "{ color: red }");
+      ("stray top-level right brace", ".x { color: red } }");
+      ( "malformed charset missing semicolon",
+        "@charset \"UTF-8\" .x { color: red }" );
+      ("charset must use string token", "@charset url(UTF-8);");
+      ("late charset", ".x { color: red } @charset \"UTF-8\";");
+      ( "late import after qualified rule",
+        ".x { color: red } @import url(late.css);" );
+      ( "namespace after qualified rule",
+        ".x { color: red } @namespace svg url(http://www.w3.org/2000/svg);" );
+      ("import inside style rule", ".x { @import url(inner.css); color: red }");
+      ("import inside media rule", "@media screen { @import url(inner.css); }");
+      ("import with block", "@import url(theme.css) { .x { color: red } }");
+      ( "import layer after condition",
+        "@import url(theme.css) screen layer(theme);" );
+      ("qualified rule without block", ".x");
+      ("declaration missing colon", ".x { color red }");
+      ("declaration missing property", ".x { : red }");
+      (* Selectors. *)
+      ("empty class selector", ". { color: red }");
+      ("empty id selector", "# { color: red }");
+      ("invalid attribute operator", ".x[data-value ~~ test] { color: red }");
+      ("all-invalid forgiving selector", ".x:is(:future-pseudo) { color: red }");
+      ("empty functional pseudo", ".x:not() { color: red }");
+      ("invalid nth-child argument", ".x:nth-child(foo) { color: red }");
+      ("invalid nth-child of selector list", ".x:nth-child(2 of) { color: red }");
+      (* Cascade and declaration grammar. *)
+      ("css-wide keyword mixed with ordinary value", ".x { color: inherit red }");
+      ("all shorthand non-css-wide value", ".x { all: auto }");
+      ( "duplicate important annotation",
+        ".x { color: red !important !important }" );
+      ("misspelled important annotation", ".x { color: red !importent }");
+      ("single-hyphen custom property", ".x { -custom: value }");
+      ("custom property empty name", ".x { --: value }");
+      (* Values and property grammars. *)
+      ("width missing unit", ".x { width: 10 }");
+      ("unknown length unit", ".x { width: 10pp }");
+      ("negative padding", ".x { padding: -1px }");
+      ("negative line-height", ".x { line-height: -1 }");
+      ("font-weight outside range", ".x { font-weight: 0 }");
+      ("z-index rejects length", ".x { z-index: 1px }");
+      ("invalid aspect-ratio", ".x { aspect-ratio: 16 / }");
+      ("invalid calc operator", ".x { width: calc(1px + ) }");
+      ( "invalid calc dimensional multiplication",
+        ".x { width: calc(1px * 2px) }" );
+      ("invalid min function empty", ".x { width: min() }");
+      ("invalid clamp arity", ".x { width: clamp(1px, 2px) }");
+      ("invalid color function arity", ".x { color: rgb(255 0) }");
+      ("mixed legacy and modern rgb syntax", ".x { color: rgb(255 0 0, .5) }");
+      ("invalid lab channel", ".x { color: lab(50% 20) }");
+      ( "invalid color-mix hue keyword",
+        ".x { color: color-mix(in hsl specified hue, red, blue) }" );
+      ("invalid transform angle", ".x { transform: rotate(45) }");
+      ("invalid translate length", ".x { translate: 10 }");
+      ("invalid filter function", ".x { filter: blur(red) }");
+      ( "invalid grid area row shape",
+        ".x { grid-template-areas: \"a a\" \"a b\" }" );
+      ( "invalid grid area row width mismatch",
+        ".x { grid-template-areas: \"a\" \"a b\" }" );
+      (* At-rule descriptor grammars. *)
+      ( "property missing syntax descriptor",
+        "@property --x { inherits: false; initial-value: 0px }" );
+      ( "property angle initial-value requires angle unit",
+        "@property --x { syntax: \"<angle>\"; inherits: false; initial-value: \
+         0 }" );
+      ( "property angle-list initial-value requires angle unit",
+        "@property --x { syntax: \"<angle>#\"; inherits: false; \
+         initial-value: 0 }" );
+      ( "property invalid inherits descriptor",
+        "@property --x { syntax: \"<length>\"; inherits: maybe; initial-value: \
+         0px }" );
+      ( "property initial-value rejects css-wide keyword",
+        "@property --x { syntax: \"<length>\"; inherits: false; initial-value: \
+         inherit }" );
+      ("font-face missing font-family", "@font-face { src: url(font.woff2) }");
+      ( "font-face unicode-range out of range",
+        "@font-face { font-family: Brand; src: url(font.woff2); \
+         unicode-range: U+110000 }" );
+      ( "font-palette missing base-palette",
+        "@font-palette-values --brand { override-colors: 0 red }" );
+      ( "counter-style missing system",
+        "@counter-style thumbs { symbols: \"*\" }" );
+      ( "page margin invalid declaration",
+        "@page { @top-left { display: block } }" );
+      ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
+      ("keyframes forbidden name none", "@keyframes none { to { opacity: 1 } }");
+      ( "keyframes forbidden css-wide name",
+        "@keyframes initial { to { opacity: 1 } }" );
+      (* Conditional query grammars. *)
+      ( "media ungrouped mixed boolean operators",
+        "@media (width) and (height) or (color) { .x { color: red } }" );
+      ( "media bad range interval",
+        "@media (30em < width > 60em) { .x { color: red } }" );
+      ("media dangling not", "@media not { .x { color: red } }");
+      ("container empty style query", "@container style() { .x { color: red } }");
+      ( "container empty scroll-state query",
+        "@container scroll-state() { .x { color: red } }" );
+      ( "supports empty selector function",
+        "@supports selector() { .x { color: red } }" );
+      ( "supports dangling operator",
+        "@supports (display: grid) and { .x { color: red } }" );
+      ( "supports mixed operators without grouping",
+        "@supports (display: grid) and (color: red) or (width: 1px) { .x { \
+         color: red } }" );
+      ("scope invalid empty root", "@scope () { .x { color: red } }");
+      ( "scope invalid empty end boundary",
+        "@scope (.x) to () { .x { color: red } }" );
+    ]
 
-  (* Test valid CSS - whitespace only *)
-  let css4 = "   \n\t  " in
-  (match of_string css4 with
-  | Ok sheet ->
-      let rules = rules sheet in
-      Alcotest.(check int) "whitespace only" 0 (List.length rules)
-  | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
-
-  (* CSS Color 4 section 12.1: rgb() out-of-range channels clamp to [0,255];
-     [rgb(300, 300, 300)] becomes white, which canonicalizes to [#fff]. *)
-  check_stylesheet ~expected:".btn{color:#fff}"
-    ".btn { color: rgb(300, 300, 300); }";
-
-  check_stylesheet ~expected:".btn{color:red}"
-    ".btn { color: rgba(255, 0, 0); }";
-
-  (* Per CSS Color 4 section 1.4 a fully-opaque rgb() with mixed channel formats
-     canonicalizes to its hex spelling: 50% = 128 = 0x80, 100 = 0x64, so
-     [rgb(50%, 100, 50%)] becomes [#806480]. *)
-  check_stylesheet ~expected:".btn{color:#806480}"
-    ".btn { color: rgb(50%, 100, 50%); }";
-
-  (* CSS Values defines <dashed-ident> as two dashes followed by a user-defined
-     identifier; bare [--] is not a custom property name. *)
-  neg_cursor read_stylesheet ".btn { --: value; }"
-
-(* Not a roundtrip test *)
-let test_of_string_negative () =
-  (* Helper function to test invalid CSS *)
-  let test_invalid_css css expected_error =
-    match of_string css with
-    | Ok _ ->
-        Alcotest.fail
-          ("should have failed: " ^ expected_error ^ " - CSS: " ^ css)
-    | Error msg ->
-        Alcotest.(check bool)
-          ("error contains information for " ^ expected_error)
-          true
-          (String.length msg > 0)
-  in
-
-  (* Basic syntax errors *)
-  test_invalid_css ".btn { color: }" "empty property value";
-  (* Unclosed brace is recovered per CSS Syntax §5.3.7 — blocks auto-close at
-     EOF. Verified as a positive case below in test_invalid_syntax. *)
-  test_invalid_css "{ color: red; }" "missing selector";
-  test_invalid_css ".btn { invalid-property-that-does-not-exist: red; }"
-    "invalid property name";
-
-  (* Property-specific value validation errors *)
-  test_invalid_css ".btn { color: invalidcolor; }" "invalid color value";
-  test_invalid_css ".btn { display: invalidmode; }" "invalid display value";
-  test_invalid_css ".btn { position: invalidpos; }" "invalid position value";
-  test_invalid_css ".btn { width: invalidlength; }" "invalid length value";
-  test_invalid_css ".btn { height: notanumber; }" "invalid height value";
-
-  (* Missing colons and semicolons *)
-  test_invalid_css ".btn { color red; }" "missing colon after property name";
-  test_invalid_css ".btn color: red; }" "missing opening brace";
-  test_invalid_css ".btn { : red; }" "missing property name";
-
-  (* Invalid color formats *)
-  test_invalid_css ".btn { color: #gggggg; }" "invalid hex color";
-
-  (* Invalid length/size values *)
-  test_invalid_css ".btn { width: 100unknown; }" "unknown length unit";
-  test_invalid_css ".btn { margin: px; }" "missing numeric value for unit";
-  test_invalid_css ".btn { padding: -10px; }"
-    "negative padding (should be invalid)";
-
-  (* Selector syntax errors *)
-  test_invalid_css "..double-dot { color: red; }"
-    "invalid selector (double dot)";
-  test_invalid_css ".btn..extra { color: red; }"
-    "invalid selector (double class)";
-  test_invalid_css "# { color: red; }" "empty ID selector";
-  test_invalid_css ". { color: red; }" "empty class selector";
-
-  (* Nested braces and structure errors *)
-  test_invalid_css ".btn { color: red; { margin: 10px; } }"
-    "unexpected nested braces";
-  test_invalid_css ".btn { color: red; } } " "extra closing brace";
-  test_invalid_css ".btn { { color: red; }" "extra opening brace";
-
-  (* CSS function syntax errors *)
-  test_invalid_css ".btn { color: rgb(255, 0); }" "incomplete RGB function";
-  test_invalid_css ".btn { color: rgb(255 0 0, 0.5); }"
-    "mixed comma and space syntax in RGB";
-  test_invalid_css ".btn { transform: rotate(45); }"
-    "missing unit in rotate function";
-
-  (* Important declaration errors *)
-  test_invalid_css ".btn { color: red !importent; }" "misspelled !important";
-
-  (* String and quote errors — per CSS Syntax §4.3.5, an unterminated string at
-     EOF is a parse-error warning but still yields a [<string-token>] whose
-     contents run to EOF. The outer block then auto-closes per §5.3.7. So these
-     are recovered (positive) cases, not hard errors. *)
-
-  (* Vendor prefix validation *)
-  test_invalid_css ".btn { -invalid-vendor-transform: rotate(45deg); }"
-    "unknown vendor prefix";
-  test_invalid_css ".btn { webkit-transform: rotate(45deg); }"
-    "missing hyphen in vendor prefix";
-
-  (* Value list errors *)
-  test_invalid_css ".btn { margin: 10px 20px 30px 40px 50px; }"
-    "too many margin values";
-  test_invalid_css ".btn { font-family: Arial, , sans-serif; }"
-    "empty font family in list";
-
-  (* Calc function errors *)
-  test_invalid_css ".btn { width: calc(100% + ); }" "incomplete calc expression";
-  test_invalid_css ".btn { width: calc(100px * 2px); }"
-    "invalid calc (length * length)";
-
-  (* Custom property errors *)
-  test_invalid_css ".btn { -custom: value; }"
-    "invalid custom property (single hyphen)";
-
-  (* Specificity and cascade errors *)
-  test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
-
-  (* Unicode and encoding errors — per §4.3.5 an unterminated string at EOF
-     still produces a [<string-token>]; the [\\'] escape consumes the next [\'],
-     extending the string past the semicolon. This is recovered per §5.3.7, not
-     a hard error. *)
-
-  (* According to CSS spec section 4.3.7, \g is a valid escape that produces 'g'
-     So '\gggg' is valid CSS and should parse successfully. *)
-  match of_string ".btn { content: '\\gggg'; }" with
-  | Ok sheet ->
-      let rules = Css.Stylesheet.rules sheet in
-      Alcotest.(check int)
-        "\\gggg escape sequence should parse (valid per CSS spec)" 1
-        (List.length rules)
-  | Error _ ->
-      Alcotest.fail
-        "\\gggg should be valid per CSS spec (\\g escapes to 'g', followed by \
-         'ggg')"
+let spec_lenient_recovery_stylesheets () =
+  lenient_recover "bad declaration then good declaration"
+    ".a { color: invalid-color; color: red }" ".a{color:red}" 1;
+  lenient_recover "bad declaration keeps sibling rule"
+    ".a { color: rgb(300); } .b { color: red }" ".b{color:red}" 1;
+  lenient_recover "unknown at-rule skipped"
+    "@unknown-rule { .bad { color: red } } .ok { color: blue }"
+    ".ok{color:#00f}" 1;
+  lenient_recover "bad selector list drops rule only"
+    ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
+    ".ok{color:green}.next{color:#00f}" 1;
+  lenient_recover "unclosed block auto-closes" ".btn { color: red;"
+    ".btn{color:red}" 0
 
 let stylesheet_tests =
   [
@@ -1155,12 +1193,15 @@ let stylesheet_tests =
       `Quick,
       test_read_stylesheet_whitespace_only );
     ("read_stylesheet with comments", `Quick, test_read_stylesheet_with_comments);
-    ( "read_stylesheet fails on invalid CSS",
+    ( "spec strict accepts valid stylesheets",
       `Quick,
-      test_read_stylesheet_error_recovery );
-    ("of_string", `Quick, test_of_string);
-    ("of_string positive", `Quick, test_of_string_positive);
-    ("of_string negative", `Quick, test_of_string_negative);
+      spec_strict_accepts_valid_stylesheets );
+    ( "spec strict rejects invalid stylesheets",
+      `Quick,
+      spec_strict_rejects_invalid_stylesheets );
+    ( "spec lenient recovery stylesheets",
+      `Quick,
+      spec_lenient_recovery_stylesheets );
   ]
 
 (* Tests for newly added check functions *)
@@ -1376,8 +1417,7 @@ let css_syntax_recovery () =
   check_recovery "invalid declaration"
     ".btn { color: invalid-color; color: red; }" ".btn{color:red}" 1;
   check_recovery "invalid selector list"
-    ".ok { color: green } .bad,:future-pseudo { color: red }" ".ok{color:green}"
-    1;
+    ".ok { color: green } .bad:not() { color: red }" ".ok{color:green}" 1;
   check_recovery "unknown at-rule"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
     ".ok{color:#00f}" 1
@@ -1408,8 +1448,7 @@ let css_syntax_recovery_structural () =
   check_counts "bad declaration does not discard later declaration"
     ".a { color: rgb(300); background-color: red; }" [ 1 ] 1;
   check_counts "bad selector list drops rule only"
-    ".ok { color: green } .bad,:future-pseudo { color: red } .next { color: \
-     blue }"
+    ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     [ 1; 1 ] 1;
   check_counts "unknown at-rule block skipped"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }" [ 1 ] 1;
