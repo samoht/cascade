@@ -6118,10 +6118,10 @@ let rec pp_text_shadow : text_shadow Pp.t =
       Pp.space ctx ();
       pp_length ctx v_offset;
       (match blur with
-      | Some b ->
+      | Some b when not (Pp.minified ctx && is_zero_length b) ->
           Pp.space ctx ();
           pp_length ctx b
-      | None -> ());
+      | Some _ | None -> ());
       match color with Some c -> pp_color_after_length ctx c | None -> ())
 
 let rec pp_background_attachment : background_attachment Pp.t =
