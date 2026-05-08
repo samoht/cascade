@@ -2881,10 +2881,6 @@ let read_var : type a. (Cursor.t -> a) -> Cursor.t -> a var =
  fun read_value t ->
   Cursor.call "var" t (fun inner -> read_var_body read_value inner)
 
-(** [read_var] consumes the [var(...)] [Func]; this alias matches the pre-port
-    entry point and is kept so call sites stay source-compatible. *)
-let read_var_after_ident = read_var
-
 let read_body : type a. (Cursor.t -> a) -> Cursor.t -> a env =
  fun read_value t ->
   Cursor.ws t;
