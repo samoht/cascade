@@ -3356,6 +3356,8 @@ and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
   else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
   else Cursor.err t "calc() or var()"
 
+let read_numeric_expression t = read_num_expr t
+
 let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
   Cursor.ws t;
@@ -4979,6 +4981,11 @@ let rec read_number_percentage t : number_percentage =
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
   else if Cursor.looking_at t "calc(" then
     Calc (read_calc read_number_percentage_dim_only t)
+  else if
+    Cursor.looking_at_func "min" t
+    || Cursor.looking_at_func "max" t
+    || Cursor.looking_at_func "clamp" t
+  then Num (read_numeric_expression t)
   else
     (* Try to read as percentage or number *)
     Cursor.one_of
