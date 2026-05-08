@@ -171,6 +171,21 @@ let minified_stylesheet ss =
 let pretty_stylesheet ss =
   Css.Stylesheet.to_string ~minify:false ss |> String.trim
 
+let assert_strict_rejects_lenient_warns label input =
+  match Css.of_string ~strict:true input with
+  | Ok sheet ->
+      fail
+        (Fmt.str "%s parsed strictly as invalid CSS: %S -> %S" label input
+           (Css.to_string ~minify:true sheet))
+  | Error _ ->
+      let { Css.stylesheet; warnings } = Css.parse input in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      if warnings = [] then
+        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+
+let assert_invalid_declaration_contract label input =
+  assert_strict_rejects_lenient_warns label (".x{" ^ input ^ "}")
+
 let recovered_declaration_counts stylesheet =
   Css.rule_statements stylesheet
   |> List.map (fun statement ->
@@ -237,6 +252,12 @@ let invalid_platform_declaration_vector buf i =
       "position:sticky absolute";
       "anchor-name:tooltip";
       "position-anchor:tooltip";
+      "font-weight:0";
+      "line-height:-1";
+      "z-index:1px";
+      "translate:10";
+      "filter:blur(red)";
+      "grid-template-areas:\"a\" \"a b\"";
       "shape-margin:-1px";
       "overflow-clip-margin:-1px";
       "scrollbar-width:wide";
@@ -526,6 +547,7 @@ let test_shorthand_wide_keyword buf =
 let test_shorthand_wide_mix buf =
   let property, value = invalid_shorthand_keyword_mix buf 0 in
   let input = property ^ ":" ^ value in
+  assert_invalid_declaration_contract "invalid shorthand keyword mix" input;
   match parse_declaration input with
   | None -> ()
   | Some serialized ->
@@ -670,6 +692,7 @@ let test_platform_decl_name buf =
 
 let test_invalid_platform_declaration_rejected buf =
   let input = invalid_platform_declaration_vector buf 0 in
+  assert_invalid_declaration_contract "invalid platform declaration" input;
   match parse_declaration input with
   | None -> ()
   | Some serialized ->
@@ -758,6 +781,8 @@ let test_valid_atrule_descriptor buf =
          initial-value: 1px }";
         "@property --tokens { inherits: true; initial-value: red; syntax: \
          \"<color>\" }";
+        "@property --angle-zero { syntax: \"<angle>\"; inherits: false; \
+         initial-value: 0deg }";
         "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
          format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }";
         "@font-face { font-family: Brand; src: local(\"Brand\"), \
@@ -793,6 +818,10 @@ let test_invalid_atrule_descriptor buf =
     pick
       [
         "@property --gap { syntax: \"<length>\"; inherits: false }";
+        "@property --angle { syntax: \"<angle>\"; inherits: false; \
+         initial-value: 0 }";
+        "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
+         initial-value: 0 }";
         "@font-face { src: url(\"brand.woff2\"); }";
         "@font-face { font-family: Brand; src: url(\"brand.woff2\"); \
          font-weight: 900 100 }";
@@ -816,12 +845,7 @@ let test_invalid_atrule_descriptor buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid spec at-rule vector parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid spec at-rule vector" input
 
 let test_atrule_inventory_valid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.positive buf 0 in
@@ -854,12 +878,9 @@ let test_atrule_inventory_valid buf =
 
 let test_atrule_inventory_invalid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.negative buf 0 in
-  match parse_stylesheet row.input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "shared at-rule inventory invalid row parsed: %s/%s %S -> %S"
-           row.feature row.branch row.input (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns
+    (Fmt.str "shared at-rule inventory invalid row %s/%s" row.feature row.branch)
+    row.input
 
 let test_font_face_descriptor_matrix buf =
   let input =
@@ -895,12 +916,7 @@ let test_invalid_font_face buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid font-face descriptor parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid font-face descriptor" input
 
 let test_page_margin_descriptor_matrix buf =
   let input =
@@ -927,12 +943,7 @@ let test_invalid_page_margin buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid page descriptor parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid page descriptor" input
 
 let test_palette_descriptor_matrix buf =
   let input =
@@ -962,12 +973,7 @@ let test_invalid_palette_descriptor buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid font-palette-values vector parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid font-palette-values vector" input
 
 let test_view_transition_descriptor_matrix buf =
   let input =
@@ -994,12 +1000,7 @@ let test_invalid_view_transition buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid view-transition vector parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid view-transition vector" input
 
 let test_position_try_descriptor_matrix buf =
   let input =
@@ -1028,12 +1029,7 @@ let test_invalid_position_try buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid position-try vector parsed: %S -> %S" input
-           (minified_stylesheet ss))
+  assert_strict_rejects_lenient_warns "invalid position-try vector" input
 
 let test_property_value_context buf =
   let open Css.Values in
@@ -1067,6 +1063,7 @@ let test_recovery_keeps_rules buf =
     pick [ "color:rgb(300)"; "width:calc(1px + )"; "transform:rotate()" ] buf 0
   in
   let css = ".a{color:red}.b{" ^ bad_decl ^ "}.c{display:block}" in
+  assert_strict_rejects_lenient_warns "recovery keeps sibling rules" css;
   let { Css.stylesheet; warnings } = Css.parse css in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 0; 1 ] then
@@ -1077,13 +1074,14 @@ let test_recovery_invalid_rule_boundary buf =
   let invalid_rule =
     pick
       [
-        ".bad,:future-pseudo{color:red}";
         "@unknown-rule{.bad{color:red}}";
         ".bad:not(){color:red}";
+        ".bad:nth-child(foo){color:red}";
       ]
       buf 0
   in
   let css = ".ok{color:green}" ^ invalid_rule ^ ".next{color:blue}" in
+  assert_strict_rejects_lenient_warns "invalid rule boundary recovery" css;
   let { Css.stylesheet; warnings } = Css.parse css in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 1 ] then
@@ -1100,6 +1098,7 @@ let test_recovery_bad_declaration buf =
       buf 0
   in
   let css = ".a{" ^ bad_decl ^ ";color:red}" in
+  assert_strict_rejects_lenient_warns "bad declaration recovery" css;
   let { Css.stylesheet; warnings } = Css.parse css in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1 ] then
@@ -1137,7 +1136,12 @@ let test_invalid_prelude_order buf =
     pick
       [
         ".x { color: red } @charset \"UTF-8\";";
+        ".x { color: red } }";
+        "@charset url(UTF-8);";
+        "@charset \"UTF-8\" .x { color: red }";
         ".x { color: red } @import url(late.css);";
+        "@import url(theme.css) { .x { color: red } }";
+        "@media screen { @import url(inner.css); }";
         "@import url(base.css); @layer theme; @import url(late.css);";
         "@import url(base.css); @layer theme { .x { color: red } } @namespace \
          url(http://www.w3.org/1999/xhtml);";
@@ -1145,12 +1149,7 @@ let test_invalid_prelude_order buf =
       ]
       buf 0
   in
-  match parse_stylesheet input with
-  | None -> ()
-  | Some ss ->
-      fail
-        (Fmt.str "invalid stylesheet prelude order parsed: %S -> %S" input
-           (String.concat " " (boundary_shapes ss)))
+  assert_strict_rejects_lenient_warns "invalid stylesheet prelude order" input
 
 let parser_cases =
   [
