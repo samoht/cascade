@@ -112,22 +112,23 @@ let rec minified_condition = function
   | And (a, b) -> minified_operand a ^ " and " ^ minified_operand b
   | Or (a, b) -> minified_operand a ^ " or " ^ minified_operand b
   | Not c -> "not " ^ minified_operand c
-  | t -> to_string_with ~minify:true t
+  | t -> to_string_with ~pretty:false ~minify:true t
 
 and minified_operand = function
   | ( Min_width_rem _ | Min_width_px _ | Style _ | Scroll_state _
     | Feature_query _ ) as t ->
-      to_string_with ~minify:true t
+      to_string_with ~pretty:false ~minify:true t
   | t -> "(" ^ minified_condition t ^ ")"
 
-and to_string_with ~minify t =
+and to_string_with ~pretty ~minify t =
   match t with
-  (* The typed [Min_width_*] shorthand always prints in its compact no-space
-     form: it predates the [?minify] argument and existing direct callers expect
-     that exact spelling. *)
-  | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
-  | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
-  | Named (name, cond) -> name ^ " " ^ to_string_with ~minify cond
+  | Min_width_rem rem ->
+      let sep = if pretty && not minify then ": " else ":" in
+      "(min-width" ^ sep ^ format_rem rem ^ "rem)"
+  | Min_width_px px ->
+      let sep = if pretty && not minify then ": " else ":" in
+      "(min-width" ^ sep ^ Int.to_string px ^ "px)"
+  | Named (name, cond) -> name ^ " " ^ to_string_with ~pretty ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
       head ^ string_of_style_query ~minify query ^ ")"
@@ -137,18 +138,29 @@ and to_string_with ~minify t =
   | And (a, b) ->
       if minify then minified_condition t
       else
-        "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b
+        "("
+        ^ to_string_with ~pretty ~minify a
+        ^ " and "
+        ^ to_string_with ~pretty ~minify b
         ^ ")"
   | Or (a, b) ->
       if minify then minified_condition t
       else
-        "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
+        "("
+        ^ to_string_with ~pretty ~minify a
+        ^ " or "
+        ^ to_string_with ~pretty ~minify b
+        ^ ")"
   | Not c ->
       if minify then minified_condition t
-      else "(not " ^ to_string_with ~minify c ^ ")"
+      else "(not " ^ to_string_with ~pretty ~minify c ^ ")"
   | Feature_query f -> Media.to_string ~minify f
 
-let to_string ?(minify = false) t = to_string_with ~minify t
+let to_string ?(minify = false) t = to_string_with ~pretty:false ~minify t
+
+let to_stylesheet_string ?(minify = false) t =
+  to_string_with ~pretty:true ~minify t
+
 let pp t = to_string t
 
 let rec compare t1 t2 =

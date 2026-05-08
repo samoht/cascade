@@ -65,9 +65,14 @@ val kind : t -> kind
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string t] converts a container condition to its CSS string
-    representation. The default [~minify:true] drops the optional whitespace
-    inside feature queries; pass [~minify:false] for the pretty form (e.g.
-    [(min-width: 24px)]). *)
+    representation. Typed [Min_width_*] shorthands keep their historical compact
+    form; stylesheet printing uses {!to_stylesheet_string} when pretty spacing
+    is required. *)
+
+val to_stylesheet_string : ?minify:bool -> t -> string
+(** [to_stylesheet_string t] converts a container condition for stylesheet
+    printing. Non-minified output keeps optional whitespace in typed shorthand
+    feature queries. *)
 
 val pp : t -> string
 (** [pp t] returns a string representation of a container condition. *)

@@ -766,7 +766,7 @@ and pp_statement : statement Pp.t =
       (match condition with
       | Some condition ->
           let condition_str =
-            Container.to_string ~minify:ctx.minify condition
+            Container.to_stylesheet_string ~minify:ctx.minify condition
           in
           if condition_str <> "" then (
             Pp.char ctx ' ';
