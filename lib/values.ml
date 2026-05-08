@@ -631,14 +631,16 @@ let strip_top_level_calc_arg arg =
 
 let pp_math_call ctx name args =
   let args =
-    match name with
-    | "min" -> Option.value ~default:args (try_reduce_min_max_args `Min args)
-    | "max" -> Option.value ~default:args (try_reduce_min_max_args `Max args)
-    | "clamp" ->
-        split_top_level_commas args
-        |> List.map strip_top_level_calc_arg
-        |> String.concat ","
-    | _ -> args
+    if Pp.minified ctx then
+      match name with
+      | "min" -> Option.value ~default:args (try_reduce_min_max_args `Min args)
+      | "max" -> Option.value ~default:args (try_reduce_min_max_args `Max args)
+      | "clamp" ->
+          split_top_level_commas args
+          |> List.map strip_top_level_calc_arg
+          |> String.concat ","
+      | _ -> args
+    else args
   in
   Pp.string ctx name;
   Pp.char ctx '(';
