@@ -22,6 +22,12 @@ val drop_invalid : t -> t
     cascade preserved verbatim for round-trip). Run as part of minify-time
     spec-based optimization. *)
 
+val drop_unknown_at_rules : t -> t
+(** [drop_unknown_at_rules ss] removes every [Unknown_at_rule] statement at any
+    block depth. CSS Syntax 3 §5.4.1 says an unknown at-rule is discarded; the
+    parser preserves them in the AST for fidelity, and minify-time
+    canonicalization then drops them. *)
+
 val drop_empty_rules : t -> t
 (** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
     is empty (no declarations and no nested rules). *)
