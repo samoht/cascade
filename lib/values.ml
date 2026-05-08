@@ -3901,7 +3901,7 @@ let read_angle_atan2 t =
   | Ok value -> value
   | Error comp -> Invalid [ comp ]
 
-let read_angle_unit t =
+let read_angle_unit ~unitless_zero t =
   let n, unit_raw = Cursor.number_with_unit t in
   let unit_raw = Option.value unit_raw ~default:"" in
   match String.lowercase_ascii unit_raw with
@@ -3909,27 +3909,39 @@ let read_angle_unit t =
   | "rad" -> Rad n
   | "turn" -> Turn n
   | "grad" -> Grad n
-  | "" when n = 0. -> Deg 0.
+  | "" when unitless_zero && n = 0. -> Deg 0.
   | "" ->
       Cursor.err_invalid t
         "angle values must have units (deg, rad, turn, or grad)"
   | unit -> Cursor.err_invalid t ("invalid angle unit: " ^ unit)
 
-let rec read_angle t : angle =
+let rec read_angle_with ~unitless_zero t : angle =
   Cursor.ws t;
-  if Cursor.looking_at t "var(" then Var (read_var read_angle t)
-  else if Cursor.looking_at t "calc(" then Calc (read_calc read_angle t)
-  else if Cursor.looking_at_func "round" t then read_angle_round read_angle t
+  if Cursor.looking_at t "var(" then
+    Var (read_var (read_angle_with ~unitless_zero) t)
+  else if Cursor.looking_at t "calc(" then
+    Calc (read_calc (read_angle_with ~unitless_zero) t)
+  else if Cursor.looking_at_func "round" t then
+    read_angle_round (read_angle_with ~unitless_zero) t
   else if Cursor.looking_at_func "rem" t then
-    read_angle_binary "rem" (fun a b -> (Rem (a, b) : angle)) read_angle t
+    read_angle_binary "rem"
+      (fun a b -> (Rem (a, b) : angle))
+      (read_angle_with ~unitless_zero)
+      t
   else if Cursor.looking_at_func "mod" t then
-    read_angle_binary "mod" (fun a b -> (Mod (a, b) : angle)) read_angle t
+    read_angle_binary "mod"
+      (fun a b -> (Mod (a, b) : angle))
+      (read_angle_with ~unitless_zero)
+      t
   else
     match angle_trig_function t with
     | Some (kind, name) -> read_angle_trig kind name t
     | None ->
         if Cursor.looking_at_func "atan2" t then read_angle_atan2 t
-        else read_angle_unit t
+        else read_angle_unit ~unitless_zero t
+
+let read_angle t = read_angle_with ~unitless_zero:true t
+let read_angle_unit_required t = read_angle_with ~unitless_zero:false t
 
 (** Normalize hue value to 0-360 range *)
 let normalize_hue (degrees : float) : float =
