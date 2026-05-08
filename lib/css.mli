@@ -999,6 +999,7 @@ type rgb =
 type alpha =
   | None
   | Num of float (* Number value (0-1) *)
+  | Numeric of { value : float; repr : string }
   | Pct of float (* Percentage value (0%-100%) *)
   | Var of alpha var
   | Calc of alpha calc

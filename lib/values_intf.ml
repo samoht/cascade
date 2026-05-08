@@ -347,6 +347,7 @@ type angle =
 type alpha =
   | None
   | Num of float
+  | Numeric of { value : float; repr : string }
   | Pct of float
   | Var of alpha var
   | Calc of alpha calc
