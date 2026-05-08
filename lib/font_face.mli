@@ -35,12 +35,18 @@ type src_entry =
 and src = src_entry list
 (** Font source list. *)
 
+type t = src
+(** Font source list. *)
+
 val string_of_src_entry : src_entry -> string
 (** [string_of_src_entry e] converts source entry to string. *)
 
 val string_of_src : ?minify:bool -> src -> string
 (** [string_of_src entries] converts a font source list to its CSS string
     representation. *)
+
+val to_string : ?minify:bool -> t -> string
+(** [to_string src] converts a font source list to CSS source text. *)
 
 (** {1 Parsing} *)
 

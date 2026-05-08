@@ -1928,6 +1928,8 @@ let string_of_declaration ?(minify = false) decl =
   pp_declaration ctx decl;
   Buffer.contents buf
 
+let to_string = string_of_declaration
+
 (* Resolve theme guards: filter out Theme_guarded declarations whose var_name is
    not in the theme, and unwrap those that are *)
 let resolve_theme_guards ctx decls =

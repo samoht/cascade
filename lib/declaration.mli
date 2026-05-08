@@ -25,8 +25,12 @@ val string_of_declaration : ?minify:bool -> declaration -> string
     representation. If [minify] is [true] (default: [false]), the output is
     minified. *)
 
+val to_string : ?minify:bool -> t -> string
+(** [to_string ~minify d] converts a declaration to CSS source text. *)
+
 val custom_property : ?layer:string -> string -> string -> declaration
-(** [custom_property ?layer name value] is a raw custom property declaration. *)
+(** [custom_property ?layer name value] is a custom property declaration from
+    authored CSS text. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
