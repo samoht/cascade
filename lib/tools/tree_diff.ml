@@ -639,7 +639,7 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf { rules; containers } =
 (* ===== Tree Diff Computation Functions ===== *)
 
 (* Helper to extract rule information from statements *)
-let convert_rule_to_strings stmt =
+let strings_of_rule stmt =
   match Css.as_rule stmt with
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
@@ -1124,11 +1124,11 @@ let properties_diff decls1 decls2 : declaration list * string list * string list
 (* Helper functions for converting rule changes - moved here for mutual
    recursion *)
 let convert_added_rule stmt =
-  let sel, decls = convert_rule_to_strings stmt in
+  let sel, decls = strings_of_rule stmt in
   Rule_added { selector = sel; declarations = decls }
 
 let convert_removed_rule stmt =
-  let sel, decls = convert_rule_to_strings stmt in
+  let sel, decls = strings_of_rule stmt in
   Rule_removed { selector = sel; declarations = decls }
 
 let describe_statement stmt =

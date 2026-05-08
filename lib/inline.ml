@@ -385,14 +385,29 @@ let substitute_declaration visible ctx decl =
   match custom_name decl with
   | Some _ -> Some decl
   | None -> (
-      let value = Declaration.string_of_value ~minify:false decl in
-      let components = Cursor.remaining (Cursor.of_string value) in
-      match substitute_components visible ~visited:[] components with
-      | Cycle -> Some (Context.eval ctx decl)
-      | Components components -> (
-          match declaration_with_components decl components with
-          | None -> None
-          | Some decl -> Some (Context.eval ctx decl)))
+      let vars = Variables.vars_of_declarations [ decl ] in
+      let use_typed_default =
+        vars <> []
+        && List.for_all
+             (fun (Variables.V var) ->
+               Option.is_some var.Values.default
+               && Option.is_none
+                    (lookup_visible_custom_components visible var.Values.name))
+             vars
+      in
+      if use_typed_default then Some (Context.eval ctx decl)
+      else
+        let value = Declaration.string_of_value ~minify:false decl in
+        let original_components = Cursor.remaining (Cursor.of_string value) in
+        match substitute_components visible ~visited:[] original_components with
+        | Cycle -> Some (Context.eval ctx decl)
+        | Components components -> (
+            if components = original_components then
+              Some (Context.eval ctx decl)
+            else
+              match declaration_with_components decl components with
+              | None -> None
+              | Some decl -> Some (Context.eval ctx decl)))
 
 let simplify_font_src_descriptor visible entries =
   let normalize_entry = function

@@ -1056,8 +1056,8 @@ let read_charset (r : Cursor.t) : statement =
 
 (* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
    into a typed [Error.Parse_error] so the partial-parse catch in
-   [read_statement_from_rule] surfaces it as a warning instead of escaping to
-   the [Css.parse] caller. *)
+   [read_statement_of_rule] surfaces it as a warning instead of escaping to the
+   [Css.parse] caller. *)
 let supports_condition ~loc condition =
   try Supports.of_string condition
   with Failure reason ->
@@ -1512,35 +1512,35 @@ let validate_pseudo_page r s name =
   | _ -> page_selector_error r s
 
 let validate_page_selector r selector =
-  (* CSS Paged Media §3.1 [<page-selector-list> = <page-selector>#] where each
-     [<page-selector> = <ident-token>? [':' <pseudo-page>]*] and the
-     [<pseudo-page>] is one of [left], [right], [first], [blank]. Multiple
-     pseudo-pages may chain (e.g. [:blank:first]). *)
+  (* CSS Paged Media 3 §3.1 [<page-selector-list> = <page-selector>#] with
+     [<page-selector> = <ident-token>? <pseudo-page>*] and [<pseudo-page>] one
+     of [left], [right], [first], [blank]. CSS 2.1 §13.2.4 allowed at most one
+     pseudo-page per selector and that's the constraint cascade enforces:
+     combinations like [:left:right] or [:first:left] are rejected even though
+     CSS Paged Media 3 relaxed the grammar to permit them. *)
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let rec consume_pseudo_pages i =
-    if i >= len then i
-    else if s.[i] = ',' then i
-    else if page_selector_is_ws s.[i] then skip_ws i
-    else if s.[i] <> ':' then page_selector_error r s
+  let consume_pseudo_page i =
+    if i >= len || s.[i] <> ':' then i
     else
       let start = i + 1 in
       let stop = consume_ident start in
       if stop = start then page_selector_error r s;
       let name = String.sub s start (stop - start) in
       validate_pseudo_page r s name;
-      consume_pseudo_pages stop
+      stop
   in
   let rec consume_selectors i =
     let i = skip_ws i in
     if i >= len then ()
     else
       let after_ident = consume_ident i in
-      let after_pseudo = consume_pseudo_pages after_ident in
+      let after_pseudo = consume_pseudo_page after_ident in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then ()
+      else if s.[after_pseudo] = ':' then page_selector_error r s
       else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
       else page_selector_error r s
   in
@@ -2062,15 +2062,17 @@ let rec read_statement (r : Cursor.t) : statement =
     ]
   in
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) -> (
+  | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) -> (
       match List.assoc_opt name table with
       | Some p -> p r
       | None ->
-          (* CSS Syntax 3 §5.4.2 "consume an at-rule": for an at-rule with no
-             registered handler we still consume its prelude (up to [;] or
-             [{...}]) and preserve it as a raw [Unknown_at_rule]. *)
+          (* CSS Syntax 3 §5.4.1: an at-rule with no registered handler is
+             discarded with a typed warning so the surrounding stylesheet keeps
+             parsing. The prelude/block are still consumed for partial recovery
+             so the next rule starts from the right offset. *)
           ignore (Cursor.next_raw r);
-          read_unknown_at_rule name r)
+          let _ : statement = read_unknown_at_rule name r in
+          Error.fail_unknown_at_rule loc name)
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =
@@ -2432,8 +2434,8 @@ and read_rule_body selector inner =
       | Error e ->
           (* Per 5.4.4, an invalid declaration is discarded; the enclosing rule
              survives. Push the warning on the cursor so the top-level
-             [read_stylesheet_from_rules] drain sees it, and skip to the next
-             [;] or end of block. *)
+             [read_stylesheet_of_rules] drain sees it, and skip to the next [;]
+             or end of block. *)
           Cursor.push_warning inner e;
           let rec skip () =
             match Cursor.next_raw inner with
@@ -2582,7 +2584,7 @@ let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
    validator's [Parse_error] into a rule-level error and drop the rule. Per-
    declaration warnings accumulated on the cursor are drained separately by the
    caller. *)
-let read_statement_from_rule ?source ?meta (rule : Component.rule) :
+let read_statement_of_rule ?source ?meta (rule : Component.rule) :
     Cursor.t * (statement, Error.t) result =
   let r = cursor_of_rule ?source ?meta rule in
   let result =
@@ -2590,13 +2592,13 @@ let read_statement_from_rule ?source ?meta (rule : Component.rule) :
   in
   (r, result)
 
-let read_stylesheet_from_rules ?source ?meta (rules : Component.rule list) :
+let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
   let statements =
     List.filter_map
       (fun rule ->
-        let cursor, result = read_statement_from_rule ?source ?meta rule in
+        let cursor, result = read_statement_of_rule ?source ?meta rule in
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if
            any) comes after them. *)
@@ -2621,7 +2623,7 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
   (* Snippets must be sliced from the preprocessed buffer so their offsets line
      up with the locs the lexer produced (see Cursor.of_string). *)
   let sheet, typed_warnings =
-    read_stylesheet_from_rules ~source:(Reader.source reader) ~meta out.value
+    read_stylesheet_of_rules ~source:(Reader.source reader) ~meta out.value
   in
   (sheet, out.warnings @ typed_warnings)
 

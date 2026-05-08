@@ -235,6 +235,23 @@ let validate_printable_property_name t name =
   if not (is_plain_property_name name) then
     Cursor.err_invalid t ("unprintable property name: " ^ name)
 
+let is_vendor_extension_property_name name =
+  let len = String.length name in
+  let rec has_vendor_separator i =
+    i < len
+    &&
+    if name.[i] = '-' then i > 1 && i < len - 1 else has_vendor_separator (i + 1)
+  in
+  len > 0 && name.[0] = '-' && has_vendor_separator 1
+
+let validate_unknown_property_name t name =
+  validate_printable_property_name t name;
+  if
+    String.length name > 0
+    && name.[0] = '-'
+    && not (is_vendor_extension_property_name name)
+  then Cursor.err_invalid t ("invalid vendor extension property name: " ^ name)
+
 (** Check if a declaration is marked as important *)
 let rec is_important = function
   | Declaration { important; _ } -> important
@@ -1695,7 +1712,7 @@ let read_font_src_declaration t raw_value =
   if is_important then important decl else decl
 
 let read_unknown_property_declaration t name =
-  validate_printable_property_name t name;
+  validate_unknown_property_name t name;
   validate_complete_declaration_value t;
   reject_curly_block_value t;
   reject_unterminated_string_value t;

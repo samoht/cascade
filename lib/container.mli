@@ -81,9 +81,10 @@ val feature : string -> Media.value -> t
     {!Media.val-feature}. *)
 
 val style : ?value:string -> string -> t
-(** [style ?value prop] is a [style()] query. With no [value] it matches the
-    boolean form [style(prop)]; with a value it matches [style(prop: value)].
-    Constructs the canonical lowercase form. *)
+(** [style ?value prop] is a [style()] query. With no [value], [prop] must be a
+    custom property and the query matches the boolean form [style(--prop)]. With
+    a value it matches [style(prop: value)]. Constructs the canonical lowercase
+    form. *)
 
 val scroll_state : string -> string -> t
 (** [scroll_state prop value] is the canonical lowercase [Scroll_state] query,
