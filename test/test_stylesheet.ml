@@ -703,7 +703,8 @@ let page_margin_edges () =
   check_stylesheet
     ~expected:"@page{bleeds:6pt;marks:crop cross;@top-center{content:none}}"
     "@page { bleeds: 6pt; marks: crop cross; @top-center { content: none } }";
-  neg_cursor read_stylesheet "@page invoice:blank:first { margin: 1cm }";
+  check_stylesheet ~expected:"@page invoice:blank:first{margin:1cm}"
+    "@page invoice:blank:first { margin: 1cm }";
   neg_cursor read_stylesheet "@page { @unknown { content: none } }";
   neg_cursor read_stylesheet "@page { @top-left; }";
   neg_cursor read_stylesheet "@page { @top-left { color: red } }"
@@ -796,10 +797,11 @@ let spec_page_margin_descriptor_matrix () =
      content: counter(page) } @bottom-center { content: \"Chapter\" } }";
   List.iter
     (neg_cursor read_stylesheet)
-    [
-      "@page :first:left { margin: 1cm }";
-      "@page { @top-center { display: block } }";
-    ]
+    [ "@page { @top-center { display: block } }" ];
+  check_stylesheet ~expected:"@page:first:left{margin:1cm}"
+    "@page :first:left { margin: 1cm }";
+  check_stylesheet ~expected:"@page:blank:first{margin:.5cm}"
+    "@page :blank:first { margin: 0.5cm }"
 
 let spec_property_descriptor_matrix () =
   List.iter

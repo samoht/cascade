@@ -153,7 +153,6 @@ let css2_pseudo_elements_aliases () =
 
 let css2_legacy_invalid_vectors () =
   rejects_invalid "@charset 'UTF-8';";
-  rejects_invalid "@page :first:left { margin: 1cm }";
   rejects_invalid "div { page-break-before: always avoid }";
   rejects_invalid "div { page-break-inside: left }";
   rejects_invalid "h1::first-line::before { color: red }"
@@ -478,7 +477,11 @@ let stylesheet_at_rules () =
   roundtrip "@namespace svg url(http://www.w3.org/2000/svg);"
     "@namespace svg\"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
-    "@page:left{margin-left:4cm;margin-right:3cm}"
+    "@page:left{margin-left:4cm;margin-right:3cm}";
+  (* CSS Paged Media 3 allows non-conflicting pseudo-page combinations. *)
+  roundtrip "@page :first:left { margin: 1cm }" "@page:first:left{margin:1cm}";
+  roundtrip "@page :blank:first { margin: .5cm }"
+    "@page:blank:first{margin:.5cm}"
 
 (* {2 CSS Cascade and Inheritance Level 4}
    https://www.w3.org/TR/css-cascade-4/ *)
