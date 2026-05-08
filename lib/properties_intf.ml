@@ -3859,6 +3859,7 @@ type text_decoration_skip_ink =
 
 type transform_origin =
   | Center
+  | Center_center
   | Left
   | Right
   | Top

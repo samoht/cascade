@@ -5248,6 +5248,7 @@ val transforms : transform list -> declaration
 
 type transform_origin =
   | Center
+  | Center_center
   | Left
   | Right
   | Top
