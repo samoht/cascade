@@ -2604,16 +2604,8 @@ let is_zero_length : length -> bool = function
   | _ -> false
 
 let pp_color_after_length ctx color =
-  if Pp.minified ctx then
-    let rendered = Pp.to_string ~minify:true pp_color color in
-    if String.length rendered > 0 && rendered.[0] = '#' then
-      Pp.string ctx rendered
-    else (
-      Pp.space ctx ();
-      Pp.string ctx rendered)
-  else (
-    Pp.space ctx ();
-    pp_color ctx color)
+  Pp.space ctx ();
+  pp_color ctx color
 
 let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     color =
