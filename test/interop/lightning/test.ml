@@ -112,12 +112,14 @@ let read_all ic =
   in
   loop ()
 
-let err_process_status label code = Error (Fmt.str "%s %d" label code)
+let err_process_status label code =
+  Fmt.kstr (fun s -> Error s) "%s %d" label code
 
 let err_exit_status n stderr =
-  Error
-    (Fmt.str "exit %d%s" n
-       (if stderr = "" then "" else ": " ^ String.trim stderr))
+  Fmt.kstr
+    (fun s -> Error s)
+    "exit %d%s" n
+    (if stderr = "" then "" else ": " ^ String.trim stderr)
 
 let run_command command input =
   let ic, oc, ec = Unix.open_process_full command (Unix.environment ()) in
@@ -328,9 +330,10 @@ let classify (input, expected) =
                 c.tool ^ ":" ^ display_css c.css)
             |> String.concat " | "
           in
-          Mismatch
-            (Fmt.str "%s\n    shortest: %s\n    actual_len=%d best_len=%d"
-               actual shortest (String.length actual) best)
+          Fmt.kstr
+            (fun s -> Mismatch s)
+            "%s\n    shortest: %s\n    actual_len=%d best_len=%d" actual
+            shortest (String.length actual) best
       in
       (outcome, rejected)
 

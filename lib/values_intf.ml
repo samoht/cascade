@@ -34,6 +34,50 @@ type 'a var = {
 type 'a env = { name : string; indices : int list; fallback : 'a option }
 type calc_op = Add | Sub | Mul | Div
 
+(** CSS Values 4 §10.7.1 math constants - emitted at the source byte sequence
+    (e.g. [pi], [e]) rather than their floating-point evaluation, so pretty pp
+    preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)]. *)
+type math_const = Pi | E | Infinity | Neg_infinity | Nan
+
+(** CSS Values 4 §10.7 numeric math function arguments. Self-recursive so nested
+    calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants stays
+    as a tree ([(e - exp(1))]). *)
+type math_arg =
+  | Lit of float
+  | Const of math_const
+  | Var_arg of math_arg var
+  | Op of math_arg * calc_op * math_arg
+  | Parens_arg of math_arg
+  | Math_call of math_fn
+
+(** CSS Values 4 §10.7 numeric math functions. Each arm preserves its source arg
+    shape so pretty pp re-emits [name(args)]; the optimizer evaluates to [Num]
+    under minify. *)
+and math_fn =
+  | Sin of angle_arg
+  | Cos of angle_arg
+  | Tan of angle_arg
+  | Asin of math_arg
+  | Acos of math_arg
+  | Atan of math_arg
+  | Atan2 of math_arg * math_arg
+  | Sqrt of math_arg
+  | Exp of math_arg
+  | Log of math_arg * math_arg option
+  | Pow of math_arg * math_arg
+  | Hypot of math_arg list
+  | Sign_n of math_arg
+  | Abs_n of math_arg
+
+(** [sin] / [cos] / [tan] accept an [<angle>] or a unitless [<number>] treated
+    as radians. *)
+and angle_arg =
+  | Angle_deg of float
+  | Angle_rad of float
+  | Angle_turn of float
+  | Angle_grad of float
+  | Angle_num of math_arg
+
 type 'a calc =
   | Var of 'a var
   | Val of 'a
@@ -43,6 +87,10 @@ type 'a calc =
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
+  | Math_fn of math_fn
+(* CSS Values 4 §10.7 numeric math functions ([sin], [cos], [hypot], ...).
+   Pretty pp emits [name(args)] preserving source shape; minify pp / optimizer
+   evaluates to [Num]. *)
 
 type attr_syntax = Length | Length_percentage | Color | Number | Percentage
 

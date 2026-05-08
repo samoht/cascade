@@ -290,6 +290,7 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Val _ -> []
   | Var v -> [ V v ]
   | Num _ -> []
+  | Math_fn _ -> []
   | Sibling_index -> []
   | Sibling_count -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
@@ -601,7 +602,7 @@ and vars_of_number_calc (calc : Values.number calc) : any_var list =
   | Expr (left, _, right) ->
       vars_of_number_calc left @ vars_of_number_calc right
   | Nested inner | Parens inner -> vars_of_number_calc inner
-  | Num _ | Sibling_index | Sibling_count -> []
+  | Num _ | Math_fn _ | Sibling_index | Sibling_count -> []
 
 let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
   match value with

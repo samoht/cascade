@@ -597,6 +597,45 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mul | Div
 
+(** CSS Values 4 §10.7.1 math constants - emitted at the source byte sequence so
+    pretty pp preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)].
+*)
+type math_const = Pi | E | Infinity | Neg_infinity | Nan
+
+(** CSS Values 4 §10.7 numeric math function arguments. *)
+type math_arg =
+  | Lit of float
+  | Const of math_const
+  | Var_arg of math_arg var
+  | Op of math_arg * calc_op * math_arg
+  | Parens_arg of math_arg
+  | Math_call of math_fn
+
+(** CSS Values 4 §10.7 numeric math functions. *)
+and math_fn =
+  | Sin of angle_arg
+  | Cos of angle_arg
+  | Tan of angle_arg
+  | Asin of math_arg
+  | Acos of math_arg
+  | Atan of math_arg
+  | Atan2 of math_arg * math_arg
+  | Sqrt of math_arg
+  | Exp of math_arg
+  | Log of math_arg * math_arg option
+  | Pow of math_arg * math_arg
+  | Hypot of math_arg list
+  | Sign_n of math_arg
+  | Abs_n of math_arg
+
+(** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians). *)
+and angle_arg =
+  | Angle_deg of float
+  | Angle_rad of float
+  | Angle_turn of float
+  | Angle_grad of float
+  | Angle_num of math_arg
+
 (** CSS calc values. *)
 type 'a calc =
   | Var of 'a var  (** CSS variable *)
@@ -607,6 +646,7 @@ type 'a calc =
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
+  | Math_fn of math_fn  (** CSS Values 4 §10.7 numeric math function call. *)
 
 type component_values = Component.t list
 (** Parsed CSS component values preserved for fallback and invalid-value

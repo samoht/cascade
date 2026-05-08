@@ -2045,7 +2045,7 @@ let read_font_feature_value_entry outer inner =
 let replace_font_feature_value ((name, _) as entry) acc =
   entry :: List.filter (fun (existing, _) -> existing <> name) acc
 
-let skip_to_semicolon inner =
+let skip_semicolon_tail inner =
   let rec loop () =
     match Cursor.next_raw inner with
     | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
@@ -2065,7 +2065,7 @@ let read_font_feature_values_entries outer =
         if Cursor.is_done inner then List.rev acc else loop inner acc
     | Error e ->
         Cursor.push_warning inner e;
-        skip_to_semicolon inner;
+        skip_semicolon_tail inner;
         loop inner acc
   in
   Cursor.braces (fun inner -> loop inner []) outer

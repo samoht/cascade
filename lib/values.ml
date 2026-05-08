@@ -329,6 +329,146 @@ let read_attr_type t : attr_type =
   Cursor.expect_eof t;
   type_
 
+let pp_math_const ctx = function
+  | Pi -> Pp.string ctx "pi"
+  | E -> Pp.string ctx "e"
+  | Infinity -> Pp.string ctx "infinity"
+  | Neg_infinity -> Pp.string ctx "-infinity"
+  | Nan -> Pp.string ctx "NaN"
+
+let math_const_value = function
+  | Pi -> Float.pi
+  | E -> Float.exp 1.
+  | Infinity -> Float.infinity
+  | Neg_infinity -> Float.neg_infinity
+  | Nan -> Float.nan
+
+let rec pp_math_arg ctx = function
+  | Lit f -> Pp.float ctx f
+  | Const c -> pp_math_const ctx c
+  | Var_arg v -> pp_var pp_math_arg ctx v
+  | Op (l, op, r) ->
+      pp_math_arg ctx l;
+      pp_calc_op ctx op;
+      pp_math_arg ctx r
+  | Parens_arg inner ->
+      Pp.char ctx '(';
+      pp_math_arg ctx inner;
+      Pp.char ctx ')'
+  | Math_call fn -> pp_math_fn ctx fn
+
+and pp_math_fn ctx fn =
+  let call name args =
+    Pp.string ctx name;
+    Pp.char ctx '(';
+    Pp.list ~sep:Pp.comma pp_math_arg ctx args;
+    Pp.char ctx ')'
+  in
+  match fn with
+  | Sin a ->
+      Pp.string ctx "sin(";
+      pp_angle_arg ctx a;
+      Pp.char ctx ')'
+  | Cos a ->
+      Pp.string ctx "cos(";
+      pp_angle_arg ctx a;
+      Pp.char ctx ')'
+  | Tan a ->
+      Pp.string ctx "tan(";
+      pp_angle_arg ctx a;
+      Pp.char ctx ')'
+  | Asin a -> call "asin" [ a ]
+  | Acos a -> call "acos" [ a ]
+  | Atan a -> call "atan" [ a ]
+  | Atan2 (y, x) -> call "atan2" [ y; x ]
+  | Sqrt a -> call "sqrt" [ a ]
+  | Exp a -> call "exp" [ a ]
+  | Log (a, None) -> call "log" [ a ]
+  | Log (a, Some b) -> call "log" [ a; b ]
+  | Pow (a, b) -> call "pow" [ a; b ]
+  | Hypot args -> call "hypot" args
+  | Sign_n a -> call "sign" [ a ]
+  | Abs_n a -> call "abs" [ a ]
+
+and pp_angle_arg ctx = function
+  | Angle_deg f ->
+      Pp.float ctx f;
+      Pp.string ctx "deg"
+  | Angle_rad f ->
+      Pp.float ctx f;
+      Pp.string ctx "rad"
+  | Angle_turn f ->
+      Pp.float ctx f;
+      Pp.string ctx "turn"
+  | Angle_grad f ->
+      Pp.float ctx f;
+      Pp.string ctx "grad"
+  | Angle_num arg -> pp_math_arg ctx arg
+
+let rec eval_math_arg = function
+  | Lit f -> Some f
+  | Const c -> Some (math_const_value c)
+  | Var_arg _ -> None
+  | Op (l, op, r) -> (
+      match (eval_math_arg l, eval_math_arg r) with
+      | Some lv, Some rv -> (
+          match op with
+          | Add -> Some (lv +. rv)
+          | Sub -> Some (lv -. rv)
+          | Mul -> Some (lv *. rv)
+          | Div when rv <> 0. -> Some (lv /. rv)
+          | Div -> None)
+      | _ -> None)
+  | Parens_arg inner -> eval_math_arg inner
+  | Math_call fn -> eval_math_fn fn
+
+and eval_angle_arg = function
+  | Angle_deg f -> Some (f *. Float.pi /. 180.)
+  | Angle_rad f -> Some f
+  | Angle_turn f -> Some (f *. 2. *. Float.pi)
+  | Angle_grad f -> Some (f *. Float.pi /. 200.)
+  | Angle_num arg -> eval_math_arg arg
+
+and eval_math_fn fn =
+  let unary f arg = Option.map f (eval_math_arg arg) in
+  let binary f a b =
+    match (eval_math_arg a, eval_math_arg b) with
+    | Some av, Some bv -> Some (f av bv)
+    | _ -> None
+  in
+  match fn with
+  | Sin a -> Option.map Float.sin (eval_angle_arg a)
+  | Cos a -> Option.map Float.cos (eval_angle_arg a)
+  | Tan a -> Option.map Float.tan (eval_angle_arg a)
+  | Asin a -> unary (fun v -> Float.asin v *. 180. /. Float.pi) a
+  | Acos a -> unary (fun v -> Float.acos v *. 180. /. Float.pi) a
+  | Atan a -> unary (fun v -> Float.atan v *. 180. /. Float.pi) a
+  | Atan2 (y, x) -> binary (fun y x -> Float.atan2 y x *. 180. /. Float.pi) y x
+  | Sqrt a -> unary Float.sqrt a
+  | Exp a -> unary Float.exp a
+  | Log (a, None) -> unary Float.log a
+  | Log (a, Some b) -> (
+      match (eval_math_arg a, eval_math_arg b) with
+      | Some av, Some bv when bv > 0. && bv <> 1. ->
+          Some (Float.log av /. Float.log bv)
+      | _ -> None)
+  | Pow (a, b) -> binary Float.pow a b
+  | Hypot args ->
+      let vs = List.filter_map eval_math_arg args in
+      if List.length vs <> List.length args then None
+      else
+        let sum_sq = List.fold_left (fun acc v -> acc +. (v *. v)) 0. vs in
+        Some (Float.sqrt sum_sq)
+  | Sign_n a ->
+      unary
+        (fun v ->
+          if Float.is_nan v then Float.nan
+          else if v > 0. then 1.
+          else if v < 0. then -1.
+          else v)
+        a
+  | Abs_n a -> unary Float.abs a
+
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
@@ -338,6 +478,11 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
     | Val v -> pp_value ctx v
     | Var v -> pp_var pp_value ctx v
     | Num n -> Pp.float ctx n
+    | Math_fn fn when Pp.minified ctx -> (
+        match eval_math_fn fn with
+        | Some v -> Pp.float ctx v
+        | None -> pp_math_fn ctx fn)
+    | Math_fn fn -> pp_math_fn ctx fn
     | Sibling_index -> Pp.string ctx "sibling-index()"
     | Sibling_count -> Pp.string ctx "sibling-count()"
     | Nested inner ->
@@ -379,6 +524,8 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    zeros to [Num 0.] before this generic fold. *)
 let rec eval_calc : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_fn fn -> (
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
       match eval_calc inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
@@ -437,6 +584,7 @@ let pp_unit ?(always = true) ctx f suffix =
     Returns None if the expression contains variables or non-numeric values. *)
 let rec eval_numeric_calc : type a. a calc -> float option = function
   | Num f -> Some f
+  | Math_fn fn -> eval_math_fn fn
   | Sibling_index -> None
   | Sibling_count -> None
   | Val _ -> None (* Can't evaluate typed values *)
@@ -477,6 +625,7 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Num f -> Num f
   | Sibling_index -> Sibling_index
   | Sibling_count -> Sibling_count
+  | Math_fn fn -> Math_fn fn
   | Nested inner -> Nested (map_calc f inner)
   | Parens inner -> Parens (map_calc f inner)
   | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
@@ -728,7 +877,9 @@ let length_is_zero = function
 
 let rec normalize_length_calc_zeros : length calc -> length calc = function
   | Val v when length_is_zero v -> Num 0.
-  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _) as leaf
+    ->
+      leaf
   | Nested c -> Nested (normalize_length_calc_zeros c)
   | Parens c -> Parens (normalize_length_calc_zeros c)
   | Expr (l, op, r) ->
@@ -826,7 +977,7 @@ let rec resolve_length_calc_vars ctx : length calc -> length calc = function
         ( resolve_length_calc_vars ctx left,
           op,
           resolve_length_calc_vars ctx right )
-  | (Val _ | Num _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | (Val _ | Num _ | Sibling_index | Sibling_count | Math_fn _) as leaf -> leaf
 
 (* CSS Values 4 10.7: same-unit add/sub of two typed lengths reduces to a single
    length. Mixed-unit cases stay as a [calc] expression because the resolved
@@ -855,6 +1006,8 @@ let rec eval_length_calc : length calc -> length calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_fn fn -> (
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
       match eval_length_calc inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
@@ -1158,7 +1311,7 @@ let linear_length_terms calc =
   let rec aux = function
     | Val length -> Option.map (fun term -> [ term ]) (unit_of_length length)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
     | Nested inner | Parens inner -> aux inner
     | Expr (left, Add, right) -> (
         match (aux left, aux right) with
@@ -1199,7 +1352,9 @@ let lp_is_zero (v : length_percentage) =
 let rec normalize_lp_calc_zeros :
     length_percentage calc -> length_percentage calc = function
   | Val v when lp_is_zero v -> Num 0.
-  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _) as leaf
+    ->
+      leaf
   | Nested c -> Nested (normalize_lp_calc_zeros c)
   | Parens c -> Parens (normalize_lp_calc_zeros c)
   | Expr (l, op, r) ->
@@ -1245,7 +1400,7 @@ let rec resolve_lp_calc_vars ctx :
   | Parens inner -> Parens (resolve_lp_calc_vars ctx inner)
   | Expr (left, op, right) ->
       Expr (resolve_lp_calc_vars ctx left, op, resolve_lp_calc_vars ctx right)
-  | (Val _ | Num _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | (Val _ | Num _ | Sibling_index | Sibling_count | Math_fn _) as leaf -> leaf
 
 let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
     length_percentage option =
@@ -1274,6 +1429,8 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_fn fn -> (
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
       match eval_lp_calc inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
@@ -1322,7 +1479,7 @@ let linear_lp_terms calc =
   let rec aux = function
     | Val value -> Option.map (fun term -> [ term ]) (unit_of_lp value)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
     | Nested inner | Parens inner -> aux inner
     | Expr (left, Add, right) -> (
         match (aux left, aux right) with
@@ -1855,8 +2012,6 @@ let mod_value a b =
   else
     let q = Float.floor (a /. b) in
     a -. (q *. b)
-
-let sign_float x = if x > 0. then 1. else if x < 0. then -1. else 0.
 
 (* Byte value [0..255] for an alpha component, when the alpha is a static number
    or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
@@ -3288,47 +3443,161 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
       | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
       | "clamp" -> read_numeric_clamp t
-      (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
-         time to a [Num] so the surrounding [calc()] can fold further. *)
-      | "sqrt" -> read_numeric_unary_call "sqrt" Float.sqrt t
-      | "abs" -> read_numeric_unary_call "abs" Float.abs t
-      | "sign" -> read_numeric_sign_call t
-      | "exp" -> read_numeric_unary_call "exp" Float.exp t
-      | "log" -> read_numeric_log t
-      | "pow" -> read_numeric_binary_call "pow" Float.pow t
-      | "hypot" -> read_numeric_hypot t
-      | ("sin" | "cos" | "tan") as fn -> read_numeric_trig fn t
-      | ("asin" | "acos" | "atan") as fn -> read_numeric_inverse_trig fn t
-      | "atan2" -> read_numeric_atan2 t
+      (* CSS Values 4 §10.7 numeric math functions: parsed into the typed
+         [Math_fn] AST so pretty pp re-emits [name(args)]; the optimizer (or
+         minify pp) folds via [eval_math_fn]. *)
+      | "sqrt" -> Math_fn (Sqrt (read_math_call_arg "sqrt" t))
+      | "abs" -> Math_fn (Abs_n (read_math_call_arg "abs" t))
+      | "sign" -> Math_fn (Sign_n (read_math_call_arg "sign" t))
+      | "exp" -> Math_fn (Exp (read_math_call_arg "exp" t))
+      | "log" -> read_math_log t
+      | "pow" -> read_math_binary "pow" (fun a b -> Pow (a, b)) t
+      | "hypot" -> read_math_hypot t
+      | "sin" -> Math_fn (Sin (read_angle_call_arg "sin" t))
+      | "cos" -> Math_fn (Cos (read_angle_call_arg "cos" t))
+      | "tan" -> Math_fn (Tan (read_angle_call_arg "tan" t))
+      | "asin" -> Math_fn (Asin (read_math_call_arg "asin" t))
+      | "acos" -> Math_fn (Acos (read_math_call_arg "acos" t))
+      | "atan" -> Math_fn (Atan (read_math_call_arg "atan" t))
+      | "atan2" -> read_math_binary "atan2" (fun a b -> Atan2 (a, b)) t
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
 
-and read_numeric_unary_call : type a.
-    string -> (float -> float) -> Cursor.t -> a calc =
- fun name fn t ->
-  Num
+and read_math_arg t : math_arg =
+  let rec read_term () =
+    let left = read_factor () in
+    Cursor.ws t;
+    match Cursor.peek_delim t with
+    | Some ('+' as c) | Some ('-' as c) ->
+        Cursor.skip t;
+        Cursor.ws t;
+        let op : calc_op = match c with '+' -> Add | _ -> Sub in
+        let right = read_term () in
+        Op (left, op, right)
+    | _ -> left
+  and read_factor () =
+    let left = read_unary () in
+    Cursor.ws t;
+    match Cursor.peek_delim t with
+    | Some ('*' as c) | Some ('/' as c) ->
+        Cursor.skip t;
+        Cursor.ws t;
+        let op : calc_op = match c with '*' -> Mul | _ -> Div in
+        let right = read_factor () in
+        Op (left, op, right)
+    | _ -> left
+  and read_unary () =
+    Cursor.ws t;
+    match Cursor.peek_block t with
+    | Some Token.Paren ->
+        Parens_arg (Cursor.parens (fun inner -> read_math_arg inner) t)
+    | _ -> (
+        match Cursor.peek t with
+        | Some (Component.Func { node = { name; _ }; _ }) -> (
+            match String.lowercase_ascii name with
+            | "var" ->
+                Var_arg
+                  (read_var (fun inner -> read_math_arg inner) t : math_arg var)
+            | _ -> (
+                let calc = read_calc_numeric_function t in
+                match calc with
+                | Math_fn fn -> Math_call fn
+                | Num f -> Lit f
+                | _ -> Cursor.err t "expected numeric math arg"))
+        | _ -> (
+            match Cursor.ident_opt t with
+            | Some name -> (
+                match String.lowercase_ascii name with
+                | "pi" -> Const Pi
+                | "e" -> Const E
+                | "infinity" -> Const Infinity
+                | "-infinity" -> Const Neg_infinity
+                | "nan" -> Const Nan
+                | _ -> Cursor.err t "expected math constant")
+            | None -> Lit (Cursor.number t)))
+  in
+  read_term ()
+
+and read_math_call_arg name t : math_arg =
+  Cursor.call name t (fun inner ->
+      Cursor.ws inner;
+      let v = read_math_arg inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      v)
+
+and read_math_binary : type a.
+    string -> (math_arg -> math_arg -> math_fn) -> Cursor.t -> a calc =
+ fun name mk t ->
+  Math_fn
     (Cursor.call name t (fun inner ->
-         let v = read_num_expr inner in
+         Cursor.ws inner;
+         let a = read_math_arg inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         Cursor.ws inner;
+         let b = read_math_arg inner in
          Cursor.ws inner;
          Cursor.expect_eof inner;
-         fn v))
+         mk a b))
 
-and read_numeric_sign_call : type a. Cursor.t -> a calc =
+and read_math_log : type a. Cursor.t -> a calc =
  fun t ->
-  Num
-    (Cursor.call "sign" t (fun inner ->
-         let snap = Cursor.save inner in
-         let v =
-           match read_num_expr inner with
-           | v -> v
-           | exception Cursor.Parse_error _ ->
-               Cursor.restore inner snap;
-               let v, _unit = Cursor.number_with_unit inner in
-               v
+  Math_fn
+    (Cursor.call "log" t (fun inner ->
+         Cursor.ws inner;
+         let a = read_math_arg inner in
+         Cursor.ws inner;
+         let b =
+           if Cursor.comma_opt inner then (
+             Cursor.ws inner;
+             let b = read_math_arg inner in
+             Some b)
+           else None
          in
          Cursor.ws inner;
          Cursor.expect_eof inner;
-         sign_float v))
+         Log (a, b)))
+
+and read_math_hypot : type a. Cursor.t -> a calc =
+ fun t ->
+  Math_fn
+    (Cursor.call "hypot" t (fun inner ->
+         Cursor.ws inner;
+         let args =
+           Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg inner
+         in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         (Hypot args : math_fn)))
+
+and read_angle_call_arg name t : angle_arg =
+  Cursor.call name t (fun inner ->
+      Cursor.ws inner;
+      let snap = Cursor.save inner in
+      (* Try to parse an angle dimension first: 45deg, 1rad, etc. *)
+      let arg =
+        match Cursor.number_with_unit inner with
+        | n, Some unit -> (
+            match String.lowercase_ascii unit with
+            | "deg" -> Some (Angle_deg n)
+            | "rad" -> Some (Angle_rad n)
+            | "turn" -> Some (Angle_turn n)
+            | "grad" -> Some (Angle_grad n)
+            | _ -> None)
+        | _, None -> None
+        | exception Cursor.Parse_error _ -> None
+      in
+      let arg =
+        match arg with
+        | Some a -> a
+        | None ->
+            Cursor.restore inner snap;
+            Angle_num (read_math_arg inner)
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      arg)
 
 and read_numeric_binary_call : type a.
     string -> (float -> float -> float) -> Cursor.t -> a calc =
@@ -3406,121 +3675,15 @@ and read_numeric_clamp : type a. Cursor.t -> a calc =
          Cursor.expect_eof inner;
          Float.max min_value (Float.min value max_value)))
 
-and read_numeric_log : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "log" t (fun inner ->
-         let v = read_num_expr inner in
-         Cursor.ws inner;
-         let base =
-           if Cursor.comma_opt inner then Some (read_num_expr inner) else None
-         in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         match base with
-         | None -> Float.log v
-         | Some b -> Float.log v /. Float.log b))
-
-and read_numeric_hypot : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "hypot" t (fun inner ->
-         let nums =
-           Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
-         in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         let sum_sq = List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums in
-         Float.sqrt sum_sq))
-
-and read_numeric_trig : type a. string -> Cursor.t -> a calc =
- fun fn t ->
-  Num
-    (Cursor.call fn t (fun inner ->
-         let radians = read_trig_arg inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         match fn with
-         | "sin" -> Float.sin radians
-         | "cos" -> Float.cos radians
-         | "tan" -> Float.tan radians
-         | _ -> assert false))
-
-and read_numeric_inverse_trig : type a. string -> Cursor.t -> a calc =
- fun fn t ->
-  Num
-    (Cursor.call fn t (fun inner ->
-         let v = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         let result_rad =
-           match fn with
-           | "asin" -> Float.asin v
-           | "acos" -> Float.acos v
-           | "atan" -> Float.atan v
-           | _ -> assert false
-         in
-         result_rad *. 180. /. Float.pi))
-
-and read_numeric_atan2 : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "atan2" t (fun inner ->
-         let y = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let x = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         Float.atan2 y x *. 180. /. Float.pi))
-
 (* Read a number-typed calc expression and fold it to a float. Used as the
-   argument reader for [sqrt]/[pow]/[hypot]/etc. so [pow(2, sqrt(100))] and
-   [hypot(3, 4)] evaluate end-to-end at parse time. *)
+   argument reader for [round] / [mod] / [rem] / [min] / [max] / [clamp] which
+   still flatten numeric args to [Num] under the existing typed-fold path. *)
 and read_num_expr t : float =
   let no_val t = Cursor.err t "expected number" in
   let calc = read_calc_expr no_val t in
   match eval_numeric_calc calc with
   | Some n -> n
   | None -> Cursor.err_invalid t "non-numeric calc expression"
-
-(* CSS Values 4 §10.7.1: trig functions accept [<angle> | <number>] - a bare
-   number is treated as radians. We support arithmetic over the input ([sin(pi /
-   4)], [sin(22deg + 23deg)]) by recognising both shapes at every leaf and
-   folding through a generic float-leaf calc evaluator. *)
-and read_trig_arg t : float =
-  let read_leaf t =
-    let snap = Cursor.save t in
-    match Cursor.number_with_unit t with
-    | n, Some "deg" -> n *. Float.pi /. 180.
-    | n, Some "rad" -> n
-    | n, Some "turn" -> n *. 2. *. Float.pi
-    | n, Some "grad" -> n *. Float.pi /. 200.
-    | n, None -> n
-    | _, Some _ ->
-        Cursor.restore t snap;
-        Cursor.err_invalid t "expected angle or number"
-  in
-  let calc = read_calc_expr read_leaf t in
-  let rec eval : float calc -> float option = function
-    | Num f -> Some f
-    | Val f -> Some f
-    | Sibling_index | Sibling_count | Var _ -> None
-    | Nested inner | Parens inner -> eval inner
-    | Expr (l, op, r) -> (
-        match (eval l, eval r) with
-        | Some lv, Some rv -> (
-            match op with
-            | Add -> Some (lv +. rv)
-            | Sub -> Some (lv -. rv)
-            | Mul -> Some (lv *. rv)
-            | Div when rv <> 0. -> Some (lv /. rv)
-            | Div -> None)
-        | _ -> None)
-  in
-  match eval calc with
-  | Some f -> f
-  | None -> Cursor.err_invalid t "trig argument must be numeric"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->

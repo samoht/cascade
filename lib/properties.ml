@@ -3388,6 +3388,7 @@ let length_of_border_width_calc calc =
     | Val width ->
         Option.map (fun length -> Val length) (border_width_to_length width)
     | Num n -> Some (Num n)
+    | Math_fn fn -> Some (Math_fn fn)
     | Var _ | Sibling_index | Sibling_count -> None
     | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
     | Parens inner -> Option.map (fun inner -> Parens inner) (aux inner)
@@ -3432,7 +3433,7 @@ let simplify_border_width_length_calc calc =
     | Val length ->
         Option.map (fun term -> [ term ]) (length_linear_term length)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
     | Nested inner | Parens inner -> terms inner
     | Expr (left, Add, right) -> (
         match (terms left, terms right) with
@@ -3500,7 +3501,7 @@ let pp_length_calc_contents ctx calc =
   let rec pp_inner ~parent_prec ~right_of_noncommut ctx = function
     | Val length -> pp_length ctx length
     | Num n -> Pp.float ctx n
-    | (Var _ | Sibling_index | Sibling_count) as calc ->
+    | (Var _ | Sibling_index | Sibling_count | Math_fn _) as calc ->
         pp_calc pp_length ctx calc
     | Nested inner ->
         Pp.call "calc"
@@ -5193,6 +5194,7 @@ let rec eval_number_value : number -> float option = function
 
 and eval_number_calc : number calc -> float option = function
   | Num f -> Some f
+  | Math_fn fn -> Values.eval_math_fn fn
   | Val v -> eval_number_value v
   | Var _ | Sibling_index | Sibling_count -> None
   | Nested inner | Parens inner -> eval_number_calc inner
@@ -8621,6 +8623,7 @@ let rec pp_font_size : font_size Pp.t =
         | Val (Length l) -> Some (Val l)
         | Val (Pct n) -> Some (Val (Pct n : length))
         | Num n -> Some (Num n)
+        | Math_fn fn -> Some (Math_fn fn)
         | Var _ | Sibling_index | Sibling_count | Val _ -> None
         | Nested inner -> Option.map (fun c -> Nested c) (to_length_calc inner)
         | Parens inner -> Option.map (fun c -> Parens c) (to_length_calc inner)
@@ -9737,6 +9740,7 @@ let string_of_calc (type a) (expr : a calc) : string =
         | None -> ());
         add ")"
     | Val _ -> add "<val>"
+    | Math_fn _ -> add "<math-fn>"
     | Nested inner ->
         add "calc(";
         pp_expr inner;
@@ -11404,86 +11408,86 @@ let rec read_object_fit t : object_fit =
     ~var:(fun t -> Var (Values.read_var read_object_fit t))
     t
 
-let rec read_content t : content =
-  let read_var t : content = Var (read_var read_content t) in
-  let read_string t =
-    match Cursor.string_repr_with_quote_opt t with
-    | Some (value, quote, repr) -> Quoted { value; quote; repr }
-    | None -> Cursor.err_expected t "string"
-  in
-  let read_attr t =
-    Cursor.call "attr" t (fun inner ->
+let read_content_string t =
+  match Cursor.string_repr_with_quote_opt t with
+  | Some (value, quote, repr) -> Quoted { value; quote; repr }
+  | None -> Cursor.err_expected t "string"
+
+let rec read_content_attr t =
+  Cursor.call "attr" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident ~keep_case:true inner in
+      let type_ : Values.attr_type option =
         Cursor.ws inner;
-        let name = Cursor.ident ~keep_case:true inner in
-        let type_ : Values.attr_type option =
+        if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
+        else Option.Some (Values.read_attr_type inner)
+      in
+      Cursor.ws inner;
+      let fallback : content Values.attr_fallback =
+        if Cursor.comma_opt inner then (
           Cursor.ws inner;
-          if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
-          else Option.Some (Values.read_attr_type inner)
-        in
-        Cursor.ws inner;
-        let fallback : content Values.attr_fallback =
-          if Cursor.comma_opt inner then (
-            Cursor.ws inner;
-            if Cursor.is_done inner then Empty_fallback
-            else Attr_fallback (read_content inner))
-          else No_fallback
-        in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Attr { name; type_; fallback })
-  in
-  let read_counter t =
-    Cursor.call "counter" t (fun inner ->
-        Cursor.ws inner;
-        let name = Cursor.ident inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Counter name)
-  in
-  let read_string_ref t =
-    Cursor.call "string" t (fun inner ->
-        Cursor.ws inner;
-        let name = Cursor.ident inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        String_ref name)
-  in
-  let read_counters t =
-    Cursor.call "counters" t (fun inner ->
-        Cursor.ws inner;
-        let name = Cursor.ident inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        Cursor.ws inner;
-        let separator = Cursor.string inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Counters (name, separator) : content))
-  in
-  let read_single t =
-    Cursor.enum_or_calls "content"
+          if Cursor.is_done inner then Empty_fallback
+          else Attr_fallback (read_content inner))
+        else No_fallback
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Attr { name; type_; fallback })
+
+and read_content_counter t =
+  Cursor.call "counter" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Counter name)
+
+and read_content_string_ref t =
+  Cursor.call "string" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      String_ref name)
+
+and read_content_counters t =
+  Cursor.call "counters" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Cursor.ws inner;
+      let separator = Cursor.string inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Counters (name, separator) : content))
+
+and read_content_single t =
+  let read_var t : content = Var (read_var read_content t) in
+  Cursor.enum_or_calls "content"
+    [
+      ("none", (None : content));
+      ("normal", Normal);
+      ("open-quote", Open_quote);
+      ("close-quote", Close_quote);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
       [
-        ("none", (None : content));
-        ("normal", Normal);
-        ("open-quote", Open_quote);
-        ("close-quote", Close_quote);
-        ("inherit", Inherit);
-        ("initial", Initial);
-        ("unset", Unset);
-        ("revert", Revert);
-        ("revert-layer", Revert_layer);
+        ("var", read_var);
+        ("attr", read_content_attr);
+        ("counter", read_content_counter);
+        ("string", read_content_string_ref);
+        ("counters", read_content_counters);
       ]
-      ~calls:
-        [
-          ("var", read_var);
-          ("attr", read_attr);
-          ("counter", read_counter);
-          ("string", read_string_ref);
-          ("counters", read_counters);
-        ]
-      ~default:read_string t
-  in
-  let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_single t in
+    ~default:read_content_string t
+
+and read_content t : content =
+  let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_content_single t in
   match items with
   | [ item ] -> item
   | _ ->

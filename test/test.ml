@@ -7,9 +7,10 @@ let () =
   Printexc.register_printer (function
     | Reader.Parse_error { message; position; context_window; callstack; _ } ->
         let callstack_str = String.concat " -> " callstack in
-        Some
-          (Fmt.str "Parse_error: %s at position %d\nContext: %s\nCallstack: %s"
-             message position context_window callstack_str)
+        Fmt.kstr
+          (fun s -> Some s)
+          "Parse_error: %s at position %d\nContext: %s\nCallstack: %s" message
+          position context_window callstack_str
     | _ -> None)
 
 let () =

@@ -902,7 +902,7 @@ let test_read_stylesheet_with_comments () =
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
 
-let strict_error_to_string (e, filename) = filename ^ ": " ^ Error.to_string e
+let string_of_strict_error (e, filename) = filename ^ ": " ^ Error.to_string e
 
 let strict_accept name css =
   match Css.of_string ~strict:true css with
@@ -918,7 +918,7 @@ let strict_accept name css =
         (Css.to_string ~minify:true stylesheet)
   | Error err ->
       Alcotest.failf "strict parser rejected valid %s: %s" name
-        (strict_error_to_string err)
+        (string_of_strict_error err)
 
 let strict_reject name css =
   match Css.of_string ~strict:true css with
@@ -929,7 +929,7 @@ let strict_reject name css =
       Alcotest.(check bool)
         ("strict error carries detail for " ^ name)
         true
-        (String.length (strict_error_to_string err) > 0);
+        (String.length (string_of_strict_error err) > 0);
       let { Css.stylesheet; warnings } = Css.parse css in
       ignore (Css.to_string ~minify:true stylesheet : string);
       Alcotest.(check bool)
@@ -5160,7 +5160,7 @@ let v4107_numeric_reduction () =
     "calc(sign(5)) -> 1" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: calc(sign(5)) }")
 
-let v4107_length_times_math_function_reduction () =
+let v4107_math_product_reduction () =
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -5176,6 +5176,9 @@ let v4107_length_times_math_function_reduction () =
       ( "calc(1px * pow(2, sqrt(100))) -> 1024px",
         ".x { width: calc(1px * pow(2, sqrt(100))) }",
         ".x{width:1024px}" );
+      ( "calc(100px * pow(2, pow(2, 2))) -> 1600px",
+        ".x { width: calc(100px * pow(2, pow(2, 2))) }",
+        ".x{width:1600px}" );
       ( "calc(1px * log(1)) -> 0",
         ".x { width: calc(1px * log(1)) }",
         ".x{width:0}" );
@@ -5191,8 +5194,23 @@ let v4107_length_times_math_function_reduction () =
       ( "calc(1px * (e - exp(1))) -> 0",
         ".x { width: calc(1px * (e - exp(1))) }",
         ".x{width:0}" );
+      ( "calc(2px * pi) -> 6.28319px",
+        ".x { width: calc(2px * pi) }",
+        ".x{width:6.28319px}" );
+      ( "calc(2px / pi) -> .63662px",
+        ".x { width: calc(2px / pi) }",
+        ".x{width:.63662px}" );
       ( "calc(100px * sin(45deg)) -> 70.7107px",
         ".x { width: calc(100px * sin(45deg)) }",
+        ".x{width:70.7107px}" );
+      ( "calc(100px * sin(.125turn)) -> 70.7107px",
+        ".x { width: calc(100px * sin(.125turn)) }",
+        ".x{width:70.7107px}" );
+      ( "calc(100px * sin(pi / 4)) -> 70.7107px",
+        ".x { width: calc(100px * sin(pi / 4)) }",
+        ".x{width:70.7107px}" );
+      ( "calc(100px * sin(22deg + 23deg)) -> 70.7107px",
+        ".x { width: calc(100px * sin(22deg + 23deg)) }",
         ".x{width:70.7107px}" );
       ( "calc(2px * cos(45deg)) -> 1.41421px",
         ".x { width: calc(2px * cos(45deg)) }",
@@ -5280,7 +5298,7 @@ let fidelity_calc_math_functions_preserved () =
   pretty_preserves ".x { aspect-ratio: calc(sqrt(16)) }" [ "sqrt(16)" ];
   pretty_preserves ".x { aspect-ratio: calc(pow(2, 3)) }" [ "pow(2, 3)" ]
 
-let fidelity_calc_length_times_math_functions_preserved () =
+let fidelity_calc_math_product_preserved () =
   let remove_spaces s =
     String.to_seq s
     |> Seq.filter (function ' ' | '\n' | '\r' | '\t' -> false | _ -> true)
@@ -5304,12 +5322,21 @@ let fidelity_calc_length_times_math_functions_preserved () =
       (".x { width: calc(100px * hypot(3, 4)) }", "calc(100px * hypot(3, 4))");
       ( ".x { width: calc(1px * pow(2, sqrt(100))) }",
         "calc(1px * pow(2, sqrt(100)))" );
+      ( ".x { width: calc(100px * pow(2, pow(2, 2))) }",
+        "calc(100px * pow(2, pow(2, 2)))" );
       (".x { width: calc(1px * log(1)) }", "calc(1px * log(1))");
       (".x { width: calc(1px * log(10, 10)) }", "calc(1px * log(10, 10))");
       (".x { width: calc(1px * exp(0)) }", "calc(1px * exp(0))");
       (".x { width: calc(1px * log(e)) }", "calc(1px * log(e))");
       (".x { width: calc(1px * (e - exp(1))) }", "calc(1px * (e - exp(1)))");
+      (".x { width: calc(2px * pi) }", "calc(2px * pi)");
+      (".x { width: calc(2px / pi) }", "calc(2px / pi)");
       (".x { width: calc(100px * sin(45deg)) }", "calc(100px * sin(45deg))");
+      ( ".x { width: calc(100px * sin(.125turn)) }",
+        "calc(100px * sin(.125turn))" );
+      (".x { width: calc(100px * sin(pi / 4)) }", "calc(100px * sin(pi / 4))");
+      ( ".x { width: calc(100px * sin(22deg + 23deg)) }",
+        "calc(100px * sin(22deg + 23deg))" );
       (".x { width: calc(2px * cos(45deg)) }", "calc(2px * cos(45deg))");
       (".x { width: calc(2px * tan(45deg)) }", "calc(2px * tan(45deg))");
     ]
@@ -5975,7 +6002,7 @@ let additional_tests =
       v4107_numeric_reduction );
     ( "spec values 4 10.7 length times math reduction",
       `Quick,
-      v4107_length_times_math_function_reduction );
+      v4107_math_product_reduction );
     ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
@@ -5999,7 +6026,7 @@ let additional_tests =
       fidelity_calc_math_functions_preserved );
     ( "fidelity calc length times math functions preserved",
       `Quick,
-      fidelity_calc_length_times_math_functions_preserved );
+      fidelity_calc_math_product_preserved );
     ( "spec custom-properties 1 2 empty fallback preserved",
       `Quick,
       customprops12_empty_fallback );
