@@ -8753,6 +8753,11 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let transition_timing_is_default ctx = function
+  | Ease -> true
+  | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx -> true
+  | _ -> false
+
 let rec pp_overlay : overlay Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_overlay ctx v
@@ -8774,7 +8779,8 @@ let pp_transition_shorthand : transition_shorthand Pp.t =
       Pp.space ctx ();
       pp_duration ctx d);
   (match timing_function with
-  | None | Some Ease -> ()
+  | None -> ()
+  | Some tf when transition_timing_is_default ctx tf -> ()
   | Some tf ->
       Pp.space ctx ();
       pp_timing_function ctx tf);
