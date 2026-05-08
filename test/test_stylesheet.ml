@@ -3892,6 +3892,36 @@ let vendor_prefix_preservation () =
     "-moz-user-select preserved" ".x{-moz-user-select:none}"
     (normalize ".x { -moz-user-select: none }")
 
+(* CSS Text Decoration 3 section 2.3 defines [text-decoration-color] as the
+   standards-track property. [-webkit-text-decoration-color] is compatibility
+   syntax: preserve it when authored, but do not synthesize it from the standard
+   property or collapse authored prefixed/unprefixed pairs. Lightning CSS,
+   esbuild, CSSO, clean-css, and cssnano all keep both spellings distinct. *)
+let webkit_decoration_color_compat () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "standard text-decoration-color does not synthesize webkit"
+    ".x{text-decoration-color:#00f}"
+    (normalize ".x { text-decoration-color: blue }");
+  Alcotest.(check string)
+    "authored webkit text-decoration-color is preserved"
+    ".x{-webkit-text-decoration-color:#00f}"
+    (normalize ".x { -webkit-text-decoration-color: blue }");
+  Alcotest.(check string)
+    "webkit and standard pair remains in source order"
+    ".x{-webkit-text-decoration-color:red;text-decoration-color:#00f}"
+    (normalize
+       ".x { -webkit-text-decoration-color: red; text-decoration-color: blue }");
+  Alcotest.(check string)
+    "standard and webkit pair remains in source order"
+    ".x{text-decoration-color:#00f;-webkit-text-decoration-color:red}"
+    (normalize
+       ".x { text-decoration-color: blue; -webkit-text-decoration-color: red }")
+
 (* CSS Selectors Level 4, section 4.3 (Negation Pseudo-class): the two forms
    [:not(A, B)] and [:not(A):not(B)] are spec-distinct - the first is a single
    negation matching anything that's not A or B, the second chains two
@@ -3947,7 +3977,10 @@ let fidelity_position_keywords_preserved () =
 let fidelity_vendor_prefix_preserved () =
   pretty_preserves ".x { -webkit-transform: rotate(45deg) }"
     [ "-webkit-transform" ];
-  pretty_preserves ".x { -moz-user-select: none }" [ "-moz-user-select" ]
+  pretty_preserves ".x { -moz-user-select: none }" [ "-moz-user-select" ];
+  pretty_preserves
+    ".x { -webkit-text-decoration-color: red; text-decoration-color: blue }"
+    [ "-webkit-text-decoration-color"; "text-decoration-color" ]
 
 let fidelity_not_form_preserved () =
   pretty_preserves ".x :not(.a, .b) { color: red }" [ ":not(.a, .b)" ];
@@ -5916,6 +5949,9 @@ let additional_tests =
       bg336_position_keyword );
     ("spec cascade 6.1 selector grouping", `Quick, c6_1_selector_grouping);
     ("vendor prefix preservation", `Quick, vendor_prefix_preservation);
+    ( "vendor text-decoration-color compatibility",
+      `Quick,
+      webkit_decoration_color_compat );
     ("spec selectors 4 4.3 not form preserved", `Quick, s443_not_form_kept);
     ( "spec display 3 border keyword preservation",
       `Quick,
