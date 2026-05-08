@@ -5160,6 +5160,48 @@ let v4107_numeric_reduction () =
     "calc(sign(5)) -> 1" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: calc(sign(5)) }")
 
+let v4107_length_times_math_function_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input))
+    [
+      ( "calc(100px * hypot(3, 4)) -> 500px",
+        ".x { width: calc(100px * hypot(3, 4)) }",
+        ".x{width:500px}" );
+      ( "calc(1px * pow(2, sqrt(100))) -> 1024px",
+        ".x { width: calc(1px * pow(2, sqrt(100))) }",
+        ".x{width:1024px}" );
+      ( "calc(1px * log(1)) -> 0",
+        ".x { width: calc(1px * log(1)) }",
+        ".x{width:0}" );
+      ( "calc(1px * log(10, 10)) -> 1px",
+        ".x { width: calc(1px * log(10, 10)) }",
+        ".x{width:1px}" );
+      ( "calc(1px * exp(0)) -> 1px",
+        ".x { width: calc(1px * exp(0)) }",
+        ".x{width:1px}" );
+      ( "calc(1px * log(e)) -> 1px",
+        ".x { width: calc(1px * log(e)) }",
+        ".x{width:1px}" );
+      ( "calc(1px * (e - exp(1))) -> 0",
+        ".x { width: calc(1px * (e - exp(1))) }",
+        ".x{width:0}" );
+      ( "calc(100px * sin(45deg)) -> 70.7107px",
+        ".x { width: calc(100px * sin(45deg)) }",
+        ".x{width:70.7107px}" );
+      ( "calc(2px * cos(45deg)) -> 1.41421px",
+        ".x { width: calc(2px * cos(45deg)) }",
+        ".x{width:1.41421px}" );
+      ( "calc(2px * tan(45deg)) -> 2px",
+        ".x { width: calc(2px * tan(45deg)) }",
+        ".x{width:2px}" );
+    ]
+
 let v4107_mod_rem () =
   let normalize css =
     match Css.of_string css with
@@ -5237,6 +5279,40 @@ let fidelity_calc_math_functions_preserved () =
      property like [aspect-ratio]. *)
   pretty_preserves ".x { aspect-ratio: calc(sqrt(16)) }" [ "sqrt(16)" ];
   pretty_preserves ".x { aspect-ratio: calc(pow(2, 3)) }" [ "pow(2, 3)" ]
+
+let fidelity_calc_length_times_math_functions_preserved () =
+  let remove_spaces s =
+    String.to_seq s
+    |> Seq.filter (function ' ' | '\n' | '\r' | '\t' -> false | _ -> true)
+    |> String.of_seq
+  in
+  let pretty_preserves_form css fragment =
+    match Css.of_string css with
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+    | Ok sheet ->
+        let printed = Css.to_string sheet in
+        Alcotest.(check bool)
+          (Fmt.str "non-minified output preserves math form [%s] in [%s]"
+             fragment printed)
+          true
+          (Astring.String.is_infix ~affix:(remove_spaces fragment)
+             (remove_spaces printed))
+  in
+  List.iter
+    (fun (css, fragment) -> pretty_preserves_form css fragment)
+    [
+      (".x { width: calc(100px * hypot(3, 4)) }", "calc(100px * hypot(3, 4))");
+      ( ".x { width: calc(1px * pow(2, sqrt(100))) }",
+        "calc(1px * pow(2, sqrt(100)))" );
+      (".x { width: calc(1px * log(1)) }", "calc(1px * log(1))");
+      (".x { width: calc(1px * log(10, 10)) }", "calc(1px * log(10, 10))");
+      (".x { width: calc(1px * exp(0)) }", "calc(1px * exp(0))");
+      (".x { width: calc(1px * log(e)) }", "calc(1px * log(e))");
+      (".x { width: calc(1px * (e - exp(1))) }", "calc(1px * (e - exp(1)))");
+      (".x { width: calc(100px * sin(45deg)) }", "calc(100px * sin(45deg))");
+      (".x { width: calc(2px * cos(45deg)) }", "calc(2px * cos(45deg))");
+      (".x { width: calc(2px * tan(45deg)) }", "calc(2px * tan(45deg))");
+    ]
 
 (* {2 var() fallback edges (CSS Custom Properties L1)} *)
 
@@ -5897,6 +5973,9 @@ let additional_tests =
     ( "spec values 4 10.7 numeric math reduction",
       `Quick,
       v4107_numeric_reduction );
+    ( "spec values 4 10.7 length times math reduction",
+      `Quick,
+      v4107_length_times_math_function_reduction );
     ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
@@ -5918,6 +5997,9 @@ let additional_tests =
     ( "fidelity calc math functions preserved",
       `Quick,
       fidelity_calc_math_functions_preserved );
+    ( "fidelity calc length times math functions preserved",
+      `Quick,
+      fidelity_calc_length_times_math_functions_preserved );
     ( "spec custom-properties 1 2 empty fallback preserved",
       `Quick,
       customprops12_empty_fallback );

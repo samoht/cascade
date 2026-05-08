@@ -3284,7 +3284,7 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
          time to a [Num] so the surrounding [calc()] can fold further. *)
       | "sqrt" -> read_numeric_unary_call "sqrt" Float.sqrt t
       | "abs" -> read_numeric_unary_call "abs" Float.abs t
-      | "sign" -> read_numeric_unary_call "sign" sign_float t
+      | "sign" -> read_numeric_sign_call t
       | "exp" -> read_numeric_unary_call "exp" Float.exp t
       | "log" -> read_numeric_log t
       | "pow" -> read_numeric_binary_call "pow" Float.pow t
@@ -3304,6 +3304,23 @@ and read_numeric_unary_call : type a.
          Cursor.ws inner;
          Cursor.expect_eof inner;
          fn v))
+
+and read_numeric_sign_call : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "sign" t (fun inner ->
+         let snap = Cursor.save inner in
+         let v =
+           match read_num_expr inner with
+           | v -> v
+           | exception Cursor.Parse_error _ ->
+               Cursor.restore inner snap;
+               let v, _unit = Cursor.number_with_unit inner in
+               v
+         in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         sign_float v))
 
 and read_numeric_binary_call : type a.
     string -> (float -> float -> float) -> Cursor.t -> a calc =
@@ -3537,15 +3554,16 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
               Cursor.restore t snap;
               Cursor.err t "expected math constant"
         in
-        (* CSS Values 4 10.7: a dimension factor like [-1px] or [-5em] should be
-           read as [Val] (full dimension) before falling back to [Num] (a raw
-           number). Otherwise [Cursor.number] consumes the [-1] and leaves [px]
-           hanging in the input. *)
+        (* CSS Values 4 §10.7: a dimension factor like [-1px] or [-5em] reads as
+           [Val]; numeric math functions ([sin] / [cos] / [sign] etc.) reduce to
+           [Num] - run that path before [read_val] so the typed
+           length-percentage reader doesn't capture e.g. [sin(45deg)] as an
+           [Invalid] arm in length context. *)
         Cursor.one_of
           [
             read_calc_zero;
-            read_val;
             read_calc_numeric_function;
+            read_val;
             read_num;
             read_math_constant;
           ]
