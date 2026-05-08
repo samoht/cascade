@@ -1,7 +1,7 @@
 open Cascade
 open Css.Font_face
 
-let test_metric_override_to_string () =
+let test_string_of_metric_override () =
   Alcotest.(check string) "normal" "normal" (string_of_metric_override Normal);
   Alcotest.(check string)
     "percent" "110%"
@@ -170,7 +170,7 @@ let suite =
   ( "font_face",
     [
       test_case "metric_override to_string" `Quick
-        test_metric_override_to_string;
+        test_string_of_metric_override;
       test_case "size_adjust" `Quick test_size_adjust;
       test_case "src" `Quick test_src;
       test_case "spec src parser vectors" `Quick test_spec_src_parser_vectors;

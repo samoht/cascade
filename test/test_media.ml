@@ -1,7 +1,7 @@
 open Cascade
 open Css.Media
 
-let test_to_string () =
+let test_string_output () =
   Alcotest.(check string)
     "min-width" "(min-width: 640px)"
     (to_string (Min_width 640.));
@@ -191,7 +191,7 @@ let suite =
   let open Alcotest in
   ( "media",
     [
-      test_case "to_string" `Quick test_to_string;
+      test_case "to_string" `Quick test_string_output;
       test_case "spec media query level 4/5 vectors" `Quick
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick

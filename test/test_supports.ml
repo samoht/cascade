@@ -11,7 +11,7 @@ let rec supports_of_expected = function
   | Supports_inventory.Or (left, right) ->
       Or (supports_of_expected left, supports_of_expected right)
 
-let test_to_string () =
+let test_string_output () =
   let cases =
     [
       (property "display" "grid", "(display: grid)");
@@ -191,7 +191,7 @@ let suite =
   let open Alcotest in
   ( "supports",
     [
-      test_case "to_string" `Quick test_to_string;
+      test_case "to_string" `Quick test_string_output;
       test_case "of_string" `Quick test_of_string;
       test_case "current-work vectors" `Quick test_current_work_vectors;
       test_case "spec conditional supports feature vectors" `Quick

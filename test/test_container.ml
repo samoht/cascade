@@ -8,7 +8,7 @@ let rejects_invalid input =
       Alcotest.failf "invalid container query parsed: %s -> %s" input
         (to_string query)
 
-let test_to_string () =
+let test_string_output () =
   let open Css.Container in
   Alcotest.(check string)
     "min-width rem" "(min-width:24rem)"
@@ -145,7 +145,7 @@ let spec_container_invalid_vectors () =
 let tests =
   Alcotest.
     [
-      test_case "to_string" `Quick test_to_string;
+      test_case "to_string" `Quick test_string_output;
       test_case "spec container query level 3 vectors" `Quick
         spec_container_l3_vectors;
       test_case "compare" `Quick test_compare;

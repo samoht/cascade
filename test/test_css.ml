@@ -208,7 +208,7 @@ let test_layer_block () =
   let missing = layer_block "missing" stylesheet in
   Alcotest.(check bool) "missing layer not found" true (Option.is_none missing)
 
-let test_rules_from_statements () =
+let test_rules_of_statements () =
   let stmts =
     [
       rule ~selector:btn [ color (hex "#ff0000") ];
@@ -243,7 +243,7 @@ let test_custom_prop_names () =
     "contains spacing" true
     (List.mem "--spacing" prop_names)
 
-let test_custom_props_from_rules () =
+let test_custom_props_of_rules () =
   let color_def, _color_var = var "primary-color" Color (hex "#3b82f6") in
   let margin_def, _margin_var = var "spacing" Length (Px 8.) in
 
@@ -777,10 +777,10 @@ let suite =
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
-      Alcotest.test_case "rules_of_statements" `Quick test_rules_from_statements;
+      Alcotest.test_case "rules_of_statements" `Quick test_rules_of_statements;
       Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
       Alcotest.test_case "custom_props_of_rules" `Quick
-        test_custom_props_from_rules;
+        test_custom_props_of_rules;
       (* Statement transformation helpers *)
       Alcotest.test_case "map transforms rules" `Quick test_map;
       Alcotest.test_case "map nested in media" `Quick test_map_nested;
