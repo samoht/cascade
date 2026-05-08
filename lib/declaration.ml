@@ -822,18 +822,6 @@ let read_place_self_value t =
 let read_background_blend_mode_value t =
   v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
-let read_lp_or_invalid read t : length_percentage =
-  let start = Cursor.save t in
-  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  try read t
-  with Cursor.Parse_error _ as exn ->
-    if raw = "" || raw_value_has_invalid_var raw then (
-      Cursor.restore t start;
-      raise exn);
-    Cursor.restore t start;
-    ignore (Cursor.consume_to_decl_end ~trim:true t);
-    Invalid (Cursor.of_string raw |> Cursor.remaining)
-
 let prop_name (type a) (prop_type : a property) =
   let buf = Buffer.create 32 in
   let ctx =
@@ -868,40 +856,23 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
   (* Length/percentage properties *)
-  | Width -> v Width (read_lp_or_invalid read_length_percentage t)
-  | Height ->
-      v Height
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
-  | Min_width ->
-      v Min_width
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
-  | Min_height ->
-      v Min_height
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
-  | Max_width ->
-      v Max_width
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
-  | Max_height ->
-      v Max_height
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+  | Width -> v Width (read_length_percentage t)
+  | Height -> v Height (read_length_percentage ~allow_negative:false t)
+  | Min_width -> v Min_width (read_length_percentage ~allow_negative:false t)
+  | Min_height -> v Min_height (read_length_percentage ~allow_negative:false t)
+  | Max_width -> v Max_width (read_length_percentage ~allow_negative:false t)
+  | Max_height -> v Max_height (read_length_percentage ~allow_negative:false t)
   | Inline_size ->
-      v Inline_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+      v Inline_size (read_length_percentage ~allow_negative:false t)
   | Min_inline_size ->
-      v Min_inline_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+      v Min_inline_size (read_length_percentage ~allow_negative:false t)
   | Max_inline_size ->
-      v Max_inline_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
-  | Block_size ->
-      v Block_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+      v Max_inline_size (read_length_percentage ~allow_negative:false t)
+  | Block_size -> v Block_size (read_length_percentage ~allow_negative:false t)
   | Min_block_size ->
-      v Min_block_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+      v Min_block_size (read_length_percentage ~allow_negative:false t)
   | Max_block_size ->
-      v Max_block_size
-        (read_lp_or_invalid (read_length_percentage ~allow_negative:false) t)
+      v Max_block_size (read_length_percentage ~allow_negative:false t)
   | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_border_radius t)
   | Border_top_left_radius ->
