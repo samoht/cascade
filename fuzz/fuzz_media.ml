@@ -43,7 +43,7 @@ let media buf i =
            ]
            buf (i + 2))
 
-let test_to_string_no_empty buf =
+let test_non_empty_string_output buf =
   let s = Css.Media.to_string (media buf 0) in
   if s = "" then fail "media serialization produced an empty query"
 
@@ -185,7 +185,7 @@ let test_media_feature_recovery buf =
 let suite =
   ( "media",
     [
-      test_case "to_string non-empty" [ bytes ] test_to_string_no_empty;
+      test_case "to_string non-empty" [ bytes ] test_non_empty_string_output;
       test_case "pp matches to_string" [ bytes ] test_pp_matches_to_string;
       test_case "compare antisymmetric" [ bytes ] test_compare_antisymmetric;
       test_case "compare transitive" [ bytes ] test_compare_transitive;
