@@ -6298,10 +6298,10 @@ let pp_background_position_value : position_value Pp.t =
   in
   match value with
   | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
-  | Left_top | Top_left when Pp.minified ctx -> pp_length ctx Zero
-  | Bottom_left | Left_bottom when Pp.minified ctx ->
+  | (Left_top | Top_left) when Pp.minified ctx -> pp_length ctx Zero
+  | (Bottom_left | Left_bottom) when Pp.minified ctx ->
       pp_pair ctx (pct 0.) (pct 100.)
-  | Bottom_right | Right_bottom when Pp.minified ctx ->
+  | (Bottom_right | Right_bottom) when Pp.minified ctx ->
       pp_pair ctx (pct 100.) (pct 100.)
   | Left_center when Pp.minified ctx -> pp_length ctx (pct 0.)
   | Right_center when Pp.minified ctx -> pp_length ctx (pct 100.)
@@ -16733,7 +16733,8 @@ module Transform_origin = struct
   let read_center_center t =
     let first = Cursor.ident t in
     let second = Cursor.ident t in
-    if first = "center" && second = "center" && Cursor.is_done t then Center_center
+    if first = "center" && second = "center" && Cursor.is_done t then
+      Center_center
     else Cursor.err_invalid t "transform-origin center center"
 end
 

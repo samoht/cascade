@@ -18,6 +18,160 @@ let byte_at buf i =
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
+let css_ident buf i =
+  pick
+    [ "card"; "button"; "title"; "panel"; "layout"; "theme"; "accent"; "item" ]
+    buf i
+
+let css_selector_text buf i =
+  pick
+    [
+      "." ^ css_ident buf (i + 1);
+      "#" ^ css_ident buf (i + 1);
+      "button";
+      ":root";
+      "." ^ css_ident buf (i + 1) ^ " > ." ^ css_ident buf (i + 2);
+      "." ^ css_ident buf (i + 1) ^ ":is(:hover,:focus-visible)";
+      "." ^ css_ident buf (i + 1) ^ ":has(> img)";
+      ".grid > *";
+    ]
+    buf i
+
+let css_declaration_text buf i =
+  pick
+    [
+      "color:red";
+      "color:var(--fg,#000)";
+      "background-color:rgb(255 0 0 / .5)";
+      "display:grid";
+      "margin:1px 2px 3px 4px";
+      "padding:clamp(1rem,2vw,2rem)";
+      "width:calc(100% - 2rem)";
+      "font:italic 700 1rem/1.5 \"Brand\",sans-serif";
+      "--fg:oklch(50% .2 30)";
+      "--" ^ css_ident buf (i + 1) ^ ":[a,b] (c) { d:e }";
+    ]
+    buf i
+
+let css_invalid_declaration_text buf i =
+  pick
+    [
+      "color red";
+      ":red";
+      "color:rgb(255 0)";
+      "width:calc(1px + )";
+      "margin:1px 2px 3px 4px 5px";
+      "animation-duration:-1s";
+      "font-family:Brand,";
+      "color:red !important !important";
+    ]
+    buf i
+
+let css_rule_text buf i =
+  let selector = css_selector_text buf i in
+  let first = css_declaration_text buf (i + 4) in
+  let second = css_declaration_text buf (i + 8) in
+  selector ^ "{" ^ first ^ ";" ^ second ^ "}"
+
+let css_invalid_rule_text buf i =
+  pick
+    [
+      css_selector_text buf i ^ "{"
+      ^ css_invalid_declaration_text buf (i + 4)
+      ^ ";color:red}";
+      ".bad:not(){color:red}";
+      ".bad:nth-child(foo){color:red}";
+      ".a, :future-pseudo{color:red}";
+      css_selector_text buf i ^ "}";
+      "{" ^ css_declaration_text buf (i + 4) ^ "}";
+    ]
+    buf i
+
+let css_valid_at_rule_text buf i =
+  let rule = css_rule_text buf (i + 8) in
+  pick
+    [
+      "@media (width >= 30em){" ^ rule ^ "}";
+      "@supports (display:grid){" ^ rule ^ "}";
+      "@container card (inline-size > 30em){" ^ rule ^ "}";
+      "@layer " ^ css_ident buf (i + 1) ^ "{" ^ rule ^ "}";
+      "@scope (.card) to (.footer){" ^ rule ^ "}";
+      "@starting-style{" ^ rule ^ "}";
+      "@font-face{font-family:Brand;src:url(brand.woff2);unicode-range:U+4??}";
+      "@property --"
+      ^ css_ident buf (i + 1)
+      ^ "{syntax:\"<length>\";inherits:false;initial-value:1px}";
+      "@keyframes fade{0%{opacity:0}to{opacity:1}}";
+    ]
+    buf i
+
+let css_invalid_at_rule_text buf i =
+  pick
+    [
+      "@media screen{@import url(inner.css);}";
+      "@media screen and{" ^ css_rule_text buf (i + 4) ^ "}";
+      "@supports selector(){" ^ css_rule_text buf (i + 4) ^ "}";
+      "@container style(){" ^ css_rule_text buf (i + 4) ^ "}";
+      "@scope (){" ^ css_rule_text buf (i + 4) ^ "}";
+      "@font-face{src:url(brand.woff2)}";
+      "@property --"
+      ^ css_ident buf (i + 1)
+      ^ "{syntax:\"<angle>\";inherits:false;initial-value:0}";
+      "@keyframes none{to{opacity:1}}";
+      "@import url(theme.css){.x{color:red}}";
+    ]
+    buf i
+
+let css_known_valid_snippet_text buf i =
+  pick
+    [
+      "@property --gap { syntax: \"<length>\"; inherits: false; initial-value: \
+       1px }";
+      "@property --tokens { inherits: true; initial-value: red; syntax: \
+       \"<color>\" }";
+      "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+       format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }";
+      "@page invoice:first { size: A4; margin: 1cm; @top-left { content: \
+       \"Invoice\" } }";
+      "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
+      "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+       override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+      "@view-transition { navigation: auto; }";
+      "@position-try --below { top: anchor(bottom); left: anchor(center); }";
+      "@container card (inline-size > 30em) { .item { display: grid } }";
+      "@container style(--variant: featured) { .item { display: grid } }";
+      "@scope (.card) to (.footer) { .title { color: red } }";
+      "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
+      "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
+       layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
+      "@import url(base.css) screen and (width >= 40em); @namespace svg \
+       url(http://www.w3.org/2000/svg); .icon { fill: currentColor }";
+    ]
+    buf i
+
+let css_like_statement buf i =
+  pick
+    [
+      css_rule_text buf i;
+      css_known_valid_snippet_text buf i;
+      css_valid_at_rule_text buf i;
+      css_invalid_rule_text buf i;
+      css_invalid_at_rule_text buf i;
+      "@layer reset,theme;";
+      "@import url(theme.css) layer(theme);";
+      "@namespace svg url(http://www.w3.org/2000/svg);";
+      "@unknown-rule{" ^ css_rule_text buf (i + 4) ^ "}";
+    ]
+    buf i
+
+let css_like_stylesheet buf =
+  let count = 1 + (byte_at buf 0 mod 4) in
+  let rec loop n i acc =
+    if n = 0 then String.concat "" (List.rev acc)
+    else loop (n - 1) (i + 13) (css_like_statement buf i :: acc)
+  in
+  loop count 1 []
+
 let segment buf i =
   pick
     [
@@ -183,6 +337,21 @@ let assert_strict_rejects_lenient_warns label input =
       if warnings = [] then
         fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
 
+let assert_strict_accepts_no_lenient_warnings label input =
+  match Css.of_string ~strict:true input with
+  | Error _ -> fail (Fmt.str "%s rejected valid CSS strictly: %S" label input)
+  | Ok sheet ->
+      let strict_output = Css.to_string ~minify:true sheet in
+      let { Css.stylesheet; warnings } = Css.parse input in
+      if warnings <> [] then
+        fail
+          (Fmt.str "%s emitted lenient warnings for valid CSS: %S" label input);
+      let lenient_output = Css.to_string ~minify:true stylesheet in
+      if strict_output <> lenient_output then
+        fail
+          (Fmt.str "%s strict/lenient output changed: %S -> %S / %S" label input
+             strict_output lenient_output)
+
 let assert_invalid_declaration_contract label input =
   assert_strict_rejects_lenient_warns label (".x{" ^ input ^ "}")
 
@@ -312,6 +481,7 @@ let rec boundary_shape = function
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
+  | Counter_style _ -> [ "counter-style" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
   | Font_palette_values _ -> [ "font-palette-values" ]
@@ -340,9 +510,10 @@ let anonymous_layer_count ss =
         block_count block
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
     | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-    | Font_face _ | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Property _
-    | Supports_condition _ | Viewport _ | Unknown_at_rule _ ->
+    | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+    | Font_palette_values _ | Font_feature_values _ | View_transition _
+    | Position_try _ | Property _ | Supports_condition _ | Viewport _
+    | Unknown_at_rule _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss
@@ -788,10 +959,15 @@ let test_valid_atrule_descriptor buf =
         "@font-face { font-family: Brand; src: local(\"Brand\"), \
          url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: \
          100 900; font-style: oblique 10deg 20deg; }";
+        "@font-face { font-family: Icons; src: url(icons.woff2); \
+         unicode-range: U+4?? }";
+        "@counter-style thumbs { system: cyclic; symbols: \"*\" \"x\"; suffix: \
+         \" \" }";
         "@page invoice:first { size: A4; margin: 1cm; @top-left { content: \
          \"Invoice\" } }";
         "@page chapter:right { size: letter landscape; marks: crop cross; \
          @bottom-center { content: counter(page) } }";
+        "@page :first:left { margin-left: 2cm }";
         "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
         "@keyframes slide { 100% { translate: 10px 0 } 0% { translate: none } }";
         "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
@@ -799,13 +975,20 @@ let test_valid_atrule_descriptor buf =
         "@view-transition { navigation: auto; }";
         "@position-try --below { top: anchor(bottom); left: anchor(center); }";
         "@container card (inline-size > 30em) { .item { display: grid } }";
+        "@container sidebar (inline-size > 30em) { .item { display: grid } }";
         "@container style(--variant: featured) { .item { display: grid } }";
         "@container scroll-state(stuck: top) { .item { display: grid } }";
         "@scope (.card) to (.footer) { .title { color: red } }";
         "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
+        "@layer { .anonymous { color: red } }";
+        "@layer framework { @layer theme { .title { color: red } } }";
+        "@media (400px <= width <= 1000px) { .x { color: red } }";
+        "@supports ((display: grid) or (display: flex)) and (not (display: \
+         subgrid)) { .x { display: grid } }";
       ]
       buf 0
   in
+  assert_strict_accepts_no_lenient_warnings "valid spec at-rule vector" input;
   match parse_stylesheet input with
   | None -> fail (Fmt.str "valid spec at-rule vector did not parse: %S" input)
   | Some ss ->
@@ -826,12 +1009,15 @@ let test_invalid_atrule_descriptor buf =
         "@font-face { font-family: Brand; src: url(\"brand.woff2\"); \
          font-weight: 900 100 }";
         "@font-face { font-family: Brand; src: format(\"woff2\"); }";
+        "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
+         U+20-10 }";
+        "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
+         block swap }";
         "@page :unknown { margin: 1cm }";
         "@page { @top-center { display: block } }";
-        "@keyframes bad { -1% { opacity: 0 } }";
-        "@keyframes bad { 50%, { opacity: 1 } }";
         "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
         "@font-palette-values --brand { override-colors: -1 red }";
+        "@counter-style thumbs { system: cyclic }";
         "@view-transition { navigation: always; }";
         "@position-try default { top: 0; }";
         "@position-try --fallback { @media screen { .x { color: red } } }";
@@ -842,6 +1028,11 @@ let test_invalid_atrule_descriptor buf =
         "@scope () { .x { color: red } }";
         "@scope (.x) to () { .x { color: red } }";
         "@starting-style;";
+        "@media screen and { .x { color: red } }";
+        "@media (width >= ) { .x { color: red } }";
+        "@supports not { .x { color: red } }";
+        "@supports (display: grid) and (color: red) or (width: 1px) { .x { \
+         color: red } }";
       ]
       buf 0
   in
@@ -1109,6 +1300,34 @@ let test_recovery_bad_declaration buf =
   if warnings = [] then
     fail (Fmt.str "bad declaration emitted no warning: %S" css)
 
+let test_strict_lenient_random_stylesheet_contract buf =
+  let input = css_like_stylesheet buf in
+  let lenient =
+    try Css.parse input
+    with _ -> fail (Fmt.str "lenient parse raised on fuzz input: %S" input)
+  in
+  match Css.of_string ~strict:true input with
+  | Ok strict_sheet ->
+      if lenient.warnings <> [] then
+        fail
+          (Fmt.str "strict accepted fuzz input but lenient emitted warnings: %S"
+             input);
+      let strict_output = Css.to_string ~minify:true strict_sheet in
+      let lenient_output = Css.to_string ~minify:true lenient.stylesheet in
+      if strict_output <> lenient_output then
+        fail
+          (Fmt.str
+             "strict/lenient serialization diverged for fuzz input: %S -> %S / \
+              %S"
+             input strict_output lenient_output)
+  | Error _ ->
+      ignore (Css.to_string ~minify:true lenient.stylesheet : string);
+      if lenient.warnings = [] then
+        fail
+          (Fmt.str
+             "strict rejected fuzz input but lenient recovered silently: %S"
+             input)
+
 let test_stylesheet_prelude_order_vectors buf =
   let input =
     pick
@@ -1119,9 +1338,14 @@ let test_stylesheet_prelude_order_vectors buf =
          color: red }";
         "@import url(base.css) screen and (width >= 40em); @namespace svg \
          url(http://www.w3.org/2000/svg); .icon { fill: currentColor }";
+        "@import url(theme.css) layer() supports((display: grid)) screen and \
+         (color); .ok { color: red }";
+        "@namespace svg url(http://www.w3.org/2000/svg); *|a { color: red }";
       ]
       buf 0
   in
+  assert_strict_accepts_no_lenient_warnings "valid stylesheet prelude order"
+    input;
   match parse_stylesheet input with
   | None ->
       fail (Fmt.str "valid stylesheet prelude order did not parse: %S" input)
@@ -1140,12 +1364,17 @@ let test_invalid_prelude_order buf =
         "@charset url(UTF-8);";
         "@charset \"UTF-8\" .x { color: red }";
         ".x { color: red } @import url(late.css);";
+        "@namespace svg url(http://www.w3.org/2000/svg); @import url(late.css);";
         "@import url(theme.css) { .x { color: red } }";
+        "@import url(theme.css) layer(theme) layer(base);";
+        "@import url(theme.css) screen supports(display: grid);";
         "@media screen { @import url(inner.css); }";
         "@import url(base.css); @layer theme; @import url(late.css);";
         "@import url(base.css); @layer theme { .x { color: red } } @namespace \
          url(http://www.w3.org/1999/xhtml);";
         "@namespace svg;";
+        "@layer reset,,base;";
+        "@layer initial { .x { color: red } }";
       ]
       buf 0
   in
@@ -1255,6 +1484,8 @@ let recovery_cases =
       test_recovery_invalid_rule_boundary;
     test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
       test_recovery_bad_declaration;
+    test_case "strict and lenient random stylesheet contract" [ bytes ]
+      test_strict_lenient_random_stylesheet_contract;
     test_case "stylesheet prelude order vectors" [ bytes ]
       test_stylesheet_prelude_order_vectors;
     test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]

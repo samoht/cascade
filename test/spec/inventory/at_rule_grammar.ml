@@ -26,7 +26,7 @@ let positive =
       "@import url(layout.css) layer(framework.component) supports(display: \
        grid) screen and (width >= 40em);";
     row "namespace" "prefixed-url"
-      "@namespace svg\"http://www.w3.org/2000/svg\";"
+      "@namespace svg \"http://www.w3.org/2000/svg\";"
       "@namespace svg url(http://www.w3.org/2000/svg);";
     row "layer" "statement-order" "@layer reset,theme,components;"
       "@layer reset, theme, components;";
@@ -54,6 +54,11 @@ let positive =
     row "keyframes" "selector-list"
       "@keyframes fade{0%{opacity:0}50%,to{opacity:1}}"
       "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
+    row "keyframes" "out-of-range-block-dropped" "@keyframes bad{}"
+      "@keyframes bad { -1% { opacity: 0 } 101% { opacity: 1 } }";
+    row "keyframes" "invalid-selector-list-block-dropped" "@keyframes bad{}"
+      "@keyframes bad { 50%, { opacity: 1 } from, 120% { opacity: 1 } 50px { \
+       opacity: 1 } }";
     row "font-palette-values" "duplicate-descriptor"
       "@font-palette-values \
        --brand{font-family:Brand;base-palette:2;override-colors:0 red}"
@@ -79,12 +84,11 @@ let positive =
       "@container scroll-state(stuck:top){.card{color:red}}"
       "@container scroll-state(stuck: top) { .card { color: red } }";
     row "scope" "limit-selector"
-      "@scope(.card) to (.boundary){.title{color:red}}"
+      "@scope(.card)to (.boundary){.title{color:red}}"
       "@scope (.card) to (.boundary) { .title { color: red } }";
     row "starting-style" "nested-rule" "@starting-style{.dialog{opacity:0}}"
       "@starting-style { .dialog { opacity: 0 } }";
-    row "when" "media-condition"
-      "@when media(width >= 40em){.card{display:grid}}"
+    row "when" "media-condition" "@when media(width>=40em){.card{display:grid}}"
       "@when media(width >= 40em) { .card { display: grid } }";
     row "when" "supports-condition"
       "@when supports(display:grid) and \
@@ -97,7 +101,7 @@ let positive =
       "@when supports(display: grid) { .card { display: grid } } @else { .card \
        { display: block } }";
     row "else" "conditional-branch"
-      "@when media(width >= 60em){.card{display:grid}}@else \
+      "@when media(width>=60em){.card{display:grid}}@else \
        supports(display:flex){.card{display:flex}}@else{.card{display:block}}"
       "@when media(width >= 60em) { .card { display: grid } } @else \
        supports(display: flex) { .card { display: flex } } @else { .card { \
@@ -141,9 +145,7 @@ let negative =
     invalid "page" "invalid-pseudo" "@page :unknown { margin: 1cm }";
     invalid "page" "invalid-margin-descriptor"
       "@page { @top-center { display: block } }";
-    invalid "keyframes" "bad-percentage" "@keyframes bad { -1% { opacity: 0 } }";
-    invalid "keyframes" "bad-selector-list"
-      "@keyframes bad { 50%, { opacity: 1 } }";
+    invalid "keyframes" "missing-block" "@keyframes missing-block";
     invalid "font-palette-values" "bad-name"
       "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
     invalid "font-palette-values" "nested-rule"

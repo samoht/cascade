@@ -2698,11 +2698,13 @@ let simplify_alpha ?layer_order ?layer ctx value =
     match (left, op, right) with
     | Values.Num a, Values.Add, Values.Num b -> Some (alpha_num (a +. b))
     | Values.Num a, Values.Sub, Values.Num b -> Some (alpha_num (a -. b))
-    | Values.Numeric { value = a; _ }, Values.Add, Values.Numeric { value = b; _ }
-      ->
+    | ( Values.Numeric { value = a; _ },
+        Values.Add,
+        Values.Numeric { value = b; _ } ) ->
         Some (alpha_num (a +. b))
-    | Values.Numeric { value = a; _ }, Values.Sub, Values.Numeric { value = b; _ }
-      ->
+    | ( Values.Numeric { value = a; _ },
+        Values.Sub,
+        Values.Numeric { value = b; _ } ) ->
         Some (alpha_num (a -. b))
     | Values.Pct a, Values.Add, Values.Pct b -> Some (alpha_pct (a +. b))
     | Values.Pct a, Values.Sub, Values.Pct b -> Some (alpha_pct (a -. b))

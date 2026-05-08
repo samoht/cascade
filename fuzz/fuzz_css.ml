@@ -17,6 +17,73 @@ let cssish buf =
   let n = String.length alphabet in
   String.map (fun c -> alphabet.[Char.code c mod n]) buf
 
+let ident buf i =
+  pick [ "card"; "button"; "title"; "panel"; "theme"; "item" ] buf i
+
+let declaration_text buf i =
+  pick
+    [
+      "color:red";
+      "color:var(--fg,#000)";
+      "display:grid";
+      "margin:1px 2px 3px 4px";
+      "width:calc(100% - 2rem)";
+      "--fg:oklch(50% .2 30)";
+      "font:italic 700 1rem/1.5 \"Brand\",sans-serif";
+    ]
+    buf i
+
+let rule_text buf i =
+  "." ^ ident buf i ^ "{"
+  ^ declaration_text buf (i + 1)
+  ^ ";"
+  ^ declaration_text buf (i + 2)
+  ^ "}"
+
+let valid_snippet_text buf i =
+  pick
+    [
+      rule_text buf i;
+      "@media (width >= 30em){" ^ rule_text buf (i + 1) ^ "}";
+      "@supports (display:grid){" ^ rule_text buf (i + 1) ^ "}";
+      "@container card (inline-size > 30em){" ^ rule_text buf (i + 1) ^ "}";
+      "@layer " ^ ident buf i ^ "{" ^ rule_text buf (i + 1) ^ "}";
+      "@scope (.card) to (.footer){" ^ rule_text buf (i + 1) ^ "}";
+      "@font-face{font-family:Brand;src:url(brand.woff2);unicode-range:U+4??}";
+      "@property --" ^ ident buf i
+      ^ "{syntax:\"<length>\";inherits:false;initial-value:1px}";
+      "@keyframes fade{from{opacity:0}to{opacity:1}}";
+      "@import url(theme.css) layer(theme);@namespace svg \
+       url(http://www.w3.org/2000/svg);svg|a{color:red}";
+    ]
+    buf i
+
+let invalid_snippet_text buf i =
+  pick
+    [
+      ".bad:not(){color:red}";
+      ".x{color:rgb(255 0);color:red}";
+      ".x{width:calc(1px + );color:red}";
+      "@media screen{@import url(inner.css);}";
+      "@supports selector(){.x{color:red}}";
+      "@font-face{src:url(brand.woff2)}";
+      "@import url(theme.css){.x{color:red}}";
+    ]
+    buf i
+
+let css_like_text buf =
+  let count = 1 + (byte_at buf 0 mod 3) in
+  let rec loop n i acc =
+    if n = 0 then String.concat "" (List.rev acc)
+    else
+      let snippet =
+        if byte_at buf i mod 4 = 0 then invalid_snippet_text buf i
+        else valid_snippet_text buf i
+      in
+      loop (n - 1) (i + 7) (snippet :: acc)
+  in
+  loop count 1 []
+
 let generated_stylesheet buf =
   let selector name = Css.Selector.class_ name in
   let color i =
@@ -86,7 +153,10 @@ let minified ss = Css.to_string ~minify:true ss |> String.trim
 
 let test_parse_crash_safety buf =
   ignore (Css.parse (cssish buf));
-  ignore (Css.of_string (cssish buf))
+  ignore (Css.of_string (cssish buf));
+  let css = css_like_text buf in
+  ignore (Css.parse css);
+  ignore (Css.of_string css)
 
 let test_generated_public_roundtrip buf =
   let sheet = generated_stylesheet buf in
@@ -103,7 +173,7 @@ let test_generated_public_roundtrip buf =
           (Fmt.str "public generated stylesheet changed: %S -> %S" once twice)
 
 let test_parse_partial_stringify_reparse buf =
-  let parsed = Css.parse (cssish buf) in
+  let parsed = Css.parse (css_like_text buf) in
   if parsed.Css.warnings = [] then
     let serialized = minified parsed.Css.stylesheet in
     match Css.of_string serialized with

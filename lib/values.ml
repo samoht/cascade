@@ -801,7 +801,9 @@ let length_of_var_resolution ctx (v : length var) =
             match v.fallback with
             | Fallback value -> Option.Some value
             | Var_fallback name ->
-                Option.bind (ctx.Pp.theme_defaults name) length_of_default_string
+                Option.bind
+                  (ctx.Pp.theme_defaults name)
+                  length_of_default_string
             | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
 
 let rec resolve_length_calc_vars ctx : length calc -> length calc = function
@@ -826,8 +828,8 @@ let length_combine op v1 v2 =
     match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
   in
   match (op, calc_length_unit v1, calc_length_unit v2) with
-  | (Add | Sub), Some (unit1, a), Some (unit2, b)
-    when String.equal unit1 unit2 ->
+  | (Add | Sub), Some (unit1, a), Some (unit2, b) when String.equal unit1 unit2
+    ->
       Some (length_from_calc_unit unit1 (combine a b))
   | _ -> None
 
@@ -1225,8 +1227,8 @@ let lp_of_var_resolution ctx (v : length_percentage var) =
                 Option.bind (ctx.Pp.theme_defaults name) lp_of_default_string
             | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
 
-let rec resolve_lp_calc_vars ctx : length_percentage calc -> length_percentage calc
-    = function
+let rec resolve_lp_calc_vars ctx :
+    length_percentage calc -> length_percentage calc = function
   | Var v -> (
       match lp_of_var_resolution ctx v with
       | Option.Some value -> Val value
@@ -1571,8 +1573,10 @@ let rec pp_length ?(always = false) : length Pp.t =
       | _ ->
           let cv =
             if Pp.minified ctx then
-              cv |> resolve_length_calc_vars ctx |> normalize_length_calc_zeros
-              |> eval_length_calc |> linear_length_calc |> eval_length_calc
+              cv
+              |> resolve_length_calc_vars ctx
+              |> normalize_length_calc_zeros |> eval_length_calc
+              |> linear_length_calc |> eval_length_calc
             else cv
           in
           pp_calc (pp_length ~always) ctx cv)
@@ -2277,8 +2281,8 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Calc c ->
       let c =
         if Pp.minified ctx then
-          c |> resolve_lp_calc_vars ctx |> normalize_lp_calc_zeros |> eval_lp_calc
-          |> linear_lp_calc |> eval_lp_calc
+          c |> resolve_lp_calc_vars ctx |> normalize_lp_calc_zeros
+          |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
         else c
       in
       pp_calc (pp_length_percentage ~always) ctx c
@@ -2565,9 +2569,7 @@ and color_of_default_string value =
   let value = String.trim value in
   let len = String.length value in
   let is_hex c =
-    ('0' <= c && c <= '9')
-    || ('a' <= c && c <= 'f')
-    || ('A' <= c && c <= 'F')
+    ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
   in
   if len > 1 && value.[0] = '#' then
     let hex = String.sub value 1 (len - 1) in
@@ -2577,7 +2579,8 @@ and color_of_default_string value =
       && String.for_all is_hex hex
     then Option.Some (Hex { hash = true; value = hex })
     else Option.None
-  else if len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
+  else if
+    len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
   then
     let body = String.sub value 4 (len - 5) in
     let body = String.map (function ',' -> ' ' | c -> c) body in
@@ -2587,8 +2590,7 @@ and color_of_default_string value =
     match List.map int_of_string_opt parts with
     | [ Option.Some r; Option.Some g; Option.Some b ]
       when List.for_all (fun n -> 0 <= n && n <= 255) [ r; g; b ] ->
-        Option.Some
-          (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
+        Option.Some (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
     | _ -> Option.None
   else Option.None
 
@@ -3001,8 +3003,7 @@ and pp_duration_in_calc : duration Pp.t =
 let rec pp_number : number Pp.t =
  fun ctx -> function
   | Num f ->
-      Pp.string ctx
-        (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
+      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
   | Var v -> pp_var pp_number ctx v
   | Calc c -> pp_calc pp_number ctx c
   | Round (strategy, Num value, Num step) when Pp.minified ctx && step <> 0. ->
@@ -3156,9 +3157,11 @@ let read_length_unit ?(allow_negative = true) t =
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   let authored unit =
     match unit_raw with
-    | Some raw_unit when n = 0.0 -> Dimension { value = n; unit = raw_unit; repr }
+    | Some raw_unit when n = 0.0 ->
+        Dimension { value = n; unit = raw_unit; repr }
     | _ when Pp.string_of_float n = repr -> length_of_unit unit n
-    | _ -> Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
+    | _ ->
+        Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
   in
   match unit with
   | "" when n = 0.0 -> Zero
@@ -4621,15 +4624,13 @@ and color_parsers =
         else
           Cursor.one_of
             [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:false ]
-            t
-    );
+            t );
     ( "rgba",
       fun t ->
         Cursor.ws t;
         Cursor.one_of
           [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:true ]
-          t
-    );
+          t );
     ("hsl", fun t -> with_relative_fallback "hsl" read_hsl t);
     ("hsla", fun t -> with_relative_fallback "hsl" read_hsl t);
     ("hwb", fun t -> with_relative_fallback "hwb" read_hwb t);

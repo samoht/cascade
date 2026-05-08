@@ -148,6 +148,7 @@ let rec boundary_shape = function
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
+  | Counter_style _ -> [ "counter-style" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
   | Font_palette_values _ -> [ "font-palette-values" ]

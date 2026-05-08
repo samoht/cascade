@@ -583,6 +583,7 @@ let rec statement_shape stmt =
       ]
   | Position_try (name, declarations) ->
       ("position-try:" ^ name) :: declaration_lines declarations
+  | Counter_style (name, _) -> [ "counter-style:" ^ name ]
   | Viewport (prefix, descriptors) ->
       let label =
         match prefix with
@@ -769,9 +770,9 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
         else (acc, None)
     | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
     | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Page _
-    | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-    | View_transition _ | Position_try _ | Supports_condition _ | Viewport _
-    | Unknown_at_rule _ ->
+    | Page_with_margins _ | Counter_style _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _
+    | Supports_condition _ | Viewport _ | Unknown_at_rule _ ->
         (acc, None)
   in
   let candidates =
