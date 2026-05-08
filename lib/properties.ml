@@ -6458,12 +6458,32 @@ let rec pp_gap : gap Pp.t =
           Pp.string ctx "0")
 
 let rec pp_transform_origin : transform_origin Pp.t =
- fun ctx -> function
+ fun ctx ->
+  let pp_pair a b =
+    pp_length ctx a;
+    Pp.space ctx ();
+    pp_length ctx b
+  in
+  let pct n = (Pct n : length) in
+  let zero = (Zero : length) in
+  function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+  | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
+  | Left when Pp.minified ctx -> pp_length ctx zero
+  | Right when Pp.minified ctx -> pp_length ctx (pct 100.)
+  | (Left_top | Top_left) when Pp.minified ctx -> pp_pair zero zero
+  | Left_center when Pp.minified ctx -> pp_length ctx zero
+  | (Right_top | Top_right) when Pp.minified ctx -> pp_pair (pct 100.) zero
+  | Right_center when Pp.minified ctx -> pp_length ctx (pct 100.)
+  | (Left_bottom | Bottom_left) when Pp.minified ctx -> pp_pair zero (pct 100.)
+  | (Right_bottom | Bottom_right) when Pp.minified ctx ->
+      pp_pair (pct 100.) (pct 100.)
+  | Center_top when Pp.minified ctx -> Pp.string ctx "top"
+  | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
   | Center -> Pp.string ctx "center"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
@@ -6483,6 +6503,7 @@ let rec pp_transform_origin : transform_origin Pp.t =
   | Bottom_right -> Pp.string ctx "bottom right"
   | Position position -> pp_position_value ctx position
   | X a -> pp_length ctx a
+  | XY (a, Pct 50.) when Pp.minified ctx -> pp_length ctx a
   | XY (a, b) ->
       pp_length ctx a;
       Pp.space ctx ();
@@ -13295,6 +13316,14 @@ let font_family_all_enums : (string * font_family) list =
   font_family_generic_css @ font_family_css_keywords @ font_family_popular_web
   @ font_family_platform @ font_family_developer
 
+let font_family_lookup_key name =
+  name |> String.lowercase_ascii |> String.map (function ' ' -> '-' | c -> c)
+
+let font_family_of_quoted_name name =
+  match List.assoc_opt (font_family_lookup_key name) font_family_all_enums with
+  | Some family -> family
+  | None -> Name name
+
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
   (* Read unquoted multi-word font names, e.g., "arial rounded" *)
@@ -13315,7 +13344,7 @@ let rec read_font_family_single t : font_family =
   in
   Cursor.ws t;
   match Cursor.string_opt t with
-  | Some name -> Name name
+  | Some name -> font_family_of_quoted_name name
   | None when Cursor.looking_at_func "var" t -> read_var t
   | None when Option.is_some (Cursor.peek_ident t) ->
       (* Peek ahead to see if this is multi-word or single-word *)
