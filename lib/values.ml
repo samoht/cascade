@@ -721,6 +721,98 @@ let rec normalize_length_calc_zeros : length calc -> length calc = function
   | Expr (l, op, r) ->
       Expr (normalize_length_calc_zeros l, op, normalize_length_calc_zeros r)
 
+let calc_length_unit = function
+  | Zero -> Some ("px", 0.)
+  | Px n -> Some ("px", n)
+  | Cm n -> Some ("cm", n)
+  | Mm n -> Some ("mm", n)
+  | Q n -> Some ("q", n)
+  | In n -> Some ("in", n)
+  | Pt n -> Some ("pt", n)
+  | Pc n -> Some ("pc", n)
+  | Rem n -> Some ("rem", n)
+  | Em n -> Some ("em", n)
+  | Ex n -> Some ("ex", n)
+  | Cap n -> Some ("cap", n)
+  | Ic n -> Some ("ic", n)
+  | Ric n -> Some ("ric", n)
+  | Rlh n -> Some ("rlh", n)
+  | Ch n -> Some ("ch", n)
+  | Lh n -> Some ("lh", n)
+  | Pct n -> Some ("%", n)
+  | Vw n -> Some ("vw", n)
+  | Vh n -> Some ("vh", n)
+  | Vmin n -> Some ("vmin", n)
+  | Vmax n -> Some ("vmax", n)
+  | Vi n -> Some ("vi", n)
+  | Vb n -> Some ("vb", n)
+  | Dvh n -> Some ("dvh", n)
+  | Dvw n -> Some ("dvw", n)
+  | Dvmin n -> Some ("dvmin", n)
+  | Dvmax n -> Some ("dvmax", n)
+  | Lvh n -> Some ("lvh", n)
+  | Lvw n -> Some ("lvw", n)
+  | Lvmin n -> Some ("lvmin", n)
+  | Lvmax n -> Some ("lvmax", n)
+  | Svh n -> Some ("svh", n)
+  | Svw n -> Some ("svw", n)
+  | Svmin n -> Some ("svmin", n)
+  | Svmax n -> Some ("svmax", n)
+  | Cqw n -> Some ("cqw", n)
+  | Cqh n -> Some ("cqh", n)
+  | Cqi n -> Some ("cqi", n)
+  | Cqb n -> Some ("cqb", n)
+  | Cqmin n -> Some ("cqmin", n)
+  | Cqmax n -> Some ("cqmax", n)
+  | Dimension { value; unit; _ } -> Some (String.lowercase_ascii unit, value)
+  | _ -> None
+
+let length_from_calc_unit unit value =
+  if String.equal unit "px" && value = 0. then Zero
+  else Dimension { value; unit; repr = Pp.string_of_float value }
+
+let length_of_default_string value =
+  try
+    let t = Cursor.of_string value in
+    let value, unit = Cursor.number_with_unit t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    match unit with
+    | Option.Some unit ->
+        Option.Some (length_from_calc_unit (String.lowercase_ascii unit) value)
+    | Option.None when value = 0. -> Option.Some Zero
+    | Option.None -> Option.None
+  with Cursor.Parse_error _ -> None
+
+let length_of_var_resolution ctx (v : length var) =
+  if in_theme ctx v.name then Option.None
+  else
+    match ctx.Pp.theme_defaults v.name with
+    | Option.Some value -> length_of_default_string value
+    | Option.None -> (
+        match v.default with
+        | Option.Some value -> Option.Some value
+        | Option.None -> (
+            match v.fallback with
+            | Fallback value -> Option.Some value
+            | Var_fallback name ->
+                Option.bind (ctx.Pp.theme_defaults name) length_of_default_string
+            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+
+let rec resolve_length_calc_vars ctx : length calc -> length calc = function
+  | Var v -> (
+      match length_of_var_resolution ctx v with
+      | Option.Some value -> Val value
+      | Option.None -> Var v)
+  | Nested inner -> Nested (resolve_length_calc_vars ctx inner)
+  | Parens inner -> Parens (resolve_length_calc_vars ctx inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( resolve_length_calc_vars ctx left,
+          op,
+          resolve_length_calc_vars ctx right )
+  | (Val _ | Num _ | Sibling_index | Sibling_count) as leaf -> leaf
+
 (* CSS Values 4 10.7: same-unit add/sub of two typed lengths reduces to a single
    length. Mixed-unit cases stay as a [calc] expression because the resolved
    value depends on cascade context. *)
@@ -728,13 +820,10 @@ let length_combine op v1 v2 =
   let combine a b =
     match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
   in
-  match (op, v1, v2) with
-  | (Add | Sub), Px a, Px b -> Some (Px (combine a b))
-  | (Add | Sub), Em a, Em b -> Some (Em (combine a b))
-  | (Add | Sub), Rem a, Rem b -> Some (Rem (combine a b))
-  | (Add | Sub), Pct a, Pct b -> Some (Pct (combine a b))
-  | (Add | Sub), Vw a, Vw b -> Some (Vw (combine a b))
-  | (Add | Sub), Vh a, Vh b -> Some (Vh (combine a b))
+  match (op, calc_length_unit v1, calc_length_unit v2) with
+  | (Add | Sub), Some (unit1, a), Some (unit2, b)
+    when String.equal unit1 unit2 ->
+      Some (length_from_calc_unit unit1 (combine a b))
   | _ -> None
 
 (* CSS Values 4 10.7: multiplying a typed length by a unitless number scales the
@@ -742,18 +831,9 @@ let length_combine op v1 v2 =
    number. *)
 let length_scale op v n =
   let scale a = match op with Mul -> a *. n | Div -> a /. n | _ -> nan in
-  match (op, v) with
-  | (Mul | Div), Px a -> Some (Px (scale a))
-  | (Mul | Div), Em a -> Some (Em (scale a))
-  | (Mul | Div), Rem a -> Some (Rem (scale a))
-  | (Mul | Div), Pct a -> Some (Pct (scale a))
-  | (Mul | Div), Vw a -> Some (Vw (scale a))
-  | (Mul | Div), Vh a -> Some (Vh (scale a))
-  | (Mul | Div), Cm a -> Some (Cm (scale a))
-  | (Mul | Div), Mm a -> Some (Mm (scale a))
-  | (Mul | Div), In a -> Some (In (scale a))
-  | (Mul | Div), Pt a -> Some (Pt (scale a))
-  | (Mul | Div), Pc a -> Some (Pc (scale a))
+  match (op, calc_length_unit v) with
+  | (Mul | Div), Some (unit, value) ->
+      Some (length_from_calc_unit unit (scale value))
   | _ -> None
 
 let rec eval_length_calc : length calc -> length calc =
@@ -1110,6 +1190,48 @@ let rec normalize_lp_calc_zeros :
   | Expr (l, op, r) ->
       Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
+let lp_of_default_string value : length_percentage option =
+  try
+    let t = Cursor.of_string value in
+    let value, unit = Cursor.number_with_unit t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    match unit with
+    | Option.Some "%" -> Option.Some (Pct value)
+    | Option.Some unit ->
+        Option.Some
+          (Length (length_from_calc_unit (String.lowercase_ascii unit) value))
+    | Option.None when value = 0. -> Option.Some (Length Zero)
+    | Option.None -> Option.None
+  with Cursor.Parse_error _ -> Option.None
+
+let lp_of_var_resolution ctx (v : length_percentage var) =
+  if in_theme ctx v.name then Option.None
+  else
+    match ctx.Pp.theme_defaults v.name with
+    | Option.Some value -> lp_of_default_string value
+    | Option.None -> (
+        match v.default with
+        | Option.Some value -> Option.Some value
+        | Option.None -> (
+            match v.fallback with
+            | Fallback value -> Option.Some value
+            | Var_fallback name ->
+                Option.bind (ctx.Pp.theme_defaults name) lp_of_default_string
+            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+
+let rec resolve_lp_calc_vars ctx : length_percentage calc -> length_percentage calc
+    = function
+  | Var v -> (
+      match lp_of_var_resolution ctx v with
+      | Option.Some value -> Val value
+      | Option.None -> Var v)
+  | Nested inner -> Nested (resolve_lp_calc_vars ctx inner)
+  | Parens inner -> Parens (resolve_lp_calc_vars ctx inner)
+  | Expr (left, op, right) ->
+      Expr (resolve_lp_calc_vars ctx left, op, resolve_lp_calc_vars ctx right)
+  | (Val _ | Num _ | Sibling_index | Sibling_count) as leaf -> leaf
+
 let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
     length_percentage option =
   let combine a b =
@@ -1444,8 +1566,8 @@ let rec pp_length ?(always = false) : length Pp.t =
       | _ ->
           let cv =
             if Pp.minified ctx then
-              cv |> normalize_length_calc_zeros |> eval_length_calc
-              |> linear_length_calc |> eval_length_calc
+              cv |> resolve_length_calc_vars ctx |> normalize_length_calc_zeros
+              |> eval_length_calc |> linear_length_calc |> eval_length_calc
             else cv
           in
           pp_calc (pp_length ~always) ctx cv)
@@ -2143,8 +2265,8 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Calc c ->
       let c =
         if Pp.minified ctx then
-          c |> normalize_lp_calc_zeros |> eval_lp_calc |> linear_lp_calc
-          |> eval_lp_calc
+          c |> resolve_lp_calc_vars ctx |> normalize_lp_calc_zeros |> eval_lp_calc
+          |> linear_lp_calc |> eval_lp_calc
         else c
       in
       pp_calc (pp_length_percentage ~always) ctx c
