@@ -21,7 +21,7 @@ let condition buf i =
   | 3 -> Named (name buf (i + 1), of_string (raw buf (i + 2)))
   | _ -> of_string (raw buf (i + 1))
 
-let test_to_string_no_empty buf =
+let test_non_empty_string_output buf =
   let s = Css.Container.to_string (condition buf 0) in
   if s = "" then fail "container serialization produced an empty query"
 
@@ -111,7 +111,7 @@ let test_invalid_container_vectors buf =
 let suite =
   ( "container",
     [
-      test_case "to_string non-empty" [ bytes ] test_to_string_no_empty;
+      test_case "to_string non-empty" [ bytes ] test_non_empty_string_output;
       test_case "named kind matches inner" [ bytes ]
         test_named_kind_matches_inner;
       test_case "compare antisymmetric" [ bytes ] test_compare_antisymmetric;
