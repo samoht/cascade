@@ -1,3 +1,7 @@
+type component_values = Values.component_values
+(** Parsed CSS component values preserved inside unknown functional selectors.
+*)
+
 type attribute_match =
   | Presence
   | Exact of string
@@ -118,9 +122,9 @@ type t =
   | Open
   | Unknown_pseudo_class of string
       (** Vendor / prerelease pseudo-classes cascade doesn't recognise. *)
-  | Unknown_pseudo_class_call of string * Component.t list
-      (** Functional vendor / prerelease pseudo-classes with opaque arguments.
-      *)
+  | Unknown_pseudo_class_call of string * component_values
+      (** Functional vendor / prerelease pseudo-classes with preserved
+          arguments. *)
   | Local_scope
       (** CSS Modules [:local] - non-standard but emitted by the css-modules /
           postcss-modules toolchain to mark a class as locally scoped. *)
@@ -218,9 +222,9 @@ type t =
   | Unknown_pseudo_element of string
       (** Vendor / prerelease pseudo-elements cascade doesn't recognise (e.g.
           [::deep], [::unknown]). Preserved as the raw ident. *)
-  | Unknown_pseudo_element_call of string * Component.t list
+  | Unknown_pseudo_element_call of string * component_values
       (** Functional form: [::unknown(<arbitrary tokens>)]. Argument list
-          captured as raw component values so the printer re-emits verbatim. *)
+          captured as component values so the printer re-emits verbatim. *)
   | Compound of t list
   | Combined of t * combinator * t
   | Relative of combinator * t

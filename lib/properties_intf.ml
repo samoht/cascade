@@ -1750,7 +1750,7 @@ type font_family =
   (* List of fonts for composition *)
   | List of font_family list
   | Var of font_family var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** CSS Cascade 5 §7.3: a CSS-wide keyword (e.g. [inherit]) is only valid
           as a sole top-level value. [font-family: Arial, inherit] mixes it
           inside a [<custom-ident>#] list and is therefore invalid. Cascade
@@ -4006,7 +4006,7 @@ type clip_path =
   | Revert
   | Revert_layer
   | Var of clip_path var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
           [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
           The pretty-printer round-trips the captured tokens; the
@@ -4023,7 +4023,7 @@ type _ kind =
   | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
   | Opacity : opacity kind
-  | Value : Component.t list kind
+  | Value : custom_value kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind

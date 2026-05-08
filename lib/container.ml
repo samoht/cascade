@@ -1,5 +1,7 @@
 (** CSS container query condition types *)
 
+type component_values = Values.component_values
+
 type t =
   | Min_width_rem of float
   | Min_width_px of int
@@ -13,18 +15,18 @@ type t =
 
 and style_query =
   | Boolean of string
-  | Declaration of { name : string; value : Component.t list }
+  | Declaration of { name : string; value : component_values }
   | Range of style_range
   | All of style_query * style_query
   | Any of style_query * style_query
   | Neg of style_query
 
 and style_range = {
-  lower : Component.t list;
+  lower : component_values;
   lower_op : range_operator;
   name : string;
   upper_op : range_operator;
-  upper : Component.t list;
+  upper : component_values;
 }
 
 and range_operator = Lt | Lte | Gt | Gte
