@@ -3155,8 +3155,10 @@ let read_length_unit ?(allow_negative = true) t =
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   let authored unit =
-    if Pp.string_of_float n = repr then length_of_unit unit n
-    else Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
+    match unit_raw with
+    | Some raw_unit when n = 0.0 -> Dimension { value = n; unit = raw_unit; repr }
+    | _ when Pp.string_of_float n = repr -> length_of_unit unit n
+    | _ -> Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
   in
   match unit with
   | "" when n = 0.0 -> Zero
