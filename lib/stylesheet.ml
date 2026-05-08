@@ -1644,18 +1644,27 @@ let read_page_descriptor r =
         ("invalid @page descriptor: " ^ Declaration.property_name desc)
   | None -> Cursor.err_expected r "@page descriptor"
 
+let allowed_page_margin_descriptors = "content" :: allowed_page_descriptors
+
+let replace_page_margin_descriptor r desc acc =
+  if List.mem (Declaration.property_name desc) allowed_page_margin_descriptors
+  then replace_descriptor desc acc
+  else
+    Cursor.err_invalid r
+      ("invalid page margin descriptor: " ^ Declaration.property_name desc)
+
 let read_page_margin_rule r =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; _ })
     when List.mem name allowed_page_margin_names ->
       Cursor.skip r;
       Cursor.ws r;
-      (* CSS Paged Media §5: a page-margin box accepts every descriptor that is
-         valid in [@page] plus [content], so do not gate the descriptor list on
-         a single property name. *)
+      (* CSS Paged Media §5: a page-margin box accepts every descriptor valid in
+         [@page] plus [content]. *)
       let margin_descriptors =
         Cursor.braces
-          (read_descriptor_block (fun desc acc -> replace_descriptor desc acc))
+          (fun inner ->
+            read_descriptor_block (replace_page_margin_descriptor inner) inner)
           r
       in
       if margin_descriptors = [] then
