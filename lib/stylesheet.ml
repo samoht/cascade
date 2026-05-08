@@ -2093,6 +2093,20 @@ type property_reader_state = {
   initial_value : string option;
 }
 
+let css_wide_keyword s =
+  match String.lowercase_ascii (String.trim s) with
+  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+  | _ -> false
+
+let read_property_initial_value r syntax str =
+  if css_wide_keyword str then
+    Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";
+  let value_reader = Cursor.of_string str in
+  let value = Variables.read_value value_reader syntax in
+  Cursor.ws value_reader;
+  Cursor.expect_eof value_reader;
+  value
+
 let conditional_args (fn : Component.func Component.node) =
   if not fn.node.terminated then failwith "unterminated conditional function";
   Cursor.string_of_components ~trim:true fn.node.arguments
@@ -2227,11 +2241,15 @@ and read_block (r : Cursor.t) : block =
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
     else
+      let loc = Cursor.position r in
       let stmt = read_statement r in
       match stmt with
       | Import _ ->
           (* CSS Cascade L6 §2: @import is only valid at the top of the
              stylesheet. Drop a misplaced one rather than emitting it. *)
+          Cursor.push_warning r
+            (Error.bad_value loc ~property:"stylesheet"
+               ~reason:"@import is only valid at the top of a stylesheet");
           read_statements acc
       | Else _ when not (List.exists follows_conditional acc) ->
           Cursor.err_invalid r "@else without preceding @when"
@@ -2637,9 +2655,7 @@ and read_property_rule (r : Cursor.t) : statement =
             Cursor.err_invalid r
               "@property: initial-value is required for non-universal syntax"
         | None -> None
-        | Some str ->
-            let value_reader = Cursor.of_string str in
-            Some (Variables.read_value value_reader syntax)
+        | Some str -> Some (read_property_initial_value r syntax str)
       in
       Property { name; syntax; inherits; initial_value }
 
