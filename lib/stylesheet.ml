@@ -651,6 +651,7 @@ and pp_import_components ctx { url; layer; supports; media } =
       (match supports with
       | Some supports when import_supports_media_needs_space supports media ->
           Pp.space ctx ()
+      | None when layer = Some "" -> Pp.space ctx ()
       | _ -> Pp.sp ctx ());
       Media.pp ctx media)
     media
