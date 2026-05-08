@@ -1522,6 +1522,8 @@ let read_font_face (r : Cursor.t) : statement =
      partial rule verbatim, so cascade keeps the parse successful and lets a
      later optimizer / validator step decide whether to drop the rule. *)
   let descriptors = Cursor.braces read_font_face_block r in
+  if (not (Cursor.recover r)) && not (font_face_participates descriptors) then
+    Cursor.err_invalid r "@font-face requires font-family and src descriptors";
   Font_face descriptors
 
 (* CSS Paged Media 3 §3.1: a page selector is an optional page name followed by
