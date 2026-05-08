@@ -1052,6 +1052,12 @@ let rec read_selector_list_with read_item t =
   else
     let rec loop acc =
       let sel = read_item t in
+      (* CSS Selectors 4 §3.5: an unknown selector at a non-forgiving position
+         invalidates the surrounding selector list, which the rule reader then
+         drops with a warning. Forgiving sites ([:is()], [:where()],
+         [:-moz-any()], [:-webkit-any()]) build their lists through
+         [read_forgiving_list] and never reach this strict path. *)
+      if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
       let acc = sel :: acc in
       Cursor.ws t;
       if Cursor.comma_opt t then (

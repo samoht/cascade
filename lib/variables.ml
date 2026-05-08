@@ -48,7 +48,7 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
   | Universal -> Pp.string ctx "*"
   | Or (syn1, syn2) ->
       pp_syntax_inner ctx syn1;
-      if Pp.minified ctx then Pp.string ctx "|" else Pp.string ctx " | ";
+      Pp.string ctx " | ";
       pp_syntax_inner ctx syn2
   | Plus syn ->
       pp_syntax_inner ctx syn;

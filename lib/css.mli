@@ -2061,7 +2061,7 @@ type content =
   | Normal
   | Open_quote
   | Close_quote
-  | Attr of string
+  | Attr of content attr_call
   | Counter of string
   | Counters of string * string
   | String_ref of string

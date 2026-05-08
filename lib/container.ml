@@ -315,8 +315,8 @@ let style_leaf_body body =
           match style_strip_ws components with
           | [ name_component ] -> (
               match ident_component name_component with
-              | Some name -> Boolean name
-              | None -> failwith "invalid style() container query")
+              | Some name when is_custom_property name -> Boolean name
+              | Some _ | None -> failwith "invalid style() container query")
           | _ -> failwith "invalid style() container query"))
 
 let top_level_word s word =
@@ -626,7 +626,11 @@ let feature name value = Feature_query (Media.feature name value)
 let style ?value prop =
   let query =
     match value with
-    | None -> Boolean prop
+    | None ->
+        if is_custom_property prop then Boolean prop
+        else
+          invalid_arg
+            "Container.style: boolean style queries require a custom property"
     | Some value ->
         Declaration
           { name = prop; value = Cursor.remaining (Cursor.of_string value) }

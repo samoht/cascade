@@ -322,7 +322,10 @@ let position_length value = (Single value : position_value)
 let text_overflow_string value = (String value : text_overflow)
 let text_overflow_pair start end_ = (Pair (start, end_) : text_overflow)
 let content_string value = (String value : content)
-let content_attr name = (Attr name : content)
+
+let content_attr name =
+  (Attr { name; type_ = None; fallback = No_fallback } : content)
+
 let content_counter name = (Counter name : content)
 let content_counters name separator = (Counters (name, separator) : content)
 let content_list items = (Content_list items : content)

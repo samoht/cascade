@@ -459,10 +459,22 @@ and pair_forms_multichar_token prev next =
       true
   | _ -> false
 
+and pair_prefers_component_separator prev next =
+  match (prev, next) with
+  | ( Component.Preserved { kind = Token.Percentage _; _ },
+      Component.Preserved
+        {
+          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
+          _;
+        } ) ->
+      true
+  | _ -> false
+
 and pair_needs_token_boundary prev next =
   match (prev, next) with
   | _ when signed_number_pair prev next -> false
   | _ when pair_forms_multichar_token prev next -> true
+  | _ when pair_prefers_component_separator prev next -> true
   | ( Component.Preserved
         {
           kind =
@@ -533,7 +545,11 @@ and cvs_to_buffer_min buf cvs =
         let rest' = drop_ws rest in
         let separated' =
           match rest' with
-          | next :: _ when needs_separator prev next ->
+          | next :: _
+            when needs_separator prev next
+                 || Option.fold ~none:false
+                      ~some:(fun p -> pair_prefers_component_separator p next)
+                      prev ->
               Buffer.add_char buf ' ';
               true
           | _ -> separated

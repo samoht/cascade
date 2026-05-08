@@ -6036,14 +6036,7 @@ let rec pp_text_shadow : text_shadow Pp.t =
       | None -> ());
       match color with
       | Some c ->
-          (* CSS Syntax 3 §5.4.6: an [#]-led colour literal already delimits
-             itself from the preceding token, so the inter-component space can
-             be elided under minify (csso emits [1px 1px 0#ff0]). For non-hex
-             colours the leading [<ident>] still needs the space. *)
-          let elide_space =
-            Pp.minified ctx && match c with Hex _ -> true | _ -> false
-          in
-          if not elide_space then Pp.space ctx ();
+          Pp.space ctx ();
           pp_color ctx c
       | None -> ())
 
@@ -7423,7 +7416,7 @@ let rec pp_content : content Pp.t =
         Pp.char ctx quote)
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
-  | Attr name -> Pp.call "attr" Pp.string ctx name
+  | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
   | Counter name -> Pp.call "counter" Pp.string ctx name
   | String_ref name -> Pp.call "string" Pp.string ctx name
   | Counters (name, separator) ->
@@ -11389,10 +11382,23 @@ let rec read_content t : content =
   let read_attr t =
     Cursor.call "attr" t (fun inner ->
         Cursor.ws inner;
-        let name = Cursor.ident inner in
+        let name = Cursor.ident ~keep_case:true inner in
+        let type_ : Values.attr_type option =
+          Cursor.ws inner;
+          if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
+          else Option.Some (Values.read_attr_type inner)
+        in
+        Cursor.ws inner;
+        let fallback : content Values.attr_fallback =
+          if Cursor.comma_opt inner then (
+            Cursor.ws inner;
+            if Cursor.is_done inner then Empty_fallback
+            else Attr_fallback (read_content inner))
+          else No_fallback
+        in
         Cursor.ws inner;
         Cursor.expect_eof inner;
-        Attr name)
+        Attr { name; type_; fallback })
   in
   let read_counter t =
     Cursor.call "counter" t (fun inner ->
@@ -13870,8 +13876,8 @@ let read_transition_shorthand t : transition_shorthand =
   while !consumed do
     Cursor.ws t;
     consumed :=
-      read_transition_timing_part parts t
-      || read_transition_time_part parts t
+      read_transition_time_part parts t
+      || read_transition_timing_part parts t
       || read_transition_behavior_part parts t
       || read_transition_property_part parts t
   done;
@@ -17083,46 +17089,49 @@ let read_clip_path_ellipse t : clip_path =
       Cursor.expect_eof inner;
       Clip_path_ellipse { rx; ry; position })
 
+let read_polygon_fill_rule inner =
+  match Cursor.peek_ident inner with
+  | Some "nonzero" ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Some Nonzero
+  | Some "evenodd" ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Some Evenodd
+  | _ -> None
+
+let read_polygon_point inner =
+  let x = read_length inner in
+  Cursor.ws inner;
+  let y = read_length inner in
+  (x, y)
+
+let polygon_has_ws_after_comma inner =
+  match Cursor.peek_raw inner with
+  | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
+  | _ -> false
+
+let read_polygon_points inner =
+  let rec loop acc spaced =
+    Cursor.ws inner;
+    if Cursor.comma_opt inner then (
+      let spaced = spaced || polygon_has_ws_after_comma inner in
+      Cursor.ws inner;
+      loop (read_polygon_point inner :: acc) spaced)
+    else (List.rev acc, spaced)
+  in
+  loop [ read_polygon_point inner ] false
+
 let read_clip_path_polygon t : clip_path =
   with_basic_shape_fallback t (fun t ->
       Cursor.call "polygon" t @@ fun inner ->
       Cursor.ws inner;
-      let fill_rule : clip_path_fill_rule option =
-        match Cursor.peek_ident inner with
-        | Some "nonzero" ->
-            Cursor.skip inner;
-            Cursor.ws inner;
-            Cursor.comma inner;
-            Some Nonzero
-        | Some "evenodd" ->
-            Cursor.skip inner;
-            Cursor.ws inner;
-            Cursor.comma inner;
-            Some Evenodd
-        | _ -> None
-      in
+      let fill_rule = read_polygon_fill_rule inner in
       Cursor.ws inner;
-      let read_point inner =
-        let x = read_length inner in
-        Cursor.ws inner;
-        let y = read_length inner in
-        (x, y)
-      in
-      let first = read_point inner in
-      let has_ws_after_comma inner =
-        match Cursor.peek_raw inner with
-        | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
-        | _ -> false
-      in
-      let rec loop acc spaced =
-        Cursor.ws inner;
-        if Cursor.comma_opt inner then (
-          let spaced = spaced || has_ws_after_comma inner in
-          Cursor.ws inner;
-          loop (read_point inner :: acc) spaced)
-        else (List.rev acc, spaced)
-      in
-      let points, spaced = loop [ first ] false in
+      let points, spaced = read_polygon_points inner in
       Cursor.ws inner;
       Cursor.expect_eof inner;
       Clip_path_polygon { fill_rule; points; spaced })

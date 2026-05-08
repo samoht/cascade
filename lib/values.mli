@@ -187,6 +187,10 @@ val pp_attr_type : attr_type Pp.t
 val read_attr_type : Cursor.t -> attr_type
 (** [read_attr_type] reads an [attr()] type hint. *)
 
+val pp_attr_call : 'a Pp.t -> 'a attr_call Pp.t
+(** [pp_attr_call pp] pretty-prints an [attr()] call using [pp] for typed
+    fallback values. *)
+
 (** {2 Helper Functions} *)
 
 val pp_var : 'a Pp.t -> 'a var Pp.t
