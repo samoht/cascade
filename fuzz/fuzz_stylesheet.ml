@@ -50,9 +50,7 @@ let declaration buf i =
   | 2 -> Css.Declaration.color (Css.Values.hex "#ff0000")
   | _ -> Css.Declaration.background_color (Css.Values.hex "#0000ff")
 
-let rule buf i =
-  Css.Stylesheet.Rule
-    (Css.Stylesheet.rule ~selector:(selector buf i) [ declaration buf (i + 1) ])
+let rule buf i = Css.rule ~selector:(selector buf i) [ declaration buf (i + 1) ]
 
 let import_rule ?layer url =
   Css.Stylesheet.Import { url; layer; supports = None; media = None }
@@ -125,8 +123,7 @@ let nested_condition_block buf media supports container =
           Css.Stylesheet.Supports
             ( supports,
               [
-                Css.Stylesheet.Container
-                  (Some "card", Some container, [ rule buf 12 ]);
+                Css.container ~name:"card" ~condition:container [ rule buf 12 ];
               ] );
         ] );
     Css.Stylesheet.When

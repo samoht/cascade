@@ -2352,20 +2352,20 @@ let cascade_rule_resolver_contract () =
       .title { color: blue; }
     |};
   let ast_rule selector declarations =
-    Css.Stylesheet.rule
+    Css.rule
       ~selector:(Css.Selector.of_string selector)
       (List.map Css.Declaration.of_string declarations)
   in
   let origin_sheet =
     [
       Css.Stylesheet.with_origin Css.Stylesheet.User_agent
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: black" ]) ];
+        [ ast_rule ".btn" [ "color: black" ] ];
       Css.Stylesheet.with_origin Css.Stylesheet.Author
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: red" ]) ];
+        [ ast_rule ".btn" [ "color: red" ] ];
       Css.Stylesheet.with_origin Css.Stylesheet.User
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: blue !important" ]) ];
+        [ ast_rule ".btn" [ "color: blue !important" ] ];
       Css.Stylesheet.with_origin Css.Stylesheet.Transition
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: yellow" ]) ];
+        [ ast_rule ".btn" [ "color: yellow" ] ];
     ]
   in
   check_ast_resolved_property
@@ -2375,11 +2375,11 @@ let cascade_rule_resolver_contract () =
   let revert_origin_sheet =
     [
       Css.Stylesheet.with_origin Css.Stylesheet.User_agent
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: black" ]) ];
+        [ ast_rule ".btn" [ "color: black" ] ];
       Css.Stylesheet.with_origin Css.Stylesheet.User
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: blue" ]) ];
+        [ ast_rule ".btn" [ "color: blue" ] ];
       Css.Stylesheet.with_origin Css.Stylesheet.Author
-        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: revert" ]) ];
+        [ ast_rule ".btn" [ "color: revert" ] ];
     ]
   in
   check_ast_resolved_property

@@ -5,6 +5,10 @@ module Selector = Css.Selector
 open Css.Stylesheet
 open Css_test_helpers
 
+let statement_of_rule (r : rule) =
+  Css.rule ~selector:r.selector ~nested:r.nested ?merge_key:r.merge_key
+    r.declarations
+
 let check_rule = check_value_cursor "rule" read_rule pp_rule
 
 let decl_t : Css.Declaration.declaration Alcotest.testable =
@@ -149,7 +153,7 @@ let test_media_rule_creation () =
   let media_stmt =
     media
       ~condition:(Css.Media.of_string "screen and (min-width: 768px)")
-      [ Rule r ]
+      [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -165,7 +169,7 @@ let test_container_rule_creation () =
   let container_stmt =
     container ~name:"sidebar"
       ~condition:(Css.Container.of_string "(min-width: 400px)")
-      [ Rule r ]
+      [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -178,7 +182,7 @@ let test_supports_rule_creation () =
   let supports_stmt =
     supports
       ~condition:(Css.Supports.property "display" "grid")
-      [ Css.Stylesheet.Rule r ]
+      [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -191,12 +195,12 @@ let test_supports_nested_creation () =
   let nested_supports =
     supports
       ~condition:(Css.Supports.property "color" "red")
-      [ Css.Stylesheet.Rule r ]
+      [ statement_of_rule r ]
   in
   let supports_stmt =
     supports
       ~condition:(Css.Supports.property "display" "grid")
-      [ Rule r; nested_supports ]
+      [ statement_of_rule r; nested_supports ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -223,7 +227,7 @@ let test_layer_rule_creation () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ Css.Stylesheet.Rule rule ] in
+  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
@@ -254,11 +258,11 @@ let helper () =
   (* Test complete stylesheet construction and string representation *)
   let decl = Css.Declaration.display Css.Properties.Block in
   let rule = rule ~selector:(Selector.element "div") [ decl ] in
-  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule ] in
+  let sheet = Css.Stylesheet.v [ statement_of_rule rule ] in
   check_stylesheet_helper "simple stylesheet" "div{display:block}" sheet;
 
   let media_stmt =
-    media ~condition:(Css.Media.of_string "print") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "print") [ statement_of_rule rule ]
   in
   let sheet2 = Css.Stylesheet.v [ media_stmt ] in
   check_stylesheet_helper "media stylesheet" "@media print{div{display:block}}"
@@ -282,11 +286,11 @@ let construction () =
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:(Css.Media.of_string "screen") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "screen") [ statement_of_rule rule ]
   in
   let prop = property ~syntax:Css.Variables.Color "--my-color" in
 
-  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt; prop ] in
+  let sheet = Css.Stylesheet.v [ statement_of_rule rule; media_stmt; prop ] in
 
   Alcotest.(check int) "sheet rules count" 1 (List.length (rules sheet));
   Alcotest.(check int) "sheet media count" 1 (List.length (media_queries sheet));
@@ -304,10 +308,10 @@ let items_conversion () =
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:(Css.Media.of_string "screen") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "screen") [ statement_of_rule rule ]
   in
 
-  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt ] in
+  let sheet = Css.Stylesheet.v [ statement_of_rule rule; media_stmt ] in
 
   let items = sheet in
   Alcotest.(check int) "items count" 2 (List.length items);
@@ -328,15 +332,17 @@ let test_concat_stylesheets () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule1 = rule ~selector:(Selector.class_ "red") [ decl1 ] in
-  let _sheet1 = Css.Stylesheet.v [ Rule rule1 ] in
+  let _sheet1 = Css.Stylesheet.v [ statement_of_rule rule1 ] in
 
   let decl2 =
     Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
   in
   let rule2 = rule ~selector:(Selector.class_ "blue") [ decl2 ] in
-  let _sheet2 = Css.Stylesheet.v [ Rule rule2 ] in
+  let _sheet2 = Css.Stylesheet.v [ statement_of_rule rule2 ] in
 
-  let combined = Css.Stylesheet.v [ Rule rule1; Rule rule2 ] in
+  let combined =
+    Css.Stylesheet.v [ statement_of_rule rule1; statement_of_rule rule2 ]
+  in
   Alcotest.(check int)
     "combined rules count" 2
     (List.length (Css.Stylesheet.rules combined))
@@ -508,7 +514,7 @@ let test_layer_pp () =
     Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
   in
   let rule_obj = rule ~selector:(Selector.class_ "blue") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ Rule rule_obj ] in
+  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -531,13 +537,15 @@ let pp_case () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let media_stmt = media ~condition:(Css.Media.of_string "screen") [ Rule r ] in
+  let media_stmt =
+    media ~condition:(Css.Media.of_string "screen") [ statement_of_rule r ]
+  in
   let prop =
     property ~syntax:Css.Variables.Color
       ~initial_value:(Css.Values.Named Css.Values.Blue) "--primary"
   in
 
-  let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
+  let sheet = Css.Stylesheet.v [ statement_of_rule r; media_stmt; prop ] in
 
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
