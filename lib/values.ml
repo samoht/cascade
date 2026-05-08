@@ -2413,12 +2413,12 @@ and pp_color : color Pp.t =
           match rgb_to_hex_string r g b with
           | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
           | None -> pp_rgb_func ctx (r, g, b, None))
-      | Channels { r; g; b } when Pp.minified ctx ->
-          (* Keep non-opaque alpha in the modern functional form. It is the
-             broadly-compatible minified spelling used by the rest of the typed
-             colour tests; only fully transparent values canonicalize to [#0000]
-             above. *)
-          pp_rgb_func ctx (r, g, b, a)
+      | Channels { r; g; b } when Pp.minified ctx -> (
+          match (rgb_to_hex_string r g b, alpha_value_byte a) with
+          | Some hex, Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | _ -> pp_rgb_func ctx (r, g, b, a))
       | Channels { r; g; b } ->
           (* CSS Color 4 1.4 unified [rgba()] under [rgb()] with the [/] alpha
              separator. Non-minified output emits the modern [rgb()] keyword so
@@ -2452,8 +2452,10 @@ and pp_color : color Pp.t =
           in
           match alpha_value_byte a with
           | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
-          | Some 0 -> pp_color ctx (Hex { hash = true; value = "00000000" })
-          | Some _ | Option.None -> pp_hsl ctx (h, s, l, a))
+          | Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | Option.None -> pp_hsl ctx (h, s, l, a))
       | _ -> pp_hsl ctx (h, s, l, a))
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
   | Hwb { h; w; b; a } when Pp.minified ctx -> (
@@ -2468,8 +2470,10 @@ and pp_color : color Pp.t =
           in
           match alpha_value_byte a with
           | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
-          | Some 0 -> pp_color ctx (Hex { hash = true; value = "00000000" })
-          | Some _ | Option.None -> pp_hwb ctx (h, w, b, a))
+          | Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | Option.None -> pp_hwb ctx (h, w, b, a))
       | _ -> pp_hwb ctx (h, w, b, a))
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
