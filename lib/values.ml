@@ -24,7 +24,12 @@ let rgb ?alpha r g b =
   match alpha with
   | None -> Rgb (Channels { r = Int r; g = Int g; b = Int b })
   | Some a ->
-      Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a = Num a }
+      Rgba
+        {
+          rgb = Channels { r = Int r; g = Int g; b = Int b };
+          a = Num a;
+          legacy = false;
+        }
 
 let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
 let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
@@ -1975,7 +1980,7 @@ let static_color_to_srgb_bytes : color -> (int * int * int * int) option =
       with
       | Some r, Some g, Some b -> Some (r, g, b, 255)
       | _ -> Option.None)
-  | Rgba { rgb = Channels { r; g; b }; a } -> (
+  | Rgba { rgb = Channels { r; g; b }; a; legacy = _ } -> (
       match
         ( channel_byte_value r,
           channel_byte_value g,
@@ -2340,6 +2345,18 @@ let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
 
+let pp_rgba_args : (channel * channel * channel * alpha) Pp.t =
+ fun ctx (r, g, b, alpha) ->
+  pp_channel ctx r;
+  Pp.comma ctx ();
+  pp_channel ctx g;
+  Pp.comma ctx ();
+  pp_channel ctx b;
+  Pp.comma ctx ();
+  pp_alpha ctx alpha
+
+let pp_rgba_func = Pp.call "rgba" pp_rgba_args
+
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
@@ -2627,7 +2644,7 @@ and pp_color : color Pp.t =
             | Var v -> pp_var pp_rgb_as_color ctx v
           in
           pp_rgb_as_color ctx (Var v))
-  | Rgba { rgb; a } -> (
+  | Rgba { rgb; a; legacy } -> (
       match rgb with
       | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a
         ->
@@ -2643,11 +2660,8 @@ and pp_color : color Pp.t =
               pp_color ctx
                 (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
           | _ -> pp_rgb_func ctx (r, g, b, a))
-      | Channels { r; g; b } ->
-          (* CSS Color 4 1.4 unified [rgba()] under [rgb()] with the [/] alpha
-             separator. Non-minified output emits the modern [rgb()] keyword so
-             a source [rgb(R G B / A)] round-trips unchanged. *)
-          pp_rgb_func ctx (r, g, b, a)
+      | Channels { r; g; b } when legacy -> pp_rgba_func ctx (r, g, b, a)
+      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
           let rec pp_rgb_var : rgb Pp.t =
@@ -3860,7 +3874,7 @@ and read_rgb_space_separated t : color =
       Cursor.ws t;
       match alpha with
       | None -> Cursor.err t "expected alpha value after '/'"
-      | _ -> Rgba { rgb = Var rgb_var; a = alpha })
+      | _ -> Rgba { rgb = Var rgb_var; a = alpha; legacy = false })
     else (
       Cursor.restore t snap;
       let r = read_channel t in
@@ -3875,7 +3889,7 @@ and read_rgb_space_separated t : color =
       match alpha with
       | None -> Rgb (Channels { r; g; b })
       | Num _ | Pct _ | Var _ | Calc _ ->
-          Rgba { rgb = Channels { r; g; b }; a = alpha }))
+          Rgba { rgb = Channels { r; g; b }; a = alpha; legacy = false }))
   else
     let r = read_channel t in
     Cursor.ws t;
@@ -3888,9 +3902,9 @@ and read_rgb_space_separated t : color =
     match alpha with
     | None -> Rgb (Channels { r; g; b })
     | Num _ | Pct _ | Var _ | Calc _ ->
-        Rgba { rgb = Channels { r; g; b }; a = alpha }
+        Rgba { rgb = Channels { r; g; b }; a = alpha; legacy = false }
 
-and read_rgb_comma_separated t : color =
+and read_rgb_comma_separated ~legacy t : color =
   let r, g, b =
     Cursor.triple ~sep:Cursor.comma read_channel read_channel read_channel t
   in
@@ -3902,7 +3916,7 @@ and read_rgb_comma_separated t : color =
   Cursor.expect_eof t;
   match alpha with
   | None -> Rgb (Channels { r; g; b })
-  | a -> Rgba { rgb = Channels { r; g; b }; a }
+  | a -> Rgba { rgb = Channels { r; g; b }; a; legacy }
 
 (** Read color space identifier *)
 let read_color_space t : color_space =
@@ -4588,12 +4602,16 @@ and color_parsers =
         Cursor.ws t;
         if Cursor.looking_at t "from" then read_relative_rgb t
         else
-          Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+          Cursor.one_of
+            [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:false ]
+            t
     );
     ( "rgba",
       fun t ->
         Cursor.ws t;
-        Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+        Cursor.one_of
+          [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:true ]
+          t
     );
     ("hsl", fun t -> with_relative_fallback "hsl" read_hsl t);
     ("hsla", fun t -> with_relative_fallback "hsl" read_hsl t);
