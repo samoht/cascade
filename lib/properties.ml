@@ -6561,6 +6561,7 @@ let rec pp_transform_origin : transform_origin Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
+  | Center_center when Pp.minified ctx -> pp_length ctx (pct 50.)
   | Left when Pp.minified ctx -> pp_length ctx zero
   | Right when Pp.minified ctx -> pp_length ctx (pct 100.)
   | (Left_top | Top_left) when Pp.minified ctx -> pp_pair zero zero
@@ -6573,6 +6574,7 @@ let rec pp_transform_origin : transform_origin Pp.t =
   | Center_top when Pp.minified ctx -> Pp.string ctx "top"
   | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
   | Center -> Pp.string ctx "center"
+  | Center_center -> Pp.string ctx "center center"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
   | Top -> Pp.string ctx "top"
@@ -16727,6 +16729,12 @@ module Transform_origin = struct
   let read_keywords t =
     let keywords = Cursor.list ~at_least:1 ~at_most:2 read_keyword t in
     merge_keywords t keywords
+
+  let read_center_center t =
+    let first = Cursor.ident t in
+    let second = Cursor.ident t in
+    if first = "center" && second = "center" && Cursor.is_done t then Center_center
+    else Cursor.err_invalid t "transform-origin center center"
 end
 
 let rec read_transform_origin (t : Cursor.t) : transform_origin =
@@ -16742,6 +16750,7 @@ let rec read_transform_origin (t : Cursor.t) : transform_origin =
     ~default:(fun t ->
       Cursor.one_of
         [
+          Transform_origin.read_center_center;
           Transform_origin.read_position;
           Transform_origin.read_keywords;
           Transform_origin.read_xyz;
