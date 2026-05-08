@@ -8652,8 +8652,12 @@ let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
 
 (* Helpers for timing-function pretty printing *)
 
+let pp_timing_float ctx f =
+  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
+
 let pp_cubic_bezier_args : (float * float * float * float) Pp.t =
- fun ctx (a, b, c, d) -> Pp.list ~sep:Pp.comma Pp.float ctx [ a; b; c; d ]
+ fun ctx (a, b, c, d) ->
+  Pp.list ~sep:Pp.comma pp_timing_float ctx [ a; b; c; d ]
 
 let pp_cubic_bezier = Pp.call "cubic-bezier" pp_cubic_bezier_args
 
@@ -8754,7 +8758,7 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 let transition_timing_is_default ctx = function
-  | Ease -> true
+  | Ease when Pp.minified ctx -> true
   | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx -> true
   | _ -> false
 
