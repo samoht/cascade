@@ -44,8 +44,18 @@ let attr_value_needs_quoting value =
            value)
 
 (* Helper to pretty-print attribute values with smart quoting. *)
-let pp_attr_value : string Pp.t =
- fun ctx value ->
+let pp_quoted_attr_value quote ctx value =
+  Pp.char ctx quote;
+  String.iter
+    (fun c ->
+      if c = quote then (
+        Pp.char ctx '\\';
+        Pp.char ctx c)
+      else Pp.char ctx c)
+    value;
+  Pp.char ctx quote
+
+let pp_attr_value ?quote ctx value =
   (* Under minify, drop the surrounding quotes when the value is a CSS ident
      since the two forms are spec-equivalent and the bare form is shorter. The
      non-minified path keeps the quotes for source fidelity - the user who wrote
@@ -54,7 +64,10 @@ let pp_attr_value : string Pp.t =
   if String.contains value '\\' then Pp.string ctx value
   else if Pp.minified ctx && not (attr_value_needs_quoting value) then
     Pp.string ctx value
-  else Pp.quoted_string ctx value
+  else
+    match quote with
+    | Some quote when not (Pp.minified ctx) -> pp_quoted_attr_value quote ctx value
+    | _ -> Pp.quoted_string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
 let pp_token : string Pp.t =
@@ -71,21 +84,39 @@ let pp_attribute_match : attribute_match Pp.t =
   | Exact value ->
       Pp.char ctx '=';
       pp_attr_value ctx value
+  | Exact_quoted (value, quote) ->
+      Pp.char ctx '=';
+      pp_attr_value ~quote ctx value
   | Whitespace_list value ->
       Pp.string ctx "~=";
       pp_attr_value ctx value
+  | Whitespace_list_quoted (value, quote) ->
+      Pp.string ctx "~=";
+      pp_attr_value ~quote ctx value
   | Hyphen_list value ->
       Pp.string ctx "|=";
       pp_attr_value ctx value
+  | Hyphen_list_quoted (value, quote) ->
+      Pp.string ctx "|=";
+      pp_attr_value ~quote ctx value
   | Prefix value ->
       Pp.string ctx "^=";
       pp_attr_value ctx value
+  | Prefix_quoted (value, quote) ->
+      Pp.string ctx "^=";
+      pp_attr_value ~quote ctx value
   | Suffix value ->
       Pp.string ctx "$=";
       pp_attr_value ctx value
+  | Suffix_quoted (value, quote) ->
+      Pp.string ctx "$=";
+      pp_attr_value ~quote ctx value
   | Substring value ->
       Pp.string ctx "*=";
       pp_attr_value ctx value
+  | Substring_quoted (value, quote) ->
+      Pp.string ctx "*=";
+      pp_attr_value ~quote ctx value
 
 let is_hex_char c =
   (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
@@ -371,9 +402,9 @@ let err_expected t what = Cursor.err_expected t what
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
   (* Check if we start with a quote - if so, we MUST parse as quoted string *)
-  let value, was_quoted =
-    match Cursor.string_opt t with
-    | Some s -> (s, true)
+  let value, quote =
+    match Cursor.string_with_quote_opt t with
+    | Some (s, quote) -> (s, Some quote)
     | None ->
         (* Otherwise parse as an ident / dimension / number *)
         let v =
@@ -404,14 +435,14 @@ let read_attribute_value t =
                   else string_of_float n ^ u)
           | _ -> ""
         in
-        (v, false)
+        (v, None)
   in
   (* CSS spec allows empty quoted strings but not empty unquoted values *)
-  if value = "" && not was_quoted then
+  if value = "" && Option.is_none quote then
     match Cursor.peek t with
     | None -> Cursor.err_expected_but_eof t "']'"
     | Some _ -> Cursor.err_invalid t "attribute value"
-  else value
+  else (value, quote)
 
 (** Parse a class selector (.classname) *)
 let read_class t =
@@ -543,29 +574,51 @@ let read_combinator t =
     | _ -> Descendant
 
 let read_attribute_match t : attribute_match =
-  let try_eq c (cons : string -> attribute_match) : attribute_match option =
+  let make cons cons_quoted (value, quote) =
+    match quote with Some quote -> cons_quoted value quote | None -> cons value
+  in
+  let try_eq c cons cons_quoted : attribute_match option =
     if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
-    then Some (cons (read_attribute_value t))
+    then Some (make cons cons_quoted (read_attribute_value t))
     else None
   in
-  match try_eq '~' (fun v -> Whitespace_list v) with
+  match
+    try_eq '~'
+      (fun v -> Whitespace_list v)
+      (fun v q -> Whitespace_list_quoted (v, q))
+  with
   | Some v -> v
   | None -> (
-      match try_eq '|' (fun v -> Hyphen_list v) with
+      match
+        try_eq '|'
+          (fun v -> Hyphen_list v)
+          (fun v q -> Hyphen_list_quoted (v, q))
+      with
       | Some v -> v
       | None -> (
-          match try_eq '^' (fun v -> Prefix v) with
+          match
+            try_eq '^' (fun v -> Prefix v) (fun v q -> Prefix_quoted (v, q))
+          with
           | Some v -> v
           | None -> (
-              match try_eq '$' (fun v -> Suffix v) with
+              match
+                try_eq '$' (fun v -> Suffix v) (fun v q -> Suffix_quoted (v, q))
+              with
               | Some v -> v
               | None -> (
-                  match try_eq '*' (fun v -> Substring v) with
+                  match
+                    try_eq '*'
+                      (fun v -> Substring v)
+                      (fun v q -> Substring_quoted (v, q))
+                  with
                   | Some v -> v
                   | None ->
                       if Cursor.peek_delim t = Some '=' then (
                         Cursor.skip t;
-                        Exact (read_attribute_value t))
+                        make
+                          (fun v -> Exact v)
+                          (fun v q -> Exact_quoted (v, q))
+                          (read_attribute_value t))
                       else Presence))))
 
 let read_attr_flag t : attr_flag option =
@@ -1052,12 +1105,6 @@ let rec read_selector_list_with read_item t =
   else
     let rec loop acc =
       let sel = read_item t in
-      (* CSS Selectors 4 §3.5: an unknown selector at a non-forgiving position
-         invalidates the surrounding selector list, which the rule reader then
-         drops with a warning. Forgiving sites ([:is()], [:where()],
-         [:-moz-any()], [:-webkit-any()]) build their lists through
-         [read_forgiving_list] and never reach this strict path. *)
-      if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
       let acc = sel :: acc in
       Cursor.ws t;
       if Cursor.comma_opt t then (
@@ -1165,11 +1212,24 @@ and read_has_content t =
     (fun sel ->
       if contains_has sel then Cursor.err t ":has() cannot contain :has()";
       if has_pseudo_element sel then
-        Cursor.err t ":has() cannot contain pseudo-elements")
+        Cursor.err t ":has() cannot contain pseudo-elements";
+      if has_unknown_pseudo_class sel then
+        Cursor.err t ":has() cannot contain an unknown pseudo-class")
     selectors;
   Has selectors
 
-and read_not_content t = Not (read_complex_list t)
+and read_not_content t =
+  let selectors = read_complex_list t in
+  (* CSS Selectors 4 §6.2: [:not()] is non-forgiving, so an unknown selector
+     inside it invalidates the whole rule. Top-level lists keep unknown
+     pseudo-classes for forward compatibility. *)
+  List.iter
+    (fun sel ->
+      if has_unknown_pseudo_class sel then
+        Cursor.err t ":not() cannot contain an unknown pseudo-class")
+    selectors;
+  Not selectors
+
 and read_where_content t = Where (read_forgiving_complex_list t)
 and read_local_content t = Local_call (read_complex_list t)
 and read_global_content t = Global_call (read_complex_list t)
