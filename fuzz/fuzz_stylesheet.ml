@@ -294,6 +294,7 @@ let rec boundary_shape = function
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
   | Font_palette_values _ -> [ "font-palette-values" ]
+  | Font_feature_values _ -> [ "font-feature-values" ]
   | View_transition _ -> [ "view-transition" ]
   | Position_try _ -> [ "position-try" ]
   | Viewport _ -> [ "viewport" ]
@@ -319,8 +320,8 @@ let anonymous_layer_count ss =
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
     | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
     | Font_face _ | Page _ | Page_with_margins _ | Font_palette_values _
-    | View_transition _ | Position_try _ | Property _ | Supports_condition _
-    | Viewport _ | Unknown_at_rule _ ->
+    | Font_feature_values _ | View_transition _ | Position_try _ | Property _
+    | Supports_condition _ | Viewport _ | Unknown_at_rule _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss

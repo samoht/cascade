@@ -169,6 +169,9 @@ and statement =
       (** [@page :first { margin: 1cm; @top-left { content: ... } }] *)
   | Font_palette_values of string * font_palette_descriptor list
       (** [@font-palette-values --name { ... }] *)
+  | Font_feature_values of
+      Properties.font_family list * font_feature_values_block list
+      (** [@font-feature-values <family-name># { @styleset { nice: 1 } }] *)
   | View_transition of view_transition_descriptor list
       (** [@view-transition { navigation: auto }] *)
   | Position_try of string * Declaration.declaration list
@@ -217,6 +220,8 @@ and font_palette_descriptor =
   | Palette_font_family of Properties.font_family list
   | Base_palette of font_palette_base
   | Override_colors of (int * Values.color) list
+
+and font_feature_values_block = string * (string * int list) list
 
 and view_transition_descriptor =
   | Navigation of [ `Auto | `None ]
