@@ -1504,7 +1504,7 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    let s = read_simple ~allow_unknown_pseudo_class:true t in
+    let s = read_simple t in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
     else s :: acc
