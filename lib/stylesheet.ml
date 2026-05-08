@@ -714,7 +714,7 @@ and pp_statement : statement Pp.t =
       (match prefix with
       | Some p ->
           Pp.string ctx p;
-          Pp.space ctx ()
+          Pp.sp ctx ()
       | None -> ());
       (match uri with
       | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
