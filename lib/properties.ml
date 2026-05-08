@@ -13439,6 +13439,8 @@ let rec read_unicode_range t : unicode_range =
       Cursor.skip t;
       if start_value > end_value then
         Cursor.err_invalid t "unicode range: start > end"
+      else if end_value > 0x10FFFF then
+        Cursor.err_invalid t "unicode range: code point out of range"
       else
         match form with
         | Token.Single { width } ->
