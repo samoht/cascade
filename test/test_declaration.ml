@@ -294,14 +294,13 @@ let colors () =
      when shorter. *)
   check_declaration ~expected:"color:red" "color: rgb(255, 0, 0)";
   check_declaration ~expected:"color:#0f0" "color: rgb(0, 255, 0)";
-  check_declaration ~expected:"color:rgb(255 0 0/.5)"
-    "color: rgba(255, 0, 0, 0.5)";
+  check_declaration ~expected:"color:#ff000080" "color: rgba(255, 0, 0, 0.5)";
 
   (* HSL colors - modern space-separated syntax. Per CSS Color 4 section 1.4 the
      printer canonicalizes a fully-opaque hsl() to the equivalent named color
      when applicable. *)
   check_declaration ~expected:"color:red" "color: hsl(0, 100%, 50%)";
-  check_declaration ~expected:"color:hsl(120 100% 50%/.5)"
+  check_declaration ~expected:"color:#00ff0080"
     "color: hsla(120, 100%, 50%, 0.5)";
 
   (* Various color properties *)
@@ -649,10 +648,11 @@ let transforms () =
 
   (* Transform origin *)
   (* Per CSS Transforms 1 §6 [center] is shorthand for [50% 50%] and the
-     keyword pair [top left] is [0 0]. The collapse rule for matching
-     pairs reduces both to a single value under shortest-wins. *)
+     keyword pair [top left] is [0 0]. A single [0] would mean [0 50%], so the
+     two-value form must be preserved. *)
   check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
-  check_declaration ~expected:"transform-origin:0" "transform-origin: top left";
+  check_declaration ~expected:"transform-origin:0 0"
+    "transform-origin: top left";
   check_declaration ~expected:"transform-origin:50%" "transform-origin: 50% 50%";
   check_declaration ~expected:"transform-origin:10px 20px"
     "transform-origin: 10px 20px"
@@ -669,7 +669,7 @@ let grid () =
     "grid-template-columns: repeat(3, 1fr)";
 
   (* minmax with fr units *)
-  check_declaration ~expected:"grid-template-columns:minmax(100px,1fr) 200px"
+  check_declaration ~expected:"grid-template-columns:minmax(100px,1fr)200px"
     "grid-template-columns: minmax(100px, 1fr) 200px";
   check_declaration ~expected:"grid-template-rows:none"
     "grid-template-rows: none";
@@ -763,12 +763,11 @@ let misc () =
 let list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
-  check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
+  check_declaration ~expected:"box-shadow:0 1px 3px#0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
-  check_declaration
-    ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12),0 1px 2px rgb(0 0 0/.24)"
+  check_declaration ~expected:"box-shadow:0 1px 3px#0000001f,0 1px 2px#0000003d"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
-  check_declaration ~expected:"box-shadow:inset 0 2px 4px rgb(0 0 0/.06)"
+  check_declaration ~expected:"box-shadow:inset 0 2px 4px#0000000f"
     "box-shadow: inset 0 2px 4px rgba(0,0,0,0.06)";
 
   (* Text shadow *)
@@ -860,8 +859,9 @@ let important () =
 
 let invalid () =
   let neg = none_cursor read_declaration in
+  (* Unknown property names are syntactically valid declarations. *)
+  check_declaration ~expected:"not-a-property:value" "not-a-property: value";
   (* Invalid property names *)
-  neg "not-a-property: value";
   neg "123invalid: value";
   neg ": value";
   (* Invalid values for known properties *)
@@ -994,8 +994,10 @@ let spec_property_grammar_table_expansion () =
             Some "border-image:linear-gradient(red,#00f) 30"
         | "background", "url(bg.png) no-repeat center / cover border-box" ->
             Some "background:url(bg.png) center/cover no-repeat border-box"
+        | "scrollbar-color", "red blue" -> Some "scrollbar-color:red #00f"
+        | "border", "1px solid currentColor" -> Some "border:1px solid"
         | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
-            Some "box-shadow:0 1px 2px rgb(0 0 0/.2)"
+            Some "box-shadow:0 1px 2px#0003"
         | "color", "light-dark(black, white)" ->
             Some "color:light-dark(black,white)"
         | "font-size", "clamp(1rem, 2vw, 2rem)" ->
@@ -1093,7 +1095,7 @@ let edge_cases () =
 
   (* Complex calc expressions *)
   (* Cases with / operator - should be minified without spaces per CSS spec *)
-  check_declaration ~expected:"width:calc((100% - 20px)/2)"
+  check_declaration ~expected:"width:calc(50% - 10px)"
     "width: calc((100% - 20px) / 2)";
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
@@ -1114,8 +1116,8 @@ let edge_cases () =
   in
   check_declaration
     ~expected:
-      "box-shadow:0 1px 2px rgb(0 0 0/.1),0 2px 4px rgb(0 0 0/.1),0 4px 8px \
-       rgb(0 0 0/.1),0 8px 16px rgb(0 0 0/.1)"
+      "box-shadow:0 1px 2px#0000001a,0 2px 4px#0000001a,0 4px 8px#0000001a,0 \
+       8px 16px#0000001a"
     ("box-shadow: " ^ long_shadow)
 
 let css_wide_keywords () =
@@ -1320,7 +1322,7 @@ let spec_platform_property_vectors () =
       ("overflow-clip-margin: 1px", "overflow-clip-margin:1px");
       ("overflow-anchor: auto", "overflow-anchor:auto");
       ("scrollbar-width: thin", "scrollbar-width:thin");
-      ("scrollbar-color: red blue", "scrollbar-color:red blue");
+      ("scrollbar-color: red blue", "scrollbar-color:red #00f");
       ( "scrollbar-gutter: stable both-edges",
         "scrollbar-gutter:stable both-edges" );
       ("line-height-step: 4px", "line-height-step:4px");
@@ -1485,10 +1487,10 @@ let spec_values_l45_edges () =
       ("margin: anchor-size(width)", "margin:anchor-size(width)");
       ("top: anchor(bottom)", "top:anchor(bottom)");
       ("font-size: calc(1rem + 1cqi)", "font-size:calc(1rem + 1cqi)");
-      ("color: lab(50% 20 30)", "color:lab(50% 20 30)");
-      ("color: lch(50% 30 40)", "color:lch(50% 30 40)");
-      ("color: oklab(60% .1 .2)", "color:oklab(60% .1 .2)");
-      ("color: oklch(60% .2 120)", "color:oklch(60% .2 120)");
+      ("color: lab(50% 20 30)", "color:lab(50%20 30)");
+      ("color: lch(50% 30 40)", "color:lch(50%30 40)");
+      ("color: oklab(60% .1 .2)", "color:oklab(60%.1 .2)");
+      ("color: oklch(60% .2 120)", "color:oklch(60%.2 120)");
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
@@ -1552,8 +1554,7 @@ let spec_remaining_prop_vectors () =
       ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
       ("columns: 12rem 3", "columns:12rem 3");
-      ( "column-rule: 1px solid currentColor",
-        "column-rule:1px solid currentColor" );
+      ("column-rule: 1px solid currentColor", "column-rule:1px solid");
       ("column-span: all", "column-span:all");
       ("break-before: page", "break-before:page");
       ("break-after: avoid-page", "break-after:avoid-page");
