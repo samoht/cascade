@@ -580,8 +580,31 @@ let vars_of_scroll_snap_type (value : Properties.scroll_snap_type) :
       vars_of_scroll_snap_axis axis @ vars_of_scroll_snap_strictness strictness
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
+let rec vars_of_number_value (value : Values.number) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_number_calc calc
+  | Round (_, value, step) | Mod (value, step) | Rem (value, step)
+  | Hypot (value, step) | Pow (value, step) ->
+      vars_of_number_value value @ vars_of_number_value step
+  | Sqrt value | Abs value | Sign value -> vars_of_number_value value
+  | Sin angle -> vars_of_angle angle
+  | Num _ -> []
+
+and vars_of_number_calc (calc : Values.number calc) : any_var list =
+  match calc with
+  | Var v -> [ V v ]
+  | Val value -> vars_of_number_value value
+  | Expr (left, _, right) -> vars_of_number_calc left @ vars_of_number_calc right
+  | Nested inner | Parens inner -> vars_of_number_calc inner
+  | Num _ | Sibling_index | Sibling_count -> []
+
 let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Auto_ratio_calc (width, height) | Ratio_calc (width, height) ->
+      vars_of_number_value width @ vars_of_number_value height
+  | _ -> []
 
 let vars_of_webkit_gradient_stop = function
   | Properties.Webkit_gradient.From color | Properties.Webkit_gradient.To color
