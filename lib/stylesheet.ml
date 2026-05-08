@@ -2777,7 +2777,8 @@ and read_rule_selector r =
      caller intact. Previously we rewrapped via [Cursor.err r (Error.to_string
      e)], which erased the structured error and relocated it to the parent
      cursor's current position. *)
-  Cursor.with_context c "selector" (fun () -> Selector.read_selector_list c)
+  Cursor.with_context c "selector" (fun () ->
+      Selector.read_strict_selector_list c)
 
 and is_bare_nesting_selector : Selector.t -> bool = function
   | Selector.Nesting -> true
