@@ -326,6 +326,11 @@ val read_rgb : Cursor.t -> rgb
 val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
 
+val read_angle_unit_required : Cursor.t -> angle
+(** [read_angle_unit_required t] parses a generic CSS [<angle>] value, where
+    bare zero is invalid. Legacy property contexts that allow unitless zero use
+    {!read_angle}. *)
+
 val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 

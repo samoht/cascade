@@ -66,6 +66,10 @@ and pp_syntax : type a. a syntax Pp.t =
   Pp.char ctx '"'
 
 (** Pretty-print a value according to its syntax type *)
+let pp_registered_angle ctx = function
+  | Deg 0. when Pp.minified ctx -> Pp.string ctx "0deg"
+  | angle -> Values.pp_angle ctx angle
+
 let rec pp_value : type a. a syntax -> a Pp.t =
  fun syntax ctx value ->
   match syntax with
@@ -75,7 +79,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Integer -> Pp.int ctx value
   | Percentage -> Values.pp_percentage ~always:true ctx value
   | Length_percentage -> Values.pp_length_percentage ~always:true ctx value
-  | Angle -> Values.pp_angle ctx value
+  | Angle -> pp_registered_angle ctx value
   | Time -> Values.pp_duration ctx value
   | Resolution -> Pp.string ctx value
   | Custom_ident -> Pp.string ctx value
@@ -213,7 +217,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Integer -> int_of_float (Cursor.number reader)
   | Percentage -> Values.read_percentage reader
   | Length_percentage -> Values.read_length_percentage reader
-  | Angle -> Values.read_angle reader
+  | Angle -> Values.read_angle_unit_required reader
   | Time -> Values.read_duration reader
   | Or (syn1, syn2) -> (
       (* Try the left branch with backtracking; fall back to the right. *)
