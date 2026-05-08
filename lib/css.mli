@@ -1080,7 +1080,7 @@ type color =
   | Hex of { hash : bool; value : string }
       (** hash indicates if # was present *)
   | Rgb of rgb
-  | Rgba of { rgb : rgb; a : alpha }
+  | Rgba of { rgb : rgb; a : alpha; legacy : bool }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
