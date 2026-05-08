@@ -2,55 +2,54 @@
 
 open Cascade
 
-let loc = Css.Loc.v ~start_pos:12 ~end_pos:13
+let loc = Loc.v ~start_pos:12 ~end_pos:13
 
 let check name e expected =
-  Alcotest.(check string) name expected (Css.Error.to_string e)
+  Alcotest.(check string) name expected (Error.to_string e)
 
 let sort_mismatch () =
   check "sort mismatch"
-    (Css.Error.sort_mismatch loc ~sort:Css.Sort.Selector
-       ~expected:Css.Sort.Component ~found:Css.Sort.Block)
+    (Error.sort_mismatch loc ~sort:Sort.Selector ~expected:Sort.Component
+       ~found:Sort.Block)
     "expected component but found block at [12-13] (in selector)"
 
 let unexpected_token () =
   check "unexpected token"
-    (Css.Error.unexpected_token loc ~sort:Css.Sort.Declaration
-       (Css.Token.Delim "."))
+    (Error.unexpected_token loc ~sort:Sort.Declaration (Token.Delim "."))
     "unexpected <delim '.'> at [12-13] (in declaration)"
 
 let missing_token () =
   check "missing token"
-    (Css.Error.missing_token loc ~sort:Css.Sort.Declaration "':'")
+    (Error.missing_token loc ~sort:Sort.Declaration "':'")
     "missing ':' at [12-13] (in declaration)"
 
 let bad_selector () =
   check "bad selector"
-    (Css.Error.bad_selector loc "double dot")
+    (Error.bad_selector loc "double dot")
     "bad selector: double dot at [12-13] (in selector)"
 
 let bad_value () =
   check "bad value"
-    (Css.Error.bad_value loc ~property:"color" ~reason:"not a color")
+    (Error.bad_value loc ~property:"color" ~reason:"not a color")
     "bad value for color: not a color at [12-13] (in property-value)"
 
 let unknown_at_rule () =
   check "unknown at-rule"
-    (Css.Error.unknown_at_rule loc "weird")
+    (Error.unknown_at_rule loc "weird")
     "unknown at-rule @weird at [12-13] (in at-rule)"
 
 let unterminated () =
   check "unterminated"
-    (Css.Error.unterminated loc Css.Sort.Function)
+    (Error.unterminated loc Sort.Function)
     "unterminated function at [12-13] (in function)"
 
 let source_context () =
-  let t = Css.Cursor.of_string "color red;" in
-  match Css.Cursor.colon t with
+  let t = Cursor.of_string "color red;" in
+  match Cursor.colon t with
   | true -> Alcotest.fail "expected missing colon"
   | false -> (
-      try Css.Cursor.err_expected t "':'"
-      with Css.Cursor.Parse_error e ->
+      try Cursor.err_expected t "':'"
+      with Cursor.Parse_error e ->
         check "source context" e
           "bad value for : expected ':' at [0-5] (in component)\n\
            color red;\n\

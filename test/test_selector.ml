@@ -632,8 +632,8 @@ let invalid () =
 
   (* Parsing invalid selector strings via Cursor.option to avoid exceptions *)
   let neg_parse s label =
-    let c = Css.Cursor.of_string s in
-    Alcotest.(check bool) label true (Option.is_none (Css.Cursor.option read c))
+    let c = Cursor.of_string s in
+    Alcotest.(check bool) label true (Option.is_none (Cursor.option read c))
   in
   (* CSS Syntax 5.3.7 / 4.3.5 mandate recovery for unterminated blocks and
      strings at EOF — assert the recovered AST matches what an explicit closing
@@ -650,12 +650,12 @@ let invalid () =
    moved when we switched to the component-stream parser; tests now only assert
    that parsing fails (and mention what was broken). *)
 let check_parse_error input _expected_msg =
-  let t = Css.Cursor.of_string input in
+  let t = Cursor.of_string input in
   try
     let _ = read t in
     Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
   with
-  | Css.Cursor.Parse_error _ -> ()
+  | Cursor.Parse_error _ -> ()
   | exn ->
       Alcotest.failf "For '%s': expected Parse_error but got %s" input
         (Printexc.to_string exn)
@@ -702,12 +702,12 @@ let matches_literal haystack needle =
   Re.execp re haystack
 
 let check_callstack name input expected_stack_parts =
-  let t = Css.Cursor.of_string input in
+  let t = Cursor.of_string input in
   try
     let _ = read t in
     Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
   with
-  | Css.Cursor.Parse_error err ->
+  | Cursor.Parse_error err ->
       let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
@@ -1012,10 +1012,10 @@ let test_nth () =
   (* Test nth type — odd/even are canonicalized to 2n+1/2n *)
   Alcotest.(check bool)
     "odd parses to Odd AST" true
-    (read_nth (Css.Cursor.of_string "odd") = Odd);
+    (read_nth (Cursor.of_string "odd") = Odd);
   Alcotest.(check bool)
     "even parses to Even AST" true
-    (read_nth (Css.Cursor.of_string "even") = Even);
+    (read_nth (Cursor.of_string "even") = Even);
   (* Per CSS Selectors 4 section 14 the printer canonicalizes [<an+b>] to the
      shortest spec-equivalent spelling under minify. *)
   check_nth ~expected:"odd" "2n+1";

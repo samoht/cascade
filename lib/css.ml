@@ -14,249 +14,261 @@ module Sort = Sort
 module Error = Error
 module Values = Values
 module Context = Context
-
-module Declaration = struct
-  include Declaration
-
-  let eval = Context.eval
-end
-
-module Properties = struct
-  include Properties
-
-  let eval_value ?layer_order ?layer ctx property value =
-    Declaration.eval ?layer_order ?layer ctx (Declaration.v property value)
-end
-
+module Declaration = Declaration
+module Properties = Properties
 module Selector = Selector
+module Stylesheet = Stylesheet
 
-module Stylesheet = struct
-  include Stylesheet
+let eval_declaration ?layer_order ?layer ctx decl =
+  Context.eval ?layer_order ?layer ctx decl
 
-  let eval_page_margin_rule ~layer_order ?layer ctx rule =
-    {
-      rule with
-      margin_descriptors =
-        List.map
-          (Declaration.eval ~layer_order ?layer ctx)
-          rule.margin_descriptors;
-    }
+let eval_value ?layer_order ?layer ctx property value =
+  eval_declaration ?layer_order ?layer ctx (Declaration.v property value)
 
-  let layer_known ~layer_order = function
-    | None -> true
-    | Some name -> List.exists (String.equal name) layer_order
+let eval_page_margin_rule ~layer_order ?layer ctx rule =
+  {
+    rule with
+    Stylesheet.margin_descriptors =
+      List.map
+        (eval_declaration ~layer_order ?layer ctx)
+        rule.Stylesheet.margin_descriptors;
+  }
 
-  let collect_cascade_rules ~layer_order stylesheet =
-    let source_order = ref 0 in
-    let add layer decl acc =
-      let rule : Context.cascade_rule =
-        {
-          property_name = Declaration.property_name decl;
-          important = Declaration.is_important decl;
-          layer;
-          source_order = !source_order;
-          declaration = decl;
-        }
-      in
-      incr source_order;
-      rule :: acc
-    in
-    let rec statement layer acc = function
-      | Rule rule ->
-          let acc =
-            List.fold_left
-              (fun acc decl -> add layer decl acc)
-              acc rule.declarations
-          in
-          List.fold_left (statement layer) acc rule.nested
-      | Declarations declarations ->
-          List.fold_left (fun acc decl -> add layer decl acc) acc declarations
-      | Layer (name, block) ->
-          let layer = match name with Some _ -> name | None -> layer in
-          List.fold_left (statement layer) acc block
-      | Media (_, block)
-      | Supports (_, block)
-      | Moz_document (_, block)
-      | When (_, block)
-      | Else (_, block)
-      | Starting_style block
-      | Origin (_, block) ->
-          List.fold_left (statement layer) acc block
-      | Container (_, _, block) | Scope (_, _, block) ->
-          List.fold_left (statement layer) acc block
-      | _ -> acc
-    in
-    List.fold_left (statement None) [] stylesheet
-    |> List.filter (fun (rule : Context.cascade_rule) ->
-        layer_known ~layer_order rule.layer)
+let layer_known ~layer_order = function
+  | None -> true
+  | Some name -> List.exists (String.equal name) layer_order
 
-  let rec eval_statement ?ctx_for_layer ~layer_order ?layer ctx = function
-    | Rule rule ->
-        Rule (eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule)
-    | Declarations declarations ->
-        Declarations
-          (List.map (Declaration.eval ~layer_order ?layer ctx) declarations)
-    | Layer (name, block) ->
-        let layer = match name with Some _ -> name | None -> layer in
-        let ctx = match ctx_for_layer with Some f -> f layer | None -> ctx in
-        Layer
-          ( name,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Media (condition, block) ->
-        Media
-          ( condition,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Container (name, condition, block) ->
-        Container
-          ( name,
-            condition,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Supports (condition, block) ->
-        Supports
-          ( condition,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Moz_document (conditions, block) ->
-        Moz_document
-          ( conditions,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | When (condition, block) ->
-        When
-          ( condition,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Else (condition, block) ->
-        Else
-          ( condition,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Starting_style block ->
-        Starting_style
-          (List.map
-             (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-             block)
-    | Origin (origin, block) ->
-        Origin
-          ( origin,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Scope (start, end_, block) ->
-        Scope
-          ( start,
-            end_,
-            List.map
-              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-              block )
-    | Keyframes (name, frames) ->
-        let eval_frame frame =
-          {
-            frame with
-            keyframe_declarations =
-              List.map
-                (Declaration.eval ~layer_order ?layer ctx)
-                frame.keyframe_declarations;
-          }
-        in
-        Keyframes (name, List.map eval_frame frames)
-    | Webkit_keyframes (name, frames) ->
-        let eval_frame frame =
-          {
-            frame with
-            keyframe_declarations =
-              List.map
-                (Declaration.eval ~layer_order ?layer ctx)
-                frame.keyframe_declarations;
-          }
-        in
-        Webkit_keyframes (name, List.map eval_frame frames)
-    | Moz_keyframes (name, frames) ->
-        let eval_frame frame =
-          {
-            frame with
-            keyframe_declarations =
-              List.map
-                (Declaration.eval ~layer_order ?layer ctx)
-                frame.keyframe_declarations;
-          }
-        in
-        Moz_keyframes (name, List.map eval_frame frames)
-    | Page (selector, declarations) ->
-        Page
-          ( selector,
-            List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
-    | Position_try (name, declarations) ->
-        Position_try
-          ( name,
-            List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
-    | Viewport _ as statement -> statement
-    | Supports_condition (name, declarations) ->
-        Supports_condition
-          ( name,
-            List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
-    | Page_with_margins (selector, descriptors, margins) ->
-        Page_with_margins
-          ( selector,
-            List.map (Declaration.eval ~layer_order ?layer ctx) descriptors,
-            List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
-    | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-      | Font_face _ | Font_palette_values _ | View_transition _
-      | Unknown_at_rule _ ) as statement ->
-        statement
-
-  and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule =
-    {
-      rule with
-      declarations =
-        List.map (Declaration.eval ~layer_order ?layer ctx) rule.declarations;
-      nested =
-        List.map
-          (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
-          rule.nested;
-    }
-
-  let eval_rule ?layer_order ?layer ctx rule =
-    let layer_order =
-      Option.value ~default:ctx.Context.layer_order layer_order
-    in
-    let layer =
-      match layer with Some _ -> layer | None -> ctx.Context.layer
-    in
-    eval_rule_with_ctx ~layer_order ?layer
-      { ctx with Context.layer_order; layer }
-      rule
-
-  let eval ?layer_order ?layer ctx stylesheet =
-    let layer_order =
-      Option.value ~default:ctx.Context.layer_order layer_order
-    in
-    let layer =
-      match layer with Some _ -> layer | None -> ctx.Context.layer
-    in
-    let cascade_rules = collect_cascade_rules ~layer_order stylesheet in
-    let ctx_for_layer layer =
+let collect_cascade_rules ~layer_order stylesheet =
+  let source_order = ref 0 in
+  let add layer decl acc =
+    let rule : Context.cascade_rule =
       {
-        ctx with
-        Context.layer_order;
+        property_name = Declaration.property_name decl;
+        important = Declaration.is_important decl;
         layer;
-        Context.cascade_rules = Some cascade_rules;
+        source_order = !source_order;
+        declaration = decl;
       }
     in
-    List.map
-      (eval_statement ~ctx_for_layer ~layer_order ?layer (ctx_for_layer layer))
-      stylesheet
-end
+    incr source_order;
+    rule :: acc
+  in
+  let rec statement current_layer acc =
+    let open Stylesheet in
+    function
+    | Rule rule ->
+        let acc =
+          List.fold_left
+            (fun acc decl -> add current_layer decl acc)
+            acc rule.declarations
+        in
+        List.fold_left (statement current_layer) acc rule.nested
+    | Declarations declarations ->
+        List.fold_left
+          (fun acc decl -> add current_layer decl acc)
+          acc declarations
+    | Layer (name, block) ->
+        let current_layer =
+          match name with Some _ -> name | None -> current_layer
+        in
+        List.fold_left (statement current_layer) acc block
+    | Media (_, block)
+    | Supports (_, block)
+    | Moz_document (_, block)
+    | When (_, block)
+    | Else (_, block)
+    | Starting_style block
+    | Origin (_, block) ->
+        List.fold_left (statement current_layer) acc block
+    | Container (_, _, block) | Scope (_, _, block) ->
+        List.fold_left (statement current_layer) acc block
+    | _ -> acc
+  in
+  List.fold_left (statement None) [] stylesheet
+  |> List.filter (fun (rule : Context.cascade_rule) ->
+      layer_known ~layer_order rule.layer)
+
+let rec eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
+  let open Stylesheet in
+  function
+  | Rule rule ->
+      Rule
+        (eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer ctx
+           rule)
+  | Declarations declarations ->
+      Declarations
+        (List.map
+           (eval_declaration ~layer_order ?layer:context_layer ctx)
+           declarations)
+  | Layer (name, block) ->
+      let current_layer =
+        match name with Some _ -> name | None -> context_layer
+      in
+      let ctx =
+        match ctx_for_layer with Some f -> f current_layer | None -> ctx
+      in
+      Layer
+        ( name,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Media (condition, block) ->
+      Media
+        ( condition,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Container (name, condition, block) ->
+      Container
+        ( name,
+          condition,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Supports (condition, block) ->
+      Supports
+        ( condition,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Moz_document (conditions, block) ->
+      Moz_document
+        ( conditions,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | When (condition, block) ->
+      When
+        ( condition,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Else (condition, block) ->
+      Else
+        ( condition,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Starting_style block ->
+      Starting_style
+        (List.map
+           (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+           block)
+  | Origin (origin, block) ->
+      Origin
+        ( origin,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Scope (start, end_, block) ->
+      Scope
+        ( start,
+          end_,
+          List.map
+            (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+            block )
+  | Keyframes (name, frames) ->
+      let eval_frame frame =
+        {
+          frame with
+          keyframe_declarations =
+            List.map
+              (eval_declaration ~layer_order ?layer:context_layer ctx)
+              frame.keyframe_declarations;
+        }
+      in
+      Keyframes (name, List.map eval_frame frames)
+  | Webkit_keyframes (name, frames) ->
+      let eval_frame frame =
+        {
+          frame with
+          keyframe_declarations =
+            List.map
+              (eval_declaration ~layer_order ?layer:context_layer ctx)
+              frame.keyframe_declarations;
+        }
+      in
+      Webkit_keyframes (name, List.map eval_frame frames)
+  | Moz_keyframes (name, frames) ->
+      let eval_frame frame =
+        {
+          frame with
+          keyframe_declarations =
+            List.map
+              (eval_declaration ~layer_order ?layer:context_layer ctx)
+              frame.keyframe_declarations;
+        }
+      in
+      Moz_keyframes (name, List.map eval_frame frames)
+  | Page (selector, declarations) ->
+      Page
+        ( selector,
+          List.map
+            (eval_declaration ~layer_order ?layer:context_layer ctx)
+            declarations )
+  | Position_try (name, declarations) ->
+      Position_try
+        ( name,
+          List.map
+            (eval_declaration ~layer_order ?layer:context_layer ctx)
+            declarations )
+  | Viewport _ as statement -> statement
+  | Supports_condition (name, declarations) ->
+      Supports_condition
+        ( name,
+          List.map
+            (eval_declaration ~layer_order ?layer:context_layer ctx)
+            declarations )
+  | Page_with_margins (selector, descriptors, margins) ->
+      Page_with_margins
+        ( selector,
+          List.map
+            (eval_declaration ~layer_order ?layer:context_layer ctx)
+            descriptors,
+          List.map
+            (eval_page_margin_rule ~layer_order ?layer:context_layer ctx)
+            margins )
+  | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
+    | Font_face _ | Font_palette_values _ | View_transition _
+    | Unknown_at_rule _ ) as statement ->
+      statement
+
+and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer ctx rule
+    =
+  {
+    rule with
+    Stylesheet.declarations =
+      List.map
+        (eval_declaration ~layer_order ?layer:context_layer ctx)
+        rule.Stylesheet.declarations;
+    nested =
+      List.map
+        (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
+        rule.nested;
+  }
+
+let eval_rule ?layer_order ?layer ctx rule =
+  let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
+  let layer = match layer with Some _ -> layer | None -> ctx.Context.layer in
+  eval_rule_with_ctx ~layer_order ?layer
+    { ctx with Context.layer_order; layer }
+    rule
+
+let eval_stylesheet ?layer_order ?layer ctx stylesheet =
+  let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
+  let layer = match layer with Some _ -> layer | None -> ctx.Context.layer in
+  let cascade_rules = collect_cascade_rules ~layer_order stylesheet in
+  let ctx_for_layer layer =
+    {
+      ctx with
+      Context.layer_order;
+      layer;
+      Context.cascade_rules = Some cascade_rules;
+    }
+  in
+  List.map
+    (eval_statement ~ctx_for_layer ~layer_order ?layer (ctx_for_layer layer))
+    stylesheet
 
 module Variables = Variables
 module Optimize = Optimize
@@ -418,13 +430,6 @@ let parse_background_image s =
     let imgs = Properties.read_background_images r in
     if Cursor.is_done r then Some imgs else None
   with Cursor.Parse_error _ | Invalid_argument _ -> None
-
-let syntax_fallback = Values.syntax_fallback
-let custom_value_ident = Variables.custom_value_ident
-let custom_value_var_empty_fallback = Variables.custom_value_var_empty_fallback
-let string_of_custom_value = Variables.string_of_custom_value
-let string_of_number_percentage = Values.string_of_number_percentage
-let string_of_kind_value = Properties.string_of_kind_value
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)

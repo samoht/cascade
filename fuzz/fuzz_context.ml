@@ -274,9 +274,9 @@ let eval_ctx ?viewport_height buf =
     ~container_width:(Px container_width) ()
 
 let stylesheet_of_string css =
-  try Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css)
-  with Css.Cursor.Parse_error err ->
-    fail (Fmt.str "stylesheet did not parse: %s" (Css.Error.to_string err))
+  try Css.Stylesheet.read_stylesheet (Cursor.of_string css)
+  with Cursor.Parse_error err ->
+    fail (Fmt.str "stylesheet did not parse: %s" (Error.to_string err))
 
 let fuzz_stylesheet buf =
   pick
@@ -640,8 +640,8 @@ let test_eval_idempotent buf =
       buf
   in
   let decl = fuzz_decl buf in
-  let once = Css.Declaration.eval ctx decl in
-  let twice = Css.Declaration.eval ctx once in
+  let once = Css.eval_declaration ctx decl in
+  let twice = Css.eval_declaration ctx once in
   check_eval_shape "eval idempotency shape" decl once;
   check_same_decl "eval idempotency" once twice
 
@@ -654,8 +654,8 @@ let test_eval_context_monotonicity buf =
       buf
   in
   let decl = fuzz_decl buf in
-  let direct = Css.Declaration.eval strong decl in
-  let staged = Css.Declaration.eval strong (Css.Declaration.eval weak decl) in
+  let direct = Css.eval_declaration strong decl in
+  let staged = Css.eval_declaration strong (Css.eval_declaration weak decl) in
   check_eval_shape "eval context monotonicity direct shape" decl direct;
   check_eval_shape "eval context monotonicity staged shape" decl staged;
   check_same_decl "eval context monotonicity" direct staged
@@ -668,7 +668,7 @@ let test_eval_conservativity buf =
       buf
   in
   let decl = conservative_decl buf in
-  let actual = Css.Declaration.eval ctx decl in
+  let actual = Css.eval_declaration ctx decl in
   check_eval_shape "eval conservativity shape" decl actual;
   check_same_decl "eval conservativity" decl actual
 
@@ -680,7 +680,7 @@ let test_full_context_observables buf =
       buf
   in
   let decl = computable_decl buf in
-  let actual = Css.Declaration.eval ctx decl in
+  let actual = Css.eval_declaration ctx decl in
   check_eval_shape "eval full-context conservativity shape" decl actual;
   let rendered = pp_decl actual in
   if contains_residual rendered then
@@ -697,15 +697,15 @@ let test_layered_eval_laws buf =
       buf
   in
   let decl = fuzz_layered_decl buf in
-  let once = Css.Declaration.eval weak ~layer_order ~layer:"utilities" decl in
-  let twice = Css.Declaration.eval weak ~layer_order ~layer:"utilities" once in
+  let once = Css.eval_declaration weak ~layer_order ~layer:"utilities" decl in
+  let twice = Css.eval_declaration weak ~layer_order ~layer:"utilities" once in
   check_eval_shape "layered eval idempotency shape" decl once;
   check_same_decl "layered eval idempotency" once twice;
   let direct =
-    Css.Declaration.eval strong ~layer_order ~layer:"utilities" decl
+    Css.eval_declaration strong ~layer_order ~layer:"utilities" decl
   in
   let staged =
-    Css.Declaration.eval strong ~layer_order ~layer:"utilities" once
+    Css.eval_declaration strong ~layer_order ~layer:"utilities" once
   in
   check_eval_shape "layered eval context monotonicity direct shape" decl direct;
   check_eval_shape "layered eval context monotonicity staged shape" decl staged;
@@ -720,11 +720,11 @@ let test_stylesheet_eval_laws buf =
       buf
   in
   let stylesheet = fuzz_stylesheet buf in
-  let once = Css.Stylesheet.eval weak stylesheet in
-  let twice = Css.Stylesheet.eval weak once in
+  let once = Css.eval_stylesheet weak stylesheet in
+  let twice = Css.eval_stylesheet weak once in
   check_same_stylesheet "stylesheet eval idempotency" once twice;
-  let direct = Css.Stylesheet.eval strong stylesheet in
-  let staged = Css.Stylesheet.eval strong once in
+  let direct = Css.eval_stylesheet strong stylesheet in
+  let staged = Css.eval_stylesheet strong once in
   check_same_stylesheet "stylesheet eval context monotonicity" direct staged
 
 let suite =

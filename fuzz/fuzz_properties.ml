@@ -23,21 +23,21 @@ let inventory_properties =
   Cascade_spec_inventory.Property_grammar.property_names
 
 let check_reader reader printer input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
     try Some (reader r)
-    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
   with
   | None -> ()
   | Some value -> (
       let once = Css.Pp.to_string ~minify:true printer value in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
         try Some (reader r2)
-        with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
       with
       | None -> ()
-      | Some reparsed when Css.Cursor.is_done r2 ->
+      | Some reparsed when Cursor.is_done r2 ->
           let twice = Css.Pp.to_string ~minify:true printer reparsed in
           if once <> twice then
             fail
@@ -47,29 +47,29 @@ let check_reader reader printer input =
           fail (Fmt.str "serialized property left trailing input: %S" once))
 
 let reject_reader reader property input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
     try Some (reader r)
-    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
   with
   | None -> ()
-  | Some _ when Css.Cursor.is_done r ->
+  | Some _ when Cursor.is_done r ->
       fail (Fmt.str "%s invalid value parsed: %S" property input)
   | Some _ -> ()
 
 let check_reader_crash_safety reader printer input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
     try Some (reader r)
-    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
   with
   | None -> ()
   | Some value ->
       let once = Css.Pp.to_string ~minify:true printer value in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       ignore
         (try Some (reader r2)
-         with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None)
+         with Cursor.Parse_error _ | Reader.Parse_error _ -> None)
 
 let property_vectors =
   [
@@ -635,7 +635,7 @@ let test_inventory_css_wide_generation buf =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
   in
   let input = property ^ ":" ^ keyword in
-  let c = Css.Cursor.of_string input in
+  let c = Cursor.of_string input in
   match Css.Declaration.read_declaration c with
   | None ->
       fail
@@ -645,7 +645,7 @@ let test_inventory_css_wide_generation buf =
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
-      let c2 = Css.Cursor.of_string serialized in
+      let c2 = Cursor.of_string serialized in
       match Css.Declaration.read_declaration c2 with
       | Some reparsed
         when Css.Declaration.string_of_declaration ~minify:true reparsed
@@ -659,8 +659,8 @@ let test_inventory_css_wide_generation buf =
                input serialized))
 
 let parse_declaration input =
-  let c = Css.Cursor.of_string input in
-  try Css.Declaration.read_declaration c with Css.Cursor.Parse_error _ -> None
+  let c = Cursor.of_string input in
+  try Css.Declaration.read_declaration c with Cursor.Parse_error _ -> None
 
 let assert_decl_roundtrip label input =
   match parse_declaration input with

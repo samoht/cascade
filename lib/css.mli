@@ -14,8 +14,9 @@
     The main notions are:
     - A {!type:declaration} is a property/value pair.
     - A rule couples a selector with declarations.
-    - A {!type:t} is a stylesheet (sequence of rules and at-rules; internal
-      representation is not exposed).
+    - A {!type:t} is a stylesheet, built with the facade helpers here or with
+      the lower-level {!module:Stylesheet} AST API when direct inspection is
+      useful.
     - Values are typed (e.g., {!type:length}, {!type:color}); invalid constructs
       raise [Invalid_argument].
 
@@ -44,43 +45,11 @@
     to_string (v [ root; card ])
     ]}
 
-    Interface
-    - Selectors and rules: {!section:css_selectors}, {!section:css_rules},
-      {!section:at_rules}
-    - Values and declarations: {!section:values}
-    - Property groups: see sections below
-    - Printing and optimization: {!section:rendering}, {!section:optimization}
-
-    {b Core Concepts} - Core CSS system setup and construction:
-    - {!section:css_selectors} - CSS Selectors
-    - {!section:css_rules} - CSS Rules and Stylesheets
-    - {!section:at_rules} - At-Rules
-    - {!section:stylesheet_construction} - Stylesheet Construction
-
-    {b Declarations} - Core value types and declaration building:
-    - {!section:core_types} - Core Types & Calculations
-    - {!section:values} - CSS Values & Units
-
-    {b Property Categories} - Organized CSS properties by functionality:
-    - {!section:box_model} - Box Model & Sizing
-    - {!section:display_positioning} - Display & Positioning
-    - {!section:flexbox} - Flexbox Layout
-    - {!section:grid} - Grid Layout
-    - {!section:logical_properties} - Logical Properties
-    - {!section:colors_backgrounds} - Colors & Backgrounds
-    - {!section:typography} - Typography
-    - {!section:borders_outlines} - Borders & Outlines
-    - {!section:transforms_animations} - Transforms & Animations
-    - {!section:visual_effects} - Visual Effects
-    - {!section:interaction} - User Interaction
-
-    {b Printing & Optimization} - CSS output and performance:
-    - {!section:rendering} - Printing
-    - {!section:optimization} - Optimization
-
-    {b Advanced Features} - Specialized functionality:
-    - {!section:vendor_specific} - Vendor Prefixes & Legacy Support
-    - {!section:custom_properties} - Custom Properties API
+    Start with {!val:rule}, {!val:media}, {!val:container}, {!val:supports},
+    {!val:v}, and {!val:to_string}. Property helpers are grouped by CSS feature
+    below. Parser internals such as cursors, tokens and component values are
+    available from the library root, for example {!module:Cascade.Cursor} and
+    {!module:Cascade.Parser}, not through [Css].
 
     See {:https://www.w3.org/Style/CSS/specs.en.html W3C CSS Specifications} and
     {:https://developer.mozilla.org/en-US/docs/Web/CSS MDN CSS Documentation}.
@@ -90,14 +59,29 @@
 
     Core CSS system setup and construction tools for building stylesheets. *)
 
-(** {2:css_selectors CSS Selectors}
+(** {2:feature_modules Feature Modules}
 
-    Structured representation of CSS selectors for targeting HTML elements.
-
-    See {:https://www.w3.org/TR/selectors-4/ CSS Selectors Level 4}. *)
+    The facade re-exports the CSS-facing modules users normally combine with the
+    top-level helpers. These are aliases, so odoc links to the focused module
+    page instead of duplicating each full signature here. *)
 
 module Selector = Selector
 module Context = Context
+module Pp = Pp
+module Values = Values
+module Declaration = Declaration
+module Properties = Properties
+module Variables = Variables
+module Optimize = Optimize
+module Stylesheet = Stylesheet
+module Media = Media
+module Container = Container
+module Supports = Supports
+module Keyframe = Keyframe
+module Font_face = Font_face
+
+(** Parser internals live at the library root ([Cascade.Cursor],
+    [Cascade.Parser], [Cascade.Token], ...), not under [Css]. *)
 
 (** {2:css_rules CSS Rules and Stylesheets}
 
@@ -185,6 +169,43 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
 (** [origin_importance_rank ~important origin] returns the cascade precedence
     rank for the origin/importance criterion. Larger ranks have higher
     precedence. *)
+
+val eval_declaration :
+  ?layer_order:string list ->
+  ?layer:string ->
+  Context.t ->
+  declaration ->
+  declaration
+(** [eval_declaration ctx decl] rewrites [decl] to a more-defined declaration
+    under [ctx], preserving unresolved subtrees as CSS syntax. *)
+
+val eval_value :
+  ?layer_order:string list ->
+  ?layer:string ->
+  Context.t ->
+  'a Properties.property ->
+  'a ->
+  declaration
+(** [eval_value ctx property value] evaluates [value] in the CSS declaration
+    context of [property], returning the evaluated declaration. *)
+
+val eval_rule :
+  ?layer_order:string list ->
+  ?layer:string ->
+  Context.t ->
+  Stylesheet.rule ->
+  Stylesheet.rule
+(** [eval_rule ctx rule] evaluates every declaration in [rule] and its nested
+    statements. *)
+
+val eval_stylesheet :
+  ?layer_order:string list ->
+  ?layer:string ->
+  Context.t ->
+  Stylesheet.t ->
+  Stylesheet.t
+(** [eval_stylesheet ctx stylesheet] evaluates every declaration in
+    [stylesheet]. *)
 
 val import_layer_name : Stylesheet.import_rule -> string option
 (** [import_layer_name rule] returns the layer name declared by an [@import]
@@ -587,6 +608,17 @@ type 'a calc =
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
 
+type component_values = Component.t list
+(** Parsed CSS component values preserved for fallback and invalid-value
+    round-tripping. Prefer typed values in normal user code. *)
+
+type invalid_value = component_values
+(** Spec-invalid value fragments preserved until optimization decides whether to
+    drop the containing declaration. *)
+
+type custom_value = component_values
+(** CSS custom-property token stream. *)
+
 type 'a fallback =
   | Empty  (** Empty fallback: var(--name,) *)
   | Empty2
@@ -594,7 +626,7 @@ type 'a fallback =
           likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
-  | Syntax_fallback of Component.t list
+  | Syntax_fallback of component_values
       (** Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
@@ -997,7 +1029,7 @@ type length_percentage =
   | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
-  | Invalid of Component.t list  (** Spec-invalid input preserved verbatim. *)
+  | Invalid of invalid_value  (** Spec-invalid input preserved verbatim. *)
 
 (** CSS number or percentage values (for properties like scale, brightness) *)
 type number_percentage =
@@ -1200,7 +1232,7 @@ type angle =
   | Rem of angle * angle
   | Calc of angle calc  (** Calculated angle expressions *)
   | Var of angle var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** Spec-invalid input preserved verbatim for round-trip; dropped by
           [Optimize.drop_invalid] under [--minify]. *)
 
@@ -4068,7 +4100,7 @@ type font_family =
   (* List of fonts for composition *)
   | List of font_family list
   | Var of font_family var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** CSS-wide keyword mixed in a [<custom-ident>#] list, preserved verbatim
           and dropped by [Optimize.drop_invalid] under minify. *)
 
@@ -5711,9 +5743,6 @@ val background_image_var_none : string -> background_image
 (** [background_image_var_none name] creates a background_image var reference
     with no fallback, i.e., [var(--name)]. Used for mask gradient utilities. *)
 
-val read_background_image : Cursor.t -> background_image
-(** [read_background_image t] parses a background-image value from [t]. *)
-
 val minify_color : color -> color
 (** [minify_color c] shortens hex colors (e.g., [#0088cc] to [#08c]) and
     converts named colors to shorter hex equivalents when possible. *)
@@ -5811,7 +5840,7 @@ type clip_path =
   | Revert
   | Revert_layer
   | Var of clip_path var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** Spec-invalid [<basic-shape>] preserved verbatim. *)
 
 val clip : clip -> declaration
@@ -6883,7 +6912,7 @@ type _ kind =
   | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
   | Opacity : opacity kind
-  | Value : Component.t list kind
+  | Value : custom_value kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
@@ -7312,66 +7341,6 @@ val pp_align_items : align_items Pp.t
 val pp_justify_content : justify_content Pp.t
 (** [pp_justify_content] is the pretty printer for justify-content values. *)
 
-module Pp = Pp
-(** Printer *)
-
-(**/**)
-
-module Reader = Reader
-module Loc = Loc
-module Token = Token
-module Lexer = Lexer
-module Component = Component
-module Parser = Parser
-module Cursor = Cursor
-module Sort = Sort
-module Error = Error
-module Values = Values
-
-module Properties : sig
-  include module type of Properties
-
-  val eval_value :
-    ?layer_order:string list ->
-    ?layer:string ->
-    Context.t ->
-    'a property ->
-    'a ->
-    declaration
-  (** [eval_value ctx property value] evaluates [value] in the CSS declaration
-      context of [property], returning the evaluated declaration. *)
-end
-
-module Declaration : sig
-  include module type of Declaration
-
-  val eval :
-    ?layer_order:string list ->
-    ?layer:string ->
-    Context.t ->
-    declaration ->
-    declaration
-  (** [eval ctx decl] rewrites [decl] to a more-defined declaration under [ctx],
-      preserving unresolved subtrees as CSS syntax. *)
-end
-
-module Variables = Variables
-module Optimize = Optimize
-
-module Stylesheet : sig
-  include module type of Stylesheet
-
-  val eval_rule :
-    ?layer_order:string list -> ?layer:string -> Context.t -> rule -> rule
-  (** [eval_rule ctx rule] evaluates every declaration in [rule] and its nested
-      statements. *)
-
-  val eval : ?layer_order:string list -> ?layer:string -> Context.t -> t -> t
-  (** [eval ctx stylesheet] evaluates every declaration in [stylesheet]. *)
-end
-
-module Media = Media
-
 val media_min_width_length : length -> Media.t
 (** [media_min_width_length l] creates a [Min_width_length] media condition from
     a CSS length. Bridges the type gap between [Css.length] and [Media]'s
@@ -7397,37 +7366,3 @@ val parse_shadow : string -> shadow option
 val parse_background_image : string -> background_image list option
 (** [parse_background_image s] parses a CSS background-image value, including
     comma-separated multiple images. Returns [None] if parsing fails. *)
-
-val read_animation : Cursor.t -> animation
-(** [read_animation t] parses an animation value. *)
-
-val read_transform_origin : Cursor.t -> transform_origin
-(** [read_transform_origin t] parses a transform-origin value. *)
-
-val read_transform : Cursor.t -> transform
-(** [read_transform t] parses a transform value. *)
-
-val syntax_fallback : string -> 'a fallback
-(** [syntax_fallback s] is {!Values.syntax_fallback}. *)
-
-val custom_value_ident : string -> Component.t list
-(** [custom_value_ident name] is {!Variables.custom_value_ident}. *)
-
-val custom_value_var_empty_fallback : string -> Component.t list
-(** [custom_value_var_empty_fallback name] is
-    {!Variables.custom_value_var_empty_fallback}. *)
-
-val string_of_custom_value : Component.t list -> string
-(** [string_of_custom_value value] is {!Variables.string_of_custom_value}. *)
-
-val string_of_number_percentage : number_percentage -> string
-(** [string_of_number_percentage value] is
-    {!Values.string_of_number_percentage}. *)
-
-val string_of_kind_value : 'a kind -> 'a -> string
-(** [string_of_kind_value kind value] is {!Properties.string_of_kind_value}. *)
-
-module Container = Container
-module Supports = Supports
-module Keyframe = Keyframe
-module Font_face = Font_face

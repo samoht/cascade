@@ -155,17 +155,15 @@ let check_container_type =
 
 let check_container_shorthand ?expected input =
   let expected = Option.value ~default:input expected in
-  let c = Css.Cursor.of_string input in
+  let c = Cursor.of_string input in
   let value = read_container_shorthand c in
   let serialized = Css.Pp.to_string ~minify:true pp_container_shorthand value in
   Alcotest.(check string) (Fmt.str "container %s" input) expected serialized;
-  let expected_value =
-    read_container_shorthand (Css.Cursor.of_string expected)
-  in
+  let expected_value = read_container_shorthand (Cursor.of_string expected) in
   Alcotest.(check bool)
     (Fmt.str "container structural expected %s" input)
     true (value = expected_value);
-  let reparsed = read_container_shorthand (Css.Cursor.of_string serialized) in
+  let reparsed = read_container_shorthand (Cursor.of_string serialized) in
   Alcotest.(check bool)
     (Fmt.str "container structural roundtrip %s" input)
     true (value = reparsed)

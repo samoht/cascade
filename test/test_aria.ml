@@ -60,9 +60,9 @@ let attributes =
   ]
 
 let parse_with reader input =
-  let cursor = Css.Cursor.of_string input in
+  let cursor = Cursor.of_string input in
   let value = reader cursor in
-  Alcotest.(check bool) (input ^ " consumed") true (Css.Cursor.is_done cursor);
+  Alcotest.(check bool) (input ^ " consumed") true (Cursor.is_done cursor);
   value
 
 let test_all_attributes_roundtrip () =
@@ -117,7 +117,7 @@ let test_invalid_aria_enum_names () =
     (fun name ->
       match
         try Some (parse_with Css.Selector.read_aria_attr name)
-        with Css.Cursor.Parse_error _ -> None
+        with Cursor.Parse_error _ -> None
       with
       | None -> ()
       | Some parsed ->

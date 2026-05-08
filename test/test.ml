@@ -5,8 +5,7 @@ open Cascade
 (* Register exception printer for better Parse_error messages *)
 let () =
   Printexc.register_printer (function
-    | Css.Reader.Parse_error { message; position; context_window; callstack; _ }
-      ->
+    | Reader.Parse_error { message; position; context_window; callstack; _ } ->
         let callstack_str = String.concat " -> " callstack in
         Some
           (Fmt.str "Parse_error: %s at position %d\nContext: %s\nCallstack: %s"

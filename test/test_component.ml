@@ -4,69 +4,67 @@
 
 open Cascade
 
-let tok k = Css.Token.synthetic k
+let tok k = Token.synthetic k
 
-let wrap_block (node : Css.Component.block) :
-    Css.Component.block Css.Component.node =
-  { node; loc = Css.Loc.dummy }
+let wrap_block (node : Component.block) : Component.block Component.node =
+  { node; loc = Loc.dummy }
 
-let wrap_func (node : Css.Component.func) :
-    Css.Component.func Css.Component.node =
-  { node; loc = Css.Loc.dummy }
+let wrap_func (node : Component.func) : Component.func Component.node =
+  { node; loc = Loc.dummy }
 
 let check name cv expected =
-  Alcotest.(check string) name expected (Css.Component.to_string cv)
+  Alcotest.(check string) name expected (Component.to_string cv)
 
 let preserved_ident () =
   check "preserved ident"
-    (Css.Component.Preserved (tok (Css.Token.Ident "foo")))
+    (Component.Preserved (tok (Token.Ident "foo")))
     "<ident foo>@[0-0]"
 
 let preserved_delim () =
   check "preserved delim"
-    (Css.Component.Preserved (tok (Css.Token.Delim "+")))
+    (Component.Preserved (tok (Token.Delim "+")))
     "<delim '+'>@[0-0]"
 
 let block_curly () =
   check "curly block"
-    (Css.Component.Block
+    (Component.Block
        (wrap_block
           {
-            opening = Css.Token.Curly;
-            value = [ Css.Component.Preserved (tok (Css.Token.Ident "red")) ];
+            opening = Token.Curly;
+            value = [ Component.Preserved (tok (Token.Ident "red")) ];
             closed = true;
           }))
     "{<ident red>@[0-0]}"
 
 let block_paren () =
   check "paren block"
-    (Css.Component.Block
+    (Component.Block
        (wrap_block
           {
-            opening = Css.Token.Paren;
-            value = [ Css.Component.Preserved (tok (Css.Token.Ident "ok")) ];
+            opening = Token.Paren;
+            value = [ Component.Preserved (tok (Token.Ident "ok")) ];
             closed = true;
           }))
     "(<ident ok>@[0-0])"
 
 let block_square () =
   check "square block"
-    (Css.Component.Block
+    (Component.Block
        (wrap_block
           {
-            opening = Css.Token.Square;
-            value = [ Css.Component.Preserved (tok (Css.Token.Ident "attr")) ];
+            opening = Token.Square;
+            value = [ Component.Preserved (tok (Token.Ident "attr")) ];
             closed = true;
           }))
     "[<ident attr>@[0-0]]"
 
 let func_call () =
   check "function call"
-    (Css.Component.Func
+    (Component.Func
        (wrap_func
           {
             name = "rgb";
-            arguments = [ Css.Component.Preserved (tok (Css.Token.Ident "x")) ];
+            arguments = [ Component.Preserved (tok (Token.Ident "x")) ];
             terminated = true;
           }))
     "rgb(<ident x>@[0-0])"

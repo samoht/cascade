@@ -259,7 +259,7 @@ let test_syntax () =
 let test_read_var_reference () =
   (* Test parsing CSS var() references - just extracts name and fallback *)
   let check_var_ref input expected_name expected_fallback =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     let name, fallback = read_reference r in
     Alcotest.(check string) "variable name" expected_name name;
     Alcotest.(check (option string)) "fallback" expected_fallback fallback
@@ -282,12 +282,12 @@ let test_read_var_reference () =
 
   (* Test invalid cases *)
   let neg input =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     try
       let _ = read_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
-    | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
+    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
     | exn ->
         Alcotest.failf "Unexpected exception for '%s': %s" input
           (Printexc.to_string exn)
@@ -304,7 +304,7 @@ let test_read_var_reference () =
 
 let spec_custom_fallback_edges () =
   let check_var_ref input expected_name expected_fallback =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     let name, fallback = read_reference r in
     Alcotest.(check string) (input ^ " name") expected_name name;
     Alcotest.(check (option string))
@@ -325,12 +325,12 @@ let spec_custom_fallback_edges () =
   check_var_ref "var(--bad-string, \"unterminated)" "bad-string"
     (Some "\"unterminated)");
   let neg input =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     try
       let _ = read_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
-    | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
+    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
     | exn ->
         Alcotest.failf "Unexpected exception for '%s': %s" input
           (Printexc.to_string exn)
@@ -353,7 +353,7 @@ let spec_custom_computed_edges () =
   check_context "--registered" "10px";
   check_context "--invalid-fallback" "var(--missing, 10px)";
   let check_var_ref input expected_name expected_fallback =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     let name, fallback = read_reference r in
     Alcotest.(check string) (input ^ " name") expected_name name;
     Alcotest.(check (option string))

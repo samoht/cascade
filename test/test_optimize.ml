@@ -38,12 +38,12 @@ let color_value_of_decl decl =
 let _check_value name pp reader ?expected input =
   let expected = Option.value ~default:input expected in
   (* First pass: parse + print equals expected (minified) *)
-  let t = Css.Reader.of_string input in
+  let t = Reader.of_string input in
   let v = reader t in
   let s = to_string pp v in
   check string (Fmt.str "%s %s" name input) expected s;
   (* Roundtrip stability: read printed output and ensure idempotent printing *)
-  let t2 = Css.Reader.of_string s in
+  let t2 = Reader.of_string s in
   let v2 = reader t2 in
   let s2 = to_string pp v2 in
   check string (Fmt.str "roundtrip %s %s" name input) s s2
@@ -258,9 +258,9 @@ let test_group_complex_selectors () =
      [class~=not-prose] *))"
   in
 
-  let sel1 = Css.Selector.read (Css.Cursor.of_string sel1_str) in
-  let sel2 = Css.Selector.read (Css.Cursor.of_string sel2_str) in
-  let sel3 = Css.Selector.read (Css.Cursor.of_string sel3_str) in
+  let sel1 = Css.Selector.read (Cursor.of_string sel1_str) in
+  let sel2 = Css.Selector.read (Cursor.of_string sel2_str) in
+  let sel3 = Css.Selector.read (Cursor.of_string sel3_str) in
 
   let rule1 : Css.Stylesheet.rule =
     { selector = sel1; declarations = decls; nested = []; merge_key = None }
@@ -667,7 +667,7 @@ let test_tw_conditionals_layer () =
      layer, but the utility layer remains the boundary. *)
   let input =
     Css.Stylesheet.read
-      (Css.Cursor.of_string
+      (Cursor.of_string
          "@layer utilities{@supports \
           (display:grid){.grid{display:grid}}@supports \
           (display:grid){.gap{gap:1rem}}@container (inline-size > \
@@ -689,7 +689,7 @@ let test_tw_conditionals_split () =
      variant rules to preserve source-order ties. *)
   let input =
     Css.Stylesheet.read
-      (Css.Cursor.of_string
+      (Cursor.of_string
          "@layer utilities{@media \
           (min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media \
           (min-width:48rem){.md\\:grid{display:grid}}@supports \
@@ -1533,7 +1533,7 @@ let c61_no_named_atrule_merge () =
      their source positions instead of treating them as transparent
      separators. *)
   let check_case label css expected =
-    let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
     let optimized = Css.Optimize.stylesheet input in
     let output =
       Css.Stylesheet.to_string ~minify:true optimized |> String.trim
@@ -1561,7 +1561,7 @@ let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
      is true when @scope appears as a nested group rule inside a style rule. *)
   let check_case label css expected =
-    let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
     let optimized = Css.Optimize.stylesheet input in
     let output =
       Css.Stylesheet.to_string ~minify:true optimized |> String.trim
@@ -1588,8 +1588,7 @@ let c61_no_pseudo_group () =
      can move source-order ties for elements matching both selectors. *)
   let input =
     Css.Stylesheet.read
-      (Css.Cursor.of_string
-         ".btn{color:red}.btn:hover{color:blue}.link{color:red}")
+      (Cursor.of_string ".btn{color:red}.btn:hover{color:blue}.link{color:red}")
   in
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
@@ -1606,7 +1605,7 @@ let c61_no_conditional_cli_merge () =
      (inline-size > \
      30em){.card{margin:1rem}}.card{border-color:blue}@starting-style{.card{opacity:0}}.card{background-color:white}"
   in
-  let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+  let input = Css.Stylesheet.read (Cursor.of_string css) in
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
@@ -2036,7 +2035,7 @@ let c63_keyframes_ignore_important () =
      @keyframes are ignored. *)
   let stylesheet =
     Css.Stylesheet.read
-      (Css.Cursor.of_string
+      (Cursor.of_string
          "@keyframes fade{from{opacity:0!important}to{opacity:1}}")
   in
   match stylesheet with

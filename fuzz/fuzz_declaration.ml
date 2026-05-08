@@ -17,8 +17,8 @@ let byte_at buf i =
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
 let parse_declaration input =
-  let r = Css.Cursor.of_string input in
-  try Css.Declaration.read_declaration r with Css.Cursor.Parse_error _ -> None
+  let r = Cursor.of_string input in
+  try Css.Declaration.read_declaration r with Cursor.Parse_error _ -> None
 
 let serialize decl = Css.Declaration.string_of_declaration ~minify:true decl
 
@@ -88,7 +88,7 @@ let test_custom_property_serialization_shape buf =
 
 let test_block_declarations_serialize_individually buf =
   let input = "{color:red;" ^ cssish buf ^ ";margin:1px}" in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let declarations = Css.Declaration.read_block r in
     List.iter
@@ -101,7 +101,7 @@ let test_block_declarations_serialize_individually buf =
                  serialized)
         | Some _ -> ())
       declarations
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 let test_url_decl_local buf =
   let url =

@@ -19,7 +19,7 @@ let check_specified_value name css expected =
     (Css.Declaration.string_of_value ~minify:false decl)
 
 let check_declarations input expected_count =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let decls = read_declarations r in
   Alcotest.check int
     (Fmt.str "declarations count %s" input)
@@ -27,7 +27,7 @@ let check_declarations input expected_count =
   decls
 
 let check_block input expected_count =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let decls = read_block r in
   Alcotest.check int
     (Fmt.str "block count %s" input)
@@ -177,18 +177,18 @@ let missing_semicolon () =
     "width: calc(100% - 10px)"
 
 let empty_input () =
-  let r = Css.Cursor.of_string "" in
+  let r = Cursor.of_string "" in
   let decls = read_declarations r in
   Alcotest.check int "empty input" 0 (List.length decls);
 
-  let r = Css.Cursor.of_string "   " in
+  let r = Cursor.of_string "   " in
   let decls = read_declarations r in
   Alcotest.check int "whitespace only" 0 (List.length decls)
 
 let property_name () =
   (* Test read_property_name directly *)
   let test_prop_name input expected =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     let name = read_property_name r in
     Alcotest.check string
       (Fmt.str "property name %s" input)
@@ -204,7 +204,7 @@ let property_name () =
 let property_value () =
   (* Test read_property_value directly *)
   let test_prop_value input expected =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     let value = read_property_value r in
     Alcotest.check string (Fmt.str "property value %s" input) expected value
   in
@@ -240,21 +240,21 @@ let expect_parse_error name f =
     f ();
     Alcotest.failf "%s: expected Parse_error but none was raised" name
   with
-  | Css.Cursor.Parse_error _ -> ()
-  | Css.Reader.Parse_error _ -> ()
+  | Cursor.Parse_error _ -> ()
+  | Reader.Parse_error _ -> ()
 
 let error_missing_colon () =
-  let r = Css.Cursor.of_string "color red;" in
+  let r = Cursor.of_string "color red;" in
   expect_parse_error "missing colon" (fun () -> ignore (read_declaration r))
 
 let error_stray_semicolon () =
-  let r = Css.Cursor.of_string "; color: red;" in
+  let r = Cursor.of_string "; color: red;" in
   expect_parse_error "stray semicolon" (fun () -> ignore (read_declaration r))
 
 let error_unclosed_block () =
   (* CSS Syntax 5.3.7 auto-closes unterminated blocks at EOF, so this now parses
      with an implicit [}]. *)
-  let r = Css.Cursor.of_string "{ color: red;" in
+  let r = Cursor.of_string "{ color: red;" in
   ignore (read_block r : Css.Declaration.declaration list)
 
 let special_cases () =
@@ -1839,16 +1839,16 @@ let property_grammar_matrix = Cascade_spec_inventory.Property_grammar.rows
 let parse_property_decl property value =
   let input = property ^ ":" ^ value in
   try
-    let c = Css.Cursor.of_string input in
+    let c = Cursor.of_string input in
     match read_declaration c with
     | None -> None
     | Some decl ->
         let serialized =
           Css.Declaration.string_of_declaration ~minify:true decl
         in
-        let c2 = Css.Cursor.of_string serialized in
+        let c2 = Cursor.of_string serialized in
         Some (input, serialized, decl, read_declaration c2)
-  with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+  with Cursor.Parse_error _ | Reader.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
   Css.Declaration.property_name reparsed = row.property
