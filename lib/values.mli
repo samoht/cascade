@@ -323,6 +323,11 @@ val pp_rgb : rgb Pp.t
 val read_rgb : Cursor.t -> rgb
 (** [read_rgb t] parses an RGB value. *)
 
+val color_has_specified_hue : color -> bool
+(** [color_has_specified_hue color] is [true] when [color] contains the obsolete
+    [specified hue] interpolation keyword. Stylesheet recovery keeps the
+    declaration for compatibility, while strict parsing reports it. *)
+
 val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
 

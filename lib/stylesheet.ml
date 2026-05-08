@@ -2526,6 +2526,14 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
           Cursor.ws r;
           let content = Cursor.braces (fun inner -> read_block inner) r in
           Layer (Some name, content))
+  | Some
+      (Component.Preserved
+         {
+           kind =
+             Token.At_keyword (("charset" | "import" | "namespace") as name);
+           _;
+         }) ->
+      Cursor.err_invalid r ("Unexpected nested at-rule: @" ^ name)
   | _ -> read_statement r
 
 and read_rule_selector r =
@@ -2749,9 +2757,152 @@ let read_statement_of_rule ?source ?meta (rule : Component.rule) :
   in
   (r, result)
 
+let rule_loc : Component.rule -> Loc.t = function
+  | Qualified { loc; _ } | At { loc; _ } -> loc
+
+let validate_partial_prelude () =
+  let charset_seen = ref false in
+  let import_seen = ref false in
+  let namespace_seen = ref false in
+  let body_seen = ref false in
+  fun loc stmt ->
+    let warning reason =
+      Some (Error.bad_value loc ~property:"stylesheet" ~reason)
+    in
+    match stmt with
+    | Charset _ ->
+        let error =
+          if !charset_seen || !import_seen || !namespace_seen || !body_seen then
+            warning "@charset must precede all rules"
+          else None
+        in
+        charset_seen := true;
+        error
+    | Layer_decl _ ->
+        if !import_seen || !namespace_seen then body_seen := true;
+        None
+    | Import _ ->
+        let error =
+          if !namespace_seen || !body_seen then
+            warning "@import must precede style rules"
+          else None
+        in
+        import_seen := true;
+        error
+    | Namespace _ ->
+        let error =
+          if !body_seen then warning "@namespace must precede style rules"
+          else None
+        in
+        namespace_seen := true;
+        error
+    | _ ->
+        body_seen := true;
+        None
+
+let validate_partial_statement loc = function
+  | Rule { selector; _ } when Selector.matches_nothing selector ->
+      Some (Error.bad_selector loc "selector matches nothing")
+  | Font_face descriptors when not (font_face_participates descriptors) ->
+      Some
+        (Error.bad_value loc ~property:"@font-face"
+           ~reason:"missing font-family or src descriptor")
+  | Font_palette_values (_, descriptors)
+    when not
+           (List.exists
+              (function Base_palette _ -> true | _ -> false)
+              descriptors) ->
+      Some
+        (Error.bad_value loc ~property:"@font-palette-values"
+           ~reason:"missing base-palette descriptor")
+  | (Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _))
+    when List.mem
+           (String.lowercase_ascii name)
+           [ "none"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+    ->
+      Some
+        (Error.bad_value loc ~property:"@keyframes"
+           ~reason:"forbidden keyframes name")
+  | _ -> None
+
+let rec statement_has_invalid_declaration = function
+  | Rule { declarations; nested; _ } ->
+      List.exists Declaration.is_invalid declarations
+      || List.exists statement_has_invalid_declaration nested
+  | Declarations decls -> List.exists Declaration.is_invalid decls
+  | Media (_, block)
+  | Container (_, _, block)
+  | Supports (_, block)
+  | Moz_document (_, block)
+  | When (_, block)
+  | Else (_, block)
+  | Layer (_, block)
+  | Starting_style block
+  | Origin (_, block)
+  | Scope (_, _, block) ->
+      List.exists statement_has_invalid_declaration block
+  | Page (_, decls) -> List.exists Declaration.is_invalid decls
+  | Page_with_margins (_, descs, margins) ->
+      List.exists Declaration.is_invalid descs
+      || List.exists
+           (fun { margin_descriptors; _ } ->
+             List.exists Declaration.is_invalid margin_descriptors)
+           margins
+  | Position_try (_, decls) | Supports_condition (_, decls) ->
+      List.exists Declaration.is_invalid decls
+  | _ -> false
+
+let validate_partial_invalid_declarations loc stmt =
+  if statement_has_invalid_declaration stmt then
+    Some
+      (Error.bad_value loc ~property:"stylesheet"
+         ~reason:"invalid declaration value")
+  else None
+
+let rec declaration_has_strict_warning = function
+  | Declaration.Declaration { property = Properties.Color; value; _ } ->
+      Values.color_has_specified_hue value
+  | Declaration.Theme_guarded { decl; _ } -> declaration_has_strict_warning decl
+  | _ -> false
+
+let rec statement_has_strict_warning = function
+  | Rule { declarations; nested; _ } ->
+      List.exists declaration_has_strict_warning declarations
+      || List.exists statement_has_strict_warning nested
+  | Declarations decls -> List.exists declaration_has_strict_warning decls
+  | Media (_, block)
+  | Container (_, _, block)
+  | Supports (_, block)
+  | Moz_document (_, block)
+  | When (_, block)
+  | Else (_, block)
+  | Layer (_, block)
+  | Starting_style block
+  | Origin (_, block)
+  | Scope (_, _, block) ->
+      List.exists statement_has_strict_warning block
+  | Page (_, decls) -> List.exists declaration_has_strict_warning decls
+  | Page_with_margins (_, descs, margins) ->
+      List.exists declaration_has_strict_warning descs
+      || List.exists
+           (fun { margin_descriptors; _ } ->
+             List.exists declaration_has_strict_warning margin_descriptors)
+           margins
+  | Position_try (_, decls) | Supports_condition (_, decls) ->
+      List.exists declaration_has_strict_warning decls
+  | _ -> false
+
+let validate_partial_strict_warnings loc stmt =
+  if statement_has_strict_warning stmt then
+    Some
+      (Error.bad_value loc ~property:"stylesheet"
+         ~reason:"strict stylesheet warning")
+  else None
+
 let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
+  let validate_prelude = validate_partial_prelude () in
   let statements =
     List.filter_map
       (fun rule ->
@@ -2763,7 +2914,20 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
           (fun w -> warnings := w :: !warnings)
           (Cursor.drain_warnings cursor);
         match result with
-        | Ok stmt -> Some stmt
+        | Ok stmt ->
+            Option.iter
+              (fun w -> warnings := w :: !warnings)
+              (validate_prelude (rule_loc rule) stmt);
+            Option.iter
+              (fun w -> warnings := w :: !warnings)
+              (validate_partial_statement (rule_loc rule) stmt);
+            Option.iter
+              (fun w -> warnings := w :: !warnings)
+              (validate_partial_invalid_declarations (rule_loc rule) stmt);
+            Option.iter
+              (fun w -> warnings := w :: !warnings)
+              (validate_partial_strict_warnings (rule_loc rule) stmt);
+            Some stmt
         | Error e ->
             warnings := e :: !warnings;
             None)

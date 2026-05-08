@@ -4640,6 +4640,15 @@ and read_system_color_from_string keyword : color option =
   | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
   | _ -> None
 
+let rec color_has_specified_hue = function
+  | Mix { hue = Specified; _ } -> true
+  | Mix { color1; color2; _ } ->
+      color_has_specified_hue color1 || color_has_specified_hue color2
+  | Contrast_color color -> color_has_specified_hue color
+  | Light_dark (a, b) -> color_has_specified_hue a || color_has_specified_hue b
+  | Attribute (_, Some color) -> color_has_specified_hue color
+  | _ -> false
+
 let read_system_color t : system_color =
   Cursor.ws t;
   let keyword = Cursor.ident t in
