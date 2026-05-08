@@ -40,7 +40,7 @@ type any_syntax = Syntax : 'a syntax -> any_syntax
 
 (** {1 Types} *)
 
-type custom_value = Component.t list
+type nonrec custom_value = custom_value
 (** CSS custom-property token stream. *)
 
 type any_var =

@@ -1,5 +1,16 @@
 type meta = ..
 
+type component_values = Component.t list
+(** Parsed CSS component values preserved for fallback and invalid-value
+    round-tripping. *)
+
+type invalid_value = component_values
+(** Spec-invalid value fragments preserved until optimization decides whether to
+    drop the containing declaration. *)
+
+type custom_value = component_values
+(** CSS custom-property token stream. *)
+
 type 'a fallback =
   | Empty (* Empty fallback: var(--name,) *)
   | Empty2
@@ -7,7 +18,7 @@ type 'a fallback =
        a bug in tailwindcss *)
   | None (* No fallback: var(--name) *)
   | Fallback of 'a (* Value fallback: var(--name, value) *)
-  | Syntax_fallback of Component.t list
+  | Syntax_fallback of component_values
     (* Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of
       string (* Nested var fallback: var(--name, var(--fallback)) *)
@@ -325,7 +336,7 @@ type angle =
   | Rem of angle * angle
   | Calc of angle calc
   | Var of angle var
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** Spec-invalid [<angle>] input (e.g. [asin(<angle>)] - inverse trig
           takes [<number>], not [<angle>]) that upstream tools preserve
           verbatim. The pretty-printer emits the tokens unchanged; the
@@ -361,7 +372,7 @@ type length_percentage =
   | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
-  | Invalid of Component.t list
+  | Invalid of invalid_value
       (** Spec-invalid input cascade detected (e.g. [width: asin(sin(45deg))]
           - the inner reduction yields an angle, but [<length-percentage>]
             doesn't accept angles). Pretty-printer emits the tokens verbatim;
