@@ -587,6 +587,20 @@ and pp_import_supports ctx supports =
   | _ -> Supports.pp ctx supports);
   Pp.char ctx ')'
 
+and starts_with s prefix =
+  let s_len = String.length s and prefix_len = String.length prefix in
+  s_len >= prefix_len && String.sub s 0 prefix_len = prefix
+
+and import_supports_media_needs_space supports media =
+  match supports with
+  | Supports.Property decl ->
+      let supports =
+        Pp.to_string ~minify:true Supports.pp_declaration_feature decl
+      in
+      let media = Media.to_string ~minify:true media in
+      starts_with supports "--" && starts_with media "("
+  | _ -> false
+
 and pp_import_components ctx { url; layer; supports; media } =
   Pp.sp ctx ();
   pp_import_url ctx url;
@@ -594,7 +608,10 @@ and pp_import_components ctx { url; layer; supports; media } =
   Option.iter (pp_import_supports ctx) supports;
   Option.iter
     (fun media ->
-      Pp.sp ctx ();
+      (match supports with
+      | Some supports when import_supports_media_needs_space supports media ->
+          Pp.space ctx ()
+      | _ -> Pp.sp ctx ());
       Media.pp ctx media)
     media
 
