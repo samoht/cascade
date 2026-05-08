@@ -5,11 +5,17 @@ type component_values = Values.component_values
 type attribute_match =
   | Presence
   | Exact of string
+  | Exact_quoted of string * char
   | Whitespace_list of string
+  | Whitespace_list_quoted of string * char
   | Hyphen_list of string
+  | Hyphen_list_quoted of string * char
   | Prefix of string
+  | Prefix_quoted of string * char
   | Suffix of string
+  | Suffix_quoted of string * char
   | Substring of string
+  | Substring_quoted of string * char
 
 type combinator =
   | Descendant

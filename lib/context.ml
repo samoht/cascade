@@ -1649,25 +1649,25 @@ module Match_selector = struct
     in
     match matcher with
     | Presence -> true
-    | Exact v -> String.equal actual (normalize v)
-    | Whitespace_list v ->
+    | Exact v | Exact_quoted (v, _) -> String.equal actual (normalize v)
+    | Whitespace_list v | Whitespace_list_quoted (v, _) ->
         let v = normalize v in
         List.exists (String.equal v) (words actual)
-    | Hyphen_list v ->
+    | Hyphen_list v | Hyphen_list_quoted (v, _) ->
         let v = normalize v in
         String.equal actual v
         || String.length actual > String.length v
            && String.sub actual 0 (String.length v) = v
            && actual.[String.length v] = '-'
-    | Prefix v ->
+    | Prefix v | Prefix_quoted (v, _) ->
         let v = normalize v in
         String.length actual >= String.length v
         && String.sub actual 0 (String.length v) = v
-    | Suffix v ->
+    | Suffix v | Suffix_quoted (v, _) ->
         let v = normalize v in
         let la = String.length actual and lv = String.length v in
         la >= lv && String.sub actual (la - lv) lv = v
-    | Substring v ->
+    | Substring v | Substring_quoted (v, _) ->
         let v = normalize v in
         let la = String.length actual and lv = String.length v in
         let rec scan i =
