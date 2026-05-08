@@ -315,8 +315,8 @@ let style_leaf_body body =
           match style_strip_ws components with
           | [ name_component ] -> (
               match ident_component name_component with
-              | Some name when is_custom_property name -> Boolean name
-              | Some _ | None -> failwith "invalid style() container query")
+              | Some name -> Boolean name
+              | None -> failwith "invalid style() container query")
           | _ -> failwith "invalid style() container query"))
 
 let top_level_word s word =
