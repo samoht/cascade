@@ -19,9 +19,9 @@ let rec meta_of_declaration : declaration -> meta option = function
 let v ?(important = false) property value =
   Declaration { property; value; important }
 
-let opaque_property ?(important = false) name value =
+let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
-  v ~important (Opaque_property name) components
+  v ~important (Unknown_property name) components
 
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
    restricts the name to dashed idents: an ident-token whose first two code
@@ -839,8 +839,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Custom_property name ->
       Cursor.err_invalid t
         ("custom property read through regular property: " ^ name)
-  | Opaque_property name ->
-      Cursor.err_invalid t ("opaque property read through typed parser: " ^ name)
+  | Unknown_property name ->
+      Cursor.err_invalid t
+        ("unknown property read through typed parser: " ^ name)
   | Color -> v Color (read_color t)
   | Background_color -> v Background_color (read_color t)
   | Border_color -> v Border_color (read_color t)
@@ -1601,7 +1602,7 @@ let validate_regular_property_raw t name raw_value =
 
 (* CSS Color 5 §13 includes [specified hue], but evaluating that form needs the
    surrounding colour context. The typed colour parser rejects it; stylesheet
-   parsing preserves the declaration as an opaque colour value so author input
+   parsing preserves the declaration as an unknown colour value so author input
    still round-trips. *)
 let color_mix_uses_specified_hue arguments =
   let rec walk = function
@@ -1669,7 +1670,7 @@ let is_unsupported_color_fallback name raw_value =
 let is_unknown_property_name name =
   let r = Cursor.of_string name in
   match read_any_property r with
-  | Prop (Opaque_property _) ->
+  | Prop (Unknown_property _) ->
       Cursor.ws r;
       Cursor.is_done r
   | Prop _ -> false
@@ -1677,9 +1678,9 @@ let is_unknown_property_name name =
 
 (* The typed readers carry their own [Invalid] arms for spec-violations they
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
-   declaration-level opaque fallback only needs to handle truly unknown
+   declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
-let allows_opaque_fallback name raw_value =
+let allows_unknown_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
@@ -1693,7 +1694,7 @@ let read_font_src_declaration t raw_value =
   validate_no_extra_tokens t;
   if is_important then important decl else decl
 
-let read_opaque_property_declaration t name =
+let read_unknown_property_declaration t name =
   validate_printable_property_name t name;
   validate_complete_declaration_value t;
   reject_curly_block_value t;
@@ -1704,7 +1705,7 @@ let read_opaque_property_declaration t name =
   (match Cursor.peek_delim t with
   | Some '!' -> Cursor.err_invalid t "duplicate !important"
   | _ -> ());
-  opaque_property ~important:is_important name raw_value
+  unknown_property ~important:is_important name raw_value
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;
@@ -1713,7 +1714,7 @@ let read_typed_property_declaration t start =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
   match prop_type with
-  | Opaque_property name -> read_opaque_property_declaration t name
+  | Unknown_property name -> read_unknown_property_declaration t name
   | _ ->
       let decl = read_value prop_type t in
       validate_no_extra_tokens t;
@@ -1737,13 +1738,13 @@ let read_regular_property_declaration t : declaration =
   else
     try read_typed_property_declaration t start
     with Cursor.Parse_error _ as exn ->
-      if not (allows_opaque_fallback name raw_value) then raise exn;
+      if not (allows_unknown_fallback name raw_value) then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii (read_property_name t) in
       Cursor.ws t;
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
-      read_opaque_property_declaration t name
+      read_unknown_property_declaration t name
 
 (* CSS Nesting 1: distinguish a declaration ([<ident> : <value>]) from a nested
    rule whose selector starts with an ident ([html &:hover { ... }]). The

@@ -5386,7 +5386,7 @@ and pp_clip_path_round ctx = function
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
   | Custom_property name -> Pp.string ctx name
-  | Opaque_property name -> Pp.string ctx name
+  | Unknown_property name -> Pp.string ctx name
   | All -> Pp.string ctx "all"
   | Background_color -> Pp.string ctx "background-color"
   | Color -> Pp.string ctx "color"
@@ -16276,7 +16276,7 @@ let read_any_property t =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
-  | _ -> Prop (Opaque_property prop_name)
+  | _ -> Prop (Unknown_property prop_name)
 
 (* Helper functions for property types *)
 
@@ -17490,7 +17490,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   let pp pp_a = pp_a ctx value in
   match prop with
   | Custom_property _ -> pp pp_custom_property_value
-  | Opaque_property _ ->
+  | Unknown_property _ ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_minified value
         else Parser.to_string value

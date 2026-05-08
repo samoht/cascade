@@ -367,7 +367,7 @@ let declaration_with_components decl components =
     in
     let opaque () =
       let fallback =
-        Declaration.v (Properties.Opaque_property property)
+        Declaration.v (Properties.Unknown_property property)
           (Cursor.remaining (Cursor.of_string value))
       in
       Some

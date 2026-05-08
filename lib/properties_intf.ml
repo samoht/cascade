@@ -4079,7 +4079,7 @@ type css_wide =
 (* Property type definition *)
 type 'a property =
   | Custom_property : string -> custom_property property
-  | Opaque_property : string -> Component.t list property
+  | Unknown_property : string -> custom_value property
   | All : css_wide property
   | Background_color : color property
   | Color : color property
