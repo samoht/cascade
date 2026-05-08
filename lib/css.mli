@@ -105,10 +105,10 @@ module Context = Context
 
     See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3}. *)
 
-type declaration
-(** Abstract type for CSS declarations (property-value pairs). *)
+type declaration = Declaration.declaration
+(** The type for CSS declarations (property-value pairs). *)
 
-type statement
+type statement = Stylesheet.statement
 (** The type for CSS statements. *)
 
 type cascade_origin = Stylesheet.cascade_origin =
@@ -394,7 +394,7 @@ val as_import : statement -> Stylesheet.import_rule option
 
     Tools for building complete CSS stylesheets from rules and declarations. *)
 
-type t
+type t = Stylesheet.t
 (** The type for CSS stylesheets. *)
 
 val empty : t

@@ -10,6 +10,17 @@ open Css.Properties
 let hex_color s = Hex { hash = true; value = s }
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
+let statement_of_rule (rule : Css.Stylesheet.rule) =
+  Css.rule ~selector:rule.selector ~nested:rule.nested ?merge_key:rule.merge_key
+    rule.declarations
+
+let rule_of_statement stmt =
+  match Css.as_rule stmt with
+  | Some (selector, declarations, nested) ->
+      ({ selector; declarations; nested; merge_key = None }
+        : Css.Stylesheet.rule)
+  | None -> failwith "Expected Rule"
+
 (* Helper to check if a declaration is !important *)
 let is_important = Css.Declaration.is_important
 
@@ -270,7 +281,7 @@ let test_group_complex_selectors () =
 let count_rules stmts =
   List.fold_left
     (fun acc stmt ->
-      match stmt with Css.Stylesheet.Rule _ -> acc + 1 | _ -> acc)
+      match Css.as_rule stmt with Some _ -> acc + 1 | None -> acc)
     0 stmts
 
 let optimize_all () =
@@ -305,9 +316,7 @@ let optimize_all () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Rule rule1;
-      Css.Stylesheet.Rule rule2;
-      Css.Stylesheet.Rule rule3;
+      statement_of_rule rule1; statement_of_rule rule2; statement_of_rule rule3;
     ]
   in
 
@@ -331,8 +340,9 @@ let media_queries () =
   in
 
   let media_stmt =
-    Css.Stylesheet.Media
-      (Css.Media.of_string "screen", [ Css.Stylesheet.Rule rule ])
+    Css.media
+      ~condition:(Css.Media.of_string "screen")
+      [ statement_of_rule rule ]
   in
 
   let stylesheet = [ media_stmt ] in
@@ -342,7 +352,7 @@ let media_queries () =
   (* Check that declarations within media queries are also deduplicated *)
   let optimized_rule =
     match List.hd optimized with
-    | Css.Stylesheet.Media (_, [ Css.Stylesheet.Rule r ]) -> r
+    | Css.Stylesheet.Media (_, [ stmt ]) -> rule_of_statement stmt
     | _ -> failwith "Expected Media with Rule"
   in
   let color_count =
@@ -369,7 +379,7 @@ let layers () =
   in
 
   let layer_stmt =
-    Css.Stylesheet.Layer (Some "utilities", [ Css.Stylesheet.Rule rule ])
+    Css.Stylesheet.Layer (Some "utilities", [ statement_of_rule rule ])
   in
 
   let stylesheet = [ layer_stmt ] in
@@ -378,7 +388,8 @@ let layers () =
 
   (* Check that layer rules are optimized *)
   match List.hd optimized with
-  | Css.Stylesheet.Layer (_, [ Css.Stylesheet.Rule optimized_rule ]) ->
+  | Css.Stylesheet.Layer (_, [ stmt ]) ->
+      let optimized_rule = rule_of_statement stmt in
       let color_count =
         List.fold_left
           (fun acc decl ->
@@ -414,10 +425,8 @@ let test_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -466,12 +475,10 @@ let test_nonconsecutive_media_unmerged () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Rule rule2;
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      statement_of_rule rule2;
       (* Separator *)
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule3 ]);
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule3 ];
     ]
   in
 
@@ -508,10 +515,8 @@ let test_different_conditions_unmerged () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 64., [ Css.Stylesheet.Rule rule2 ]);
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(Css.Media.Min_width 64.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -553,12 +558,9 @@ let test_multiple_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule3 ]);
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule3 ];
     ]
   in
 
@@ -599,10 +601,8 @@ let test_media_merge_in_layers () =
 
   let layer_content =
     [
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media
-        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -633,13 +633,9 @@ let test_empty_layers_statement () =
       Css.Stylesheet.Layer
         ( Some "components",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "card";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "card")
+              [ Css.Declaration.display Flex ];
           ] );
     ]
   in
@@ -752,20 +748,12 @@ let optimize_tests =
 let test_merge_consecutive_identical () =
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "foo";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "bar";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "foo")
+        [ Css.Declaration.padding [ Px 10. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "bar")
+        [ Css.Declaration.padding [ Px 10. ] ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -777,20 +765,12 @@ let test_merge_consecutive_identical () =
 let test_no_merge_different_declarations () =
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "foo";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "bar";
-          declarations = [ Css.Declaration.padding [ Px 20. ] ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "foo")
+        [ Css.Declaration.padding [ Px 10. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "bar")
+        [ Css.Declaration.padding [ Px 20. ] ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -803,27 +783,15 @@ let test_no_merge_different_declarations () =
 let test_no_merge_non_consecutive () =
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "foo";
-          declarations = [ Css.Declaration.margin [ Px 5. ] ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "baz";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "bar";
-          declarations = [ Css.Declaration.margin [ Px 5. ] ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "foo")
+        [ Css.Declaration.margin [ Px 5. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "baz")
+        [ Css.Declaration.padding [ Px 10. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "bar")
+        [ Css.Declaration.margin [ Px 5. ] ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -837,20 +805,11 @@ let test_no_merge_non_consecutive () =
 let test_no_merge_vendor_pseudo () =
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.File_selector_button;
-          declarations = [ Css.Declaration.margin [ Px 4. ] ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "foo";
-          declarations = [ Css.Declaration.margin [ Px 4. ] ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule ~selector:Css.Selector.File_selector_button
+        [ Css.Declaration.margin [ Px 4. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "foo")
+        [ Css.Declaration.margin [ Px 4. ] ];
     ]
   in
   let optimized = stylesheet input in
@@ -866,29 +825,17 @@ let test_no_merge_vendor_pseudo () =
 let test_no_merge_with_nested () =
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "foo";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested =
-            [
-              Css.Stylesheet.Rule
-                {
-                  selector = Css.Selector.Hover;
-                  declarations = [ Css.Declaration.padding [ Px 20. ] ];
-                  nested = [];
-                  merge_key = None;
-                };
-            ];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "bar";
-          declarations = [ Css.Declaration.padding [ Px 10. ] ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "foo")
+        ~nested:
+          [
+            Css.rule ~selector:Css.Selector.Hover
+              [ Css.Declaration.padding [ Px 20. ] ];
+          ]
+        [ Css.Declaration.padding [ Px 10. ] ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "bar")
+        [ Css.Declaration.padding [ Px 10. ] ];
     ]
   in
   let optimized = stylesheet input in
@@ -916,8 +863,7 @@ let c3_shorthand_resets () =
   in
   let margin_optimized = Css.Optimize.single_rule margin_rule in
   let margin_output =
-    Css.Stylesheet.to_string ~minify:true
-      [ Css.Stylesheet.Rule margin_optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule margin_optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -940,7 +886,7 @@ let c3_shorthand_resets () =
   let background_optimized = Css.Optimize.single_rule background_rule in
   let background_output =
     Css.Stylesheet.to_string ~minify:true
-      [ Css.Stylesheet.Rule background_optimized ]
+      [ statement_of_rule background_optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -966,7 +912,7 @@ let c3_shorthand_order_edges () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -994,7 +940,7 @@ let c3_important_shorthand_expands () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -1020,7 +966,7 @@ let c61_decl_order_shorthand_boundary () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -1033,24 +979,14 @@ let c61_adjacent_shorthand_order () =
      order, because a shorthand in the later rule resets earlier longhands. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "box";
-          declarations = [ Css.Declaration.margin_left (Px 1.) ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "box";
-          declarations =
-            [
-              Css.Declaration.margin [ Px 2. ];
-              Css.Declaration.margin_left (Px 3.);
-            ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [ Css.Declaration.margin_left (Px 1.) ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [
+          Css.Declaration.margin [ Px 2. ]; Css.Declaration.margin_left (Px 3.);
+        ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1065,24 +1001,15 @@ let c61_adjacent_later_dedup () =
      reduce by source order. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "box";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "box";
-          declarations =
-            [
-              Css.Declaration.display Flex;
-              Css.Declaration.color (hex_color "0000ff");
-            ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [
+          Css.Declaration.display Flex;
+          Css.Declaration.color (hex_color "0000ff");
+        ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1098,28 +1025,12 @@ let c61_no_merge_intervening () =
      declaration after that intervening rule. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "a";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "b";
-          declarations = [ Css.Declaration.color (hex_color "00ff00") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "a";
-          declarations =
-            [ Css.Declaration.background_color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule ~selector:(Css.Selector.class_ "a")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.rule ~selector:(Css.Selector.class_ "b")
+        [ Css.Declaration.color (hex_color "00ff00") ];
+      Css.rule ~selector:(Css.Selector.class_ "a")
+        [ Css.Declaration.background_color (hex_color "0000ff") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1135,27 +1046,12 @@ let c61_no_group_nonadjacent () =
      middle selector and the later selector would observe a different winner. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "a";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "b";
-          declarations = [ Css.Declaration.color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "c";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule ~selector:(Css.Selector.class_ "a")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.rule ~selector:(Css.Selector.class_ "b")
+        [ Css.Declaration.color (hex_color "0000ff") ];
+      Css.rule ~selector:(Css.Selector.class_ "c")
+        [ Css.Declaration.color (hex_color "ff0000") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1170,32 +1066,15 @@ let c61_no_merge_atrule () =
      surrounding rules, even when the surrounding selectors match. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "a";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Media
-        ( Css.Media.Min_width 48.,
-          [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "m";
-                declarations = [ Css.Declaration.color (hex_color "00ff00") ];
-                nested = [];
-                merge_key = None;
-              };
-          ] );
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "a";
-          declarations =
-            [ Css.Declaration.background_color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule ~selector:(Css.Selector.class_ "a")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.media ~condition:(Css.Media.Min_width 48.)
+        [
+          Css.rule ~selector:(Css.Selector.class_ "m")
+            [ Css.Declaration.color (hex_color "00ff00") ];
+        ];
+      Css.rule ~selector:(Css.Selector.class_ "a")
+        [ Css.Declaration.background_color (hex_color "0000ff") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1211,17 +1090,12 @@ let c61_no_layer_media_merge () =
      queries still establishes layer order at that point. Media-query merging
      must not cross it. *)
   let media_rule selector color =
-    Css.Stylesheet.Media
-      ( Css.Media.Min_width 48.,
-        [
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ selector;
-              declarations = [ Css.Declaration.color (hex_color color) ];
-              nested = [];
-              merge_key = None;
-            };
-        ] )
+    Css.media ~condition:(Css.Media.Min_width 48.)
+      [
+        Css.rule
+          ~selector:(Css.Selector.class_ selector)
+          [ Css.Declaration.color (hex_color color) ];
+      ]
   in
   let input =
     [
@@ -1257,7 +1131,7 @@ let c61_all_property_reset_boundary () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -1272,24 +1146,16 @@ let c61_no_merge_layer () =
       Css.Stylesheet.Layer
         ( Some "reset",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "btn";
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "btn")
+              [ Css.Declaration.display Block ];
           ] );
       Css.Stylesheet.Layer
         ( Some "components",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "btn";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "btn")
+              [ Css.Declaration.display Flex ];
           ] );
     ]
   in
@@ -1306,21 +1172,13 @@ let c64_layer_order_boundary () =
      that ordering point, even when their selectors match. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "theme";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "theme")
+        [ Css.Declaration.color (hex_color "ff0000") ];
       Css.Stylesheet.Layer_decl [ "reset"; "components" ];
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "theme";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "theme")
+        [ Css.Declaration.display Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1338,21 +1196,13 @@ let c61_unlayered_outside_layer () =
       Css.Stylesheet.Layer
         ( Some "reset",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "audio";
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "audio")
+              [ Css.Declaration.display Block ];
           ] );
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "audio";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "audio")
+        [ Css.Declaration.display Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1370,32 +1220,22 @@ let c61_important_layer_order () =
       Css.Stylesheet.Layer
         ( Some "base",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "btn";
-                declarations =
-                  [
-                    Css.Declaration.important
-                      (Css.Declaration.color (hex_color "ff0000"));
-                  ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "btn")
+              [
+                Css.Declaration.important
+                  (Css.Declaration.color (hex_color "ff0000"));
+              ];
           ] );
       Css.Stylesheet.Layer
         ( Some "theme",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "btn";
-                declarations =
-                  [
-                    Css.Declaration.important
-                      (Css.Declaration.color (hex_color "0000ff"));
-                  ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "btn")
+              [
+                Css.Declaration.important
+                  (Css.Declaration.color (hex_color "0000ff"));
+              ];
           ] );
     ]
   in
@@ -1413,22 +1253,14 @@ let c61_style_attr_boundary () =
      must remain a boundary for surrounding selector-mapped rules. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.color (hex_color "ff0000") ];
       Css.Stylesheet.Declarations
         [ Css.Declaration.background_color (hex_color "00ff00") ];
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.display Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1443,22 +1275,14 @@ let c61_adjacent_specificity_grouping () =
      rather than rewriting them into a different selector shape. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "item";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector =
-            Css.Selector.compound
-              [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ];
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "item")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.rule
+        ~selector:
+          (Css.Selector.compound
+             [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ])
+        [ Css.Declaration.color (hex_color "ff0000") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1474,29 +1298,17 @@ let c61_specificity_blocks_grouping () =
      higher-specificity rule and change the neighboring tie behavior. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "item";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector =
-            Css.Selector.compound
-              [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ];
-          declarations = [ Css.Declaration.color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "active";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "item")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.rule
+        ~selector:
+          (Css.Selector.compound
+             [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ])
+        [ Css.Declaration.color (hex_color "0000ff") ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "active")
+        [ Css.Declaration.color (hex_color "ff0000") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1509,13 +1321,7 @@ let c61_no_merge_scope () =
   (* CSS Cascade level 6 adds scope proximity to the cascade sorting order.
      Scoped and unscoped rules must not be merged across the @scope boundary. *)
   let item_rule decl =
-    Css.Stylesheet.Rule
-      {
-        selector = Css.Selector.class_ "item";
-        declarations = [ decl ];
-        nested = [];
-        merge_key = None;
-      }
+    Css.rule ~selector:(Css.Selector.class_ "item") [ decl ]
   in
   let input =
     [
@@ -1524,13 +1330,9 @@ let c61_no_merge_scope () =
         ( Some ".component",
           None,
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "scoped";
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "scoped")
+              [ Css.Declaration.display Block ];
           ] );
       item_rule (Css.Declaration.display Flex);
     ]
@@ -1538,21 +1340,24 @@ let c61_no_merge_scope () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Rule before;
-   Css.Stylesheet.Scope (Some ".component", None, [ Css.Stylesheet.Rule scoped ]);
-   Css.Stylesheet.Rule after;
+   before_stmt;
+   Css.Stylesheet.Scope (Some ".component", None, [ scoped_stmt ]);
+   after_stmt;
   ] ->
+      let before = rule_of_statement before_stmt in
+      let scoped = rule_of_statement scoped_stmt in
+      let after = rule_of_statement after_stmt in
       Alcotest.(check string)
         "rule before scope is unchanged" ".item{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule before ]
         |> String.trim);
       Alcotest.(check string)
         "scoped rule is unchanged" ".scoped{display:block}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule scoped ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule scoped ]
         |> String.trim);
       Alcotest.(check string)
         "rule after scope is unchanged" ".item{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule after ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule after ]
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve rule/scope/rule structure"
 
@@ -1561,13 +1366,9 @@ let c61_distinct_scopes_preserved () =
      the same scoped style rule. Equal nested rules in different scopes must
      stay in their original scope blocks. *)
   let scoped_rule =
-    Css.Stylesheet.Rule
-      {
-        selector = Css.Selector.class_ "item";
-        declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-        nested = [];
-        merge_key = None;
-      }
+    Css.rule
+      ~selector:(Css.Selector.class_ "item")
+      [ Css.Declaration.color (hex_color "ff0000") ]
   in
   let input =
     [
@@ -1578,16 +1379,18 @@ let c61_distinct_scopes_preserved () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Scope (Some ".outer", None, [ Css.Stylesheet.Rule outer ]);
-   Css.Stylesheet.Scope (Some ".inner", None, [ Css.Stylesheet.Rule inner ]);
+   Css.Stylesheet.Scope (Some ".outer", None, [ outer_stmt ]);
+   Css.Stylesheet.Scope (Some ".inner", None, [ inner_stmt ]);
   ] ->
+      let outer = rule_of_statement outer_stmt in
+      let inner = rule_of_statement inner_stmt in
       Alcotest.(check string)
         "outer scoped rule is unchanged" ".item{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule outer ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule outer ]
         |> String.trim);
       Alcotest.(check string)
         "inner scoped rule is unchanged" ".item{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule inner ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule inner ]
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve distinct scope blocks"
 
@@ -1596,13 +1399,9 @@ let c61_distinct_scope_limits_preserved () =
      Equal rules with the same root but different limits must not be merged into
      one scope block. *)
   let scoped_rule =
-    Css.Stylesheet.Rule
-      {
-        selector = Css.Selector.class_ "item";
-        declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-        nested = [];
-        merge_key = None;
-      }
+    Css.rule
+      ~selector:(Css.Selector.class_ "item")
+      [ Css.Declaration.color (hex_color "ff0000") ]
   in
   let input =
     [
@@ -1624,32 +1423,19 @@ let c61_no_merge_supports () =
      rules, even when the surrounding selectors match. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Supports
-        ( Css.Supports.property "display" "flex",
-          [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "feature";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
-          ] );
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations =
-            [ Css.Declaration.background_color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.supports
+        ~condition:(Css.Supports.property "display" "flex")
+        [
+          Css.rule
+            ~selector:(Css.Selector.class_ "feature")
+            [ Css.Declaration.display Flex ];
+        ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.background_color (hex_color "0000ff") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1665,33 +1451,18 @@ let c61_no_merge_container () =
      among declarations that tie after a container query matches. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
-      Css.Stylesheet.Container
-        ( None,
-          Some (Css.Container.Min_width_px 48),
-          [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "feature";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
-          ] );
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "card";
-          declarations =
-            [ Css.Declaration.background_color (hex_color "0000ff") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.color (hex_color "ff0000") ];
+      Css.container ~condition:(Css.Container.Min_width_px 48)
+        [
+          Css.rule
+            ~selector:(Css.Selector.class_ "feature")
+            [ Css.Declaration.display Flex ];
+        ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.background_color (hex_color "0000ff") ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1708,30 +1479,18 @@ let c61_no_merge_starting_style () =
      as an ordering boundary for surrounding rules. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "toast";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "toast")
+        [ Css.Declaration.color (hex_color "ff0000") ];
       Css.Stylesheet.Starting_style
         [
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ "toast";
-              declarations = [ Css.Declaration.opacity (Opacity_number 0.) ];
-              nested = [];
-              merge_key = None;
-            };
+          Css.rule
+            ~selector:(Css.Selector.class_ "toast")
+            [ Css.Declaration.opacity (Opacity_number 0.) ];
         ];
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "toast";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "toast")
+        [ Css.Declaration.display Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1747,13 +1506,9 @@ let c61_import_substitution_point () =
      substitution point. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "theme";
-          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "theme")
+        [ Css.Declaration.color (hex_color "ff0000") ];
       Css.Stylesheet.Import
         {
           url = "url(\"base.css\")";
@@ -1761,13 +1516,9 @@ let c61_import_substitution_point () =
           supports = None;
           media = None;
         };
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.class_ "theme";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.class_ "theme")
+        [ Css.Declaration.display Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1884,7 +1635,7 @@ let c61_important_blocks_longhand () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -1907,7 +1658,7 @@ let c63_mixed_importance_edges () =
     in
     let optimized = Css.Optimize.single_rule rule in
     let output =
-      Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+      Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
       |> String.trim
     in
     Alcotest.(check string) label expected output
@@ -1952,30 +1703,27 @@ let c62_no_merge_author_user () =
   let origin_rule origin color =
     Css.Stylesheet.with_origin origin
       [
-        Css.Stylesheet.Rule
-          {
-            selector = Css.Selector.class_ "doc";
-            declarations = [ Css.Declaration.color (hex_color color) ];
-            nested = [];
-            merge_key = None;
-          };
+        Css.rule
+          ~selector:(Css.Selector.class_ "doc")
+          [ Css.Declaration.color (hex_color color) ];
       ]
   in
   let input = [ origin_rule User "ff0000"; origin_rule Author "0000ff" ] in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
-   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+   Css.Stylesheet.Origin (User, [ user_stmt ]);
+   Css.Stylesheet.Origin (Author, [ author_stmt ]);
   ] ->
+      let user_rule = rule_of_statement user_stmt in
+      let author_rule = rule_of_statement author_stmt in
       Alcotest.(check string)
         "user-origin rule is preserved" ".doc{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule user_rule ]
         |> String.trim);
       Alcotest.(check string)
         "author-origin rule is preserved" ".doc{color:#00f}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve user and author origin blocks"
 
@@ -1985,13 +1733,9 @@ let c62_no_merge_ua_author () =
   let origin_rule origin display =
     Css.Stylesheet.with_origin origin
       [
-        Css.Stylesheet.Rule
-          {
-            selector = Css.Selector.class_ "panel";
-            declarations = [ Css.Declaration.display display ];
-            nested = [];
-            merge_key = None;
-          };
+        Css.rule
+          ~selector:(Css.Selector.class_ "panel")
+          [ Css.Declaration.display display ];
       ]
   in
   let input =
@@ -2004,22 +1748,24 @@ let c62_no_merge_ua_author () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Origin (User_agent, [ Css.Stylesheet.Rule ua_rule ]);
-   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
-   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+   Css.Stylesheet.Origin (User_agent, [ ua_stmt ]);
+   Css.Stylesheet.Origin (User, [ user_stmt ]);
+   Css.Stylesheet.Origin (Author, [ author_stmt ]);
   ] ->
+      let ua_rule = rule_of_statement ua_stmt in
+      let user_rule = rule_of_statement user_stmt in
+      let author_rule = rule_of_statement author_stmt in
       Alcotest.(check string)
         "user-agent-origin rule is preserved" ".panel{display:block}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule ua_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule ua_rule ]
         |> String.trim);
       Alcotest.(check string)
         "user-origin rule is preserved" ".panel{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule user_rule ]
         |> String.trim);
       Alcotest.(check string)
         "author-origin rule is preserved" ".panel{display:inline-flex}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2031,13 +1777,9 @@ let c62_animation_transition_origins () =
   let origin_rule origin color =
     Css.Stylesheet.with_origin origin
       [
-        Css.Stylesheet.Rule
-          {
-            selector = Css.Selector.class_ "animated";
-            declarations = [ Css.Declaration.color (hex_color color) ];
-            nested = [];
-            merge_key = None;
-          };
+        Css.rule
+          ~selector:(Css.Selector.class_ "animated")
+          [ Css.Declaration.color (hex_color color) ];
       ]
   in
   let input =
@@ -2050,24 +1792,26 @@ let c62_animation_transition_origins () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
-   Css.Stylesheet.Origin (Animation, [ Css.Stylesheet.Rule animation_rule ]);
-   Css.Stylesheet.Origin (Transition, [ Css.Stylesheet.Rule transition_rule ]);
+   Css.Stylesheet.Origin (Author, [ author_stmt ]);
+   Css.Stylesheet.Origin (Animation, [ animation_stmt ]);
+   Css.Stylesheet.Origin (Transition, [ transition_stmt ]);
   ] ->
+      let author_rule = rule_of_statement author_stmt in
+      let animation_rule = rule_of_statement animation_stmt in
+      let transition_rule = rule_of_statement transition_stmt in
       Alcotest.(check string)
         "author-origin rule is preserved" ".animated{color:red}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim);
       Alcotest.(check string)
         "animation-origin rule is preserved" ".animated{color:#0f0}"
         (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule animation_rule ]
+           [ statement_of_rule animation_rule ]
         |> String.trim);
       Alcotest.(check string)
         "transition-origin rule is preserved" ".animated{color:#00f}"
         (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule transition_rule ]
+           [ statement_of_rule transition_rule ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2081,31 +1825,23 @@ let c62_optimize_single_origin () =
     [
       Css.Stylesheet.with_origin Author
         [
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ "doc";
-              declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-              nested = [];
-              merge_key = None;
-            };
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ "doc";
-              declarations = [ Css.Declaration.display Flex ];
-              nested = [];
-              merge_key = None;
-            };
+          Css.rule
+            ~selector:(Css.Selector.class_ "doc")
+            [ Css.Declaration.color (hex_color "ff0000") ];
+          Css.rule
+            ~selector:(Css.Selector.class_ "doc")
+            [ Css.Declaration.display Flex ];
         ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
-  | [ Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]) ] ->
+  | [ Css.Stylesheet.Origin (Author, [ stmt ]) ] ->
+      let author_rule = rule_of_statement stmt in
       Alcotest.(check string)
         "adjacent author-origin rules merge inside the same origin"
         ".doc{color:red;display:flex}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim)
   | _ -> Alcotest.fail "optimizer should preserve one optimized author origin"
 
@@ -2116,31 +1852,28 @@ let c62_no_group_across_origins () =
   let origin_rule origin selector =
     Css.Stylesheet.with_origin origin
       [
-        Css.Stylesheet.Rule
-          {
-            selector = Css.Selector.class_ selector;
-            declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-            nested = [];
-            merge_key = None;
-          };
+        Css.rule
+          ~selector:(Css.Selector.class_ selector)
+          [ Css.Declaration.color (hex_color "ff0000") ];
       ]
   in
   let input = [ origin_rule User "user"; origin_rule Author "author" ] in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
-   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+   Css.Stylesheet.Origin (User, [ user_stmt ]);
+   Css.Stylesheet.Origin (Author, [ author_stmt ]);
   ] ->
+      let user_rule = rule_of_statement user_stmt in
+      let author_rule = rule_of_statement author_stmt in
       Alcotest.(check string)
         "user-origin selector remains local to user origin" ".user{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule user_rule ]
         |> String.trim);
       Alcotest.(check string)
         "author-origin selector remains local to author origin"
         ".author{color:red}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2178,31 +1911,24 @@ let c62_imports_keep_origin () =
   let input =
     [
       Css.Stylesheet.with_origin Author
-        [
-          Css.Stylesheet.Rule before_rule;
-          import;
-          Css.Stylesheet.Rule after_rule;
-        ];
+        [ statement_of_rule before_rule; import; statement_of_rule after_rule ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
    Css.Stylesheet.Origin
-     ( Author,
-       [
-         Css.Stylesheet.Rule before;
-         Css.Stylesheet.Import _;
-         Css.Stylesheet.Rule after_;
-       ] );
+     (Author, [ before_stmt; Css.Stylesheet.Import _; after_stmt ]);
   ] ->
+      let before = rule_of_statement before_stmt in
+      let after_ = rule_of_statement after_stmt in
       Alcotest.(check string)
         "rule before import remains before import" ".theme{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule before ]
         |> String.trim);
       Alcotest.(check string)
         "rule after import remains after import" ".theme{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule after_ ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule after_ ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2251,7 +1977,7 @@ let c63_important_beats_normal () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -2275,7 +2001,7 @@ let c63_later_important_wins () =
   in
   let optimized = Css.Optimize.single_rule rule in
   let output =
-    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    Css.Stylesheet.to_string ~minify:true [ statement_of_rule optimized ]
     |> String.trim
   in
   Alcotest.(check string)
@@ -2344,24 +2070,16 @@ let c64_statement_layer_order () =
       Css.Stylesheet.Layer
         ( Some "theme",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "widget";
-                declarations = [ Css.Declaration.color (hex_color "0000ff") ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "widget")
+              [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
         ( Some "default",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "widget";
-                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "widget")
+              [ Css.Declaration.color (hex_color "ff0000") ];
           ] );
     ]
   in
@@ -2379,28 +2097,20 @@ let c64_unlayered_final_layer () =
      The optimizer must not move either rule across that layer boundary. *)
   let input =
     [
-      Css.Stylesheet.Rule
-        {
-          selector = Css.Selector.element "audio";
-          declarations = [ Css.Declaration.display Flex ];
-          nested = [];
-          merge_key = None;
-        };
+      Css.rule
+        ~selector:(Css.Selector.element "audio")
+        [ Css.Declaration.display Flex ];
       Css.Stylesheet.Layer
         ( Some "reset",
           [
-            Css.Stylesheet.Rule
-              {
-                selector =
-                  Css.Selector.compound
-                    [
-                      Css.Selector.element "audio";
-                      Css.Selector.attribute "controls" Css.Selector.Presence;
-                    ];
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:
+                (Css.Selector.compound
+                   [
+                     Css.Selector.element "audio";
+                     Css.Selector.attribute "controls" Css.Selector.Presence;
+                   ])
+              [ Css.Declaration.display Block ];
           ] );
     ]
   in
@@ -2419,32 +2129,22 @@ let c64_important_layers_reverse () =
       Css.Stylesheet.Layer
         ( Some "defaults",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "notice";
-                declarations =
-                  [
-                    Css.Declaration.important
-                      (Css.Declaration.color (hex_color "ff0000"));
-                  ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "notice")
+              [
+                Css.Declaration.important
+                  (Css.Declaration.color (hex_color "ff0000"));
+              ];
           ] );
       Css.Stylesheet.Layer
         ( Some "overrides",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "notice";
-                declarations =
-                  [
-                    Css.Declaration.important
-                      (Css.Declaration.color (hex_color "0000ff"));
-                  ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "notice")
+              [
+                Css.Declaration.important
+                  (Css.Declaration.color (hex_color "0000ff"));
+              ];
           ] );
     ]
   in
@@ -2466,40 +2166,34 @@ let c64_anonymous_layers_distinct () =
       Css.Stylesheet.Layer
         ( None,
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "private";
-                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "private")
+              [ Css.Declaration.color (hex_color "ff0000") ];
           ] );
       Css.Stylesheet.Layer
         ( None,
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "private";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "private")
+              [ Css.Declaration.display Flex ];
           ] );
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Layer (None, [ Css.Stylesheet.Rule first ]);
-   Css.Stylesheet.Layer (None, [ Css.Stylesheet.Rule second ]);
+   Css.Stylesheet.Layer (None, [ first_stmt ]);
+   Css.Stylesheet.Layer (None, [ second_stmt ]);
   ] ->
+      let first = rule_of_statement first_stmt in
+      let second = rule_of_statement second_stmt in
       Alcotest.(check string)
         "first anonymous layer remains distinct" ".private{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule first ]
         |> String.trim);
       Alcotest.(check string)
         "second anonymous layer remains distinct" ".private{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule second ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule second ]
         |> String.trim)
   | _ -> Alcotest.fail "anonymous layer blocks must remain separate"
 
@@ -2511,13 +2205,8 @@ let c64_nested_layer_distinct () =
       Css.Stylesheet.Layer
         ( Some "base",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.element "p";
-                declarations = [ Css.Declaration.max_width (Ch 70.) ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule ~selector:(Css.Selector.element "p")
+              [ Css.Declaration.max_width (Ch 70.) ];
           ] );
       Css.Stylesheet.Layer
         ( Some "framework",
@@ -2525,13 +2214,8 @@ let c64_nested_layer_distinct () =
             Css.Stylesheet.Layer
               ( Some "base",
                 [
-                  Css.Stylesheet.Rule
-                    {
-                      selector = Css.Selector.element "p";
-                      declarations = [ Css.Declaration.margin_block (Em 0.75) ];
-                      nested = [];
-                      merge_key = None;
-                    };
+                  Css.rule ~selector:(Css.Selector.element "p")
+                    [ Css.Declaration.margin_block (Em 0.75) ];
                 ] );
           ] );
     ]
@@ -2539,22 +2223,21 @@ let c64_nested_layer_distinct () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Layer (Some "base", [ Css.Stylesheet.Rule base_rule ]);
+   Css.Stylesheet.Layer (Some "base", [ base_stmt ]);
    Css.Stylesheet.Layer
      ( Some "framework",
-       [
-         Css.Stylesheet.Layer
-           (Some "base", [ Css.Stylesheet.Rule framework_base_rule ]);
-       ] );
+       [ Css.Stylesheet.Layer (Some "base", [ framework_base_stmt ]) ] );
   ] ->
+      let base_rule = rule_of_statement base_stmt in
+      let framework_base_rule = rule_of_statement framework_base_stmt in
       Alcotest.(check string)
         "top-level base layer remains top-level" "p{max-width:70ch}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule base_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule base_rule ]
         |> String.trim);
       Alcotest.(check string)
         "nested framework.base layer remains nested" "p{margin-block:.75em}"
         (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule framework_base_rule ]
+           [ statement_of_rule framework_base_rule ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2617,13 +2300,9 @@ let c64_layer_decls_import_cross () =
       Css.Stylesheet.Layer
         ( Some "default",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "audio";
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "audio")
+              [ Css.Declaration.display Block ];
           ] );
     ]
   in
@@ -2644,35 +2323,23 @@ let c64_repeated_layer_blocks_ordered () =
       Css.Stylesheet.Layer
         ( Some "base",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "button";
-                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "button")
+              [ Css.Declaration.color (hex_color "ff0000") ];
           ] );
       Css.Stylesheet.Layer
         ( Some "theme",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "button";
-                declarations = [ Css.Declaration.color (hex_color "0000ff") ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "button")
+              [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
         ( Some "base",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "button";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "button")
+              [ Css.Declaration.display Flex ];
           ] );
     ]
   in
@@ -2696,25 +2363,16 @@ let c64_child_layer_one_anonymous () =
             Css.Stylesheet.Layer
               ( Some "foo",
                 [
-                  Css.Stylesheet.Rule
-                    {
-                      selector = Css.Selector.class_ "inside";
-                      declarations =
-                        [ Css.Declaration.color (hex_color "ff0000") ];
-                      nested = [];
-                      merge_key = None;
-                    };
+                  Css.rule
+                    ~selector:(Css.Selector.class_ "inside")
+                    [ Css.Declaration.color (hex_color "ff0000") ];
                 ] );
             Css.Stylesheet.Layer
               ( Some "foo",
                 [
-                  Css.Stylesheet.Rule
-                    {
-                      selector = Css.Selector.class_ "inside";
-                      declarations = [ Css.Declaration.display Flex ];
-                      nested = [];
-                      merge_key = None;
-                    };
+                  Css.rule
+                    ~selector:(Css.Selector.class_ "inside")
+                    [ Css.Declaration.display Flex ];
                 ] );
           ] );
     ]
@@ -2750,13 +2408,9 @@ let c64_child_layer_distinct_anonymous () =
           Css.Stylesheet.Layer
             ( Some "foo",
               [
-                Css.Stylesheet.Rule
-                  {
-                    selector = Css.Selector.class_ "inside";
-                    declarations = [ color_or_display ];
-                    nested = [];
-                    merge_key = None;
-                  };
+                Css.rule
+                  ~selector:(Css.Selector.class_ "inside")
+                  [ color_or_display ];
               ] );
         ] )
   in
@@ -2770,19 +2424,20 @@ let c64_child_layer_distinct_anonymous () =
   match optimized with
   | [
    Css.Stylesheet.Layer
-     (None, [ Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule first ]) ]);
+     (None, [ Css.Stylesheet.Layer (Some "foo", [ first_stmt ]) ]);
    Css.Stylesheet.Layer
-     ( None,
-       [ Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule second ]) ] );
+     (None, [ Css.Stylesheet.Layer (Some "foo", [ second_stmt ]) ]);
   ] ->
+      let first = rule_of_statement first_stmt in
+      let second = rule_of_statement second_stmt in
       Alcotest.(check string)
         "first anonymous parent keeps its foo child" ".inside{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule first ]
         |> String.trim);
       Alcotest.(check string)
         "second anonymous parent keeps its distinct foo child"
         ".inside{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule second ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule second ]
         |> String.trim)
   | _ ->
       Alcotest.fail
@@ -2794,37 +2449,27 @@ let c64_conditional_layer_decls_nested () =
      would establish a different global layer order. *)
   let input =
     [
-      Css.Stylesheet.Media
-        ( Css.Media.of_string "(min-width:30em)",
-          [
-            Css.Stylesheet.Layer
-              ( Some "layout",
-                [
-                  Css.Stylesheet.Rule
-                    {
-                      selector = Css.Selector.class_ "title";
-                      declarations = [ Css.Declaration.font_size (Rem 2.) ];
-                      nested = [];
-                      merge_key = None;
-                    };
-                ] );
-          ] );
-      Css.Stylesheet.Supports
-        ( Css.Supports.property "display" "grid",
-          [
-            Css.Stylesheet.Layer_decl [ "grid" ];
-            Css.Stylesheet.Layer
-              ( Some "grid",
-                [
-                  Css.Stylesheet.Rule
-                    {
-                      selector = Css.Selector.class_ "title";
-                      declarations = [ Css.Declaration.display Grid ];
-                      nested = [];
-                      merge_key = None;
-                    };
-                ] );
-          ] );
+      Css.media
+        ~condition:(Css.Media.of_string "(min-width:30em)")
+        [
+          Css.layer ~name:"layout"
+            [
+              Css.rule
+                ~selector:(Css.Selector.class_ "title")
+                [ Css.Declaration.font_size (Rem 2.) ];
+            ];
+        ];
+      Css.supports
+        ~condition:(Css.Supports.property "display" "grid")
+        [
+          Css.Stylesheet.Layer_decl [ "grid" ];
+          Css.layer ~name:"grid"
+            [
+              Css.rule
+                ~selector:(Css.Selector.class_ "title")
+                [ Css.Declaration.display Grid ];
+            ];
+        ];
       Css.Stylesheet.Layer_decl [ "theme"; "layout" ];
     ]
   in
@@ -2846,24 +2491,16 @@ let c64_empty_layer_before_block () =
       Css.Stylesheet.Layer
         ( Some "components",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "card";
-                declarations = [ Css.Declaration.display Flex ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "card")
+              [ Css.Declaration.display Flex ];
           ] );
       Css.Stylesheet.Layer
         ( Some "reset",
           [
-            Css.Stylesheet.Rule
-              {
-                selector = Css.Selector.class_ "card";
-                declarations = [ Css.Declaration.display Block ];
-                nested = [];
-                merge_key = None;
-              };
+            Css.rule
+              ~selector:(Css.Selector.class_ "card")
+              [ Css.Declaration.display Block ];
           ] );
     ]
   in
@@ -2945,40 +2582,32 @@ let c65_presentational_hint_rank () =
     [
       Css.Stylesheet.with_origin Author_presentational_hint
         [
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ "legacy";
-              declarations = [ Css.Declaration.color (hex_color "ff0000") ];
-              nested = [];
-              merge_key = None;
-            };
+          Css.rule
+            ~selector:(Css.Selector.class_ "legacy")
+            [ Css.Declaration.color (hex_color "ff0000") ];
         ];
       Css.Stylesheet.with_origin Author
         [
-          Css.Stylesheet.Rule
-            {
-              selector = Css.Selector.class_ "legacy";
-              declarations = [ Css.Declaration.color (hex_color "0000ff") ];
-              nested = [];
-              merge_key = None;
-            };
+          Css.rule
+            ~selector:(Css.Selector.class_ "legacy")
+            [ Css.Declaration.color (hex_color "0000ff") ];
         ];
     ]
   in
   match Css.Optimize.stylesheet input with
   | [
-   Css.Stylesheet.Origin
-     (Author_presentational_hint, [ Css.Stylesheet.Rule hint_rule ]);
-   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+   Css.Stylesheet.Origin (Author_presentational_hint, [ hint_stmt ]);
+   Css.Stylesheet.Origin (Author, [ author_stmt ]);
   ] ->
+      let hint_rule = rule_of_statement hint_stmt in
+      let author_rule = rule_of_statement author_stmt in
       Alcotest.(check string)
         "presentational hint origin stays distinct" ".legacy{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule hint_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule hint_rule ]
         |> String.trim);
       Alcotest.(check string)
         "author origin stays distinct" ".legacy{color:#00f}"
-        (Css.Stylesheet.to_string ~minify:true
-           [ Css.Stylesheet.Rule author_rule ]
+        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule author_rule ]
         |> String.trim)
   | _ ->
       Alcotest.fail

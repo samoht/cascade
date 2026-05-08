@@ -19,9 +19,7 @@ let declaration buf i =
   | 3 -> Css.Declaration.background_color (Css.Values.hex "#0000ff")
   | _ -> Css.Declaration.margin [ Css.Values.Px (Float.of_int (byte_at buf i)) ]
 
-let rule buf i =
-  Css.Stylesheet.Rule
-    (Css.Stylesheet.rule ~selector:(selector buf i) [ declaration buf (i + 1) ])
+let rule buf i = Css.rule ~selector:(selector buf i) [ declaration buf (i + 1) ]
 
 let generated_import =
   Css.Stylesheet.Import
@@ -46,10 +44,9 @@ let generated_media buf =
         Css.Stylesheet.Supports
           ( Css.Supports.property "display" "grid",
             [
-              Css.Stylesheet.Container
-                ( Some "card",
-                  Some (Css.Container.of_string "(inline-size > 30em)"),
-                  [ rule buf 8 ] );
+              Css.container ~name:"card"
+                ~condition:(Css.Container.of_string "(inline-size > 30em)")
+                [ rule buf 8 ];
             ] );
       ] )
 
@@ -270,37 +267,32 @@ let media_rule selector color =
   Css.Stylesheet.Media
     ( Css.Media.Min_width 48.,
       [
-        Css.Stylesheet.Rule
-          (Css.Stylesheet.rule
-             ~selector:(Css.Selector.class_ selector)
-             [ Css.Declaration.color (Css.Values.hex color) ]);
+        Css.rule
+          ~selector:(Css.Selector.class_ selector)
+          [ Css.Declaration.color (Css.Values.hex color) ];
       ] )
 
 let cascade_merge_vectors =
   [
     [
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "box")
-           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "box")
-           [
-             Css.Declaration.display Css.Properties.Flex;
-             Css.Declaration.color (Css.Values.hex "#0000ff");
-           ]);
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [ Css.Declaration.color (Css.Values.hex "#ff0000") ];
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [
+          Css.Declaration.display Css.Properties.Flex;
+          Css.Declaration.color (Css.Values.hex "#0000ff");
+        ];
     ];
     [
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "box")
-           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [ Css.Declaration.color (Css.Values.hex "#ff0000") ];
       Css.Stylesheet.Layer_decl [ "reset"; "components" ];
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "box")
-           [ Css.Declaration.display Css.Properties.Flex ]);
+      Css.rule
+        ~selector:(Css.Selector.class_ "box")
+        [ Css.Declaration.display Css.Properties.Flex ];
     ];
     [
       media_rule "a" "#ff0000";
@@ -337,12 +329,8 @@ let test_cascade_shorthand_importance_vectors buf =
       ]
       buf 0
   in
-  let rule =
-    Css.Stylesheet.rule ~selector:(Css.Selector.class_ "box") declarations
-  in
-  let optimized =
-    Css.Optimize.stylesheet [ Css.Stylesheet.Rule rule ] |> minified
-  in
+  let rule = Css.rule ~selector:(Css.Selector.class_ "box") declarations in
+  let optimized = Css.Optimize.stylesheet [ rule ] |> minified in
   if
     not
       (String.contains optimized '!'
@@ -360,10 +348,9 @@ let test_positive_layer_statement_vectors buf =
     [
       Css.Stylesheet.Layer (Some (pick [ "reset"; "base" ] buf 0), []);
       Css.Stylesheet.Layer (Some (pick [ "theme"; "components" ] buf 1), []);
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "card")
-           [ Css.Declaration.display Css.Properties.Flex ]);
+      Css.rule
+        ~selector:(Css.Selector.class_ "card")
+        [ Css.Declaration.display Css.Properties.Flex ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input |> minified in
