@@ -7127,37 +7127,41 @@ val pp :
   string
 (** [pp] is {!to_string}. *)
 
-type parse_error = Error.t * string
+type parse_warning = Error.t * string
+(** A non-fatal recovery warning collected during {!of_string}: the structured
+    [Error.t] plus the filename for pretty-printing. *)
+
+type parse_error = parse_warning
+(** Alias for {!parse_warning}; under [~strict:true] the first warning is
+    promoted to a hard error. *)
 
 val pp_parse_error : parse_error -> string
 (** [pp_parse_error error] formats a parse error as a string. *)
-
-val of_string :
-  ?filename:string -> ?meta:Loc.meta_level -> string -> (t, parse_error) result
-(** [of_string ?filename ?meta css] parses a CSS string into a stylesheet in
-    fail-fast mode: the first validator failure raises and is returned as
-    [Error]. Use {!parse} to get the partially-recovered stylesheet with
-    warnings instead. [?meta] controls diagnostic richness; see
-    {!Loc.meta_level}. *)
-
-type parse_warning = Error.t * string
-(** A non-fatal recovery warning collected during {!parse}. Same shape as
-    {!parse_error}: the structured [Error.t] plus the filename for pretty-
-    printing. *)
 
 type parse_result = { stylesheet : t; warnings : parse_warning list }
 (** A partially-recovered parse: the stylesheet composed of every rule that
     typed-validated successfully, plus the warnings accumulated for rules that
     were dropped or section 5.3-recovered at the syntactic level. *)
 
+val of_string :
+  ?strict:bool ->
+  ?filename:string ->
+  ?meta:Loc.meta_level ->
+  string ->
+  (t, parse_warning) result
+(** [of_string ?strict ?filename ?meta css] parses [css] into a stylesheet.
+    Default [~strict:false] is fail-fast on fatal syntax errors only - section
+    5.3 recovery still happens, but recoverable warnings stay silent. Use
+    {!parse} to inspect them. With [~strict:true], cascade routes through the
+    partial-recovery reader and promotes the first warning (unknown at-rules /
+    properties / invalid values) to [Error] - useful in linters and CI gates.
+    [?meta] controls diagnostic richness; see {!Loc.meta_level}. *)
+
 val parse : ?filename:string -> ?meta:Loc.meta_level -> string -> parse_result
-(** [parse ?filename ?meta css] parses [css] with CSS Syntax Level 3 recovery
-    enabled: unclosed blocks auto-close at EOF (section 5.3.7), invalid rules
-    are dropped and surface as warnings rather than as a fatal error, and rules
-    that type-check survive even if other rules are malformed. Per spec [parse]
-    always succeeds; an empty stylesheet with warnings indicates nothing
-    recoverable was parsed. [?meta] controls diagnostic richness; see
-    {!Loc.meta_level}. *)
+(** [parse ?filename ?meta css] parses [css] with CSS Syntax 3 recovery and
+    returns the partially-recovered stylesheet alongside every accumulated
+    warning. Always succeeds; an empty stylesheet with warnings indicates
+    nothing recoverable was parsed. *)
 
 (** {2:optimization Optimization}
 

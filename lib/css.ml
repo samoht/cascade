@@ -748,13 +748,26 @@ let vars_of_rules statements =
   in
   vars_of_declarations decls
 
-let of_string ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
-  let reader = Cursor.of_string ~meta css in
-  try Ok (read_stylesheet reader)
-  with Cursor.Parse_error error -> Error (error, filename)
-
 type parse_warning = Error.t * string
 type parse_result = { stylesheet : t; warnings : parse_warning list }
+
+let of_string ?(strict = false) ?(filename = "<string>")
+    ?(meta = Loc.default_meta_level) css =
+  if not strict then
+    (* Default: fail-fast on fatal syntax errors only. Section 5.3 recovery
+       still happens; recoverable warnings are silent. Use {!parse} to inspect
+       them without committing to strict semantics. *)
+    let reader = Cursor.of_string ~meta css in
+    try Ok (read_stylesheet reader)
+    with Cursor.Parse_error error -> Error (error, filename)
+  else
+    (* Strict: route through partial-recovery so every typed warning surfaces,
+       then promote the first one to [Error]. Useful for linters and CI gates
+       that want unknown at-rules / properties / invalid values to fail. *)
+    let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
+    match warnings with
+    | [] -> Ok stylesheet
+    | first :: _ -> Error (first, filename)
 
 let parse ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
   let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
