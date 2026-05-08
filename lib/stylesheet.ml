@@ -1497,9 +1497,8 @@ let read_font_face (r : Cursor.t) : statement =
   let descriptors = Cursor.braces read_font_face_block r in
   Font_face descriptors
 
-(* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
-   one pseudo-page from [:first | :left | :right | :blank]. Combining multiple
-   pseudo-pages (e.g. [:first:left]) is not part of CSS 2.x. *)
+(* CSS Paged Media 3 §3.1: a page selector is an optional page name followed by
+   zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
 let page_selector_error r s =
   Cursor.err_invalid r ("invalid @page selector: " ^ s)
 
@@ -1531,15 +1530,12 @@ let validate_pseudo_page r s name =
 let validate_page_selector r selector =
   (* CSS Paged Media 3 §3.1 [<page-selector-list> = <page-selector>#] with
      [<page-selector> = <ident-token>? <pseudo-page>*] and [<pseudo-page>] one
-     of [left], [right], [first], [blank]. CSS 2.1 §13.2.4 allowed at most one
-     pseudo-page per selector and that's the constraint cascade enforces:
-     combinations like [:left:right] or [:first:left] are rejected even though
-     CSS Paged Media 3 relaxed the grammar to permit them. *)
+     of [left], [right], [first], [blank]. *)
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let consume_pseudo_page i =
+  let rec consume_pseudo_pages seen i =
     if i >= len || s.[i] <> ':' then i
     else
       let start = i + 1 in
@@ -1547,17 +1543,33 @@ let validate_page_selector r selector =
       if stop = start then page_selector_error r s;
       let name = String.sub s start (stop - start) in
       validate_pseudo_page r s name;
-      stop
+      let seen =
+        match (name, seen) with
+        | "first", (true, _, _, _)
+        | "left", (_, true, _, _)
+        | "right", (_, _, true, _)
+        | "blank", (_, _, _, true) ->
+            page_selector_error r s
+        | "left", (_, _, true, _) | "right", (_, true, _, _) ->
+            page_selector_error r s
+        | "first", (_, left, right, blank) -> (true, left, right, blank)
+        | "left", (first, _, right, blank) -> (first, true, right, blank)
+        | "right", (first, left, _, blank) -> (first, left, true, blank)
+        | "blank", (first, left, right, _) -> (first, left, right, true)
+        | _ -> assert false
+      in
+      consume_pseudo_pages seen stop
   in
   let rec consume_selectors i =
     let i = skip_ws i in
     if i >= len then ()
     else
       let after_ident = consume_ident i in
-      let after_pseudo = consume_pseudo_page after_ident in
+      let after_pseudo =
+        consume_pseudo_pages (false, false, false, false) after_ident
+      in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then ()
-      else if s.[after_pseudo] = ':' then page_selector_error r s
       else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
       else page_selector_error r s
   in
