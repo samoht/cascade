@@ -4153,7 +4153,7 @@ let read_optional_percentage t : percentage option =
           t
 
 let hue_interpolation_start = function
-  | "shorter" | "longer" | "increasing" | "decreasing" -> true
+  | "shorter" | "longer" | "increasing" | "decreasing" | "specified" -> true
   | _ -> false
 
 let read_hue_interpolation_direction t : hue_interpolation =

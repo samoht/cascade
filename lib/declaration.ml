@@ -1617,28 +1617,6 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
-(* CSS Color 5 §13 includes [specified hue], but evaluating that form needs the
-   surrounding colour context. The typed colour parser rejects it; stylesheet
-   parsing preserves the declaration as an unknown colour value so author input
-   still round-trips. *)
-let color_mix_uses_specified_hue arguments =
-  let rec walk = function
-    | [] -> false
-    | Component.Preserved { kind = Token.Ident s; _ } :: rest
-      when String.lowercase_ascii s = "specified" -> (
-        match List.filter (fun c -> not (is_ws_component c)) rest with
-        | Component.Preserved { kind = Token.Ident s; _ } :: _
-          when String.lowercase_ascii s = "hue" ->
-            true
-        | _ -> walk rest)
-    | Component.Func { node = { arguments; _ }; _ } :: rest ->
-        walk arguments || walk rest
-    | Component.Block { node = { value; _ }; _ } :: rest ->
-        walk value || walk rest
-    | _ :: rest -> walk rest
-  in
-  walk arguments
-
 (* Color functions cascade types directly; anything else (e.g. a vendor color
    function or a typed value cascade hasn't grown yet) is treated as a [color]
    declaration cascade should preserve verbatim. *)
@@ -1648,27 +1626,25 @@ let color_fallback_function raw_value =
     |> List.filter (fun component -> not (is_ws_component component))
   in
   match components with
-  | [ Component.Func { node = { name; arguments; _ }; _ } ] ->
+  | [ Component.Func { node = { name; _ }; _ } ] ->
       let fn = String.lowercase_ascii name in
-      if fn = "color-mix" then color_mix_uses_specified_hue arguments
-      else
-        not
-          (List.mem fn
-             [
-               "rgb";
-               "rgba";
-               "hsl";
-               "hsla";
-               "hwb";
-               "lab";
-               "lch";
-               "oklab";
-               "oklch";
-               "color";
-               "color-mix";
-               "light-dark";
-               "var";
-             ])
+      not
+        (List.mem fn
+           [
+             "rgb";
+             "rgba";
+             "hsl";
+             "hsla";
+             "hwb";
+             "lab";
+             "lch";
+             "oklab";
+             "oklch";
+             "color";
+             "color-mix";
+             "light-dark";
+             "var";
+           ])
   | _ -> false
 
 let is_unsupported_color_fallback name raw_value =
