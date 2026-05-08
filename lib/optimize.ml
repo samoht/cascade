@@ -18,17 +18,6 @@ let duplicate_buggy_properties decls =
       0 decls
   in
 
-  (* Check if webkit-text-decoration-color is already duplicated *)
-  let webkit_text_decoration_color_count =
-    List.fold_left
-      (fun count decl ->
-        match decl with
-        | Declaration { property = Webkit_text_decoration_color; _ } ->
-            count + 1
-        | _ -> count)
-      0 decls
-  in
-
   List.concat_map
     (fun decl ->
       match decl with
@@ -36,11 +25,6 @@ let duplicate_buggy_properties decls =
           if webkit_text_decoration_inherit_count >= 3 then [ decl ]
             (* Already tripled *)
           else [ decl; decl; decl ] (* Triplicate only when inherit *)
-      | Declaration { property = Webkit_text_decoration_color; _ } ->
-          if webkit_text_decoration_color_count >= 2 then [ decl ]
-            (* Already duplicated *)
-          else [ decl; decl ]
-            (* Always duplicate webkit-text-decoration-color *)
       | Declaration { property = Transform; _ } ->
           (* Do not duplicate transform to -webkit-transform. Tailwind v4 does
              not emit vendor-prefixed transform here, and tests expect a single

@@ -105,7 +105,37 @@ let test_duplicate_buggy_properties () =
   let duplicated = duplicate_buggy_properties decls in
   (* Should triplicate webkit-text-decoration:inherit *)
   check bool "triplicates webkit-text-decoration inherit" true
-    (List.length duplicated = 3)
+    (List.length duplicated = 3);
+
+  (* -webkit-text-decoration-color is a compatibility property, not a generated
+     fallback for the standard property. External minifiers preserve authored
+     prefixed/unprefixed pairs and do not synthesize either spelling. *)
+  let pp_decls decls =
+    List.map (Css.Declaration.string_of_declaration ~minify:true) decls
+  in
+  let standard_color =
+    duplicate_buggy_properties [ v Text_decoration_color (hex_color "0000ff") ]
+  in
+  check (list string) "standard decoration color is not prefixed"
+    [ "text-decoration-color:#00f" ]
+    (pp_decls standard_color);
+  let prefixed_color =
+    duplicate_buggy_properties
+      [ v Webkit_text_decoration_color (hex_color "0000ff") ]
+  in
+  check (list string) "authored webkit decoration color is preserved"
+    [ "-webkit-text-decoration-color:#00f" ]
+    (pp_decls prefixed_color);
+  let pair =
+    deduplicate_declarations
+      [
+        v Webkit_text_decoration_color (hex_color "ff0000");
+        v Text_decoration_color (hex_color "0000ff");
+      ]
+  in
+  check (list string) "prefixed and standard decoration colors both remain"
+    [ "-webkit-text-decoration-color:red"; "text-decoration-color:#00f" ]
+    (pp_decls pair)
 
 (** Test rule optimization *)
 let single_rule () =
