@@ -418,12 +418,20 @@ let pp_unit ?(always = true) ctx f suffix =
      spelling. *)
   let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
-  else (
+  else
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
        fractional values ([.25rem], not [0.25rem]); we follow that canonical
-       form in both minified and pretty output. *)
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
-    Pp.string ctx suffix)
+       form in both minified and pretty output. Round to 6 significant digits
+       under minify so [calc()]-folded results like [sin(45deg) * 100px] emit
+       [70.7107px] instead of an 8-decimal float. Pretty mode keeps the
+       full-precision spelling. *)
+    let rendered =
+      if Pp.minified ctx then
+        Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
+      else Pp.string_of_float ~drop_leading_zero:true f
+    in
+    Pp.string ctx rendered;
+    Pp.string ctx suffix
 
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
