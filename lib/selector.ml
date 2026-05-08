@@ -1198,6 +1198,11 @@ and read_relative_selector t =
       Cursor.ws t;
       let right = read_complex t in
       Relative (comb, right)
+  | Some '/' when Cursor.lookahead try_shadow_deep t ->
+      let comb = read_combinator t in
+      Cursor.ws t;
+      let right = read_complex t in
+      Relative (comb, right)
   | _ -> read_complex t
 
 and read_relative_selector_list t =
@@ -1547,6 +1552,10 @@ and read_complex t =
       Cursor.ws t;
       combine left comb (read_complex t)
   | Some ('>' | '+' | '~') ->
+      let comb = read_combinator t in
+      Cursor.ws t;
+      combine left comb (read_complex t)
+  | Some '/' when Cursor.lookahead try_shadow_deep t ->
       let comb = read_combinator t in
       Cursor.ws t;
       combine left comb (read_complex t)
