@@ -2172,12 +2172,14 @@ let rec read_statement (r : Cursor.t) : statement =
       | Some p -> p r
       | None ->
           (* CSS Syntax 3 §5.4.1: an at-rule with no registered handler is
-             discarded with a typed warning so the surrounding stylesheet keeps
-             parsing. The prelude/block are still consumed for partial recovery
-             so the next rule starts from the right offset. *)
+             reported via a typed warning so [Css.parse] partial-recovery can
+             surface it to callers. The prelude/block stay in the AST as
+             [Unknown_at_rule], and [Optimize.drop_unknown] removes them under
+             minify when the user opted into spec-strict canonicalization. *)
           ignore (Cursor.next_raw r);
-          let _ : statement = read_unknown_at_rule name r in
-          Error.fail_unknown_at_rule loc name)
+          let stmt = read_unknown_at_rule name r in
+          Cursor.push_warning r (Error.unknown_at_rule loc name);
+          stmt)
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =

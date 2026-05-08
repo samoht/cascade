@@ -1623,10 +1623,40 @@ let drop_invalid (stylesheet : t) : t =
   in
   List.map statement stylesheet
 
+(** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
+    depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
+    emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
+    §5.4.1 (unknown at-rules are discarded). *)
+let drop_unknown_at_rules (stylesheet : t) : t =
+  let rec statement = function
+    | Unknown_at_rule _ -> None
+    | Rule rule ->
+        Some (Rule { rule with nested = List.filter_map statement rule.nested })
+    | Layer (name, block) ->
+        Some (Layer (name, List.filter_map statement block))
+    | Media (m, block) -> Some (Media (m, List.filter_map statement block))
+    | Container (n, c, block) ->
+        Some (Container (n, c, List.filter_map statement block))
+    | Supports (s, block) ->
+        Some (Supports (s, List.filter_map statement block))
+    | Moz_document (c, block) ->
+        Some (Moz_document (c, List.filter_map statement block))
+    | When (c, block) -> Some (When (c, List.filter_map statement block))
+    | Else (c, block) -> Some (Else (c, List.filter_map statement block))
+    | Starting_style block ->
+        Some (Starting_style (List.filter_map statement block))
+    | Origin (o, block) -> Some (Origin (o, List.filter_map statement block))
+    | Scope (a, b, block) ->
+        Some (Scope (a, b, List.filter_map statement block))
+    | other -> Some other
+  in
+  List.filter_map statement stylesheet
+
 let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   let stylesheet =
     if flatten_nesting then flatten_block stylesheet else stylesheet
   in
-  (* [drop_invalid] runs before the main optimisation passes so the resulting
-     empty rules are picked up by [drop_empty_rules]. *)
-  statements_top_level (drop_invalid stylesheet)
+  (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
+     passes so the empty rules they leave behind get picked up by
+     [drop_empty_rules]. *)
+  statements_top_level (drop_unknown_at_rules (drop_invalid stylesheet))
