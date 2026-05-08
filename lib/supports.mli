@@ -8,6 +8,7 @@ type property_name
 type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
+  | Unsupported of property_name * string
   | Vendor_flag_enabled
 
 type font_format =
