@@ -2547,9 +2547,9 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media (width>=768px){color:#00f;}}"
+    ~expected:".foo{color:red;@media (width>=768px){color:#00f}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
-  test_nesting_idempotent ".foo{color:red;@media (width>=768px){color:#00f;}}"
+  test_nesting_idempotent ".foo{color:red;@media (width>=768px){color:#00f}}"
 
 (* ignore-test *)
 let test_nesting_deep () =
