@@ -365,6 +365,11 @@ val eval_numeric_calc : 'a calc -> float option
     numbers to a float. Returns [None] if the expression contains variables or
     non-numeric values. *)
 
+val read_numeric_expression : Cursor.t -> float
+(** [read_numeric_expression t] parses and evaluates a numeric math expression,
+    including top-level math functions such as [min()], [max()], and [clamp()].
+*)
+
 val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
 (** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc
     structure (operators, [Nested], [Parens], [Var] fallbacks). *)

@@ -3937,6 +3937,9 @@ let rec pp_opacity : opacity Pp.t =
    [<number-percentage>] convention. *)
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
+  let read_numeric_math t : opacity =
+    Opacity_number (Values.read_numeric_expression t)
+  in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
     let value =
@@ -3959,6 +3962,9 @@ let rec read_opacity t : opacity =
       [
         ("var", read_var);
         ("calc", fun t -> Calc (Values.read_calc read_opacity_dim_only t));
+        ("min", read_numeric_math);
+        ("max", read_numeric_math);
+        ("clamp", read_numeric_math);
         ( "abs",
           fun t -> Cursor.call "abs" t (fun inner -> Abs (read_opacity inner))
         );
