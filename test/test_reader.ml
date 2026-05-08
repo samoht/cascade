@@ -2,7 +2,7 @@
 
 open Alcotest
 open Cascade
-open Css.Reader
+open Reader
 open Css_test_helpers
 
 (* Helper to create parse_error for test expectations *)
@@ -89,34 +89,34 @@ let string_ops () =
 let whitespace () =
   (* Basic whitespace *)
   let r = of_string "  \t\n test" in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check (option char)) "after ws" (Some 't') (peek r);
 
   (* No whitespace *)
   let r = of_string "test" in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check (option char)) "no ws to skip" (Some 't') (peek r);
 
   (* Only whitespace *)
   let r = of_string "   \t\n  " in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check bool) "all ws done" true (is_done r)
 
 (* Test comment skipping *)
 let comments () =
   (* Single comment *)
   let r = of_string "/*comment*/x" in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check (option char)) "after comment" (Some 'x') (peek r);
 
   (* Multiple comments *)
   let r = of_string "/*c1*/  /*c2*/y" in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check (option char)) "after comments" (Some 'y') (peek r);
 
   (* Nested comments not supported - should stop at first closing *)
   let r = of_string "/*outer/*inner*/*/x" in
-  Css.Reader.ws r;
+  Reader.ws r;
   Alcotest.(check (option char)) "nested comment" (Some '*') (peek r)
 
 (* Test take_while *)
@@ -189,7 +189,7 @@ let backtrack () =
   let r = of_string "test" in
   (* Test that option backtracks on failure *)
   let result =
-    Css.Reader.option
+    Reader.option
       (fun r ->
         ignore (char r);
         (* consume 't' *)
@@ -392,7 +392,7 @@ let commit_case () =
   (* Test that option commits changes on success *)
   let r = of_string "test" in
   let result =
-    Css.Reader.option
+    Reader.option
       (fun r ->
         ignore (char r);
         (* consume 't' *)
@@ -1098,8 +1098,7 @@ let enum_call_stack () =
   (try
      enum "test-enum" [ ("valid", 42) ] r |> ignore;
      Alcotest.fail "Should have raised Parse_error"
-   with Css.Reader.Parse_error error ->
-     call_stack_during_error := error.callstack);
+   with Reader.Parse_error error -> call_stack_during_error := error.callstack);
 
   (* Should contain the enum context when error occurred *)
   Alcotest.(check (list string))
@@ -1114,8 +1113,7 @@ let enum_or_calls_stack () =
   (try
      enum_or_calls "test-property" [ ("valid", 42) ] ~calls:[] r |> ignore;
      Alcotest.fail "Should have raised Parse_error"
-   with Css.Reader.Parse_error error ->
-     call_stack_during_error := error.callstack);
+   with Reader.Parse_error error -> call_stack_during_error := error.callstack);
 
   (* Should contain the enum_or_calls context *)
   Alcotest.(check (list string))
@@ -1184,10 +1182,9 @@ let list_call_stack () =
 
   (* Test that list combinator adds context *)
   (try
-     Css.Reader.list ~at_least:1 failing_parser r |> ignore;
+     Reader.list ~at_least:1 failing_parser r |> ignore;
      Alcotest.fail "Should have raised Parse_error"
-   with Css.Reader.Parse_error error ->
-     call_stack_during_error := error.callstack);
+   with Reader.Parse_error error -> call_stack_during_error := error.callstack);
 
   (* Should contain both list and enum contexts *)
   let expected = [ "list"; "enum:failing" ] in
@@ -1199,7 +1196,7 @@ let fold_many_call_stack () =
   let r = of_string "valid invalid" in
   let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
   let acc, error_opt =
-    Css.Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r
+    Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r
   in
 
   (* Should have parsed one item before failing *)
@@ -1211,10 +1208,10 @@ let fold_many_call_stack () =
   try
     with_context r2 "fold-context" (fun () ->
         let _, _ =
-          Css.Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r2
+          Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r2
         in
         ())
-  with Css.Reader.Parse_error error ->
+  with Reader.Parse_error error ->
     (* Should have fold-context in the call stack *)
     Alcotest.(check bool)
       "fold_many preserves context" true
@@ -1234,7 +1231,7 @@ let fold_many_with_enum_context () =
 
   let fold_default r =
     let acc, _ =
-      Css.Reader.fold_many parse_fold_component ~init:[]
+      Reader.fold_many parse_fold_component ~init:[]
         ~f:(fun acc x -> x :: acc)
         r
     in
@@ -1247,7 +1244,7 @@ let fold_many_with_enum_context () =
   try
     let _ = parser r in
     Alcotest.fail "Should have raised Parse_error"
-  with Css.Reader.Parse_error error ->
+  with Reader.Parse_error error ->
     (* Check if outer-enum is in the call stack *)
     Alcotest.(check bool)
       "enum context preserved with fold_many" true
@@ -1258,7 +1255,7 @@ let many_call_stack () =
   (* Test that many preserves call stack on errors *)
   let r = of_string "valid invalid" in
   let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
-  let items, error_opt = Css.Reader.many parser r in
+  let items, error_opt = Reader.many parser r in
 
   (* Should have parsed one item before failing *)
   Alcotest.(check (list int)) "parsed one valid item" [ 1 ] items;
@@ -1268,9 +1265,9 @@ let many_call_stack () =
   let r2 = of_string "invalid" in
   try
     with_context r2 "many-context" (fun () ->
-        let _, _ = Css.Reader.many parser r2 in
+        let _, _ = Reader.many parser r2 in
         ())
-  with Css.Reader.Parse_error error ->
+  with Reader.Parse_error error ->
     (* Should have many-context in the call stack *)
     Alcotest.(check bool)
       "many preserves context" true
@@ -1279,13 +1276,13 @@ let many_call_stack () =
 let triple_call_stack () =
   (* Test that triple combinator preserves context *)
   let r = of_string "1 2 invalid" in
-  let parse_int r = int_of_float (Css.Reader.number r) in
+  let parse_int r = int_of_float (Reader.number r) in
 
   try
     with_context r "triple-context" (fun () ->
-        let _ = Css.Reader.triple ~sep:ws parse_int parse_int parse_int r in
+        let _ = Reader.triple ~sep:ws parse_int parse_int parse_int r in
         ())
-  with Css.Reader.Parse_error error ->
+  with Reader.Parse_error error ->
     (* Should have triple-context in the call stack *)
     Alcotest.(check bool)
       "triple preserves context" true

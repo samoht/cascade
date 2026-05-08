@@ -5,42 +5,35 @@
 open Cascade
 
 let check name kind expected =
-  Alcotest.(check string)
-    name expected
-    (Css.Pp.to_string Css.Token.pp_kind kind)
+  Alcotest.(check string) name expected (Css.Pp.to_string Token.pp_kind kind)
 
-let idents () = check "ident" (Css.Token.Ident "foo") "<ident foo>"
-
-let function_tok () =
-  check "function" (Css.Token.Function "rgb") "<function rgb(>"
-
-let at_keyword () = check "at-keyword" (Css.Token.At_keyword "media") "<@media>"
+let idents () = check "ident" (Token.Ident "foo") "<ident foo>"
+let function_tok () = check "function" (Token.Function "rgb") "<function rgb(>"
+let at_keyword () = check "at-keyword" (Token.At_keyword "media") "<@media>"
 
 let hash () =
-  check "hash"
-    (Css.Token.Hash { value = "abc"; hash_flag = Css.Token.Id })
-    "<#abc>"
+  check "hash" (Token.Hash { value = "abc"; hash_flag = Token.Id }) "<#abc>"
 
 let brackets () =
-  check "open curly" (Css.Token.Open Css.Token.Curly) "<{>";
-  check "close curly" (Css.Token.Close Css.Token.Curly) "<}>";
-  check "open paren" (Css.Token.Open Css.Token.Paren) "<(>";
-  check "close paren" (Css.Token.Close Css.Token.Paren) "<)>";
-  check "open square" (Css.Token.Open Css.Token.Square) "<[>";
-  check "close square" (Css.Token.Close Css.Token.Square) "<]>"
+  check "open curly" (Token.Open Token.Curly) "<{>";
+  check "close curly" (Token.Close Token.Curly) "<}>";
+  check "open paren" (Token.Open Token.Paren) "<(>";
+  check "close paren" (Token.Close Token.Paren) "<)>";
+  check "open square" (Token.Open Token.Square) "<[>";
+  check "close square" (Token.Close Token.Square) "<]>"
 
 let simple () =
-  check "colon" Css.Token.Colon "<:>";
-  check "semicolon" Css.Token.Semicolon "<;>";
-  check "comma" Css.Token.Comma "<,>";
-  check "whitespace" Css.Token.Whitespace "<ws>";
-  check "cdo" Css.Token.Cdo "<CDO>";
-  check "cdc" Css.Token.Cdc "<CDC>";
-  check "eof" Css.Token.Eof "<eof>"
+  check "colon" Token.Colon "<:>";
+  check "semicolon" Token.Semicolon "<;>";
+  check "comma" Token.Comma "<,>";
+  check "whitespace" Token.Whitespace "<ws>";
+  check "cdo" Token.Cdo "<CDO>";
+  check "cdc" Token.Cdc "<CDC>";
+  check "eof" Token.Eof "<eof>"
 
 let bad () =
-  check "bad-string" Css.Token.Bad_string "<bad-string>";
-  check "bad-url" Css.Token.Bad_url "<bad-url>"
+  check "bad-string" Token.Bad_string "<bad-string>";
+  check "bad-url" Token.Bad_url "<bad-url>"
 
 let suite =
   ( "token",

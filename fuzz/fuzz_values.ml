@@ -7,149 +7,144 @@ open Cascade
 open Alcobar
 
 let parse_whole parse input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let value = parse r in
-    Css.Cursor.ws r;
-    if Css.Cursor.is_done r then Some value else None
-  with Css.Cursor.Parse_error _ -> None
+    Cursor.ws r;
+    if Cursor.is_done r then Some value else None
+  with Cursor.Parse_error _ -> None
 
 (** read_color — must not crash on arbitrary input. *)
 let test_read_color buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_color r) with Cursor.Parse_error _ -> ()
 
 (** read_length — must not crash. *)
 let test_read_length buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_length r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_length r) with Cursor.Parse_error _ -> ()
 
 (** read_angle — must not crash. *)
 let test_read_angle buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_angle r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_angle r) with Cursor.Parse_error _ -> ()
 
 (** read_duration — must not crash. *)
 let test_read_duration buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_duration r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_duration r) with Cursor.Parse_error _ -> ()
 
 (** read_time — must not crash (can be negative). *)
 let test_read_time buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_time r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_time r) with Cursor.Parse_error _ -> ()
 
 (** read_number — must not crash. *)
 let test_read_number buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_number r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_number r) with Cursor.Parse_error _ -> ()
 
 (** read_percentage — must not crash. *)
 let test_read_percentage buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_percentage r)
-  with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_percentage r) with Cursor.Parse_error _ -> ()
 
 (** read_length_percentage — must not crash. *)
 let test_read_length_percentage buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Values.read_length_percentage r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** read_number_percentage — must not crash. *)
 let test_read_number_percentage buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Values.read_number_percentage r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** read_color_name — must not crash. *)
 let test_read_color_name buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_color_name r)
-  with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_color_name r) with Cursor.Parse_error _ -> ()
 
 (** read_color_space — must not crash. *)
 let test_read_color_space buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_color_space r)
-  with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_color_space r) with Cursor.Parse_error _ -> ()
 
 (** read_system_color — must not crash. *)
 let test_read_system_color buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_system_color r)
-  with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_system_color r) with Cursor.Parse_error _ -> ()
 
 (** read_hue — must not crash. *)
 let test_read_hue buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_hue r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_hue r) with Cursor.Parse_error _ -> ()
 
 (** read_alpha — must not crash. *)
 let test_read_alpha buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_alpha r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_alpha r) with Cursor.Parse_error _ -> ()
 
 (** read_hue_interpolation — must not crash. *)
 let test_read_hue_interpolation buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Values.read_hue_interpolation r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** read_calc — must not crash (with read_length as inner parser). *)
 let test_read_calc buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Values.read_calc Css.Values.read_length r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** read_channel — must not crash. *)
 let test_read_channel buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_channel r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_channel r) with Cursor.Parse_error _ -> ()
 
 (** read_component — must not crash. *)
 let test_read_component buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_component r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_component r) with Cursor.Parse_error _ -> ()
 
 (** read_rgb — must not crash. *)
 let test_read_rgb buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Values.read_rgb r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Values.read_rgb r) with Cursor.Parse_error _ -> ()
 
 (** read_transition_behavior — must not crash. *)
 let test_read_transition_behavior buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Values.read_transition_behavior r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** Color roundtrip: parse → pp → parse should not crash. *)
 let test_color_roundtrip buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
-    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_color r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some color -> (
       let s = Css.Pp.to_string Css.Values.pp_color color in
-      let r2 = Css.Cursor.of_string s in
+      let r2 = Cursor.of_string s in
       try ignore (Css.Values.read_color r2)
-      with Css.Cursor.Parse_error _ -> fail "color roundtrip re-parse failed")
+      with Cursor.Parse_error _ -> fail "color roundtrip re-parse failed")
 
 (** Length serialization should reparse to the same canonical form for accepted
     values, including calc()/var() shapes. *)
 let test_length_serialization_idempotent buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
-    try Some (Css.Values.read_length r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_length r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some length -> (
       let once = Css.Pp.to_string ~minify:true Css.Values.pp_length length in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
-        try Some (Css.Values.read_length r2)
-        with Css.Cursor.Parse_error _ -> None
+        try Some (Css.Values.read_length r2) with Cursor.Parse_error _ -> None
       with
       | None -> fail (Fmt.str "length serialization did not reparse: %S" once)
       | Some reparsed ->
@@ -160,17 +155,16 @@ let test_length_serialization_idempotent buf =
             fail (Fmt.str "length serialization changed: %S -> %S" once twice))
 
 let test_angle_serialization_idempotent buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
-    try Some (Css.Values.read_angle r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_angle r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some angle -> (
       let once = Css.Pp.to_string ~minify:true Css.Values.pp_angle angle in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
-        try Some (Css.Values.read_angle r2)
-        with Css.Cursor.Parse_error _ -> None
+        try Some (Css.Values.read_angle r2) with Cursor.Parse_error _ -> None
       with
       | None -> fail (Fmt.str "angle serialization did not reparse: %S" once)
       | Some reparsed ->
@@ -181,10 +175,9 @@ let test_angle_serialization_idempotent buf =
             fail (Fmt.str "angle serialization changed: %S -> %S" once twice))
 
 let test_percentage_serialization_idempotent buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
-    try Some (Css.Values.read_percentage r)
-    with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_percentage r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some percentage -> (
@@ -193,10 +186,10 @@ let test_percentage_serialization_idempotent buf =
           Css.Values.(pp_percentage ~always:true)
           percentage
       in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
         try Some (Css.Values.read_percentage r2)
-        with Css.Cursor.Parse_error _ -> None
+        with Cursor.Parse_error _ -> None
       with
       | None ->
           fail (Fmt.str "percentage serialization did not reparse: %S" once)
@@ -211,20 +204,19 @@ let test_percentage_serialization_idempotent buf =
               (Fmt.str "percentage serialization changed: %S -> %S" once twice))
 
 let test_duration_serialization_idempotent buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
-    try Some (Css.Values.read_duration r)
-    with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_duration r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some duration -> (
       let once =
         Css.Pp.to_string ~minify:true Css.Values.pp_duration duration
       in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
         try Some (Css.Values.read_duration r2)
-        with Css.Cursor.Parse_error _ -> None
+        with Cursor.Parse_error _ -> None
       with
       | None -> fail (Fmt.str "duration serialization did not reparse: %S" once)
       | Some reparsed ->
@@ -254,17 +246,16 @@ let test_modern_color_stable buf =
       ]
       buf 0
   in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
-    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_color r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some color -> (
       let once = Css.Pp.to_string ~minify:true Css.Values.pp_color color in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
-        try Some (Css.Values.read_color r2)
-        with Css.Cursor.Parse_error _ -> None
+        try Some (Css.Values.read_color r2) with Cursor.Parse_error _ -> None
       with
       | None -> fail (Fmt.str "modern color did not reparse: %S" once)
       | Some reparsed ->
@@ -289,17 +280,16 @@ let test_modern_math_stable buf =
       ]
       buf 0
   in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
-    try Some (Css.Values.read_length r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_length r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some length -> (
       let once = Css.Pp.to_string ~minify:true Css.Values.pp_length length in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       match
-        try Some (Css.Values.read_length r2)
-        with Css.Cursor.Parse_error _ -> None
+        try Some (Css.Values.read_length r2) with Cursor.Parse_error _ -> None
       with
       | None -> fail (Fmt.str "modern math length did not reparse: %S" once)
       | Some reparsed ->
@@ -450,19 +440,18 @@ let color_branch_vectors =
   ]
 
 let assert_color_branch input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
-    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_color r) with Cursor.Parse_error _ -> None
   with
   | None -> fail (Fmt.str "valid CSS color branch vector rejected: %S" input)
   | Some color -> (
       let serialized =
         Css.Pp.to_string ~minify:true Css.Values.pp_color color
       in
-      let r2 = Css.Cursor.of_string serialized in
+      let r2 = Cursor.of_string serialized in
       match
-        try Some (Css.Values.read_color r2)
-        with Css.Cursor.Parse_error _ -> None
+        try Some (Css.Values.read_color r2) with Cursor.Parse_error _ -> None
       with
       | None ->
           fail
@@ -526,9 +515,9 @@ let test_invalid_color_branches buf =
       ]
       buf 3
   in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   match
-    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+    try Some (Css.Values.read_color r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some color ->

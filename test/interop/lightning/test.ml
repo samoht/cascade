@@ -170,7 +170,7 @@ let at_rule_fingerprint css =
   if css = "" then Some []
   else
     try
-      let sheet = Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css) in
+      let sheet = Css.Stylesheet.read_stylesheet (Cursor.of_string css) in
       let rec statements acc = List.fold_left statement acc
       and statement acc = function
         | Css.Stylesheet.Rule rule -> statements acc rule.nested
@@ -202,7 +202,7 @@ let at_rule_fingerprint css =
         | _ -> "unknown" :: acc
       in
       Some (List.rev (statements [] sheet))
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let validate_candidate input (candidate : candidate) =
   match

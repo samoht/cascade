@@ -397,32 +397,32 @@ let check_eval_value name ~ctx ~expected input =
   Alcotest.(check decl_t)
     name
     (declaration_with_value decl expected)
-    (Css.Declaration.eval ctx decl)
+    (Css.eval_declaration ctx decl)
 
 let check_eval_preserves name ~ctx input =
   let decl = Css.Declaration.of_string input in
-  Alcotest.(check decl_t) name decl (Css.Declaration.eval ctx decl)
+  Alcotest.(check decl_t) name decl (Css.eval_declaration ctx decl)
 
 let check_eval name ~ctx ?layer_order ?layer ~expected input =
   let decl = Css.Declaration.of_string input in
   let expected = Css.Declaration.of_string expected in
-  let actual = Css.Declaration.eval ctx ?layer_order ?layer decl in
+  let actual = Css.eval_declaration ctx ?layer_order ?layer decl in
   Alcotest.(check decl_t) name expected actual
 
 let check_eval_idempotent name ~ctx ?layer_order ?layer input =
   let decl = Css.Declaration.of_string input in
-  let once = Css.Declaration.eval ctx ?layer_order ?layer decl in
-  let twice = Css.Declaration.eval ctx ?layer_order ?layer once in
+  let once = Css.eval_declaration ctx ?layer_order ?layer decl in
+  let twice = Css.eval_declaration ctx ?layer_order ?layer once in
   Alcotest.(check decl_t) name once twice
 
 let check_eval_context_extension name ?layer_order ?layer ~weak_ctx ~strong_ctx
     ~expected input =
   let decl = Css.Declaration.of_string input in
   let expected = Css.Declaration.of_string expected in
-  let direct = Css.Declaration.eval strong_ctx ?layer_order ?layer decl in
+  let direct = Css.eval_declaration strong_ctx ?layer_order ?layer decl in
   let staged =
-    Css.Declaration.eval strong_ctx ?layer_order ?layer
-      (Css.Declaration.eval weak_ctx ?layer_order ?layer decl)
+    Css.eval_declaration strong_ctx ?layer_order ?layer
+      (Css.eval_declaration weak_ctx ?layer_order ?layer decl)
   in
   Alcotest.(check decl_t) (name ^ " direct") expected direct;
   Alcotest.(check decl_t) (name ^ " staged") direct staged
@@ -432,24 +432,24 @@ let check_layered_eval_value name ~ctx ~layer_order ?layer ~expected input =
   Alcotest.(check decl_t)
     name
     (declaration_with_value decl expected)
-    (Css.Declaration.eval ctx ~layer_order ?layer decl)
+    (Css.eval_declaration ctx ~layer_order ?layer decl)
 
 let check_layered_eval_preserves name ~ctx ~layer_order ?layer input =
   let decl = Css.Declaration.of_string input in
   Alcotest.(check decl_t)
     name decl
-    (Css.Declaration.eval ctx ~layer_order ?layer decl)
+    (Css.eval_declaration ctx ~layer_order ?layer decl)
 
 let stylesheet_of_string input =
-  let cursor = Css.Cursor.of_string input in
+  let cursor = Cursor.of_string input in
   try Css.Stylesheet.read_stylesheet cursor
-  with Css.Cursor.Parse_error err ->
-    Alcotest.failf "expected stylesheet to parse: %s" (Css.Error.to_string err)
+  with Cursor.Parse_error err ->
+    Alcotest.failf "expected stylesheet to parse: %s" (Error.to_string err)
 
 let check_eval_stylesheet name ~ctx ?layer_order ?layer ~expected input =
   let expected = stylesheet_of_string expected in
   let actual =
-    Css.Stylesheet.eval ctx ?layer_order ?layer (stylesheet_of_string input)
+    Css.eval_stylesheet ctx ?layer_order ?layer (stylesheet_of_string input)
   in
   Alcotest.(check stylesheet_t) name expected actual
 
@@ -603,7 +603,7 @@ let stylesheet_shape sheet = List.concat_map statement_shape sheet
 let check_eval_stylesheet_preserves_structure name ~ctx ?layer_order ?layer
     input =
   let sheet = stylesheet_of_string input in
-  let actual = Css.Stylesheet.eval ctx ?layer_order ?layer sheet in
+  let actual = Css.eval_stylesheet ctx ?layer_order ?layer sheet in
   Alcotest.(check (list string))
     name (stylesheet_shape sheet) (stylesheet_shape actual)
 
@@ -842,8 +842,8 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
   |> Option.map (fun ((candidate : Css.Stylesheet.cascade_candidate), value) ->
       let decl = Css.Declaration.of_string (property ^ ": " ^ value) in
       match candidate.candidate_layer with
-      | None -> Css.Declaration.eval ctx ~layer_order decl
-      | Some layer -> Css.Declaration.eval ctx ~layer_order ~layer decl)
+      | None -> Css.eval_declaration ctx ~layer_order decl
+      | Some layer -> Css.eval_declaration ctx ~layer_order ~layer decl)
 
 let check_resolved_property ?layer_order name ~ctx ~document ~query ~property
     ~expected stylesheet =
@@ -915,7 +915,7 @@ let check_registered_property_error name ~registry input =
   | Error _ -> ()
 
 let check_import_loaded name ?query ~loader ~expected input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
   match Css.Context.load_import ?query loader import_rule with
   | Ok stylesheet ->
@@ -925,7 +925,7 @@ let check_import_loaded name ?query ~loader ~expected input =
   | Error _ -> Alcotest.failf "%s: expected import %S to load" name input
 
 let check_import_error name ?query ~loader input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
   match Css.Context.load_import ?query loader import_rule with
   | Ok stylesheet ->
@@ -935,7 +935,7 @@ let check_import_error name ?query ~loader input =
 
 let check_layered_import_loaded name ?query ~loader ~layer_order ~expected input
     =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
   match Css.Context.load_import ?query ~layer_order loader import_rule with
   | Ok stylesheet ->
@@ -946,7 +946,7 @@ let check_layered_import_loaded name ?query ~loader ~layer_order ~expected input
       Alcotest.failf "%s: expected layered import %S to load" name input
 
 let check_layered_import_error name ?query ~loader ~layer_order input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
   match Css.Context.load_import ?query ~layer_order loader import_rule with
   | Ok stylesheet ->

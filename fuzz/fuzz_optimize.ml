@@ -116,9 +116,9 @@ let generated_stylesheet buf =
 let minified ss = Css.Stylesheet.to_string ~minify:true ss |> String.trim
 
 let parse_stylesheet input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try Some (Css.Stylesheet.read_stylesheet r)
-  with Css.Cursor.Parse_error _ -> None
+  with Cursor.Parse_error _ -> None
 
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]

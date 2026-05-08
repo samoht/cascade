@@ -5,37 +5,33 @@ open Cascade
 (* Shorthand constructors mirroring Parser.component_value so test data is
    readable. *)
 
-let pv t = Css.Component.Preserved t
+let pv t = Component.Preserved t
 
-let block op vs : Css.Component.t =
-  let body : Css.Component.block =
-    { opening = op; value = vs; closed = true }
-  in
-  Css.Component.Block { node = body; loc = Css.Loc.dummy }
+let block op vs : Component.t =
+  let body : Component.block = { opening = op; value = vs; closed = true } in
+  Component.Block { node = body; loc = Loc.dummy }
 
-let func name args : Css.Component.t =
-  let body : Css.Component.func =
-    { name; arguments = args; terminated = true }
-  in
-  Css.Component.Func { node = body; loc = Css.Loc.dummy }
+let func name args : Component.t =
+  let body : Component.func = { name; arguments = args; terminated = true } in
+  Component.Func { node = body; loc = Loc.dummy }
 
 (* Pretty-print a component value for assertion diffing. *)
 
-let rec pp_cv : Css.Component.t Css.Pp.t =
+let rec pp_cv : Component.t Css.Pp.t =
  fun ctx cv ->
   match cv with
-  | Css.Component.Preserved t -> Css.Token.pp ctx t
-  | Css.Component.Block { node = { opening; value; _ }; _ } ->
+  | Component.Preserved t -> Token.pp ctx t
+  | Component.Block { node = { opening; value; _ }; _ } ->
       let open_c, close_c =
         match opening with
-        | Css.Token.Curly -> ('{', '}')
-        | Css.Token.Paren -> ('(', ')')
-        | Css.Token.Square -> ('[', ']')
+        | Token.Curly -> ('{', '}')
+        | Token.Paren -> ('(', ')')
+        | Token.Square -> ('[', ']')
       in
       Css.Pp.char ctx open_c;
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx value;
       Css.Pp.char ctx close_c
-  | Css.Component.Func { node = { name; arguments; _ }; _ } ->
+  | Component.Func { node = { name; arguments; _ }; _ } ->
       Css.Pp.string ctx name;
       Css.Pp.char ctx '(';
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx arguments;
@@ -43,9 +39,9 @@ let rec pp_cv : Css.Component.t Css.Pp.t =
 
 let pp_cvs ctx cvs = Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx cvs
 
-let pp_rule : Css.Component.rule Css.Pp.t =
+let pp_rule : Component.rule Css.Pp.t =
  fun ctx -> function
-  | Css.Component.Qualified
+  | Component.Qualified
       { node = { prelude; block = { node = { opening = _; value; _ }; _ } }; _ }
     ->
       Css.Pp.string ctx "qualified{prelude=";
@@ -53,7 +49,7 @@ let pp_rule : Css.Component.rule Css.Pp.t =
       Css.Pp.string ctx "; block=";
       pp_cvs ctx value;
       Css.Pp.char ctx '}'
-  | Css.Component.At { node = { name; prelude; block }; _ } ->
+  | Component.At { node = { name; prelude; block }; _ } ->
       Css.Pp.string ctx "at[";
       Css.Pp.string ctx name;
       Css.Pp.string ctx "]{prelude=";
@@ -67,18 +63,18 @@ let pp_rule : Css.Component.rule Css.Pp.t =
 let pp_rules ctx rules = Css.Pp.list ~sep:Css.Pp.sp pp_rule ctx rules
 
 let parse_ss css =
-  let r = Css.Reader.of_string css in
-  (Css.Parser.stylesheet r).value
+  let r = Reader.of_string css in
+  (Parser.stylesheet r).value
 
 let parse_rules css =
-  let r = Css.Reader.of_string css in
-  (Css.Parser.list_of_rules r).value
+  let r = Reader.of_string css in
+  (Parser.list_of_rules r).value
 
 let parse_cvs css =
-  let p = Css.Parser.of_string css in
+  let p = Parser.of_string css in
   let rec loop acc =
-    match Css.Parser.next p with
-    | Css.Component.Preserved { kind = Css.Token.Eof; _ } -> List.rev acc
+    match Parser.next p with
+    | Component.Preserved { kind = Token.Eof; _ } -> List.rev acc
     | cv -> loop (cv :: acc)
   in
   loop []
@@ -90,7 +86,7 @@ let simple_rule () =
   Alcotest.(check int) "one rule" 1 (List.length rs);
   match rs with
   | [
-   Css.Component.Qualified
+   Component.Qualified
      { node = { prelude = _; block = { node = { value; _ }; _ } }; _ };
   ] ->
       (* block contains: ws, ident color, colon, ws, ident red, ws *)
@@ -104,14 +100,14 @@ let multiple_rules () =
 let at_rule_with_block () =
   let rs = parse_ss "@media screen { .btn { color: red } }" in
   match rs with
-  | [ Css.Component.At { node = { name; block = Some _; _ }; _ } ] ->
+  | [ Component.At { node = { name; block = Some _; _ }; _ } ] ->
       Alcotest.(check string) "name" "media" name
   | _ -> Alcotest.fail "expected one @media at-rule with block"
 
 let at_rule_semi_terminated () =
   let rs = parse_ss "@charset \"utf-8\";" in
   match rs with
-  | [ Css.Component.At { node = { name; block = None; _ }; _ } ] ->
+  | [ Component.At { node = { name; block = None; _ }; _ } ] ->
       Alcotest.(check string) "name" "charset" name
   | _ -> Alcotest.fail "expected @charset without block"
 
@@ -139,11 +135,10 @@ let spec_syntax_description_examples () =
   Alcotest.(check int)
     "one qualified rule and three at-rules" 4 (List.length rs);
   match rs with
-  | Css.Component.Qualified _
-    :: Css.Component.At { node = { name = "import"; _ }; _ }
-    :: Css.Component.At { node = { name = "page"; block = Some _; _ }; _ }
-    :: [ Css.Component.At { node = { name = "media"; block = Some _; _ }; _ } ]
-    ->
+  | Component.Qualified _
+    :: Component.At { node = { name = "import"; _ }; _ }
+    :: Component.At { node = { name = "page"; block = Some _; _ }; _ }
+    :: [ Component.At { node = { name = "media"; block = Some _; _ }; _ } ] ->
       ()
   | _ -> Alcotest.fail "unexpected section 2 example rule shapes"
 
@@ -155,10 +150,9 @@ let spec_error_handling_eof_closes () =
   Alcotest.(check int) "one auto-closed qualified rule" 1 (List.length rs);
   match rs with
   | [
-   Css.Component.Qualified
-     { node = { block = { node = { value; _ }; _ }; _ }; _ };
+   Component.Qualified { node = { block = { node = { value; _ }; _ }; _ }; _ };
   ] ->
-      let serialized = Css.Parser.to_string value in
+      let serialized = Parser.to_string value in
       Alcotest.(check string)
         "auto-closed declaration value" " transform: translate(50px)" serialized
   | _ -> Alcotest.fail "expected one auto-closed qualified rule"
@@ -168,26 +162,26 @@ let spec_parse_grammar_entry_points () =
      then match either the whole value or each comma-separated group against the
      supplied grammar. *)
   let single_ident = function
-    | [ Css.Component.Preserved { kind = Css.Token.Ident _; _ } ] -> true
+    | [ Component.Preserved { kind = Token.Ident _; _ } ] -> true
     | _ -> false
   in
   let parse_one css =
-    (Css.Parser.matches_grammar (Css.Reader.of_string css) single_ident).value
+    (Parser.matches_grammar (Reader.of_string css) single_ident).value
   in
   Alcotest.(check bool)
     "single ident matches grammar" true
     (match parse_one "foo" with
-    | Some cvs -> Css.Parser.to_string cvs = "foo"
+    | Some cvs -> Parser.to_string cvs = "foo"
     | _ -> false);
   Alcotest.(check bool)
     "multiple components do not match grammar" true
     (parse_one "foo bar" = None);
   let parse_groups css =
-    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) single_ident).value
+    (Parser.csv_by_grammar (Reader.of_string css) single_ident).value
   in
   let show_group = function
     | None -> "<no-match>"
-    | Some cvs -> Css.Parser.to_string_minified cvs
+    | Some cvs -> Parser.to_string_minified cvs
   in
   Alcotest.(check string)
     "comma groups matched independently" "foo|<no-match>|bar"
@@ -203,27 +197,27 @@ let spec_grammar_empty_commas () =
      comma. *)
   let empty_only = function [] -> true | _ -> false in
   let parse_empty css =
-    (Css.Parser.matches_grammar (Css.Reader.of_string css) empty_only).value
+    (Parser.matches_grammar (Reader.of_string css) empty_only).value
   in
   Alcotest.(check bool)
     "empty grammar accepts whitespace-only input" true
     (parse_empty " \n\t " = Some []);
   let single_ident = function
-    | [ Css.Component.Preserved { kind = Css.Token.Ident _; _ } ] -> true
+    | [ Component.Preserved { kind = Token.Ident _; _ } ] -> true
     | _ -> false
   in
   let parse_groups css =
-    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) single_ident).value
+    (Parser.csv_by_grammar (Reader.of_string css) single_ident).value
   in
   let show_group = function
     | None -> "<no-match>"
-    | Some cvs -> Css.Parser.to_string_minified cvs
+    | Some cvs -> Parser.to_string_minified cvs
   in
   Alcotest.(check string)
     "empty interior comma group is matched independently" "a|<no-match>|b"
     (parse_groups " a, , b " |> List.map show_group |> String.concat "|");
   let parse_empty_groups css =
-    (Css.Parser.csv_by_grammar (Css.Reader.of_string css) empty_only).value
+    (Parser.csv_by_grammar (Reader.of_string css) empty_only).value
   in
   Alcotest.(check bool)
     "single comma produces one empty group" true
@@ -239,10 +233,8 @@ let spec_parse_stylesheet_entry_point () =
   let rs = parse_ss "<!-- @layer base; .a{} -->" in
   Alcotest.(check int) "CDO/CDC skipped around rules" 2 (List.length rs);
   match rs with
-  | [
-   Css.Component.At { node = { name = "layer"; _ }; _ };
-   Css.Component.Qualified _;
-  ] ->
+  | [ Component.At { node = { name = "layer"; _ }; _ }; Component.Qualified _ ]
+    ->
       ()
   | _ -> Alcotest.fail "expected @layer and .a rules"
 
@@ -250,28 +242,25 @@ let spec_parse_rule_entry_point () =
   (* CSS Syntax Level 3 section 5.4.6: a rule entry point trims surrounding
      whitespace, requires one rule, and rejects empty input or trailing
      rules. *)
-  let parse_one_rule css = (Css.Parser.rule (Css.Reader.of_string css)).value in
+  let parse_one_rule css = (Parser.rule (Reader.of_string css)).value in
   Alcotest.(check bool)
     "empty input is syntax error" true
     (parse_one_rule "  " = None);
   Alcotest.(check bool)
     "one qualified rule accepted" true
     (match parse_one_rule " .a { color: red } " with
-    | Some (Css.Component.Qualified _) -> true
+    | Some (Component.Qualified _) -> true
     | _ -> false);
   Alcotest.(check bool)
     "one at-rule accepted" true
     (match parse_one_rule " @layer base; " with
-    | Some (Css.Component.At { node = { name = "layer"; block = None; _ }; _ })
-      ->
+    | Some (Component.At { node = { name = "layer"; block = None; _ }; _ }) ->
         true
     | _ -> false);
   Alcotest.(check bool)
     "one block at-rule accepted" true
     (match parse_one_rule " @media screen { .a { color: red } } " with
-    | Some
-        (Css.Component.At { node = { name = "media"; block = Some _; _ }; _ })
-      ->
+    | Some (Component.At { node = { name = "media"; block = Some _; _ }; _ }) ->
         true
     | _ -> false);
   Alcotest.(check bool)
@@ -291,14 +280,14 @@ let spec_block_mixed_items () =
   (* CSS Syntax Level 3 section 5.4.5 / 5.5.5: block contents return runs of
      declarations interleaved with nested rules, preserving order. *)
   let out =
-    Css.Parser.block_contents
-      (Css.Reader.of_string "color: red; @media screen {}; & .x {}; width: 1px")
+    Parser.block_contents
+      (Reader.of_string "color: red; @media screen {}; & .x {}; width: 1px")
   in
   match out.value with
   | [
    `Decls [ { node = { name = "color"; _ }; _ } ];
-   `Rule (Css.Component.At { node = { name = "media"; _ }; _ });
-   `Rule (Css.Component.Qualified _);
+   `Rule (Component.At { node = { name = "media"; _ }; _ });
+   `Rule (Component.Qualified _);
    `Decls [ { node = { name = "width"; _ }; _ } ];
   ] ->
       ()
@@ -310,9 +299,7 @@ let spec_block_mixed_items () =
 let spec_block_discard_branches () =
   (* CSS Syntax Level 3 section 5.5.5: whitespace and semicolons are discarded;
      EOF and right brace terminate the block contents. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   Alcotest.(check int)
     "whitespace and semicolons discarded" 0
     (List.length (parse "  ; \n ;"));
@@ -323,9 +310,7 @@ let spec_block_discard_branches () =
 let spec_block_nested_errors () =
   (* CSS Syntax Level 3 section 5.5.5 delegates failed declaration attempts to
      nested qualified-rule parsing with semicolon as a stop token. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   Alcotest.(check int)
     "invalid rule does not poison following declaration" 1
     (List.length (parse ".bad ; color: red"));
@@ -337,14 +322,12 @@ let spec_block_nested_boundaries () =
   (* CSS Syntax Level 3 section 5.5.2 and 5.5.3 nested consumers: a right brace
      terminates nested at-rules/qualified rules, and a semicolon terminates a
      nested qualified-rule attempt without consuming following content. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   (match parse "@media screen } width: 1px" with
-  | [ `Rule (Css.Component.At { node = { name = "media"; prelude; _ }; _ }) ] ->
+  | [ `Rule (Component.At { node = { name = "media"; prelude; _ }; _ }) ] ->
       Alcotest.(check string)
         "right brace stops nested at-rule" "screen"
-        (Css.Parser.to_string_minified prelude)
+        (Parser.to_string_minified prelude)
   | _ -> Alcotest.fail "expected one nested at-rule before right brace");
   match parse "& .x ; color: red" with
   | [ `Decls [ { node = { name = "color"; _ }; _ } ] ] -> ()
@@ -355,54 +338,50 @@ let spec_block_reparse_examples () =
      the input and tries a nested qualified rule when the declaration does not
      parse. The implementation note calls out these declaration/rule boundary
      shapes. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   (match parse "foo: bar; baz {} qux: 1px" with
   | [
    `Decls [ { node = { name = "foo"; _ }; _ } ];
-   `Rule (Css.Component.Qualified { node = { prelude = baz_prelude; _ }; _ });
+   `Rule (Component.Qualified { node = { prelude = baz_prelude; _ }; _ });
    `Decls [ { node = { name = "qux"; _ }; _ } ];
   ] ->
       Alcotest.(check string)
         "rule after declaration" "baz"
-        (Css.Parser.to_string_minified baz_prelude)
+        (Parser.to_string_minified baz_prelude)
   | _ -> Alcotest.fail "expected declaration, rule, declaration");
   (match parse "foo:hover { color: red } width: 1px" with
   | [
-   `Rule (Css.Component.Qualified { node = { prelude = hover_prelude; _ }; _ });
+   `Rule (Component.Qualified { node = { prelude = hover_prelude; _ }; _ });
    `Decls [ { node = { name = "width"; _ }; _ } ];
   ] ->
       Alcotest.(check string)
         "pseudo-class rule prelude" "foo:hover"
-        (Css.Parser.to_string_minified hover_prelude)
+        (Parser.to_string_minified hover_prelude)
   | _ -> Alcotest.fail "expected pseudo-class-shaped qualified rule");
   (match parse "font+ { color: red } width: 1px" with
   | [
-   `Rule (Css.Component.Qualified { node = { prelude = plus_prelude; _ }; _ });
+   `Rule (Component.Qualified { node = { prelude = plus_prelude; _ }; _ });
    `Decls [ { node = { name = "width"; _ }; _ } ];
   ] ->
       Alcotest.(check string)
         "font plus rule prelude" "font+"
-        (Css.Parser.to_string_minified plus_prelude)
+        (Parser.to_string_minified plus_prelude)
   | _ -> Alcotest.fail "expected non-declaration ident rule");
   match parse "font:bar { color: red } width: 1px" with
   | [
-   `Rule (Css.Component.Qualified { node = { prelude = font_prelude; _ }; _ });
+   `Rule (Component.Qualified { node = { prelude = font_prelude; _ }; _ });
    `Decls [ { node = { name = "width"; _ }; _ } ];
   ] ->
       Alcotest.(check string)
         "font colon rule prelude" "font:bar"
-        (Css.Parser.to_string_minified font_prelude)
+        (Parser.to_string_minified font_prelude)
   | _ -> Alcotest.fail "expected mixed block declaration to reparse as rule"
 
 let spec_block_flush_stop () =
   (* CSS Syntax Level 3 section 5.5.5 flushes pending declaration lists before
      nested rules, flushes before invalid nested-rule errors, and stops at a
      right brace without consuming later input. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   (match parse "color: red; .bad ; width: 1px" with
   | [
    `Decls [ { node = { name = "color"; _ }; _ } ];
@@ -413,11 +392,11 @@ let spec_block_flush_stop () =
   (match parse "color: red; @media screen } width: 1px" with
   | [
    `Decls [ { node = { name = "color"; _ }; _ } ];
-   `Rule (Css.Component.At { node = { name = "media"; prelude; _ }; _ });
+   `Rule (Component.At { node = { name = "media"; prelude; _ }; _ });
   ] ->
       Alcotest.(check string)
         "nested at-rule prelude" "screen"
-        (Css.Parser.to_string_minified prelude)
+        (Parser.to_string_minified prelude)
   | _ ->
       Alcotest.fail
         "expected declaration list and nested at-rule before right brace");
@@ -428,9 +407,7 @@ let spec_block_flush_stop () =
 let spec_block_custom_props () =
   (* CSS Syntax Level 3 section 5.5.5 treats custom-property-shaped input as a
      declaration attempt, so it is not reparsed as a qualified rule. *)
-  let parse css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let parse css = (Parser.block_contents (Reader.of_string css)).value in
   match parse "--foo:hover { color: blue; }; width: 1px" with
   | [
    `Decls
@@ -441,7 +418,7 @@ let spec_block_custom_props () =
   ] ->
       Alcotest.(check string)
         "custom property value" "hover{color:blue;}"
-        (Css.Parser.to_string_minified custom_value)
+        (Parser.to_string_minified custom_value)
   | _ ->
       Alcotest.fail
         "expected custom-property-shaped block input to stay a declaration"
@@ -450,9 +427,7 @@ let spec_parse_declaration_entry_point () =
   (* CSS Syntax Level 3 section 5.4.7: parse one declaration. Unlike the rule
      and component-value entry points, this algorithm does not require EOF after
      the declaration. *)
-  let parse_one_decl css =
-    (Css.Parser.declaration (Css.Reader.of_string css)).value
-  in
+  let parse_one_decl css = (Parser.declaration (Reader.of_string css)).value in
   Alcotest.(check bool)
     "basic declaration accepted" true
     (match parse_one_decl " color: red " with
@@ -477,15 +452,14 @@ let spec_component_entry_point () =
   (* CSS Syntax Level 3 section 5.4.8: surrounding whitespace is ignored, but
      the input must contain exactly one component value. *)
   let parse_one_cv css =
-    (Css.Parser.component_value (Css.Reader.of_string css)).value
+    (Parser.component_value (Reader.of_string css)).value
   in
   let check_some input expected =
     match parse_one_cv input with
     | Some cv ->
         Alcotest.(check string)
           (Fmt.str "component %S" input)
-          expected
-          (Css.Parser.to_string [ cv ])
+          expected (Parser.to_string [ cv ])
     | None -> Alcotest.failf "expected one component value for %S" input
   in
   check_some "  [a b]  " "[a b]";
@@ -504,30 +478,30 @@ let spec_list_components_entry () =
   (* CSS Syntax Level 3 section 5.4.9: consume component values until EOF,
      preserving whitespace and grouping blocks/functions. *)
   let parse_list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
   Alcotest.(check string)
     "component value list" "a [b c] rgb(1, 2) }"
-    (Css.Parser.to_string (parse_list "a [b c] rgb(1, 2) }"));
+    (Parser.to_string (parse_list "a [b c] rgb(1, 2) }"));
   Alcotest.(check string)
     "unmatched closing tokens are preserved" ")]}"
-    (Css.Parser.to_string (parse_list ")]}"));
+    (Parser.to_string (parse_list ")]}"));
   Alcotest.(check string)
     "comments preserve token boundary" "a b"
-    (Css.Parser.to_string (parse_list "a/*x*/b"));
+    (Parser.to_string (parse_list "a/*x*/b"));
   Alcotest.(check string)
     "EOF closes nested blocks and functions" "[a f(b)]"
-    (Css.Parser.to_string (parse_list "[a f(b"));
+    (Parser.to_string (parse_list "[a f(b"));
   Alcotest.(check int) "empty list" 0 (List.length (parse_list ""))
 
 let spec_csv_components () =
   (* CSS Syntax Level 3 section 5.4.10: split only on top-level commas; a
      trailing comma is consumed and does not synthesize an empty final group. *)
   let parse_groups css =
-    (Css.Parser.csv_component_values (Css.Reader.of_string css)).value
+    (Parser.csv_component_values (Reader.of_string css)).value
   in
   let show groups =
-    List.map Css.Parser.to_string_minified groups |> String.concat "|"
+    List.map Parser.to_string_minified groups |> String.concat "|"
   in
   Alcotest.(check string)
     "top-level commas split groups" "a|rgb(1,2)|[x,y]"
@@ -557,9 +531,9 @@ let spec_arbitrary_value_productions () =
      closing tokens. <declaration-value> additionally rejects top-level
      semicolons and top-level "!" delimiters. *)
   let parse_decl css =
-    (Css.Parser.declaration_value (Css.Reader.of_string css)).value
+    (Parser.declaration_value (Reader.of_string css)).value
   in
-  let parse_any css = (Css.Parser.any_value (Css.Reader.of_string css)).value in
+  let parse_any css = (Parser.any_value (Reader.of_string css)).value in
   let accepted = function Some _ -> true | None -> false in
   Alcotest.(check bool)
     "declaration value accepts ordinary values" true
@@ -614,19 +588,16 @@ let spec_serialization_string_escaping () =
   (* CSS Syntax Level 3 section 9.2: strings are serialized in a form that
      round-trips, escaping quote and backslash characters and not emitting raw
      newlines inside the string token. *)
-  let parse_one css =
-    (Css.Parser.component_value (Css.Reader.of_string css)).value
-  in
+  let parse_one css = (Parser.component_value (Reader.of_string css)).value in
   let string_value = function
-    | Some (Css.Component.Preserved { kind = Css.Token.String { value; _ }; _ })
-      ->
+    | Some (Component.Preserved { kind = Token.String { value; _ }; _ }) ->
         Some value
     | _ -> None
   in
   let roundtrip_string input =
     match parse_one input with
     | Some cv ->
-        let serialized = Css.Parser.to_string [ cv ] in
+        let serialized = Parser.to_string [ cv ] in
         (serialized, string_value (parse_one serialized))
     | None -> Alcotest.failf "expected string component for %S" input
   in
@@ -650,18 +621,18 @@ let spec_serialization_roundtrip_boundaries () =
      tokenization. These pairs are from the consecutive-token separation table:
      dropping all separation would merge or reinterpret the pair. *)
   let parse_list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
   let non_ws cvs =
     List.filter
       (function
-        | Css.Component.Preserved { kind = Css.Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace; _ } -> false
         | _ -> true)
       cvs
   in
   let check_pair a b =
     let input = a ^ " " ^ b in
-    let serialized = Css.Parser.to_string_minified (parse_list input) in
+    let serialized = Parser.to_string_minified (parse_list input) in
     let reparsed = parse_list serialized in
     Alcotest.(check int)
       (Fmt.str "%S and %S remain separate as %S" a b serialized)
@@ -685,32 +656,32 @@ let spec_serialization_roundtrip_boundaries () =
     ];
   Alcotest.(check string)
     "backslash delim serialization" "\\\n"
-    (Css.Parser.to_string (parse_list "\\"))
+    (Parser.to_string (parse_list "\\"))
 
 let spec_wpt_unclosed_construct_edges () =
   (* WPT unclosed-constructs vectors at the component parser layer. *)
   let list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
   Alcotest.(check string)
     "unclosed function and block auto-close" "calc(1px + [2em])"
-    (Css.Parser.to_string (list "calc(1px + [2em"));
+    (Parser.to_string (list "calc(1px + [2em"));
   Alcotest.(check string)
     "unclosed nested function auto-closes" "f(g(h))"
-    (Css.Parser.to_string_minified (list "f(g(h"))
+    (Parser.to_string_minified (list "f(g(h"))
 
 let spec_wpt_trailing_brace_edges () =
   (* WPT trailing-braces vectors: component-value list parsing preserves
      unmatched closing tokens instead of swallowing later input. *)
   let list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
   Alcotest.(check string)
     "trailing right braces are preserved in component lists" "a}}"
-    (Css.Parser.to_string_minified (list "a}}"));
+    (Parser.to_string_minified (list "a}}"));
   Alcotest.(check string)
     "unmatched mixed closers are preserved" ")]}"
-    (Css.Parser.to_string_minified (list ")]}"))
+    (Parser.to_string_minified (list ")]}"))
 
 let wpt_at_rule_boundary_edges () =
   (* WPT at-rule recovery shape: semicolon-terminated at-rules and unclosed
@@ -720,12 +691,12 @@ let wpt_at_rule_boundary_edges () =
     "unclosed at-rule block still forms one at-rule" 1 (List.length rules);
   (match parse_ss "@bad ; .ok { color: green }" with
   | [
-   Css.Component.At { node = { name = "bad"; block = None; _ }; _ };
-   Css.Component.Qualified _;
+   Component.At { node = { name = "bad"; block = None; _ }; _ };
+   Component.Qualified _;
   ] ->
       ()
   | _ -> Alcotest.fail "semicolon at-rule should not consume following rule");
-  match Css.Parser.rule (Css.Reader.of_string "@bad ; .ok{}") with
+  match Parser.rule (Reader.of_string "@bad ; .ok{}") with
   | { value = None; _ } -> ()
   | _ -> Alcotest.fail "parse-rule rejects at-rule plus trailing qualified rule"
 
@@ -734,32 +705,30 @@ let spec_wpt_parser_branch_matrix () =
      blocks/functions, invalid declarations, CDO/CDC contexts, and list/rule
      entry-point boundaries. *)
   let list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
-  let block_items css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let block_items css = (Parser.block_contents (Reader.of_string css)).value in
   Alcotest.(check string)
     "mixed unmatched closers preserved at component layer" "a)]}b"
-    (Css.Parser.to_string_minified (list "a)]}b"));
+    (Parser.to_string_minified (list "a)]}b"));
   (match list "a url(foo\"bar) next" with
   | [
-   Css.Component.Preserved { kind = Css.Token.Ident "a"; _ };
-   Css.Component.Preserved { kind = Css.Token.Whitespace; _ };
-   Css.Component.Preserved { kind = Css.Token.Bad_url; _ };
-   Css.Component.Preserved { kind = Css.Token.Whitespace; _ };
-   Css.Component.Preserved { kind = Css.Token.Ident "next"; _ };
+   Component.Preserved { kind = Token.Ident "a"; _ };
+   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Bad_url; _ };
+   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Ident "next"; _ };
   ] ->
       ()
   | _ -> Alcotest.fail "expected bad-url token and following ident to survive");
   Alcotest.(check string)
     "nested block EOF recovery" "[a {b (c)}]"
-    (Css.Parser.to_string (list "[a {b (c"));
+    (Parser.to_string (list "[a {b (c"));
   (match parse_ss "@a; @b{} .c{}" with
   | [
-   Css.Component.At { node = { name = "a"; block = None; _ }; _ };
-   Css.Component.At { node = { name = "b"; block = Some _; _ }; _ };
-   Css.Component.Qualified _;
+   Component.At { node = { name = "a"; block = None; _ }; _ };
+   Component.At { node = { name = "b"; block = Some _; _ }; _ };
+   Component.Qualified _;
   ] ->
       ()
   | _ -> Alcotest.fail "expected semicolon at-rule, block at-rule, rule");
@@ -768,27 +737,24 @@ let spec_wpt_parser_branch_matrix () =
    with
   | [
    `Decls [ { node = { name = "color"; _ }; _ } ];
-   `Rule (Css.Component.At { node = { name = "supports"; _ }; _ });
-   `Rule (Css.Component.Qualified _);
+   `Rule (Component.At { node = { name = "supports"; _ }; _ });
+   `Rule (Component.Qualified _);
   ] ->
       ()
   | _ -> Alcotest.fail "expected block declaration/rule recovery branches");
   Alcotest.(check bool)
     "parse-rule rejects declaration-looking input" true
-    ((Css.Parser.rule (Css.Reader.of_string "color: red")).value = None);
+    ((Parser.rule (Reader.of_string "color: red")).value = None);
   Alcotest.(check bool)
     "parse component rejects two comma-separated values" true
-    ((Css.Parser.component_value (Css.Reader.of_string "a,b")).value = None)
+    ((Parser.component_value (Reader.of_string "a,b")).value = None)
 
 let spec_wpt_declaration_recovery_matrix () =
-  let decls css =
-    (Css.Parser.list_of_declarations (Css.Reader.of_string css)).value
-  in
+  let decls css = (Parser.list_of_declarations (Reader.of_string css)).value in
   let names css =
     decls css
     |> List.filter_map (function
-      | `Decl ({ node = { name; _ }; _ } : Css.Component.declaration) ->
-          Some name
+      | `Decl ({ node = { name; _ }; _ } : Component.declaration) -> Some name
       | `At _ -> None)
   in
   Alcotest.(check (list string))
@@ -817,7 +783,7 @@ let spec_security_resource_exhaustion_regressions () =
      DoS classes: unterminated nesting, bad-url remnants, and many discarded
      comments. *)
   let parse_list css =
-    (Css.Parser.list_of_component_values (Css.Reader.of_string css)).value
+    (Parser.list_of_component_values (Reader.of_string css)).value
   in
   let check_completes name f =
     let exception Timeout in
@@ -845,7 +811,7 @@ let spec_security_resource_exhaustion_regressions () =
     List.init 128 (fun i -> Fmt.str "a%d/* ignored { : ; } */" i)
     |> String.concat ""
   in
-  let serialized = Css.Parser.to_string_minified (parse_list comments) in
+  let serialized = Parser.to_string_minified (parse_list comments) in
   Alcotest.(check bool)
     "discarded comments do not surface declarations" false
     (String.contains serialized '{')
@@ -853,11 +819,9 @@ let spec_security_resource_exhaustion_regressions () =
 let spec12_parsing_checklist () =
   (* CSS Syntax Level 3 section 12 is non-normative. These vectors assert the
      current normative parser behavior it lists as changed or clarified. *)
-  let block_items css =
-    (Css.Parser.block_contents (Css.Reader.of_string css)).value
-  in
+  let block_items css = (Parser.block_contents (Reader.of_string css)).value in
   let parse_decls css =
-    (Css.Parser.list_of_declarations (Css.Reader.of_string css)).value
+    (Parser.list_of_declarations (Reader.of_string css)).value
   in
   (match
      block_items
@@ -866,14 +830,14 @@ let spec12_parsing_checklist () =
    with
   | [
    `Decls [ { node = { name = "color"; _ }; _ } ];
-   `Rule (Css.Component.Qualified { node = { prelude = child; _ }; _ });
+   `Rule (Component.Qualified { node = { prelude = child; _ }; _ });
    `Decls [ { node = { name = "background"; _ }; _ } ];
-   `Rule (Css.Component.At { node = { name = "media"; _ }; _ });
+   `Rule (Component.At { node = { name = "media"; _ }; _ });
    `Decls [ { node = { name = "opacity"; _ }; _ } ];
   ] ->
       Alcotest.(check string)
         "nested style rule prelude" "&.child"
-        (Css.Parser.to_string_minified child)
+        (Parser.to_string_minified child)
   | _ ->
       Alcotest.fail
         "expected declarations and nested rules to preserve relative order");
@@ -889,51 +853,50 @@ let spec12_parsing_checklist () =
   | [ `Decl { node = { name = "unicode-range"; value; _ }; _ } ] ->
       Alcotest.(check string)
         "unicode-range descriptor reparsed from source" "U+26,U+400-4FF,auto"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected unicode-range descriptor declaration");
   Alcotest.(check string)
     "url string is a function component" "url(\"a.png\") url(a.png)"
-    (Css.Parser.to_string (parse_cvs "url(\"a.png\") url(a.png)"));
+    (Parser.to_string (parse_cvs "url(\"a.png\") url(a.png)"));
   Alcotest.(check string)
     "semicolon in qualified-rule prelude" "a;b"
     (match parse_ss "a; b { color: red }" with
-    | [ Css.Component.Qualified { node = { prelude; _ }; _ } ] ->
-        Css.Parser.to_string_minified prelude
+    | [ Component.Qualified { node = { prelude; _ }; _ } ] ->
+        Parser.to_string_minified prelude
     | _ -> Alcotest.fail "expected qualified rule with semicolon prelude")
 
 let spec_stylesheet_contents_cdo_cdc () =
   (* CSS Syntax Level 3 section 5.5.1: CDO/CDC are discarded only by the
      stylesheet/top-level rule-list algorithm. *)
   let top =
-    (Css.Parser.stylesheet_contents (Css.Reader.of_string "<!-- .a{} --> .b{}"))
-      .value
+    (Parser.stylesheet_contents (Reader.of_string "<!-- .a{} --> .b{}")).value
   in
   Alcotest.(check int) "top-level rules" 2 (List.length top);
   (match top with
   | [
-   Css.Component.Qualified { node = { prelude = prelude_a; _ }; _ };
-   Css.Component.Qualified { node = { prelude = prelude_b; _ }; _ };
+   Component.Qualified { node = { prelude = prelude_a; _ }; _ };
+   Component.Qualified { node = { prelude = prelude_b; _ }; _ };
   ] ->
       Alcotest.(check string)
         "first prelude" ".a"
-        (Css.Parser.to_string_minified prelude_a);
+        (Parser.to_string_minified prelude_a);
       Alcotest.(check string)
         "second prelude" ".b"
-        (Css.Parser.to_string_minified prelude_b)
+        (Parser.to_string_minified prelude_b)
   | _ -> Alcotest.fail "expected two qualified rules");
   let nested = parse_rules "<!-- .a{} --> .b{}" in
   Alcotest.(check int) "nested/non-top-level rules" 2 (List.length nested);
   match nested with
   | [
-   Css.Component.Qualified { node = { prelude = prelude_a; _ }; _ };
-   Css.Component.Qualified { node = { prelude = prelude_b; _ }; _ };
+   Component.Qualified { node = { prelude = prelude_a; _ }; _ };
+   Component.Qualified { node = { prelude = prelude_b; _ }; _ };
   ] ->
       Alcotest.(check string)
         "nested first prelude keeps CDO" "<!--.a"
-        (Css.Parser.to_string_minified prelude_a);
+        (Parser.to_string_minified prelude_a);
       Alcotest.(check string)
         "nested second prelude keeps CDC" "-->.b"
-        (Css.Parser.to_string_minified prelude_b)
+        (Parser.to_string_minified prelude_b)
   | _ -> Alcotest.fail "expected two non-top-level qualified rules"
 
 let spec_at_rule_branches () =
@@ -941,28 +904,27 @@ let spec_at_rule_branches () =
      at-rule; other component values accumulate in the prelude. *)
   let check_import input =
     match parse_ss input with
-    | [ Css.Component.At { node = { name; prelude; block = None }; _ } ] ->
+    | [ Component.At { node = { name; prelude; block = None }; _ } ] ->
         Alcotest.(check string) "name" "import" name;
         Alcotest.(check string)
           "prelude" "url(a.css)"
-          (Css.Parser.to_string_minified prelude)
+          (Parser.to_string_minified prelude)
     | _ -> Alcotest.failf "expected semicolon/EOF @import for %S" input
   in
   check_import "@import url(a.css);";
   check_import "@import url(a.css)";
   match parse_ss "@media screen { .a { color: red } }" with
-  | [ Css.Component.At { node = { name = "media"; block = Some _; _ }; _ } ] ->
-      ()
+  | [ Component.At { node = { name = "media"; block = Some _; _ }; _ } ] -> ()
   | _ -> Alcotest.fail "expected block at-rule"
 
 let spec_atrule_right_brace () =
   (* CSS Syntax Level 3 section 5.5.2: when not nested, a right brace in an
      at-rule prelude is just another component value. *)
   match parse_ss "@x } y;" with
-  | [ Css.Component.At { node = { name = "x"; prelude; block = None }; _ } ] ->
+  | [ Component.At { node = { name = "x"; prelude; block = None }; _ } ] ->
       Alcotest.(check string)
         "right brace preserved in prelude" "}y"
-        (Css.Parser.to_string_minified prelude)
+        (Parser.to_string_minified prelude)
   | _ -> Alcotest.fail "expected one @x at-rule"
 
 let spec_qualified_rule_branches () =
@@ -973,10 +935,10 @@ let spec_qualified_rule_branches () =
     "EOF before block drops rule" 0
     (List.length (parse_ss "h1"));
   match parse_ss "} .a {}" with
-  | [ Css.Component.Qualified { node = { prelude; _ }; _ } ] ->
+  | [ Component.Qualified { node = { prelude; _ }; _ } ] ->
       Alcotest.(check string)
         "right brace remains in prelude" "}.a"
-        (Css.Parser.to_string_minified prelude)
+        (Parser.to_string_minified prelude)
   | _ -> Alcotest.fail "expected one qualified rule with right brace prelude"
 
 let spec_qualified_custom_prop () =
@@ -984,10 +946,10 @@ let spec_qualified_custom_prop () =
      two non-whitespace prelude values look like a custom property declaration
      is consumed and discarded, not returned as a rule. *)
   match parse_ss "--x: y { z } .a {}" with
-  | [ Css.Component.Qualified { node = { prelude; _ }; _ } ] ->
+  | [ Component.Qualified { node = { prelude; _ }; _ } ] ->
       Alcotest.(check string)
         "surviving rule prelude" ".a"
-        (Css.Parser.to_string_minified prelude)
+        (Parser.to_string_minified prelude)
   | _ ->
       Alcotest.fail
         "expected custom-property-shaped qualified rule to be discarded"
@@ -997,13 +959,11 @@ let spec_qualified_custom_prop () =
 let component_value_block () =
   let rs = parse_ss "@x (a b c);" in
   match rs with
-  | [ Css.Component.At { node = { prelude; _ }; _ } ] ->
+  | [ Component.At { node = { prelude; _ }; _ } ] ->
       let has_paren =
         List.exists
           (function
-            | Css.Component.Block { node = { opening = Css.Token.Paren; _ }; _ }
-              ->
-                true
+            | Component.Block { node = { opening = Token.Paren; _ }; _ } -> true
             | _ -> false)
           prelude
       in
@@ -1013,11 +973,11 @@ let component_value_block () =
 let component_value_function () =
   let rs = parse_ss "@x rgb(1, 2, 3);" in
   match rs with
-  | [ Css.Component.At { node = { prelude; _ }; _ } ] ->
+  | [ Component.At { node = { prelude; _ }; _ } ] ->
       let has_func =
         List.exists
           (function
-            | Css.Component.Func { node = { name = "rgb"; _ }; _ } -> true
+            | Component.Func { node = { name = "rgb"; _ }; _ } -> true
             | _ -> false)
           prelude
       in
@@ -1029,45 +989,45 @@ let spec_component_value_algorithms () =
      tokens, simple blocks, and functions; EOF closes an open function. *)
   let cvs = parse_cvs "[a b] rgb(1, 2)" in
   Alcotest.(check string)
-    "simple block and function" "[a b] rgb(1, 2)" (Css.Parser.to_string cvs);
+    "simple block and function" "[a b] rgb(1, 2)" (Parser.to_string cvs);
   let cvs = parse_cvs "rgb(1, 2" in
   Alcotest.(check string)
-    "function auto-closed at EOF" "rgb(1, 2)" (Css.Parser.to_string cvs)
+    "function auto-closed at EOF" "rgb(1, 2)" (Parser.to_string cvs)
 
 let spec_simple_block_branches () =
   (* CSS Syntax Level 3 section 5.5.9: simple blocks end only at their mirror
      closing token or EOF; mismatched closers are preserved inside the block. *)
   Alcotest.(check string)
     "square block mirror close" "[a) b]"
-    (Css.Parser.to_string (parse_cvs "[a) b]"));
+    (Parser.to_string (parse_cvs "[a) b]"));
   Alcotest.(check string)
     "paren block mirror close" "(a] b)"
-    (Css.Parser.to_string (parse_cvs "(a] b)"));
+    (Parser.to_string (parse_cvs "(a] b)"));
   Alcotest.(check string)
     "curly block mirror close" "{a] b}"
-    (Css.Parser.to_string (parse_cvs "{a] b}"));
+    (Parser.to_string (parse_cvs "{a] b}"));
   Alcotest.(check string)
     "EOF closes simple block" "[a]"
-    (Css.Parser.to_string (parse_cvs "[a"))
+    (Parser.to_string (parse_cvs "[a"))
 
 let spec_function_branches () =
   (* CSS Syntax Level 3 section 5.5.10: functions end at ")" or EOF; other
      tokens, including unmatched right braces, are arguments. *)
   Alcotest.(check string)
     "nested function arguments" "calc([a] rgb(1))"
-    (Css.Parser.to_string (parse_cvs "calc([a] rgb(1))"));
+    (Parser.to_string (parse_cvs "calc([a] rgb(1))"));
   Alcotest.(check string)
     "right brace argument preserved" "f(})"
-    (Css.Parser.to_string (parse_cvs "f(})"));
+    (Parser.to_string (parse_cvs "f(})"));
   Alcotest.(check string)
     "EOF closes function" "f(a)"
-    (Css.Parser.to_string (parse_cvs "f(a"))
+    (Parser.to_string (parse_cvs "f(a"))
 
 (* ----- Declaration list parsing (5.3.6 / 5.3.7) ----- *)
 
 let parse_decls input =
-  let r = Css.Reader.of_string input in
-  (Css.Parser.list_of_declarations r).value
+  let r = Reader.of_string input in
+  (Parser.list_of_declarations r).value
 
 let basic_declaration () =
   match parse_decls "color: red" with
@@ -1100,19 +1060,19 @@ let spec_declaration_important_edges () =
   | [ `Decl { node = { important = true; value; _ }; _ } ] ->
       Alcotest.(check string)
         "important value trimmed" "red"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected important declaration");
   (match parse_decls "color: red ! important extra;" with
   | [ `Decl { node = { important = false; value; _ }; _ } ] ->
       Alcotest.(check string)
         "non-final important left in value" "red!important extra"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected non-important declaration");
   match parse_decls "background: f(!important) !important;" with
   | [ `Decl { node = { important = true; value; _ }; _ } ] ->
       Alcotest.(check string)
         "only final top-level important stripped" "f(!important)"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected nested !important to remain in value"
 
 let declaration_multiple () =
@@ -1140,34 +1100,28 @@ let declaration_bad_token_dropped () =
 (* ----- Warnings (Error.t emitted during recovery) ----- *)
 
 let unterminated_rule_warns () =
-  let r = Css.Reader.of_string "h1" in
-  let out = Css.Parser.stylesheet r in
+  let r = Reader.of_string "h1" in
+  let out = Parser.stylesheet r in
   Alcotest.(check int) "no rules" 0 (List.length out.value);
   Alcotest.(check int) "one warning" 1 (List.length out.warnings);
   match out.warnings with
-  | [ { sort = Css.Sort.Qualified_rule; kind = Css.Error.Unterminated _; _ } ]
-    ->
-      ()
+  | [ { sort = Sort.Qualified_rule; kind = Error.Unterminated _; _ } ] -> ()
   | _ -> Alcotest.fail "expected an Unterminated qualified-rule warning"
 
 let missing_colon_warns () =
-  let r = Css.Reader.of_string "color red" in
-  let out = Css.Parser.list_of_declarations r in
+  let r = Reader.of_string "color red" in
+  let out = Parser.list_of_declarations r in
   Alcotest.(check int) "no decls" 0 (List.length out.value);
   match out.warnings with
-  | [ { sort = Css.Sort.Declaration; kind = Css.Error.Missing_token "':'"; _ } ]
-    ->
-      ()
+  | [ { sort = Sort.Declaration; kind = Error.Missing_token "':'"; _ } ] -> ()
   | _ -> Alcotest.fail "expected a Missing_token ':' warning"
 
 let unexpected_token_warns () =
-  let r = Css.Reader.of_string ": red; color: blue" in
-  let out = Css.Parser.list_of_declarations r in
+  let r = Reader.of_string ": red; color: blue" in
+  let out = Parser.list_of_declarations r in
   Alcotest.(check int) "one survivor" 1 (List.length out.value);
   match out.warnings with
-  | [ { sort = Css.Sort.Declaration; kind = Css.Error.Unexpected_token _; _ } ]
-    ->
-      ()
+  | [ { sort = Sort.Declaration; kind = Error.Unexpected_token _; _ } ] -> ()
   | _ -> Alcotest.fail "expected an Unexpected_token warning"
 
 let warning_carries_snippet () =
@@ -1175,11 +1129,11 @@ let warning_carries_snippet () =
      recovery warning; the warning should carry a source snippet with a caret
      pointing at the EOF position, just like a Cursor-raised error would. *)
   let input = "h1" in
-  let r = Css.Reader.of_string input in
-  let out = Css.Parser.stylesheet r in
+  let r = Reader.of_string input in
+  let out = Parser.stylesheet r in
   match out.warnings with
   | [ w ] -> (
-      match Css.Error.snippet w with
+      match Error.snippet w with
       | None -> Alcotest.fail "warning missing source snippet"
       | Some { text; _ } ->
           Alcotest.(check string)
@@ -1217,7 +1171,7 @@ let spec_declaration_block_value_rules () =
   ] ->
       Alcotest.(check string)
         "entire block value survives" "{red}"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected whole-block non-custom value to survive");
   (match parse_decls "--x: { a: b; } tail; width: 1px" with
   | [
@@ -1226,7 +1180,7 @@ let spec_declaration_block_value_rules () =
   ] ->
       Alcotest.(check string)
         "custom property value" "{a:b;}tail"
-        (Css.Parser.to_string_minified custom_value)
+        (Parser.to_string_minified custom_value)
   | _ -> Alcotest.fail "expected custom property block value to survive");
   match parse_decls "color: { red } blue; width: 1px" with
   | [ `Decl { node = { name = "width"; _ }; _ } ] -> ()
@@ -1264,7 +1218,7 @@ let spec_declaration_unicode_range_descriptor () =
   | [ `Decl { node = { name = "unicode-range"; value; _ }; _ } ] ->
       Alcotest.(check string)
         "unicode-range descriptor value" "U+26,U+400-4FF"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected one unicode-range declaration"
 
 let spec_decl_urange_descriptor () =
@@ -1274,32 +1228,32 @@ let spec_decl_urange_descriptor () =
   | [ `Decl { node = { name = "unicode-range"; value; _ }; _ } ] ->
       Alcotest.(check string)
         "range plus ident" "U+0-7F,auto"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected unicode-range plus ident declaration");
   match parse_decls "unicode-range: u+" with
   | [ `Decl { node = { name = "unicode-range"; value; _ }; _ } ] ->
       Alcotest.(check string)
         "false range start remains components" "u+"
-        (Css.Parser.to_string_minified value)
+        (Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected false unicode-range start declaration"
 
 let spec_csv_nested_edges () =
   (* CSS Syntax Level 3 section 5.4.10: top-level commas split groups, but
      commas inside blocks and functions remain part of that group's component
      value list. Empty interior groups are preserved for grammar matching. *)
-  let groups = Css.Parser.csv_component_values (Css.Reader.of_string "a,,b") in
+  let groups = Parser.csv_component_values (Reader.of_string "a,,b") in
   Alcotest.(check int) "a,,b has three groups" 3 (List.length groups.value);
   Alcotest.(check string)
     "empty interior group" "a||b"
-    (groups.value |> List.map Css.Parser.to_string_minified |> String.concat "|");
+    (groups.value |> List.map Parser.to_string_minified |> String.concat "|");
   let groups =
-    Css.Parser.csv_component_values
-      (Css.Reader.of_string "rgb(1, 2, 3), [a,b], {c:d,e:f}")
+    Parser.csv_component_values
+      (Reader.of_string "rgb(1, 2, 3), [a,b], {c:d,e:f}")
   in
   Alcotest.(check int) "nested commas not split" 3 (List.length groups.value);
   Alcotest.(check string)
     "nested comma groups" "rgb(1,2,3)|[a,b]|{c:d,e:f}"
-    (groups.value |> List.map Css.Parser.to_string_minified |> String.concat "|")
+    (groups.value |> List.map Parser.to_string_minified |> String.concat "|")
 
 let spec_deep_nesting_edges () =
   (* CSS Syntax Level 3 section 5.5.9 closes simple blocks at EOF. This is a
@@ -1309,11 +1263,11 @@ let spec_deep_nesting_edges () =
   in
   let cvs = parse_cvs input in
   Alcotest.(check bool) "deep mixed nesting parsed" true (cvs <> []);
-  let serialized = Css.Parser.to_string_minified cvs in
+  let serialized = Parser.to_string_minified cvs in
   let reparsed = parse_cvs serialized in
   Alcotest.(check string)
     "deep mixed nesting reserializes" serialized
-    (Css.Parser.to_string_minified reparsed)
+    (Parser.to_string_minified reparsed)
 
 let spec_comment_recovery_edges () =
   (* CSS Syntax Level 3 sections 4.3.2 and 5.5: comments disappear before
@@ -1321,10 +1275,10 @@ let spec_comment_recovery_edges () =
      boundaries so comments cannot merge two identifiers into a new token. *)
   Alcotest.(check string)
     "comment between decl tokens" "color red"
-    (parse_cvs "color/*x*/red" |> Css.Parser.to_string_minified);
+    (parse_cvs "color/*x*/red" |> Parser.to_string_minified);
   Alcotest.(check string)
     "unterminated comment hides braces" "safe"
-    (parse_cvs "safe/* .evil { color:red }" |> Css.Parser.to_string_minified);
+    (parse_cvs "safe/* .evil { color:red }" |> Parser.to_string_minified);
   let rs = parse_ss ".a { color:red /* hidden } .b { color:blue }" in
   Alcotest.(check int) "one rule after hidden brace" 1 (List.length rs)
 

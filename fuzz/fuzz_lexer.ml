@@ -15,19 +15,19 @@ let cssish buf =
 let rec take_kinds lexer limit acc =
   if limit = 0 then List.rev acc
   else
-    let tok = Css.Lexer.next lexer in
-    match tok.Css.Token.kind with
-    | Css.Token.Eof -> List.rev (Css.Token.Eof :: acc)
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof -> List.rev (Token.Eof :: acc)
     | kind -> take_kinds lexer (limit - 1) (kind :: acc)
 
-let kinds input = take_kinds (Css.Lexer.of_string input) 4096 []
-let kind_string kind = Css.Pp.to_string Css.Token.pp_kind kind
+let kinds input = take_kinds (Lexer.of_string input) 4096 []
+let kind_string kind = Css.Pp.to_string Token.pp_kind kind
 let kind_strings input = List.map kind_string (kinds input)
 
 let kind_strings_no_eof input =
   kinds input
   |> List.filter_map (function
-    | Css.Token.Eof -> None
+    | Token.Eof -> None
     | kind -> Some (kind_string kind))
 
 let test_tokenization_crash_safety buf = ignore (kinds (cssish buf))
@@ -39,49 +39,49 @@ let test_tokenization_deterministic buf =
   if a <> b then fail "lexer tokenization is not deterministic"
 
 let test_peek_next_consistency buf =
-  let lexer = Css.Lexer.of_string (cssish buf) in
-  let peeked = Css.Lexer.peek lexer in
-  let next = Css.Lexer.next lexer in
-  if peeked.Css.Token.kind <> next.Css.Token.kind then
+  let lexer = Lexer.of_string (cssish buf) in
+  let peeked = Lexer.peek lexer in
+  let next = Lexer.next lexer in
+  if peeked.Token.kind <> next.Token.kind then
     fail "lexer peek and next returned different token kinds"
 
 let test_reconsume_returns_same_token buf =
-  let lexer = Css.Lexer.of_string (cssish buf) in
-  let tok = Css.Lexer.next lexer in
-  Css.Lexer.reconsume lexer tok;
-  let again = Css.Lexer.next lexer in
-  if tok.Css.Token.kind <> again.Css.Token.kind then
+  let lexer = Lexer.of_string (cssish buf) in
+  let tok = Lexer.next lexer in
+  Lexer.reconsume lexer tok;
+  let again = Lexer.next lexer in
+  if tok.Token.kind <> again.Token.kind then
     fail "lexer reconsume did not replay the same token kind"
 
 let test_save_restore_replays_prefix buf =
   let input = cssish buf in
-  let lexer = Css.Lexer.of_string input in
-  Css.Lexer.save lexer;
+  let lexer = Lexer.of_string input in
+  Lexer.save lexer;
   let first = take_kinds lexer 8 [] in
-  Css.Lexer.restore lexer;
+  Lexer.restore lexer;
   let second = take_kinds lexer 8 [] in
   if first <> second then fail "lexer restore did not replay consumed tokens"
 
 let test_commit_preserves_outer_restore buf =
   let input = cssish buf in
-  let lexer = Css.Lexer.of_string input in
-  Css.Lexer.save lexer;
-  let first = Css.Lexer.next lexer in
-  Css.Lexer.save lexer;
-  ignore (Css.Lexer.next lexer);
-  Css.Lexer.commit lexer;
-  Css.Lexer.restore lexer;
-  let replayed = Css.Lexer.next lexer in
-  if first.Css.Token.kind <> replayed.Css.Token.kind then
+  let lexer = Lexer.of_string input in
+  Lexer.save lexer;
+  let first = Lexer.next lexer in
+  Lexer.save lexer;
+  ignore (Lexer.next lexer);
+  Lexer.commit lexer;
+  Lexer.restore lexer;
+  let replayed = Lexer.next lexer in
+  if first.Token.kind <> replayed.Token.kind then
     fail "lexer commit did not fold replay log into outer save"
 
 let test_eof_stable buf =
-  let lexer = Css.Lexer.of_string (cssish buf) in
+  let lexer = Lexer.of_string (cssish buf) in
   ignore (take_kinds lexer 4096 []);
-  let a = Css.Lexer.next lexer in
-  let b = Css.Lexer.next lexer in
-  match (a.Css.Token.kind, b.Css.Token.kind) with
-  | Css.Token.Eof, Css.Token.Eof -> ()
+  let a = Lexer.next lexer in
+  let b = Lexer.next lexer in
+  match (a.Token.kind, b.Token.kind) with
+  | Token.Eof, Token.Eof -> ()
   | _ -> fail "lexer EOF is not stable"
 
 let pick xs buf i =

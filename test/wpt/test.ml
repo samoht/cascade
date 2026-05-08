@@ -365,7 +365,7 @@ let non_ascii_codepoints =
    not the missing closer). *)
 let unclosed_constructs =
   let should_be_valid str () =
-    let c = Cascade.Css.Cursor.of_string str in
+    let c = Cascade.Cursor.of_string str in
     match
       try
         let _ = Cascade.Css.Selector.read c in
@@ -412,15 +412,13 @@ let whitespace_html =
     Cascade.Css.Pp.to_string ~minify:true Cascade.Css.Selector.pp sel
   in
   let reference =
-    to_string (Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string ".a b"))
+    to_string (Cascade.Css.Selector.read (Cascade.Cursor.of_string ".a b"))
   in
   let try_parse input =
     try
-      let sel =
-        Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string input)
-      in
+      let sel = Cascade.Css.Selector.read (Cascade.Cursor.of_string input) in
       Some (to_string sel)
-    with Cascade.Css.Cursor.Parse_error _ -> None
+    with Cascade.Cursor.Parse_error _ -> None
   in
   let parses_equal_to_ref c () =
     let input = Fmt.str ".a%sb" (utf8_of_cp c) in
@@ -495,12 +493,12 @@ let anb_pair_test ~source ~input ~expected =
   let selector = Fmt.str ":nth-child(%s)" input in
   let name = Fmt.str "%s %S becomes %S" source input expected in
   let body () =
-    let c = Cascade.Css.Cursor.of_string selector in
+    let c = Cascade.Cursor.of_string selector in
     let parsed =
       try
         let _ = Cascade.Css.Selector.read c in
         Ok ()
-      with Cascade.Css.Cursor.Parse_error _ as e -> Error e
+      with Cascade.Cursor.Parse_error _ as e -> Error e
     in
     match (parsed, expected) with
     | Ok (), "parse error" -> Alcotest.failf "%S should have failed" input
@@ -673,18 +671,16 @@ let serialize_consecutive_tokens =
        then re-tokenize that serialization. If the serializer merged the pair,
        re-tokenizing the serialized string would yield fewer components. *)
     let source = a ^ " " ^ b in
-    let cvs =
-      Cascade.Css.Cursor.of_string source |> Cascade.Css.Cursor.remaining
-    in
-    let serialized = Cascade.Css.Parser.to_string_minified cvs in
+    let cvs = Cascade.Cursor.of_string source |> Cascade.Cursor.remaining in
+    let serialized = Cascade.Parser.to_string_minified cvs in
     let reparsed =
-      Cascade.Css.Cursor.of_string serialized |> Cascade.Css.Cursor.remaining
+      Cascade.Cursor.of_string serialized |> Cascade.Cursor.remaining
     in
     let non_ws cvs =
       List.filter
         (function
-          | Cascade.Css.Component.Preserved
-              { kind = Cascade.Css.Token.Whitespace; _ } ->
+          | Cascade.Component.Preserved { kind = Cascade.Token.Whitespace; _ }
+            ->
               false
           | _ -> true)
         cvs

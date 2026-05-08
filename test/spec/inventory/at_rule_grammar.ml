@@ -21,25 +21,24 @@ let positive =
       "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \"*\"; \
        inherits: false }";
     row "import" "layer-supports-media"
-      "@import url(layout.css) layer(framework.component) \
-       supports(display:grid) screen and (width >= 40em);"
+      "@import\"layout.css\"layer(framework.component)supports(display:grid)screen \
+       and (width>=40em);"
       "@import url(layout.css) layer(framework.component) supports(display: \
        grid) screen and (width >= 40em);";
     row "namespace" "prefixed-url"
-      "@namespace svg url(http://www.w3.org/2000/svg);"
+      "@namespace svg\"http://www.w3.org/2000/svg\";"
       "@namespace svg url(http://www.w3.org/2000/svg);";
     row "layer" "statement-order" "@layer reset,theme,components;"
       "@layer reset, theme, components;";
     row "layer" "anonymous-block" "@layer{.private{color:red}}"
       "@layer { .private { color: red } }";
     row "font-face" "descriptor-order"
-      "@font-face {font-weight:100 \
+      "@font-face{font-weight:100 \
        900;font-display:swap;src:url(brand.woff2);font-family:Brand}"
       "@font-face { font-weight: 100 900; font-display: swap; src: \
        url(brand.woff2); font-family: Brand }";
     row "font-face" "metric-overrides"
-      "@font-face \
-       {font-family:Metrics;src:url(metrics.woff2);size-adjust:100%;ascent-override:normal;descent-override:20%;line-gap-override:0%}"
+      "@font-face{font-family:Metrics;src:url(metrics.woff2);size-adjust:100%;ascent-override:normal;descent-override:20%;line-gap-override:0%}"
       "@font-face { font-family: Metrics; src: url(metrics.woff2); \
        size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
        line-gap-override: 0%; }";
@@ -67,17 +66,17 @@ let positive =
       "@position-try --below{top:anchor(bottom);left:anchor(center)}"
       "@position-try --below { left: anchor(center); top: anchor(bottom) }";
     row "media" "nested-rule"
-      "@media screen and (width >= 40em){.card{display:grid}}"
+      "@media screen and (width>=40em){.card{display:grid}}"
       "@media screen and (width >= 40em) { .card { display: grid } }";
     row "supports" "nested-rule"
       "@supports ((display:grid) and selector(:has(img))){.card{display:grid}}"
       "@supports ((display: grid) and selector(:has(img))) { .card { display: \
        grid } }";
     row "container" "style-query"
-      "@container card style(--variant: featured){.card{color:red}}"
+      "@container card style(--variant:featured){.card{color:red}}"
       "@container card style(--variant: featured) { .card { color: red } }";
     row "container" "scroll-state-query"
-      "@container scroll-state(stuck: top){.card{color:red}}"
+      "@container scroll-state(stuck:top){.card{color:red}}"
       "@container scroll-state(stuck: top) { .card { color: red } }";
     row "scope" "limit-selector"
       "@scope(.card) to (.boundary){.title{color:red}}"

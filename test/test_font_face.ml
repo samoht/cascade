@@ -42,20 +42,20 @@ let expect_src_rejected input =
     let src = src_of_string input in
     Alcotest.failf "invalid font-face src parsed: %S -> %S" input
       (string_of_src src)
-  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+  with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
 let expect_metric_rejected input =
   try
     let metric = metric_override_of_string input in
     Alcotest.failf "invalid font metric parsed: %S -> %S" input
       (string_of_metric_override metric)
-  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+  with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
 let expect_size_adjust_rejected input =
   try
     let size_adjust = size_adjust_of_string input in
     Alcotest.failf "invalid font size-adjust parsed: %S -> %g" input size_adjust
-  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+  with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
 let test_spec_src_parser_vectors () =
   let check_src name input expected =

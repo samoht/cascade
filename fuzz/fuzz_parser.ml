@@ -4,10 +4,10 @@ open Cascade
 open Alcobar
 
 let parse_list input =
-  (Css.Parser.list_of_component_values (Css.Reader.of_string input)).value
+  (Parser.list_of_component_values (Reader.of_string input)).value
 
 let parse_comma_list input =
-  (Css.Parser.csv_component_values (Css.Reader.of_string input)).value
+  (Parser.csv_component_values (Reader.of_string input)).value
 
 let cssish buf =
   let alphabet =
@@ -17,22 +17,21 @@ let cssish buf =
   let n = String.length alphabet in
   String.map (fun c -> alphabet.[Char.code c mod n]) buf
 
-let minified input = input |> parse_list |> Css.Parser.to_string_minified
-let serialized input = input |> parse_list |> Css.Parser.to_string
+let minified input = input |> parse_list |> Parser.to_string_minified
+let serialized input = input |> parse_list |> Parser.to_string
 
 let bracket_shape = function
-  | Css.Token.Curly -> "{}"
-  | Css.Token.Paren -> "()"
-  | Css.Token.Square -> "[]"
+  | Token.Curly -> "{}"
+  | Token.Paren -> "()"
+  | Token.Square -> "[]"
 
 let rec shape = function
-  | Css.Component.Preserved { kind = Css.Token.Whitespace; _ } -> None
-  | Css.Component.Preserved tok ->
-      Some (Css.Pp.to_string Css.Token.pp_kind tok.kind)
-  | Css.Component.Block { node = { opening; value; _ }; _ } ->
+  | Component.Preserved { kind = Token.Whitespace; _ } -> None
+  | Component.Preserved tok -> Some (Css.Pp.to_string Token.pp_kind tok.kind)
+  | Component.Block { node = { opening; value; _ }; _ } ->
       let inner = value |> List.filter_map shape |> String.concat "," in
       Some (Fmt.str "block(%s:%s)" (bracket_shape opening) inner)
-  | Css.Component.Func { node = { name; arguments; _ }; _ } ->
+  | Component.Func { node = { name; arguments; _ }; _ } ->
       let inner = arguments |> List.filter_map shape |> String.concat "," in
       Some (Fmt.str "function(%s:%s)" name inner)
 
@@ -89,9 +88,9 @@ let string_rev s =
 (** Component-value parsing must not crash on decoded CSS-shaped input. *)
 let test_component_value_crash_safety buf =
   let buf = cssish buf in
-  ignore (Css.Parser.component_value (Css.Reader.of_string buf));
-  ignore (Css.Parser.list_of_component_values (Css.Reader.of_string buf));
-  ignore (Css.Parser.csv_component_values (Css.Reader.of_string buf))
+  ignore (Parser.component_value (Reader.of_string buf));
+  ignore (Parser.list_of_component_values (Reader.of_string buf));
+  ignore (Parser.csv_component_values (Reader.of_string buf))
 
 (** Minified serialization should be idempotent after reparsing. *)
 let test_component_value_minified_idempotent buf =
@@ -141,7 +140,7 @@ let test_csv_group_roundtrip buf =
   let before = parse_comma_list input |> comma_shapes in
   let serialized =
     input |> parse_comma_list
-    |> List.map Css.Parser.to_string_minified
+    |> List.map Parser.to_string_minified
     |> String.concat ","
   in
   let after = parse_comma_list serialized |> comma_shapes in

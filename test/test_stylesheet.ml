@@ -76,10 +76,10 @@ let test_stylesheet () =
   (* Test stylesheet with comments - comments are stripped in minified output *)
   check_stylesheet ~expected:".btn{color:red}" "/*comment*/.btn{color:red}";
 
-  check_stylesheet ~expected:"@media (min-width:768px){.a{display:block}}"
+  check_stylesheet ~expected:"@media (width>=768px){.a{display:block}}"
     "@media (min-width: 768px) { .a { display: block } }";
   check_stylesheet
-    ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
+    ~expected:"@media screen and (width<=640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
   check_stylesheet ~expected:"@media screen{.test{color:#00f}}"
     "@media screen { .test { color: blue } }";
@@ -98,7 +98,7 @@ let test_stylesheet () =
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
   check_stylesheet
-    ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
+    ~expected:"@font-face{font-family:MyFont;src:url(font.woff2)}"
     "@font-face { font-family: MyFont; src: url(font.woff2); }";
   check_stylesheet ~expected:"@page:first{margin:1in}"
     "@page :first { margin: 1in }";
@@ -112,10 +112,10 @@ let test_stylesheet () =
 
 let of_string css =
   try
-    let r = Css.Cursor.of_string css in
+    let r = Cursor.of_string css in
     Ok (read_stylesheet r)
     (* Internal API *)
-  with Css.Cursor.Parse_error _ -> Error "boom"
+  with Cursor.Parse_error _ -> Error "boom"
 
 let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
@@ -425,11 +425,11 @@ let test_property_permutations () =
 
 (** Negative helper for [@property] parsing errors *)
 let expect_property_error name input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let _ = read_stylesheet r in
     Alcotest.failf "%s: expected parse error" name
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
 let test_property_missing_descriptors () =
@@ -475,8 +475,8 @@ let test_property_comments_whitespace () =
 let test_property_spec_syntax_vectors () =
   check_stylesheet
     ~expected:
-      "@property --length-percentage{syntax:\"<length> | \
-       <percentage>\";inherits:false;initial-value:0%}"
+      "@property \
+       --length-percentage{syntax:\"<length>|<percentage>\";inherits:false;initial-value:0%}"
     "@property --length-percentage { syntax: \"<length> | <percentage>\"; \
      inherits: false; initial-value: 0%; }";
   check_stylesheet
@@ -552,7 +552,7 @@ let pp_case () =
     "stylesheet pp"
     ".red{background-color:red}@media \
      screen{.red{background-color:red}}@property \
-     --primary{syntax:\"<color>\";inherits:false;initial-value:blue}"
+     --primary{syntax:\"<color>\";inherits:false;initial-value:#00f}"
     output
 
 (** Test [@charset] rules *)
@@ -563,22 +563,22 @@ let charset_case () =
 (** Test [@import] rules *)
 let import_case () =
   (* Test various import forms *)
-  check_stylesheet ~expected:"@import \"styles.css\";" "@import 'styles.css';";
-  check_stylesheet ~expected:"@import \"utilities.css\" layer(utilities);"
+  check_stylesheet ~expected:"@import\"styles.css\";" "@import 'styles.css';";
+  check_stylesheet ~expected:"@import\"utilities.css\"layer(utilities);"
     "@import url(utilities.css) layer(utilities);";
-  check_stylesheet ~expected:"@import \"print.css\" print;"
+  check_stylesheet ~expected:"@import\"print.css\"print;"
     "@import 'print.css' print;";
   check_import_rule
-    ~expected:"@import \"theme.css\" supports(selector(:has(img))) screen;"
+    ~expected:"@import\"theme.css\"supports(selector(:has(img)))screen;"
     "@import url(theme.css) supports(selector(:has(img))) screen;";
   check_import_rule
     ~expected:
-      "@import \"tokens.css\" layer(theme.tokens) supports(--theme:dark) \
+      "@import\"tokens.css\"layer(theme.tokens)supports(--theme:dark) \
        (prefers-color-scheme:dark);"
     "@import url(tokens.css) layer(theme.tokens) supports(--theme: dark) \
      (prefers-color-scheme: dark);";
   check_import_rule
-    ~expected:"@import \"wide.css\" supports(width:stretch) (width >= 40em);"
+    ~expected:"@import\"wide.css\"supports(width:stretch)(width>=40em);"
     "@import url(wide.css) supports((width: stretch)) (width >= 40em);";
   neg_cursor read_import_rule "@import url(theme.css) screen layer(theme);";
   neg_cursor read_import_rule
@@ -590,10 +590,10 @@ let namespace_case () =
   (* Test namespace roundtrips *)
   check_stylesheet ~expected:"@namespace \"http://www.w3.org/1999/xhtml\";"
     "@namespace url(http://www.w3.org/1999/xhtml);";
-  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
+  check_stylesheet ~expected:"@namespace svg\"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
-    ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
+    ~expected:"@namespace math\"http://www.w3.org/1998/Math/MathML\";"
     "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
   neg_cursor read_stylesheet "@namespace { url(http://example.test); }";
   neg_cursor read_stylesheet "@namespace svg;"
@@ -634,16 +634,14 @@ let font_face_case () =
   (* Test font-face roundtrip *)
   check_stylesheet
     ~expected:
-      "@font-face \
-       {font-family:MyCustomFont;src:url('font.woff2');font-display:swap}"
+      "@font-face{font-family:MyCustomFont;src:url(font.woff2);font-display:swap}"
     "@font-face { font-family: MyCustomFont; src: url('font.woff2'); \
      font-display: swap; }"
 
 let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
-      "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
-       format(\"woff2\") tech(variations);font-weight:400 \
+      "@font-face{font-family:Brand;src:local(\"Brand\"),url(brand.woff2)format(\"woff2\")tech(variations);font-weight:400 \
        700;font-style:normal italic;font-stretch:75% \
        125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
@@ -652,15 +650,13 @@ let spec_fontface_descriptors () =
      optional; unicode-range: U+0025-00FF; }";
   check_stylesheet
     ~expected:
-      "@font-face \
-       {font-family:MetricAdjusted;src:url(metric.woff2);size-adjust:92%;ascent-override:90%;descent-override:25%;line-gap-override:normal}"
+      "@font-face{font-family:MetricAdjusted;src:url(metric.woff2);size-adjust:92%;ascent-override:90%;descent-override:25%;line-gap-override:normal}"
     "@font-face { font-family: MetricAdjusted; src: url(metric.woff2); \
      size-adjust: 92%; ascent-override: 90%; descent-override: 25%; \
      line-gap-override: normal; }";
   check_stylesheet
     ~expected:
-      "@font-face \
-       {font-family:FeatureFont;src:url(feature.woff2);font-feature-settings:\"kern\" \
+      "@font-face{font-family:FeatureFont;src:url(feature.woff2);font-feature-settings:\"kern\" \
        1;font-variation-settings:\"wght\" 650}"
     "@font-face { font-family: FeatureFont; src: url(feature.woff2); \
      font-feature-settings: \"kern\" 1; font-variation-settings: \"wght\" 650; \
@@ -745,23 +741,20 @@ let spec_font_face_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
     [
-      ( "@font-face {font-family:\"Brand Sans\";src:local(\"Brand \
-         Sans\"),url(brand.woff2) format(\"woff2\");font-display:fallback}",
+      ( "@font-face{font-family:Brand Sans;src:local(\"Brand \
+         Sans\"),url(brand.woff2)format(\"woff2\");font-display:fallback}",
         "@font-face { font-family: \"Brand Sans\"; src: local(\"Brand Sans\"), \
          url(brand.woff2) format(\"woff2\"); font-display: fallback; }" );
-      ( "@font-face \
-         {font-family:RangeFont;src:url(range.woff2);font-weight:100 \
+      ( "@font-face{font-family:RangeFont;src:url(range.woff2);font-weight:100 \
          900;font-style:oblique 10deg 20deg;font-stretch:50% 200%}",
         "@font-face { font-family: RangeFont; src: url(range.woff2); \
          font-weight: 100 900; font-style: oblique 10deg 20deg; font-stretch: \
          50% 200%; }" );
-      ( "@font-face \
-         {font-family:Metrics;src:url(metrics.woff2);size-adjust:100%;ascent-override:normal;descent-override:20%;line-gap-override:0%}",
+      ( "@font-face{font-family:Metrics;src:url(metrics.woff2);size-adjust:100%;ascent-override:normal;descent-override:20%;line-gap-override:0%}",
         "@font-face { font-family: Metrics; src: url(metrics.woff2); \
          size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
          line-gap-override: 0%; }" );
-      ( "@font-face \
-         {font-family:TallMetrics;src:url(tall.woff2);ascent-override:120%;descent-override:125%;line-gap-override:0%}",
+      ( "@font-face{font-family:TallMetrics;src:url(tall.woff2);ascent-override:120%;descent-override:125%;line-gap-override:0%}",
         "@font-face { font-family: TallMetrics; src: url(tall.woff2); \
          ascent-override: 120%; descent-override: 125%; line-gap-override: 0%; \
          }" );
@@ -816,8 +809,8 @@ let spec_property_descriptor_matrix () =
          --angle-list{syntax:\"<angle>#\";inherits:false;initial-value:0deg}",
         "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
          initial-value: 0deg }" );
-      ( "@property --ident-or-color{syntax:\"<custom-ident> | \
-         <color>\";inherits:true;initial-value:currentColor}",
+      ( "@property \
+         --ident-or-color{syntax:\"<custom-ident>|<color>\";inherits:true;initial-value:currentColor}",
         "@property --ident-or-color { syntax: \"<custom-ident> | <color>\"; \
          inherits: true; initial-value: currentColor }" );
     ];
@@ -863,7 +856,7 @@ let ordering () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule" 1 (List.length rules);
@@ -874,7 +867,7 @@ let test_read_stylesheet_basic () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_multiple_rules () =
   let css = ".btn { color: red; } .card { margin: 5px; }" in
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has two rules" 2 (List.length rules)
@@ -882,7 +875,7 @@ let test_read_stylesheet_multiple_rules () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_empty () =
   let css = "" in
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "empty stylesheet has no rules" 0 (List.length rules)
@@ -890,7 +883,7 @@ let test_read_stylesheet_empty () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_whitespace_only () =
   let css = "   \n\t  " in
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int)
@@ -899,7 +892,7 @@ let test_read_stylesheet_whitespace_only () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_with_comments () =
   let css = "/* comment */ .btn { color: red; } /* another comment */" in
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
@@ -912,12 +905,12 @@ let test_read_stylesheet_error_recovery () =
      handling. *)
   let css = ".btn { color: red; } { margin: 5px; }" in
   (* Missing selector before { *)
-  let reader = Css.Cursor.of_string css in
+  let reader = Cursor.of_string css in
   (* Should fail on invalid CSS without recovery *)
   try
     let _sheet = read_stylesheet reader in
     Alcotest.fail "Expected parsing to fail on invalid CSS"
-  with Css.Cursor.Parse_error _ ->
+  with Cursor.Parse_error _ ->
     (* This is expected - parsing should fail *)
     ()
 
@@ -1177,8 +1170,8 @@ let test_check () =
     "@media screen { .test { color: blue } }"
 
 let test_import_rule () =
-  check_import_rule ~expected:"@import \"test.css\";" "@import 'test.css';";
-  check_import_rule ~expected:"@import \"styles.css\" screen;"
+  check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css';";
+  check_import_rule ~expected:"@import\"styles.css\"screen;"
     "@import url('styles.css') screen;";
 
   (* Test invalid import rules *)
@@ -1191,7 +1184,7 @@ let test_import_rule () =
   (* Unclosed quote at EOF — per CSS Syntax §4.3.5 the lexer still returns a
      string-token (the ill-formedness is a parse-error warning, not a
      token-level failure), so [\@import 'test.css] parses as a valid import. *)
-  check_import_rule ~expected:"@import \"test.css\";" "@import 'test.css"
+  check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css"
 
 let test_config () =
   (* Test config parsing - configs are rendering configuration objects, not CSS
@@ -1232,7 +1225,7 @@ let test_advanced_properties () =
     ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
   check_stylesheet ~expected:".flex{display:flex;justify-content:space-between}"
     ".flex { display: flex; justify-content: space-between; }";
-  check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px rgb(0 0 0/.2)}"
+  check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px #0003}"
     ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
   check_stylesheet
     ~expected:".gradient{background:linear-gradient(to right,red,#00f)}"
@@ -1255,7 +1248,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media (min-width:768px){@supports (display:grid){.grid{display:grid}}}"
+      "@media (width>=768px){@supports (display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
@@ -1263,18 +1256,18 @@ let test_nested_rules () =
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
     ~expected:
-      "@container (width > 400px){@media \
+      "@container (width>400px){@media \
        (orientation:landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"
 
 (** Negative tests for invalid CSS *)
 let expect_parse_error input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let _ = read_stylesheet r in
     Alcotest.failf "Expected parse error for: %s" input
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
 let spec_s7_block_examples () =
@@ -1285,7 +1278,7 @@ let spec_s7_block_examples () =
   check_stylesheet ~expected:"p>a{color:#00f;text-decoration:underline}"
     "p > a { color: blue; text-decoration: underline; }";
   check_stylesheet
-    ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
+    ~expected:"@font-face{font-family:MyFont;src:url(font.woff2)}"
     "@font-face { font-family: MyFont; src: url(font.woff2); }";
   check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
     "@page :left { margin-left: 4cm; margin-right: 3cm; }";
@@ -1303,7 +1296,7 @@ let spec_s8_rule_shapes () =
      style rules, and at-rules are either statement or block rules depending on
      whether they end with a semicolon or a {} block. *)
   check_stylesheet ~expected:"p>a{color:#00f}" "p > a { color: blue }";
-  check_stylesheet ~expected:"@import \"theme.css\";" "@import \"theme.css\";";
+  check_stylesheet ~expected:"@import\"theme.css\";" "@import \"theme.css\";";
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
   check_stylesheet ~expected:"@layer reset,base;" "@layer reset, base;";
@@ -1431,7 +1424,7 @@ let test_invalid_functions () =
 (* Not a roundtrip test *)
 let test_layer_roundtrip () =
   let test_css ~expected input =
-    let r = Css.Cursor.of_string input in
+    let r = Cursor.of_string input in
     try
       let stylesheet = Css.Stylesheet.read r in
       let roundtrip =
@@ -1440,8 +1433,8 @@ let test_layer_roundtrip () =
       Alcotest.(check string)
         ("layer roundtrip for " ^ input)
         expected roundtrip
-    with Css.Cursor.Parse_error err ->
-      Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
+    with Cursor.Parse_error err ->
+      Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Error.to_string err)
   in
   (* Layer statement form should roundtrip as-is *)
   test_css ~expected:"@layer components,utilities;"
@@ -1478,7 +1471,7 @@ let c64_layer_nesting_examples () =
     ~expected:
       "@layer base{p{max-width:70ch}}@layer framework{@layer \
        base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
-       framework.theme{blockquote{color:rebeccapurple}}"
+       framework.theme{blockquote{color:#639}}"
     "@layer base { p { max-width: 70ch } } @layer framework { @layer base { p \
      { margin-block: 0.75em } } @layer theme { p { color: #222 } } } @layer \
      framework.theme { blockquote { color: rebeccapurple } }";
@@ -1497,13 +1490,13 @@ let c64_layer_statement_edges () =
      names, can appear before imports, and declares names in source order. *)
   check_stylesheet
     ~expected:
-      "@layer default,theme,components;@import \"theme.css\" \
-       layer(theme);@layer default{audio[controls]{display:block}}"
+      "@layer default,theme,components;@import\"theme.css\"layer(theme);@layer \
+       default{audio[controls]{display:block}}"
     "@layer default, theme, components; @import url(theme.css) layer(theme); \
      @layer default { audio[controls] { display: block } }";
   check_stylesheet
     ~expected:
-      "@layer default;@import \"theme.css\" layer(theme);@layer \
+      "@layer default;@import\"theme.css\"layer(theme);@layer \
        components;@layer default{audio[controls]{display:block}}"
     "@layer default; @import url(theme.css) layer(theme); @layer components; \
      @layer default { audio[controls] { display: block } }";
@@ -1541,17 +1534,17 @@ let c64_import_layer_syntax () =
   (* CSS Cascade section 6.4.1: @import can assign an imported sheet to a named
      layer with layer(<layer-name>) or to an anonymous layer with
      layer/layer(). *)
-  check_import_rule ~expected:"@import \"headings.css\" layer(default);"
+  check_import_rule ~expected:"@import\"headings.css\"layer(default);"
     "@import url(headings.css) layer(default);";
-  check_import_rule ~expected:"@import \"links.css\" layer(default) screen;"
+  check_import_rule ~expected:"@import\"links.css\"layer(default)screen;"
     "@import url(links.css) layer(default) screen;";
-  check_import_rule ~expected:"@import \"theme.css\" layer(framework.theme);"
+  check_import_rule ~expected:"@import\"theme.css\"layer(framework.theme);"
     "@import url(theme.css) layer(framework.theme);";
-  check_import_rule ~expected:"@import \"base-forms.css\" layer;"
+  check_import_rule ~expected:"@import\"base-forms.css\"layer;"
     "@import url(base-forms.css) layer;";
-  check_import_rule ~expected:"@import \"base-links.css\" layer;"
+  check_import_rule ~expected:"@import\"base-links.css\"layer;"
     "@import url(base-links.css) layer();";
-  check_import_rule ~expected:"@import \"conditional.css\" layer print;"
+  check_import_rule ~expected:"@import\"conditional.css\"layer print;"
     "@import url(conditional.css) layer() print;";
   neg_cursor read_import_rule "@import url(theme.css) layer(initial);";
   neg_cursor read_import_rule "@import url(theme.css) layer(framework . theme);";
@@ -1563,23 +1556,23 @@ let c2_import_conditions () =
      optional layer or layer(<layer-name>), optional supports(), and optional
      media query lists. A declaration inside supports() is equivalent to the
      same declaration wrapped as a supports condition. *)
-  check_import_rule ~expected:"@import \"mystyle.css\";"
+  check_import_rule ~expected:"@import\"mystyle.css\";"
     "@import url(mystyle.css);";
-  check_import_rule ~expected:"@import \"mystyle.css\";"
+  check_import_rule ~expected:"@import\"mystyle.css\";"
     "@import \"mystyle.css\";";
   check_import_rule
-    ~expected:"@import \"narrow.css\" supports(display:flex) handheld;"
+    ~expected:"@import\"narrow.css\"supports(display:flex)handheld;"
     "@import url(narrow.css) supports(display: flex) handheld;";
   check_import_rule
-    ~expected:"@import \"narrow.css\" supports(display:flex) handheld;"
+    ~expected:"@import\"narrow.css\"supports(display:flex)handheld;"
     "@import url(narrow.css) supports((display: flex)) handheld;";
   check_import_rule
     ~expected:
-      "@import \"layout.css\" layer(framework.component) \
-       supports(display:grid) screen and (min-width:30em);"
+      "@import\"layout.css\"layer(framework.component)supports(display:grid)screen \
+       and (width>=30em);"
     "@import url(layout.css) layer(framework.component) supports(display: \
      grid) screen and (min-width: 30em);";
-  check_import_rule ~expected:"@import \"bluish.css\" projection,tv;"
+  check_import_rule ~expected:"@import\"bluish.css\"projection,tv;"
     "@import url(bluish.css) projection, tv;";
   neg_cursor read_import_rule "@import url(theme.css) supports();";
   neg_cursor read_import_rule "@import url(theme.css) supports(display);";
@@ -1593,8 +1586,9 @@ let c64_import_namespace_order () =
      @import rules. *)
   check_stylesheet
     ~expected:
-      "@charset \"UTF-8\";@layer reset,theme;@import \"theme.css\" \
-       layer(theme);@namespace \"http://www.w3.org/1999/xhtml\";"
+      "@charset \"UTF-8\";@layer \
+       reset,theme;@import\"theme.css\"layer(theme);@namespace \
+       \"http://www.w3.org/1999/xhtml\";"
     "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
      layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
   neg_cursor read_stylesheet
@@ -1708,13 +1702,13 @@ let c41_declared_values () =
     (List.map declared_property declared);
   Alcotest.(check (list string))
     "declared values expose serialized values"
-    [ "red"; "1px"; "blue"; "currentColor" ]
+    [ "red"; "1px"; "#00f"; "currentColor" ]
     (List.map declared_value declared);
   Alcotest.(check (list int))
     "declared values preserve source order" [ 0; 1; 2; 3 ]
     (List.map declared_source_order declared);
   Alcotest.(check (list string))
-    "declared value filtering selects one property" [ "red"; "blue" ]
+    "declared value filtering selects one property" [ "red"; "#00f" ]
     (List.map declared_value color_declared);
   Alcotest.(check (list bool))
     "declared values preserve importance for cascade sorting" [ false; true ]
@@ -2012,7 +2006,7 @@ let fetch_url_boundary () =
   in
   List.iter
     (fun (input, url, layer) ->
-      let r = Css.Cursor.of_string input in
+      let r = Cursor.of_string input in
       let rule = Css.Stylesheet.read_import_rule r in
       Alcotest.(check string) "import url" url rule.url;
       Alcotest.(check (option string)) "import layer" layer rule.layer)
@@ -2023,7 +2017,7 @@ let fetch_url_boundary () =
     "cursor: url(cursor.cur), auto";
   check_declaration ~expected:"src:url(brand.woff2) format(woff2)"
     "src: url(brand.woff2) format(woff2)";
-  check_import_rule ~expected:"@import \"theme.css\" supports(display:);"
+  check_import_rule ~expected:"@import\"theme.css\"supports(display:);"
     "@import url(theme.css) supports(display:);";
   neg_cursor read_import_rule "@import url(theme.css) layer(theme) layer(base);";
   neg_cursor read_import_rule
@@ -2033,8 +2027,8 @@ let environment_query_boundary () =
   (* Query syntax is in scope; matching needs explicit environment context. *)
   check_stylesheet
     ~expected:
-      "@media (width >= 40em){@supports (display:grid){@container card \
-       style(--theme: dark){.card{display:grid}}}}"
+      "@media (width>=40em){@supports (display:grid){@container card \
+       style(--theme:dark){.card{display:grid}}}}"
     "@media (width >= 40em) { @supports (display: grid) { @container card \
      style(--theme: dark) { .card { display: grid } } } }";
   check_stylesheet ~expected:"@supports (display:){.x{color:red}}"
@@ -2142,7 +2136,7 @@ let spec_current_at_rules () =
     ~expected:"@supports selector(:has(img)){.card{display:block}}"
     "@supports selector(:has(img)) { .card { display: block } }";
   check_stylesheet
-    ~expected:".card{color:red;@media (width >= 40em){&>img{display:block}}}"
+    ~expected:".card{color:red;@media (width>=40em){&>img{display:block}}}"
     ".card { color: red; @media (width >= 40em) { & > img { display: block } } \
      }";
   check_stylesheet ~expected:"@scope(.card) to (.footer){.title{color:red}}"
@@ -2159,8 +2153,7 @@ let spec_current_at_rules () =
      override-colors: 0 red; }";
   check_stylesheet
     ~expected:
-      "@font-face {font-family:ColorFont;src:url(color.woff2) \
-       tech(color-COLRv1);font-tech:color-COLRv1}"
+      "@font-face{font-family:ColorFont;src:url(color.woff2)tech(color-COLRv1);font-tech:color-COLRv1}"
     "@font-face { font-family: ColorFont; src: url(color.woff2) \
      tech(color-COLRv1); font-tech: color-COLRv1; }";
   check_stylesheet ~expected:"@view-transition{navigation:auto}"
@@ -2170,22 +2163,22 @@ let spec_current_at_rules () =
     "@position-try --below { top: anchor(bottom); left: anchor(center); }";
   check_stylesheet
     ~expected:
-      "@container card style(--variant: \
-       featured){.card{view-transition-name:card}}"
+      "@container card \
+       style(--variant:featured){.card{view-transition-name:card}}"
     "@container card style(--variant: featured) { .card { \
      view-transition-name: card } }";
   check_stylesheet
-    ~expected:"@container style(--variant: featured){.card{color:red}}"
+    ~expected:"@container style(--variant:featured){.card{color:red}}"
     "@container style(--variant: featured) { .card { color: red } }";
   check_stylesheet
-    ~expected:"@container scroll-state(stuck: top){.card{color:red}}"
+    ~expected:"@container scroll-state(stuck:top){.card{color:red}}"
     "@container scroll-state(stuck: top) { .card { color: red } }";
   neg_cursor read_stylesheet "@container style() { .card { color: red } }";
   neg_cursor read_stylesheet
     "@container scroll-state() { .card { color: red } }";
   check_stylesheet
     ~expected:
-      "@container (30em <= inline-size < 60em){@supports \
+      "@container (30em<=inline-size<60em){@supports \
        (display:grid){.grid{display:grid}}}"
     "@container (30em <= inline-size < 60em) { @supports (display: grid) { \
      .grid { display: grid } } }";
@@ -2211,8 +2204,8 @@ let font_palette_values_descriptor_matrix () =
          color(display-p3 1 0 0)}",
         "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
          override-colors: 0 red, 1 color(display-p3 1 0 0); }" );
-      ( "@font-palette-values --dark{font-family:\"Color \
-         Font\",Brand;base-palette:dark}",
+      ( "@font-palette-values --dark{font-family:Color \
+         Font,Brand;base-palette:dark}",
         "@font-palette-values --dark { font-family: \"Color Font\", Brand; \
          base-palette: dark; }" );
     ];
@@ -2273,7 +2266,7 @@ let spec_at_rule_descriptor_matrix () =
       ( "@property --dup{syntax:\"*\";inherits:false}",
         "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \
          \"*\"; inherits: false }" );
-      ( "@font-face {font-weight:100 \
+      ( "@font-face{font-weight:100 \
          900;font-display:swap;src:url(brand.woff2);font-family:Brand}",
         "@font-face { font-weight: 100 900; font-display: swap; src: \
          url(brand.woff2); font-family: Brand }" );
@@ -2288,12 +2281,12 @@ let spec_at_rule_descriptor_matrix () =
         "@view-transition { navigation: auto; navigation: none }" );
       ( "@position-try --below{top:anchor(bottom);left:anchor(center)}",
         "@position-try --below { left: anchor(center); top: anchor(bottom) }" );
-      ( "@media screen and (width >= 40em){.card{display:grid}}",
+      ( "@media screen and (width>=40em){.card{display:grid}}",
         "@media screen and (width >= 40em) { .card { display: grid } }" );
       ( "@supports ((display:grid) and selector(:has(img))){.card{display:grid}}",
         "@supports ((display: grid) and selector(:has(img))) { .card { \
          display: grid } }" );
-      ( "@container card style(--variant: featured){.card{color:red}}",
+      ( "@container card style(--variant:featured){.card{color:red}}",
         "@container card style(--variant: featured) { .card { color: red } }" );
       ( "@scope(.card) to (.boundary){.title{color:red}}",
         "@scope (.card) to (.boundary) { .title { color: red } }" );
@@ -2371,8 +2364,7 @@ let test_spec_snapshot_tracking_vectors () =
      grid; gap: 1rem } }";
   check_stylesheet
     ~expected:
-      "@container card (inline-size > \
-       30em){.card{grid-template-columns:subgrid}}"
+      "@container card (inline-size>30em){.card{grid-template-columns:subgrid}}"
     "@container card (inline-size > 30em) { .card { grid-template-columns: \
      subgrid } }";
   check_stylesheet
@@ -2456,7 +2448,7 @@ let test_snapshot_membership_matrix () =
 
 (** Helper: parse CSS, print minified, compare to expected *)
 let test_nesting_roundtrip ~expected input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let stylesheet = Css.Stylesheet.read r in
     let roundtrip =
@@ -2465,24 +2457,24 @@ let test_nesting_roundtrip ~expected input =
     Alcotest.(check string)
       ("nesting roundtrip for " ^ input)
       expected roundtrip
-  with Css.Cursor.Parse_error err ->
-    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
+  with Cursor.Parse_error err ->
+    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Error.to_string err)
 
 (** Helper: parse CSS, print minified, parse again, print again -- verify
     idempotent *)
 let test_nesting_idempotent input =
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   try
     let sheet1 = Css.Stylesheet.read r in
     let printed1 = String.trim (Css.Stylesheet.to_string ~minify:true sheet1) in
-    let r2 = Css.Cursor.of_string printed1 in
+    let r2 = Cursor.of_string printed1 in
     let sheet2 = Css.Stylesheet.read r2 in
     let printed2 = String.trim (Css.Stylesheet.to_string ~minify:true sheet2) in
     Alcotest.(check string)
       ("nesting idempotent for " ^ input)
       printed1 printed2
-  with Css.Cursor.Parse_error err ->
-    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
+  with Cursor.Parse_error err ->
+    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Error.to_string err)
 
 (* ignore-test *)
 let test_nesting_basic () =
@@ -2514,10 +2506,9 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media (min-width:768px){color:#00f;}}"
+    ~expected:".foo{color:red;@media (width>=768px){color:#00f;}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
-  test_nesting_idempotent
-    ".foo { color: red; @media (min-width: 768px) { color: blue; } }"
+  test_nesting_idempotent ".foo{color:red;@media (width>=768px){color:#00f;}}"
 
 (* ignore-test *)
 let test_nesting_deep () =
@@ -2554,7 +2545,7 @@ let spec_nesting_selector_edges () =
   check_stylesheet
     ~expected:
       ".card{@supports selector(:has(img)){&:has(img){display:grid}}@container \
-       (inline-size > 30em){&>.media{display:block}}}"
+       (inline-size>30em){&>.media{display:block}}}"
     ".card { @supports selector(:has(img)) { &:has(img) { display: grid } } \
      @container (inline-size > 30em) { & > .media { display: block } } }";
   check_stylesheet
@@ -2587,7 +2578,7 @@ let nesting_module_l1_preserves_structure () =
   let input =
     ".card { color: red; & .title { color: blue; } &:hover { color: green; } }"
   in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let sheet = Css.Stylesheet.read r in
   let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
   Alcotest.(check string)
@@ -2613,7 +2604,7 @@ let c6_2_import_preserved_verbatim () =
     ^ "\") layer(framework.theme) supports(display:grid) screen and \
        (min-width:30em);"
   in
-  let r = Css.Cursor.of_string input in
+  let r = Cursor.of_string input in
   let sheet = Css.Stylesheet.read r in
   let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
   let contains_url s = Astring.String.is_infix ~affix:url s in
@@ -2628,7 +2619,7 @@ let c6_2_import_preserved_verbatim () =
     (Astring.String.is_infix ~affix:"supports(display:grid)" printed);
   Alcotest.(check bool)
     "media query list preserved on import" true
-    (Astring.String.is_infix ~affix:"screen and (min-width:30em)" printed);
+    (Astring.String.is_infix ~affix:"screen and (width>=30em)" printed);
   let optimized = Css.Optimize.stylesheet sheet in
   let opt_printed =
     String.trim (Css.Stylesheet.to_string ~minify:true optimized)
@@ -2676,7 +2667,7 @@ let s3432_sourcemap_comment () =
   in
   List.iter
     (fun (name, input, expected) ->
-      let r = Css.Cursor.of_string input in
+      let r = Cursor.of_string input in
       let sheet = Css.Stylesheet.read r in
       let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
       Alcotest.(check string) name expected printed)
@@ -2689,7 +2680,7 @@ let s3432_sourcemap_comment () =
    serialization once empty blocks are normalized. *)
 let c6442_empty_blocks_equiv () =
   let parse css =
-    Css.Stylesheet.read (Css.Cursor.of_string css)
+    Css.Stylesheet.read (Cursor.of_string css)
     |> Css.Optimize.stylesheet
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
@@ -2753,7 +2744,7 @@ let s3432_no_sourcemap_print () =
   in
   List.iter
     (fun input ->
-      let r = Css.Cursor.of_string input in
+      let r = Cursor.of_string input in
       let sheet = Css.Stylesheet.read r in
       let printed = Css.Stylesheet.to_string ~minify:true sheet in
       Alcotest.(check bool)
@@ -2858,11 +2849,11 @@ let c61_keeps_winner () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check (option string))
-    "later declaration wins after optimization (same selector)" (Some "blue")
+    "later declaration wins after optimization (same selector)" (Some "#00f")
     (winning_color ".a { color: red; color: blue }");
   Alcotest.(check (option string))
     "later rule wins after optimization (same selector consecutive)"
-    (Some "blue")
+    (Some "#00f")
     (winning_color ".a { color: red } .a { color: blue }")
 
 (* CSS Color Module Level 4, section 1.4 (Notational Conventions): the named
@@ -6081,7 +6072,7 @@ let additional_tests =
         in
         match warnings with
         | [ e ] -> (
-            match Css.Error.snippet e with
+            match Error.snippet e with
             | None -> Alcotest.fail "expected warning with snippet"
             | Some _ -> ())
         | _ -> Alcotest.fail "expected exactly one warning" );
@@ -6140,13 +6131,13 @@ let additional_tests =
         | [ (e, _) ] ->
             Alcotest.(check bool)
               "`Full: snippet present" true
-              (Css.Error.snippet e <> None)
+              (Error.snippet e <> None)
         | _ -> Alcotest.fail "expected one warning under `Full");
         match none.warnings with
         | [ (e, _) ] ->
             Alcotest.(check bool)
               "`None: snippet skipped" true
-              (Css.Error.snippet e = None)
+              (Error.snippet e = None)
         | _ -> Alcotest.fail "expected one warning under `None" );
     ( "semicolon-terminated at-rule survives partial parse",
       `Quick,
@@ -6171,12 +6162,12 @@ let additional_tests =
           (List.length (Css.rule_statements stylesheet));
         match warnings with
         | [ (e, _) ] -> (
-            match e.Css.Error.kind with
-            | Css.Error.Unknown_at_rule name ->
+            match e.Error.kind with
+            | Error.Unknown_at_rule name ->
                 Alcotest.(check string) "at-rule name" "unknown-rule" name
             | _ ->
                 Alcotest.failf "expected Unknown_at_rule, got %s"
-                  (Css.Error.to_string e))
+                  (Error.to_string e))
         | _ -> Alcotest.fail "expected one warning" );
     ( "malformed @supports surfaces as Bad_condition warning",
       `Quick,
@@ -6195,12 +6186,12 @@ let additional_tests =
           (List.length (Css.rule_statements stylesheet));
         match warnings with
         | [ (e, _) ] -> (
-            match e.Css.Error.kind with
-            | Css.Error.Bad_condition { at_rule; _ } ->
+            match e.Error.kind with
+            | Error.Bad_condition { at_rule; _ } ->
                 Alcotest.(check string) "at-rule label" "@supports" at_rule
             | _ ->
                 Alcotest.failf "expected Bad_condition, got %s"
-                  (Css.Error.to_string e))
+                  (Error.to_string e))
         | _ -> Alcotest.fail "expected one warning" );
   ]
 

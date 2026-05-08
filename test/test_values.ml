@@ -411,7 +411,7 @@ let test_percentage () =
 
 (* Not a roundtrip test *)
 let test_var_in_color () =
-  let t = Css.Cursor.of_string "var(--primary-color)" in
+  let t = Cursor.of_string "var(--primary-color)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "primary-color" var.name
@@ -419,7 +419,7 @@ let test_var_in_color () =
 
 (* Not a roundtrip test *)
 let test_var_with_fallback () =
-  let t = Css.Cursor.of_string "var(--theme-color, #007bff)" in
+  let t = Cursor.of_string "var(--theme-color, #007bff)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "theme-color" var.name
@@ -427,7 +427,7 @@ let test_var_with_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_color_keyword_fallback () =
-  let t = Css.Cursor.of_string "var(--custom-color, red)" in
+  let t = Cursor.of_string "var(--custom-color, red)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "custom-color" var.name
@@ -435,7 +435,7 @@ let test_var_color_keyword_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_with_rgb_fallback () =
-  let t = Css.Cursor.of_string "var(--brand-color, rgb(255, 0, 0))" in
+  let t = Cursor.of_string "var(--brand-color, rgb(255, 0, 0))" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "brand-color" var.name
@@ -443,14 +443,14 @@ let test_var_with_rgb_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_fallback_in_output () =
-  let t = Css.Cursor.of_string "var(--theme-color, #007bff)" in
+  let t = Cursor.of_string "var(--theme-color, #007bff)" in
   let color = read_color t in
   let output = Css.Pp.to_string pp_color color in
   check string "var with fallback output" "var(--theme-color, #007bff)" output
 
 (* Not a roundtrip test *)
 let test_var_in_calc_fallback () =
-  let t = Css.Cursor.of_string "calc(100% - var(--gap, 20px))" in
+  let t = Cursor.of_string "calc(100% - var(--gap, 20px))" in
   let calc_expr = read_calc read_length t in
   match calc_expr with
   | Expr (left, Sub, right) -> (
@@ -463,7 +463,7 @@ let test_var_in_calc_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_in_calc () =
-  let t = Css.Cursor.of_string "calc(100% - var(--spacing))" in
+  let t = Cursor.of_string "calc(100% - var(--spacing))" in
   let calc_expr = read_calc read_length t in
   match calc_expr with
   | Expr (left, Sub, right) -> (
@@ -530,21 +530,21 @@ let test_color_mix_printing () =
 let test_var_in_calc_types () =
   let open Css.Values in
   (* Angle var in calc *)
-  let t = Css.Cursor.of_string "calc(90deg + var(--angle, 0.5turn))" in
+  let t = Cursor.of_string "calc(90deg + var(--angle, 0.5turn))" in
   let calc_expr = read_calc read_angle t in
   (match calc_expr with
   | Expr (Val (Deg 90.), Add, Var v) ->
       Alcotest.(check string) "var name" "angle" v.name
   | _ -> Alcotest.fail "Expected angle var in calc");
   (* Duration var in calc *)
-  let t = Css.Cursor.of_string "calc(1s + var(--dur, 500ms))" in
+  let t = Cursor.of_string "calc(1s + var(--dur, 500ms))" in
   let calc_expr = read_calc read_duration t in
   (match calc_expr with
   | Expr (Val (S 1.), Add, Var v) ->
       Alcotest.(check string) "var name" "dur" v.name
   | _ -> Alcotest.fail "Expected duration var in calc");
   (* Percentage var in calc *)
-  let t = Css.Cursor.of_string "calc(50% + var(--p, 25%))" in
+  let t = Cursor.of_string "calc(50% + var(--p, 25%))" in
   let calc_expr = read_calc read_percentage t in
   match calc_expr with
   | Expr (Val (Pct 50.), Add, Var v) ->
@@ -563,7 +563,7 @@ let test_number_var_printing () =
 let test_var_empty_fallback () =
   let open Css.Values in
   (* Test parsing empty fallback - check it's recognized as Empty *)
-  let t = Css.Cursor.of_string "var(--test,)" in
+  let t = Cursor.of_string "var(--test,)" in
   let color = read_color t in
   match color with
   | Var var -> (

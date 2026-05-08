@@ -16,7 +16,7 @@ let matches_literal s literal =
 
 let parse_selector s =
   try Some (Css.Selector.of_string s)
-  with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+  with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let minified sel = Css.Selector.to_string ~minify:true sel
 
@@ -42,55 +42,54 @@ let assert_reject input =
 (** Selector.of_string — must not crash on arbitrary input. *)
 let test_of_string buf =
   try ignore (Css.Selector.of_string buf) with
-  | Css.Cursor.Parse_error _ -> ()
+  | Cursor.Parse_error _ -> ()
   | Invalid_argument _ -> ()
 
 (** Selector.read — must not crash. *)
 let test_read buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Selector.read r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Selector.read r) with Cursor.Parse_error _ -> ()
 
 (** Selector.read_selector_list — must not crash. *)
 let test_read_selector_list buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_selector_list r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** Selector.read_combinator — must not crash. *)
 let test_read_combinator buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Selector.read_combinator r)
-  with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Selector.read_combinator r) with Cursor.Parse_error _ -> ()
 
 (** Selector.read_attribute_match — must not crash. *)
 let test_read_attribute_match buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_attribute_match r)
-  with Css.Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 (** Selector.read_nth — must not crash. *)
 let test_read_nth buf =
-  let r = Css.Cursor.of_string buf in
-  try ignore (Css.Selector.read_nth r) with Css.Cursor.Parse_error _ -> ()
+  let r = Cursor.of_string buf in
+  try ignore (Css.Selector.read_nth r) with Cursor.Parse_error _ -> ()
 
 (** Roundtrip: parse → to_string → parse should not crash. *)
 let test_roundtrip buf =
   match
     try Some (Css.Selector.of_string buf)
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some sel -> (
       let s = Css.Selector.to_string sel in
       try ignore (Css.Selector.of_string s)
-      with Css.Cursor.Parse_error _ | Invalid_argument _ ->
+      with Cursor.Parse_error _ | Invalid_argument _ ->
         fail "roundtrip re-parse crashed")
 
 (** pp — must not crash on any parsed selector. *)
 let test_pp buf =
   match
     try Some (Css.Selector.of_string buf)
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some sel -> ignore (Css.Selector.to_string sel)
@@ -100,14 +99,14 @@ let test_pp buf =
 let test_specificity_roundtrip buf =
   match
     try Some (Css.Selector.of_string buf)
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some sel -> (
       let serialized = Css.Selector.to_string ~minify:true sel in
       match
         try Some (Css.Selector.of_string serialized)
-        with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+        with Cursor.Parse_error _ | Invalid_argument _ -> None
       with
       | None -> fail "specificity roundtrip serialization did not reparse"
       | Some reparsed ->
@@ -121,7 +120,7 @@ let test_specificity_roundtrip buf =
 let test_serialization_idempotent buf =
   match
     try Some (Css.Selector.of_string buf)
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some sel ->
@@ -131,15 +130,15 @@ let test_serialization_idempotent buf =
         fail (Fmt.str "selector serialization drifted: %S -> %S" once twice)
 
 let test_selector_list_serialization_idempotent buf =
-  let r = Css.Cursor.of_string buf in
+  let r = Cursor.of_string buf in
   match
     try Some (Css.Selector.read_selector_list r)
-    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+    with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some selectors ->
       let once = Css.Selector.to_string ~minify:true selectors in
-      let r2 = Css.Cursor.of_string once in
+      let r2 = Cursor.of_string once in
       let selectors2 = Css.Selector.read_selector_list r2 in
       let twice = Css.Selector.to_string ~minify:true selectors2 in
       if once <> twice then fail "selector-list serialization drifted"

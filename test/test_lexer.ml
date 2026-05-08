@@ -3,17 +3,17 @@
 open Cascade
 
 let tokens_of css =
-  let lexer = Css.Lexer.of_string css in
+  let lexer = Lexer.of_string css in
   let rec loop acc =
-    let tok = Css.Lexer.next lexer in
-    match tok.Css.Token.kind with
-    | Css.Token.Eof -> List.rev acc
-    | _ -> loop (tok.Css.Token.kind :: acc)
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof -> List.rev acc
+    | _ -> loop (tok.Token.kind :: acc)
   in
   loop []
 
 let pp_tokens kinds =
-  String.concat " " (List.map (Css.Pp.to_string Css.Token.pp_kind) kinds)
+  String.concat " " (List.map (Css.Pp.to_string Token.pp_kind) kinds)
 
 let check input expected_summary =
   let got = pp_tokens (tokens_of input) in
@@ -21,7 +21,7 @@ let check input expected_summary =
 
 let check_first_hash input expected_value expected_flag =
   match tokens_of input with
-  | [ Css.Token.Hash { value; hash_flag } ] ->
+  | [ Token.Hash { value; hash_flag } ] ->
       Alcotest.(check string)
         (Fmt.str "hash value for %S" input)
         expected_value value;
@@ -35,7 +35,7 @@ let check_first_hash input expected_value expected_flag =
 
 let check_first_number_flag input expected_repr expected_flag =
   match tokens_of input with
-  | [ Css.Token.Number_tok { repr; number_flag; _ } ] ->
+  | [ Token.Number_tok { repr; number_flag; _ } ] ->
       Alcotest.(check string)
         (Fmt.str "number repr for %S" input)
         expected_repr repr;
@@ -97,9 +97,9 @@ let spec_definitions () =
 let spec_hash_flags () =
   (* CSS Syntax Level 3 section 4.3.1: hash tokens remember whether the
      following code points would start an ident sequence. *)
-  check_first_hash "#abc" "abc" Css.Token.Id;
-  check_first_hash "#123" "123" Css.Token.Unrestricted;
-  check_first_hash "#\\31 a" "1a" Css.Token.Id
+  check_first_hash "#abc" "abc" Token.Id;
+  check_first_hash "#123" "123" Token.Unrestricted;
+  check_first_hash "#\\31 a" "1a" Token.Id
 
 let spec_delim_fallbacks () =
   (* CSS Syntax Level 3 section 4.3.1 fallback cases for punctuation that does
@@ -187,10 +187,10 @@ let spec_numeric_tokens () =
 let spec_number_flags () =
   (* CSS Syntax Level 3 section 4.3.13 returns a number type of "integer" or
      "number" in addition to the numeric value. *)
-  check_first_number_flag "10" "10" Css.Token.Integer;
-  check_first_number_flag "+10" "+10" Css.Token.Integer;
-  check_first_number_flag "10.0" "10.0" Css.Token.Number;
-  check_first_number_flag "1e2" "1e2" Css.Token.Number
+  check_first_number_flag "10" "10" Token.Integer;
+  check_first_number_flag "+10" "+10" Token.Integer;
+  check_first_number_flag "10.0" "10.0" Token.Number;
+  check_first_number_flag "1e2" "1e2" Token.Number
 
 let spec_ident_like_tokens () =
   (* CSS Syntax Level 3 sections 4.3.4, 4.3.9, and 4.3.12. *)
