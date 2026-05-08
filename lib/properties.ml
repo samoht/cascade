@@ -6297,14 +6297,18 @@ let pp_background_position_value : position_value Pp.t =
     pp_length ctx y
   in
   match value with
-  | Center -> pp_length ctx (pct 50.)
-  | Bottom_left | Left_bottom -> pp_pair ctx (pct 0.) (pct 100.)
-  | Bottom_right | Right_bottom -> pp_pair ctx (pct 100.) (pct 100.)
-  | Left_center -> pp_length ctx (pct 0.)
-  | Right_center -> pp_length ctx (pct 100.)
-  | Center_top -> Pp.string ctx "top"
-  | Center_bottom -> Pp.string ctx "bottom"
-  | Axis_edge_offset ("center", "top", offset) -> pp_pair ctx (pct 50.) offset
+  | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
+  | Left_top | Top_left when Pp.minified ctx -> pp_length ctx Zero
+  | Bottom_left | Left_bottom when Pp.minified ctx ->
+      pp_pair ctx (pct 0.) (pct 100.)
+  | Bottom_right | Right_bottom when Pp.minified ctx ->
+      pp_pair ctx (pct 100.) (pct 100.)
+  | Left_center when Pp.minified ctx -> pp_length ctx (pct 0.)
+  | Right_center when Pp.minified ctx -> pp_length ctx (pct 100.)
+  | Center_top when Pp.minified ctx -> Pp.string ctx "top"
+  | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
+  | Axis_edge_offset ("center", "top", offset) when Pp.minified ctx ->
+      pp_pair ctx (pct 50.) offset
   | Edge_offset_axis ("left", offset, "center") -> (
       match length_of_lp offset with
       | Some x -> pp_length ctx x
