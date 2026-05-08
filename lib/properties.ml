@@ -5135,6 +5135,77 @@ let rec pp_grid_line_pair : grid_line_pair Pp.t =
           pp_grid_line ctx end_)
   | Var v -> pp_var pp_grid_line_pair ctx v
 
+let rec eval_number_value : number -> float option = function
+  | Num f -> Some f
+  | Var _ -> None
+  | Calc c -> eval_number_calc c
+  | Round (strategy, value, step) -> (
+      match (eval_number_value value, eval_number_value step) with
+      | Some value, Some step when step <> 0. ->
+          let quotient = value /. step in
+          let rounded =
+            match strategy with
+            | "up" -> Float.ceil quotient
+            | "down" -> Float.floor quotient
+            | "to-zero" -> Float.trunc quotient
+            | _ -> Float.round quotient
+          in
+          Some (rounded *. step)
+      | _ -> None)
+  | Mod (a, b) -> (
+      match (eval_number_value a, eval_number_value b) with
+      | Some a, Some b when b <> 0. -> Some (a -. (Float.floor (a /. b) *. b))
+      | _ -> None)
+  | Rem (a, b) -> (
+      match (eval_number_value a, eval_number_value b) with
+      | Some a, Some b when b <> 0. -> Some (Float.rem a b)
+      | _ -> None)
+  | Hypot (a, b) -> (
+      match (eval_number_value a, eval_number_value b) with
+      | Some a, Some b -> Some (Float.sqrt ((a *. a) +. (b *. b)))
+      | _ -> None)
+  | Pow (a, b) -> (
+      match (eval_number_value a, eval_number_value b) with
+      | Some a, Some b -> Some (a ** b)
+      | _ -> None)
+  | Sqrt v -> Option.map Float.sqrt (eval_number_value v)
+  | Abs v -> Option.map Float.abs (eval_number_value v)
+  | Sign v ->
+      Option.map
+        (fun x -> if x > 0. then 1. else if x < 0. then -1. else 0.)
+        (eval_number_value v)
+  | Sin _ -> None
+
+and eval_number_calc : number calc -> float option = function
+  | Num f -> Some f
+  | Val v -> eval_number_value v
+  | Var _ | Sibling_index | Sibling_count -> None
+  | Nested inner | Parens inner -> eval_number_calc inner
+  | Expr (left, op, right) -> (
+      match (eval_number_calc left, eval_number_calc right) with
+      | Some left, Some right -> (
+          match op with
+          | Add -> Some (left +. right)
+          | Sub -> Some (left -. right)
+          | Mul -> Some (left *. right)
+          | Div when right <> 0. -> Some (left /. right)
+          | Div -> None)
+      | _ -> None)
+
+let pp_aspect_ratio_number ctx value =
+  match (Pp.minified ctx, eval_number_value value) with
+  | true, Some value -> Pp.float ctx value
+  | _ -> pp_number ctx value
+
+let pp_aspect_ratio_pair ctx a b =
+  let b_value = eval_number_value b in
+  if Pp.minified ctx && b_value = Some 1. then pp_aspect_ratio_number ctx a
+  else (
+    pp_aspect_ratio_number ctx a;
+    if b_value <> Some 1. then (
+      Pp.op_char ctx '/';
+      pp_aspect_ratio_number ctx b))
+
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -5142,12 +5213,17 @@ let rec pp_aspect_ratio : aspect_ratio Pp.t =
       Pp.string ctx "auto";
       Pp.space ctx ();
       pp_aspect_ratio ctx (Ratio (a, b))
+  | Auto_ratio_calc (a, b) ->
+      Pp.string ctx "auto";
+      Pp.space ctx ();
+      pp_aspect_ratio_pair ctx a b
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_aspect_ratio ctx v
+  | Ratio_calc (a, b) -> pp_aspect_ratio_pair ctx a b
   | Ratio (a, b) ->
       if b = 1.0 then
         (* Single number case - don't show "/1" *)
@@ -10462,112 +10538,11 @@ let rec read_grid t : grid_template =
               | _ -> Split (rows, columns)))
         else rows
 
-let sign_float x = if x > 0. then 1. else if x < 0. then -1. else 0.
-
-let rec read_aspect_ratio_calc_expr inner =
-  let l = read_aspect_ratio_calc_term inner in
-  Cursor.ws inner;
-  match Cursor.peek_delim inner with
-  | Some '+' ->
-      Cursor.skip inner;
-      l +. read_aspect_ratio_calc_expr inner
-  | Some '-' ->
-      Cursor.skip inner;
-      l -. read_aspect_ratio_calc_expr inner
-  | _ -> l
-
-and read_aspect_ratio_calc_term inner =
-  let rec loop l =
-    Cursor.ws inner;
-    match Cursor.peek_delim inner with
-    | Some '*' ->
-        Cursor.skip inner;
-        Cursor.ws inner;
-        loop (l *. read_aspect_ratio_calc_factor inner)
-    | Some '/' ->
-        Cursor.skip inner;
-        Cursor.ws inner;
-        let r = read_aspect_ratio_calc_factor inner in
-        if r = 0. then Cursor.err inner "calc: division by zero"
-        else loop (l /. r)
-    | _ -> l
-  in
-  loop (read_aspect_ratio_calc_factor inner)
-
-and read_aspect_ratio_calc_factor inner =
-  Cursor.ws inner;
-  match Cursor.peek_block inner with
-  | Some Token.Paren -> Cursor.parens read_aspect_ratio_calc_expr inner
-  | _ -> (
-      match peek_math_function inner with
-      | Some "abs" -> read_fixed_math_call inner "abs" Float.abs
-      | Some "sign" -> read_fixed_math_call inner "sign" sign_float
-      | Some "sqrt" -> read_fixed_math_call inner "sqrt" Float.sqrt
-      | Some "pow" -> read_binary_math_call inner "pow" (fun a b -> a ** b)
-      | Some "hypot" ->
-          read_variable_math_call inner "hypot" (fun vs ->
-              Float.sqrt (List.fold_left (fun a x -> a +. (x *. x)) 0. vs))
-      | Some "mod" ->
-          read_binary_math_call inner "mod" (fun a b ->
-              if b = 0. then Cursor.err inner "mod: divisor is zero"
-              else a -. (Float.floor (a /. b) *. b))
-      | Some "rem" ->
-          read_binary_math_call inner "rem" (fun a b ->
-              if b = 0. then Cursor.err inner "rem: divisor is zero"
-              else Float.rem a b)
-      | Some "min" ->
-          read_variable_math_call inner "min"
-            (List.fold_left Float.min infinity)
-      | Some "max" ->
-          read_variable_math_call inner "max"
-            (List.fold_left Float.max neg_infinity)
-      | _ -> Cursor.number inner)
-
-and peek_math_function inner =
-  match Cursor.peek inner with
-  | Some (Component.Func { node = { name; _ }; _ }) ->
-      Some (String.lowercase_ascii name)
-  | _ -> None
-
-and read_fixed_math_call inner name f =
-  Cursor.call name inner (fun args ->
-      let v = read_aspect_ratio_calc_expr args in
-      Cursor.ws args;
-      Cursor.expect_eof args;
-      f v)
-
-and read_binary_math_call inner name f =
-  Cursor.call name inner (fun args ->
-      let a = read_aspect_ratio_calc_expr args in
-      Cursor.ws args;
-      Cursor.comma args;
-      let b = read_aspect_ratio_calc_expr args in
-      Cursor.ws args;
-      Cursor.expect_eof args;
-      f a b)
-
-and read_variable_math_call inner name f =
-  Cursor.call name inner (fun args ->
-      let first = read_aspect_ratio_calc_expr args in
-      let rec rest acc =
-        Cursor.ws args;
-        if Cursor.peek_comma args then (
-          Cursor.comma args;
-          rest (read_aspect_ratio_calc_expr args :: acc))
-        else List.rev acc
-      in
-      let vs = first :: rest [] in
-      Cursor.ws args;
-      Cursor.expect_eof args;
-      f vs)
-
 let read_aspect_ratio_number t =
   (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
-     resolves to a constant number. Evaluate the [calc] body as a number
-     expression at parse time and reject calc that does not reduce. *)
-  if Cursor.looking_at t "calc(" then
-    Cursor.call "calc" t read_aspect_ratio_calc_expr
-  else Cursor.number t
+     resolves to a number. Keep the number AST for normal-output fidelity; the
+     printer folds constant expressions for minified output. *)
+  read_number t
 
 let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
@@ -10581,7 +10556,7 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
       Cursor.ws t;
       let h = read_aspect_ratio_number t in
       (w, h))
-    else (w, 1.0)
+    else (w, Num 1.0)
   in
   let read_number_or_ratio t : aspect_ratio =
     let w, h = read_ratio t in
@@ -10589,8 +10564,8 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
     match Cursor.peek_ident t with
     | Some "auto" ->
         Cursor.skip t;
-        Auto_ratio (w, h)
-    | _ -> Ratio (w, h)
+        Auto_ratio_calc (w, h)
+    | _ -> Ratio_calc (w, h)
   in
   let read_auto t : aspect_ratio =
     match Cursor.peek_ident t with
@@ -10600,7 +10575,7 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
         if Cursor.is_done t then Auto
         else
           let w, h = read_ratio t in
-          Auto_ratio (w, h)
+          Auto_ratio_calc (w, h)
     | _ -> Cursor.err_expected t "auto"
   in
   Cursor.enum_or_var "aspect-ratio"

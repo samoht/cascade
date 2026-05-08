@@ -1239,11 +1239,28 @@ type angle =
       (** Spec-invalid input preserved verbatim for round-trip; dropped by
           [Optimize.drop_invalid] under [--minify]. *)
 
+(** CSS number values (unitless numbers for filters, transforms, etc.) *)
+type number =
+  | Num of float  (** Number value *)
+  | Var of number var  (** CSS variable reference *)
+  | Calc of number calc
+  | Round of string * number * number  (** CSS [round()] math function *)
+  | Mod of number * number  (** CSS [mod()] math function *)
+  | Rem of number * number  (** CSS [rem()] math function *)
+  | Hypot of number * number  (** CSS [hypot()] math function *)
+  | Pow of number * number  (** CSS [pow()] math function *)
+  | Sqrt of number  (** CSS [sqrt()] math function *)
+  | Abs of number  (** CSS [abs()] math function *)
+  | Sign of number  (** CSS [sign()] math function *)
+  | Sin of angle  (** CSS [sin()] math function *)
+
 (** CSS aspect-ratio values *)
 type aspect_ratio =
   | Auto
   | Auto_ratio of float * float
   | Ratio of float * float
+  | Auto_ratio_calc of number * number
+  | Ratio_calc of number * number
   | Inherit
   | Initial
   | Unset
@@ -5658,21 +5675,6 @@ val box_shadows : shadow list -> declaration
 (** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
-
-(** CSS number values (unitless numbers for filters, transforms, etc.) *)
-type number =
-  | Num of float  (** Number value *)
-  | Var of number var  (** CSS variable reference *)
-  | Calc of number calc
-  | Round of string * number * number  (** CSS [round()] math function *)
-  | Mod of number * number  (** CSS [mod()] math function *)
-  | Rem of number * number  (** CSS [rem()] math function *)
-  | Hypot of number * number  (** CSS [hypot()] math function *)
-  | Pow of number * number  (** CSS [pow()] math function *)
-  | Sqrt of number  (** CSS [sqrt()] math function *)
-  | Abs of number  (** CSS [abs()] math function *)
-  | Sign of number  (** CSS [sign()] math function *)
-  | Sin of angle  (** CSS [sin()] math function *)
 
 (** CSS scale property values *)
 type scale =

@@ -3343,8 +3343,8 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
         Cursor.one_of
           [
             read_calc_zero;
-            read_calc_numeric_function;
             read_val;
+            read_calc_numeric_function;
             read_num;
             read_math_constant;
           ]

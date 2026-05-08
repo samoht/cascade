@@ -789,6 +789,8 @@ type aspect_ratio =
   | Auto
   | Auto_ratio of float * float
   | Ratio of float * float
+  | Auto_ratio_calc of number * number
+  | Ratio_calc of number * number
   | Inherit
   | Initial
   | Unset
