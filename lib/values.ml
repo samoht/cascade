@@ -2536,6 +2536,52 @@ and pp_color' ctx space components alpha =
       pp_opt_alpha ctx alpha)
     ctx (space, components, alpha)
 
+and color_of_default_string value =
+  let value = String.trim value in
+  let len = String.length value in
+  let is_hex c =
+    ('0' <= c && c <= '9')
+    || ('a' <= c && c <= 'f')
+    || ('A' <= c && c <= 'F')
+  in
+  if len > 1 && value.[0] = '#' then
+    let hex = String.sub value 1 (len - 1) in
+    let hex_len = String.length hex in
+    if
+      (hex_len = 3 || hex_len = 4 || hex_len = 6 || hex_len = 8)
+      && String.for_all is_hex hex
+    then Option.Some (Hex { hash = true; value = hex })
+    else Option.None
+  else if len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
+  then
+    let body = String.sub value 4 (len - 5) in
+    let body = String.map (function ',' -> ' ' | c -> c) body in
+    let parts =
+      body |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")
+    in
+    match List.map int_of_string_opt parts with
+    | [ Option.Some r; Option.Some g; Option.Some b ]
+      when List.for_all (fun n -> 0 <= n && n <= 255) [ r; g; b ] ->
+        Option.Some
+          (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
+    | _ -> Option.None
+  else Option.None
+
+and color_of_var_resolution ctx (v : color var) =
+  if in_theme ctx v.name then Option.None
+  else
+    match ctx.Pp.theme_defaults v.name with
+    | Option.Some value -> color_of_default_string value
+    | Option.None -> (
+        match v.default with
+        | Option.Some value -> Option.Some value
+        | Option.None -> (
+            match v.fallback with
+            | Fallback value -> Option.Some value
+            | Var_fallback name ->
+                Option.bind (ctx.Pp.theme_defaults name) color_of_default_string
+            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+
 and pp_color : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } ->
@@ -2709,6 +2755,10 @@ and pp_color : color Pp.t =
         else Parser.to_string_custom value
       in
       Pp.string ctx (first_top_level_comma_segment rendered)
+  | Var v when Pp.minified ctx -> (
+      match color_of_var_resolution ctx v with
+      | Option.Some color -> pp_color ctx color
+      | Option.None -> pp_var pp_color ctx v)
   | Var v -> pp_var pp_color ctx v
   | Current ->
       Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
