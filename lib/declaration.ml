@@ -261,6 +261,8 @@ let rec is_important = function
     spec-violation cascade detected at parse time. The minify-time
     [Optimize.drop_invalid] pass removes such declarations. *)
 let rec is_invalid = function
+  | Declaration { property = Unknown_property name; _ } ->
+      not (is_vendor_extension_property_name name)
   | Declaration { property; value; _ } ->
       Properties.is_invalid_value property value
   | Theme_guarded { decl; _ } -> is_invalid decl
