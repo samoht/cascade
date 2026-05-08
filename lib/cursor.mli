@@ -214,6 +214,10 @@ val number_with_unit : t -> float * string option
 (** [number_with_unit t] consumes a dimension, percentage or number and returns
     the value and unit (if any). *)
 
+val number_repr_with_unit : t -> float * string * string option
+(** [number_repr_with_unit t] is like {!number_with_unit}, but also returns the
+    authored numeric token representation. *)
+
 val bool : t -> bool
 (** [bool t] consumes [true] or [false]. *)
 

@@ -700,6 +700,9 @@ type length =
   | Cqmax of float  (** Larger container query dimension units *)
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
+  | Dimension of { value : float; unit : string; repr : string }
+      (** Dimension with authored numeric spelling preserved for pretty
+          printing. *)
   | Unknown_dimension of float * string
       (** Catch-all for dimensions whose unit isn't recognised by cascade.
           Preserves the source token so unknown ([1x], [10qoo]) round-trip. *)
@@ -4145,6 +4148,7 @@ type line_height =
   | Em of float
   | Pct of float
   | Num of float
+  | Number of { value : float; unit : string option; repr : string }
   | Inherit
   | Initial
   | Unset

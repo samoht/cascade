@@ -708,6 +708,7 @@ let length_is_zero = function
   | Lvh f | Lvw f | Lvmin f | Lvmax f -> f = 0.
   | Svh f | Svw f | Svmin f | Svmax f -> f = 0.
   | Cqw f | Cqh f | Cqi f | Cqb f | Cqmin f | Cqmax f -> f = 0.
+  | Dimension { value; _ } -> value = 0.
   | _ -> false
 
 let rec normalize_length_calc_zeros : length calc -> length calc = function
@@ -854,6 +855,50 @@ let length_unit_negative_rank = function
   | unit when length_unit_is_font_relative unit -> 0
   | _ -> 1
 
+let unit_of_string = function
+  | "px" -> Some U_px
+  | "cm" -> Some U_cm
+  | "mm" -> Some U_mm
+  | "q" -> Some U_q
+  | "in" -> Some U_in
+  | "pt" -> Some U_pt
+  | "pc" -> Some U_pc
+  | "rem" -> Some U_rem
+  | "em" -> Some U_em
+  | "ex" -> Some U_ex
+  | "cap" -> Some U_cap
+  | "ic" -> Some U_ic
+  | "ric" -> Some U_ric
+  | "rlh" -> Some U_rlh
+  | "ch" -> Some U_ch
+  | "lh" -> Some U_lh
+  | "%" -> Some U_pct
+  | "vw" -> Some U_vw
+  | "vh" -> Some U_vh
+  | "vmin" -> Some U_vmin
+  | "vmax" -> Some U_vmax
+  | "vi" -> Some U_vi
+  | "vb" -> Some U_vb
+  | "dvh" -> Some U_dvh
+  | "dvw" -> Some U_dvw
+  | "dvmin" -> Some U_dvmin
+  | "dvmax" -> Some U_dvmax
+  | "lvh" -> Some U_lvh
+  | "lvw" -> Some U_lvw
+  | "lvmin" -> Some U_lvmin
+  | "lvmax" -> Some U_lvmax
+  | "svh" -> Some U_svh
+  | "svw" -> Some U_svw
+  | "svmin" -> Some U_svmin
+  | "svmax" -> Some U_svmax
+  | "cqw" -> Some U_cqw
+  | "cqh" -> Some U_cqh
+  | "cqi" -> Some U_cqi
+  | "cqb" -> Some U_cqb
+  | "cqmin" -> Some U_cqmin
+  | "cqmax" -> Some U_cqmax
+  | _ -> None
+
 let unit_of_length = function
   | Zero -> Some (U_px, 0.)
   | Px n -> Some (U_px, n)
@@ -897,6 +942,10 @@ let unit_of_length = function
   | Cqb n -> Some (U_cqb, n)
   | Cqmin n -> Some (U_cqmin, n)
   | Cqmax n -> Some (U_cqmax, n)
+  | Dimension { value; unit; _ } -> (
+      match unit_of_string (String.lowercase_ascii unit) with
+      | Some unit -> Some (unit, value)
+      | None -> None)
   | _ -> None
 
 let length_of_unit unit n =
@@ -1224,6 +1273,11 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
+  | Dimension { value; unit; repr } ->
+      if ctx.minify then pp_unit_fn value unit
+      else (
+        Pp.string ctx repr;
+        Pp.string ctx unit)
   | Unknown_dimension (f, unit) -> pp_unit_fn f unit
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
@@ -2899,54 +2953,20 @@ let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
   Cursor.call "env" t (fun inner -> read_body read_value inner)
 
 let read_length_unit ?(allow_negative = true) t =
-  let n, unit_raw = Cursor.number_with_unit t in
+  let n, repr, unit_raw = Cursor.number_repr_with_unit t in
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
+  let authored unit =
+    if Pp.string_of_float n = repr then length_of_unit unit n
+    else Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
+  in
   match unit with
   | "" when n = 0.0 -> Zero
   | "" -> Cursor.err t "length values must have units (except for zero)"
-  | "px" -> Px n
-  | "cm" -> Cm n
-  | "mm" -> Mm n
-  | "q" -> Q n
-  | "in" -> In n
-  | "pt" -> Pt n
-  | "pc" -> Pc n
-  | "em" -> Em n
-  | "rem" -> Rem n
-  | "ex" -> Ex n
-  | "cap" -> Cap n
-  | "ic" -> Ic n
-  | "ric" -> Ric n
-  | "rlh" -> Rlh n
-  | "vh" -> Vh n
-  | "vw" -> Vw n
-  | "vmin" -> Vmin n
-  | "vmax" -> Vmax n
-  | "vi" -> Vi n
-  | "vb" -> Vb n
-  | "dvh" -> Dvh n
-  | "dvw" -> Dvw n
-  | "dvmin" -> Dvmin n
-  | "dvmax" -> Dvmax n
-  | "lvh" -> Lvh n
-  | "lvw" -> Lvw n
-  | "lvmin" -> Lvmin n
-  | "lvmax" -> Lvmax n
-  | "svh" -> Svh n
-  | "svw" -> Svw n
-  | "svmin" -> Svmin n
-  | "svmax" -> Svmax n
-  | "cqw" -> Cqw n
-  | "cqh" -> Cqh n
-  | "cqi" -> Cqi n
-  | "cqb" -> Cqb n
-  | "cqmin" -> Cqmin n
-  | "cqmax" -> Cqmax n
-  | "ch" -> Ch n
-  | "lh" -> Lh n
-  | "%" -> Pct n
-  | _ -> Cursor.err_invalid t ("length unit: " ^ unit)
+  | unit -> (
+      match unit_of_string unit with
+      | Some unit -> authored unit
+      | None -> Cursor.err_invalid t ("length unit: " ^ unit))
 
 let read_length_keyword t : length =
   Cursor.enum "length"

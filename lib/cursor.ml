@@ -486,6 +486,20 @@ let number_with_unit t =
       (value, None)
   | _ -> err_expected t "number with unit"
 
+let number_repr_with_unit t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
+    ->
+      skip t;
+      (number.value, number.repr, Some unit_)
+  | Some (Component.Preserved { kind = Token.Percentage number; _ }) ->
+      skip t;
+      (number.value, number.repr, Some "%")
+  | Some (Component.Preserved { kind = Token.Number_tok number; _ }) ->
+      skip t;
+      (number.value, number.repr, None)
+  | _ -> err_expected t "number with unit"
+
 let bool t =
   match ident t with
   | "true" -> true
