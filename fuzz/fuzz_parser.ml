@@ -30,10 +30,10 @@ let rec shape = function
   | Component.Preserved tok -> Some (Css.Pp.to_string Token.pp_kind tok.kind)
   | Component.Block { node = { opening; value; _ }; _ } ->
       let inner = value |> List.filter_map shape |> String.concat "," in
-      Some (Fmt.str "block(%s:%s)" (bracket_shape opening) inner)
+      Fmt.kstr (fun s -> Some s) "block(%s:%s)" (bracket_shape opening) inner
   | Component.Func { node = { name; arguments; _ }; _ } ->
       let inner = arguments |> List.filter_map shape |> String.concat "," in
-      Some (Fmt.str "function(%s:%s)" name inner)
+      Fmt.kstr (fun s -> Some s) "function(%s:%s)" name inner
 
 let shapes cvs = List.filter_map shape cvs
 let comma_shapes groups = List.map shapes groups

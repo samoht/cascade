@@ -337,7 +337,7 @@ let assert_strict_rejects_lenient_warns label input =
       if warnings = [] then
         fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
 
-let assert_strict_accepts_no_lenient_warnings label input =
+let assert_strict_accepts_cleanly label input =
   match Css.of_string ~strict:true input with
   | Error _ -> fail (Fmt.str "%s rejected valid CSS strictly: %S" label input)
   | Ok sheet ->
@@ -988,7 +988,7 @@ let test_valid_atrule_descriptor buf =
       ]
       buf 0
   in
-  assert_strict_accepts_no_lenient_warnings "valid spec at-rule vector" input;
+  assert_strict_accepts_cleanly "valid spec at-rule vector" input;
   match parse_stylesheet input with
   | None -> fail (Fmt.str "valid spec at-rule vector did not parse: %S" input)
   | Some ss ->
@@ -1300,11 +1300,12 @@ let test_recovery_bad_declaration buf =
   if warnings = [] then
     fail (Fmt.str "bad declaration emitted no warning: %S" css)
 
-let test_strict_lenient_random_stylesheet_contract buf =
+let test_random_stylesheet_contract buf =
   let input = css_like_stylesheet buf in
   let lenient =
     try Css.parse input
-    with _ -> fail (Fmt.str "lenient parse raised on fuzz input: %S" input)
+    with Cursor.Parse_error _ | Error.Parse_error _ | Invalid_argument _ ->
+      fail (Fmt.str "lenient parse raised on fuzz input: %S" input)
   in
   match Css.of_string ~strict:true input with
   | Ok strict_sheet ->
@@ -1344,8 +1345,7 @@ let test_stylesheet_prelude_order_vectors buf =
       ]
       buf 0
   in
-  assert_strict_accepts_no_lenient_warnings "valid stylesheet prelude order"
-    input;
+  assert_strict_accepts_cleanly "valid stylesheet prelude order" input;
   match parse_stylesheet input with
   | None ->
       fail (Fmt.str "valid stylesheet prelude order did not parse: %S" input)
@@ -1485,7 +1485,7 @@ let recovery_cases =
     test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
       test_recovery_bad_declaration;
     test_case "strict and lenient random stylesheet contract" [ bytes ]
-      test_strict_lenient_random_stylesheet_contract;
+      test_random_stylesheet_contract;
     test_case "stylesheet prelude order vectors" [ bytes ]
       test_stylesheet_prelude_order_vectors;
     test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]

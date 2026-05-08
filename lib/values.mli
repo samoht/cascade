@@ -374,6 +374,10 @@ val eval_numeric_calc : 'a calc -> float option
     numbers to a float. Returns [None] if the expression contains variables or
     non-numeric values. *)
 
+val eval_math_fn : math_fn -> float option
+(** [eval_math_fn fn] evaluates a CSS Values 4 §10.7 numeric math function call
+    to a float. Returns [None] when an arg references an unresolved variable. *)
+
 val read_numeric_expression : Cursor.t -> float
 (** [read_numeric_expression t] parses and evaluates a numeric math expression,
     including top-level math functions such as [min()], [max()], and [clamp()].
