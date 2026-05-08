@@ -457,6 +457,46 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
         value
 
+and pp_counter_style_system ctx = function
+  | Cyclic -> Pp.string ctx "cyclic"
+  | Numeric -> Pp.string ctx "numeric"
+  | Alphabetic -> Pp.string ctx "alphabetic"
+  | Symbolic -> Pp.string ctx "symbolic"
+  | Fixed None -> Pp.string ctx "fixed"
+  | Fixed (Some n) ->
+      Pp.string ctx "fixed";
+      Pp.space ctx ();
+      Pp.int ctx n
+  | Additive -> Pp.string ctx "additive"
+  | Extends name ->
+      Pp.string ctx "extends";
+      Pp.space ctx ();
+      Pp.string ctx name
+
+and pp_counter_symbol ctx symbol = Pp.quoted_string ctx symbol
+
+and pp_counter_style_descriptor ctx =
+  let pp_descriptor name pp_value value =
+    Pp.string ctx name;
+    Pp.char ctx ':';
+    Pp.space_if_pretty ctx ();
+    pp_value ctx value
+  in
+  function
+  | Counter_system system ->
+      pp_descriptor "system" pp_counter_style_system system
+  | Counter_symbols symbols ->
+      pp_descriptor "symbols" (Pp.list ~sep:Pp.space pp_counter_symbol) symbols
+  | Counter_suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
+  | Counter_prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
+  | Counter_fallback value -> pp_descriptor "fallback" Pp.string value
+  | Counter_range value -> pp_descriptor "range" Pp.string value
+  | Counter_pad value -> pp_descriptor "pad" Pp.string value
+  | Counter_negative value -> pp_descriptor "negative" Pp.string value
+  | Counter_additive_symbols value ->
+      pp_descriptor "additive-symbols" Pp.string value
+  | Counter_speak_as value -> pp_descriptor "speak-as" Pp.string value
+
 and pp_font_palette_base ctx = function
   | Light -> Pp.string ctx "light"
   | Dark -> Pp.string ctx "dark"
@@ -838,6 +878,11 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@font-face";
       Pp.sp ctx ();
       Pp.braced_semicolon_list pp_font_face_descriptor ctx descriptors
+  | Counter_style (name, descriptors) ->
+      Pp.string ctx "@counter-style ";
+      Pp.string ctx name;
+      Pp.sp ctx ();
+      Pp.braced_semicolon_list pp_counter_style_descriptor ctx descriptors
   | Page (selector, raw_declarations) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
@@ -1515,6 +1560,177 @@ let read_font_face (r : Cursor.t) : statement =
   if (not (Cursor.recover r)) && not (font_face_participates descriptors) then
     Cursor.err_invalid r "@font-face requires font-family and src descriptors";
   Font_face descriptors
+
+let read_counter_style_system_value r =
+  let system = Cursor.ident ~keep_case:false r in
+  match String.lowercase_ascii system with
+  | "cyclic" -> Cyclic
+  | "numeric" -> Numeric
+  | "alphabetic" -> Alphabetic
+  | "symbolic" -> Symbolic
+  | "fixed" ->
+      Cursor.ws r;
+      Fixed (Cursor.integer_opt r)
+  | "additive" -> Additive
+  | "extends" ->
+      Cursor.ws r;
+      Extends (Cursor.ident ~keep_case:true r)
+  | _ -> Cursor.err_invalid r ("unknown counter-style system: " ^ system)
+
+let read_counter_style_system_descriptor r =
+  read_descriptor_value Declaration.read_property_value
+    (fun value ->
+      let c = Cursor.of_string value in
+      let system = read_counter_style_system_value c in
+      Cursor.ws c;
+      Cursor.expect_eof c;
+      Counter_system system)
+    r
+
+let read_counter_symbol r =
+  match Cursor.string_opt r with
+  | Some symbol -> symbol
+  | None -> Cursor.ident ~keep_case:true r
+
+let read_counter_symbols_descriptor r =
+  read_descriptor_value Declaration.read_property_value
+    (fun value ->
+      let c = Cursor.of_string value in
+      let symbols =
+        Cursor.list ~at_least:1 ~sep:Cursor.ws read_counter_symbol c
+      in
+      Cursor.ws c;
+      Cursor.expect_eof c;
+      Counter_symbols symbols)
+    r
+
+let read_counter_symbol_descriptor constructor r =
+  read_descriptor_value Declaration.read_property_value
+    (fun value ->
+      let c = Cursor.of_string value in
+      let symbol = read_counter_symbol c in
+      Cursor.ws c;
+      Cursor.expect_eof c;
+      constructor symbol)
+    r
+
+let read_counter_string_descriptor constructor r =
+  read_descriptor_value
+    (fun r ->
+      let value = Declaration.read_property_value r in
+      validate_nonempty_descriptor r "counter-style" value;
+      value)
+    constructor r
+
+let read_counter_style_descriptor (r : Cursor.t) :
+    counter_style_descriptor option =
+  Cursor.ws r;
+  if Cursor.is_done r then None
+  else if Cursor.peek_semicolon r then (
+    Cursor.skip r;
+    None)
+  else
+    let name = Cursor.ident ~keep_case:false r |> String.lowercase_ascii in
+    let descriptor =
+      match name with
+      | "system" -> read_counter_style_system_descriptor r
+      | "symbols" -> read_counter_symbols_descriptor r
+      | "suffix" -> read_counter_symbol_descriptor (fun s -> Counter_suffix s) r
+      | "prefix" -> read_counter_symbol_descriptor (fun s -> Counter_prefix s) r
+      | "fallback" ->
+          read_counter_string_descriptor (fun s -> Counter_fallback s) r
+      | "range" -> read_counter_string_descriptor (fun s -> Counter_range s) r
+      | "pad" -> read_counter_string_descriptor (fun s -> Counter_pad s) r
+      | "negative" ->
+          read_counter_string_descriptor (fun s -> Counter_negative s) r
+      | "additive-symbols" ->
+          read_counter_string_descriptor (fun s -> Counter_additive_symbols s) r
+      | "speak-as" ->
+          read_counter_string_descriptor (fun s -> Counter_speak_as s) r
+      | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
+    in
+    Cursor.ws r;
+    if Cursor.peek_semicolon r then Cursor.skip r;
+    Some descriptor
+
+let counter_style_descriptor_rank = function
+  | Counter_system _ -> 0
+  | Counter_symbols _ -> 1
+  | Counter_additive_symbols _ -> 2
+  | Counter_prefix _ -> 3
+  | Counter_suffix _ -> 4
+  | Counter_range _ -> 5
+  | Counter_pad _ -> 6
+  | Counter_negative _ -> 7
+  | Counter_fallback _ -> 8
+  | Counter_speak_as _ -> 9
+
+let replace_counter_style_descriptor desc acc =
+  desc
+  :: List.filter
+       (fun existing ->
+         counter_style_descriptor_rank existing
+         <> counter_style_descriptor_rank desc)
+       acc
+
+let read_counter_style_descriptors r =
+  Cursor.braces
+    (fun inner ->
+      let rec loop acc =
+        match read_counter_style_descriptor inner with
+        | Some desc -> loop (replace_counter_style_descriptor desc acc)
+        | None ->
+            Cursor.ws inner;
+            if Cursor.is_done inner then List.rev acc else loop acc
+      in
+      loop [])
+    r
+
+let counter_style_system descriptors =
+  List.find_map
+    (function Counter_system system -> Some system | _ -> None)
+    descriptors
+
+let counter_style_has_symbols descriptors =
+  List.exists (function Counter_symbols _ -> true | _ -> false) descriptors
+
+let counter_style_has_additive_symbols descriptors =
+  List.exists
+    (function Counter_additive_symbols _ -> true | _ -> false)
+    descriptors
+
+let counter_style_validate r descriptors =
+  let system =
+    match counter_style_system descriptors with
+    | Some system -> system
+    | None -> Cursor.err_invalid r "@counter-style requires a system descriptor"
+  in
+  match system with
+  | Cyclic | Numeric | Alphabetic | Symbolic | Fixed _ ->
+      if not (counter_style_has_symbols descriptors) then
+        Cursor.err_invalid r
+          "@counter-style system requires a symbols descriptor"
+  | Additive ->
+      if not (counter_style_has_additive_symbols descriptors) then
+        Cursor.err_invalid r
+          "@counter-style additive system requires additive-symbols"
+  | Extends _ -> ()
+
+let read_counter_style (r : Cursor.t) : statement =
+  Cursor.with_context r "@counter-style" @@ fun () ->
+  Cursor.expect_at_keyword "counter-style" r;
+  Cursor.ws r;
+  let name = Cursor.ident ~keep_case:true r in
+  Cursor.ws r;
+  let descriptors =
+    read_counter_style_descriptors r
+    |> List.stable_sort (fun a b ->
+        compare
+          (counter_style_descriptor_rank a)
+          (counter_style_descriptor_rank b))
+  in
+  counter_style_validate r descriptors;
+  Counter_style (name, descriptors)
 
 (* CSS Paged Media 3 §3.1: a page selector is an optional page name followed by
    zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
@@ -2210,6 +2426,7 @@ let rec read_statement (r : Cursor.t) : statement =
       ("-webkit-keyframes", read_webkit_keyframes);
       ("-moz-keyframes", read_moz_keyframes);
       ("font-face", read_font_face);
+      ("counter-style", read_counter_style);
       ("page", read_page);
       ("font-palette-values", read_font_palette_values);
       ("font-feature-values", read_font_feature_values);
@@ -3021,7 +3238,8 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Origin (_, block)
   | Scope (_, _, block) ->
       vars_of_block block
-  | Font_face _ -> [] (* Font-face descriptors don't contribute CSS variables *)
+  | Font_face _ | Counter_style _ ->
+      [] (* At-rule descriptors don't contribute CSS variables *)
   | Page (_, decls) -> Variables.vars_of_declarations decls
   | Page_with_margins (_, _, _) -> []
   | Position_try (_, decls) | Supports_condition (_, decls) ->

@@ -28,6 +28,7 @@ type property_name = Property_name of string
 type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
+  | Unsupported of property_name * string
   | Vendor_flag_enabled
 
 type font_format =
@@ -142,7 +143,11 @@ let declaration_feature prop value =
   match (String.lowercase_ascii prop, String.lowercase_ascii value) with
   | _, "" -> Empty (property_name prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
-  | _ -> Declaration (Declaration.of_string (prop ^ ":" ^ value))
+  | _ -> (
+      let name = property_name prop in
+      try Declaration (Declaration.of_string (prop ^ ":" ^ value))
+      with Cursor.Parse_error _ | Failure _ ->
+        Unsupported (name, String.trim value))
 
 let property prop value = Property (declaration_feature prop value)
 
@@ -214,6 +219,7 @@ and render_branch operator = function
 and render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
   | Empty name -> string_of_property_name name ^ ":"
+  | Unsupported (name, value) -> string_of_property_name name ^ ": " ^ value
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
 and render_function_feature = function
@@ -230,6 +236,11 @@ let pp_declaration_feature ctx = function
   | Empty name ->
       Pp.string ctx (string_of_property_name name);
       Pp.char ctx ':'
+  | Unsupported (name, value) ->
+      Pp.string ctx (string_of_property_name name);
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx value
   | Vendor_flag_enabled ->
       Pp.string ctx "-vendor-flag:";
       Pp.space_if_pretty ctx ();
@@ -468,12 +479,18 @@ let compare_declaration_feature d1 d2 =
     | Empty _ -> 0
     | Vendor_flag_enabled -> 1
     | Declaration _ -> 2
+    | Unsupported _ -> 3
   in
   match (d1, d2) with
   | Empty n1, Empty n2 ->
       String.compare (string_of_property_name n1) (string_of_property_name n2)
   | Vendor_flag_enabled, Vendor_flag_enabled -> 0
   | Declaration d1, Declaration d2 -> compare_declaration d1 d2
+  | Unsupported (n1, v1), Unsupported (n2, v2) ->
+      let c =
+        String.compare (string_of_property_name n1) (string_of_property_name n2)
+      in
+      if c <> 0 then c else String.compare v1 v2
   | _ -> Stdlib.compare (order d1) (order d2)
 
 let compare_function_feature a b =

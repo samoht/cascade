@@ -162,6 +162,8 @@ and statement =
   | Moz_keyframes of string * keyframe list
       (** [@-moz-keyframes name { ... }] *)
   | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
+  | Counter_style of string * counter_style_descriptor list
+      (** [@counter-style name { ... }] *)
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)
   | Page_with_margins of
@@ -222,6 +224,27 @@ and font_palette_descriptor =
   | Override_colors of (int * Values.color) list
 
 and font_feature_values_block = string * (string * int list) list
+
+and counter_style_system =
+  | Cyclic
+  | Numeric
+  | Alphabetic
+  | Symbolic
+  | Fixed of int option
+  | Additive
+  | Extends of string
+
+and counter_style_descriptor =
+  | Counter_system of counter_style_system
+  | Counter_symbols of string list
+  | Counter_suffix of string
+  | Counter_prefix of string
+  | Counter_fallback of string
+  | Counter_range of string
+  | Counter_pad of string
+  | Counter_negative of string
+  | Counter_additive_symbols of string
+  | Counter_speak_as of string
 
 and view_transition_descriptor =
   | Navigation of [ `Auto | `None ]

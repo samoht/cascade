@@ -672,7 +672,7 @@ let rec refs_of_media : Media.t -> string list = function
 let refs_of_supports_feature : Supports.declaration_feature -> string list =
   function
   | Declaration decl -> names_of_vars (Variables.vars_of_declarations [ decl ])
-  | Empty _ | Vendor_flag_enabled -> []
+  | Empty _ | Unsupported _ | Vendor_flag_enabled -> []
 
 let rec refs_of_supports : Supports.t -> string list = function
   | Property feature -> refs_of_supports_feature feature
