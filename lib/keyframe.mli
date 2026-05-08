@@ -15,8 +15,14 @@ val string_of_position : position -> string
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list
 
+type t = selector
+(** A keyframe selector. *)
+
 val string_of_selector : selector -> string
 (** [string_of_selector sel] renders a selector as CSS string. *)
+
+val to_string : t -> string
+(** [to_string sel] renders a selector as CSS source text. *)
 
 val position_compare : position -> position -> int
 (** [position_compare a b] compares two positions for sorting. *)

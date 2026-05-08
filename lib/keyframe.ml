@@ -24,9 +24,13 @@ let string_of_position = function
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list
 
+type t = selector
+
 let string_of_selector = function
   | Positions positions ->
       String.concat ", " (List.map string_of_position positions)
+
+let to_string = string_of_selector
 
 let percent_of_position = function
   | From -> 0.

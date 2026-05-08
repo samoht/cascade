@@ -34,6 +34,8 @@ type src_entry =
 and src = src_entry list
 (** Font source list. *)
 
+type t = src
+
 let url_needs_quotes s =
   String.exists
     (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
@@ -98,6 +100,8 @@ and string_of_src_entry entry =
 
 let string_of_src ?(minify = false) entries =
   Pp.to_string ~minify pp_src entries
+
+let to_string = string_of_src
 
 (** {1 Parsing} *)
 
