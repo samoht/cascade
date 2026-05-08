@@ -1310,8 +1310,9 @@ let read_keyframes_block inner =
       match read_keyframe inner with
       | frame -> read_frames (frame :: acc)
       | exception Cursor.Parse_error e ->
+          (* Invalid keyframe rules are ignored, but the surrounding block keeps
+             parsing. *)
           Cursor.restore inner snap;
-          if not (Cursor.recover inner) then raise (Cursor.Parse_error e);
           Cursor.push_warning inner e;
           skip_bad_item ();
           read_frames acc
