@@ -277,6 +277,27 @@ let string_with_quote_opt t =
       | Token.String { value; quote; _ } -> Some (value, quote) | _ -> None)
     t
 
+let source_slice t loc =
+  match t.source with
+  | None -> None
+  | Some source ->
+      let len = String.length source in
+      if
+        loc.Loc.start_pos < 0
+        || loc.end_pos < loc.start_pos
+        || loc.end_pos > len
+      then None
+      else Some (String.sub source loc.start_pos (loc.end_pos - loc.start_pos))
+
+let string_repr_with_quote_opt t =
+  match peek t with
+  | Some
+      (Component.Preserved
+         ({ kind = Token.String { value; quote; _ }; loc } : Token.t)) ->
+      skip t;
+      Some (value, quote, source_slice t loc)
+  | _ -> None
+
 let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t
 
 let ascii_delim = function

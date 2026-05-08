@@ -252,6 +252,10 @@ val string_with_quote_opt : t -> (string * char) option
 (** [string_with_quote_opt t] consumes and returns a string token plus its quote
     character if present. *)
 
+val string_repr_with_quote_opt : t -> (string * char * string option) option
+(** [string_repr_with_quote_opt t] is like {!string_with_quote_opt}, but also
+    returns the authored string token spelling when source text is available. *)
+
 val url_opt : t -> string option
 (** [url_opt t] consumes and returns a URL token if present. *)
 

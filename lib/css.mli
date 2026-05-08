@@ -2059,7 +2059,7 @@ val overflow_y : overflow -> declaration
 (** CSS content values *)
 type content =
   | String of string
-  | Quoted of string * char
+  | Quoted of { value : string; quote : char; repr : string option }
   | None
   | Normal
   | Open_quote

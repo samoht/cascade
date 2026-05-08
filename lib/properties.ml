@@ -7422,12 +7422,15 @@ let rec pp_content : content Pp.t =
   | None -> Pp.string ctx "none"
   | Normal -> Pp.string ctx "normal"
   | String s -> Pp.quoted_string ctx s
-  | Quoted (s, quote) ->
-      if Pp.minified ctx then Pp.quoted_string ctx s
-      else (
-        Pp.char ctx quote;
-        Pp.string ctx s;
-        Pp.char ctx quote)
+  | Quoted { value; quote; repr } -> (
+      if Pp.minified ctx then Pp.quoted_string ctx value
+      else
+        match repr with
+        | Some repr -> Pp.string ctx repr
+        | None ->
+            Pp.char ctx quote;
+            Pp.string ctx value;
+            Pp.char ctx quote)
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
@@ -11408,8 +11411,8 @@ let rec read_object_fit t : object_fit =
 let rec read_content t : content =
   let read_var t : content = Var (read_var read_content t) in
   let read_string t =
-    match Cursor.string_with_quote_opt t with
-    | Some (value, quote) -> Quoted (value, quote)
+    match Cursor.string_repr_with_quote_opt t with
+    | Some (value, quote, repr) -> Quoted { value; quote; repr }
     | None -> Cursor.err_expected t "string"
   in
   let read_attr t =
@@ -17509,7 +17512,8 @@ let string_of_kind_value : type a. a kind -> a -> string =
       match value with
       | String "" -> "\"\""
       | String s -> "\"" ^ s ^ "\""
-      | Quoted (s, quote) -> String.make 1 quote ^ s ^ String.make 1 quote
+      | Quoted { value; quote; repr = _ } ->
+          String.make 1 quote ^ value ^ String.make 1 quote
       | None -> "none"
       | Normal -> "normal"
       | Open_quote -> "open-quote"
