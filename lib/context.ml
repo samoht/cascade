@@ -3070,6 +3070,8 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
     | Properties.Url url ->
         (Properties.Url (resolve_url_leaf ctx url)
           : Properties.background_image)
+    | Properties.Url_quoted (url, quote) ->
+        Properties.Url_quoted (resolve_url_leaf ctx url, quote)
     | Properties.Linear_gradient (direction, stops) ->
         Properties.Linear_gradient (direction, gradient_stops stops)
     | Properties.Radial_gradient (config, stops) ->
