@@ -219,7 +219,8 @@ let test_any_syntax () =
   check_any_syntax "\"<angle>\"";
   check_any_syntax "\"<time>\"";
   check_any_syntax "\"*\"";
-  check_any_syntax "\"<length> | <percentage>\"";
+  check_any_syntax ~expected:"\"<length>|<percentage>\""
+    "\"<length> | <percentage>\"";
 
   (* Test invalid syntax values *)
   neg_cursor read_any_syntax "<length>";
@@ -239,8 +240,9 @@ let spec_property_syntax_edges () =
   check_any_syntax "\"<transform-list>\"";
   check_any_syntax "\"<url>\"";
   check_any_syntax "\"<image>\"";
-  check_any_syntax "\"<length> | <percentage> | auto\"";
-  check_any_syntax "\"<number> | none\"";
+  check_any_syntax ~expected:"\"<length>|<percentage>|auto\""
+    "\"<length> | <percentage> | auto\"";
+  check_any_syntax ~expected:"\"<number>|none\"" "\"<number> | none\"";
   neg_cursor read_any_syntax "\"<length>++\"";
   neg_cursor read_any_syntax "\"<color># #\"";
   neg_cursor read_any_syntax "\"<length>|\"";
