@@ -448,10 +448,6 @@ let check_text_transform_case =
   check_value_cursor "text_transform_case" read_text_transform_case
     pp_text_transform_case
 
-let check_east_asian_feature =
-  check_value_cursor "east_asian_feature" read_east_asian_feature
-    pp_east_asian_feature
-
 let check_symbols_type =
   check_value_cursor "symbols_type" read_symbols_type pp_symbols_type
 
