@@ -2600,7 +2600,8 @@ let is_zero_length : length -> bool = function
   | Cqi 0.
   | Cqb 0.
   | Cqmin 0.
-  | Cqmax 0. ->
+  | Cqmax 0.
+  | Dimension { value = 0.; _ } ->
       true
   | _ -> false
 
@@ -3388,6 +3389,7 @@ let length_of_border_width_calc calc =
     | Val width ->
         Option.map (fun length -> Val length) (border_width_to_length width)
     | Num n -> Some (Num n)
+    | Math_const c -> Some (Math_const c)
     | Math_fn fn -> Some (Math_fn fn)
     | Var _ | Sibling_index | Sibling_count -> None
     | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
@@ -3433,7 +3435,9 @@ let simplify_border_width_length_calc calc =
     | Val length ->
         Option.map (fun term -> [ term ]) (length_linear_term length)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
+    | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
+      ->
+        None
     | Nested inner | Parens inner -> terms inner
     | Expr (left, Add, right) -> (
         match (terms left, terms right) with
@@ -3501,7 +3505,8 @@ let pp_length_calc_contents ctx calc =
   let rec pp_inner ~parent_prec ~right_of_noncommut ctx = function
     | Val length -> pp_length ctx length
     | Num n -> Pp.float ctx n
-    | (Var _ | Sibling_index | Sibling_count | Math_fn _) as calc ->
+    | (Var _ | Sibling_index | Sibling_count | Math_const _ | Math_fn _) as calc
+      ->
         pp_calc pp_length ctx calc
     | Nested inner ->
         Pp.call "calc"
@@ -5194,6 +5199,14 @@ let rec eval_number_value : number -> float option = function
 
 and eval_number_calc : number calc -> float option = function
   | Num f -> Some f
+  | Math_const c ->
+      Some
+        (match c with
+        | Pi -> Float.pi
+        | E -> Float.exp 1.
+        | Infinity -> Float.infinity
+        | Neg_infinity -> Float.neg_infinity
+        | Nan -> Float.nan)
   | Math_fn fn -> Values.eval_math_fn fn
   | Val v -> eval_number_value v
   | Var _ | Sibling_index | Sibling_count -> None
@@ -6481,8 +6494,9 @@ let pp_border_image : border_image Pp.t =
    under minify. *)
 let position_is_default_origin (p : position_value) =
   match p with
-  | XY (Zero, Zero) | XY (Pct 0., Pct 0.) | Single Zero | Left_top | Top_left ->
-      true
+  | XY (x, y) -> is_zero_length x && is_zero_length y
+  | Single x -> is_zero_length x
+  | Left_top | Top_left -> true
   | _ -> false
 
 let pp_background_shorthand : background_shorthand Pp.t =
@@ -8623,6 +8637,7 @@ let rec pp_font_size : font_size Pp.t =
         | Val (Length l) -> Some (Val l)
         | Val (Pct n) -> Some (Val (Pct n : length))
         | Num n -> Some (Num n)
+        | Math_const c -> Some (Math_const c)
         | Math_fn fn -> Some (Math_fn fn)
         | Var _ | Sibling_index | Sibling_count | Val _ -> None
         | Nested inner -> Option.map (fun c -> Nested c) (to_length_calc inner)
@@ -9723,6 +9738,14 @@ let string_of_calc (type a) (expr : a calc) : string =
     | Num n ->
         if Float.is_integer n then add (string_of_int (int_of_float n))
         else add (string_of_float n)
+    | Math_const c ->
+        add
+          (match c with
+          | Pi -> "pi"
+          | E -> "e"
+          | Infinity -> "infinity"
+          | Neg_infinity -> "-infinity"
+          | Nan -> "NaN")
     | Sibling_index -> add "sibling-index()"
     | Sibling_count -> add "sibling-count()"
     | Var v ->
@@ -13885,6 +13908,13 @@ let read_transition_property_part parts t =
     read_transition_part t read_transition_property_value (fun v ->
         parts.transition_property <- Option.Some v)
 
+let read_transition_var_property_part parts t =
+  if
+    Option.is_some parts.transition_property
+    || not (Cursor.looking_at_func "var" t)
+  then false
+  else read_transition_property_part parts t
+
 let read_transition_timing_part parts t =
   if Option.is_some parts.transition_timing then false
   else
@@ -13922,7 +13952,8 @@ let read_transition_shorthand t : transition_shorthand =
   while !consumed do
     Cursor.ws t;
     consumed :=
-      read_transition_time_part parts t
+      read_transition_var_property_part parts t
+      || read_transition_time_part parts t
       || read_transition_timing_part parts t
       || read_transition_behavior_part parts t
       || read_transition_property_part parts t

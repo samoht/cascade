@@ -374,12 +374,12 @@ let declaration_with_components decl components =
         (if Declaration.is_important decl then Declaration.important fallback
          else fallback)
     in
-    if property = "font-family" && has_string components then opaque ()
-    else
-      let source = String.concat "" [ property; ":"; value; important ] in
-      try Some (Declaration.read (Cursor.of_string source))
-      with Cursor.Parse_error _ ->
-        if has_comma components then None else opaque ()
+    let source = String.concat "" [ property; ":"; value; important ] in
+    try Some (Declaration.read (Cursor.of_string source))
+    with Cursor.Parse_error _ ->
+      if property = "font-family" && has_string components then opaque ()
+      else if has_comma components then None
+      else opaque ()
 
 let substitute_declaration visible ctx decl =
   match custom_name decl with
