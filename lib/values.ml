@@ -404,6 +404,14 @@ and pp_angle_arg ctx = function
       Pp.float ctx f;
       Pp.string ctx "grad"
   | Angle_num arg -> pp_math_arg ctx arg
+  | Angle_op (l, op, r) ->
+      pp_angle_arg ctx l;
+      pp_calc_op ctx op;
+      pp_angle_arg ctx r
+  | Angle_parens inner ->
+      Pp.char ctx '(';
+      pp_angle_arg ctx inner;
+      Pp.char ctx ')'
 
 let rec eval_math_arg = function
   | Lit f -> Some f
@@ -428,6 +436,17 @@ and eval_angle_arg = function
   | Angle_turn f -> Some (f *. 2. *. Float.pi)
   | Angle_grad f -> Some (f *. Float.pi /. 200.)
   | Angle_num arg -> eval_math_arg arg
+  | Angle_op (l, op, r) -> (
+      match (eval_angle_arg l, eval_angle_arg r) with
+      | Some lv, Some rv -> (
+          match op with
+          | Add -> Some (lv +. rv)
+          | Sub -> Some (lv -. rv)
+          | Mul -> Some (lv *. rv)
+          | Div when rv <> 0. -> Some (lv /. rv)
+          | Div -> None)
+      | _ -> None)
+  | Angle_parens inner -> eval_angle_arg inner
 
 and eval_math_fn fn =
   let unary f arg = Option.map f (eval_math_arg arg) in
@@ -3571,30 +3590,59 @@ and read_math_hypot : type a. Cursor.t -> a calc =
          Cursor.expect_eof inner;
          (Hypot args : math_fn)))
 
+and read_angle_arg t : angle_arg =
+  let rec read_term () =
+    let left = read_factor () in
+    Cursor.ws t;
+    match Cursor.peek_delim t with
+    | Some ('+' as c) | Some ('-' as c) ->
+        Cursor.skip t;
+        Cursor.ws t;
+        let op : calc_op = match c with '+' -> Add | _ -> Sub in
+        let right = read_term () in
+        Angle_op (left, op, right)
+    | _ -> left
+  and read_factor () =
+    let left = read_unary () in
+    Cursor.ws t;
+    match Cursor.peek_delim t with
+    | Some ('*' as c) | Some ('/' as c) ->
+        Cursor.skip t;
+        Cursor.ws t;
+        let op : calc_op = match c with '*' -> Mul | _ -> Div in
+        let right = read_factor () in
+        Angle_op (left, op, right)
+    | _ -> left
+  and read_unary () =
+    Cursor.ws t;
+    match Cursor.peek_block t with
+    | Some Token.Paren ->
+        Angle_parens (Cursor.parens (fun inner -> read_angle_arg inner) t)
+    | _ -> (
+        let snap = Cursor.save t in
+        match Cursor.number_with_unit t with
+        | n, Some unit -> (
+            match String.lowercase_ascii unit with
+            | "deg" -> Angle_deg n
+            | "rad" -> Angle_rad n
+            | "turn" -> Angle_turn n
+            | "grad" -> Angle_grad n
+            | _ ->
+                Cursor.restore t snap;
+                Angle_num (read_math_arg t))
+        | _, None ->
+            Cursor.restore t snap;
+            Angle_num (read_math_arg t)
+        | exception Cursor.Parse_error _ ->
+            Cursor.restore t snap;
+            Angle_num (read_math_arg t))
+  in
+  read_term ()
+
 and read_angle_call_arg name t : angle_arg =
   Cursor.call name t (fun inner ->
       Cursor.ws inner;
-      let snap = Cursor.save inner in
-      (* Try to parse an angle dimension first: 45deg, 1rad, etc. *)
-      let arg =
-        match Cursor.number_with_unit inner with
-        | n, Some unit -> (
-            match String.lowercase_ascii unit with
-            | "deg" -> Some (Angle_deg n)
-            | "rad" -> Some (Angle_rad n)
-            | "turn" -> Some (Angle_turn n)
-            | "grad" -> Some (Angle_grad n)
-            | _ -> None)
-        | _, None -> None
-        | exception Cursor.Parse_error _ -> None
-      in
-      let arg =
-        match arg with
-        | Some a -> a
-        | None ->
-            Cursor.restore inner snap;
-            Angle_num (read_math_arg inner)
-      in
+      let arg = read_angle_arg inner in
       Cursor.ws inner;
       Cursor.expect_eof inner;
       arg)
