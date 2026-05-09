@@ -1127,7 +1127,7 @@ let read_charset (r : Cursor.t) : statement =
 (* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
    into a typed [Error.Parse_error] so the partial-parse catch in
    [read_statement_of_rule] surfaces it as a warning instead of escaping to the
-   [Css.parse] caller. *)
+   [Css.of_string] caller. *)
 let supports_condition ~loc condition =
   try Supports.of_string condition
   with Failure reason ->
@@ -2445,8 +2445,8 @@ let rec read_statement (r : Cursor.t) : statement =
       | Some p -> p r
       | None ->
           (* CSS Syntax 3 §5.4.1: an at-rule with no registered handler is
-             reported via a typed warning so [Css.parse] partial-recovery can
-             surface it to callers. The prelude/block stay in the AST as
+             reported via a typed warning so [Css.of_string] partial-recovery
+             can surface it to callers. The prelude/block stay in the AST as
              [Unknown_at_rule], and [Optimize.drop_unknown] removes them under
              minify when the user opted into spec-strict canonicalization. *)
           ignore (Cursor.next_raw r);

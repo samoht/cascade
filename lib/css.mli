@@ -4596,7 +4596,7 @@ val font_variant_position : font_variant_position -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-position}
      font-variant-position} property. *)
 
-type font_variant_east_asian_feature =
+type east_asian_feature =
   | Jis78
   | Jis83
   | Jis90
@@ -4609,7 +4609,7 @@ type font_variant_east_asian_feature =
 
 type font_variant_east_asian =
   | Normal
-  | Features of font_variant_east_asian_feature list
+  | Features of east_asian_feature list
   | Inherit
   | Initial
   | Unset
@@ -7184,15 +7184,13 @@ val pp :
 (** [pp] is {!to_string}. *)
 
 type parse_warning = Error.t * string
-(** A non-fatal recovery warning collected during {!of_string}: the structured
-    [Error.t] plus the filename for pretty-printing. *)
+(** A non-fatal recovery diagnostic: the structured [Error.t] plus the filename
+    for pretty-printing. Used both for the [warnings] list returned in [Ok] and
+    for the [Error] payload when [~strict:true] promotes the first warning to a
+    hard error. *)
 
-type parse_error = parse_warning
-(** Alias for {!parse_warning}; under [~strict:true] the first warning is
-    promoted to a hard error. *)
-
-val pp_parse_error : parse_error -> string
-(** [pp_parse_error error] formats a parse error as a string. *)
+val pp_parse_warning : parse_warning -> string
+(** [pp_parse_warning w] formats a warning as a string. *)
 
 type parse_result = { stylesheet : t; warnings : parse_warning list }
 (** A partially-recovered parse: the stylesheet composed of every rule that
@@ -7204,20 +7202,21 @@ val of_string :
   ?filename:string ->
   ?meta:Loc.meta_level ->
   string ->
-  (t, parse_warning) result
-(** [of_string ?strict ?filename ?meta css] parses [css] into a stylesheet.
-    Default [~strict:false] is fail-fast on fatal syntax errors only - section
-    5.3 recovery still happens, but recoverable warnings stay silent. Use
-    {!parse} to inspect them. With [~strict:true], cascade routes through the
-    partial-recovery reader and promotes the first warning (unknown at-rules /
-    properties / invalid values) to [Error] - useful in linters and CI gates.
-    [?meta] controls diagnostic richness; see {!Loc.meta_level}. *)
+  (parse_result, parse_warning) result
+(** [of_string ?strict css] parses [css] with CSS Syntax 3 section 5.4 recovery.
+    Returns [Ok { stylesheet; warnings }] when no fatal syntax error escapes
+    recovery; [warnings] carries every typed diagnostic the parser collected
+    (unknown at-rules, unknown properties, invalid values, ...). With
+    [~strict:true] a non-empty [warnings] list collapses to [Error] (first
+    warning) - useful in linters and CI gates that want to fail on any spec
+    deviation. [?meta] controls diagnostic richness; see {!Loc.meta_level}. *)
 
-val parse : ?filename:string -> ?meta:Loc.meta_level -> string -> parse_result
-(** [parse ?filename ?meta css] parses [css] with CSS Syntax 3 recovery and
-    returns the partially-recovered stylesheet alongside every accumulated
-    warning. Always succeeds; an empty stylesheet with warnings indicates
-    nothing recoverable was parsed. *)
+val of_string_exn :
+  ?strict:bool -> ?filename:string -> ?meta:Loc.meta_level -> string -> t
+(** [of_string_exn ?strict css] parses [css] like {!of_string}, raises
+    {!Error.Parse_error} instead of returning [Error], and discards the
+    [warnings] list. In non-strict mode warnings are silently dropped; with
+    [~strict:true] any warning escalates to a raise. *)
 
 (** {2:optimization Optimization}
 

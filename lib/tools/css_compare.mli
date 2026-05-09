@@ -32,9 +32,9 @@ type t =
   | Tree_diff of Tree_diff.t  (** CSS AST differences found *)
   | String_diff of String_diff.t  (** No structural diff but strings differ *)
   | No_diff  (** Strings are identical *)
-  | Both_errors of Css.parse_error * Css.parse_error
-  | Expected_error of Css.parse_error
-  | Actual_error of Css.parse_error
+  | Both_errors of Css.parse_warning * Css.parse_warning
+  | Expected_error of Css.parse_warning
+  | Actual_error of Css.parse_warning
       (** Result of diffing two CSS strings - either a diff or parse errors *)
 
 val diff : expected:string -> actual:string -> t

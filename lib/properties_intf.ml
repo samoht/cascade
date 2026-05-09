@@ -1173,7 +1173,7 @@ type font_variant_position =
   | Revert_layer
   | Var of font_variant_position var
 
-type font_variant_east_asian_feature =
+type east_asian_feature =
   | Jis78
   | Jis83
   | Jis90
@@ -1186,7 +1186,7 @@ type font_variant_east_asian_feature =
 
 type font_variant_east_asian =
   | Normal
-  | Features of font_variant_east_asian_feature list
+  | Features of east_asian_feature list
   | Inherit
   | Initial
   | Unset

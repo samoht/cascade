@@ -11,11 +11,13 @@ open Css
 (* {2 Helpers} *)
 
 let roundtrip css expected =
-  match of_string css with
-  | Ok sheet ->
-      let output = to_string ~minify:true ~newline:false sheet in
+  match of_string ~strict:true css with
+  | Ok parsed ->
+      let output =
+        to_string ~minify:true ~newline:false parsed.Css.stylesheet
+      in
       Alcotest.(check string) css expected output
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let roundtrip_identity css = roundtrip css css
 
@@ -38,9 +40,11 @@ let contains_substring ~needle haystack =
   loop 0
 
 let preserves_non_minified css fragments =
-  match of_string css with
-  | Ok sheet ->
-      let output = to_string ~minify:false ~newline:false sheet in
+  match of_string ~strict:true css with
+  | Ok parsed ->
+      let output =
+        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+      in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -51,12 +55,14 @@ let preserves_non_minified css fragments =
               "non-minified output for %S did not preserve %S\noutput: %S" css
               fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let preserves_non_minified_exact css fragments =
-  match of_string css with
-  | Ok sheet ->
-      let output = to_string ~minify:false ~newline:false sheet in
+  match of_string ~strict:true css with
+  | Ok parsed ->
+      let output =
+        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+      in
       List.iter
         (fun fragment ->
           if not (contains_substring ~needle:fragment output) then
@@ -65,12 +71,14 @@ let preserves_non_minified_exact css fragments =
                output: %S"
               css fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let rejects_non_minified_fragments css fragments =
-  match of_string css with
-  | Ok sheet ->
-      let output = to_string ~minify:false ~newline:false sheet in
+  match of_string ~strict:true css with
+  | Ok parsed ->
+      let output =
+        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+      in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -81,12 +89,14 @@ let rejects_non_minified_fragments css fragments =
                output: %S"
               css fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let rejects_non_minified_prefixes css prefixes =
-  match of_string css with
-  | Ok sheet ->
-      let output = to_string ~minify:false ~newline:false sheet in
+  match of_string ~strict:true css with
+  | Ok parsed ->
+      let output =
+        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+      in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun prefix ->
@@ -101,22 +111,26 @@ let rejects_non_minified_prefixes css prefixes =
                output: %S"
               css prefix output)
         prefixes
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let parses_valid css =
-  match of_string css with
+  match of_string ~strict:true css with
   | Ok _ -> ()
-  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Error e -> Alcotest.fail (pp_parse_warning e)
 
 let rejects_invalid css =
-  match of_string css with
+  match of_string ~strict:true css with
   | Error _ -> ()
-  | Ok sheet ->
+  | Ok parsed ->
       Alcotest.failf "invalid CSS vector parsed: %s -> %s" css
-        (to_string ~minify:true ~newline:false sheet)
+        (to_string ~minify:true ~newline:false parsed.Css.stylesheet)
 
 let recover css expected min_warnings =
-  let { stylesheet; warnings } = parse css in
+  let { stylesheet; warnings } =
+    match of_string ~strict:false css with
+    | Ok parsed -> parsed
+    | Error e -> Alcotest.fail (pp_parse_warning e)
+  in
   let output = to_string ~minify:true ~newline:false stylesheet in
   Alcotest.(check string) css expected output;
   Alcotest.(check bool)
@@ -899,16 +913,18 @@ let normal_keeps_font_anim_forms () =
     [ "@property --color"; "syntax: \"<color>\""; "inherits: true" ]
 
 let serialization_idempotent ~minify css =
-  match of_string css with
-  | Error e -> Alcotest.fail (pp_parse_error e)
-  | Ok sheet -> (
-      let once = to_string ~minify ~newline:false sheet in
-      match of_string once with
+  match of_string ~strict:true css with
+  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Ok parsed -> (
+      let once = to_string ~minify ~newline:false parsed.Css.stylesheet in
+      match of_string ~strict:true once with
       | Error e ->
           Alcotest.failf "serialized CSS did not reparse: %S\n%s" once
-            (pp_parse_error e)
+            (pp_parse_warning e)
       | Ok reparsed ->
-          let twice = to_string ~minify ~newline:false reparsed in
+          let twice =
+            to_string ~minify ~newline:false reparsed.Css.stylesheet
+          in
           Alcotest.(check string)
             (Fmt.str "idempotent minify=%b %s" minify css)
             once twice)

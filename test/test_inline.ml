@@ -1,10 +1,6 @@
 open Cascade
 
-let parse s =
-  match Css.of_string s with
-  | Ok css -> css
-  | Error e -> Alcotest.fail (Css.pp_parse_error e)
-
+let parse s = Css.of_string_exn ~strict:false s
 let minified css = Css.to_string ~minify:true ~newline:false css
 
 let check_inline input expected =

@@ -99,6 +99,28 @@ let byte_at buf i =
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
+let recovered_css label css =
+  match Css.of_string ~strict:false css with
+  | Ok parsed -> parsed
+  | Error err ->
+      fail
+        (Fmt.str "%s did not recover leniently: %s" label
+           (Css.pp_parse_warning err))
+
+let assert_invalid_supports_contract label input =
+  let css = "@supports " ^ input ^ "{.x{color:red}}" in
+  match Css.of_string ~strict:true css with
+  | Ok parsed ->
+      fail
+        (Fmt.str "%s parsed strictly as invalid supports condition: %S -> %S"
+           label input
+           (Css.to_string ~minify:true parsed.Css.stylesheet))
+  | Error _ ->
+      let { Css.warnings; stylesheet } = recovered_css label css in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      if warnings = [] then
+        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+
 let generated_condition buf =
   let property =
     pick [ ("display", "grid"); ("gap", "1rem"); ("color", "red") ] buf 0
@@ -152,15 +174,7 @@ let test_spec_supports_structural_vectors buf =
 
 let test_spec_supports_invalid_vectors buf =
   let input = pick Supports_inventory.invalid buf 0 in
-  match
-    try Some (Css.Supports.of_string input)
-    with Failure _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some actual ->
-      fail
-        (Fmt.str "invalid supports vector parsed: %S -> %S" input
-           (Css.Supports.to_string actual))
+  assert_invalid_supports_contract "invalid supports vector" input
 
 let test_supports_conditions buf =
   let row = pick Supports_inventory.rows buf 2 in
@@ -175,16 +189,8 @@ let test_supports_conditions buf =
 let test_supports_invalid_conditions buf =
   let row = pick Supports_inventory.rows buf 3 in
   let input = Supports_inventory.mutate_invalid row (byte_at buf 4) in
-  match
-    try Some (Css.Supports.of_string input)
-    with Failure _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some actual ->
-      fail
-        (Fmt.str "invalid supports condition family vector parsed: %S -> %S"
-           input
-           (Css.Supports.to_string actual))
+  assert_invalid_supports_contract "invalid supports condition family vector"
+    input
 
 let suite =
   ( "supports",

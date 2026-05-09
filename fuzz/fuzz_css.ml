@@ -151,37 +151,76 @@ let generated_api_stylesheet buf =
 
 let minified ss = Css.to_string ~minify:true ss |> String.trim
 
+let recovered_css label input =
+  match Css.of_string ~strict:false input with
+  | Ok parsed -> parsed
+  | Error err ->
+      fail
+        (Fmt.str "%s did not recover leniently: %s" label
+           (Css.pp_parse_warning err))
+
+let assert_strict_lenient_contract label input =
+  let lenient = recovered_css label input in
+  match Css.of_string ~strict:true input with
+  | Ok strict_result ->
+      if lenient.warnings <> [] then
+        fail (Fmt.str "%s: strict accepted but lenient warned: %S" label input);
+      let strict_output = minified strict_result.Css.stylesheet in
+      let lenient_output = minified lenient.stylesheet in
+      if strict_output <> lenient_output then
+        fail
+          (Fmt.str "%s: strict/lenient serialization diverged: %S -> %S / %S"
+             label input strict_output lenient_output)
+  | Error _ ->
+      ignore (minified lenient.stylesheet : string);
+      if lenient.warnings = [] then
+        fail
+          (Fmt.str "%s: strict rejected but lenient recovered silently: %S"
+             label input)
+
 let test_parse_crash_safety buf =
-  ignore (Css.parse (cssish buf));
-  ignore (Css.of_string (cssish buf));
+  ignore (Css.of_string ~strict:false (cssish buf));
+  ignore (Css.of_string_exn ~strict:false (cssish buf));
   let css = css_like_text buf in
-  ignore (Css.parse css);
-  ignore (Css.of_string css)
+  ignore (Css.of_string ~strict:false css);
+  ignore (Css.of_string_exn ~strict:false css)
+
+let test_parse_always_recovers_bytes buf =
+  let parsed = recovered_css "parse always recovers bytes" buf in
+  ignore (minified parsed.Css.stylesheet : string)
+
+let test_strict_lenient_cssish_contract buf =
+  assert_strict_lenient_contract "cssish public parse contract" (cssish buf)
+
+let test_strict_lenient_structured_contract buf =
+  assert_strict_lenient_contract "structured public parse contract"
+    (css_like_text buf)
 
 let test_generated_public_roundtrip buf =
   let sheet = generated_stylesheet buf in
   let once = minified sheet in
-  match Css.of_string once with
+  match Css.of_string ~strict:false once with
   | Error err ->
       fail
         (Fmt.str "public generated stylesheet did not parse: %s"
-           (Css.pp_parse_error err))
+           (Css.pp_parse_warning err))
   | Ok parsed ->
-      let twice = minified parsed in
+      let twice = minified parsed.Css.stylesheet in
       if once <> twice then
         fail
           (Fmt.str "public generated stylesheet changed: %S -> %S" once twice)
 
 let test_parse_partial_stringify_reparse buf =
-  let parsed = Css.parse (css_like_text buf) in
+  let parsed = recovered_css "partial stringify reparse" (css_like_text buf) in
   if parsed.Css.warnings = [] then
     let serialized = minified parsed.Css.stylesheet in
-    match Css.of_string serialized with
+    match Css.of_string ~strict:false serialized with
     | Ok _ -> ()
     | Error err ->
         fail
-          (Fmt.str "Css.parse output did not reparse strictly: %s"
-             (Css.pp_parse_error err))
+          (Fmt.str
+             "Css.of_string ~strict:false output did not reparse strictly: %s"
+             (Css.pp_parse_warning err))
 
 let test_map_preserves_rules buf =
   let sheet = generated_stylesheet buf in
@@ -204,9 +243,10 @@ let test_public_sort_idempotent buf =
   let sheet = generated_stylesheet buf in
   let once = Css.sort cmp (Css.statements sheet) |> Css.v |> minified in
   let twice =
-    match Css.of_string once with
-    | Error err -> fail (Css.pp_parse_error err)
-    | Ok parsed -> Css.sort cmp (Css.statements parsed) |> Css.v |> minified
+    match Css.of_string ~strict:false once with
+    | Error err -> fail (Css.pp_parse_warning err)
+    | Ok parsed ->
+        Css.sort cmp (Css.statements parsed.Css.stylesheet) |> Css.v |> minified
   in
   if once <> twice then
     fail (Fmt.str "Css.sort changed after reparse: %S -> %S" once twice)
@@ -214,11 +254,12 @@ let test_public_sort_idempotent buf =
 let test_public_optimize_idempotent buf =
   let sheet = generated_stylesheet buf in
   let once = Css.to_string ~minify:true ~optimize:true sheet |> String.trim in
-  match Css.of_string once with
-  | Error err -> fail (Css.pp_parse_error err)
+  match Css.of_string ~strict:false once with
+  | Error err -> fail (Css.pp_parse_warning err)
   | Ok parsed ->
       let twice =
-        Css.to_string ~minify:true ~optimize:true parsed |> String.trim
+        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        |> String.trim
       in
       if once <> twice then
         fail
@@ -326,16 +367,18 @@ let test_css2_legacy_minified_vectors buf =
       ]
       buf 0
   in
-  match Css.of_string input with
+  match Css.of_string ~strict:false input with
   | Error _ -> ()
-  | Ok sheet -> (
-      let minified = Css.to_string ~minify:true ~newline:false sheet in
-      match Css.of_string minified with
+  | Ok parsed -> (
+      let minified =
+        Css.to_string ~minify:true ~newline:false parsed.Css.stylesheet
+      in
+      match Css.of_string ~strict:false minified with
       | Ok _ -> ()
       | Error err ->
           fail
             (Fmt.str "CSS2 legacy minified output rejected: %S (%s)" minified
-               (Css.pp_parse_error err)))
+               (Css.pp_parse_warning err)))
 
 let test_css2_legacy_invalid_vectors buf =
   let input =
@@ -355,14 +398,18 @@ let test_css2_legacy_invalid_vectors buf =
       ]
       buf 0
   in
-  match Css.of_string input with
-  | Error _ -> ()
-  | Ok sheet -> ignore (Css.to_string ~minify:true ~newline:false sheet)
+  assert_strict_lenient_contract "CSS2 legacy invalid vector" input
 
 let suite =
   ( "css",
     [
       test_case "parse crash safety" [ bytes ] test_parse_crash_safety;
+      test_case "parse always recovers bytes" [ bytes ]
+        test_parse_always_recovers_bytes;
+      test_case "strict/lenient cssish contract" [ bytes ]
+        test_strict_lenient_cssish_contract;
+      test_case "strict/lenient structured contract" [ bytes ]
+        test_strict_lenient_structured_contract;
       test_case "generated public roundtrip" [ bytes ]
         test_generated_public_roundtrip;
       test_case "parse partial stringify reparse" [ bytes ]

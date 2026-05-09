@@ -1232,21 +1232,17 @@ let medium_of_ident s : medium =
 let is_reserved_media_type_keyword s =
   match String.lowercase_ascii s with "and" | "or" -> true | _ -> false
 
+let rec next_non_ws s len i : char option =
+  if i >= len then None
+  else match s.[i] with ' ' | '\t' -> next_non_ws s len (i + 1) | c -> Some c
+
 (* [<media-query>] starts as [<media-condition>] (rather than as a media type)
    when its first non-space token is '(' or "not (". *)
 let starts_with_condition sc =
-  if peek sc = Some '(' then true
-  else if lookahead_ident sc "not" then
-    let p = sc.pos + 3 in
-    let len = String.length sc.s in
-    let rec next_non_ws i : char option =
-      if i >= len then None
-      else
-        let c = sc.s.[i] in
-        if c = ' ' || c = '\t' then next_non_ws (i + 1) else Some c
-    in
-    next_non_ws p = Some '('
-  else false
+  match (peek sc, lookahead_ident sc "not") with
+  | Some '(', _ -> true
+  | _, true -> next_non_ws sc.s (String.length sc.s) (sc.pos + 3) = Some '('
+  | _ -> false
 
 let read_query_prefix sc =
   if lookahead_ident sc "not" then (
@@ -1347,6 +1343,22 @@ let trailing_content_failure sc =
        ])
 
 let query_of_string ?(recover = true) s : query =
+  let comma_query_list sc branch first recovered_at_eof =
+    let rec loop acc =
+      match peek sc with
+      | Some ',' ->
+          advance sc;
+          skip_ws sc;
+          let q = branch () in
+          skip_ws sc;
+          loop (q :: acc)
+      | _ -> List.rev acc
+    in
+    let rest = loop [] in
+    skip_ws sc;
+    if not (at_end sc) then trailing_content_failure sc;
+    if !recovered_at_eof then not_all_query else List (first :: rest)
+  in
   let sc = mk_scanner s in
   if at_end sc then (List [] : query)
   else
@@ -1354,23 +1366,10 @@ let query_of_string ?(recover = true) s : query =
     let branch () = query_branch ~recover ~recovered_at_eof sc in
     let first = branch () in
     skip_ws sc;
-    if at_end sc then first
-    else if peek sc = Some ',' then (
-      let rec loop acc =
-        match peek sc with
-        | Some ',' ->
-            advance sc;
-            skip_ws sc;
-            let q = branch () in
-            skip_ws sc;
-            loop (q :: acc)
-        | _ -> List.rev acc
-      in
-      let rest = loop [] in
-      skip_ws sc;
-      if not (at_end sc) then trailing_content_failure sc;
-      if !recovered_at_eof then not_all_query else List (first :: rest))
-    else trailing_content_failure sc
+    match (at_end sc, peek sc) with
+    | true, _ -> first
+    | false, Some ',' -> comma_query_list sc branch first recovered_at_eof
+    | false, _ -> trailing_content_failure sc
 
 let normalise_preference_value name s =
   match name with
@@ -1711,19 +1710,17 @@ let rec responsive_subkind = function
   | _ -> 2
 
 let compare a b =
-  let ka = kind a and kb = kind b in
+  let ka, kb = (kind a, kind b) in
   let ga, va = group_order ka and gb, vb = group_order kb in
-  let group_cmp = Int.compare ga gb in
-  if group_cmp <> 0 then group_cmp
-  else
-    let value_cmp = Float.compare va vb in
-    if value_cmp <> 0 then value_cmp
-    else
-      let sub_cmp = Int.compare (responsive_subkind a) (responsive_subkind b) in
-      if sub_cmp <> 0 then sub_cmp
-      else
-        let pref_cmp = Int.compare (preference_order a) (preference_order b) in
-        if pref_cmp <> 0 then pref_cmp
-        else String.compare (to_string a) (to_string b)
+  let comparisons =
+    [
+      Int.compare ga gb;
+      Float.compare va vb;
+      Int.compare (responsive_subkind a) (responsive_subkind b);
+      Int.compare (preference_order a) (preference_order b);
+      String.compare (to_string a) (to_string b);
+    ]
+  in
+  List.find_opt (( <> ) 0) comparisons |> Option.value ~default:0
 
 let equal a b = compare a b = 0

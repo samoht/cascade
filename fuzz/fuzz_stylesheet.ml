@@ -325,14 +325,22 @@ let minified_stylesheet ss =
 let pretty_stylesheet ss =
   Css.Stylesheet.to_string ~minify:false ss |> String.trim
 
+let recovered_css label input =
+  match Css.of_string ~strict:false input with
+  | Ok parsed -> parsed
+  | Error err ->
+      fail
+        (Fmt.str "%s did not recover leniently: %s" label
+           (Css.pp_parse_warning err))
+
 let assert_strict_rejects_lenient_warns label input =
   match Css.of_string ~strict:true input with
-  | Ok sheet ->
+  | Ok parsed ->
       fail
         (Fmt.str "%s parsed strictly as invalid CSS: %S -> %S" label input
-           (Css.to_string ~minify:true sheet))
+           (Css.to_string ~minify:true parsed.Css.stylesheet))
   | Error _ ->
-      let { Css.stylesheet; warnings } = Css.parse input in
+      let { Css.stylesheet; warnings } = recovered_css label input in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
         fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
@@ -340,9 +348,9 @@ let assert_strict_rejects_lenient_warns label input =
 let assert_strict_accepts_cleanly label input =
   match Css.of_string ~strict:true input with
   | Error _ -> fail (Fmt.str "%s rejected valid CSS strictly: %S" label input)
-  | Ok sheet ->
-      let strict_output = Css.to_string ~minify:true sheet in
-      let { Css.stylesheet; warnings } = Css.parse input in
+  | Ok parsed ->
+      let strict_output = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let { Css.stylesheet; warnings } = recovered_css label input in
       if warnings <> [] then
         fail
           (Fmt.str "%s emitted lenient warnings for valid CSS: %S" label input);
@@ -718,13 +726,7 @@ let test_shorthand_wide_keyword buf =
 let test_shorthand_wide_mix buf =
   let property, value = invalid_shorthand_keyword_mix buf 0 in
   let input = property ^ ":" ^ value in
-  assert_invalid_declaration_contract "invalid shorthand keyword mix" input;
-  match parse_declaration input with
-  | None -> ()
-  | Some serialized ->
-      fail
-        (Fmt.str "invalid shorthand keyword mix parsed: %S -> %S" input
-           serialized)
+  assert_invalid_declaration_contract "invalid shorthand keyword mix" input
 
 (** CSS Cascade section 3.1: legacy shorthands are parse-time aliases and are
     not chosen when serializing declarations. *)
@@ -863,13 +865,7 @@ let test_platform_decl_name buf =
 
 let test_invalid_platform_declaration_rejected buf =
   let input = invalid_platform_declaration_vector buf 0 in
-  assert_invalid_declaration_contract "invalid platform declaration" input;
-  match parse_declaration input with
-  | None -> ()
-  | Some serialized ->
-      fail
-        (Fmt.str "invalid platform declaration parsed: %S -> %S" input
-           serialized)
+  assert_invalid_declaration_contract "invalid platform declaration" input
 
 let test_import_url_syntax buf =
   let url =
@@ -1255,7 +1251,9 @@ let test_recovery_keeps_rules buf =
   in
   let css = ".a{color:red}.b{" ^ bad_decl ^ "}.c{display:block}" in
   assert_strict_rejects_lenient_warns "recovery keeps sibling rules" css;
-  let { Css.stylesheet; warnings } = Css.parse css in
+  let { Css.stylesheet; warnings } =
+    recovered_css "recovery keeps sibling rules" css
+  in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 0; 1 ] then
     fail (Fmt.str "CSS Syntax recovery changed rule/declaration shape: %S" css);
@@ -1273,7 +1271,9 @@ let test_recovery_invalid_rule_boundary buf =
   in
   let css = ".ok{color:green}" ^ invalid_rule ^ ".next{color:blue}" in
   assert_strict_rejects_lenient_warns "invalid rule boundary recovery" css;
-  let { Css.stylesheet; warnings } = Css.parse css in
+  let { Css.stylesheet; warnings } =
+    recovered_css "invalid rule boundary recovery" css
+  in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 1 ] then
     fail
@@ -1290,7 +1290,9 @@ let test_recovery_bad_declaration buf =
   in
   let css = ".a{" ^ bad_decl ^ ";color:red}" in
   assert_strict_rejects_lenient_warns "bad declaration recovery" css;
-  let { Css.stylesheet; warnings } = Css.parse css in
+  let { Css.stylesheet; warnings } =
+    recovered_css "bad declaration recovery" css
+  in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1 ] then
     fail
@@ -1302,18 +1304,16 @@ let test_recovery_bad_declaration buf =
 
 let test_random_stylesheet_contract buf =
   let input = css_like_stylesheet buf in
-  let lenient =
-    try Css.parse input
-    with Cursor.Parse_error _ | Error.Parse_error _ | Invalid_argument _ ->
-      fail (Fmt.str "lenient parse raised on fuzz input: %S" input)
-  in
+  let lenient = recovered_css "random stylesheet contract" input in
   match Css.of_string ~strict:true input with
-  | Ok strict_sheet ->
+  | Ok strict_result ->
       if lenient.warnings <> [] then
         fail
           (Fmt.str "strict accepted fuzz input but lenient emitted warnings: %S"
              input);
-      let strict_output = Css.to_string ~minify:true strict_sheet in
+      let strict_output =
+        Css.to_string ~minify:true strict_result.Css.stylesheet
+      in
       let lenient_output = Css.to_string ~minify:true lenient.stylesheet in
       if strict_output <> lenient_output then
         fail

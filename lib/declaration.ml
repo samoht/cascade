@@ -354,6 +354,28 @@ let read_list_style_slot slot t =
   | Position -> ignore (read_list_style_position t)
   | Image -> ignore (read_list_style_image t)
 
+let list_style_try_slot parse slot seen r =
+  if slot_seen slot seen then false
+  else
+    let pos = Cursor.save r in
+    try
+      read_list_style_slot slot r;
+      if parse (slot :: seen) r then true
+      else (
+        Cursor.restore r pos;
+        false)
+    with Cursor.Parse_error _ ->
+      Cursor.restore r pos;
+      false
+
+let parse_list_style_slots slots =
+  let rec parse seen r =
+    Cursor.ws r;
+    if Cursor.is_done r then seen <> []
+    else List.exists (fun slot -> list_style_try_slot parse slot seen r) slots
+  in
+  parse
+
 let read_list_style_shorthand t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
   let lower = String.lowercase_ascii raw in
@@ -372,26 +394,7 @@ let read_list_style_shorthand t =
     raw)
   else
     let slots : list_style_slot list = [ Position; Image; Type ] in
-    let rec parse seen r =
-      Cursor.ws r;
-      if Cursor.is_done r then seen <> []
-      else
-        List.exists
-          (fun slot ->
-            if slot_seen slot seen then false
-            else
-              let pos = Cursor.save r in
-              try
-                read_list_style_slot slot r;
-                if parse (slot :: seen) r then true
-                else (
-                  Cursor.restore r pos;
-                  false)
-              with Cursor.Parse_error _ ->
-                Cursor.restore r pos;
-                false)
-          slots
-    in
+    let parse = parse_list_style_slots slots in
     if not (parse [] (Cursor.of_string raw)) then
       Cursor.err_invalid t "invalid list-style shorthand";
     ignore (Cursor.consume_to_decl_end ~trim:true t);
@@ -722,21 +725,30 @@ let rec read_text_decoration_thickness t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+let read_border_radius_radii t =
+  let rec loop acc count =
+    if count >= 4 then List.rev acc
+    else
+      match Cursor.option read_non_negative_length_percentage t with
+      | None -> List.rev acc
+      | Some lp -> loop (lp :: acc) (count + 1)
+  in
+  match loop [] 0 with
+  | [] -> Cursor.err_expected t "<length-percentage>"
+  | radii -> radii
+
+let read_border_radius_vertical t =
+  match Cursor.peek_delim t with
+  | Some '/' ->
+      Cursor.skip t;
+      Cursor.ws t;
+      Some (read_border_radius_radii t)
+  | _ -> None
+
 (* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
    [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
    1-4 vertical radii. *)
 let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
-  let read_radii t =
-    let rec loop acc count =
-      if count >= 4 then List.rev acc
-      else
-        match Cursor.option read_non_negative_length_percentage t with
-        | None -> List.rev acc
-        | Some lp -> loop (lp :: acc) (count + 1)
-    in
-    let radii = loop [] 0 in
-    if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
-  in
   Cursor.ws t;
   Cursor.enum_or_var "border-radius"
     [
@@ -750,16 +762,9 @@ let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
       (Properties.Var (Values.read_var read_border_radius t)
         : Properties.border_radius))
     ~default:(fun t ->
-      let horizontal = read_radii t in
+      let horizontal = read_border_radius_radii t in
       Cursor.ws t;
-      let vertical =
-        match Cursor.peek_delim t with
-        | Some '/' ->
-            Cursor.skip t;
-            Cursor.ws t;
-            Some (read_radii t)
-        | _ -> None
-      in
+      let vertical = read_border_radius_vertical t in
       Properties.Radius { horizontal; vertical })
     t
 

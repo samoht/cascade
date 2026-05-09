@@ -955,12 +955,35 @@ let enum_or_calls_impl ?default label idents ~calls t =
       (fun (k, v) -> if String.lowercase_ascii k = name then Some v else None)
       lst
   in
+  let consume_ident_result name result =
+    let consumed_name = ident t in
+    assert (consumed_name = name);
+    result
+  in
+  let run_default options =
+    match default with Some f -> f t | None -> err t options
+  in
+  let read_ident_call name =
+    match find_assoc_ci name calls with
+    | Some p -> p t
+    | None -> (
+        match find_assoc_ci name idents with
+        | Some result -> consume_ident_result name result
+        | None ->
+            let options = List.map fst calls |> String.concat ", " in
+            run_default ("expected one of functions: " ^ options))
+  in
+  let read_ident_value name =
+    match find_assoc_ci name idents with
+    | Some result -> consume_ident_result name result
+    | None ->
+        let options = List.map fst idents |> String.concat ", " in
+        run_default (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
+  in
   atomic t (fun () ->
       ws t;
       if not (would_start_identifier t) then
-        match default with
-        | Some f -> f t
-        | None -> err t (label ^ ": expected " ^ label)
+        run_default (label ^ ": expected " ^ label)
       else
         let name, has_paren =
           lookahead
@@ -969,35 +992,7 @@ let enum_or_calls_impl ?default label idents ~calls t =
               (n, peek t = Some '('))
             t
         in
-        if has_paren then
-          match find_assoc_ci name calls with
-          | Some p -> p t
-          | None -> (
-              match find_assoc_ci name idents with
-              | Some result ->
-                  let consumed_name = ident t in
-                  assert (consumed_name = name);
-                  result
-              | None -> (
-                  match default with
-                  | Some f -> f t
-                  | None ->
-                      let options = List.map fst calls |> String.concat ", " in
-                      err t ("expected one of functions: " ^ options)))
-        else
-          match find_assoc_ci name idents with
-          | Some result ->
-              let consumed_name = ident t in
-              assert (consumed_name = name);
-              result
-          | None -> (
-              match default with
-              | Some f -> f t
-              | None ->
-                  let options = List.map fst idents |> String.concat ", " in
-                  err t
-                    (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
-              ))
+        if has_paren then read_ident_call name else read_ident_value name)
 
 let fold_many parser ~init ~f t =
   with_context t "fold_many" @@ fun () ->
