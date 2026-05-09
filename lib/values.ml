@@ -1358,12 +1358,12 @@ let linear_calc_op first_unit first_value unit n =
   else if n < 0. then (Sub, -.n)
   else (Add, n)
 
-let linear_length_terms calc =
+let linear_terms_with unit_of_value calc =
   let scale factor terms =
     List.map (fun (unit, n) -> (unit, factor *. n)) terms
   in
   let rec aux = function
-    | Val length -> Option.map (fun term -> [ term ]) (unit_of_length length)
+    | Val v -> Option.map (fun term -> [ term ]) (unit_of_value v)
     | Num 0. -> Some []
     | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
       ->
@@ -1384,6 +1384,8 @@ let linear_length_terms calc =
     | Expr _ -> None
   in
   aux calc
+
+let linear_length_terms calc = linear_terms_with unit_of_length calc
 
 let linear_length_calc calc =
   match linear_length_terms calc with
@@ -1531,32 +1533,7 @@ let unit_of_lp : length_percentage -> (length_unit * float) option = function
 let lp_of_unit unit n : length_percentage =
   match unit with U_pct -> Pct n | unit -> Length (length_of_unit unit n)
 
-let linear_lp_terms calc =
-  let scale factor terms =
-    List.map (fun (unit, n) -> (unit, factor *. n)) terms
-  in
-  let rec aux = function
-    | Val value -> Option.map (fun term -> [ term ]) (unit_of_lp value)
-    | Num 0. -> Some []
-    | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
-      ->
-        None
-    | Nested inner | Parens inner -> aux inner
-    | Expr (left, Add, right) -> (
-        match (aux left, aux right) with
-        | Some l, Some r -> Some (l @ r)
-        | _ -> None)
-    | Expr (left, Sub, right) -> (
-        match (aux left, aux right) with
-        | Some l, Some r -> Some (l @ scale (-1.) r)
-        | _ -> None)
-    | Expr (left, Mul, Num n) -> Option.map (scale n) (aux left)
-    | Expr (Num n, Mul, right) -> Option.map (scale n) (aux right)
-    | Expr (left, Div, Num n) when n <> 0. ->
-        Option.map (scale (1. /. n)) (aux left)
-    | Expr _ -> None
-  in
-  aux calc
+let linear_lp_terms calc = linear_terms_with unit_of_lp calc
 
 let linear_lp_calc calc =
   match linear_lp_terms calc with
