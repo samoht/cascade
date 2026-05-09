@@ -2440,10 +2440,10 @@ and pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f -> Pp.float ctx f
-  | Numeric { value; repr = _ } ->
-      (* CSSOM serialisation (CSS Values 4 §6.7.2) drops a leading zero on
-         fractional numbers: emit [.25] not [0.25] in both modes. *)
-      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true value)
+  | Numeric { value; repr } ->
+      if Pp.minified ctx then
+        Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true value)
+      else Pp.string ctx repr
   | Pct f when Pp.minified ctx ->
       (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
          [<number>] form divided by 100. Under minification, emit the shorter
@@ -2572,33 +2572,14 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let space_after_color_percentage ctx (l : percentage option) ~next =
-  (* Under minify, when the previous channel ended with [%] (or a closing paren
-     from [var()]/[calc()]) the separator collapses: the next token has its own
-     boundary and cannot extend the previous one. After [none] or a bare number
-     the space stays since merging would either extend the ident or grow the
-     number. *)
-  let next_safe s =
-    match s with
-    | "" -> false
-    | s -> (
-        match s.[0] with
-        | '0' .. '9' | '.' | '+' | '-' | '#' -> true
-        | _ -> false)
-  in
-  let elidable =
-    Pp.minified ctx
-    && (match l with Some (Pct _ | Var _ | Calc _) -> true | _ -> false)
-    && match next with Some s -> next_safe s | None -> false
-  in
-  if not elidable then Pp.space ctx ()
+let space_after_color_percentage ctx (_l : percentage option) ~next:_ =
+  Pp.space ctx ()
 
-(** Lab-like float string with precision control. CSSOM serialisation (CSS
-    Values 4 §6.7.2) drops a leading zero on fractional numbers in both pretty
-    and minified output; minified output additionally rounds to 6 sig digits for
-    compactness. *)
+(** Lab-like float string with precision control. Minified output drops leading
+    fractional zeroes and rounds to 6 sig digits for compactness; regular output
+    keeps the normal numeric spelling. *)
 let string_of_lab_float ~max_decimals ctx f =
-  Pp.string_of_float ~drop_leading_zero:true ~max_decimals
+  Pp.string_of_float ~drop_leading_zero:ctx.Pp.minify ~max_decimals
     (if ctx.Pp.minify then Pp.round_sig 6 f else f)
 
 let pp_lab_float ~max_decimals ctx f =
