@@ -97,11 +97,7 @@ let add_hex_escape buf c =
   Buffer.add_char buf (hex_digit (code land 0xF));
   Buffer.add_char buf ' '
 
-let is_ident_continue_ascii c =
-  (c >= 'a' && c <= 'z')
-  || (c >= 'A' && c <= 'Z')
-  || (c >= '0' && c <= '9')
-  || c = '-' || c = '_'
+let is_ident_continue_ascii = Syntax.is_ascii_ident_continue
 
 let add_hex_escape_cp buf cp =
   Buffer.add_char buf '\\';
@@ -339,6 +335,9 @@ let normal_pair_needs_token_boundary prev next =
           _;
         } ) ->
       repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
+  | ( Component.Preserved { kind = Token.Hash _; _ },
+      Component.Preserved { kind = Token.Delim "-"; _ } ) ->
+      true
   | _ -> false
 
 let rec cv_to_buffer buf : Component.t -> unit = function
@@ -522,6 +521,11 @@ and pair_needs_token_boundary prev next =
           _;
         } ) ->
       repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
+  (* A hash token absorbs trailing name code points; a following [-] (which is a
+     name code point) would extend it on re-tokenization. *)
+  | ( Component.Preserved { kind = Token.Hash _; _ },
+      Component.Preserved { kind = Token.Delim "-"; _ } ) ->
+      true
   | _ -> false
 
 and cvs_to_buffer_min buf cvs =
