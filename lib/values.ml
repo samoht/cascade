@@ -345,6 +345,9 @@ let math_const_value = function
 
 let rec pp_math_arg ctx = function
   | Lit f -> Pp.float ctx f
+  | Dim (f, unit_) ->
+      Pp.float ctx f;
+      Pp.string ctx unit_
   | Const c -> pp_math_const ctx c
   | Var_arg v -> pp_var pp_math_arg ctx v
   | Op (l, op, r) ->
@@ -415,6 +418,7 @@ and pp_angle_arg ctx = function
 
 let rec eval_math_arg = function
   | Lit f -> Some f
+  | Dim (f, _) -> Some f
   | Const c -> Some (math_const_value c)
   | Var_arg _ -> None
   | Op (l, op, r) -> (
@@ -2255,6 +2259,119 @@ let mix_srgb_bytes c1 c2 ~p1 ~p2 =
           Some (r, g, b, a))
   | _ -> Option.None
 
+let static_alpha_value = function
+  | (None : alpha) -> Some 1.
+  | (Num f | Numeric { value = f; _ }) when f >= 0. && f <= 1. -> Some f
+  | Pct f when f >= 0. && f <= 100. -> Some (f /. 100.)
+  | _ -> Option.None
+
+let alpha_of_mixed_value f =
+  if f >= 1. then (None : alpha)
+  else Numeric { value = f; repr = Pp.string_of_float f }
+
+let mix_optional_float ~w1 ~w2 v1 v2 =
+  match (v1, v2) with
+  | Some f1, Some f2 -> Some ((f1 *. w1) +. (f2 *. w2))
+  | Some f, None | None, Some f -> Some f
+  | None, None -> Option.None
+
+let mix_optional_percentage ~w1 ~w2 v1 v2 =
+  match (v1, v2) with
+  | Some p1, Some p2 -> (
+      match (float_of_percentage p1, float_of_percentage p2) with
+      | Some f1, Some f2 ->
+          Some (Some (Pct ((f1 *. w1) +. (f2 *. w2)) : percentage))
+      | _ -> Option.None)
+  | Some p, None | None, Some p -> Some (Some p)
+  | None, None -> Some None
+
+let mix_alpha ~w1 ~w2 ~alpha_mult a1 a2 =
+  match (static_alpha_value a1, static_alpha_value a2) with
+  | Some f1, Some f2 ->
+      Some (alpha_of_mixed_value (((f1 *. w1) +. (f2 *. w2)) *. alpha_mult))
+  | _ -> Option.None
+
+let mix_optional_hue ~w1 ~w2 h1 h2 =
+  match (h1, h2) with
+  | Hue_none, Hue_none -> Some Hue_none
+  | Hue_none, h | h, Hue_none -> Some h
+  | h1, h2 -> (
+      match (deg_of_hue h1, deg_of_hue h2) with
+      | Some f1, Some f2 ->
+          Some (Unitless (normalize_hue ((f1 *. w1) +. (f2 *. w2))))
+      | _ -> Option.None)
+
+let mix_lab_like_result ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2 =
+  match mix_weights p1 p2 with
+  | None -> Option.None
+  | Some (w1, w2, alpha_mult) -> (
+      match
+        ( mix_optional_percentage ~w1 ~w2 l1 l2,
+          Some (mix_optional_float ~w1 ~w2 a1 a2),
+          Some (mix_optional_float ~w1 ~w2 b1 b2),
+          mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
+      with
+      | Some l, Some a, Some b, Some alpha -> Some (build l a b alpha)
+      | _ -> Option.None)
+
+let mix_lch_like_result ~p1 ~p2 build l1 c1 h1 alpha1 l2 c2 h2 alpha2 =
+  match mix_weights p1 p2 with
+  | None -> Option.None
+  | Some (w1, w2, alpha_mult) -> (
+      match
+        ( mix_optional_percentage ~w1 ~w2 l1 l2,
+          Some (mix_optional_float ~w1 ~w2 c1 c2),
+          mix_optional_hue ~w1 ~w2 h1 h2,
+          mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
+      with
+      | Some l, Some c, Some h, Some alpha -> Some (build l c h alpha)
+      | _ -> Option.None)
+
+let mix_lab_family in_space color1 color2 ~p1 ~p2 =
+  match (in_space, color1, color2) with
+  | ( Some (Lab : color_space),
+      Lab { l = l1; a = a1; b = b1; alpha = alpha1 },
+      Lab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
+      mix_lab_like_result ~p1 ~p2
+        (fun l a b alpha -> Lab { l; a; b; alpha })
+        l1 a1 b1 alpha1 l2 a2 b2 alpha2
+  | ( Some (Oklab : color_space),
+      Oklab { l = l1; a = a1; b = b1; alpha = alpha1 },
+      Oklab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
+      mix_lab_like_result ~p1 ~p2
+        (fun l a b alpha -> Oklab { l; a; b; alpha })
+        l1 a1 b1 alpha1 l2 a2 b2 alpha2
+  | ( Some (Lch : color_space),
+      Lch { l = l1; c = c1; h = h1; alpha = alpha1 },
+      Lch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
+      mix_lch_like_result ~p1 ~p2
+        (fun l c h alpha -> Lch { l; c; h; alpha })
+        l1 c1 h1 alpha1 l2 c2 h2 alpha2
+  | ( Some (Oklch : color_space),
+      Oklch { l = l1; c = c1; h = h1; alpha = alpha1 },
+      Oklch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
+      mix_lch_like_result ~p1 ~p2
+        (fun l c h alpha -> Oklch { l; c; h; alpha })
+        l1 c1 h1 alpha1 l2 c2 h2 alpha2
+  | _ -> None
+
+let color_mix_percentages (percent1 : percentage option)
+    (percent2 : percentage option) =
+  let p1 =
+    match percent1 with
+    | Option.None -> Some 50.
+    | Some p -> float_of_percentage p
+  in
+  let p2 =
+    match (percent1, percent2) with
+    | _, Some p -> float_of_percentage p
+    | Some _, Option.None ->
+        Option.bind (Option.bind percent1 float_of_percentage) (fun p1 ->
+            Some (Float.max 0. (100. -. p1)))
+    | Option.None, Option.None -> Some 50.
+  in
+  match (p1, p2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None
+
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
    [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
@@ -2997,19 +3114,8 @@ and pp_color : color Pp.t =
          ([color-mix(in srgb,red,blue) -> purple], where the [#800080] hex
          resolves to the named [purple]). Symbolic percentages or inputs that
          can't fold fall through to the structural [pp_color_mix] form. *)
-      let p1 =
-        match percent1 with None -> Some 50. | Some p -> float_of_percentage p
-      in
-      let p2 =
-        match (percent1, percent2) with
-        | _, Some p -> float_of_percentage p
-        | Some _, None ->
-            Option.bind (Option.bind percent1 float_of_percentage) (fun p1 ->
-                Some (Float.max 0. (100. -. p1)))
-        | None, None -> Some 50.
-      in
-      match (p1, p2) with
-      | Some p1, Some p2 -> (
+      match color_mix_percentages percent1 percent2 with
+      | Some (p1, p2) -> (
           match mix_srgb_bytes color1 color2 ~p1 ~p2 with
           | Some (r, g, b, 255) ->
               pp_color ctx
@@ -3032,8 +3138,26 @@ and pp_color : color Pp.t =
           | Option.None ->
               pp_color_mix ctx (Some Srgb) Default color1 percent1 color2
                 percent2)
-      | _ ->
+      | None ->
           pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2)
+  | Mix
+      {
+        in_space = Some (Lab | Oklab | Lch | Oklch) as in_space;
+        hue = Default;
+        color1;
+        percent1;
+        color2;
+        percent2;
+      }
+    when Pp.minified ctx -> (
+      match color_mix_percentages percent1 percent2 with
+      | Some (p1, p2) -> (
+          match mix_lab_family in_space color1 color2 ~p1 ~p2 with
+          | Some color -> pp_color ctx color
+          | None ->
+              pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
+      | None ->
+          pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
@@ -3533,7 +3657,14 @@ and read_math_arg t : math_arg =
                 | "-infinity" -> Const Neg_infinity
                 | "nan" -> Const Nan
                 | _ -> Cursor.err t "expected math constant")
-            | None -> Lit (Cursor.number t)))
+            | None -> (
+                (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>]
+                   over any numeric type, including dimensions and percentages.
+                   Capture the leading number plus its unit so [sign(-1vw)] and
+                   [sign(1%)] preserve their source shape. *)
+                match Cursor.number_with_unit t with
+                | n, Some unit -> Dim (n, unit)
+                | n, None -> Lit n)))
   in
   read_term ()
 

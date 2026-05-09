@@ -44,6 +44,10 @@ type math_const = Pi | E | Infinity | Neg_infinity | Nan
     as a tree ([(e - exp(1))]). *)
 type math_arg =
   | Lit of float
+  | Dim of float * string
+      (** A dimension argument (e.g. [1vw], [1%]). [sign(<dimension>)] only
+          cares about the numeric coefficient; the unit is preserved for pretty
+          pp. *)
   | Const of math_const
   | Var_arg of math_arg var
   | Op of math_arg * calc_op * math_arg
