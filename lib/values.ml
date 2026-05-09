@@ -2008,6 +2008,53 @@ let minify_relative_color_alpha body =
               ]
         | None -> body)
 
+let zero_percentage : percentage option = Some (Pct 0.)
+
+let zero_float_of_none (v : float option) : float option =
+  match v with None -> Some 0. | Some f -> Some f
+
+let zero_hue_of_none = function Hue_none -> Unitless 0. | h -> h
+
+let fold_relative_color_pass_through name origin tail =
+  match (name, origin, tail) with
+  | "lab", Lab { l; a; b; alpha }, ("l a b" | "l a b/alpha") ->
+      Some
+        (Lab
+           {
+             l = (match l with None -> zero_percentage | Some _ -> l);
+             a = zero_float_of_none a;
+             b = zero_float_of_none b;
+             alpha;
+           })
+  | "oklab", Oklab { l; a; b; alpha }, ("l a b" | "l a b/alpha") ->
+      Some
+        (Oklab
+           {
+             l = (match l with None -> zero_percentage | Some _ -> l);
+             a = zero_float_of_none a;
+             b = zero_float_of_none b;
+             alpha;
+           })
+  | "lch", Lch { l; c; h; alpha }, ("l c h" | "l c h/alpha") ->
+      Some
+        (Lch
+           {
+             l = (match l with None -> zero_percentage | Some _ -> l);
+             c = zero_float_of_none c;
+             h = zero_hue_of_none h;
+             alpha;
+           })
+  | "oklch", Oklch { l; c; h; alpha }, ("l c h" | "l c h/alpha") ->
+      Some
+        (Oklch
+           {
+             l = (match l with None -> zero_percentage | Some _ -> l);
+             c = zero_float_of_none c;
+             h = zero_hue_of_none h;
+             alpha;
+           })
+  | _ -> None
+
 (* Hue value of an [Hsl] colour as a float in degrees, when the input is a plain
    numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
    [grad]/[var]/[calc]/[none]) return [None] so the printer keeps the authored
@@ -5000,8 +5047,11 @@ and read_relative_color name t : color =
     |> normalize_relative_color_tail
   in
   if tail = "" then Cursor.err_expected t (name ^ " channels");
-  let origin = Pp.to_string ~minify:true pp_color origin in
-  Relative_color (name, "from " ^ origin ^ " " ^ tail)
+  match fold_relative_color_pass_through name origin tail with
+  | Some color -> color
+  | None ->
+      let origin = Pp.to_string ~minify:true pp_color origin in
+      Relative_color (name, "from " ^ origin ^ " " ^ tail)
 
 and with_relative_fallback name fallback t =
   Cursor.ws t;
