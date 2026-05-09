@@ -628,13 +628,16 @@ and math_fn =
   | Sign_n of math_arg
   | Abs_n of math_arg
 
-(** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians). *)
+(** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians).
+    [Angle_op] and [Angle_parens] support arithmetic over angles. *)
 and angle_arg =
   | Angle_deg of float
   | Angle_rad of float
   | Angle_turn of float
   | Angle_grad of float
   | Angle_num of math_arg
+  | Angle_op of angle_arg * calc_op * angle_arg
+  | Angle_parens of angle_arg
 
 (** CSS calc values. *)
 type 'a calc =

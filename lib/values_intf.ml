@@ -69,14 +69,17 @@ and math_fn =
   | Sign_n of math_arg
   | Abs_n of math_arg
 
-(** [sin] / [cos] / [tan] accept an [<angle>] or a unitless [<number>] treated
-    as radians. *)
+(** [sin] / [cos] / [tan] accept an [<angle>] or unitless [<number>] expression
+    (treated as radians). Arithmetic over angles ([22deg + 23deg]) and
+    parentheses round-trip via [Angle_op] / [Angle_parens]. *)
 and angle_arg =
   | Angle_deg of float
   | Angle_rad of float
   | Angle_turn of float
   | Angle_grad of float
   | Angle_num of math_arg
+  | Angle_op of angle_arg * calc_op * angle_arg
+  | Angle_parens of angle_arg
 
 type 'a calc =
   | Var of 'a var
