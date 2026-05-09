@@ -658,9 +658,8 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: FeatureFont; src: url(feature.woff2); \
      font-feature-settings: \"kern\" 1; font-variation-settings: \"wght\" 650; \
      }";
-  check_stylesheet ~expected:"@font-face{src:url(font.woff2)}"
-    "@font-face { src: url(font.woff2); }";
-  neg_cursor read_stylesheet "@font-face { font-family: Brand; }";
+  check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
+  check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
   neg_cursor read_stylesheet
     "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
      maybe; }"
@@ -2485,7 +2484,7 @@ let test_spec_snapshot_tracking_vectors () =
      subgrid } }";
   check_stylesheet
     ~expected:
-      "@supports (color:oklch(50% .1 20)){.accent{color:oklch(50% .1 20)}}"
+      "@supports (color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
      } }";
   check_stylesheet
@@ -3529,11 +3528,11 @@ let fidelity_universal_in_compound_preserved () =
   pretty_preserves "*#main { color: red }" [ "*#main" ];
   pretty_preserves "*[data-x] { color: red }" [ "*[data-x]" ]
 
-(* CSS Color 4 section 1.3 + cascade convention: canonicalizing alpha between
-   number and percentage forms is a minify-only optimization; the pretty printer
-   keeps the source spelling. *)
+(* CSS Color 4 section 1.3 + cascade convention: alpha unit form is preserved in
+   pretty output, while numeric spelling follows the shared shortest decimal
+   convention. *)
 let fidelity_alpha_form_preserved () =
-  pretty_preserves ".x { color: rgba(255, 0, 0, 0.5) }" [ "0.5" ];
+  pretty_preserves ".x { color: rgba(255, 0, 0, 0.5) }" [ ".5" ];
   pretty_preserves ".x { color: rgb(255 0 0 / 50%) }" [ "50%" ];
   pretty_preserves ".x { color: hsl(180 50% 25% / 30%) }" [ "30%" ]
 
@@ -3932,6 +3931,12 @@ let fidelity_dead_property_preserved () =
 
 let fidelity_empty_rule_preserved () =
   pretty_preserves ".x { } .y { color: red }" [ ".x"; ".y" ]
+
+let fidelity_incomplete_font_face_preserved () =
+  pretty_preserves "@font-face { src: url(font.woff2); }"
+    [ "@font-face"; "src: url(font.woff2)" ];
+  pretty_preserves "@font-face { font-family: Brand; }"
+    [ "@font-face"; "font-family: Brand" ]
 
 let fidelity_css_wide_keywords_preserved () =
   pretty_preserves ".x { color: revert }" [ "revert" ];
@@ -4799,7 +4804,7 @@ let color4_invalid_color_function_rejected () =
     | _ -> false)
 
 let fidelity_color_space_preserved () =
-  pretty_preserves ".x { color: oklch(0.628 0.258 29.23) }" [ "0.258"; "29.23" ];
+  pretty_preserves ".x { color: oklch(0.628 0.258 29.23) }" [ ".258"; "29.23" ];
   pretty_preserves ".x { color: lab(54.29 80.81 69.89) }" [ "lab" ];
   pretty_preserves ".x { color: color(srgb 1 0 0) }" [ "color(srgb 1 0 0)" ]
 
@@ -6194,6 +6199,9 @@ let additional_tests =
     ( "fidelity css-wide keywords preserved",
       `Quick,
       fidelity_css_wide_keywords_preserved );
+    ( "fidelity incomplete font-face preserved",
+      `Quick,
+      fidelity_incomplete_font_face_preserved );
     ("css var fallback preserved", `Quick, css_var_fallback_preserved);
     ( "spec cascade 6.4.4 anonymous layers distinct",
       `Quick,
