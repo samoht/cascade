@@ -574,7 +574,6 @@ let rec read_font_shorthand t =
       raw
 
 let read_grid_template_list t = read_grid_template t
-let read_opacity = Properties.read_opacity
 
 (* Some properties (shape-margin, scroll-margin, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
@@ -605,10 +604,11 @@ let read_nn_length_or_global t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
-(* CSS Text 3 §10: [letter-spacing] is [normal | <length>], [word-spacing] is
-   [normal | <length-percentage>]; both accept negative values. *)
-let read_letter_spacing t =
-  Cursor.enum "letter-spacing"
+(* CSS Text 3 section 10: [letter-spacing] is [normal | <length>],
+   [word-spacing] is [normal | <length-percentage>]; both accept negative
+   values. *)
+let read_normal_or_length name t =
+  Cursor.enum name
     [
       ("normal", (Normal : length));
       ("inherit", Inherit);
@@ -620,18 +620,8 @@ let read_letter_spacing t =
     ~default:(Values.read_length ~with_keywords:false)
     t
 
-let read_word_spacing t =
-  Cursor.enum "word-spacing"
-    [
-      ("normal", (Normal : length));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~default:(Values.read_length ~with_keywords:false)
-    t
+let read_letter_spacing t = read_normal_or_length "letter-spacing" t
+let read_word_spacing t = read_normal_or_length "word-spacing" t
 
 (* CSS Logical Properties 1 3.5: [padding-block] / [padding-inline] are 2-value
    shorthands. A bare CSS-wide keyword counts as a single value (not a list
@@ -993,7 +983,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Counter_increment -> v Counter_increment (read_counter_set t)
   (* Other properties *)
   | Z_index -> v Z_index (Properties.read_z_index t)
-  | Opacity -> v Opacity (read_opacity t)
+  | Opacity -> v Opacity (Properties.read_opacity t)
   | Cursor -> v Cursor (read_cursor t)
   | Interactivity -> v Interactivity (read_interactivity t)
   | Caret_animation -> v Caret_animation (read_caret_animation t)
