@@ -17,6 +17,8 @@
                | <mf-value> <gt-op> <mf-name> <gt-op> <mf-value>
     v} *)
 
+open Syntax
+
 type cmp = Lt | Le | Eq | Gt | Ge
 
 type name =
@@ -527,38 +529,24 @@ let rec pp_query : query Pp.t =
 (* The named/length feature printers route through [as_min_max] under minify so
    [(min-width: 768px)] emerges as [(width>=768px)] - same rule the typed
    [pp_feature] applies above. *)
-let pp_named_feature ctx name value =
+let pp_feature_with pp_value ctx name value =
   match as_min_max (name_of_string name) with
   | Range_view (op, base) when Pp.minified ctx ->
       Pp.char ctx '(';
       Pp.string ctx (string_of_name base);
       Pp.string ctx (string_of_cmp op);
-      Pp.string ctx value;
+      pp_value ctx value;
       Pp.char ctx ')'
   | _ ->
       Pp.char ctx '(';
       Pp.string ctx name;
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
-      Pp.string ctx value;
+      pp_value ctx value;
       Pp.char ctx ')'
 
-let pp_length_feature ctx name l =
-  match as_min_max (name_of_string name) with
-  | Range_view (op, base) when Pp.minified ctx ->
-      Pp.char ctx '(';
-      Pp.string ctx (string_of_name base);
-      Pp.string ctx (string_of_cmp op);
-      pp_length ctx l;
-      Pp.char ctx ')'
-  | _ ->
-      Pp.char ctx '(';
-      Pp.string ctx name;
-      Pp.char ctx ':';
-      Pp.space_if_pretty ctx ();
-      pp_length ctx l;
-      Pp.char ctx ')'
-
+let pp_named_feature ctx = pp_feature_with Pp.string ctx
+let pp_length_feature ctx = pp_feature_with pp_length ctx
 let pp_min_width_length ctx l = pp_length_feature ctx "min-width" l
 
 let rec pp ctx = function
@@ -704,19 +692,14 @@ let skip_ws sc =
     advance sc
   done
 
-let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-
-let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
-
 let read_ident sc =
   skip_ws sc;
   let start = sc.pos in
   if at_end sc then ""
-  else if not (is_ident_start sc.s.[sc.pos]) then ""
+  else if not (is_ascii_ident_start sc.s.[sc.pos]) then ""
   else (
     advance sc;
-    while (not (at_end sc)) && is_ident_cont sc.s.[sc.pos] do
+    while (not (at_end sc)) && is_ascii_ident_continue sc.s.[sc.pos] do
       advance sc
     done;
     String.sub sc.s start (sc.pos - start))
@@ -735,7 +718,7 @@ let lookahead_ident sc kw =
     && (sc.pos + kw_len >= s_len
        ||
        let c = sc.s.[sc.pos + kw_len] in
-       not (is_ident_cont c))
+       not (is_ascii_ident_continue c))
 
 let consume_keyword sc kw = sc.pos <- sc.pos + String.length kw
 
@@ -792,9 +775,9 @@ let read_unit sc =
   else if sc.s.[sc.pos] = '%' then (
     advance sc;
     "%")
-  else if is_ident_start sc.s.[sc.pos] then (
+  else if is_ascii_ident_start sc.s.[sc.pos] then (
     advance sc;
-    while (not (at_end sc)) && is_ident_cont sc.s.[sc.pos] do
+    while (not (at_end sc)) && is_ascii_ident_continue sc.s.[sc.pos] do
       advance sc
     done;
     String.sub sc.s start (sc.pos - start))
