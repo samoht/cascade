@@ -605,6 +605,7 @@ type math_const = Pi | E | Infinity | Neg_infinity | Nan
 (** CSS Values 4 §10.7 numeric math function arguments. *)
 type math_arg =
   | Lit of float
+  | Dim of float * string  (** A dimension argument (e.g. [1vw], [1%]). *)
   | Const of math_const
   | Var_arg of math_arg var
   | Op of math_arg * calc_op * math_arg
