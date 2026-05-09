@@ -440,6 +440,41 @@ let check_border_radius =
 let check_text_transform =
   check_value_cursor "text_transform" read_text_transform pp_text_transform
 
+let check_text_indent_value =
+  check_value_cursor "text_indent_value" read_text_indent_value
+    pp_text_indent_value
+
+let check_text_transform_case =
+  check_value_cursor "text_transform_case" read_text_transform_case
+    pp_text_transform_case
+
+let check_font_variant_east_asian_feature =
+  check_value_cursor "font_variant_east_asian_feature"
+    read_font_variant_east_asian_feature pp_font_variant_east_asian_feature
+
+let check_symbols_type =
+  check_value_cursor "symbols_type" read_symbols_type pp_symbols_type
+
+let check_list_style_symbol =
+  check_value_cursor "list_style_symbol" read_list_style_symbol
+    pp_list_style_symbol
+
+let check_mask_border_mode =
+  check_value_cursor "mask_border_mode" read_mask_border_mode
+    pp_mask_border_mode
+
+let check_clip_geometry_box =
+  check_value_cursor "clip_geometry_box" read_clip_geometry_box
+    pp_clip_geometry_box
+
+let check_clip_path_extent =
+  check_value_cursor "clip_path_extent" read_clip_path_extent
+    pp_clip_path_extent
+
+let check_clip_path_fill_rule =
+  check_value_cursor "clip_path_fill_rule" read_clip_path_fill_rule
+    pp_clip_path_fill_rule
+
 let check_will_change =
   check_value_cursor "will_change" read_will_change pp_will_change
 
@@ -2681,6 +2716,9 @@ let test_grid_template () =
   check_grid_template "1fr 2fr";
   check_grid_template "auto auto";
   check_grid_template "inherit";
+  neg_cursor read_grid_template "invalid-template"
+
+let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""
     "\"nav  main\" \".    foot\"";
   check_grid_template_areas ~expected:"\". .\"" "\".  .\"";
@@ -2688,8 +2726,65 @@ let test_grid_template () =
     ~expected:"\"nav  main\" \".    foot\"" "\"nav  main\" \".    foot\"";
   neg_cursor read_grid_template_areas "\"nav/main\"";
   neg_cursor read_grid_template_areas "\"nav main\" \"foot\"";
-  neg_cursor read_grid_template_areas "\"a .\" \". a\"";
-  neg_cursor read_grid_template "invalid-template"
+  neg_cursor read_grid_template_areas "\"a .\" \". a\""
+
+let test_text_indent_value () =
+  check_text_indent_value "1em";
+  check_text_indent_value ~expected:"1em hanging" "hanging 1em";
+  check_text_indent_value ~expected:"2em hanging each-line"
+    "each-line 2em hanging";
+  check_text_indent_value "inherit";
+  check_text_indent_value "var(--indent,1em)";
+  neg_cursor read_text_indent_value "hanging";
+  neg_cursor read_text_indent_value "1em hanging hanging";
+  neg_cursor read_text_indent_value "1em each-line each-line"
+
+let test_text_transform_case () =
+  check_text_transform_case "capitalize";
+  check_text_transform_case "uppercase";
+  check_text_transform_case "lowercase";
+  neg_cursor read_text_transform_case "full-width"
+
+let test_font_variant_east_asian_feature () =
+  check_font_variant_east_asian_feature "jis78";
+  check_font_variant_east_asian_feature "traditional";
+  check_font_variant_east_asian_feature "ruby";
+  neg_cursor read_font_variant_east_asian_feature "small-caps"
+
+let test_symbols_type () =
+  check_symbols_type "cyclic";
+  check_symbols_type "numeric";
+  check_symbols_type "alphabetic";
+  check_symbols_type "symbolic";
+  check_symbols_type "fixed";
+  neg_cursor read_symbols_type "disc"
+
+let test_list_style_symbol () =
+  check_list_style_symbol "\"*\"";
+  check_list_style_symbol ~expected:"url(foo.png)" "url(\"foo.png\")";
+  neg_cursor read_list_style_symbol "disc"
+
+let test_mask_border_mode () =
+  check_mask_border_mode "alpha";
+  check_mask_border_mode "luminance";
+  neg_cursor read_mask_border_mode "match-source"
+
+let test_clip_geometry_box () =
+  check_clip_geometry_box "margin-box";
+  check_clip_geometry_box "border-box";
+  check_clip_geometry_box "view-box";
+  neg_cursor read_clip_geometry_box "closest-side"
+
+let test_clip_path_extent () =
+  check_clip_path_extent "closest-side";
+  check_clip_path_extent "farthest-side";
+  check_clip_path_extent "10px";
+  neg_cursor read_clip_path_extent "border-box"
+
+let test_clip_path_fill_rule () =
+  check_clip_path_fill_rule "nonzero";
+  check_clip_path_fill_rule "evenodd";
+  neg_cursor read_clip_path_fill_rule "winding"
 
 let test_justify_content () =
   check_justify_content "flex-start";
@@ -3328,7 +3423,12 @@ let tests =
     (* Additional coverage for missing readers *)
     test_case "grid auto-flow" `Quick test_grid_auto_flow;
     test_case "grid template" `Quick test_grid_template;
+    test_case "grid template areas" `Quick test_grid_template_areas;
     test_case "grid line" `Quick test_grid_line;
+    test_case "symbols type" `Quick test_symbols_type;
+    test_case "list style symbol" `Quick test_list_style_symbol;
+    test_case "font variant east asian feature" `Quick
+      test_font_variant_east_asian_feature;
     test_case "align-items" `Quick test_align_items;
     test_case "justify-content" `Quick test_justify_content;
     test_case "place-items" `Quick test_place_items;
@@ -3441,6 +3541,12 @@ let additional_tests =
     test_case "text_shadow" `Quick test_text_shadow;
     test_case "font_weight" `Quick test_font_weight;
     test_case "text_transform" `Quick test_text_transform;
+    test_case "text_indent_value" `Quick test_text_indent_value;
+    test_case "text_transform_case" `Quick test_text_transform_case;
+    test_case "mask_border_mode" `Quick test_mask_border_mode;
+    test_case "clip_geometry_box" `Quick test_clip_geometry_box;
+    test_case "clip_path_extent" `Quick test_clip_path_extent;
+    test_case "clip_path_fill_rule" `Quick test_clip_path_fill_rule;
     test_case "text_decoration_line" `Quick test_text_decoration_line;
     test_case "text_decoration" `Quick test_text_decoration;
     test_case "cursor" `Quick test_cursor;

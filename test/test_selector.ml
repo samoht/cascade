@@ -10,6 +10,11 @@ let check_combinator =
   check_value_cursor "combinator" read_combinator pp_combinator
 
 let check = check_value_cursor "selector" read pp
+
+let check_component_values =
+  check_value_cursor "component_values" read_component_values
+    pp_component_values
+
 let check_ns = check_value_cursor "ns" read_ns (Css.Pp.option pp_ns)
 let check_aria_attr = check_value_cursor "aria_attr" read_aria_attr pp_aria_attr
 let check_attr_name = check_value_cursor "attr_name" read_attr_name pp_attr_name
@@ -1676,6 +1681,10 @@ let spec_selector_serialization_invariant_matrix () =
       ":host-context()";
     ]
 
+let test_component_values () =
+  check_component_values ~expected:":unknown(.a,.b)" ":unknown(.a, .b)";
+  check_component_values ~expected:"foo(1,2)" "foo(1, 2)"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1687,6 +1696,7 @@ let suite =
       test_case "selector" `Quick test_selector;
       test_case "aria_attr" `Quick test_aria_attr;
       test_case "attr_name" `Quick test_attr_name;
+      test_case "component_values" `Quick test_component_values;
       (* Basic selector types *)
       test_case "element" `Quick element_cases;
       test_case "class" `Quick class_cases;

@@ -319,6 +319,12 @@ val pp_border_image_outset_item : border_image_outset_item Pp.t
 val read_border_image_outset_item : Cursor.t -> border_image_outset_item
 (** [read_border_image_outset_item t] parses one [border-image-outset] item. *)
 
+val pp_mask_border_mode : mask_border_mode Pp.t
+(** [pp_mask_border_mode] pretty-prints a [mask-border] mode keyword. *)
+
+val read_mask_border_mode : Cursor.t -> mask_border_mode
+(** [read_mask_border_mode t] parses a [mask-border] mode keyword. *)
+
 val pp_border_image : border_image Pp.t
 (** [pp_border_image] pretty-prints the [border-image] shorthand. *)
 
@@ -760,6 +766,12 @@ val pp_text_transform : text_transform Pp.t
 val read_text_transform : Cursor.t -> text_transform
 (** [read_text_transform t] is the [text_transform] parsed from [t]. *)
 
+val pp_text_transform_case : text_transform_case Pp.t
+(** [pp_text_transform_case] pretty-prints a text-transform case keyword. *)
+
+val read_text_transform_case : Cursor.t -> text_transform_case
+(** [read_text_transform_case t] parses a text-transform case keyword. *)
+
 val pp_text_overflow : text_overflow Pp.t
 (** [pp_text_overflow] is the pretty-printer for [text_overflow]. *)
 
@@ -910,6 +922,18 @@ val pp_list_style_type : list_style_type Pp.t
 
 val read_list_style_type : Cursor.t -> list_style_type
 (** [read_list_style_type t] is the [list_style_type] parsed from [t]. *)
+
+val pp_symbols_type : symbols_type Pp.t
+(** [pp_symbols_type] pretty-prints a [symbols()] system type. *)
+
+val read_symbols_type : Cursor.t -> symbols_type
+(** [read_symbols_type t] parses a [symbols()] system type. *)
+
+val pp_list_style_symbol : list_style_symbol Pp.t
+(** [pp_list_style_symbol] pretty-prints one [symbols()] symbol. *)
+
+val read_list_style_symbol : Cursor.t -> list_style_symbol
+(** [read_list_style_symbol t] parses one [symbols()] symbol. *)
 
 val pp_list_style_position : list_style_position Pp.t
 (** [pp_list_style_position] is the pretty-printer for [list_style_position]. *)
@@ -1940,6 +1964,14 @@ val read_east_asian_feature : Cursor.t -> font_variant_east_asian_feature
 (** [read_east_asian_feature t] is the [font_variant_east_asian_feature] parsed
     from [t]. *)
 
+val pp_font_variant_east_asian_feature : font_variant_east_asian_feature Pp.t
+(** [pp_font_variant_east_asian_feature] pretty-prints one east Asian feature.
+*)
+
+val read_font_variant_east_asian_feature :
+  Cursor.t -> font_variant_east_asian_feature
+(** [read_font_variant_east_asian_feature t] parses one east Asian feature. *)
+
 val pp_font_variant_east_asian : font_variant_east_asian Pp.t
 (** [pp_font_variant_east_asian] is the pretty-printer for
     [font_variant_east_asian]. *)
@@ -2138,6 +2170,24 @@ val pp_clip_path : clip_path Pp.t
 
 val read_clip_path : Cursor.t -> clip_path
 (** [read_clip_path t] is the [clip_path] parsed from [t]. *)
+
+val pp_clip_geometry_box : clip_geometry_box Pp.t
+(** [pp_clip_geometry_box] pretty-prints a clip geometry box. *)
+
+val read_clip_geometry_box : Cursor.t -> clip_geometry_box
+(** [read_clip_geometry_box t] parses a clip geometry box. *)
+
+val pp_clip_path_extent : clip_path_extent Pp.t
+(** [pp_clip_path_extent] pretty-prints a clip path extent. *)
+
+val read_clip_path_extent : Cursor.t -> clip_path_extent
+(** [read_clip_path_extent t] parses a clip path extent. *)
+
+val pp_clip_path_fill_rule : clip_path_fill_rule Pp.t
+(** [pp_clip_path_fill_rule] pretty-prints a clip path fill rule. *)
+
+val read_clip_path_fill_rule : Cursor.t -> clip_path_fill_rule
+(** [read_clip_path_fill_rule t] parses a clip path fill rule. *)
 
 val pp_perspective_origin : perspective_origin Pp.t
 (** [pp_perspective_origin] is the pretty-printer for [perspective_origin]. *)

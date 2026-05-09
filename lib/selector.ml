@@ -2,6 +2,9 @@
 
 include Selector_intf
 
+let pp_component_values = Values.pp_component_values
+let read_component_values = Values.read_component_values
+
 (** Helper function for invalid identifiers *)
 let err_invalid_identifier name reason =
   invalid_arg (String.concat "" [ "CSS identifier '"; name; "' "; reason ])
@@ -1409,10 +1412,20 @@ and read_pseudo_class ?(allow_unknown = false) t =
       ("active-view-transition-type", read_active_view_transition_type);
     ]
   in
+  let known_non_functional name =
+    let lower = String.lowercase_ascii name in
+    List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
+  in
   let read_unknown t =
     let read_unknown_call t =
       match Cursor.peek t with
       | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+          (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
+             [:hover], ...) called with parens ([:checked()]) is invalid. Reject
+             so the rule reader drops it rather than passing through as an
+             unknown call. *)
+          if known_non_functional name then
+            Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
           Cursor.skip t;
           Unknown_pseudo_class_call (name, arguments)
       | _ -> Cursor.err_expected t "pseudo-class call"

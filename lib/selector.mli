@@ -3,6 +3,12 @@
 include module type of Selector_intf
 (** Shared selector types exposed by both implementation and interface. *)
 
+val pp_component_values : component_values Pp.t
+(** [pp_component_values] pretty-prints preserved selector component values. *)
+
+val read_component_values : Cursor.t -> component_values
+(** [read_component_values t] reads preserved selector component values. *)
+
 val element : ?ns:ns -> string -> t
 (** [element ?ns name] element selector (e.g., "div"). Validates CSS
     identifiers; raises [Invalid_argument] on invalid. *)
