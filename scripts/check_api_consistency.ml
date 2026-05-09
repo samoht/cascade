@@ -64,6 +64,9 @@ let neg_exempt_types =
     (* Any identifier is a valid grid line name *)
     "attr_name";
     (* Any identifier is a valid attribute name *)
+    "component_values";
+    "invalid_value";
+    (* Token-stream preservation accepts any component-value list. *)
   ]
 
 module Fs = struct
@@ -106,12 +109,17 @@ let type_blank_re =
   (* Matches: type _ <name> ... -> captures <name> *)
   Re.Perl.compile_pat "^[\\s]*type[\\s]+_+[\\s]+([A-Za-z_][A-Za-z0-9_]*)\\b"
 
+let type_nonrec_re =
+  (* Matches: type nonrec <name> ... -> captures <name> *)
+  Re.Perl.compile_pat "^[\\s]*type[\\s]+nonrec[\\s]+([A-Za-z_][A-Za-z0-9_]*)\\b"
+
 let extract_types path : string list =
   let lines = Fs.read_lines path in
   let rec loop acc = function
     | [] -> List.rev acc
     | l :: tl -> (
-        (* Prefer capturing the name in "type _ name" if present *)
+        (* Prefer capturing the real name in "type _ name" / "type nonrec name"
+           before falling back to plain "type name". *)
         match Re.exec_opt type_blank_re l with
         | Some g ->
             let tname = Re.Group.get g 1 in
@@ -121,7 +129,7 @@ let extract_types path : string list =
             in
             loop acc tl
         | None -> (
-            match Re.exec_opt type_re l with
+            match Re.exec_opt type_nonrec_re l with
             | Some g ->
                 let tname = Re.Group.get g 1 in
                 let acc =
@@ -129,7 +137,17 @@ let extract_types path : string list =
                   else acc
                 in
                 loop acc tl
-            | None -> loop acc tl))
+            | None -> (
+                match Re.exec_opt type_re l with
+                | Some g ->
+                    let tname = Re.Group.get g 1 in
+                    let acc =
+                      if tname <> "_" && not (List.mem tname acc) then
+                        tname :: acc
+                      else acc
+                    in
+                    loop acc tl
+                | None -> loop acc tl)))
   in
   loop [] lines
 

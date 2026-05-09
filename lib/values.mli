@@ -305,6 +305,31 @@ val pp_calc_op : calc_op Pp.t
 val read_calc_op : Cursor.t -> calc_op
 (** [read_calc_op t] parses a calc operation. *)
 
+val pp_component_values : component_values Pp.t
+(** [pp_component_values] pretty-prints preserved component values. *)
+
+val read_component_values : Cursor.t -> component_values
+(** [read_component_values t] returns the remaining component values from [t].
+*)
+
+val pp_invalid_value : invalid_value Pp.t
+(** [pp_invalid_value] pretty-prints a preserved invalid value. *)
+
+val read_invalid_value : Cursor.t -> invalid_value
+(** [read_invalid_value t] reads a preserved invalid value. *)
+
+val pp_math_const : math_const Pp.t
+(** [pp_math_const] pretty-prints a math constant. *)
+
+val read_math_const : Cursor.t -> math_const
+(** [read_math_const t] parses a math constant. *)
+
+val pp_math_arg : math_arg Pp.t
+(** [pp_math_arg] pretty-prints a numeric math argument. *)
+
+val read_math_arg : Cursor.t -> math_arg
+(** [read_math_arg t] parses a numeric math argument. *)
+
 val pp_component : component Pp.t
 (** [pp_component] pretty-prints {!component} values. *)
 

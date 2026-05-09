@@ -16,8 +16,7 @@ let read_file filename =
 (* Extract property constructors from properties_intf.ml *)
 let extract_property_constructors content =
   let is_static_property_constructor = function
-    | "Custom_property" -> false
-    | "Opaque_property" -> false
+    | "Custom_property" | "Unknown_property" -> false
     | _ -> true
   in
   let lines = String.split_on_char '\n' content in

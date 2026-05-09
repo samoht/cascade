@@ -43,12 +43,29 @@ let check_hue_interpolation =
     pp_hue_interpolation
 
 let check_calc_op = check_value_cursor "calc_op" read_calc_op pp_calc_op
+
+let check_component_values =
+  check_value_cursor "component_values" read_component_values
+    pp_component_values
+
+let check_invalid_value =
+  check_value_cursor "invalid_value" read_invalid_value pp_invalid_value
+
+let check_math_const =
+  check_value_cursor "math_const" read_math_const pp_math_const
+
+let check_math_arg = check_value_cursor "math_arg" read_math_arg pp_math_arg
 let check_component = check_value_cursor "component" read_component pp_component
 let check_channel = check_value_cursor "channel" read_channel pp_channel
 let check_rgb = check_value_cursor "rgb" read_rgb pp_rgb
 
 let check_system_color =
   check_value_cursor "system_color" read_system_color pp_system_color
+
+let check_attr_syntax =
+  check_value_cursor "attr_syntax" read_attr_syntax pp_attr_syntax
+
+let check_attr_type = check_value_cursor "attr_type" read_attr_type pp_attr_type
 
 let test_length () =
   (* Basic units *)
@@ -870,6 +887,50 @@ let spec_math_function_edges () =
   neg_cursor read_number "sqrt()";
   neg_cursor read_number "sin()"
 
+let test_attr_syntax () =
+  check_attr_syntax "<length>";
+  check_attr_syntax "<length-percentage>";
+  check_attr_syntax "<color>";
+  check_attr_syntax "<number>";
+  check_attr_syntax "<percentage>";
+  neg_cursor read_attr_syntax "<integer>";
+  neg_cursor read_attr_syntax "length"
+
+let test_attr_type () =
+  check_attr_type "type(<length>)";
+  check_attr_type "type(<color>)";
+  check_attr_type "raw-string";
+  check_attr_type "number";
+  check_attr_type "px";
+  check_attr_type "%";
+  neg_cursor read_attr_type "type(<integer>)";
+  neg_cursor read_attr_type "type()"
+
+let test_component_values () =
+  check_component_values ~expected:"foo(1,2)" "foo(1, 2)";
+  check_component_values ~expected:"a b" "a   b";
+  check_component_values "\"x y\""
+
+let test_invalid_value () =
+  check_invalid_value ~expected:"asin(1deg)" "asin(1deg)";
+  check_invalid_value ~expected:"foo(1,2)" "foo(1, 2)"
+
+let test_math_const () =
+  check_math_const "pi";
+  check_math_const "e";
+  check_math_const "infinity";
+  check_math_const "-infinity";
+  check_math_const ~expected:"NaN" "nan";
+  neg_cursor read_math_const "tau"
+
+let test_math_arg () =
+  check_math_arg "1";
+  check_math_arg "1vw";
+  check_math_arg "pi";
+  check_math_arg "1 + 2";
+  check_math_arg "sqrt(4)";
+  neg_cursor read_math_arg "foo"
+
 let value_tests =
   [
     test_case "system_color" `Quick test_system_color;
@@ -904,7 +965,13 @@ let value_tests =
     test_case "alpha" `Quick test_alpha;
     test_case "hue_interpolation" `Quick test_hue_interpolation;
     test_case "calc_op" `Quick test_calc_op;
+    test_case "component_values" `Quick test_component_values;
+    test_case "invalid_value" `Quick test_invalid_value;
+    test_case "math_const" `Quick test_math_const;
+    test_case "math_arg" `Quick test_math_arg;
     test_case "number" `Quick test_number;
+    test_case "attr_syntax" `Quick test_attr_syntax;
+    test_case "attr_type" `Quick test_attr_type;
     test_case "transition_behavior" `Quick test_transition_behavior;
     test_case "component" `Quick test_component;
     test_case "channel" `Quick test_channel;

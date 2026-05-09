@@ -1494,6 +1494,15 @@ let rec read_text_transform t : text_transform =
           Combo { case; full_width; full_size_kana })
     t
 
+let read_text_transform_case t =
+  Cursor.enum "text-transform case"
+    [
+      ("capitalize", (Capitalize : text_transform_case));
+      ("uppercase", Uppercase);
+      ("lowercase", Lowercase);
+    ]
+    t
+
 let rec pp_line_break : line_break Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -1850,6 +1859,8 @@ let pp_east_asian_feature ctx = function
   | Proportional_width -> Pp.string ctx "proportional-width"
   | Ruby -> Pp.string ctx "ruby"
 
+let pp_font_variant_east_asian_feature = pp_east_asian_feature
+
 let rec pp_font_variant_east_asian : font_variant_east_asian Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
@@ -1876,6 +1887,8 @@ let read_east_asian_feature t =
       ("ruby", Ruby);
     ]
     t
+
+let read_font_variant_east_asian_feature = read_east_asian_feature
 
 let rec read_font_variant_east_asian t : font_variant_east_asian =
   let invalid_feature_set features =
@@ -4999,19 +5012,6 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Upper_roman -> Pp.string ctx "upper-roman"
   | String s -> Pp.quoted_string ctx s
   | Symbols (kind, symbols) ->
-      let pp_symbols_type ctx (kind : symbols_type) =
-        match kind with
-        | Cyclic -> Pp.string ctx "cyclic"
-        | Numeric -> Pp.string ctx "numeric"
-        | Alphabetic -> Pp.string ctx "alphabetic"
-        | Symbolic -> Pp.string ctx "symbolic"
-        | Fixed -> Pp.string ctx "fixed"
-      in
-      let pp_symbol ctx (symbol : list_style_symbol) =
-        match symbol with
-        | String symbol -> Pp.quoted_string ctx symbol
-        | Url url -> Pp.url ctx url
-      in
       Pp.call "symbols"
         (fun ctx (kind, symbols) ->
           let first = ref true in
@@ -5035,7 +5035,7 @@ let rec pp_list_style_type : list_style_type Pp.t =
           List.iter
             (fun symbol ->
               sep symbol;
-              pp_symbol ctx symbol)
+              pp_list_style_symbol ctx symbol)
             symbols)
         ctx (kind, symbols)
   | Inherit -> Pp.string ctx "inherit"
@@ -5044,6 +5044,19 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_list_style_type ctx v
+
+and pp_symbols_type ctx (kind : symbols_type) =
+  match kind with
+  | Cyclic -> Pp.string ctx "cyclic"
+  | Numeric -> Pp.string ctx "numeric"
+  | Alphabetic -> Pp.string ctx "alphabetic"
+  | Symbolic -> Pp.string ctx "symbolic"
+  | Fixed -> Pp.string ctx "fixed"
+
+and pp_list_style_symbol ctx (symbol : list_style_symbol) =
+  match symbol with
+  | String symbol -> Pp.quoted_string ctx symbol
+  | Url url -> Pp.url ctx url
 
 let rec pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
@@ -11117,31 +11130,33 @@ let rec read_line_height t : line_height =
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_line_height_length t
 
+let read_symbols_type t : symbols_type =
+  Cursor.enum "symbols type"
+    [
+      ("cyclic", (Cyclic : symbols_type));
+      ("numeric", Numeric);
+      ("alphabetic", Alphabetic);
+      ("symbolic", Symbolic);
+      ("fixed", Fixed);
+    ]
+    t
+
+let read_list_style_symbol t : list_style_symbol =
+  Cursor.one_of
+    [
+      (fun t -> (Url (Cursor.url t) : list_style_symbol));
+      (fun t -> String (Cursor.string t));
+    ]
+    t
+
 let rec read_list_style_type t : list_style_type =
   let read_var t : list_style_type = Var (read_var read_list_style_type t) in
-  let read_symbols_type t : symbols_type =
-    Cursor.enum "symbols type"
-      [
-        ("cyclic", (Cyclic : symbols_type));
-        ("numeric", Numeric);
-        ("alphabetic", Alphabetic);
-        ("symbolic", Symbolic);
-        ("fixed", Fixed);
-      ]
-      t
-  in
   let read_symbols_body t : list_style_type =
     let kind = Cursor.option read_symbols_type t in
     Cursor.ws t;
-    let read_symbol t : list_style_symbol =
-      Cursor.one_of
-        [
-          (fun t -> (Url (Cursor.url t) : list_style_symbol));
-          (fun t -> String (Cursor.string t));
-        ]
-        t
+    let symbols =
+      Cursor.list ~sep:Cursor.ws ~at_least:1 read_list_style_symbol t
     in
-    let symbols = Cursor.list ~sep:Cursor.ws ~at_least:1 read_symbol t in
     Symbols (kind, symbols)
   in
   Cursor.enum_or_var "list-style-type"
@@ -17140,6 +17155,11 @@ let read_clip_path_extent inner : clip_path_extent =
       Farthest_side
   | _ -> Extent_length (read_length inner)
 
+let read_clip_path_fill_rule t =
+  Cursor.enum "clip-path fill-rule"
+    [ ("nonzero", (Nonzero : clip_path_fill_rule)); ("evenodd", Evenodd) ]
+    t
+
 let read_clip_path_position_clause inner =
   Cursor.ws inner;
   match Cursor.peek_ident inner with
@@ -17312,6 +17332,11 @@ let read_clip_geometry_box_opt t : clip_geometry_box option =
       Cursor.skip t;
       Some View_box
   | _ -> None
+
+let read_clip_geometry_box t =
+  match read_clip_geometry_box_opt t with
+  | Some box -> box
+  | None -> Cursor.err_expected t "clip geometry box"
 
 let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;

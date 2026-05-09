@@ -262,6 +262,17 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
+let pp_component_values ctx values =
+  let value =
+    if Pp.minified ctx then Parser.to_string_custom_minified values
+    else Parser.to_string_custom values
+  in
+  Pp.string ctx value
+
+let read_component_values t = Cursor.remaining t
+let pp_invalid_value = pp_component_values
+let read_invalid_value = read_component_values
+
 let string_of_attr_syntax : attr_syntax -> string = function
   | Length -> "<length>"
   | Length_percentage -> "<length-percentage>"
@@ -335,6 +346,18 @@ let pp_math_const ctx = function
   | Infinity -> Pp.string ctx "infinity"
   | Neg_infinity -> Pp.string ctx "-infinity"
   | Nan -> Pp.string ctx "NaN"
+
+let read_math_const t =
+  match Cursor.ident_opt t with
+  | Some name -> (
+      match String.lowercase_ascii name with
+      | "pi" -> Pi
+      | "e" -> E
+      | "infinity" -> Infinity
+      | "-infinity" -> Neg_infinity
+      | "nan" -> Nan
+      | _ -> Cursor.err_expected t "math constant")
+  | None -> Cursor.err_expected t "math constant"
 
 let math_const_value = function
   | Pi -> Float.pi
