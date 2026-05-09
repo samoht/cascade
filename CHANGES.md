@@ -10,13 +10,12 @@ typed public API.
 - Typed CSS AST: selectors, declarations, values, statements, and
   stylesheets are sealed ADTs. Invalid constructions are caught at compile
   time.
-- Two parse entry points:
-  - `Css.of_string` is fail-fast -- the first validator failure is returned
-    as `Error parse_error`.
-  - `Css.parse` runs CSS Syntax Level 3 recovery: unclosed blocks
-    auto-close at EOF, invalid declarations are dropped while their
-    enclosing rule survives, and unrecognised rules surface as warnings on
-    `parse_result.warnings` rather than aborting the parse.
+- Single warning-aware parse entry point:
+  - `Css.of_string` runs CSS Syntax Level 3 recovery and returns
+    `(parse_result, parse_warning) result`.
+  - `~strict:true` promotes the first warning to `Error parse_error`.
+  - `Css.of_string_exn` returns the recovered stylesheet directly and raises on
+    `Error`.
 - Pretty-printer with separate pretty and minified contexts
   (`Css.to_string ?minify`), with several typed printers exposed
   (`pp_color`, `pp_length`, ...).

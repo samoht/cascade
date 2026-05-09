@@ -199,7 +199,7 @@ let compare css1 css2 =
   if css1 = css2 then true
   else
     match (Css.of_string css1, Css.of_string css2) with
-    | Ok expected, Ok actual ->
+    | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } ->
         let d = tree_diff ~expected ~actual in
         (* Only consider them equal if both structural diff is empty AND strings
            are identical *)
@@ -211,9 +211,9 @@ type t =
   | Tree_diff of Tree_diff.t (* CSS AST differences found *)
   | String_diff of String_diff.t (* No structural diff but strings differ *)
   | No_diff (* Strings are identical *)
-  | Both_errors of Css.parse_error * Css.parse_error
-  | Expected_error of Css.parse_error
-  | Actual_error of Css.parse_error
+  | Both_errors of Css.parse_warning * Css.parse_warning
+  | Expected_error of Css.parse_warning
+  | Actual_error of Css.parse_warning
 
 let diff ~expected ~actual =
   let expected = strip_header expected in
@@ -222,7 +222,8 @@ let diff ~expected ~actual =
   if expected = actual then No_diff
   else
     match (Css.of_string expected, Css.of_string actual) with
-    | Ok expected_ast, Ok actual_ast -> (
+    | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ }
+      -> (
         (* Do NOT normalize @property order - their order matters for tests *)
         let expected_norm = expected_ast in
         let actual_norm = actual_ast in
@@ -266,7 +267,8 @@ let diff_with_mode ~mode ~expected ~actual =
   | `Tree -> (
       (* Force tree diff mode *)
       match (Css.of_string expected, Css.of_string actual) with
-      | Ok expected_ast, Ok actual_ast ->
+      | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ }
+        ->
           let structural_diff =
             tree_diff ~expected:expected_ast ~actual:actual_ast
           in
@@ -334,8 +336,8 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
       (* No output for identical files *)
       ()
   | Both_errors (e1, e2) ->
-      let err1 = Css.pp_parse_error e1 in
-      let err2 = Css.pp_parse_error e2 in
+      let err1 = Css.pp_parse_warning e1 in
+      let err2 = Css.pp_parse_warning e2 in
       if String.equal err1 err2 then
         add_strings buf [ "Both CSS have same parse error: "; err1 ]
       else
@@ -351,9 +353,9 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
             err2;
           ]
   | Expected_error e ->
-      add_strings buf [ expected; " CSS parse error: "; Css.pp_parse_error e ]
+      add_strings buf [ expected; " CSS parse error: "; Css.pp_parse_warning e ]
   | Actual_error e ->
-      add_strings buf [ actual; " CSS parse error: "; Css.pp_parse_error e ]
+      add_strings buf [ actual; " CSS parse error: "; Css.pp_parse_warning e ]
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in

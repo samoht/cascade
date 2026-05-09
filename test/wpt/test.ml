@@ -1,11 +1,11 @@
 (** WPT css-syntax vector harness.
 
     Reads [test/vectors/wpt/css-syntax/*.html] and [support/*.css] and runs each
-    CSS input we can surface through {!Css.parse}. Every WPT file contributes at
-    least one Alcotest case; files whose assertions are purely dynamic (JS
-    code-point loops, [document.querySelector] checks, etc.) have dedicated
-    per-file ports at the bottom of this module that re-encode the test logic in
-    OCaml.
+    CSS input we can surface through {!Css.of_string}. Every WPT file
+    contributes at least one Alcotest case; files whose assertions are purely
+    dynamic (JS code-point loops, [document.querySelector] checks, etc.) have
+    dedicated per-file ports at the bottom of this module that re-encode the
+    test logic in OCaml.
 
     Static extraction uses {!Soup.parse}, so we pick up:
 
@@ -223,7 +223,7 @@ let wpt_vector_manifest () =
 (** {1 Alcotest wiring} *)
 
 (* One CSS input -> one test case. For a full [<style>] body or linked CSS file
-   we run {!Css.parse}; for an inline [style="..."] attribute we wrap the
+   we run {!Css.of_string}; for an inline [style="..."] attribute we wrap the
    declarations in a synthetic [[data] \{ ... \}] rule so we exercise the same
    parse path (parser doesn't have a dedicated inline-declaration entry point
    yet). Either way the assertion is that the input parses without raising --
@@ -234,11 +234,11 @@ let run_parse case () =
     | `Stylesheet -> case.css
     | `Inline_declarations -> "[data] {" ^ case.css ^ "}"
   in
-  match try Ok (Cascade.Css.parse input) with e -> Error e with
+  match Cascade.Css.of_string ~strict:false input with
   | Ok _ -> ()
-  | Error e ->
-      Alcotest.failf "%s %s raised: %s" case.source_file case.origin
-        (Printexc.to_string e)
+  | Error err ->
+      Alcotest.failf "%s %s failed: %s" case.source_file case.origin
+        (Cascade.Css.pp_parse_warning err)
 
 let extracted_cases () =
   collect_cases ()
@@ -297,8 +297,10 @@ let non_ascii_codepoints =
   in
   let ident_accepts cp =
     let css = Fmt.str ".f%soo { color: red; }" (utf8_of_cp cp) in
-    let { Cascade.Css.stylesheet; warnings = _ } = Cascade.Css.parse css in
-    List.length (Cascade.Css.rule_statements stylesheet) = 1
+    match Cascade.Css.of_string ~strict:false css with
+    | Ok { Cascade.Css.stylesheet; warnings = _ } ->
+        List.length (Cascade.Css.rule_statements stylesheet) = 1
+    | Error _ -> false
   in
   let tests = ref [] in
   List.iter
@@ -328,8 +330,9 @@ let non_ascii_codepoints =
      Test both. *)
   let leads_ident cp =
     let css = Fmt.str "%sfoo { color: red }" (utf8_of_cp cp) in
-    let r = Cascade.Css.parse css in
-    List.length (Cascade.Css.rule_statements r.stylesheet) = 1
+    match Cascade.Css.of_string ~strict:false css with
+    | Ok r -> List.length (Cascade.Css.rule_statements r.stylesheet) = 1
+    | Error _ -> false
   in
   let invalid_cps =
     [

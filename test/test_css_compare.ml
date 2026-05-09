@@ -2,7 +2,7 @@
 
 open Cascade
 
-let () = ignore Css.of_string
+let () = ignore (Css.of_string ~strict:false "")
 
 (* ===== compare tests ===== *)
 

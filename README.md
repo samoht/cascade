@@ -148,13 +148,13 @@ NO_COLOR=1 cssdiff reference.css output.css
   `windows-125x`, UTF-16, etc.) must be decoded upstream with a dedicated
   encoding library and passed to Cascade as UTF-8 text. Parsed `@charset`
   syntax is compatibility surface, not an encoding-decoding mechanism.
-- **Two parse entry points.** `Css.of_string` fails fast on the first
-  validator error. `Css.parse` runs the CSS Syntax Level 3 recovery path:
-  unclosed blocks auto-close at EOF (5.3.7), an invalid declaration is
-  dropped while its enclosing rule keeps its other declarations (5.4.4),
-  and rules that don't validate at all surface as warnings in the returned
-  `parse_result.warnings` while the rest of the stylesheet parses
-  normally.
+- **One warning-aware parse entry point.** `Css.of_string` runs the CSS Syntax
+  Level 3 recovery path: unclosed blocks auto-close at EOF (5.3.7), an invalid
+  declaration is dropped while its enclosing rule keeps its other declarations
+  (5.4.4), and rules that don't validate at all surface as warnings in the
+  returned `parse_result.warnings` while the rest of the stylesheet parses
+  normally. Pass `~strict:true` to promote the first warning to `Error`, or use
+  `Css.of_string_exn` when only the recovered stylesheet is needed.
 - CSS nesting is parsed and printed but the optimizer does not flatten nested
   rules. A round-trip through the parser preserves nesting structure.
 - `@import` rules are preserved as-is; Cascade does not resolve or inline

@@ -20,27 +20,19 @@ let read_stdin () =
 
 let parse_css ~filename css =
   match Css.of_string ~filename css with
-  | Ok s -> s
-  | Error _ -> (
-      (* Strict parsing failed; retry with the recovery parser so a single
-         broken rule doesn't take the whole file down. The lenient parser shares
-         a bug with [@import url(...)] tokenisation, so guard the exception that
-         surfaces as [Invalid_argument]. *)
-      try
-        let { Css.stylesheet; warnings } = Css.parse ~filename css in
-        List.iter
-          (fun w ->
-            (* Prefix every line of a multi-line diagnostic so a downstream
-               [grep -v "warning"] filters the whole entry, not just the first
-               line. *)
-            let msg = Css.pp_parse_error w in
-            String.split_on_char '\n' msg
-            |> List.iter (fun line -> Fmt.epr "warning: %s@." line))
-          warnings;
-        stylesheet
-      with Invalid_argument _ ->
-        Fmt.epr "warning: %s: parse failed, dropping content@." filename;
-        Css.empty)
+  | Ok { stylesheet; warnings } ->
+      List.iter
+        (fun w ->
+          (* Prefix every line of a multi-line diagnostic so a downstream [grep
+             -v "warning"] filters the whole entry, not just the first line. *)
+          let msg = Css.pp_parse_warning w in
+          String.split_on_char '\n' msg
+          |> List.iter (fun line -> Fmt.epr "warning: %s@." line))
+        warnings;
+      stylesheet
+  | Error _ ->
+      Fmt.epr "warning: %s: parse failed, dropping content@." filename;
+      Css.empty
 
 let read_input path =
   let css = if path = "-" then read_stdin () else read_file path in

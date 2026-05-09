@@ -731,7 +731,7 @@ let check_callstack name input expected_stack_parts =
         (Printexc.to_string exn)
 
 let check_full_css_callstack name css_input expected_stack_parts =
-  match Css.of_string css_input with
+  match Css.of_string ~strict:true css_input with
   | Ok _ -> Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
   | Error (err, _filename) ->
       let callstack_str = String.concat " -> " err.path in

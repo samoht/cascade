@@ -1105,22 +1105,22 @@ let is_pe_action = function
   | sel -> not (is_pseudo_element_selector sel)
 
 (* Forward declarations for mutually recursive functions *)
-let rec read_selector_list_with read_item t =
+let rec read_selector_list_tail read_item t acc =
+  let sel = read_item t in
+  let acc = sel :: acc in
+  Cursor.ws t;
+  match (Cursor.comma_opt t, Cursor.is_done t) with
+  | true, true -> Cursor.err t "expected at least one selector"
+  | true, false ->
+      Cursor.ws t;
+      read_selector_list_tail read_item t acc
+  | false, true -> List.rev acc
+  | false, false -> Cursor.err t "unexpected tokens after selector"
+
+and read_selector_list_with read_item t =
   Cursor.ws t;
   if Cursor.is_done t then Cursor.err t "expected at least one selector"
-  else
-    let rec loop acc =
-      let sel = read_item t in
-      let acc = sel :: acc in
-      Cursor.ws t;
-      if Cursor.comma_opt t then (
-        Cursor.ws t;
-        if Cursor.is_done t then Cursor.err t "expected at least one selector";
-        loop acc)
-      else if Cursor.is_done t then List.rev acc
-      else Cursor.err t "unexpected tokens after selector"
-    in
-    loop []
+  else read_selector_list_tail read_item t []
 
 and read_complex_list t = read_selector_list_with read_complex t
 
@@ -1760,6 +1760,62 @@ let lang_range ctx string =
   else Pp.string ctx string
 
 let langs ctx strings = Pp.list ~sep:Pp.comma lang_range ctx strings
+let selector_hex_digits = "0123456789abcdef"
+
+let add_selector_hex_escape buf code =
+  Buffer.add_char buf '\\';
+  let rec emit n acc =
+    match (n, acc) with
+    | 0, [] -> Buffer.add_char buf '0'
+    | 0, digits -> List.iter (Buffer.add_char buf) digits
+    | _ -> emit (n / 16) (selector_hex_digits.[n mod 16] :: acc)
+  in
+  emit code [];
+  Buffer.add_char buf ' '
+
+let selector_first_needs_hex_escape name =
+  match String.length name with
+  | 0 -> false
+  | len ->
+      let first = name.[0] in
+      (first >= '0' && first <= '9')
+      || (first = '-' && len > 1 && name.[1] >= '0' && name.[1] <= '9')
+
+let add_selector_ascii buf ~first_needs_hex_escape i c =
+  if i = 0 && first_needs_hex_escape then
+    add_selector_hex_escape buf (Char.code c)
+  else
+    match c with
+    | '\x00' .. '\x1F' | '\x7F' -> add_selector_hex_escape buf (Char.code c)
+    | '[' -> Buffer.add_string buf "\\["
+    | ']' -> Buffer.add_string buf "\\]"
+    | '\\' -> Buffer.add_string buf "\\\\"
+    | '(' -> Buffer.add_string buf "\\("
+    | ')' -> Buffer.add_string buf "\\)"
+    | ',' -> Buffer.add_string buf "\\,"
+    | '/' -> Buffer.add_string buf "\\/"
+    | ':' -> Buffer.add_string buf "\\:"
+    | '%' -> Buffer.add_string buf "\\%"
+    | '.' -> Buffer.add_string buf "\\."
+    | '#' -> Buffer.add_string buf "\\#"
+    | ' ' -> Buffer.add_string buf "\\ "
+    | '"' -> Buffer.add_string buf "\\\""
+    | '\'' -> Buffer.add_string buf "\\'"
+    | '@' -> Buffer.add_string buf "\\@"
+    | '*' -> Buffer.add_string buf "\\*"
+    | '>' -> Buffer.add_string buf "\\>"
+    | '+' -> Buffer.add_string buf "\\+"
+    | '~' -> Buffer.add_string buf "\\~"
+    | '&' -> Buffer.add_string buf "\\&"
+    | '^' -> Buffer.add_string buf "\\^"
+    | '$' -> Buffer.add_string buf "\\$"
+    | '=' -> Buffer.add_string buf "\\="
+    | '!' -> Buffer.add_string buf "\\!"
+    | '|' -> Buffer.add_string buf "\\|"
+    | c when is_valid_nmchar c -> Buffer.add_char buf c
+    | c ->
+        Buffer.add_char buf '\\';
+        Buffer.add_char buf c
 
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
@@ -1770,69 +1826,18 @@ let escape_selector_name name =
   else if name = "-" then "\\-"
   else
     let buf = Buffer.create (String.length name * 2) in
-    let hex_digits = "0123456789abcdef" in
-    let hex_escape_code code =
-      Buffer.add_char buf '\\';
-      let rec emit n acc =
-        if n = 0 && acc = [] then Buffer.add_char buf '0'
-        else if n = 0 then List.iter (Buffer.add_char buf) acc
-        else emit (n / 16) (hex_digits.[n mod 16] :: acc)
-      in
-      emit code [];
-      Buffer.add_char buf ' '
-    in
-    let first_char = name.[0] in
-    let first_needs_hex_escape =
-      (first_char >= '0' && first_char <= '9')
-      || first_char = '-'
-         && String.length name > 1
-         && name.[1] >= '0'
-         && name.[1] <= '9'
-    in
-    let add_ascii i c =
-      if i = 0 && first_needs_hex_escape then hex_escape_code (Char.code c)
-      else
-        match c with
-        | '\x00' .. '\x1F' | '\x7F' -> hex_escape_code (Char.code c)
-        | '[' -> Buffer.add_string buf "\\["
-        | ']' -> Buffer.add_string buf "\\]"
-        | '\\' -> Buffer.add_string buf "\\\\"
-        | '(' -> Buffer.add_string buf "\\("
-        | ')' -> Buffer.add_string buf "\\)"
-        | ',' -> Buffer.add_string buf "\\,"
-        | '/' -> Buffer.add_string buf "\\/"
-        | ':' -> Buffer.add_string buf "\\:"
-        | '%' -> Buffer.add_string buf "\\%"
-        | '.' -> Buffer.add_string buf "\\."
-        | '#' -> Buffer.add_string buf "\\#"
-        | ' ' -> Buffer.add_string buf "\\ "
-        | '"' -> Buffer.add_string buf "\\\""
-        | '\'' -> Buffer.add_string buf "\\'"
-        | '@' -> Buffer.add_string buf "\\@"
-        | '*' -> Buffer.add_string buf "\\*"
-        | '>' -> Buffer.add_string buf "\\>"
-        | '+' -> Buffer.add_string buf "\\+"
-        | '~' -> Buffer.add_string buf "\\~"
-        | '&' -> Buffer.add_string buf "\\&"
-        | '^' -> Buffer.add_string buf "\\^"
-        | '$' -> Buffer.add_string buf "\\$"
-        | '=' -> Buffer.add_string buf "\\="
-        | '!' -> Buffer.add_string buf "\\!"
-        | '|' -> Buffer.add_string buf "\\|"
-        | c when is_valid_nmchar c -> Buffer.add_char buf c
-        | c ->
-            Buffer.add_char buf '\\';
-            Buffer.add_char buf c
-    in
+    let first_needs_hex_escape = selector_first_needs_hex_escape name in
+    let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
     let folder () i = function
       | `Uchar u ->
           let cp = Uchar.to_int u in
-          if cp < 0x80 then add_ascii i (Char.chr cp) else hex_escape_code cp
+          if cp < 0x80 then add_ascii i (Char.chr cp)
+          else add_selector_hex_escape buf cp
       | `Malformed bytes ->
           String.iteri
             (fun offset c ->
               if Char.code c < 0x80 then add_ascii (i + offset) c
-              else hex_escape_code (Char.code c))
+              else add_selector_hex_escape buf (Char.code c))
             bytes
     in
     Uutf.String.fold_utf_8 folder () name;

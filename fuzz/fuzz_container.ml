@@ -9,6 +9,28 @@ let byte_at buf i =
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let name buf i = pick [ "card"; "sidebar"; "layout"; "main" ] buf i
 
+let recovered_css label css =
+  match Css.of_string ~strict:false css with
+  | Ok parsed -> parsed
+  | Error err ->
+      fail
+        (Fmt.str "%s did not recover leniently: %s" label
+           (Css.pp_parse_warning err))
+
+let assert_invalid_container_contract label input =
+  let css = "@container " ^ input ^ "{.x{color:red}}" in
+  match Css.of_string ~strict:true css with
+  | Ok parsed ->
+      fail
+        (Fmt.str "%s parsed strictly as invalid container query: %S -> %S" label
+           input
+           (Css.to_string ~minify:true parsed.Css.stylesheet))
+  | Error _ ->
+      let { Css.warnings; stylesheet } = recovered_css label css in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      if warnings = [] then
+        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+
 let raw buf i =
   (pick Cascade_spec_inventory.Query_grammar.container_positive buf i).input
 
@@ -101,12 +123,7 @@ let test_invalid_container_vectors buf =
     else
       Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 3)
   in
-  match Css.Container.of_string input with
-  | exception Failure _ -> ()
-  | query ->
-      fail
-        (Fmt.str "invalid container query parsed: %S -> %S" input
-           (Css.Container.to_string query))
+  assert_invalid_container_contract "invalid container query vector" input
 
 let suite =
   ( "container",

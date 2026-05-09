@@ -448,9 +448,9 @@ let check_text_transform_case =
   check_value_cursor "text_transform_case" read_text_transform_case
     pp_text_transform_case
 
-let check_font_variant_east_asian_feature =
-  check_value_cursor "font_variant_east_asian_feature"
-    read_font_variant_east_asian_feature pp_font_variant_east_asian_feature
+let check_east_asian_feature =
+  check_value_cursor "east_asian_feature" read_east_asian_feature
+    pp_east_asian_feature
 
 let check_symbols_type =
   check_value_cursor "symbols_type" read_symbols_type pp_symbols_type
@@ -730,7 +730,7 @@ let check_font_variant_east_asian =
     pp_font_variant_east_asian
 
 let check_east_asian_feature =
-  check_value_cursor "font_variant_east_asian_feature" read_east_asian_feature
+  check_value_cursor "east_asian_feature" read_east_asian_feature
     pp_east_asian_feature
 
 let check_font_variant_emoji =
@@ -2745,11 +2745,11 @@ let test_text_transform_case () =
   check_text_transform_case "lowercase";
   neg_cursor read_text_transform_case "full-width"
 
-let test_font_variant_east_asian_feature () =
-  check_font_variant_east_asian_feature "jis78";
-  check_font_variant_east_asian_feature "traditional";
-  check_font_variant_east_asian_feature "ruby";
-  neg_cursor read_font_variant_east_asian_feature "small-caps"
+let test_east_asian_feature () =
+  check_east_asian_feature "jis78";
+  check_east_asian_feature "traditional";
+  check_east_asian_feature "ruby";
+  neg_cursor read_east_asian_feature "small-caps"
 
 let test_symbols_type () =
   check_symbols_type "cyclic";
@@ -3427,8 +3427,7 @@ let tests =
     test_case "grid line" `Quick test_grid_line;
     test_case "symbols type" `Quick test_symbols_type;
     test_case "list style symbol" `Quick test_list_style_symbol;
-    test_case "font variant east asian feature" `Quick
-      test_font_variant_east_asian_feature;
+    test_case "font variant east asian feature" `Quick test_east_asian_feature;
     test_case "align-items" `Quick test_align_items;
     test_case "justify-content" `Quick test_justify_content;
     test_case "place-items" `Quick test_place_items;

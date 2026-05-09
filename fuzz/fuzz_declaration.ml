@@ -53,6 +53,27 @@ let parse_declaration input =
 
 let serialize decl = Css.Declaration.string_of_declaration ~minify:true decl
 
+let assert_invalid_declaration_contract label input =
+  let css = ".x{" ^ input ^ "}" in
+  match Css.of_string ~strict:true css with
+  | Ok parsed ->
+      fail
+        (Fmt.str "%s parsed strictly as invalid declaration: %S -> %S" label
+           input
+           (Css.to_string ~minify:true parsed.Css.stylesheet))
+  | Error _ ->
+      let { Css.warnings; stylesheet } =
+        match Css.of_string ~strict:false css with
+        | Ok parsed -> parsed
+        | Error err ->
+            fail
+              (Fmt.str "%s did not recover leniently: %s" label
+                 (Css.pp_parse_warning err))
+      in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      if warnings = [] then
+        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+
 let starts_with ~prefix s =
   let n = String.length prefix in
   String.length s >= n && String.sub s 0 n = prefix
@@ -251,12 +272,7 @@ let test_feature_decl_table buf =
 
 let test_invalid_features buf =
   let input = invalid_feature_decl buf in
-  match parse_declaration input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "invalid feature declaration parsed: %S -> %S" input
-           (serialize decl))
+  assert_invalid_declaration_contract "invalid feature declaration" input
 
 let test_css_wide_keyword_vectors buf =
   let property =
@@ -291,12 +307,7 @@ let test_invalid_css_wide buf =
       ]
       buf 1
   in
-  match parse_declaration input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "invalid CSS-wide keyword mix parsed: %S -> %S" input
-           (serialize decl))
+  assert_invalid_declaration_contract "invalid CSS-wide keyword mix" input
 
 let test_shared_css_wide_inventory buf =
   let row =
@@ -315,12 +326,8 @@ let test_css_wide_inventory buf =
   let row =
     pick Cascade_spec_inventory.Declaration_grammar.css_wide_negative buf 0
   in
-  match parse_declaration row.input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "shared invalid CSS-wide declaration parsed: %S -> %S"
-           row.input (serialize decl))
+  assert_invalid_declaration_contract "shared invalid CSS-wide declaration"
+    row.input
 
 let test_shared_alias_inventory buf =
   let row =
@@ -341,12 +348,8 @@ let test_shared_invalid_alias_inventory buf =
   let row =
     pick Cascade_spec_inventory.Declaration_grammar.alias_negative buf 0
   in
-  match parse_declaration row.input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "shared invalid alias declaration parsed: %S -> %S" row.input
-           (serialize decl))
+  assert_invalid_declaration_contract "shared invalid alias declaration"
+    row.input
 
 let test_custom_tokens buf =
   let name = "--spec-" ^ string_of_int (byte_at buf 0) in

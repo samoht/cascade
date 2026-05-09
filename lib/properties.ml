@@ -1859,8 +1859,6 @@ let pp_east_asian_feature ctx = function
   | Proportional_width -> Pp.string ctx "proportional-width"
   | Ruby -> Pp.string ctx "ruby"
 
-let pp_font_variant_east_asian_feature = pp_east_asian_feature
-
 let rec pp_font_variant_east_asian : font_variant_east_asian Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
@@ -1887,8 +1885,6 @@ let read_east_asian_feature t =
       ("ruby", Ruby);
     ]
     t
-
-let read_font_variant_east_asian_feature = read_east_asian_feature
 
 let rec read_font_variant_east_asian t : font_variant_east_asian =
   let invalid_feature_set features =
@@ -3575,37 +3571,41 @@ let comparable_border_width_length length :
   | `Unit "", _ -> None
   | key, n -> Some (key, n)
 
+let border_width_calc_length = function Val length -> Some length | _ -> None
+
+let record_border_width_group kind groups pos length =
+  match comparable_border_width_length length with
+  | None -> ()
+  | Some (key, n) ->
+      let keep =
+        match Hashtbl.find_opt groups key with
+        | None -> (pos, length, n)
+        | Some (old_pos, old_length, old_n) ->
+            let better =
+              match kind with `Min -> n < old_n | `Max -> n > old_n
+            in
+            if better then (old_pos, length, n) else (old_pos, old_length, old_n)
+      in
+      Hashtbl.replace groups key keep
+
 let reduce_border_width_minmax kind args : length calc list option =
   let simplified = List.map simplified_border_width_length args in
   if List.exists Option.is_none simplified then None
   else
     let vals = List.map Option.get simplified in
-    if List.exists (function Val _ -> false | _ -> true) vals then None
-    else
-      let lengths = List.map (function Val l -> l | _ -> assert false) vals in
-      let groups = Hashtbl.create 4 in
-      List.iteri
-        (fun pos length ->
-          match comparable_border_width_length length with
-          | None -> ()
-          | Some (key, n) -> (
-              match Hashtbl.find_opt groups key with
-              | None -> Hashtbl.add groups key (pos, length, n)
-              | Some (old_pos, old_length, old_n) ->
-                  let better =
-                    match kind with `Min -> n < old_n | `Max -> n > old_n
-                  in
-                  Hashtbl.replace groups key
-                    (if better then (old_pos, length, n)
-                     else (old_pos, old_length, old_n))))
-        lengths;
-      let reduced =
-        Hashtbl.to_seq_values groups
-        |> List.of_seq
-        |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
-        |> List.map (fun (_, length, _) -> Val length)
-      in
-      match reduced with [] -> None | _ -> Some reduced
+    match List.map border_width_calc_length vals with
+    | lengths when List.exists Option.is_none lengths -> None
+    | lengths -> (
+        let lengths = List.map Option.get lengths in
+        let groups = Hashtbl.create 4 in
+        List.iteri (record_border_width_group kind groups) lengths;
+        let reduced =
+          Hashtbl.to_seq_values groups
+          |> List.of_seq
+          |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
+          |> List.map (fun (_, length, _) -> Val length)
+        in
+        match reduced with [] -> None | _ -> Some reduced)
 
 let reduce_border_width_clamp lower value upper =
   match
@@ -8200,19 +8200,23 @@ let pp_unicode_range_range ctx start end_ =
   Pp.hex ctx end_
 
 let unicode_range_wildcard start end_ : string option =
+  let wildcard_for q =
+    let size = 1 lsl (4 * q) in
+    if start mod size <> 0 || end_ <> start + size - 1 then None
+    else
+      let prefix = start / size in
+      let prefix = if prefix = 0 then "" else hex_string prefix in
+      let wildcard = "U+" ^ prefix ^ String.make q '?' in
+      let range = "U+" ^ hex_string start ^ "-" ^ hex_string end_ in
+      if String.length wildcard < String.length range then Some wildcard
+      else None
+  in
   let rec loop q =
     if q > 6 then (None : string option)
     else
-      let size = 1 lsl (4 * q) in
-      if start mod size = 0 && end_ = start + size - 1 then
-        let prefix = start / size in
-        let prefix = if prefix = 0 then "" else hex_string prefix in
-        let wildcard = "U+" ^ prefix ^ String.make q '?' in
-        let range = "U+" ^ hex_string start ^ "-" ^ hex_string end_ in
-        if String.length wildcard < String.length range then
-          (Some wildcard : string option)
-        else (None : string option)
-      else loop (q + 1)
+      match wildcard_for q with
+      | Some _ as wildcard -> wildcard
+      | None -> loop (q + 1)
   in
   loop 1
 
@@ -9888,6 +9892,20 @@ let read_flex_flow_wrap t : flex_wrap =
     ]
     t
 
+let read_flex_flow_part direction wrap t =
+  match (!direction, Cursor.option read_flex_flow_direction t) with
+  | None, Some value ->
+      direction := Some value;
+      true
+  | Some _, Some _ -> Cursor.err_invalid t "duplicate flex direction"
+  | _, None -> (
+      match (!wrap, Cursor.option read_flex_flow_wrap t) with
+      | None, Some value ->
+          wrap := Some value;
+          true
+      | Some _, Some _ -> Cursor.err_invalid t "duplicate flex wrap"
+      | _, None -> Cursor.err_expected t "flex-flow")
+
 let rec read_flex_flow t : flex_flow =
   Cursor.enum_or_var "flex-flow"
     [
@@ -9906,22 +9924,9 @@ let rec read_flex_flow t : flex_flow =
       let seen = ref false in
       let rec loop () =
         Cursor.ws t;
-        if Cursor.is_done t then ()
-        else
-          match (!direction, Cursor.option read_flex_flow_direction t) with
-          | None, Some value ->
-              seen := true;
-              direction := Some value;
-              loop ()
-          | Some _, Some _ -> Cursor.err_invalid t "duplicate flex direction"
-          | _, None -> (
-              match (!wrap, Cursor.option read_flex_flow_wrap t) with
-              | None, Some value ->
-                  seen := true;
-                  wrap := Some value;
-                  loop ()
-              | Some _, Some _ -> Cursor.err_invalid t "duplicate flex wrap"
-              | _, None -> Cursor.err_expected t "flex-flow")
+        if not (Cursor.is_done t) then (
+          seen := read_flex_flow_part direction wrap t || !seen;
+          loop ())
       in
       loop ();
       if not !seen then Cursor.err_expected t "flex-flow";
@@ -13203,6 +13208,24 @@ let outline_style_keywords =
   ]
 
 let rec read_outline t : outline =
+  let outline_starts_length t =
+    Option.is_some
+      (Cursor.lookahead
+         (Cursor.option (fun t ->
+              ignore (Cursor.number_with_unit t : float * string option)))
+         t)
+  in
+  let read_outline_part ~width ~style ~color t =
+    let found_style =
+      Option.is_none !style
+      && List.exists (fun kw -> Cursor.looking_at t kw) outline_style_keywords
+    in
+    if found_style then style := Some (read_outline_style t)
+    else if Option.is_none !width && outline_starts_length t then
+      width := Some (read_length t)
+    else if Option.is_none !color then color := Some (read_color t)
+    else Cursor.err_expected t "outline"
+  in
   let read_shorthand t : outline =
     let width = ref Option.None in
     let style = ref Option.None in
@@ -13213,31 +13236,9 @@ let rec read_outline t : outline =
     in
     let rec read_parts () =
       Cursor.ws t;
-      if at_end () then ()
-      else
-        let found_style =
-          Option.is_none !style
-          && List.exists
-               (fun kw -> Cursor.looking_at t kw)
-               outline_style_keywords
-        in
-        if found_style then (
-          style := Some (read_outline_style t);
-          read_parts ())
-        else
-          let is_length_start =
-            Option.is_some
-              (Cursor.lookahead
-                 (Cursor.option (fun t ->
-                      ignore (Cursor.number_with_unit t : float * string option)))
-                 t)
-          in
-          if Option.is_none !width && is_length_start then (
-            width := Some (read_length t);
-            read_parts ())
-          else if Option.is_none !color && not (at_end ()) then (
-            color := Some (read_color t);
-            read_parts ())
+      if not (at_end ()) then (
+        read_outline_part ~width ~style ~color t;
+        read_parts ())
     in
     read_parts ();
     match (!width, !style, !color) with
@@ -17088,31 +17089,31 @@ let rec read_clip t : clip =
    clip-path basic shapes. Cannot reuse [Declaration.read_border_radius] because
    Declaration depends on Properties; the same grammar is small enough to inline
    here. *)
+let read_border_radius_inline_radii t =
+  let rec loop acc count =
+    if count >= 4 then List.rev acc
+    else
+      match Cursor.option (read_length_percentage ~allow_negative:false) t with
+      | None -> List.rev acc
+      | Some lp -> loop (lp :: acc) (count + 1)
+  in
+  match loop [] 0 with
+  | [] -> Cursor.err_expected t "<length-percentage>"
+  | radii -> radii
+
+let read_border_radius_inline_vertical t =
+  match Cursor.peek_delim t with
+  | Some '/' ->
+      Cursor.skip t;
+      Cursor.ws t;
+      Some (read_border_radius_inline_radii t)
+  | _ -> None
+
 let read_border_radius_inline t : border_radius =
-  let read_radii t =
-    let rec loop acc count =
-      if count >= 4 then List.rev acc
-      else
-        match
-          Cursor.option (read_length_percentage ~allow_negative:false) t
-        with
-        | None -> List.rev acc
-        | Some lp -> loop (lp :: acc) (count + 1)
-    in
-    let radii = loop [] 0 in
-    if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
-  in
   Cursor.ws t;
-  let horizontal = read_radii t in
+  let horizontal = read_border_radius_inline_radii t in
   Cursor.ws t;
-  let vertical =
-    match Cursor.peek_delim t with
-    | Some '/' ->
-        Cursor.skip t;
-        Cursor.ws t;
-        Some (read_radii t)
-    | _ -> None
-  in
+  let vertical = read_border_radius_inline_vertical t in
   Radius { horizontal; vertical }
 
 let read_clip_path_round t : border_radius option =

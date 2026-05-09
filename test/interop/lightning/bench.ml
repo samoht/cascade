@@ -53,12 +53,13 @@ let () =
       let t0 = Unix.gettimeofday () in
       let trace_phase = Sys.getenv_opt "TRACE_PHASE" = Some "1" in
       if trace_phase then Fmt.epr "pair_%04d parse\n%!" i;
-      (match Css.of_string input with
+      (match Css.of_string ~strict:false input with
       | Error _ -> incr parse_err
-      | Ok css -> (
+      | Ok parsed -> (
           if trace_phase then Fmt.epr "pair_%04d print\n%!" i;
           match
-            Css.to_string ~minify:true ~optimize:true ~newline:false css
+            Css.to_string ~minify:true ~optimize:true ~newline:false
+              parsed.Css.stylesheet
           with
           | s when s = expected -> incr pass
           | _ -> incr fail

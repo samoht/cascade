@@ -298,9 +298,7 @@ module Font_face = Font_face
 
 (* CSS Parsing *)
 
-type parse_error = Error.t * string
-
-let pp_parse_error (err, filename) =
+let pp_parse_warning (err, filename) =
   String.concat "" [ filename; ": "; Error.to_string err ]
 
 (* Include all public APIs except Stylesheet *)
@@ -756,26 +754,20 @@ type parse_result = { stylesheet : t; warnings : parse_warning list }
 
 let of_string ?(strict = false) ?(filename = "<string>")
     ?(meta = Loc.default_meta_level) css =
-  if not strict then
-    (* Default: fail-fast on fatal syntax errors only. Section 5.3 recovery
-       still happens; recoverable warnings are silent. Use {!parse} to inspect
-       them without committing to strict semantics. *)
-    let reader = Cursor.of_string ~meta css in
-    try Ok (read_stylesheet reader)
-    with Cursor.Parse_error error -> Error (error, filename)
-  else
-    (* Strict: route through partial-recovery so every typed warning surfaces,
-       then promote the first one to [Error]. Useful for linters and CI gates
-       that want unknown at-rules / properties / invalid values to fail. *)
+  try
     let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
-    match warnings with
-    | [] -> Ok stylesheet
-    | first :: _ -> Error (first, filename)
+    let warnings = List.map (fun e -> (e, filename)) warnings in
+    if strict then
+      match warnings with
+      | [] -> Ok { stylesheet; warnings }
+      | first :: _ -> Error first
+    else Ok { stylesheet; warnings }
+  with Error.Parse_error error -> Error (error, filename)
 
-let parse ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
-  let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
-  let warnings = List.map (fun e -> (e, filename)) warnings in
-  { stylesheet; warnings }
+let of_string_exn ?strict ?filename ?meta css =
+  match of_string ?strict ?filename ?meta css with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error (error, _) -> Error.fail error
 
 let rec statements_for_inline statement =
   let inline_block block = List.concat_map statements_for_inline block in

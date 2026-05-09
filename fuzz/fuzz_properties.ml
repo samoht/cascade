@@ -46,16 +46,26 @@ let check_reader reader printer input =
       | Some _ ->
           fail (Fmt.str "serialized property left trailing input: %S" once))
 
-let reject_reader reader property input =
-  let r = Cursor.of_string input in
-  match
-    try Some (reader r)
-    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-  with
-  | None -> ()
-  | Some _ when Cursor.is_done r ->
-      fail (Fmt.str "%s invalid value parsed: %S" property input)
-  | Some _ -> ()
+let assert_invalid_declaration_contract label input =
+  let css = ".x{" ^ input ^ "}" in
+  match Css.of_string ~strict:true css with
+  | Ok parsed ->
+      fail
+        (Fmt.str "%s parsed strictly as invalid declaration: %S -> %S" label
+           input
+           (Css.to_string ~minify:true parsed.Css.stylesheet))
+  | Error _ ->
+      let { Css.warnings; stylesheet } =
+        match Css.of_string ~strict:false css with
+        | Ok parsed -> parsed
+        | Error err ->
+            fail
+              (Fmt.str "%s did not recover leniently: %s" label
+                 (Css.pp_parse_warning err))
+      in
+      ignore (Css.to_string ~minify:true stylesheet : string);
+      if warnings = [] then
+        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
 
 let check_reader_crash_safety reader printer input =
   let r = Cursor.of_string input in
@@ -253,8 +263,9 @@ let test_generated_valid_property_idempotent buf =
   run (valid_value property buf)
 
 let test_invalid_property_rejected buf =
-  let property, run = generated_property_vector buf in
-  run (invalid_value property buf)
+  let property, _run = generated_property_vector buf in
+  assert_invalid_declaration_contract "generated invalid property"
+    (property ^ ":" ^ invalid_value property buf)
 
 let test_css_wide_keywords_parse buf =
   let property, run = generated_property_vector buf in
@@ -266,7 +277,7 @@ let test_css_wide_keywords_parse buf =
   | _ -> run keyword
 
 let test_css_wide_mixes_rejected buf =
-  let property, run = generated_property_vector buf in
+  let property, _run = generated_property_vector buf in
   let keyword =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 3
   in
@@ -288,24 +299,18 @@ let test_css_wide_mixes_rejected buf =
     | "clip-path" -> keyword ^ " inset(1px)"
     | _ -> keyword ^ " " ^ valid_value property buf
   in
-  run value
+  assert_invalid_declaration_contract "CSS-wide property mix"
+    (property ^ ":" ^ value)
 
 type property_grammar_vector = {
   property : string;
   positives : string list;
   negatives : string list;
   accept : string -> unit;
-  reject : string -> unit;
 }
 
 let vector property reader printer positives negatives =
-  {
-    property;
-    positives;
-    negatives;
-    accept = check_reader reader printer;
-    reject = reject_reader reader property;
-  }
+  { property; positives; negatives; accept = check_reader reader printer }
 
 let property_grammar_vectors =
   [
@@ -523,7 +528,8 @@ let test_property_grammar_manifest_valid buf =
 
 let test_property_grammar_manifest_invalid buf =
   let row = pick property_grammar_vectors buf 0 in
-  row.reject (pick row.negatives buf 1)
+  assert_invalid_declaration_contract "property grammar manifest invalid"
+    (row.property ^ ":" ^ pick row.negatives buf 1)
 
 let test_property_manifest_kinds _buf =
   let names = List.map (fun row -> row.property) property_grammar_vectors in
@@ -680,12 +686,7 @@ let assert_decl_roundtrip label input =
                label input serialized))
 
 let assert_decl_reject label input =
-  match parse_declaration input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "%s invalid declaration parsed: %S -> %S" label input
-           (Css.Declaration.string_of_declaration ~minify:true decl))
+  assert_invalid_declaration_contract label input
 
 let invalid_property_mutation
     (row : Cascade_spec_inventory.Property_grammar.row) value buf =
@@ -747,13 +748,7 @@ let test_inventory_negative_values buf =
   let row = pick rows buf 0 in
   let value = pick row.negatives buf 1 in
   let input = row.property ^ ":" ^ value in
-  match parse_declaration input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "deterministic manifest negative declaration parsed: %S -> %S"
-           input
-           (Css.Declaration.string_of_declaration ~minify:true decl))
+  assert_invalid_declaration_contract "deterministic manifest negative" input
 
 let test_inventory_var_values buf =
   if List.length property_inventory < 431 then
@@ -1060,13 +1055,7 @@ let negative_branch_vectors =
   ]
 
 let assert_branch_reject input =
-  match parse_declaration input with
-  | None -> ()
-  | Some decl ->
-      fail
-        (Fmt.str "property branch-depth negative declaration parsed: %S -> %S"
-           input
-           (Css.Declaration.string_of_declaration ~minify:true decl))
+  assert_invalid_declaration_contract "property branch-depth negative" input
 
 let test_value_branch_negative buf =
   assert_branch_reject (pick negative_branch_vectors buf 3)

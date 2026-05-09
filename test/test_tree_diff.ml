@@ -2,8 +2,7 @@
 
 open Cascade
 
-let parse css =
-  match Css.of_string css with Ok s -> s | Error _ -> failwith "parse"
+let parse css = Css.of_string_exn ~strict:false css
 
 (* ===== Identical stylesheets ===== *)
 

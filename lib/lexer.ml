@@ -393,72 +393,71 @@ let would_start_unicode_range r =
 
 (* 4.3.14 Consume a unicode-range token. Assumes [would_start_unicode_range]
    just returned true. *)
+let consume_unicode_range_hex r buf =
+  let rec loop n =
+    match (n, Reader.peek r) with
+    | 6, _ -> n
+    | _, Some c when is_hex c ->
+        Buffer.add_char buf c;
+        Reader.skip r;
+        loop (n + 1)
+    | _ -> n
+  in
+  loop 0
+
+let consume_unicode_range_wildcards r n_hex =
+  let rec loop n =
+    match (n_hex + n, Reader.peek r) with
+    | 6, _ -> n
+    | _, Some '?' ->
+        Reader.skip r;
+        loop (n + 1)
+    | _ -> n
+  in
+  loop 0
+
+let unicode_range_has_tail r =
+  match Reader.peek_string r 2 with
+  | s when String.length s = 2 && s.[0] = '-' && is_hex s.[1] -> true
+  | _ -> false
+
+let unicode_range_value s = int_of_string ("0x" ^ s)
+
+let unicode_range_wildcard_token start_repr n_q =
+  let start_value = unicode_range_value (start_repr ^ String.make n_q '0') in
+  let end_value = unicode_range_value (start_repr ^ String.make n_q 'F') in
+  let form =
+    Token.Wildcard { prefix_width = String.length start_repr; wildcards = n_q }
+  in
+  Unicode_range { start_value; end_value; form }
+
+let unicode_range_tail_token r start_repr start_value =
+  Reader.skip r;
+  let end_buf = Buffer.create 6 in
+  ignore (consume_unicode_range_hex r end_buf : int);
+  let end_repr = Buffer.contents end_buf in
+  let end_value = unicode_range_value end_repr in
+  let form =
+    Token.Range
+      {
+        start_width = String.length start_repr;
+        end_width = String.length end_repr;
+      }
+  in
+  Unicode_range { start_value; end_value; form }
+
 let consume_unicode_range_token r =
   Reader.skip r;
   Reader.skip r;
   let buf = Buffer.create 6 in
-  let rec consume_hex n =
-    if n = 6 then n
-    else
-      match Reader.peek r with
-      | Some c when is_hex c ->
-          Buffer.add_char buf c;
-          Reader.skip r;
-          consume_hex (n + 1)
-      | _ -> n
-  in
-  let n_hex = consume_hex 0 in
-  let rec consume_q n =
-    if n_hex + n = 6 then n
-    else
-      match Reader.peek r with
-      | Some '?' ->
-          Reader.skip r;
-          consume_q (n + 1)
-      | _ -> n
-  in
-  let n_q = consume_q 0 in
+  let n_hex = consume_unicode_range_hex r buf in
+  let n_q = consume_unicode_range_wildcards r n_hex in
   let start_repr = Buffer.contents buf in
-  let hex_value s = int_of_string ("0x" ^ s) in
-  if n_q > 0 then
-    let start_value = hex_value (start_repr ^ String.make n_q '0') in
-    let end_value = hex_value (start_repr ^ String.make n_q 'F') in
-    let form =
-      Token.Wildcard
-        { prefix_width = String.length start_repr; wildcards = n_q }
-    in
-    Unicode_range { start_value; end_value; form }
+  if n_q > 0 then unicode_range_wildcard_token start_repr n_q
   else
-    let start_value = hex_value start_repr in
-    let has_range_tail =
-      match Reader.peek_string r 2 with
-      | s when String.length s = 2 && s.[0] = '-' && is_hex s.[1] -> true
-      | _ -> false
-    in
-    if has_range_tail then (
-      Reader.skip r;
-      let end_buf = Buffer.create 6 in
-      let rec consume_end n =
-        if n = 6 then ()
-        else
-          match Reader.peek r with
-          | Some c when is_hex c ->
-              Buffer.add_char end_buf c;
-              Reader.skip r;
-              consume_end (n + 1)
-          | _ -> ()
-      in
-      consume_end 0;
-      let end_repr = Buffer.contents end_buf in
-      let end_value = hex_value end_repr in
-      let form =
-        Token.Range
-          {
-            start_width = String.length start_repr;
-            end_width = String.length end_repr;
-          }
-      in
-      Unicode_range { start_value; end_value; form })
+    let start_value = unicode_range_value start_repr in
+    if unicode_range_has_tail r then
+      unicode_range_tail_token r start_repr start_value
     else
       let form = Token.Single { width = String.length start_repr } in
       Unicode_range { start_value; end_value = start_value; form }

@@ -65,10 +65,13 @@ type rejected_candidate = { tool : string; css : string; reason : string }
 let display_css css = if css = "" then "<empty>" else css
 
 let cascade_minify input =
-  match Css.of_string input with
-  | Error e -> Parse_error (Css.pp_parse_error e)
-  | Ok css -> (
-      match Css.to_string ~minify:true ~optimize:true ~newline:false css with
+  match Css.of_string ~strict:false input with
+  | Error e -> Parse_error (Css.pp_parse_warning e)
+  | Ok parsed -> (
+      match
+        Css.to_string ~minify:true ~optimize:true ~newline:false
+          parsed.Css.stylesheet
+      with
       | s -> Mismatch s
       | exception Invalid_argument msg ->
           Parse_error ("invalid_argument: " ^ msg))
@@ -161,10 +164,13 @@ let shortest_length (candidates : candidate list) =
 let canonical_minified css =
   if css = "" then Ok ""
   else
-    match Css.of_string css with
-    | Error e -> Error (Css.pp_parse_error e)
-    | Ok css -> (
-        match Css.to_string ~minify:true ~optimize:true ~newline:false css with
+    match Css.of_string ~strict:false css with
+    | Error e -> Error (Css.pp_parse_warning e)
+    | Ok parsed -> (
+        match
+          Css.to_string ~minify:true ~optimize:true ~newline:false
+            parsed.Css.stylesheet
+        with
         | s -> Ok s
         | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 
