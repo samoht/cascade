@@ -201,9 +201,10 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
   | Universal ->
-      (* For universal syntax "*", accept any CSS value — serialise the
-         remaining components back to source text. *)
-      Cursor.string_of_remaining ~trim:true reader
+      (* For universal syntax "*", accept any CSS value — consume the remaining
+         components and serialise them back to source text so the surrounding
+         [expect_eof] sees an empty cursor. *)
+      Cursor.consume_remaining_as_string ~trim:true reader
   | String -> Cursor.string ~trim:true reader
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader

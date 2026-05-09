@@ -583,7 +583,7 @@ let namespace_case () =
   (* Test namespace roundtrips *)
   check_stylesheet ~expected:"@namespace \"http://www.w3.org/1999/xhtml\";"
     "@namespace url(http://www.w3.org/1999/xhtml);";
-  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
+  check_stylesheet ~expected:"@namespace svg\"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
     ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
@@ -1424,11 +1424,10 @@ let spec_s8_rule_shapes () =
   expect_parse_error "@media print"
 
 let spec_namespace_serialization () =
-  (* CSS Namespaces: a prefixed namespace rule serializes as [@namespace
-     <prefix> <namespace-url>;]. The whitespace between prefix and URL is
-     required syntax, not an implementation formatting choice. Under minify, URL
-     tokens use the shorter string spelling when possible. *)
-  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
+  (* CSS Namespaces: minified prefixed namespace rules can omit whitespace
+     between the prefix ident and URL token while preserving token boundaries.
+     URL tokens use the shorter string spelling when possible. *)
+  check_stylesheet ~expected:"@namespace svg\"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
     ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"

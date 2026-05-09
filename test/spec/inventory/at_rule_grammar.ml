@@ -26,7 +26,7 @@ let positive =
       "@import url(layout.css) layer(framework.component) supports(display: \
        grid) screen and (width >= 40em);";
     row "namespace" "prefixed-url"
-      "@namespace svg \"http://www.w3.org/2000/svg\";"
+      "@namespace svg\"http://www.w3.org/2000/svg\";"
       "@namespace svg url(http://www.w3.org/2000/svg);";
     row "layer" "statement-order" "@layer reset,theme,components;"
       "@layer reset, theme, components;";
