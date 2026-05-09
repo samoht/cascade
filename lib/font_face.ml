@@ -1,5 +1,7 @@
 (** Font-face descriptor types for type-safe [\@font-face] construction. *)
 
+open Syntax
+
 (** {1 Metric Override Types} *)
 
 (** Metric override value - either "normal" or a percentage. Used for
@@ -35,11 +37,6 @@ and src = src_entry list
 (** Font source list. *)
 
 type t = src
-
-let url_needs_quotes s =
-  String.exists
-    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-    s
 
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
    Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3

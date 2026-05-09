@@ -23,6 +23,8 @@
                        | ( <any-value> )
     v} *)
 
+open Syntax
+
 type property_name = Property_name of string
 
 type declaration_feature =
@@ -337,15 +339,6 @@ let rec components_are_closed cvs =
           terminated && components_are_closed arguments
       | Component.Preserved _ -> true)
     cvs
-
-let split_top_level_colon cvs =
-  let rec loop before = function
-    | [] -> None
-    | Component.Preserved { kind = Token.Colon; _ } :: after ->
-        Some (List.rev before, after)
-    | cv :: rest -> loop (cv :: before) rest
-  in
-  loop [] cvs
 
 let contains_top_level_semicolon =
   List.exists (function
