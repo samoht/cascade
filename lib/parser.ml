@@ -5,6 +5,7 @@
     token stream, producing the IR defined in {!Component}. *)
 
 open Component
+open Syntax
 
 type t = { lexer : Lexer.t; mutable lookback : Component.t option }
 
@@ -97,8 +98,6 @@ let add_hex_escape buf c =
   Buffer.add_char buf (hex_digit (code land 0xF));
   Buffer.add_char buf ' '
 
-let is_ident_continue_ascii = Syntax.is_ascii_ident_continue
-
 let add_hex_escape_cp buf cp =
   Buffer.add_char buf '\\';
   let rec emit n acc =
@@ -125,7 +124,7 @@ let escape_ident s =
             add_hex_escape_cp buf cp
           else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
           else if cp < 0x80 then
-            if is_ident_continue_ascii (Char.chr cp) then
+            if is_ascii_ident_continue (Char.chr cp) then
               Buffer.add_char buf (Char.chr cp)
             else (
               Buffer.add_char buf '\\';
@@ -146,7 +145,7 @@ let escape_name s =
         let cp = Uchar.to_int u in
         if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
         else if cp < 0x80 then
-          if is_ident_continue_ascii (Char.chr cp) then
+          if is_ascii_ident_continue (Char.chr cp) then
             Buffer.add_char buf (Char.chr cp)
           else (
             Buffer.add_char buf '\\';

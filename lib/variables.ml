@@ -3,6 +3,7 @@
 open Values
 open Properties
 open Declaration
+open Syntax
 include Variables_intf
 
 (** {1 Custom Property Support} *)
@@ -112,21 +113,17 @@ let rec pp_value : type a. a syntax -> a Pp.t =
         value
   | Ident_keyword name -> Pp.string ctx name
 
-(* CSS Properties and Values API 1 §2 lists the named [<...>] type references.
-   Bare ident keywords match the [<custom-ident>] shape so a leading letter
-   followed by ident-cont characters counts; this rejects stray punctuation. *)
-let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-
-let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
-
+(* CSS Properties and Values API 1 section 2 lists the named [<...>] type
+   references. Bare ident keywords match the [<custom-ident>] shape so a leading
+   letter followed by ident-continue characters counts; this rejects stray
+   punctuation. *)
 let is_ident_keyword s =
   String.length s > 0
-  && is_ident_start s.[0]
+  && is_ascii_ident_start s.[0]
   &&
   let rec loop i =
     if i = String.length s then true
-    else if is_ident_cont s.[i] then loop (i + 1)
+    else if is_ascii_ident_continue s.[i] then loop (i + 1)
     else false
   in
   loop 1

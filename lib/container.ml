@@ -1,5 +1,7 @@
 (** CSS container query condition types *)
 
+open Syntax
+
 type component_values = Values.component_values
 
 type t =
@@ -190,11 +192,6 @@ let rec kind = function
   | Named (_, cond) -> kind cond
   | And _ | Or _ | Not _ | Style _ | Scroll_state _ | Feature_query _ -> Other
 
-let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-
-let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
-
 let contains_var_function s =
   let len = String.length s in
   let rec loop i =
@@ -238,9 +235,9 @@ let split_named s =
   let s = String.trim s in
   let len = String.length s in
   let rec ident_end i =
-    if i < len && is_ident_cont s.[i] then ident_end (i + 1) else i
+    if i < len && is_ascii_ident_continue s.[i] then ident_end (i + 1) else i
   in
-  if len = 0 || not (is_ident_start s.[0]) then None
+  if len = 0 || not (is_ascii_ident_start s.[0]) then None
   else
     let stop = ident_end 0 in
     match first_non_ws s stop with
@@ -254,15 +251,6 @@ let ident_component = function
 
 let is_custom_property name =
   String.length name >= 2 && name.[0] = '-' && name.[1] = '-'
-
-let split_declaration_components cvs =
-  let rec loop before = function
-    | [] -> None
-    | Component.Preserved { kind = Token.Colon; _ } :: after ->
-        Some (List.rev before, after)
-    | cv :: rest -> loop (cv :: before) rest
-  in
-  loop [] cvs
 
 let has_semicolon_component =
   List.exists (function
@@ -310,7 +298,7 @@ let style_leaf_body body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
   let components = Cursor.remaining (Cursor.of_string body) in
-  match split_declaration_components components with
+  match split_top_level_colon components with
   | Some (name_components, value) -> (
       match (style_strip_ws name_components, style_strip_ws value) with
       | [ name_component ], stripped_value
@@ -337,7 +325,9 @@ let top_level_word s word =
   let depth = ref 0 in
   let result = ref None in
   let i = ref 0 in
-  let is_boundary i = i < 0 || i >= len || not (is_ident_cont s.[i]) in
+  let is_boundary i =
+    i < 0 || i >= len || not (is_ascii_ident_continue s.[i])
+  in
   while !result = None && !i + wlen <= len do
     (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
     if

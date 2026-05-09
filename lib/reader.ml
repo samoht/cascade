@@ -312,9 +312,7 @@ let would_start_identifier t =
     | _ -> false
 
 let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9') || c = '-'
-
-let is_hex c =
-  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+let is_hex = Syntax.is_hex
 
 (* Encode a Unicode codepoint as UTF-8. Out-of-range, surrogate, or negative
    inputs fall back to U+FFFD, matching CSS Syntax section 3.3. *)
