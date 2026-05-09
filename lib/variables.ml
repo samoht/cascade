@@ -209,9 +209,9 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader
   | Image -> Properties.read_background_image reader
-  | Transform_function -> Cursor.string_of_remaining ~trim:true reader
-  | Transform_list -> Cursor.string_of_remaining ~trim:true reader
-  | Resolution -> Cursor.string_of_remaining ~trim:true reader
+  | Transform_function -> Cursor.consume_remaining_as_string ~trim:true reader
+  | Transform_list -> Cursor.consume_remaining_as_string ~trim:true reader
+  | Resolution -> Cursor.consume_remaining_as_string ~trim:true reader
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader
@@ -291,6 +291,7 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Val _ -> []
   | Var v -> [ V v ]
   | Num _ -> []
+  | Math_const _ -> []
   | Math_fn _ -> []
   | Sibling_index -> []
   | Sibling_count -> []
@@ -603,7 +604,7 @@ and vars_of_number_calc (calc : Values.number calc) : any_var list =
   | Expr (left, _, right) ->
       vars_of_number_calc left @ vars_of_number_calc right
   | Nested inner | Parens inner -> vars_of_number_calc inner
-  | Num _ | Math_fn _ | Sibling_index | Sibling_count -> []
+  | Num _ | Math_const _ | Math_fn _ | Sibling_index | Sibling_count -> []
 
 let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
   match value with

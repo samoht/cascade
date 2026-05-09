@@ -916,8 +916,8 @@ module Calc_residual = struct
     | Values.Var _ -> true
     | Values.Nested inner | Values.Parens inner -> contains_var inner
     | Values.Expr (left, _, right) -> contains_var left || contains_var right
-    | Values.Num _ | Values.Val _ | Values.Math_fn _ | Values.Sibling_index
-    | Values.Sibling_count ->
+    | Values.Num _ | Values.Val _ | Values.Math_const _ | Values.Math_fn _
+    | Values.Sibling_index | Values.Sibling_count ->
         false
 
   let simplify (type a) ?resolve_fallback ?layer_order ?layer cascade
@@ -940,6 +940,7 @@ module Calc_residual = struct
               Values.Var
                 (simplify_var_record ~simplify:simplify_resolved ~visited var))
       | Values.Num _ as leaf -> leaf
+      | Values.Math_const _ as leaf -> leaf
       | Values.Math_fn _ as leaf -> leaf
       | Values.Sibling_index -> Values.Sibling_index
       | Values.Sibling_count -> Values.Sibling_count
@@ -977,11 +978,15 @@ module Calc_residual = struct
           | _ -> Values.Expr (left, op, right))
       | Values.Nested inner -> (
           match fold_calc inner with
-          | (Values.Val _ | Values.Num _ | Values.Var _) as leaf -> leaf
+          | (Values.Val _ | Values.Num _ | Values.Math_const _ | Values.Var _)
+            as leaf ->
+              leaf
           | reduced -> Values.Nested reduced)
       | Values.Parens inner -> (
           match fold_calc inner with
-          | (Values.Val _ | Values.Num _ | Values.Var _) as leaf -> leaf
+          | (Values.Val _ | Values.Num _ | Values.Math_const _ | Values.Var _)
+            as leaf ->
+              leaf
           | reduced -> Values.Parens reduced)
       | leaf -> leaf
     and simplify_calc ?(preserve = false) ~visited (calc : a Values.calc) :
@@ -1173,15 +1178,16 @@ module Length = struct
         Values.length Values.calc =
       let open Values in
       match calc with
-      | Num _ | Val _ | Var _ | Math_fn _ | Sibling_index | Sibling_count ->
+      | Num _ | Val _ | Var _ | Math_const _ | Math_fn _ | Sibling_index
+      | Sibling_count ->
           calc
       | Nested inner -> (
           match eval ctx inner with
-          | (Val _ | Num _ | Var _) as leaf -> leaf
+          | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
           | reduced -> Nested reduced)
       | Parens inner -> (
           match eval ctx inner with
-          | (Val _ | Num _ | Var _) as leaf -> leaf
+          | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
           | reduced -> Parens reduced)
       | Expr (l, op, r) -> (
           let l = eval ctx l in

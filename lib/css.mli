@@ -644,6 +644,9 @@ type 'a calc =
   | Var of 'a var  (** CSS variable *)
   | Val of 'a
   | Num of float  (** Unitless number *)
+  | Math_const of math_const
+      (** CSS Values 4 §10.7.1 math constant ([pi], [e], [infinity],
+          [-infinity], [NaN]) preserved verbatim through pretty pp. *)
   | Sibling_index  (** CSS [sibling-index()] math function. *)
   | Sibling_count  (** CSS [sibling-count()] math function. *)
   | Expr of 'a calc * calc_op * 'a calc

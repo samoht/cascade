@@ -497,6 +497,8 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
     | Val v -> pp_value ctx v
     | Var v -> pp_var pp_value ctx v
     | Num n -> Pp.float ctx n
+    | Math_const c when Pp.minified ctx -> Pp.float ctx (math_const_value c)
+    | Math_const c -> pp_math_const ctx c
     | Math_fn fn when Pp.minified ctx -> (
         match eval_math_fn fn with
         | Some v -> Pp.float ctx v
@@ -543,6 +545,7 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    zeros to [Num 0.] before this generic fold. *)
 let rec eval_calc : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
@@ -603,6 +606,7 @@ let pp_unit ?(always = true) ctx f suffix =
     Returns None if the expression contains variables or non-numeric values. *)
 let rec eval_numeric_calc : type a. a calc -> float option = function
   | Num f -> Some f
+  | Math_const c -> Some (math_const_value c)
   | Math_fn fn -> eval_math_fn fn
   | Sibling_index -> None
   | Sibling_count -> None
@@ -644,6 +648,7 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Num f -> Num f
   | Sibling_index -> Sibling_index
   | Sibling_count -> Sibling_count
+  | Math_const c -> Math_const c
   | Math_fn fn -> Math_fn fn
   | Nested inner -> Nested (map_calc f inner)
   | Parens inner -> Parens (map_calc f inner)
@@ -896,8 +901,8 @@ let length_is_zero = function
 
 let rec normalize_length_calc_zeros : length calc -> length calc = function
   | Val v when length_is_zero v -> Num 0.
-  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _) as leaf
-    ->
+  | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
+    | Math_fn _ ) as leaf ->
       leaf
   | Nested c -> Nested (normalize_length_calc_zeros c)
   | Parens c -> Parens (normalize_length_calc_zeros c)
@@ -996,7 +1001,9 @@ let rec resolve_length_calc_vars ctx : length calc -> length calc = function
         ( resolve_length_calc_vars ctx left,
           op,
           resolve_length_calc_vars ctx right )
-  | (Val _ | Num _ | Sibling_index | Sibling_count | Math_fn _) as leaf -> leaf
+  | (Val _ | Num _ | Math_const _ | Sibling_index | Sibling_count | Math_fn _)
+    as leaf ->
+      leaf
 
 (* CSS Values 4 10.7: same-unit add/sub of two typed lengths reduces to a single
    length. Mixed-unit cases stay as a [calc] expression because the resolved
@@ -1025,6 +1032,7 @@ let rec eval_length_calc : length calc -> length calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
@@ -1330,7 +1338,9 @@ let linear_length_terms calc =
   let rec aux = function
     | Val length -> Option.map (fun term -> [ term ]) (unit_of_length length)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
+    | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
+      ->
+        None
     | Nested inner | Parens inner -> aux inner
     | Expr (left, Add, right) -> (
         match (aux left, aux right) with
@@ -1371,8 +1381,8 @@ let lp_is_zero (v : length_percentage) =
 let rec normalize_lp_calc_zeros :
     length_percentage calc -> length_percentage calc = function
   | Val v when lp_is_zero v -> Num 0.
-  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _) as leaf
-    ->
+  | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
+    | Math_fn _ ) as leaf ->
       leaf
   | Nested c -> Nested (normalize_lp_calc_zeros c)
   | Parens c -> Parens (normalize_lp_calc_zeros c)
@@ -1419,7 +1429,9 @@ let rec resolve_lp_calc_vars ctx :
   | Parens inner -> Parens (resolve_lp_calc_vars ctx inner)
   | Expr (left, op, right) ->
       Expr (resolve_lp_calc_vars ctx left, op, resolve_lp_calc_vars ctx right)
-  | (Val _ | Num _ | Sibling_index | Sibling_count | Math_fn _) as leaf -> leaf
+  | (Val _ | Num _ | Math_const _ | Sibling_index | Sibling_count | Math_fn _)
+    as leaf ->
+      leaf
 
 let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
     length_percentage option =
@@ -1448,6 +1460,7 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
@@ -1498,7 +1511,9 @@ let linear_lp_terms calc =
   let rec aux = function
     | Val value -> Option.map (fun term -> [ term ]) (unit_of_lp value)
     | Num 0. -> Some []
-    | Num _ | Var _ | Sibling_index | Sibling_count | Math_fn _ -> None
+    | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
+      ->
+        None
     | Nested inner | Parens inner -> aux inner
     | Expr (left, Add, right) -> (
         match (aux left, aux right) with
@@ -2425,8 +2440,10 @@ and pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f -> Pp.float ctx f
-  | Numeric { value; repr } ->
-      if Pp.minified ctx then Pp.float ctx value else Pp.string ctx repr
+  | Numeric { value; repr = _ } ->
+      (* CSSOM serialisation (CSS Values 4 §6.7.2) drops a leading zero on
+         fractional numbers: emit [.25] not [0.25] in both modes. *)
+      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true value)
   | Pct f when Pp.minified ctx ->
       (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
          [<number>] form divided by 100. Under minification, emit the shorter
@@ -2556,22 +2573,32 @@ let rec pp_rgb : rgb Pp.t =
   | Var v -> pp_var pp_rgb ctx v
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
-  let can_follow_percentage_without_space = function
-    | '0' .. '9' | '.' | '+' | '-' -> true
-    | 'A' .. 'Z' | 'a' .. 'z' | '_' -> true
-    | _ -> false
+  (* Under minify, when the previous channel ended with [%] (or a closing paren
+     from [var()]/[calc()]) the separator collapses: the next token has its own
+     boundary and cannot extend the previous one. After [none] or a bare number
+     the space stays since merging would either extend the ident or grow the
+     number. *)
+  let next_safe s =
+    match s with
+    | "" -> false
+    | s -> (
+        match s.[0] with
+        | '0' .. '9' | '.' | '+' | '-' | '#' -> true
+        | _ -> false)
   in
-  match (Pp.minified ctx, l, next) with
-  | true, Some (Pct _), Some s
-    when String.length s > 0 && can_follow_percentage_without_space s.[0] ->
-      ()
-  | _ -> Pp.space ctx ()
+  let elidable =
+    Pp.minified ctx
+    && (match l with Some (Pct _ | Var _ | Calc _) -> true | _ -> false)
+    && match next with Some s -> next_safe s | None -> false
+  in
+  if not elidable then Pp.space ctx ()
 
-(** Lab-like float string with precision control. Non-minified output keeps the
-    regular leading zero; minified output uses the shorter leading-zero-free
-    spelling. *)
+(** Lab-like float string with precision control. CSSOM serialisation (CSS
+    Values 4 §6.7.2) drops a leading zero on fractional numbers in both pretty
+    and minified output; minified output additionally rounds to 6 sig digits for
+    compactness. *)
 let string_of_lab_float ~max_decimals ctx f =
-  Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) ~max_decimals
+  Pp.string_of_float ~drop_leading_zero:true ~max_decimals
     (if ctx.Pp.minify then Pp.round_sig 6 f else f)
 
 let pp_lab_float ~max_decimals ctx f =
@@ -2584,10 +2611,6 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
     if String.length pct < String.length n then pct else n
   else n
 
-let ends_with_pct s =
-  let len = String.length s in
-  len > 0 && s.[len - 1] = '%'
-
 let starts_unsigned_number s =
   String.length s > 0
   && match s.[0] with '0' .. '9' | '.' -> true | _ -> false
@@ -2596,22 +2619,18 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   (match l with Some l -> pp_percentage ctx l | None -> Pp.string ctx "none");
-  let c_ends_with_pct =
-    match c with
-    | Some c ->
-        let c =
-          string_of_scaled_color_axis ~max_decimals:8
-            ~pct_scale:chroma_pct_scale ctx c
-        in
-        space_after_color_percentage ctx l ~next:(Some c);
-        Pp.string ctx c;
-        ends_with_pct c
-    | None ->
-        space_after_color_percentage ctx l ~next:(Some "none");
-        Pp.string ctx "none";
-        false
-  in
-  if not (ctx.Pp.minify && c_ends_with_pct) then Pp.space ctx ();
+  (match c with
+  | Some c ->
+      let c =
+        string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale
+          ctx c
+      in
+      space_after_color_percentage ctx l ~next:(Some c);
+      Pp.string ctx c
+  | None ->
+      space_after_color_percentage ctx l ~next:(Some "none");
+      Pp.string ctx "none");
+  Pp.space ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
@@ -3761,11 +3780,11 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
           match Cursor.ident_opt t with
           | Some name -> (
               match String.lowercase_ascii name with
-              | "pi" -> Num Float.pi
-              | "e" -> Num (Float.exp 1.)
-              | "infinity" -> Num Float.infinity
-              | "-infinity" -> Num Float.neg_infinity
-              | "nan" -> Num Float.nan
+              | "pi" -> Math_const Pi
+              | "e" -> Math_const E
+              | "infinity" -> Math_const Infinity
+              | "-infinity" -> Math_const Neg_infinity
+              | "nan" -> Math_const Nan
               | _ ->
                   Cursor.restore t snap;
                   Cursor.err t "expected math constant")
@@ -5292,7 +5311,9 @@ and read_number_function t =
       let name = String.lowercase_ascii name in
       match name with
       | "var" -> Some (Var (read_var read_number t))
-      | "calc" -> Some (Calc (read_calc read_number t))
+      | "calc" ->
+          let read_number_dim_only t = Cursor.err t "expected numeric factor" in
+          Some (Calc (read_calc read_number_dim_only t))
       | "min" ->
           Some
             (Num

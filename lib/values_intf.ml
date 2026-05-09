@@ -85,6 +85,7 @@ type 'a calc =
   | Var of 'a var
   | Val of 'a
   | Num of float
+  | Math_const of math_const
   | Sibling_index
   | Sibling_count
   | Expr of 'a calc * calc_op * 'a calc

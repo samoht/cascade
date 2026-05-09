@@ -257,12 +257,22 @@ let rec is_important = function
   | Declaration { important; _ } -> important
   | Theme_guarded { decl; _ } -> is_important decl
 
+let is_decl_unknown_property_name name =
+  let r = Cursor.of_string name in
+  match read_any_property r with
+  | Prop (Unknown_property _) ->
+      Cursor.ws r;
+      Cursor.is_done r
+  | Prop _ -> false
+  | exception Cursor.Parse_error _ -> false
+
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known
     spec-violation cascade detected at parse time. The minify-time
     [Optimize.drop_invalid] pass removes such declarations. *)
 let rec is_invalid = function
   | Declaration { property = Unknown_property name; _ } ->
-      not (is_vendor_extension_property_name name)
+      is_decl_unknown_property_name name
+      && not (is_vendor_extension_property_name name)
   | Declaration { property; value; _ } ->
       Properties.is_invalid_value property value
   | Theme_guarded { decl; _ } -> is_invalid decl
