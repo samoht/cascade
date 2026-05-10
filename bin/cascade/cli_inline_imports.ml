@@ -4,11 +4,7 @@ open Cascade
 
 (* CSS allows [@import url("foo.css?v=1")] and [#fragment]. The host filesystem
    doesn't, so strip them before opening the file. *)
-let strip_url_suffix url =
-  let cut_at c s =
-    match String.index_opt s c with Some i -> String.sub s 0 i | None -> s
-  in
-  url |> cut_at '?' |> cut_at '#'
+let strip_url_suffix = Syntax.strip_url_suffix
 
 let is_remote url =
   let starts_with prefix =

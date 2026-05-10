@@ -1,5 +1,6 @@
 (** CSS Selectors - types and pretty printing *)
 
+open Syntax
 include Selector_intf
 
 let pp_component_values = Values.pp_component_values
@@ -122,9 +123,6 @@ let pp_attribute_match : attribute_match Pp.t =
       Pp.string ctx "*=";
       pp_attr_value ~quote ctx value
 
-let is_hex_char c =
-  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-
 let skip_css_escape name i =
   (* Skip escaped sequence: either next char or up to 6 hex digits + optional
      space *)
@@ -135,7 +133,7 @@ let skip_css_escape name i =
     let start = !i in
     let rec consume_hex n =
       if n = 6 || !i >= len then ()
-      else if is_hex_char name.[!i] then (
+      else if is_hex name.[!i] then (
         incr i;
         consume_hex (n + 1))
     in
@@ -270,7 +268,7 @@ let int_of_hex c =
 (* Helper to process hex escape sequences. Returns (codepoint, next_index) *)
 let process_hex_escape s i len =
   let rec consume_hex acc n idx =
-    if n = 6 || idx >= len || not (is_hex_char s.[idx]) then (acc, idx)
+    if n = 6 || idx >= len || not (is_hex s.[idx]) then (acc, idx)
     else consume_hex ((acc * 16) + int_of_hex s.[idx]) (n + 1) (idx + 1)
   in
   let codepoint, next_idx = consume_hex 0 0 (i + 1) in
@@ -287,7 +285,7 @@ let unescape_selector_name s =
     if i + 1 >= len then
       (* Trailing backslash - ignore *)
       len
-    else if is_hex_char s.[i + 1] then (
+    else if is_hex s.[i + 1] then (
       let codepoint, final_idx = process_hex_escape s i len in
       (* CSS Syntax 4.3.7: U+0000, surrogates, and out-of-range code points are
          replaced with U+FFFD rather than passed through. *)
