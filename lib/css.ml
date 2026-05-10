@@ -6,6 +6,7 @@ module Pp = Pp
 module Reader = Reader
 module Loc = Loc
 module Token = Token
+module Syntax = Syntax
 module Lexer = Lexer
 module Component = Component
 module Parser = Parser
