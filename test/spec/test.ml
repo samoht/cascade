@@ -137,6 +137,36 @@ let recover css expected min_warnings =
     (css ^ " warnings") true
     (List.length warnings >= min_warnings)
 
+(* Lenient [preserves_non_minified]: keeps [preserves], drops [drops], warns. *)
+let recover_non_minified css ~preserves ~drops min_warnings =
+  let { stylesheet; warnings } =
+    match of_string ~strict:false css with
+    | Ok parsed -> parsed
+    | Error e -> Alcotest.fail (pp_parse_warning e)
+  in
+  let output = to_string ~minify:false ~newline:false stylesheet in
+  let compact_output = strip_ascii_ws output in
+  List.iter
+    (fun fragment ->
+      let compact_fragment = strip_ascii_ws fragment in
+      if not (contains_substring ~needle:compact_fragment compact_output) then
+        Alcotest.failf
+          "lenient non-minified output for %S did not preserve %S\noutput: %S"
+          css fragment output)
+    preserves;
+  List.iter
+    (fun fragment ->
+      let compact_fragment = strip_ascii_ws fragment in
+      if contains_substring ~needle:compact_fragment compact_output then
+        Alcotest.failf
+          "lenient non-minified output for %S should have dropped %S but kept \
+           it: %S"
+          css fragment output)
+    drops;
+  Alcotest.(check bool)
+    (css ^ " warnings") true
+    (List.length warnings >= min_warnings)
+
 (* {2 CSS Syntax Level 3} https://www.w3.org/TR/css-syntax-3/ *)
 
 (* {2 CSS 2.x compatibility surface} *)
@@ -341,10 +371,10 @@ let selectors_list () =
 let selectors_where_is () =
   roundtrip ":where(.a, .b) { color: red }" ":where(.a,.b){color:red}";
   roundtrip ":is(.a, .b) { color: red }" ":is(.a,.b){color:red}";
-  (* Empty forgiving selector lists are invalid selectors; this parser recovers
-     by dropping the invalid style rule. *)
-  roundtrip ":is() { color: red }" "";
-  roundtrip ":where() { color: red }" "";
+  (* Empty forgiving list: matches-nothing, dropped + warned in lenient mode;
+     strict mode rejects (pinned by [cross_mode_pinning]). *)
+  recover ":is() { color: red }" "" 1;
+  recover ":where() { color: red }" "" 1;
   (* Forgiving-parse drops the invalid branch, leaving a single-argument
      [:is(.a)]. Per shortest-wins (Lightning CSS) the single-argument [:is()]
      unwraps to the bare selector, since [:is(.a)] is spec- equivalent to [.a]
@@ -507,12 +537,11 @@ let cascade_keywords () =
   roundtrip ".x { color: unset }" ".x{color:unset}";
   roundtrip ".x { color: revert }" ".x{color:revert}";
   roundtrip ".x { color: revert-layer }" ".x{color:revert-layer}";
-  (* CSS Cascade 5 section 7.3: CSS-wide keywords are whole-property values.
-     Inside a comma-separated list, [inherit] is invalid CSS. Token-level
-     minifiers such as Lightning CSS and CSSO preserve it verbatim, but
-     spec-aware minification may drop the invalid declaration as browsers do. *)
-  roundtrip ".x { font-family: Arial, inherit }.y { color: red }"
-    ".y{color:red}"
+  (* CSS Cascade L5 SS 7.3: CSS-wide keyword in a list is invalid; cascade drops
+     the declaration like browsers do (Lightning/CSSO would preserve). Lenient
+     mode here, since strict rejects per [cross_mode_pinning]. *)
+  recover ".x { font-family: Arial, inherit }.y { color: red }" ".y{color:red}"
+    1
 
 (* SS 6.6 - @layer declarations and blocks *)
 let cascade_layers () =
@@ -814,11 +843,50 @@ let non_minified_preserves_color_forms () =
   preserves_non_minified ".x { color: currentColor }" [ "currentColor" ]
 
 let fidelity_bad_css_wide_list () =
-  (* Authoring/fidelity mode preserves invalid-but-syntactically-recoverable
-     declaration source; the minifier-only [cascade_keywords] test above covers
-     dropping it when optimizing for spec-equivalent shortest output. *)
-  preserves_non_minified ".x { font-family: Arial, inherit }"
-    [ "font-family: Arial, inherit" ]
+  (* Lenient recovery drops the invalid CSS-wide list decl; valid neighbors stay
+     verbatim in non-minified output. *)
+  recover_non_minified
+    ".x { color: red; font-family: Arial, inherit; background: blue }"
+    ~preserves:[ "color: red"; "background: blue" ]
+    ~drops:[ "Arial, inherit" ] 1
+
+(* Pin: spec-invalid input must Error in strict, Ok+warning in lenient. The fuzz
+   suite (fuzz_declaration [assert_invalid_declaration_contract], fuzz_selector
+   [assert_reject]) relies on this; collapsing the two modes broke 27 fuzz cases
+   at once. Inputs are invalid per Cascade L5 SS 7.3 (CSS-wide keyword mixed
+   with other values) or matches-nothing forgiving lists. *)
+let cross_mode_pinning () =
+  let inputs =
+    [
+      ".x { font-family: Arial, inherit }";
+      ".x { display: block revert }";
+      ".x { margin: 1px inherit }";
+      ":is(:future-pseudo) { color: red }";
+      ":is() { color: red }";
+    ]
+  in
+  List.iter
+    (fun css ->
+      let strict = of_string ~strict:true css in
+      let lenient = of_string ~strict:false css in
+      (match strict with
+      | Error _ -> ()
+      | Ok parsed ->
+          Alcotest.failf
+            "strict mode accepted spec-invalid input %S -> %S. Route fidelity \
+             tests through [of_string ~strict:false] + [recover] instead of \
+             relaxing strict."
+            css
+            (to_string ~minify:true ~newline:false parsed.Css.stylesheet));
+      match lenient with
+      | Error e ->
+          Alcotest.failf "lenient mode failed to recover %S: %s" css
+            (pp_parse_warning e)
+      | Ok { warnings = []; _ } ->
+          Alcotest.failf
+            "lenient mode swallowed spec-invalid input %S without warning" css
+      | Ok _ -> ())
+    inputs
 
 let non_minified_preserves_conditional_forms () =
   preserves_non_minified "@media (min-width: 768px) { .btn { display: block } }"
@@ -1078,6 +1146,9 @@ let () =
             non_minified_preserves_color_forms;
           Alcotest.test_case "fidelity: invalid CSS-wide list forms" `Quick
             fidelity_bad_css_wide_list;
+          Alcotest.test_case
+            "cross-mode: strict rejects, lenient warns on spec-invalid input"
+            `Quick cross_mode_pinning;
           Alcotest.test_case "fidelity: conditional forms" `Quick
             non_minified_preserves_conditional_forms;
           Alcotest.test_case "fidelity: cascade forms" `Quick
