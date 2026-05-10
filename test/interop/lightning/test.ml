@@ -38,26 +38,6 @@ let trace_path =
   if Sys.file_exists local then local
   else Filename.concat "test/interop/lightning/traces" "minify.pairs"
 
-let read_pairs path =
-  let ic = open_in_bin path in
-  let pairs = ref [] in
-  (try
-     while true do
-       let header = input_line ic in
-       Scanf.sscanf header ">>> %d %d" (fun ilen elen ->
-           let buf = Bytes.create (ilen + elen) in
-           really_input ic buf 0 (ilen + elen);
-           let input = Bytes.sub_string buf 0 ilen in
-           let expected = Bytes.sub_string buf ilen elen in
-           pairs := (input, expected) :: !pairs);
-       (* Skip the trailing '\n' separator. *)
-       let _ = input_char ic in
-       ()
-     done
-   with End_of_file -> ());
-  close_in ic;
-  List.rev !pairs
-
 type outcome = Pass | Parse_error of string | Mismatch of string
 type candidate = { tool : string; css : string }
 type rejected_candidate = { tool : string; css : string; reason : string }
@@ -505,5 +485,5 @@ let grouped_cases pairs =
         Some (feature, cases))
 
 let () =
-  let pairs = read_pairs trace_path in
+  let pairs = Trace_pairs.read trace_path in
   Alcotest.run "lightning_minify" (grouped_cases pairs)
