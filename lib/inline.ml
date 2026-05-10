@@ -841,33 +841,40 @@ let live_customs ~consumers ~customs =
   done;
   !live
 
+let same_live_custom (a_path, a_sel, a_name) (b_path, b_sel, b_name, _) =
+  a_path = b_path && a_sel = b_sel && a_name = b_name
+
+let custom_ref_visible ~path_visible ~path ref_name (next_path, _, next_name, _)
+    =
+  next_name = ref_name && path_visible ~scope_path:next_path ~consumer_path:path
+
+let rec reaches_live_custom ~customs ~path_visible target seen
+    (path, sel, name, refs) =
+  let key = (path, sel, name) in
+  if List.mem key seen then false
+  else
+    let reaches_ref ref_name =
+      List.exists
+        (fun next ->
+          custom_ref_visible ~path_visible ~path ref_name next
+          && ((seen <> [] && same_live_custom target next)
+             || reaches_live_custom ~customs ~path_visible target (key :: seen)
+                  next))
+        customs
+    in
+    List.exists reaches_ref refs
+
 let cyclic_live_customs ~consumers ~customs =
   let initially_live = live_customs ~consumers ~customs in
   let path_visible ~scope_path ~consumer_path =
     at_path_prefix ~outer:scope_path ~inner:consumer_path
   in
-  let same_entry (a_path, a_sel, a_name) (b_path, b_sel, b_name, _) =
-    a_path = b_path && a_sel = b_sel && a_name = b_name
-  in
-  let rec reaches target seen (path, sel, name, refs) =
-    let key = (path, sel, name) in
-    if List.mem key seen then false
-    else
-      List.exists
-        (fun ref_name ->
-          List.exists
-            (fun ((next_path, _, next_name, _) as next) ->
-              next_name = ref_name
-              && path_visible ~scope_path:next_path ~consumer_path:path
-              && ((seen <> [] && same_entry target next)
-                 || reaches target (key :: seen) next))
-            customs)
-        refs
-  in
   List.filter
     (fun entry ->
       List.exists
-        (fun custom -> same_entry entry custom && reaches entry [] custom)
+        (fun custom ->
+          same_live_custom entry custom
+          && reaches_live_custom ~customs ~path_visible entry [] custom)
         customs)
     initially_live
 
