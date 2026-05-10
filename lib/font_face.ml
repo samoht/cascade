@@ -130,7 +130,10 @@ let read_function_arg name t =
     | None -> Cursor.consume_remaining_as_string ~trim:true inner
   in
   Cursor.expect_eof inner;
-  let _ = name in
+  (* CSS Fonts 4 §11.1: [local(<family-name>)], [format(<font-format> |
+     <string>)] and [tech(<font-tech>)] all take exactly one argument; an empty
+     body like [format()] is invalid. *)
+  if value = "" then Cursor.err_invalid inner ("empty " ^ name ^ "()");
   value
 
 let read_url t =
