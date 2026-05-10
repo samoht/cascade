@@ -13406,8 +13406,20 @@ let rec read_font_family_single t : font_family =
           t
       in
       if is_multi_word then
-        (* Multi-word unquoted name - read all words *)
-        Name (read_unquoted_name_words [])
+        (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
+           can't be the first word of a multi-word [<custom-ident>+] font-family
+           value (e.g. [initial system-ui] is invalid). *)
+        let first_word = Cursor.lookahead (Cursor.ident ~keep_case:true) t in
+        if
+          List.mem
+            (String.lowercase_ascii first_word)
+            [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
+        then
+          Cursor.err_invalid t
+            "font-family: CSS-wide keyword cannot be mixed with other values"
+        else
+          (* Multi-word unquoted name - read all words *)
+          Name (read_unquoted_name_words [])
       else
         (* Single word - try enum match *)
         read_single_word t
