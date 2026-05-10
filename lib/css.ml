@@ -798,13 +798,17 @@ let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
   in
   let stylesheet =
     if optimize then Optimize.stylesheet stylesheet
-    else if minify then
-      (* CSS-spec-based eliminations: invalid declarations and unknown at-rules
-         drop under [--minify] even without the full optimization pass; the
-         empty rules they leave behind drop too. *)
-      stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
-      |> Optimize.apply_property_duplication |> Optimize.drop_empty_rules
-    else stylesheet
+    else
+      (* Spec recovery: invalid declarations and unknown at-rules drop in both
+         minified and non-minified output (browsers do); empty rules left behind
+         drop too. The full [Optimize.stylesheet] pass also rewrites and merges,
+         which we want only under [--optimize]. *)
+      let stylesheet =
+        stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
+        |> Optimize.drop_empty_rules
+      in
+      if minify then Optimize.apply_property_duplication stylesheet
+      else stylesheet
   in
   Stylesheet.to_string ~minify ~mode ~newline ?theme ~theme_defaults stylesheet
 
