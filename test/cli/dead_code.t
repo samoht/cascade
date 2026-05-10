@@ -368,6 +368,7 @@ the rule is dead and removed.
   > .x { color: blue }
   > EOF
   $ cascade --minify is-empty.css
+  warning: is-empty.css: bad selector: selector matches nothing at [0-34] (in selector)
   .x{color:#00f}
 
 
