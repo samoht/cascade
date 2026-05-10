@@ -129,10 +129,10 @@ let property_name name =
   let parsed =
     try Cursor.ident ~keep_case:true reader
     with Cursor.Parse_error _ ->
-      invalid_arg ("invalid supports declaration property name: " ^ name)
+      failwith ("invalid supports declaration property name: " ^ name)
   in
   if not (Cursor.is_done reader) then
-    invalid_arg ("invalid supports declaration property name: " ^ name);
+    failwith ("invalid supports declaration property name: " ^ name);
   let name =
     if starts_with ~prefix:"--" parsed then parsed
     else String.lowercase_ascii parsed
@@ -158,7 +158,7 @@ let single_ident name args =
   let ident = Cursor.ident ~keep_case:false cursor |> String.lowercase_ascii in
   Cursor.ws cursor;
   Cursor.expect_eof cursor;
-  if ident = "" then invalid_arg ("empty " ^ name ^ "() in @supports");
+  if ident = "" then failwith ("empty " ^ name ^ "() in @supports");
   ident
 
 let func name args =
@@ -174,17 +174,17 @@ let func name args =
     | "font-format" -> (
         match font_format_of_string (single_ident name args) with
         | Some format -> Font_format format
-        | None -> invalid_arg "invalid font-format() in @supports")
+        | None -> failwith "invalid font-format() in @supports")
     | "font-tech" -> (
         match font_tech_of_string (single_ident name args) with
         | Some tech -> Font_tech tech
-        | None -> invalid_arg "invalid font-tech() in @supports")
+        | None -> failwith "invalid font-tech() in @supports")
     | "at-rule" ->
         let cursor = Cursor.of_string args in
         let at_rule =
           match Cursor.at_keyword_opt cursor with
           | Some name -> name
-          | None -> invalid_arg "invalid at-rule() in @supports"
+          | None -> failwith "invalid at-rule() in @supports"
         in
         Cursor.ws cursor;
         Cursor.expect_eof cursor;
@@ -442,18 +442,24 @@ and unwrapped_declaration t =
   | None -> failwith "Expected supports feature"
 
 let of_string ?(allow_unwrapped_decl = false) s =
+  let cursor = ref (Cursor.of_string s) in
+  let raise_bad reason =
+    Error.fail_bad_condition (Cursor.position !cursor) ~at_rule:"@supports"
+      ~reason
+  in
   try
-    let cursor, cond =
-      let cursor = Cursor.of_string s in
-      try (cursor, condition cursor)
+    let cond =
+      try condition !cursor
       with Failure _ when allow_unwrapped_decl ->
-        let cursor = Cursor.of_string s in
-        (cursor, in_parens ~allow_unwrapped_decl cursor)
+        cursor := Cursor.of_string s;
+        in_parens ~allow_unwrapped_decl !cursor
     in
-    Cursor.ws cursor;
-    if not (Cursor.is_done cursor) then failwith "trailing content in @supports";
+    Cursor.ws !cursor;
+    if not (Cursor.is_done !cursor) then raise_bad "trailing content";
     cond
-  with Cursor.Parse_error _ -> failwith "Invalid @supports condition"
+  with
+  | Cursor.Parse_error _ as exn -> raise exn
+  | Failure reason -> raise_bad reason
 
 (* ===== Comparison ===== *)
 

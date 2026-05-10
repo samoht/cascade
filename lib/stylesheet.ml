@@ -1124,13 +1124,12 @@ let read_charset (r : Cursor.t) : statement =
       ~reason:"@charset must end with ';'";
   Charset encoding
 
-(* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
-   into a typed [Error.Parse_error] so the partial-parse catch in
-   [read_statement_of_rule] surfaces it as a warning instead of escaping to the
-   [Css.of_string] caller. *)
+(* Re-anchor [Supports.of_string]'s typed error at the caller's [loc] so the
+   partial-parse catch in [read_statement_of_rule] surfaces it as a warning at
+   the surrounding rule, not at [Loc.dummy]. *)
 let supports_condition ~loc condition =
   try Supports.of_string condition
-  with Failure reason ->
+  with Error.Parse_error { kind = Bad_condition { reason; _ }; _ } ->
     Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
 
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
