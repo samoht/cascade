@@ -1,4 +1,5 @@
 open Values
+open Syntax
 include Properties_intf
 
 let err_invalid_value ?got t prop_name value =
@@ -8200,7 +8201,7 @@ let pp_unicode_range_range ctx start end_ =
   Pp.hex ctx end_
 
 let unicode_range_wildcard start end_ : string option =
-  let wildcard_for q =
+  let wildcard_for q : string option =
     let size = 1 lsl (4 * q) in
     if start mod size <> 0 || end_ <> start + size - 1 then None
     else
@@ -9892,7 +9893,8 @@ let read_flex_flow_wrap t : flex_wrap =
     ]
     t
 
-let read_flex_flow_part direction wrap t =
+let read_flex_flow_part (direction : flex_direction option ref)
+    (wrap : flex_wrap option ref) t =
   match (!direction, Cursor.option read_flex_flow_direction t) with
   | None, Some value ->
       direction := Some value;
@@ -17442,14 +17444,9 @@ let rec read_object_view_box t : object_view_box =
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 
-let font_url_needs_quotes s =
-  String.exists
-    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-    s
-
 let pp_font_url ctx s =
   Pp.string ctx "url(";
-  if font_url_needs_quotes s then (
+  if url_needs_quotes s then (
     Pp.char ctx '"';
     Pp.string ctx s;
     Pp.char ctx '"')

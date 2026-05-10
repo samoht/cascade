@@ -14,6 +14,7 @@
     their wrapping. Cyclic imports terminate by dropping the repeat visit. *)
 
 open Stylesheet
+open Syntax
 
 (** {1 Selector cover} *)
 
@@ -971,12 +972,6 @@ let decode_import_url s =
       let r = Cursor.of_string trimmed in
       Cursor.one_of [ Cursor.url; Cursor.string ] r
     with Cursor.Parse_error _ -> trimmed
-
-let strip_url_suffix url =
-  let cut_at c s =
-    match String.index_opt s c with Some i -> String.sub s 0 i | None -> s
-  in
-  url |> cut_at '?' |> cut_at '#'
 
 let wrap_import_body (ir : import_rule) body =
   let body =
