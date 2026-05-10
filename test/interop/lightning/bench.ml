@@ -15,27 +15,8 @@ let int_env name default =
       | value -> value
       | exception Failure _ -> default)
 
-let read_pairs path =
-  let ic = open_in_bin path in
-  let pairs = ref [] in
-  (try
-     while true do
-       let header = input_line ic in
-       Scanf.sscanf header ">>> %d %d" (fun ilen elen ->
-           let buf = Bytes.create (ilen + elen) in
-           really_input ic buf 0 (ilen + elen);
-           pairs :=
-             (Bytes.sub_string buf 0 ilen, Bytes.sub_string buf ilen elen)
-             :: !pairs);
-       let _ = input_char ic in
-       ()
-     done
-   with End_of_file -> ());
-  close_in ic;
-  List.rev !pairs
-
 let () =
-  let pairs = read_pairs trace_path in
+  let pairs = Trace_pairs.read trace_path in
   let start = max 0 (int_env "START" 0) in
   let limit = int_env "LIMIT" max_int in
   let pairs =

@@ -1,14 +1,14 @@
 (test
  (name test)
  (libraries cascade alcotest unix re.str fmt)
- (modules test)
+ (modules test trace_pairs)
  (deps
   (source_tree traces)))
 
 (executable
  (name bench)
  (libraries cascade unix memtrace fmt)
- (modules bench))
+ (modules bench trace_pairs))
 
 ; Regenerate traces against Lightning CSS: dune build @regen-traces
 
