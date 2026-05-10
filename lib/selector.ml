@@ -1107,13 +1107,12 @@ let rec read_selector_list_tail read_item t acc =
   let sel = read_item t in
   let acc = sel :: acc in
   Cursor.ws t;
-  match (Cursor.comma_opt t, Cursor.is_done t) with
-  | true, true -> Cursor.err t "expected at least one selector"
-  | true, false ->
-      Cursor.ws t;
-      read_selector_list_tail read_item t acc
-  | false, true -> List.rev acc
-  | false, false -> Cursor.err t "unexpected tokens after selector"
+  if Cursor.comma_opt t then (
+    Cursor.ws t;
+    if Cursor.is_done t then Cursor.err t "expected at least one selector";
+    read_selector_list_tail read_item t acc)
+  else if Cursor.is_done t then List.rev acc
+  else Cursor.err t "unexpected tokens after selector"
 
 and read_selector_list_with read_item t =
   Cursor.ws t;
@@ -1600,8 +1599,6 @@ let read_strict_selector_list t =
 
 let read t =
   let selector = read_selector_list t in
-  (* Ensure we've consumed all input - any remaining non-whitespace is an
-     error *)
   Cursor.ws t;
   if not (Cursor.is_done t) then
     Cursor.err t "unexpected characters after selector";
@@ -1758,7 +1755,7 @@ let lang_range ctx string =
   else Pp.string ctx string
 
 let langs ctx strings = Pp.list ~sep:Pp.comma lang_range ctx strings
-let selector_hex_digits = "0123456789abcdef"
+let hex_digits = "0123456789abcdef"
 
 let add_selector_hex_escape buf code =
   Buffer.add_char buf '\\';
@@ -1766,12 +1763,12 @@ let add_selector_hex_escape buf code =
     match (n, acc) with
     | 0, [] -> Buffer.add_char buf '0'
     | 0, digits -> List.iter (Buffer.add_char buf) digits
-    | _ -> emit (n / 16) (selector_hex_digits.[n mod 16] :: acc)
+    | _ -> emit (n / 16) (hex_digits.[n mod 16] :: acc)
   in
   emit code [];
   Buffer.add_char buf ' '
 
-let selector_first_needs_hex_escape name =
+let first_needs_hex_escape name =
   match String.length name with
   | 0 -> false
   | len ->
@@ -1824,7 +1821,7 @@ let escape_selector_name name =
   else if name = "-" then "\\-"
   else
     let buf = Buffer.create (String.length name * 2) in
-    let first_needs_hex_escape = selector_first_needs_hex_escape name in
+    let first_needs_hex_escape = first_needs_hex_escape name in
     let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
     let folder () i = function
       | `Uchar u ->
