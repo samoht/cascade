@@ -1396,6 +1396,34 @@ and only_declaration_reorders rule_changes nested_containers =
   && nested_containers = []
 
 (* Process a modified container and generate appropriate diff *)
+and container_position extract_fn cond stmts =
+  let rec go i = function
+    | [] -> None
+    | stmt :: rest -> (
+        match extract_fn stmt with
+        | Some (c, _) when c = cond -> Some i
+        | _ -> go (i + 1) rest)
+  in
+  go 0 stmts
+
+and reordered_container container_type cond rules1 pos1 pos2 =
+  Container_reordered
+    {
+      info = { container_type; condition = cond; rules = rules1 };
+      expected_pos = pos1;
+      actual_pos = pos2;
+    }
+
+and modified_container container_type cond rules1 rules2 rule_changes
+    nested_containers =
+  Container_modified
+    {
+      info = { container_type; condition = cond; rules = rules1 };
+      actual_rules = rules2;
+      rule_changes;
+      container_changes = nested_containers;
+    }
+
 and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
     ~stmts2 ~block_structure_changed cond rules1 rules2 =
   (* Skip if this condition has a block structure change *)
@@ -1407,39 +1435,22 @@ and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
       nested_differences ~depth:(depth + 1) rules1 rules2
     in
     (* Check for position changes within parent container *)
-    let find_position cond stmts =
-      let rec go i = function
-        | [] -> None
-        | stmt :: rest -> (
-            match extract_fn stmt with
-            | Some (c, _) when c = cond -> Some i
-            | _ -> go (i + 1) rest)
-      in
-      go 0 stmts
+    let pos1 =
+      container_position extract_fn cond stmts1 |> Option.value ~default:(-1)
     in
-    let pos1 = find_position cond stmts1 |> Option.value ~default:(-1) in
-    let pos2 = find_position cond stmts2 |> Option.value ~default:(-1) in
+    let pos2 =
+      container_position extract_fn cond stmts2 |> Option.value ~default:(-1)
+    in
     let position_changed = pos1 >= 0 && pos2 >= 0 && abs (pos2 - pos1) > 3 in
 
     (* If only position changed with no content changes, report as reordered *)
     if position_changed && rule_changes = [] && nested_containers = [] then
-      Some
-        (Container_reordered
-           {
-             info = { container_type; condition = cond; rules = rules1 };
-             expected_pos = pos1;
-             actual_pos = pos2;
-           })
+      Some (reordered_container container_type cond rules1 pos1 pos2)
     else if not (only_declaration_reorders rule_changes nested_containers) then
       (* Container was modified in content, not just position *)
       Some
-        (Container_modified
-           {
-             info = { container_type; condition = cond; rules = rules1 };
-             actual_rules = rules2;
-             rule_changes;
-             container_changes = nested_containers;
-           })
+        (modified_container container_type cond rules1 rules2 rule_changes
+           nested_containers)
     else None
 
 (* Detect if containers have only changed order (no content changes) *)
@@ -1698,6 +1709,44 @@ and process_nested_containers_with_name ~depth stmts1 stmts2 =
     modified
 
 (* Detect @property reordering: same names in different order *)
+and property_reorder_diff names2 (i1, name1) =
+  let i2 = List.find_index (( = ) name1) names2 |> Option.value ~default:i1 in
+  if i1 = i2 then None
+  else
+    let swapped_with =
+      if i1 < List.length names2 then Some ("@property " ^ List.nth names2 i1)
+      else None
+    in
+    Some
+      (Rule_reordered
+         {
+           selector = "@property " ^ name1;
+           expected_pos = i1;
+           actual_pos = i2;
+           swapped_with;
+           old_declarations = None;
+           new_declarations = None;
+         })
+
+and property_reorder_container stmts1 stmts2 reorder_diffs =
+  match reorder_diffs with
+  | [] -> []
+  | _ ->
+      [
+        Container_modified
+          {
+            info =
+              {
+                container_type = `Property;
+                condition = "@property rules";
+                rules = stmts1;
+              };
+            actual_rules = stmts2;
+            rule_changes = reorder_diffs;
+            container_changes = [];
+          };
+      ]
+
 and property_reorder_diffs stmts1 stmts2 items1 items2 =
   let get_names items =
     List.map (fun (Css.Property_info { name; _ }) -> name) items
@@ -1710,52 +1759,10 @@ and property_reorder_diffs stmts1 stmts2 items1 items2 =
   else
     let reorder_diffs =
       List.filter_map
-        (fun (i1, name1) ->
-          let i2 =
-            (let rec go i = function
-               | [] -> None
-               | x :: _ when x = name1 -> Some i
-               | _ :: rest -> go (i + 1) rest
-             in
-             go 0 names2)
-            |> Option.value ~default:i1
-          in
-          if i1 = i2 then None
-          else
-            let swapped_with =
-              if i1 < List.length names2 then
-                Some ("@property " ^ List.nth names2 i1)
-              else None
-            in
-            Some
-              (Rule_reordered
-                 {
-                   selector = "@property " ^ name1;
-                   expected_pos = i1;
-                   actual_pos = i2;
-                   swapped_with;
-                   old_declarations = None;
-                   new_declarations = None;
-                 }))
+        (property_reorder_diff names2)
         (List.mapi (fun i n -> (i, n)) names1)
     in
-    match reorder_diffs with
-    | [] -> []
-    | _ ->
-        [
-          Container_modified
-            {
-              info =
-                {
-                  container_type = `Property;
-                  condition = "@property rules";
-                  rules = stmts1;
-                };
-              actual_rules = stmts2;
-              rule_changes = reorder_diffs;
-              container_changes = [];
-            };
-        ]
+    property_reorder_container stmts1 stmts2 reorder_diffs
 
 (* Process property rules *)
 and process_nested_properties ~depth stmts1 stmts2 =
