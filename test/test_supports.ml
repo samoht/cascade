@@ -113,7 +113,7 @@ let spec_supports_negative_vectors () =
     try
       ignore (of_string input);
       Alcotest.failf "%s: expected invalid @supports condition" name
-    with Failure _ | Invalid_argument _ -> ()
+    with Cursor.Parse_error _ -> ()
   in
   List.iteri
     (fun i input ->
