@@ -2577,7 +2577,20 @@ and read_scope (r : Cursor.t) : statement =
 and read_container (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "container" r;
   Cursor.ws r;
-  let container_name = Cursor.option Cursor.ident r in
+  (* CSS Containment 3 section 4: [<container-name>] is a [<custom-ident>] that
+     excludes the keywords [none], [and], [not], [or]. Without this filter,
+     [@container not (width)] would parse [not] as the name and accept the
+     malformed [(width)] as the query. *)
+  let container_name =
+    let snap = Cursor.save r in
+    match Cursor.option Cursor.ident r with
+    | Some name
+      when List.mem (String.lowercase_ascii name) [ "none"; "and"; "not"; "or" ]
+      ->
+        Cursor.restore r snap;
+        None
+    | other -> other
+  in
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
@@ -2587,6 +2600,11 @@ and read_container (r : Cursor.t) : statement =
       try Some (Container.of_string condition_str)
       with Failure msg -> Cursor.err_invalid r msg
   in
+  (* CSS Containment 3 section 4: [@container] requires a query (with an
+     optional [<container-name>] in front). Bare [@container { ... }] is a parse
+     error. *)
+  if container_name = None && condition = None then
+    Cursor.err_invalid r "@container requires a container query";
   Container (container_name, condition, content)
 
 and read_layer_name (r : Cursor.t) : string = read_layer_name_component r

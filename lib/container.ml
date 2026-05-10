@@ -231,6 +231,14 @@ let first_non_ws s =
   in
   loop
 
+(* CSS Containment 3 section 4: [<container-name>] excludes the keywords [none],
+   [and], [not], [or]; without this guard [Container.of_string "not (width)"]
+   would split as [Named ("not", "(width)")] instead of [Not (width)]. *)
+let is_reserved_container_name name =
+  match String.lowercase_ascii name with
+  | "none" | "and" | "not" | "or" -> true
+  | _ -> false
+
 let split_named s =
   let s = String.trim s in
   let len = String.length s in
@@ -240,10 +248,13 @@ let split_named s =
   if len = 0 || not (is_ascii_ident_start s.[0]) then None
   else
     let stop = ident_end 0 in
-    match first_non_ws s stop with
-    | Some (i, ('(' | 's')) when stop > 0 && i > stop ->
-        Some (String.sub s 0 stop, String.sub s i (len - i))
-    | _ -> None
+    let name = String.sub s 0 stop in
+    if is_reserved_container_name name then None
+    else
+      match first_non_ws s stop with
+      | Some (i, ('(' | 's')) when stop > 0 && i > stop ->
+          Some (name, String.sub s i (len - i))
+      | _ -> None
 
 let ident_component = function
   | Component.Preserved { kind = Token.Ident name; _ } -> Some name
@@ -315,8 +326,12 @@ let style_leaf_body body =
           match style_strip_ws components with
           | [ name_component ] -> (
               match ident_component name_component with
-              | Some name -> Boolean name
-              | None -> failwith "invalid style() container query")
+              (* CSS Conditional Rules 5 section 4.4: a boolean [style()] query
+                 tests whether a custom property has any value, so the ident
+                 must start with [--]. A bare property name like [style(color)]
+                 is not a valid boolean form. *)
+              | Some name when is_custom_property name -> Boolean name
+              | _ -> failwith "invalid style() container query")
           | _ -> failwith "invalid style() container query"))
 
 let top_level_word s word =
