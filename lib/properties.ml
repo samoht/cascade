@@ -3495,18 +3495,7 @@ let simplified_border_width_length calc =
   Option.map simplify_border_width_length_calc
     (length_of_border_width_calc calc)
 
-let pp_length_calc_op ctx (op : calc_op) =
-  match op with
-  | Add -> Pp.string ctx " + "
-  | Sub -> Pp.string ctx " - "
-  | Mul ->
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx "*";
-      Pp.space_if_pretty ctx ()
-  | Div ->
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx "/";
-      Pp.space_if_pretty ctx ()
+let pp_length_calc_op = pp_calc_op
 
 let pp_length_calc_contents ctx calc =
   let precedence (op : calc_op) =
@@ -4106,6 +4095,41 @@ let read_overflow_clip_box t : overflow_clip_box =
     ]
     t
 
+let read_overflow_clip_box_item (box : overflow_clip_box option ref) t =
+  Cursor.ws t;
+  let snap = Cursor.save t in
+  match !box with
+  | None -> (
+      match read_overflow_clip_box t with
+      | value ->
+          box := Some value;
+          true
+      | exception Error.Parse_error _ ->
+          Cursor.restore t snap;
+          false)
+  | Some _ -> false
+
+let read_overflow_clip_length_item (length : length option ref) t =
+  Cursor.ws t;
+  match !length with
+  | None ->
+      length := Some (read_length ~allow_negative:false ~with_keywords:false t);
+      true
+  | Some _ -> false
+
+let rec read_overflow_clip_margin_items box length consumed t =
+  Cursor.ws t;
+  if Cursor.is_done t || Cursor.peek_semicolon t then consumed
+  else
+    let snap = Cursor.save t in
+    if
+      read_overflow_clip_box_item box t
+      || read_overflow_clip_length_item length t
+    then read_overflow_clip_margin_items box length true t
+    else (
+      Cursor.restore t snap;
+      consumed)
+
 let rec read_overflow_clip_margin t : overflow_clip_margin =
   let read_var t : overflow_clip_margin =
     Var (read_var read_overflow_clip_margin t)
@@ -4115,40 +4139,8 @@ let rec read_overflow_clip_margin t : overflow_clip_margin =
       ref (None : overflow_clip_box option)
     in
     let length : length option ref = ref (None : length option) in
-    let read_item t =
-      Cursor.ws t;
-      let snap = Cursor.save t in
-      match !box with
-      | None -> (
-          match read_overflow_clip_box t with
-          | value ->
-              box := Some value;
-              true
-          | exception Error.Parse_error _ ->
-              Cursor.restore t snap;
-              false)
-      | Some _ -> false
-    in
-    let read_length_item t =
-      Cursor.ws t;
-      match !length with
-      | None ->
-          length :=
-            Some (read_length ~allow_negative:false ~with_keywords:false t);
-          true
-      | Some _ -> false
-    in
-    let rec loop consumed =
-      Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then consumed
-      else
-        let snap = Cursor.save t in
-        if read_item t || read_length_item t then loop true
-        else (
-          Cursor.restore t snap;
-          consumed)
-    in
-    if not (loop false) then Cursor.err_expected t "overflow-clip-margin";
+    if not (read_overflow_clip_margin_items box length false t) then
+      Cursor.err_expected t "overflow-clip-margin";
     Clip_margin (!box, !length)
   in
   Cursor.enum_or_calls "overflow-clip-margin"
@@ -8209,14 +8201,15 @@ let unicode_range_wildcard start end_ : string option =
       let prefix = if prefix = 0 then "" else hex_string prefix in
       let wildcard = "U+" ^ prefix ^ String.make q '?' in
       let range = "U+" ^ hex_string start ^ "-" ^ hex_string end_ in
-      if String.length wildcard < String.length range then Some wildcard
-      else None
+      if String.length wildcard < String.length range then
+        (Some wildcard : string option)
+      else (None : string option)
   in
   let rec loop q =
     if q > 6 then (None : string option)
     else
       match wildcard_for q with
-      | Some _ as wildcard -> wildcard
+      | (Some _ : string option) as wildcard -> wildcard
       | None -> loop (q + 1)
   in
   loop 1
