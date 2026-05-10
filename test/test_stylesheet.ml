@@ -6499,7 +6499,9 @@ let additional_tests =
           Css.of_string ~strict:true ".a { color: red } .b { color: blue }"
         with
         | Ok parsed ->
-            let css = Css.to_string ~minify:true parsed.Css.stylesheet in
+            let css =
+              Css.to_string ~minify:true ~newline:false parsed.Css.stylesheet
+            in
             Alcotest.(check string)
               "strict output" ".a{color:red}.b{color:#00f}" css
         | Error (e, _) ->
