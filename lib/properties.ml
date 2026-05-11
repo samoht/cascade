@@ -13101,7 +13101,8 @@ let rec read_color_scheme t : color_scheme =
     | _ ->
         (* CSS Color Adjust 1 section 2.1: [color-scheme] is [normal | [light |
            dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive
-           with the list form; CSS-wide keywords can only stand alone. *)
+           with the list form; [only] is a modifier that must accompany a
+           non-empty list; CSS-wide keywords can only stand alone. *)
         let has_normal = List.mem "normal" names in
         let has_css_wide =
           List.exists
@@ -13116,6 +13117,12 @@ let rec read_color_scheme t : color_scheme =
         if has_css_wide then
           Cursor.err_invalid t
             "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
+        let non_only_names =
+          List.filter (fun n -> String.lowercase_ascii n <> "only") names
+        in
+        if non_only_names = [] then
+          Cursor.err_invalid t
+            "color-scheme: [only] must be combined with a color scheme";
         Custom names
   in
   match Cursor.peek t with
