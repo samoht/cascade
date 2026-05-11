@@ -599,8 +599,9 @@ let grid_template_areas () =
   roundtrip ".x { grid-template-areas: \".  .\" }"
     ".x{grid-template-areas:\". .\"}";
   roundtrip ".x { content: \"nav  main\" }" ".x{content:\"nav  main\"}";
-  roundtrip ".x { grid-template-areas: \"nav/main\" }"
-    ".x{grid-template-areas:\"nav/main\"}";
+  (* Grid 2 SS 7.3: each cell is `.` / `..` / <custom-ident>. `/` is a delim,
+     not a name code point, so `nav/main` is not a single valid cell. *)
+  rejects_invalid ".x { grid-template-areas: \"nav/main\" }";
   rejects_invalid ".x { grid-template-areas: \"nav main\" \"foot\" }";
   rejects_invalid ".x { grid-template-areas: \"a .\" \". a\" }"
 
