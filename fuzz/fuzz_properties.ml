@@ -485,7 +485,10 @@ let property_grammar_vectors =
     vector "overscroll-behavior" Css.Properties.read_overscroll_behavior
       Css.Properties.pp_overscroll_behavior
       [ "auto"; "contain"; "none" ]
-      [ "contain none"; "hidden" ];
+      (* [overscroll-behavior] shorthand allows 1-2 axis values per CSS
+         Overscroll Behavior 1 section 5.1; [contain auto none] is the
+         three-value invalid form, [hidden] is not a valid value. *)
+      [ "contain auto none"; "hidden" ];
     vector "direction" Css.Properties.read_direction Css.Properties.pp_direction
       [ "ltr"; "rtl" ] [ "ltr rtl"; "auto" ];
     vector "unicode-bidi" Css.Properties.read_unicode_bidi

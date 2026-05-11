@@ -1702,6 +1702,11 @@ let read_typed_property_declaration t start =
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
+  (* CSS Syntax 3 section 4.3.6/4.3.7: an unterminated [url(] / [foo(] / [{...]
+     before the declaration's terminator is a parse error. Typed readers don't
+     consistently consult the [terminated]/[closed] flags, so guard the value
+     here. *)
+  validate_complete_declaration_value t;
   match prop_type with
   | Unknown_property name -> read_unknown_property_declaration t name
   | _ ->
