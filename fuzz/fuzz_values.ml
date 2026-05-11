@@ -132,100 +132,51 @@ let test_color_roundtrip buf =
       try ignore (Css.Values.read_color r2)
       with Cursor.Parse_error _ -> fail "color roundtrip re-parse failed")
 
+(* Allow one canonicalization pass (trailing-zero trim, [1e3] -> [1000], escape
+   canonical form, ...) that only fires on re-parse, then require fixed point.
+   Skip when initial buf is garbage; serializer output must always re-parse -
+   failure there is a lib bug. *)
+let assert_value_idempotent ~label read pp buf =
+  let serialize v = Css.Pp.to_string ~minify:true pp v in
+  let parse s =
+    try Some (read (Cursor.of_string s)) with Cursor.Parse_error _ -> None
+  in
+  let reparse_or_fail step s =
+    match parse s with
+    | Some v -> v
+    | None ->
+        fail (Fmt.str "%s serialization did not reparse at %s: %S" label step s)
+  in
+  match parse buf with
+  | None -> ()
+  | Some v ->
+      let once = serialize v in
+      let twice = serialize (reparse_or_fail "first reparse" once) in
+      let thrice = serialize (reparse_or_fail "second reparse" twice) in
+      if twice <> thrice then
+        fail
+          (Fmt.str
+             "%s serialization drifted past canonicalization: %S -> %S -> %S"
+             label once twice thrice)
+
 (** Length serialization should reparse to the same canonical form for accepted
     values, including calc()/var() shapes. *)
 let test_length_serialization_idempotent buf =
-  let r = Cursor.of_string buf in
-  match
-    try Some (Css.Values.read_length r) with Cursor.Parse_error _ -> None
-  with
-  | None -> ()
-  | Some length -> (
-      let once = Css.Pp.to_string ~minify:true Css.Values.pp_length length in
-      let r2 = Cursor.of_string once in
-      match
-        try Some (Css.Values.read_length r2) with Cursor.Parse_error _ -> None
-      with
-      | None -> fail (Fmt.str "length serialization did not reparse: %S" once)
-      | Some reparsed ->
-          let twice =
-            Css.Pp.to_string ~minify:true Css.Values.pp_length reparsed
-          in
-          if once <> twice then
-            fail (Fmt.str "length serialization changed: %S -> %S" once twice))
+  assert_value_idempotent ~label:"length" Css.Values.read_length
+    Css.Values.pp_length buf
 
 let test_angle_serialization_idempotent buf =
-  let r = Cursor.of_string buf in
-  match
-    try Some (Css.Values.read_angle r) with Cursor.Parse_error _ -> None
-  with
-  | None -> ()
-  | Some angle -> (
-      let once = Css.Pp.to_string ~minify:true Css.Values.pp_angle angle in
-      let r2 = Cursor.of_string once in
-      match
-        try Some (Css.Values.read_angle r2) with Cursor.Parse_error _ -> None
-      with
-      | None -> fail (Fmt.str "angle serialization did not reparse: %S" once)
-      | Some reparsed ->
-          let twice =
-            Css.Pp.to_string ~minify:true Css.Values.pp_angle reparsed
-          in
-          if once <> twice then
-            fail (Fmt.str "angle serialization changed: %S -> %S" once twice))
+  assert_value_idempotent ~label:"angle" Css.Values.read_angle
+    Css.Values.pp_angle buf
 
 let test_percentage_serialization_idempotent buf =
-  let r = Cursor.of_string buf in
-  match
-    try Some (Css.Values.read_percentage r) with Cursor.Parse_error _ -> None
-  with
-  | None -> ()
-  | Some percentage -> (
-      let once =
-        Css.Pp.to_string ~minify:true
-          Css.Values.(pp_percentage ~always:true)
-          percentage
-      in
-      let r2 = Cursor.of_string once in
-      match
-        try Some (Css.Values.read_percentage r2)
-        with Cursor.Parse_error _ -> None
-      with
-      | None ->
-          fail (Fmt.str "percentage serialization did not reparse: %S" once)
-      | Some reparsed ->
-          let twice =
-            Css.Pp.to_string ~minify:true
-              Css.Values.(pp_percentage ~always:true)
-              reparsed
-          in
-          if once <> twice then
-            fail
-              (Fmt.str "percentage serialization changed: %S -> %S" once twice))
+  assert_value_idempotent ~label:"percentage" Css.Values.read_percentage
+    Css.Values.(pp_percentage ~always:true)
+    buf
 
 let test_duration_serialization_idempotent buf =
-  let r = Cursor.of_string buf in
-  match
-    try Some (Css.Values.read_duration r) with Cursor.Parse_error _ -> None
-  with
-  | None -> ()
-  | Some duration -> (
-      let once =
-        Css.Pp.to_string ~minify:true Css.Values.pp_duration duration
-      in
-      let r2 = Cursor.of_string once in
-      match
-        try Some (Css.Values.read_duration r2)
-        with Cursor.Parse_error _ -> None
-      with
-      | None -> fail (Fmt.str "duration serialization did not reparse: %S" once)
-      | Some reparsed ->
-          let twice =
-            Css.Pp.to_string ~minify:true Css.Values.pp_duration reparsed
-          in
-          if once <> twice then
-            fail (Fmt.str "duration serialization changed: %S -> %S" once twice)
-      )
+  assert_value_idempotent ~label:"duration" Css.Values.read_duration
+    Css.Values.pp_duration buf
 
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]

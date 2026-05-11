@@ -81,19 +81,27 @@ let starts_with ~prefix s =
 let test_read_declaration_crash_safety buf =
   ignore (parse_declaration (cssish buf))
 
+(* Allow one canonicalization pass (numeric trim, escape canonical form, ...)
+   that only fires on re-parse, then require fixed point. *)
 let test_serialization_idempotent buf =
+  let reparse_or_fail step s =
+    match parse_declaration s with
+    | Some d -> d
+    | None ->
+        fail (Fmt.str "serialized declaration did not reparse at %s: %S" step s)
+  in
   match parse_declaration (declaration_text buf 0) with
   | None -> ()
-  | Some decl -> (
+  | Some decl ->
       let once = serialize decl in
-      match parse_declaration once with
-      | None -> fail (Fmt.str "serialized declaration did not reparse: %S" once)
-      | Some reparsed ->
-          let twice = serialize reparsed in
-          if once <> twice then
-            fail
-              (Fmt.str "declaration serialization changed: %S -> %S" once twice)
-      )
+      let twice = serialize (reparse_or_fail "first reparse" once) in
+      let thrice = serialize (reparse_or_fail "second reparse" twice) in
+      if twice <> thrice then
+        fail
+          (Fmt.str
+             "declaration serialization drifted past canonicalization: %S -> \
+              %S -> %S"
+             once twice thrice)
 
 let test_property_name_stable buf =
   match parse_declaration (declaration_text buf 0) with

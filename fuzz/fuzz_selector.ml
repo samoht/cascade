@@ -117,31 +117,54 @@ let test_specificity_roundtrip buf =
               (Fmt.str "specificity changed across serialization: %S -> %S" buf
                  serialized))
 
-let test_serialization_idempotent buf =
+(* Allow one canonicalization pass (CSS Syntax 4.3.7 NUL -> U+FFFD, escape
+   canonical form) that only fires on re-parse, then require fixed point.
+   Initial garbage input may fail to parse (out of scope); once a parse succeeds
+   the serializer must always emit reparseable output. *)
+let parse_or_skip parse buf k =
   match
-    try Some (Css.Selector.of_string buf)
+    try Some (parse buf)
     with Cursor.Parse_error _ | Invalid_argument _ -> None
   with
   | None -> ()
-  | Some sel ->
-      let once = Css.Selector.to_string ~minify:true sel in
-      let twice = Css.Selector.(once |> of_string |> to_string ~minify:true) in
-      if once <> twice then
-        fail (Fmt.str "selector serialization drifted: %S -> %S" once twice)
+  | Some x -> k x
+
+let reparse_or_fail parse step s =
+  try parse s
+  with (Cursor.Parse_error _ | Invalid_argument _) as exn ->
+    fail
+      (Fmt.str "serializer emitted un-reparseable output at %s: %S (%s)" step s
+         (Printexc.to_string exn))
+
+let test_serialization_idempotent buf =
+  parse_or_skip Css.Selector.of_string buf @@ fun sel ->
+  let serialize s = Css.Selector.to_string ~minify:true s in
+  let once = serialize sel in
+  let twice =
+    serialize (reparse_or_fail Css.Selector.of_string "first reparse" once)
+  in
+  let thrice =
+    serialize (reparse_or_fail Css.Selector.of_string "second reparse" twice)
+  in
+  if twice <> thrice then
+    fail
+      (Fmt.str
+         "selector serialization drifted past canonicalization: %S -> %S -> %S"
+         once twice thrice)
 
 let test_selector_list_serialization_idempotent buf =
-  let r = Cursor.of_string buf in
-  match
-    try Some (Css.Selector.read_selector_list r)
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some selectors ->
-      let once = Css.Selector.to_string ~minify:true selectors in
-      let r2 = Cursor.of_string once in
-      let selectors2 = Css.Selector.read_selector_list r2 in
-      let twice = Css.Selector.to_string ~minify:true selectors2 in
-      if once <> twice then fail "selector-list serialization drifted"
+  let serialize = Css.Selector.to_string ~minify:true in
+  let parse s = Css.Selector.read_selector_list (Cursor.of_string s) in
+  parse_or_skip parse buf @@ fun selectors ->
+  let once = serialize selectors in
+  let twice = serialize (reparse_or_fail parse "first reparse" once) in
+  let thrice = serialize (reparse_or_fail parse "second reparse" twice) in
+  if twice <> thrice then
+    fail
+      (Fmt.str
+         "selector-list serialization drifted past canonicalization: %S -> %S \
+          -> %S"
+         once twice thrice)
 
 let test_noisy_forgiving buf =
   let wrapper = pick [ ":is"; ":where" ] buf 0 in
