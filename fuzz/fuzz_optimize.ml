@@ -193,6 +193,21 @@ let test_optimized_stylesheet_reparses buf =
   | Some _ -> ()
   | None -> fail (Fmt.str "optimized stylesheet did not reparse: %S" serialized)
 
+(* Optimizer monotonicity: minifying after optimize must never be longer than
+   minifying without optimize. Any regression here means optimize emitted bytes
+   the plain minifier wouldn't - the classical "optimizer made it bigger"
+   bug. *)
+let test_optimize_minify_monotonicity buf =
+  let ss = generated_stylesheet buf in
+  let baseline = minified ss in
+  let optimized = minified (Css.Optimize.stylesheet ss) in
+  if String.length optimized > String.length baseline then
+    fail
+      (Fmt.str
+         "optimize is not monotonic: optimized output is longer than minify \
+          alone (%d > %d): %S vs %S"
+         (String.length optimized) (String.length baseline) optimized baseline)
+
 let test_optimization_preserves_boundary_shape buf =
   let ss = generated_stylesheet buf in
   let optimized = Css.Optimize.stylesheet ss in
@@ -405,6 +420,8 @@ let suite =
       test_case "optimize idempotent" [ bytes ] test_optimize_idempotent;
       test_case "optimized stylesheet reparses" [ bytes ]
         test_optimized_stylesheet_reparses;
+      test_case "optimize monotonicity: optimized <= minified-alone" [ bytes ]
+        test_optimize_minify_monotonicity;
       test_case "optimization preserves boundary shape" [ bytes ]
         test_optimization_preserves_boundary_shape;
       test_case "optimized reparse idempotent" [ bytes ]
