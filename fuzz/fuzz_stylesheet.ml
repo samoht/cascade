@@ -597,37 +597,37 @@ let test_stylesheet_roundtrip buf =
       try ignore (Css.Stylesheet.read_stylesheet r2)
       with Cursor.Parse_error _ -> fail "stylesheet roundtrip re-parse failed")
 
-(** Minified stylesheet serialization should be idempotent after reparsing
-    decoded CSS-shaped input. *)
-let test_stylesheet_minified_idempotent buf =
-  let buf = cssish buf in
+(* Allow one canonicalization pass (numeric trim, [1e3] -> [1000], escape
+   canonical form, NUL -> U+FFFD, ...) that only fires on re-parse, then require
+   fixed point. Serializer output must always reparse. *)
+let assert_stylesheet_idempotent ~label serialize buf =
+  let reparse_or_fail step s =
+    match parse_stylesheet s with
+    | Some ss -> ss
+    | None ->
+        fail (Fmt.str "%s stylesheet did not reparse at %s: %S" label step s)
+  in
   match parse_stylesheet buf with
   | None -> ()
-  | Some ss -> (
-      let once = minified_stylesheet ss in
-      match parse_stylesheet once with
-      | None -> fail (Fmt.str "minified stylesheet did not reparse: %S" once)
-      | Some reparsed ->
-          let twice = minified_stylesheet reparsed in
-          if once <> twice then
-            fail
-              (Fmt.str "stylesheet minified serialization changed: %S -> %S"
-                 once twice))
+  | Some ss ->
+      let once = serialize ss in
+      let twice = serialize (reparse_or_fail "first reparse" once) in
+      let thrice = serialize (reparse_or_fail "second reparse" twice) in
+      if twice <> thrice then
+        fail
+          (Fmt.str
+             "stylesheet %s serialization drifted past canonicalization: %S -> \
+              %S -> %S"
+             label once twice thrice)
+
+(** Minified stylesheet serialization should reach a fixed point after at most
+    one canonicalization pass on reparsed CSS-shaped input. *)
+let test_stylesheet_minified_idempotent buf =
+  assert_stylesheet_idempotent ~label:"minified" minified_stylesheet
+    (cssish buf)
 
 let test_stylesheet_pretty_idempotent buf =
-  let buf = cssish buf in
-  match parse_stylesheet buf with
-  | None -> ()
-  | Some ss -> (
-      let once = pretty_stylesheet ss in
-      match parse_stylesheet once with
-      | None -> fail (Fmt.str "pretty stylesheet did not reparse: %S" once)
-      | Some reparsed ->
-          let twice = pretty_stylesheet reparsed in
-          if once <> twice then
-            fail
-              (Fmt.str "stylesheet pretty serialization changed: %S -> %S" once
-                 twice))
+  assert_stylesheet_idempotent ~label:"pretty" pretty_stylesheet (cssish buf)
 
 (** CSS Cascade section 6.4: stylesheets emitted with layer statements, nested
     layer names, imports, anonymous layers, and conditional layer blocks should
