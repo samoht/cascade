@@ -54,6 +54,11 @@ val to_string_custom_minified : Component.t list -> string
     Optional whitespace is collapsed using the rules of {!to_string_minified}
     while preserving token boundaries. *)
 
+val escape_ident : string -> string
+(** [escape_ident s] returns [s] with non-ident-continue code points backslash-
+    or hex-escaped per CSS Syntax 3 section 9.1, so that
+    [Cursor.of_string (escape_ident s) |> Cursor.ident] yields [s] again. *)
+
 (** {1 Entry points (section 5.4)} *)
 
 type 'a output = { value : 'a; warnings : Error.t list }
