@@ -3100,6 +3100,18 @@ let validate_partial_statement loc = function
            ~reason:"forbidden keyframes name")
   | _ -> None
 
+(* @page descriptors, @font-face descriptors, etc. flow through
+   [Declaration.read_declaration] just like ordinary rule declarations and show
+   up as [Unknown_property "marks"] / [Unknown_property "src"] in the AST. The
+   reader already enforces each at-rule's allowed-descriptor list, so an
+   [Unknown_property] arriving in a descriptor block is by construction a known
+   descriptor - skip the [is_invalid] check that would otherwise flag it as a
+   spec-noncompliant unknown property. *)
+let descriptor_has_typed_invalid_value = function
+  | Declaration.Declaration { property = Properties.Unknown_property _; _ } ->
+      false
+  | decl -> Declaration.is_invalid decl
+
 let rec statement_has_invalid_declaration = function
   | Rule { declarations; nested; _ } ->
       List.exists Declaration.is_invalid declarations
@@ -3116,15 +3128,15 @@ let rec statement_has_invalid_declaration = function
   | Origin (_, block)
   | Scope (_, _, block) ->
       List.exists statement_has_invalid_declaration block
-  | Page (_, decls) -> List.exists Declaration.is_invalid decls
+  | Page (_, decls) -> List.exists descriptor_has_typed_invalid_value decls
   | Page_with_margins (_, descs, margins) ->
-      List.exists Declaration.is_invalid descs
+      List.exists descriptor_has_typed_invalid_value descs
       || List.exists
            (fun { margin_descriptors; _ } ->
-             List.exists Declaration.is_invalid margin_descriptors)
+             List.exists descriptor_has_typed_invalid_value margin_descriptors)
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
-      List.exists Declaration.is_invalid decls
+      List.exists descriptor_has_typed_invalid_value decls
   | _ -> false
 
 let validate_partial_invalid_declarations loc stmt =
