@@ -110,21 +110,35 @@ let utf8_byte_length cp =
 (* Decode the UTF-8 code point starting at [t.pos + offset]. Returns [Some
    (code_point, byte_length)] or [None] at EOF or on a malformed sequence. Uses
    Uutf for the byte-level decode so overlong, surrogate, and out-of-range
-   sequences are rejected consistently with the Unicode spec. *)
+   sequences are rejected consistently with the Unicode spec.
+
+   Only returns [Some] when the *first* decoded element is a valid [Uchar].
+   [Uutf.String.fold_utf_8] resyncs after a [Malformed] start and yields the
+   next valid codepoint, which would let the caller pretend the malformed bytes
+   were part of the same code point - bad bytes in an ident-like context end up
+   in the unit token. *)
+let first_utf8_chunk_at input p len =
+  let result = ref None in
+  let seen = ref false in
+  let folder () _ chunk =
+    if !seen then ()
+    else (
+      seen := true;
+      match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
+  in
+  Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
+  !result
+
 let peek_utf8_at t offset =
   let p = t.pos + offset in
   if p >= t.len then None
   else
-    let result = ref None in
     let len = min 4 (t.len - p) in
-    let folder () _ = function
-      | `Uchar u when !result = None ->
-          let cp = Uchar.to_int u in
-          result := Some (cp, utf8_byte_length cp)
-      | _ -> ()
-    in
-    Uutf.String.fold_utf_8 ~pos:p ~len folder () t.input;
-    !result
+    match first_utf8_chunk_at t.input p len with
+    | None -> None
+    | Some u ->
+        let cp = Uchar.to_int u in
+        Some (cp, utf8_byte_length cp)
 
 let peek_utf8 t = peek_utf8_at t 0
 

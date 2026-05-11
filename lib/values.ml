@@ -1612,7 +1612,12 @@ let rec pp_length ?(always = false) : length Pp.t =
       else (
         Pp.string ctx repr;
         Pp.string ctx unit)
-  | Unknown_dimension (f, unit) -> pp_unit_fn f unit
+  | Unknown_dimension (f, unit) ->
+      (* CSS Syntax 3 section 9.1: an authored [Unknown_dimension] may carry a
+         unit name with escape sequences or malformed UTF-8 bytes the lexer
+         folded into the ident. Re-escape so the printed bytes re-tokenize to
+         the same dimension. *)
+      pp_unit_fn f (Parser.escape_ident unit)
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"

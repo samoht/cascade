@@ -132,7 +132,12 @@ let escape_ident s =
           else if Lexer.is_non_ascii_ident_cp cp then
             Uutf.Buffer.add_utf_8 buf u
           else add_hex_escape_cp buf cp
-      | `Malformed bs -> Buffer.add_string buf bs
+      | `Malformed bs ->
+          (* Malformed UTF-8 bytes (e.g., a lone continuation byte the lexer's
+             [consume_escape] dropped into an ident) can't be re-tokenized as
+             the same ident. Hex-escape each byte so the serialized form
+             round-trips. *)
+          String.iter (fun c -> add_hex_escape buf c) bs
     in
     Uutf.String.fold_utf_8 folder () s;
     Buffer.contents buf
