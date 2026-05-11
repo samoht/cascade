@@ -948,7 +948,16 @@ and pp_statement : statement Pp.t =
         Pp.sp ctx ();
         Pp.string ctx prelude);
       match block with
-      | None -> Pp.semicolon ctx ()
+      | None ->
+          (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;] or EOF.
+             When the Parser captures an unterminated nested block, the slice
+             that becomes [prelude] may already include the trailing [;] from
+             the source - don't append a second one. *)
+          let prelude_ends_with_semi =
+            let n = String.length prelude in
+            n > 0 && prelude.[n - 1] = ';'
+          in
+          if not prelude_ends_with_semi then Pp.semicolon ctx ()
       | Some body ->
           Pp.sp ctx ();
           Pp.char ctx '{';
