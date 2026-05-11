@@ -1288,13 +1288,24 @@ let drop_empty_rules stmts =
       | _ -> true)
     stmts
 
+(* CSS Cascade 5 §6.6.3: a [@layer <name>;] declaration form is prelude-friendly
+   and may interleave with [@charset] / [@import] / [@namespace], so a
+   [Layer_decl] before [@import] / [@namespace] must not flip [seen_body] -
+   otherwise the following [@import] gets dropped as misplaced. *)
 let drop_misplaced_imports stmts =
   let seen_body = ref false in
+  let seen_import_or_namespace = ref false in
   List.filter
-    (function
-      | (Charset _ | Import _ | Namespace _) when not !seen_body -> true
+    (fun stmt ->
+      match stmt with
+      | (Charset _ | Import _ | Namespace _) when not !seen_body ->
+          (match stmt with
+          | Import _ | Namespace _ -> seen_import_or_namespace := true
+          | _ -> ());
+          true
       | Import _ -> false
       | Charset _ | Namespace _ -> true
+      | Layer_decl _ when not !seen_import_or_namespace -> true
       | _ ->
           seen_body := true;
           true)
