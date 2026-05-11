@@ -1329,6 +1329,227 @@ let test_random_stylesheet_contract buf =
              "strict rejected fuzz input but lenient recovered silently: %S"
              input)
 
+(* Count [!important] declarations across all top-level statements. *)
+let count_important sheet =
+  Css.fold
+    (fun acc stmt ->
+      match Css.statement_declarations stmt with
+      | None -> acc
+      | Some decls ->
+          acc + List.length (List.filter Css.declaration_is_important decls))
+    0 sheet
+
+(* [!important] preservation: round-tripping must not lose, gain, or
+   accidentally promote/demote the !important flag on any declaration. *)
+let test_important_roundtrip buf =
+  match Css.of_string ~strict:true buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let before = count_important parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      match Css.of_string ~strict:true serialized with
+      | Error err ->
+          fail
+            (Fmt.str "!important roundtrip: reparse failed: %S (%s)" serialized
+               (Css.pp_parse_warning err))
+      | Ok reparsed ->
+          let after = count_important reparsed.Css.stylesheet in
+          if before <> after then
+            fail
+              (Fmt.str
+                 "!important count drifted across roundtrip (%d -> %d): %S -> \
+                  %S"
+                 before after buf serialized))
+
+(* Cascade source order: serializing a stylesheet then reparsing it must yield
+   the same number of top-level statements in the same order (by minified
+   rendering of each). *)
+let test_source_order_preserved buf =
+  match Css.of_string ~strict:true buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let render_each ss =
+        List.rev
+          (Css.fold
+             (fun acc stmt ->
+               Css.to_string ~minify:true (Css.statements [ stmt ] |> Css.v)
+               :: acc)
+             [] ss)
+      in
+      let before = render_each parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      match Css.of_string ~strict:true serialized with
+      | Error _ -> ()
+      | Ok reparsed ->
+          let after = render_each reparsed.Css.stylesheet in
+          if before <> after then
+            fail
+              (Fmt.str
+                 "cascade source order changed across roundtrip:\n\
+                 \  before: %s\n\
+                 \  after:  %s"
+                 (String.concat "|" before) (String.concat "|" after)))
+
+(* Comments must be dropped: cascade is an AST library, not a token preserver.
+   Minified output of any input - clean or recovered - must never contain CSS
+   comment delimiters. *)
+let test_no_comments_in_output buf =
+  let check label output =
+    let contains_comment_open =
+      let n = String.length output in
+      let rec scan i =
+        if i + 1 >= n then false
+        else if output.[i] = '/' && output.[i + 1] = '*' then true
+        else scan (i + 1)
+      in
+      scan 0
+    in
+    if contains_comment_open then
+      fail (Fmt.str "%s output contains comment delimiter: %S" label output)
+  in
+  (match Css.of_string ~strict:true buf with
+  | Error _ -> ()
+  | Ok parsed ->
+      check "strict-minified" (Css.to_string ~minify:true parsed.Css.stylesheet));
+  match Css.of_string ~strict:false buf with
+  | Error _ -> ()
+  | Ok parsed ->
+      check "lenient-minified"
+        (Css.to_string ~minify:true parsed.Css.stylesheet);
+      check "lenient-pretty" (Css.to_string ~minify:false parsed.Css.stylesheet)
+
+(* Lenient output is strict-parseable: after lenient recovery, the serialized
+   stylesheet must be acceptable to strict mode. This is the "best-minifier"
+   guarantee: feed lenient any garbage, get clean spec-compliant CSS out.
+   Equivalent to [recovery is total] above via the dual-mode invariant, but
+   stated directly in terms of strict acceptance. *)
+let test_lenient_output_strict_parseable buf =
+  match Css.of_string ~strict:false buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      match Css.of_string ~strict:true serialized with
+      | Ok _ -> ()
+      | Error err ->
+          fail
+            (Fmt.str
+               "lenient output is not strict-parseable: lenient cleaned %S to \
+                %S but strict rejected it (%s)"
+               buf serialized (Css.pp_parse_warning err)))
+
+(* Recovery is total: after lenient parse, the recovered AST is clean - so
+   re-parsing its serialization in lenient mode must yield zero warnings.
+   Otherwise the parser kept invalid material inside the AST. *)
+let test_lenient_recovery_is_total buf =
+  match Css.of_string ~strict:false buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      match Css.of_string ~strict:false serialized with
+      | Error err ->
+          fail
+            (Fmt.str
+               "lenient recovery is not total: recovered serialization failed \
+                to reparse: %S (%s)"
+               serialized (Css.pp_parse_warning err))
+      | Ok reparsed ->
+          if reparsed.Css.warnings <> [] then
+            fail
+              (Fmt.str
+                 "lenient recovery is not total: recovered AST re-serialized \
+                  to CSS that still emits warnings: %S -> %S"
+                 buf serialized))
+
+(* Strict output reparses strictly: if [Css.of_string ~strict:true] accepted the
+   input, the serialized output must also be strict-accepted (no new warnings
+   introduced by serialization). Catches "serializer emits CSS the strict parser
+   would reject" bugs. *)
+let test_strict_output_reparses_strictly buf =
+  match Css.of_string ~strict:true buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      match Css.of_string ~strict:true serialized with
+      | Ok _ -> ()
+      | Error err ->
+          fail
+            (Fmt.str
+               "strict-accepted input serialized to strict-rejected output: %S \
+                -> %S (%s)"
+               buf serialized (Css.pp_parse_warning err)))
+
+(* Optimize preserves strict-validity: if strict accepted the input, the
+   optimized stylesheet must also be strict-accepted after serialization. *)
+let test_optimize_preserves_strict_validity buf =
+  match Css.of_string ~strict:true buf with
+  | Error _ -> ()
+  | Ok parsed -> (
+      let optimized = Css.optimize parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true optimized in
+      match Css.of_string ~strict:true serialized with
+      | Ok _ -> ()
+      | Error err ->
+          fail
+            (Fmt.str "optimize broke strict-validity: %S -> %S (%s)" buf
+               serialized (Css.pp_parse_warning err)))
+
+(* Minify monotonicity: minified output must never be longer than pretty output
+   for the same stylesheet. A regression here means the minifier added bytes -
+   the textbook minifier bug. *)
+let test_minify_monotonicity buf =
+  let buf = cssish buf in
+  match parse_stylesheet buf with
+  | None -> ()
+  | Some ss ->
+      let m = minified_stylesheet ss in
+      let p = pretty_stylesheet ss in
+      if String.length m > String.length p then
+        fail
+          (Fmt.str
+             "minify is not monotonic: minified is longer than pretty (%d > \
+              %d): %S vs %S"
+             (String.length m) (String.length p) m p)
+
+(* Universal dual-mode invariant on raw bytes: (A) [of_string ~strict:false _]
+   is total - never returns [Error] no matter what bytes you feed it. (B)
+   [Error] in strict mode iff non-empty [warnings] in lenient mode. (C) when
+   strict succeeds, both modes serialize to the same minified output. *)
+let test_dual_mode_invariant_raw buf =
+  let lenient =
+    match Css.of_string ~strict:false buf with
+    | Ok parsed -> parsed
+    | Error err ->
+        fail
+          (Fmt.str
+             "lenient mode is not total: returned Error on raw input %S: %s" buf
+             (Css.pp_parse_warning err))
+  in
+  match Css.of_string ~strict:true buf with
+  | Ok strict_result ->
+      if lenient.warnings <> [] then
+        fail
+          (Fmt.str
+             "dual-mode drift: strict accepted but lenient warned on raw input \
+              %S"
+             buf);
+      let strict_output =
+        Css.to_string ~minify:true strict_result.Css.stylesheet
+      in
+      let lenient_output = Css.to_string ~minify:true lenient.stylesheet in
+      if strict_output <> lenient_output then
+        fail
+          (Fmt.str
+             "dual-mode drift: strict/lenient outputs diverged on raw input \
+              %S: %S vs %S"
+             buf strict_output lenient_output)
+  | Error _ ->
+      if lenient.warnings = [] then
+        fail
+          (Fmt.str
+             "dual-mode drift: strict rejected raw input %S but lenient \
+              emitted no warning"
+             buf)
+
 let test_stylesheet_prelude_order_vectors buf =
   let input =
     pick
@@ -1486,6 +1707,24 @@ let recovery_cases =
       test_recovery_bad_declaration;
     test_case "strict and lenient random stylesheet contract" [ bytes ]
       test_random_stylesheet_contract;
+    test_case "dual-mode invariant: lenient total, strict iff warnings"
+      [ bytes ] test_dual_mode_invariant_raw;
+    test_case "minify monotonicity: minified <= pretty" [ bytes ]
+      test_minify_monotonicity;
+    test_case "strict output reparses strictly" [ bytes ]
+      test_strict_output_reparses_strictly;
+    test_case "optimize preserves strict-validity" [ bytes ]
+      test_optimize_preserves_strict_validity;
+    test_case "lenient recovery is total: re-serialize yields no warnings"
+      [ bytes ] test_lenient_recovery_is_total;
+    test_case "lenient output is strict-parseable" [ bytes ]
+      test_lenient_output_strict_parseable;
+    test_case "no CSS comment delimiters survive serialization" [ bytes ]
+      test_no_comments_in_output;
+    test_case "!important count preserved across roundtrip" [ bytes ]
+      test_important_roundtrip;
+    test_case "cascade source order preserved across roundtrip" [ bytes ]
+      test_source_order_preserved;
     test_case "stylesheet prelude order vectors" [ bytes ]
       test_stylesheet_prelude_order_vectors;
     test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]
