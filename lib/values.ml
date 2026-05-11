@@ -3546,12 +3546,17 @@ let read_length_unit ?(allow_negative = true) t =
       match unit_of_string unit with
       | Some unit -> authored unit
       | None ->
-          (* Unknown / future unit (CSS Values 5 §6.5 reserves dimension tokens
-             for future units). Lightning, esbuild, csso, cleancss, and cssnano
-             all preserve the source as written; cascade keeps the raw
-             [<n><unit>] in [Unknown_dimension] so the printer round-trips
-             it. *)
-          Unknown_dimension (n, Option.value unit_raw ~default:unit))
+          (* Unknown / future unit (CSS Values 5 section 6.5 reserves dimension
+             tokens for future units). Strict callers raise here; the
+             declaration-level recovery in [Declaration.read_declaration]
+             catches the [Parse_error] and falls back to the unknown-property
+             path, which preserves the raw bytes and emits a recovery warning -
+             matching the dual-mode contract pinned by [cross_mode_pinning].
+             Lightning, esbuild, csso, cleancss, and cssnano all preserve the
+             source as written; cascade does too in lenient mode via the
+             [Unknown_dimension] arm constructed by [Cursor.number_with_unit]
+             one layer below. *)
+          Cursor.err_invalid t ("unknown dimension unit: " ^ unit))
 
 let read_length_keyword t : length =
   Cursor.enum "length"
