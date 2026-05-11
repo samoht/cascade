@@ -323,22 +323,17 @@ let read_attr_syntax t : attr_syntax =
 
 let read_attr_type t : attr_type =
   Cursor.ws t;
-  let type_ =
-    if Cursor.looking_at_func "type" t then
-      Type (Cursor.call "type" t read_attr_syntax)
-    else
-      match Cursor.ident_opt t with
-      | Some "raw-string" -> Raw_string
-      | Some "number" -> Number_type
-      | Some unit_ -> Unit unit_
-      | None when Cursor.peek_delim t = Some '%' ->
-          Cursor.expect '%' t;
-          Unit "%"
-      | None -> Cursor.err_expected t "attr() type"
-  in
-  Cursor.ws t;
-  Cursor.expect_eof t;
-  type_
+  if Cursor.looking_at_func "type" t then
+    Type (Cursor.call "type" t read_attr_syntax)
+  else
+    match Cursor.ident_opt t with
+    | Some "raw-string" -> Raw_string
+    | Some "number" -> Number_type
+    | Some unit_ -> Unit unit_
+    | None when Cursor.peek_delim t = Some '%' ->
+        Cursor.expect '%' t;
+        Unit "%"
+    | None -> Cursor.err_expected t "attr() type"
 
 let pp_math_const ctx = function
   | Pi -> Pp.string ctx "pi"
