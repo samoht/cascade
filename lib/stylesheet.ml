@@ -942,22 +942,29 @@ and pp_statement : statement Pp.t =
           Pp.string ctx value)
         ctx descriptors
   | Unknown_at_rule { name; prelude; block } -> (
+      (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;], [}], or EOF.
+         When the Parser captures an unterminated nested block ([(...], [[...],
+         [{...]) its source slice can include the at-rule terminator or the
+         enclosing block's close - don't echo them as part of the prelude or
+         each round-trip stacks another [;]/[}]. *)
+      let prelude =
+        let rec trim_end i =
+          if i < 0 then 0
+          else
+            match prelude.[i] with
+            | ';' | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
+            | _ -> i + 1
+        in
+        let n = String.length prelude in
+        String.sub prelude 0 (trim_end (n - 1))
+      in
       Pp.char ctx '@';
       Pp.string ctx name;
       if prelude <> "" then (
         Pp.sp ctx ();
         Pp.string ctx prelude);
       match block with
-      | None ->
-          (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;] or EOF.
-             When the Parser captures an unterminated nested block, the slice
-             that becomes [prelude] may already include the trailing [;] from
-             the source - don't append a second one. *)
-          let prelude_ends_with_semi =
-            let n = String.length prelude in
-            n > 0 && prelude.[n - 1] = ';'
-          in
-          if not prelude_ends_with_semi then Pp.semicolon ctx ()
+      | None -> Pp.semicolon ctx ()
       | Some body ->
           Pp.sp ctx ();
           Pp.char ctx '{';
