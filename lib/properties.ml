@@ -2689,15 +2689,54 @@ let rec pp_shadow : shadow Pp.t =
 
 (* pp_box_shadow removed - use pp_shadow with List constructor *)
 
+let pp_hue_interpolation_method ctx = function
+  | Shorter -> Pp.string ctx "shorter hue"
+  | Longer -> Pp.string ctx "longer hue"
+  | Increasing -> Pp.string ctx "increasing hue"
+  | Decreasing -> Pp.string ctx "decreasing hue"
+
+let pp_polar_with_hue ctx space (hue : hue_interpolation_method option) =
+  Pp.string ctx "in ";
+  Pp.string ctx space;
+  match hue with
+  | None -> ()
+  | Some hue ->
+      Pp.space ctx ();
+      pp_hue_interpolation_method ctx hue
+
 let rec pp_color_interpolation : color_interpolation Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_color_interpolation ctx v
   | In_oklab -> Pp.string ctx "in oklab"
-  | In_oklch -> Pp.string ctx "in oklch"
+  | In_oklch hue -> pp_polar_with_hue ctx "oklch" hue
   | In_srgb -> Pp.string ctx "in srgb"
-  | In_hsl -> Pp.string ctx "in hsl"
+  | In_hsl hue -> pp_polar_with_hue ctx "hsl" hue
   | In_lab -> Pp.string ctx "in lab"
-  | In_lch -> Pp.string ctx "in lch"
+  | In_lch hue -> pp_polar_with_hue ctx "lch" hue
+
+(* CSS Color 5 section 12: after a polar color space (lch / oklch / hsl / hwb),
+   the [<color-interpolation-method>] may carry a trailing
+   [<hue-interpolation-method>] followed by [hue]. *)
+let read_hue_interpolation_method t =
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some (("shorter" | "longer" | "increasing" | "decreasing") as kw) -> (
+      Cursor.ws t;
+      match Cursor.ident_opt t with
+      | Some "hue" ->
+          Some
+            (match kw with
+            | "shorter" -> Shorter
+            | "longer" -> Longer
+            | "increasing" -> Increasing
+            | "decreasing" -> Decreasing
+            | _ -> assert false)
+      | _ ->
+          Cursor.restore t snap;
+          None)
+  | _ ->
+      Cursor.restore t snap;
+      None
 
 let read_color_interpolation (t : Cursor.t) : color_interpolation =
   Cursor.with_context t "color-interpolation" (fun () ->
@@ -2706,13 +2745,17 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
          [inoklab] lexes as a single ident and would fail [expect_string "in"]
          above, so no extra whitespace check is needed here. *)
       let space = Cursor.ident t in
+      let hue () =
+        Cursor.ws t;
+        read_hue_interpolation_method t
+      in
       match space with
       | "oklab" -> In_oklab
-      | "oklch" -> In_oklch
+      | "oklch" -> In_oklch (hue ())
       | "srgb" -> In_srgb
-      | "hsl" -> In_hsl
+      | "hsl" -> In_hsl (hue ())
       | "lab" -> In_lab
-      | "lch" -> In_lch
+      | "lch" -> In_lch (hue ())
       | _ -> Cursor.err_invalid t "color-interpolation")
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
@@ -2908,12 +2951,18 @@ let pp_radial_gradient_config : radial_gradient_config Pp.t =
       pp_radial_size ctx s;
       has_output := true
   | None -> ());
-  match config.position with
+  (match config.position with
   | Some p ->
       if !has_output then Pp.space ctx ();
       Pp.string ctx "at";
       Pp.space ctx ();
-      pp_position_value ctx p
+      pp_position_value ctx p;
+      has_output := true
+  | None -> ());
+  match config.interpolation with
+  | Some i ->
+      if !has_output then Pp.space ctx ();
+      pp_color_interpolation ctx i
   | None -> ()
 
 let pp_conic_gradient_config : conic_gradient_config Pp.t =
@@ -2925,11 +2974,17 @@ let pp_conic_gradient_config : conic_gradient_config Pp.t =
       pp_angle ctx a;
       has_output := true
   | None -> ());
-  match config.conic_position with
+  (match config.conic_position with
   | Some p ->
       if !has_output then Pp.space ctx ();
       Pp.string ctx "at ";
-      pp_position_value ctx p
+      pp_position_value ctx p;
+      has_output := true
+  | None -> ());
+  match config.conic_interpolation with
+  | Some i ->
+      if !has_output then Pp.space ctx ();
+      pp_color_interpolation ctx i
   | None -> ()
 
 let pp_webkit_gradient_point ctx = function
@@ -3033,7 +3088,9 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "conic-gradient"
         (fun ctx (config, stops) ->
           let has_config =
-            config.from_angle <> None || config.conic_position <> None
+            config.from_angle <> None
+            || config.conic_position <> None
+            || config.conic_interpolation <> None
           in
           if has_config then (
             pp_conic_gradient_config ctx config;
@@ -3050,7 +3107,9 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "repeating-conic-gradient"
         (fun ctx (config, stops) ->
           let has_config =
-            config.from_angle <> None || config.conic_position <> None
+            config.from_angle <> None
+            || config.conic_position <> None
+            || config.conic_interpolation <> None
           in
           if has_config then (
             pp_conic_gradient_config ctx config;
@@ -3139,6 +3198,7 @@ and pp_radial_gradient_named name ctx (config, stops) =
     (fun ctx (config, stops) ->
       let has_config =
         config.shape <> None || config.size <> None || config.position <> None
+        || config.interpolation <> None
       in
       if has_config then (
         pp_radial_gradient_config ctx config;
@@ -15374,7 +15434,9 @@ module Radial_config = struct
     in
     Cursor.ws t;
     let position = Cursor.option read_at_position t in
-    { shape; size; position }
+    Cursor.ws t;
+    let interpolation = Cursor.option read_color_interpolation t in
+    { shape; size; position; interpolation }
 end
 
 let read_radial_shape t : radial_shape = Radial_config.read_shape t
@@ -15406,9 +15468,11 @@ let read_conic_gradient_config t : conic_gradient_config =
         Some (read_position_value t)
     | _ -> None
   in
-  if from_angle = None && conic_position = None then
-    Cursor.err_invalid t "conic-gradient config";
-  { from_angle; conic_position }
+  Cursor.ws t;
+  let conic_interpolation = Cursor.option read_color_interpolation t in
+  if from_angle = None && conic_position = None && conic_interpolation = None
+  then Cursor.err_invalid t "conic-gradient config";
+  { from_angle; conic_position; conic_interpolation }
 
 let read_linear_gradient_body t =
   Cursor.ws t;
@@ -15487,15 +15551,18 @@ let read_radial_gradient_body t =
       Cursor.option
         (fun t ->
           let cfg = Radial_config.read t in
-          if cfg.shape = None && cfg.size = None && cfg.position = None then
-            Cursor.err_invalid t "no radial config";
+          if
+            cfg.shape = None && cfg.size = None && cfg.position = None
+            && cfg.interpolation = None
+          then Cursor.err_invalid t "no radial config";
           Cursor.ws t;
           ignore (Cursor.comma_opt t);
           cfg)
         t
     with
     | Some cfg -> cfg
-    | None -> { shape = None; size = None; position = None }
+    | None ->
+        { shape = None; size = None; position = None; interpolation = None }
   in
   let stops = read_gradient_stops t in
   if stops = [] then
@@ -15516,7 +15583,8 @@ let read_conic_gradient_body t =
   let config =
     match config with
     | Some config -> config
-    | None -> { from_angle = None; conic_position = None }
+    | None ->
+        { from_angle = None; conic_position = None; conic_interpolation = None }
   in
   Conic_gradient (config, stops)
 
@@ -16473,7 +16541,9 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)
 
-let radial_gradient ?(config = { shape = None; size = None; position = None })
+let radial_gradient
+    ?(config =
+      { shape = None; size = None; position = None; interpolation = None })
     stops =
   Radial_gradient (config, stops)
 

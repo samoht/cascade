@@ -346,12 +346,16 @@ let mask_layers layers = (Layers layers : mask)
 let gradient_stops stops = (List stops : gradient_stop)
 let gradient_hint_length value = (Length value : gradient_stop)
 let gradient_hint_percentage value = (Percentage value : gradient_stop)
-let radial_gradient_config ?shape ?size ?position () = { shape; size; position }
 
-let conic_gradient_config ?from_angle ?position () =
-  { from_angle; conic_position = position }
+let radial_gradient_config ?shape ?size ?position ?interpolation () =
+  { shape; size; position; interpolation }
 
-let conic_gradient ?(config = { from_angle = None; conic_position = None })
+let conic_gradient_config ?from_angle ?position ?interpolation () =
+  { from_angle; conic_position = position; conic_interpolation = interpolation }
+
+let conic_gradient
+    ?(config =
+      { from_angle = None; conic_position = None; conic_interpolation = None })
     stops =
   (Conic_gradient (config, stops) : background_image)
 
