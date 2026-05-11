@@ -405,8 +405,20 @@ let read_text_decoration_lines t =
   let is_none (line : text_decoration_line) =
     match line with None -> true | _ -> false
   in
+  let is_error_kind (line : text_decoration_line) =
+    match line with Spelling_error | Grammar_error -> true | _ -> false
+  in
   if List.exists is_none lines && List.length lines > 1 then
     Cursor.err_invalid t "none cannot be combined with text-decoration lines";
+  (* CSS Text Decoration 4 section 2.1: [<text-decoration-line>] is [none |
+     [underline || overline || line-through || blink] | spelling-error |
+     grammar-error]. [spelling-error] and [grammar-error] are alternatives to
+     the [||] group, not members of it, so they cannot be combined with any
+     other line. *)
+  if List.exists is_error_kind lines && List.length lines > 1 then
+    Cursor.err_invalid t
+      "spelling-error and grammar-error cannot be combined with other \
+       text-decoration lines";
   let rec duplicates = function
     | [] -> false
     | x :: xs -> List.mem x xs || duplicates xs

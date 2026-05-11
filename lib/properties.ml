@@ -13038,7 +13038,25 @@ let rec read_color_scheme t : color_scheme =
     | [ "revert" ] -> Revert
     | [ "revert-layer" ] -> Revert_layer
     | [] -> Cursor.err t "empty color-scheme"
-    | _ -> Custom names
+    | _ ->
+        (* CSS Color Adjust 1 section 2.1: [color-scheme] is [normal | [light |
+           dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive
+           with the list form; CSS-wide keywords can only stand alone. *)
+        let has_normal = List.mem "normal" names in
+        let has_css_wide =
+          List.exists
+            (fun n ->
+              List.mem (String.lowercase_ascii n)
+                [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ])
+            names
+        in
+        if has_normal then
+          Cursor.err_invalid t
+            "color-scheme: [normal] cannot be mixed with other keywords";
+        if has_css_wide then
+          Cursor.err_invalid t
+            "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
+        Custom names
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
@@ -13841,6 +13859,19 @@ let rec read_transition_property_value t : transition_property_value =
   let read_var t : transition_property_value =
     Var (read_var read_transition_property_value t)
   in
+  let read_property_ident t =
+    let name = Cursor.ident ~keep_case:true t in
+    (* CSS Transitions 1 section 2.1: [transition-property] is a
+       [<custom-ident>], so it excludes keywords reserved for other slots of the
+       [transition] shorthand. [normal] and [allow-discrete] are the
+       [transition-behavior] enum and would silently absorb a duplicate (e.g.
+       [transition: normal normal]) into the property slot. *)
+    if List.mem (String.lowercase_ascii name) [ "normal"; "allow-discrete" ]
+    then
+      Cursor.err_invalid t
+        ("transition-property cannot be reserved keyword: " ^ name)
+    else Property name
+  in
   Cursor.enum_or_calls "transition-property-value"
     [
       ("all", (All : transition_property_value));
@@ -13852,8 +13883,7 @@ let rec read_transition_property_value t : transition_property_value =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Property (Cursor.ident ~keep_case:true t))
-    t
+    ~default:read_property_ident t
 
 let read_transition_property t : transition_property =
   (* Parse comma-separated list of transition properties *)
@@ -14235,10 +14265,6 @@ module Animation = struct
     | Step_end -> Some "step-end"
     | _ -> None
 
-  let iteration_name : animation_iteration_count -> string option = function
-    | Infinite -> Some "infinite"
-    | _ -> None
-
   let direction_name : animation_direction -> string option = function
     | Normal -> Some "normal"
     | Reverse -> Some "reverse"
@@ -14388,8 +14414,12 @@ module Animation = struct
             { acc with timing_function = Some tf })
       | Iteration_count ic ->
           if !iteration_seen then
-            set_string_name t "animation-iteration-count" name_seen acc
-              (iteration_name ic)
+            (* CSS Animations 1 section 8.5:
+               [<single-animation-iteration-count>] is [infinite | <number>];
+               [infinite] is a reserved keyword that cannot be a
+               [<custom-ident>] animation name. Reject the duplicate rather than
+               coercing it into the name slot. *)
+            Cursor.err t "duplicate animation-iteration-count"
           else (
             iteration_seen := true;
             { acc with iteration_count = Some ic })
