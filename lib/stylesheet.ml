@@ -1780,14 +1780,15 @@ let validate_pseudo_page r s name =
   | _ -> page_selector_error r s
 
 let validate_page_selector r selector =
-  (* CSS Paged Media 3 §3.1 [<page-selector-list> = <page-selector>#] with
-     [<page-selector> = <ident-token>? <pseudo-page>*] and [<pseudo-page>] one
-     of [left], [right], [first], [blank]. *)
+  (* CSS Paged Media 3 section 3.1: [<page-selector> = <ident-token>?
+     <pseudo-page>?]. The spec allows at most one [<pseudo-page>] per selector
+     ([left], [right], [first], [blank]); chained forms like [:first:left] are
+     not part of the grammar. *)
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let rec consume_pseudo_pages seen i =
+  let consume_pseudo_page seen i =
     if i >= len || s.[i] <> ':' then i
     else
       let start = i + 1 in
@@ -1795,31 +1796,20 @@ let validate_page_selector r selector =
       if stop = start then page_selector_error r s;
       let name = String.sub s start (stop - start) in
       validate_pseudo_page r s name;
-      let seen =
-        match (name, seen) with
-        | "first", (true, _, _, _)
-        | "left", (_, true, _, _)
-        | "right", (_, _, true, _)
-        | "blank", (_, _, _, true) ->
-            page_selector_error r s
-        | "left", (_, _, true, _) | "right", (_, true, _, _) ->
-            page_selector_error r s
-        | "first", (_, left, right, blank) -> (true, left, right, blank)
-        | "left", (first, _, right, blank) -> (first, true, right, blank)
-        | "right", (first, left, _, blank) -> (first, left, true, blank)
-        | "blank", (first, left, right, _) -> (first, left, right, true)
-        | _ -> assert false
-      in
-      consume_pseudo_pages seen stop
+      if seen then page_selector_error r s;
+      stop
+  in
+  let consume_pseudo_pages i =
+    let stop_first = consume_pseudo_page false i in
+    let _ : int = consume_pseudo_page (stop_first <> i) stop_first in
+    stop_first
   in
   let rec consume_selectors i =
     let i = skip_ws i in
     if i >= len then ()
     else
       let after_ident = consume_ident i in
-      let after_pseudo =
-        consume_pseudo_pages (false, false, false, false) after_ident
-      in
+      let after_pseudo = consume_pseudo_pages after_ident in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then ()
       else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
@@ -3190,6 +3180,19 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
   let validate_prelude = validate_partial_prelude () in
+  (* CSS Conditional Rules 5 section 4.6: [@else] is a continuation rule and
+     must follow [@when] or another [@else]. A bare top-level [@else] is a parse
+     error. *)
+  let previous = ref None in
+  let validate_else_orphan rule stmt =
+    match stmt with
+    | Else _
+      when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
+        Some
+          (Error.bad_value (rule_loc rule) ~property:"stylesheet"
+             ~reason:"@else without preceding @when")
+    | _ -> None
+  in
   let statements =
     List.filter_map
       (fun rule ->
@@ -3201,7 +3204,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
           (fun w -> warnings := w :: !warnings)
           (Cursor.drain_warnings cursor);
         match result with
-        | Ok stmt ->
+        | Ok stmt -> (
             Option.iter
               (fun w -> warnings := w :: !warnings)
               (validate_prelude (rule_loc rule) stmt);
@@ -3214,7 +3217,14 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
             Option.iter
               (fun w -> warnings := w :: !warnings)
               (validate_partial_strict_warnings (rule_loc rule) stmt);
-            Some stmt
+            match validate_else_orphan rule stmt with
+            | Some w ->
+                warnings := w :: !warnings;
+                previous := Some stmt;
+                None
+            | None ->
+                previous := Some stmt;
+                Some stmt)
         | Error e ->
             warnings := e :: !warnings;
             None)

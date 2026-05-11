@@ -392,7 +392,13 @@ let values_absolute_lengths () =
   roundtrip ".x { width: 10mm }" ".x{width:10mm}";
   roundtrip ".x { width: 1in }" ".x{width:1in}";
   roundtrip ".x { width: 12pt }" ".x{width:12pt}";
-  roundtrip ".x { width: 1pc }" ".x{width:1pc}"
+  roundtrip ".x { width: 1pc }" ".x{width:1pc}";
+  (* Values 4 SS 10.2 / Values 5 SS 6.5: unknown / future unit identifiers make
+     the typed value invalid. Strict rejects (pinned by [cross_mode_pinning]);
+     lenient recovers by dropping the declaration and surfacing the unknown unit
+     as a warning. *)
+  recover ".x { width: 1unknown; height: 10px }" ".x{height:10px}" 1;
+  recover ".x { font-size: 16xyz }" "" 1
 
 (* SS 6.2 - Relative lengths *)
 let values_relative_lengths () =
@@ -522,10 +528,11 @@ let stylesheet_at_rules () =
     "@namespace svg\"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}";
-  (* CSS Paged Media 3 allows non-conflicting pseudo-page combinations. *)
-  roundtrip "@page :first:left { margin: 1cm }" "@page:first:left{margin:1cm}";
-  roundtrip "@page :blank:first { margin: .5cm }"
-    "@page:blank:first{margin:.5cm}"
+  (* CSS Paged Media 3 section 3.1: [<page-selector>] is [<ident>?
+     <pseudo-page>?] - at most one [<pseudo-page>]; chained forms like
+     [:first:left] are not part of the grammar. *)
+  rejects_invalid "@page :first:left { margin: 1cm }";
+  rejects_invalid "@page :blank:first { margin: .5cm }"
 
 (* {2 CSS Cascade and Inheritance Level 4}
    https://www.w3.org/TR/css-cascade-4/ *)
@@ -860,7 +867,8 @@ let fidelity_bad_css_wide_list () =
    suite (fuzz_declaration [assert_invalid_declaration_contract], fuzz_selector
    [assert_reject]) relies on this; collapsing the two modes broke 27 fuzz cases
    at once. Inputs are invalid per Cascade L5 SS 7.3 (CSS-wide keyword mixed
-   with other values) or matches-nothing forgiving lists. *)
+   with other values), matches-nothing forgiving lists, or Values 4 SS 10.2 /
+   Values 5 SS 6.5 (unknown unit makes the dimension invalid). *)
 let cross_mode_pinning () =
   let inputs =
     [
@@ -869,6 +877,12 @@ let cross_mode_pinning () =
       ".x { margin: 1px inherit }";
       ":is(:future-pseudo) { color: red }";
       ":is() { color: red }";
+      (* Unknown / future dimension units: Values 4 SS 10.2 and Values 5 SS 6.5
+         say an unknown unit makes the typed value invalid. Strict rejects, but
+         lenient keeps the token so the source isn't silently lost - the warning
+         surfaces the unknown unit to the caller. *)
+      ".x { width: 1unknown }";
+      ".x { font-size: 16xyz }";
     ]
   in
   List.iter
