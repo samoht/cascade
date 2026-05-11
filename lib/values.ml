@@ -1612,12 +1612,6 @@ let rec pp_length ?(always = false) : length Pp.t =
       else (
         Pp.string ctx repr;
         Pp.string ctx unit)
-  | Unknown_dimension (f, unit) ->
-      (* CSS Syntax 3 section 9.1: an authored [Unknown_dimension] may carry a
-         unit name with escape sequences or malformed UTF-8 bytes the lexer
-         folded into the ident. Re-escape so the printed bytes re-tokenize to
-         the same dimension. *)
-      pp_unit_fn f (Parser.escape_ident unit)
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
@@ -3547,15 +3541,13 @@ let read_length_unit ?(allow_negative = true) t =
       | Some unit -> authored unit
       | None ->
           (* Unknown / future unit (CSS Values 5 section 6.5 reserves dimension
-             tokens for future units). Strict callers raise here; the
+             tokens for future units). Readers stay binary: raise here, and the
              declaration-level recovery in [Declaration.read_declaration]
-             catches the [Parse_error] and falls back to the unknown-property
-             path, which preserves the raw bytes and emits a recovery warning -
-             matching the dual-mode contract pinned by [cross_mode_pinning].
-             Lightning, esbuild, csso, cleancss, and cssnano all preserve the
-             source as written; cascade does too in lenient mode via the
-             [Unknown_dimension] arm constructed by [Cursor.number_with_unit]
-             one layer below. *)
+             catches the [Parse_error] and emits a warning that strict mode
+             escalates to [Error]. Inside [calc()] / [sign()] / [abs()] etc. the
+             math-arg path constructs a [Dim (n, unit)] leaf via
+             [Cursor.number_with_unit] without going through this reader, so
+             [calc(1x + 2x)] still parses. *)
           Cursor.err_invalid t ("unknown dimension unit: " ^ unit))
 
 let read_length_keyword t : length =
