@@ -283,11 +283,11 @@ let syntax_escapes () =
 (* SS 5.3.7 / 5.4 - Parse errors recover locally *)
 let syntax_recovery () =
   recover ".a { color: invalid; color: red }" ".a{color:red}" 1;
-  (* Unknown pseudo-classes are preserved at the syntax/minifier layer for
-     forward compatibility; selector matching is outside this parser
-     contract. *)
-  roundtrip ".a,:future-pseudo { color: red } .b { color: blue }"
-    ".a,:future-pseudo{color:red}.b{color:#00f}";
+  (* CSS Selectors 4 section 3.5: an unknown pseudo-class at an unforgiving site
+     is a spec deviation. Lenient mode preserves it for forward compatibility
+     and warns; strict mode escalates (pinned by [cross_mode_pinning]). *)
+  recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:#00f}"
+    1;
   recover "@unknown { .a { color: red } } .b { color: blue }" ".b{color:#00f}" 1;
   recover ".a { color: red" ".a{color:red}" 0
 
