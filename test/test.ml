@@ -26,6 +26,7 @@ let () =
       Test_error.suite;
       Test_sort.suite;
       Test_pp.suite;
+      Test_syntax.suite;
       Test_context.suite;
       Test_reader.suite;
       Test_selector.suite;

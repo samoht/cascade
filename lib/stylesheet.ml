@@ -2923,43 +2923,59 @@ and read_property_descriptors (r : Cursor.t) : property_reader_state =
   in
   loop ()
 
+type prelude_seen = {
+  mutable charset_seen : bool;
+  mutable import_seen : bool;
+  mutable namespace_seen : bool;
+  mutable body_seen : bool;
+}
+
+let new_prelude_seen () =
+  {
+    charset_seen = false;
+    import_seen = false;
+    namespace_seen = false;
+    body_seen = false;
+  }
+
+let validate_stylesheet_prelude r state stmt =
+  match stmt with
+  | Charset _ ->
+      if
+        state.charset_seen || state.import_seen || state.namespace_seen
+        || state.body_seen
+      then Cursor.err_invalid r "@charset must precede all rules";
+      state.charset_seen <- true
+  | Layer_decl _ ->
+      if state.import_seen || state.namespace_seen then state.body_seen <- true
+  | Import _ ->
+      if state.namespace_seen || state.body_seen then
+        Cursor.err_invalid r "@import must precede style rules";
+      state.import_seen <- true
+  | Namespace _ ->
+      if state.body_seen then
+        Cursor.err_invalid r "@namespace must precede style rules";
+      state.namespace_seen <- true
+  | _ -> state.body_seen <- true
+
+let validate_stylesheet_else r acc stmt =
+  match stmt with
+  | Else _ when not (List.exists follows_conditional acc) ->
+      Cursor.err_invalid r "@else without preceding @when"
+  | _ -> ()
+
+let rec read_stylesheet_statements r state acc =
+  Cursor.ws r;
+  if Cursor.is_done r then List.rev acc
+  else
+    let stmt = read_statement r in
+    validate_stylesheet_else r acc stmt;
+    validate_stylesheet_prelude r state stmt;
+    read_stylesheet_statements r state (stmt :: acc)
+
 let read_stylesheet (r : Cursor.t) : stylesheet =
   Cursor.with_context r "stylesheet" (fun () ->
-      let charset_seen = ref false in
-      let import_seen = ref false in
-      let namespace_seen = ref false in
-      let body_seen = ref false in
-      let validate_prelude stmt =
-        match stmt with
-        | Charset _ ->
-            if !charset_seen || !import_seen || !namespace_seen || !body_seen
-            then Cursor.err_invalid r "@charset must precede all rules";
-            charset_seen := true
-        | Layer_decl _ ->
-            if !import_seen || !namespace_seen then body_seen := true
-        | Import _ ->
-            if !namespace_seen || !body_seen then
-              Cursor.err_invalid r "@import must precede style rules";
-            import_seen := true
-        | Namespace _ ->
-            if !body_seen then
-              Cursor.err_invalid r "@namespace must precede style rules";
-            namespace_seen := true
-        | _ -> body_seen := true
-      in
-      let rec read_statements acc =
-        Cursor.ws r;
-        if Cursor.is_done r then List.rev acc
-        else
-          let stmt = read_statement r in
-          (match stmt with
-          | Else _ when not (List.exists follows_conditional acc) ->
-              Cursor.err_invalid r "@else without preceding @when"
-          | _ -> ());
-          validate_prelude stmt;
-          read_statements (stmt :: acc)
-      in
-      read_statements [])
+      read_stylesheet_statements r (new_prelude_seen ()) [])
 
 (* Replay a Parser-recovered rule as a Cursor by flattening its components.
    [Component.at_rule] stores the at-keyword as a bare [name] string; the
@@ -3306,33 +3322,47 @@ let pp_config : config Pp.t =
   Pp.string ctx " }"
 
 (* Reader for config *)
+type config_state = {
+  mutable cfg_minify : bool;
+  mutable cfg_mode : mode;
+  mutable cfg_optimize : bool;
+  mutable cfg_newline : bool;
+}
+
+let set_config_field state field value =
+  match field with
+  | "minify" -> state.cfg_minify <- value = "true"
+  | "mode" -> state.cfg_mode <- (if value = "Inline" then Inline else Variables)
+  | "optimize" -> state.cfg_optimize <- value = "true"
+  | "newline" -> state.cfg_newline <- value = "true"
+  | _ -> ()
+
+let rec read_config_fields state inner =
+  if Cursor.is_done inner then ()
+  else
+    let field_name = Cursor.ident inner in
+    Cursor.expect '=' inner;
+    let value = Cursor.ident inner in
+    set_config_field state field_name value;
+    if Cursor.peek_semicolon inner then Cursor.skip inner;
+    read_config_fields state inner
+
 let read_config (r : Cursor.t) : config =
   Cursor.braces
     (fun inner ->
-      let minify = ref false in
-      let mode = ref Variables in
-      let optimize = ref false in
-      let newline = ref false in
-      let rec loop () =
-        if Cursor.is_done inner then ()
-        else
-          let field_name = Cursor.ident inner in
-          Cursor.expect '=' inner;
-          let value = Cursor.ident inner in
-          (match field_name with
-          | "minify" -> minify := value = "true"
-          | "mode" -> mode := if value = "Inline" then Inline else Variables
-          | "optimize" -> optimize := value = "true"
-          | "newline" -> newline := value = "true"
-          | _ -> ());
-          if Cursor.peek_semicolon inner then Cursor.skip inner;
-          loop ()
+      let state =
+        {
+          cfg_minify = false;
+          cfg_mode = Variables;
+          cfg_optimize = false;
+          cfg_newline = false;
+        }
       in
-      loop ();
+      read_config_fields state inner;
       {
-        minify = !minify;
-        mode = !mode;
-        optimize = !optimize;
-        newline = !newline;
+        minify = state.cfg_minify;
+        mode = state.cfg_mode;
+        optimize = state.cfg_optimize;
+        newline = state.cfg_newline;
       })
     r
