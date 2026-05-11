@@ -2295,6 +2295,22 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
               in
               slice first.Loc.start_pos last.Loc.end_pos
         in
+        (* CSS Syntax 3 section 5.4.2: when an unterminated nested block
+           ([(...], [[...]) inside the at-rule's body extends to EOF, the
+           Parser's source slice carries the close [}] and any trailing
+           whitespace from outside the block - trim them so the serializer
+           re-adds its own [}] without stacking. *)
+        let body =
+          let rec trim_end i =
+            if i < 0 then 0
+            else
+              match body.[i] with
+              | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
+              | _ -> i + 1
+          in
+          let n = String.length body in
+          String.sub body 0 (trim_end (n - 1))
+        in
         block := Option.Some body;
         ignore (Cursor.next_raw r)
     | Some comp ->
