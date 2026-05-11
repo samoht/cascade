@@ -15427,23 +15427,41 @@ module Radial_config = struct
     read_position_value t
 
   let read t : radial_gradient_config =
-    let shape = Cursor.option read_shape t in
-    Cursor.ws t;
-    let size =
-      Cursor.option
-        (fun t -> Cursor.one_of [ read_size_keyword; read_explicit_size ] t)
-        t
+    (* CSS Images 4 section 6.2: the [radial-gradient] prelude is
+       [<ending-shape> || <size> || at <position> ||
+       <color-interpolation-method>]? - the [||] combinator allows any order.
+       Loop trying each missing slot until no progress is made. *)
+    let shape : radial_shape option ref = ref Option.None in
+    let size : radial_size option ref = ref Option.None in
+    let position : position_value option ref = ref Option.None in
+    let interpolation : color_interpolation option ref = ref Option.None in
+    let try_slot : 'a. 'a option ref -> (Cursor.t -> 'a) -> bool =
+     fun slot reader ->
+      if !slot <> Option.None then false
+      else
+        match Cursor.option reader t with
+        | Option.Some v ->
+            slot := Option.Some v;
+            true
+        | Option.None -> false
     in
-    Cursor.ws t;
-    (* If no shape was found before size, try after *)
-    let shape =
-      match shape with Some _ -> shape | None -> Cursor.option read_shape t
+    let rec loop () =
+      Cursor.ws t;
+      if
+        try_slot shape read_shape
+        || try_slot size (fun t ->
+            Cursor.one_of [ read_size_keyword; read_explicit_size ] t)
+        || try_slot position read_at_position
+        || try_slot interpolation read_color_interpolation
+      then loop ()
     in
-    Cursor.ws t;
-    let position = Cursor.option read_at_position t in
-    Cursor.ws t;
-    let interpolation = Cursor.option read_color_interpolation t in
-    { shape; size; position; interpolation }
+    loop ();
+    {
+      shape = !shape;
+      size = !size;
+      position = !position;
+      interpolation = !interpolation;
+    }
 end
 
 let read_radial_shape t : radial_shape = Radial_config.read_shape t
@@ -18931,6 +18949,26 @@ let grid_area_null_cell cell =
   let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
   loop 0
 
+(* CSS Grid Layout 2 section 7.3: each row string is a sequence of [.] (null
+   cell) tokens or [<custom-ident>] cell names. A [<custom-ident>] starts with a
+   letter, [_], or [-]-followed-by-letter, and continues with letters / digits /
+   [_] / [-]. *)
+let grid_area_ident_cell cell =
+  let len = String.length cell in
+  let is_start c =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+  in
+  let is_continue c = is_start c || (c >= '0' && c <= '9') in
+  len > 0
+  && is_start cell.[0]
+  &&
+  let rec loop i = i = len || (is_continue cell.[i] && loop (i + 1)) in
+  loop 1
+
+let validate_grid_area_cell t cell =
+  if not (grid_area_null_cell cell || grid_area_ident_cell cell) then
+    Cursor.err_invalid t ("invalid grid-template-areas cell: " ^ cell)
+
 let validate_grid_area_width t (expected : int option) cells =
   match expected with
   | None -> Some (List.length cells)
@@ -19071,6 +19109,7 @@ let rec read_grid_template_areas t : grid_template_areas =
           let cells = grid_area_row_cells s in
           if cells = [] then
             Cursor.err_invalid t "empty grid-template-areas row";
+          List.iter (validate_grid_area_cell t) cells;
           let width = validate_grid_area_width t width cells in
           read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
     in

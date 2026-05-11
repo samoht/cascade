@@ -179,16 +179,19 @@ let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
 let raw_value_contains_var raw_value =
-  let rec component = function
+  (* CSS Custom Properties Level 1 section 3: a top-level [var()] in a
+     declaration value makes the typed reader unable to validate the substituted
+     result at parse time, so cascade preserves the value verbatim. A nested
+     [var()] inside another function (e.g. [attr(name type(<color>), var(--fb,
+     red))]) doesn't extend that leniency to the surrounding tokens - it's only
+     relevant if it's a top-level component of the value. *)
+  let is_top_level_var = function
     | Component.Func { node = { name; _ }; _ }
       when String.lowercase_ascii name = "var" ->
         true
-    | Component.Func { node = { arguments; _ }; _ } ->
-        List.exists component arguments
-    | Component.Block { node = { value; _ }; _ } -> List.exists component value
-    | Component.Preserved _ -> false
+    | _ -> false
   in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists component
+  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level_var
 
 let value_has_css_wide_mix value =
   let trimmed = String.trim value in
