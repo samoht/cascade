@@ -2337,13 +2337,17 @@ type background_size =
   | Revert_layer
   | Var of background_size var
 
+(** CSS Color 5 section 12: optional hue-interpolation method that follows a
+    polar color space (lch / oklch / hsl / hwb). *)
+type hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
+
 type color_interpolation =
   | In_oklab
-  | In_oklch
+  | In_oklch of hue_interpolation_method option
   | In_srgb
-  | In_hsl
+  | In_hsl of hue_interpolation_method option
   | In_lab
-  | In_lch
+  | In_lch of hue_interpolation_method option
   | Var of color_interpolation var
 
 type gradient_direction =
@@ -2427,6 +2431,7 @@ type radial_gradient_config = {
   shape : radial_shape option;
   size : radial_size option;
   position : position_value option;
+  interpolation : color_interpolation option;
 }
 
 type border_radius =
@@ -2448,6 +2453,8 @@ type border_radius =
 type conic_gradient_config = {
   from_angle : angle option;  (** [from <angle>] starting angle *)
   conic_position : position_value option;  (** [at <position>] center *)
+  conic_interpolation : color_interpolation option;
+      (** Optional [in <color-interpolation-method>] clause. *)
 }
 
 module Webkit_gradient = struct

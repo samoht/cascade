@@ -2673,13 +2673,17 @@ type background_attachment =
   | Revert_layer
   | Var of background_attachment var  (** Color interpolation for gradients *)
 
+(** CSS Color 5 section 12: hue-interpolation method for polar color spaces (lch
+    / oklch / hsl / hwb). *)
+type hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
+
 type color_interpolation =
   | In_oklab
-  | In_oklch
+  | In_oklch of hue_interpolation_method option
   | In_srgb
-  | In_hsl
+  | In_hsl of hue_interpolation_method option
   | In_lab
-  | In_lch
+  | In_lch of hue_interpolation_method option
   | Var of color_interpolation var  (** Gradient direction values *)
 
 type gradient_direction =
@@ -2741,28 +2745,38 @@ type radial_gradient_config = {
   shape : radial_shape option;
   size : radial_size option;
   position : position_value option;
+  interpolation : color_interpolation option;
 }
-(** Configuration for radial-gradient prefix: shape, size, and position *)
+(** Configuration for radial-gradient prefix: shape, size, position, and
+    optional [in <color-interpolation-method>] clause. *)
 
 type conic_gradient_config = {
   from_angle : angle option;  (** [from <angle>] starting angle *)
   conic_position : position_value option;  (** [at <position>] center *)
+  conic_interpolation : color_interpolation option;
+      (** Optional [in <color-interpolation-method>] clause. *)
 }
-(** Configuration for conic-gradient prefix: starting angle and center. *)
+(** Configuration for conic-gradient prefix: starting angle, center, and
+    optional [in <color-interpolation-method>] clause. *)
 
 val radial_gradient_config :
   ?shape:radial_shape ->
   ?size:radial_size ->
   ?position:position_value ->
+  ?interpolation:color_interpolation ->
   unit ->
   radial_gradient_config
-(** [radial_gradient_config ?shape ?size ?position ()] builds a radial-gradient
-    prefix. *)
+(** [radial_gradient_config ?shape ?size ?position ?interpolation ()] builds a
+    radial-gradient prefix. *)
 
 val conic_gradient_config :
-  ?from_angle:angle -> ?position:position_value -> unit -> conic_gradient_config
-(** [conic_gradient_config ?from_angle ?position ()] builds a conic-gradient
-    prefix. *)
+  ?from_angle:angle ->
+  ?position:position_value ->
+  ?interpolation:color_interpolation ->
+  unit ->
+  conic_gradient_config
+(** [conic_gradient_config ?from_angle ?position ?interpolation ()] builds a
+    conic-gradient prefix. *)
 
 type border_radius =
   | Radius of {
