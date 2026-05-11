@@ -347,14 +347,18 @@ let consume_url_token r =
   skip_ws ();
   let rec loop () =
     match Reader.peek r with
-    | None -> Url (Buffer.contents buf)
+    (* CSS Syntax 3 section 4.3.6: hitting EOF inside [url(] is a parse error.
+       The spec still returns a [<url-token>], but the parse error must surface
+       to callers - return [Bad_url] so the declaration-level recovery sees an
+       invalid value. *)
+    | None -> Bad_url
     | Some ')' ->
         Reader.skip r;
         Url (Buffer.contents buf)
     | Some c when is_ws c -> (
         skip_ws ();
         match Reader.peek r with
-        | None -> Url (Buffer.contents buf)
+        | None -> Bad_url
         | Some ')' ->
             Reader.skip r;
             Url (Buffer.contents buf)

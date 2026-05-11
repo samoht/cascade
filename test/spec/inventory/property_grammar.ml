@@ -156,13 +156,21 @@ let matrix =
     {
       property = "clip-path";
       positives =
-        [ "none"; "inset(10px)"; "circle(50%)"; "xywh(0 0 100% 100%)" ];
-      negatives = [ "circle()"; "inset()" ];
+        [
+          "none";
+          "inset(10px)";
+          "circle(50%)";
+          "circle()";
+          "xywh(0 0 100% 100%)";
+        ];
+      (* CSS Shapes 1 section 3.1: [circle()] is valid (both [<shape-radius>]
+         and [at <position>] are optional); [inset()] needs 1-4 args. *)
+      negatives = [ "inset()" ];
     };
     {
       property = "shape-outside";
-      positives = [ "none"; "circle(50%)"; "inset(10px)" ];
-      negatives = [ "circle()"; "invalid-shape" ];
+      positives = [ "none"; "circle(50%)"; "circle()"; "inset(10px)" ];
+      negatives = [ "invalid-shape" ];
     };
     {
       property = "color";

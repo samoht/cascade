@@ -456,12 +456,16 @@ let read_shape_outside t =
   | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
     ->
       accept_var ()
+  | Some (Component.Func { node = { name = "circle"; terminated; _ }; _ })
+    when terminated ->
+      (* CSS Shapes 1 section 3.1: [circle()] is valid (both [<shape-radius>]
+         and [at <position>] are optional). *)
+      accept_single ()
   | Some
-      (Component.Func
-         { node = { name = "circle" | "inset"; arguments; terminated }; _ })
+      (Component.Func { node = { name = "inset"; arguments; terminated }; _ })
     when terminated && arguments <> [] ->
       accept_single ()
-  | Some (Component.Func { node = { name = "circle" | "inset"; _ }; _ }) ->
+  | Some (Component.Func { node = { name = "inset"; _ }; _ }) ->
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
 

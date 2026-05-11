@@ -393,8 +393,11 @@ let property_grammar_vectors =
       [ "x mandatory"; "block proximity"; "none" ]
       [ "mandatory x"; "x y mandatory" ];
     vector "clip-path" Css.Properties.read_clip_path Css.Properties.pp_clip_path
-      [ "none"; "inset(10px)"; "circle(50%)" ]
-      [ "circle()"; "inset()" ];
+      [ "none"; "inset(10px)"; "circle(50%)"; "circle()" ]
+      (* CSS Shapes 1 section 3.1: [circle()] is valid (both [<shape-radius>]
+         and [at <position>] are optional, defaulting to [closest-side] /
+         [center]); [inset()] needs 1-4 args. *)
+      [ "inset()" ];
     vector "touch-action" Css.Properties.read_touch_action
       Css.Properties.pp_touch_action
       [ "auto"; "none"; "pan-x pinch-zoom" ]
@@ -964,7 +967,6 @@ let negative_branch_vectors =
     "border-block:solid solid";
     "border-inline-color:red blue green";
     "clip-path:xywh(0 0)";
-    "shape-outside:circle()";
     "width:clamp(10px,20px)";
     "width:round(10px)";
     "width:calc-size()";
