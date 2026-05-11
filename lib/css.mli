@@ -750,9 +750,6 @@ type length =
   | Dimension of { value : float; unit : string; repr : string }
       (** Dimension with authored numeric spelling preserved for pretty
           printing. *)
-  | Unknown_dimension of float * string
-      (** Catch-all for dimensions whose unit isn't recognised by cascade.
-          Preserves the source token so unknown ([1x], [10qoo]) round-trip. *)
   | Size  (** [size] keyword inside [calc-size()]. *)
   | Auto
   | None  (** none keyword (e.g., for max-width) *)
