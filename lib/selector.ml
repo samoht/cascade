@@ -1575,6 +1575,16 @@ and read_complex t =
         combine left Descendant (read_complex t)
       else left
 
+(* CSS Selectors 4 section 3.5: the top-level rule selector list (and any
+   non-forgiving alias of it) is an unforgiving site. [read_compound] keeps
+   [Unknown_pseudo_class] in the AST so authored vendor pseudos and
+   forward-compat selectors can round-trip, but a top-level selector that
+   carries one is a spec deviation; raise here so [Selector.of_string
+   ".ok,:future-pseudo"] surfaces a [Parse_error]. *)
+let validate_unforgiving_pseudo t sel =
+  if has_unknown_pseudo_class sel then
+    Cursor.err t "unknown pseudo-class in unforgiving selector list"
+
 let read_selector_list t =
   Cursor.with_context t "list" @@ fun () ->
   Cursor.ws t;
@@ -1591,11 +1601,19 @@ let read_selector_list t =
     else List.rev acc
   in
   let selectors = collect_list [] in
-  match selectors with [ s ] -> s | selectors -> List selectors
+  let result =
+    match selectors with [ s ] -> s | selectors -> List selectors
+  in
+  validate_unforgiving_pseudo t result;
+  result
 
 let read_strict_selector_list t =
   Cursor.with_context t "list" @@ fun () ->
-  match read_complex_list t with [ s ] -> s | selectors -> List selectors
+  let result =
+    match read_complex_list t with [ s ] -> s | selectors -> List selectors
+  in
+  validate_unforgiving_pseudo t result;
+  result
 
 let read t =
   let selector = read_selector_list t in

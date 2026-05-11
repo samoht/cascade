@@ -240,6 +240,12 @@ val matches_nothing : t -> bool
     compound, combined, and relative selectors. A selector list matches nothing
     only when every entry does. *)
 
+val has_unknown_pseudo_class : t -> bool
+(** [has_unknown_pseudo_class sel] returns [true] when [sel] contains an
+    [Unknown_pseudo_class] / [Unknown_pseudo_class_call] anywhere in the tree.
+    Used to flag unforgiving-site unknown pseudo-classes ([.x,:future-pseudo])
+    as spec deviations in strict mode. *)
+
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in
     the selector. Returns [Some "before:"] for ".before:absolute",
