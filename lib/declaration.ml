@@ -563,6 +563,12 @@ let rec read_font_shorthand t =
       | exception Cursor.Parse_error _ -> false
     in
     if is_valid_var () then raw
+    else if
+      (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
+         cannot appear inside a multi-value shorthand like [font: initial 16px
+         serif]. *)
+      value_has_css_wide_mix raw
+    then Cursor.err_invalid t "CSS-wide keyword mixed with other values"
     else
       let r = Cursor.of_string raw in
       let saw_size =
