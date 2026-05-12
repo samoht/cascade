@@ -17454,15 +17454,14 @@ let read_polygon_points inner =
   loop [ read_polygon_point inner ] false
 
 let read_clip_path_polygon t : clip_path =
-  with_basic_shape_fallback t (fun t ->
-      Cursor.call "polygon" t @@ fun inner ->
-      Cursor.ws inner;
-      let fill_rule = read_polygon_fill_rule inner in
-      Cursor.ws inner;
-      let points, spaced = read_polygon_points inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      Clip_path_polygon { fill_rule; points; spaced })
+  Cursor.call "polygon" t @@ fun inner ->
+  Cursor.ws inner;
+  let fill_rule = read_polygon_fill_rule inner in
+  Cursor.ws inner;
+  let points, spaced = read_polygon_points inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Clip_path_polygon { fill_rule; points; spaced }
 
 let read_clip_path_path t =
   Cursor.call "path" t @@ fun inner ->
