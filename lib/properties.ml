@@ -13673,6 +13673,15 @@ let rec read_font_variant_numeric t : font_variant_numeric =
       match tokens with
       | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
       | tokens ->
+          (* CSS Fonts 4 section 6.6: [normal] resets all sub-properties and
+             must stand alone; it can't be mixed with other numeric tokens. *)
+          let is_normal : font_variant_numeric_token -> bool = function
+            | Normal -> true
+            | _ -> false
+          in
+          if List.exists is_normal tokens && List.length tokens > 1 then
+            err_invalid_value t "font-variant-numeric"
+              "[normal] cannot be mixed with other tokens";
           reject_duplicate_families tokens;
           Tokens tokens) (* All non-normal cases become Tokens *)
     t
@@ -15475,29 +15484,57 @@ let read_radial_gradient_config t : radial_gradient_config =
   Radial_config.read t
 
 let read_conic_gradient_config t : conic_gradient_config =
-  Cursor.ws t;
-  let from_angle =
+  (* CSS Images 4 section 3.5.1: the [conic-gradient] prelude is [[from
+     <angle>]? || [at <position>]? || <color-interpolation-method>]? - the [||]
+     combinator allows any order. Loop trying each missing slot until no
+     progress is made. *)
+  let from_angle : angle option ref = ref Option.None in
+  let position : position_value option ref = ref Option.None in
+  let interpolation : color_interpolation option ref = ref Option.None in
+  let read_from t =
     match Cursor.peek_ident t with
     | Some "from" ->
         let _ = Cursor.ident t in
         Cursor.ws t;
-        Some (Values.read_angle t)
-    | _ -> None
+        Values.read_angle t
+    | _ -> Cursor.err_expected t "from"
   in
-  Cursor.ws t;
-  let conic_position =
+  let read_at t =
     match Cursor.peek_ident t with
     | Some "at" ->
         let _ = Cursor.ident t in
         Cursor.ws t;
-        Some (read_position_value t)
-    | _ -> None
+        read_position_value t
+    | _ -> Cursor.err_expected t "at"
   in
-  Cursor.ws t;
-  let conic_interpolation = Cursor.option read_color_interpolation t in
-  if from_angle = None && conic_position = None && conic_interpolation = None
+  let try_slot : 'a. 'a option ref -> (Cursor.t -> 'a) -> bool =
+   fun slot reader ->
+    if !slot <> Option.None then false
+    else
+      match Cursor.option reader t with
+      | Option.Some v ->
+          slot := Option.Some v;
+          true
+      | Option.None -> false
+  in
+  let rec loop () =
+    Cursor.ws t;
+    if
+      try_slot from_angle read_from
+      || try_slot position read_at
+      || try_slot interpolation read_color_interpolation
+    then loop ()
+  in
+  loop ();
+  if
+    !from_angle = Option.None && !position = Option.None
+    && !interpolation = Option.None
   then Cursor.err_invalid t "conic-gradient config";
-  { from_angle; conic_position; conic_interpolation }
+  {
+    from_angle = !from_angle;
+    conic_position = !position;
+    conic_interpolation = !interpolation;
+  }
 
 let read_linear_gradient_body t =
   Cursor.ws t;
