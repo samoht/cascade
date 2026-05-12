@@ -896,7 +896,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
   (* Length/percentage properties *)
-  | Width -> v Width (read_length_percentage t)
+  | Width -> v Width (read_length_percentage ~allow_negative:false t)
   | Height -> v Height (read_length_percentage ~allow_negative:false t)
   | Min_width -> v Min_width (read_length_percentage ~allow_negative:false t)
   | Min_height -> v Min_height (read_length_percentage ~allow_negative:false t)
