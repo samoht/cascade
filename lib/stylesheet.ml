@@ -1785,14 +1785,14 @@ let validate_pseudo_page r s name =
 
 let validate_page_selector r selector =
   (* CSS Paged Media 3 section 3.1: [<page-selector> = <ident-token>?
-     <pseudo-page>?]. The spec allows at most one [<pseudo-page>] per selector
-     ([left], [right], [first], [blank]); chained forms like [:first:left] are
-     not part of the grammar. *)
+     <pseudo-page>*]. Zero or more [<pseudo-page>] entries from the closed set
+     [first | left | right | blank] are allowed, so [@page invoice:blank:first]
+     is well-formed. *)
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let consume_pseudo_page seen i =
+  let consume_pseudo_page i =
     if i >= len || s.[i] <> ':' then i
     else
       let start = i + 1 in
@@ -1800,13 +1800,11 @@ let validate_page_selector r selector =
       if stop = start then page_selector_error r s;
       let name = String.sub s start (stop - start) in
       validate_pseudo_page r s name;
-      if seen then page_selector_error r s;
       stop
   in
-  let consume_pseudo_pages i =
-    let stop_first = consume_pseudo_page false i in
-    let _ : int = consume_pseudo_page (stop_first <> i) stop_first in
-    stop_first
+  let rec consume_pseudo_pages i =
+    let stop = consume_pseudo_page i in
+    if stop = i then i else consume_pseudo_pages stop
   in
   let rec consume_selectors i =
     let i = skip_ws i in
