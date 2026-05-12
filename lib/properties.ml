@@ -16608,7 +16608,13 @@ let read_any_property t =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
-  | _ -> Prop (Unknown_property prop_name)
+  (* Custom properties [--*] always pass through as [Unknown_property] (their
+     value is opaque); other unrecognized names fail here. The lenient
+     declaration recovery in [Declaration.read_regular_property_declaration]
+     catches and falls back to [read_unknown_property_declaration]. *)
+  | _ when String.length prop_name >= 2 && String.sub prop_name 0 2 = "--" ->
+      Prop (Unknown_property prop_name)
+  | _ -> Cursor.err_invalid t ("unknown property: " ^ prop_name)
 
 (* Helper functions for property types *)
 
