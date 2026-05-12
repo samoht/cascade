@@ -1621,7 +1621,7 @@ let test_background () =
     "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png) 50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
-  check_background "none";
+  check_background ~expected:"0 0" "none";
   neg_cursor read_background "invalid-background";
   neg_cursor read_background "red blue";
   (* multiple colors without gradient *)
@@ -2310,7 +2310,7 @@ let test_conic_gradient_config () =
 
 let test_background_position () =
   check_background_position ~expected:"50%" "center";
-  check_background_position "left top";
+  check_background_position ~expected:"0 0" "left top";
   check_background_position "right .5rem center";
   check_background_position "50% 25%";
   check_background_position "inherit";
@@ -2653,7 +2653,7 @@ let test_filter () =
   check_filter "none";
   check_filter "blur(5px)";
   check_filter ~expected:"blur(5px)contrast(1.2)" "blur(5px) contrast(1.2)";
-  check_filter ~expected:"hue-rotate(30deg) opacity(.5)"
+  check_filter ~expected:"hue-rotate(30deg)opacity(.5)"
     "hue-rotate(30deg) opacity(0.5)";
   check_filter ~expected:"drop-shadow(2px 4px 6px red)"
     "drop-shadow(2px 4px 6px red)";
@@ -3115,9 +3115,11 @@ let spec_generated_animation_font_edges () =
   check_animation_composition_item "accumulate";
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
+  check_animation_range "entry";
   check_animation_range_item "cover 20%";
+  check_animation_range_item "entry";
   check_animation_range_name "entry-crossing";
-  check_animation_timeline "scroll(root block)";
+  check_animation_timeline ~expected:"scroll(root)" "scroll(root block)";
   check_font_kerning "normal";
   check_font_language_override "\"TRK\"";
   check_font_optical_sizing "auto";
@@ -3145,8 +3147,6 @@ let spec_generated_animation_font_edges () =
   neg_cursor read_animation_composition "replace blend";
   neg_cursor read_animation_composition_item "blend";
   neg_cursor read_animation_name "1fade";
-  neg_cursor read_animation_range "entry";
-  neg_cursor read_animation_range_item "entry";
   neg_cursor read_animation_range_name "enter";
   neg_cursor read_animation_timeline "scroll(";
   neg_cursor read_font_kerning "kern";

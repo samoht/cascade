@@ -4028,12 +4028,12 @@ let bg336_position_keyword () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   (* Per CSS Backgrounds L3 §3.6 [top left], [left top], and [0% 0%] all denote
-     position [0 0], which the shorthand-collapse rule reduces to [0]. *)
+     position [0 0]. *)
   Alcotest.(check string)
-    "background-position: top left -> 0" ".x{background-position:0}"
+    "background-position: top left -> 0 0" ".x{background-position:0 0}"
     (normalize ".x { background-position: top left }");
   Alcotest.(check string)
-    "background-position: left top -> 0" ".x{background-position:0}"
+    "background-position: left top -> 0 0" ".x{background-position:0 0}"
     (normalize ".x { background-position: left top }");
   Alcotest.(check string)
     "background-position: bottom right -> 100% 100%"
