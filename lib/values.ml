@@ -1050,13 +1050,28 @@ let length_scale op v n =
       Some (length_from_calc_unit unit (scale value))
   | _ -> None
 
+(* CSS Values 4 §10.7: [abs()] preserves the input's type, so
+   [abs(<length>)] returns a [<length>]. The generic [Math_fn -> Num]
+   reduction strips the unit; reconstruct a length [Val] when the
+   argument's [Dim] carries one. *)
+let length_of_math_fn (fn : math_fn) : length option =
+  match fn with
+  | Abs_n (Dim (n, unit)) ->
+      Some (length_from_calc_unit (String.lowercase_ascii unit) (Float.abs n))
+  | _ -> None
+
 let rec eval_length_calc : length calc -> length calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match length_of_math_fn fn with
+      | Some l -> Val l
+      | None -> (
+          match eval_math_fn fn with
+          | Some v -> Num v
+          | None -> Math_fn fn))
   | Nested inner -> (
       match eval_length_calc inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
@@ -1480,13 +1495,29 @@ let lp_scale op (v : length_percentage) n : length_percentage option =
   | (Mul | Div), Pct a -> Some (Pct (scale a))
   | _ -> None
 
+(* Same unit-preserving trick as [length_of_math_fn] but for the
+   length-percentage type: [abs(-5%)] keeps the percentage shape. *)
+let lp_of_math_fn (fn : math_fn) : length_percentage option =
+  match fn with
+  | Abs_n (Dim (n, "%")) -> Some (Pct (Float.abs n))
+  | Abs_n (Dim (n, _)) ->
+      Option.map (fun l -> (Length l : length_percentage)) (length_of_math_fn fn)
+      |> Option.value ~default:(Length (Px (Float.abs n)))
+      |> Option.some
+  | _ -> None
+
 let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match lp_of_math_fn fn with
+      | Some lp -> Val lp
+      | None -> (
+          match eval_math_fn fn with
+          | Some v -> Num v
+          | None -> Math_fn fn))
   | Nested inner -> (
       match eval_lp_calc inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
