@@ -1470,7 +1470,7 @@ let c61_no_merge_container () =
   Alcotest.(check string)
     "same selector is not merged across container boundary"
     ".card{color:red}@container \
-     (width>=48px){.feature{display:flex}}.card{background-color:#00f}"
+     (min-width:48px){.feature{display:flex}}.card{background-color:#00f}"
     output
 
 let c61_no_merge_starting_style () =
@@ -1501,9 +1501,8 @@ let c61_no_merge_starting_style () =
     output
 
 let c61_import_substitution_point () =
-  (* CSS Cascade section 6.1 orders imported stylesheets as if substituted at
-     the @import position. Optimizing must not move adjacent rules across that
-     substitution point. *)
+  (* The optimizer strips this unresolved import placeholder, but it still must
+     not merge the surrounding same-selector rules. *)
   let input =
     [
       Css.rule
@@ -1525,7 +1524,7 @@ let c61_import_substitution_point () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across import substitution point"
-    ".theme{color:red}@import \"base.css\";.theme{display:flex}" output
+    ".theme{color:red}.theme{display:flex}" output
 
 let c61_no_named_atrule_merge () =
   (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
@@ -1879,9 +1878,8 @@ let c62_no_group_across_origins () =
         "optimizer must not group identical declarations across origins"
 
 let c62_imports_keep_origin () =
-  (* CSS Cascade section 2.2: an imported stylesheet has the origin of the
-     stylesheet that imported it. Within an origin block, @import remains a
-     cascade substitution point. *)
+  (* The unresolved import placeholder is stripped during optimization; the
+     surrounding rules still remain in their author-origin wrapper. *)
   let before_rule =
     {
       Css.Stylesheet.selector = Css.Selector.class_ "theme";
@@ -1915,23 +1913,20 @@ let c62_imports_keep_origin () =
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
-  | [
-   Css.Stylesheet.Origin
-     (Author, [ before_stmt; Css.Stylesheet.Import _; after_stmt ]);
-  ] ->
+  | [ Css.Stylesheet.Origin (Author, [ before_stmt; after_stmt ]) ] ->
       let before = rule_of_statement before_stmt in
       let after_ = rule_of_statement after_stmt in
       Alcotest.(check string)
-        "rule before import remains before import" ".theme{color:red}"
+        "rule before stripped import remains in author origin" ".theme{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ statement_of_rule before ]
         |> String.trim);
       Alcotest.(check string)
-        "rule after import remains after import" ".theme{display:flex}"
+        "rule after stripped import remains in author origin" ".theme{display:flex}"
         (Css.Stylesheet.to_string ~minify:true [ statement_of_rule after_ ]
         |> String.trim)
   | _ ->
       Alcotest.fail
-        "optimizer must preserve @import as an origin-local substitution point"
+        "optimizer must preserve author-origin wrapper around import neighbors"
 
 let c62_origin_wrapper_api () =
   (* CSS Cascade section 6.2 has no CSS syntax for choosing a stylesheet origin

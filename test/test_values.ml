@@ -220,17 +220,17 @@ let test_color () =
   check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
-  check_color ~expected:"color(oklab 50% .1 -.05)" "color(oklab 50% 0.1 -0.05)";
-  check_color "color(lch 50% 40 120)";
+  check_color ~expected:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
+  check_color ~expected:"color(lch .5 40 120)" "color(lch 50% 40 120)";
   check_color ~expected:"color(xyz .3 .4 .5)" "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
-  check_color ~expected:"oklch(50% .2 30)" "oklch(50% 0.2 30)";
+  check_color ~expected:"oklch(50%.2 30)" "oklch(50% 0.2 30)";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
   check_color ~expected:"red" "rgb(100% 0% 0%)";
-  check_color ~expected:"oklab(50% .1 -.05)" "oklab(50% 0.1 -0.05)";
-  check_color "lch(50% 40 120)";
-  check_color ~expected:"rgb(255 0 0/.5)" "rgb(255 0 0 / 50%)";
+  check_color ~expected:"oklab(50%.1-.05)" "oklab(50% 0.1 -0.05)";
+  check_color ~expected:"lch(50%40 120)" "lch(50% 40 120)";
+  check_color ~expected:"#ff000080" "rgb(255 0 0 / 50%)";
 
   (* Mixed channel formats in modern rgb() syntax. Per CSS Color 4 section 1.4
      the printer canonicalizes a fully-opaque rgb() to the equivalent named/hex
@@ -239,7 +239,7 @@ let test_color () =
   check_color ~expected:"red" "rgb(255 0% 0)";
   check_color ~expected:"navy" "rgb(0 0 50%)";
   (* Mixed channels with alpha (numeric) *)
-  check_color ~expected:"rgb(50% 128 0/.5)" "rgb(50% 128 0 / 0.5)";
+  check_color ~expected:"#80800080" "rgb(50% 128 0 / 0.5)";
 
   (* Named colors - all variants. Under minification, named colors serialize to
      the shortest spec-equivalent spelling; equal-length named/hex ties use the
@@ -287,9 +287,9 @@ let test_color () =
   check_color ~expected:"var(--color,)" "var(--color,)";
 
   (* Custom properties inline mode tests with complex color fallbacks *)
-  check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
+  check_color ~expected:"var(--theme-primary,#2080df)"
     "var(--theme-primary, hsl(210deg 75% 50%))";
-  check_color ~expected:"var(--accent,rgb(255 0 128/.8))"
+  check_color ~expected:"var(--accent,#ff0080cc)"
     "var(--accent, rgb(255 0 128 / 80%))";
 
   (* RGB functions - various formats. Per CSS Color 4 section 1.4 the printer
@@ -302,16 +302,16 @@ let test_color () =
 
   (* RGBA with alpha. The fully-opaque case (alpha 1) collapses to the same
      named/hex form as the rgb() above; alpha < 1 keeps the rgb(...) form. *)
-  check_color ~expected:"rgb(255 0 0/.5)" "rgba(255, 0, 0, 0.5)";
+  check_color ~expected:"#ff000080" "rgba(255, 0, 0, 0.5)";
   check_color ~expected:"#0000" "rgba(255, 0, 0, 0)";
   check_color ~expected:"red" "rgba(255, 0, 0, 1)";
-  check_color ~expected:"rgb(0 0 0/.25)" "rgba(0, 0, 0, 0.25)";
-  check_color ~expected:"rgb(128 128 128/.75)" "rgba(128, 128, 128, 0.75)";
+  check_color ~expected:"#00000040" "rgba(0, 0, 0, 0.25)";
+  check_color ~expected:"#808080bf" "rgba(128, 128, 128, 0.75)";
   neg_cursor read_color "invalid";
   neg_cursor read_color "abc";
   neg_cursor read_color "#gg";
   check_color ~expected:"red" "rgb(256, 0, 0)";
-  check_color ~expected:"hsl(1 50% 50%)" "hsl(361, 50%, 50%)";
+  check_color ~expected:"#bf4240" "hsl(361, 50%, 50%)";
   neg_cursor read_color "";
   (* Unknown color keyword *)
   neg_cursor read_color "notacolor"

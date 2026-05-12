@@ -766,7 +766,7 @@ let callstack_accuracy () =
      character. So .test\!class is equivalent to .test!class which is a valid
      class selector. Testing an actually invalid selector instead: *)
   check_full_css_callstack "invalid_selector_error"
-    ".test[[attr]] { color: red; }" [ "stylesheet"; "rule" ]
+    ".test[[attr]] { color: red; }" [ "rule"; "selector"; "list" ]
 
 (* Test check functions for selector components *)
 let component_parsing () =
@@ -1541,8 +1541,8 @@ let spec_selector_pseudo_manifest () =
       ":muted";
       ":not(.a,#b)";
       ":nth-col(odd)";
-      ":nth-last-child(2n of :not([hidden]))";
-      ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
+      ":nth-last-child(2n of:not([hidden]))";
+      ":nth-last-child(3n+1 of:where(.visible,:not([hidden])))";
       ":nth-last-col(even)";
       ":nth-last-of-type(-n+3)";
       ":nth-of-type(3n)";

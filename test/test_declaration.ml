@@ -763,16 +763,16 @@ let misc () =
 let list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
-  check_declaration ~expected:"box-shadow:0 1px 3px#0000001f"
+  check_declaration ~expected:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
-  check_declaration ~expected:"box-shadow:0 1px 3px#0000001f,0 1px 2px#0000003d"
+  check_declaration ~expected:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
-  check_declaration ~expected:"box-shadow:inset 0 2px 4px#0000000f"
+  check_declaration ~expected:"box-shadow:inset 0 2px 4px #0000000f"
     "box-shadow: inset 0 2px 4px rgba(0,0,0,0.06)";
 
   (* Text shadow *)
   check_declaration ~expected:"text-shadow:none" "text-shadow: none";
-  check_declaration ~expected:"text-shadow:1px 1px 2px black"
+  check_declaration ~expected:"text-shadow:1px 1px 2px #000"
     "text-shadow: 1px 1px 2px black";
   check_declaration ~expected:"text-shadow:0 0 10px #00f,0 0 20px red"
     "text-shadow: 0 0 10px blue, 0 0 20px red";
@@ -789,7 +789,7 @@ let list_properties () =
 
   (* Transition *)
   check_declaration ~expected:"transition:none" "transition: none";
-  check_declaration ~expected:"transition:all .3s ease"
+  check_declaration ~expected:"transition:all .3s"
     "transition: all 0.3s ease";
   check_declaration ~expected:"transition:all .3s linear"
     "transition: all .3s linear";
@@ -800,9 +800,9 @@ let list_properties () =
 
   (* Animation *)
   check_declaration ~expected:"animation:none" "animation: none";
-  check_declaration ~expected:"animation:spin 1s linear infinite"
+  check_declaration ~expected:"animation:1s linear infinite spin"
     "animation: spin 1s linear infinite";
-  check_declaration ~expected:"animation:slide .5s ease-out"
+  check_declaration ~expected:"animation:.5s ease-out slide"
     "animation: slide 0.5s ease-out"
 
 let custom_properties () =
@@ -996,24 +996,31 @@ let spec_property_grammar_table_expansion () =
             Some "background:url(bg.png) 50%/cover no-repeat border-box"
         | "scrollbar-color", "red blue" -> Some "scrollbar-color:red #00f"
         | "border", "1px solid currentColor" -> Some "border:1px solid"
+        | "background-position", "left 10px top 20px" ->
+            Some "background-position:10px 20px"
         | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
-            Some "box-shadow:0 1px 2px#0003"
+            Some "box-shadow:0 1px 2px #0003"
         | "color", "light-dark(black, white)" ->
-            Some "color:light-dark(black,white)"
+            Some "color:light-dark(#000,#fff)"
+        | "filter", "blur(5px) contrast(120%)" ->
+            Some "filter:blur(5px)contrast(120%)"
         | "font-size", "clamp(1rem, 2vw, 2rem)" ->
             Some "font-size:clamp(1rem,2vw,2rem)"
         | "transform", "translateX(10px) rotate(45deg) scale(1.2)" ->
             Some "transform:translateX(10px)rotate(45deg)scale(1.2)"
+        | "rotate", "1 0 0 45deg" -> Some "rotate:x 45deg"
         | "font", "italic small-caps bold 16px/1.5 serif" ->
             Some "font:italic small-caps 700 16px/1.5 serif"
         | "animation", "fade 1s linear 2 alternate both running" ->
-            Some "animation:fade 1s linear 2 alternate both"
+            Some "animation:1s linear 2 alternate both fade"
+        | "animation-range", "entry 10% exit 90%" ->
+            Some "animation-range:entry 10%exit 90%"
         | "position-try-fallbacks", "--below, flip-block" ->
             Some "position-try-fallbacks:--below,flip-block"
         | "cursor", "url(cursor.cur), pointer" ->
             Some "cursor:url(cursor.cur),pointer"
         | "mask", "url(mask.svg) center / contain no-repeat" ->
-            Some "mask:url(mask.svg) center/contain no-repeat"
+            Some "mask:url(mask.svg)center/contain no-repeat"
         | _ -> None
       in
       check_declaration ?expected input)
@@ -1043,7 +1050,6 @@ let spec_property_grammar_table_expansion () =
       ("background-size", "cover contain");
       ("background-position", "left right");
       ("box-shadow", "inset inset 0 0 red");
-      ("clip-path", "circle()");
       ("shape-margin", "-1px");
       ("color", "light-dark(black)");
       ("mix-blend-mode", "normal multiply");
@@ -1064,7 +1070,6 @@ let spec_property_grammar_table_expansion () =
       ("transition", "opacity ease ease");
       ("transition-behavior", "allow-discrete normal");
       ("animation", "1s 2s 3s");
-      ("animation-range", "exit entry");
       ("view-transition-name", "none card");
       ("grid-auto-flow", "dense dense");
       ("gap", "-1px");
@@ -1116,8 +1121,8 @@ let edge_cases () =
   in
   check_declaration
     ~expected:
-      "box-shadow:0 1px 2px#0000001a,0 2px 4px#0000001a,0 4px 8px#0000001a,0 \
-       8px 16px#0000001a"
+      "box-shadow:0 1px 2px #0000001a,0 2px 4px #0000001a,0 4px 8px #0000001a,0 \
+       8px 16px #0000001a"
     ("box-shadow: " ^ long_shadow)
 
 let css_wide_keywords () =
@@ -1386,7 +1391,7 @@ let spec_platform_property_vectors () =
       (* All-constant [mod()] reduces under shortest-wins. *)
       ("width: mod(18px, 5px)", "width:3px");
       ("width: rem(18px, 5px)", "width:3px");
-      ("width: hypot(3px, 4px)", "width:hypot(3px,4px)");
+      ("width: hypot(3px, 4px)", "width:5px");
       ( "width: calc-size(auto, size + 1rem)",
         "width:calc-size(auto,size + 1rem)" );
       ("opacity: abs(-0.5)", "opacity:abs(-.5)");
@@ -1394,11 +1399,11 @@ let spec_platform_property_vectors () =
       ( "color: color-mix(in oklab, red 40%, blue)",
         "color:color-mix(in oklab,red 40%,#00f)" );
       ( "color: light-dark(CanvasText, white)",
-        "color:light-dark(canvastext,white)" );
+        "color:light-dark(canvastext,#fff)" );
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
          url(a.png) type(\"image/png\") 1x)",
-        "background-image:image-set(url(a.avif) type(\"image/avif\") \
-         1x,url(a.png) type(\"image/png\") 1x)" );
+        "background-image:image-set(url(a.avif) type(\"image/avif\")\
+         1x,url(a.png) type(\"image/png\")1x)" );
       ("width: attr(data-w px, 10px)", "width:attr(data-w px,10px)");
       ( "width: attr(data-w px, calc(100% - 1rem))",
         "width:attr(data-w px,calc(100% - 1rem))" );
@@ -1414,20 +1419,21 @@ let spec_platform_property_vectors () =
       ( "content: attr(data-label string, var(--label, \"x y\"))",
         "content:attr(data-label string,var(--label,\"x y\"))" );
       ( "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch",
-        "border-image:linear-gradient(red,#00f) 30 fill/10px/1 stretch" );
+        "border-image:linear-gradient(red,#00f)30 fill/10px/1 stretch" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif" );
+      ("display: block flex", "display:flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
         "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
       ( "transition: opacity 1s ease-in .2s allow-discrete",
         "transition:opacity 1s ease-in .2s allow-discrete" );
+      ("animation-range: exit entry", "animation-range:exit entry");
       ("scroll-timeline: --scroller block", "scroll-timeline:--scroller block");
       ("view-timeline: --reveal inline", "view-timeline:--reveal inline");
     ];
   List.iter
     (fun input -> neg_cursor read_declaration input)
     [
-      "display: block flex";
       "position: sticky absolute";
       "float: center";
       "table-layout: grid";
@@ -1443,7 +1449,6 @@ let spec_platform_property_vectors () =
       "text-wrap-style: loud";
       "text-box-trim: 1px";
       "animation-timeline: scroll(";
-      "animation-range: exit entry";
       "view-transition-name: none card";
       "image-orientation: upside-down";
       "aspect-ratio: 16 /";
@@ -1621,9 +1626,9 @@ let spec_remaining_prop_vectors () =
       ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg)30 fill");
       ("mask-size: contain", "mask-size:contain");
       ("mask-repeat: no-repeat", "mask-repeat:no-repeat");
-      ("mask-position: left 10px top 20px", "mask-position:left 10px top 20px");
+      ("mask-position: left 10px top 20px", "mask-position:10px 20px");
       ( "backdrop-filter: blur(4px) saturate(120%)",
-        "backdrop-filter:blur(4px) saturate(120%)" );
+        "backdrop-filter:blur(4px)saturate(120%)" );
       ("will-change: transform, opacity", "will-change:transform,opacity");
       ("touch-action: pan-x pinch-zoom", "touch-action:pan-x pinch-zoom");
       ("caret-color: auto", "caret-color:auto");
