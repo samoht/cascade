@@ -19088,10 +19088,21 @@ let validate_grid_area_rectangles t rows =
   List.iter validate_name (grid_area_names positions)
 
 let rec read_border_spacing t : border_spacing =
+  let read_numeric_length t =
+    let l = read_length t in
+    match l with
+    | Auto | Size | None | Normal | Fit_content | Content | Contain
+    | Max_content | Min_content | From_font | Hairline | Thin | Medium | Thick
+    | Stretch ->
+        Cursor.err_invalid t "border-spacing requires a <length>"
+    | _ -> l
+  in
   Cursor.enum_or_var "border-spacing" []
     ~var:(fun t -> Var (Values.read_var read_border_spacing t))
     ~default:(fun t ->
-      (Lengths (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
+      (Lengths
+         (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_numeric_length
+            t)
         : border_spacing))
     t
 
