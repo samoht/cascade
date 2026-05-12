@@ -6391,7 +6391,7 @@ let pp_background_position_value : position_value Pp.t =
   in
   match value with
   | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
-  | (Left_top | Top_left) when Pp.minified ctx -> pp_length ctx Zero
+  | (Left_top | Top_left) when Pp.minified ctx -> pp_pair ctx Zero Zero
   | (Bottom_left | Left_bottom) when Pp.minified ctx ->
       pp_pair ctx (pct 0.) (pct 100.)
   | (Bottom_right | Right_bottom) when Pp.minified ctx ->
