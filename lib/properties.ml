@@ -19108,7 +19108,7 @@ let validate_grid_area_rectangles t rows =
 
 let rec read_border_spacing t : border_spacing =
   let read_numeric_length t =
-    let l = read_length t in
+    let l = read_length ~allow_negative:false t in
     match l with
     | Auto | Size | None | Normal | Fit_content | Content | Contain
     | Max_content | Min_content | From_font | Hairline | Thin | Medium | Thick
