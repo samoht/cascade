@@ -959,7 +959,11 @@ and pp_statement : statement Pp.t =
         String.sub prelude 0 (trim_end (n - 1))
       in
       Pp.char ctx '@';
-      Pp.string ctx name;
+      (* CSS Syntax 3 section 9.1: an at-rule name with non-ident-continue code
+         points (control chars, escapes, non-ASCII) must round-trip through
+         [escape_ident] so the serialized [\6 T] re-tokenizes back to the same
+         at-keyword token. *)
+      Pp.string ctx (Parser.escape_ident name);
       if prelude <> "" then (
         Pp.sp ctx ();
         Pp.string ctx prelude);
