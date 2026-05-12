@@ -6723,7 +6723,7 @@ let rec pp_background : background Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
-  | None -> Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
+  | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_background ctx v
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_background) ctx vars
   | Shorthand s -> pp_background_shorthand ctx s
