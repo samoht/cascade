@@ -9150,6 +9150,9 @@ let rec pp_rotate_value : rotate_value Pp.t =
       Pp.string ctx "z";
       Pp.space ctx ();
       pp_angle ctx a
+  | Axis (1., 0., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (X a)
+  | Axis (0., 1., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (Y a)
+  | Axis (0., 0., 1., a) when Pp.minified ctx -> pp_rotate_value ctx (Z a)
   | Axis (x, y, z, a) ->
       (* CSS Transforms 2 §3.3 [rotate] [<angle> <number>{3}] is shorter under
          minify when the angle leads (csso convention) and the second / third
