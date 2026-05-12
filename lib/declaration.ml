@@ -267,7 +267,15 @@ let is_decl_unknown_property_name name =
       Cursor.ws r;
       Cursor.is_done r
   | Prop _ -> false
-  | exception Cursor.Parse_error _ -> false
+  | exception Cursor.Parse_error _ ->
+      (* [read_any_property] now rejects unrecognized names; treat them as
+         unknown if the input was otherwise a well-formed ident. *)
+      let r = Cursor.of_string name in
+      (match Cursor.ident r with
+      | _ ->
+          Cursor.ws r;
+          Cursor.is_done r
+      | exception Cursor.Parse_error _ -> false)
 
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known
     spec-violation cascade detected at parse time. The minify-time
@@ -1670,7 +1678,13 @@ let is_unknown_property_name name =
       Cursor.ws r;
       Cursor.is_done r
   | Prop _ -> false
-  | exception Cursor.Parse_error _ -> false
+  | exception Cursor.Parse_error _ ->
+      let r = Cursor.of_string name in
+      (match Cursor.ident r with
+      | _ ->
+          Cursor.ws r;
+          Cursor.is_done r
+      | exception Cursor.Parse_error _ -> false)
 
 (* The typed readers carry their own [Invalid] arms for spec-violations they
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
