@@ -14108,6 +14108,19 @@ let read_transition_shorthand t : transition_shorthand =
     | Option.None -> (All : transition_property_value)
   in
   let duration, delay = transition_duration_delay parts in
+  (* CSS Transitions 1: a single-transition that names a specific property
+     must carry at least a [<time>] (duration); without one the entry produces
+     no observable transition. The implicit/explicit [all] form (no property
+     or [all]) and the [none] form are still accepted bare. *)
+  let needs_duration =
+    match parts.transition_property with
+    | Option.Some (Property _) -> true
+    | _ -> false
+  in
+  if needs_duration && parts.transition_times = []
+     && parts.transition_timing = Option.None
+     && parts.transition_behavior = Option.None
+  then Cursor.err_invalid t "transition shorthand requires a duration";
   {
     property;
     duration;
