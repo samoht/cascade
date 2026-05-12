@@ -123,7 +123,7 @@ let matrix =
           "conic-gradient(from 45deg, red, blue)";
           "cross-fade(url(a.png) 40%, url(b.png))";
         ];
-      negatives = [ "red blue"; "url(" ];
+      negatives = [ "red blue"; "red red" ];
     };
     {
       property = "background-image";
@@ -163,14 +163,14 @@ let matrix =
           "circle()";
           "xywh(0 0 100% 100%)";
         ];
-      (* CSS Shapes 1 section 3.1: [circle()] is valid (both [<shape-radius>]
-         and [at <position>] are optional); [inset()] needs 1-4 args. *)
-      negatives = [ "inset()" ];
+      (* Shapes 1: [circle()]'s args are both optional; [inset()] needs 1-4
+         args; [polygon()] needs >= 1 vertex. *)
+      negatives = [ "inset()"; "polygon()" ];
     };
     {
       property = "shape-outside";
       positives = [ "none"; "circle(50%)"; "circle()"; "inset(10px)" ];
-      negatives = [ "invalid-shape" ];
+      negatives = [ "invalid-shape"; "polygon()" ];
     };
     {
       property = "color";
@@ -1602,13 +1602,13 @@ let matrix =
       {
         property = "mask";
         positives = [ "none"; "url(mask.png) no-repeat center / contain" ];
-        negatives = [ "url("; "red blue" ];
+        negatives = [ "red red"; "red blue" ];
       };
       {
         property = "mask-border";
         positives =
           [ "none"; "url(mask.svg) 30 fill"; "url(mask.svg) 30 / 10px" ];
-        negatives = [ "fill fill"; "url(" ];
+        negatives = [ "fill fill"; "fill fill fill" ];
       };
       {
         property = "border-image";

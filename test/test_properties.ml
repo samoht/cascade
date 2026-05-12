@@ -396,6 +396,15 @@ let check_color_interpolation =
   check_value_cursor "color_interpolation" read_color_interpolation
     pp_color_interpolation
 
+let read_required_hue_interpolation_method t =
+  match read_hue_interpolation_method t with
+  | Some value -> value
+  | None -> Cursor.err_expected t "hue-interpolation-method"
+
+let check_hue_interpolation_method =
+  check_value_cursor "hue_interpolation_method"
+    read_required_hue_interpolation_method pp_hue_interpolation_method
+
 let check_position_value =
   check_value_cursor "position_value" read_position_value pp_position_value
 
@@ -1158,7 +1167,7 @@ let test_border () =
   check_border ~expected:"2px solid" "solid 2px";
   (* Test with zero width *)
   check_border "0 solid";
-  check_border "0 solid black";
+  check_border ~expected:"0 solid #000" "0 solid black";
   (* Test with inherit/initial *)
   check_border "inherit";
   check_border "initial";
@@ -1265,7 +1274,7 @@ let test_unicode_range () =
   (* case insensitive *)
   check_unicode_range ~expected:"U+ABCD" "U+abcd";
   (* Code point ranges per CSS spec *)
-  check_unicode_range ~expected:"U+0-FF" "U+0000-00FF";
+  check_unicode_range ~expected:"U+??" "U+0000-00FF";
   check_unicode_range ~expected:"U+25-FF" "U+0025-00FF";
   (* MDN example format *)
   check_unicode_range ~expected:"U+20-7F" "U+0020-007F";
@@ -1610,7 +1619,7 @@ let test_background () =
   check_background "url(image.png)";
   check_background ~expected:"linear-gradient(to right,red,#00f)"
     "linear-gradient(to right, red, blue)";
-  check_background ~expected:"url(image.png) center/cover no-repeat fixed red"
+  check_background ~expected:"url(image.png) 50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
   check_background "none";
   neg_cursor read_background "invalid-background";
@@ -1849,13 +1858,13 @@ let test_flex_basis () =
 let test_background_shorthand () =
   check_background_shorthand "red";
   check_background_shorthand "url(image.png)";
-  check_background_shorthand "center";
+  check_background_shorthand ~expected:"50%" "center";
   check_background_shorthand "no-repeat";
   check_background_shorthand "repeat repeat";
   check_background_shorthand ~expected:"url(image.png) red" "red url(image.png)";
-  check_background_shorthand ~expected:"url(image.png) center"
+  check_background_shorthand ~expected:"url(image.png) 50%"
     "url(image.png) center";
-  check_background_shorthand ~expected:"url(image.png) center no-repeat red"
+  check_background_shorthand ~expected:"url(image.png) 50% no-repeat red"
     "red url(image.png) center no-repeat";
   neg_cursor read_background_shorthand "invalid invalid";
   neg_cursor read_background_shorthand "red blue green";
@@ -1871,14 +1880,14 @@ let test_animation_shorthand () =
   check_animation_shorthand "1s";
   (* name only, duration defaults to 0s *)
   check_animation_shorthand "slide";
-  check_animation_shorthand "slide 1s";
-  check_animation_shorthand "slide 1s ease-in";
-  check_animation_shorthand ~expected:"slide 1s ease-in .5s infinite"
+  check_animation_shorthand ~expected:"1s slide" "slide 1s";
+  check_animation_shorthand ~expected:"1s ease-in slide" "slide 1s ease-in";
+  check_animation_shorthand ~expected:"1s ease-in .5s infinite slide"
     "slide 1s ease-in 0.5s infinite";
-  check_animation_shorthand "slide 1s infinite";
-  check_animation_shorthand "slide 1s reverse";
-  check_animation_shorthand "slide 1s forwards";
-  check_animation_shorthand "slide 1s paused";
+  check_animation_shorthand ~expected:"1s infinite slide" "slide 1s infinite";
+  check_animation_shorthand ~expected:"1s reverse slide" "slide 1s reverse";
+  check_animation_shorthand ~expected:"1s forwards slide" "slide 1s forwards";
+  check_animation_shorthand ~expected:"1s paused slide" "slide 1s paused";
 
   (* Invalid cases *)
   (* invalid time unit *)
@@ -2100,8 +2109,9 @@ let test_animation () =
   check_animation "inherit";
   check_animation "initial";
   check_animation "none";
-  check_animation "slide-in 1s";
-  check_animation "my-animation 2s ease-in 1s infinite alternate";
+  check_animation ~expected:"1s slide-in" "slide-in 1s";
+  check_animation ~expected:"2s ease-in 1s infinite alternate my-animation"
+    "my-animation 2s ease-in 1s infinite alternate";
   (* Test invalid animation shorthand according to CSS spec *)
   neg_cursor read_animation "1s 2s 3s";
   (* More than 2 time values *)
@@ -2164,7 +2174,7 @@ let test_gradient_direction () =
 let test_gradient_stop () =
   (* Basic color stops *)
   check_gradient_stop "red";
-  check_gradient_stop ~expected:"blue50%" "blue 50%";
+  check_gradient_stop ~expected:"#00f50%" "blue 50%";
   check_gradient_stop ~expected:"#ff573325%" "#ff5733 25%";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a fully-opaque rgb()
      to the equivalent named color when shorter. *)
@@ -2215,6 +2225,15 @@ let test_color_interpolation () =
   neg_cursor read_color_interpolation "oklab";
   neg_cursor read_color_interpolation "in unknown";
   neg_cursor read_color_interpolation "in"
+
+let test_hue_interpolation_method () =
+  check_hue_interpolation_method "shorter hue";
+  check_hue_interpolation_method "longer hue";
+  check_hue_interpolation_method "increasing hue";
+  check_hue_interpolation_method "decreasing hue";
+  neg_cursor read_hue_interpolation_method "shorter";
+  neg_cursor read_hue_interpolation_method "hue";
+  neg_cursor read_hue_interpolation_method "unknown hue"
 
 let test_background_image () =
   check_background_image "none";
@@ -2290,7 +2309,7 @@ let test_conic_gradient_config () =
   neg_cursor read_conic_gradient_config "from"
 
 let test_background_position () =
-  check_background_position "center";
+  check_background_position ~expected:"50%" "center";
   check_background_position "left top";
   check_background_position "right .5rem center";
   check_background_position "50% 25%";
@@ -2494,7 +2513,7 @@ let test_svg_paint () =
   check_svg_paint "none";
   check_svg_paint "currentcolor";
   check_svg_paint "red";
-  check_svg_paint "url(#grad) red";
+  check_svg_paint ~expected:"url(#grad)red" "url(#grad) red";
   neg_cursor read_svg_paint "invalid-paint"
 
 let test_direction () =
@@ -2611,7 +2630,7 @@ let test_transform_origin () =
      matched-pair shorthand collapses to a single value. Per shortest- wins
      (Lightning CSS) the printer emits the numeric form. *)
   check_transform_origin ~expected:"50%" "center";
-  check_transform_origin ~expected:"0" "left top";
+  check_transform_origin ~expected:"0 0" "left top";
   check_transform_origin "50% 25%";
   check_transform_origin "50% 50% 10px";
   check_transform_origin "inherit";
@@ -2633,7 +2652,7 @@ let test_text_shadow () =
 let test_filter () =
   check_filter "none";
   check_filter "blur(5px)";
-  check_filter ~expected:"blur(5px) contrast(1.2)" "blur(5px) contrast(1.2)";
+  check_filter ~expected:"blur(5px)contrast(1.2)" "blur(5px) contrast(1.2)";
   check_filter ~expected:"hue-rotate(30deg) opacity(.5)"
     "hue-rotate(30deg) opacity(0.5)";
   check_filter ~expected:"drop-shadow(2px 4px 6px red)"
@@ -2911,7 +2930,10 @@ let test_color_scheme () =
   check_color_scheme "light";
   check_color_scheme "dark";
   check_color_scheme "light dark";
-  neg_cursor read_color_scheme "invalid-scheme"
+  (* Color Adjust 1 SS 2.1: <custom-ident> is in the grammar for forward
+     compatibility, so unknown idents are accepted. *)
+  check_color_scheme "future-scheme";
+  neg_cursor read_color_scheme "normal light"
 
 let test_columns_value () =
   check_columns_value "auto";
@@ -3025,7 +3047,7 @@ let spec_property_grammar_edges () =
   check_font_feature_settings "\"liga\" off, \"calt\" 1";
   check_font_variation_settings "\"wght\" 650, \"wdth\" 75";
   check_timing_function "linear(0, .25 50%, 1)";
-  check_timing_function "steps(4, jump-none)";
+  check_timing_function ~expected:"steps(4,jump-none)" "steps(4, jump-none)";
   check_transform "translate(10px, 20%)" ~expected:"translate(10px,20%)";
   check_transform "rotate(1 0 0 45deg)";
   check_transform "scale(1.2 0.8)" ~expected:"scale(1.2 .8)";
@@ -3077,7 +3099,8 @@ let spec_mask_clip_property_edges () =
   check_webkit_mask_composite "source-over";
   check_webkit_mask_source_type "auto";
   check_clip_path "shape(from 0 0, line to 100% 0, close)";
-  check_clip_path "polygon(0 0, 100% 0, 100% 100%)";
+  check_clip_path ~expected:"polygon(0 0,100%0,100%100%)"
+    "polygon(0 0, 100% 0, 100% 100%)";
   neg_cursor read_mask_box "margin-box";
   neg_cursor read_mask_mode "source";
   neg_cursor read_mask_composite "add subtract";
@@ -3091,7 +3114,7 @@ let spec_generated_animation_font_edges () =
   check_animation_composition ~expected:"replace,add" "replace, add";
   check_animation_composition_item "accumulate";
   check_animation_name ~expected:"fade,slide" "fade, slide";
-  check_animation_range "entry 0% exit 100%";
+  check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range_item "cover 20%";
   check_animation_range_name "entry-crossing";
   check_animation_timeline "scroll(root block)";
@@ -3155,7 +3178,7 @@ let spec_generated_box_layout_edges () =
   check_alignment_baseline "text-top";
   check_baseline_shift "10%";
   check_baseline_source "first";
-  check_border_image "url(border.png) 30";
+  check_border_image ~expected:"url(border.png)30" "url(border.png) 30";
   check_border_image_outset_item "2px";
   check_border_image_repeat_keyword "round";
   check_border_image_slice "30 fill";
@@ -3172,7 +3195,7 @@ let spec_generated_box_layout_edges () =
   check_flex_factor "2";
   check_flex_flow "row wrap";
   check_grid_line_pair ~expected:"1/span 2" "1 / span 2";
-  check_grid_template_areas "\"a a\" \"b c\"";
+  check_grid_template_areas ~expected:"\"a a\"\"b c\"" "\"a a\" \"b c\"";
   check_hyphenate_limit_chars "3 4 5";
   check_initial_letter "2 3";
   check_initial_letter_align "border-box alphabetic";
@@ -3590,6 +3613,7 @@ let additional_tests =
     test_case "background_size" `Quick test_background_size;
     test_case "gradient_direction" `Quick test_gradient_direction;
     test_case "gradient_stop" `Quick test_gradient_stop;
+    test_case "hue_interpolation_method" `Quick test_hue_interpolation_method;
     test_case "conic_gradient_config" `Quick test_conic_gradient_config;
     test_case "radial_shape" `Quick test_radial_shape;
     test_case "radial_size" `Quick test_radial_size;

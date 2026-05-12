@@ -238,7 +238,7 @@ let run_parse case () =
   | Ok _ -> ()
   | Error err ->
       Alcotest.failf "%s %s failed: %s" case.source_file case.origin
-        (Cascade.Css.pp_parse_warning err)
+        (Cascade.Error.to_string err)
 
 let extracted_cases () =
   collect_cases ()

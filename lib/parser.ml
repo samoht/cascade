@@ -580,38 +580,9 @@ let to_string_minified cvs =
     cvs_to_buffer_min buf cvs;
     Buffer.contents buf
 
-let rec cv_to_buffer_custom buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
-  | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_custom buf value;
-      Buffer.add_char buf (closing_char opening)
-  | Func { node = { name; arguments; _ }; _ } ->
-      Buffer.add_string buf (escape_ident name);
-      Buffer.add_char buf '(';
-      cvs_to_buffer_custom buf arguments;
-      Buffer.add_char buf ')'
-
-and cvs_to_buffer_custom buf cvs =
-  let rec loop prev = function
-    | [] -> ()
-    | cv :: rest
-      when is_whitespace cv
-           && match prev with Some p -> is_backslash_delim p | None -> false ->
-        loop prev rest
-    | cv :: rest ->
-        (match prev with
-        | Some p when normal_pair_needs_token_boundary p cv ->
-            Buffer.add_char buf ' '
-        | _ -> ());
-        cv_to_buffer_custom buf cv;
-        loop (Some cv) rest
-  in
-  loop None cvs
-
 let to_string_custom cvs =
   let buf = Buffer.create 64 in
-  cvs_to_buffer_custom buf cvs;
+  cvs_to_buffer buf cvs;
   Buffer.contents buf
 
 (* CSS Custom Properties Level 1: specified custom-property values are opaque

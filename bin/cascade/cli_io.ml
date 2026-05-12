@@ -20,12 +20,12 @@ let read_stdin () =
 
 let parse_css ~filename css =
   match Css.of_string ~filename css with
-  | Ok { stylesheet; warnings } ->
+  | Ok { Css.stylesheet; warnings } ->
       List.iter
         (fun w ->
           (* Prefix every line of a multi-line diagnostic so a downstream [grep
              -v "warning"] filters the whole entry, not just the first line. *)
-          let msg = Css.pp_parse_warning w in
+          let msg = Cascade.Error.to_string w in
           String.split_on_char '\n' msg
           |> List.iter (fun line -> Fmt.epr "warning: %s@." line))
         warnings;

@@ -2706,14 +2706,6 @@ let simplify_alpha ?layer_order ?layer ctx value =
     match (left, op, right) with
     | Values.Num a, Values.Add, Values.Num b -> Some (alpha_num (a +. b))
     | Values.Num a, Values.Sub, Values.Num b -> Some (alpha_num (a -. b))
-    | ( Values.Numeric { value = a; _ },
-        Values.Add,
-        Values.Numeric { value = b; _ } ) ->
-        Some (alpha_num (a +. b))
-    | ( Values.Numeric { value = a; _ },
-        Values.Sub,
-        Values.Numeric { value = b; _ } ) ->
-        Some (alpha_num (a -. b))
     | Values.Pct a, Values.Add, Values.Pct b -> Some (alpha_pct (a +. b))
     | Values.Pct a, Values.Sub, Values.Pct b -> Some (alpha_pct (a -. b))
     | _ -> None
@@ -2722,17 +2714,12 @@ let simplify_alpha ?layer_order ?layer ctx value =
     match (value, op) with
     | Values.Num a, Values.Mul -> Some (alpha_num (a *. num))
     | Values.Num a, Values.Div when num <> 0. -> Some (alpha_num (a /. num))
-    | Values.Numeric { value = a; _ }, Values.Mul -> Some (alpha_num (a *. num))
-    | Values.Numeric { value = a; _ }, Values.Div when num <> 0. ->
-        Some (alpha_num (a /. num))
     | Values.Pct a, Values.Mul -> Some (alpha_pct (a *. num))
     | Values.Pct a, Values.Div when num <> 0. -> Some (alpha_pct (a /. num))
     | _ -> None
   in
   let to_number (value : Values.alpha) =
-    match value with
-    | Values.Num n | Values.Numeric { value = n; _ } -> Some n
-    | _ -> None
+    match value with Values.Num n -> Some n | _ -> None
   in
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.alpha Calc_residual.ops =

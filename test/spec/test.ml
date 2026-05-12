@@ -14,10 +14,10 @@ let roundtrip css expected =
   match of_string ~strict:true css with
   | Ok parsed ->
       let output =
-        to_string ~minify:true ~newline:false parsed.Css.stylesheet
+        to_string ~minify:true ~newline:false parsed.stylesheet
       in
       Alcotest.(check string) css expected output
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let roundtrip_identity css = roundtrip css css
 
@@ -43,7 +43,7 @@ let preserves_non_minified css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
       let output =
-        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+        to_string ~minify:false ~newline:false parsed.stylesheet
       in
       let compact_output = strip_ascii_ws output in
       List.iter
@@ -55,13 +55,13 @@ let preserves_non_minified css fragments =
               "non-minified output for %S did not preserve %S\noutput: %S" css
               fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let preserves_non_minified_exact css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
       let output =
-        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+        to_string ~minify:false ~newline:false parsed.stylesheet
       in
       List.iter
         (fun fragment ->
@@ -71,13 +71,13 @@ let preserves_non_minified_exact css fragments =
                output: %S"
               css fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let rejects_non_minified_fragments css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
       let output =
-        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+        to_string ~minify:false ~newline:false parsed.stylesheet
       in
       let compact_output = strip_ascii_ws output in
       List.iter
@@ -89,13 +89,13 @@ let rejects_non_minified_fragments css fragments =
                output: %S"
               css fragment output)
         fragments
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let rejects_non_minified_prefixes css prefixes =
   match of_string ~strict:true css with
   | Ok parsed ->
       let output =
-        to_string ~minify:false ~newline:false parsed.Css.stylesheet
+        to_string ~minify:false ~newline:false parsed.stylesheet
       in
       let compact_output = strip_ascii_ws output in
       List.iter
@@ -111,25 +111,25 @@ let rejects_non_minified_prefixes css prefixes =
                output: %S"
               css prefix output)
         prefixes
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let parses_valid css =
   match of_string ~strict:true css with
   | Ok _ -> ()
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
 let rejects_invalid css =
   match of_string ~strict:true css with
   | Error _ -> ()
   | Ok parsed ->
       Alcotest.failf "invalid CSS vector parsed: %s -> %s" css
-        (to_string ~minify:true ~newline:false parsed.Css.stylesheet)
+        (to_string ~minify:true ~newline:false parsed.stylesheet)
 
 let recover css expected min_warnings =
   let { stylesheet; warnings } =
     match of_string ~strict:false css with
     | Ok parsed -> parsed
-    | Error e -> Alcotest.fail (pp_parse_warning e)
+    | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
   let output = to_string ~minify:true ~newline:false stylesheet in
   Alcotest.(check string) css expected output;
@@ -142,7 +142,7 @@ let recover_non_minified css ~preserves ~drops min_warnings =
   let { stylesheet; warnings } =
     match of_string ~strict:false css with
     | Ok parsed -> parsed
-    | Error e -> Alcotest.fail (pp_parse_warning e)
+    | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
   let output = to_string ~minify:false ~newline:false stylesheet in
   let compact_output = strip_ascii_ws output in
@@ -898,16 +898,38 @@ let cross_mode_pinning () =
              tests through [of_string ~strict:false] + [recover] instead of \
              relaxing strict."
             css
-            (to_string ~minify:true ~newline:false parsed.Css.stylesheet));
+            (to_string ~minify:true ~newline:false parsed.stylesheet));
       match lenient with
       | Error e ->
           Alcotest.failf "lenient mode failed to recover %S: %s" css
-            (pp_parse_warning e)
+            (Cascade.Error.to_string e)
       | Ok { warnings = []; _ } ->
           Alcotest.failf
             "lenient mode swallowed spec-invalid input %S without warning" css
       | Ok _ -> ())
     inputs
+
+(* Comment preservation policy. Per CSS Syntax 3 SS 4.3.2 comments are
+   whitespace-equivalent tokens and can appear anywhere whitespace can. Cascade's
+   parser does not represent comments in the AST, so serialization drops them in
+   both pretty and minified output. *)
+let comment_preservation_policy () =
+  rejects_non_minified_fragments
+    ".a { color: red } /* divider */ .b { color: blue }" [ "/* divider */" ];
+  rejects_non_minified_fragments
+    ".x { color: red; /* note */ background: blue }" [ "/* note */" ];
+  roundtrip ".a { color: red } /* divider */ .b { color: blue }"
+    ".a{color:red}.b{color:#00f}";
+  roundtrip ".x { color: red; /* note */ background: blue }"
+    ".x{color:red;background:#00f}";
+  rejects_non_minified_fragments
+    ".a { color: red } /*! license */ .b { color: blue }" [ "/*! license */" ];
+  roundtrip ".a { color: red } /*! license */ .b { color: blue }"
+    ".a{color:red}.b{color:#00f}";
+  (* Comments inside selector lists or values are discarded (industry
+     consensus - none of Lightning, cssnano, CSSO preserve these). *)
+  roundtrip ".a /* between */ , .b { color: red }" ".a,.b{color:red}";
+  roundtrip ".x { color: rgb(/* r */ 255 0 0) }" ".x{color:red}"
 
 let non_minified_preserves_conditional_forms () =
   preserves_non_minified "@media (min-width: 768px) { .btn { display: block } }"
@@ -1003,13 +1025,13 @@ let normal_keeps_font_anim_forms () =
 
 let serialization_idempotent ~minify css =
   match of_string ~strict:true css with
-  | Error e -> Alcotest.fail (pp_parse_warning e)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   | Ok parsed -> (
-      let once = to_string ~minify ~newline:false parsed.Css.stylesheet in
+      let once = to_string ~minify ~newline:false parsed.stylesheet in
       match of_string ~strict:true once with
       | Error e ->
           Alcotest.failf "serialized CSS did not reparse: %S\n%s" once
-            (pp_parse_warning e)
+            (Cascade.Error.to_string e)
       | Ok reparsed ->
           let twice =
             to_string ~minify ~newline:false reparsed.Css.stylesheet
@@ -1170,6 +1192,8 @@ let () =
           Alcotest.test_case
             "cross-mode: strict rejects, lenient warns on spec-invalid input"
             `Quick cross_mode_pinning;
+          Alcotest.test_case "comments: serialization drops comments" `Quick
+            comment_preservation_policy;
           Alcotest.test_case "fidelity: conditional forms" `Quick
             non_minified_preserves_conditional_forms;
           Alcotest.test_case "fidelity: cascade forms" `Quick

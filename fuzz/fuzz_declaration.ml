@@ -60,7 +60,7 @@ let assert_invalid_declaration_contract label input =
       fail
         (Fmt.str "%s parsed strictly as invalid declaration: %S -> %S" label
            input
-           (Css.to_string ~minify:true parsed.Css.stylesheet))
+           (Css.to_string ~minify:true parsed.stylesheet))
   | Error _ ->
       let { Css.warnings; stylesheet } =
         match Css.of_string ~strict:false css with
@@ -68,7 +68,7 @@ let assert_invalid_declaration_contract label input =
         | Error err ->
             fail
               (Fmt.str "%s did not recover leniently: %s" label
-                 (Css.pp_parse_warning err))
+                 (Cascade.Error.to_string err))
       in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then

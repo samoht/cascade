@@ -211,9 +211,9 @@ type t =
   | Tree_diff of Tree_diff.t (* CSS AST differences found *)
   | String_diff of String_diff.t (* No structural diff but strings differ *)
   | No_diff (* Strings are identical *)
-  | Both_errors of Css.parse_warning * Css.parse_warning
-  | Expected_error of Css.parse_warning
-  | Actual_error of Css.parse_warning
+  | Both_errors of Error.t * Error.t
+  | Expected_error of Error.t
+  | Actual_error of Error.t
 
 let diff ~expected ~actual =
   let expected = strip_header expected in
@@ -336,8 +336,8 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
       (* No output for identical files *)
       ()
   | Both_errors (e1, e2) ->
-      let err1 = Css.pp_parse_warning e1 in
-      let err2 = Css.pp_parse_warning e2 in
+      let err1 = Error.to_string e1 in
+      let err2 = Error.to_string e2 in
       if String.equal err1 err2 then
         add_strings buf [ "Both CSS have same parse error: "; err1 ]
       else
@@ -353,9 +353,9 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
             err2;
           ]
   | Expected_error e ->
-      add_strings buf [ expected; " CSS parse error: "; Css.pp_parse_warning e ]
+      add_strings buf [ expected; " CSS parse error: "; Error.to_string e ]
   | Actual_error e ->
-      add_strings buf [ actual; " CSS parse error: "; Css.pp_parse_warning e ]
+      add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in

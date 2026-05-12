@@ -157,7 +157,7 @@ let recovered_css label input =
   | Error err ->
       fail
         (Fmt.str "%s did not recover leniently: %s" label
-           (Css.pp_parse_warning err))
+           (Cascade.Error.to_string err))
 
 let assert_strict_lenient_contract label input =
   let lenient = recovered_css label input in
@@ -187,7 +187,7 @@ let test_parse_crash_safety buf =
 
 let test_parse_always_recovers_bytes buf =
   let parsed = recovered_css "parse always recovers bytes" buf in
-  ignore (minified parsed.Css.stylesheet : string)
+  ignore (minified parsed.stylesheet : string)
 
 let test_strict_lenient_cssish_contract buf =
   assert_strict_lenient_contract "cssish public parse contract" (cssish buf)
@@ -203,9 +203,9 @@ let test_generated_public_roundtrip buf =
   | Error err ->
       fail
         (Fmt.str "public generated stylesheet did not parse: %s"
-           (Css.pp_parse_warning err))
+           (Cascade.Error.to_string err))
   | Ok parsed ->
-      let twice = minified parsed.Css.stylesheet in
+      let twice = minified parsed.stylesheet in
       if once <> twice then
         fail
           (Fmt.str "public generated stylesheet changed: %S -> %S" once twice)
@@ -213,14 +213,14 @@ let test_generated_public_roundtrip buf =
 let test_parse_partial_stringify_reparse buf =
   let parsed = recovered_css "partial stringify reparse" (css_like_text buf) in
   if parsed.Css.warnings = [] then
-    let serialized = minified parsed.Css.stylesheet in
+    let serialized = minified parsed.stylesheet in
     match Css.of_string ~strict:false serialized with
     | Ok _ -> ()
     | Error err ->
         fail
           (Fmt.str
              "Css.of_string ~strict:false output did not reparse strictly: %s"
-             (Css.pp_parse_warning err))
+             (Cascade.Error.to_string err))
 
 let test_map_preserves_rules buf =
   let sheet = generated_stylesheet buf in
@@ -244,9 +244,9 @@ let test_public_sort_idempotent buf =
   let once = Css.sort cmp (Css.statements sheet) |> Css.v |> minified in
   let twice =
     match Css.of_string ~strict:false once with
-    | Error err -> fail (Css.pp_parse_warning err)
+    | Error err -> fail (Cascade.Error.to_string err)
     | Ok parsed ->
-        Css.sort cmp (Css.statements parsed.Css.stylesheet) |> Css.v |> minified
+        Css.sort cmp (Css.statements parsed.stylesheet) |> Css.v |> minified
   in
   if once <> twice then
     fail (Fmt.str "Css.sort changed after reparse: %S -> %S" once twice)
@@ -255,10 +255,10 @@ let test_public_optimize_idempotent buf =
   let sheet = generated_stylesheet buf in
   let once = Css.to_string ~minify:true ~optimize:true sheet |> String.trim in
   match Css.of_string ~strict:false once with
-  | Error err -> fail (Css.pp_parse_warning err)
+  | Error err -> fail (Cascade.Error.to_string err)
   | Ok parsed ->
       let twice =
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
       in
       if once <> twice then
@@ -371,14 +371,14 @@ let test_css2_legacy_minified_vectors buf =
   | Error _ -> ()
   | Ok parsed -> (
       let minified =
-        Css.to_string ~minify:true ~newline:false parsed.Css.stylesheet
+        Css.to_string ~minify:true ~newline:false parsed.stylesheet
       in
       match Css.of_string ~strict:false minified with
       | Ok _ -> ()
       | Error err ->
           fail
             (Fmt.str "CSS2 legacy minified output rejected: %S (%s)" minified
-               (Css.pp_parse_warning err)))
+               (Cascade.Error.to_string err)))
 
 let test_css2_legacy_invalid_vectors buf =
   let input =

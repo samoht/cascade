@@ -1398,7 +1398,7 @@ let eval_ast_contract () =
     ~expected:"margin-left: calc(16px + var(--future-gap))"
     "margin-left: calc(1rem + var(--future-gap))";
   check_eval "eval resolves vars inside color function AST" ~ctx
-    ~expected:"background-color: rgb(10 20 30 / 0.5)"
+    ~expected:"background-color: rgb(10 20 30 / .5)"
     "background-color: rgb(var(--rgb) / var(--alpha))";
   check_eval "eval resolves vars inside transform list AST" ~ctx
     ~expected:"transform: translateX(16px) rotate(45deg)"
@@ -1457,7 +1457,7 @@ let eval_spec_edge_contract () =
   check_eval "eval resolves clamp with comparable computed lengths" ~ctx
     ~expected:"font-size: 18px" "font-size: clamp(1rem, calc(1rem + 2px), 2rem)";
   check_eval "eval resolves vars inside slash color function" ~ctx
-    ~expected:"background-color: rgb(12 34 56 / 0.5)"
+    ~expected:"background-color: rgb(12 34 56 / .5)"
     "background-color: rgb(var(--rgb) / var(--alpha))";
   check_eval "eval resolves currentColor inside list item" ~ctx
     ~expected:"box-shadow: 0 0 0 1px blue, 0 0 0 2px red"
@@ -1515,7 +1515,7 @@ let eval_css_spec_edge_contract () =
   check_eval "eval resolves transform longhand angle variable" ~ctx
     ~expected:"rotate: 45deg" "rotate: var(--angle)";
   check_eval "eval resolves opacity alpha inside color function from var" ~ctx
-    ~expected:"background-color: rgb(255 0 0 / 0.5)"
+    ~expected:"background-color: rgb(255 0 0 / .5)"
     "background-color: rgb(255 0 0 / var(--alpha))";
   check_eval "eval preserves division by zero calc as residual" ~ctx
     ~expected:"margin-left: calc(16px / 0)" "margin-left: calc(1rem / 0)";
@@ -1969,7 +1969,7 @@ let test_loader_import_condition_contract () =
     ~loader ~expected:".grid{display:grid}"
     "@import url(grid.css) supports(display: grid) screen and (width >= 40em);";
   check_import_loaded "import loads when supports color function matches" ~query
-    ~loader ~expected:".lab{color:lab(50% 0 0)}"
+    ~loader ~expected:".lab{color:lab(50%0 0)}"
     "@import url(lab.css) supports(color: lab(50% 0 0));";
   check_import_error "import blocked by unmatched media" ~query ~loader
     "@import url(print.css) print;";
@@ -2161,10 +2161,10 @@ let tw_vars_contract () =
   in
   check_layered_eval_value
     "tailwind rgb slash alpha resolves theme channel and opacity var" ~ctx
-    ~layer_order ~layer:"utilities" ~expected:"rgb(239 68 68/0.75)"
+    ~layer_order ~layer:"utilities" ~expected:"rgb(239 68 68/.75)"
     "background-color: rgb(var(--color-red-500) / var(--tw-bg-opacity))";
   check_layered_eval_value "tailwind border opacity var resolves independently"
-    ~ctx ~layer_order ~layer:"utilities" ~expected:"rgb(59 130 246/0.5)"
+    ~ctx ~layer_order ~layer:"utilities" ~expected:"rgb(59 130 246/.5)"
     "border-color: rgb(var(--color-blue-500) / var(--tw-border-opacity))";
   check_layered_eval_value
     "tailwind gradient stops resolve chained utility variables" ~ctx
@@ -2173,7 +2173,7 @@ let tw_vars_contract () =
     "background-image: linear-gradient(to right, var(--tw-gradient-stops))";
   check_layered_eval_value
     "tailwind ring shadow resolves offset and color variables" ~ctx ~layer_order
-    ~layer:"utilities" ~expected:"0 0 0 2px #fff,0 0 0 5px rgb(59 130 246/0.5)"
+    ~layer:"utilities" ~expected:"0 0 0 2px #fff,0 0 0 5px rgb(59 130 246/.5)"
     "box-shadow: 0 0 0 var(--tw-ring-offset-width) \
      var(--tw-ring-offset-color), 0 0 0 calc(3px + \
      var(--tw-ring-offset-width)) var(--tw-ring-color)";

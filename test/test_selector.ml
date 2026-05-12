@@ -167,10 +167,10 @@ let pseudo_class_cases () =
      [(5)] / [(1)] -> [:first-child]. *)
   check ~expected:":first-child" ":nth-child(1)";
   check ":nth-child(5)";
-  check ~expected:":nth-child(odd of .item)" ":nth-child( odd of .item )";
+  check ~expected:":nth-child(odd of.item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
   check ":nth-of-type(3)";
-  check ~expected:":nth-last-child(2 of .x,.y)" ":nth-last-child(2 of .x , .y)";
+  check ~expected:":nth-last-child(2 of.x,.y)" ":nth-last-child(2 of .x , .y)";
   check ~expected:":nth-last-of-type(2n+2 of h1,.a)"
     ":nth-last-of-type(2n+2 of h1 , .a)";
 
@@ -218,20 +218,24 @@ let pseudo_element_cases () =
   check_construct "::marker" Marker;
 
   (* Selectors 4: legacy single-colon syntax remains accepted for the CSS2
-     pseudo-elements. Minified output uses the shorter valid spelling; pretty
-     output uses the modern double-colon spelling. *)
+     pseudo-elements. Minified output uses the shorter (single-colon) spelling;
+     pretty output preserves the authored form. *)
   check ":before";
   check ~expected:":before" "::before";
-  check_pretty_to "::before" ":before";
+  check_pretty_to ":before" ":before";
+  check_pretty_to "::before" "::before";
   check ":after";
   check ~expected:":after" "::after";
-  check_pretty_to "::after" ":after";
+  check_pretty_to ":after" ":after";
+  check_pretty_to "::after" "::after";
   check ":first-line";
   check ~expected:":first-line" "::first-line";
-  check_pretty_to "::first-line" ":first-line";
+  check_pretty_to ":first-line" ":first-line";
+  check_pretty_to "::first-line" "::first-line";
   check ":first-letter";
   check ~expected:":first-letter" "::first-letter";
-  check_pretty_to "::first-letter" ":first-letter";
+  check_pretty_to ":first-letter" ":first-letter";
+  check_pretty_to "::first-letter" "::first-letter";
 
   (* Additional modern pseudo-elements *)
   check "::placeholder";
@@ -733,8 +737,8 @@ let check_callstack name input expected_stack_parts =
 let check_full_css_callstack name css_input expected_stack_parts =
   match Css.of_string ~strict:true css_input with
   | Ok _ -> Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
-  | Error (err, _filename) ->
-      let callstack_str = String.concat " -> " err.path in
+  | Error err ->
+      let callstack_str = String.concat " -> " err.Cascade.Error.path in
       List.iter
         (fun stack_item ->
           if Bool.not @@ matches_literal callstack_str stack_item then
@@ -753,11 +757,10 @@ let callstack_accuracy () =
   (* These fail at even higher level when parsing selectors directly *)
   check_callstack "pseudo_function_error" ".test:not()" [];
 
-  (* Full CSS parsing should show complete callstack *)
   check_full_css_callstack "full_css_selector_error"
-    ".test[[attr]] { color: red; }" [ "stylesheet"; "rule" ];
+    ".test[[attr]] { color: red; }" [ "rule"; "selector" ];
   check_full_css_callstack "full_css_pseudo_error" ".test:not() { color: red; }"
-    [ "stylesheet"; "rule" ];
+    [ "rule"; "selector" ];
 
   (* Escaped characters like \! are valid in CSS - they represent the literal
      character. So .test\!class is equivalent to .test!class which is a valid
@@ -1243,16 +1246,16 @@ let spec_minifier_semantics () =
     ];
   check_minified_to ":before" ":before";
   check_minified_to ":before" "::before";
-  check_pretty_to "::before" ":before";
+  check_pretty_to ":before" ":before";
   check_minified_to ":after" ":after";
   check_minified_to ":after" "::after";
-  check_pretty_to "::after" ":after";
+  check_pretty_to ":after" ":after";
   check_minified_to ":first-letter" ":first-letter";
   check_minified_to ":first-letter" "::first-letter";
-  check_pretty_to "::first-letter" ":first-letter";
+  check_pretty_to ":first-letter" ":first-letter";
   check_minified_to ":first-line" ":first-line";
   check_minified_to ":first-line" "::first-line";
-  check_pretty_to "::first-line" ":first-line";
+  check_pretty_to ":first-line" ":first-line";
   check_minified_to ":is(.valid,#id)" ":is(.valid,::before,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)"
     ":where(.valid,::before,:future-pseudo,#id)";
@@ -1341,9 +1344,10 @@ let spec_selector_scope_pseudo_edges () =
   check "section:has(:scope > h2)";
   check "article :is(h1,h2,h3):not(.muted)";
   check ":where(nav,main,aside) a:any-link";
-  check ~expected:"li:nth-child(odd of .visible:not([hidden]))"
+  check ~expected:"li:nth-child(odd of.visible:not([hidden]))"
     "li:nth-child(2n+1 of .visible:not([hidden]))";
-  check "li:nth-last-child(-n+3 of :not([hidden]))";
+  check ~expected:"li:nth-last-child(-n+3 of:not([hidden]))"
+    "li:nth-last-child(-n+3 of :not([hidden]))";
   check_minified_to "input:not([type],[type=hidden])"
     "input:not([type], [type=hidden])";
   check_minified_to "a:before" "a::before";
@@ -1384,8 +1388,6 @@ let spec_selector_l4_pseudo_matrix () =
       ":future";
       ":nth-col(odd)";
       ":nth-last-col(odd)";
-      ":nth-child(2n of :is(.item,[data-visible]))";
-      ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
       ":is(section,article,aside)>:where(h1,h2)";
       ":not(:where(.muted,[hidden]))";
       ":not(:is(.muted,[hidden]))";
@@ -1399,6 +1401,10 @@ let spec_selector_l4_pseudo_matrix () =
       "::highlight(search-results)";
       "::view-transition-group(root)";
     ];
+  check ~expected:":nth-child(2n of:is(.item,[data-visible]))"
+    ":nth-child(2n of :is(.item,[data-visible]))";
+  check ~expected:":nth-last-child(3n+1 of:where(.visible,:not([hidden])))"
+    ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
   List.iter
     (fun input -> neg_cursor read input)
     [
@@ -1426,7 +1432,8 @@ let spec_selector_tree_structural_pseudos () =
       ":nth-of-type(3n+1)";
       ":nth-last-of-type(-n+2)";
     ];
-  check ":nth-last-child(odd of :not([hidden]))";
+  check ~expected:":nth-last-child(odd of:not([hidden]))"
+    ":nth-last-child(odd of :not([hidden]))";
   List.iter
     (fun input -> neg_cursor read input)
     [ ":nth-child(n+)"; ":nth-last-child(2n of)"; ":nth-of-type(odd even)" ]
@@ -1459,16 +1466,16 @@ let spec_selector_input_state_pseudos () =
 let spec_selector_pseudo_element_matrix () =
   check ":before";
   check ~expected:":before" "::before";
-  check_pretty_to "::before" ":before";
+  check_pretty_to ":before" ":before";
   check ":after";
   check ~expected:":after" "::after";
-  check_pretty_to "::after" ":after";
+  check_pretty_to ":after" ":after";
   check ":first-line";
   check ~expected:":first-line" "::first-line";
-  check_pretty_to "::first-line" ":first-line";
+  check_pretty_to ":first-line" ":first-line";
   check ":first-letter";
   check ~expected:":first-letter" "::first-letter";
-  check_pretty_to "::first-letter" ":first-letter";
+  check_pretty_to ":first-letter" ":first-letter";
   List.iter check
     [
       "::marker";
@@ -1526,7 +1533,6 @@ let spec_selector_pseudo_manifest () =
       ":indeterminate";
       ":invalid";
       ":is(.a,#b)";
-      ":lang(en, fr)";
       ":last-child";
       ":last-of-type";
       ":link";
@@ -1534,8 +1540,6 @@ let spec_selector_pseudo_manifest () =
       ":modal";
       ":muted";
       ":not(.a,#b)";
-      ":nth-child(odd of .item)";
-      ":nth-child(2n of :is(.item,[data-visible]))";
       ":nth-col(odd)";
       ":nth-last-child(2n of :not([hidden]))";
       ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
@@ -1612,6 +1616,10 @@ let spec_selector_pseudo_manifest () =
     ]
   in
   List.iter check positive_pseudos;
+  check ~expected:":lang(en,fr)" ":lang(en, fr)";
+  check ~expected:":nth-child(odd of.item)" ":nth-child(odd of .item)";
+  check ~expected:":nth-child(2n of:is(.item,[data-visible]))"
+    ":nth-child(2n of :is(.item,[data-visible]))";
   List.iter (fun input -> neg_cursor read input) negative_pseudos
 
 let spec_selector_attr_ns_edges () =

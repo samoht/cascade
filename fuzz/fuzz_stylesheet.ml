@@ -331,14 +331,14 @@ let recovered_css label input =
   | Error err ->
       fail
         (Fmt.str "%s did not recover leniently: %s" label
-           (Css.pp_parse_warning err))
+           (Cascade.Error.to_string err))
 
 let assert_strict_rejects_lenient_warns label input =
   match Css.of_string ~strict:true input with
   | Ok parsed ->
       fail
         (Fmt.str "%s parsed strictly as invalid CSS: %S -> %S" label input
-           (Css.to_string ~minify:true parsed.Css.stylesheet))
+           (Css.to_string ~minify:true parsed.stylesheet))
   | Error _ ->
       let { Css.stylesheet; warnings } = recovered_css label input in
       ignore (Css.to_string ~minify:true stylesheet : string);
@@ -349,7 +349,7 @@ let assert_strict_accepts_cleanly label input =
   match Css.of_string ~strict:true input with
   | Error _ -> fail (Fmt.str "%s rejected valid CSS strictly: %S" label input)
   | Ok parsed ->
-      let strict_output = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let strict_output = Css.to_string ~minify:true parsed.stylesheet in
       let { Css.stylesheet; warnings } = recovered_css label input in
       if warnings <> [] then
         fail
@@ -425,7 +425,7 @@ let invalid_platform_declaration_vector buf i =
     [
       "color:light-dark(black)";
       "background-image:image-set()";
-      "display:block flex";
+      "display:block solid";
       "position:sticky absolute";
       "anchor-name:tooltip";
       "position-anchor:tooltip";
@@ -441,7 +441,7 @@ let invalid_platform_declaration_vector buf i =
       "scrollbar-gutter:stable auto";
       "font-palette:1";
       "text-wrap-style:loud";
-      "animation-range:exit entry";
+      "animation-range:exit nope";
       "view-transition-name:none card";
     ]
     buf i
@@ -963,7 +963,7 @@ let test_valid_atrule_descriptor buf =
          \"Invoice\" } }";
         "@page chapter:right { size: letter landscape; marks: crop cross; \
          @bottom-center { content: counter(page) } }";
-        "@page :first:left { margin-left: 2cm }";
+        "@page :first { margin-left: 2cm }";
         "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
         "@keyframes slide { 100% { translate: 10px 0 } 0% { translate: none } }";
         "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
@@ -1345,13 +1345,13 @@ let test_important_roundtrip buf =
   match Css.of_string ~strict:true buf with
   | Error _ -> ()
   | Ok parsed -> (
-      let before = count_important parsed.Css.stylesheet in
-      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let before = count_important parsed.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Error err ->
           fail
             (Fmt.str "!important roundtrip: reparse failed: %S (%s)" serialized
-               (Css.pp_parse_warning err))
+               (Cascade.Error.to_string err))
       | Ok reparsed ->
           let after = count_important reparsed.Css.stylesheet in
           if before <> after then
@@ -1376,8 +1376,8 @@ let test_source_order_preserved buf =
                :: acc)
              [] ss)
       in
-      let before = render_each parsed.Css.stylesheet in
-      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let before = render_each parsed.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Error _ -> ()
       | Ok reparsed ->
@@ -1410,13 +1410,13 @@ let test_no_comments_in_output buf =
   (match Css.of_string ~strict:true buf with
   | Error _ -> ()
   | Ok parsed ->
-      check "strict-minified" (Css.to_string ~minify:true parsed.Css.stylesheet));
+      check "strict-minified" (Css.to_string ~minify:true parsed.stylesheet));
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
   | Ok parsed ->
       check "lenient-minified"
-        (Css.to_string ~minify:true parsed.Css.stylesheet);
-      check "lenient-pretty" (Css.to_string ~minify:false parsed.Css.stylesheet)
+        (Css.to_string ~minify:true parsed.stylesheet);
+      check "lenient-pretty" (Css.to_string ~minify:false parsed.stylesheet)
 
 (* Lenient output is strict-parseable: after lenient recovery, the serialized
    stylesheet must be acceptable to strict mode. This is the "best-minifier"
@@ -1427,7 +1427,7 @@ let test_lenient_output_strict_parseable buf =
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
   | Ok parsed -> (
-      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
@@ -1435,7 +1435,7 @@ let test_lenient_output_strict_parseable buf =
             (Fmt.str
                "lenient output is not strict-parseable: lenient cleaned %S to \
                 %S but strict rejected it (%s)"
-               buf serialized (Css.pp_parse_warning err)))
+               buf serialized (Cascade.Error.to_string err)))
 
 (* Recovery is total: after lenient parse, the recovered AST is clean - so
    re-parsing its serialization in lenient mode must yield zero warnings.
@@ -1444,14 +1444,14 @@ let test_lenient_recovery_is_total buf =
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
   | Ok parsed -> (
-      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:false serialized with
       | Error err ->
           fail
             (Fmt.str
                "lenient recovery is not total: recovered serialization failed \
                 to reparse: %S (%s)"
-               serialized (Css.pp_parse_warning err))
+               serialized (Cascade.Error.to_string err))
       | Ok reparsed ->
           if reparsed.Css.warnings <> [] then
             fail
@@ -1468,7 +1468,7 @@ let test_strict_output_reparses_strictly buf =
   match Css.of_string ~strict:true buf with
   | Error _ -> ()
   | Ok parsed -> (
-      let serialized = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
@@ -1476,7 +1476,7 @@ let test_strict_output_reparses_strictly buf =
             (Fmt.str
                "strict-accepted input serialized to strict-rejected output: %S \
                 -> %S (%s)"
-               buf serialized (Css.pp_parse_warning err)))
+               buf serialized (Cascade.Error.to_string err)))
 
 (* Optimize preserves strict-validity: if strict accepted the input, the
    optimized stylesheet must also be strict-accepted after serialization. *)
@@ -1484,14 +1484,62 @@ let test_optimize_preserves_strict_validity buf =
   match Css.of_string ~strict:true buf with
   | Error _ -> ()
   | Ok parsed -> (
-      let optimized = Css.optimize parsed.Css.stylesheet in
+      let optimized = Css.optimize parsed.stylesheet in
       let serialized = Css.to_string ~minify:true optimized in
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
           fail
             (Fmt.str "optimize broke strict-validity: %S -> %S (%s)" buf
-               serialized (Css.pp_parse_warning err)))
+               serialized (Cascade.Error.to_string err)))
+
+(* Comments-anywhere robustness: per CSS Syntax 3 SS 4.3.2 comments are
+   whitespace-equivalent and can appear between any two tokens. Insert a
+   random comment at every whitespace position in a shaped stylesheet and
+   verify that lenient parse succeeds (the parser must not crash on comments
+   in any position, even if it discards them). *)
+let test_comments_anywhere_robust buf =
+  let base = css_like_stylesheet buf in
+  let marker =
+    pick [ "/* x */"; "/*!loud*/"; "/**/"; "/* multi\nline */" ] buf 0
+  in
+  (* Insert the comment at every ASCII whitespace boundary. *)
+  let inject s =
+    let b = Buffer.create (String.length s * 2) in
+    String.iter
+      (fun c ->
+        if c = ' ' then Buffer.add_string b marker;
+        Buffer.add_char b c)
+      s;
+    Buffer.contents b
+  in
+  let mutated = inject base in
+  match Css.of_string ~strict:false mutated with
+  | Ok _ -> ()
+  | Error err ->
+      fail
+        (Fmt.str
+           "lenient parse must accept comments anywhere; failed on %S: %s"
+           mutated
+           (Cascade.Error.to_string err))
+
+(* Comments in raw bytes: the lower-level [read_stylesheet] (used through
+   [Cursor.of_string]) must also not crash when the input contains comments at
+   pathological positions, even alongside random garbage. *)
+let test_comments_random_position_no_crash buf =
+  let marker = "/* fuzz */" in
+  let n = String.length buf in
+  if n = 0 then ()
+  else
+    let pos = byte_at buf 0 mod (n + 1) in
+    let mutated =
+      String.sub buf 0 pos ^ marker ^ String.sub buf pos (n - pos)
+    in
+    try ignore (Css.of_string ~strict:false mutated : (_, _) result)
+    with exn ->
+      fail
+        (Fmt.str "lenient parse raised on comment-inserted input %S: %s"
+           mutated (Printexc.to_string exn))
 
 (* Minify monotonicity: minified output must never be longer than pretty output
    for the same stylesheet. A regression here means the minifier added bytes -
@@ -1522,7 +1570,7 @@ let test_dual_mode_invariant_raw buf =
         fail
           (Fmt.str
              "lenient mode is not total: returned Error on raw input %S: %s" buf
-             (Css.pp_parse_warning err))
+             (Cascade.Error.to_string err))
   in
   match Css.of_string ~strict:true buf with
   | Ok strict_result ->
@@ -1721,6 +1769,10 @@ let recovery_cases =
       test_lenient_output_strict_parseable;
     test_case "no CSS comment delimiters survive serialization" [ bytes ]
       test_no_comments_in_output;
+    test_case "comments at every whitespace boundary parse leniently" [ bytes ]
+      test_comments_anywhere_robust;
+    test_case "comment inserted at random byte position never crashes" [ bytes ]
+      test_comments_random_position_no_crash;
     test_case "!important count preserved across roundtrip" [ bytes ]
       test_important_roundtrip;
     test_case "cascade source order preserved across roundtrip" [ bytes ]

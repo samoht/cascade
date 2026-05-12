@@ -212,11 +212,11 @@ let test_color () =
   check_color ~expected:"#73cc1a" "hwb(90deg 10% 20%)";
   check_color ~expected:"#20606080" "hsl(180 50% 25% / 0.5)";
   check_color ~expected:"#73cc1a" "hwb(90 10% 20%)";
-  check_color ~expected:"hwb(90 10% 20%/.25)" "hwb(90 10% 20% / 0.25)";
+  check_color ~expected:"#73cc1a40" "hwb(90 10% 20% / 0.25)";
   (* CSS Color 4 section 1.3: alpha [<percentage>] is spec-equivalent to the
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
-  check_color ~expected:"hsl(180 50% 25%/.3)" "hsl(180deg 50% 25% / 30%)";
+  check_color ~expected:"#2060604d" "hsl(180deg 50% 25% / 30%)";
   check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";

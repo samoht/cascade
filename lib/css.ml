@@ -297,11 +297,6 @@ module Supports = Supports
 module Keyframe = Keyframe
 module Font_face = Font_face
 
-(* CSS Parsing *)
-
-let pp_parse_warning (err, filename) =
-  String.concat "" [ filename; ": "; Error.to_string err ]
-
 (* Include all public APIs except Stylesheet *)
 
 include Values
@@ -407,6 +402,12 @@ let declaration_value ?(minify = false) ?(inline = false) decl =
 (* Override rule function to return statement directly *)
 let rule ~selector ?nested ?merge_key declarations =
   Rule (Stylesheet.rule ~selector ?nested ?merge_key declarations)
+
+let keyframe ~selector ~declarations =
+  {
+    Stylesheet.keyframe_selector = Keyframe.selector_of_string selector;
+    keyframe_declarations = declarations;
+  }
 
 (* Re-export keyframes from Stylesheet *)
 let keyframes = Stylesheet.keyframes
@@ -754,25 +755,25 @@ let vars_of_rules statements =
   in
   vars_of_declarations decls
 
-type parse_warning = Error.t * string
-type parse_result = { stylesheet : t; warnings : parse_warning list }
+type parse = { stylesheet : t; warnings : Error.t list }
 
 let of_string ?(strict = false) ?(filename = "<string>")
     ?(meta = Loc.default_meta_level) css =
+  let stamp e = Error.with_filename ~filename e in
   try
     let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
-    let warnings = List.map (fun e -> (e, filename)) warnings in
+    let warnings = List.map stamp warnings in
     if strict then
       match warnings with
       | [] -> Ok { stylesheet; warnings }
       | first :: _ -> Error first
     else Ok { stylesheet; warnings }
-  with Error.Parse_error error -> Error (error, filename)
+  with Error.Parse_error error -> Error (stamp error)
 
 let of_string_exn ?strict ?filename ?meta css =
   match of_string ?strict ?filename ?meta css with
   | Ok { stylesheet; _ } -> stylesheet
-  | Error (error, _) -> Error.fail error
+  | Error error -> Error.fail error
 
 let rec statements_for_inline statement =
   let inline_block block = List.concat_map statements_for_inline block in

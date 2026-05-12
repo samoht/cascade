@@ -14,6 +14,7 @@ type t = {
   path : string list;
   kind : kind;
   snippet : Loc.Context.snippet option;
+  filename : string option;
 }
 
 let snippet t = t.snippet
@@ -60,7 +61,12 @@ let pp_kind : kind Pp.t =
       Sort.pp ctx s
 
 let pp : t Pp.t =
- fun ctx { loc; sort; path; kind; snippet } ->
+ fun ctx { loc; sort; path; kind; snippet; filename } ->
+  (match filename with
+  | Some f when f <> "" ->
+      Pp.string ctx f;
+      Pp.string ctx ": "
+  | _ -> ());
   (match path with
   | [] -> ()
   | _ ->
@@ -85,8 +91,13 @@ let to_string t = Pp.to_string pp t
 
 exception Parse_error of t
 
-let v ?(path = Loc.Path.empty) ?snippet ~loc ~sort kind =
-  { loc; sort; path = Loc.Path.to_labels path; kind; snippet }
+let v ?(path = Loc.Path.empty) ?snippet ?filename ~loc ~sort kind =
+  { loc; sort; path = Loc.Path.to_labels path; kind; snippet; filename }
+
+let with_filename ?filename t =
+  match (filename, t.filename) with
+  | None, _ | _, Some _ -> t
+  | Some _, None -> { t with filename }
 
 let fail e = Stdlib.raise (Parse_error e)
 

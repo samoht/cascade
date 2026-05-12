@@ -46,11 +46,11 @@ let display_css css = if css = "" then "<empty>" else css
 
 let cascade_minify input =
   match Css.of_string ~strict:false input with
-  | Error e -> Parse_error (Css.pp_parse_warning e)
+  | Error e -> Parse_error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
         Css.to_string ~minify:true ~optimize:true ~newline:false
-          parsed.Css.stylesheet
+          parsed.stylesheet
       with
       | s -> Mismatch s
       | exception Invalid_argument msg ->
@@ -145,11 +145,11 @@ let canonical_minified css =
   if css = "" then Ok ""
   else
     match Css.of_string ~strict:false css with
-    | Error e -> Error (Css.pp_parse_warning e)
+    | Error e -> Error (Cascade.Error.to_string e)
     | Ok parsed -> (
         match
           Css.to_string ~minify:true ~optimize:true ~newline:false
-            parsed.Css.stylesheet
+            parsed.stylesheet
         with
         | s -> Ok s
         | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))

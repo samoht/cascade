@@ -68,16 +68,16 @@ opam install cascade
 ```ocaml
 # open Cascade.Css;;
 # let button =
-  rule ~selector:(Selector.class_ "btn")
-    [ display Inline_block
-    ; background_color (hex "#3b82f6")
-    ; color (hex "#ffffff")
-    ; padding [ Rem 0.5 ]
-    ; border_radius (radius (Rem 0.375))
-    ];;
-# to_string (v [ button ]);;
+    rule ~selector:(Selector.class_ "btn")
+      [ display Inline_block
+      ; background_color (hex "#3b82f6")
+      ; color (hex "#ffffff")
+      ; padding [ Rem 0.5 ]
+      ; border_radius (radius (Rem 0.375))
+      ]
+  in to_string (v [ button ]);;
 - : string =
-".btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #fff;\n  padding: 0.5rem;\n  border-radius: 0.375rem;\n}\n"
+"\n.btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #ffffff;\n  padding: .5rem;\n  border-radius: .375rem;\n}\n"
 ```
 
 Output:
@@ -86,11 +86,59 @@ Output:
 .btn {
   display: inline-block;
   background-color: #3b82f6;
-  color: #fff;
-  padding: 0.5rem;
-  border-radius: 0.375rem;
+  color: #ffffff;
+  padding: .5rem;
+  border-radius: .375rem;
 }
 ```
+
+## Serialization rules
+
+Cascade has two output modes: **minified** (shortest spec-equivalent) and
+**pretty** (preserves authored form where the AST permits). Parsing has two
+modes too: **strict** (escalates any warning to `Error`) and **lenient** (the
+default; always returns `Ok` with a `warnings` list).
+
+### Both output modes
+
+- Empty rules (`.x { }`) are dropped (zero declarations = no effect).
+- Invalid declarations are dropped per the dual-mode contract.
+- CSSOM canonicalizations apply: single quotes → double, `@import url(x)` → `@import "x"`.
+- Comments are discarded during parsing and do not survive serialization.
+
+### Minified mode (`~minify:true`)
+
+Picks the shortest spec-equivalent spelling at every choice point.
+When the CSS spec and browser-compatible recovery rules allow multiple valid
+serializations, Cascade chooses the shortest valid answer. Test oracles should
+follow that rule; industry-grade minifiers are useful comparators, but if they
+disagree on valid output, shortest valid output wins.
+
+- Colors: hex form when it's at most as long as the name (`black` → `#000`, `blue` → `#00f`; `red` stays a name).
+- Numbers: drop leading zero (`0.5` → `.5`) and trailing zero (`10.0` → `10`).
+- Pseudo-elements: legacy single-colon form (`::before` → `:before`).
+- Whitespace elided at safe token boundaries (`100% 0` → `100%0`).
+- Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
+- Media queries: legacy → range syntax (`(min-width:48px)` → `(width>=48px)`).
+
+### Pretty mode (`~minify:false`)
+
+Preserves the authored form where the AST distinguishes it (`:before` stays
+single-colon, `::before` stays double-colon). Whitespace is inserted for
+readability. Spec-mandated canonicalizations still apply (e.g.,
+`Css.Syntax 4.3.7` NUL → U+FFFD). Comments are not represented in the AST and
+are discarded during parsing.
+
+### Strict vs lenient parsing
+
+For every input `s`:
+
+- `Css.of_string ~strict:false s` is total — always returns `Ok _`.
+- `Css.of_string ~strict:true s = Error _` iff the lenient parse returned non-empty `warnings`.
+- When both succeed, their minified outputs are identical.
+
+This means lenient is the recovery surface (everything parses, warnings flag
+deviations) and strict is the gate (any warning becomes an error).
 
 ## CLI tools
 

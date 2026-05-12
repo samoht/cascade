@@ -30,6 +30,7 @@ type t = {
   path : string list;
   kind : kind;
   snippet : Loc.Context.snippet option;
+  filename : string option;
 }
 (** The [path] is a breadcrumb trail from the outermost context down to the
     exact sub-production that failed, rendered with ["/"] separators. Use
@@ -72,11 +73,17 @@ val with_context : string -> (unit -> 'a) -> 'a
 val v :
   ?path:Loc.Path.t ->
   ?snippet:Loc.Context.snippet ->
+  ?filename:string ->
   loc:Loc.t ->
   sort:Sort.t ->
   kind ->
   t
 (** [v ~loc ~sort kind] builds an [Error.t]. *)
+
+val with_filename : ?filename:string -> t -> t
+(** [with_filename ~filename t] stamps [filename] onto [t] when [t] does not
+    already carry one. Used by entry points that know the source filename to
+    annotate warnings collected by inner readers. *)
 
 val context : t -> Loc.Context.t
 (** [context t] is the structured error context. *)
