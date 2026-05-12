@@ -2940,8 +2940,14 @@ let rec pp_position_value : position_value Pp.t =
 let pp_radial_gradient_config : radial_gradient_config Pp.t =
  fun ctx config ->
   let has_output = ref false in
+  (match config.interpolation with
+  | Some i ->
+      pp_color_interpolation ctx i;
+      has_output := true
+  | None -> ());
   (match config.shape with
   | Some s ->
+      if !has_output then Pp.space ctx ();
       pp_radial_shape ctx s;
       has_output := true
   | None -> ());
@@ -2951,40 +2957,36 @@ let pp_radial_gradient_config : radial_gradient_config Pp.t =
       pp_radial_size ctx s;
       has_output := true
   | None -> ());
-  (match config.position with
+  match config.position with
   | Some p ->
       if !has_output then Pp.space ctx ();
       Pp.string ctx "at";
       Pp.space ctx ();
-      pp_position_value ctx p;
-      has_output := true
-  | None -> ());
-  match config.interpolation with
-  | Some i ->
-      if !has_output then Pp.space ctx ();
-      pp_color_interpolation ctx i
+      pp_position_value ctx p
   | None -> ()
 
 let pp_conic_gradient_config : conic_gradient_config Pp.t =
  fun ctx config ->
   let has_output = ref false in
+  (match config.conic_interpolation with
+  | Some i ->
+      pp_color_interpolation ctx i;
+      has_output := true
+  | None -> ());
   (match config.from_angle with
   | Some a ->
-      Pp.string ctx "from ";
+      if !has_output then Pp.space ctx ();
+      Pp.string ctx "from";
+      Pp.space ctx ();
       pp_angle ctx a;
       has_output := true
   | None -> ());
-  (match config.conic_position with
+  match config.conic_position with
   | Some p ->
       if !has_output then Pp.space ctx ();
-      Pp.string ctx "at ";
-      pp_position_value ctx p;
-      has_output := true
-  | None -> ());
-  match config.conic_interpolation with
-  | Some i ->
-      if !has_output then Pp.space ctx ();
-      pp_color_interpolation ctx i
+      Pp.string ctx "at";
+      Pp.space ctx ();
+      pp_position_value ctx p
   | None -> ()
 
 let pp_webkit_gradient_point ctx = function
@@ -3172,10 +3174,20 @@ let rec pp_background_image : background_image Pp.t =
 and pp_linear_gradient_named name ctx (dir, stops) =
   Pp.call name
     (fun ctx (dir, stops) ->
-      let print_direction = match dir with To_bottom -> false | _ -> true in
-      if print_direction then (
-        pp_gradient_direction ctx dir;
-        match stops with [] -> () | _ -> Pp.comma ctx ());
+      let head : [ `Skip | `Direction | `Interp_only of color_interpolation ] =
+        match dir with
+        | To_bottom -> `Skip
+        | With_interpolation (To_bottom, interp) -> `Interp_only interp
+        | _ -> `Direction
+      in
+      (match head with
+      | `Skip -> ()
+      | `Direction ->
+          pp_gradient_direction ctx dir;
+          (match stops with [] -> () | _ -> Pp.comma ctx ())
+      | `Interp_only interp ->
+          pp_color_interpolation ctx interp;
+          match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
       | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
@@ -15536,8 +15548,7 @@ let read_conic_gradient_config t : conic_gradient_config =
     conic_interpolation = !interpolation;
   }
 
-let read_linear_gradient_body t =
-  Cursor.ws t;
+let read_linear_gradient_body_stops t =
   (* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to
      <side-or-corner> ]? || <color-interpolation-method> A bare interpolation, a
      bare direction, or both in either order are all valid. After the prelude
@@ -15586,6 +15597,28 @@ let read_linear_gradient_body t =
   if stops = [] then
     Cursor.err_expected t "at least one color stop in linear-gradient()";
   Linear_gradient (direction, stops)
+
+let read_linear_gradient_body t =
+  Cursor.ws t;
+  (* CSS Variables 1 §3: a single [var()] can stand in for the entire body of
+     [linear-gradient(...)], since the variable's value may itself contain
+     commas and stops. Check this case first so the var() does not get
+     mis-parsed as an [Angle (Var _)] direction by the prelude reader. *)
+  let var_only =
+    Cursor.lookahead
+      (fun t ->
+        let v = Cursor.option (Values.read_var read_gradient_stop) t in
+        Cursor.ws t;
+        if Cursor.is_done t then v else None)
+      t
+  in
+  match var_only with
+  | Some _ ->
+      let v = Values.read_var read_gradient_stop t in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Linear_gradient_var v
+  | None -> read_linear_gradient_body_stops t
 
 let read_webkit_linear_gradient_body t =
   Cursor.ws t;

@@ -1705,7 +1705,8 @@ let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
 (* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
    spelling for the four original pseudo-elements. Minified output uses the
-   shorter valid alias; pretty output preserves the parsed colon form. *)
+   shorter valid alias; pretty output preserves the parsed colon form so the
+   authored spelling round-trips. *)
 let legacy_elem ctx form name =
   let prefix =
     if Pp.minified ctx then ":"

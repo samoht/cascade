@@ -1082,7 +1082,7 @@ let c61_no_merge_atrule () =
   Alcotest.(check string)
     "same selector is not merged across media boundary"
     ".a{color:red}@media \
-     (min-width:48px){.m{color:#0f0}}.a{background-color:#00f}"
+     (width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
     output
 
 let c61_no_layer_media_merge () =
@@ -1108,8 +1108,8 @@ let c61_no_layer_media_merge () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "matching media queries do not merge across layer statement"
-    "@media (min-width:48px){.a{color:red}}@layer theme;@media \
-     (min-width:48px){.b{color:#00f}}"
+    "@media (width>=48px){.a{color:red}}@layer theme;@media \
+     (width>=48px){.b{color:#00f}}"
     output
 
 let c61_all_property_reset_boundary () =
@@ -1413,7 +1413,7 @@ let c61_distinct_scope_limits_preserved () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same scoped rule remains split by distinct scope limits"
-    "@scope(.card) to (.footer){.item{color:red}}@scope(.card) to \
+    "@scope(.card)to (.footer){.item{color:red}}@scope(.card)to \
      (.aside){.item{color:red}}"
     output
 
@@ -1470,7 +1470,7 @@ let c61_no_merge_container () =
   Alcotest.(check string)
     "same selector is not merged across container boundary"
     ".card{color:red}@container \
-     (min-width:48px){.feature{display:flex}}.card{background-color:#00f}"
+     (width>=48px){.feature{display:flex}}.card{background-color:#00f}"
     output
 
 let c61_no_merge_starting_style () =
@@ -1580,7 +1580,7 @@ let c61_no_nested_boundary_merge () =
   check_case "nested scope boundary"
     ".card{& .title{color:red}@scope(&) to (.boundary){& \
      .title{display:block}}& .title{padding:1rem}}"
-    ".card .title{color:red}@scope(.card) to (.boundary){.card \
+    ".card .title{color:red}@scope(.card)to (.boundary){.card \
      .title{display:block}}.card .title{padding:1rem}"
 
 let c61_no_pseudo_group () =
@@ -2309,7 +2309,7 @@ let c64_layer_decls_import_cross () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "layer declarations remain on their own sides of the import"
-    "@layer default;@import \"theme.css\" layer(theme);@layer \
+    "@layer default;@import\"theme.css\"layer(theme);@layer \
      components;@layer default{.audio{display:block}}"
     output
 
@@ -2476,7 +2476,7 @@ let c64_conditional_layer_decls_nested () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "conditional layer declarations remain nested in their conditions"
-    "@media (min-width:30em){@layer layout{.title{font-size:2rem}}}@supports \
+    "@media (width>=30em){@layer layout{.title{font-size:2rem}}}@supports \
      (display:grid){@layer grid;@layer grid{.title{display:grid}}}@layer \
      theme,layout;"
     output

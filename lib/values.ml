@@ -1972,7 +1972,7 @@ let hex_is_fully_transparent value =
 
 let alpha_is_zero (a : alpha) =
   match a with
-  | Num 0.0 | Numeric { value = 0.0; _ } | Pct 0.0 -> true
+  | Num 0.0 | Pct 0.0 -> true
   | _ -> false
 
 (* CSS Color 4 6.4: [transparent] is the canonical name for any fully-
@@ -2069,7 +2069,6 @@ let float_of_percentage = function
 let alpha_is_full = function
   | (None : alpha) -> true
   | Num 1.0 -> true
-  | Numeric { value = 1.0; _ } -> true
   | Pct 100.0 -> true
   | _ -> false
 
@@ -2098,8 +2097,6 @@ let mod_value a b =
 let alpha_value_byte = function
   | (None : alpha) -> Some 255
   | Num f when f >= 0. && f <= 1. ->
-      Some (Float.to_int (Float.round (f *. 255.)))
-  | Numeric { value = f; _ } when f >= 0. && f <= 1. ->
       Some (Float.to_int (Float.round (f *. 255.)))
   | Pct f when f >= 0. && f <= 100. ->
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
@@ -2302,13 +2299,12 @@ let mix_srgb_bytes c1 c2 ~p1 ~p2 =
 
 let static_alpha_value = function
   | (None : alpha) -> Some 1.
-  | (Num f | Numeric { value = f; _ }) when f >= 0. && f <= 1. -> Some f
+  | Num f when f >= 0. && f <= 1. -> Some f
   | Pct f when f >= 0. && f <= 100. -> Some (f /. 100.)
   | _ -> Option.None
 
 let alpha_of_mixed_value f =
-  if f >= 1. then (None : alpha)
-  else Numeric { value = f; repr = Pp.string_of_float f }
+  if f >= 1. then (None : alpha) else Num f
 
 let mix_optional_float ~w1 ~w2 v1 v2 =
   match (v1, v2) with
@@ -2597,11 +2593,10 @@ let rec pp_hue : hue Pp.t =
 and pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
-  | Num f -> Pp.float ctx f
-  | Numeric { value; repr = _ } ->
+  | Num f ->
       (* CSSOM serialisation (CSS Values 4 §6.7.2) drops a leading zero on
          fractional numbers: emit [.25] not [0.25] in both modes. *)
-      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true value)
+      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f)
   | Pct f when Pp.minified ctx ->
       (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
          [<number>] form divided by 100. Under minification, emit the shorter
@@ -2617,7 +2612,7 @@ and pp_alpha : alpha Pp.t =
 let pp_opt_alpha ctx = function
   | None -> ()
   | a when Pp.minified ctx && alpha_is_full a -> ()
-  | (Num _ | Numeric _ | Pct _ | Var _ | Calc _) as a ->
+  | (Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
 
@@ -2813,7 +2808,6 @@ let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f -> pp_float_drop_zero ctx f
-  | Numeric { value; _ } -> pp_float_drop_zero ctx value
   | Pct f -> pp_float_drop_zero ctx (f /. 100.)
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
@@ -3401,6 +3395,8 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
+  | Hypot (Num a, Num b) when Pp.minified ctx ->
+      pp_number ctx (Num (Float.sqrt ((a *. a) +. (b *. b))))
   | Hypot (a, b) ->
       Pp.call "hypot"
         (fun ctx (a, b) ->
@@ -3408,6 +3404,8 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
+  | Pow (Num a, Num b) when Pp.minified ctx ->
+      pp_number ctx (Num (Float.pow a b))
   | Pow (a, b) ->
       Pp.call "pow"
         (fun ctx (a, b) ->
@@ -3415,7 +3413,10 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
+  | Sqrt (Num a) when Pp.minified ctx && a >= 0. ->
+      pp_number ctx (Num (Float.sqrt a))
   | Sqrt v -> Pp.call "sqrt" pp_number ctx v
+  | Abs (Num a) when Pp.minified ctx -> pp_number ctx (Num (Float.abs a))
   | Abs v -> Pp.call "abs" pp_number ctx v
   | Sign v -> Pp.call "sign" pp_number ctx v
   | Sin a -> Pp.call "sin" pp_angle ctx a
@@ -4249,15 +4250,12 @@ let rec read_alpha t : alpha =
     Pct (Cursor.pct ~clamp:true t)
   in
   let read_num t : alpha =
-    (* Fall back to reading as numeric alpha *)
-    let n, repr, unit = Cursor.number_repr_with_unit t in
+    let n, _repr, unit = Cursor.number_repr_with_unit t in
     (match unit with
     | None -> ()
     | Some unit -> Cursor.err_invalid t ("alpha unit: " ^ unit));
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
-    let value = max 0. (min 1. n) in
-    let repr = if value = n then repr else Pp.string_of_float value in
-    Numeric { value; repr }
+    Num (max 0. (min 1. n))
   in
   Cursor.one_of
     [ read_var_alpha; read_calc_alpha; read_none; read_pct; read_num ]
@@ -4344,7 +4342,7 @@ and read_rgb_space_separated t : color =
         Cursor.err t "unexpected tokens after rgb()";
       match alpha with
       | None -> Rgb (Channels { r; g; b })
-      | Num _ | Numeric _ | Pct _ | Var _ | Calc _ ->
+      | Num _ | Pct _ | Var _ | Calc _ ->
           Rgba { rgb = Channels { r; g; b }; a = alpha; legacy = false }))
   else
     let r = read_channel t in
@@ -4357,7 +4355,7 @@ and read_rgb_space_separated t : color =
     if not (Cursor.is_done t) then Cursor.err t "unexpected tokens after rgb()";
     match alpha with
     | None -> Rgb (Channels { r; g; b })
-    | Num _ | Numeric _ | Pct _ | Var _ | Calc _ ->
+    | Num _ | Pct _ | Var _ | Calc _ ->
         Rgba { rgb = Channels { r; g; b }; a = alpha; legacy = false }
 
 and read_rgb_comma_separated ~legacy t : color =

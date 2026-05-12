@@ -98,7 +98,7 @@ let recovered_css label css =
   | Error err ->
       fail
         (Fmt.str "%s did not recover leniently: %s" label
-           (Css.pp_parse_warning err))
+           (Cascade.Error.to_string err))
 
 let assert_invalid_supports_contract label input =
   let css = "@supports " ^ input ^ "{.x{color:red}}" in
@@ -107,7 +107,7 @@ let assert_invalid_supports_contract label input =
       fail
         (Fmt.str "%s parsed strictly as invalid supports condition: %S -> %S"
            label input
-           (Css.to_string ~minify:true parsed.Css.stylesheet))
+           (Css.to_string ~minify:true parsed.stylesheet))
   | Error _ ->
       let { Css.warnings; stylesheet } = recovered_css label css in
       ignore (Css.to_string ~minify:true stylesheet : string);

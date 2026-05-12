@@ -134,9 +134,9 @@ let custom_properties_integration () =
 let var_digit_after_dashes () =
   let css = ".x{font-size:var(--1A202C)}" in
   match Css.of_string ~strict:false css with
-  | Error err -> Alcotest.fail ("parse failed: " ^ Css.pp_parse_warning err)
+  | Error err -> Alcotest.fail ("parse failed: " ^ Cascade.Error.to_string err)
   | Ok parsed ->
-      let out = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let out = Css.to_string ~minify:true parsed.stylesheet in
       Alcotest.(check string) "var(--1A202C) roundtrip" (css ^ "\n") out
 
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
@@ -165,9 +165,9 @@ let roundtrip () =
      cascade's canonical printer byte for byte. *)
   let parse_or_fail label css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error err ->
-        let formatted_error = Css.pp_parse_warning err in
+        let formatted_error = Cascade.Error.to_string err in
         Alcotest.fail ("Failed to parse " ^ label ^ ": " ^ formatted_error)
   in
   let first_pass =
@@ -737,7 +737,7 @@ let public_parse_edges () =
   match of_string ~strict:true ~filename:"spec.css" ".a{color:rgb(300)}" with
   | Ok _ -> Alcotest.fail "strict parser accepted invalid declaration"
   | Error err ->
-      let msg = pp_parse_warning err in
+      let msg = Cascade.Error.to_string err in
       Alcotest.(check bool)
         "parse error carries filename" true
         (Astring.String.is_infix ~affix:"spec.css" msg);
@@ -749,7 +749,7 @@ let public_parse_edges () =
         | Ok parsed -> parsed
         | Error err ->
             Alcotest.failf "lenient parse rejected recoverable CSS: %s"
-              (pp_parse_warning err)
+              (Cascade.Error.to_string err)
       in
       let rules = rule_statements parsed.stylesheet in
       let declaration_counts =

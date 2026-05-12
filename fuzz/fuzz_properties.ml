@@ -53,7 +53,7 @@ let assert_invalid_declaration_contract label input =
       fail
         (Fmt.str "%s parsed strictly as invalid declaration: %S -> %S" label
            input
-           (Css.to_string ~minify:true parsed.Css.stylesheet))
+           (Css.to_string ~minify:true parsed.stylesheet))
   | Error _ ->
       let { Css.warnings; stylesheet } =
         match Css.of_string ~strict:false css with
@@ -61,7 +61,7 @@ let assert_invalid_declaration_contract label input =
         | Error err ->
             fail
               (Fmt.str "%s did not recover leniently: %s" label
-                 (Css.pp_parse_warning err))
+                 (Cascade.Error.to_string err))
       in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
@@ -236,7 +236,7 @@ let invalid_value property buf =
   match property with
   | "display" -> pick [ "block inline flex"; "nope" ] buf 2
   | "position" -> pick [ "sticky absolute"; "center" ] buf 2
-  | "overflow" -> pick [ "visible hidden"; "none" ] buf 2
+  | "overflow" -> pick [ "auto scroll visible"; "none" ] buf 2
   | "border" -> pick [ "1px 2px"; "solid solid"; "red blue" ] buf 2
   | "font-family" -> pick [ "Arial,,serif"; "," ] buf 2
   | "font-weight" -> pick [ "1001"; "0"; "bold 400" ] buf 2
@@ -247,11 +247,11 @@ let invalid_value property buf =
   | "transition" -> pick [ "1s 2s 3s"; "ease opacity ease" ] buf 2
   | "animation" -> pick [ "1s 2s 3s"; "infinite infinite" ] buf 2
   | "background-image" -> pick [ "linear-gradient()"; "image-set()" ] buf 2
-  | "background" -> pick [ "red blue"; "url(" ] buf 2
+  | "background" -> pick [ "red blue"; "red red" ] buf 2
   | "content" -> pick [ "attr()"; "open-quote close-quote none" ] buf 2
   | "container" -> pick [ "/ inline-size"; "card / inline-size / size" ] buf 2
   | "scroll-snap-type" -> pick [ "mandatory x"; "x y mandatory" ] buf 2
-  | "clip-path" -> pick [ "circle()"; "inset()" ] buf 2
+  | "clip-path" -> pick [ "polygon()"; "inset()" ] buf 2
   | _ -> cssish buf
 
 let test_property_reader_crash_safety buf =
@@ -374,7 +374,7 @@ let property_grammar_vectors =
     vector "background" Css.Properties.read_background
       Css.Properties.pp_background
       [ "red"; "url(a.png) no-repeat center/cover"; "none" ]
-      [ "red blue"; "url(" ];
+      [ "red blue"; "red red" ];
     vector "content" Css.Properties.read_content Css.Properties.pp_content
       [
         "normal";

@@ -991,9 +991,9 @@ let spec_property_grammar_table_expansion () =
         | "border-radius", "10px 20px / 30px 40px" ->
             Some "border-radius:10px 20px/30px 40px"
         | "border-image", "linear-gradient(red, blue) 30" ->
-            Some "border-image:linear-gradient(red,#00f) 30"
+            Some "border-image:linear-gradient(red,#00f)30"
         | "background", "url(bg.png) no-repeat center / cover border-box" ->
-            Some "background:url(bg.png) center/cover no-repeat border-box"
+            Some "background:url(bg.png) 50%/cover no-repeat border-box"
         | "scrollbar-color", "red blue" -> Some "scrollbar-color:red #00f"
         | "border", "1px solid currentColor" -> Some "border:1px solid"
         | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
@@ -1097,7 +1097,7 @@ let edge_cases () =
   (* Cases with / operator - should be minified without spaces per CSS spec *)
   check_declaration ~expected:"width:calc(50% - 10px)"
     "width: calc((100% - 20px) / 2)";
-  check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
+  check_declaration ~expected:"height:calc(100vh - 1em - 50px)"
     "height: calc(100vh - calc(50px + 1em))";
 
   (* Per CSS Values 4 section 10.7 the printer fully simplifies all-constant
@@ -1334,7 +1334,7 @@ let spec_platform_property_vectors () =
       ("writing-mode: sideways-rl", "writing-mode:sideways-rl");
       ("animation-timeline: scroll()", "animation-timeline:scroll()");
       ( "animation-range: entry 0% exit 100%",
-        "animation-range:entry 0% exit 100%" );
+        "animation-range:entry 0%exit 100%" );
       ( "transition-behavior: allow-discrete",
         "transition-behavior:allow-discrete" );
       ("view-transition-name: card", "view-transition-name:card");
@@ -1385,7 +1385,7 @@ let spec_platform_property_vectors () =
       ("width: round(nearest, 10px, 3px)", "width:9px");
       (* All-constant [mod()] reduces under shortest-wins. *)
       ("width: mod(18px, 5px)", "width:3px");
-      ("width: rem(18px, 5px)", "width:rem(18px,5px)");
+      ("width: rem(18px, 5px)", "width:3px");
       ("width: hypot(3px, 4px)", "width:hypot(3px,4px)");
       ( "width: calc-size(auto, size + 1rem)",
         "width:calc-size(auto,size + 1rem)" );
@@ -1499,11 +1499,11 @@ let spec_values_l45_edges () =
       ( "background: cross-fade(url(a.png) 40%, url(b.png))",
         "background:cross-fade(url(a.png) 40%,url(b.png))" );
       ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
-        "filter:drop-shadow(0 0 2px rgb(0 0 0/.4))" );
+        "filter:drop-shadow(0 0 2px #0006)" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
         "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
       ( "background-position: left 10px top 20%",
-        "background-position:left 10px top 20%" );
+        "background-position:10px 20%" );
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
       ( "clip-path: xywh(0 0 100% 100% round 10px)",
         "clip-path:xywh(0 0 100% 100% round 10px)" );
@@ -1564,7 +1564,7 @@ let spec_remaining_prop_vectors () =
       ("background-clip: padding-box", "background-clip:padding-box");
       ("background-size: contain", "background-size:contain");
       ("border-block: 1px solid red", "border-block:1px solid red");
-      ("border-inline-color: red blue", "border-inline-color:red blue");
+      ("border-inline-color: red blue", "border-inline-color:red #00f");
       ("border-start-start-radius: 1rem", "border-start-start-radius:1rem");
       ("outline: 2px solid Highlight", "outline:2px solid highlight");
       ("outline-offset: -2px", "outline-offset:-2px");
@@ -1618,7 +1618,7 @@ let spec_remaining_prop_vectors () =
       ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10% 0)");
       ("image-rendering: pixelated", "image-rendering:pixelated");
       ("image-resolution: from-image 2dppx", "image-resolution:from-image 2dppx");
-      ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg) 30 fill");
+      ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg)30 fill");
       ("mask-size: contain", "mask-size:contain");
       ("mask-repeat: no-repeat", "mask-repeat:no-repeat");
       ("mask-position: left 10px top 20px", "mask-position:left 10px top 20px");

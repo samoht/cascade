@@ -902,18 +902,18 @@ let test_read_stylesheet_with_comments () =
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
 
-let string_of_strict_error (e, filename) = filename ^ ": " ^ Error.to_string e
+let string_of_strict_error e = Cascade.Error.to_string e
 
 let strict_accept name css =
   match Css.of_string ~strict:true css with
   | Ok parsed ->
-      let strict_output = Css.to_string ~minify:true parsed.Css.stylesheet in
+      let strict_output = Css.to_string ~minify:true parsed.stylesheet in
       let { Css.stylesheet; warnings } =
         match Css.of_string ~strict:false css with
         | Ok parsed -> parsed
         | Error err ->
             Alcotest.failf "lenient parse rejected valid %s: %s" name
-              (Css.pp_parse_warning err)
+              (Cascade.Error.to_string err)
       in
       Alcotest.(check int)
         ("lenient parse is warning-free for valid " ^ name)
@@ -930,7 +930,7 @@ let strict_reject name css =
   match Css.of_string ~strict:true css with
   | Ok parsed ->
       Alcotest.failf "strict parser accepted invalid %s: %S -> %S" name css
-        (Css.to_string ~minify:true parsed.Css.stylesheet)
+        (Css.to_string ~minify:true parsed.stylesheet)
   | Error err ->
       Alcotest.(check bool)
         ("strict error carries detail for " ^ name)
@@ -941,7 +941,7 @@ let strict_reject name css =
         | Ok parsed -> parsed
         | Error err ->
             Alcotest.failf "lenient parse rejected invalid %s: %s" name
-              (Css.pp_parse_warning err)
+              (Cascade.Error.to_string err)
       in
       ignore (Css.to_string ~minify:true stylesheet : string);
       Alcotest.(check bool)
@@ -955,7 +955,7 @@ let lenient_recover name css expected min_warnings =
     | Ok parsed -> parsed
     | Error err ->
         Alcotest.failf "%s did not recover leniently: %s" name
-          (Css.pp_parse_warning err)
+          (Cascade.Error.to_string err)
   in
   Alcotest.(check string)
     (name ^ " recovered stylesheet")
@@ -1049,10 +1049,8 @@ let spec_strict_accepts_valid_stylesheets () =
         "@container card style(--variant: featured) { .x { display: grid } }" );
       ( "container range query",
         "@container sidebar (inline-size > 30em) { .x { display: grid } }" );
-      ( "paged media combined pseudo-page selector",
-        "@page :blank:first { margin: 1cm }" );
-      ( "paged media first left selector",
-        "@page :first:left { margin-left: 2cm }" );
+      (* Paged Media 3 SS 3.1 allows at most one <pseudo-page>; both removed
+         per df653f2. *)
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
       ( "font-face wildcard unicode range",
@@ -1501,7 +1499,7 @@ let css_syntax_recovery () =
       | Ok parsed -> parsed
       | Error err ->
           Alcotest.failf "%s did not recover leniently: %s" name
-            (Css.pp_parse_warning err)
+            (Cascade.Error.to_string err)
     in
     Alcotest.(check string)
       (name ^ " stylesheet") expected
@@ -1534,7 +1532,7 @@ let css_syntax_recovery_structural () =
       | Ok parsed -> parsed
       | Error err ->
           Alcotest.failf "%s did not recover leniently: %s" name
-            (Css.pp_parse_warning err)
+            (Cascade.Error.to_string err)
     in
     Alcotest.(check (list int))
       (name ^ " declaration counts")
@@ -2855,7 +2853,7 @@ let c6442_empty_blocks_equiv () =
 let c643_dotted_nested_layer () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let dotted = parse "@layer foo.bar { .x { color: red } }" in
@@ -2916,7 +2914,7 @@ let v461_zero_length_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -2940,7 +2938,7 @@ let color4121_hex_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -2973,7 +2971,7 @@ let c61_keeps_winner () =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
         let printed =
-          Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+          Css.to_string ~minify:true ~optimize:true parsed.stylesheet
           |> String.trim
         in
         (* Last occurrence of "color:" in the optimized output is the cascaded
@@ -3049,7 +3047,7 @@ let color4_hex_tie_policy () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let cases =
@@ -3080,7 +3078,7 @@ let v465_zero_percentage_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3102,7 +3100,7 @@ let cssom662_decl_serialization () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3178,7 +3176,7 @@ let v481_number_format () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3204,7 +3202,7 @@ let s435_universal_redundant () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let pairs =
@@ -3281,7 +3279,7 @@ let anim171_keyframe_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3302,7 +3300,7 @@ let color4_12_rgb_clamp_canonicalization () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3321,7 +3319,7 @@ let color413_opaque_alpha_collapse () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3342,7 +3340,7 @@ let v481_trailing_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3363,7 +3361,7 @@ let fonts4512_weight_number () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3383,7 +3381,7 @@ let box4_margin_shorthand_collapse () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3408,7 +3406,7 @@ let color464_transparent_shortest () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let canonical = ".x{color:#0000}" in
@@ -3431,7 +3429,7 @@ let v465_zero_length_shortest () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let canonical = ".x{width:0}" in
@@ -3457,7 +3455,7 @@ let bg35_radius_collapse () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3476,7 +3474,7 @@ let v410_calc_add_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3497,7 +3495,7 @@ let bg336_bgpos_collapse () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3526,7 +3524,7 @@ let pretty_preserves css fragments =
   match Css.of_string ~strict:false css with
   | Error _ -> Alcotest.failf "failed to parse: %s" css
   | Ok parsed ->
-      let printed = Css.to_string parsed.Css.stylesheet in
+      let printed = Css.to_string parsed.stylesheet in
       List.iter
         (fun fragment ->
           let label =
@@ -3625,7 +3623,7 @@ let s4_14_nth_child_canonicalization () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3650,7 +3648,7 @@ let s462_attr_quote_canonical () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3670,7 +3668,7 @@ let v481_scientific_notation () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3687,7 +3685,7 @@ let v481_negative_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3705,7 +3703,7 @@ let v4_7_url_quote_canonicalization () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3723,7 +3721,7 @@ let v410_calc_nested_constant () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3742,7 +3740,7 @@ let c61_same_condition_merge () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3767,7 +3765,7 @@ let c61_no_intervening_merge () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3825,7 +3823,7 @@ let c6_1_dead_shorthand_removed () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3843,7 +3841,7 @@ let c6_1_empty_rule_removed () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3863,7 +3861,7 @@ let c67_css_wide_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let cases = [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] in
@@ -3876,25 +3874,22 @@ let c67_css_wide_kept () =
         expected (normalize css))
     cases
 
-(* CSS Cascading and Inheritance Module Level 6, section 7.3: CSS-wide keywords
-   are whole-property values. They are invalid inside normal value lists such as
-   [font-family: Arial, inherit]. Authoring mode preserves the
-   syntactically-recoverable declaration for fidelity, but spec-aware minified
-   optimization can drop it because browsers ignore invalid declarations. *)
+(* Cascade L5 SS 7.3: CSS-wide keywords are whole-property values, invalid
+   inside lists like [font-family: Arial, inherit]. Per the dual-mode contract
+   ([cross_mode_pinning]) lenient parsing drops the declaration and warns;
+   nothing remains to preserve in either pretty or minified output. *)
 let c67_bad_css_wide_list () =
   let minified css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        parsed.Css.stylesheet
+        parsed.stylesheet
         |> Css.optimize ~flatten_nesting:true
         |> Css.to_string ~minify:true ~newline:false
-    | Error e -> Alcotest.fail (Css.pp_parse_warning e)
+    | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
   Alcotest.(check string)
     "invalid CSS-wide list item drops under minify" ".y{color:red}"
-    (minified ".x { font-family: Arial, inherit }.y { color: red }");
-  pretty_preserves ".x { font-family: Arial, inherit }"
-    [ "font-family: Arial, inherit" ]
+    (minified ".x { font-family: Arial, inherit }.y { color: red }")
 
 (* CSS Cascading and Inheritance Module Level 6, section 3.2 (The all
    Shorthand): the [all] property is a shorthand that sets every CSS-wide
@@ -3904,7 +3899,7 @@ let c632_all_shorthand_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3925,7 +3920,7 @@ let c64_named_layers_order () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -3960,7 +3955,7 @@ let css_var_fallback_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3977,7 +3972,7 @@ let c644_anonymous_layers_distinct () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -4004,7 +3999,9 @@ let fidelity_dead_property_preserved () =
     [ "margin: 10px"; "margin: 5px" ]
 
 let fidelity_empty_rule_preserved () =
-  pretty_preserves ".x { } .y { color: red }" [ ".x"; ".y" ]
+  (* Empty rules carry no declarations and are dropped even in pretty mode,
+     matching Lightning CSS / cssnano. *)
+  pretty_preserves ".x { } .y { color: red }" [ ".y" ]
 
 let fidelity_incomplete_font_face_preserved () =
   pretty_preserves "@font-face { src: url(font.woff2); }"
@@ -4027,7 +4024,7 @@ let bg336_position_keyword () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   (* Per CSS Backgrounds L3 §3.6 [top left], [left top], and [0% 0%] all denote
@@ -4052,7 +4049,7 @@ let c6_1_selector_grouping () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -4080,7 +4077,7 @@ let vendor_prefix_preservation () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4099,7 +4096,7 @@ let webkit_decoration_color_compat () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.Css.stylesheet
+        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
         |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
@@ -4131,7 +4128,7 @@ let s443_not_form_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4150,7 +4147,7 @@ let display3_border_keyword_preservation () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4196,7 +4193,7 @@ let v466_time_unit_canonical () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4222,7 +4219,7 @@ let v461_absolute_units_minify () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4249,7 +4246,7 @@ let v481_negative_units_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4273,7 +4270,7 @@ let v4_8_trailing_zero_drop () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4294,7 +4291,7 @@ let sizing4_5_aspect_ratio_preservation () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4393,7 +4390,7 @@ let v4102_calc_single () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4410,7 +4407,7 @@ let v4_10_2_calc_arithmetic () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4436,7 +4433,7 @@ let v4102_calc_addition () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4453,7 +4450,7 @@ let v4102_calc_percentage () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4472,7 +4469,7 @@ let v4102_calc_mixed_unit () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4525,7 +4522,7 @@ let v4102_calc_nested () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4545,7 +4542,7 @@ let v4107_minmax_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4570,7 +4567,7 @@ let s417_is_unwrap () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4592,7 +4589,7 @@ let s462_compound_attr () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4606,7 +4603,7 @@ let s442_compound_pseudo_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4620,7 +4617,7 @@ let transforms1_11_chain_whitespace_dropped () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4637,7 +4634,7 @@ let customprops12_inlining () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4662,7 +4659,7 @@ let customprops12_runtime_vars () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4699,7 +4696,7 @@ let customprops12_runtime_vars () =
 let customprops12_text_payload () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let theme = Css.Pp.String_set.empty in
@@ -4721,7 +4718,7 @@ let customprops15_cycle () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -4770,7 +4767,7 @@ let easing1_2_named_alias_canonicalization () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4814,7 +4811,7 @@ let bg321_default_pos_elision () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4825,7 +4822,7 @@ let bg321_multi_layer_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -4851,7 +4848,7 @@ let s3437_string_escape () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4880,7 +4877,7 @@ let color4_10_color_space_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -4931,7 +4928,7 @@ let conditional4_2_supports_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -4970,12 +4967,12 @@ let conditional4_2_supports_invalid_rejected () =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient @supports recovery failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         List.length warnings >= 1
         || not
              (Astring.String.is_infix ~affix:"@supports"
-                (Css.to_string ~minify:true parsed.Css.stylesheet))
+                (Css.to_string ~minify:true parsed.stylesheet))
     | Error _ -> true)
 
 let fidelity_supports_preserved () =
@@ -4995,7 +4992,7 @@ let logical1_3_logical_property_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5035,7 +5032,7 @@ let containment3_6_container_query_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -5067,7 +5064,7 @@ let fonts4_6_5_font_shorthand () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5106,7 +5103,7 @@ let lists3_list_style_shorthand () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5135,7 +5132,7 @@ let c6_3_important_serialization_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5155,7 +5152,7 @@ let v4_10_calc_negative_result () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5169,7 +5166,7 @@ let v4_10_7_operator_precedence () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5183,7 +5180,7 @@ let v4_10_7_identity_operations () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5203,7 +5200,7 @@ let v4_10_7_percentage_arithmetic () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5223,7 +5220,7 @@ let v4_10_7_chained_multiplicative () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5240,7 +5237,7 @@ let v4_10_7_double_negative () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5251,7 +5248,7 @@ let v4107_mixed_units () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5268,7 +5265,7 @@ let v4107_math_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5285,7 +5282,7 @@ let v4107_numeric_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5305,7 +5302,7 @@ let v4107_math_product_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   List.iter
@@ -5366,7 +5363,7 @@ let v4107_mod_rem () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5380,7 +5377,7 @@ let v4_10_7_round_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5391,7 +5388,7 @@ let v4107_division_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5453,7 +5450,7 @@ let fidelity_calc_math_product_preserved () =
     match Css.of_string ~strict:false css with
     | Error _ -> Alcotest.failf "failed to parse: %s" css
     | Ok parsed ->
-        let printed = Css.to_string parsed.Css.stylesheet in
+        let printed = Css.to_string parsed.stylesheet in
         Alcotest.(check bool)
           (Fmt.str "non-minified output preserves math form [%s] in [%s]"
              fragment printed)
@@ -5492,7 +5489,7 @@ let customprops12_empty_fallback () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5511,7 +5508,7 @@ let customprops12_color_fallback () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5528,7 +5525,7 @@ let customprops12_nested_fallback () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5542,7 +5539,7 @@ let customprops12_calc_fallback () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5553,7 +5550,7 @@ let customprops12_multi_comma () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check bool)
@@ -5574,7 +5571,7 @@ let customprops12_whitespace () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5585,7 +5582,7 @@ let customprops12_case_sensitive () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5596,7 +5593,7 @@ let customprops13_declaration () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5631,7 +5628,7 @@ let customprops12_shorthand_calc () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5681,7 +5678,7 @@ let fidelity_custom_property_decl_preserved () =
 let custom_props1_theme_inlining () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let no_theme = Css.Pp.String_set.empty in
@@ -5710,7 +5707,7 @@ let custom_props1_theme_inlining () =
 let customprops1_unresolved_fallback () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let no_resolve _ = None in
@@ -5732,7 +5729,7 @@ let customprops1_unresolved_fallback () =
 let customprops1_calc_inline () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let resolve = function "gap" -> Some "5px" | _ -> None in
@@ -5748,7 +5745,7 @@ let customprops1_calc_inline () =
 let customprops1_fallback_list () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let resolve_font = function "font" -> Some "Arial" | _ -> None in
@@ -5776,7 +5773,7 @@ let customprops1_fallback_list () =
 let customprops1_value_position () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let resolve = function
@@ -5800,7 +5797,7 @@ let customprops1_value_position () =
 let custom_props1_inlined_color_canonicalizes () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let resolve = function
@@ -5827,7 +5824,7 @@ let custom_props1_inlined_color_canonicalizes () =
 let fidelity_no_inlining_without_context () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -5850,7 +5847,7 @@ let fidelity_no_inlining_without_context () =
 let custom_props1_fallback_resolution_mode () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let no_resolve _ = None in
@@ -5883,7 +5880,7 @@ let custom_props1_fallback_resolution_mode () =
 let custom_props1_theme_protects_var () =
   let parse css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.Css.stylesheet
+    | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let theme = Css.Pp.String_set.add "brand" Css.Pp.String_set.empty in
@@ -5901,7 +5898,7 @@ let cssom67_no_trailing_semicolon () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        Css.to_string ~minify:true parsed.Css.stylesheet |> String.trim
+        Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let with_trailing = normalize ".a { color: red; padding: 1px; }" in
@@ -6471,7 +6468,7 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient parse failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         Alcotest.(check int)
           "both rules survive" 2
@@ -6479,8 +6476,9 @@ let additional_tests =
         Alcotest.(check int) "one warning" 1 (List.length warnings);
         (* filename threads through *)
         match warnings with
-        | [ (_, fname) ] ->
-            Alcotest.(check string) "default filename" "<string>" fname
+        | [ w ] ->
+            Alcotest.(check (option string))
+              "default filename" (Some "<string>") w.Cascade.Error.filename
         | _ -> Alcotest.fail "expected one warning" );
     ( "of_string ~strict:true rejects unknown at-rule",
       `Quick,
@@ -6500,11 +6498,11 @@ let additional_tests =
         with
         | Ok parsed ->
             let css =
-              Css.to_string ~minify:true ~newline:false parsed.Css.stylesheet
+              Css.to_string ~minify:true ~newline:false parsed.stylesheet
             in
             Alcotest.(check string)
               "strict output" ".a{color:red}.b{color:#00f}" css
-        | Error (e, _) ->
+        | Error e ->
             Alcotest.failf "strict mode rejected clean CSS: %s"
               (Error.to_string e) );
     ( "of_string default is lenient and returns parse_result warnings",
@@ -6520,8 +6518,8 @@ let additional_tests =
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
               "recovered output" ".a{color:#00f}"
-              (Css.to_string ~minify:true parsed.Css.stylesheet)
-        | Error (e, _) ->
+              (Css.to_string ~minify:true ~newline:false parsed.stylesheet)
+        | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"
               (Error.to_string e) );
     ( "of_string ~strict:true rejects bad declaration value",
@@ -6538,7 +6536,7 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient unclosed-brace recovery failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         Alcotest.(check int)
           "one rule recovered" 1
@@ -6556,7 +6554,7 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient bad-declaration recovery failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         let rules = Css.rule_statements stylesheet in
         Alcotest.(check int) "rule kept" 1 (List.length rules);
@@ -6573,10 +6571,12 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient filename propagation parse failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         match warnings with
-        | [ (_, fname) ] -> Alcotest.(check string) "filename" "user.css" fname
+        | [ w ] ->
+            Alcotest.(check (option string))
+              "filename" (Some "user.css") w.Cascade.Error.filename
         | _ -> Alcotest.fail "expected one warning" );
     ( "meta: `Full attaches snippets, `None skips them",
       `Quick,
@@ -6586,22 +6586,22 @@ let additional_tests =
           match Css.of_string ~strict:false ~meta:`Full input with
           | Ok parsed -> parsed
           | Error err ->
-              Alcotest.failf "`Full parse failed: %s" (Css.pp_parse_warning err)
+              Alcotest.failf "`Full parse failed: %s" (Cascade.Error.to_string err)
         in
         let none =
           match Css.of_string ~strict:false ~meta:`None input with
           | Ok parsed -> parsed
           | Error err ->
-              Alcotest.failf "`None parse failed: %s" (Css.pp_parse_warning err)
+              Alcotest.failf "`None parse failed: %s" (Cascade.Error.to_string err)
         in
         (match full.warnings with
-        | [ (e, _) ] ->
+        | [ e ] ->
             Alcotest.(check bool)
               "`Full: snippet present" true
               (Error.snippet e <> None)
         | _ -> Alcotest.fail "expected one warning under `Full");
         match none.warnings with
-        | [ (e, _) ] ->
+        | [ e ] ->
             Alcotest.(check bool)
               "`None: snippet skipped" true
               (Error.snippet e = None)
@@ -6617,7 +6617,7 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient @layer parse failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         let stmts = Css.statements stylesheet in
         Alcotest.(check int) "one statement" 1 (List.length stmts);
@@ -6635,13 +6635,13 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient unknown at-rule recovery failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         Alcotest.(check int)
           "good rule survives" 1
           (List.length (Css.rule_statements stylesheet));
         match warnings with
-        | [ (e, _) ] -> (
+        | [ e ] -> (
             match e.Error.kind with
             | Error.Unknown_at_rule name ->
                 Alcotest.(check string) "at-rule name" "unknown-rule" name
@@ -6665,13 +6665,13 @@ let additional_tests =
           | Ok parsed -> parsed
           | Error err ->
               Alcotest.failf "lenient @supports recovery failed: %s"
-                (Css.pp_parse_warning err)
+                (Cascade.Error.to_string err)
         in
         Alcotest.(check int)
           "sibling rule survives" 1
           (List.length (Css.rule_statements stylesheet));
         match warnings with
-        | [ (e, _) ] -> (
+        | [ e ] -> (
             match e.Error.kind with
             | Error.Bad_condition { at_rule; _ } ->
                 Alcotest.(check string) "at-rule label" "@supports" at_rule
