@@ -1399,7 +1399,7 @@ let expect_parse_error input =
   try
     let _ = read_stylesheet r in
     Alcotest.failf "Expected parse error for: %s" input
-  with Cursor.Parse_error _ -> ()
+  with Cursor.Parse_error _ | Error.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
 let spec_s7_block_examples () =
@@ -1462,8 +1462,7 @@ let test_invalid_selectors () =
   expect_parse_error "# { color: red; }";
   expect_parse_error ". { color: red; }";
   expect_parse_error "[invalid-attr { color: red; }";
-  check_stylesheet ~expected:".class:invalid-pseudo{color:red}"
-    ".class:invalid-pseudo { color: red; }"
+  expect_parse_error ".class:invalid-pseudo { color: red; }"
 
 (* Not a roundtrip test *)
 let test_invalid_properties () =
