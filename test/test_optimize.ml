@@ -487,8 +487,7 @@ let test_nonconsecutive_media_unmerged () =
 
   Alcotest.(check string)
     "non-consecutive media queries preserve source order"
-    "@media (width>=48px){.a{color:red}}.a{color:#0f0}@media \
-     (width>=48px){.c{color:#00f}}"
+    "@media(width>=48px){.a{color:red}}.a{color:#0f0}@media(width>=48px){.c{color:#00f}}"
     output
 
 (** Test media queries with different conditions are NOT merged *)
@@ -700,9 +699,8 @@ let test_tw_conditionals_split () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "non-adjacent conditionals remain split inside utility layer"
-    "@layer utilities{@media \
-     (width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media \
-     (width>=48rem){.md\\:grid{display:grid}}@supports \
+    "@layer \
+     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports \
      (display:grid){.grid{display:grid}}.block{display:block}@supports \
      (display:grid){.gap{gap:1rem}}}"
     output
@@ -1081,7 +1079,7 @@ let c61_no_merge_atrule () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across media boundary"
-    ".a{color:red}@media (width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
+    ".a{color:red}@media(width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
     output
 
 let c61_no_layer_media_merge () =
@@ -1107,8 +1105,8 @@ let c61_no_layer_media_merge () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "matching media queries do not merge across layer statement"
-    "@media (width>=48px){.a{color:red}}@layer theme;@media \
-     (width>=48px){.b{color:#00f}}"
+    "@media(width>=48px){.a{color:red}}@layer \
+     theme;@media(width>=48px){.b{color:#00f}}"
     output
 
 let c61_all_property_reset_boundary () =
@@ -2472,7 +2470,7 @@ let c64_conditional_layer_decls_nested () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "conditional layer declarations remain nested in their conditions"
-    "@media (width>=30em){@layer layout{.title{font-size:2rem}}}@supports \
+    "@media(width>=30em){@layer layout{.title{font-size:2rem}}}@supports \
      (display:grid){@layer grid;@layer grid{.title{display:grid}}}@layer \
      theme,layout;"
     output

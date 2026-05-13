@@ -53,7 +53,7 @@ let spec_media_l45_vectors () =
     "negated print" "not print"
     (to_string (Negated Print));
   Alcotest.(check string)
-    "negated min width" "not all and (min-width: 40px)"
+    "negated min width" "not (min-width: 40px)"
     (to_string (Negated (Min_width 40.)));
   Alcotest.(check string)
     "not min width rem" "not all and (min-width: 30rem)"
