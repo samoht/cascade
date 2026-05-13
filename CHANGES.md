@@ -12,15 +12,16 @@ typed public API.
   time.
 - Single warning-aware parse entry point:
   - `Css.of_string` runs CSS Syntax Level 3 recovery and returns
-    `(parse_result, parse_warning) result`.
-  - `~strict:true` promotes the first warning to `Error parse_error`.
-  - `Css.of_string_exn` returns the recovered stylesheet directly and raises on
-    `Error`.
+    `(parse, Error.t) result`, where `parse = { stylesheet; warnings }`.
+  - `~strict:true` promotes the first warning to `Error _`.
+  - `Css.of_string_exn` returns the recovered stylesheet directly and raises
+    `Error.Parse_error` on `Error`.
 - Pretty-printer with separate pretty and minified contexts
   (`Css.to_string ?minify`), with several typed printers exposed
   (`pp_color`, `pp_length`, ...).
-- Structural transforms (`fold`, `map`, `sort`) and a structural CSS diff
-  via the `cascade.tools` sub-library.
+- Structural transforms (`fold`, `map`, `sort`, `flatten_nesting`,
+  `inline_imports`) and a structural CSS diff via the `cascade.diff`
+  sub-library.
 - Optimizer with deduplication, rule merging, selector combining, and
   shorthand/longhand coverage including `all` reset folding.
 - Spec coverage:
