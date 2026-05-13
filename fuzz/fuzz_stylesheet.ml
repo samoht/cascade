@@ -1125,7 +1125,7 @@ let test_invalid_page_margin buf =
   let input =
     pick
       [
-        "@page :first:left { margin: 1cm }";
+        "@page :unknown { margin: 1cm }";
         "@page { @top-center { display: block } }";
       ]
       buf 0
