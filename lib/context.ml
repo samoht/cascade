@@ -475,40 +475,29 @@ let pp_pair ctx (k, v) =
   Pp.char ctx '=';
   Pp.string ctx v
 
-let pp_string_list ctx items =
+let pp_debug_list pp_item ctx items =
   Pp.char ctx '[';
   let first = ref true in
   List.iter
-    (fun s ->
+    (fun item ->
       if !first then first := false else Pp.string ctx ", ";
-      Pp.string ctx s)
+      pp_item ctx item)
     items;
   Pp.char ctx ']'
 
-let pp_pair_list ctx items =
-  Pp.char ctx '[';
-  let first = ref true in
-  List.iter
-    (fun pair ->
-      if !first then first := false else Pp.string ctx ", ";
-      pp_pair ctx pair)
-    items;
-  Pp.char ctx ']'
+let pp_string_list ctx items = pp_debug_list Pp.string ctx items
+let pp_pair_list ctx items = pp_debug_list pp_pair ctx items
 
 let pp_attr_list ctx items =
-  Pp.char ctx '[';
-  let first = ref true in
-  List.iter
-    (fun (name, value) ->
-      if !first then first := false else Pp.string ctx ", ";
+  pp_debug_list
+    (fun ctx (name, value) ->
       Pp.string ctx name;
       match value with
       | None -> ()
       | Some v ->
           Pp.char ctx '=';
           Pp.string ctx v)
-    items;
-  Pp.char ctx ']'
+    ctx items
 
 let pp_field ctx ~first label print_value value =
   if not !first then Pp.string ctx "; ";
@@ -517,16 +506,7 @@ let pp_field ctx ~first label print_value value =
   Pp.char ctx '=';
   print_value ctx value
 
-let pp_decl_list ctx items =
-  Pp.char ctx '[';
-  let first = ref true in
-  List.iter
-    (fun d ->
-      if !first then first := false else Pp.string ctx ", ";
-      Declaration.pp_declaration ctx d)
-    items;
-  Pp.char ctx ']'
-
+let pp_decl_list ctx items = pp_debug_list Declaration.pp_declaration ctx items
 let pp_bool ctx value = Pp.string ctx (string_of_bool value)
 let pp_int ctx value = Pp.string ctx (string_of_int value)
 
@@ -661,14 +641,7 @@ let pp_property_registration ctx registration =
 
 let pp_property_registry : property_registry Pp.t =
  fun ctx registry ->
-  Pp.char ctx '[';
-  let first = ref true in
-  List.iter
-    (fun registration ->
-      if !first then first := false else Pp.string ctx ", ";
-      pp_property_registration ctx registration)
-    registry.property_registrations;
-  Pp.char ctx ']'
+  pp_debug_list pp_property_registration ctx registry.property_registrations
 
 (** {1 CSS Evaluator Pipeline}
 
@@ -924,14 +897,6 @@ module Calc_residual = struct
     simplify_leaf : 'a simplifier -> 'a calc_simplifier -> 'a simplifier;
   }
 
-  let rec contains_var : type a. a Values.calc -> bool = function
-    | Values.Var _ -> true
-    | Values.Nested inner | Values.Parens inner -> contains_var inner
-    | Values.Expr (left, _, right) -> contains_var left || contains_var right
-    | Values.Num _ | Values.Val _ | Values.Math_const _ | Values.Math_fn _
-    | Values.Sibling_index | Values.Sibling_count ->
-        false
-
   let fold_num_expr : type a.
       a Values.calc -> Values.calc_op -> a Values.calc -> a Values.calc option =
    fun left op right ->
@@ -1001,7 +966,7 @@ module Calc_residual = struct
     | calc -> ops.of_calc calc
 
   let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =
-    let preserve = authored && contains_var calc in
+    let preserve = authored && Values.calc_contains_var calc in
     simplify_calc ~preserve ~visited calc
     |> calc_result_to_value ops simplify ~visited
 
@@ -1054,7 +1019,8 @@ module Calc_residual = struct
           Values.Expr (walk_calc ~visited left, op, walk_calc ~visited right)
     and simplify_calc ?(preserve = false) ~visited calc =
       let calc = walk_calc ~visited calc in
-      if preserve && contains_var calc then calc else fold_calc ops calc
+      if preserve && Values.calc_contains_var calc then calc
+      else fold_calc ops calc
     and simplify ~authored ~visited value =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
       let run_calc ~preserve ~visited calc =
@@ -1360,7 +1326,7 @@ module Length = struct
       preserve_authored_calc
       &&
       match (value : Values.length) with
-      | Values.Calc calc -> Calc_residual.contains_var calc
+      | Values.Calc calc -> Values.calc_contains_var calc
       | _ -> false
     in
     let value : Values.length =

@@ -599,6 +599,12 @@ let public_theme_edges () =
 
 let public_value_combinator_edges () =
   let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
+  let check_padding_calc label expected calc =
+    let sheet =
+      v [ rule ~selector:(Selector.class_ "p-1") [ padding [ Calc calc ] ] ]
+    in
+    Alcotest.(check string) label expected (to_string ~minify:true sheet)
+  in
   let calc_var_sheet =
     v
       [
@@ -610,6 +616,55 @@ let public_value_combinator_edges () =
     "padding calc(var()) preserves runtime boundary"
     ".p-1{padding:calc(var(--spacing))}\n"
     (to_string ~minify:true calc_var_sheet);
+  let calc_lifted_var_x1_sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "p-1")
+          [
+            padding
+              [ Calc (Calc.mul (Calc.length (Var spacing)) (Calc.float 1.0)) ];
+          ];
+      ]
+  in
+  Alcotest.(check string)
+    "padding calc lifted var times one keeps var arithmetic"
+    ".p-1{padding:calc(var(--spacing)*1)}\n"
+    (to_string ~minify:true calc_lifted_var_x1_sheet);
+  check_padding_calc "padding one times lifted var keeps var arithmetic"
+    ".p-1{padding:calc(1*var(--spacing))}\n"
+    (Calc.mul (Calc.float 1.0) (Calc.length (Var spacing)));
+  check_padding_calc "padding lifted var divided by one keeps var arithmetic"
+    ".p-1{padding:calc(var(--spacing)/1)}\n"
+    (Calc.div (Calc.length (Var spacing)) (Calc.float 1.0));
+  check_padding_calc "padding lifted var plus zero keeps var arithmetic"
+    ".p-1{padding:calc(var(--spacing) + 0px)}\n"
+    (Calc.add (Calc.length (Var spacing)) (Calc.length (Px 0.)));
+  check_padding_calc "padding zero plus lifted var keeps var arithmetic"
+    ".p-1{padding:calc(0px + var(--spacing))}\n"
+    (Calc.add (Calc.length (Px 0.)) (Calc.length (Var spacing)));
+  check_padding_calc "padding lifted var minus zero keeps var arithmetic"
+    ".p-1{padding:calc(var(--spacing) - 0px)}\n"
+    (Calc.sub (Calc.length (Var spacing)) (Calc.length (Px 0.)));
+  check_padding_calc "padding nested lifted var identities keep var arithmetic"
+    ".p-1{padding:calc(var(--spacing)*1 + 0px)}\n"
+    (Calc.add
+       (Calc.mul (Calc.length (Var spacing)) (Calc.float 1.0))
+       (Calc.length (Px 0.)));
+  check_padding_calc "padding var-free left subtree may fold before var"
+    ".p-1{padding:calc(3px + var(--spacing))}\n"
+    (Calc.add
+       (Calc.add (Calc.length (Px 1.)) (Calc.length (Px 2.)))
+       (Calc.length (Var spacing)));
+  check_padding_calc "padding var-free right subtree may fold after var"
+    ".p-1{padding:calc(var(--spacing)*6)}\n"
+    (Calc.mul
+       (Calc.length (Var spacing))
+       (Calc.mul (Calc.float 2.0) (Calc.float 3.0)));
+  check_padding_calc "padding var-free percentage subtree may fold before var"
+    ".p-1{padding:calc(50% - var(--spacing))}\n"
+    (Calc.sub
+       (Calc.div (Calc.length (Pct 100.)) (Calc.float 2.0))
+       (Calc.length (Var spacing)));
   let bare_var_sheet =
     v [ rule ~selector:(Selector.class_ "p-1") [ padding [ Var spacing ] ] ]
   in

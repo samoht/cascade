@@ -305,6 +305,11 @@ let deduplicate_declarations props = deduplicate_declarations_with props
 let sort_commuting_declarations decls = decls
 
 let color_custom_property_names stylesheet =
+  let var_name_of_custom_property name =
+    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+      String.sub name 2 (String.length name - 2)
+    else name
+  in
   let declaration names = function
     | Declaration
         {
@@ -312,7 +317,7 @@ let color_custom_property_names stylesheet =
           value = Custom_value { value = Typed { kind = Color; _ }; _ };
           _;
         } ->
-        String_set.add name names
+        String_set.add (var_name_of_custom_property name) names
     | _ -> names
   in
   let declarations names decls = List.fold_left declaration names decls in

@@ -507,6 +507,36 @@ and eval_math_fn fn =
         a
   | Abs_n a -> unary Float.abs a
 
+let rec math_arg_contains_var = function
+  | Lit _ | Dim _ | Const _ -> false
+  | Var_arg _ -> true
+  | Op (l, _, r) -> math_arg_contains_var l || math_arg_contains_var r
+  | Parens_arg inner -> math_arg_contains_var inner
+  | Math_call fn -> math_fn_contains_var fn
+
+and angle_arg_contains_var = function
+  | Angle_deg _ | Angle_rad _ | Angle_turn _ | Angle_grad _ -> false
+  | Angle_num arg -> math_arg_contains_var arg
+  | Angle_op (l, _, r) -> angle_arg_contains_var l || angle_arg_contains_var r
+  | Angle_parens inner -> angle_arg_contains_var inner
+
+and math_fn_contains_var = function
+  | Sin a | Cos a | Tan a -> angle_arg_contains_var a
+  | Asin a | Acos a | Atan a | Sqrt a | Exp a | Sign_n a | Abs_n a ->
+      math_arg_contains_var a
+  | Atan2 (a, b) | Log (a, Some b) | Pow (a, b) ->
+      math_arg_contains_var a || math_arg_contains_var b
+  | Log (a, None) -> math_arg_contains_var a
+  | Hypot args -> List.exists math_arg_contains_var args
+
+let rec calc_contains_var : type a. a calc -> bool = function
+  | Var _ -> true
+  | Val _ -> false
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> false
+  | Math_fn fn -> math_fn_contains_var fn
+  | Nested inner | Parens inner -> calc_contains_var inner
+  | Expr (l, _, r) -> calc_contains_var l || calc_contains_var r
+
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
@@ -562,22 +592,22 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    per-type "zero is the identity" cases involving typed [Val] leaves (e.g. [Val
    Zero] for [length]) are handled by per-type pre-passes that rewrite typed
    zeros to [Num 0.] before this generic fold. *)
-let rec eval_calc : type a. a calc -> a calc = function
+let rec eval_calc_without_vars : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
-      match eval_calc inner with
+      match eval_calc_without_vars inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
       | reduced -> Nested reduced)
   | Parens inner -> (
-      match eval_calc inner with
+      match eval_calc_without_vars inner with
       | (Val _ | Num _ | Var _) as leaf -> leaf
       | reduced -> Parens reduced)
   | Expr (l, op, r) -> (
-      let l = eval_calc l in
-      let r = eval_calc r in
+      let l = eval_calc_without_vars l in
+      let r = eval_calc_without_vars r in
       match (l, op, r) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
@@ -591,10 +621,21 @@ let rec eval_calc : type a. a calc -> a calc = function
       | x, Div, Num 1. -> x
       | _ -> Expr (l, op, r))
 
+let eval_calc calc =
+  if calc_contains_var calc then calc else eval_calc_without_vars calc
+
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
-  let calc = if Pp.minified ctx then eval_calc calc else calc in
+  let contains_var = calc_contains_var calc in
+  let calc =
+    if Pp.minified ctx && not contains_var then eval_calc_without_vars calc
+    else calc
+  in
   match calc with
+  (* CSS Values 4 §10.10: a [var()] inside [calc()] is a runtime substitution
+     boundary - the substituted tokens go through calc's typed grammar, not the
+     surrounding property's grammar. Unwrapping [calc(var(--x))] to bare
+     [var(--x)] would change which substitution shape is valid. *)
   | Val v when Pp.minified ctx -> pp_value ctx v
   | Num n when Pp.minified ctx -> Pp.float ctx n
   | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
@@ -1805,15 +1846,19 @@ and pp_length_calc ~always ctx cv =
   | _ -> pp_generic_length_calc ~always ctx cv
 
 and pp_generic_length_calc ~always ctx cv =
+  let contains_var = calc_contains_var cv in
   let cv =
-    if Pp.minified ctx then
+    if Pp.minified ctx && not contains_var then
       cv
       |> resolve_length_calc_vars ctx
       |> normalize_length_calc_zeros |> eval_length_calc |> linear_length_calc
       |> eval_length_calc
     else cv
   in
-  pp_calc (pp_length ~always) ctx cv
+  match cv with
+  | Val (Var _ as length) when Pp.minified ctx ->
+      pp_calc_wrapped_length ~always ctx length
+  | _ -> pp_calc (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function
@@ -2870,8 +2915,9 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
+      let contains_var = calc_contains_var c in
       let c =
-        if Pp.minified ctx then
+        if Pp.minified ctx && not contains_var then
           c |> resolve_lp_calc_vars ctx |> normalize_lp_calc_zeros
           |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
         else c
@@ -3673,7 +3719,9 @@ module Calc = struct
   let ( / ) = div
 
   (* Value constructors *)
-  let length len = Val len
+  let length : length -> length calc = function
+    | Var v -> Var v
+    | len -> Val len
 
   let var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc =
    fun ?default ?fallback name -> Var (var_ref ?default ?fallback name)
