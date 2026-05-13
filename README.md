@@ -241,16 +241,33 @@ Structural diff lives in the separate `cascade.diff` sub-library
 
 ## Development and testing
 
-### Interop testing against other minifiers
+Cascade is tested on two complementary oracle corpora: the upstream
+Web Platform Tests for parser conformance, and a Lightning CSS-derived
+trace for minified-output canonicalization.
+
+### Parser conformance against WPT
+
+The `css/css-syntax/` subset of the [Web Platform
+Tests](https://github.com/web-platform-tests/wpt) is vendored under
+[test/vectors/wpt/](test/vectors/wpt/) and replayed by
+[test/wpt/test.ml](test/wpt/test.ml). The harness pulls CSS out of
+`<style>` blocks, inline `style="..."` attributes, linked `support/*.css`
+files, and `parseRule(\`...\`)` template-literal calls inside `<script>`
+bodies, then feeds each fragment through `Css.of_string`. A test fails
+when Cascade's parser rejects an input that browsers accept or accepts
+one that browsers reject; there is no skip list. Update the vendored
+snapshot with `make update-wpt`.
+
+### Minified-output interop against other minifiers
 
 Cascade's minified output is compared with cached oracle answers
 generated from the Lightning CSS test suite. Regenerating the
-[trace](test/interop/lightning/traces/minify.pairs) runs a patched
-Lightning CSS test build to capture each input and Lightning's
-expected output, then runs the available minifier CLIs (`esbuild`,
-`cleancss`, `csso`, `cssnano`, `lightningcss-cli`) over the same
-inputs. Normal test runs use only the cached trace; they do not shell
-out to external tools.
+[trace](test/interop/lightning/traces/minify.pairs) (via `dune build
+@regen-traces`) runs a patched Lightning CSS test build to capture
+each input and Lightning's expected output, then runs the available
+minifier CLIs (`esbuild`, `cleancss`, `csso`, `cssnano`,
+`lightningcss-cli`) over the same inputs. Normal test runs use only
+the cached trace; they do not shell out to external tools.
 
 A case passes when Cascade's output is no longer than the shortest
 *valid* cached oracle answer; longer Cascade outputs are recorded as
