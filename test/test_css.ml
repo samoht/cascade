@@ -598,6 +598,25 @@ let public_theme_edges () =
     (to_string ~minify:true ~theme:brand_theme sheet)
 
 let public_value_combinator_edges () =
+  let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
+  let calc_var_sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "p-1")
+          [ padding [ Calc (Var spacing) ] ];
+      ]
+  in
+  Alcotest.(check string)
+    "padding calc(var()) preserves runtime boundary"
+    ".p-1{padding:calc(var(--spacing))}\n"
+    (to_string ~minify:true calc_var_sheet);
+  let bare_var_sheet =
+    v [ rule ~selector:(Selector.class_ "p-1") [ padding [ Var spacing ] ] ]
+  in
+  Alcotest.(check string)
+    "padding bare var stays bare" ".p-1{padding:var(--spacing)}\n"
+    (to_string ~minify:true bare_var_sheet);
+
   let sheet =
     v
       [
