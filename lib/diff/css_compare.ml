@@ -222,70 +222,29 @@ let css_for_semantic_comparison ?property css =
 let canonical_semantic_css ~strict css =
   match Css.of_string ~strict css with
   | Ok { stylesheet; _ } -> (
-      try Some (Css.to_string ~minify:true ~newline:false stylesheet)
+      try
+        Some
+          (Css.to_string ~minify:true ~optimize:true ~newline:false stylesheet)
       with Invalid_argument _ -> None)
   | Error _ -> None
 
-let is_ident_char = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-  | _ -> false
-
-let starts_with_at s i prefix =
-  let prefix_len = String.length prefix in
-  i + prefix_len <= String.length s && String.sub s i prefix_len = prefix
-
-let copy_quoted_string s buf quote i =
-  let len = String.length s in
-  let rec loop j escaped =
-    if j >= len then j
-    else
-      let c = s.[j] in
-      Buffer.add_char buf c;
-      if escaped then loop (j + 1) false
-      else if c = '\\' then loop (j + 1) true
-      else if c = quote then j + 1
-      else loop (j + 1) false
-  in
-  loop i false
-
-let normalize_transparent_aliases css =
-  (* Custom properties carry token streams, so the typed color printer does not
-     see aliases inside them. Canonical compare still treats CSS Color 4's
-     transparent/#0000 equivalence as noise. *)
-  let len = String.length css in
-  let transparent = "transparent" in
-  let transparent_len = String.length transparent in
-  let buf = Buffer.create len in
-  let rec loop i =
-    if i >= len then Buffer.contents buf
-    else
-      match css.[i] with
-      | ('"' | '\'') as quote ->
-          Buffer.add_char buf quote;
-          loop (copy_quoted_string css buf quote (i + 1))
-      | 't'
-        when starts_with_at css i transparent
-             && (i = 0 || not (is_ident_char css.[i - 1]))
-             && (i + transparent_len >= len
-                || not (is_ident_char css.[i + transparent_len])) ->
-          Buffer.add_string buf "#0000";
-          loop (i + transparent_len)
-      | c ->
-          Buffer.add_char buf c;
-          loop (i + 1)
-  in
-  loop 0
+let canonical_css ~strict css = canonical_semantic_css ~strict css
 
 let canonical_pair ~strict expected actual =
-  match
-    ( canonical_semantic_css ~strict expected,
-      canonical_semantic_css ~strict actual )
-  with
+  match (canonical_css ~strict expected, canonical_css ~strict actual) with
   | Some expected_norm, Some actual_norm ->
-      let expected_norm = normalize_transparent_aliases expected_norm in
-      let actual_norm = normalize_transparent_aliases actual_norm in
       Some (String.equal expected_norm actual_norm)
   | _ -> None
+
+let canonical_diff_inputs ~strict expected actual =
+  match (canonical_css ~strict expected, canonical_css ~strict actual) with
+  | Some expected, Some actual -> Some (expected, actual)
+  | _ -> None
+
+let canonical_diff_inputs_with_fallback expected actual =
+  match canonical_diff_inputs ~strict:true expected actual with
+  | Some _ as result -> result
+  | None -> canonical_diff_inputs ~strict:false expected actual
 
 (* Internal: full-stylesheet equality under the canonical minified form. *)
 let semantic_equal ?property expected actual =
@@ -352,6 +311,17 @@ let diff_auto ~expected ~actual =
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
+let diff_canonical ~expected ~actual =
+  let expected = strip_tool_header expected in
+  let actual = strip_tool_header actual in
+  if expected = actual then No_diff
+  else
+    match canonical_diff_inputs_with_fallback expected actual with
+    | Some (expected, actual) ->
+        if String.equal expected actual then No_diff
+        else diff_auto ~expected ~actual
+    | None -> diff_auto ~expected ~actual
+
 let diff_string ~expected ~actual =
   if expected = actual then No_diff
   else
@@ -375,9 +345,7 @@ let diff ?(mode = `Auto) expected actual =
   let actual = strip_tool_header actual in
   match mode with
   | `Auto -> diff_auto ~expected ~actual
-  | `Canonical ->
-      if semantic_equal expected actual then No_diff
-      else diff_auto ~expected ~actual
+  | `Canonical -> diff_canonical ~expected ~actual
   | `String -> diff_string ~expected ~actual
   | `Tree -> diff_tree ~expected ~actual
 
