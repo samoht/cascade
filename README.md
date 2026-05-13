@@ -81,6 +81,10 @@ several valid serializations, Cascade chooses the shortest valid one.
 - Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
 - Media queries: legacy -> range syntax (`(min-width:48px)` -> `(width>=48px)`).
 
+These rules compose: they apply wherever a CSS value appears, including
+nested function arguments and custom-property values that parse as a
+self-contained CSS value.
+
 Pretty mode (the default) preserves the authored form where the parsed
 model permits it. Spec-mandated canonicalizations (CSS Syntax 3 section
 4.3.7 NUL -> U+FFFD, single-quote -> double, ...) apply in both modes.

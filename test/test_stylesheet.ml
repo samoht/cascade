@@ -4599,6 +4599,10 @@ let customprops12_inlining () =
     "calc with var preserved" ".x{width:calc(var(--gap)*2)}"
     (normalize ".x { width: calc(var(--gap) * 2) }");
   Alcotest.(check string)
+    "single var inside calc is not equivalent to bare var"
+    ".x{padding:calc(var(--spacing))}"
+    (normalize ".x { padding: calc(var(--spacing)) }");
+  Alcotest.(check string)
     "rule defining the variable preserved alongside its use"
     ":root{--brand:red}.x{color:var(--brand)}"
     (normalize ":root { --brand: red } .x { color: var(--brand) }")
@@ -5525,6 +5529,60 @@ let customprops13_declaration () =
     (let out = normalize ".x { --x: }" in
      Astring.String.is_infix ~affix:"--x:" out)
 
+let normalize_minified css =
+  match Css.of_string ~strict:false css with
+  | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
+  | Error _ -> Alcotest.failf "failed to parse: %s" css
+
+(* CSS Custom Properties L1 section 2 preserves custom-property declarations as
+   CSS values until substitution. Under Cascade's minifier contract, when that
+   value is a valid self-contained CSS value, the serialized form still follows
+   shortest-wins. *)
+let customprops13_shortest_numeric_calc () =
+  Alcotest.(check string)
+    "custom property numeric calc reduces to the shortest number"
+    ".x{--text-sm--line-height:1.42857}"
+    (normalize_minified ".x { --text-sm--line-height: calc(1.25 / .875) }")
+
+let customprops13_shortest_oklch_chroma () =
+  Alcotest.(check string)
+    "custom property OKLCH chroma uses the shortest valid percent form"
+    ".x{--color-zinc-500:oklch(55.2%4% 285.938)}"
+    (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }")
+
+let customprops13_shortest_percent_calc () =
+  Alcotest.(check string)
+    "custom property percent calc reduces to a percentage"
+    ".x{--tw-translate-x:50%}"
+    (normalize_minified ".x { --tw-translate-x: calc(1 / 2 * 100%) }")
+
+let customprops13_shortest_negative_dimension_calc () =
+  Alcotest.(check string)
+    "custom property negative calc reduces to a dimension"
+    ".x{--tw-tracking:-.05em}"
+    (normalize_minified ".x { --tw-tracking: calc(.05em * -1) }")
+
+let customprops13_shortest_unresolved_calc_spacing () =
+  Alcotest.(check string)
+    "custom property unresolved calc drops unnecessary operator spaces"
+    ".x{--tw-border-spacing-x:calc(var(--spacing)*4)}"
+    (normalize_minified ".x { --tw-border-spacing-x: calc(var(--spacing) * 4) }")
+
+let customprops13_shortest_box_shadow_zero_spread () =
+  Alcotest.(check string)
+    "custom property box-shadow drops zero spread"
+    ".shadow-sm{--tw-shadow:0 1px 3px var(--tw-shadow-color,#0000001a)}"
+    (normalize_minified
+       ".shadow-sm { --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, \
+        #0000001a) }")
+
+let customprops13_shortest_oklab_sign_boundaries () =
+  Alcotest.(check string)
+    "custom property OKLab sign boundaries match shortest color serialization"
+    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003 -.034/.1)}"
+    (normalize_minified
+       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }")
+
 let customprops12_invalid_var () =
   Alcotest.(check bool)
     "var() with no arguments is rejected" true
@@ -6119,6 +6177,27 @@ let additional_tests =
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
       customprops13_declaration );
+    ( "spec custom-properties 1 3 shortest numeric calc",
+      `Quick,
+      customprops13_shortest_numeric_calc );
+    ( "spec custom-properties 1 3 shortest oklch chroma",
+      `Quick,
+      customprops13_shortest_oklch_chroma );
+    ( "spec custom-properties 1 3 shortest percent calc",
+      `Quick,
+      customprops13_shortest_percent_calc );
+    ( "spec custom-properties 1 3 shortest negative dimension calc",
+      `Quick,
+      customprops13_shortest_negative_dimension_calc );
+    ( "spec custom-properties 1 3 shortest unresolved calc spacing",
+      `Quick,
+      customprops13_shortest_unresolved_calc_spacing );
+    ( "spec custom-properties 1 3 shortest box-shadow zero spread",
+      `Quick,
+      customprops13_shortest_box_shadow_zero_spread );
+    ( "spec custom-properties 1 3 shortest oklab sign boundaries",
+      `Quick,
+      customprops13_shortest_oklab_sign_boundaries );
     ( "spec custom-properties 1 2 invalid var rejected (negative)",
       `Quick,
       customprops12_invalid_var );

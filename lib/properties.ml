@@ -17780,6 +17780,52 @@ and pp_font_src ctx entries =
 
 let read_font_src = Font_face.read_src
 
+let custom_value_shorter candidate rendered =
+  if String.length candidate < String.length rendered then candidate
+  else rendered
+
+let custom_value_typed_candidate read pp value =
+  match
+    let t = Cursor.of_components value in
+    let parsed = read t in
+    Cursor.expect_eof t;
+    Some (Pp.to_string ~minify:true pp parsed)
+  with
+  | candidate -> candidate
+  | exception Cursor.Parse_error _ -> None
+
+let pp_custom_value_number ctx (value : number) =
+  let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
+  match value with
+  | Num f when Pp.minified ctx -> pp_rounded f
+  | Calc c when Pp.minified ctx -> (
+      match eval_calc c with
+      | Num f -> pp_rounded f
+      | c -> pp_number ctx (Calc c))
+  | _ -> pp_number ctx value
+
+let custom_value_minified value =
+  let rendered = Parser.to_string_custom_minified value in
+  [
+    custom_value_typed_candidate read_number pp_custom_value_number value;
+    custom_value_typed_candidate
+      (read_length_percentage ~with_keywords:false)
+      (pp_length_percentage ~always:true)
+      value;
+    custom_value_typed_candidate
+      (read_length ~with_keywords:false)
+      (pp_length ~always:true) value;
+    custom_value_typed_candidate read_percentage pp_percentage value;
+    custom_value_typed_candidate read_number_percentage pp_number_percentage
+      value;
+    custom_value_typed_candidate read_color pp_color value;
+    custom_value_typed_candidate read_shadow pp_shadow value;
+  ]
+  |> List.filter_map Fun.id
+  |> List.fold_left
+       (fun rendered candidate -> custom_value_shorter candidate rendered)
+       rendered
+
 let pp_value : type a. (a kind * a) Pp.t =
  fun ctx (kind, value) ->
   let pp pp_a = pp_a ctx value in
@@ -17807,7 +17853,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Opacity -> pp pp_opacity
   | Value ->
       let rendered =
-        if Pp.minified ctx then Parser.to_string_custom_minified value
+        if Pp.minified ctx then custom_value_minified value
         else Parser.to_string_custom value
       in
       Pp.string ctx rendered

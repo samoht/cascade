@@ -64,14 +64,14 @@ let canonical_custom_property_tokens () =
   let expected = ".a { --tw-ring-color: transparent }" in
   let actual = ".a { --tw-ring-color: #0000 }" in
   Alcotest.(check bool)
-    "custom property token streams are compared after minification" false
+    "self-contained custom property values use shortest canonical form" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_mix_tokens () =
   let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
   Alcotest.(check bool)
-    "custom color-mix token streams are compared after minification" false
+    "self-contained custom color-mix values use shortest canonical form" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_with_recovered_warning () =
@@ -95,7 +95,7 @@ let semantic_custom_var_fallback () =
     ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
   in
   Alcotest.(check bool)
-    "custom var fallback token streams are compared after minification" false
+    "self-contained custom shadow values use shortest canonical form" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_custom_nested_functions () =
