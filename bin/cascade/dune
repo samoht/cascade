@@ -1,4 +1,0 @@
-(executable
- (public_name cascade)
- (name main)
- (libraries cascade cascade.info cmdliner fmt fmt.cli fmt.tty))

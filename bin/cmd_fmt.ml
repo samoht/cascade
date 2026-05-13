@@ -1,8 +1,6 @@
 open Cascade
 open Cmdliner
 
-let () = Printexc.record_backtrace true
-
 let process_css ~input_path ~minify ~inline_imports_flag ~inline_vars_flag
     ~keep_vars =
   try
@@ -93,37 +91,34 @@ let term =
     $ input_arg $ minify_arg $ inline_imports_arg $ inline_vars_arg
     $ keep_vars_arg)
 
-let info =
-  let doc = "Format, minify, and inline CSS files" in
-  let man =
-    [
-      `S Manpage.s_description;
-      `P
-        "$(tname) reads a CSS file and writes it back, optionally minifying it \
-         or inlining [@import] rules and [var(--*)] references.";
-      `P
-        "Without flags, $(tname) pretty-prints. With $(b,--minify) it applies \
-         the standard cssnano-style safe transforms (deduplication, rule \
-         merging, selector grouping, empty-rule elimination) and emits \
-         minified output.";
-      `P
-        "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
-         $(b,--inline-imports) assumes you control file resolution and \
-         $(b,--inline-vars) assumes no runtime mutation of custom properties.";
-      `S Manpage.s_examples;
-      `P "Pretty-print a CSS file:";
-      `Pre "  $(tname) style.css";
-      `P "Minify a CSS file:";
-      `Pre "  $(tname) --minify style.css";
-      `P "Inline [@import]s and [var()] references, then minify:";
-      `Pre "  $(tname) --inline-imports --inline-vars --minify style.css";
-      `P "Keep [--theme] and [--brand] as live var() references:";
-      `Pre "  $(tname) --inline-vars --keep-vars=theme,brand style.css";
-      `P "Read from stdin and minify:";
-      `Pre "  cat style.css | $(tname) --minify -";
-    ]
-  in
-  Cmd.info "cascade" ~version:Cascade_info.version ~doc ~man
+let man =
+  [
+    `S Manpage.s_description;
+    `P
+      "$(tname) reads a CSS file and writes it back, optionally minifying it \
+       or inlining [@import] rules and [var(--*)] references.";
+    `P
+      "Without flags, $(tname) pretty-prints. With $(b,--minify) it applies \
+       the standard cssnano-style safe transforms (deduplication, rule \
+       merging, selector grouping, empty-rule elimination) and emits minified \
+       output.";
+    `P
+      "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
+       $(b,--inline-imports) assumes you control file resolution and \
+       $(b,--inline-vars) assumes no runtime mutation of custom properties.";
+    `S Manpage.s_examples;
+    `P "Pretty-print a CSS file:";
+    `Pre "  cascade fmt style.css";
+    `P "Minify a CSS file:";
+    `Pre "  cascade fmt --minify style.css";
+    `P "Inline [@import]s and [var()] references, then minify:";
+    `Pre "  cascade fmt --inline-imports --inline-vars --minify style.css";
+    `P "Keep [--theme] and [--brand] as live var() references:";
+    `Pre "  cascade fmt --inline-vars --keep-vars=theme,brand style.css";
+    `P "Read from stdin and minify:";
+    `Pre "  cat style.css | cascade fmt --minify -";
+  ]
 
-let cmd = Cmd.v info term
-let () = exit (Cmd.eval cmd)
+let cmd =
+  let doc = "Format, minify, and inline CSS files" in
+  Cmd.v (Cmd.info "fmt" ~doc ~man) term
