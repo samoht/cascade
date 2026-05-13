@@ -1,10 +1,6 @@
 (* Throwaway: walk pairs with progress so we can spot pathological cases. *)
 open Cascade
 
-let () =
-  try Memtrace.trace_if_requested ~context:"cascade lightning interop bench" ()
-  with Failure msg -> Fmt.epr "memtrace unavailable: %s\n%!" msg
-
 let trace_path = Filename.concat "traces" "minify.pairs"
 
 let int_env name default =
