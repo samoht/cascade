@@ -59,7 +59,7 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
       Pp.string ctx "#"
   | Ident_keyword name -> Pp.string ctx name
 
-and pp_syntax : type a. a syntax Pp.t =
+let pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
   (* Syntax descriptors should be printed with quotes per CSS spec *)
   Pp.char ctx '"';

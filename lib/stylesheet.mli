@@ -9,6 +9,9 @@
 open Declaration
 include module type of Stylesheet_intf
 
+type t = stylesheet
+(** Stylesheet value type. *)
+
 (** {1 Construction Functions} *)
 
 val rule :
@@ -270,7 +273,7 @@ val to_string :
   ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
-  stylesheet ->
+  t ->
   string
 (** [to_string ?minify ?mode ?newline ?header ?theme ?theme_defaults stylesheet]
     renders a stylesheet to CSS. When [header] is non-empty (default: [""]) and
@@ -285,7 +288,7 @@ val pp :
   ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
-  stylesheet ->
+  t ->
   string
 (** [pp] is {!to_string}. *)
 

@@ -3419,6 +3419,22 @@ let simplify_float_side ~layer_order ?layer ctx (value : Properties.float_side)
     ~read_custom:(read_custom_components Properties.read_float_side)
     value
 
+let simplify_lengths_value ~layer_order ?layer ctx length_ctx value =
+  let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
+  match value with
+  | [ (Values.Var var : Values.length) ] -> (
+      match
+        Option.bind
+          (lookup_custom_property ?layer ~layer_order ctx var.Values.name)
+          (read_custom_components Values.read_margin_shorthand)
+      with
+      | Some lengths -> List.map simplify_one lengths
+      | None -> (
+          match var.Values.fallback with
+          | Values.Fallback fallback -> [ simplify_one fallback ]
+          | _ -> [ simplify_one (Values.Var var) ]))
+  | _ -> List.map simplify_one value
+
 let rec eval_typed ?layer_order ?layer ctx decl =
   let ctx = scope ?layer_order ?layer ctx in
   let layer_order = ctx.layer_order in
@@ -3449,22 +3465,6 @@ and resolve_typed : type b.
          resolve_css_wide_keyword ~layer_order ctx ~important
            ~property_name:(property_name property) keyword))
     ~default:(Declaration.Declaration { property; value; important })
-
-and simplify_lengths_value ~layer_order ?layer ctx length_ctx value =
-  let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
-  match value with
-  | [ (Values.Var var : Values.length) ] -> (
-      match
-        Option.bind
-          (lookup_custom_property ?layer ~layer_order ctx var.Values.name)
-          (read_custom_components Values.read_margin_shorthand)
-      with
-      | Some lengths -> List.map simplify_one lengths
-      | None -> (
-          match var.Values.fallback with
-          | Values.Fallback fallback -> [ simplify_one fallback ]
-          | _ -> [ simplify_one (Values.Var var) ]))
-  | _ -> List.map simplify_one value
 
 and eval_kind : type a.
     layer_order:string list ->

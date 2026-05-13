@@ -745,6 +745,26 @@ let split_top_level_commas s =
 
 (* Parse one [min()] / [max()] argument: either a simple dimension or a nested
    [min()] / [max()] that itself reduces to a constant. *)
+let same_unit_min_max_pairs = function
+  | [] -> Option.None
+  | (_, first_unit) :: _ as pairs
+    when List.for_all (fun (_, unit) -> unit = first_unit) pairs ->
+      Option.Some (first_unit, pairs)
+  | _ -> Option.None
+
+let pick_min_max_value op pairs =
+  match op with
+  | `Min ->
+      List.fold_left (fun a (b, _) -> if b < a then b else a) infinity pairs
+  | `Max ->
+      List.fold_left (fun a (b, _) -> if b > a then b else a) neg_infinity pairs
+
+let reduce_min_max_pairs op pairs =
+  match same_unit_min_max_pairs pairs with
+  | Option.None -> Option.None
+  | Option.Some (first_unit, pairs) ->
+      Option.Some (pick_min_max_value op pairs, first_unit)
+
 let rec min_max_arg_of_string s : (float * string) option =
   let s = String.trim s in
   match simple_dimension_of_string s with
@@ -771,26 +791,6 @@ and try_min_max_call s name op =
     let inner = String.sub s plen (len - plen - 1) in
     try_reduce_min_max op inner
   else Option.None
-
-and same_unit_min_max_pairs = function
-  | [] -> Option.None
-  | (_, first_unit) :: _ as pairs
-    when List.for_all (fun (_, unit) -> unit = first_unit) pairs ->
-      Option.Some (first_unit, pairs)
-  | _ -> Option.None
-
-and reduce_min_max_pairs op pairs =
-  match same_unit_min_max_pairs pairs with
-  | Option.None -> Option.None
-  | Option.Some (first_unit, pairs) ->
-      Option.Some (pick_min_max_value op pairs, first_unit)
-
-and pick_min_max_value op pairs =
-  match op with
-  | `Min ->
-      List.fold_left (fun a (b, _) -> if b < a then b else a) infinity pairs
-  | `Max ->
-      List.fold_left (fun a (b, _) -> if b > a then b else a) neg_infinity pairs
 
 let format_simple_dimension f unit =
   Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
@@ -1579,6 +1579,23 @@ let round_length_step strategy value step =
   | "to-zero" -> Float.trunc (value /. step) *. step
   | _ -> Float.round (value /. step) *. step
 
+let math_length = function Min _ | Max _ | Clamp _ -> true | _ -> false
+
+let pp_min_max_length ~always ctx op name s =
+  if Pp.minified ctx then
+    match try_reduce_min_max op s with
+    | Some (v, u) -> pp_unit ~always ctx v u
+    | None -> pp_math_call ctx name s
+  else pp_math_call ctx name s
+
+let px_values values =
+  List.fold_right
+    (fun value acc ->
+      match (value, acc) with
+      | Px f, Some values -> Some (f :: values)
+      | _ -> None)
+    values (Some [])
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
@@ -1686,8 +1703,6 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Content -> Pp.string ctx "content"
   | Calc cv -> pp_length_calc ~always ctx cv
 
-and math_length = function Min _ | Max _ | Clamp _ -> true | _ -> false
-
 and pp_calc_wrapped_length ~always ctx length =
   Pp.string ctx "calc(";
   pp_length ~always ctx length;
@@ -1708,13 +1723,6 @@ and pp_anchor_length ~always ctx name side fallback =
           pp_length ~always ctx fallback)
         fallback)
     ctx (name, side, fallback)
-
-and pp_min_max_length ~always ctx op name s =
-  if Pp.minified ctx then
-    match try_reduce_min_max op s with
-    | Some (v, u) -> pp_unit ~always ctx v u
-    | None -> pp_math_call ctx name s
-  else pp_math_call ctx name s
 
 and pp_round_length ~always ctx strategy value step =
   match (value, step) with
@@ -1774,14 +1782,6 @@ and pp_minified_hypot_length ~always ctx = function
           in
           pp_unit ~always ctx (Float.sqrt sum_sq) "px"
       | _ -> Pp.call_list "hypot" (pp_length ~always) ctx values)
-
-and px_values values =
-  List.fold_right
-    (fun value acc ->
-      match (value, acc) with
-      | Px f, Some values -> Some (f :: values)
-      | _ -> None)
-    values (Some [])
 
 and pp_length_calc ~always ctx cv =
   match cv with
@@ -2829,7 +2829,7 @@ let rec pp_hue : hue Pp.t =
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
 
-and pp_alpha : alpha Pp.t =
+let rec pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f ->
@@ -2863,7 +2863,7 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
-and pp_length_percentage ?(always = false) : length_percentage Pp.t =
+let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
   | Pct f -> Pp.pct ~always ctx f
@@ -2882,14 +2882,14 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-and pp_number_percentage ?(always = false) : number_percentage Pp.t =
+let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
-and pp_component : component Pp.t =
+let rec pp_component : component Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
   | Pct f when Pp.minified ctx -> Pp.float ctx (f /. 100.)
@@ -2901,7 +2901,7 @@ and pp_component : component Pp.t =
   | Calc c -> pp_calc pp_component ctx c
   | Component_none -> Pp.string ctx "none"
 
-and pp_hue_interpolation : hue_interpolation Pp.t =
+let pp_hue_interpolation : hue_interpolation Pp.t =
  fun ctx -> function
   | Shorter -> Pp.string ctx "shorter"
   | Longer -> Pp.string ctx "longer"
@@ -3109,6 +3109,98 @@ let pp_color_space : color_space Pp.t =
   | Hsl -> Pp.string ctx "hsl"
   | Hwb -> Pp.string ctx "hwb"
 
+let pp_color' ctx space components alpha =
+  Pp.call "color"
+    (fun ctx (space, components, alpha) ->
+      pp_color_space ctx space;
+      (match components with
+      | [] -> ()
+      | _ ->
+          Pp.space ctx ();
+          pp_color_components ctx components);
+      pp_opt_alpha ctx alpha)
+    ctx (space, components, alpha)
+
+let pp_hex_color ctx value =
+  if Pp.minified ctx then (
+    if hex_is_fully_transparent value then (
+      Pp.char ctx '#';
+      Pp.string ctx "0000")
+    else
+      let shortened = shorten_hex value in
+      match named_for_hex shortened with
+      | Some name when String.length name < String.length shortened + 1 ->
+          Pp.string ctx name
+      | _ ->
+          Pp.char ctx '#';
+          Pp.string ctx shortened)
+  else (
+    Pp.char ctx '#';
+    Pp.string ctx value)
+
+let rec pp_rgb_as_color : rgb Pp.t =
+ fun ctx -> function
+  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+  | Var v -> pp_var pp_rgb_as_color ctx v
+
+let pp_relative_color_call ctx name body =
+  let body =
+    if Pp.minified ctx then
+      body |> minify_relative_color_alpha |> minify_relative_color_numbers
+    else body
+  in
+  Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
+
+let canonical_color_name = function
+  | Grey -> Gray
+  | Dark_grey -> Dark_gray
+  | Light_grey -> Light_gray
+  | Slate_grey -> Slate_gray
+  | Dark_slate_grey -> Dark_slate_gray
+  | Light_slate_grey -> Light_slate_gray
+  | Dim_grey -> Dim_gray
+  | other -> other
+
+let pp_transparent_color ctx =
+  (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under minify
+     pick the shorter hex form (Lightning CSS convention). *)
+  if Pp.minified ctx then (
+    Pp.char ctx '#';
+    Pp.string ctx "0000")
+  else Pp.string ctx "transparent"
+
+let color_of_default_string value =
+  let value = String.trim value in
+  let len = String.length value in
+  let is_hex c =
+    ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
+  in
+  if len > 1 && value.[0] = '#' then
+    let hex = String.sub value 1 (len - 1) in
+    let hex_len = String.length hex in
+    if
+      (hex_len = 3 || hex_len = 4 || hex_len = 6 || hex_len = 8)
+      && String.for_all is_hex hex
+    then Option.Some (Hex { hash = true; value = hex })
+    else Option.None
+  else if
+    len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
+  then
+    let body = String.sub value 4 (len - 5) in
+    let body = String.map (function ',' -> ' ' | c -> c) body in
+    let parts =
+      body |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")
+    in
+    match List.map int_of_string_opt parts with
+    | [ Option.Some r; Option.Some g; Option.Some b ]
+      when List.for_all (fun n -> 0 <= n && n <= 255) [ r; g; b ] ->
+        Option.Some (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
+    | _ -> Option.None
+  else Option.None
+
+let color_of_var_resolution ctx (v : color var) =
+  value_of_var_resolution ctx color_of_default_string v
+
 let rec pp_color_in_mix : color Pp.t =
  fun ctx -> function
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
@@ -3144,40 +3236,6 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
       | None -> ())
     ctx
     (in_space, hue, color1, percent1, color2, percent2)
-
-and pp_color' ctx space components alpha =
-  Pp.call "color"
-    (fun ctx (space, components, alpha) ->
-      pp_color_space ctx space;
-      (match components with
-      | [] -> ()
-      | _ ->
-          Pp.space ctx ();
-          pp_color_components ctx components);
-      pp_opt_alpha ctx alpha)
-    ctx (space, components, alpha)
-
-and pp_hex_color ctx value =
-  if Pp.minified ctx then (
-    if hex_is_fully_transparent value then (
-      Pp.char ctx '#';
-      Pp.string ctx "0000")
-    else
-      let shortened = shorten_hex value in
-      match named_for_hex shortened with
-      | Some name when String.length name < String.length shortened + 1 ->
-          Pp.string ctx name
-      | _ ->
-          Pp.char ctx '#';
-          Pp.string ctx shortened)
-  else (
-    Pp.char ctx '#';
-    Pp.string ctx value)
-
-and pp_rgb_as_color : rgb Pp.t =
- fun ctx -> function
-  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
-  | Var v -> pp_var pp_rgb_as_color ctx v
 
 and pp_rgb_color ctx = function
   | Channels { r; g; b } when Pp.minified ctx -> (
@@ -3250,14 +3308,6 @@ and pp_rgb_hex_color ctx r g b a fallback =
       pp_color ctx (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
   | Option.None -> fallback ()
 
-and pp_relative_color_call ctx name body =
-  let body =
-    if Pp.minified ctx then
-      body |> minify_relative_color_alpha |> minify_relative_color_numbers
-    else body
-  in
-  Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
-
 and pp_light_dark_color ctx light dark =
   Pp.call "light-dark"
     (fun ctx (light, dark) ->
@@ -3277,16 +3327,6 @@ and pp_color_attr ctx name fallback =
       pp_color ctx fallback)
     fallback;
   Pp.char ctx ')'
-
-and canonical_color_name = function
-  | Grey -> Gray
-  | Dark_grey -> Dark_gray
-  | Light_grey -> Light_gray
-  | Slate_grey -> Slate_gray
-  | Dark_slate_grey -> Dark_slate_gray
-  | Light_slate_grey -> Light_slate_gray
-  | Dim_grey -> Dim_gray
-  | other -> other
 
 and pp_named_color ctx name =
   if Pp.minified ctx then pp_minified_named_color ctx name
@@ -3316,14 +3356,6 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
       | Option.Some color -> pp_color ctx color
       | Option.None -> pp_var pp_color ctx v)
   | _ -> pp_var pp_color ctx v
-
-and pp_transparent_color ctx =
-  (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under minify
-     pick the shorter hex form (Lightning CSS convention). *)
-  if Pp.minified ctx then (
-    Pp.char ctx '#';
-    Pp.string ctx "0000")
-  else Pp.string ctx "transparent"
 
 and pp_srgb_mix_color ctx color1 percent1 color2 percent2 =
   match color_mix_percentages percent1 percent2 with
@@ -3358,38 +3390,6 @@ and pp_lab_mix_color ctx in_space color1 percent1 color2 percent2 =
       | None ->
           pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
   | None -> pp_color_mix ctx in_space Default color1 percent1 color2 percent2
-
-and color_of_default_string value =
-  let value = String.trim value in
-  let len = String.length value in
-  let is_hex c =
-    ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
-  in
-  if len > 1 && value.[0] = '#' then
-    let hex = String.sub value 1 (len - 1) in
-    let hex_len = String.length hex in
-    if
-      (hex_len = 3 || hex_len = 4 || hex_len = 6 || hex_len = 8)
-      && String.for_all is_hex hex
-    then Option.Some (Hex { hash = true; value = hex })
-    else Option.None
-  else if
-    len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
-  then
-    let body = String.sub value 4 (len - 5) in
-    let body = String.map (function ',' -> ' ' | c -> c) body in
-    let parts =
-      body |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")
-    in
-    match List.map int_of_string_opt parts with
-    | [ Option.Some r; Option.Some g; Option.Some b ]
-      when List.for_all (fun n -> 0 <= n && n <= 255) [ r; g; b ] ->
-        Option.Some (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
-    | _ -> Option.None
-  else Option.None
-
-and color_of_var_resolution ctx (v : color var) =
-  value_of_var_resolution ctx color_of_default_string v
 
 and pp_color : color Pp.t =
  fun ctx -> function
@@ -3798,6 +3798,129 @@ let read_length_keyword t : length =
     ]
     t
 
+let calc_factor_is_dimension : type a. a calc -> bool = function
+  | Val _ -> true
+  | _ -> false
+
+let read_calc_zero : type a. Cursor.t -> a calc =
+ fun t ->
+  (* A zero in calc is a plain Number_tok with value 0, not a dimension. *)
+  let snap = Cursor.save t in
+  match Cursor.number_opt t with
+  | Some 0. -> Num 0.
+  | _ ->
+      Cursor.restore t snap;
+      Cursor.err t "expected zero"
+
+let math_arg_of_numeric_calc : type a. Cursor.t -> a calc -> math_arg =
+ fun t -> function
+  | Math_fn fn -> Math_call fn
+  | Num f -> Lit f
+  | _ -> Cursor.err t "expected numeric math arg"
+
+let read_math_constant_name t name =
+  match String.lowercase_ascii name with
+  | "pi" -> Const Pi
+  | "e" -> Const E
+  | "infinity" -> Const Infinity
+  | "-infinity" -> Const Neg_infinity
+  | "nan" -> Const Nan
+  | _ -> Cursor.err t "expected math constant"
+
+let read_math_number_with_unit t =
+  (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>] over any
+     numeric type, including dimensions and percentages. Capture the leading
+     number plus its unit so [sign(-1vw)] and [sign(1%)] preserve their source
+     shape. *)
+  match Cursor.number_with_unit t with
+  | n, Some unit -> Dim (n, unit)
+  | n, None -> Lit n
+
+let read_math_constant_or_number t =
+  match Cursor.ident_opt t with
+  | Some name -> read_math_constant_name t name
+  | None -> read_math_number_with_unit t
+
+let read_numeric_round : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "round" t (fun inner ->
+         let snap = Cursor.save inner in
+         let strategy =
+           match Cursor.peek_ident inner with
+           | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+               Cursor.skip inner;
+               Cursor.ws inner;
+               Cursor.comma inner;
+               kw
+           | _ ->
+               Cursor.restore inner snap;
+               "nearest"
+         in
+         let value = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let step = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         round_to_step strategy value step))
+
+let read_numeric_rem : type a. Cursor.t -> a calc =
+ fun t ->
+  Num
+    (Cursor.call "rem" t (fun inner ->
+         let a = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.comma inner;
+         let b = Cursor.number inner in
+         Cursor.ws inner;
+         Cursor.expect_eof inner;
+         Float.rem a b))
+
+let read_var_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+ fun read_a t ->
+  if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+  else Cursor.err t "expected var"
+
+let read_sibling_index_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  if Cursor.looking_at_func "sibling-index" t then
+    Cursor.call "sibling-index" t (fun inner ->
+        Cursor.expect_eof inner;
+        Sibling_index)
+  else Cursor.err t "expected sibling-index"
+
+let read_sibling_count_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  if Cursor.looking_at_func "sibling-count" t then
+    Cursor.call "sibling-count" t (fun inner ->
+        Cursor.expect_eof inner;
+        Sibling_count)
+  else Cursor.err t "expected sibling-count"
+
+let math_constant_factor_of_name : type a. Cursor.t -> _ -> string -> a calc =
+ fun t snap name ->
+  match String.lowercase_ascii name with
+  | "pi" -> Math_const Pi
+  | "e" -> Math_const E
+  | "infinity" -> Math_const Infinity
+  | "-infinity" -> Math_const Neg_infinity
+  | "nan" -> Math_const Nan
+  | _ ->
+      Cursor.restore t snap;
+      Cursor.err t "expected math constant"
+
+let read_math_constant_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity], [-infinity],
+     [NaN]) appear as bare identifiers inside [calc()]. *)
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some name -> math_constant_factor_of_name t snap name
+  | None ->
+      Cursor.restore t snap;
+      Cursor.err t "expected math constant"
+
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
@@ -3861,23 +3984,9 @@ and read_calc_quotient : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> a calc
       let right = read_calc_factor read_a t in
       read_calc_term_tail read_a t (Expr (left, Div, right)))
 
-and calc_factor_is_dimension : type a. a calc -> bool = function
-  | Val _ -> true
-  | _ -> false
-
 and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Parens (Cursor.parens (fun inner -> read_calc_expr read_a inner) t)
-
-and read_calc_zero : type a. Cursor.t -> a calc =
- fun t ->
-  (* A zero in calc is a plain Number_tok with value 0, not a dimension. *)
-  let snap = Cursor.save t in
-  match Cursor.number_opt t with
-  | Some 0. -> Num 0.
-  | _ ->
-      Cursor.restore t snap;
-      Cursor.err t "expected zero"
 
 and read_calc_numeric_function : type a. Cursor.t -> a calc =
  fun t ->
@@ -3952,35 +4061,6 @@ and read_math_arg_function t name =
   | "var" ->
       Var_arg (read_var (fun inner -> read_math_arg inner) t : math_arg var)
   | _ -> math_arg_of_numeric_calc t (read_calc_numeric_function t)
-
-and math_arg_of_numeric_calc : type a. Cursor.t -> a calc -> math_arg =
- fun t -> function
-  | Math_fn fn -> Math_call fn
-  | Num f -> Lit f
-  | _ -> Cursor.err t "expected numeric math arg"
-
-and read_math_constant_or_number t =
-  match Cursor.ident_opt t with
-  | Some name -> read_math_constant_name t name
-  | None -> read_math_number_with_unit t
-
-and read_math_constant_name t name =
-  match String.lowercase_ascii name with
-  | "pi" -> Const Pi
-  | "e" -> Const E
-  | "infinity" -> Const Infinity
-  | "-infinity" -> Const Neg_infinity
-  | "nan" -> Const Nan
-  | _ -> Cursor.err t "expected math constant"
-
-and read_math_number_with_unit t =
-  (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>] over any
-     numeric type, including dimensions and percentages. Capture the leading
-     number plus its unit so [sign(-1vw)] and [sign(1%)] preserve their source
-     shape. *)
-  match Cursor.number_with_unit t with
-  | n, Some unit -> Dim (n, unit)
-  | n, None -> Lit n
 
 and read_math_call_arg name t : math_arg =
   Cursor.call name t (fun inner ->
@@ -4118,42 +4198,6 @@ and read_numeric_list_call : type a.
          Cursor.expect_eof inner;
          List.fold_left fn initial nums))
 
-and read_numeric_round : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "round" t (fun inner ->
-         let snap = Cursor.save inner in
-         let strategy =
-           match Cursor.peek_ident inner with
-           | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-               Cursor.skip inner;
-               Cursor.ws inner;
-               Cursor.comma inner;
-               kw
-           | _ ->
-               Cursor.restore inner snap;
-               "nearest"
-         in
-         let value = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let step = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         round_to_step strategy value step))
-
-and read_numeric_rem : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "rem" t (fun inner ->
-         let a = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let b = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         Float.rem a b))
-
 and read_numeric_clamp : type a. Cursor.t -> a calc =
  fun t ->
   Num
@@ -4208,51 +4252,7 @@ and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
     Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
   else Cursor.err t "expected nested calc"
 
-and read_var_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
- fun read_a t ->
-  if Cursor.looking_at_func "var" t then Var (read_var read_a t)
-  else Cursor.err t "expected var"
-
-and read_sibling_index_factor : type a. Cursor.t -> a calc =
- fun t ->
-  if Cursor.looking_at_func "sibling-index" t then
-    Cursor.call "sibling-index" t (fun inner ->
-        Cursor.expect_eof inner;
-        Sibling_index)
-  else Cursor.err t "expected sibling-index"
-
-and read_sibling_count_factor : type a. Cursor.t -> a calc =
- fun t ->
-  if Cursor.looking_at_func "sibling-count" t then
-    Cursor.call "sibling-count" t (fun inner ->
-        Cursor.expect_eof inner;
-        Sibling_count)
-  else Cursor.err t "expected sibling-count"
-
-and read_math_constant_factor : type a. Cursor.t -> a calc =
- fun t ->
-  (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity], [-infinity],
-     [NaN]) appear as bare identifiers inside [calc()]. *)
-  let snap = Cursor.save t in
-  match Cursor.ident_opt t with
-  | Some name -> math_constant_factor_of_name t snap name
-  | None ->
-      Cursor.restore t snap;
-      Cursor.err t "expected math constant"
-
-and math_constant_factor_of_name : type a. Cursor.t -> _ -> string -> a calc =
- fun t snap name ->
-  match String.lowercase_ascii name with
-  | "pi" -> Math_const Pi
-  | "e" -> Math_const E
-  | "infinity" -> Math_const Infinity
-  | "-infinity" -> Math_const Neg_infinity
-  | "nan" -> Math_const Nan
-  | _ ->
-      Cursor.restore t snap;
-      Cursor.err t "expected math constant"
-
-and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
   if Cursor.looking_at_func "calc" t then
@@ -4268,6 +4268,80 @@ and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
   else Cursor.err t "calc() or var()"
 
 let read_numeric_expression t = read_num_expr t
+
+let read_raw_math_args inner =
+  Cursor.consume_remaining_as_string inner |> normalize_math_args
+
+let read_clamp_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s <> 3 then
+    Cursor.err_invalid inner "clamp() requires three comma-separated arguments";
+  Clamp s
+
+let read_minmax_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s <> 2 then
+    Cursor.err_invalid inner "minmax() requires two comma-separated arguments";
+  Minmax s
+
+let read_min_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s < 1 then
+    Cursor.err_invalid inner "min() requires at least one argument";
+  Min s
+
+let read_max_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s < 1 then
+    Cursor.err_invalid inner "max() requires at least one argument";
+  Max s
+
+let read_round_strategy inner =
+  let snap = Cursor.save inner in
+  match Cursor.peek_ident inner with
+  | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Cursor.comma inner;
+      kw
+  | _ ->
+      Cursor.restore inner snap;
+      "nearest"
+
+let read_anchor_size_length inner =
+  let size = Cursor.consume_remaining_as_string ~trim:true inner in
+  if size = "" then Cursor.err_expected inner "anchor-size argument";
+  Anchor_size size
+
+let read_anchor_name_side inner first =
+  if String.starts_with ~prefix:"--" first then
+    let side = Cursor.ident inner in
+    (Some first, side)
+  else (None, first)
+
+let read_attr_length_type inner =
+  Cursor.ws inner;
+  let body = Cursor.consume_remaining_as_string ~trim:true inner in
+  match attr_syntax_of_string body with
+  | Some syntax -> Type syntax
+  | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
+
+let read_plain_attr_type_hint inner : attr_type option =
+  match Cursor.ident_opt inner with
+  | Some "raw-string" -> Option.Some Raw_string
+  | Some "number" -> Option.Some Number_type
+  | Some unit_ -> Option.Some (Unit unit_)
+  | None when Cursor.peek_delim inner = Some '%' ->
+      Cursor.expect '%' inner;
+      Option.Some (Unit "%")
+  | None -> Cursor.err_expected inner "attr() type"
+
+let read_attr_type_hint inner : attr_type option =
+  Cursor.ws inner;
+  if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
+  else if Cursor.looking_at_func "type" inner then
+    Option.Some (Cursor.call "type" inner read_attr_length_type)
+  else read_plain_attr_type_hint inner
 
 let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
@@ -4339,51 +4413,12 @@ and length_function_readers ~allow_negative ~with_keywords =
     ("attr", read_attr_length ~allow_negative ~with_keywords);
   ]
 
-and read_raw_math_args inner =
-  Cursor.consume_remaining_as_string inner |> normalize_math_args
-
-and read_clamp_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s <> 3 then
-    Cursor.err_invalid inner "clamp() requires three comma-separated arguments";
-  Clamp s
-
-and read_minmax_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s <> 2 then
-    Cursor.err_invalid inner "minmax() requires two comma-separated arguments";
-  Minmax s
-
-and read_min_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s < 1 then
-    Cursor.err_invalid inner "min() requires at least one argument";
-  Min s
-
-and read_max_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s < 1 then
-    Cursor.err_invalid inner "max() requires at least one argument";
-  Max s
-
 and read_fit_content_length ~allow_negative ~with_keywords inner =
   Cursor.ws inner;
   let arg = read_length ~allow_negative ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Fit_content_arg arg
-
-and read_round_strategy inner =
-  let snap = Cursor.save inner in
-  match Cursor.peek_ident inner with
-  | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-      Cursor.skip inner;
-      Cursor.ws inner;
-      Cursor.comma inner;
-      kw
-  | _ ->
-      Cursor.restore inner snap;
-      "nearest"
 
 and read_round_length ~allow_negative ~with_keywords inner =
   (* CSS Values 4 10.7: [round()] takes an optional strategy ([nearest], [up],
@@ -4452,11 +4487,6 @@ and read_calc_size_length ~allow_negative ~with_keywords inner =
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
 
-and read_anchor_size_length inner =
-  let size = Cursor.consume_remaining_as_string ~trim:true inner in
-  if size = "" then Cursor.err_expected inner "anchor-size argument";
-  Anchor_size size
-
 and read_anchor_length ~allow_negative ~with_keywords inner =
   let first = Cursor.ident inner in
   Cursor.ws inner;
@@ -4472,12 +4502,6 @@ and read_anchor_length ~allow_negative ~with_keywords inner =
   Cursor.expect_eof inner;
   Anchor (name, side, fallback)
 
-and read_anchor_name_side inner first =
-  if String.starts_with ~prefix:"--" first then
-    let side = Cursor.ident inner in
-    (Some first, side)
-  else (None, first)
-
 and read_attr_length ~allow_negative ~with_keywords inner =
   Cursor.ws inner;
   let name = Cursor.ident ~keep_case:true inner in
@@ -4489,30 +4513,6 @@ and read_attr_length ~allow_negative ~with_keywords inner =
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Attr { name; type_; fallback }
-
-and read_attr_length_type inner =
-  Cursor.ws inner;
-  let body = Cursor.consume_remaining_as_string ~trim:true inner in
-  match attr_syntax_of_string body with
-  | Some syntax -> Type syntax
-  | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
-
-and read_attr_type_hint inner : attr_type option =
-  Cursor.ws inner;
-  if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
-  else if Cursor.looking_at_func "type" inner then
-    Option.Some (Cursor.call "type" inner read_attr_length_type)
-  else read_plain_attr_type_hint inner
-
-and read_plain_attr_type_hint inner : attr_type option =
-  match Cursor.ident_opt inner with
-  | Some "raw-string" -> Option.Some Raw_string
-  | Some "number" -> Option.Some Number_type
-  | Some unit_ -> Option.Some (Unit unit_)
-  | None when Cursor.peek_delim inner = Some '%' ->
-      Cursor.expect '%' inner;
-      Option.Some (Unit "%")
-  | None -> Cursor.err_expected inner "attr() type"
 
 and read_attr_length_fallback ~allow_negative ~with_keywords inner =
   if Cursor.comma_opt inner then (
@@ -4563,7 +4563,7 @@ let rec read_alpha t : alpha =
     t
 
 (** Read optional alpha component *)
-and read_optional_alpha t : alpha =
+let read_optional_alpha t : alpha =
   Cursor.ws t;
   if Cursor.peek_delim t = Some '/' then (
     Cursor.slash t;
@@ -4615,7 +4615,7 @@ and read_rgb t : rgb =
     ]
     t
 
-and read_rgb_space_separated t : color =
+let read_rgb_space_separated t : color =
   (* The cursor wraps the [rgb(...)] [Func] arguments, so there is no closing
      [)] to consume — it's the block boundary. *)
   Cursor.ws t;
@@ -4659,7 +4659,7 @@ and read_rgb_space_separated t : color =
     | Num _ | Pct _ | Var _ | Calc _ ->
         Rgba { rgb = Channels { r; g; b }; a = alpha; legacy = false }
 
-and read_rgb_comma_separated ~legacy t : color =
+let read_rgb_comma_separated ~legacy t : color =
   let r, g, b =
     Cursor.triple ~sep:Cursor.comma read_channel read_channel read_channel t
   in
@@ -5147,66 +5147,15 @@ let read_full_hue_interpolation t : hue_interpolation =
   Cursor.ws t;
   hue
 
-let rec read_color_mix t : color =
-  Cursor.ws t;
-  (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
-  let in_space, hue =
-    if Cursor.peek_ident t = Some "in" then (
-      Cursor.expect_string "in" t;
-      Cursor.ws t;
-      let space = read_color_space t in
-      Cursor.ws t;
-      (* For cylindrical color spaces, check for hue interpolation *)
-      let hue =
-        match Cursor.peek_ident t with
-        | Some name when hue_interpolation_start (String.lowercase_ascii name)
-          ->
-            read_full_hue_interpolation t
-        | _ -> Default
-      in
-      (Some space, hue))
-    else (None, Default)
-  in
+let trim_trailing_space buf =
+  let blen = Buffer.length buf in
+  if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
+    Buffer.truncate buf (blen - 1)
 
-  Cursor.ws t;
-  Cursor.comma t;
-  Cursor.ws t;
+let add_pending_space buf last_was_space =
+  if last_was_space && Buffer.length buf > 0 then Buffer.add_char buf ' '
 
-  (* Parse first color and optional percentage *)
-  let color1, percent1 = read_color_mix_component t in
-
-  Cursor.comma t;
-  Cursor.ws t;
-
-  (* Parse second color and optional percentage *)
-  let color2, percent2 = read_color_mix_component t in
-
-  Cursor.ws t;
-  Mix { in_space; hue; color1; percent1; color2; percent2 }
-
-and read_color_mix_component t =
-  match Cursor.option read_color_mix_prefix_percentage t with
-  | Some component -> component
-  | None -> read_color_mix_suffix_percentage t
-
-and read_color_mix_prefix_percentage t =
-  match read_optional_percentage t with
-  | None -> Cursor.err_expected t "color-mix percentage"
-  | Some percent ->
-      let color = read_color t in
-      Cursor.ws t;
-      if Option.is_some (read_optional_percentage t) then
-        Cursor.err_invalid t "color-mix component cannot have two percentages";
-      (color, Some percent)
-
-and read_color_mix_suffix_percentage t =
-  let color = read_color t in
-  Cursor.ws t;
-  match read_optional_percentage t with
-  | None -> (color, None)
-  | Some percent -> (color, Some percent)
-
-and normalize_relative_color_tail tail =
+let normalize_relative_color_tail tail =
   let tail = String.trim tail in
   let len = String.length tail in
   let buf = Buffer.create len in
@@ -5230,15 +5179,7 @@ and normalize_relative_color_tail tail =
   loop 0 false;
   Buffer.contents buf
 
-and trim_trailing_space buf =
-  let blen = Buffer.length buf in
-  if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
-    Buffer.truncate buf (blen - 1)
-
-and add_pending_space buf last_was_space =
-  if last_was_space && Buffer.length buf > 0 then Buffer.add_char buf ' '
-
-and relative_color_channel_count cvs =
+let relative_color_channel_count cvs =
   let is_ws = function
     | Component.Preserved { Token.kind = Whitespace; _ } -> true
     | _ -> false
@@ -5256,7 +5197,7 @@ and relative_color_channel_count cvs =
   in
   loop 0 false cvs
 
-and relative_color_has_empty_alpha cvs =
+let relative_color_has_empty_alpha cvs =
   let is_ws = function
     | Component.Preserved { Token.kind = Whitespace; _ } -> true
     | _ -> false
@@ -5273,157 +5214,33 @@ and relative_color_has_empty_alpha cvs =
   in
   loop cvs
 
-and read_relative_rgb t : color =
-  Cursor.ws t;
-  Cursor.expect_string "from" t;
-  Cursor.ws t;
-  let origin = read_color t in
-  Cursor.ws t;
-  let tail_components = Cursor.remaining t in
-  if relative_color_has_empty_alpha tail_components then
-    Cursor.err_expected t "relative rgb alpha";
-  let tail =
-    Cursor.consume_remaining_as_string ~trim:true t
-    |> normalize_relative_color_tail
-  in
-  if tail = "" then Cursor.err_expected t "relative rgb channels";
-  if relative_color_channel_count tail_components <> 3 then
-    Cursor.err_expected t "relative rgb channels";
-  let origin = Pp.to_string ~minify:true pp_color origin in
-  Relative_rgb ("from " ^ origin ^ " " ^ tail)
+let read_system_color_of_string keyword : color option =
+  (* System colors are case-insensitive per CSS spec *)
+  match String.lowercase_ascii keyword with
+  | "accentcolor" -> Some (System Accent_color)
+  | "accentcolortext" -> Some (System Accent_color_text)
+  | "activetext" -> Some (System Active_text)
+  | "buttonborder" -> Some (System Button_border)
+  | "buttonface" -> Some (System Button_face)
+  | "buttontext" -> Some (System Button_text)
+  | "canvas" -> Some (System Canvas)
+  | "canvastext" -> Some (System Canvas_text)
+  | "field" -> Some (System Field)
+  | "fieldtext" -> Some (System Field_text)
+  | "graytext" -> Some (System Gray_text)
+  | "highlight" -> Some (System Highlight)
+  | "highlighttext" -> Some (System Highlight_text)
+  | "linktext" -> Some (System Link_text)
+  | "mark" -> Some (System Mark)
+  | "marktext" -> Some (System Mark_text)
+  | "selecteditem" -> Some (System Selected_item)
+  | "selecteditemtext" -> Some (System Selected_item_text)
+  | "visitedtext" -> Some (System Visited_text)
+  (* WebKit-specific system colors *)
+  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
+  | _ -> None
 
-and read_contrast_color t : color =
-  Cursor.ws t;
-  let color = read_color t in
-  Cursor.ws t;
-  Contrast_color color
-
-and read_light_dark t : color =
-  Cursor.ws t;
-  let light = read_color t in
-  Cursor.ws t;
-  Cursor.comma t;
-  Cursor.ws t;
-  let dark = read_color t in
-  Cursor.ws t;
-  Cursor.expect_eof t;
-  Light_dark (light, dark)
-
-and read_color_attr t : color =
-  Cursor.ws t;
-  let name = Cursor.ident t in
-  Cursor.ws t;
-  Cursor.call "type" t (fun inner ->
-      Cursor.ws inner;
-      Cursor.expect '<' inner;
-      Cursor.expect_string "color" inner;
-      Cursor.expect '>' inner;
-      Cursor.ws inner;
-      Cursor.expect_eof inner);
-  Cursor.ws t;
-  let fallback =
-    if Cursor.comma_opt t then (
-      Cursor.ws t;
-      Some (read_color t))
-    else None
-  in
-  Cursor.ws t;
-  Cursor.expect_eof t;
-  Attribute (name, fallback)
-
-and read_relative_color name t : color =
-  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2> <c3>
-     [/ <alpha>]?]. We capture the body verbatim so the printer re-emits the
-     function name + parenthesised tail unchanged. *)
-  Cursor.ws t;
-  Cursor.expect_string "from" t;
-  Cursor.ws t;
-  let origin = read_color t in
-  Cursor.ws t;
-  let tail =
-    Cursor.consume_remaining_as_string ~trim:true t
-    |> normalize_relative_color_tail
-  in
-  if tail = "" then Cursor.err_expected t (name ^ " channels");
-  match fold_relative_color_pass_through name origin tail with
-  | Some color -> color
-  | None ->
-      let origin = Pp.to_string ~minify:true pp_color origin in
-      Relative_color (name, "from " ^ origin ^ " " ^ tail)
-
-and with_relative_fallback name fallback t =
-  Cursor.ws t;
-  if Cursor.looking_at t "from" then read_relative_color name t else fallback t
-
-and color_parsers =
-  [
-    ( "rgb",
-      fun t ->
-        Cursor.ws t;
-        if Cursor.looking_at t "from" then read_relative_rgb t
-        else
-          Cursor.one_of
-            [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:false ]
-            t );
-    ( "rgba",
-      fun t ->
-        Cursor.ws t;
-        Cursor.one_of
-          [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:true ]
-          t );
-    ("hsl", fun t -> with_relative_fallback "hsl" read_hsl t);
-    ("hsla", fun t -> with_relative_fallback "hsl" read_hsl t);
-    ("hwb", fun t -> with_relative_fallback "hwb" read_hwb t);
-    ("oklch", fun t -> with_relative_fallback "oklch" read_oklch t);
-    ("lab", fun t -> with_relative_fallback "lab" read_lab t);
-    ("oklab", fun t -> with_relative_fallback "oklab" read_oklab t);
-    ("lch", fun t -> with_relative_fallback "lch" read_lch t);
-    ("color", fun t -> with_relative_fallback "color" read_color_function t);
-    ("contrast-color", read_contrast_color);
-    ("light-dark", read_light_dark);
-    ("attr", read_color_attr);
-    ("color-mix", read_color_mix);
-  ]
-
-and read_color t : color =
-  Cursor.ws t;
-  let color =
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
-        Cursor.skip t;
-        let len = String.length value in
-        let is_hex c =
-          ('0' <= c && c <= '9')
-          || ('a' <= c && c <= 'f')
-          || ('A' <= c && c <= 'F')
-        in
-        if not (len = 3 || len = 4 || len = 6 || len = 8) then
-          Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
-        else if not (String.for_all is_hex value) then
-          Cursor.err_invalid t ("hex color digits: " ^ value)
-        else Hex { hash = true; value }
-    | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
-        match List.assoc_opt name color_parsers with
-        | Some parser ->
-            Cursor.skip t;
-            parser (Cursor.func_sub fn t)
-        | None when name = "var" -> Var (read_var read_color t)
-        | None -> Cursor.err t ("unknown color function: " ^ name))
-    | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
-        Cursor.skip t;
-        (* CSS color keywords are case-insensitive. *)
-        match read_color_keyword_from_string (String.lowercase_ascii ident) with
-        | Some color -> color
-        | None -> Cursor.err t ("unknown color: " ^ ident))
-    | _ -> Cursor.err t "color"
-  in
-  Cursor.ws t;
-  (match Cursor.peek_delim t with
-  | Some '/' -> Cursor.err_invalid t "unexpected color alpha separator"
-  | _ -> ());
-  color
-
-and read_color_keyword_from_string keyword : color option =
+let read_color_keyword_of_string keyword : color option =
   match keyword with
   | "transparent" -> Some Transparent
   | "currentcolor" -> Some Current
@@ -5582,33 +5399,216 @@ and read_color_keyword_from_string keyword : color option =
   | "revert" -> Some Revert
   | "revert-layer" -> Some Revert_layer
   (* CSS system colors - case-insensitive matching *)
-  | _ -> read_system_color_from_string keyword
+  | _ -> read_system_color_of_string keyword
 
-and read_system_color_from_string keyword : color option =
-  (* System colors are case-insensitive per CSS spec *)
-  match String.lowercase_ascii keyword with
-  | "accentcolor" -> Some (System Accent_color)
-  | "accentcolortext" -> Some (System Accent_color_text)
-  | "activetext" -> Some (System Active_text)
-  | "buttonborder" -> Some (System Button_border)
-  | "buttonface" -> Some (System Button_face)
-  | "buttontext" -> Some (System Button_text)
-  | "canvas" -> Some (System Canvas)
-  | "canvastext" -> Some (System Canvas_text)
-  | "field" -> Some (System Field)
-  | "fieldtext" -> Some (System Field_text)
-  | "graytext" -> Some (System Gray_text)
-  | "highlight" -> Some (System Highlight)
-  | "highlighttext" -> Some (System Highlight_text)
-  | "linktext" -> Some (System Link_text)
-  | "mark" -> Some (System Mark)
-  | "marktext" -> Some (System Mark_text)
-  | "selecteditem" -> Some (System Selected_item)
-  | "selecteditemtext" -> Some (System Selected_item_text)
-  | "visitedtext" -> Some (System Visited_text)
-  (* WebKit-specific system colors *)
-  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
-  | _ -> None
+let rec read_color_mix t : color =
+  Cursor.ws t;
+  (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
+  let in_space, hue =
+    if Cursor.peek_ident t = Some "in" then (
+      Cursor.expect_string "in" t;
+      Cursor.ws t;
+      let space = read_color_space t in
+      Cursor.ws t;
+      (* For cylindrical color spaces, check for hue interpolation *)
+      let hue =
+        match Cursor.peek_ident t with
+        | Some name when hue_interpolation_start (String.lowercase_ascii name)
+          ->
+            read_full_hue_interpolation t
+        | _ -> Default
+      in
+      (Some space, hue))
+    else (None, Default)
+  in
+
+  Cursor.ws t;
+  Cursor.comma t;
+  Cursor.ws t;
+
+  (* Parse first color and optional percentage *)
+  let color1, percent1 = read_color_mix_component t in
+
+  Cursor.comma t;
+  Cursor.ws t;
+
+  (* Parse second color and optional percentage *)
+  let color2, percent2 = read_color_mix_component t in
+
+  Cursor.ws t;
+  Mix { in_space; hue; color1; percent1; color2; percent2 }
+
+and read_color_mix_component t =
+  match Cursor.option read_color_mix_prefix_percentage t with
+  | Some component -> component
+  | None -> read_color_mix_suffix_percentage t
+
+and read_color_mix_prefix_percentage t =
+  match read_optional_percentage t with
+  | None -> Cursor.err_expected t "color-mix percentage"
+  | Some percent ->
+      let color = read_color t in
+      Cursor.ws t;
+      if Option.is_some (read_optional_percentage t) then
+        Cursor.err_invalid t "color-mix component cannot have two percentages";
+      (color, Some percent)
+
+and read_color_mix_suffix_percentage t =
+  let color = read_color t in
+  Cursor.ws t;
+  match read_optional_percentage t with
+  | None -> (color, None)
+  | Some percent -> (color, Some percent)
+
+and read_relative_rgb t : color =
+  Cursor.ws t;
+  Cursor.expect_string "from" t;
+  Cursor.ws t;
+  let origin = read_color t in
+  Cursor.ws t;
+  let tail_components = Cursor.remaining t in
+  if relative_color_has_empty_alpha tail_components then
+    Cursor.err_expected t "relative rgb alpha";
+  let tail =
+    Cursor.consume_remaining_as_string ~trim:true t
+    |> normalize_relative_color_tail
+  in
+  if tail = "" then Cursor.err_expected t "relative rgb channels";
+  if relative_color_channel_count tail_components <> 3 then
+    Cursor.err_expected t "relative rgb channels";
+  let origin = Pp.to_string ~minify:true pp_color origin in
+  Relative_rgb ("from " ^ origin ^ " " ^ tail)
+
+and read_contrast_color t : color =
+  Cursor.ws t;
+  let color = read_color t in
+  Cursor.ws t;
+  Contrast_color color
+
+and read_light_dark t : color =
+  Cursor.ws t;
+  let light = read_color t in
+  Cursor.ws t;
+  Cursor.comma t;
+  Cursor.ws t;
+  let dark = read_color t in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Light_dark (light, dark)
+
+and read_color_attr t : color =
+  Cursor.ws t;
+  let name = Cursor.ident t in
+  Cursor.ws t;
+  Cursor.call "type" t (fun inner ->
+      Cursor.ws inner;
+      Cursor.expect '<' inner;
+      Cursor.expect_string "color" inner;
+      Cursor.expect '>' inner;
+      Cursor.ws inner;
+      Cursor.expect_eof inner);
+  Cursor.ws t;
+  let fallback =
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      Some (read_color t))
+    else None
+  in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Attribute (name, fallback)
+
+and read_relative_color name t : color =
+  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2> <c3>
+     [/ <alpha>]?]. We capture the body verbatim so the printer re-emits the
+     function name + parenthesised tail unchanged. *)
+  Cursor.ws t;
+  Cursor.expect_string "from" t;
+  Cursor.ws t;
+  let origin = read_color t in
+  Cursor.ws t;
+  let tail =
+    Cursor.consume_remaining_as_string ~trim:true t
+    |> normalize_relative_color_tail
+  in
+  if tail = "" then Cursor.err_expected t (name ^ " channels");
+  match fold_relative_color_pass_through name origin tail with
+  | Some color -> color
+  | None ->
+      let origin = Pp.to_string ~minify:true pp_color origin in
+      Relative_color (name, "from " ^ origin ^ " " ^ tail)
+
+and with_relative_fallback name fallback t =
+  Cursor.ws t;
+  if Cursor.looking_at t "from" then read_relative_color name t else fallback t
+
+and color_parsers =
+  [
+    ( "rgb",
+      fun t ->
+        Cursor.ws t;
+        if Cursor.looking_at t "from" then read_relative_rgb t
+        else
+          Cursor.one_of
+            [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:false ]
+            t );
+    ( "rgba",
+      fun t ->
+        Cursor.ws t;
+        Cursor.one_of
+          [ read_rgb_space_separated; read_rgb_comma_separated ~legacy:true ]
+          t );
+    ("hsl", fun t -> with_relative_fallback "hsl" read_hsl t);
+    ("hsla", fun t -> with_relative_fallback "hsl" read_hsl t);
+    ("hwb", fun t -> with_relative_fallback "hwb" read_hwb t);
+    ("oklch", fun t -> with_relative_fallback "oklch" read_oklch t);
+    ("lab", fun t -> with_relative_fallback "lab" read_lab t);
+    ("oklab", fun t -> with_relative_fallback "oklab" read_oklab t);
+    ("lch", fun t -> with_relative_fallback "lch" read_lch t);
+    ("color", fun t -> with_relative_fallback "color" read_color_function t);
+    ("contrast-color", read_contrast_color);
+    ("light-dark", read_light_dark);
+    ("attr", read_color_attr);
+    ("color-mix", read_color_mix);
+  ]
+
+and read_color t : color =
+  Cursor.ws t;
+  let color =
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+        Cursor.skip t;
+        let len = String.length value in
+        let is_hex c =
+          ('0' <= c && c <= '9')
+          || ('a' <= c && c <= 'f')
+          || ('A' <= c && c <= 'F')
+        in
+        if not (len = 3 || len = 4 || len = 6 || len = 8) then
+          Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+        else if not (String.for_all is_hex value) then
+          Cursor.err_invalid t ("hex color digits: " ^ value)
+        else Hex { hash = true; value }
+    | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
+        match List.assoc_opt name color_parsers with
+        | Some parser ->
+            Cursor.skip t;
+            parser (Cursor.func_sub fn t)
+        | None when name = "var" -> Var (read_var read_color t)
+        | None -> Cursor.err t ("unknown color function: " ^ name))
+    | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
+        Cursor.skip t;
+        (* CSS color keywords are case-insensitive. *)
+        match read_color_keyword_of_string (String.lowercase_ascii ident) with
+        | Some color -> color
+        | None -> Cursor.err t ("unknown color: " ^ ident))
+    | _ -> Cursor.err t "color"
+  in
+  Cursor.ws t;
+  (match Cursor.peek_delim t with
+  | Some '/' -> Cursor.err_invalid t "unexpected color alpha separator"
+  | _ -> ());
+  color
 
 let rec color_has_specified_hue = function
   | Mix { hue = Specified; _ } -> true
@@ -5733,13 +5733,14 @@ let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
     t
 
 (** Read a duration value *)
-and read_duration t : duration = read_duration_with ~canonicalize_ms:true t
-
-and read_duration_preserve_ms t : duration =
-  read_duration_with ~canonicalize_ms:false t
-
 and read_duration_in_calc t : duration =
   read_duration_with ~css_wide:false ~canonicalize_ms:false t
+
+(** Read a duration value *)
+let read_duration t : duration = read_duration_with ~canonicalize_ms:true t
+
+let read_duration_preserve_ms t : duration =
+  read_duration_with ~canonicalize_ms:false t
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
@@ -5772,6 +5773,13 @@ let number_unary_functions =
   ]
 
 let angle_number_functions = [ ("sin", fun value -> Sin value) ]
+
+let read_angle_number_function name make t =
+  Cursor.call name t (fun inner ->
+      let value = read_angle inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make value)
 
 (** Read a number value *)
 let rec read_number t : number =
@@ -5888,13 +5896,6 @@ and read_unary_number_function name make t =
       Cursor.expect_eof inner;
       make value)
 
-and read_angle_number_function name make t =
-  Cursor.call name t (fun inner ->
-      let value = read_angle inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      make value)
-
 (** Read transition_behavior value *)
 let read_transition_behavior t : transition_behavior =
   Cursor.enum "transition-behavior"
@@ -5917,6 +5918,23 @@ let length_invalid_function_name name =
   match String.lowercase_ascii name with
   | "asin" | "acos" | "atan" | "atan2" | "sin" | "cos" | "tan" -> true
   | _ -> false
+
+let read_invalid_length_percentage_function t : length_percentage =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ } as comp)
+    when length_invalid_function_name name ->
+      Cursor.skip t;
+      Invalid [ comp ]
+  | _ -> Cursor.err t "expected invalid length-percentage function"
+
+let read_length_percentage_pct ~allow_negative t : length_percentage =
+  let n = Cursor.pct t in
+  if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
+  Pct n
+
+let read_length_percentage_length ~allow_negative ~with_keywords t :
+    length_percentage =
+  Length (read_length ~allow_negative ~with_keywords t)
 
 (** Read length_percentage value *)
 let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
@@ -5954,28 +5972,21 @@ and read_length_percentage_calc ~with_keywords t : length_percentage =
     Calc (read_calc (read_length_percentage ~with_keywords) t)
   else Cursor.err t "expected calc"
 
-and read_invalid_length_percentage_function t : length_percentage =
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name; _ }; _ } as comp)
-    when length_invalid_function_name name ->
-      Cursor.skip t;
-      Invalid [ comp ]
-  | _ -> Cursor.err t "expected invalid length-percentage function"
-
-and read_length_percentage_pct ~allow_negative t : length_percentage =
-  let n = Cursor.pct t in
-  if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
-  Pct n
-
-and read_length_percentage_length ~allow_negative ~with_keywords t :
-    length_percentage =
-  Length (read_length ~allow_negative ~with_keywords t)
-
 (** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw
     number is modelled at the calc level as the [Num x] node rather than
     [Val (Num x)] (the [Num] sub-variant of [number_percentage] wrapped in
     [Val]); the dedicated [_dim_only] reader excludes the raw-number alternative
     so the generic [read_calc_factor] falls through to its own [Num] path. *)
+let rec read_number_percentage_dim_only t : number_percentage =
+  Cursor.ws t;
+  Cursor.one_of
+    [
+      (fun t -> Pct (Cursor.pct t));
+      (fun t ->
+        (Var (read_var read_number_percentage_dim_only t) : number_percentage));
+    ]
+    t
+
 let rec read_number_percentage t : number_percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
@@ -5991,16 +6002,6 @@ let rec read_number_percentage t : number_percentage =
     Cursor.one_of
       [ (fun t -> Pct (Cursor.pct t)); (fun t -> Num (Cursor.number t)) ]
       t
-
-and read_number_percentage_dim_only t : number_percentage =
-  Cursor.ws t;
-  Cursor.one_of
-    [
-      (fun t -> Pct (Cursor.pct t));
-      (fun t ->
-        (Var (read_var read_number_percentage_dim_only t) : number_percentage));
-    ]
-    t
 
 (** Read color_name value *)
 let read_color_name t : color_name =

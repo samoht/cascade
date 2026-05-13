@@ -197,9 +197,22 @@ let func name args =
 
 (* ===== Pretty printing ===== *)
 
-let rec to_string condition = render `Root condition
+let render_declaration_feature = function
+  | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
+  | Empty name -> string_of_property_name name ^ ":"
+  | Unsupported (name, value) -> string_of_property_name name ^ ": " ^ value
+  | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
-and render context = function
+let render_function_feature = function
+  | Selector selector -> "selector(" ^ Selector.to_string selector ^ ")"
+  | Font_format format -> "font-format(" ^ string_of_font_format format ^ ")"
+  | Font_tech tech -> "font-tech(" ^ string_of_font_tech tech ^ ")"
+  | At_rule rule -> "at-rule(@" ^ rule ^ ")"
+  | Named_feature feature -> "named-feature(" ^ feature ^ ")"
+  | Env name -> "env(" ^ name ^ ")"
+  | General (name, args) -> name ^ "(" ^ args ^ ")"
+
+let rec render context = function
   | Property feature -> "(" ^ render_declaration_feature feature ^ ")"
   | Function feature -> render_function_feature feature
   | Not cond ->
@@ -218,20 +231,7 @@ and render_branch operator = function
   | Not _ as cond -> render `Operand cond
   | cond -> render `Root cond
 
-and render_declaration_feature = function
-  | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
-  | Empty name -> string_of_property_name name ^ ":"
-  | Unsupported (name, value) -> string_of_property_name name ^ ": " ^ value
-  | Vendor_flag_enabled -> "-vendor-flag: enabled"
-
-and render_function_feature = function
-  | Selector selector -> "selector(" ^ Selector.to_string selector ^ ")"
-  | Font_format format -> "font-format(" ^ string_of_font_format format ^ ")"
-  | Font_tech tech -> "font-tech(" ^ string_of_font_tech tech ^ ")"
-  | At_rule rule -> "at-rule(@" ^ rule ^ ")"
-  | Named_feature feature -> "named-feature(" ^ feature ^ ")"
-  | Env name -> "env(" ^ name ^ ")"
-  | General (name, args) -> name ^ "(" ^ args ^ ")"
+let to_string condition = render `Root condition
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
@@ -403,6 +403,15 @@ and chain t op acc =
   | _ -> acc
 
 and in_parens ~allow_unwrapped_decl t =
+  let unwrapped_declaration t =
+    let components = Cursor.remaining t in
+    match split_top_level_colon components with
+    | Some (prop, value) ->
+        let decl = declaration_of_components prop value in
+        ignore (Cursor.consume_remaining_as_string t : string);
+        decl
+    | None -> failwith "Expected supports feature"
+  in
   Cursor.ws t;
   match Cursor.peek t with
   | Some
@@ -431,15 +440,6 @@ and paren_components value =
       if not (Cursor.is_done inner) then
         failwith "trailing content in @supports group";
       condition
-
-and unwrapped_declaration t =
-  let components = Cursor.remaining t in
-  match split_top_level_colon components with
-  | Some (prop, value) ->
-      let decl = declaration_of_components prop value in
-      ignore (Cursor.consume_remaining_as_string t : string);
-      decl
-  | None -> failwith "Expected supports feature"
 
 let of_string ?(allow_unwrapped_decl = false) s =
   let cursor = ref (Cursor.of_string s) in

@@ -92,10 +92,7 @@ let collect_cascade_rules ~layer_order stylesheet =
 let eval_declarations ~layer_order ?layer ctx declarations =
   List.map (eval_declaration ~layer_order ?layer ctx) declarations
 
-let rec eval_block ?ctx_for_layer ~layer_order ?layer ctx block =
-  List.map (eval_statement ?ctx_for_layer ~layer_order ?layer ctx) block
-
-and eval_keyframes ~layer_order ?layer ctx frames =
+let eval_keyframes ~layer_order ?layer ctx frames =
   let eval_frame (frame : Stylesheet.keyframe) =
     {
       frame with
@@ -104,6 +101,52 @@ and eval_keyframes ~layer_order ?layer ctx frames =
     }
   in
   List.map eval_frame frames
+
+let eval_declaration_statement ~layer_order ?layer:context_layer ctx =
+  let open Stylesheet in
+  function
+  | Keyframes (name, frames) ->
+      Some
+        (Keyframes
+           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
+  | Webkit_keyframes (name, frames) ->
+      Some
+        (Webkit_keyframes
+           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
+  | Moz_keyframes (name, frames) ->
+      Some
+        (Moz_keyframes
+           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
+  | Page (selector, declarations) ->
+      Some
+        (Page
+           ( selector,
+             eval_declarations ~layer_order ?layer:context_layer ctx
+               declarations ))
+  | Position_try (name, declarations) ->
+      Some
+        (Position_try
+           ( name,
+             eval_declarations ~layer_order ?layer:context_layer ctx
+               declarations ))
+  | Supports_condition (name, declarations) ->
+      Some
+        (Supports_condition
+           ( name,
+             eval_declarations ~layer_order ?layer:context_layer ctx
+               declarations ))
+  | Page_with_margins (selector, descriptors, margins) ->
+      Some
+        (Page_with_margins
+           ( selector,
+             eval_declarations ~layer_order ?layer:context_layer ctx descriptors,
+             List.map
+               (eval_page_margin_rule ~layer_order ?layer:context_layer ctx)
+               margins ))
+  | _ -> None
+
+let rec eval_block ?ctx_for_layer ~layer_order ?layer ctx block =
+  List.map (eval_statement ?ctx_for_layer ~layer_order ?layer ctx) block
 
 and eval_nested_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer
     ctx =
@@ -193,49 +236,6 @@ and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
   | statement ->
       eval_nested_block_statement ?ctx_for_layer ~layer_order
         ?layer:context_layer ctx statement
-
-and eval_declaration_statement ~layer_order ?layer:context_layer ctx =
-  let open Stylesheet in
-  function
-  | Keyframes (name, frames) ->
-      Some
-        (Keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Webkit_keyframes (name, frames) ->
-      Some
-        (Webkit_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Moz_keyframes (name, frames) ->
-      Some
-        (Moz_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Page (selector, declarations) ->
-      Some
-        (Page
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Position_try (name, declarations) ->
-      Some
-        (Position_try
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Supports_condition (name, declarations) ->
-      Some
-        (Supports_condition
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Page_with_margins (selector, descriptors, margins) ->
-      Some
-        (Page_with_margins
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx descriptors,
-             List.map
-               (eval_page_margin_rule ~layer_order ?layer:context_layer ctx)
-               margins ))
-  | _ -> None
 
 and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
     statement =
