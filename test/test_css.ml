@@ -86,7 +86,7 @@ let media_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "media exact" "@media (width<=640px){.btn{font-size:.875rem}}\n" css
+    "media exact" "@media(width<=640px){.btn{font-size:.875rem}}\n" css
 
 (* Test minify flag *)
 let minify_flag () =

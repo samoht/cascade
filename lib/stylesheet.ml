@@ -562,8 +562,30 @@ and pp_page_selector ctx selector =
   | Some s ->
       if String.length s > 0 && s.[0] = ':' then Pp.sp ctx ()
       else Pp.space ctx ();
+      let s = if Pp.minified ctx then minify_page_selector s else s in
       Pp.string ctx s
   | None -> ()
+
+and page_selector_skip_blanks s len i =
+  if i < len && (s.[i] = ' ' || s.[i] = '\t') then
+    page_selector_skip_blanks s len (i + 1)
+  else i
+
+and minify_page_selector s =
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let rec loop i =
+    if i >= len then ()
+    else
+      let c = s.[i] in
+      Buffer.add_char buf c;
+      let next =
+        if c = ',' then page_selector_skip_blanks s len (i + 1) else i + 1
+      in
+      loop next
+  in
+  loop 0;
+  Buffer.contents buf
 
 and import_url_starts_with_url url len =
   len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
@@ -749,8 +771,15 @@ and pp_media_statement ctx condition content =
   (match condition with
   | Media.List [] -> ()
   | _ ->
-      Pp.string ctx " ";
-      Media.pp ctx condition);
+      (* Under minify the space between [@media] and the condition is needed
+         only when the condition starts with an ident ([@media screen ...]); a
+         leading [(] (any parenthesised feature query) provides its own token
+         boundary, so [@media(width<240px)] reparses identically. *)
+      let rendered = Pp.to_string ~minify:ctx.Pp.minify Media.pp condition in
+      if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '('
+      then ()
+      else Pp.string ctx " ";
+      Pp.string ctx rendered);
   Pp.sp ctx ();
   Pp.braces pp_block ctx content
 

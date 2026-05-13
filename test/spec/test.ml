@@ -492,12 +492,12 @@ let color_keywords () =
 (* SS 7.1 - @media with min-width/max-width *)
 let conditional_media () =
   roundtrip "@media (min-width: 768px) { .btn { display: block } }"
-    "@media (width>=768px){.btn{display:block}}";
+    "@media(width>=768px){.btn{display:block}}";
   roundtrip "@media (max-width: 640px) { .btn { font-size: 14px } }"
-    "@media (width<=640px){.btn{font-size:14px}}";
+    "@media(width<=640px){.btn{font-size:14px}}";
   roundtrip
     "@media (prefers-color-scheme: dark) { body { background-color: black } }"
-    "@media (prefers-color-scheme:dark){body{background-color:#000}}"
+    "@media(prefers-color-scheme:dark){body{background-color:#000}}"
 
 (* SS 8 - @supports with property checks *)
 let conditional_supports () =

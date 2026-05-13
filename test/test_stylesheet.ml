@@ -76,7 +76,7 @@ let test_stylesheet () =
   (* Test stylesheet with comments - comments are stripped in minified output *)
   check_stylesheet ~expected:".btn{color:red}" "/*comment*/.btn{color:red}";
 
-  check_stylesheet ~expected:"@media (width>=768px){.a{display:block}}"
+  check_stylesheet ~expected:"@media(width>=768px){.a{display:block}}"
     "@media (min-width: 768px) { .a { display: block } }";
   check_stylesheet
     ~expected:"@media screen and (width<=640px){.btn{font-size:.875rem}}"
@@ -1380,7 +1380,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media (width>=768px){@supports (display:grid){.grid{display:grid}}}"
+      "@media(width>=768px){@supports (display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
@@ -1388,8 +1388,8 @@ let test_nested_rules () =
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
     ~expected:
-      "@container (width>400px){@media \
-       (orientation:landscape){.landscape{color:green}}}"
+      "@container \
+       (width>400px){@media(orientation:landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"
 
@@ -2169,7 +2169,7 @@ let environment_query_boundary () =
   (* Query syntax is in scope; matching needs explicit environment context. *)
   check_stylesheet
     ~expected:
-      "@media (width>=40em){@supports (display:grid){@container card \
+      "@media(width>=40em){@supports (display:grid){@container card \
        style(--theme:dark){.card{display:grid}}}}"
     "@media (width >= 40em) { @supports (display: grid) { @container card \
      style(--theme: dark) { .card { display: grid } } } }";
@@ -2269,16 +2269,16 @@ let custom_property_boundary () =
      initial-value: 10px }"
 
 let spec_current_at_rules () =
-  check_stylesheet ~expected:"@media (dynamic-range:high){.photo{color:red}}"
+  check_stylesheet ~expected:"@media(dynamic-range:high){.photo{color:red}}"
     "@media (dynamic-range: high) { .photo { color: red } }";
   check_stylesheet
-    ~expected:"@media (prefers-reduced-data:reduce){.hero{display:none}}"
+    ~expected:"@media(prefers-reduced-data:reduce){.hero{display:none}}"
     "@media (prefers-reduced-data: reduce) { .hero { display: none } }";
   check_stylesheet
     ~expected:"@supports selector(:has(img)){.card{display:block}}"
     "@supports selector(:has(img)) { .card { display: block } }";
   check_stylesheet
-    ~expected:".card{color:red;@media (width>=40em){&>img{display:block}}}"
+    ~expected:".card{color:red;@media(width>=40em){&>img{display:block}}}"
     ".card { color: red; @media (width >= 40em) { & > img { display: block } } \
      }";
   check_stylesheet ~expected:"@scope(.card)to (.footer){.title{color:red}}"
@@ -2516,7 +2516,7 @@ let test_spec_snapshot_tracking_vectors () =
      } }";
   check_stylesheet
     ~expected:
-      ".card{color:var(--fg);@media (prefers-color-scheme:dark){&{color:#fff}}}"
+      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}"
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }";
   neg_cursor read_stylesheet "@layer reset,,base;";
@@ -2648,9 +2648,9 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media (width>=768px){color:#00f}}"
+    ~expected:".foo{color:red;@media(width>=768px){color:#00f}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
-  test_nesting_idempotent ".foo{color:red;@media (width>=768px){color:#00f}}"
+  test_nesting_idempotent ".foo{color:red;@media(width>=768px){color:#00f}}"
 
 (* ignore-test *)
 let test_nesting_deep () =

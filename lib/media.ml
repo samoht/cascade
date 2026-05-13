@@ -493,11 +493,11 @@ let rec pp_condition : condition Pp.t =
       pp_condition ctx c
   | And (a, b) ->
       pp_condition ctx a;
-      Pp.string ctx " and ";
+      Pp.string ctx (if Pp.minified ctx then "and " else " and ");
       pp_condition ctx b
   | Or (a, b) ->
       pp_condition ctx a;
-      Pp.string ctx " or ";
+      Pp.string ctx (if Pp.minified ctx then "or " else " or ");
       pp_condition ctx b
 
 let rec pp_query : query Pp.t =
@@ -617,16 +617,27 @@ let rec pp ctx = function
       pp_named_feature ctx "orientation" (string_of_ident ident)
   | And (a, b) ->
       pp ctx a;
-      Pp.string ctx " and ";
+      Pp.string ctx (if Pp.minified ctx then "and " else " and ");
       pp ctx b
   | Or (a, b) ->
       pp ctx a;
-      Pp.string ctx " or ";
+      Pp.string ctx (if Pp.minified ctx then "or " else " or ");
       pp ctx b
   | Negated Print -> Pp.string ctx "not print"
   | Negated inner ->
-      Pp.string ctx "not all and ";
-      pp ctx inner
+      (* MQ4 [not <media-in-parens>]: the legacy [not all and <feature>] rewrite
+         reassociates against any surrounding [and]/[or] and only survives
+         intact for feature leaves at the query top level. Emit the MQ4 form and
+         self-wrap when the inner condition is not already a parenthesised
+         feature. *)
+      let rendered = Pp.to_string ~minify:ctx.Pp.minify pp inner in
+      Pp.string ctx "not ";
+      if String.length rendered > 0 && rendered.[0] = '(' then
+        Pp.string ctx rendered
+      else (
+        Pp.char ctx '(';
+        Pp.string ctx rendered;
+        Pp.char ctx ')')
   | Range (name, op, value) -> pp_feature ctx (Range (name, op, value))
   | Range_rev (value, op, name) -> pp_feature ctx (Range_rev (value, op, name))
   | Interval (a, op1, name, op2, b) ->

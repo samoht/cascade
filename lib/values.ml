@@ -2163,6 +2163,85 @@ let minify_relative_color_alpha body =
               ]
         | None -> body)
 
+let body_is_digit body i =
+  let len = String.length body in
+  i < len && body.[i] >= '0' && body.[i] <= '9'
+
+let body_is_number_boundary body i =
+  if i = 0 then true
+  else
+    match body.[i - 1] with
+    | ' ' | '/' | ',' | '(' | '+' | '*' -> true
+    | _ -> false
+
+let body_starts_number body i =
+  let len = String.length body in
+  body_is_digit body i
+  || (i < len && body.[i] = '.' && body_is_digit body (i + 1))
+
+let rec body_scan_digits body j =
+  if body_is_digit body j then body_scan_digits body (j + 1) else j
+
+let body_scan_fraction body after_int =
+  let len = String.length body in
+  if after_int < len && body.[after_int] = '.' then
+    body_scan_digits body (after_int + 1)
+  else after_int
+
+let body_scan_exponent body after_frac =
+  let len = String.length body in
+  let is_e c = c = 'e' || c = 'E' in
+  if after_frac < len && is_e body.[after_frac] then
+    let signed = after_frac + 1 in
+    let signed =
+      if signed < len && (body.[signed] = '+' || body.[signed] = '-') then
+        signed + 1
+      else signed
+    in
+    let after_digits = body_scan_digits body signed in
+    if after_digits = signed then after_frac else after_digits
+  else after_frac
+
+let body_scan_number body start =
+  let after_exp =
+    body_scan_exponent body
+      (body_scan_fraction body (body_scan_digits body start))
+  in
+  let lone_dot =
+    after_exp = start + 1 && start < String.length body && body.[start] = '.'
+  in
+  if after_exp = start || lone_dot then Option.None
+  else
+    let raw = String.sub body start (after_exp - start) in
+    match Float.of_string_opt raw with
+    | Option.Some f ->
+        Option.Some (Pp.string_of_float ~drop_leading_zero:true f, after_exp)
+    | Option.None -> Option.None
+
+(* Reserialise any number literal in [body] through [Pp.string_of_float] so
+   forms like [0.2] collapse to [.2]. The body is a normalised token sequence
+   with single-space separators and tight [/] joins, so number boundaries are
+   one of: start-of-string, space, [/], [(], [,], or another operator delim. *)
+let minify_relative_color_numbers body =
+  let len = String.length body in
+  let buf = Buffer.create len in
+  let rec loop i =
+    if i >= len then ()
+    else if body_is_number_boundary body i && body_starts_number body i then (
+      match body_scan_number body i with
+      | Option.Some (rendered, next) ->
+          Buffer.add_string buf rendered;
+          loop next
+      | Option.None ->
+          Buffer.add_char buf body.[i];
+          loop (i + 1))
+    else (
+      Buffer.add_char buf body.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
 let zero_percentage : percentage option = Some (Pct 0.)
 
 let zero_float_of_none (v : float option) : float option =
@@ -3173,7 +3252,9 @@ and pp_rgb_hex_color ctx r g b a fallback =
 
 and pp_relative_color_call ctx name body =
   let body =
-    if Pp.minified ctx then minify_relative_color_alpha body else body
+    if Pp.minified ctx then
+      body |> minify_relative_color_alpha |> minify_relative_color_numbers
+    else body
   in
   Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
 
