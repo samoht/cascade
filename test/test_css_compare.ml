@@ -49,6 +49,82 @@ let semantically_equivalent_color_mix_css () =
     "CSS with equivalent color-mix values is semantically equivalent" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let semantically_equivalent_custom_property_transparent () =
+  let expected = ".a { --tw-ring-color: transparent }" in
+  let actual = ".a { --tw-ring-color: #0000 }" in
+  Alcotest.(check bool)
+    "transparent and #0000 are equivalent in canonical comparison" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_custom_property_color_mix () =
+  let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
+  let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
+  Alcotest.(check bool)
+    "transparent and #0000 are equivalent in custom color-mix" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_with_recovered_warning () =
+  let expected =
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent; \
+     --tw-gradient: " ^ color_mix_transparent ^ " }"
+  in
+  let actual =
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: #0000; \
+     --tw-gradient: " ^ color_mix_transparent_hex ^ " }"
+  in
+  Alcotest.(check bool)
+    "canonical comparison falls back to lenient canonicalization" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_custom_var_fallback () =
+  let expected =
+    ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, transparent) }"
+  in
+  let actual =
+    ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
+  in
+  Alcotest.(check bool)
+    "transparent and #0000 are equivalent in custom var fallback" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_custom_nested_functions () =
+  let expected =
+    ".a { --tw-image: linear-gradient(transparent, " ^ color_mix_transparent
+    ^ ") }"
+  in
+  let actual =
+    ".a { --tw-image: linear-gradient(#0000, " ^ color_mix_transparent_hex
+    ^ ") }"
+  in
+  Alcotest.(check bool)
+    "transparent aliases are equivalent inside nested custom functions" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_vendor_recovered () =
+  let expected =
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent }"
+  in
+  let actual =
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: #0000 }"
+  in
+  Alcotest.(check bool)
+    "vendor color aliases survive lenient canonicalization" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_transparent_string_is_literal () =
+  let expected = ".a { --tw-content: \"transparent\" }" in
+  let actual = ".a { --tw-content: \"#0000\" }" in
+  Alcotest.(check bool)
+    "quoted transparent is not a color alias" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_transparent_ident_boundary () =
+  let expected = ".a { --tw-filter: transparentize(0.5) }" in
+  let actual = ".a { --tw-filter: #0000ize(0.5) }" in
+  Alcotest.(check bool)
+    "transparent identifier substrings are not color aliases" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantically_equivalent_rejects_different_colors () =
   Alcotest.(check bool)
     "different color values are not semantically equivalent" false
@@ -281,6 +357,22 @@ let suite =
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
         semantically_equivalent_color_mix_css;
+      Alcotest.test_case "semantically equivalent custom property transparent"
+        `Quick semantically_equivalent_custom_property_transparent;
+      Alcotest.test_case "semantically equivalent custom property color-mix"
+        `Quick semantic_custom_property_color_mix;
+      Alcotest.test_case "semantic with recovered warning" `Quick
+        semantic_with_recovered_warning;
+      Alcotest.test_case "semantic custom var fallback" `Quick
+        semantic_custom_var_fallback;
+      Alcotest.test_case "semantic custom nested functions" `Quick
+        semantic_custom_nested_functions;
+      Alcotest.test_case "semantic vendor color with recovered warning" `Quick
+        semantic_vendor_recovered;
+      Alcotest.test_case "semantic transparent string is literal" `Quick
+        semantic_transparent_string_is_literal;
+      Alcotest.test_case "semantic transparent ident boundary" `Quick
+        semantic_transparent_ident_boundary;
       Alcotest.test_case "semantically equivalent rejects different colors"
         `Quick semantically_equivalent_rejects_different_colors;
       Alcotest.test_case "diff No_diff" `Quick diff_no_diff;
