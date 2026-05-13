@@ -13,9 +13,7 @@ open Css
 let roundtrip css expected =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output =
-        to_string ~minify:true ~newline:false parsed.stylesheet
-      in
+      let output = to_string ~minify:true ~newline:false parsed.stylesheet in
       Alcotest.(check string) css expected output
   | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
@@ -42,9 +40,7 @@ let contains_substring ~needle haystack =
 let preserves_non_minified css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output =
-        to_string ~minify:false ~newline:false parsed.stylesheet
-      in
+      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -60,9 +56,7 @@ let preserves_non_minified css fragments =
 let preserves_non_minified_exact css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output =
-        to_string ~minify:false ~newline:false parsed.stylesheet
-      in
+      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
       List.iter
         (fun fragment ->
           if not (contains_substring ~needle:fragment output) then
@@ -76,9 +70,7 @@ let preserves_non_minified_exact css fragments =
 let rejects_non_minified_fragments css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output =
-        to_string ~minify:false ~newline:false parsed.stylesheet
-      in
+      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -94,9 +86,7 @@ let rejects_non_minified_fragments css fragments =
 let rejects_non_minified_prefixes css prefixes =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output =
-        to_string ~minify:false ~newline:false parsed.stylesheet
-      in
+      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun prefix ->
@@ -528,10 +518,9 @@ let stylesheet_at_rules () =
     "@namespace svg\"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}";
-  (* CSS Paged Media 3 section 4.3: [<page-selector>] permits zero or more
-     page pseudo-classes after the optional page type. *)
-  roundtrip "@page :first:left { margin: 1cm }"
-    "@page:first:left{margin:1cm}";
+  (* CSS Paged Media 3 section 4.3: [<page-selector>] permits zero or more page
+     pseudo-classes after the optional page type. *)
+  roundtrip "@page :first:left { margin: 1cm }" "@page:first:left{margin:1cm}";
   roundtrip "@page :blank:first { margin: .5cm }"
     "@page:blank:first{margin:.5cm}"
 
@@ -911,9 +900,9 @@ let cross_mode_pinning () =
     inputs
 
 (* Comment preservation policy. Per CSS Syntax 3 SS 4.3.2 comments are
-   whitespace-equivalent tokens and can appear anywhere whitespace can. Cascade's
-   parser does not represent comments in the AST, so serialization drops them in
-   both pretty and minified output. *)
+   whitespace-equivalent tokens and can appear anywhere whitespace can.
+   Cascade's parser does not represent comments in the AST, so serialization
+   drops them in both pretty and minified output. *)
 let comment_preservation_policy () =
   rejects_non_minified_fragments
     ".a { color: red } /* divider */ .b { color: blue }" [ "/* divider */" ];
@@ -927,8 +916,8 @@ let comment_preservation_policy () =
     ".a { color: red } /*! license */ .b { color: blue }" [ "/*! license */" ];
   roundtrip ".a { color: red } /*! license */ .b { color: blue }"
     ".a{color:red}.b{color:#00f}";
-  (* Comments inside selector lists or values are discarded (industry
-     consensus - none of Lightning, cssnano, CSSO preserve these). *)
+  (* Comments inside selector lists or values are discarded (industry consensus
+     - none of Lightning, cssnano, CSSO preserve these). *)
   roundtrip ".a /* between */ , .b { color: red }" ".a,.b{color:red}";
   roundtrip ".x { color: rgb(/* r */ 255 0 0) }" ".x{color:red}"
 

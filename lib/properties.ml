@@ -3182,12 +3182,12 @@ and pp_linear_gradient_named name ctx (dir, stops) =
       in
       (match head with
       | `Skip -> ()
-      | `Direction ->
+      | `Direction -> (
           pp_gradient_direction ctx dir;
-          (match stops with [] -> () | _ -> Pp.comma ctx ())
-      | `Interp_only interp ->
+          match stops with [] -> () | _ -> Pp.comma ctx ())
+      | `Interp_only interp -> (
           pp_color_interpolation ctx interp;
-          match stops with [] -> () | _ -> Pp.comma ctx ());
+          match stops with [] -> () | _ -> Pp.comma ctx ()));
       match stops with
       | [] -> ()
       | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
@@ -6725,8 +6725,8 @@ let rec pp_background : background Pp.t =
   | Unset -> Pp.string ctx "unset"
   | None ->
       (* CSS Backgrounds 3 §3.10: [background: none] and [background: 0 0] are
-         computed-value-equivalent (both clear the image and set position to
-         [0 0]). Pick the shorter form under minify. *)
+         computed-value-equivalent (both clear the image and set position to [0
+         0]). Pick the shorter form under minify. *)
       Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
   | Var v -> pp_var pp_background ctx v
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_background) ctx vars
@@ -14112,18 +14112,20 @@ let read_transition_shorthand t : transition_shorthand =
     | Option.None -> (All : transition_property_value)
   in
   let duration, delay = transition_duration_delay parts in
-  (* CSS Transitions 1: a single-transition that names a specific property
-     must carry at least a [<time>] (duration); without one the entry produces
-     no observable transition. The implicit/explicit [all] form (no property
-     or [all]) and the [none] form are still accepted bare. *)
+  (* CSS Transitions 1: a single-transition that names a specific property must
+     carry at least a [<time>] (duration); without one the entry produces no
+     observable transition. The implicit/explicit [all] form (no property or
+     [all]) and the [none] form are still accepted bare. *)
   let needs_duration =
     match parts.transition_property with
     | Option.Some (Property _) -> true
     | _ -> false
   in
-  if needs_duration && parts.transition_times = []
-     && parts.transition_timing = Option.None
-     && parts.transition_behavior = Option.None
+  if
+    needs_duration
+    && parts.transition_times = []
+    && parts.transition_timing = Option.None
+    && parts.transition_behavior = Option.None
   then Cursor.err_invalid t "transition shorthand requires a duration";
   {
     property;

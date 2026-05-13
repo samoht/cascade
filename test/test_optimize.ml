@@ -1081,8 +1081,7 @@ let c61_no_merge_atrule () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across media boundary"
-    ".a{color:red}@media \
-     (width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
+    ".a{color:red}@media (width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
     output
 
 let c61_no_layer_media_merge () =
@@ -1917,11 +1916,13 @@ let c62_imports_keep_origin () =
       let before = rule_of_statement before_stmt in
       let after_ = rule_of_statement after_stmt in
       Alcotest.(check string)
-        "rule before stripped import remains in author origin" ".theme{color:red}"
+        "rule before stripped import remains in author origin"
+        ".theme{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ statement_of_rule before ]
         |> String.trim);
       Alcotest.(check string)
-        "rule after stripped import remains in author origin" ".theme{display:flex}"
+        "rule after stripped import remains in author origin"
+        ".theme{display:flex}"
         (Css.Stylesheet.to_string ~minify:true [ statement_of_rule after_ ]
         |> String.trim)
   | _ ->
@@ -2304,8 +2305,8 @@ let c64_layer_decls_import_cross () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "layer declarations remain on their own sides of the import"
-    "@layer default;@import\"theme.css\"layer(theme);@layer \
-     components;@layer default{.audio{display:block}}"
+    "@layer default;@import\"theme.css\"layer(theme);@layer components;@layer \
+     default{.audio{display:block}}"
     output
 
 let c64_repeated_layer_blocks_ordered () =

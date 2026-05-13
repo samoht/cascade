@@ -22,30 +22,30 @@
 
     Minimal example:
     {[
-      open Cascade.Css
+    open Cascade.Css
 
-      (* Build a ".btn" rule and render a stylesheet from it. *)
-      let button =
-        rule ~selector:(Selector.class_ "btn")
-          [ display Inline_block
-          ; background_color (hex "#3b82f6")
-          ; color (hex "#ffffff")
-          ; padding [ Rem 0.5 ]
-          ; border_radius (radius (Rem 0.375))
-          ]
+    (* Build a ".btn" rule and render a stylesheet from it. *)
+    let button =
+      rule ~selector:(Selector.class_ "btn")
+        [
+          display Inline_block;
+          background_color (hex "#3b82f6");
+          color (hex "#ffffff");
+          padding [ Rem 0.5 ];
+          border_radius (radius (Rem 0.375));
+        ]
 
-      let css = to_string (v [ button ])
+    let css = to_string (v [ button ])
     ]}
 
     Custom properties:
     {[
-      open Cascade.Css
+    open Cascade.Css
 
-      let def, primary = var "primary-color" Color (hex "#3b82f6")
-      let root = rule ~selector:(Selector.of_string ":root") [ def ]
-      let card =
-        rule ~selector:(Selector.class_ "card") [ color (Var primary) ]
-      let css = to_string (v [ root; card ])
+    let def, primary = var "primary-color" Color (hex "#3b82f6")
+    let root = rule ~selector:(Selector.of_string ":root") [ def ]
+    let card = rule ~selector:(Selector.class_ "card") [ color (Var primary) ]
+    let css = to_string (v [ root; card ])
     ]}
 
     Start with {!val:rule}, {!val:media}, {!val:container}, {!val:supports},
@@ -388,12 +388,14 @@ val keyframes : string -> keyframe list -> statement
 
     Example:
     {[
-      open Cascade.Css
+    open Cascade.Css
 
-      let pulse =
-        keyframes "pulse"
-          [ keyframe ~selector:"50%"
-              ~declarations:[ opacity (Opacity_number 0.5) ] ]
+    let pulse =
+      keyframes "pulse"
+        [
+          keyframe ~selector:"50%"
+            ~declarations:[ opacity (Opacity_number 0.5) ];
+        ]
     ]}
     produces [@keyframes pulse { 50% { opacity: 0.5 } }]. *)
 
@@ -449,15 +451,15 @@ val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
 
     Example: Collect all selectors from all rules (including nested ones):
     {[
-      open Cascade
+    open Cascade
 
-      let selectors css =
-        Css.fold
-          (fun acc stmt ->
-            match Css.as_rule stmt with
-            | Some (sel, _, _) -> Css.Selector.to_string sel :: acc
-            | None -> acc)
-          [] css
+    let selectors css =
+      Css.fold
+        (fun acc stmt ->
+          match Css.as_rule stmt with
+          | Some (sel, _, _) -> Css.Selector.to_string sel :: acc
+          | None -> acc)
+        [] css
     ]} *)
 
 val media_queries : t -> (Media.t * statement list) list
@@ -576,8 +578,8 @@ val with_fallback : 'a var -> 'a -> 'a var
     you need to reference a variable from another module with a specific
     fallback, without creating a declaration. *)
 
-type any_var = Variables.any_var = V : 'a var -> any_var
-(** The type of CSS variables. *)
+type any_var = Variables.any_var =
+  | V : 'a var -> any_var  (** The type of CSS variables. *)
 
 val vars_of_rules : statement list -> any_var list
 (** [vars_of_rules statements] extracts all CSS variables referenced in rule
@@ -1853,7 +1855,9 @@ type overflow = Properties.overflow =
   | Overflow_pair of overflow * overflow
   | Var of overflow var
 
-type border_spacing = Properties.border_spacing = Lengths of length list | Var of border_spacing var
+type border_spacing = Properties.border_spacing =
+  | Lengths of length list
+  | Var of border_spacing var
 
 val display : display -> declaration
 (** [display d] is the
@@ -2176,7 +2180,10 @@ val content_counters : string -> string -> content
 val content_list : content list -> content
 (** [content_list items] is a space-separated content value. *)
 
-type counter_item = Properties.counter_item = { name : string; value : int option }
+type counter_item = Properties.counter_item = {
+  name : string;
+  value : int option;
+}
 
 val counter_item : ?value:int -> string -> counter_item
 (** [counter_item ?value name] is one named counter item. *)
@@ -2338,7 +2345,11 @@ type text_box_trim = Properties.text_box_trim =
   | Revert_layer
   | Var of text_box_trim var
 
-type text_underline_position_keyword = Properties.text_underline_position_keyword = Under | Left | Right
+type text_underline_position_keyword =
+      Properties.text_underline_position_keyword =
+  | Under
+  | Left
+  | Right
 
 type text_underline_position = Properties.text_underline_position =
   | Auto
@@ -2454,7 +2465,11 @@ type ruby_overhang = Properties.ruby_overhang =
   | Revert_layer
   | Var of ruby_overhang var
 
-type ruby_position_keyword = Properties.ruby_position_keyword = Alternate | Over | Under | Inter_character
+type ruby_position_keyword = Properties.ruby_position_keyword =
+  | Alternate
+  | Over
+  | Under
+  | Inter_character
 
 type ruby_position = Properties.ruby_position =
   | Position of ruby_position_keyword list
@@ -2694,7 +2709,11 @@ type background_attachment = Properties.background_attachment =
 
 (** CSS Color 5 section 12: hue-interpolation method for polar color spaces (lch
     / oklch / hsl / hwb). *)
-type hue_interpolation_method = Properties.hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
+type hue_interpolation_method = Properties.hue_interpolation_method =
+  | Shorter
+  | Longer
+  | Increasing
+  | Decreasing
 
 type color_interpolation = Properties.color_interpolation =
   | In_oklab
@@ -3673,7 +3692,10 @@ val column_gap : length -> declaration
 
 (** [repeat()] count argument: an integer or [auto-fill] / [auto-fit] (CSS Grid
     1 §7.2.3.1). *)
-type repeat_count = Properties.repeat_count = Count of int | Auto_fill | Auto_fit
+type repeat_count = Properties.repeat_count =
+  | Count of int
+  | Auto_fill
+  | Auto_fit
 
 (** CSS grid-auto-flow values *)
 type grid_auto_flow = Properties.grid_auto_flow =
@@ -3989,7 +4011,13 @@ type text_decoration = Properties.text_decoration =
   | Var of text_decoration var
 
 type text_emphasis_fill = Properties.text_emphasis_fill = Filled | Open
-type text_emphasis_shape = Properties.text_emphasis_shape = Dot | Circle | Double_circle | Triangle | Sesame
+
+type text_emphasis_shape = Properties.text_emphasis_shape =
+  | Dot
+  | Circle
+  | Double_circle
+  | Triangle
+  | Sesame
 
 type text_emphasis_style = Properties.text_emphasis_style =
   | None
@@ -4085,7 +4113,10 @@ type font_style = Properties.font_style =
   | Revert_layer
   | Var of font_style var  (** CSS text transform values. *)
 
-type text_transform_case = Properties.text_transform_case = Capitalize | Uppercase | Lowercase
+type text_transform_case = Properties.text_transform_case =
+  | Capitalize
+  | Uppercase
+  | Lowercase
 
 type text_transform = Properties.text_transform =
   | None
@@ -5880,7 +5911,11 @@ type clip_geometry_box = Properties.clip_geometry_box =
   | Stroke_box
   | View_box
 
-type clip_path_extent = Properties.clip_path_extent = Extent_length of length | Closest_side | Farthest_side
+type clip_path_extent = Properties.clip_path_extent =
+  | Extent_length of length
+  | Closest_side
+  | Farthest_side
+
 type clip_path_fill_rule = Properties.clip_path_fill_rule = Nonzero | Evenodd
 
 type clip_path = Properties.clip_path =
@@ -6496,9 +6531,16 @@ val webkit_text_size_adjust : text_size_adjust -> declaration
     Properties for styling HTML lists and tables. *)
 
 (** CSS list-style-type values *)
-type symbols_type = Properties.symbols_type = Cyclic | Numeric | Alphabetic | Symbolic | Fixed
+type symbols_type = Properties.symbols_type =
+  | Cyclic
+  | Numeric
+  | Alphabetic
+  | Symbolic
+  | Fixed
 
-type list_style_symbol = Properties.list_style_symbol = String of string | Url of string
+type list_style_symbol = Properties.list_style_symbol =
+  | String of string
+  | Url of string
 
 val list_style_symbol_string : string -> list_style_symbol
 (** [list_style_symbol_string value] is a string symbol for [symbols()]. *)
@@ -7133,12 +7175,13 @@ val var :
 
     Example:
     {[
-      open Cascade.Css
+    open Cascade.Css
 
-      let def_radius, radius_var = var "radius-md" Length (Rem 0.5)
-      let card =
-        rule ~selector:(Selector.class_ "card")
-          [ def_radius; border_top_left_radius (Var radius_var) ]
+    let def_radius, radius_var = var "radius-md" Length (Rem 0.5)
+
+    let card =
+      rule ~selector:(Selector.class_ "card")
+        [ def_radius; border_top_left_radius (Var radius_var) ]
     ]}
 
     The returned [radius_var] must be wrapped with [Var] when used in CSS

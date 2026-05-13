@@ -766,7 +766,8 @@ let callstack_accuracy () =
      character. So .test\!class is equivalent to .test!class which is a valid
      class selector. Testing an actually invalid selector instead: *)
   check_full_css_callstack "invalid_selector_error"
-    ".test[[attr]] { color: red; }" [ "rule"; "selector"; "list" ]
+    ".test[[attr]] { color: red; }"
+    [ "rule"; "selector"; "list" ]
 
 (* Test check functions for selector components *)
 let component_parsing () =

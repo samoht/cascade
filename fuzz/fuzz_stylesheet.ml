@@ -1414,8 +1414,7 @@ let test_no_comments_in_output buf =
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
   | Ok parsed ->
-      check "lenient-minified"
-        (Css.to_string ~minify:true parsed.stylesheet);
+      check "lenient-minified" (Css.to_string ~minify:true parsed.stylesheet);
       check "lenient-pretty" (Css.to_string ~minify:false parsed.stylesheet)
 
 (* Lenient output is strict-parseable: after lenient recovery, the serialized
@@ -1435,7 +1434,8 @@ let test_lenient_output_strict_parseable buf =
             (Fmt.str
                "lenient output is not strict-parseable: lenient cleaned %S to \
                 %S but strict rejected it (%s)"
-               buf serialized (Cascade.Error.to_string err)))
+               buf serialized
+               (Cascade.Error.to_string err)))
 
 (* Recovery is total: after lenient parse, the recovered AST is clean - so
    re-parsing its serialization in lenient mode must yield zero warnings.
@@ -1451,7 +1451,8 @@ let test_lenient_recovery_is_total buf =
             (Fmt.str
                "lenient recovery is not total: recovered serialization failed \
                 to reparse: %S (%s)"
-               serialized (Cascade.Error.to_string err))
+               serialized
+               (Cascade.Error.to_string err))
       | Ok reparsed ->
           if reparsed.Css.warnings <> [] then
             fail
@@ -1476,7 +1477,8 @@ let test_strict_output_reparses_strictly buf =
             (Fmt.str
                "strict-accepted input serialized to strict-rejected output: %S \
                 -> %S (%s)"
-               buf serialized (Cascade.Error.to_string err)))
+               buf serialized
+               (Cascade.Error.to_string err)))
 
 (* Optimize preserves strict-validity: if strict accepted the input, the
    optimized stylesheet must also be strict-accepted after serialization. *)
@@ -1491,13 +1493,14 @@ let test_optimize_preserves_strict_validity buf =
       | Error err ->
           fail
             (Fmt.str "optimize broke strict-validity: %S -> %S (%s)" buf
-               serialized (Cascade.Error.to_string err)))
+               serialized
+               (Cascade.Error.to_string err)))
 
 (* Comments-anywhere robustness: per CSS Syntax 3 SS 4.3.2 comments are
-   whitespace-equivalent and can appear between any two tokens. Insert a
-   random comment at every whitespace position in a shaped stylesheet and
-   verify that lenient parse succeeds (the parser must not crash on comments
-   in any position, even if it discards them). *)
+   whitespace-equivalent and can appear between any two tokens. Insert a random
+   comment at every whitespace position in a shaped stylesheet and verify that
+   lenient parse succeeds (the parser must not crash on comments in any
+   position, even if it discards them). *)
 let test_comments_anywhere_robust buf =
   let base = css_like_stylesheet buf in
   let marker =
@@ -1518,8 +1521,7 @@ let test_comments_anywhere_robust buf =
   | Ok _ -> ()
   | Error err ->
       fail
-        (Fmt.str
-           "lenient parse must accept comments anywhere; failed on %S: %s"
+        (Fmt.str "lenient parse must accept comments anywhere; failed on %S: %s"
            mutated
            (Cascade.Error.to_string err))
 
@@ -1538,8 +1540,8 @@ let test_comments_random_position_no_crash buf =
     try ignore (Css.of_string ~strict:false mutated : (_, _) result)
     with exn ->
       fail
-        (Fmt.str "lenient parse raised on comment-inserted input %S: %s"
-           mutated (Printexc.to_string exn))
+        (Fmt.str "lenient parse raised on comment-inserted input %S: %s" mutated
+           (Printexc.to_string exn))
 
 (* Minify monotonicity: minified output must never be longer than pretty output
    for the same stylesheet. A regression here means the minifier added bytes -
