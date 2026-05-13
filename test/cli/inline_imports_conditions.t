@@ -120,4 +120,4 @@ imports wraps the inner condition inside the outer condition.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-deep-cond.css
-  @media screen{@media (width>=30em){.deep{color:red}}.middle{color:#00f}}.e{padding:0}
+  @media screen{@media(width>=30em){.deep{color:red}}.middle{color:#00f}}.e{padding:0}

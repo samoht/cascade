@@ -74,7 +74,7 @@ statements).
   > }
   > EOF
   $ cascade --minify --inline-imports deep-nested.css 2>&1 | grep -v "warning"
-  @media print{@media (width>=30em){.x{color:#00f}}}
+  @media print{@media(width>=30em){.x{color:#00f}}}
 
 @import with a [var()]-driven URL is invalid - the URL must be a
 parse-time literal, not a computed reference.
