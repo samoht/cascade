@@ -1,69 +1,128 @@
 # Cascade
 
-CSS tooling for OCaml -- a typed AST, parser, pretty-printer, structural
-transform library, diff tool, and optimizer for modern CSS.
+Tools to manipulate CSS files safely: spec-driven parsing,
+minification, and structural diff. Cascade ships one binary
+(`cascade`) and the OCaml library it is built on.
 
-Most CSS toolchains target JavaScript runtimes. Cascade provides the same
-core capabilities -- parsing, printing, structural transformation, and
-structural comparison -- as a native OCaml library with zero runtime
-dependencies beyond the stdlib.
-Properties, values, and selectors are represented as OCaml types rather than
-strings, so invalid constructs are caught at compile time.
+## `cascade fmt` -- format and minify CSS
 
-## Project scope
+<!-- $MDX skip -->
+```bash
+cascade fmt [--minify] [--inline-imports] [--inline-vars] [--keep-vars=NAMES] FILE
+cat style.css | cascade fmt -                # read from stdin
+cascade FILE                                 # shorthand for: cascade fmt FILE
+```
 
-Cascade works on **CSS text and CSS syntax trees**. Its core responsibilities
-are:
+`cascade fmt` reads a CSS file (or stdin with `-`), parses it through
+the typed AST, and writes it back. Without flags it pretty-prints.
+With `--minify` it runs the standard safe transforms (deduplication,
+rule merging, selector grouping, empty-rule elimination, nested-rule
+flattening) and emits minified output.
 
-- parse CSS files or already-decoded CSS strings;
-- expose typed CSS ASTs for rules, declarations, selectors, values, and
-  at-rules;
-- print CSS, including minified output;
-- transform CSS ASTs with helpers such as `fold`, `map`, `sort`, and
-  structural comparison;
-- optimize/minify only when the rewrite is valid from stylesheet structure or
-  from caller-supplied context;
-- support CSS custom-property workflows, including `var()` parsing, typed
-  fallbacks, theme/default based variable output, and `@property` syntax.
+The two `--inline-*` flags are explicit closed-world opt-ins:
+`--inline-imports` resolves `@import` against files relative to the
+input (assumes you control file resolution) and `--inline-vars`
+substitutes `var(--name)` references with their declared values
+(assumes no runtime mutation of custom properties).
+`--keep-vars=NAMES` keeps the listed custom properties live.
 
-Cascade is a CSS library. When a transform needs information beyond CSS text,
-that information is passed as an explicit closed context record. Theme/default
-variable substitution is current behavior, and `Css.Context.t` is
-the context type for property-value transforms.
+<!-- $MDX skip -->
+```bash
+cascade fmt style.css                            # pretty-print
+cascade fmt --minify style.css
+cascade fmt --inline-imports --inline-vars --minify style.css
+cascade fmt --inline-vars --keep-vars=theme,brand style.css
+```
 
-## CSS specification coverage
+### Minify policy (`--minify`)
 
-Cascade targets selected **CSS Level 3, Level 4, and Level 5** modules. It has
-focused parser, printer, optimizer, property, and fuzz tests for many CSS
-features, but its conformance target is CSS parsing, ASTs, printing, transforms,
-diffs, and optimization rather than a complete web-platform runtime.
+`--minify` picks the shortest spec-equivalent spelling at every choice
+point. Where the CSS spec and browser-compatible recovery rules permit
+several valid serializations, Cascade chooses the shortest valid one.
 
-| Specification | Coverage |
-|---|---|
-| [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting |
-| [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
-| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colors, 15 color spaces |
-| [Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/) | `@media` (with error recovery to `not all`), `@supports` property and selector checks, `@when` / `@else`, `@supports-condition` |
-| [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimizer |
-| [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
-| [Container Queries Level 5](https://www.w3.org/TR/css-conditional-5/#container-queries) | `@container` with size queries and typed `style()` / `scroll-state()` queries, including range operators |
-| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution, `@property` registration |
-| [Fonts Level 4](https://www.w3.org/TR/css-fonts-4/) | `@font-face` descriptors |
-| [Animations Level 1](https://www.w3.org/TR/css-animations-1/) | `@keyframes`, `@starting-style` |
+- Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
+- Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
+- Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
+- Whitespace elided at safe token boundaries (`100% 0` -> `100%0`).
+- Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
+- Media queries: legacy -> range syntax (`(min-width:48px)` -> `(width>=48px)`).
 
-Over 380 typed CSS properties cover box model, flexbox, grid, logical
-properties, typography, borders, backgrounds, gradients, transforms,
-transitions, animations, filters, masks, anchor positioning, view transitions,
-and vendor-prefixed properties.
+Pretty mode (the default) preserves the authored form where the AST
+permits it. Spec-mandated canonicalizations (CSS Syntax 3 section
+4.3.7 NUL -> U+FFFD, single-quote -> double, ...) apply in both
+modes. Empty rules and invalid declarations are dropped in both
+modes; comments are discarded during parsing.
 
-## Installation
+### Interop testing against other minifiers
+
+Cascade's minified output is compared with cached oracle answers
+generated from the Lightning CSS test suite. Regenerating the
+[trace](test/interop/lightning/traces/minify.pairs) runs a patched
+Lightning CSS test build to capture each input and Lightning's
+expected output, then runs the available minifier CLIs (`esbuild`,
+`cleancss`, `csso`, `cssnano`, `lightningcss-cli`) over the same
+inputs. Normal test runs use only the cached trace; they do not shell
+out to external tools.
+
+A case passes when Cascade's output is no longer than the shortest
+*valid* cached oracle answer; longer Cascade outputs are recorded as
+`longer-than-shortest` mismatches. A cached answer is excluded from
+the shortest-valid comparison when:
+
+- the tool crashed or rejected the input,
+- the output fails to round-trip through Cascade's parser, or
+- Cascade-parsing the output produces a semantic fingerprint different
+  from the input (rule kinds, declaration set, computed shorthand
+  shape).
+
+Excluded answers are recorded in the per-test `*.output` logs and the
+rolled-up `_build/_tests/lightning_minify/upstream-bugs.log`.
+
+## `cascade diff` -- structural CSS diff
+
+<!-- $MDX skip -->
+```bash
+cascade diff [--color=WHEN] [--diff=MODE] FILE1 FILE2
+```
+
+`cascade diff` compares two CSS files through the parsed AST rather
+than character-by-character: added, removed, modified, and reordered
+rules are detected structurally, and property value changes are
+reported in terms of CSS values.
+
+What counts as "no difference" depends on the mode:
+
+- `auto` (default) — falls back to a string diff when the ASTs match
+  but the strings don't, so cosmetic differences (whitespace, comment
+  position) still surface.
+- `tree` — structural diff only; formatting-only differences collapse
+  to "identical".
+- `string` — character-level comparison.
+- `semantic` — passes when the two inputs share Cascade's canonical
+  minified form (whitespace, color spellings, leading-zero
+  normalisations all collapse). This is not full CSS semantic
+  equivalence: equivalent shorthand decompositions and
+  cascade-affecting rule reorderings are not modelled.
+
+<!-- $MDX skip -->
+```bash
+cascade diff reference.css output.css
+cascade diff --diff=tree reference.css output.css
+cascade diff --diff=semantic reference.css output.css
+NO_COLOR=1 cascade diff reference.css output.css
+```
+
+## Using Cascade as a library
+
+For OCaml users, the same engine ships as the `cascade` opam package.
+The CLI above is a thin wrapper over its public API.
 
 <!-- $MDX skip -->
 ```bash
 opam install cascade
 ```
 
-## Quick start
+### Quick start
 
 ```ocaml
 # open Cascade.Css;;
@@ -92,127 +151,88 @@ Output:
 }
 ```
 
-## Serialization rules
+Properties, values, and selectors are sealed OCaml ADTs, so invalid
+constructions are caught at compile time. Structural transforms
+(`fold`, `map`, `sort`, `flatten_nesting`), `Css.inline_imports`, and
+`Css.optimize ?flatten_nesting` are the main entry points for
+AST-level work. Transforms that need information beyond CSS text take
+an explicit closed `Css.Context.t` rather than reading ambient runtime
+state.
 
-Cascade has two output modes: **minified** (shortest spec-equivalent) and
-**pretty** (preserves authored form where the AST permits). Parsing has two
-modes too: **strict** (escalates any warning to `Error`) and **lenient** (the
-default; always returns `Ok` with a `warnings` list).
+### Parsing modes
 
-### Both output modes
+Parsing has two modes -- **strict** and **lenient** -- both routed
+through `Css.of_string`:
 
-- Empty rules (`.x { }`) are dropped (zero declarations = no effect).
-- Invalid declarations are dropped per the dual-mode contract.
-- CSSOM canonicalizations apply: single quotes → double, `@import url(x)` → `@import "x"`.
-- Comments are discarded during parsing and do not survive serialization.
-
-### Minified mode (`~minify:true`)
-
-Picks the shortest spec-equivalent spelling at every choice point.
-When the CSS spec and browser-compatible recovery rules allow multiple valid
-serializations, Cascade chooses the shortest valid answer. Test oracles should
-follow that rule; industry-grade minifiers are useful comparators, but if they
-disagree on valid output, shortest valid output wins.
-
-- Colors: hex form when it's at most as long as the name (`black` → `#000`, `blue` → `#00f`; `red` stays a name).
-- Numbers: drop leading zero (`0.5` → `.5`) and trailing zero (`10.0` → `10`).
-- Pseudo-elements: legacy single-colon form (`::before` → `:before`).
-- Whitespace elided at safe token boundaries (`100% 0` → `100%0`).
-- Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
-- Media queries: legacy → range syntax (`(min-width:48px)` → `(width>=48px)`).
-
-### Pretty mode (`~minify:false`)
-
-Preserves the authored form where the AST distinguishes it (`:before` stays
-single-colon, `::before` stays double-colon). Whitespace is inserted for
-readability. Spec-mandated canonicalizations still apply (e.g.,
-`Css.Syntax 4.3.7` NUL → U+FFFD). Comments are not represented in the AST and
-are discarded during parsing.
-
-### Strict vs lenient parsing
-
-For every input `s`:
-
-- `Css.of_string ~strict:false s` is total — always returns `Ok _`.
-- `Css.of_string ~strict:true s = Error _` iff the lenient parse returned non-empty `warnings`.
+- `Css.of_string ~strict:false s` is total: it always returns
+  `Ok { stylesheet; warnings }`, where `warnings` carries recovered
+  syntax and declaration issues.
+- `Css.of_string ~strict:true s = Error _` iff the lenient parse
+  returned non-empty `warnings`.
 - When both succeed, their minified outputs are identical.
 
-This means lenient is the recovery surface (everything parses, warnings flag
-deviations) and strict is the gate (any warning becomes an error).
+Lenient is the recovery surface (every input parses, warnings flag
+deviations); strict is the gate (any warning becomes an error).
 
-## CLI tools
+### Small runtime footprint, js_of_ocaml-friendly
 
-### `cascade` -- CSS formatter
+The core `cascade` library links only
+[uutf](https://erratique.ch/software/uutf) and the OCaml runtime; it
+does not link `fmt`, so js_of_ocaml embedders do not pull `fmt` in
+transitively. In one local measurement, a small js_of_ocaml executable
+that parses and minifies one stylesheet compressed to less than 200
+KiB (`--opt 3 --no-source-map` with size-oriented runtime flags); the
+exact figure depends on the OCaml/jsoo versions and which Cascade
+modules are linked.
 
-```
-cascade [--minify] [--optimize] [--pretty] [FILE]
-```
+Structural diff lives in the separate `cascade.diff` sub-library
+(`Cascade_diff.Css_compare`, `Cascade_diff.Tree_diff`,
+`Cascade_diff.String_diff`); it is what `cascade diff` is built on.
 
-Reads a CSS file (or stdin with `-`) and outputs formatted CSS. The
-`--optimize` flag merges duplicate rules and removes redundant declarations.
+## CSS specification coverage
 
-<!-- $MDX skip -->
-```bash
-cascade style.css                        # pretty-print
-cascade --minify style.css               # minify
-cascade --optimize --minify style.css    # optimize and minify
-cat style.css | cascade --minify -       # read from stdin
-```
+Cascade targets selected **CSS Level 3, Level 4, and Level 5**
+modules. Its conformance target is CSS parsing, ASTs, printing,
+transforms, diffs, and optimization -- not a complete web-platform
+runtime.
 
-### `cssdiff` -- structural CSS diff
+| Specification | Coverage |
+|---|---|
+| [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting |
+| [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
+| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colors, 15 color spaces |
+| [Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/) | `@media` (recovering a failed condition parse as `not all`), `@supports` property and selector checks, `@when` / `@else`, `@supports-condition` |
+| [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimizer |
+| [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
+| [Container Queries Level 5](https://www.w3.org/TR/css-conditional-5/#container-queries) | `@container` with size queries and typed `style()` / `scroll-state()` queries, including range operators |
+| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution, `@property` registration |
+| [Fonts Level 4](https://www.w3.org/TR/css-fonts-4/) | `@font-face` descriptors |
+| [Animations Level 1](https://www.w3.org/TR/css-animations-1/) | `@keyframes`, `@starting-style` |
 
-```
-cssdiff [--color=WHEN] [--diff=MODE] FILE1 FILE2
-```
-
-Compares two CSS files using structural parsing, detecting added, removed,
-and modified rules, property value changes, and reordered rules. Three diff
-modes are available: `auto` (default -- uses tree diff for structural changes,
-string diff otherwise), `tree` (force structural comparison), and `string`
-(character-level comparison).
-
-<!-- $MDX skip -->
-```bash
-cssdiff reference.css output.css
-cssdiff --diff=tree reference.css output.css
-NO_COLOR=1 cssdiff reference.css output.css
-```
-
-## Libraries
-
-- **`cascade`** -- typed CSS AST, parser, pretty-printer, structural
-  transformation helpers, and optimizer.
-  The main module is `Cascade.Css`.
-- **`cascade.tools`** -- structural CSS comparison (`Css_tools.Css_compare`,
-  `Css_tools.Tree_diff`, `Css_tools.String_diff`).
+Typed CSS properties cover box model, flexbox, grid, logical
+properties, typography, borders, backgrounds, gradients, transforms,
+transitions, animations, filters, masks, anchor positioning, view
+transitions, and vendor-prefixed properties. Together, these cover
+the stylesheet surface typically emitted by CSS generators, component
+libraries, and utility frameworks.
 
 ## Limitations
 
-- **UTF-8 text input.** Cascade parses already-decoded UTF-8 OCaml strings. It
-  does not implement the CSS Syntax Level 3 section 3.2 byte-stream decoding
-  layer: BOM handling, HTTP/environment charset fallback, and exact
-  `@charset "...";` byte sniffing are caller responsibilities before invoking
-  Cascade. Stylesheets in legacy encodings (`Shift_JIS`, `Big5`, `EUC-*`,
-  `windows-125x`, UTF-16, etc.) must be decoded upstream with a dedicated
-  encoding library and passed to Cascade as UTF-8 text. Parsed `@charset`
-  syntax is compatibility surface, not an encoding-decoding mechanism.
-- **One warning-aware parse entry point.** `Css.of_string` runs the CSS Syntax
-  Level 3 recovery path: unclosed blocks auto-close at EOF (5.3.7), an invalid
-  declaration is dropped while its enclosing rule keeps its other declarations
-  (5.4.4), and rules that don't validate at all surface as warnings in the
-  returned `parse_result.warnings` while the rest of the stylesheet parses
-  normally. Pass `~strict:true` to promote the first warning to `Error`, or use
-  `Css.of_string_exn` when only the recovered stylesheet is needed.
-- CSS nesting is parsed and printed but the optimizer does not flatten nested
-  rules. A round-trip through the parser preserves nesting structure.
-- `@import` rules are preserved as-is; Cascade does not resolve or inline
-  imported stylesheets.
-- Cascade does not provide implicit runtime subsystems such as a DOM, live
-  CSSOM, network loader, layout tree, renderer, animation timeline, or ambient
-  computed-style engine. CSS syntax for those features is still parsed and
-  printed where the library models it, and explicit-context transforms can be
-  added when the required context is represented in the API.
-- No source-map support.
+- **UTF-8 text input.** Cascade parses already-decoded UTF-8 OCaml
+  strings. It does not implement the CSS Syntax Level 3 section 3.2
+  byte-stream decoding layer: BOM handling, HTTP/environment charset
+  fallback, and exact `@charset "...";` byte sniffing are caller
+  responsibilities before invoking Cascade. Stylesheets in legacy
+  encodings (`Shift_JIS`, `Big5`, `EUC-*`, `windows-125x`, UTF-16,
+  etc.) must be decoded upstream with a dedicated encoding library
+  and passed to Cascade as UTF-8 text. Parsed `@charset` syntax is
+  compatibility surface, not an encoding-decoding mechanism.
+- Cascade does not provide implicit runtime subsystems such as a DOM,
+  live CSSOM, network loader, layout tree, renderer, animation
+  timeline, or ambient computed-style engine. CSS syntax for those
+  features is still parsed and printed where the library models it,
+  and explicit-context transforms can be added when the required
+  context is represented in the API.
 
 ## Licence
 
