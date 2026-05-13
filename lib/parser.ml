@@ -26,10 +26,6 @@ let rec consume_component_value_from lexer tok : Component.t =
       Func func
   | _ -> Preserved tok
 
-and consume_component_value lexer : Component.t =
-  let tok = Lexer.next lexer in
-  consume_component_value_from lexer tok
-
 and consume_simple_block lexer opening ~start_loc :
     Component.block Component.node =
   let rec loop acc =
@@ -62,6 +58,10 @@ and consume_function lexer ~name ~start_loc : Component.func Component.node =
         loop (cv :: acc)
   in
   loop []
+
+let consume_component_value lexer : Component.t =
+  let tok = Lexer.next lexer in
+  consume_component_value_from lexer tok
 
 (** {1 Stream API (uniform with Reader/Lexer)} *)
 
@@ -440,22 +440,10 @@ let word_like_start : Component.t -> bool = function
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
-let rec cv_to_buffer_min buf = function
-  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
-  | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_min buf value;
-      Buffer.add_char buf (closing_char opening)
-  | Func { node = { name; arguments; _ }; _ } ->
-      Buffer.add_string buf (escape_ident name);
-      Buffer.add_char buf '(';
-      cvs_to_buffer_min buf arguments;
-      Buffer.add_char buf ')'
-
 (* CSS Syntax section 9 fixed-pair separations: certain delim pairs would form a
    multi-char token (comment, CDO) when emitted adjacently, even though neither
    token is word-like. Force a separator for those. *)
-and pair_forms_multichar_token prev next =
+let pair_forms_multichar_token prev next =
   match (prev, next) with
   | ( Component.Preserved { kind = Token.Delim "/"; _ },
       Component.Preserved { kind = Token.Delim "*"; _ } )
@@ -466,7 +454,7 @@ and pair_forms_multichar_token prev next =
       true
   | _ -> false
 
-and pair_prefers_component_separator prev next =
+let pair_prefers_component_separator prev next =
   match (prev, next) with
   | ( Component.Preserved { kind = Token.Percentage _; _ },
       Component.Preserved
@@ -477,7 +465,7 @@ and pair_prefers_component_separator prev next =
       true
   | _ -> false
 
-and pair_needs_token_boundary prev next =
+let pair_needs_token_boundary prev next =
   match (prev, next) with
   | _ when signed_number_pair prev next -> false
   | _ when pair_forms_multichar_token prev next -> true
@@ -535,6 +523,18 @@ and pair_needs_token_boundary prev next =
       Component.Preserved { kind = Token.Delim "-"; _ } ) ->
       true
   | _ -> false
+
+let rec cv_to_buffer_min buf = function
+  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
+  | Block { node = { opening; value; _ }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_min buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ } ->
+      Buffer.add_string buf (escape_ident name);
+      Buffer.add_char buf '(';
+      cvs_to_buffer_min buf arguments;
+      Buffer.add_char buf ')'
 
 and cvs_to_buffer_min buf cvs =
   let rec drop_ws = function

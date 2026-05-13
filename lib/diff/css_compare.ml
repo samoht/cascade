@@ -76,7 +76,7 @@ let at_rule_path_and_inner stmt =
     ]
     stmt
 
-let strip_header css =
+let strip_tool_header css =
   (* Strip a leading /*!...*/ header comment with simpler flow to reduce
      nesting *)
   let stripped =
@@ -214,20 +214,34 @@ let build_reorder_diff expected_css actual_css =
   if !diffs = [] then None
   else Some D.{ rules = List.rev !diffs; containers = [] }
 
-(* Compare two CSS strings for structural and formatting equality *)
-let compare css1 css2 =
-  let css1 = strip_header css1 in
-  let css2 = strip_header css2 in
-  (* If strings are identical, they're equal *)
-  if css1 = css2 then true
+let css_for_semantic_comparison ?property css =
+  match property with
+  | None -> css
+  | Some property -> ":root{" ^ property ^ ":" ^ css ^ "}"
+
+let canonical_semantic_css css =
+  match Css.of_string ~strict:true css with
+  | Ok { stylesheet; _ } -> (
+      try Some (Css.to_string ~minify:true ~newline:false stylesheet)
+      with Invalid_argument _ -> None)
+  | Error _ -> None
+
+(* Internal: full-stylesheet equality under the canonical minified form. *)
+let semantic_equal ?property expected actual =
+  let expected = strip_tool_header expected in
+  let actual = strip_tool_header actual in
+  if expected = actual then true
   else
-    match (Css.of_string css1, Css.of_string css2) with
-    | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } ->
-        let d = tree_diff ~expected ~actual in
-        (* Only consider them equal if both structural diff is empty AND strings
-           are identical *)
-        is_empty d && css1 = css2
-    | _ -> false (* Parse errors with different strings are not equal *)
+    let expected_css = css_for_semantic_comparison ?property expected in
+    let actual_css = css_for_semantic_comparison ?property actual in
+    match
+      (canonical_semantic_css expected_css, canonical_semantic_css actual_css)
+    with
+    | Some expected_norm, Some actual_norm ->
+        String.equal expected_norm actual_norm
+    | _ -> false
+
+let equivalent_value ~property a b = semantic_equal ~property a b
 
 (* Parse two CSS strings and return their diff or parse errors *)
 type t =
@@ -237,6 +251,8 @@ type t =
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
+
+type mode = [ `Auto | `Tree | `String | `Canonical ]
 
 let fallback_to_string_diff ~expected ~actual =
   (* Use original (header-stripped) strings for string diff *)
@@ -262,9 +278,9 @@ let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
   if not (is_empty structural_diff) then Tree_diff structural_diff
   else diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm
 
-let diff ~expected ~actual =
-  let expected = strip_header expected in
-  let actual = strip_header actual in
+let diff_auto ~expected ~actual =
+  let expected = strip_tool_header expected in
+  let actual = strip_tool_header actual in
   (* First check if original strings are identical *)
   if expected = actual then No_diff
   else
@@ -275,32 +291,36 @@ let diff ~expected ~actual =
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
-let diff_with_mode ~mode ~expected ~actual =
-  let expected = strip_header expected in
-  let actual = strip_header actual in
+let diff_string ~expected ~actual =
+  if expected = actual then No_diff
+  else
+    match String_diff.diff ~expected actual with
+    | Some sdiff -> String_diff sdiff
+    | None -> No_diff
+
+let diff_tree ~expected ~actual =
+  match (Css.of_string expected, Css.of_string actual) with
+  | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+      let structural_diff =
+        tree_diff ~expected:expected_ast ~actual:actual_ast
+      in
+      if is_empty structural_diff then No_diff else Tree_diff structural_diff
+  | Error e1, Error e2 -> Both_errors (e1, e2)
+  | Ok _, Error e -> Actual_error e
+  | Error e, Ok _ -> Expected_error e
+
+let diff ?(mode = `Auto) expected actual =
+  let expected = strip_tool_header expected in
+  let actual = strip_tool_header actual in
   match mode with
-  | `Auto -> diff ~expected ~actual
-  | `String -> (
-      if
-        (* Force string diff mode *)
-        expected = actual
-      then No_diff
-      else
-        match String_diff.diff ~expected actual with
-        | Some sdiff -> String_diff sdiff
-        | None -> No_diff)
-  | `Tree -> (
-      (* Force tree diff mode *)
-      match (Css.of_string expected, Css.of_string actual) with
-      | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ }
-        ->
-          let structural_diff =
-            tree_diff ~expected:expected_ast ~actual:actual_ast
-          in
-          if expected = actual then No_diff else Tree_diff structural_diff
-      | Error e1, Error e2 -> Both_errors (e1, e2)
-      | Ok _, Error e -> Actual_error e
-      | Error e, Ok _ -> Expected_error e)
+  | `Auto -> diff_auto ~expected ~actual
+  | `Canonical ->
+      if semantic_equal expected actual then No_diff
+      else diff_auto ~expected ~actual
+  | `String -> diff_string ~expected ~actual
+  | `Tree -> diff_tree ~expected ~actual
+
+let equal ?mode a b = match diff ?mode a b with No_diff -> true | _ -> false
 
 let as_tree_diff = function
   | Tree_diff d -> Some d

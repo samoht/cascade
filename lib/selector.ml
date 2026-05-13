@@ -1111,35 +1111,42 @@ let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element_selector sel)
 
-(* Forward declarations for mutually recursive functions *)
-let rec read_selector_list_tail read_item t acc =
-  let sel = read_item t in
-  let acc = sel :: acc in
-  Cursor.ws t;
-  if Cursor.comma_opt t then (
-    Cursor.ws t;
-    if Cursor.is_done t then Cursor.err t "expected at least one selector";
-    read_selector_list_tail read_item t acc)
-  else if Cursor.is_done t then List.rev acc
-  else Cursor.err t "unexpected tokens after selector"
+let pseudo_class_all_idents () =
+  pseudo_class_base_idents
+  @ pseudo_element_legacy_idents Single
+  @ pseudo_element_modern_idents @ pseudo_vendor_idents
 
-and read_selector_list_with read_item t =
-  Cursor.ws t;
-  if Cursor.is_done t then Cursor.err t "expected at least one selector"
-  else read_selector_list_tail read_item t []
+let read_unknown_pseudo_class_call ~all_idents t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+      (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
+         [:hover], ...) called with parens ([:checked()]) is invalid. Reject so
+         the rule reader drops it rather than passing through as an unknown
+         call. *)
+      let lower = String.lowercase_ascii name in
+      let is_known_non_functional =
+        List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
+      in
+      if is_known_non_functional then
+        Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
+      Cursor.skip t;
+      Unknown_pseudo_class_call (name, arguments)
+  | _ -> Cursor.err_expected t "pseudo-class call"
 
-and read_complex_list t = read_selector_list_with read_complex t
+let read_unknown_pseudo_class_ident t =
+  match Cursor.ident_opt t with
+  | Some name -> Unknown_pseudo_class name
+  | None -> Cursor.err_expected t "pseudo-class"
 
-and read_forgiving_complex_list t =
-  read_forgiving_list read_forgiving_complex_item t
+let read_unknown_pseudo_class ~all_idents t =
+  Cursor.one_of
+    [
+      read_unknown_pseudo_class_call ~all_idents;
+      read_unknown_pseudo_class_ident;
+    ]
+    t
 
-and read_forgiving_complex_item t =
-  let sel = read_complex t in
-  if has_pseudo_element sel then Cursor.err t "pseudo-element not allowed here";
-  if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
-  sel
-
-and forgiving_take_next_in_segment t acc =
+let rec forgiving_take_next_in_segment t acc =
   match Cursor.next_raw t with
   | None -> List.rev acc
   | Some cv -> forgiving_take_segment t (cv :: acc)
@@ -1156,20 +1163,111 @@ and forgiving_take_segment t acc =
       List.rev acc
   | Some _ -> forgiving_take_next_in_segment t acc
 
-and read_forgiving_list read_item t =
-  let rec loop acc =
-    if Cursor.is_done t then List.rev acc
-    else loop (read_forgiving_segment read_item t acc)
-  in
-  loop []
-
-and read_forgiving_segment read_item t acc =
+let read_forgiving_segment read_item t acc =
   let item = Cursor.sub t (forgiving_take_segment t []) in
   match read_item item with
   | sel ->
       Cursor.ws item;
       if Cursor.is_done item then sel :: acc else acc
   | exception Cursor.Parse_error _ -> acc
+
+let read_nth_expr t =
+  let expr = read_nth t in
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err t "unexpected tokens after An+B expression";
+  expr
+
+let read_nth_col_content t = Nth_col (read_nth_expr t)
+let read_nth_last_col_content t = Nth_last_col (read_nth_expr t)
+let read_nth_col t = Cursor.call "nth-col" t read_nth_col_content
+let read_nth_last_col t = Cursor.call "nth-last-col" t read_nth_last_col_content
+
+let read_highlight_content t =
+  (* ::highlight() takes a single custom-ident per CSS Custom Highlight API
+     §3.1; comma-separated names are rejected. *)
+  let name = Cursor.ident t in
+  ensure_call_done t "highlight";
+  Highlight [ name ]
+
+let read_vt_class_selector t : vt_class_selector =
+  (* CSS View Transitions 2 §3.4.1 [<vt-class-selector>] = [<vt-name>?
+     [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name or
+     at least one class must be present. *)
+  Cursor.ws t;
+  let name =
+    match Cursor.peek_delim t with
+    | Some '*' ->
+        Cursor.skip t;
+        Some "*"
+    | Some '.' -> None
+    | _ -> Some (Cursor.ident t)
+  in
+  let rec read_classes acc =
+    match Cursor.peek_delim t with
+    | Some '.' ->
+        Cursor.skip t;
+        let cls = Cursor.ident t in
+        read_classes (cls :: acc)
+    | _ -> List.rev acc
+  in
+  let classes = read_classes [] in
+  { name; classes }
+
+let read_view_transition_group_content t =
+  let sel = read_vt_class_selector t in
+  ensure_call_done t "view transition group";
+  View_transition_group sel
+
+let read_vt_image_pair_content t =
+  let sel = read_vt_class_selector t in
+  ensure_call_done t "view transition image pair";
+  View_transition_image_pair sel
+
+let read_view_transition_old_content t =
+  let sel = read_vt_class_selector t in
+  ensure_call_done t "view transition old";
+  View_transition_old sel
+
+let read_view_transition_new_content t =
+  let sel = read_vt_class_selector t in
+  ensure_call_done t "view transition new";
+  View_transition_new sel
+
+let rec read_selector_list_tail read_item t acc =
+  let sel = read_item t in
+  let acc = sel :: acc in
+  Cursor.ws t;
+  if Cursor.comma_opt t then (
+    Cursor.ws t;
+    if Cursor.is_done t then Cursor.err t "expected at least one selector";
+    read_selector_list_tail read_item t acc)
+  else if Cursor.is_done t then List.rev acc
+  else Cursor.err t "unexpected tokens after selector"
+
+let read_selector_list_with read_item t =
+  Cursor.ws t;
+  if Cursor.is_done t then Cursor.err t "expected at least one selector"
+  else read_selector_list_tail read_item t []
+
+let read_forgiving_list read_item t =
+  let rec loop acc =
+    if Cursor.is_done t then List.rev acc
+    else loop (read_forgiving_segment read_item t acc)
+  in
+  loop []
+
+(* Forward declarations for mutually recursive functions *)
+let rec read_complex_list t = read_selector_list_with read_complex t
+
+and read_forgiving_complex_list t =
+  read_forgiving_list read_forgiving_complex_item t
+
+and read_forgiving_complex_item t =
+  let sel = read_complex t in
+  if has_pseudo_element sel then Cursor.err t "pseudo-element not allowed here";
+  if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
+  sel
 
 (** Read nth selector with optional "of S" clause *)
 and read_nth_selector t : nth * t list option =
@@ -1193,13 +1291,6 @@ and read_nth_selector t : nth * t list option =
   if not (Cursor.is_done t) then
     Cursor.err t "unexpected tokens after An+B expression";
   (expr, of_clause)
-
-and read_nth_expr t =
-  let expr = read_nth t in
-  Cursor.ws t;
-  if not (Cursor.is_done t) then
-    Cursor.err t "unexpected tokens after An+B expression";
-  expr
 
 (** Parse a relative selector (used inside :has()). A relative selector can
     start with a combinator (+, >, ~) without a left operand. *)
@@ -1271,8 +1362,6 @@ and read_nth_last_type_content t =
   let expr, of_sel = read_nth_selector t in
   Nth_last_of_type (expr, of_sel)
 
-and read_nth_col_content t = Nth_col (read_nth_expr t)
-and read_nth_last_col_content t = Nth_last_col (read_nth_expr t)
 and read_host_content t = Host (Cursor.option read_complex_list t)
 and read_host_context_content t = Host_context (read_complex_list t)
 and read_current_content t = Current_of (read_complex_list t)
@@ -1296,8 +1385,6 @@ and read_nth_of_type t = Cursor.call "nth-of-type" t read_nth_of_type_content
 and read_nth_last_of_type t =
   Cursor.call "nth-last-of-type" t read_nth_last_type_content
 
-and read_nth_col t = Cursor.call "nth-col" t read_nth_col_content
-and read_nth_last_col t = Cursor.call "nth-last-col" t read_nth_last_col_content
 and read_host t = Cursor.call "host" t read_host_content
 and read_host_context t = Cursor.call "host-context" t read_host_context_content
 and read_current t = Cursor.call "current" t read_current_content
@@ -1320,78 +1407,9 @@ and read_cue_region_content t =
   let sels = read_complex_list t in
   Cue_region sels
 
-and read_highlight_content t =
-  (* ::highlight() takes a single custom-ident per CSS Custom Highlight API
-     §3.1; comma-separated names are rejected. *)
-  let name = Cursor.ident t in
-  ensure_call_done t "highlight";
-  Highlight [ name ]
-
-and read_vt_class_selector t : vt_class_selector =
-  (* CSS View Transitions 2 §3.4.1 [<vt-class-selector>] = [<vt-name>?
-     [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name or
-     at least one class must be present. *)
-  Cursor.ws t;
-  let name =
-    match Cursor.peek_delim t with
-    | Some '*' ->
-        Cursor.skip t;
-        Some "*"
-    | Some '.' -> None
-    | _ -> Some (Cursor.ident t)
-  in
-  let rec read_classes acc =
-    match Cursor.peek_delim t with
-    | Some '.' ->
-        Cursor.skip t;
-        let cls = Cursor.ident t in
-        read_classes (cls :: acc)
-    | _ -> List.rev acc
-  in
-  let classes = read_classes [] in
-  { name; classes }
-
-and read_view_transition_group_content t =
-  let sel = read_vt_class_selector t in
-  ensure_call_done t "view transition group";
-  View_transition_group sel
-
-and read_vt_image_pair_content t =
-  let sel = read_vt_class_selector t in
-  ensure_call_done t "view transition image pair";
-  View_transition_image_pair sel
-
-and read_view_transition_old_content t =
-  let sel = read_vt_class_selector t in
-  ensure_call_done t "view transition old";
-  View_transition_old sel
-
-and read_view_transition_new_content t =
-  let sel = read_vt_class_selector t in
-  ensure_call_done t "view transition new";
-  View_transition_new sel
-
 and read_slotted t = Cursor.call "slotted" t read_slotted_content
 and read_cue t = Cursor.call "cue" t read_cue_content
 and read_cue_region t = Cursor.call "cue-region" t read_cue_region_content
-and read_highlight t = Cursor.call "highlight" t read_highlight_content
-
-and read_view_transition_group t =
-  Cursor.call "view-transition-group" t read_view_transition_group_content
-
-and read_view_transition_image_pair t =
-  Cursor.call "view-transition-image-pair" t read_vt_image_pair_content
-
-and read_view_transition_old t =
-  Cursor.call "view-transition-old" t read_view_transition_old_content
-
-and read_view_transition_new t =
-  Cursor.call "view-transition-new" t read_view_transition_new_content
-
-and pseudo_class_all_idents () =
-  pseudo_class_base_idents
-  @ pseudo_element_legacy_idents Single
-  @ pseudo_element_modern_idents @ pseudo_vendor_idents
 
 and pseudo_class_calls () =
   [
@@ -1419,36 +1437,6 @@ and pseudo_class_calls () =
     ("active-view-transition-type", read_active_view_transition_type);
   ]
 
-and read_unknown_pseudo_class_call ~all_idents t =
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
-      (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
-         [:hover], ...) called with parens ([:checked()]) is invalid. Reject so
-         the rule reader drops it rather than passing through as an unknown
-         call. *)
-      let lower = String.lowercase_ascii name in
-      let is_known_non_functional =
-        List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
-      in
-      if is_known_non_functional then
-        Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
-      Cursor.skip t;
-      Unknown_pseudo_class_call (name, arguments)
-  | _ -> Cursor.err_expected t "pseudo-class call"
-
-and read_unknown_pseudo_class_ident t =
-  match Cursor.ident_opt t with
-  | Some name -> Unknown_pseudo_class name
-  | None -> Cursor.err_expected t "pseudo-class"
-
-and read_unknown_pseudo_class ~all_idents t =
-  Cursor.one_of
-    [
-      read_unknown_pseudo_class_call ~all_idents;
-      read_unknown_pseudo_class_ident;
-    ]
-    t
-
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class ?(allow_unknown = false) t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
@@ -1470,11 +1458,23 @@ and read_pseudo_element t =
       ("slotted", read_slotted);
       ("cue", read_cue);
       ("cue-region", read_cue_region);
-      ("highlight", read_highlight);
-      ("view-transition-group", read_view_transition_group);
-      ("view-transition-image-pair", read_view_transition_image_pair);
-      ("view-transition-old", read_view_transition_old);
-      ("view-transition-new", read_view_transition_new);
+      ("highlight", fun t -> Cursor.call "highlight" t read_highlight_content);
+      ( "view-transition-group",
+        fun t ->
+          Cursor.call "view-transition-group" t
+            read_view_transition_group_content );
+      ( "view-transition-image-pair",
+        fun t ->
+          Cursor.call "view-transition-image-pair" t read_vt_image_pair_content
+      );
+      ( "view-transition-old",
+        fun t ->
+          Cursor.call "view-transition-old" t read_view_transition_old_content
+      );
+      ( "view-transition-new",
+        fun t ->
+          Cursor.call "view-transition-new" t read_view_transition_new_content
+      );
     ]
     ~default:(fun t ->
       let read_unknown_call t =
@@ -1901,7 +1901,32 @@ let rec can_follow_nth_of = function
       can_follow_nth_of first
   | _ -> true
 
-and pp_nth_func ctx name expr of_sel =
+let pp_nth_col_func ctx name expr =
+  let pp_nth_col ctx = function
+    | Odd -> Pp.string ctx "odd"
+    | Even -> Pp.string ctx "even"
+    | expr -> pp_nth ctx expr
+  in
+  Pp.char ctx ':';
+  Pp.string ctx name;
+  Pp.char ctx '(';
+  pp_nth_col ctx expr;
+  Pp.char ctx ')'
+
+let comma_space ctx () = Pp.string ctx ", "
+
+(* CSS Selectors 4 3.5: when the universal selector [*] is not the only
+   component of a compound, the [*] may be omitted. Namespaced universals
+   ([ns|*], [*|*]) carry namespace information and are preserved. *)
+let drop_redundant_universal = function
+  | [ _ ] as singleton -> singleton
+  | components ->
+      let kept =
+        List.filter (function Universal None -> false | _ -> true) components
+      in
+      if kept = [] then components else kept
+
+let rec pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
   Pp.string ctx name;
   Pp.char ctx '(';
@@ -1916,20 +1941,7 @@ and pp_nth_func ctx name expr of_sel =
   | None -> ());
   Pp.char ctx ')'
 
-and pp_nth_col_func ctx name expr =
-  let pp_nth_col ctx = function
-    | Odd -> Pp.string ctx "odd"
-    | Even -> Pp.string ctx "even"
-    | expr -> pp_nth ctx expr
-  in
-  Pp.char ctx ':';
-  Pp.string ctx name;
-  Pp.char ctx '(';
-  pp_nth_col ctx expr;
-  Pp.char ctx ')'
-
 and sels ctx selectors = Pp.list ~sep:Pp.comma pp ctx selectors
-and comma_space ctx () = Pp.string ctx ", "
 
 and sels_nested_function_lists ctx selectors =
   Pp.list ~sep:Pp.comma pp_nested_function_lists ctx selectors
@@ -2200,17 +2212,6 @@ and pp : t Pp.t =
       in
       Pp.list ~sep:Pp.comma pp ctx dedup
   | Nesting -> Pp.char ctx '&'
-
-(* CSS Selectors 4 3.5: when the universal selector [*] is not the only
-   component of a compound, the [*] may be omitted. Namespaced universals
-   ([ns|*], [*|*]) carry namespace information and are preserved. *)
-and drop_redundant_universal = function
-  | [ _ ] as singleton -> singleton
-  | components ->
-      let kept =
-        List.filter (function Universal None -> false | _ -> true) components
-      in
-      if kept = [] then components else kept
 
 let to_string ?minify t = Pp.to_string ?minify pp t
 let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t

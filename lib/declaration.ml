@@ -151,6 +151,15 @@ let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
+let invalid_var_arguments arguments =
+  match
+    List.filter (fun component -> not (is_ws_component component)) arguments
+  with
+  | Component.Preserved { kind = Token.Ident name; _ } :: _
+    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
+      false
+  | _ -> true
+
 let rec components_have_invalid_var components =
   List.exists component_has_invalid_var components
 
@@ -165,15 +174,6 @@ and component_has_invalid_var = function
   | Component.Block { node = { value; _ }; _ } ->
       components_have_invalid_var value
   | Component.Preserved _ -> false
-
-and invalid_var_arguments arguments =
-  match
-    List.filter (fun component -> not (is_ws_component component)) arguments
-  with
-  | Component.Preserved { kind = Token.Ident name; _ } :: _
-    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
-      false
-  | _ -> true
 
 let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var

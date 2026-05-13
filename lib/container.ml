@@ -582,6 +582,26 @@ let specific_of_string raw =
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
+let atom_of_string s =
+  let s = String.trim s in
+  let stripped = strip_outer_parens s in
+  match classify_query_surface stripped with
+  | _ when String.contains s 'v' && contains_var_function s -> (
+      match unresolved_media_feature s with
+      | Some query -> query
+      | None -> specific_of_string s)
+  | Style_func _ | Scroll_state_func _ -> specific_of_string stripped
+  | Parenthesized_feature | Other_query -> (
+      match Media.of_string_strict s with
+      | Media.Min_width_rem rem -> Min_width_rem rem
+      | Media.Min_width px when Float.is_integer px ->
+          Min_width_px (int_of_float px)
+      | media -> (
+          match single_feature_of_media media with
+          | Some f -> Feature_query f
+          | None -> failwith "not a container feature query")
+      | exception Failure _ -> specific_of_string s)
+
 let rec unnamed_query_not s stripped =
   if String.length stripped >= 4 && String.sub stripped 0 4 = "not " then
     (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly one
@@ -619,26 +639,6 @@ and unnamed_of_string s =
             in
             And (unnamed_of_string lhs, unnamed_of_string rhs)
         | None -> unnamed_query_not s stripped)
-
-and atom_of_string s =
-  let s = String.trim s in
-  let stripped = strip_outer_parens s in
-  match classify_query_surface stripped with
-  | _ when String.contains s 'v' && contains_var_function s -> (
-      match unresolved_media_feature s with
-      | Some query -> query
-      | None -> specific_of_string s)
-  | Style_func _ | Scroll_state_func _ -> specific_of_string stripped
-  | Parenthesized_feature | Other_query -> (
-      match Media.of_string_strict s with
-      | Media.Min_width_rem rem -> Min_width_rem rem
-      | Media.Min_width px when Float.is_integer px ->
-          Min_width_px (int_of_float px)
-      | media -> (
-          match single_feature_of_media media with
-          | Some f -> Feature_query f
-          | None -> failwith "not a container feature query")
-      | exception Failure _ -> specific_of_string s)
 
 let of_string s =
   match split_named s with

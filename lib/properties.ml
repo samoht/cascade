@@ -2317,7 +2317,7 @@ let rec read_shadow_single t : shadow =
     ~calls:[ ("var", read_var) ]
     ~default:Shadow.read t
 
-and read_shadow t : shadow =
+let read_shadow t : shadow =
   match Cursor.list ~sep:Cursor.comma ~at_least:1 read_shadow_single t with
   | [ x ] -> x
   | l -> List l
@@ -2523,6 +2523,9 @@ module Transform = struct
     ]
 end
 
+let is_transform_none (value : transform) =
+  match value with None -> true | _ -> false
+
 let rec read_transform t : transform =
   (* Add var support to the parsers list *)
   let read_var_transform t : transform =
@@ -2542,9 +2545,6 @@ let rec read_transform t : transform =
 
 and read_transform_value t : transform =
   match read_transforms t with [ x ] -> x | xs -> (List xs : transform)
-
-and is_transform_none (value : transform) =
-  match value with None -> true | _ -> false
 
 and read_transforms t : transform list =
   let transforms, error_opt = Cursor.many read_transform t in
@@ -3083,6 +3083,73 @@ let pp_conic_gradient_named name ctx (config, stops) =
       | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
+let pp_linear_gradient_named name ctx (dir, stops) =
+  Pp.call name
+    (fun ctx (dir, stops) ->
+      let head : [ `Skip | `Direction | `Interp_only of color_interpolation ] =
+        match dir with
+        | To_bottom -> `Skip
+        | With_interpolation (To_bottom, interp) -> `Interp_only interp
+        | _ -> `Direction
+      in
+      (match head with
+      | `Skip -> ()
+      | `Direction -> (
+          pp_gradient_direction ctx dir;
+          match stops with [] -> () | _ -> Pp.comma ctx ())
+      | `Interp_only interp -> (
+          pp_color_interpolation ctx interp;
+          match stops with [] -> () | _ -> Pp.comma ctx ()));
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (dir, stops)
+
+let pp_webkit_linear_gradient_named name ctx (dir, stops) =
+  Pp.call name
+    (fun ctx (dir, stops) ->
+      let print_direction = match dir with To_bottom -> false | _ -> true in
+      if print_direction then (
+        pp_webkit_gradient_direction ctx dir;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (dir, stops)
+
+let pp_radial_gradient_named name ctx (config, stops) =
+  Pp.call name
+    (fun ctx (config, stops) ->
+      let has_config =
+        config.shape <> None || config.size <> None || config.position <> None
+        || config.interpolation <> None
+      in
+      if has_config then (
+        pp_radial_gradient_config ctx config;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (config, stops)
+
+let pp_image_set_option ctx
+    { image_set_source; image_set_resolution; image_set_mime_type } =
+  (match image_set_source with
+  | Image_set_url u -> Pp.url ctx u
+  | Image_set_string s -> Pp.quoted ctx s);
+  Option.iter
+    (fun mime ->
+      Pp.space ctx ();
+      Pp.string ctx "type(";
+      Pp.quoted ctx mime;
+      Pp.char ctx ')')
+    image_set_mime_type;
+  Option.iter
+    (fun res ->
+      Pp.sp ctx ();
+      Pp.string ctx res)
+    image_set_resolution
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
@@ -3162,73 +3229,6 @@ let rec pp_background_image : background_image Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-
-and pp_linear_gradient_named name ctx (dir, stops) =
-  Pp.call name
-    (fun ctx (dir, stops) ->
-      let head : [ `Skip | `Direction | `Interp_only of color_interpolation ] =
-        match dir with
-        | To_bottom -> `Skip
-        | With_interpolation (To_bottom, interp) -> `Interp_only interp
-        | _ -> `Direction
-      in
-      (match head with
-      | `Skip -> ()
-      | `Direction -> (
-          pp_gradient_direction ctx dir;
-          match stops with [] -> () | _ -> Pp.comma ctx ())
-      | `Interp_only interp -> (
-          pp_color_interpolation ctx interp;
-          match stops with [] -> () | _ -> Pp.comma ctx ()));
-      match stops with
-      | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-    ctx (dir, stops)
-
-and pp_webkit_linear_gradient_named name ctx (dir, stops) =
-  Pp.call name
-    (fun ctx (dir, stops) ->
-      let print_direction = match dir with To_bottom -> false | _ -> true in
-      if print_direction then (
-        pp_webkit_gradient_direction ctx dir;
-        match stops with [] -> () | _ -> Pp.comma ctx ());
-      match stops with
-      | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-    ctx (dir, stops)
-
-and pp_radial_gradient_named name ctx (config, stops) =
-  Pp.call name
-    (fun ctx (config, stops) ->
-      let has_config =
-        config.shape <> None || config.size <> None || config.position <> None
-        || config.interpolation <> None
-      in
-      if has_config then (
-        pp_radial_gradient_config ctx config;
-        match stops with [] -> () | _ -> Pp.comma ctx ());
-      match stops with
-      | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-    ctx (config, stops)
-
-and pp_image_set_option ctx
-    { image_set_source; image_set_resolution; image_set_mime_type } =
-  (match image_set_source with
-  | Image_set_url u -> Pp.url ctx u
-  | Image_set_string s -> Pp.quoted ctx s);
-  Option.iter
-    (fun mime ->
-      Pp.space ctx ();
-      Pp.string ctx "type(";
-      Pp.quoted ctx mime;
-      Pp.char ctx ')')
-    image_set_mime_type;
-  Option.iter
-    (fun res ->
-      Pp.sp ctx ();
-      Pp.string ctx res)
-    image_set_resolution
 
 and pp_cross_fade_option ctx { cross_fade_image; cross_fade_percent } =
   pp_background_image ctx cross_fade_image;
@@ -4026,6 +4026,19 @@ let rec pp_opacity : opacity Pp.t =
    The [_dim_only] reader excludes the unitless alternative so
    [read_calc_factor] falls through to its own [Num] path, matching the
    [<number-percentage>] convention. *)
+let rec read_opacity_dim_only t : opacity =
+  Cursor.enum_or_calls "opacity"
+    [
+      ("inherit", (Inherit : opacity));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
+    ~default:(fun t -> Cursor.err_expected t "opacity (var/calc inside calc)")
+    t
+
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
   let read_numeric_math t : opacity =
@@ -4064,19 +4077,6 @@ let rec read_opacity t : opacity =
         );
       ]
     ~default:read_number_or_percentage t
-
-and read_opacity_dim_only t : opacity =
-  Cursor.enum_or_calls "opacity"
-    [
-      ("inherit", (Inherit : opacity));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
-    ~default:(fun t -> Cursor.err_expected t "opacity (var/calc inside calc)")
-    t
 
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
@@ -5062,6 +5062,45 @@ let rec pp_hyphens : hyphens Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_list_style_symbol_sep ctx first (symbol : list_style_symbol) =
+  if !first then first := false
+  else
+    match symbol with
+    | String _ when Pp.minified ctx -> ()
+    | _ -> Pp.space ctx ()
+
+let pp_symbols_type ctx (kind : symbols_type) =
+  match kind with
+  | Cyclic -> Pp.string ctx "cyclic"
+  | Numeric -> Pp.string ctx "numeric"
+  | Alphabetic -> Pp.string ctx "alphabetic"
+  | Symbolic -> Pp.string ctx "symbolic"
+  | Fixed -> Pp.string ctx "fixed"
+
+let pp_list_style_symbol ctx (symbol : list_style_symbol) =
+  match symbol with
+  | String symbol -> Pp.quoted_string ctx symbol
+  | Url url -> Pp.url ctx url
+
+let pp_list_style_symbols ctx (kind, symbols) =
+  let first = ref true in
+  let sep symbol = pp_list_style_symbol_sep ctx first symbol in
+  let kind =
+    match kind with
+    | Option.Some Symbolic when Pp.minified ctx -> Option.None
+    | kind -> (kind : symbols_type option)
+  in
+  Option.iter
+    (fun kind ->
+      sep (String "");
+      pp_symbols_type ctx kind)
+    kind;
+  List.iter
+    (fun symbol ->
+      sep symbol;
+      pp_list_style_symbol ctx symbol)
+    symbols
+
 let rec pp_list_style_type : list_style_type Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -5082,45 +5121,6 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_list_style_type ctx v
-
-and pp_list_style_symbols ctx (kind, symbols) =
-  let first = ref true in
-  let sep symbol = pp_list_style_symbol_sep ctx first symbol in
-  let kind =
-    match kind with
-    | Option.Some Symbolic when Pp.minified ctx -> Option.None
-    | kind -> (kind : symbols_type option)
-  in
-  Option.iter
-    (fun kind ->
-      sep (String "");
-      pp_symbols_type ctx kind)
-    kind;
-  List.iter
-    (fun symbol ->
-      sep symbol;
-      pp_list_style_symbol ctx symbol)
-    symbols
-
-and pp_list_style_symbol_sep ctx first (symbol : list_style_symbol) =
-  if !first then first := false
-  else
-    match symbol with
-    | String _ when Pp.minified ctx -> ()
-    | _ -> Pp.space ctx ()
-
-and pp_symbols_type ctx (kind : symbols_type) =
-  match kind with
-  | Cyclic -> Pp.string ctx "cyclic"
-  | Numeric -> Pp.string ctx "numeric"
-  | Alphabetic -> Pp.string ctx "alphabetic"
-  | Symbolic -> Pp.string ctx "symbolic"
-  | Fixed -> Pp.string ctx "fixed"
-
-and pp_list_style_symbol ctx (symbol : list_style_symbol) =
-  match symbol with
-  | String symbol -> Pp.quoted_string ctx symbol
-  | Url url -> Pp.url ctx url
 
 let rec pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
@@ -7078,6 +7078,11 @@ let rec pp_position_try_order : position_try_order Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_position_visibility_condition : position_visibility_condition Pp.t =
+ fun ctx -> function
+  | Anchors_visible -> Pp.string ctx "anchors-visible"
+  | No_overflow -> Pp.string ctx "no-overflow"
+
 let rec pp_position_visibility : position_visibility Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_visibility ctx v
@@ -7089,11 +7094,6 @@ let rec pp_position_visibility : position_visibility Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-
-and pp_position_visibility_condition : position_visibility_condition Pp.t =
- fun ctx -> function
-  | Anchors_visible -> Pp.string ctx "anchors-visible"
-  | No_overflow -> Pp.string ctx "no-overflow"
 
 let pp_position_area_keyword : position_area_keyword Pp.t =
  fun ctx -> function
@@ -8325,7 +8325,7 @@ let rec pp_font_variant_numeric_token : font_variant_numeric_token Pp.t =
   | Slashed_zero -> Pp.string ctx "slashed-zero"
   | Var v -> pp_var pp_font_variant_numeric_token ctx v
 
-and pp_font_variant_numeric : font_variant_numeric Pp.t =
+let rec pp_font_variant_numeric : font_variant_numeric Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Inherit -> Pp.string ctx "inherit"
@@ -8422,6 +8422,23 @@ let pp_repeat_count ctx (count : repeat_count) =
   | Auto_fill -> Pp.string ctx "auto-fill"
   | Auto_fit -> Pp.string ctx "auto-fit"
 
+let pp_grid_auto_flow_shorthand ctx = function
+  | Row | Column -> Pp.string ctx "auto-flow"
+  | Row_dense | Column_dense ->
+      Pp.string ctx "auto-flow";
+      Pp.space ctx ();
+      Pp.string ctx "dense"
+  | Dense ->
+      Pp.string ctx "auto-flow";
+      Pp.space ctx ();
+      Pp.string ctx "dense"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_grid_auto_flow ctx v
+
 let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -8503,23 +8520,6 @@ let rec pp_grid_template : grid_template Pp.t =
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
-
-and pp_grid_auto_flow_shorthand ctx = function
-  | Row | Column -> Pp.string ctx "auto-flow"
-  | Row_dense | Column_dense ->
-      Pp.string ctx "auto-flow";
-      Pp.space ctx ();
-      Pp.string ctx "dense"
-  | Dense ->
-      Pp.string ctx "auto-flow";
-      Pp.space ctx ();
-      Pp.string ctx "dense"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_grid_auto_flow ctx v
 
 and pp_grid_track_list ctx tracks =
   (* Track-list items are separated by whitespace, but [[...]] blocks have
@@ -11527,6 +11527,34 @@ let read_content_string t =
   | Some (value, quote, repr) -> Quoted { value; quote; repr }
   | None -> Cursor.err_expected t "string"
 
+let read_content_counter t =
+  Cursor.call "counter" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Counter name)
+
+let read_content_string_ref t =
+  Cursor.call "string" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      String_ref name)
+
+let read_content_counters t =
+  Cursor.call "counters" t (fun inner ->
+      Cursor.ws inner;
+      let name = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Cursor.ws inner;
+      let separator = Cursor.string inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Counters (name, separator) : content))
+
 let rec read_content_attr t =
   Cursor.call "attr" t (fun inner ->
       Cursor.ws inner;
@@ -11547,34 +11575,6 @@ let rec read_content_attr t =
       Cursor.ws inner;
       Cursor.expect_eof inner;
       Attr { name; type_; fallback })
-
-and read_content_counter t =
-  Cursor.call "counter" t (fun inner ->
-      Cursor.ws inner;
-      let name = Cursor.ident inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      Counter name)
-
-and read_content_string_ref t =
-  Cursor.call "string" t (fun inner ->
-      Cursor.ws inner;
-      let name = Cursor.ident inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      String_ref name)
-
-and read_content_counters t =
-  Cursor.call "counters" t (fun inner ->
-      Cursor.ws inner;
-      let name = Cursor.ident inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      Cursor.ws inner;
-      let separator = Cursor.string inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      (Counters (name, separator) : content))
 
 and read_content_single t =
   let read_var t : content = Var (read_var read_content t) in
@@ -14795,7 +14795,7 @@ end
 let read_animation_shorthand t : animation_shorthand =
   Animation.read_shorthand t
 
-let rec pp_animation_shorthand : animation_shorthand Pp.t =
+let pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
   let first = ref true in
   (* Track if the previous value ends with ')' - timing functions end with
@@ -14883,7 +14883,7 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     ctx
     (Animation.timeline ~quote_name:quote_ambiguous_name anim)
 
-and pp_animation : animation Pp.t =
+let rec pp_animation : animation Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -15317,7 +15317,7 @@ and read_gradient_stop_list t : gradient_stop =
   | [ x ] -> x
   | l -> List l
 
-and read_gradient_stop t : gradient_stop =
+let read_gradient_stop t : gradient_stop =
   (* Only parse single gradient stops - lists are created by var fallback
      parsing *)
   read_gradient_stop_single t
@@ -15771,6 +15771,149 @@ let read_bg_url t : background_image =
       read_bg_url_call t terminated
   | _ -> Cursor.err_expected t "url"
 
+let read_webkit_gradient_point t =
+  match read_position_value t with
+  | Left_top | Top_left -> Webkit_gradient.Left_top
+  | Left_bottom | Bottom_left -> Webkit_gradient.Left_bottom
+  | Center -> Webkit_gradient.Center
+  | position -> Webkit_gradient.Position position
+
+let read_webkit_gradient_stop t =
+  let color_arg name inner =
+    Cursor.ws inner;
+    let color = read_color inner in
+    Cursor.ws inner;
+    Cursor.expect_eof inner;
+    match name with
+    | "from" -> Webkit_gradient.From color
+    | "to" -> Webkit_gradient.To color
+    | _ -> assert false
+  in
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = ("from" | "to") as name; _ }; _ }) ->
+      Cursor.call name t (color_arg name)
+  | Some (Component.Func { node = { name = "color-stop"; _ }; _ }) ->
+      Cursor.call "color-stop" t (fun inner ->
+          Cursor.ws inner;
+          let position = read_percentage inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          Cursor.ws inner;
+          let color = read_color inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Webkit_gradient.Color_stop (position, color))
+  | _ -> Cursor.err_expected t "-webkit-gradient color stop"
+
+let read_webkit_gradient_radius t =
+  match Cursor.number_opt t with
+  | Some radius -> radius
+  | None -> Cursor.err_expected t "-webkit-gradient radius"
+
+let read_webkit_gradient_body t =
+  Cursor.ws t;
+  let kind = Cursor.ident t |> String.lowercase_ascii in
+  Cursor.ws t;
+  Cursor.comma t;
+  match kind with
+  | "linear" ->
+      Cursor.ws t;
+      let start = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let finish = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let stops =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
+      in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Webkit_gradient (Webkit_gradient.Linear { start; finish; stops })
+  | "radial" ->
+      Cursor.ws t;
+      let inner_center = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let inner_radius = read_webkit_gradient_radius t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let outer_center = read_webkit_gradient_point t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let outer_radius = read_webkit_gradient_radius t in
+      Cursor.ws t;
+      Cursor.comma t;
+      Cursor.ws t;
+      let stops =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
+      in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Webkit_gradient
+        (Webkit_gradient.Radial
+           { inner_center; inner_radius; outer_center; outer_radius; stops })
+  | _ -> Cursor.err_invalid t ("-webkit-gradient kind: " ^ kind)
+
+let read_image_set_option t : image_set_option =
+  let source : image_set_source =
+    Cursor.one_of
+      [
+        (fun t -> (Image_set_url (Cursor.url t) : image_set_source));
+        (fun t -> Image_set_string (Cursor.string t));
+      ]
+      t
+  in
+  (* [<resolution> || type(<string>)] in any order; both optional. Recurse,
+     accepting whichever modifier hasn't been seen yet, until neither
+     matches. *)
+  let read_resolution_opt t : string option =
+    match Cursor.dimension_opt t with
+    | None -> None
+    | Some (value, unit_) ->
+        let buf = Buffer.create 8 in
+        let pp_ctx =
+          {
+            Pp.minify = true;
+            indent = 0;
+            buf;
+            inline = false;
+            in_function = false;
+            theme = None;
+            theme_defaults = Pp.no_theme_defaults;
+          }
+        in
+        Pp.float pp_ctx value;
+        Buffer.add_string buf unit_;
+        Some (Buffer.contents buf)
+  in
+  let rec loop (mime : string option) (resolution : string option) =
+    Cursor.ws t;
+    match (mime, Cursor.function_call "type" Cursor.string t) with
+    | None, Some s -> loop (Some s) resolution
+    | _ -> (
+        match (resolution, read_resolution_opt t) with
+        | None, Some r -> loop mime (Some r)
+        | _ -> (mime, resolution))
+  in
+  let mime, resolution = loop None None in
+  if Option.is_none mime && Option.is_none resolution then
+    Cursor.err_invalid t
+      "image-set option requires a <resolution> or type(<string>)";
+  {
+    image_set_source = source;
+    image_set_resolution = resolution;
+    image_set_mime_type = mime;
+  }
+
+let read_image_set_body t : background_image =
+  Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
+
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
      explicitly before dispatching on the function/ident shape. *)
@@ -15945,98 +16088,6 @@ let rec read_bg_image t : background_image =
     ]
     t
 
-and read_webkit_gradient_point t =
-  match read_position_value t with
-  | Left_top | Top_left -> Webkit_gradient.Left_top
-  | Left_bottom | Bottom_left -> Webkit_gradient.Left_bottom
-  | Center -> Webkit_gradient.Center
-  | position -> Webkit_gradient.Position position
-
-and read_webkit_gradient_stop t =
-  let color_arg name inner =
-    Cursor.ws inner;
-    let color = read_color inner in
-    Cursor.ws inner;
-    Cursor.expect_eof inner;
-    match name with
-    | "from" -> Webkit_gradient.From color
-    | "to" -> Webkit_gradient.To color
-    | _ -> assert false
-  in
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name = ("from" | "to") as name; _ }; _ }) ->
-      Cursor.call name t (color_arg name)
-  | Some (Component.Func { node = { name = "color-stop"; _ }; _ }) ->
-      Cursor.call "color-stop" t (fun inner ->
-          Cursor.ws inner;
-          let position = read_percentage inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          Cursor.ws inner;
-          let color = read_color inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Webkit_gradient.Color_stop (position, color))
-  | _ -> Cursor.err_expected t "-webkit-gradient color stop"
-
-and read_webkit_gradient_radius t =
-  match Cursor.number_opt t with
-  | Some radius -> radius
-  | None -> Cursor.err_expected t "-webkit-gradient radius"
-
-and read_webkit_gradient_body t =
-  Cursor.ws t;
-  let kind = Cursor.ident t |> String.lowercase_ascii in
-  Cursor.ws t;
-  Cursor.comma t;
-  match kind with
-  | "linear" ->
-      Cursor.ws t;
-      let start = read_webkit_gradient_point t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let finish = read_webkit_gradient_point t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let stops =
-        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
-      in
-      Cursor.ws t;
-      Cursor.expect_eof t;
-      Webkit_gradient (Webkit_gradient.Linear { start; finish; stops })
-  | "radial" ->
-      Cursor.ws t;
-      let inner_center = read_webkit_gradient_point t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let inner_radius = read_webkit_gradient_radius t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let outer_center = read_webkit_gradient_point t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let outer_radius = read_webkit_gradient_radius t in
-      Cursor.ws t;
-      Cursor.comma t;
-      Cursor.ws t;
-      let stops =
-        Cursor.list ~sep:Cursor.comma ~at_least:1 read_webkit_gradient_stop t
-      in
-      Cursor.ws t;
-      Cursor.expect_eof t;
-      Webkit_gradient
-        (Webkit_gradient.Radial
-           { inner_center; inner_radius; outer_center; outer_radius; stops })
-  | _ -> Cursor.err_invalid t ("-webkit-gradient kind: " ^ kind)
-
-and read_image_set_body t : background_image =
-  Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
-
 and read_cross_fade_body t : background_image =
   (* Parse a non-empty comma-separated list where every comma must be followed
      by another option. Cursor.list is permissive about trailing separators
@@ -16080,57 +16131,6 @@ and read_cross_fade_option t : cross_fade_option =
         | _ -> None)
   in
   { cross_fade_image = image; cross_fade_percent = pct }
-
-and read_image_set_option t : image_set_option =
-  let source : image_set_source =
-    Cursor.one_of
-      [
-        (fun t -> (Image_set_url (Cursor.url t) : image_set_source));
-        (fun t -> Image_set_string (Cursor.string t));
-      ]
-      t
-  in
-  (* [<resolution> || type(<string>)] in any order; both optional. Recurse,
-     accepting whichever modifier hasn't been seen yet, until neither
-     matches. *)
-  let read_resolution_opt t : string option =
-    match Cursor.dimension_opt t with
-    | None -> None
-    | Some (value, unit_) ->
-        let buf = Buffer.create 8 in
-        let pp_ctx =
-          {
-            Pp.minify = true;
-            indent = 0;
-            buf;
-            inline = false;
-            in_function = false;
-            theme = None;
-            theme_defaults = Pp.no_theme_defaults;
-          }
-        in
-        Pp.float pp_ctx value;
-        Buffer.add_string buf unit_;
-        Some (Buffer.contents buf)
-  in
-  let rec loop (mime : string option) (resolution : string option) =
-    Cursor.ws t;
-    match (mime, Cursor.function_call "type" Cursor.string t) with
-    | None, Some s -> loop (Some s) resolution
-    | _ -> (
-        match (resolution, read_resolution_opt t) with
-        | None, Some r -> loop mime (Some r)
-        | _ -> (mime, resolution))
-  in
-  let mime, resolution = loop None None in
-  if Option.is_none mime && Option.is_none resolution then
-    Cursor.err_invalid t
-      "image-set option requires a <resolution> or type(<string>)";
-  {
-    image_set_source = source;
-    image_set_resolution = resolution;
-    image_set_mime_type = mime;
-  }
 
 let read_background_image t : background_image =
   let first = read_bg_image t in

@@ -222,8 +222,27 @@ let pp_property_moves buf indent moves total_diffs =
       (" (and " ^ string_of_int (total_diffs - List.length moves) ^ " more)");
   Buffer.add_char buf '\n'
 
-let rec pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2
-    buf =
+let pp_property_move_summary buf indent prop_names1 prop_names2 =
+  let moves = property_moves ~max_count:3 prop_names1 prop_names2 in
+  if moves <> [] then
+    let total_diffs =
+      List.fold_left2
+        (fun acc p1 p2 -> if p1 <> p2 then acc + 1 else acc)
+        0 prop_names1 prop_names2
+    in
+    pp_property_moves buf indent moves total_diffs
+
+let pp_same_property_reorder buf indent prop_names1 prop_names2 =
+  match adjacent_swap prop_names1 prop_names2 with
+  | Some (prop1, prop2) ->
+      let truncate s = String_diff.truncate_middle 20 s in
+      Buffer.add_string buf
+        (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
+       ^ "\n")
+  | None -> pp_property_move_summary buf indent prop_names1 prop_names2
+
+let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
+    =
   let indent =
     if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
   in
@@ -236,25 +255,6 @@ let rec pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2
   in
   if same_props && prop_names1 <> prop_names2 then
     pp_same_property_reorder buf indent prop_names1 prop_names2
-
-and pp_same_property_reorder buf indent prop_names1 prop_names2 =
-  match adjacent_swap prop_names1 prop_names2 with
-  | Some (prop1, prop2) ->
-      let truncate s = String_diff.truncate_middle 20 s in
-      Buffer.add_string buf
-        (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
-       ^ "\n")
-  | None -> pp_property_move_summary buf indent prop_names1 prop_names2
-
-and pp_property_move_summary buf indent prop_names1 prop_names2 =
-  let moves = property_moves ~max_count:3 prop_names1 prop_names2 in
-  if moves <> [] then
-    let total_diffs =
-      List.fold_left2
-        (fun acc p1 p2 -> if p1 <> p2 then acc + 1 else acc)
-        0 prop_names1 prop_names2
-    in
-    pp_property_moves buf indent moves total_diffs
 
 let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     ~old_declarations ~new_declarations ~property_changes ~added_properties
@@ -837,7 +837,22 @@ let try_equivalent_props_match rules2_by_props used_rules r1 d1 props1 =
       Some (rule_selector r1, rule_selector r2, d1, d2)
   | None -> None
 
-let rec rules_modified_diff rules1 rules2 =
+let pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+    props1 =
+  match try_same_key_match rules2_by_key used_rules r1 key1 d1 with
+  | Some result -> Some result
+  | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
+
+let pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+    props1 =
+  match try_exact_match rules2_by_key used_rules r1 key1 d1 with
+  | Some (Some result) -> Some result
+  | Some None -> None
+  | None ->
+      pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+        props1
+
+let rules_modified_diff rules1 rules2 =
   let rules2_by_key, rules2_by_props = build_rule_lookup_tables rules2 in
   let used_rules = Hashtbl.create (List.length rules2) in
 
@@ -855,21 +870,6 @@ let rec rules_modified_diff rules1 rules2 =
         aux acc t1
   in
   aux [] rules1
-
-and pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-    props1 =
-  match try_exact_match rules2_by_key used_rules r1 key1 d1 with
-  | Some (Some result) -> Some result
-  | Some None -> None
-  | None ->
-      pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-        props1
-
-and pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-    props1 =
-  match try_same_key_match rules2_by_key used_rules r1 key1 d1 with
-  | Some result -> Some result
-  | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
@@ -942,7 +942,24 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
       | Some (s, d) -> (d, Some s)
       | None -> (decls2, None))
 
-let rec ordering_diff rules1 rules2 =
+let add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
+  let sel1_key = selector_key_of_selector sel1 in
+  let sel2_key = selector_key_of_selector sel2 in
+  if sel1_key = sel2_key then acc
+  else if
+    selector_in_list sel1_key remaining2 && selector_in_list sel2_key remaining1
+  then
+    let decls1_from_map2, sel2_opt =
+      matching_decls_in_map2 sel1_key decls1 map2 decls2
+    in
+    let sel2 = match sel2_opt with Some s -> s | None -> sel1 in
+    (sel1, sel2, decls1, decls1_from_map2) :: acc
+  else acc
+
+(* no-op: pure rule ordering is handled in handle_structural_diff via
+   has_ordering_changes/ordering_diff *)
+
+let ordering_diff rules1 rules2 =
   let map1 = build_selector_map rules1 in
   let map2 = build_selector_map rules2 in
 
@@ -959,23 +976,6 @@ let rec ordering_diff rules1 rules2 =
   in
 
   find_ordering_issues [] map1 map2
-
-and add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
-  let sel1_key = selector_key_of_selector sel1 in
-  let sel2_key = selector_key_of_selector sel2 in
-  if sel1_key = sel2_key then acc
-  else if
-    selector_in_list sel1_key remaining2 && selector_in_list sel2_key remaining1
-  then
-    let decls1_from_map2, sel2_opt =
-      matching_decls_in_map2 sel1_key decls1 map2 decls2
-    in
-    let sel2 = match sel2_opt with Some s -> s | None -> sel1 in
-    (sel1, sel2, decls1, decls1_from_map2) :: acc
-  else acc
-
-(* no-op: pure rule ordering is handled in handle_structural_diff via
-   has_ordering_changes/ordering_diff *)
 
 let extract_base_parent_selector sel =
   (* Extract parent from selector string and strip pseudo-classes *)
@@ -1300,6 +1300,320 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   @ List.map convert_removed_rule r_removed
   @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
 
+(* Generic helpers for processing nested containers *)
+let extract_items_with_positions extract_fn stmts =
+  List.mapi
+    (fun i stmt ->
+      match extract_fn stmt with
+      | Some (cond, rules) -> Some (i, cond, rules)
+      | None -> None)
+    stmts
+  |> List.filter_map (fun x -> x)
+
+let group_by_condition items =
+  let tbl = Hashtbl.create 16 in
+  List.iter
+    (fun (pos, cond, rules) ->
+      let existing = try Hashtbl.find tbl cond with Not_found -> [] in
+      Hashtbl.replace tbl cond (existing @ [ (pos, rules) ]))
+    items;
+  tbl
+
+let block_positions_differ blocks1_list blocks2_list =
+  List.length blocks1_list = List.length blocks2_list
+  &&
+  let pos1_list = List.map fst blocks1_list in
+  let pos2_list = List.map fst blocks2_list in
+  List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
+
+let block_structure_differs blocks1_list blocks2_list =
+  List.length blocks1_list <> List.length blocks2_list
+  || block_positions_differ blocks1_list blocks2_list
+
+let detect_block_structure_changes blocks1 blocks2 =
+  let block_structure_changed = Hashtbl.create 16 in
+  Hashtbl.iter
+    (fun cond blocks1_list ->
+      match Hashtbl.find_opt blocks2 cond with
+      | Some blocks2_list ->
+          if block_structure_differs blocks1_list blocks2_list then
+            Hashtbl.replace block_structure_changed cond
+              (blocks1_list, blocks2_list)
+      | _ -> ())
+    blocks1;
+  block_structure_changed
+
+let only_declaration_reorders rule_changes nested_containers =
+  rule_changes <> []
+  && List.for_all
+       (function
+         | Rule_reordered
+             { old_declarations = Some _; new_declarations = Some _; _ } ->
+             true
+         | _ -> false)
+       rule_changes
+  && nested_containers = []
+
+let container_position extract_fn cond stmts =
+  let rec go i = function
+    | [] -> None
+    | stmt :: rest -> (
+        match extract_fn stmt with
+        | Some (c, _) when c = cond -> Some i
+        | _ -> go (i + 1) rest)
+  in
+  go 0 stmts
+
+let reordered_container container_type cond rules1 pos1 pos2 =
+  Container_reordered
+    {
+      info = { container_type; condition = cond; rules = rules1 };
+      expected_pos = pos1;
+      actual_pos = pos2;
+    }
+
+let modified_container container_type cond rules1 rules2 rule_changes
+    nested_containers =
+  Container_modified
+    {
+      info = { container_type; condition = cond; rules = rules1 };
+      actual_rules = rules2;
+      rule_changes;
+      container_changes = nested_containers;
+    }
+
+let detect_order_only_change ~container_type added removed items1 items2 =
+  if added <> [] || removed <> [] then None
+  else if List.length items1 <> List.length items2 || items1 = [] then None
+  else
+    let conds1 = List.map fst items1 in
+    let conds2 = List.map fst items2 in
+    if conds1 = conds2 then None
+    else
+      match (items1, items2) with
+      | (cond, rules1) :: _, (_, rules2) :: _ ->
+          Some
+            (Container_modified
+               {
+                 info = { container_type; condition = cond; rules = rules1 };
+                 actual_rules = rules2;
+                 rule_changes = [];
+                 container_changes = [];
+               })
+      | _ -> None
+
+let property_diff items1 items2 =
+  let key_of (Css.Property_info { name; _ }) = name in
+  let key_equal = String.equal in
+  let is_empty_diff prop1 prop2 =
+    let (Css.Property_info { name = n1; inherits = i1; _ }) = prop1 in
+    let (Css.Property_info { name = n2; inherits = i2; _ }) = prop2 in
+    n1 = n2 && i1 = i2
+  in
+  let added, removed, modified_pairs =
+    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+  in
+  let added =
+    List.map (fun (Css.Property_info { name; _ }) -> (name, [])) added
+  in
+  let removed =
+    List.map (fun (Css.Property_info { name; _ }) -> (name, [])) removed
+  in
+  let modified =
+    List.map
+      (fun (Css.Property_info { name; _ }, _) -> (name, [], []))
+      modified_pairs
+  in
+  (added, removed, modified)
+
+let property_reorder_diff names2 (i1, name1) =
+  let i2 = List.find_index (( = ) name1) names2 |> Option.value ~default:i1 in
+  if i1 = i2 then None
+  else
+    let swapped_with =
+      if i1 < List.length names2 then Some ("@property " ^ List.nth names2 i1)
+      else None
+    in
+    Some
+      (Rule_reordered
+         {
+           selector = "@property " ^ name1;
+           expected_pos = i1;
+           actual_pos = i2;
+           swapped_with;
+           old_declarations = None;
+           new_declarations = None;
+         })
+
+let property_reorder_container stmts1 stmts2 reorder_diffs =
+  match reorder_diffs with
+  | [] -> []
+  | _ ->
+      [
+        Container_modified
+          {
+            info =
+              {
+                container_type = `Property;
+                condition = "@property rules";
+                rules = stmts1;
+              };
+            actual_rules = stmts2;
+            rule_changes = reorder_diffs;
+            container_changes = [];
+          };
+      ]
+
+let property_reorder_diffs stmts1 stmts2 items1 items2 =
+  let get_names items =
+    List.map (fun (Css.Property_info { name; _ }) -> name) items
+  in
+  let names1 = get_names items1 in
+  let names2 = get_names items2 in
+  let names1_set = List.sort String.compare names1 in
+  let names2_set = List.sort String.compare names2 in
+  if not (names1_set = names2_set && names1 <> names2 && names1 <> []) then []
+  else
+    let reorder_diffs =
+      List.filter_map
+        (property_reorder_diff names2)
+        (List.mapi (fun i n -> (i, n)) names1)
+    in
+    property_reorder_container stmts1 stmts2 reorder_diffs
+
+let extract_media_as_string stmt =
+  match Css.as_media stmt with
+  | Some (cond, rules) -> Some (Css.Media.to_string cond, rules)
+  | None -> None
+
+let extract_supports_as_string stmt =
+  match Css.as_supports stmt with
+  | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
+  | None -> None
+
+let keyframes_container_info name =
+  { container_type = `Layer; condition = "@keyframes " ^ name; rules = [] }
+
+let keyframe_frames_diff frames1 frames2 =
+  let key_of (frame : Css.keyframe) = frame.keyframe_selector in
+  let key_equal = Css.Keyframe.selector_equal in
+  let is_empty_diff (f1 : Css.keyframe) (f2 : Css.keyframe) =
+    Css.Keyframe.selector_equal f1.keyframe_selector f2.keyframe_selector
+    && f1.keyframe_declarations = f2.keyframe_declarations
+  in
+  let added, removed, modified_pairs =
+    diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
+  in
+  let selector_str (frame : Css.keyframe) =
+    Css.Keyframe.string_of_selector frame.keyframe_selector
+  in
+  let added_changes =
+    List.map
+      (fun (frame : Css.keyframe) ->
+        Rule_added { selector = selector_str frame; declarations = [] })
+      added
+  in
+  let removed_changes =
+    List.map
+      (fun (frame : Css.keyframe) ->
+        Rule_removed { selector = selector_str frame; declarations = [] })
+      removed
+  in
+  let modified_changes =
+    List.filter_map
+      (fun ((f1 : Css.keyframe), (f2 : Css.keyframe)) ->
+        if f1.keyframe_declarations <> f2.keyframe_declarations then
+          Some
+            (Rule_content_changed
+               {
+                 selector = selector_str f1;
+                 old_declarations = [];
+                 new_declarations = [];
+                 property_changes = [];
+                 added_properties = [];
+                 removed_properties = [];
+               })
+        else None)
+      modified_pairs
+  in
+  added_changes @ removed_changes @ modified_changes
+
+let keyframes_diff items1 items2 =
+  let key_of (name, _) = name in
+  let key_equal = String.equal in
+  let is_empty_diff (name1, frames1) (name2, frames2) =
+    name1 = name2 && frames1 = frames2
+  in
+  diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+
+let process_nested_keyframes ~depth:_ stmts1 stmts2 =
+  let items1 = List.filter_map Css.as_keyframes stmts1 in
+  let items2 = List.filter_map Css.as_keyframes stmts2 in
+  let added, removed, modified = keyframes_diff items1 items2 in
+  let added_diffs =
+    List.map
+      (fun (name, _frames) -> Container_added (keyframes_container_info name))
+      added
+  in
+  let removed_diffs =
+    List.map
+      (fun (name, _frames) -> Container_removed (keyframes_container_info name))
+      removed
+  in
+  let modified_diffs =
+    List.filter_map
+      (fun ((name, frames1), (_, frames2)) ->
+        let frame_diffs = keyframe_frames_diff frames1 frames2 in
+        if frame_diffs <> [] then
+          Some
+            (Container_modified
+               {
+                 info = keyframes_container_info name;
+                 actual_rules = [];
+                 rule_changes = frame_diffs;
+                 container_changes = [];
+               })
+        else None)
+      modified
+  in
+  added_diffs @ removed_diffs @ modified_diffs
+
+let process_font_face_rules ~depth:_ stmts1 stmts2 =
+  let items1 = List.filter_map Css.as_font_face stmts1 in
+  let items2 = List.filter_map Css.as_font_face stmts2 in
+  let diffs = ref [] in
+  match (items1, items2) with
+  | [], [] -> []
+  | [], _ ->
+      diffs :=
+        Container_added
+          { container_type = `Layer; condition = "@font-face"; rules = [] }
+        :: !diffs;
+      !diffs
+  | _, [] ->
+      diffs :=
+        Container_removed
+          { container_type = `Layer; condition = "@font-face"; rules = [] }
+        :: !diffs;
+      !diffs
+  | descs1 :: _, descs2 :: _ ->
+      if descs1 <> descs2 then
+        diffs :=
+          Container_modified
+            {
+              info =
+                {
+                  container_type = `Layer;
+                  condition = "@font-face";
+                  rules = [];
+                };
+              actual_rules = [];
+              rule_changes = [];
+              container_changes = [];
+            }
+          :: !diffs;
+      !diffs
+
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
 let rec media_condition_differs rules_list1 rules_list2 =
@@ -1349,93 +1663,6 @@ and media_diff items1 items2 =
     groups2;
   (!added, !removed, !modified)
 
-(* Generic helper for processing nested containers *)
-(* Extract items with their positions from statements *)
-and extract_items_with_positions extract_fn stmts =
-  List.mapi
-    (fun i stmt ->
-      match extract_fn stmt with
-      | Some (cond, rules) -> Some (i, cond, rules)
-      | None -> None)
-    stmts
-  |> List.filter_map (fun x -> x)
-
-(* Group items by condition *)
-and group_by_condition items =
-  let tbl = Hashtbl.create 16 in
-  List.iter
-    (fun (pos, cond, rules) ->
-      let existing = try Hashtbl.find tbl cond with Not_found -> [] in
-      Hashtbl.replace tbl cond (existing @ [ (pos, rules) ]))
-    items;
-  tbl
-
-(* Detect block structure changes between two groups *)
-and detect_block_structure_changes blocks1 blocks2 =
-  let block_structure_changed = Hashtbl.create 16 in
-  Hashtbl.iter
-    (fun cond blocks1_list ->
-      match Hashtbl.find_opt blocks2 cond with
-      | Some blocks2_list ->
-          if block_structure_differs blocks1_list blocks2_list then
-            Hashtbl.replace block_structure_changed cond
-              (blocks1_list, blocks2_list)
-      | _ -> ())
-    blocks1;
-  block_structure_changed
-
-and block_structure_differs blocks1_list blocks2_list =
-  List.length blocks1_list <> List.length blocks2_list
-  || block_positions_differ blocks1_list blocks2_list
-
-and block_positions_differ blocks1_list blocks2_list =
-  List.length blocks1_list = List.length blocks2_list
-  &&
-  let pos1_list = List.map fst blocks1_list in
-  let pos2_list = List.map fst blocks2_list in
-  List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
-
-(* Check if only declaration reorders occurred *)
-and only_declaration_reorders rule_changes nested_containers =
-  rule_changes <> []
-  && List.for_all
-       (function
-         | Rule_reordered
-             { old_declarations = Some _; new_declarations = Some _; _ } ->
-             true
-         | _ -> false)
-       rule_changes
-  && nested_containers = []
-
-(* Process a modified container and generate appropriate diff *)
-and container_position extract_fn cond stmts =
-  let rec go i = function
-    | [] -> None
-    | stmt :: rest -> (
-        match extract_fn stmt with
-        | Some (c, _) when c = cond -> Some i
-        | _ -> go (i + 1) rest)
-  in
-  go 0 stmts
-
-and reordered_container container_type cond rules1 pos1 pos2 =
-  Container_reordered
-    {
-      info = { container_type; condition = cond; rules = rules1 };
-      expected_pos = pos1;
-      actual_pos = pos2;
-    }
-
-and modified_container container_type cond rules1 rules2 rule_changes
-    nested_containers =
-  Container_modified
-    {
-      info = { container_type; condition = cond; rules = rules1 };
-      actual_rules = rules2;
-      rule_changes;
-      container_changes = nested_containers;
-    }
-
 and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
     ~stmts2 ~block_structure_changed cond rules1 rules2 =
   (* Skip if this condition has a block structure change *)
@@ -1464,27 +1691,6 @@ and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
         (modified_container container_type cond rules1 rules2 rule_changes
            nested_containers)
     else None
-
-(* Detect if containers have only changed order (no content changes) *)
-and detect_order_only_change ~container_type added removed items1 items2 =
-  if added <> [] || removed <> [] then None
-  else if List.length items1 <> List.length items2 || items1 = [] then None
-  else
-    let conds1 = List.map fst items1 in
-    let conds2 = List.map fst items2 in
-    if conds1 = conds2 then None
-    else
-      match (items1, items2) with
-      | (cond, rules1) :: _, (_, rules2) :: _ ->
-          Some
-            (Container_modified
-               {
-                 info = { container_type; condition = cond; rules = rules1 };
-                 actual_rules = rules2;
-                 rule_changes = [];
-                 container_changes = [];
-               })
-      | _ -> None
 
 and process_nested_containers ~container_type ~extract_fn ~diff_fn ~depth stmts1
     stmts2 =
@@ -1682,36 +1888,6 @@ and container_diff items1 items2 =
   in
   (added, removed, modified)
 
-(* Property diff function for @property rules *)
-and property_diff items1 items2 =
-  let key_of (Css.Property_info { name; _ }) = name in
-  let key_equal = String.equal in
-  let is_empty_diff prop1 prop2 =
-    (* For @property, we consider them empty diff if they're structurally
-       equivalent *)
-    let (Css.Property_info { name = n1; inherits = i1; _ }) = prop1 in
-    let (Css.Property_info { name = n2; inherits = i2; _ }) = prop2 in
-    n1 = n2 && i1 = i2
-    (* Note: We can't easily compare syntax and initial_value due to existential
-       types *)
-  in
-  let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
-  in
-  (* Transform to format compatible with container processing *)
-  let added =
-    List.map (fun (Css.Property_info { name; _ }) -> (name, [])) added
-  in
-  let removed =
-    List.map (fun (Css.Property_info { name; _ }) -> (name, [])) removed
-  in
-  let modified =
-    List.map
-      (fun (Css.Property_info { name; _ }, _) -> (name, [], []))
-      modified_pairs
-  in
-  (added, removed, modified)
-
 (* Process container rules *)
 and process_nested_containers_with_name ~depth stmts1 stmts2 =
   let items1 = List.filter_map Css.as_container stmts1 in
@@ -1719,62 +1895,6 @@ and process_nested_containers_with_name ~depth stmts1 stmts2 =
   let added, removed, modified = container_diff items1 items2 in
   collect_container_diffs ~container_type:`Container ~depth added removed
     modified
-
-(* Detect @property reordering: same names in different order *)
-and property_reorder_diff names2 (i1, name1) =
-  let i2 = List.find_index (( = ) name1) names2 |> Option.value ~default:i1 in
-  if i1 = i2 then None
-  else
-    let swapped_with =
-      if i1 < List.length names2 then Some ("@property " ^ List.nth names2 i1)
-      else None
-    in
-    Some
-      (Rule_reordered
-         {
-           selector = "@property " ^ name1;
-           expected_pos = i1;
-           actual_pos = i2;
-           swapped_with;
-           old_declarations = None;
-           new_declarations = None;
-         })
-
-and property_reorder_container stmts1 stmts2 reorder_diffs =
-  match reorder_diffs with
-  | [] -> []
-  | _ ->
-      [
-        Container_modified
-          {
-            info =
-              {
-                container_type = `Property;
-                condition = "@property rules";
-                rules = stmts1;
-              };
-            actual_rules = stmts2;
-            rule_changes = reorder_diffs;
-            container_changes = [];
-          };
-      ]
-
-and property_reorder_diffs stmts1 stmts2 items1 items2 =
-  let get_names items =
-    List.map (fun (Css.Property_info { name; _ }) -> name) items
-  in
-  let names1 = get_names items1 in
-  let names2 = get_names items2 in
-  let names1_set = List.sort String.compare names1 in
-  let names2_set = List.sort String.compare names2 in
-  if not (names1_set = names2_set && names1 <> names2 && names1 <> []) then []
-  else
-    let reorder_diffs =
-      List.filter_map
-        (property_reorder_diff names2)
-        (List.mapi (fun i n -> (i, n)) names1)
-    in
-    property_reorder_container stmts1 stmts2 reorder_diffs
 
 (* Process property rules *)
 and process_nested_properties ~depth stmts1 stmts2 =
@@ -1813,18 +1933,6 @@ and process_nested_properties ~depth stmts1 stmts2 =
         :: !diffs)
     modified;
   !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
-
-(* Wrapper to extract media with string condition for diffing *)
-and extract_media_as_string stmt =
-  match Css.as_media stmt with
-  | Some (cond, rules) -> Some (Css.Media.to_string cond, rules)
-  | None -> None
-
-(* Wrapper to extract supports with string condition for diffing *)
-and extract_supports_as_string stmt =
-  match Css.as_supports stmt with
-  | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
-  | None -> None
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
 and process_nested_rules ~depth stmts1 stmts2 =
@@ -1896,148 +2004,6 @@ and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
     @ process_nested_keyframes ~depth stmts1 stmts2
     (* Process font-face rules *)
     @ process_font_face_rules ~depth stmts1 stmts2
-
-(* Process keyframes animations *)
-and keyframes_container_info name =
-  { container_type = `Layer; condition = "@keyframes " ^ name; rules = [] }
-
-and process_nested_keyframes ~depth:_ stmts1 stmts2 =
-  let items1 = List.filter_map Css.as_keyframes stmts1 in
-  let items2 = List.filter_map Css.as_keyframes stmts2 in
-  let added, removed, modified = keyframes_diff items1 items2 in
-
-  let added_diffs =
-    List.map
-      (fun (name, _frames) -> Container_added (keyframes_container_info name))
-      added
-  in
-  let removed_diffs =
-    List.map
-      (fun (name, _frames) -> Container_removed (keyframes_container_info name))
-      removed
-  in
-  let modified_diffs =
-    List.filter_map
-      (fun ((name, frames1), (_, frames2)) ->
-        let frame_diffs = keyframe_frames_diff frames1 frames2 in
-        if frame_diffs <> [] then
-          Some
-            (Container_modified
-               {
-                 info = keyframes_container_info name;
-                 actual_rules = [];
-                 rule_changes = frame_diffs;
-                 container_changes = [];
-               })
-        else None)
-      modified
-  in
-
-  added_diffs @ removed_diffs @ modified_diffs
-
-(* Diff keyframe frames *)
-and keyframe_frames_diff frames1 frames2 =
-  (* Key by frame selector (e.g., "0%", "from", "to", "100%") *)
-  let key_of (frame : Css.keyframe) = frame.keyframe_selector in
-  let key_equal = Css.Keyframe.selector_equal in
-  let is_empty_diff (f1 : Css.keyframe) (f2 : Css.keyframe) =
-    Css.Keyframe.selector_equal f1.keyframe_selector f2.keyframe_selector
-    && f1.keyframe_declarations = f2.keyframe_declarations
-  in
-  let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
-  in
-
-  (* Convert frame changes to rule_diff format *)
-  let selector_str (frame : Css.keyframe) =
-    Css.Keyframe.string_of_selector frame.keyframe_selector
-  in
-  let added_changes =
-    List.map
-      (fun (frame : Css.keyframe) ->
-        Rule_added { selector = selector_str frame; declarations = [] })
-      added
-  in
-  let removed_changes =
-    List.map
-      (fun (frame : Css.keyframe) ->
-        Rule_removed { selector = selector_str frame; declarations = [] })
-      removed
-  in
-  let modified_changes =
-    List.filter_map
-      (fun ((f1 : Css.keyframe), (f2 : Css.keyframe)) ->
-        if f1.keyframe_declarations <> f2.keyframe_declarations then
-          Some
-            (Rule_content_changed
-               {
-                 selector = selector_str f1;
-                 old_declarations = [];
-                 new_declarations = [];
-                 property_changes = [];
-                 added_properties = [];
-                 removed_properties = [];
-               })
-        else None)
-      modified_pairs
-  in
-
-  added_changes @ removed_changes @ modified_changes
-
-(* Keyframes diff function *)
-and keyframes_diff items1 items2 =
-  let key_of (name, _) = name in
-  let key_equal = String.equal in
-  let is_empty_diff (name1, frames1) (name2, frames2) =
-    name1 = name2 && frames1 = frames2
-  in
-  diffs ~key_of ~key_equal ~is_empty_diff items1 items2
-
-(* Process font-face rules *)
-and process_font_face_rules ~depth:_ stmts1 stmts2 =
-  let items1 = List.filter_map Css.as_font_face stmts1 in
-  let items2 = List.filter_map Css.as_font_face stmts2 in
-
-  (* For font-face, we compare the entire descriptor list *)
-  let diffs = ref [] in
-
-  (* If there are any font-face rules in either side, check if they differ *)
-  match (items1, items2) with
-  | [], [] -> []
-  | [], _ ->
-      (* Font-face added *)
-      diffs :=
-        Container_added
-          { container_type = `Layer; condition = "@font-face"; rules = [] }
-        :: !diffs;
-      !diffs
-  | _, [] ->
-      (* Font-face removed *)
-      diffs :=
-        Container_removed
-          { container_type = `Layer; condition = "@font-face"; rules = [] }
-        :: !diffs;
-      !diffs
-  | descs1 :: _, descs2 :: _ ->
-      (* Font-face modified - compare descriptors *)
-      if descs1 <> descs2 then
-        diffs :=
-          Container_modified
-            {
-              info =
-                {
-                  container_type = `Layer;
-                  condition = "@font-face";
-                  rules = [];
-                };
-              actual_rules = [];
-              rule_changes = [];
-              (* Font-face descriptors are not rules *)
-              container_changes = [];
-              (* Font-face doesn't have nested containers *)
-            }
-          :: !diffs;
-      !diffs
 
 (* Check if containers appear at different positions in statement sequence *)
 let detect_container_position_changes stmts1 stmts2 containers =

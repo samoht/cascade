@@ -1333,9 +1333,6 @@ let rec statements (stmts : statement list) : statement list =
   |> merge_consecutive_containers |> merge_layer_declarations
   |> drop_misplaced_imports |> drop_empty_rules
 
-and statements_top_level (stmts : statement list) : statement list =
-  statements stmts |> merge_consecutive_layers
-
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
   match remaining with
@@ -1444,6 +1441,9 @@ and rules_aux (rules : rule list) : rule list =
   |> merge_rules
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
+
+let statements_top_level (stmts : statement list) : statement list =
+  statements stmts |> merge_consecutive_layers
 
 let single_rule (rule : rule) : rule =
   {

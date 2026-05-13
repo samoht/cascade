@@ -1,4 +1,0 @@
-(library
- (name css_tools)
- (public_name cascade.tools)
- (libraries unix cascade))

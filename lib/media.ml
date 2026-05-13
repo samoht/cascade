@@ -1546,7 +1546,7 @@ let normalise_value name value =
   | name, Ident s -> normalise_ident_value name (string_of_ident s)
   | _ -> None
 
-let rec feature_to_t : feature -> t = function
+let feature_to_t : feature -> t = function
   | Plain (name, value) -> (
       match normalise_value (string_of_name name) value with
       | Some t -> t
@@ -1556,7 +1556,7 @@ let rec feature_to_t : feature -> t = function
   | Range_rev (value, op, name) -> Range_rev (value, op, name)
   | Interval (a, op1, name, op2, b) -> Interval (a, op1, name, op2, b)
 
-and condition_to_t : condition -> t = function
+let rec condition_to_t : condition -> t = function
   | Feature f -> feature_to_t f
   | Not cond -> Negated (condition_to_t cond)
   | And (a, b) -> And (condition_to_t a, condition_to_t b)

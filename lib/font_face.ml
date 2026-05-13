@@ -92,7 +92,7 @@ and pp_src_entry ctx = function
       Pp.string ctx name;
       Pp.string ctx "\")"
 
-and string_of_src_entry entry =
+let string_of_src_entry entry =
   Pp.to_string ~minify:false (fun ctx e -> pp_src_entry ctx e) entry
 
 let string_of_src ?(minify = false) entries =
