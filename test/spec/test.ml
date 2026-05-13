@@ -232,7 +232,7 @@ let css2_chapter_matrix () =
     [
       "a + { color: red }";
       "table > > td { color: red }";
-      "@page :left:right { margin: 1cm }";
+      "@page :unknown { margin: 1cm }";
       "ol { list-style-position: center }";
       "p { vertical-align: left right }";
       "q { content: open-quote none }";
@@ -528,11 +528,12 @@ let stylesheet_at_rules () =
     "@namespace svg\"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}";
-  (* CSS Paged Media 3 section 3.1: [<page-selector>] is [<ident>?
-     <pseudo-page>?] - at most one [<pseudo-page>]; chained forms like
-     [:first:left] are not part of the grammar. *)
-  rejects_invalid "@page :first:left { margin: 1cm }";
-  rejects_invalid "@page :blank:first { margin: .5cm }"
+  (* CSS Paged Media 3 section 4.3: [<page-selector>] permits zero or more
+     page pseudo-classes after the optional page type. *)
+  roundtrip "@page :first:left { margin: 1cm }"
+    "@page:first:left{margin:1cm}";
+  roundtrip "@page :blank:first { margin: .5cm }"
+    "@page:blank:first{margin:.5cm}"
 
 (* {2 CSS Cascade and Inheritance Level 4}
    https://www.w3.org/TR/css-cascade-4/ *)

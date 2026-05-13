@@ -385,13 +385,13 @@ let test_css2_legacy_invalid_vectors buf =
     pick
       [
         "@charset 'UTF-8';";
-        "@page :first:left { margin: 1cm }";
+        "@page :unknown { margin: 1cm }";
         "div { page-break-before: always avoid }";
         "div { page-break-inside: left }";
         "h1::first-line::before { color: red }";
         "a + { color: red }";
         "table > > td { color: red }";
-        "@page :left:right { margin: 1cm }";
+        "@page { @top-center { display: block } }";
         "ol { list-style-position: center }";
         "p { vertical-align: left right }";
         "q { content: open-quote none }";
