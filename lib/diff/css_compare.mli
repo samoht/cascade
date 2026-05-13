@@ -6,11 +6,12 @@
 
     Cascade does not implement a general CSS semantic-equivalence rewriter. The
     closest the library comes is mode [`Canonical], which compares the inputs by
-    their canonical minified serialization through {!Cascade.Css.to_string}.
-    That collapses whitespace, color spellings, leading-/trailing-zero
-    normalisations, and other choices the pretty-printer makes; it does {b not}
-    reason about equivalent shorthand decompositions, browser computed values,
-    or cascade-affecting rule reorderings. *)
+    their optimized canonical minified serialization through
+    {!Cascade.Css.to_string}. That collapses whitespace, color spellings,
+    leading-/trailing-zero normalisations, optimizer-preserved shorthand
+    choices, and other choices the optimizer and pretty-printer make; it does
+    {b not} reason about browser computed values or cascade-affecting rule
+    reorderings. *)
 
 open Cascade
 
@@ -39,11 +40,11 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
     - [`Tree] — structural diff only; formatting-only differences collapse to
       {!No_diff}.
     - [`String] — character-level diff; the inputs are not parsed.
-    - [`Canonical] — parse both stylesheets and compare their Cascade-normalized
-      meaning. This includes value spellings that Cascade canonicalizes as
-      equivalent, such as [transparent] and [#0000] in color positions. If the
-      normalized forms differ, the returned diff is reported with the same
-      structured machinery as [`Auto]. *)
+    - [`Canonical] — parse both stylesheets, serialize optimized minified
+      outputs, and compare those outputs. This includes value spellings that
+      Cascade canonicalizes as equivalent, such as [transparent] and [#0000] in
+      color positions. If the normalized forms differ, the returned diff is
+      reported from those normalized outputs. *)
 
 val diff : ?mode:mode -> string -> string -> t
 (** [diff ?mode expected actual] returns the diff between two CSS strings. A

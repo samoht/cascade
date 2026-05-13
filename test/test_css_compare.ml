@@ -4,6 +4,17 @@ open Cascade
 
 let () = ignore (Css.of_string ~strict:false "")
 
+let contains_substring s needle =
+  let len = String.length s in
+  let needle_len = String.length needle in
+  let rec loop i =
+    if needle_len = 0 then true
+    else if i + needle_len > len then false
+    else if String.sub s i needle_len = needle then true
+    else loop (i + 1)
+  in
+  loop 0
+
 (* ===== equal tests ===== *)
 
 let equal_identical () =
@@ -49,28 +60,28 @@ let semantically_equivalent_color_mix_css () =
     "CSS with equivalent color-mix values is semantically equivalent" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-let semantically_equivalent_custom_property_transparent () =
+let canonical_custom_property_tokens () =
   let expected = ".a { --tw-ring-color: transparent }" in
   let actual = ".a { --tw-ring-color: #0000 }" in
   Alcotest.(check bool)
-    "transparent and #0000 are equivalent in canonical comparison" true
+    "custom property token streams are compared after minification" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-let semantic_custom_property_color_mix () =
+let canonical_custom_color_mix_tokens () =
   let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
   Alcotest.(check bool)
-    "transparent and #0000 are equivalent in custom color-mix" true
+    "custom color-mix token streams are compared after minification" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_with_recovered_warning () =
   let expected =
     "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent; \
-     --tw-gradient: " ^ color_mix_transparent ^ " }"
+     color: " ^ color_mix_transparent ^ " }"
   in
   let actual =
-    "@unknown { color: red } .a { -webkit-tap-highlight-color: #0000; \
-     --tw-gradient: " ^ color_mix_transparent_hex ^ " }"
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: #0000; color: "
+    ^ color_mix_transparent_hex ^ " }"
   in
   Alcotest.(check bool)
     "canonical comparison falls back to lenient canonicalization" true
@@ -84,7 +95,7 @@ let semantic_custom_var_fallback () =
     ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
   in
   Alcotest.(check bool)
-    "transparent and #0000 are equivalent in custom var fallback" true
+    "custom var fallback token streams are compared after minification" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_custom_nested_functions () =
@@ -97,7 +108,7 @@ let semantic_custom_nested_functions () =
     ^ ") }"
   in
   Alcotest.(check bool)
-    "transparent aliases are equivalent inside nested custom functions" true
+    "nested custom function token streams are compared after minification" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_vendor_recovered () =
@@ -315,6 +326,28 @@ let semantic_color_mix_mode () =
   | Cascade_diff.Css_compare.No_diff -> ()
   | _ -> Alcotest.fail "expected No_diff for semantically equivalent CSS"
 
+let diff_canonical_uses_outputs () =
+  let expected =
+    "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent; \
+     color: red }"
+  in
+  let actual =
+    "@unknown{color:red}.a{-webkit-tap-highlight-color:#0000;color:blue}"
+  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
+  match result with
+  | Cascade_diff.Css_compare.Tree_diff _ ->
+      let buf = Buffer.create 256 in
+      Cascade_diff.Css_compare.pp buf result;
+      let rendered = Buffer.contents buf in
+      Alcotest.(check bool)
+        "normalized diff does not report transparent alias" false
+        (contains_substring rendered "-webkit-tap-highlight-color");
+      Alcotest.(check bool)
+        "normalized diff reports remaining color change" true
+        (contains_substring rendered "color:")
+  | _ -> Alcotest.fail "expected canonical diff on normalized outputs"
+
 (* ===== as_tree_diff tests ===== *)
 
 let as_tree_diff_with_tree () =
@@ -357,10 +390,10 @@ let suite =
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
         semantically_equivalent_color_mix_css;
-      Alcotest.test_case "semantically equivalent custom property transparent"
-        `Quick semantically_equivalent_custom_property_transparent;
-      Alcotest.test_case "semantically equivalent custom property color-mix"
-        `Quick semantic_custom_property_color_mix;
+      Alcotest.test_case "canonical custom property tokens" `Quick
+        canonical_custom_property_tokens;
+      Alcotest.test_case "canonical custom color-mix tokens" `Quick
+        canonical_custom_color_mix_tokens;
       Alcotest.test_case "semantic with recovered warning" `Quick
         semantic_with_recovered_warning;
       Alcotest.test_case "semantic custom var fallback" `Quick
@@ -403,6 +436,8 @@ let suite =
       Alcotest.test_case "diff string identical" `Quick diff_string_identical;
       Alcotest.test_case "diff semantic color-mix" `Quick
         semantic_color_mix_mode;
+      Alcotest.test_case "diff canonical uses outputs" `Quick
+        diff_canonical_uses_outputs;
       Alcotest.test_case "as_tree_diff with tree" `Quick as_tree_diff_with_tree;
       Alcotest.test_case "as_tree_diff with no diff" `Quick as_tree_diff_no_diff;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
