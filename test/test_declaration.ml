@@ -765,6 +765,8 @@ let list_properties () =
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
   check_declaration ~expected:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
+  check_declaration ~expected:"box-shadow:0 1px 3px #0000001a"
+    "box-shadow: 0 1px 3px 0 rgb(0 0 0 / 10%)";
   check_declaration
     ~expected:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
@@ -815,7 +817,7 @@ let custom_properties () =
   (* With var() references *)
   check_declaration ~expected:"--primary:var(--base-color)"
     "--primary: var(--base-color)";
-  check_declaration ~expected:"--size:calc(var(--base) * 2)"
+  check_declaration ~expected:"--size:calc(var(--base)*2)"
     "--size: calc(var(--base) * 2)";
   check_declaration ~expected:"--fallback:var(--undefined,10px)"
     "--fallback: var(--undefined, 10px)";
