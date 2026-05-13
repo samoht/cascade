@@ -11,9 +11,5 @@ tap:
 
 binaries:
   - name: cascade
-    target: bin/cascade_main.exe
+    target: bin/main.exe
     description: "CSS generation and manipulation tool"
-
-  - name: cssdiff
-    target: bin/cssdiff.exe
-    description: "Compare CSS files with structural analysis"
