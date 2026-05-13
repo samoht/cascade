@@ -9,6 +9,6 @@
   fmt
   unix
   re
-  css_tools
+  cascade_diff
   css_test_helpers
   cascade_spec_inventory))

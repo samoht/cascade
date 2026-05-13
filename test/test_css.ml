@@ -177,7 +177,7 @@ let roundtrip () =
     Css.to_string ~minify:true (parse_or_fail "first pass" first_pass)
   in
   if first_pass <> second_pass then
-    match Css_tools.String_diff.first_diff_pos first_pass second_pass with
+    match Cascade_diff.String_diff.first_diff_pos first_pass second_pass with
     | Some pos ->
         Fmt.epr "CSS roundtrip differs at position %d@." pos;
         Alcotest.fail "CSS roundtrip should be idempotent"

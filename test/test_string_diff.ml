@@ -1,4 +1,4 @@
-(** Tests for Css_tools.String_diff module *)
+(** Tests for Cascade_diff.String_diff module *)
 
 open Cascade
 
@@ -9,52 +9,52 @@ let () = ignore (Css.of_string ~strict:false "")
 let first_diff_pos_identical () =
   Alcotest.(check (option int))
     "identical strings" None
-    (Css_tools.String_diff.first_diff_pos "hello" "hello")
+    (Cascade_diff.String_diff.first_diff_pos "hello" "hello")
 
 let first_diff_pos_empty () =
   Alcotest.(check (option int))
     "both empty" None
-    (Css_tools.String_diff.first_diff_pos "" "")
+    (Cascade_diff.String_diff.first_diff_pos "" "")
 
 let first_diff_pos_vs_nonempty () =
   Alcotest.(check (option int))
     "empty vs nonempty" (Some 0)
-    (Css_tools.String_diff.first_diff_pos "" "a")
+    (Cascade_diff.String_diff.first_diff_pos "" "a")
 
 let first_diff_pos_vs_empty () =
   Alcotest.(check (option int))
     "nonempty vs empty" (Some 0)
-    (Css_tools.String_diff.first_diff_pos "a" "")
+    (Cascade_diff.String_diff.first_diff_pos "a" "")
 
 let first_diff_pos_at_start () =
   Alcotest.(check (option int))
     "differ at start" (Some 0)
-    (Css_tools.String_diff.first_diff_pos "abc" "xyz")
+    (Cascade_diff.String_diff.first_diff_pos "abc" "xyz")
 
 let first_diff_pos_at_middle () =
   Alcotest.(check (option int))
     "differ in middle" (Some 2)
-    (Css_tools.String_diff.first_diff_pos "abcdef" "abXdef")
+    (Cascade_diff.String_diff.first_diff_pos "abcdef" "abXdef")
 
 let first_diff_pos_at_end () =
   Alcotest.(check (option int))
     "differ at end" (Some 4)
-    (Css_tools.String_diff.first_diff_pos "abcde" "abcdX")
+    (Cascade_diff.String_diff.first_diff_pos "abcde" "abcdX")
 
 let first_diff_pos_length_mismatch () =
   Alcotest.(check (option int))
     "shorter vs longer" (Some 3)
-    (Css_tools.String_diff.first_diff_pos "abc" "abcdef")
+    (Cascade_diff.String_diff.first_diff_pos "abc" "abcdef")
 
 (* ===== diff tests ===== *)
 
 let diff_identical () =
   Alcotest.(check bool)
     "identical returns None" true
-    (Css_tools.String_diff.diff ~expected:"hello" "hello" = None)
+    (Cascade_diff.String_diff.diff ~expected:"hello" "hello" = None)
 
 let diff_single_char () =
-  let result = Css_tools.String_diff.diff ~expected:"abc" "aXc" in
+  let result = Cascade_diff.String_diff.diff ~expected:"abc" "aXc" in
   Alcotest.(check bool) "single char diff is Some" true (Option.is_some result);
   let d = Option.get result in
   Alcotest.(check int) "position is 1" 1 d.position
@@ -62,14 +62,14 @@ let diff_single_char () =
 let diff_multiline () =
   let expected = "line1\nline2\nline3" in
   let actual = "line1\nlineX\nline3" in
-  let result = Css_tools.String_diff.diff ~expected actual in
+  let result = Cascade_diff.String_diff.diff ~expected actual in
   Alcotest.(check bool) "multiline diff is Some" true (Option.is_some result);
   let d = Option.get result in
   Alcotest.(check int) "position is 10" 10 d.position;
   Alcotest.(check int) "line_expected is 1" 1 d.line_expected
 
 let diff_empty_vs_nonempty () =
-  let result = Css_tools.String_diff.diff ~expected:"" "something" in
+  let result = Cascade_diff.String_diff.diff ~expected:"" "something" in
   Alcotest.(check bool) "empty vs nonempty is Some" true (Option.is_some result);
   let d = Option.get result in
   Alcotest.(check int) "position is 0" 0 d.position
@@ -77,24 +77,24 @@ let diff_empty_vs_nonempty () =
 (* ===== truncate_middle tests ===== *)
 
 let truncate_short () =
-  let result = Css_tools.String_diff.truncate_middle 20 "hello" in
+  let result = Cascade_diff.String_diff.truncate_middle 20 "hello" in
   Alcotest.(check string) "short string unchanged" "hello" result
 
 let truncate_exact () =
   let s = "abcde" in
-  let result = Css_tools.String_diff.truncate_middle 5 s in
+  let result = Cascade_diff.String_diff.truncate_middle 5 s in
   Alcotest.(check string) "exact length unchanged" "abcde" result
 
 let truncate_long () =
   let s = "abcdefghijklmnopqrstuvwxyz" in
-  let result = Css_tools.String_diff.truncate_middle 10 s in
+  let result = Cascade_diff.String_diff.truncate_middle 10 s in
   (* (10-3)/2 = 3 chars from each end: "abc...xyz" *)
   Alcotest.(check int) "truncated length" 9 (String.length result);
   Alcotest.(check bool) "contains ellipsis" true (String.contains result '.')
 
 let truncate_preserves_start_and_end () =
   let s = "abcdefghijklmnopqrstuvwxyz" in
-  let result = Css_tools.String_diff.truncate_middle 13 s in
+  let result = Cascade_diff.String_diff.truncate_middle 13 s in
   Alcotest.(check bool) "starts with 'a'" true (String.get result 0 = 'a');
   Alcotest.(check bool)
     "ends with 'z'" true
@@ -103,22 +103,23 @@ let truncate_preserves_start_and_end () =
 (* ===== pp tests ===== *)
 
 let pp_does_not_crash () =
-  let result = Css_tools.String_diff.diff ~expected:"abc" "aXc" in
+  let result = Cascade_diff.String_diff.diff ~expected:"abc" "aXc" in
   match result with
   | None -> Alcotest.fail "expected Some"
   | Some d ->
       let buf = Buffer.create 256 in
-      Css_tools.String_diff.pp buf d;
+      Cascade_diff.String_diff.pp buf d;
       let output = Buffer.contents buf in
       Alcotest.(check bool) "pp produces output" true (String.length output > 0)
 
 let pp_with_labels () =
-  let result = Css_tools.String_diff.diff ~expected:"abc" "aXc" in
+  let result = Cascade_diff.String_diff.diff ~expected:"abc" "aXc" in
   match result with
   | None -> Alcotest.fail "expected Some"
   | Some d ->
       let buf = Buffer.create 256 in
-      Css_tools.String_diff.pp ~expected_label:"Old" ~actual_label:"New" buf d;
+      Cascade_diff.String_diff.pp ~expected_label:"Old" ~actual_label:"New" buf
+        d;
       let output = Buffer.contents buf in
       Alcotest.(check bool)
         "pp with labels produces output" true

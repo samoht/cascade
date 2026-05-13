@@ -1,51 +1,72 @@
-(** Tests for Css_tools.Css_compare module *)
+(** Tests for Cascade_diff.Css_compare module *)
 
 open Cascade
 
 let () = ignore (Css.of_string ~strict:false "")
 
-(* ===== compare tests ===== *)
+(* ===== equal tests ===== *)
 
-let compare_identical () =
+let equal_identical () =
   let css = ".a { color: red }" in
   Alcotest.(check bool)
-    "identical CSS compares true" true
-    (Css_tools.Css_compare.compare css css)
+    "identical CSS compares equal" true
+    (Cascade_diff.Css_compare.equal css css)
 
-let compare_different () =
+let equal_different () =
   Alcotest.(check bool)
-    "different CSS compares false" false
-    (Css_tools.Css_compare.compare ".a { color: red }" ".a { color: blue }")
+    "different CSS not equal" false
+    (Cascade_diff.Css_compare.equal ".a { color: red }" ".a { color: blue }")
 
-let compare_empty () =
+let equal_empty () =
   Alcotest.(check bool)
-    "empty strings compare true" true
-    (Css_tools.Css_compare.compare "" "")
+    "empty strings equal" true
+    (Cascade_diff.Css_compare.equal "" "")
 
-let compare_whitespace_difference () =
-  (* Structurally same but different formatting - compare requires string
-     equality too *)
+let equal_whitespace_difference () =
+  (* Structurally same but different formatting - default mode does not collapse
+     formatting, so this returns false. *)
   let css1 = ".a { color: red }" in
   let css2 = ".a{color:red}" in
-  (* These are structurally the same but strings differ, so compare returns
-     false *)
   Alcotest.(check bool)
-    "whitespace-different CSS" false
-    (Css_tools.Css_compare.compare css1 css2)
+    "whitespace-different CSS not equal under default mode" false
+    (Cascade_diff.Css_compare.equal css1 css2)
+
+(* ===== semantic equivalence tests ===== *)
+
+let color_mix_transparent = "color-mix(in oklab, currentcolor 50%, transparent)"
+let color_mix_transparent_hex = "color-mix(in oklab, currentcolor 50%, #0000)"
+
+let semantically_equivalent_color_mix_values () =
+  Alcotest.(check bool)
+    "transparent and #0000 are equivalent inside color-mix" true
+    (Cascade_diff.Css_compare.equivalent_value ~property:"color"
+       color_mix_transparent color_mix_transparent_hex)
+
+let semantically_equivalent_color_mix_css () =
+  let expected = ".a { color: " ^ color_mix_transparent ^ " }" in
+  let actual = ".a { color: " ^ color_mix_transparent_hex ^ " }" in
+  Alcotest.(check bool)
+    "CSS with equivalent color-mix values is semantically equivalent" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantically_equivalent_rejects_different_colors () =
+  Alcotest.(check bool)
+    "different color values are not semantically equivalent" false
+    (Cascade_diff.Css_compare.equivalent_value ~property:"color" "red" "blue")
 
 (* ===== diff returning No_diff ===== *)
 
 let diff_no_diff () =
   let css = ".a { color: red }" in
-  let result = Css_tools.Css_compare.diff ~expected:css ~actual:css in
+  let result = Cascade_diff.Css_compare.diff css css in
   match result with
-  | Css_tools.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff -> ()
   | _ -> Alcotest.fail "expected No_diff"
 
 let diff_no_diff_empty () =
-  let result = Css_tools.Css_compare.diff ~expected:"" ~actual:"" in
+  let result = Cascade_diff.Css_compare.diff "" "" in
   match result with
-  | Css_tools.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff -> ()
   | _ -> Alcotest.fail "expected No_diff for empty strings"
 
 (* ===== diff returning Tree_diff ===== *)
@@ -53,20 +74,20 @@ let diff_no_diff_empty () =
 let diff_tree_diff () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   match result with
-  | Css_tools.Css_compare.Tree_diff d ->
+  | Cascade_diff.Css_compare.Tree_diff d ->
       Alcotest.(check bool)
         "tree diff is not empty" false
-        (Css_tools.Tree_diff.is_empty d)
+        (Cascade_diff.Tree_diff.is_empty d)
   | _ -> Alcotest.fail "expected Tree_diff"
 
 let diff_tree_diff_added_rule () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: red } .b { margin: 0 }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   match result with
-  | Css_tools.Css_compare.Tree_diff _ -> ()
+  | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff for added rule"
 
 (* ===== diff returning String_diff ===== *)
@@ -74,17 +95,15 @@ let diff_tree_diff_added_rule () =
 let diff_string_diff () =
   (* To trigger String_diff, we need structurally identical CSS that differs
      only in formatting. This is tricky because the parser normalizes things. We
-     use diff_with_mode with `String to force it. *)
+     use diff with `String to force it. *)
   let expected = ".a { color: red }" in
   let actual = ".a  { color: red }" in
-  let result =
-    Css_tools.Css_compare.diff_with_mode ~mode:`String ~expected ~actual
-  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`String expected actual in
   match result with
-  | Css_tools.Css_compare.String_diff d ->
+  | Cascade_diff.Css_compare.String_diff d ->
       Alcotest.(check bool) "string diff has position" true (d.position >= 0)
-  | Css_tools.Css_compare.No_diff ->
-      (* Strings might be considered equal after strip_header/trim *)
+  | Cascade_diff.Css_compare.No_diff ->
+      (* Strings might be considered equal after strip_tool_header/trim *)
       ()
   | _ -> Alcotest.fail "expected String_diff or No_diff"
 
@@ -93,54 +112,54 @@ let diff_string_diff () =
 let diff_actual_error () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   (* The parser may or may not error on this - just check it doesn't crash *)
   ignore result
 
 let diff_expected_error () =
   let expected = ".a { color: }" in
   let actual = ".a { color: red }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   ignore result
 
-(* ===== strip_header tests ===== *)
+(* ===== strip_tool_header tests ===== *)
 
-let strip_header_no_header () =
+let strip_tool_header_no_header () =
   let css = ".a { color: red }" in
   Alcotest.(check string)
     "no header unchanged" css
-    (Css_tools.Css_compare.strip_header css)
+    (Cascade_diff.Css_compare.strip_tool_header css)
 
-let strip_header_with_header () =
+let strip_tool_header_with_header () =
   let css = "/*! Generated by tool v1.0 */\n.a { color: red }" in
-  let result = Css_tools.Css_compare.strip_header css in
+  let result = Cascade_diff.Css_compare.strip_tool_header css in
   Alcotest.(check string) "header stripped" ".a { color: red }" result
 
-let strip_header_regular_comment () =
+let strip_tool_header_regular_comment () =
   let css = "/* regular comment */\n.a { color: red }" in
-  let result = Css_tools.Css_compare.strip_header css in
+  let result = Cascade_diff.Css_compare.strip_tool_header css in
   (* Regular comments (not /*!) should NOT be stripped *)
   Alcotest.(check string)
     "regular comment preserved" "/* regular comment */\n.a { color: red }"
     result
 
-let strip_header_empty () =
+let strip_tool_header_empty () =
   Alcotest.(check string)
     "empty string" ""
-    (Css_tools.Css_compare.strip_header "")
+    (Cascade_diff.Css_compare.strip_tool_header "")
 
-let strip_header_only_header () =
+let strip_tool_header_only_header () =
   let css = "/*! header only */" in
-  let result = Css_tools.Css_compare.strip_header css in
+  let result = Cascade_diff.Css_compare.strip_tool_header css in
   Alcotest.(check string) "only header stripped" "" result
 
 (* ===== stats tests ===== *)
 
 let stats_no_diff () =
   let css = ".a { color: red }" in
-  let result = Css_tools.Css_compare.diff ~expected:css ~actual:css in
+  let result = Cascade_diff.Css_compare.diff css css in
   let s =
-    Css_tools.Css_compare.stats ~expected_str:css ~actual_str:css result
+    Cascade_diff.Css_compare.stats ~expected_str:css ~actual_str:css result
   in
   Alcotest.(check int) "expected chars" (String.length css) s.expected_chars;
   Alcotest.(check int) "actual chars" (String.length css) s.actual_chars;
@@ -153,9 +172,10 @@ let stats_no_diff () =
 let stats_with_tree_diff () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: red } .b { margin: 0 }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   let s =
-    Css_tools.Css_compare.stats ~expected_str:expected ~actual_str:actual result
+    Cascade_diff.Css_compare.stats ~expected_str:expected ~actual_str:actual
+      result
   in
   Alcotest.(check int)
     "expected chars" (String.length expected) s.expected_chars;
@@ -166,84 +186,84 @@ let stats_with_tree_diff () =
 
 let pp_stats_does_not_crash () =
   let css = ".a { color: red }" in
-  let result = Css_tools.Css_compare.diff ~expected:css ~actual:css in
+  let result = Cascade_diff.Css_compare.diff css css in
   let s =
-    Css_tools.Css_compare.stats ~expected_str:css ~actual_str:css result
+    Cascade_diff.Css_compare.stats ~expected_str:css ~actual_str:css result
   in
   let buf = Buffer.create 256 in
-  Css_tools.Css_compare.pp_stats buf s;
+  Cascade_diff.Css_compare.pp_stats buf s;
   let output = Buffer.contents buf in
   Alcotest.(check bool)
     "pp_stats produces output" true
     (String.length output > 0)
 
-(* ===== diff_with_mode tests ===== *)
+(* ===== diff tests ===== *)
 
-let diff_with_mode_auto () =
+let diff_auto () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result =
-    Css_tools.Css_compare.diff_with_mode ~mode:`Auto ~expected ~actual
-  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Auto expected actual in
   match result with
-  | Css_tools.Css_compare.Tree_diff _ -> ()
+  | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff in auto mode"
 
-let diff_with_mode_tree () =
+let diff_tree () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result =
-    Css_tools.Css_compare.diff_with_mode ~mode:`Tree ~expected ~actual
-  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Tree expected actual in
   match result with
-  | Css_tools.Css_compare.Tree_diff _ -> ()
+  | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff in tree mode"
 
-let diff_with_mode_string () =
+let diff_string () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result =
-    Css_tools.Css_compare.diff_with_mode ~mode:`String ~expected ~actual
-  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`String expected actual in
   match result with
-  | Css_tools.Css_compare.String_diff _ -> ()
-  | Css_tools.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.String_diff _ -> ()
+  | Cascade_diff.Css_compare.No_diff -> ()
   | _ -> Alcotest.fail "expected String_diff or No_diff in string mode"
 
-let diff_with_mode_string_identical () =
+let diff_string_identical () =
   let css = ".a { color: red }" in
-  let result =
-    Css_tools.Css_compare.diff_with_mode ~mode:`String ~expected:css ~actual:css
-  in
+  let result = Cascade_diff.Css_compare.diff ~mode:`String css css in
   match result with
-  | Css_tools.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff -> ()
   | _ -> Alcotest.fail "expected No_diff for identical in string mode"
+
+let semantic_color_mix_mode () =
+  let expected = ".a { color: " ^ color_mix_transparent ^ " }" in
+  let actual = ".a { color: " ^ color_mix_transparent_hex ^ " }" in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
+  match result with
+  | Cascade_diff.Css_compare.No_diff -> ()
+  | _ -> Alcotest.fail "expected No_diff for semantically equivalent CSS"
 
 (* ===== as_tree_diff tests ===== *)
 
 let as_tree_diff_with_tree () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   Alcotest.(check bool)
     "as_tree_diff returns Some for Tree_diff" true
-    (Option.is_some (Css_tools.Css_compare.as_tree_diff result))
+    (Option.is_some (Cascade_diff.Css_compare.as_tree_diff result))
 
 let as_tree_diff_no_diff () =
   let css = ".a { color: red }" in
-  let result = Css_tools.Css_compare.diff ~expected:css ~actual:css in
+  let result = Cascade_diff.Css_compare.diff css css in
   Alcotest.(check bool)
     "as_tree_diff returns None for No_diff" true
-    (Option.is_none (Css_tools.Css_compare.as_tree_diff result))
+    (Option.is_none (Cascade_diff.Css_compare.as_tree_diff result))
 
 (* ===== pp tests ===== *)
 
 let pp_does_not_crash () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
-  let result = Css_tools.Css_compare.diff ~expected ~actual in
+  let result = Cascade_diff.Css_compare.diff expected actual in
   let buf = Buffer.create 256 in
-  Css_tools.Css_compare.pp buf result;
+  Cascade_diff.Css_compare.pp buf result;
   (* Just verify it doesn't crash *)
   ignore (Buffer.contents buf)
 
@@ -252,11 +272,17 @@ let pp_does_not_crash () =
 let suite =
   ( "css_compare",
     [
-      Alcotest.test_case "compare identical" `Quick compare_identical;
-      Alcotest.test_case "compare different" `Quick compare_different;
-      Alcotest.test_case "compare empty" `Quick compare_empty;
-      Alcotest.test_case "compare whitespace difference" `Quick
-        compare_whitespace_difference;
+      Alcotest.test_case "equal identical" `Quick equal_identical;
+      Alcotest.test_case "equal different" `Quick equal_different;
+      Alcotest.test_case "equal empty" `Quick equal_empty;
+      Alcotest.test_case "equal whitespace difference" `Quick
+        equal_whitespace_difference;
+      Alcotest.test_case "semantically equivalent color-mix values" `Quick
+        semantically_equivalent_color_mix_values;
+      Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
+        semantically_equivalent_color_mix_css;
+      Alcotest.test_case "semantically equivalent rejects different colors"
+        `Quick semantically_equivalent_rejects_different_colors;
       Alcotest.test_case "diff No_diff" `Quick diff_no_diff;
       Alcotest.test_case "diff No_diff empty" `Quick diff_no_diff_empty;
       Alcotest.test_case "diff Tree_diff" `Quick diff_tree_diff;
@@ -265,23 +291,26 @@ let suite =
       Alcotest.test_case "diff String_diff" `Quick diff_string_diff;
       Alcotest.test_case "diff actual error" `Quick diff_actual_error;
       Alcotest.test_case "diff expected error" `Quick diff_expected_error;
-      Alcotest.test_case "strip_header no header" `Quick strip_header_no_header;
-      Alcotest.test_case "strip_header with header" `Quick
-        strip_header_with_header;
-      Alcotest.test_case "strip_header regular comment" `Quick
-        strip_header_regular_comment;
-      Alcotest.test_case "strip_header empty" `Quick strip_header_empty;
-      Alcotest.test_case "strip_header only header" `Quick
-        strip_header_only_header;
+      Alcotest.test_case "strip_tool_header no header" `Quick
+        strip_tool_header_no_header;
+      Alcotest.test_case "strip_tool_header with header" `Quick
+        strip_tool_header_with_header;
+      Alcotest.test_case "strip_tool_header regular comment" `Quick
+        strip_tool_header_regular_comment;
+      Alcotest.test_case "strip_tool_header empty" `Quick
+        strip_tool_header_empty;
+      Alcotest.test_case "strip_tool_header only header" `Quick
+        strip_tool_header_only_header;
       Alcotest.test_case "stats no diff" `Quick stats_no_diff;
       Alcotest.test_case "stats with tree diff" `Quick stats_with_tree_diff;
       Alcotest.test_case "pp_stats does not crash" `Quick
         pp_stats_does_not_crash;
-      Alcotest.test_case "diff_with_mode auto" `Quick diff_with_mode_auto;
-      Alcotest.test_case "diff_with_mode tree" `Quick diff_with_mode_tree;
-      Alcotest.test_case "diff_with_mode string" `Quick diff_with_mode_string;
-      Alcotest.test_case "diff_with_mode string identical" `Quick
-        diff_with_mode_string_identical;
+      Alcotest.test_case "diff auto" `Quick diff_auto;
+      Alcotest.test_case "diff tree" `Quick diff_tree;
+      Alcotest.test_case "diff string" `Quick diff_string;
+      Alcotest.test_case "diff string identical" `Quick diff_string_identical;
+      Alcotest.test_case "diff semantic color-mix" `Quick
+        semantic_color_mix_mode;
       Alcotest.test_case "as_tree_diff with tree" `Quick as_tree_diff_with_tree;
       Alcotest.test_case "as_tree_diff with no diff" `Quick as_tree_diff_no_diff;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
