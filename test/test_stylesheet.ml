@@ -5568,7 +5568,7 @@ let customprops13_shortest_unresolved_calc_spacing () =
     ".x{--tw-border-spacing-x:calc(var(--spacing)*4)}"
     (normalize_minified ".x { --tw-border-spacing-x: calc(var(--spacing) * 4) }")
 
-let customprops13_shortest_box_shadow_zero_spread () =
+let customprops13_box_shadow_zero_spread () =
   Alcotest.(check string)
     "custom property box-shadow drops zero spread"
     ".shadow-sm{--tw-shadow:0 1px 3px var(--tw-shadow-color,#0000001a)}"
@@ -5581,7 +5581,12 @@ let customprops13_shortest_oklab_sign_boundaries () =
     "custom property OKLab sign boundaries match shortest color serialization"
     ".prose{--tw-prose-kbd-shadows:oklab(21%-.003 -.034/.1)}"
     (normalize_minified
-       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }")
+       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
+  Alcotest.(check string)
+    "custom property OKLab equal-length raw token stream uses typed spacing"
+    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003 -.034/.1)}"
+    (normalize_minified
+       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }")
 
 let customprops12_invalid_var () =
   Alcotest.(check bool)
@@ -6194,7 +6199,7 @@ let additional_tests =
       customprops13_shortest_unresolved_calc_spacing );
     ( "spec custom-properties 1 3 shortest box-shadow zero spread",
       `Quick,
-      customprops13_shortest_box_shadow_zero_spread );
+      customprops13_box_shadow_zero_spread );
     ( "spec custom-properties 1 3 shortest oklab sign boundaries",
       `Quick,
       customprops13_shortest_oklab_sign_boundaries );

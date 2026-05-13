@@ -2,6 +2,7 @@
 
 open Declaration
 open Stylesheet
+module String_set = Set.Make (String)
 
 (** {1 Declaration Optimization} *)
 
@@ -247,6 +248,11 @@ let legacy_vendor_fallback new_decl existing =
   && (not (same_minified_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
+let same_property_value_declaration new_decl existing =
+  property_name new_decl = property_name existing
+  && same_minified_value new_decl existing
+  && (is_important new_decl || not (is_important existing))
+
 let covered_by_new_declaration new_decl existing =
   let new_prop = property_name new_decl in
   let existing_prop = property_name existing in
@@ -265,7 +271,13 @@ let append_all_declaration idx decl kept =
 
 let deduplicate_step kept (idx, decl) =
   let prop_name = property_name decl in
-  if is_intentionally_duplicated prop_name then kept @ [ (idx, decl) ]
+  if is_intentionally_duplicated prop_name then
+    let kept =
+      List.filter
+        (fun (_, old) -> not (same_property_value_declaration decl old))
+        kept
+    in
+    kept @ [ (idx, decl) ]
   else if
     (not (is_important decl)) && property_covered_by_important kept prop_name
   then kept
@@ -291,6 +303,163 @@ let deduplicate_declarations_with ?(merge_box = true) props =
 
 let deduplicate_declarations props = deduplicate_declarations_with props
 let sort_commuting_declarations decls = decls
+
+let color_custom_property_names stylesheet =
+  let declaration names = function
+    | Declaration
+        {
+          property = Custom_property name;
+          value = Custom_value { value = Typed { kind = Color; _ }; _ };
+          _;
+        } ->
+        String_set.add name names
+    | _ -> names
+  in
+  let declarations names decls = List.fold_left declaration names decls in
+  let rec statement names = function
+    | Rule rule ->
+        let names = declarations names rule.declarations in
+        List.fold_left statement names rule.nested
+    | Declarations decls -> declarations names decls
+    | Layer (_, block)
+    | Media (_, block)
+    | Container (_, _, block)
+    | Supports (_, block)
+    | Moz_document (_, block)
+    | When (_, block)
+    | Else (_, block)
+    | Starting_style block
+    | Origin (_, block)
+    | Scope (_, _, block) ->
+        List.fold_left statement names block
+    | Page (_, decls) | Position_try (_, decls) | Supports_condition (_, decls)
+      ->
+        declarations names decls
+    | Page_with_margins (_, descs, margins) ->
+        let names = declarations names descs in
+        List.fold_left
+          (fun names margin -> declarations names margin.margin_descriptors)
+          names margins
+    | _ -> names
+  in
+  List.fold_left statement String_set.empty stylesheet
+
+let color_fallback_of_length_fallback :
+    Values.length Values.fallback -> Values.color Values.fallback = function
+  | Values.None -> Values.None
+  | Values.Empty -> Values.Empty
+  | Values.Empty2 -> Values.Empty2
+  | Values.Syntax_fallback components -> Values.Syntax_fallback components
+  | Values.Var_fallback name -> Values.Var_fallback name
+  | Values.Fallback value ->
+      Values.Syntax_fallback
+        (Cursor.remaining
+           (Cursor.of_string (Pp.to_string ~minify:true Values.pp_length value)))
+
+let color_var_of_length_var (var : Values.length Values.var) :
+    Values.color Values.var =
+  {
+    name = var.name;
+    fallback = color_fallback_of_length_fallback var.fallback;
+    default = None;
+    layer = var.layer;
+    meta = var.meta;
+  }
+
+let rec normalize_shadow_color_vars color_vars (value : Properties.shadow) :
+    Properties.shadow =
+  match value with
+  | Shadow
+      ({ blur = Some (Values.Var var); spread = None; color = None; _ } as
+       shadow)
+    when String_set.mem var.name color_vars ->
+      Shadow
+        {
+          shadow with
+          blur = Some Zero;
+          color = Some (Values.Var (color_var_of_length_var var));
+        }
+  | List shadows ->
+      List (List.map (normalize_shadow_color_vars color_vars) shadows)
+  | shadow -> shadow
+
+let normalize_shadow_color_var_declaration color_vars = function
+  | Declaration ({ property = Box_shadow; value; _ } as decl) ->
+      Declaration
+        { decl with value = normalize_shadow_color_vars color_vars value }
+  | Declaration
+      ({
+         property = Custom_property _;
+         value =
+           Custom_value
+             { value = Typed { kind = Shadow; value = shadow }; layer; meta };
+         _;
+       } as decl) ->
+      Declaration
+        {
+          decl with
+          value =
+            Properties.Custom_value
+              {
+                value =
+                  Properties.Typed
+                    {
+                      kind = Shadow;
+                      value = normalize_shadow_color_vars color_vars shadow;
+                    };
+                layer;
+                meta;
+              };
+        }
+  | decl -> decl
+
+let normalize_shadow_color_var_slots stylesheet =
+  let color_vars = color_custom_property_names stylesheet in
+  if String_set.is_empty color_vars then stylesheet
+  else
+    let declarations =
+      List.map (normalize_shadow_color_var_declaration color_vars)
+    in
+    let rec statement = function
+      | Rule rule ->
+          Rule
+            {
+              rule with
+              declarations = declarations rule.declarations;
+              nested = List.map statement rule.nested;
+            }
+      | Declarations decls -> Declarations (declarations decls)
+      | Layer (name, block) -> Layer (name, List.map statement block)
+      | Media (query, block) -> Media (query, List.map statement block)
+      | Container (name, query, block) ->
+          Container (name, query, List.map statement block)
+      | Supports (query, block) -> Supports (query, List.map statement block)
+      | Moz_document (query, block) ->
+          Moz_document (query, List.map statement block)
+      | When (query, block) -> When (query, List.map statement block)
+      | Else (query, block) -> Else (query, List.map statement block)
+      | Starting_style block -> Starting_style (List.map statement block)
+      | Origin (origin, block) -> Origin (origin, List.map statement block)
+      | Scope (start, end_, block) ->
+          Scope (start, end_, List.map statement block)
+      | Page (selector, decls) -> Page (selector, declarations decls)
+      | Page_with_margins (selector, descs, margins) ->
+          Page_with_margins
+            ( selector,
+              declarations descs,
+              List.map
+                (fun margin ->
+                  {
+                    margin with
+                    margin_descriptors = declarations margin.margin_descriptors;
+                  })
+                margins )
+      | Position_try (name, decls) -> Position_try (name, declarations decls)
+      | Supports_condition (name, decls) ->
+          Supports_condition (name, declarations decls)
+      | other -> other
+    in
+    List.map statement stylesheet
 
 (** {1 Rule Optimization} *)
 
@@ -1332,7 +1501,7 @@ let layer_decl_backward_redundant seen names =
    introduce the same new names in the same order. Nested conditional layer
    declarations are deliberately left alone because their participation depends
    on the condition at evaluation time. *)
-let drop_redundant_top_level_layer_declarations stmts =
+let drop_redundant_layer_decls stmts =
   let rec loop seen acc = function
     | [] -> List.rev acc
     | (Import _ as stmt) :: rest -> loop [] (stmt :: acc) rest
@@ -1518,8 +1687,7 @@ and rules_aux (rules : rule list) : rule list =
   |> combine_identical_rules
 
 let statements_top_level (stmts : statement list) : statement list =
-  statements stmts |> merge_consecutive_layers
-  |> drop_redundant_top_level_layer_declarations
+  statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
 
 let single_rule (rule : rule) : rule =
   {
@@ -1674,7 +1842,7 @@ let apply_property_duplication (stylesheet : t) : t =
         | other -> other)
       stmts
   in
-  apply_to_statements stylesheet
+  apply_to_statements stylesheet |> normalize_shadow_color_var_slots
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
@@ -1756,4 +1924,5 @@ let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
      passes so the empty rules they leave behind get picked up by
      [drop_empty_rules]. *)
-  statements_top_level (drop_unknown_at_rules (drop_invalid stylesheet))
+  stylesheet |> drop_invalid |> drop_unknown_at_rules
+  |> normalize_shadow_color_var_slots |> statements_top_level

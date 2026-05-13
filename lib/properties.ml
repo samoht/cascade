@@ -2655,10 +2655,15 @@ let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     | Some spread -> Some spread
     | None -> None
   in
+  let has_var_color =
+    match (color : color option) with Some (Var _) -> true | _ -> false
+  in
   let blur : length option =
     match (blur, spread) with
-    | Some blur, None when Pp.minified ctx && is_zero_length blur ->
+    | Some blur, None
+      when Pp.minified ctx && is_zero_length blur && not has_var_color ->
         (None : length option)
+    | None, None when Pp.minified ctx && has_var_color -> Some Zero
     | blur, _ -> blur
   in
   pp_opt_space pp_length ctx blur;
@@ -17780,21 +17785,41 @@ and pp_font_src ctx entries =
 
 let read_font_src = Font_face.read_src
 
-let custom_value_shorter candidate rendered =
-  if String.length candidate < String.length rendered then candidate
-  else rendered
-
-let custom_value_typed_candidate read pp value =
+let read_custom_value_as kind read components =
   match
-    let t = Cursor.of_components value in
-    let parsed = read t in
-    Cursor.expect_eof t;
-    Some (Pp.to_string ~minify:true pp parsed)
+    let cursor = Cursor.of_components components in
+    let parsed = read cursor in
+    Cursor.ws cursor;
+    Cursor.expect_eof cursor;
+    Some (Typed { kind; value = parsed })
   with
-  | candidate -> candidate
+  | result -> result
   | exception Cursor.Parse_error _ -> None
 
-let pp_custom_value_number ctx (value : number) =
+let read_custom_property_value ?(font_family = false) cursor =
+  let components = Cursor.remaining cursor in
+  let typed_readers =
+    [
+      read_custom_value_as Number read_number;
+      read_custom_value_as Length_percentage
+        (read_length_percentage ~with_keywords:false);
+      read_custom_value_as Length (read_length ~with_keywords:false);
+      read_custom_value_as Percentage read_percentage;
+      read_custom_value_as Number_percentage read_number_percentage;
+      read_custom_value_as Color read_color;
+      read_custom_value_as Shadow read_shadow;
+    ]
+  in
+  let typed_readers =
+    if font_family then
+      read_custom_value_as Font_family read_font_family :: typed_readers
+    else typed_readers
+  in
+  match List.find_map (fun read -> read components) typed_readers with
+  | Some value -> value
+  | None -> Tokens components
+
+let pp_number_value ctx (value : number) =
   let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
   match value with
   | Num f when Pp.minified ctx -> pp_rounded f
@@ -17803,28 +17828,6 @@ let pp_custom_value_number ctx (value : number) =
       | Num f -> pp_rounded f
       | c -> pp_number ctx (Calc c))
   | _ -> pp_number ctx value
-
-let custom_value_minified value =
-  let rendered = Parser.to_string_custom_minified value in
-  [
-    custom_value_typed_candidate read_number pp_custom_value_number value;
-    custom_value_typed_candidate
-      (read_length_percentage ~with_keywords:false)
-      (pp_length_percentage ~always:true)
-      value;
-    custom_value_typed_candidate
-      (read_length ~with_keywords:false)
-      (pp_length ~always:true) value;
-    custom_value_typed_candidate read_percentage pp_percentage value;
-    custom_value_typed_candidate read_number_percentage pp_number_percentage
-      value;
-    custom_value_typed_candidate read_color pp_color value;
-    custom_value_typed_candidate read_shadow pp_shadow value;
-  ]
-  |> List.filter_map Fun.id
-  |> List.fold_left
-       (fun rendered candidate -> custom_value_shorter candidate rendered)
-       rendered
 
 let pp_value : type a. (a kind * a) Pp.t =
  fun ctx (kind, value) ->
@@ -17845,6 +17848,7 @@ let pp_value : type a. (a kind * a) Pp.t =
         | Var v -> pp_var pp_rgb_type ctx v
       in
       pp pp_rgb_type
+  | Number -> pp pp_number_value
   | Int -> pp Pp.int
   | Float -> pp Pp.float
   | Percentage -> pp pp_percentage
@@ -17853,7 +17857,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Opacity -> pp pp_opacity
   | Value ->
       let rendered =
-        if Pp.minified ctx then custom_value_minified value
+        if Pp.minified ctx then Parser.to_string_custom_minified value
         else Parser.to_string_custom value
       in
       Pp.string ctx rendered
@@ -17907,6 +17911,7 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Percentage -> (
       match value with Pct f -> Pp.string_of_float f | _ -> "initial")
   | Number_percentage -> Values.string_of_number_percentage value
+  | Number -> Pp.to_string pp_number value
   | Int -> string_of_int value
   | Value -> Parser.to_string_custom value
   | Content -> (
@@ -17937,16 +17942,24 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Gradient_direction -> Pp.to_string pp_gradient_direction value
   | _ -> "initial"
 
-let pp_custom_property_value ctx (Custom_value { kind; value; layer; _ }) =
-  match (layer, kind) with
-  | Some "theme", Font_family -> pp_value ctx (kind, value)
-  | _ -> pp_value ctx (kind, value)
+let pp_custom_property_value ctx = function
+  | Typed { kind; value } -> pp_value ctx (kind, value)
+  | Tokens value -> pp_value ctx (Value, value)
+
+let components_of_custom_property_value = function
+  | Tokens components -> components
+  | Typed { kind; value } ->
+      Cursor.remaining
+        (Cursor.of_string (Pp.to_string ~minify:true pp_value (kind, value)))
+
+let pp_custom_property ctx (Custom_value { value; _ }) =
+  pp_custom_property_value ctx value
 
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
   let pp pp_a = pp_a ctx value in
   match prop with
-  | Custom_property _ -> pp pp_custom_property_value
+  | Custom_property _ -> pp pp_custom_property
   | Unknown_property _ ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_minified value

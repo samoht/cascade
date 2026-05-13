@@ -4029,6 +4029,7 @@ type _ kind =
   | Length : length kind
   | Color : color kind
   | Rgb : rgb kind
+  | Number : number kind
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
@@ -4071,12 +4072,15 @@ type _ kind =
 
 type custom_property =
   | Custom_value : {
-      kind : 'a kind;
-      value : 'a;
+      value : custom_property_value;
       layer : string option;
       meta : meta option;
     }
       -> custom_property
+
+and custom_property_value =
+  | Typed : { kind : 'a kind; value : 'a } -> custom_property_value
+  | Tokens of custom_value
 
 (** [all] shorthand value (CSS Cascade 5 §3.2). The [all] property only accepts
     CSS-wide keywords - no other syntax is valid. *)

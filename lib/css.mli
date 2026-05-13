@@ -7047,6 +7047,7 @@ type 'a kind = 'a Properties.kind =
   | Length : length kind
   | Color : color kind
   | Rgb : rgb kind
+  | Number : number kind
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind

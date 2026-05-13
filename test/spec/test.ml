@@ -609,7 +609,7 @@ let nesting_rules () =
 
 (* SS 2 - Custom property definitions *)
 let custom_properties () =
-  roundtrip ":root { --primary-color: blue }" ":root{--primary-color:blue}";
+  roundtrip ":root { --primary-color: blue }" ":root{--primary-color:#00f}";
   roundtrip ".x { color: var(--primary-color) }"
     ".x{color:var(--primary-color)}"
 

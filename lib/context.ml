@@ -705,6 +705,7 @@ let kind_equal : type a b.
   | Properties.Scale, Properties.Scale -> Some Refl
   | Properties.Duration, Properties.Duration -> Some Refl
   | Properties.Animation, Properties.Animation -> Some Refl
+  | Properties.Number, Properties.Number -> Some Refl
   | Properties.Number_percentage, Properties.Number_percentage -> Some Refl
   | Properties.Font_size, Properties.Font_size -> Some Refl
   | Properties.Filter, Properties.Filter -> Some Refl
@@ -758,25 +759,29 @@ let read_custom_value : type a.
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value = Properties.Custom_value { kind; value; _ };
+        value = Properties.Custom_value { value; _ };
         _;
       } -> (
-      match kind_equal kind target_kind with
-      | Some Refl -> Some value
-      | None -> (
-          match kind with
-          | Properties.Value -> read_full_components read value
-          | _ -> None))
+      match value with
+      | Properties.Typed { kind; value } -> (
+          match kind_equal kind target_kind with
+          | Some Refl -> Some value
+          | None ->
+              read_full_components read
+                (Properties.components_of_custom_property_value
+                   (Properties.Typed { kind; value })))
+      | Properties.Tokens components -> read_full_components read components)
   | _ -> None
 
 let read_custom_components read = function
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value = Properties.Custom_value { kind = Properties.Value; value; _ };
+        value = Properties.Custom_value { value; _ };
         _;
       } ->
-      read_full_components read value
+      read_full_components read
+        (Properties.components_of_custom_property_value value)
   | _ -> None
 
 let map_var_fallback f = function
