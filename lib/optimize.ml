@@ -363,6 +363,22 @@ let finalize_rule_without_nested (rule : rule) : rule =
       deduplicate_declarations rule.declarations |> sort_commuting_declarations;
   }
 
+let rules_have_same_selector (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
+  prev.selector = rule.selector
+  && not (contains_vendor_pseudo_element rule.selector)
+
+let merge_two_adjacent_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) :
+    Stylesheet.rule =
+  (* Same selector and adjacent source position: merge into one block, then
+     re-run declaration optimization over the combined source-ordered
+     declarations. *)
+  {
+    selector = prev.selector;
+    declarations = prev.declarations @ rule.declarations;
+    nested = prev.nested @ rule.nested;
+    merge_key = prev.merge_key;
+  }
+
 let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
   (* Only merge truly adjacent rules with the same selector to preserve cascade
      order. This is safe because we don't reorder rules - we only combine
@@ -371,33 +387,22 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
 
      However, we don't merge vendor-specific pseudo-elements to match Tailwind's
      behavior and ensure browser compatibility. *)
+  let step acc prev rule rest =
+    if rules_have_same_selector prev rule then
+      let merged = merge_two_adjacent_rules prev rule in
+      (acc, Some merged, rest)
+    else (prev :: acc, Some rule, rest)
+  in
   let rec merge_adjacent (acc : Stylesheet.rule list)
       (prev_rule : Stylesheet.rule option) :
       Stylesheet.rule list -> Stylesheet.rule list = function
     | [] -> List.rev (match prev_rule with Some r -> r :: acc | None -> acc)
     | (rule : Stylesheet.rule) :: rest -> (
         match prev_rule with
-        | None ->
-            (* First rule - just store it *)
-            merge_adjacent acc (Some rule) rest
+        | None -> merge_adjacent acc (Some rule) rest
         | Some prev ->
-            if
-              prev.selector = rule.selector
-              && not (contains_vendor_pseudo_element rule.selector)
-            then
-              (* Same selector and adjacent source position: merge into one
-                 block, then re-run declaration optimization over the combined
-                 source-ordered declarations. *)
-              let merged : Stylesheet.rule =
-                {
-                  selector = prev.selector;
-                  declarations = prev.declarations @ rule.declarations;
-                  nested = prev.nested @ rule.nested;
-                  merge_key = prev.merge_key;
-                }
-              in
-              merge_adjacent acc (Some merged) rest
-            else merge_adjacent (prev :: acc) (Some rule) rest)
+            let acc', prev', rest' = step acc prev rule rest in
+            merge_adjacent acc' prev' rest')
   in
   merge_adjacent [] None rules
 
@@ -802,54 +807,48 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
          can combine when their selectors are compatible. *)
       can_combine_selectors prev.selector rule.selector
 
+let rule_cannot_combine (rule : Stylesheet.rule) =
+  (* Don't combine rules with nested statements or rules whose selectors are
+     structurally incompatible with combining (e.g., vendor pseudo-elements,
+     descendant pseudo-elements). Always check should_not_combine regardless of
+     merge_key — merge_key controls whether identical-declaration rules CAN
+     combine, but structural selector constraints still apply. *)
+  rule.Stylesheet_intf.nested <> [] || should_not_combine rule.selector
+
+let group_member_of_rule (rule : Stylesheet.rule) =
+  (rule.selector, rule.declarations, rule.merge_key)
+
+let prev_rule_of_group_head (prev_sel, prev_decls, prev_merge_key) =
+  {
+    Stylesheet_intf.selector = prev_sel;
+    declarations = prev_decls;
+    nested = [];
+    merge_key = prev_merge_key;
+  }
+
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
   (* Only combine consecutive rules to preserve cascade semantics *)
+  let extend_or_restart acc current_group rule rest combine =
+    match current_group with
+    | [] ->
+        (* Start a new group *)
+        combine acc [ group_member_of_rule rule ] rest
+    | head :: _ ->
+        let prev_rule = prev_rule_of_group_head head in
+        if can_combine_rules prev_rule rule then
+          combine acc (group_member_of_rule rule :: current_group) rest
+        else
+          let acc' = flush_group acc current_group in
+          combine acc' [ group_member_of_rule rule ] rest
+  in
   let rec combine_consecutive acc current_group = function
     | [] -> List.rev (flush_group acc current_group)
-    | (rule : Stylesheet.rule) :: rest -> (
-        if
-          (* Don't combine rules with nested statements or rules whose selectors
-             are structurally incompatible with combining (e.g., vendor
-             pseudo-elements, descendant pseudo-elements). Always check
-             should_not_combine regardless of merge_key — merge_key controls
-             whether identical-declaration rules CAN combine, but structural
-             selector constraints still apply. *)
-          rule.nested <> [] || should_not_combine rule.selector
-        then
-          (* Don't combine this selector, flush current group and start fresh *)
+    | (rule : Stylesheet.rule) :: rest ->
+        if rule_cannot_combine rule then
           let acc' = rule :: flush_group acc current_group in
           combine_consecutive acc' [] rest
-        else
-          match current_group with
-          | [] ->
-              (* Start a new group *)
-              combine_consecutive acc
-                [ (rule.selector, rule.declarations, rule.merge_key) ]
-                rest
-          | (prev_sel, prev_decls, prev_merge_key) :: _ ->
-              let prev_rule =
-                {
-                  Stylesheet_intf.selector = prev_sel;
-                  declarations = prev_decls;
-                  nested = [];
-                  merge_key = prev_merge_key;
-                }
-              in
-              if can_combine_rules prev_rule rule then
-                (* Same declarations and compatible selectors, add to current
-                   group *)
-                combine_consecutive acc
-                  ((rule.selector, rule.declarations, rule.merge_key)
-                  :: current_group)
-                  rest
-              else
-                (* Different declarations or incompatible selectors, flush
-                   current group and start new one *)
-                let acc' = flush_group acc current_group in
-                combine_consecutive acc'
-                  [ (rule.selector, rule.declarations, rule.merge_key) ]
-                  rest)
+        else extend_or_restart acc current_group rule rest combine_consecutive
   in
   combine_consecutive [] [] rules
 
@@ -910,6 +909,41 @@ let is_container_block block =
       | _ -> false)
     block
 
+let is_preference_media_cond = function
+  | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
+  | Media.Prefers_contrast _ ->
+      true
+  | _ -> false
+
+let record_consolidated_media ~media_map ~last_pos ~first_responsive_pos
+    ~has_responsive i stmt cond block =
+  let key = Media.to_string cond in
+  Hashtbl.replace last_pos key i;
+  let existing =
+    try Hashtbl.find media_map key with Not_found -> (cond, [])
+  in
+  let _, blocks = existing in
+  Hashtbl.replace media_map key (cond, blocks @ [ block ]);
+  if is_responsive_media stmt then (
+    has_responsive := true;
+    if !first_responsive_pos = None then first_responsive_pos := Some i)
+
+let collect_media_step ~media_map ~last_pos ~first_responsive_pos
+    ~has_responsive ~has_preference_media i stmt =
+  match stmt with
+  | Media (cond, block)
+    when should_consolidate cond
+         && (not (has_nested_preference_media block))
+         && not (is_container_block block) ->
+      record_consolidated_media ~media_map ~last_pos ~first_responsive_pos
+        ~has_responsive i stmt cond block
+  | Media (cond, _) ->
+      if is_preference_media_cond cond then has_preference_media := true
+  | _ when is_responsive_media stmt ->
+      has_responsive := true;
+      if !first_responsive_pos = None then first_responsive_pos := Some i
+  | _ -> ()
+
 let collect_media_data stmts =
   let media_map = Hashtbl.create 16 in
   let last_pos = Hashtbl.create 16 in
@@ -917,32 +951,8 @@ let collect_media_data stmts =
   let has_responsive = ref false in
   let has_preference_media = ref false in
   List.iteri
-    (fun i stmt ->
-      match stmt with
-      | Media (cond, block)
-        when should_consolidate cond
-             && (not (has_nested_preference_media block))
-             && not (is_container_block block) ->
-          let key = Media.to_string cond in
-          Hashtbl.replace last_pos key i;
-          let existing =
-            try Hashtbl.find media_map key with Not_found -> (cond, [])
-          in
-          let _, blocks = existing in
-          Hashtbl.replace media_map key (cond, blocks @ [ block ]);
-          if is_responsive_media stmt then (
-            has_responsive := true;
-            if !first_responsive_pos = None then first_responsive_pos := Some i)
-      | Media (cond, _) -> (
-          match cond with
-          | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
-          | Media.Prefers_contrast _ ->
-              has_preference_media := true
-          | _ -> ())
-      | _ when is_responsive_media stmt ->
-          has_responsive := true;
-          if !first_responsive_pos = None then first_responsive_pos := Some i
-      | _ -> ())
+    (collect_media_step ~media_map ~last_pos ~first_responsive_pos
+       ~has_responsive ~has_preference_media)
     stmts;
   ( media_map,
     last_pos,

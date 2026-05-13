@@ -27,23 +27,31 @@ let extract_property_constructors content =
   let constructor_pattern =
     Re.Perl.compile_pat "^[ ]*\\| ([A-Z][A-Za-z0-9_]*) :"
   in
+  let starts_property line = Re.execp property_start_pattern line in
+  let starts_next_type line = Re.execp next_type_pattern line in
+  let static_constructor line =
+    match Re.exec_opt constructor_pattern line with
+    | None -> None
+    | Some g ->
+        let constructor = Re.Group.get g 1 in
+        if is_static_property_constructor constructor then Some constructor
+        else None
+  in
+  let next_state in_property acc line =
+    if starts_property line then `Continue (true, acc)
+    else if in_property && starts_next_type line then `Stop
+    else
+      match (in_property, static_constructor line) with
+      | true, Some constructor -> `Continue (true, constructor :: acc)
+      | true, None -> `Continue (true, acc)
+      | false, _ -> `Continue (false, acc)
+  in
   let rec loop in_property acc = function
     | [] -> List.rev acc
-    | line :: rest ->
-        if Re.execp property_start_pattern line then loop true acc rest
-        else if in_property && Re.execp next_type_pattern line then List.rev acc
-        else if in_property then
-          match Re.exec_opt constructor_pattern line with
-          | Some g ->
-              let constructor = Re.Group.get g 1 in
-              let acc =
-                if is_static_property_constructor constructor then
-                  constructor :: acc
-                else acc
-              in
-              loop true acc rest
-          | None -> loop true acc rest
-        else loop false acc rest
+    | line :: rest -> (
+        match next_state in_property acc line with
+        | `Stop -> List.rev acc
+        | `Continue (in_property, acc) -> loop in_property acc rest)
   in
   loop false [] lines
 

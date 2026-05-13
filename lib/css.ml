@@ -432,32 +432,40 @@ let media_min_width_length l = Media.Min_width_length l
 let media_not_min_width_length l = Media.Not_min_width_length l
 
 let parse_length s =
-  try
+  match
     let c = Cursor.of_string s in
     let l = Values.read_length c in
     if Cursor.is_done c then Some l else None
-  with Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
 let parse_color s =
-  try
+  match
     let c = Cursor.of_string s in
     let col = Values.read_color c in
     if Cursor.is_done c then Some col else None
-  with Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
 let parse_shadow s =
-  try
+  match
     let r = Cursor.of_string s in
     let sh = Properties.read_shadow r in
     if Cursor.is_done r then Some sh else None
-  with Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
 let parse_background_image s =
-  try
+  match
     let r = Cursor.of_string s in
     let imgs = Properties.read_background_images r in
     if Cursor.is_done r then Some imgs else None
-  with Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
@@ -680,6 +688,20 @@ let custom_prop_names decls = List.filter_map custom_declaration_name decls
 let custom_props_of_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
+let custom_props_nested_block stmt =
+  (* Block-container statements whose children continue the [in_layer] context
+     unchanged: walk into [@media], [@supports], [@container], [@origin] blocks;
+     [@layer] is handled by the caller because it adjusts [in_layer]. *)
+  let extractors =
+    [
+      (fun s -> Option.map snd (as_media s));
+      (fun s -> Option.map snd (as_supports s));
+      (fun s -> Option.map (fun (_, _, c) -> c) (as_container s));
+      (fun s -> Option.map snd (as_origin s));
+    ]
+  in
+  List.find_map (fun f -> f stmt) extractors
+
 let custom_props ?layer sheet =
   (* Walk the statement tree directly so [in_layer] follows the structure: it is
      set on entry to a [Layer] node and reset on exit, never persists into
@@ -704,18 +726,9 @@ let custom_props ?layer sheet =
         descend content in_layer'
     | Some (None, content) -> descend content in_layer
     | None -> (
-        match as_media stmt with
-        | Some (_, content) -> descend content in_layer
-        | None -> (
-            match as_supports stmt with
-            | Some (_, content) -> descend content in_layer
-            | None -> (
-                match as_container stmt with
-                | Some (_, _, content) -> descend content in_layer
-                | None -> (
-                    match as_origin stmt with
-                    | Some (_, content) -> descend content in_layer
-                    | None -> acc))))
+        match custom_props_nested_block stmt with
+        | Some content -> descend content in_layer
+        | None -> acc)
   in
   let initial = layer = None in
   List.rev (List.fold_left (walk initial) [] sheet)

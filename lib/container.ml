@@ -305,34 +305,39 @@ let style_range_query cvs =
       | _ -> None)
   | _ -> None
 
+let style_leaf_declaration name_components value =
+  match (style_strip_ws name_components, style_strip_ws value) with
+  | [ name_component ], stripped_value when not (has_semicolon_component value)
+    -> (
+      match ident_component name_component with
+      | Some name when stripped_value <> [] || is_custom_property name ->
+          Declaration { name; value }
+      | Some _ | None -> failwith "invalid style() container query")
+  | _ -> failwith "invalid style() container query"
+
+let style_leaf_boolean components =
+  match style_strip_ws components with
+  | [ name_component ] -> (
+      match ident_component name_component with
+      (* CSS Conditional Rules 5 section 4.4: a boolean [style()] query tests
+         whether a custom property has any value, so the ident must start with
+         [--]. A bare property name like [style(color)] is not a valid boolean
+         form. *)
+      | Some name when is_custom_property name -> Boolean name
+      | _ -> failwith "invalid style() container query")
+  | _ -> failwith "invalid style() container query"
+
 let style_leaf_body body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
   let components = Cursor.remaining (Cursor.of_string body) in
   match split_top_level_colon components with
-  | Some (name_components, value) -> (
-      match (style_strip_ws name_components, style_strip_ws value) with
-      | [ name_component ], stripped_value
-        when not (has_semicolon_component value) -> (
-          match ident_component name_component with
-          | Some name when stripped_value <> [] || is_custom_property name ->
-              Declaration { name; value }
-          | Some _ | None -> failwith "invalid style() container query")
-      | _ -> failwith "invalid style() container query")
+  | Some (name_components, value) ->
+      style_leaf_declaration name_components value
   | None -> (
       match style_range_query components with
       | Some query -> query
-      | None -> (
-          match style_strip_ws components with
-          | [ name_component ] -> (
-              match ident_component name_component with
-              (* CSS Conditional Rules 5 section 4.4: a boolean [style()] query
-                 tests whether a custom property has any value, so the ident
-                 must start with [--]. A bare property name like [style(color)]
-                 is not a valid boolean form. *)
-              | Some name when is_custom_property name -> Boolean name
-              | _ -> failwith "invalid style() container query")
-          | _ -> failwith "invalid style() container query"))
+      | None -> style_leaf_boolean components)
 
 let top_level_word s word =
   let len = String.length s in
@@ -430,6 +435,15 @@ let scroll_state_value_allowed name value =
       | _ -> false)
   | _ -> false
 
+let scroll_state_query_leaf body =
+  match String.split_on_char ':' body with
+  | [ name; value ] ->
+      let name = String.trim name in
+      let value = String.trim value in
+      if scroll_state_value_allowed name value then State { name; value }
+      else failwith "invalid scroll-state() container query"
+  | _ -> failwith "invalid scroll-state() container query"
+
 let rec scroll_state_query_body body =
   let body = strip_outer_parens body in
   if String.length body >= 4 && String.sub body 0 4 = "not " then
@@ -450,14 +464,7 @@ let rec scroll_state_query_body body =
             let lhs = String.sub body 0 i in
             let rhs = String.sub body (i + 3) (String.length body - i - 3) in
             Both (scroll_state_query_body lhs, scroll_state_query_body rhs)
-        | None -> (
-            match String.split_on_char ':' body with
-            | [ name; value ] -> (
-                match (String.trim name, String.trim value) with
-                | name, value when scroll_state_value_allowed name value ->
-                    State { name; value }
-                | _ -> failwith "invalid scroll-state() container query")
-            | _ -> failwith "invalid scroll-state() container query"))
+        | None -> scroll_state_query_leaf body)
 
 let scroll_state_body ~uppercase body =
   let body = String.trim body in
@@ -575,7 +582,22 @@ let specific_of_string raw =
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
-let rec unnamed_of_string s =
+let rec unnamed_query_not s stripped =
+  if String.length stripped >= 4 && String.sub stripped 0 4 = "not " then
+    (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly one
+       [<query-in-parens>], so [not not (x)] is a parse error. The inner
+       expression must be wrapped in parens (a feature query, a
+       style()/scroll-state() function, or a parenthesised compound
+       condition). *)
+    let inner =
+      String.trim (String.sub stripped 4 (String.length stripped - 4))
+    in
+    if String.length inner = 0 || inner.[0] <> '(' then
+      failwith "container query: 'not' requires a parenthesised operand"
+    else Not (unnamed_of_string inner)
+  else atom_of_string s
+
+and unnamed_of_string s =
   let s = String.trim s in
   let stripped = strip_outer_parens s in
   if has_top_level_word stripped "and" && has_top_level_word stripped "or" then
@@ -596,22 +618,7 @@ let rec unnamed_of_string s =
               String.sub stripped (i + 3) (String.length stripped - i - 3)
             in
             And (unnamed_of_string lhs, unnamed_of_string rhs)
-        | None ->
-            if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
-            then
-              (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly
-                 one [<query-in-parens>], so [not not (x)] is a parse error. The
-                 inner expression must be wrapped in parens (a feature query, a
-                 style()/scroll-state() function, or a parenthesised compound
-                 condition). *)
-              let inner =
-                String.trim (String.sub stripped 4 (String.length stripped - 4))
-              in
-              if String.length inner = 0 || inner.[0] <> '(' then
-                failwith
-                  "container query: 'not' requires a parenthesised operand"
-              else Not (unnamed_of_string inner)
-            else atom_of_string s)
+        | None -> unnamed_query_not s stripped)
 
 and atom_of_string s =
   let s = String.trim s in

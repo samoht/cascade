@@ -531,40 +531,51 @@ let long_generic_family_start r =
       List.mem (String.lowercase_ascii first) generic_font_family_keywords
   | _ -> false
 
+let read_optional_line_height r =
+  match Cursor.peek_delim r with
+  | Some '/' ->
+      Cursor.skip r;
+      read_shorthand_line_height r
+  | _ -> ()
+
+let read_font_shorthand_size_tail r =
+  let _ = read_font_size r in
+  read_optional_line_height r;
+  if long_generic_family_start r then
+    Cursor.err_invalid r "generic font family must be a standalone family item";
+  ignore (read_font_family r : font_family);
+  Cursor.ws r;
+  Cursor.expect_eof r
+
+let font_shorthand_prefix_ident = function
+  | Some
+      ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
+      | "lighter" | "condensed" | "expanded" ) ->
+      true
+  | _ -> false
+
+let read_font_shorthand_step r =
+  Cursor.ws r;
+  if Cursor.is_done r then `Done false
+  else if font_shorthand_prefix_ident (Cursor.peek_ident r) then
+    let _ = Cursor.ident r in
+    `Continue
+  else
+    let before = Cursor.save r in
+    match read_font_weight r with
+    | _ -> `Continue
+    | exception Cursor.Parse_error _ ->
+        Cursor.restore r before;
+        read_font_shorthand_size_tail r;
+        `Done true
+
 let read_font_shorthand_body r =
-  let saw_size = ref false in
   let rec loop () =
-    Cursor.ws r;
-    if Cursor.is_done r then ()
-    else
-      match Cursor.peek_ident r with
-      | Some
-          ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
-          | "lighter" | "condensed" | "expanded" ) ->
-          let _ = Cursor.ident r in
-          loop ()
-      | _ -> (
-          let before = Cursor.save r in
-          match read_font_weight r with
-          | _ -> loop ()
-          | exception Cursor.Parse_error _ ->
-              Cursor.restore r before;
-              let _ = read_font_size r in
-              saw_size := true;
-              (match Cursor.peek_delim r with
-              | Some '/' ->
-                  Cursor.skip r;
-                  read_shorthand_line_height r
-              | _ -> ());
-              if long_generic_family_start r then
-                Cursor.err_invalid r
-                  "generic font family must be a standalone family item";
-              ignore (read_font_family r : font_family);
-              Cursor.ws r;
-              Cursor.expect_eof r)
+    match read_font_shorthand_step r with
+    | `Continue -> loop ()
+    | `Done saw_size -> saw_size
   in
-  loop ();
-  !saw_size
+  loop ()
 
 let is_system_font_keyword = function
   | "caption" | "icon" | "menu" | "message-box" | "small-caption" | "status-bar"
@@ -1764,28 +1775,23 @@ let read_regular_property_declaration t : declaration =
    starts-with-ident shape isn't conclusive on its own, so look at the next
    non-ident component: if it's [:] this is a declaration, otherwise walk the
    lookahead window for a [{ ... }] block before the next [;]. *)
-let is_nested_rule t =
-  Cursor.lookahead
-    (fun t ->
-      (match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Ident _; _ }) -> Cursor.skip t
-      | _ -> ());
-      match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Colon; _ }) -> false
-      | _ ->
-          let rec scan () =
-            match Cursor.peek t with
-            | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-                false
-            | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
-              ->
-                true
-            | Some _ ->
-                Cursor.skip t;
-                scan ()
-          in
-          scan ())
-    t
+let rec scan_for_curly_block t =
+  match Cursor.peek t with
+  | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> false
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> true
+  | Some _ ->
+      Cursor.skip t;
+      scan_for_curly_block t
+
+let is_nested_rule_inner t =
+  (match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> Cursor.skip t
+  | _ -> ());
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Colon; _ }) -> false
+  | _ -> scan_for_curly_block t
+
+let is_nested_rule t = Cursor.lookahead is_nested_rule_inner t
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
@@ -1831,49 +1837,59 @@ let skip_to_next_declaration t =
   in
   loop ()
 
+type parse_step =
+  | Step_done of declaration list
+  | Step_continue of declaration list
+  | Step_recover of declaration list * Error.t
+
+let check_declaration_separator t acc =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | None -> Step_done (List.rev acc)
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      Cursor.skip t;
+      Step_continue acc
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+      Cursor.err t "missing semicolon between declarations"
+  | _ -> Step_done (List.rev acc)
+
+let read_declaration_no_recovery t acc =
+  match read_declaration t with
+  | None -> Step_done (List.rev acc)
+  | Some decl -> check_declaration_separator t (decl :: acc)
+
+let read_declaration_with_recovery t acc =
+  match read_declaration t with
+  | None -> Step_done (List.rev acc)
+  | Some decl -> (
+      let acc = decl :: acc in
+      match check_declaration_separator t acc with
+      | step -> step
+      | exception Error.Parse_error e -> Step_recover (acc, e))
+  | exception Error.Parse_error e -> Step_recover (acc, e)
+
+let read_declaration_step t acc =
+  if Cursor.recover t then read_declaration_with_recovery t acc
+  else read_declaration_no_recovery t acc
+
+let recover_declaration_step t acc e =
+  Cursor.push_warning t e;
+  skip_to_next_declaration t;
+  acc
+
+let rec read_declarations_loop t acc =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | None -> List.rev acc
+  | _ -> (
+      match read_declaration_step t acc with
+      | Step_done decls -> decls
+      | Step_continue acc -> read_declarations_loop t acc
+      | Step_recover (acc, e) ->
+          read_declarations_loop t (recover_declaration_step t acc e))
+
 let read_declarations t =
-  Cursor.with_context t "declarations" @@ fun () ->
-  let rec check_separator acc =
-    Cursor.ws t;
-    match Cursor.peek t with
-    | None -> List.rev acc (* End of input *)
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-        Cursor.skip t;
-        loop acc
-    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-        Cursor.err t "missing semicolon between declarations"
-    | _ ->
-        (* Some other component - let the next iteration handle it *)
-        List.rev acc
-  and loop acc =
-    Cursor.ws t;
-    match Cursor.peek t with
-    | None -> List.rev acc
-    | _ -> (
-        if Cursor.recover t then (
-          match
-            try Ok (read_declaration t) with Error.Parse_error e -> Error e
-          with
-          | Ok None -> List.rev acc
-          | Ok (Some decl) -> (
-              let acc = decl :: acc in
-              try check_separator acc
-              with Error.Parse_error e ->
-                Cursor.push_warning t e;
-                skip_to_next_declaration t;
-                loop acc)
-          | Error e ->
-              Cursor.push_warning t e;
-              skip_to_next_declaration t;
-              loop acc)
-        else
-          match read_declaration t with
-          | None -> List.rev acc
-          | Some decl ->
-              let acc = decl :: acc in
-              check_separator acc)
-  in
-  loop []
+  Cursor.with_context t "declarations" @@ fun () -> read_declarations_loop t []
 
 let read_block t =
   Cursor.ws t;

@@ -136,31 +136,34 @@ let property_initial_custom_decl : type a.
 
 (** {1 Pass 1 - collect every rule's scope} *)
 
+let collect_scopes_record acc at_path selector customs =
+  if customs <> [] then acc := { at_path; selector; customs } :: !acc
+
+let collect_scopes_property ~kept ~record ~at_path rule =
+  match property_initial_custom_decl ~kept rule with
+  | None -> ()
+  | Some decl -> record at_path (Selector.Universal None) [ decl ]
+
 let collect_scopes ~kept stylesheet =
   let acc = ref [] in
-  let record at_path selector customs =
-    if customs <> [] then acc := { at_path; selector; customs } :: !acc
-  in
+  let record = collect_scopes_record acc in
   let rec walk_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
     | Some (node, body, _) ->
         List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
-    | None -> (
-        match stmt with
-        | Rule rule ->
-            let eff = effective_selector ~parents rule.selector in
-            record at_path eff (local_customs ~kept rule.declarations);
-            List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
-        | Property rule -> (
-            match property_initial_custom_decl ~kept rule with
-            | None -> ()
-            | Some decl -> record at_path (Selector.Universal None) [ decl ])
-        | Declarations decls ->
-            let sel =
-              match parents with p :: _ -> p | [] -> Selector.Universal None
-            in
-            record at_path sel (local_customs ~kept decls)
-        | _ -> ())
+    | None -> walk_non_at ~parents ~at_path stmt
+  and walk_non_at ~parents ~at_path = function
+    | Rule rule ->
+        let eff = effective_selector ~parents rule.selector in
+        record at_path eff (local_customs ~kept rule.declarations);
+        List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
+    | Property rule -> collect_scopes_property ~kept ~record ~at_path rule
+    | Declarations decls ->
+        let sel =
+          match parents with p :: _ -> p | [] -> Selector.Universal None
+        in
+        record at_path sel (local_customs ~kept decls)
+    | _ -> ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
   List.rev !acc
@@ -224,6 +227,17 @@ let custom_value_components = function
       Some value
   | _ -> None
 
+let better_custom_candidate ~important ~idx = function
+  | None -> true
+  | Some (best_important, best_idx, _) ->
+      (important && not best_important)
+      || (important = best_important && idx > best_idx)
+
+let consider_custom_candidate idx best decl value =
+  let important = Declaration.is_important decl in
+  let candidate = (important, idx, value) in
+  if better_custom_candidate ~important ~idx best then Some candidate else best
+
 let lookup_visible_custom_components visible name =
   let dashed =
     if String.length name >= 2 && String.sub name 0 2 = "--" then name
@@ -235,17 +249,7 @@ let lookup_visible_custom_components visible name =
       when n = name || n = dashed -> (
         match custom_value_components decl with
         | None -> best
-        | Some value ->
-            let important = Declaration.is_important decl in
-            let candidate = (important, idx, value) in
-            let better =
-              match best with
-              | None -> true
-              | Some (best_important, best_idx, _) ->
-                  (important && not best_important)
-                  || (important = best_important && idx > best_idx)
-            in
-            if better then Some candidate else best)
+        | Some value -> consider_custom_candidate idx best decl value)
     | _ -> best
   in
   let rec loop idx best = function
@@ -333,20 +337,18 @@ and substitute_var visible ~visited original name fallback =
     | None -> Components [ Component.Func original ]
     | Some components -> substitute_components visible ~visited components
   in
+  let resolved_or_fallback value =
+    match substitute_components visible ~visited:(name :: visited) value with
+    | Components _ as resolved -> resolved
+    | Cycle -> (
+        match fallback with None -> Cycle | Some _ -> fallback_or_original ())
+  in
   if List.mem name visited then
     match fallback with None -> Cycle | Some _ -> fallback_or_original ()
   else
     match lookup_visible_custom_components visible name with
     | None -> fallback_or_original ()
-    | Some value -> (
-        match
-          substitute_components visible ~visited:(name :: visited) value
-        with
-        | Components _ as resolved -> resolved
-        | Cycle -> (
-            match fallback with
-            | None -> Cycle
-            | Some _ -> fallback_or_original ()))
+    | Some value -> resolved_or_fallback value
 
 let declaration_with_components decl components =
   let property = Declaration.property_name decl in
@@ -376,39 +378,49 @@ let declaration_with_components decl components =
          else fallback)
     in
     let source = String.concat "" [ property; ":"; value; important ] in
-    try Some (Declaration.read (Cursor.of_string source))
-    with Cursor.Parse_error _ ->
-      if property = "font-family" && has_string components then opaque ()
-      else if has_comma components then None
-      else opaque ()
+    match Declaration.read (Cursor.of_string source) with
+    | decl -> Some decl
+    | exception Cursor.Parse_error _ ->
+        if property = "font-family" && has_string components then opaque ()
+        else if has_comma components then None
+        else opaque ()
+
+let should_use_typed_default visible vars =
+  vars <> []
+  && List.for_all
+       (fun (Variables.V var) ->
+         Option.is_some var.Values.default
+         && Option.is_none
+              (lookup_visible_custom_components visible var.Values.name))
+       vars
+
+let apply_substituted_components ctx decl ~original_components components =
+  if components = original_components then Some (Context.eval ctx decl)
+  else
+    match declaration_with_components decl components with
+    | None -> None
+    | Some decl -> Some (Context.eval ctx decl)
+
+let substitute_non_custom visible ctx decl =
+  let vars = Variables.vars_of_declarations [ decl ] in
+  if should_use_typed_default visible vars then Some (Context.eval ctx decl)
+  else
+    let value = Declaration.string_of_value ~minify:false decl in
+    let original_components = Cursor.remaining (Cursor.of_string value) in
+    match substitute_components visible ~visited:[] original_components with
+    | Cycle -> Some (Context.eval ctx decl)
+    | Components components ->
+        apply_substituted_components ctx decl ~original_components components
 
 let substitute_declaration visible ctx decl =
   match custom_name decl with
   | Some _ -> Some decl
-  | None -> (
-      let vars = Variables.vars_of_declarations [ decl ] in
-      let use_typed_default =
-        vars <> []
-        && List.for_all
-             (fun (Variables.V var) ->
-               Option.is_some var.Values.default
-               && Option.is_none
-                    (lookup_visible_custom_components visible var.Values.name))
-             vars
-      in
-      if use_typed_default then Some (Context.eval ctx decl)
-      else
-        let value = Declaration.string_of_value ~minify:false decl in
-        let original_components = Cursor.remaining (Cursor.of_string value) in
-        match substitute_components visible ~visited:[] original_components with
-        | Cycle -> Some (Context.eval ctx decl)
-        | Components components -> (
-            if components = original_components then
-              Some (Context.eval ctx decl)
-            else
-              match declaration_with_components decl components with
-              | None -> None
-              | Some decl -> Some (Context.eval ctx decl)))
+  | None -> substitute_non_custom visible ctx decl
+
+let font_src_var_fallback ~simplify ~visited (var : Font_face.src Values.var) =
+  match var.Values.fallback with
+  | Values.Fallback value -> simplify ~visited value
+  | _ -> [ Font_face.Var var ]
 
 let simplify_font_src_descriptor visible entries =
   let normalize_entry = function
@@ -417,36 +429,34 @@ let simplify_font_src_descriptor visible entries =
     | entry -> entry
   in
   let rec simplify ~visited entries =
-    List.concat_map
-      (function
-        | Font_face.Var var when not (List.mem var.Values.name visited) -> (
-            match
-              lookup_visible_custom visible var.Values.name Font_face.read_src
-            with
-            | Some value -> simplify ~visited:(var.Values.name :: visited) value
-            | None -> (
-                match var.Values.fallback with
-                | Values.Fallback value -> simplify ~visited value
-                | _ -> [ Font_face.Var var ]))
-        | entry -> [ normalize_entry entry ])
-      entries
+    List.concat_map (simplify_entry ~visited) entries
+  and simplify_entry ~visited = function
+    | Font_face.Var var when not (List.mem var.Values.name visited) -> (
+        match
+          lookup_visible_custom visible var.Values.name Font_face.read_src
+        with
+        | Some value -> simplify ~visited:(var.Values.name :: visited) value
+        | None -> font_src_var_fallback ~simplify ~visited var)
+    | entry -> [ normalize_entry entry ]
   in
   simplify ~visited:[] entries
 
+let unicode_range_var_fallback ~simplify ~visited
+    (var : Properties.unicode_range Values.var) : Properties.unicode_range =
+  match var.Values.fallback with
+  | Values.Fallback value -> simplify ~visited value
+  | _ -> (Properties.Var var : Properties.unicode_range)
+
 let simplify_unicode_range_descriptor visible (value : Properties.unicode_range)
     =
-  let rec simplify ~visited = function
-    | (Properties.Var var : Properties.unicode_range)
-      when not (List.mem var.Values.name visited) -> (
+  let rec simplify ~visited : Properties.unicode_range -> _ = function
+    | Properties.Var var when not (List.mem var.Values.name visited) -> (
         match
           lookup_visible_custom visible var.Values.name
             Properties.read_unicode_range
         with
         | Some value -> simplify ~visited:(var.Values.name :: visited) value
-        | None -> (
-            match var.Values.fallback with
-            | Values.Fallback value -> simplify ~visited value
-            | _ -> (Properties.Var var : Properties.unicode_range)))
+        | None -> unicode_range_var_fallback ~simplify ~visited var)
     | value -> value
   in
   simplify ~visited:[] value
@@ -720,16 +730,33 @@ let refs_of_declaration decl =
    declarations (which determine direct liveness); [customs] lists custom-prop
    declarations along with the var names their bodies reference (used to
    propagate liveness through chains like [--quad: calc(var(--double) * 2)]). *)
+let refs_of_at_node = function
+  | Media query -> refs_of_media query
+  | Supports query -> refs_of_supports query
+  | Container (_, Some query) -> refs_of_container query
+  | Container (_, None) -> []
+  | _ -> []
+
+let selector_for_parents_universal = function
+  | p :: _ -> p
+  | [] -> Selector.Universal None
+
+let record_at_node_refs consumers ~parents ~at_path node =
+  match refs_of_at_node node with
+  | [] -> ()
+  | refs ->
+      let sel = selector_for_parents_universal parents in
+      consumers := (at_path, sel, refs) :: !consumers
+
+let record_keyframe_decls ~record_decl ~at_path ~sel frames =
+  List.iter
+    (fun fr ->
+      List.iter (record_decl ~at_path ~selector:sel) fr.keyframe_declarations)
+    frames
+
 let collect_scoped_refs stylesheet =
   let consumers = ref [] in
   let customs = ref [] in
-  let refs_of_at_node = function
-    | Media query -> refs_of_media query
-    | Supports query -> refs_of_supports query
-    | Container (_, Some query) -> refs_of_container query
-    | Container (_, None) -> []
-    | _ -> []
-  in
   let record_decl ~at_path ~selector decl =
     let refs = refs_of_declaration decl in
     match custom_name decl with
@@ -739,39 +766,26 @@ let collect_scoped_refs stylesheet =
   let rec walk_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
     | Some (node, body, _) ->
-        (match refs_of_at_node node with
-        | [] -> ()
-        | refs ->
-            let sel =
-              match parents with p :: _ -> p | [] -> Selector.Universal None
-            in
-            consumers := (at_path, sel, refs) :: !consumers);
+        record_at_node_refs consumers ~parents ~at_path node;
         List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
-    | None -> (
-        match stmt with
-        | Rule rule ->
-            let eff = effective_selector ~parents rule.selector in
-            List.iter (record_decl ~at_path ~selector:eff) rule.declarations;
-            List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
-        | Declarations decls ->
-            let sel =
-              match parents with p :: _ -> p | [] -> Selector.Universal None
-            in
-            List.iter (record_decl ~at_path ~selector:sel) decls
-        | Page (_, decls) | Position_try (_, decls) ->
-            let sel = Selector.Universal None in
-            List.iter (record_decl ~at_path ~selector:sel) decls
-        | Keyframes (_, frames)
-        | Webkit_keyframes (_, frames)
-        | Moz_keyframes (_, frames) ->
-            let sel = Selector.Universal None in
-            List.iter
-              (fun fr ->
-                List.iter
-                  (record_decl ~at_path ~selector:sel)
-                  fr.keyframe_declarations)
-              frames
-        | _ -> ())
+    | None -> walk_non_at ~parents ~at_path stmt
+  and walk_non_at ~parents ~at_path = function
+    | Rule rule ->
+        let eff = effective_selector ~parents rule.selector in
+        List.iter (record_decl ~at_path ~selector:eff) rule.declarations;
+        List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
+    | Declarations decls ->
+        let sel = selector_for_parents_universal parents in
+        List.iter (record_decl ~at_path ~selector:sel) decls
+    | Page (_, decls) | Position_try (_, decls) ->
+        let sel = Selector.Universal None in
+        List.iter (record_decl ~at_path ~selector:sel) decls
+    | Keyframes (_, frames)
+    | Webkit_keyframes (_, frames)
+    | Moz_keyframes (_, frames) ->
+        let sel = Selector.Universal None in
+        record_keyframe_decls ~record_decl ~at_path ~sel frames
+    | _ -> ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
   (!consumers, !customs)
@@ -914,6 +928,20 @@ let filter_live_custom_decls ~keep ~live_set ~at_path ~selector =
 let property_is_live ~keep ~live_set ~at_path name =
   custom_is_live ~keep ~live_set ~at_path ~selector:universal_selector name
 
+let strip_dead_rule ~filter_decls ~map_stmts ~parents ~at_path
+    (rule : Stylesheet.rule) =
+  let eff = effective_selector ~parents rule.selector in
+  let nested = map_stmts ~parents:(eff :: parents) ~at_path rule.nested in
+  let decls = filter_decls ~at_path ~selector:eff rule.declarations in
+  if decls = [] && nested = [] then None
+  else Some (Rule { rule with declarations = decls; nested })
+
+let strip_dead_declarations ~filter_decls ~parents ~at_path decls =
+  let sel = selector_for_parents parents in
+  match filter_decls ~at_path ~selector:sel decls with
+  | [] -> None
+  | decls -> Some (Declarations decls)
+
 let strip_dead ~keep ~live_set stmts =
   let filter_decls ~at_path ~selector =
     filter_live_custom_decls ~keep ~live_set ~at_path ~selector
@@ -926,30 +954,20 @@ let strip_dead ~keep ~live_set stmts =
         match map_stmts ~parents ~at_path:(at_path @ [ node ]) body with
         | [] -> None
         | b -> Some (rebuild b))
-    | None -> (
-        match stmt with
-        | Rule rule ->
-            let eff = effective_selector ~parents rule.selector in
-            let nested =
-              map_stmts ~parents:(eff :: parents) ~at_path rule.nested
-            in
-            let decls = filter_decls ~at_path ~selector:eff rule.declarations in
-            if decls = [] && nested = [] then None
-            else Some (Rule { rule with declarations = decls; nested })
-        | Property rule ->
-            if property_is_live ~keep ~live_set ~at_path rule.name then
-              Some stmt
-            else None
-        | Declarations decls -> (
-            let sel = selector_for_parents parents in
-            match filter_decls ~at_path ~selector:sel decls with
-            | [] -> None
-            | decls -> Some (Declarations decls))
-        | Page (sel, decls) ->
-            Some
-              (Page
-                 (sel, filter_decls ~at_path ~selector:universal_selector decls))
-        | other -> Some other)
+    | None -> map_non_at ~parents ~at_path stmt
+  and map_non_at ~parents ~at_path stmt =
+    match stmt with
+    | Rule rule ->
+        strip_dead_rule ~filter_decls ~map_stmts ~parents ~at_path rule
+    | Property rule ->
+        if property_is_live ~keep ~live_set ~at_path rule.name then Some stmt
+        else None
+    | Declarations decls ->
+        strip_dead_declarations ~filter_decls ~parents ~at_path decls
+    | Page (sel, decls) ->
+        Some
+          (Page (sel, filter_decls ~at_path ~selector:universal_selector decls))
+    | other -> Some other
   in
   map_stmts ~parents:[] ~at_path:[] stmts
 
@@ -1026,12 +1044,15 @@ let strip_evaluated_guards ~query (rule : import_rule) =
 
 let parse_import_content content =
   let cursor = Cursor.of_string content in
-  try Some (read_stylesheet cursor)
-  with Cursor.Parse_error _ -> (
-    try
-      let inner, _warnings = parse_stylesheet_partial content in
-      Some inner
-    with Invalid_argument _ -> None)
+  match read_stylesheet cursor with
+  | stylesheet -> Some stylesheet
+  | exception Cursor.Parse_error _ -> (
+      match
+        let inner, _warnings = parse_stylesheet_partial content in
+        inner
+      with
+      | inner -> Some inner
+      | exception Invalid_argument _ -> None)
 
 let strip_import_charset =
   List.filter (function Charset _ -> false | _ -> true)
@@ -1057,40 +1078,34 @@ let imports ?query ?(layer_order = []) (loader : Context.loader) stylesheet =
     List.concat_map (replace ~base ~stack) stmts
   and replace ~base ~stack = function
     | Import import_rule when not (guards_pass import_rule) -> []
-    | Import import_rule -> (
-        let url = decode_import_url import_rule.url in
-        match resolve ~base url with
-        | None -> [ Import import_rule ]
-        | Some resolved -> (
-            if List.mem resolved stack then []
-            else
-              let content = List.assoc resolved imports in
-              match parse_import_content content with
-              | None -> [ Import import_rule ]
-              | Some inner ->
-                  let inner = strip_import_charset inner in
-                  let processed =
-                    replace_stmts ~base:(Some resolved)
-                      ~stack:(resolved :: stack) inner
-                  in
-                  wrap_import_body
-                    (strip_evaluated_guards ~query import_rule)
-                    processed))
-    | stmt -> (
-        match at_wrapper stmt with
-        | Some (_, body, rebuild) ->
-            [ rebuild (replace_stmts ~base ~stack body) ]
-        | None -> (
-            match stmt with
-            | Rule rule ->
-                [
-                  Rule
-                    {
-                      rule with
-                      nested = replace_stmts ~base ~stack rule.nested;
-                    };
-                ]
-            | other -> [ other ]))
+    | Import import_rule -> replace_import ~base ~stack import_rule
+    | stmt -> replace_non_import ~base ~stack stmt
+  and replace_import ~base ~stack import_rule =
+    let url = decode_import_url import_rule.url in
+    match resolve ~base url with
+    | None -> [ Import import_rule ]
+    | Some resolved -> replace_resolved_import ~stack import_rule resolved
+  and replace_resolved_import ~stack import_rule resolved =
+    if List.mem resolved stack then []
+    else
+      let content = List.assoc resolved imports in
+      match parse_import_content content with
+      | None -> [ Import import_rule ]
+      | Some inner -> inline_parsed_import ~stack import_rule resolved inner
+  and inline_parsed_import ~stack import_rule resolved inner =
+    let inner = strip_import_charset inner in
+    let processed =
+      replace_stmts ~base:(Some resolved) ~stack:(resolved :: stack) inner
+    in
+    wrap_import_body (strip_evaluated_guards ~query import_rule) processed
+  and replace_non_import ~base ~stack stmt =
+    match at_wrapper stmt with
+    | Some (_, body, rebuild) -> [ rebuild (replace_stmts ~base ~stack body) ]
+    | None -> replace_plain_stmt ~base ~stack stmt
+  and replace_plain_stmt ~base ~stack = function
+    | Rule rule ->
+        [ Rule { rule with nested = replace_stmts ~base ~stack rule.nested } ]
+    | other -> [ other ]
   in
   let initial_stack =
     match loader.base_url with Some b -> [ b ] | None -> []

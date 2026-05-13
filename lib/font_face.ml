@@ -163,6 +163,21 @@ let read_src_modifier t =
       `Tech (read_function_arg "tech" t)
   | _ -> Cursor.err_expected t "font source modifier"
 
+let finalise_src_url url format tech =
+  match url with
+  | `Bare url -> Url { url; format; tech }
+  | `Quoted (url, quote) -> Quoted_url { url; quote; format; tech }
+
+let read_src_url_modifiers t url =
+  let rec loop format tech =
+    Cursor.ws t;
+    match Cursor.option read_src_modifier t with
+    | None -> finalise_src_url url format tech
+    | Some (`Format value) -> loop (Some value) tech
+    | Some (`Tech value) -> loop format (Some value)
+  in
+  loop None None
+
 let rec read_src_entry t =
   Cursor.ws t;
   match Cursor.peek_raw t with
@@ -174,17 +189,7 @@ let rec read_src_entry t =
       Var (Values.read_var read_src t)
   | _ ->
       let url = read_url t in
-      let rec modifiers format tech =
-        Cursor.ws t;
-        match Cursor.option read_src_modifier t with
-        | None -> (
-            match url with
-            | `Bare url -> Url { url; format; tech }
-            | `Quoted (url, quote) -> Quoted_url { url; quote; format; tech })
-        | Some (`Format value) -> modifiers (Some value) tech
-        | Some (`Tech value) -> modifiers format (Some value)
-      in
-      modifiers None None
+      read_src_url_modifiers t url
 
 (** Parse a src string into a list of typed entries. CSS Fonts 4 §4.3 spells
     [src] as a comma-separated list, but real-world input occasionally drops the

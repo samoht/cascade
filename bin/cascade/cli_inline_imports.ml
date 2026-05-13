@@ -17,6 +17,25 @@ let is_remote url =
 (* Walk the parsed stylesheet, follow every [@import] URL on disk and parse each
    referenced file once, recursing through transitive imports. The resulting
    (resolved-url, content) table is what [Css.inline_imports] consumes. *)
+let cache_resolved imports resolved =
+  if Hashtbl.mem imports resolved then None
+  else
+    try
+      let content = Cli_io.read_file resolved in
+      Hashtbl.add imports resolved content;
+      Some (Cli_io.parse_css ~filename:resolved content)
+    with Sys_error msg ->
+      Fmt.epr "warning: cannot read %s: %s@." resolved msg;
+      None
+
+let resolve_import loader url =
+  let path = strip_url_suffix url in
+  match Css.Context.resolve_url loader path with
+  | Error msg ->
+      Fmt.epr "warning: cannot resolve @import %s: %s@." url msg;
+      None
+  | Ok resolved -> Some resolved
+
 let preload ~base_url stylesheet =
   let imports = Hashtbl.create 16 in
   let rec scan_under base sheet =
@@ -25,23 +44,16 @@ let preload ~base_url stylesheet =
   and scan_stmt loader () stmt =
     match Css.as_import stmt with
     | None -> ()
-    | Some import_rule -> (
+    | Some import_rule ->
         let url = Css.decode_import_url import_rule.url in
-        if is_remote url then ()
-        else
-          let path = strip_url_suffix url in
-          match Css.Context.resolve_url loader path with
-          | Error msg ->
-              Fmt.epr "warning: cannot resolve @import %s: %s@." url msg
-          | Ok resolved -> (
-              if not (Hashtbl.mem imports resolved) then
-                try
-                  let content = Cli_io.read_file resolved in
-                  Hashtbl.add imports resolved content;
-                  let inner = Cli_io.parse_css ~filename:resolved content in
-                  scan_under resolved inner
-                with Sys_error msg ->
-                  Fmt.epr "warning: cannot read %s: %s@." resolved msg))
+        if not (is_remote url) then handle_import loader url
+  and handle_import loader url =
+    match resolve_import loader url with
+    | None -> ()
+    | Some resolved -> (
+        match cache_resolved imports resolved with
+        | None -> ()
+        | Some inner -> scan_under resolved inner)
   in
   scan_under base_url stylesheet;
   Hashtbl.fold (fun k v acc -> (k, v) :: acc) imports []

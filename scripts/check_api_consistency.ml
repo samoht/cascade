@@ -113,41 +113,28 @@ let type_nonrec_re =
   (* Matches: type nonrec <name> ... -> captures <name> *)
   Re.Perl.compile_pat "^[\\s]*type[\\s]+nonrec[\\s]+([A-Za-z_][A-Za-z0-9_]*)\\b"
 
+let unique_cons item items =
+  if item <> "_" && not (List.mem item items) then item :: items else items
+
+let first_regex_group regexps line =
+  List.find_map
+    (fun rex -> Option.map (fun g -> Re.Group.get g 1) (Re.exec_opt rex line))
+    regexps
+
 let extract_types path : string list =
   let lines = Fs.read_lines path in
+  let type_patterns = [ type_blank_re; type_nonrec_re; type_re ] in
   let rec loop acc = function
     | [] -> List.rev acc
-    | l :: tl -> (
-        (* Prefer capturing the real name in "type _ name" / "type nonrec name"
-           before falling back to plain "type name". *)
-        match Re.exec_opt type_blank_re l with
-        | Some g ->
-            let tname = Re.Group.get g 1 in
-            let acc =
-              if tname <> "_" && not (List.mem tname acc) then tname :: acc
-              else acc
-            in
-            loop acc tl
-        | None -> (
-            match Re.exec_opt type_nonrec_re l with
-            | Some g ->
-                let tname = Re.Group.get g 1 in
-                let acc =
-                  if tname <> "_" && not (List.mem tname acc) then tname :: acc
-                  else acc
-                in
-                loop acc tl
-            | None -> (
-                match Re.exec_opt type_re l with
-                | Some g ->
-                    let tname = Re.Group.get g 1 in
-                    let acc =
-                      if tname <> "_" && not (List.mem tname acc) then
-                        tname :: acc
-                      else acc
-                    in
-                    loop acc tl
-                | None -> loop acc tl)))
+    | l :: tl ->
+        (* Prefer the real name in "type _ name" / "type nonrec name" before
+           falling back to plain "type name". *)
+        let acc =
+          match first_regex_group type_patterns l with
+          | Some tname -> unique_cons tname acc
+          | None -> acc
+        in
+        loop acc tl
   in
   loop [] lines
 
@@ -161,23 +148,22 @@ let extract_var_types path : string list =
     Re.Perl.compile_pat "^[\\s]*type[\\s]+([A-Za-z_][A-Za-z0-9_]*)\\s*="
   in
 
+  let next_type line =
+    Option.map (fun g -> Re.Group.get g 1) (Re.exec_opt type_def_re line)
+  in
+  let has_var_constructor line = Re.execp var_type_re line in
   let rec loop acc current_type = function
     | [] -> List.rev acc
-    | l :: tl -> (
-        (* Check if this line starts a new type definition *)
-        match Re.exec_opt type_def_re l with
-        | Some g ->
-            let type_name = Re.Group.get g 1 in
-            loop acc (Some type_name) tl
-        | None -> (
-            (* Check if this line has a Var constructor *)
-            match Re.exec_opt var_type_re l with
-            | Some _g -> (
-                match current_type with
-                | Some tname when not (List.mem tname acc) ->
-                    loop (tname :: acc) current_type tl
-                | _ -> loop acc current_type tl)
-            | None -> loop acc current_type tl))
+    | l :: tl ->
+        let current_type =
+          match next_type l with Some _ as t -> t | None -> current_type
+        in
+        let acc =
+          match (has_var_constructor l, current_type) with
+          | true, Some tname -> unique_cons tname acc
+          | _ -> acc
+        in
+        loop acc current_type tl
   in
   loop [] None lines
 
@@ -202,51 +188,68 @@ let is_ignored_comment lines idx =
       contains_sub pl "Not a roundtrip test" || contains_sub pl "ignore-test"
   | None -> false
 
+type collected_test = {
+  mutable name : string option;
+  mutable header : string;
+  mutable line : int;
+  mutable ignored : bool;
+  body : Buffer.t;
+  mutable tests : (string * string * (string * int * bool)) list;
+}
+
+let collected_test () =
+  {
+    name = None;
+    header = "";
+    line = 0;
+    ignored = false;
+    body = Buffer.create 4096;
+    tests = [];
+  }
+
+let flush_collected_test state =
+  match state.name with
+  | None -> ()
+  | Some name ->
+      state.tests <-
+        ( name,
+          Buffer.contents state.body,
+          (state.header, state.line, state.ignored) )
+        :: state.tests;
+      Buffer.clear state.body;
+      state.name <- None;
+      state.header <- "";
+      state.line <- 0;
+      state.ignored <- false
+
+let starts_toplevel_test_item line =
+  Re.execp re_toplevel_let line
+  && not (String.trim line |> String.starts_with ~prefix:"let open")
+
+let start_collected_test state lines idx group line =
+  flush_collected_test state;
+  state.name <- Some (Re.Group.get group 1);
+  state.header <- line;
+  state.line <- idx + 1;
+  state.ignored <- is_ignored_comment lines idx
+
+let collect_test_line state lines idx line =
+  match Re.exec_opt re_test_header line with
+  | Some group -> start_collected_test state lines idx group line
+  | None ->
+      Option.iter
+        (fun _ -> Buffer.add_string state.body (line ^ "\n"))
+        state.name;
+      if starts_toplevel_test_item line then flush_collected_test state
+
 let extract_test_functions test_file =
   if not (Sys.file_exists test_file) then []
   else
     let lines = Fs.read_lines test_file in
-    let tests = ref [] in
-    let current_name = ref None in
-    let current_header = ref "" in
-    let current_line = ref 0 in
-    let current_ignored = ref false in
-    let buf = Buffer.create 4096 in
-    let flush_current () =
-      match !current_name with
-      | None -> ()
-      | Some name ->
-          tests :=
-            ( name,
-              Buffer.contents buf,
-              (!current_header, !current_line, !current_ignored) )
-            :: !tests;
-          Buffer.clear buf;
-          current_name := None;
-          current_header := "";
-          current_line := 0;
-          current_ignored := false
-    in
-    List.iteri
-      (fun idx l ->
-        match Re.exec_opt re_test_header l with
-        | Some g ->
-            flush_current ();
-            current_name := Some (Re.Group.get g 1);
-            current_header := l;
-            current_line := idx + 1;
-            current_ignored := is_ignored_comment lines idx
-        | None ->
-            (match !current_name with
-            | Some _ -> Buffer.add_string buf (l ^ "\n")
-            | None -> ());
-            if
-              Re.execp re_toplevel_let l
-              && not (String.trim l |> String.starts_with ~prefix:"let open")
-            then flush_current ())
-      lines;
-    flush_current ();
-    !tests
+    let state = collected_test () in
+    List.iteri (fun idx line -> collect_test_line state lines idx line) lines;
+    flush_collected_test state;
+    state.tests
 
 (* Analyze check and neg patterns in test function body. The "neg" call can be
    [neg] (basic helper), [neg_cursor] (cursor-based), or any future

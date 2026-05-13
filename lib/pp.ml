@@ -123,6 +123,14 @@ let column ctx =
   in
   find_newline (len - 1)
 
+let list_wrap_append ~threshold ~wrap_sep ctx s =
+  Buffer.add_char ctx.buf ',';
+  if column ctx + 1 + String.length s > threshold then (
+    Buffer.add_char ctx.buf '\n';
+    Buffer.add_string ctx.buf wrap_sep)
+  else Buffer.add_char ctx.buf ' ';
+  Buffer.add_string ctx.buf s
+
 let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
   if ctx.minify then list ~sep pp ctx l
   else
@@ -138,17 +146,9 @@ let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
     | [ x ] -> pp ctx x
     | h :: t ->
         pp ctx h;
+        ignore sep;
         List.iter
-          (fun x ->
-            ignore sep;
-            (* Always emit comma *)
-            Buffer.add_char ctx.buf ',';
-            let s = measure_item x in
-            if column ctx + 1 + String.length s > threshold then (
-              Buffer.add_char ctx.buf '\n';
-              Buffer.add_string ctx.buf wrap_sep)
-            else Buffer.add_char ctx.buf ' ';
-            Buffer.add_string ctx.buf s)
+          (fun x -> list_wrap_append ~threshold ~wrap_sep ctx (measure_item x))
           t
 
 let option ?(none = nop) pp ctx = function

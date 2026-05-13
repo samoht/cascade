@@ -853,67 +853,76 @@ let read_balanced sc =
 let typed_function_value name args : value option =
   let raw = name ^ "(" ^ args ^ ")" in
   let cursor = Cursor.of_string raw in
-  try
-    let length = Values.read_length cursor in
-    Cursor.ws cursor;
-    Cursor.expect_eof cursor;
-    Some (Length length)
-  with Cursor.Parse_error _ -> None
+  match Values.read_length cursor with
+  | length ->
+      Cursor.ws cursor;
+      Cursor.expect_eof cursor;
+      Some (Length length)
+  | exception Cursor.Parse_error _ -> None
+
+let number_as_scalar : [ `Int of int | `Float of float ] -> value = function
+  | `Int n -> Integer n
+  | `Float f -> Number f
+
+let number_as_int : [ `Int of int | `Float of float ] -> int = function
+  | `Int n -> n
+  | `Float f -> int_of_float f
+
+let read_value_with_unit num unit : value option =
+  let f = match num with `Int n -> float_of_int n | `Float f -> f in
+  match length_of_value f unit with
+  | Some l -> Some (Length l)
+  | None ->
+      if List.mem (String.lowercase_ascii unit) resolution_units then
+        Some (Resolution_value (f, unit))
+      else None
+
+let read_ratio_tail sc num : value option =
+  (* Could be a ratio: "n / m" *)
+  let mark = sc.pos in
+  skip_ws sc;
+  match peek sc with
+  | Some '/' -> (
+      advance sc;
+      skip_ws sc;
+      match read_number_lit sc with
+      | Some (`Int d, _) -> Some (Ratio (number_as_int num, d))
+      | _ ->
+          sc.pos <- mark;
+          Some (number_as_scalar num))
+  | _ ->
+      sc.pos <- mark;
+      Some (number_as_scalar num)
+
+let read_numeric_value sc : value option =
+  match read_number_lit sc with
+  | None -> None
+  | Some (num, _) ->
+      let unit = read_unit sc in
+      if unit = "" then read_ratio_tail sc num
+      else read_value_with_unit num unit
+
+let read_ident_value sc : value option =
+  let id = read_ident sc in
+  if id = "" then None
+  else (
+    skip_ws sc;
+    match peek sc with
+    | Some '(' -> (
+        advance sc;
+        let args = read_balanced sc in
+        match typed_function_value id args with
+        | Some _ as value -> value
+        | None -> Some (Function (id, args)))
+    | _ -> Some (Ident (ident_of_string id)))
 
 let read_value sc : value option =
   skip_ws sc;
   match peek sc with
   | None -> None
-  | Some c when (c >= '0' && c <= '9') || c = '.' || c = '+' || c = '-' -> (
-      match read_number_lit sc with
-      | None -> None
-      | Some (num, _) -> (
-          let unit = read_unit sc in
-          if unit = "" then (
-            (* Could be a ratio: "n / m" *)
-            let mark = sc.pos in
-            skip_ws sc;
-            match peek sc with
-            | Some '/' -> (
-                advance sc;
-                skip_ws sc;
-                match read_number_lit sc with
-                | Some (`Int d, _) ->
-                    let n =
-                      match num with `Int n -> n | `Float f -> int_of_float f
-                    in
-                    Some (Ratio (n, d))
-                | _ ->
-                    sc.pos <- mark;
-                    Some
-                      (match num with
-                      | `Int n -> Integer n
-                      | `Float f -> Number f))
-            | _ ->
-                sc.pos <- mark;
-                Some
-                  (match num with `Int n -> Integer n | `Float f -> Number f))
-          else
-            let f = match num with `Int n -> float_of_int n | `Float f -> f in
-            match length_of_value f unit with
-            | Some l -> Some (Length l)
-            | None ->
-                if List.mem (String.lowercase_ascii unit) resolution_units then
-                  Some (Resolution_value (f, unit))
-                else None))
-  | Some _ ->
-      let id = read_ident sc in
-      if id = "" then None
-      else (
-        skip_ws sc;
-        match peek sc with
-        | Some '(' -> (
-            advance sc;
-            let args = read_balanced sc in
-            match typed_function_value id args with
-            | Some _ as value -> value
-            | None -> Some (Function (id, args)))
-        | _ -> Some (Ident (ident_of_string id)))
+  | Some c when (c >= '0' && c <= '9') || c = '.' || c = '+' || c = '-' ->
+      read_numeric_value sc
+  | Some _ -> read_ident_value sc
 
 let value_of_string s =
   let sc = mk_scanner s in
@@ -1055,45 +1064,96 @@ let plain_feature name value : feature =
   Plain (name, value)
 
 (* Parse content already inside parens (no surrounding parens). *)
+let value_first_interval_tail sc v1 op1 name op2 : feature option =
+  skip_ws sc;
+  match read_value sc with
+  | None -> None
+  | Some v2 ->
+      skip_ws sc;
+      if
+        at_end sc
+        && interval_ops_compatible op1 op2
+        && validate_range_feature name v1
+        && validate_range_feature name v2
+      then Some (Interval (v1, op1, name, op2, v2))
+      else None
+
+let value_first_range_or_interval sc v1 op1 name : feature option =
+  match read_cmp sc with
+  | Some op2 -> value_first_interval_tail sc v1 op1 name op2
+  | None ->
+      skip_ws sc;
+      if at_end sc && validate_range_feature name v1 then
+        Some (Range_rev (v1, op1, name))
+      else None
+
+let value_first_after_op sc ~mark v1 op1 : feature option =
+  skip_ws sc;
+  let name = read_ident sc in
+  if name = "" then (
+    sc.pos <- mark;
+    None)
+  else
+    let name = name_of_string name in
+    value_first_range_or_interval sc v1 op1 name
+
 let value_first_feature content : feature option =
   let sc = mk_scanner content in
   skip_ws sc;
   (* Try value-first form: V op name [op V] *)
   let mark = sc.pos in
   match read_value sc with
+  | None -> None
   | Some v1 -> (
       match read_cmp sc with
-      | Some op1 -> (
-          skip_ws sc;
-          let name = read_ident sc in
-          if name = "" then (
-            sc.pos <- mark;
-            None)
-          else
-            let name = name_of_string name in
-            match read_cmp sc with
-            | Some op2 -> (
-                skip_ws sc;
-                match read_value sc with
-                | Some v2 ->
-                    skip_ws sc;
-                    if
-                      at_end sc
-                      && interval_ops_compatible op1 op2
-                      && validate_range_feature name v1
-                      && validate_range_feature name v2
-                    then Some (Interval (v1, op1, name, op2, v2))
-                    else None
-                | None -> None)
-            | None ->
-                skip_ws sc;
-                if at_end sc && validate_range_feature name v1 then
-                  Some (Range_rev (v1, op1, name))
-                else None)
+      | Some op1 -> value_first_after_op sc ~mark v1 op1
       | None ->
           sc.pos <- mark;
           None)
+
+let boolean_or_none_feature id : feature option =
+  if Option.is_some (prefixed_range_feature_name (name_of_string id)) then None
+  else Some (boolean_feature (name_of_string id))
+
+let plain_feature_after_colon sc id : feature option =
+  advance sc;
+  skip_ws sc;
+  match read_value sc with
   | None -> None
+  | Some value ->
+      skip_ws sc;
+      let name = name_of_string id in
+      if at_end sc && validate_plain_feature name value then
+        Some (plain_feature name value)
+      else None
+
+let range_after_value sc id op v2 : feature option =
+  match read_cmp sc with
+  | Some _ -> None
+  | None ->
+      skip_ws sc;
+      let name = name_of_string id in
+      if at_end sc && validate_range_feature name v2 then
+        Some (Range (name, op, v2))
+      else None
+
+let range_after_op sc id op : feature option =
+  skip_ws sc;
+  match read_value sc with
+  | None -> None
+  | Some v2 -> range_after_value sc id op v2
+
+let name_first_range sc id content : feature option =
+  match read_cmp sc with
+  | None -> value_first_feature content
+  | Some op -> range_after_op sc id op
+
+let feature_after_ident sc id content : feature option =
+  skip_ws sc;
+  match peek sc with
+  | None -> boolean_or_none_feature id
+  | Some ':' -> plain_feature_after_colon sc id
+  | Some _ -> name_first_range sc id content
 
 let feature_in_parens content : feature option =
   let sc = mk_scanner content in
@@ -1101,70 +1161,33 @@ let feature_in_parens content : feature option =
   if at_end sc then None
   else
     let id = read_ident sc in
-    if id <> "" then (
-      skip_ws sc;
-      match peek sc with
-      | None ->
-          if Option.is_some (prefixed_range_feature_name (name_of_string id))
-          then None
-          else Some (boolean_feature (name_of_string id))
-      | Some ':' -> (
-          advance sc;
-          skip_ws sc;
-          let v = read_value sc in
-          match v with
-          | Some value ->
-              skip_ws sc;
-              let name = name_of_string id in
-              if at_end sc && validate_plain_feature name value then
-                Some (plain_feature name value)
-              else None
-          | None -> None)
-      | Some _ -> (
-          match read_cmp sc with
-          | Some op -> (
-              skip_ws sc;
-              match read_value sc with
-              | Some v2 -> (
-                  match read_cmp sc with
-                  | None ->
-                      skip_ws sc;
-                      let name = name_of_string id in
-                      if at_end sc && validate_range_feature name v2 then
-                        Some (Range (name, op, v2))
-                      else None
-                  | Some _ -> None)
-              | None -> None)
-          | None -> value_first_feature content))
-    else value_first_feature content
+    if id = "" then value_first_feature content
+    else feature_after_ident sc id content
+
+let extract_feature_or_fail content =
+  match feature_in_parens content with
+  | Some f -> f
+  | None -> failwith ("invalid media feature: " ^ content)
+
+let condition_from_paren_content parse_condition content =
+  let trimmed = String.trim content in
+  (* Could be either ( <condition> ) or ( <feature> ). *)
+  let inner = mk_scanner trimmed in
+  skip_ws inner;
+  if lookahead_ident inner "not" then parse_condition trimmed
+  else if lookahead_ident inner "and" || lookahead_ident inner "or" then
+    Feature (extract_feature_or_fail trimmed)
+  else if peek inner = Some '(' then parse_condition trimmed
+  else Feature (extract_feature_or_fail trimmed)
 
 (* Parser for media-condition (sequence of (...) with and/or/not). *)
 let rec condition_in_parens sc =
   skip_ws sc;
   match peek sc with
-  | Some '(' -> (
+  | Some '(' ->
       advance sc;
-      let content = read_balanced sc in
-      let trimmed = String.trim content in
-      (* Could be either ( <condition> ) or ( <feature> ). *)
-      let inner = mk_scanner trimmed in
-      skip_ws inner;
-      if lookahead_ident inner "not" then condition_of_string trimmed
-      else if lookahead_ident inner "and" || lookahead_ident inner "or" then
-        Feature (extract_feature_or_fail trimmed)
-      else
-        let starts_with_paren = peek inner = Some '(' in
-        if starts_with_paren then condition_of_string trimmed
-        else
-          match feature_in_parens trimmed with
-          | Some f -> Feature f
-          | None -> failwith ("invalid media feature: " ^ trimmed))
+      condition_from_paren_content condition_of_string (read_balanced sc)
   | _ -> failwith "expected '(' in media condition"
-
-and extract_feature_or_fail content =
-  match feature_in_parens content with
-  | Some f -> f
-  | None -> failwith ("invalid media feature: " ^ content)
 
 and condition_of_string s =
   let sc = mk_scanner s in

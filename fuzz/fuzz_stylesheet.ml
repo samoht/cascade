@@ -1528,7 +1528,7 @@ let test_comments_anywhere_robust buf =
 (* Comments in raw bytes: the lower-level [read_stylesheet] (used through
    [Cursor.of_string]) must also not crash when the input contains comments at
    pathological positions, even alongside random garbage. *)
-let test_comments_random_position_no_crash buf =
+let test_comments_random_no_crash buf =
   let marker = "/* fuzz */" in
   let n = String.length buf in
   if n = 0 then ()
@@ -1774,7 +1774,7 @@ let recovery_cases =
     test_case "comments at every whitespace boundary parse leniently" [ bytes ]
       test_comments_anywhere_robust;
     test_case "comment inserted at random byte position never crashes" [ bytes ]
-      test_comments_random_position_no_crash;
+      test_comments_random_no_crash;
     test_case "!important count preserved across roundtrip" [ bytes ]
       test_important_roundtrip;
     test_case "cascade source order preserved across roundtrip" [ bytes ]

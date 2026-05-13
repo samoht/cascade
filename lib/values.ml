@@ -164,23 +164,20 @@ let pp_syntax_var_fallback ctx name value =
 
 let first_top_level_comma_segment s =
   let len = String.length s in
+  let quote_after_char i quote =
+    if s.[i] = quote && (i = 0 || s.[i - 1] <> '\\') then Option.None
+    else Some quote
+  in
   let rec loop i depth (quote : char option) =
     if i >= len then s
     else
-      match quote with
-      | Some q ->
-          let quote =
-            if s.[i] = q && (i = 0 || s.[i - 1] <> '\\') then Option.None
-            else quote
-          in
-          loop (i + 1) depth quote
-      | Option.None -> (
-          match s.[i] with
-          | '"' | '\'' -> loop (i + 1) depth (Some s.[i])
-          | '(' -> loop (i + 1) (depth + 1) Option.None
-          | ')' when depth > 0 -> loop (i + 1) (depth - 1) Option.None
-          | ',' when depth = 0 -> String.sub s 0 i
-          | _ -> loop (i + 1) depth Option.None)
+      match (quote, s.[i]) with
+      | Some quote, _ -> loop (i + 1) depth (quote_after_char i quote)
+      | Option.None, ('"' | '\'') -> loop (i + 1) depth (Some s.[i])
+      | Option.None, '(' -> loop (i + 1) (depth + 1) Option.None
+      | Option.None, ')' when depth > 0 -> loop (i + 1) (depth - 1) Option.None
+      | Option.None, ',' when depth = 0 -> String.sub s 0 i
+      | Option.None, _ -> loop (i + 1) depth Option.None
   in
   loop 0 0 Option.None
 
@@ -753,77 +750,80 @@ let rec min_max_arg_of_string s : (float * string) option =
   match simple_dimension_of_string s with
   | Option.Some _ as r -> r
   | Option.None ->
-      let len = String.length s in
-      let try_call name op =
-        let prefix = name ^ "(" in
-        let plen = String.length prefix in
-        if
-          len > plen
-          && String.equal (String.sub s 0 plen) prefix
-          && s.[len - 1] = ')'
-        then
-          let inner = String.sub s plen (len - plen - 1) in
-          try_reduce_min_max op inner
-        else Option.None
-      in
-      let m = try_call "min" `Min in
-      if Option.is_some m then m else try_call "max" `Max
+      Option.fold
+        ~none:(try_min_max_call s "max" `Max)
+        ~some:(fun value -> Option.Some value)
+        (try_min_max_call s "min" `Min)
 
 and try_reduce_min_max op args : (float * string) option =
   let parts = split_top_level_commas args in
-  let parsed = List.map min_max_arg_of_string parts in
-  if List.exists Option.is_none parsed then Option.None
-  else
-    match List.filter_map (fun x -> x) parsed with
-    | [] -> Option.None
-    | (_, first_unit) :: _ as pairs
-      when List.for_all (fun (_, u) -> u = first_unit) pairs ->
-        let pick =
-          match op with
-          | `Min ->
-              List.fold_left
-                (fun a (b, _) -> if b < a then b else a)
-                infinity pairs
-          | `Max ->
-              List.fold_left
-                (fun a (b, _) -> if b > a then b else a)
-                neg_infinity pairs
-        in
-        Option.Some (pick, first_unit)
-    | _ -> Option.None
+  match List.map min_max_arg_of_string parts with
+  | parsed when List.exists Option.is_none parsed -> Option.None
+  | parsed -> reduce_min_max_pairs op (List.filter_map (fun x -> x) parsed)
+
+and try_min_max_call s name op =
+  let len = String.length s in
+  let prefix = name ^ "(" in
+  let plen = String.length prefix in
+  if
+    len > plen && String.equal (String.sub s 0 plen) prefix && s.[len - 1] = ')'
+  then
+    let inner = String.sub s plen (len - plen - 1) in
+    try_reduce_min_max op inner
+  else Option.None
+
+and same_unit_min_max_pairs = function
+  | [] -> Option.None
+  | (_, first_unit) :: _ as pairs
+    when List.for_all (fun (_, unit) -> unit = first_unit) pairs ->
+      Option.Some (first_unit, pairs)
+  | _ -> Option.None
+
+and reduce_min_max_pairs op pairs =
+  match same_unit_min_max_pairs pairs with
+  | Option.None -> Option.None
+  | Option.Some (first_unit, pairs) ->
+      Option.Some (pick_min_max_value op pairs, first_unit)
+
+and pick_min_max_value op pairs =
+  match op with
+  | `Min ->
+      List.fold_left (fun a (b, _) -> if b < a then b else a) infinity pairs
+  | `Max ->
+      List.fold_left (fun a (b, _) -> if b > a then b else a) neg_infinity pairs
 
 let format_simple_dimension f unit =
   Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
 
+let update_min_max_group op groups pos (n, unit) =
+  match Hashtbl.find_opt groups unit with
+  | Option.None -> Hashtbl.add groups unit (pos, n)
+  | Option.Some (old_pos, old_n) ->
+      let better = match op with `Min -> n < old_n | `Max -> n > old_n in
+      Hashtbl.replace groups unit
+        (if better then (old_pos, n) else (old_pos, old_n))
+
 let try_reduce_min_max_args op args =
   let parts = split_top_level_commas args in
-  let parsed = List.map simple_dimension_of_string parts in
-  if List.exists Option.is_none parsed then Option.None
-  else
-    let groups = Hashtbl.create 4 in
-    List.iteri
-      (fun pos part ->
-        match simple_dimension_of_string part with
-        | Option.None -> ()
-        | Option.Some (n, unit) -> (
-            match Hashtbl.find_opt groups unit with
-            | Option.None -> Hashtbl.add groups unit (pos, n)
-            | Option.Some (old_pos, old_n) ->
-                let better =
-                  match op with `Min -> n < old_n | `Max -> n > old_n
-                in
-                Hashtbl.replace groups unit
-                  (if better then (old_pos, n) else (old_pos, old_n))))
-      parts;
-    let reduced =
-      Hashtbl.to_seq groups |> List.of_seq
-      |> List.sort (fun (_, (a, _)) (_, (b, _)) -> compare a b)
-      |> List.map (fun (unit, (_, n)) -> format_simple_dimension n unit)
-    in
-    match reduced with
-    | [] -> Option.None
-    | _ when List.length reduced = List.length parts -> Option.None
-    | _ -> Option.Some (String.concat "," reduced)
+  match List.map simple_dimension_of_string parts with
+  | parsed when List.exists Option.is_none parsed -> Option.None
+  | _ -> (
+      let groups = Hashtbl.create 4 in
+      List.iteri
+        (fun pos part ->
+          Option.iter
+            (fun item -> update_min_max_group op groups pos item)
+            (simple_dimension_of_string part))
+        parts;
+      let reduced =
+        Hashtbl.to_seq groups |> List.of_seq
+        |> List.sort (fun (_, (a, _)) (_, (b, _)) -> compare a b)
+        |> List.map (fun (unit, (_, n)) -> format_simple_dimension n unit)
+      in
+      match reduced with
+      | [] -> Option.None
+      | _ when List.length reduced = List.length parts -> Option.None
+      | _ -> Option.Some (String.concat "," reduced))
 
 let strip_top_level_calc_arg arg =
   let arg = String.trim arg in
@@ -981,8 +981,8 @@ let length_from_calc_unit unit value =
   if String.equal unit "px" && value = 0. then Zero
   else Dimension { value; unit; repr = Pp.string_of_float value }
 
-let length_of_default_string value =
-  try
+let length_of_default_string value : length option =
+  match
     let t = Cursor.of_string value in
     let value, unit = Cursor.number_with_unit t in
     Cursor.ws t;
@@ -992,24 +992,29 @@ let length_of_default_string value =
         Option.Some (length_from_calc_unit (String.lowercase_ascii unit) value)
     | Option.None when value = 0. -> Option.Some Zero
     | Option.None -> Option.None
-  with Cursor.Parse_error _ -> None
+  with
+  | value -> value
+  | exception Cursor.Parse_error _ -> None
 
-let length_of_var_resolution ctx (v : length var) =
+let fallback_of_var_resolution ctx parse_default : 'a fallback -> 'a option =
+  function
+  | Fallback value -> Option.Some value
+  | Var_fallback name -> Option.bind (ctx.Pp.theme_defaults name) parse_default
+  | None | Empty | Empty2 | Syntax_fallback _ -> Option.None
+
+let value_of_var_resolution ctx parse_default (v : 'a var) : 'a option =
   if in_theme ctx v.name then Option.None
   else
     match ctx.Pp.theme_defaults v.name with
-    | Option.Some value -> length_of_default_string value
-    | Option.None -> (
-        match v.default with
-        | Option.Some value -> Option.Some value
-        | Option.None -> (
-            match v.fallback with
-            | Fallback value -> Option.Some value
-            | Var_fallback name ->
-                Option.bind
-                  (ctx.Pp.theme_defaults name)
-                  length_of_default_string
-            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+    | Option.Some value -> parse_default value
+    | Option.None ->
+        Option.fold
+          ~none:(fallback_of_var_resolution ctx parse_default v.fallback)
+          ~some:(fun value -> Option.Some value)
+          v.default
+
+let length_of_var_resolution ctx (v : length var) =
+  value_of_var_resolution ctx length_of_default_string v
 
 let rec resolve_length_calc_vars ctx : length calc -> length calc = function
   | Var v -> (
@@ -1426,34 +1431,26 @@ let rec normalize_lp_calc_zeros :
       Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
 let lp_of_default_string value : length_percentage option =
-  try
+  match
     let t = Cursor.of_string value in
     let value, unit = Cursor.number_with_unit t in
     Cursor.ws t;
     Cursor.expect_eof t;
     match unit with
-    | Option.Some "%" -> Option.Some (Pct value)
+    | Option.Some "%" -> Option.Some (Pct value : length_percentage)
     | Option.Some unit ->
         Option.Some
-          (Length (length_from_calc_unit (String.lowercase_ascii unit) value))
-    | Option.None when value = 0. -> Option.Some (Length Zero)
+          (Length (length_from_calc_unit (String.lowercase_ascii unit) value)
+            : length_percentage)
+    | Option.None when value = 0. ->
+        Option.Some (Length Zero : length_percentage)
     | Option.None -> Option.None
-  with Cursor.Parse_error _ -> Option.None
+  with
+  | value -> value
+  | exception Cursor.Parse_error _ -> Option.None
 
 let lp_of_var_resolution ctx (v : length_percentage var) =
-  if in_theme ctx v.name then Option.None
-  else
-    match ctx.Pp.theme_defaults v.name with
-    | Option.Some value -> lp_of_default_string value
-    | Option.None -> (
-        match v.default with
-        | Option.Some value -> Option.Some value
-        | Option.None -> (
-            match v.fallback with
-            | Fallback value -> Option.Some value
-            | Var_fallback name ->
-                Option.bind (ctx.Pp.theme_defaults name) lp_of_default_string
-            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+  value_of_var_resolution ctx lp_of_default_string v
 
 let rec resolve_lp_calc_vars ctx :
     length_percentage calc -> length_percentage calc = function
@@ -1575,18 +1572,16 @@ let linear_lp_calc calc =
             (Val (lp_of_unit unit n))
             rest)
 
+let round_length_step strategy value step =
+  match strategy with
+  | "up" -> Float.ceil (value /. step) *. step
+  | "down" -> Float.floor (value /. step) *. step
+  | "to-zero" -> Float.trunc (value /. step) *. step
+  | _ -> Float.round (value /. step) *. step
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
-  let is_math_length = function
-    | Min _ | Max _ | Clamp _ -> true
-    | _ -> false
-  in
-  let pp_calc_wrapped_length ctx length =
-    Pp.string ctx "calc(";
-    pp_length ~always ctx length;
-    Pp.char ctx ')'
-  in
   match v with
   | Zero -> Pp.char ctx '0'
   | Px f -> pp_unit_fn f "px"
@@ -1655,83 +1650,14 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Thick -> Pp.string ctx "thick"
   | Stretch -> Pp.string ctx "stretch"
   | Clamp s -> pp_math_call ctx "clamp" s
-  | Min s when Pp.minified ctx -> (
-      (* CSS Values 4 10.7: when every argument is a constant length in the same
-         unit, [min()] / [max()] reduce to a single dimension. *)
-      match try_reduce_min_max `Min s with
-      | Some (v, u) -> pp_unit_fn v u
-      | None -> pp_math_call ctx "min" s)
-  | Max s when Pp.minified ctx -> (
-      match try_reduce_min_max `Max s with
-      | Some (v, u) -> pp_unit_fn v u
-      | None -> pp_math_call ctx "max" s)
-  | Min s -> pp_math_call ctx "min" s
-  | Max s -> pp_math_call ctx "max" s
+  | Min s -> pp_min_max_length ~always ctx `Min "min" s
+  | Max s -> pp_min_max_length ~always ctx `Max "max" s
   | Minmax s -> pp_math_call ctx "minmax" s
-  | Round (strategy, Px v, Px step) when Pp.minified ctx && step <> 0. ->
-      (* CSS Values 4 10.7: [round(strategy, value, step)] reduces to a constant
-         when both operands are typed lengths in the same unit and the step is
-         non-zero. Default strategy is [nearest]. *)
-      let r =
-        match strategy with
-        | "up" -> Float.ceil (v /. step) *. step
-        | "down" -> Float.floor (v /. step) *. step
-        | "to-zero" -> Float.trunc (v /. step) *. step
-        | _ -> Float.round (v /. step) *. step
-      in
-      pp_unit_fn r "px"
   | Round (strategy, value, step) ->
-      Pp.call "round"
-        (fun ctx (strategy, value, step) ->
-          if strategy <> "nearest" then (
-            Pp.string ctx strategy;
-            Pp.comma ctx ());
-          pp_length ~always ctx value;
-          Pp.comma ctx ();
-          pp_length ~always ctx step)
-        ctx (strategy, value, step)
-  | Mod (Px a, Px b) when Pp.minified ctx && b <> 0. ->
-      (* CSS Values 4 10.7: [mod()] returns the remainder using floored division
-         (sign of divisor). *)
-      let q = Float.floor (a /. b) in
-      pp_unit_fn (a -. (q *. b)) "px"
-  | Mod (a, b) ->
-      Pp.call "mod"
-        (fun ctx (a, b) ->
-          pp_length ~always ctx a;
-          Pp.comma ctx ();
-          pp_length ~always ctx b)
-        ctx (a, b)
-  | Rem_fn (Px a, Px b) when Pp.minified ctx && b <> 0. ->
-      (* CSS Values 4 10.7: [rem()] returns the remainder using truncated
-         division (sign of dividend). *)
-      pp_unit_fn (Float.rem a b) "px"
-  | Rem_fn (a, b) ->
-      Pp.call "rem"
-        (fun ctx (a, b) ->
-          pp_length ~always ctx a;
-          Pp.comma ctx ();
-          pp_length ~always ctx b)
-        ctx (a, b)
-  | Hypot [ (Px _ as value) ] when Pp.minified ctx ->
-      pp_length ~always ctx value
-  | Hypot values when Pp.minified ctx -> (
-      let px_values =
-        List.fold_right
-          (fun value acc ->
-            match (value, acc) with
-            | Px f, Some values -> Some (f :: values)
-            | _ -> None)
-          values (Some [])
-      in
-      match px_values with
-      | Some (_ :: _ as values) ->
-          let sum_sq =
-            List.fold_left (fun acc f -> acc +. (f *. f)) 0. values
-          in
-          pp_unit_fn (Float.sqrt sum_sq) "px"
-      | _ -> Pp.call_list "hypot" (pp_length ~always) ctx values)
-  | Hypot values -> Pp.call_list "hypot" (pp_length ~always) ctx values
+      pp_round_length ~always ctx strategy value step
+  | Mod (a, b) -> pp_mod_length ~always ctx a b
+  | Rem_fn (a, b) -> pp_rem_length ~always ctx a b
+  | Hypot values -> pp_hypot_length ~always ctx values
   | Abs (Px x) when Pp.minified ctx -> pp_unit_fn (Float.abs x) "px"
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
   | Sign v ->
@@ -1749,20 +1675,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Anchor_size size ->
       Pp.call "anchor-size" (fun ctx size -> Pp.string ctx size) ctx size
   | Anchor (name, side, fallback) ->
-      Pp.call "anchor"
-        (fun ctx (name, side, fallback) ->
-          Option.iter
-            (fun name ->
-              Pp.string ctx name;
-              Pp.space ctx ())
-            name;
-          Pp.string ctx side;
-          match fallback with
-          | Option.None -> ()
-          | Option.Some fallback ->
-              Pp.comma ctx ();
-              pp_length ~always ctx fallback)
-        ctx (name, side, fallback)
+      pp_anchor_length ~always ctx name side fallback
   | Attr attr -> Pp.call "attr" (pp_attr_call (pp_length ~always)) ctx attr
   | Env env -> pp_env (pp_length ~always) ctx env
   | Var v -> pp_var (pp_length ~always) ctx v
@@ -1771,40 +1684,136 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Content -> Pp.string ctx "content"
-  | Calc cv -> (
-      (* Optimize calc(infinity * dimension) to large value - Tailwind always
-         outputs this optimized form regardless of minification *)
-      match cv with
-      | Expr (Num f, Mul, Val _) when f = infinity ->
-          Pp.string ctx "3.40282e38px"
-      | Expr (Val _, Mul, Num f) when f = infinity ->
-          Pp.string ctx "3.40282e38px"
-      | Expr (Val length, Mul, Num -1.)
-        when Pp.minified ctx && is_math_length length ->
-          Pp.string ctx "calc(-1*";
-          pp_length ~always ctx length;
-          Pp.char ctx ')'
-      | Expr (Num 0.5, Mul, Val length)
-        when Pp.minified ctx && is_math_length length ->
-          Pp.string ctx "calc(";
-          pp_length ~always ctx length;
-          Pp.string ctx "/2)"
-      | Expr (Num 1., Mul, Val length)
-        when Pp.minified ctx && is_math_length length ->
-          pp_calc_wrapped_length ctx length
-      | Expr (Expr (Num 2., Mul, Val length), Div, Num 2.)
-        when Pp.minified ctx && is_math_length length ->
-          pp_calc_wrapped_length ctx length
-      | _ ->
-          let cv =
-            if Pp.minified ctx then
-              cv
-              |> resolve_length_calc_vars ctx
-              |> normalize_length_calc_zeros |> eval_length_calc
-              |> linear_length_calc |> eval_length_calc
-            else cv
+  | Calc cv -> pp_length_calc ~always ctx cv
+
+and math_length = function Min _ | Max _ | Clamp _ -> true | _ -> false
+
+and pp_calc_wrapped_length ~always ctx length =
+  Pp.string ctx "calc(";
+  pp_length ~always ctx length;
+  Pp.char ctx ')'
+
+and pp_anchor_length ~always ctx name side fallback =
+  Pp.call "anchor"
+    (fun ctx (name, side, fallback) ->
+      Option.iter
+        (fun name ->
+          Pp.string ctx name;
+          Pp.space ctx ())
+        name;
+      Pp.string ctx side;
+      Option.iter
+        (fun fallback ->
+          Pp.comma ctx ();
+          pp_length ~always ctx fallback)
+        fallback)
+    ctx (name, side, fallback)
+
+and pp_min_max_length ~always ctx op name s =
+  if Pp.minified ctx then
+    match try_reduce_min_max op s with
+    | Some (v, u) -> pp_unit ~always ctx v u
+    | None -> pp_math_call ctx name s
+  else pp_math_call ctx name s
+
+and pp_round_length ~always ctx strategy value step =
+  match (value, step) with
+  | Px v, Px step when Pp.minified ctx && step <> 0. ->
+      pp_unit ~always ctx (round_length_step strategy v step) "px"
+  | _ ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_length ~always ctx value;
+          Pp.comma ctx ();
+          pp_length ~always ctx step)
+        ctx (strategy, value, step)
+
+and pp_mod_length ~always ctx a b =
+  match (a, b) with
+  | Px a, Px b when Pp.minified ctx && b <> 0. ->
+      (* CSS Values 4 10.7: [mod()] returns the remainder using floored division
+         (sign of divisor). *)
+      let q = Float.floor (a /. b) in
+      pp_unit ~always ctx (a -. (q *. b)) "px"
+  | _ ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_length ~always ctx a;
+          Pp.comma ctx ();
+          pp_length ~always ctx b)
+        ctx (a, b)
+
+and pp_rem_length ~always ctx a b =
+  match (a, b) with
+  | Px a, Px b when Pp.minified ctx && b <> 0. ->
+      (* CSS Values 4 10.7: [rem()] returns the remainder using truncated
+         division (sign of dividend). *)
+      pp_unit ~always ctx (Float.rem a b) "px"
+  | _ ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_length ~always ctx a;
+          Pp.comma ctx ();
+          pp_length ~always ctx b)
+        ctx (a, b)
+
+and pp_hypot_length ~always ctx values =
+  if Pp.minified ctx then pp_minified_hypot_length ~always ctx values
+  else Pp.call_list "hypot" (pp_length ~always) ctx values
+
+and pp_minified_hypot_length ~always ctx = function
+  | [ (Px _ as value) ] -> pp_length ~always ctx value
+  | values -> (
+      match px_values values with
+      | Some (_ :: _ as values) ->
+          let sum_sq =
+            List.fold_left (fun acc f -> acc +. (f *. f)) 0. values
           in
-          pp_calc (pp_length ~always) ctx cv)
+          pp_unit ~always ctx (Float.sqrt sum_sq) "px"
+      | _ -> Pp.call_list "hypot" (pp_length ~always) ctx values)
+
+and px_values values =
+  List.fold_right
+    (fun value acc ->
+      match (value, acc) with
+      | Px f, Some values -> Some (f :: values)
+      | _ -> None)
+    values (Some [])
+
+and pp_length_calc ~always ctx cv =
+  match cv with
+  | Expr (Num f, Mul, Val _) when f = infinity -> Pp.string ctx "3.40282e38px"
+  | Expr (Val _, Mul, Num f) when f = infinity -> Pp.string ctx "3.40282e38px"
+  | Expr (Val length, Mul, Num -1.) when Pp.minified ctx && math_length length
+    ->
+      Pp.string ctx "calc(-1*";
+      pp_length ~always ctx length;
+      Pp.char ctx ')'
+  | Expr (Num 0.5, Mul, Val length) when Pp.minified ctx && math_length length
+    ->
+      Pp.string ctx "calc(";
+      pp_length ~always ctx length;
+      Pp.string ctx "/2)"
+  | Expr (Num 1., Mul, Val length) when Pp.minified ctx && math_length length ->
+      pp_calc_wrapped_length ~always ctx length
+  | Expr (Expr (Num 2., Mul, Val length), Div, Num 2.)
+    when Pp.minified ctx && math_length length ->
+      pp_calc_wrapped_length ~always ctx length
+  | _ -> pp_generic_length_calc ~always ctx cv
+
+and pp_generic_length_calc ~always ctx cv =
+  let cv =
+    if Pp.minified ctx then
+      cv
+      |> resolve_length_calc_vars ctx
+      |> normalize_length_calc_zeros |> eval_length_calc |> linear_length_calc
+      |> eval_length_calc
+    else cv
+  in
+  pp_calc (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function
@@ -1957,6 +1966,12 @@ let pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
+(* CSS Color 4 §6.4: every CSS named colour has a canonical sRGB byte triple.
+   The minify path routes [Named n] through this table to pick the shortest
+   spec-equivalent spelling (name vs [#hex]). Hex values are stored in their
+   shortest form ([shorten_hex] folds 6-char [rrggbb] into 3-char [rgb] when
+   each pair is identical), so [pp_color]'s back-conversion is a no-op. *)
+
 (** Convert a named color to its hex equivalent (name, hex_value). Returns the
     shortest representation matching Lightning CSS behavior. *)
 let color_name_hex : color_name -> string * string = function
@@ -1973,7 +1988,6 @@ let color_name_hex : color_name -> string * string = function
   | Orange -> ("orange", "ffa500")
   | Purple -> ("purple", "800080")
   | Pink -> ("pink", "ffc0cb")
-  | Light_blue -> ("lightblue", "add8e6")
   | Silver -> ("silver", "c0c0c0")
   | Maroon -> ("maroon", "800000")
   | Fuchsia -> ("fuchsia", "f0f")
@@ -1982,12 +1996,133 @@ let color_name_hex : color_name -> string * string = function
   | Navy -> ("navy", "000080")
   | Teal -> ("teal", "008080")
   | Aqua -> ("aqua", "0ff")
+  | Alice_blue -> ("aliceblue", "f0f8ff")
+  | Antique_white -> ("antiquewhite", "faebd7")
+  | Aquamarine -> ("aquamarine", "7fffd4")
+  | Azure -> ("azure", "f0ffff")
+  | Beige -> ("beige", "f5f5dc")
+  | Bisque -> ("bisque", "ffe4c4")
+  | Blanched_almond -> ("blanchedalmond", "ffebcd")
+  | Blue_violet -> ("blueviolet", "8a2be2")
+  | Brown -> ("brown", "a52a2a")
+  | Burlywood -> ("burlywood", "deb887")
+  | Cadet_blue -> ("cadetblue", "5f9ea0")
+  | Chartreuse -> ("chartreuse", "7fff00")
+  | Chocolate -> ("chocolate", "d2691e")
+  | Coral -> ("coral", "ff7f50")
+  | Cornflower_blue -> ("cornflowerblue", "6495ed")
+  | Cornsilk -> ("cornsilk", "fff8dc")
+  | Crimson -> ("crimson", "dc143c")
+  | Dark_blue -> ("darkblue", "00008b")
+  | Dark_cyan -> ("darkcyan", "008b8b")
+  | Dark_goldenrod -> ("darkgoldenrod", "b8860b")
+  | Dark_gray -> ("darkgray", "a9a9a9")
+  | Dark_green -> ("darkgreen", "006400")
+  | Dark_grey -> ("darkgrey", "a9a9a9")
+  | Dark_khaki -> ("darkkhaki", "bdb76b")
+  | Dark_magenta -> ("darkmagenta", "8b008b")
+  | Dark_olive_green -> ("darkolivegreen", "556b2f")
+  | Dark_orange -> ("darkorange", "ff8c00")
+  | Dark_orchid -> ("darkorchid", "9932cc")
+  | Dark_red -> ("darkred", "8b0000")
+  | Dark_salmon -> ("darksalmon", "e9967a")
+  | Dark_sea_green -> ("darkseagreen", "8fbc8f")
+  | Dark_slate_blue -> ("darkslateblue", "483d8b")
+  | Dark_slate_gray -> ("darkslategray", "2f4f4f")
+  | Dark_slate_grey -> ("darkslategrey", "2f4f4f")
+  | Dark_turquoise -> ("darkturquoise", "00ced1")
+  | Dark_violet -> ("darkviolet", "9400d3")
+  | Deep_pink -> ("deeppink", "ff1493")
+  | Deep_sky_blue -> ("deepskyblue", "00bfff")
+  | Dim_gray -> ("dimgray", "696969")
+  | Dim_grey -> ("dimgrey", "696969")
+  | Dodger_blue -> ("dodgerblue", "1e90ff")
+  | Firebrick -> ("firebrick", "b22222")
+  | Floral_white -> ("floralwhite", "fffaf0")
+  | Forest_green -> ("forestgreen", "228b22")
+  | Gainsboro -> ("gainsboro", "dcdcdc")
+  | Ghost_white -> ("ghostwhite", "f8f8ff")
+  | Gold -> ("gold", "ffd700")
+  | Goldenrod -> ("goldenrod", "daa520")
+  | Green_yellow -> ("greenyellow", "adff2f")
+  | Honeydew -> ("honeydew", "f0fff0")
+  | Hot_pink -> ("hotpink", "ff69b4")
+  | Indian_red -> ("indianred", "cd5c5c")
+  | Indigo -> ("indigo", "4b0082")
+  | Ivory -> ("ivory", "fffff0")
+  | Khaki -> ("khaki", "f0e68c")
+  | Lavender -> ("lavender", "e6e6fa")
+  | Lavender_blush -> ("lavenderblush", "fff0f5")
+  | Lawn_green -> ("lawngreen", "7cfc00")
+  | Lemon_chiffon -> ("lemonchiffon", "fffacd")
+  | Light_blue -> ("lightblue", "add8e6")
+  | Light_coral -> ("lightcoral", "f08080")
+  | Light_cyan -> ("lightcyan", "e0ffff")
+  | Light_goldenrod_yellow -> ("lightgoldenrodyellow", "fafad2")
+  | Light_gray -> ("lightgray", "d3d3d3")
+  | Light_green -> ("lightgreen", "90ee90")
+  | Light_grey -> ("lightgrey", "d3d3d3")
+  | Light_pink -> ("lightpink", "ffb6c1")
+  | Light_salmon -> ("lightsalmon", "ffa07a")
+  | Light_sea_green -> ("lightseagreen", "20b2aa")
+  | Light_sky_blue -> ("lightskyblue", "87cefa")
+  | Light_slate_gray -> ("lightslategray", "789")
+  | Light_slate_grey -> ("lightslategrey", "789")
+  | Light_steel_blue -> ("lightsteelblue", "b0c4de")
+  | Light_yellow -> ("lightyellow", "ffffe0")
+  | Lime_green -> ("limegreen", "32cd32")
+  | Linen -> ("linen", "faf0e6")
+  | Medium_aquamarine -> ("mediumaquamarine", "66cdaa")
+  | Medium_blue -> ("mediumblue", "0000cd")
+  | Medium_orchid -> ("mediumorchid", "ba55d3")
+  | Medium_purple -> ("mediumpurple", "9370db")
+  | Medium_sea_green -> ("mediumseagreen", "3cb371")
+  | Medium_slate_blue -> ("mediumslateblue", "7b68ee")
+  | Medium_spring_green -> ("mediumspringgreen", "00fa9a")
+  | Medium_turquoise -> ("mediumturquoise", "48d1cc")
+  | Medium_violet_red -> ("mediumvioletred", "c71585")
+  | Midnight_blue -> ("midnightblue", "191970")
+  | Mint_cream -> ("mintcream", "f5fffa")
+  | Misty_rose -> ("mistyrose", "ffe4e1")
+  | Moccasin -> ("moccasin", "ffe4b5")
+  | Navajo_white -> ("navajowhite", "ffdead")
+  | Old_lace -> ("oldlace", "fdf5e6")
+  | Olive_drab -> ("olivedrab", "6b8e23")
+  | Orange_red -> ("orangered", "ff4500")
+  | Orchid -> ("orchid", "da70d6")
+  | Pale_goldenrod -> ("palegoldenrod", "eee8aa")
+  | Pale_green -> ("palegreen", "98fb98")
+  | Pale_turquoise -> ("paleturquoise", "afeeee")
+  | Pale_violet_red -> ("palevioletred", "db7093")
+  | Papaya_whip -> ("papayawhip", "ffefd5")
+  | Peach_puff -> ("peachpuff", "ffdab9")
+  | Peru -> ("peru", "cd853f")
+  | Plum -> ("plum", "dda0dd")
+  | Powder_blue -> ("powderblue", "b0e0e6")
   | Rebecca_purple -> ("rebeccapurple", "663399")
-  | _ ->
-      (* Other extended named colors aren't tabulated yet; the [Hex] arm of
-         [pp_color] picks up only the colours listed here. Names that fall
-         through emit verbatim. *)
-      ("", "")
+  | Rosy_brown -> ("rosybrown", "bc8f8f")
+  | Royal_blue -> ("royalblue", "4169e1")
+  | Saddle_brown -> ("saddlebrown", "8b4513")
+  | Salmon -> ("salmon", "fa8072")
+  | Sandy_brown -> ("sandybrown", "f4a460")
+  | Sea_green -> ("seagreen", "2e8b57")
+  | Sea_shell -> ("seashell", "fff5ee")
+  | Sienna -> ("sienna", "a0522d")
+  | Sky_blue -> ("skyblue", "87ceeb")
+  | Slate_blue -> ("slateblue", "6a5acd")
+  | Slate_gray -> ("slategray", "708090")
+  | Slate_grey -> ("slategrey", "708090")
+  | Snow -> ("snow", "fffafa")
+  | Spring_green -> ("springgreen", "00ff7f")
+  | Steel_blue -> ("steelblue", "4682b4")
+  | Tan -> ("tan", "d2b48c")
+  | Thistle -> ("thistle", "d8bfd8")
+  | Tomato -> ("tomato", "ff6347")
+  | Turquoise -> ("turquoise", "40e0d0")
+  | Violet -> ("violet", "ee82ee")
+  | Wheat -> ("wheat", "f5deb3")
+  | White_smoke -> ("whitesmoke", "f5f5f5")
+  | Yellow_green -> ("yellowgreen", "9acd32")
 
 (* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The 4-digit
    shorthand [#0000] and the 8-digit form [#00000000] are spec-equivalent
@@ -2599,7 +2734,7 @@ let rec pp_angle : angle Pp.t =
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
-         else Parser.to_string tokens)
+         else Parser.string_of_components tokens)
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
@@ -2666,7 +2801,7 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
-         else Parser.to_string tokens)
+         else Parser.string_of_components tokens)
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
@@ -2706,24 +2841,25 @@ let static_component_starts_negative (component : component) =
   | Num f | Pct f -> f < 0.
   | Angle _ | Var _ | Calc _ | Component_none -> false
 
+let color_component_needs_space ctx prev component =
+  not
+    (Pp.minified ctx
+    && static_component_can_touch_negative prev
+    && static_component_starts_negative component)
+
+let rec pp_color_component_tail ctx prev = function
+  | [] -> ()
+  | component :: rest ->
+      if color_component_needs_space ctx prev component then Pp.space ctx ();
+      pp_component ctx component;
+      pp_color_component_tail ctx component rest
+
 let pp_color_components : component list Pp.t =
  fun ctx -> function
   | [] -> ()
   | first :: rest ->
       pp_component ctx first;
-      let rec loop prev = function
-        | [] -> ()
-        | component :: rest ->
-            if
-              not
-                (Pp.minified ctx
-                && static_component_can_touch_negative prev
-                && static_component_starts_negative component)
-            then Pp.space ctx ();
-            pp_component ctx component;
-            loop component rest
-      in
-      loop first rest
+      pp_color_component_tail ctx first rest
 
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
@@ -2942,6 +3078,206 @@ and pp_color' ctx space components alpha =
       pp_opt_alpha ctx alpha)
     ctx (space, components, alpha)
 
+and pp_hex_color ctx value =
+  if Pp.minified ctx then (
+    if hex_is_fully_transparent value then (
+      Pp.char ctx '#';
+      Pp.string ctx "0000")
+    else
+      let shortened = shorten_hex value in
+      match named_for_hex shortened with
+      | Some name when String.length name < String.length shortened + 1 ->
+          Pp.string ctx name
+      | _ ->
+          Pp.char ctx '#';
+          Pp.string ctx shortened)
+  else (
+    Pp.char ctx '#';
+    Pp.string ctx value)
+
+and pp_rgb_as_color : rgb Pp.t =
+ fun ctx -> function
+  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+  | Var v -> pp_var pp_rgb_as_color ctx v
+
+and pp_rgb_color ctx = function
+  | Channels { r; g; b } when Pp.minified ctx -> (
+      (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to the
+         [#hex] / named-colour forms. Re-emit through [pp_color] so the same
+         shortening / named lookup applies. *)
+      match rgb_to_hex_string r g b with
+      | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+      | None -> pp_rgb_func ctx (r, g, b, None))
+  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+  | Var v -> pp_rgb_as_color ctx (Var v)
+
+and pp_rgba_color ctx rgb a legacy =
+  match rgb with
+  | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a ->
+      Pp.char ctx '#';
+      Pp.string ctx "0000"
+  | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
+      match rgb_to_hex_string r g b with
+      | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+      | None -> pp_rgb_func ctx (r, g, b, None))
+  | Channels { r; g; b } when Pp.minified ctx -> (
+      match (rgb_to_hex_string r g b, alpha_value_byte a) with
+      | Some hex, Some ab ->
+          pp_color ctx (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+      | _ -> pp_rgb_func ctx (r, g, b, a))
+  | Channels { r; g; b } when legacy -> pp_rgba_func ctx (r, g, b, a)
+  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
+  | Var v ->
+      Pp.call "rgb"
+        (fun ctx (v, a) ->
+          pp_rgb_as_color ctx (Var v);
+          pp_opt_alpha ctx a)
+        ctx (v, a)
+
+and pp_hsl_color ctx h s l a =
+  if Pp.minified ctx then pp_minified_hsl_color ctx h s l a
+  else pp_hsl ctx (h, s, l, a)
+
+and pp_minified_hsl_color ctx h s l a =
+  (* CSS Color 4 4.2.4: an [hsl()] with all-static components converts to sRGB
+     byte channels. Route through the [Hex] arm so the printer picks the
+     shortest spec-equivalent spelling. *)
+  match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
+  | Some hue, Some saturation, Some lightness ->
+      let hue = normalize_hue hue in
+      let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
+      pp_rgb_hex_color ctx r g b a (fun () -> pp_hsl ctx (h, s, l, a))
+  | _ -> pp_hsl ctx (h, s, l, a)
+
+and pp_hwb_color ctx h w b a =
+  if Pp.minified ctx then pp_minified_hwb_color ctx h w b a
+  else pp_hwb ctx (h, w, b, a)
+
+and pp_minified_hwb_color ctx h w b a =
+  (* CSS Color 4 4.2.5: like [hsl()], an [hwb()] with all-static components
+     folds to its sRGB byte channels and routes through [Hex]. *)
+  match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
+  | Some hue, Some whiteness, Some blackness ->
+      let hue = normalize_hue hue in
+      let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
+      pp_rgb_hex_color ctx r g blue a (fun () -> pp_hwb ctx (h, w, b, a))
+  | _ -> pp_hwb ctx (h, w, b, a)
+
+and pp_rgb_hex_color ctx r g b a fallback =
+  let hex = byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b in
+  match alpha_value_byte a with
+  | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
+  | Some ab ->
+      pp_color ctx (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+  | Option.None -> fallback ()
+
+and pp_relative_color_call ctx name body =
+  let body =
+    if Pp.minified ctx then minify_relative_color_alpha body else body
+  in
+  Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
+
+and pp_light_dark_color ctx light dark =
+  Pp.call "light-dark"
+    (fun ctx (light, dark) ->
+      pp_color ctx light;
+      Pp.comma ctx ();
+      pp_color ctx dark)
+    ctx (light, dark)
+
+and pp_color_attr ctx name fallback =
+  Pp.string ctx "attr(";
+  Pp.string ctx name;
+  Pp.space ctx ();
+  Pp.string ctx "type(<color>)";
+  Option.iter
+    (fun fallback ->
+      Pp.comma ctx ();
+      pp_color ctx fallback)
+    fallback;
+  Pp.char ctx ')'
+
+and canonical_color_name = function
+  | Grey -> Gray
+  | Dark_grey -> Dark_gray
+  | Light_grey -> Light_gray
+  | Slate_grey -> Slate_gray
+  | Dark_slate_grey -> Dark_slate_gray
+  | Light_slate_grey -> Light_slate_gray
+  | Dim_grey -> Dim_gray
+  | other -> other
+
+and pp_named_color ctx name =
+  if Pp.minified ctx then pp_minified_named_color ctx name
+  else pp_color_name ctx name
+
+and pp_minified_named_color ctx name =
+  (* Pick the shortest spec-equivalent spelling. Per README's minified policy,
+     the hex form wins when it is at most as long as the name. *)
+  let canonical = canonical_color_name name in
+  let name_str, hex = color_name_hex canonical in
+  let shortened = if hex = "" then "" else shorten_hex hex in
+  if hex = "" || String.length shortened + 1 > String.length name_str then
+    pp_color_name ctx canonical
+  else pp_color ctx (Hex { hash = true; value = hex })
+
+and pp_color_var (ctx : Pp.ctx) (v : color var) =
+  match v with
+  | { fallback = Syntax_fallback value; default = Option.None; _ }
+    when ctx.inline ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_custom_minified value
+        else Parser.to_string_custom value
+      in
+      Pp.string ctx (first_top_level_comma_segment rendered)
+  | _ when Pp.minified ctx -> (
+      match color_of_var_resolution ctx v with
+      | Option.Some color -> pp_color ctx color
+      | Option.None -> pp_var pp_color ctx v)
+  | _ -> pp_var pp_color ctx v
+
+and pp_transparent_color ctx =
+  (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under minify
+     pick the shorter hex form (Lightning CSS convention). *)
+  if Pp.minified ctx then (
+    Pp.char ctx '#';
+    Pp.string ctx "0000")
+  else Pp.string ctx "transparent"
+
+and pp_srgb_mix_color ctx color1 percent1 color2 percent2 =
+  match color_mix_percentages percent1 percent2 with
+  | Some (p1, p2) -> (
+      match mix_srgb_bytes color1 color2 ~p1 ~p2 with
+      | Some (r, g, b, 255) ->
+          pp_color ctx
+            (Hex
+               {
+                 hash = true;
+                 value =
+                   byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b;
+               })
+      | Some (r, g, b, a) ->
+          pp_color ctx
+            (Hex
+               {
+                 hash = true;
+                 value =
+                   byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
+                   ^ byte_to_hex_byte a;
+               })
+      | Option.None ->
+          pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2)
+  | None -> pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2
+
+and pp_lab_mix_color ctx in_space color1 percent1 color2 percent2 =
+  match color_mix_percentages percent1 percent2 with
+  | Some (p1, p2) -> (
+      match mix_lab_family in_space color1 color2 ~p1 ~p2 with
+      | Some color -> pp_color ctx color
+      | None ->
+          pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
+  | None -> pp_color_mix ctx in_space Default color1 percent1 color2 percent2
+
 and color_of_default_string value =
   let value = String.trim value in
   let len = String.length value in
@@ -2972,204 +3308,31 @@ and color_of_default_string value =
   else Option.None
 
 and color_of_var_resolution ctx (v : color var) =
-  if in_theme ctx v.name then Option.None
-  else
-    match ctx.Pp.theme_defaults v.name with
-    | Option.Some value -> color_of_default_string value
-    | Option.None -> (
-        match v.default with
-        | Option.Some value -> Option.Some value
-        | Option.None -> (
-            match v.fallback with
-            | Fallback value -> Option.Some value
-            | Var_fallback name ->
-                Option.bind (ctx.Pp.theme_defaults name) color_of_default_string
-            | None | Empty | Empty2 | Syntax_fallback _ -> Option.None))
+  value_of_var_resolution ctx color_of_default_string v
 
 and pp_color : color Pp.t =
  fun ctx -> function
-  | Hex { hash = _; value } ->
-      (* CSS Color 4 12.1: 6-digit and 3-digit hex are spec-equivalent;
-         shortening is part of minification (cssnano / Lightning CSS / clean-css
-         conventions). When a CSS named colour represents the same sRGB value
-         with a strictly shorter spelling than the [#hex] form, emit the name;
-         on a tie the hex spelling wins (Lightning CSS / clean-css convention).
-         CSS Color 4 6.4 makes [#0000] / [#00000000] spec-equivalent to the
-         [transparent] keyword; [#0000] is the shortest of those, so that wins
-         under minify. *)
-      if Pp.minified ctx then (
-        if hex_is_fully_transparent value then (
-          Pp.char ctx '#';
-          Pp.string ctx "0000")
-        else
-          let shortened = shorten_hex value in
-          match named_for_hex shortened with
-          | Some name when String.length name < String.length shortened + 1 ->
-              Pp.string ctx name
-          | _ ->
-              Pp.char ctx '#';
-              Pp.string ctx shortened)
-      else (
-        Pp.char ctx '#';
-        Pp.string ctx value)
-  | Rgb rgb -> (
-      match rgb with
-      | Channels { r; g; b } when Pp.minified ctx -> (
-          (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to the
-             [#hex] / named-colour forms. Re-emit through [pp_color] so the same
-             shortening / named lookup applies. *)
-          match rgb_to_hex_string r g b with
-          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-          | None -> pp_rgb_func ctx (r, g, b, None))
-      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
-      | Var v ->
-          (* Print as a var that expands to a color *)
-          let rec pp_rgb_as_color : rgb Pp.t =
-           fun ctx rgb ->
-            match rgb with
-            | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
-            | Var v -> pp_var pp_rgb_as_color ctx v
-          in
-          pp_rgb_as_color ctx (Var v))
-  | Rgba { rgb; a; legacy } -> (
-      match rgb with
-      | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a
-        ->
-          Pp.char ctx '#';
-          Pp.string ctx "0000"
-      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
-          match rgb_to_hex_string r g b with
-          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-          | None -> pp_rgb_func ctx (r, g, b, None))
-      | Channels { r; g; b } when Pp.minified ctx -> (
-          match (rgb_to_hex_string r g b, alpha_value_byte a) with
-          | Some hex, Some ab ->
-              pp_color ctx
-                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
-          | _ -> pp_rgb_func ctx (r, g, b, a))
-      | Channels { r; g; b } when legacy -> pp_rgba_func ctx (r, g, b, a)
-      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
-      | Var v ->
-          (* Output as rgb(var(--color)/alpha) *)
-          let rec pp_rgb_var : rgb Pp.t =
-           fun ctx rgb ->
-            match rgb with
-            | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
-            | Var v -> pp_var pp_rgb_var ctx v
-          in
-          Pp.call "rgb"
-            (fun ctx (v, a) ->
-              pp_rgb_var ctx (Var v);
-              pp_opt_alpha ctx a)
-            ctx (v, a))
-  | Hsl { h; s; l; a } when Pp.minified ctx -> (
-      (* CSS Color 4 4.2.4: an [hsl()] with all-static components converts to
-         sRGB byte channels. Route through the [Hex] arm so the printer picks
-         the shortest spec-equivalent spelling - either [#rrggbb] (or its
-         3-digit shorthand), [#rrggbbaa] (alpha included), or a named colour
-         when one matches. Symbolic components fall through to [pp_hsl]. *)
-      match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
-      | Some hue, Some saturation, Some lightness -> (
-          let hue = normalize_hue hue in
-          let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
-          let hex =
-            byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
-          in
-          match alpha_value_byte a with
-          | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
-          | Some ab ->
-              pp_color ctx
-                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
-          | Option.None -> pp_hsl ctx (h, s, l, a))
-      | _ -> pp_hsl ctx (h, s, l, a))
-  | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
-  | Hwb { h; w; b; a } when Pp.minified ctx -> (
-      (* CSS Color 4 4.2.5: like [hsl()], an [hwb()] with all-static components
-         folds to its sRGB byte channels and routes through [Hex]. *)
-      match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
-      | Some hue, Some whiteness, Some blackness -> (
-          let hue = normalize_hue hue in
-          let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
-          let hex =
-            byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte blue
-          in
-          match alpha_value_byte a with
-          | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
-          | Some ab ->
-              pp_color ctx
-                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
-          | Option.None -> pp_hwb ctx (h, w, b, a))
-      | _ -> pp_hwb ctx (h, w, b, a))
-  | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
+  | Hex { hash = _; value } -> pp_hex_color ctx value
+  | Rgb rgb -> pp_rgb_color ctx rgb
+  | Rgba { rgb; a; legacy } -> pp_rgba_color ctx rgb a legacy
+  | Hsl { h; s; l; a } -> pp_hsl_color ctx h s l a
+  | Hwb { h; w; b; a } -> pp_hwb_color ctx h w b a
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
-  | Relative_rgb body ->
-      let body =
-        if Pp.minified ctx then minify_relative_color_alpha body else body
-      in
-      Pp.call "rgb" (fun ctx body -> Pp.string ctx body) ctx body
-  | Relative_color (name, body) ->
-      let body =
-        if Pp.minified ctx then minify_relative_color_alpha body else body
-      in
-      Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
+  | Relative_rgb body -> pp_relative_color_call ctx "rgb" body
+  | Relative_color (name, body) -> pp_relative_color_call ctx name body
   | Contrast_color color -> Pp.call "contrast-color" pp_color ctx color
-  | Light_dark (light, dark) ->
-      Pp.call "light-dark"
-        (fun ctx (light, dark) ->
-          pp_color ctx light;
-          Pp.comma ctx ();
-          pp_color ctx dark)
-        ctx (light, dark)
-  | Attribute (name, fallback) ->
-      Pp.string ctx "attr(";
-      Pp.string ctx name;
-      Pp.space ctx ();
-      Pp.string ctx "type(<color>)";
-      Option.iter
-        (fun fallback ->
-          Pp.comma ctx ();
-          pp_color ctx fallback)
-        fallback;
-      Pp.char ctx ')'
+  | Light_dark (light, dark) -> pp_light_dark_color ctx light dark
+  | Attribute (name, fallback) -> pp_color_attr ctx name fallback
   | Lab { l; a; b; alpha } -> pp_lab ctx (l, a, b, alpha)
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
-  | Named name when Pp.minified ctx ->
-      (* Route a directly-spelled named colour through the [Hex] arm so the
-         shortest-on-tie rule applies uniformly: a static named colour minifies
-         to its shortest spec-equivalent spelling regardless of where it sits
-         (top-level declaration, [color-mix] argument, [light-dark] fork).
-         Unresolved [Var] residuals and other dynamic values stay structural via
-         their own arms. [color_name_hex] returns the empty string for extended
-         names whose hex form is never shorter ([rebeccapurple], [dodgerblue],
-         etc.); in that case keep the source name spelling. *)
-      let _, hex = color_name_hex name in
-      if hex = "" then pp_color_name ctx name
-      else pp_color ctx (Hex { hash = true; value = hex })
-  | Named name -> pp_color_name ctx name
+  | Named name -> pp_named_color ctx name
   | System sc -> pp_system_color ctx sc
-  | Var { fallback = Syntax_fallback value; default = Option.None; _ }
-    when ctx.inline ->
-      let rendered =
-        if Pp.minified ctx then Parser.to_string_custom_minified value
-        else Parser.to_string_custom value
-      in
-      Pp.string ctx (first_top_level_comma_segment rendered)
-  | Var v when Pp.minified ctx -> (
-      match color_of_var_resolution ctx v with
-      | Option.Some color -> pp_color ctx color
-      | Option.None -> pp_var pp_color ctx v)
-  | Var v -> pp_var pp_color ctx v
+  | Var v -> pp_color_var ctx v
   | Current ->
       Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
-  | Transparent ->
-      (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under
-         minify pick the shorter hex form (Lightning CSS convention). *)
-      if Pp.minified ctx then (
-        Pp.char ctx '#';
-        Pp.string ctx "0000")
-      else Pp.string ctx "transparent"
+  | Transparent -> pp_transparent_color ctx
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -3185,39 +3348,8 @@ and pp_color : color Pp.t =
         color2;
         percent2;
       }
-    when Pp.minified ctx -> (
-      (* CSS Color 5 5: a [color-mix(in srgb, c1 P1%, c2 P2%)] with all-static
-         components reduces to a concrete sRGB byte triple. Route through the
-         [Hex] arm so the printer picks the shortest spec-equivalent spelling
-         ([color-mix(in srgb,red,blue) -> purple], where the [#800080] hex
-         resolves to the named [purple]). Symbolic percentages or inputs that
-         can't fold fall through to the structural [pp_color_mix] form. *)
-      match color_mix_percentages percent1 percent2 with
-      | Some (p1, p2) -> (
-          match mix_srgb_bytes color1 color2 ~p1 ~p2 with
-          | Some (r, g, b, 255) ->
-              pp_color ctx
-                (Hex
-                   {
-                     hash = true;
-                     value =
-                       byte_to_hex_byte r ^ byte_to_hex_byte g
-                       ^ byte_to_hex_byte b;
-                   })
-          | Some (r, g, b, a) ->
-              pp_color ctx
-                (Hex
-                   {
-                     hash = true;
-                     value =
-                       byte_to_hex_byte r ^ byte_to_hex_byte g
-                       ^ byte_to_hex_byte b ^ byte_to_hex_byte a;
-                   })
-          | Option.None ->
-              pp_color_mix ctx (Some Srgb) Default color1 percent1 color2
-                percent2)
-      | None ->
-          pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2)
+    when Pp.minified ctx ->
+      pp_srgb_mix_color ctx color1 percent1 color2 percent2
   | Mix
       {
         in_space = Some (Lab | Oklab | Lch | Oklch) as in_space;
@@ -3227,15 +3359,8 @@ and pp_color : color Pp.t =
         color2;
         percent2;
       }
-    when Pp.minified ctx -> (
-      match color_mix_percentages percent1 percent2 with
-      | Some (p1, p2) -> (
-          match mix_lab_family in_space color1 color2 ~p1 ~p2 with
-          | Some color -> pp_color ctx color
-          | None ->
-              pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
-      | None ->
-          pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
+    when Pp.minified ctx ->
+      pp_lab_mix_color ctx in_space color1 percent1 color2 percent2
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
@@ -3622,38 +3747,42 @@ let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  let rec loop left =
-    Cursor.ws t;
-    match Cursor.peek_delim t with
-    | Some '*' ->
-        (* Use atomic to ensure we either parse the full multiplication or
-           nothing *)
-        Cursor.atomic t (fun () ->
-            Cursor.skip t;
-            Cursor.ws t;
-            let right = read_calc_factor read_a t in
-            (* Validate multiplication: can't multiply two raw dimensions (but
-               expressions are OK) *)
-            let is_dimension : type a. a calc -> bool = function
-              | Val _ -> true
-              | _ -> false
-            in
-            (* Allow number × dimension or dimension × number, but not dimension
-               × dimension *)
-            if is_dimension left && is_dimension right then
-              Cursor.err t "invalid calc: cannot multiply two dimensions";
-            loop (Expr (left, Mul, right)))
-    | Some '/' ->
-        (* Use atomic to ensure we either parse the full division or nothing *)
-        Cursor.atomic t (fun () ->
-            Cursor.skip t;
-            Cursor.ws t;
-            let right = read_calc_factor read_a t in
-            loop (Expr (left, Div, right)))
-    | _ -> left
-  in
-  let left = read_calc_factor read_a t in
-  loop left
+  read_calc_term_tail read_a t (read_calc_factor read_a t)
+
+and read_calc_term_tail : type a.
+    (Cursor.t -> a) -> Cursor.t -> a calc -> a calc =
+ fun read_a t left ->
+  Cursor.ws t;
+  match Cursor.peek_delim t with
+  | Some '*' -> read_calc_product read_a t left
+  | Some '/' -> read_calc_quotient read_a t left
+  | _ -> left
+
+and read_calc_product : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> a calc
+    =
+ fun read_a t left ->
+  (* Use atomic to ensure we either parse the full multiplication or nothing. *)
+  Cursor.atomic t (fun () ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let right = read_calc_factor read_a t in
+      if calc_factor_is_dimension left && calc_factor_is_dimension right then
+        Cursor.err t "invalid calc: cannot multiply two dimensions";
+      read_calc_term_tail read_a t (Expr (left, Mul, right)))
+
+and read_calc_quotient : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> a calc
+    =
+ fun read_a t left ->
+  (* Use atomic to ensure we either parse the full division or nothing. *)
+  Cursor.atomic t (fun () ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let right = read_calc_factor read_a t in
+      read_calc_term_tail read_a t (Expr (left, Div, right)))
+
+and calc_factor_is_dimension : type a. a calc -> bool = function
+  | Val _ -> true
+  | _ -> false
 
 and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -3700,67 +3829,77 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
 
-and read_math_arg t : math_arg =
-  let rec read_term () =
-    let left = read_factor () in
-    Cursor.ws t;
-    match Cursor.peek_delim t with
-    | Some ('+' as c) | Some ('-' as c) ->
-        Cursor.skip t;
-        Cursor.ws t;
-        let op : calc_op = match c with '+' -> Add | _ -> Sub in
-        let right = read_term () in
-        Op (left, op, right)
-    | _ -> left
-  and read_factor () =
-    let left = read_unary () in
-    Cursor.ws t;
-    match Cursor.peek_delim t with
-    | Some ('*' as c) | Some ('/' as c) ->
-        Cursor.skip t;
-        Cursor.ws t;
-        let op : calc_op = match c with '*' -> Mul | _ -> Div in
-        let right = read_factor () in
-        Op (left, op, right)
-    | _ -> left
-  and read_unary () =
-    Cursor.ws t;
-    match Cursor.peek_block t with
-    | Some Token.Paren ->
-        Parens_arg (Cursor.parens (fun inner -> read_math_arg inner) t)
-    | _ -> (
-        match Cursor.peek t with
-        | Some (Component.Func { node = { name; _ }; _ }) -> (
-            match String.lowercase_ascii name with
-            | "var" ->
-                Var_arg
-                  (read_var (fun inner -> read_math_arg inner) t : math_arg var)
-            | _ -> (
-                let calc = read_calc_numeric_function t in
-                match calc with
-                | Math_fn fn -> Math_call fn
-                | Num f -> Lit f
-                | _ -> Cursor.err t "expected numeric math arg"))
-        | _ -> (
-            match Cursor.ident_opt t with
-            | Some name -> (
-                match String.lowercase_ascii name with
-                | "pi" -> Const Pi
-                | "e" -> Const E
-                | "infinity" -> Const Infinity
-                | "-infinity" -> Const Neg_infinity
-                | "nan" -> Const Nan
-                | _ -> Cursor.err t "expected math constant")
-            | None -> (
-                (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>]
-                   over any numeric type, including dimensions and percentages.
-                   Capture the leading number plus its unit so [sign(-1vw)] and
-                   [sign(1%)] preserve their source shape. *)
-                match Cursor.number_with_unit t with
-                | n, Some unit -> Dim (n, unit)
-                | n, None -> Lit n)))
-  in
-  read_term ()
+and read_math_arg t : math_arg = read_math_arg_term t
+
+and read_math_arg_term t =
+  let left = read_math_arg_factor t in
+  Cursor.ws t;
+  match Cursor.peek_delim t with
+  | Some ('+' as c) | Some ('-' as c) ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let op : calc_op = match c with '+' -> Add | _ -> Sub in
+      Op (left, op, read_math_arg_term t)
+  | _ -> left
+
+and read_math_arg_factor t =
+  let left = read_math_arg_unary t in
+  Cursor.ws t;
+  match Cursor.peek_delim t with
+  | Some ('*' as c) | Some ('/' as c) ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let op : calc_op = match c with '*' -> Mul | _ -> Div in
+      Op (left, op, read_math_arg_factor t)
+  | _ -> left
+
+and read_math_arg_unary t =
+  Cursor.ws t;
+  match Cursor.peek_block t with
+  | Some Token.Paren ->
+      Parens_arg (Cursor.parens (fun inner -> read_math_arg inner) t)
+  | _ -> read_math_arg_atom t
+
+and read_math_arg_atom t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      read_math_arg_function t name
+  | _ -> read_math_constant_or_number t
+
+and read_math_arg_function t name =
+  match String.lowercase_ascii name with
+  | "var" ->
+      Var_arg (read_var (fun inner -> read_math_arg inner) t : math_arg var)
+  | _ -> math_arg_of_numeric_calc t (read_calc_numeric_function t)
+
+and math_arg_of_numeric_calc : type a. Cursor.t -> a calc -> math_arg =
+ fun t -> function
+  | Math_fn fn -> Math_call fn
+  | Num f -> Lit f
+  | _ -> Cursor.err t "expected numeric math arg"
+
+and read_math_constant_or_number t =
+  match Cursor.ident_opt t with
+  | Some name -> read_math_constant_name t name
+  | None -> read_math_number_with_unit t
+
+and read_math_constant_name t name =
+  match String.lowercase_ascii name with
+  | "pi" -> Const Pi
+  | "e" -> Const E
+  | "infinity" -> Const Infinity
+  | "-infinity" -> Const Neg_infinity
+  | "nan" -> Const Nan
+  | _ -> Cursor.err t "expected math constant"
+
+and read_math_number_with_unit t =
+  (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>] over any
+     numeric type, including dimensions and percentages. Capture the leading
+     number plus its unit so [sign(-1vw)] and [sign(1%)] preserve their source
+     shape. *)
+  match Cursor.number_with_unit t with
+  | n, Some unit -> Dim (n, unit)
+  | n, None -> Lit n
 
 and read_math_call_arg name t : math_arg =
   Cursor.call name t (fun inner ->
@@ -3815,54 +3954,55 @@ and read_math_hypot : type a. Cursor.t -> a calc =
          Cursor.expect_eof inner;
          (Hypot args : math_fn)))
 
-and read_angle_arg t : angle_arg =
-  let rec read_term () =
-    let left = read_factor () in
-    Cursor.ws t;
-    match Cursor.peek_delim t with
-    | Some ('+' as c) | Some ('-' as c) ->
-        Cursor.skip t;
-        Cursor.ws t;
-        let op : calc_op = match c with '+' -> Add | _ -> Sub in
-        let right = read_term () in
-        Angle_op (left, op, right)
-    | _ -> left
-  and read_factor () =
-    let left = read_unary () in
-    Cursor.ws t;
-    match Cursor.peek_delim t with
-    | Some ('*' as c) | Some ('/' as c) ->
-        Cursor.skip t;
-        Cursor.ws t;
-        let op : calc_op = match c with '*' -> Mul | _ -> Div in
-        let right = read_factor () in
-        Angle_op (left, op, right)
-    | _ -> left
-  and read_unary () =
-    Cursor.ws t;
-    match Cursor.peek_block t with
-    | Some Token.Paren ->
-        Angle_parens (Cursor.parens (fun inner -> read_angle_arg inner) t)
-    | _ -> (
-        let snap = Cursor.save t in
-        match Cursor.number_with_unit t with
-        | n, Some unit -> (
-            match String.lowercase_ascii unit with
-            | "deg" -> Angle_deg n
-            | "rad" -> Angle_rad n
-            | "turn" -> Angle_turn n
-            | "grad" -> Angle_grad n
-            | _ ->
-                Cursor.restore t snap;
-                Angle_num (read_math_arg t))
-        | _, None ->
-            Cursor.restore t snap;
-            Angle_num (read_math_arg t)
-        | exception Cursor.Parse_error _ ->
-            Cursor.restore t snap;
-            Angle_num (read_math_arg t))
-  in
-  read_term ()
+and read_angle_arg t : angle_arg = read_angle_arg_term t
+
+and read_angle_arg_term t =
+  let left = read_angle_arg_factor t in
+  Cursor.ws t;
+  match Cursor.peek_delim t with
+  | Some ('+' as c) | Some ('-' as c) ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let op : calc_op = match c with '+' -> Add | _ -> Sub in
+      Angle_op (left, op, read_angle_arg_term t)
+  | _ -> left
+
+and read_angle_arg_factor t =
+  let left = read_angle_arg_unary t in
+  Cursor.ws t;
+  match Cursor.peek_delim t with
+  | Some ('*' as c) | Some ('/' as c) ->
+      Cursor.skip t;
+      Cursor.ws t;
+      let op : calc_op = match c with '*' -> Mul | _ -> Div in
+      Angle_op (left, op, read_angle_arg_factor t)
+  | _ -> left
+
+and read_angle_arg_unary t =
+  Cursor.ws t;
+  match Cursor.peek_block t with
+  | Some Token.Paren ->
+      Angle_parens (Cursor.parens (fun inner -> read_angle_arg inner) t)
+  | _ -> read_angle_unit_or_math t
+
+and read_angle_unit_or_math t =
+  let snap = Cursor.save t in
+  match Cursor.number_with_unit t with
+  | n, Some unit -> angle_arg_of_unit t snap n unit
+  | _, None -> restore_and_read_math_angle t snap
+  | exception Cursor.Parse_error _ -> restore_and_read_math_angle t snap
+
+and angle_arg_of_unit t snap n unit =
+  match String.lowercase_ascii unit with
+  | "deg" -> Angle_deg n
+  | "rad" -> Angle_rad n
+  | "turn" -> Angle_turn n
+  | "grad" -> Angle_grad n
+  | _ -> restore_and_read_math_angle t snap
+
+and restore_and_read_math_angle t snap =
+  Cursor.restore t snap;
+  Angle_num (read_math_arg t)
 
 and read_angle_call_arg name t : angle_arg =
   Cursor.call name t (fun inner ->
@@ -3963,55 +4103,73 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
   Cursor.ws t;
   match Cursor.peek_block t with
   | Some Token.Paren -> read_calc_parenthesized read_a t
+  | _ -> read_calc_non_paren_factor read_a t
+
+and read_calc_non_paren_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+ fun read_a t ->
+  Cursor.one_of
+    [
+      read_nested_calc_factor read_a;
+      read_var_calc_factor read_a;
+      read_sibling_index_factor;
+      read_sibling_count_factor;
+      read_calc_zero;
+      read_calc_numeric_function;
+      (fun t -> Val (read_a t));
+      (fun t -> (Num (Cursor.number t) : a calc));
+      read_math_constant_factor;
+    ]
+    t
+
+and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+ fun read_a t ->
+  if Cursor.looking_at_func "calc" t then
+    Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
+  else Cursor.err t "expected nested calc"
+
+and read_var_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+ fun read_a t ->
+  if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+  else Cursor.err t "expected var"
+
+and read_sibling_index_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  if Cursor.looking_at_func "sibling-index" t then
+    Cursor.call "sibling-index" t (fun inner ->
+        Cursor.expect_eof inner;
+        Sibling_index)
+  else Cursor.err t "expected sibling-index"
+
+and read_sibling_count_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  if Cursor.looking_at_func "sibling-count" t then
+    Cursor.call "sibling-count" t (fun inner ->
+        Cursor.expect_eof inner;
+        Sibling_count)
+  else Cursor.err t "expected sibling-count"
+
+and read_math_constant_factor : type a. Cursor.t -> a calc =
+ fun t ->
+  (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity], [-infinity],
+     [NaN]) appear as bare identifiers inside [calc()]. *)
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some name -> math_constant_factor_of_name t snap name
+  | None ->
+      Cursor.restore t snap;
+      Cursor.err t "expected math constant"
+
+and math_constant_factor_of_name : type a. Cursor.t -> _ -> string -> a calc =
+ fun t snap name ->
+  match String.lowercase_ascii name with
+  | "pi" -> Math_const Pi
+  | "e" -> Math_const E
+  | "infinity" -> Math_const Infinity
+  | "-infinity" -> Math_const Neg_infinity
+  | "nan" -> Math_const Nan
   | _ ->
-      (* Handle nested calc() expressions - preserve as Nested node *)
-      if Cursor.looking_at_func "calc" t then
-        Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
-      else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
-      else if Cursor.looking_at_func "sibling-index" t then
-        Cursor.call "sibling-index" t (fun inner ->
-            Cursor.expect_eof inner;
-            Sibling_index)
-      else if Cursor.looking_at_func "sibling-count" t then
-        Cursor.call "sibling-count" t (fun inner ->
-            Cursor.expect_eof inner;
-            Sibling_count)
-      else
-        let read_val t = Val (read_a t) in
-        let read_num t = (Num (Cursor.number t) : a calc) in
-        (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity],
-           [-infinity], [NaN]) appear as bare identifiers inside [calc()]. *)
-        let read_math_constant t : a calc =
-          let snap = Cursor.save t in
-          match Cursor.ident_opt t with
-          | Some name -> (
-              match String.lowercase_ascii name with
-              | "pi" -> Math_const Pi
-              | "e" -> Math_const E
-              | "infinity" -> Math_const Infinity
-              | "-infinity" -> Math_const Neg_infinity
-              | "nan" -> Math_const Nan
-              | _ ->
-                  Cursor.restore t snap;
-                  Cursor.err t "expected math constant")
-          | None ->
-              Cursor.restore t snap;
-              Cursor.err t "expected math constant"
-        in
-        (* CSS Values 4 §10.7: a dimension factor like [-1px] or [-5em] reads as
-           [Val]; numeric math functions ([sin] / [cos] / [sign] etc.) reduce to
-           [Num] - run that path before [read_val] so the typed
-           length-percentage reader doesn't capture e.g. [sin(45deg)] as an
-           [Invalid] arm in length context. *)
-        Cursor.one_of
-          [
-            read_calc_zero;
-            read_calc_numeric_function;
-            read_val;
-            read_num;
-            read_math_constant;
-          ]
-          t
+      Cursor.restore t snap;
+      Cursor.err t "expected math constant"
 
 and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -4033,210 +4191,12 @@ let read_numeric_expression t = read_num_expr t
 let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
   Cursor.ws t;
-  let read_var_length t : length =
-    let result : length =
-      Var (read_var (read_length ~allow_negative ~with_keywords) t)
-    in
-    result
-  in
-  let read_calc_length t : length =
-    (* Same exception as [read_length_percentage]: inside [calc()] the
-       non-negative constraint applies to the resolved value. *)
-    Calc (read_calc (read_length ~with_keywords) t)
-  in
-  let read_as_length t : length =
-    Env (read_env (read_length ~allow_negative ~with_keywords) t)
-  in
-  let read_function_length t : length =
-    (* [clamp(...)], [min(...)], [max(...)], [minmax(...)] arrive as a single
-       [Func] component; consume the whole call and serialise the arguments. *)
-    match
-      Cursor.any_function_call
-        (fun name inner ->
-          match String.lowercase_ascii name with
-          | "clamp" ->
-              let s =
-                Cursor.consume_remaining_as_string inner |> normalize_math_args
-              in
-              let groups = top_level_arg_count s in
-              if groups <> 3 then
-                Cursor.err_invalid inner
-                  "clamp() requires three comma-separated arguments"
-              else Clamp s
-          | "minmax" ->
-              let s =
-                Cursor.consume_remaining_as_string inner |> normalize_math_args
-              in
-              if top_level_arg_count s <> 2 then
-                Cursor.err_invalid inner
-                  "minmax() requires two comma-separated arguments"
-              else Minmax s
-          | "min" ->
-              let s =
-                Cursor.consume_remaining_as_string inner |> normalize_math_args
-              in
-              if top_level_arg_count s < 1 then
-                Cursor.err_invalid inner "min() requires at least one argument"
-              else Min s
-          | "max" ->
-              let s =
-                Cursor.consume_remaining_as_string inner |> normalize_math_args
-              in
-              if top_level_arg_count s < 1 then
-                Cursor.err_invalid inner "max() requires at least one argument"
-              else Max s
-          | "fit-content" ->
-              Cursor.ws inner;
-              let arg = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Fit_content_arg arg
-          | "round" ->
-              (* CSS Values 4 10.7: [round()] takes an optional strategy
-                 ([nearest], [up], [down], [to-zero]); when omitted the default
-                 is [nearest]. *)
-              let snap = Cursor.save inner in
-              let strategy =
-                match Cursor.peek_ident inner with
-                | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-                    Cursor.skip inner;
-                    Cursor.ws inner;
-                    Cursor.comma inner;
-                    kw
-                | _ ->
-                    Cursor.restore inner snap;
-                    "nearest"
-              in
-              let value = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let step = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Round (strategy, value, step)
-          | "mod" ->
-              let a = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let b = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Mod (a, b)
-          | "rem" ->
-              let a = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let b = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Rem_fn (a, b)
-          | "hypot" ->
-              let values =
-                Cursor.list ~sep:Cursor.comma
-                  (read_length ~allow_negative ~with_keywords)
-                  inner
-              in
-              Cursor.expect_eof inner;
-              Hypot values
-          | "abs" ->
-              let value = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Abs value
-          | "sign" ->
-              let value = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Sign value
-          | "calc-size" ->
-              let basis = read_length ~allow_negative ~with_keywords inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
-              let calc =
-                read_calc_expr
-                  (read_length ~allow_negative ~with_keywords)
-                  inner
-              in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Calc_size (basis, calc)
-          | "anchor-size" ->
-              let size = Cursor.consume_remaining_as_string ~trim:true inner in
-              if size = "" then Cursor.err_expected inner "anchor-size argument";
-              Anchor_size size
-          | "anchor" ->
-              let first = Cursor.ident inner in
-              Cursor.ws inner;
-              let name, side =
-                if String.starts_with ~prefix:"--" first then
-                  let side = Cursor.ident inner in
-                  (Some first, side)
-                else (None, first)
-              in
-              Cursor.ws inner;
-              let fallback =
-                if Cursor.comma_opt inner then (
-                  Cursor.ws inner;
-                  Some (read_length ~allow_negative ~with_keywords inner))
-                else None
-              in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Anchor (name, side, fallback)
-          | "attr" ->
-              let read_type inner =
-                Cursor.ws inner;
-                let body =
-                  Cursor.consume_remaining_as_string ~trim:true inner
-                in
-                match attr_syntax_of_string body with
-                | Some syntax -> Type syntax
-                | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
-              in
-              let read_type_hint inner : attr_type option =
-                Cursor.ws inner;
-                if Cursor.is_done inner || Cursor.peek_comma inner then
-                  Option.None
-                else if Cursor.looking_at_func "type" inner then
-                  Option.Some (Cursor.call "type" inner read_type)
-                else
-                  match Cursor.ident_opt inner with
-                  | Some "raw-string" -> Option.Some Raw_string
-                  | Some "number" -> Option.Some Number_type
-                  | Some unit_ -> Option.Some (Unit unit_)
-                  | None when Cursor.peek_delim inner = Some '%' ->
-                      Cursor.expect '%' inner;
-                      Option.Some (Unit "%")
-                  | None -> Cursor.err_expected inner "attr() type"
-              in
-              Cursor.ws inner;
-              let name = Cursor.ident ~keep_case:true inner in
-              let type_ = read_type_hint inner in
-              Cursor.ws inner;
-              let fallback =
-                if Cursor.comma_opt inner then (
-                  Cursor.ws inner;
-                  if Cursor.is_done inner then Empty_fallback
-                  else
-                    Attr_fallback
-                      (read_length ~allow_negative ~with_keywords inner))
-                else No_fallback
-              in
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Attr { name; type_; fallback }
-          | _ -> Cursor.err t ("unknown function " ^ name))
-        t
-    with
-    | Some length -> length
-    | None -> Cursor.err_expected t "function call"
-  in
   let parsers =
     [
-      read_var_length;
-      read_calc_length;
-      read_as_length;
-      read_function_length;
+      read_var_length ~allow_negative ~with_keywords;
+      read_calc_length ~with_keywords;
+      read_env_length ~allow_negative ~with_keywords;
+      read_function_length ~allow_negative ~with_keywords;
       read_length_unit ~allow_negative;
     ]
   in
@@ -4244,6 +4204,241 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     if with_keywords then read_length_keyword :: parsers else parsers
   in
   Cursor.one_of parsers t
+
+and read_var_length ~allow_negative ~with_keywords t : length =
+  if Cursor.looking_at t "var(" then
+    Var (read_var (read_length ~allow_negative ~with_keywords) t)
+  else Cursor.err t "expected var"
+
+and read_calc_length ~with_keywords t : length =
+  if Cursor.looking_at t "calc(" then
+    (* Same exception as [read_length_percentage]: inside [calc()] the
+       non-negative constraint applies to the resolved value. *)
+    Calc (read_calc (read_length ~with_keywords) t)
+  else Cursor.err t "expected calc"
+
+and read_env_length ~allow_negative ~with_keywords t : length =
+  if Cursor.looking_at t "env(" then
+    Env (read_env (read_length ~allow_negative ~with_keywords) t)
+  else Cursor.err t "expected env"
+
+and read_function_length ~allow_negative ~with_keywords t : length =
+  match
+    Cursor.any_function_call
+      (read_length_function_body ~allow_negative ~with_keywords t)
+      t
+  with
+  | Some length -> length
+  | None -> Cursor.err_expected t "function call"
+
+and read_length_function_body ~allow_negative ~with_keywords t name inner =
+  let name = String.lowercase_ascii name in
+  match
+    List.assoc_opt name (length_function_readers ~allow_negative ~with_keywords)
+  with
+  | Some read -> read inner
+  | None -> Cursor.err t ("unknown function " ^ name)
+
+and length_function_readers ~allow_negative ~with_keywords =
+  [
+    ("clamp", read_clamp_length);
+    ("minmax", read_minmax_length);
+    ("min", read_min_length);
+    ("max", read_max_length);
+    ("fit-content", read_fit_content_length ~allow_negative ~with_keywords);
+    ("round", read_round_length ~allow_negative ~with_keywords);
+    ("mod", read_mod_length ~allow_negative ~with_keywords);
+    ("rem", read_rem_length ~allow_negative ~with_keywords);
+    ("hypot", read_hypot_length ~allow_negative ~with_keywords);
+    ("abs", read_abs_length ~allow_negative ~with_keywords);
+    ("sign", read_sign_length ~allow_negative ~with_keywords);
+    ("calc-size", read_calc_size_length ~allow_negative ~with_keywords);
+    ("anchor-size", read_anchor_size_length);
+    ("anchor", read_anchor_length ~allow_negative ~with_keywords);
+    ("attr", read_attr_length ~allow_negative ~with_keywords);
+  ]
+
+and read_raw_math_args inner =
+  Cursor.consume_remaining_as_string inner |> normalize_math_args
+
+and read_clamp_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s <> 3 then
+    Cursor.err_invalid inner "clamp() requires three comma-separated arguments";
+  Clamp s
+
+and read_minmax_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s <> 2 then
+    Cursor.err_invalid inner "minmax() requires two comma-separated arguments";
+  Minmax s
+
+and read_min_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s < 1 then
+    Cursor.err_invalid inner "min() requires at least one argument";
+  Min s
+
+and read_max_length inner =
+  let s = read_raw_math_args inner in
+  if top_level_arg_count s < 1 then
+    Cursor.err_invalid inner "max() requires at least one argument";
+  Max s
+
+and read_fit_content_length ~allow_negative ~with_keywords inner =
+  Cursor.ws inner;
+  let arg = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Fit_content_arg arg
+
+and read_round_strategy inner =
+  let snap = Cursor.save inner in
+  match Cursor.peek_ident inner with
+  | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Cursor.comma inner;
+      kw
+  | _ ->
+      Cursor.restore inner snap;
+      "nearest"
+
+and read_round_length ~allow_negative ~with_keywords inner =
+  (* CSS Values 4 10.7: [round()] takes an optional strategy ([nearest], [up],
+     [down], [to-zero]); when omitted the default is [nearest]. *)
+  let strategy = read_round_strategy inner in
+  let value = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  let step = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Round (strategy, value, step)
+
+and read_binary_length ~allow_negative ~with_keywords make inner =
+  let a = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  let b = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  make a b
+
+and read_mod_length ~allow_negative ~with_keywords inner =
+  read_binary_length ~allow_negative ~with_keywords
+    (fun (a : length) (b : length) -> (Mod (a, b) : length))
+    inner
+
+and read_rem_length ~allow_negative ~with_keywords inner =
+  read_binary_length ~allow_negative ~with_keywords
+    (fun (a : length) (b : length) -> (Rem_fn (a, b) : length))
+    inner
+
+and read_hypot_length ~allow_negative ~with_keywords inner =
+  let values =
+    Cursor.list ~sep:Cursor.comma
+      (read_length ~allow_negative ~with_keywords)
+      inner
+  in
+  Cursor.expect_eof inner;
+  Hypot values
+
+and read_unary_length ~allow_negative ~with_keywords make inner =
+  let value = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  make value
+
+and read_abs_length ~allow_negative ~with_keywords inner =
+  read_unary_length ~allow_negative ~with_keywords
+    (fun (value : length) -> (Abs value : length))
+    inner
+
+and read_sign_length ~allow_negative ~with_keywords inner =
+  read_unary_length ~allow_negative ~with_keywords
+    (fun (value : length) -> (Sign value : length))
+    inner
+
+and read_calc_size_length ~allow_negative ~with_keywords inner =
+  let basis = read_length ~allow_negative ~with_keywords inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  let calc =
+    read_calc_expr (read_length ~allow_negative ~with_keywords) inner
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Calc_size (basis, calc)
+
+and read_anchor_size_length inner =
+  let size = Cursor.consume_remaining_as_string ~trim:true inner in
+  if size = "" then Cursor.err_expected inner "anchor-size argument";
+  Anchor_size size
+
+and read_anchor_length ~allow_negative ~with_keywords inner =
+  let first = Cursor.ident inner in
+  Cursor.ws inner;
+  let name, side = read_anchor_name_side inner first in
+  Cursor.ws inner;
+  let fallback =
+    if Cursor.comma_opt inner then (
+      Cursor.ws inner;
+      Some (read_length ~allow_negative ~with_keywords inner))
+    else None
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Anchor (name, side, fallback)
+
+and read_anchor_name_side inner first =
+  if String.starts_with ~prefix:"--" first then
+    let side = Cursor.ident inner in
+    (Some first, side)
+  else (None, first)
+
+and read_attr_length ~allow_negative ~with_keywords inner =
+  Cursor.ws inner;
+  let name = Cursor.ident ~keep_case:true inner in
+  let type_ = read_attr_type_hint inner in
+  Cursor.ws inner;
+  let fallback =
+    read_attr_length_fallback ~allow_negative ~with_keywords inner
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Attr { name; type_; fallback }
+
+and read_attr_length_type inner =
+  Cursor.ws inner;
+  let body = Cursor.consume_remaining_as_string ~trim:true inner in
+  match attr_syntax_of_string body with
+  | Some syntax -> Type syntax
+  | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
+
+and read_attr_type_hint inner : attr_type option =
+  Cursor.ws inner;
+  if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
+  else if Cursor.looking_at_func "type" inner then
+    Option.Some (Cursor.call "type" inner read_attr_length_type)
+  else read_plain_attr_type_hint inner
+
+and read_plain_attr_type_hint inner : attr_type option =
+  match Cursor.ident_opt inner with
+  | Some "raw-string" -> Option.Some Raw_string
+  | Some "number" -> Option.Some Number_type
+  | Some unit_ -> Option.Some (Unit unit_)
+  | None when Cursor.peek_delim inner = Some '%' ->
+      Cursor.expect '%' inner;
+      Option.Some (Unit "%")
+  | None -> Cursor.err_expected inner "attr() type"
+
+and read_attr_length_fallback ~allow_negative ~with_keywords inner =
+  if Cursor.comma_opt inner then (
+    Cursor.ws inner;
+    if Cursor.is_done inner then Empty_fallback
+    else Attr_fallback (read_length ~allow_negative ~with_keywords inner))
+  else No_fallback
 
 (** Read a non-negative length value (for padding properties) *)
 let read_non_negative_length ?(with_keywords = true) t : length =
@@ -4823,6 +5018,14 @@ let rec read_percentage_in_color_mix t : percentage =
       Cursor.err_invalid t "color-mix percentage must be between 0% and 100%";
     (Pct n : percentage)
 
+let read_decimal_color_mix_percentage t =
+  let n = Cursor.number t in
+  if n < 0. || n > 1. then
+    Cursor.err_invalid t "color-mix percentage must be between 0 and 1";
+  Cursor.ws t;
+  (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
+  (Pct (n *. 100.0) : percentage)
+
 let read_optional_percentage t : percentage option =
   (* Parse optional percentage immediately after a value. In color-mix(), this
      can be a numeric percentage, a decimal (0-1), or var(). *)
@@ -4839,17 +5042,7 @@ let read_optional_percentage t : percentage option =
             "color-mix percentage must be between 0% and 100%";
         Cursor.ws t;
         Some (Pct n : percentage)
-    | None ->
-        Cursor.option
-          (fun t ->
-            let n = Cursor.number t in
-            if n < 0. || n > 1. then
-              Cursor.err_invalid t
-                "color-mix percentage must be between 0 and 1";
-            Cursor.ws t;
-            (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
-            (Pct (n *. 100.0) : percentage))
-          t
+    | None -> Cursor.option read_decimal_color_mix_percentage t
 
 let hue_interpolation_start = function
   | "shorter" | "longer" | "increasing" | "decreasing" | "specified" -> true
@@ -4875,29 +5068,6 @@ let read_full_hue_interpolation t : hue_interpolation =
 
 let rec read_color_mix t : color =
   Cursor.ws t;
-  let read_color_mix_component t =
-    let read_prefix_percentage t =
-      match read_optional_percentage t with
-      | None -> Cursor.err_expected t "color-mix percentage"
-      | Some percent -> (
-          let color = read_color t in
-          Cursor.ws t;
-          match read_optional_percentage t with
-          | None -> (color, Some percent)
-          | Some _ ->
-              Cursor.err_invalid t
-                "color-mix component cannot have two percentages")
-    in
-    match Cursor.option read_prefix_percentage t with
-    | Some component -> component
-    | None -> (
-        let color = read_color t in
-        Cursor.ws t;
-        match read_optional_percentage t with
-        | None -> (color, None)
-        | Some percent -> (color, Some percent))
-  in
-
   (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
   let in_space, hue =
     if Cursor.peek_ident t = Some "in" then (
@@ -4933,6 +5103,28 @@ let rec read_color_mix t : color =
   Cursor.ws t;
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
+and read_color_mix_component t =
+  match Cursor.option read_color_mix_prefix_percentage t with
+  | Some component -> component
+  | None -> read_color_mix_suffix_percentage t
+
+and read_color_mix_prefix_percentage t =
+  match read_optional_percentage t with
+  | None -> Cursor.err_expected t "color-mix percentage"
+  | Some percent ->
+      let color = read_color t in
+      Cursor.ws t;
+      if Option.is_some (read_optional_percentage t) then
+        Cursor.err_invalid t "color-mix component cannot have two percentages";
+      (color, Some percent)
+
+and read_color_mix_suffix_percentage t =
+  let color = read_color t in
+  Cursor.ws t;
+  match read_optional_percentage t with
+  | None -> (color, None)
+  | Some percent -> (color, Some percent)
+
 and normalize_relative_color_tail tail =
   let tail = String.trim tail in
   let len = String.length tail in
@@ -4946,19 +5138,24 @@ and normalize_relative_color_tail tail =
       match tail.[i] with
       | ' ' | '\n' | '\t' | '\r' | '\012' -> loop (i + 1) true
       | '/' ->
-          let blen = Buffer.length buf in
-          if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
-            Buffer.truncate buf (blen - 1);
+          trim_trailing_space buf;
           Buffer.add_char buf '/';
           loop (skip_spaces (i + 1)) false
       | c ->
-          if last_was_space && Buffer.length buf > 0 then
-            Buffer.add_char buf ' ';
+          add_pending_space buf last_was_space;
           Buffer.add_char buf c;
           loop (i + 1) false
   in
   loop 0 false;
   Buffer.contents buf
+
+and trim_trailing_space buf =
+  let blen = Buffer.length buf in
+  if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
+    Buffer.truncate buf (blen - 1)
+
+and add_pending_space buf last_was_space =
+  if last_was_space && Buffer.length buf > 0 then Buffer.add_char buf ' '
 
 and relative_color_channel_count cvs =
   let is_ws = function
@@ -5644,34 +5841,54 @@ let length_invalid_function_name name =
 let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
     t : length_percentage =
   Cursor.ws t;
+  Cursor.one_of
+    [
+      read_length_percentage_var ~allow_negative ~with_keywords;
+      read_length_percentage_env ~allow_negative ~with_keywords;
+      read_length_percentage_calc ~with_keywords;
+      read_invalid_length_percentage_function;
+      read_length_percentage_pct ~allow_negative;
+      read_length_percentage_length ~allow_negative ~with_keywords;
+    ]
+    t
+
+and read_length_percentage_var ~allow_negative ~with_keywords t :
+    length_percentage =
   if Cursor.looking_at t "var(" then
     Var (read_var (read_length_percentage ~allow_negative ~with_keywords) t)
-  else if Cursor.looking_at t "env(" then
+  else Cursor.err t "expected var"
+
+and read_length_percentage_env ~allow_negative ~with_keywords t :
+    length_percentage =
+  if Cursor.looking_at t "env(" then
     Env (read_env (read_length_percentage ~allow_negative ~with_keywords) t)
-  else if Cursor.looking_at t "calc(" then
+  else Cursor.err t "expected env"
+
+and read_length_percentage_calc ~with_keywords t : length_percentage =
+  if Cursor.looking_at t "calc(" then
     (* CSS Values 4 10 (calc): inside [calc()] negative operands are always
        allowed even when the surrounding property is non-negative; the
        non-negative constraint applies to the resolved value, not to inner
        operands. *)
     Calc (read_calc (read_length_percentage ~with_keywords) t)
-  else
-    match Cursor.peek t with
-    | Some (Component.Func { node = { name; _ }; _ } as comp)
-      when length_invalid_function_name name ->
-        Cursor.skip t;
-        Invalid [ comp ]
-    | _ ->
-        (* Try to read as percentage or length *)
-        let read_pct t : length_percentage =
-          let n = Cursor.pct t in
-          if (not allow_negative) && n < 0.0 then
-            Cursor.err_invalid t "negative";
-          Pct n
-        in
-        let read_length_as_lp t : length_percentage =
-          Length (read_length ~allow_negative ~with_keywords t)
-        in
-        Cursor.one_of [ read_pct; read_length_as_lp ] t
+  else Cursor.err t "expected calc"
+
+and read_invalid_length_percentage_function t : length_percentage =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ } as comp)
+    when length_invalid_function_name name ->
+      Cursor.skip t;
+      Invalid [ comp ]
+  | _ -> Cursor.err t "expected invalid length-percentage function"
+
+and read_length_percentage_pct ~allow_negative t : length_percentage =
+  let n = Cursor.pct t in
+  if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
+  Pct n
+
+and read_length_percentage_length ~allow_negative ~with_keywords t :
+    length_percentage =
+  Length (read_length ~allow_negative ~with_keywords t)
 
 (** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw
     number is modelled at the calc level as the [Num x] node rather than

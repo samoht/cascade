@@ -143,38 +143,43 @@ let utf8_of_codepoint cp =
   Buffer.contents buf
 
 (* 4.3.7 Consume an escaped code point. Assumes the leading [\] was consumed. *)
+let consume_escape_trailing_ws r =
+  match Reader.peek r with
+  | Some c when is_ws c ->
+      if
+        c = '\r'
+        && String.length (Reader.peek_string r 2) = 2
+        && (Reader.peek_string r 2).[1] = '\n'
+      then (
+        Reader.skip r;
+        Reader.skip r)
+      else Reader.skip r
+  | _ -> ()
+
+let consume_escape_hex r first =
+  let buf = Buffer.create 6 in
+  Buffer.add_char buf first;
+  Reader.skip r;
+  let rec take n =
+    if n = 0 then ()
+    else
+      match Reader.peek r with
+      | Some c when is_hex c ->
+          Buffer.add_char buf c;
+          Reader.skip r;
+          take (n - 1)
+      | _ -> ()
+  in
+  take 5;
+  consume_escape_trailing_ws r;
+  let hex = Buffer.contents buf in
+  let cp = try int_of_string ("0x" ^ hex) with Failure _ -> 0xFFFD in
+  utf8_of_codepoint cp
+
 let consume_escape r =
   match Reader.peek r with
   | None -> "\u{FFFD}" (* parse error *)
-  | Some c when is_hex c ->
-      let buf = Buffer.create 6 in
-      Buffer.add_char buf c;
-      Reader.skip r;
-      let rec take n =
-        if n = 0 then ()
-        else
-          match Reader.peek r with
-          | Some c when is_hex c ->
-              Buffer.add_char buf c;
-              Reader.skip r;
-              take (n - 1)
-          | _ -> ()
-      in
-      take 5;
-      (match Reader.peek r with
-      | Some c when is_ws c ->
-          if
-            c = '\r'
-            && String.length (Reader.peek_string r 2) = 2
-            && (Reader.peek_string r 2).[1] = '\n'
-          then (
-            Reader.skip r;
-            Reader.skip r)
-          else Reader.skip r
-      | _ -> ());
-      let hex = Buffer.contents buf in
-      let cp = try int_of_string ("0x" ^ hex) with Failure _ -> 0xFFFD in
-      utf8_of_codepoint cp
+  | Some c when is_hex c -> consume_escape_hex r c
   | Some c ->
       Reader.skip r;
       String.make 1 c
@@ -226,6 +231,16 @@ let consume_ident_sequence r =
   loop ();
   Buffer.contents buf
 
+let consume_string_escape r buf =
+  Reader.skip r;
+  match Reader.peek r with
+  | None -> ()
+  | Some c when is_newline c -> (
+      Reader.skip r;
+      if c = '\r' then
+        match Reader.peek r with Some '\n' -> Reader.skip r | _ -> ())
+  | Some _ -> Buffer.add_string buf (consume_escape r)
+
 (* 4.3.11 Consume a string token. Assumes opening quote already consumed. *)
 let consume_string_token ~quote r =
   let buf = Buffer.create 32 in
@@ -236,18 +251,9 @@ let consume_string_token ~quote r =
         Reader.skip r;
         String { value = Buffer.contents buf; quote; terminated = true }
     | Some c when is_newline c -> Bad_string (* do not consume the newline *)
-    | Some '\\' -> (
-        Reader.skip r;
-        match Reader.peek r with
-        | None -> loop ()
-        | Some c when is_newline c ->
-            Reader.skip r;
-            (if c = '\r' then
-               match Reader.peek r with Some '\n' -> Reader.skip r | _ -> ());
-            loop ()
-        | Some _ ->
-            Buffer.add_string buf (consume_escape r);
-            loop ())
+    | Some '\\' ->
+        consume_string_escape r buf;
+        loop ()
     | Some c ->
         Buffer.add_char buf c;
         Reader.skip r;

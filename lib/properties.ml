@@ -1751,13 +1751,24 @@ let read_font_variant_ligature t =
     ]
     t
 
+let font_variant_ligature_slot = function
+  | Common_ligatures | No_common_ligatures -> `Common
+  | Discretionary_ligatures | No_discretionary_ligatures -> `Discretionary
+  | Historical_ligatures | No_historical_ligatures -> `Historical
+  | Contextual | No_contextual -> `Contextual
+
+let has_duplicate_ligature_slot ligatures =
+  List.exists
+    (fun ligature ->
+      let slot = font_variant_ligature_slot ligature in
+      List.length
+        (List.filter
+           (fun other -> font_variant_ligature_slot other = slot)
+           ligatures)
+      > 1)
+    ligatures
+
 let rec read_font_variant_ligatures t : font_variant_ligatures =
-  let ligature_slot = function
-    | Common_ligatures | No_common_ligatures -> `Common
-    | Discretionary_ligatures | No_discretionary_ligatures -> `Discretionary
-    | Historical_ligatures | No_historical_ligatures -> `Historical
-    | Contextual | No_contextual -> `Contextual
-  in
   Cursor.enum_or_var "font-variant-ligatures"
     [
       ("normal", (Normal : font_variant_ligatures));
@@ -1773,17 +1784,8 @@ let rec read_font_variant_ligatures t : font_variant_ligatures =
       match Cursor.many read_font_variant_ligature t with
       | [], _ -> Cursor.err_invalid t "font-variant-ligatures"
       | ligatures, _ ->
-          let duplicate =
-            List.exists
-              (fun ligature ->
-                List.length
-                  (List.filter
-                     (fun other -> ligature_slot ligature = ligature_slot other)
-                     ligatures)
-                > 1)
-              ligatures
-          in
-          if duplicate then Cursor.err_invalid t "font-variant-ligatures";
+          if has_duplicate_ligature_slot ligatures then
+            Cursor.err_invalid t "font-variant-ligatures";
           Ligatures ligatures)
     t
 
@@ -3065,6 +3067,22 @@ let pp_quoted_url quote ctx url =
   Pp.char ctx quote;
   Pp.char ctx ')'
 
+let conic_gradient_has_config config =
+  config.from_angle <> None
+  || config.conic_position <> None
+  || config.conic_interpolation <> None
+
+let pp_conic_gradient_named name ctx (config, stops) =
+  Pp.call name
+    (fun ctx (config, stops) ->
+      if conic_gradient_has_config config then (
+        pp_conic_gradient_config ctx config;
+        match stops with [] -> () | _ -> Pp.comma ctx ());
+      match stops with
+      | [] -> ()
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (config, stops)
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
@@ -3087,39 +3105,13 @@ let rec pp_background_image : background_image Pp.t =
   | Repeating_radial_gradient (config, stops) ->
       pp_radial_gradient_named "repeating-radial-gradient" ctx (config, stops)
   | Conic_gradient (config, stops) ->
-      Pp.call "conic-gradient"
-        (fun ctx (config, stops) ->
-          let has_config =
-            config.from_angle <> None
-            || config.conic_position <> None
-            || config.conic_interpolation <> None
-          in
-          if has_config then (
-            pp_conic_gradient_config ctx config;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (config, stops)
+      pp_conic_gradient_named "conic-gradient" ctx (config, stops)
   | Conic_gradient_var var_ref ->
       Pp.call "conic-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
   | Repeating_conic_gradient (config, stops) ->
-      Pp.call "repeating-conic-gradient"
-        (fun ctx (config, stops) ->
-          let has_config =
-            config.from_angle <> None
-            || config.conic_position <> None
-            || config.conic_interpolation <> None
-          in
-          if has_config then (
-            pp_conic_gradient_config ctx config;
-            match stops with [] -> () | _ -> Pp.comma ctx ());
-          match stops with
-          | [] -> ()
-          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx (config, stops)
+      pp_conic_gradient_named "repeating-conic-gradient" ctx (config, stops)
   | Webkit_linear_gradient (dir, stops) ->
       pp_webkit_linear_gradient_named "-webkit-linear-gradient" ctx (dir, stops)
   | Webkit_repeating_linear_gradient (dir, stops) ->
@@ -3380,7 +3372,7 @@ let rec pp_font_family : font_family Pp.t =
   | Invalid tokens ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_minified tokens
-        else Parser.to_string tokens
+        else Parser.string_of_components tokens
       in
       Pp.string ctx rendered
 
@@ -3509,6 +3501,36 @@ let length_linear_term : length -> (string * float * (float -> length)) option =
   | Vmax n -> Some ("vmax", n, fun n -> Vmax n)
   | _ -> None
 
+let add_border_width_term
+    (table : (string, int * float * (float -> length)) Hashtbl.t) pos
+    (key, n, make) =
+  match Hashtbl.find_opt table key with
+  | None -> Hashtbl.add table key (pos, n, make)
+  | Some (old_pos, old_n, old_make) ->
+      Hashtbl.replace table key (old_pos, old_n +. n, old_make)
+
+let collect_border_width_terms
+    (terms : (string * float * (float -> length)) list) =
+  let table = Hashtbl.create 4 in
+  List.iteri (add_border_width_term table) terms;
+  Hashtbl.to_seq_values table
+  |> List.of_seq
+  |> List.filter (fun (_, n, _) -> n <> 0.)
+  |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
+
+let append_border_width_term (acc : length calc)
+    ((_, n, make) : int * float * (float -> length)) : length calc =
+  if n < 0. then Expr (acc, Sub, Val (make (-.n)))
+  else Expr (acc, Add, Val (make n))
+
+let rebuild_border_width_length_terms
+    (terms : (string * float * (float -> length)) list) : length calc =
+  match collect_border_width_terms terms with
+  | [] -> Val Zero
+  | [ (_, n, make) ] -> Val (make n)
+  | (_, n, make) :: rest ->
+      List.fold_left append_border_width_term (Val (make n)) rest
+
 let simplify_border_width_length_calc calc =
   let scale factor terms =
     List.map (fun (key, n, make) -> (key, factor *. n, make)) terms
@@ -3537,31 +3559,7 @@ let simplify_border_width_length_calc calc =
   in
   match terms calc with
   | None -> calc
-  | Some terms -> (
-      let table = Hashtbl.create 4 in
-      List.iteri
-        (fun pos (key, n, make) ->
-          match Hashtbl.find_opt table key with
-          | None -> Hashtbl.add table key (pos, n, make)
-          | Some (old_pos, old_n, old_make) ->
-              Hashtbl.replace table key (old_pos, old_n +. n, old_make))
-        terms;
-      let terms =
-        Hashtbl.to_seq_values table
-        |> List.of_seq
-        |> List.filter (fun (_, n, _) -> n <> 0.)
-        |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
-      in
-      match terms with
-      | [] -> Val Zero
-      | [ (_, n, make) ] -> Val (make n)
-      | (_, n, make) :: rest ->
-          List.fold_left
-            (fun acc (_, n, make) ->
-              if n < 0. then Expr (acc, Sub, Val (make (-.n)))
-              else Expr (acc, Add, Val (make n)))
-            (Val (make n))
-            rest)
+  | Some terms -> rebuild_border_width_length_terms terms
 
 let simplified_border_width_length calc =
   Option.map simplify_border_width_length_calc
@@ -5077,38 +5075,39 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Upper_roman -> Pp.string ctx "upper-roman"
   | String s -> Pp.quoted_string ctx s
   | Symbols (kind, symbols) ->
-      Pp.call "symbols"
-        (fun ctx (kind, symbols) ->
-          let first = ref true in
-          let sep (symbol : list_style_symbol) =
-            if !first then first := false
-            else
-              match symbol with
-              | String _ when Pp.minified ctx -> ()
-              | _ -> Pp.space ctx ()
-          in
-          let kind =
-            match kind with
-            | Option.Some Symbolic when Pp.minified ctx -> Option.None
-            | kind -> (kind : symbols_type option)
-          in
-          Option.iter
-            (fun kind ->
-              sep (String "");
-              pp_symbols_type ctx kind)
-            kind;
-          List.iter
-            (fun symbol ->
-              sep symbol;
-              pp_list_style_symbol ctx symbol)
-            symbols)
-        ctx (kind, symbols)
+      Pp.call "symbols" pp_list_style_symbols ctx (kind, symbols)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_list_style_type ctx v
+
+and pp_list_style_symbols ctx (kind, symbols) =
+  let first = ref true in
+  let sep symbol = pp_list_style_symbol_sep ctx first symbol in
+  let kind =
+    match kind with
+    | Option.Some Symbolic when Pp.minified ctx -> Option.None
+    | kind -> (kind : symbols_type option)
+  in
+  Option.iter
+    (fun kind ->
+      sep (String "");
+      pp_symbols_type ctx kind)
+    kind;
+  List.iter
+    (fun symbol ->
+      sep symbol;
+      pp_list_style_symbol ctx symbol)
+    symbols
+
+and pp_list_style_symbol_sep ctx first (symbol : list_style_symbol) =
+  if !first then first := false
+  else
+    match symbol with
+    | String _ when Pp.minified ctx -> ()
+    | _ -> Pp.space ctx ()
 
 and pp_symbols_type ctx (kind : symbols_type) =
   match kind with
@@ -5436,6 +5435,74 @@ let pp_clip_path_ellipse_args ctx rx ry position =
     position;
   ignore !printed
 
+let pp_clip_path_inset_quad ctx a b c d =
+  pp_length_percentage ~always:true ctx a;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx b;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx c;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx d
+
+let pp_clip_path_round ctx (rounded : border_radius option) =
+  match rounded with
+  | None -> ()
+  | Some r ->
+      Pp.space ctx ();
+      Pp.string ctx "round";
+      Pp.space ctx ();
+      pp_border_radius ctx r
+
+let minified_clip_path_fill_rule ctx (fill_rule : clip_path_fill_rule option) :
+    clip_path_fill_rule option =
+  match fill_rule with
+  | Some Nonzero when Pp.minified ctx -> None
+  | other -> other
+
+let pp_clip_path_polygon_rule ctx fill_rule points =
+  Option.iter
+    (fun rule ->
+      pp_clip_path_fill_rule ctx rule;
+      if points <> [] then (
+        Pp.char ctx ',';
+        if not (Pp.minified ctx) then Pp.space ctx ()))
+    (minified_clip_path_fill_rule ctx fill_rule)
+
+let pp_clip_path_polygon_sep spaced ctx () =
+  Pp.char ctx ',';
+  if spaced && not (Pp.minified ctx) then Pp.space ctx ()
+
+let pp_clip_path_axis_pair ctx (x, y) =
+  pp_length ctx x;
+  if not (Pp.minified ctx && match x with Pct _ -> true | _ -> false) then
+    Pp.space ctx ();
+  pp_length ctx y
+
+let pp_clip_path_polygon_body ctx fill_rule points spaced =
+  pp_clip_path_polygon_rule ctx fill_rule points;
+  Pp.list
+    ~sep:(pp_clip_path_polygon_sep spaced)
+    pp_clip_path_axis_pair ctx points
+
+let pp_optional_inset_sides : type a.
+    a Pp.t -> Pp.ctx -> a option -> a option -> a option -> unit =
+ fun pp ctx right bottom left ->
+  Option.iter
+    (fun r ->
+      Pp.space ctx ();
+      pp ctx r;
+      Option.iter
+        (fun b ->
+          Pp.space ctx ();
+          pp ctx b;
+          Option.iter
+            (fun l ->
+              Pp.space ctx ();
+              pp ctx l)
+            left)
+        bottom)
+    right
+
 let rec pp_clip_path : clip_path Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_clip_path ctx v
@@ -5447,7 +5514,7 @@ let rec pp_clip_path : clip_path Pp.t =
   | Invalid tokens ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_minified tokens
-        else Parser.to_string tokens
+        else Parser.string_of_components tokens
       in
       Pp.string ctx rendered
   | Clip_path_none -> Pp.string ctx "none"
@@ -5458,21 +5525,7 @@ let rec pp_clip_path : clip_path Pp.t =
   | Clip_path_inset { top; right; bottom; left; rounded } ->
       Pp.string ctx "inset(";
       pp_length_percentage ctx top;
-      (match right with
-      | None -> ()
-      | Some r -> (
-          Pp.space ctx ();
-          pp_length_percentage ctx r;
-          match bottom with
-          | None -> ()
-          | Some b -> (
-              Pp.space ctx ();
-              pp_length_percentage ctx b;
-              match left with
-              | None -> ()
-              | Some l ->
-                  Pp.space ctx ();
-                  pp_length_percentage ctx l)));
+      pp_optional_inset_sides pp_length_percentage ctx right bottom left;
       pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
   | Clip_path_circle { radius; position } ->
@@ -5485,38 +5538,7 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.char ctx ')'
   | Clip_path_polygon { fill_rule; points; spaced } ->
       Pp.string ctx "polygon(";
-      (* CSS Shapes 1 §3.6: [nonzero] is the [<fill-rule>] default, so drop it
-         under minify when the fill-rule is the only redundant token. *)
-      let fill_rule : clip_path_fill_rule option =
-        match fill_rule with
-        | Some Nonzero when Pp.minified ctx -> None
-        | other -> other
-      in
-      Option.iter
-        (fun rule ->
-          pp_clip_path_fill_rule ctx rule;
-          if points <> [] then (
-            Pp.char ctx ',';
-            if not (Pp.minified ctx) then Pp.space ctx ()))
-        fill_rule;
-      let sep =
-        if spaced && not (Pp.minified ctx) then (fun ctx () ->
-          Pp.char ctx ',';
-          Pp.space ctx ())
-        else fun ctx () -> Pp.char ctx ','
-      in
-      let pp_axis_pair ctx (x, y) =
-        pp_length ctx x;
-        (* CSS Syntax 3 §5.4.6: the [%] suffix delimits the previous token, so
-           the space before the [<y>] can drop under minify when [<x>] ends with
-           a unit. *)
-        let drop_space =
-          Pp.minified ctx && match x with Pct _ -> true | _ -> false
-        in
-        if not drop_space then Pp.space ctx ();
-        pp_length ctx y
-      in
-      Pp.list ~sep pp_axis_pair ctx points;
+      pp_clip_path_polygon_body ctx fill_rule points spaced;
       Pp.char ctx ')'
   | Clip_path_path d ->
       Pp.string ctx "path(\"";
@@ -5546,23 +5568,6 @@ let rec pp_clip_path : clip_path Pp.t =
       pp_clip_path_inset_quad ctx top right bottom left;
       pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
-
-and pp_clip_path_inset_quad ctx a b c d =
-  pp_length_percentage ~always:true ctx a;
-  Pp.space ctx ();
-  pp_length_percentage ~always:true ctx b;
-  Pp.space ctx ();
-  pp_length_percentage ~always:true ctx c;
-  Pp.space ctx ();
-  pp_length_percentage ~always:true ctx d
-
-and pp_clip_path_round ctx = function
-  | None -> ()
-  | Some r ->
-      Pp.space ctx ();
-      Pp.string ctx "round";
-      Pp.space ctx ();
-      pp_border_radius ctx r
 
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
@@ -7310,6 +7315,16 @@ let rec pp_animation_range_item : animation_range_item Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_animation_range_item ctx v
 
+let animation_range_boundary_char = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+  | _ -> false
+
+let animation_range_needs_space ctx =
+  if not (Pp.minified ctx) then true
+  else
+    let len = Buffer.length ctx.Pp.buf in
+    len = 0 || animation_range_boundary_char (Buffer.nth ctx.Pp.buf (len - 1))
+
 let rec pp_animation_range : animation_range Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_range ctx v
@@ -7324,23 +7339,7 @@ let rec pp_animation_range : animation_range Pp.t =
       pp_animation_range_item ctx (Named (start_name, Some start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
-      (* Names like [exit] / [entry] / [normal] start with an ident-start
-         character, so the inter-item space is only needed for tokenization when
-         the previous item ended on an ident-continue char. After a percentage /
-         length / function call (e.g. [10%], [3px], [calc(...)]) minified output
-         can drop the space. *)
-      let needs_space =
-        if not (Pp.minified ctx) then true
-        else
-          let buf = ctx.Pp.buf in
-          let len = Buffer.length buf in
-          if len = 0 then true
-          else
-            match Buffer.nth buf (len - 1) with
-            | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-            | _ -> false
-      in
-      if needs_space then Pp.space ctx ();
+      if animation_range_needs_space ctx then Pp.space ctx ();
       pp_animation_range_item ctx second
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -8144,21 +8143,7 @@ let rec pp_object_view_box : object_view_box Pp.t =
   | Inset (top, right, bottom, left) ->
       Pp.string ctx "inset(";
       pp_length ctx top;
-      (match right with
-      | None -> ()
-      | Some r -> (
-          Pp.space ctx ();
-          pp_length ctx r;
-          match bottom with
-          | None -> ()
-          | Some b -> (
-              Pp.space ctx ();
-              pp_length ctx b;
-              match left with
-              | None -> ()
-              | Some l ->
-                  Pp.space ctx ();
-                  pp_length ctx l)));
+      pp_optional_inset_sides pp_length ctx right bottom left;
       Pp.char ctx ')'
   | Xywh { x; y; width; height; rounded } ->
       Pp.string ctx "xywh(";
@@ -9700,38 +9685,35 @@ let read_border_shorthand t : border_shorthand =
   in
   Border.to_shorthand acc
 
+let border_keyword = function
+  | "inherit" -> Some (Inherit : border)
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  | "none" -> Some None
+  | _ -> None
+
+let read_border_shorthand_from t snap : border =
+  Cursor.restore t snap;
+  Shorthand (read_border_shorthand t)
+
+let read_border_keyword_or_shorthand t : border =
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some ident -> (
+      match border_keyword (String.lowercase_ascii ident) with
+      | Some value ->
+          Cursor.ws t;
+          if Cursor.is_done t || Cursor.peek_comma t then value
+          else read_border_shorthand_from t snap
+      | None -> read_border_shorthand_from t snap)
+  | None -> read_border_shorthand_from t snap
+
 let rec read_border (t : Cursor.t) : border =
-  let read_keyword_or_shorthand t =
-    let snap = Cursor.save t in
-    match Cursor.ident_opt t with
-    | Some ident -> (
-        let value =
-          match String.lowercase_ascii ident with
-          | "inherit" -> Some (Inherit : border)
-          | "initial" -> Some Initial
-          | "unset" -> Some Unset
-          | "revert" -> Some Revert
-          | "revert-layer" -> Some Revert_layer
-          | "none" -> Some None
-          | _ -> None
-        in
-        match value with
-        | Some value ->
-            Cursor.ws t;
-            if Cursor.is_done t || Cursor.peek_comma t then value
-            else (
-              Cursor.restore t snap;
-              Shorthand (read_border_shorthand t))
-        | None ->
-            Cursor.restore t snap;
-            Shorthand (read_border_shorthand t))
-    | None ->
-        Cursor.restore t snap;
-        Shorthand (read_border_shorthand t)
-  in
   if Cursor.looking_at_func "var" t then
     (Var (Values.read_var read_border t) : border)
-  else read_keyword_or_shorthand t
+  else read_border_keyword_or_shorthand t
 
 let rec read_logical_border_color t : logical_border_color =
   let read_colors t =
@@ -10227,6 +10209,58 @@ let rec read_place_content t : place_content =
     ~default:(Cursor.one_of [ read_pair; read_safe; read_unsafe; read_single ])
     t
 
+let read_place_items_safe t =
+  Cursor.expect_string "safe" t;
+  Cursor.ws t;
+  match Cursor.ident t with
+  | "start" -> Start_safe
+  | "end" -> End_safe
+  | "center" -> Center_safe
+  | kw -> Cursor.err_invalid t ("place-items safe " ^ kw)
+
+let read_place_items_stretch t =
+  Cursor.expect_string "stretch" t;
+  Cursor.ws t;
+  if
+    Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
+    |> Option.is_some
+  then Stretch_stretch
+  else Stretch
+
+let place_items_align : place_items -> align_items option = function
+  | Normal -> Some (Normal : align_items)
+  | Start -> Some Start
+  | End -> Some End
+  | Center -> Some Center
+  | Baseline -> Some Baseline
+  | Stretch -> Some Stretch
+  | _ -> None
+
+let read_place_items_first t =
+  Cursor.enum "place-items"
+    [
+      ("normal", (Normal : place_items));
+      ("start", Start);
+      ("end", End);
+      ("center", Center);
+      ("baseline", Baseline);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_place_items_default t =
+  if Cursor.looking_at t "safe" then read_place_items_safe t
+  else if Cursor.looking_at t "stretch" then read_place_items_stretch t
+  else
+    let first = read_place_items_first t in
+    Cursor.ws t;
+    match Cursor.option read_justify_items t with
+    | None -> first
+    | Some justify -> (
+        match place_items_align first with
+        | Some align -> Align_justify (align, justify)
+        | None -> Cursor.err_invalid t "place-items two-value")
+
 let rec read_place_items t : place_items =
   Cursor.ws t;
   Cursor.enum_or_var "place-items"
@@ -10238,54 +10272,7 @@ let rec read_place_items t : place_items =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_place_items t))
-    ~default:(fun t ->
-      (* Check for "safe" prefix *)
-      if Cursor.looking_at t "safe" then (
-        Cursor.expect_string "safe" t;
-        Cursor.ws t;
-        let kw = Cursor.ident t in
-        match kw with
-        | "start" -> Start_safe
-        | "end" -> End_safe
-        | "center" -> Center_safe
-        | _ -> Cursor.err_invalid t ("place-items safe " ^ kw))
-      else if Cursor.looking_at t "stretch" then (
-        Cursor.expect_string "stretch" t;
-        Cursor.ws t;
-        if
-          Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
-          |> Option.is_some
-        then Stretch_stretch
-        else Stretch)
-      else
-        let first =
-          Cursor.enum "place-items"
-            [
-              ("normal", (Normal : place_items));
-              ("start", Start);
-              ("end", End);
-              ("center", Center);
-              ("baseline", Baseline);
-              ("inherit", Inherit);
-            ]
-            t
-        in
-        Cursor.ws t;
-        match Cursor.option read_justify_items t with
-        | None -> first
-        | Some justify ->
-            let align : align_items =
-              match first with
-              | Normal -> Normal
-              | Start -> Start
-              | End -> End
-              | Center -> Center
-              | Baseline -> Baseline
-              | Stretch -> Stretch
-              | _ -> Cursor.err_invalid t "place-items two-value"
-            in
-            Align_justify (align, justify))
-    t
+    ~default:read_place_items_default t
 
 let rec read_grid_auto_flow t : grid_auto_flow =
   Cursor.enum_or_var "grid-auto-flow"
@@ -10641,6 +10628,41 @@ let read_grid_auto_flow_tracks t : grid_template option =
   | Some (Component.Preserved { kind = Token.Delim "/"; _ }) | None -> None
   | Some _ -> Cursor.option read_grid_template_tracks t
 
+let grid_starts_auto_flow t =
+  match Cursor.peek_ident t with
+  | Some ("auto-flow" | "dense") -> true
+  | _ -> false
+
+let read_grid_split t (rows : grid_template) (columns : grid_template) :
+    grid_template =
+  match (rows, columns) with
+  | None, _ | _, None -> err_invalid_value t "grid" "none in slash form"
+  | _ -> Split (rows, columns)
+
+let read_grid_auto_flow_rows t =
+  let flow = read_grid_auto_flow_clause `Rows t in
+  let auto_rows = read_grid_auto_flow_tracks t in
+  Cursor.ws t;
+  Cursor.slash t;
+  Cursor.ws t;
+  let columns = read_grid_template_tracks t in
+  Auto_flow_rows (flow, auto_rows, columns)
+
+let read_grid_auto_flow_columns t rows =
+  let flow = read_grid_auto_flow_clause `Columns t in
+  let auto_columns = read_grid_auto_flow_tracks t in
+  Auto_flow_columns (rows, flow, auto_columns)
+
+let read_grid_slash_rhs t rows =
+  Cursor.ws t;
+  if grid_starts_auto_flow t then read_grid_auto_flow_columns t rows
+  else read_grid_split t rows (read_grid_template_tracks t)
+
+let read_grid_template_or_split t =
+  let rows = read_grid_template_tracks t in
+  Cursor.ws t;
+  if Cursor.slash_opt t then read_grid_slash_rhs t rows else rows
+
 let rec read_grid t : grid_template =
   if Cursor.looking_at_func "var" t then
     (Var (Values.read_var read_grid t) : grid_template)
@@ -10650,33 +10672,8 @@ let rec read_grid t : grid_template =
        <track-size>? <line-names>?]+ form, which [read_grid_template] already
        handles. *)
     read_grid_template t
-  else
-    match Cursor.peek_ident t with
-    | Some ("auto-flow" | "dense") ->
-        let flow = read_grid_auto_flow_clause `Rows t in
-        let auto_rows = read_grid_auto_flow_tracks t in
-        Cursor.ws t;
-        Cursor.slash t;
-        Cursor.ws t;
-        let columns = read_grid_template_tracks t in
-        Auto_flow_rows (flow, auto_rows, columns)
-    | _ ->
-        let rows = read_grid_template_tracks t in
-        Cursor.ws t;
-        if Cursor.slash_opt t then (
-          Cursor.ws t;
-          match Cursor.peek_ident t with
-          | Some ("auto-flow" | "dense") ->
-              let flow = read_grid_auto_flow_clause `Columns t in
-              let auto_columns = read_grid_auto_flow_tracks t in
-              Auto_flow_columns (rows, flow, auto_columns)
-          | _ -> (
-              let columns = read_grid_template_tracks t in
-              match (rows, columns) with
-              | None, _ | _, None ->
-                  err_invalid_value t "grid" "none in slash form"
-              | _ -> Split (rows, columns)))
-        else rows
+  else if grid_starts_auto_flow t then read_grid_auto_flow_rows t
+  else read_grid_template_or_split t
 
 let read_aspect_ratio_number t =
   (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
@@ -11367,86 +11364,86 @@ let rec read_pointer_events t : pointer_events =
     ~var:(fun t -> Var (Values.read_var read_pointer_events t))
     t
 
+let touch_action_is_var t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      String.equal (String.lowercase_ascii name) "var"
+  | _ -> false
+
+let touch_action_starts_keyword t =
+  match Cursor.peek_ident t with
+  | Some
+      ( "auto" | "none" | "manipulation" | "inherit" | "initial" | "unset"
+      | "revert" | "revert-layer" ) ->
+      true
+  | _ -> false
+
+let read_touch_action_keyword t =
+  Cursor.enum "touch-action"
+    [
+      ("auto", (Auto : touch_action));
+      ("none", None);
+      ("manipulation", Manipulation);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    t
+
+let read_touch_action_gesture t =
+  Cursor.enum "touch-action gesture"
+    [
+      ("pan-x", (Pan_x : touch_action));
+      ("pan-y", Pan_y);
+      ("pan-left", Pan_left);
+      ("pan-right", Pan_right);
+      ("pan-up", Pan_up);
+      ("pan-down", Pan_down);
+      ("pinch-zoom", Pinch_zoom);
+    ]
+    t
+
+let check_touch_action_seen t has_horizontal has_vertical has_pinch = function
+  | Pan_x | Pan_left | Pan_right ->
+      if !has_horizontal then
+        Cursor.err t "duplicate horizontal touch-action gesture";
+      has_horizontal := true
+  | Pan_y | Pan_up | Pan_down ->
+      if !has_vertical then
+        Cursor.err t "duplicate vertical touch-action gesture";
+      has_vertical := true
+  | Pinch_zoom ->
+      if !has_pinch then Cursor.err t "duplicate pinch-zoom touch-action";
+      has_pinch := true
+  | _ -> Cursor.err t "invalid touch-action gesture"
+
+let validate_touch_actions t actions =
+  let has_horizontal = ref false in
+  let has_vertical = ref false in
+  let has_pinch = ref false in
+  List.iter
+    (check_touch_action_seen t has_horizontal has_vertical has_pinch)
+    actions;
+  match actions with [ action ] -> action | _ -> Actions actions
+
 let rec read_touch_action_var t : touch_action var =
   Values.read_var read_touch_action t
 
 and read_touch_action t : touch_action =
-  let is_var t =
-    match Cursor.peek t with
-    | Some (Component.Func { node = { name; _ }; _ }) ->
-        String.equal (String.lowercase_ascii name) "var"
-    | _ -> false
+  let rec read_vars acc =
+    Cursor.ws t;
+    if touch_action_is_var t then read_vars (read_touch_action_var t :: acc)
+    else List.rev acc
   in
-  let read_action t =
-    Cursor.enum "touch-action gesture"
-      [
-        ("pan-x", (Pan_x : touch_action));
-        ("pan-y", Pan_y);
-        ("pan-left", Pan_left);
-        ("pan-right", Pan_right);
-        ("pan-up", Pan_up);
-        ("pan-down", Pan_down);
-        ("pinch-zoom", Pinch_zoom);
-      ]
-      t
-  in
-  let validate_actions actions =
-    let has_horizontal = ref false in
-    let has_vertical = ref false in
-    let has_pinch = ref false in
-    let check action =
-      match action with
-      | Pan_x | Pan_left | Pan_right ->
-          if !has_horizontal then
-            Cursor.err t "duplicate horizontal touch-action gesture";
-          has_horizontal := true
-      | Pan_y | Pan_up | Pan_down ->
-          if !has_vertical then
-            Cursor.err t "duplicate vertical touch-action gesture";
-          has_vertical := true
-      | Pinch_zoom ->
-          if !has_pinch then Cursor.err t "duplicate pinch-zoom touch-action";
-          has_pinch := true
-      | _ -> Cursor.err t "invalid touch-action gesture"
-    in
-    List.iter check actions;
-    match actions with [ action ] -> action | _ -> Actions actions
-  in
-  if is_var t then
-    (* Parse sequence of var() references *)
-    let rec read_vars acc =
-      Cursor.ws t;
-      if is_var t then
-        let v = read_touch_action_var t in
-        read_vars (v :: acc)
-      else List.rev acc
-    in
+  if touch_action_is_var t then
     let first = read_touch_action_var t in
-    let rest = read_vars [] in
-    Vars (first :: rest)
-  else if
-    Cursor.peek_ident t = Some "auto"
-    || Cursor.peek_ident t = Some "none"
-    || Cursor.peek_ident t = Some "manipulation"
-    || Cursor.peek_ident t = Some "inherit"
-    || Cursor.peek_ident t = Some "initial"
-    || Cursor.peek_ident t = Some "unset"
-    || Cursor.peek_ident t = Some "revert"
-    || Cursor.peek_ident t = Some "revert-layer"
-  then
-    Cursor.enum "touch-action"
-      [
-        ("auto", (Auto : touch_action));
-        ("none", None);
-        ("manipulation", Manipulation);
-        ("inherit", Inherit);
-        ("initial", Initial);
-        ("unset", Unset);
-        ("revert", Revert);
-        ("revert-layer", Revert_layer);
-      ]
-      t
-  else validate_actions (Cursor.list ~at_least:1 read_action t)
+    Vars (first :: read_vars [])
+  else if touch_action_starts_keyword t then read_touch_action_keyword t
+  else
+    validate_touch_actions t
+      (Cursor.list ~at_least:1 read_touch_action_gesture t)
 
 let rec read_resize t : resize =
   Cursor.enum_or_var "resize"
@@ -11938,7 +11935,7 @@ let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
   | Some (Component.Func fn)
     when fn.node.name = "scroll" || fn.node.name = "view" ->
       let _ = Cursor.next t in
-      let args = Parser.to_string fn.node.arguments in
+      let args = Parser.string_of_components fn.node.arguments in
       if fn.node.name = "scroll" then Scroll args else View args
   | _ ->
       let keywords : (string * animation_timeline) list =
@@ -12080,39 +12077,56 @@ let image_resolution_of_parts (t : Cursor.t)
   | true, true, None -> From_image_snap
   | true, true, Some r -> From_image_snap_resolution r
 
-let rec read_image_resolution (t : Cursor.t) : image_resolution =
-  let read_value t =
-    let rec loop (parts : [ `From_image | `Snap ] list)
-        (resolution : resolution option) =
-      Cursor.ws t;
-      match Cursor.peek_ident t with
-      | Some "from-image" ->
-          if List.mem `From_image parts then
-            Cursor.err_invalid t "duplicate from-image";
-          if parts <> [] || Option.is_some resolution then
-            Cursor.err_invalid t "from-image must precede image resolution";
-          ignore (Cursor.ident t : string);
-          loop (`From_image :: parts) resolution
-      | Some "snap" ->
-          if List.mem `Snap parts then Cursor.err_invalid t "duplicate snap";
-          if (not (List.mem `From_image parts)) && Option.is_none resolution
-          then Cursor.err_invalid t "snap must follow image resolution";
-          ignore (Cursor.ident t : string);
-          loop (`Snap :: parts) resolution
-      | _ -> (
-          match (resolution, Cursor.peek t) with
-          | None, Some (Component.Preserved { kind = Token.Dimension _; _ }) ->
-              if List.mem `Snap parts then
-                Cursor.err_invalid t "image resolution must precede snap";
-              let resolution = Some (read_resolution t) in
-              loop parts resolution
-          | Some _, Some (Component.Preserved { kind = Token.Dimension _; _ })
-            ->
-              Cursor.err_invalid t "duplicate resolution"
-          | _ -> image_resolution_of_parts t ~parts resolution)
-    in
-    loop [] (None : resolution option)
+let image_resolution_has_dimension t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Dimension _; _ }) -> true
+  | _ -> false
+
+let read_image_resolution_from_image t parts resolution =
+  if List.mem `From_image parts then Cursor.err_invalid t "duplicate from-image";
+  if parts <> [] || Option.is_some resolution then
+    Cursor.err_invalid t "from-image must precede image resolution";
+  ignore (Cursor.ident t : string);
+  (`Continue (`From_image :: parts, resolution)
+    : [ `Continue of [ `From_image | `Snap ] list * resolution option
+      | `Done of image_resolution ])
+
+let read_image_resolution_snap t parts resolution =
+  if List.mem `Snap parts then Cursor.err_invalid t "duplicate snap";
+  if (not (List.mem `From_image parts)) && Option.is_none resolution then
+    Cursor.err_invalid t "snap must follow image resolution";
+  ignore (Cursor.ident t : string);
+  (`Continue (`Snap :: parts, resolution)
+    : [ `Continue of [ `From_image | `Snap ] list * resolution option
+      | `Done of image_resolution ])
+
+let read_image_resolution_dimension t (parts : [ `From_image | `Snap ] list)
+    (resolution : resolution option) =
+  match resolution with
+  | None ->
+      if List.mem `Snap parts then
+        Cursor.err_invalid t "image resolution must precede snap";
+      `Continue (parts, Some (read_resolution t))
+  | Some _ -> Cursor.err_invalid t "duplicate resolution"
+
+let read_image_resolution_step t parts resolution =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "from-image" -> read_image_resolution_from_image t parts resolution
+  | Some "snap" -> read_image_resolution_snap t parts resolution
+  | _ when image_resolution_has_dimension t ->
+      read_image_resolution_dimension t parts resolution
+  | _ -> `Done (image_resolution_of_parts t ~parts resolution)
+
+let read_image_resolution_value t =
+  let rec loop parts resolution =
+    match read_image_resolution_step t parts resolution with
+    | `Continue (parts, resolution) -> loop parts resolution
+    | `Done result -> result
   in
+  loop [] (None : resolution option)
+
+let rec read_image_resolution (t : Cursor.t) : image_resolution =
   Cursor.enum_or_var "image-resolution"
     [
       ("initial", (Initial : image_resolution));
@@ -12122,7 +12136,7 @@ let rec read_image_resolution (t : Cursor.t) : image_resolution =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_image_resolution t))
-    ~default:read_value t
+    ~default:read_image_resolution_value t
 
 let read_contain_intrinsic_size_item t : contain_intrinsic_size_item =
   Cursor.ws t;
@@ -13306,45 +13320,46 @@ let outline_style_keywords =
     "auto";
   ]
 
+let outline_starts_length t =
+  Option.is_some
+    (Cursor.lookahead
+       (Cursor.option (fun t ->
+            ignore (Cursor.number_with_unit t : float * string option)))
+       t)
+
+let outline_starts_style t =
+  List.exists (fun kw -> Cursor.looking_at t kw) outline_style_keywords
+
+let outline_at_end t =
+  Cursor.is_done t || Cursor.peek_semicolon t || Cursor.peek_delim t = Some '!'
+
+let read_outline_part ~width ~style ~color t =
+  if Option.is_none !style && outline_starts_style t then
+    style := Some (read_outline_style t)
+  else if Option.is_none !width && outline_starts_length t then
+    width := Some (read_length t)
+  else if Option.is_none !color then color := Some (read_color t)
+  else Cursor.err_expected t "outline"
+
+let read_outline_parts ~width ~style ~color t =
+  let rec loop () =
+    Cursor.ws t;
+    if not (outline_at_end t) then (
+      read_outline_part ~width ~style ~color t;
+      loop ())
+  in
+  loop ()
+
+let read_outline_shorthand_value t : outline =
+  let width = ref Option.None in
+  let style = ref Option.None in
+  let color = ref Option.None in
+  read_outline_parts ~width ~style ~color t;
+  match (!width, !style, !color) with
+  | Option.None, Some (None : outline_style), Option.None -> None
+  | _ -> Shorthand { width = !width; style = !style; color = !color }
+
 let rec read_outline t : outline =
-  let outline_starts_length t =
-    Option.is_some
-      (Cursor.lookahead
-         (Cursor.option (fun t ->
-              ignore (Cursor.number_with_unit t : float * string option)))
-         t)
-  in
-  let read_outline_part ~width ~style ~color t =
-    let found_style =
-      Option.is_none !style
-      && List.exists (fun kw -> Cursor.looking_at t kw) outline_style_keywords
-    in
-    if found_style then style := Some (read_outline_style t)
-    else if Option.is_none !width && outline_starts_length t then
-      width := Some (read_length t)
-    else if Option.is_none !color then color := Some (read_color t)
-    else Cursor.err_expected t "outline"
-  in
-  let read_shorthand t : outline =
-    let width = ref Option.None in
-    let style = ref Option.None in
-    let color = ref Option.None in
-    let at_end () =
-      Cursor.is_done t || Cursor.peek_semicolon t
-      || Cursor.peek_delim t = Some '!'
-    in
-    let rec read_parts () =
-      Cursor.ws t;
-      if not (at_end ()) then (
-        read_outline_part ~width ~style ~color t;
-        read_parts ())
-    in
-    read_parts ();
-    match (!width, !style, !color) with
-    | Option.None, Some (None : outline_style), Option.None -> None
-    | _ ->
-        (Shorthand { width = !width; style = !style; color = !color } : outline)
-  in
   Cursor.enum_or_var "outline"
     [
       ("inherit", (Inherit : outline));
@@ -13354,7 +13369,7 @@ let rec read_outline t : outline =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_outline t))
-    ~default:read_shorthand t
+    ~default:read_outline_shorthand_value t
 
 let read_outline_shorthand t : outline_shorthand =
   match read_outline t with
@@ -13598,6 +13613,39 @@ let read_font_display t : font_display =
     ]
     t
 
+let read_unicode_single start_value width =
+  if width > String.length (hex_string start_value) then
+    (Padded_single (start_value, width) : unicode_range)
+  else Single start_value
+
+let read_unicode_range_pair start_value end_value start_width end_width =
+  if
+    start_width > String.length (hex_string start_value)
+    || end_width > String.length (hex_string end_value)
+  then
+    Padded_range
+      { start = start_value; end_ = end_value; start_width; end_width }
+  else Range (start_value, end_value)
+
+let read_unicode_wildcard start_value prefix_width wildcards =
+  let prefix = start_value lsr (4 * wildcards) in
+  Wildcard { prefix; prefix_width; wildcards }
+
+let read_unicode_token_form start_value end_value = function
+  | Token.Single { width } -> read_unicode_single start_value width
+  | Token.Range { start_width; end_width } ->
+      read_unicode_range_pair start_value end_value start_width end_width
+  | Token.Wildcard { prefix_width; wildcards } ->
+      read_unicode_wildcard start_value prefix_width wildcards
+
+let read_unicode_token t start_value end_value form =
+  Cursor.skip t;
+  if start_value > end_value then
+    Cursor.err_invalid t "unicode range: start > end";
+  if end_value > 0x10FFFF then
+    Cursor.err_invalid t "unicode range: code point out of range";
+  read_unicode_token_form start_value end_value form
+
 let rec read_unicode_range t : unicode_range =
   (* The lexer emits a single [Unicode_range] token for [U+...] forms (CSS
      Syntax section 4.3.14); we just translate it to the [unicode_range] ADT. *)
@@ -13607,35 +13655,8 @@ let rec read_unicode_range t : unicode_range =
       (Var (Values.read_var read_unicode_range t) : unicode_range)
   | Some
       (Component.Preserved
-         { kind = Token.Unicode_range { start_value; end_value; form }; _ })
-    -> (
-      Cursor.skip t;
-      if start_value > end_value then
-        Cursor.err_invalid t "unicode range: start > end"
-      else if end_value > 0x10FFFF then
-        Cursor.err_invalid t "unicode range: code point out of range"
-      else
-        match form with
-        | Token.Single { width } ->
-            if width > String.length (hex_string start_value) then
-              (Padded_single (start_value, width) : unicode_range)
-            else Single start_value
-        | Token.Range { start_width; end_width } ->
-            if
-              start_width > String.length (hex_string start_value)
-              || end_width > String.length (hex_string end_value)
-            then
-              Padded_range
-                {
-                  start = start_value;
-                  end_ = end_value;
-                  start_width;
-                  end_width;
-                }
-            else Range (start_value, end_value)
-        | Token.Wildcard { prefix_width; wildcards } ->
-            let prefix = start_value lsr (4 * wildcards) in
-            Wildcard { prefix; prefix_width; wildcards })
+         { kind = Token.Unicode_range { start_value; end_value; form }; _ }) ->
+      read_unicode_token t start_value end_value form
   | _ -> Cursor.err_expected t "unicode-range"
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
@@ -13656,27 +13677,47 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
     ]
     ~var:read_var t
 
+let font_variant_numeric_token_family : font_variant_numeric_token -> _ =
+  function
+  | Lining_nums | Oldstyle_nums -> `Numeric_figure
+  | Proportional_nums | Tabular_nums -> `Numeric_spacing
+  | Diagonal_fractions | Stacked_fractions -> `Numeric_fraction
+  | Ordinal -> `Ordinal
+  | Slashed_zero -> `Slashed_zero
+  | Normal | Var _ -> `Other
+
+let numeric_token_is_normal : font_variant_numeric_token -> bool = function
+  | Normal -> true
+  | _ -> false
+
+let reject_duplicate_numeric_families t
+    (tokens : font_variant_numeric_token list) =
+  let seen = Hashtbl.create 5 in
+  List.iter
+    (fun token ->
+      match font_variant_numeric_token_family token with
+      | `Other -> ()
+      | family ->
+          if Hashtbl.mem seen family then
+            err_invalid_value t "font-variant-numeric" "duplicate token";
+          Hashtbl.add seen family ())
+    tokens
+
+let read_font_variant_numeric_tokens t : font_variant_numeric =
+  let tokens, _ = Cursor.many read_font_variant_numeric_token t in
+  match tokens with
+  | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
+  | tokens ->
+      (* CSS Fonts 4 section 6.6: [normal] resets all sub-properties and must
+         stand alone; it can't be mixed with other numeric tokens. *)
+      if List.exists numeric_token_is_normal tokens && List.length tokens > 1
+      then
+        err_invalid_value t "font-variant-numeric"
+          "[normal] cannot be mixed with other tokens";
+      reject_duplicate_numeric_families t tokens;
+      Tokens tokens
+
 let rec read_font_variant_numeric t : font_variant_numeric =
-  let token_family = function
-    | Lining_nums | Oldstyle_nums -> `Numeric_figure
-    | Proportional_nums | Tabular_nums -> `Numeric_spacing
-    | Diagonal_fractions | Stacked_fractions -> `Numeric_fraction
-    | Ordinal -> `Ordinal
-    | Slashed_zero -> `Slashed_zero
-    | Normal | Var _ -> `Other
-  in
-  let reject_duplicate_families tokens =
-    let seen = Hashtbl.create 5 in
-    List.iter
-      (fun token ->
-        match token_family token with
-        | `Other -> ()
-        | family ->
-            if Hashtbl.mem seen family then
-              err_invalid_value t "font-variant-numeric" "duplicate token";
-            Hashtbl.add seen family ())
-      tokens
-  in
   Cursor.enum_or_var "font-variant-numeric"
     [
       ("normal", (Normal : font_variant_numeric));
@@ -13687,23 +13728,7 @@ let rec read_font_variant_numeric t : font_variant_numeric =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_font_variant_numeric t))
-    ~default:(fun t ->
-      let tokens, _ = Cursor.many read_font_variant_numeric_token t in
-      match tokens with
-      | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
-      | tokens ->
-          (* CSS Fonts 4 section 6.6: [normal] resets all sub-properties and
-             must stand alone; it can't be mixed with other numeric tokens. *)
-          let is_normal : font_variant_numeric_token -> bool = function
-            | Normal -> true
-            | _ -> false
-          in
-          if List.exists is_normal tokens && List.length tokens > 1 then
-            err_invalid_value t "font-variant-numeric"
-              "[normal] cannot be mixed with other tokens";
-          reject_duplicate_families tokens;
-          Tokens tokens) (* All non-normal cases become Tokens *)
-    t
+    ~default:read_font_variant_numeric_tokens t
 
 let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
@@ -14212,23 +14237,30 @@ let rec read_animation_fill_mode t : animation_fill_mode =
       | values -> Fill_modes values)
     t
 
+let read_animation_count_number t =
+  let n, unit = Cursor.number_with_unit t in
+  match unit with
+  | Some u ->
+      Cursor.err_invalid t
+        ("animation-iteration-count must be unitless, got: " ^ u)
+  | None ->
+      if n < 0. then
+        Cursor.err_invalid t "animation-iteration-count cannot be negative";
+      Num n
+
+let read_animation_count_item t =
+  Cursor.enum "animation-iteration-count-item"
+    [ ("infinite", (Infinite : animation_iteration_count)) ]
+    ~default:read_animation_count_number t
+
+let read_animation_counts t =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_animation_count_item t
+  with
+  | [ count ] -> count
+  | counts -> Counts counts
+
 let rec read_animation_iteration_count t : animation_iteration_count =
-  let read_count t =
-    Cursor.enum "animation-iteration-count-item"
-      [ ("infinite", (Infinite : animation_iteration_count)) ]
-      ~default:(fun t ->
-        let n, unit = Cursor.number_with_unit t in
-        match unit with
-        | Some u ->
-            Cursor.err_invalid t
-              ("animation-iteration-count must be unitless, got: " ^ u)
-        | None ->
-            if n < 0. then
-              Cursor.err_invalid t
-                "animation-iteration-count cannot be negative"
-            else Num n)
-      t
-  in
   Cursor.enum_or_var "animation-iteration-count"
     [
       ("initial", (Initial : animation_iteration_count));
@@ -14238,10 +14270,7 @@ let rec read_animation_iteration_count t : animation_iteration_count =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_animation_iteration_count t))
-    ~default:(fun t ->
-      let counts = Cursor.list ~sep:Cursor.comma ~at_least:1 read_count t in
-      match counts with [ count ] -> count | counts -> Counts counts)
-    t
+    ~default:read_animation_counts t
 
 type animation_reserved_string_name =
   | None
@@ -14410,26 +14439,133 @@ module Animation = struct
     | Some name when not !name_seen -> set_name name_seen acc name
     | _ -> Cursor.err t ("duplicate " ^ label)
 
+  type read_state = {
+    duration_count : int ref;
+    name_seen : bool ref;
+    timing_seen : bool ref;
+    iteration_seen : bool ref;
+    direction_seen : bool ref;
+    fill_seen : bool ref;
+    play_seen : bool ref;
+    timeline_seen : bool ref;
+    component_seen : bool ref;
+  }
+
+  let read_state () =
+    {
+      duration_count = ref 0;
+      name_seen = ref false;
+      timing_seen = ref false;
+      iteration_seen = ref false;
+      direction_seen = ref false;
+      fill_seen = ref false;
+      play_seen = ref false;
+      timeline_seen = ref false;
+      component_seen = ref false;
+    }
+
+  let default_shorthand =
+    {
+      name = None;
+      (* CSS default: none *)
+      duration = Some (S 0.0);
+      (* CSS default: 0s *)
+      timing_function = Some Ease;
+      (* CSS default: ease *)
+      delay = Some (S 0.0);
+      (* CSS default: 0s *)
+      iteration_count = Some (Num 1.0);
+      (* CSS default: 1 *)
+      direction = Some Normal;
+      (* CSS default: normal *)
+      fill_mode = Some None;
+      (* CSS default: none *)
+      play_state = Some Running;
+      (* CSS default: running *)
+      timeline = Some Auto;
+      (* CSS default: auto *)
+    }
+
+  let apply_name t state (acc : animation_shorthand)
+      (name : animation_name option) =
+    if !(state.name_seen) then Cursor.err t "duplicate animation-name";
+    state.name_seen := true;
+    { acc with name }
+
+  let apply_duration t state acc d =
+    (* CSS spec: First time value is duration, second is delay *)
+    incr state.duration_count;
+    if !(state.duration_count) > 2 then
+      Cursor.err t "animation shorthand cannot have more than two time values";
+    if !(state.duration_count) = 1 then { acc with duration = Some d }
+    else { acc with delay = Some d }
+
+  let apply_timing t state acc tf =
+    if !(state.timing_seen) then
+      set_string_name t "animation-timing-function" state.name_seen acc
+        (timing_name tf)
+    else (
+      state.timing_seen := true;
+      { acc with timing_function = Some tf })
+
+  let apply_iteration t state acc ic =
+    if !(state.iteration_seen) then
+      (* CSS Animations 1 section 8.5: [<single-animation-iteration-count>] is
+         [infinite | <number>]; [infinite] is a reserved keyword that cannot be
+         a [<custom-ident>] animation name. Reject the duplicate rather than
+         coercing it into the name slot. *)
+      Cursor.err t "duplicate animation-iteration-count";
+    state.iteration_seen := true;
+    { acc with iteration_count = Some ic }
+
+  let apply_direction t state acc dir =
+    if !(state.direction_seen) then
+      set_string_name t "animation-direction" state.name_seen acc
+        (direction_name dir)
+    else (
+      state.direction_seen := true;
+      { acc with direction = Some dir })
+
+  let apply_fill t state acc fm =
+    if !(state.fill_seen) then
+      set_animation_name t "animation-fill-mode" state.name_seen acc
+        (fill_name fm)
+    else (
+      state.fill_seen := true;
+      { acc with fill_mode = Some fm })
+
+  let apply_play t state acc ps =
+    if !(state.play_seen) then
+      set_string_name t "animation-play-state" state.name_seen acc
+        (play_name ps)
+    else (
+      state.play_seen := true;
+      { acc with play_state = Some ps })
+
+  let apply_timeline t state acc tl =
+    if !(state.timeline_seen) then
+      set_string_name t "animation-timeline" state.name_seen acc
+        (timeline_name tl)
+    else (
+      state.timeline_seen := true;
+      { acc with timeline = Some tl })
+
+  let apply_component t state (acc : animation_shorthand) component =
+    state.component_seen := true;
+    match component with
+    | Name name -> apply_name t state acc name
+    | Duration d -> apply_duration t state acc d
+    | Timing_function tf -> apply_timing t state acc tf
+    | Iteration_count ic -> apply_iteration t state acc ic
+    | Direction dir -> apply_direction t state acc dir
+    | Fill_mode fm -> apply_fill t state acc fm
+    | Play_state ps -> apply_play t state acc ps
+    | Timeline tl -> apply_timeline t state acc tl
+
   let read_component t =
     let read_duration t = Duration (read_duration t) in
     let read_timing t = Timing_function (read_timing_function t) in
-    let read_iteration t =
-      Iteration_count
-        (Cursor.enum "animation-iteration-count-item"
-           [ ("infinite", (Infinite : animation_iteration_count)) ]
-           ~default:(fun t ->
-             let n, unit = Cursor.number_with_unit t in
-             match unit with
-             | Some u ->
-                 Cursor.err_invalid t
-                   ("animation-iteration-count must be unitless, got: " ^ u)
-             | None ->
-                 if n < 0. then
-                   Cursor.err_invalid t
-                     "animation-iteration-count cannot be negative"
-                 else Num n)
-           t)
-    in
+    let read_iteration t = Iteration_count (read_animation_count_item t) in
     let read_direction t =
       match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
       | Some "normal" -> Direction (Normal : animation_direction)
@@ -14491,104 +14627,13 @@ module Animation = struct
       t
 
   let read_shorthand t =
-    let duration_count = ref 0 in
-    let name_seen = ref false in
-    let timing_seen = ref false in
-    let iteration_seen = ref false in
-    let direction_seen = ref false in
-    let fill_seen = ref false in
-    let play_seen = ref false in
-    let timeline_seen = ref false in
-    let component_seen = ref false in
-    let apply (acc : animation_shorthand) component =
-      component_seen := true;
-      match component with
-      | Name name ->
-          if !name_seen then Cursor.err t "duplicate animation-name";
-          name_seen := true;
-          { acc with name }
-      | Duration d ->
-          (* CSS spec: First time value is duration, second is delay *)
-          incr duration_count;
-          if !duration_count > 2 then
-            Cursor.err t
-              "animation shorthand cannot have more than two time values"
-          else if !duration_count = 1 then { acc with duration = Some d }
-          else { acc with delay = Some d }
-      | Timing_function tf ->
-          if !timing_seen then
-            set_string_name t "animation-timing-function" name_seen acc
-              (timing_name tf)
-          else (
-            timing_seen := true;
-            { acc with timing_function = Some tf })
-      | Iteration_count ic ->
-          if !iteration_seen then
-            (* CSS Animations 1 section 8.5:
-               [<single-animation-iteration-count>] is [infinite | <number>];
-               [infinite] is a reserved keyword that cannot be a
-               [<custom-ident>] animation name. Reject the duplicate rather than
-               coercing it into the name slot. *)
-            Cursor.err t "duplicate animation-iteration-count"
-          else (
-            iteration_seen := true;
-            { acc with iteration_count = Some ic })
-      | Direction dir ->
-          if !direction_seen then
-            set_string_name t "animation-direction" name_seen acc
-              (direction_name dir)
-          else (
-            direction_seen := true;
-            { acc with direction = Some dir })
-      | Fill_mode fm ->
-          if !fill_seen then
-            set_animation_name t "animation-fill-mode" name_seen acc
-              (fill_name fm)
-          else (
-            fill_seen := true;
-            { acc with fill_mode = Some fm })
-      | Play_state ps ->
-          if !play_seen then
-            set_string_name t "animation-play-state" name_seen acc
-              (play_name ps)
-          else (
-            play_seen := true;
-            { acc with play_state = Some ps })
-      | Timeline tl ->
-          if !timeline_seen then
-            set_string_name t "animation-timeline" name_seen acc
-              (timeline_name tl)
-          else (
-            timeline_seen := true;
-            { acc with timeline = Some tl })
+    let state = read_state () in
+    let acc, _ =
+      Cursor.fold_many read_component ~init:default_shorthand
+        ~f:(apply_component t state) t
     in
-
-    let init =
-      {
-        name = None;
-        (* CSS default: none *)
-        duration = Some (S 0.0);
-        (* CSS default: 0s *)
-        timing_function = Some Ease;
-        (* CSS default: ease *)
-        delay = Some (S 0.0);
-        (* CSS default: 0s *)
-        iteration_count = Some (Num 1.0);
-        (* CSS default: 1 *)
-        direction = Some Normal;
-        (* CSS default: normal *)
-        fill_mode = Some None;
-        (* CSS default: none *)
-        play_state = Some Running;
-        (* CSS default: running *)
-        timeline = Some Auto;
-        (* CSS default: auto *)
-      }
-    in
-
-    let acc, _ = Cursor.fold_many read_component ~init ~f:apply t in
     (* CSS spec: All components are optional *)
-    if not !component_seen then
+    if not !(state.component_seen) then
       Cursor.err t "animation shorthand requires at least one component"
     else acc
 
@@ -14846,41 +14891,40 @@ and pp_animation : animation Pp.t =
   | Var v -> pp_var pp_animation ctx v
   | Shorthand s -> pp_animation_shorthand ctx s
 
+let animation_global_value ident : animation option =
+  match String.lowercase_ascii ident with
+  | "inherit" -> Some Inherit
+  | "initial" -> Some Initial
+  | "none" -> Some None
+  | _ -> None
+
+let animation_value_boundary t =
+  Cursor.ws t;
+  Cursor.is_done t || Cursor.peek_comma t
+
+let read_animation_shorthand_from t snap : animation =
+  Cursor.restore t snap;
+  Shorthand (read_animation_shorthand t)
+
+let read_animation_global_or_shorthand t =
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some ident -> (
+      match animation_global_value ident with
+      | Some value when animation_value_boundary t -> value
+      | _ -> read_animation_shorthand_from t snap)
+  | None -> read_animation_shorthand_from t snap
+
+let read_animation_var_or_shorthand read_self t =
+  let snap = Cursor.save t in
+  let value = (Var (read_var read_self t) : animation) in
+  if animation_value_boundary t then value
+  else read_animation_shorthand_from t snap
+
 let rec read_animation t : animation =
-  let read_global_or_none t =
-    let snap = Cursor.save t in
-    match Cursor.ident_opt t with
-    | Some ident -> (
-        let value =
-          match String.lowercase_ascii ident with
-          | "inherit" -> Some (Inherit : animation)
-          | "initial" -> Some Initial
-          | "none" -> Some None
-          | _ -> None
-        in
-        match value with
-        | Some value ->
-            Cursor.ws t;
-            if Cursor.is_done t || Cursor.peek_comma t then value
-            else (
-              Cursor.restore t snap;
-              Shorthand (read_animation_shorthand t))
-        | None ->
-            Cursor.restore t snap;
-            Shorthand (read_animation_shorthand t))
-    | None ->
-        Cursor.restore t snap;
-        Shorthand (read_animation_shorthand t)
-  in
-  if Cursor.looking_at_func "var" t then (
-    let snap = Cursor.save t in
-    let value = (Var (read_var read_animation t) : animation) in
-    Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_comma t then value
-    else (
-      Cursor.restore t snap;
-      Shorthand (read_animation_shorthand t)))
-  else read_global_or_none t
+  if Cursor.looking_at_func "var" t then
+    read_animation_var_or_shorthand read_animation t
+  else read_animation_global_or_shorthand t
 
 let read_animations t : animation list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_animation t
@@ -15705,21 +15749,26 @@ let read_conic_gradient_body t =
   in
   Conic_gradient (config, stops)
 
+let read_bg_url_arg inner =
+  Cursor.ws inner;
+  match Cursor.string_with_quote_opt inner with
+  | Some (url, quote) ->
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Url_quoted (url, quote)
+  | None ->
+      let url = Cursor.consume_remaining_as_string ~trim:true inner in
+      if url = "" then Cursor.err_expected inner "url argument" else Url url
+
+let read_bg_url_call t terminated =
+  if not terminated then Cursor.err_expected t "terminated url";
+  Cursor.call "url" t read_bg_url_arg
+
 let read_bg_url t : background_image =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Url _; _ }) -> Url (Cursor.url t)
   | Some (Component.Func { node = { name = "url"; terminated; _ }; _ }) ->
-      if not terminated then Cursor.err_expected t "terminated url";
-      Cursor.call "url" t (fun inner ->
-          Cursor.ws inner;
-          match Cursor.string_with_quote_opt inner with
-          | Some (url, quote) ->
-              Cursor.ws inner;
-              Cursor.expect_eof inner;
-              Url_quoted (url, quote)
-          | None ->
-              let url = Cursor.consume_remaining_as_string ~trim:true inner in
-              if url = "" then Cursor.err_expected t "url argument" else Url url)
+      read_bg_url_call t terminated
   | _ -> Cursor.err_expected t "url"
 
 let rec read_bg_image t : background_image =
@@ -17140,63 +17189,66 @@ let read_background_shorthand t : background_shorthand =
   if acc = init then Cursor.err_expected t "background value";
   acc
 
+let read_background_vars read_self t =
+  let rec loop acc =
+    Cursor.ws t;
+    if Cursor.looking_at_func "var" t then loop (read_var read_self t :: acc)
+    else List.rev acc
+  in
+  loop []
+
+let read_background_var_call read_self t : background =
+  let first = read_var read_self t in
+  match read_background_vars read_self t with
+  | [] -> Var first
+  | rest -> Vars (first :: rest)
+
+let read_background_var_sequence read_self t : background =
+  let snap = Cursor.save t in
+  match read_background_vars read_self t with
+  | _ :: _ :: _ as vars -> Vars vars
+  | _ ->
+      Cursor.restore t snap;
+      Cursor.err_expected t "background var() sequence"
+
+let background_keyword_value ident : background option =
+  match String.lowercase_ascii ident with
+  | "inherit" -> Some Inherit
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "none" -> Some None
+  | _ -> None
+
+let background_value_boundary t =
+  Cursor.ws t;
+  Cursor.is_done t || Cursor.peek_comma t
+
+let read_background_shorthand_from t snap : background =
+  Cursor.restore t snap;
+  Shorthand (read_background_shorthand t)
+
+let read_background_keyword_or_shorthand t : background =
+  let snap = Cursor.save t in
+  match Cursor.ident_opt t with
+  | Some ident -> (
+      match background_keyword_value ident with
+      | Some value when background_value_boundary t -> value
+      | _ -> read_background_shorthand_from t snap)
+  | None -> read_background_shorthand_from t snap
+
+let read_background_default read_self t =
+  Cursor.one_of
+    [
+      read_background_var_sequence read_self;
+      read_background_keyword_or_shorthand;
+    ]
+    t
+
 let rec read_background t : background =
-  let read_var_call t : background =
-    let first = read_var read_background t in
-    let rec loop acc =
-      Cursor.ws t;
-      if Cursor.looking_at_func "var" t then
-        loop (read_var read_background t :: acc)
-      else List.rev acc
-    in
-    match loop [ first ] with [ var ] -> Var var | vars -> Vars vars
-  in
-  let read_var_sequence t : background =
-    let rec loop acc =
-      Cursor.ws t;
-      if Cursor.looking_at_func "var" t then
-        loop (read_var read_background t :: acc)
-      else List.rev acc
-    in
-    let snap = Cursor.save t in
-    let vars = loop [] in
-    match vars with
-    | _ :: _ :: _ -> Vars vars
-    | _ ->
-        Cursor.restore t snap;
-        Cursor.err_expected t "background var() sequence"
-  in
-  let read_keyword_or_shorthand t =
-    let snap = Cursor.save t in
-    match Cursor.ident_opt t with
-    | Some ident -> (
-        let value =
-          match String.lowercase_ascii ident with
-          | "inherit" -> Some (Inherit : background)
-          | "initial" -> Some Initial
-          | "unset" -> Some Unset
-          | "none" -> Some None
-          | _ -> None
-        in
-        match value with
-        | Some value ->
-            Cursor.ws t;
-            if Cursor.is_done t || Cursor.peek_comma t then value
-            else (
-              Cursor.restore t snap;
-              Shorthand (read_background_shorthand t))
-        | None ->
-            Cursor.restore t snap;
-            Shorthand (read_background_shorthand t))
-    | None ->
-        Cursor.restore t snap;
-        Shorthand (read_background_shorthand t)
-  in
   Cursor.enum_or_calls "background"
     [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
-    ~calls:[ ("var", read_var_call) ]
-    ~default:(fun t ->
-      Cursor.one_of [ read_var_sequence; read_keyword_or_shorthand ] t)
+    ~calls:[ ("var", read_background_var_call read_background) ]
+    ~default:(read_background_default read_background)
     t
 
 let read_backgrounds t : background list =
@@ -17355,22 +17407,19 @@ let read_clip_path_round t : border_radius option =
       Some (read_border_radius_inline t)
   | _ -> None
 
+let read_clip_path_inset_side t : length_percentage option =
+  Cursor.ws t;
+  match (Cursor.is_done t, Cursor.peek_ident t) with
+  | true, _ | _, Some "round" -> None
+  | false, _ -> Some (read_length_percentage t)
+
 let read_clip_path_inset t =
   Cursor.call "inset" t (fun t ->
       Cursor.ws t;
       let top = read_length_percentage t in
-      Cursor.ws t;
-      let read_opt () : length_percentage option =
-        match Cursor.peek_ident t with
-        | Some "round" -> None
-        | _ ->
-            if Cursor.is_done t then None else Some (read_length_percentage t)
-      in
-      let right = read_opt () in
-      Cursor.ws t;
-      let bottom = if Option.is_some right then read_opt () else None in
-      Cursor.ws t;
-      let left = if Option.is_some bottom then read_opt () else None in
+      let right = read_clip_path_inset_side t in
+      let bottom = Option.bind right (fun _ -> read_clip_path_inset_side t) in
+      let left = Option.bind bottom (fun _ -> read_clip_path_inset_side t) in
       let rounded = read_clip_path_round t in
       Cursor.ws t;
       Cursor.expect_eof t;
@@ -17855,7 +17904,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Unknown_property _ ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_minified value
-        else Parser.to_string value
+        else Parser.string_of_components value
       in
       Pp.string ctx rendered
   | All -> pp pp_css_wide
@@ -19203,26 +19252,30 @@ let read_ray t : ray =
   Cursor.expect_eof inner;
   { angle; size; contain; position }
 
-let rec read_grid_template_areas t : grid_template_areas =
-  let read_rows t =
-    let rec read_strings (width : int option) rows rendered =
-      Cursor.ws t;
-      match Cursor.string_opt t with
-      | None ->
-          let rows = List.rev rows in
-          if rows = [] then Cursor.err_expected t "grid-template-areas row";
-          validate_grid_area_rectangles t rows;
-          (Areas (String.concat " " (List.rev rendered)) : grid_template_areas)
-      | Some s ->
-          let cells = grid_area_row_cells s in
-          if cells = [] then
-            Cursor.err_invalid t "empty grid-template-areas row";
-          List.iter (validate_grid_area_cell t) cells;
-          let width = validate_grid_area_width t width cells in
-          read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
-    in
-    read_strings (None : int option) [] []
+let read_grid_template_areas_row t width rows rendered =
+  Cursor.ws t;
+  match Cursor.string_opt t with
+  | None -> `Stop
+  | Some s ->
+      let cells = grid_area_row_cells s in
+      if cells = [] then Cursor.err_invalid t "empty grid-template-areas row";
+      List.iter (validate_grid_area_cell t) cells;
+      let width = validate_grid_area_width t width cells in
+      `Continue (width, cells :: rows, ("\"" ^ s ^ "\"") :: rendered)
+
+let read_grid_template_areas_rows t =
+  let rec loop width rows rendered =
+    match read_grid_template_areas_row t width rows rendered with
+    | `Stop ->
+        let rows = List.rev rows in
+        if rows = [] then Cursor.err_expected t "grid-template-areas row";
+        validate_grid_area_rectangles t rows;
+        (Areas (String.concat " " (List.rev rendered)) : grid_template_areas)
+    | `Continue (width, rows, rendered) -> loop width rows rendered
   in
+  loop (None : int option) [] []
+
+let rec read_grid_template_areas t : grid_template_areas =
   Cursor.enum_or_var "grid-template-areas"
     [
       ("none", (No_areas : grid_template_areas));
@@ -19234,7 +19287,7 @@ let rec read_grid_template_areas t : grid_template_areas =
     ]
     ~var:(fun t ->
       (Var (Values.read_var read_grid_template_areas t) : grid_template_areas))
-    ~default:read_rows t
+    ~default:read_grid_template_areas_rows t
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
 
@@ -19248,25 +19301,31 @@ let read_border_image_slice_item t : border_image_slice_item =
       | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
       | None -> Cursor.err_expected t "border-image slice")
 
+let read_border_image_slice_value t values has_fill =
+  match Cursor.option read_border_image_slice_item t with
+  | Some value ->
+      if List.length values >= 4 then
+        Cursor.err_invalid t "too many border-image slice values";
+      `Continue (value :: values, has_fill)
+  | None -> `Stop
+
+let read_border_image_slice_step t values has_fill =
+  Cursor.ws t;
+  if border_image_at_end t || Cursor.peek_delim t = Some '/' then `Stop
+  else
+    match Cursor.peek_ident t with
+    | Some "fill" ->
+        if has_fill then
+          Cursor.err_invalid t "duplicate border-image fill keyword";
+        let _ = Cursor.ident t in
+        `Continue (values, true)
+    | _ -> read_border_image_slice_value t values has_fill
+
 let read_border_image_slice t : border_image_slice =
   let rec loop values has_fill =
-    Cursor.ws t;
-    if border_image_at_end t || Cursor.peek_delim t = Some '/' then
-      (values, has_fill)
-    else
-      match Cursor.peek_ident t with
-      | Some "fill" ->
-          if has_fill then
-            Cursor.err_invalid t "duplicate border-image fill keyword";
-          let _ = Cursor.ident t in
-          loop values true
-      | _ -> (
-          match Cursor.option read_border_image_slice_item t with
-          | Some value ->
-              if List.length values >= 4 then
-                Cursor.err_invalid t "too many border-image slice values";
-              loop (value :: values) has_fill
-          | None -> (values, has_fill))
+    match read_border_image_slice_step t values has_fill with
+    | `Stop -> (values, has_fill)
+    | `Continue (values, has_fill) -> loop values has_fill
   in
   let values, has_fill = loop [] false in
   match (List.rev values, has_fill) with
@@ -19300,17 +19359,22 @@ let read_border_image_outset_item t : border_image_outset_item =
       let len = read_length ~allow_negative:false t in
       Length len
 
+let read_border_image_box_step ~what read_item t acc =
+  Cursor.ws t;
+  if border_image_at_end t || Cursor.peek_delim t = Some '/' then `Stop
+  else
+    match Cursor.option read_item t with
+    | Some value ->
+        if List.length acc >= 4 then
+          Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
+        `Continue (value :: acc)
+    | None -> `Stop
+
 let read_border_image_box_values ~what read_item t =
   let rec loop acc =
-    Cursor.ws t;
-    if border_image_at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
-    else
-      match Cursor.option read_item t with
-      | Some value ->
-          if List.length acc >= 4 then
-            Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
-          loop (value :: acc)
-      | None -> List.rev acc
+    match read_border_image_box_step ~what read_item t acc with
+    | `Stop -> List.rev acc
+    | `Continue acc -> loop acc
   in
   match loop [] with
   | [] -> Cursor.err_expected t ("border-image " ^ what)

@@ -565,49 +565,56 @@ and pp_page_selector ctx selector =
       Pp.string ctx s
   | None -> ()
 
+and import_url_starts_with_url url len =
+  len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
+
+and import_url_unwrap_quoted url len =
+  if len >= 2 && (url.[0] = '"' || url.[0] = '\'') && url.[len - 1] = url.[0]
+  then Some (String.sub url 1 (len - 2))
+  else None
+
+and import_url_strip_inner_quotes inner =
+  let inner_len = String.length inner in
+  if inner_len = 0 then None
+  else if
+    inner_len >= 2
+    && (inner.[0] = '"' || inner.[0] = '\'')
+    && inner.[inner_len - 1] = inner.[0]
+  then Some (String.sub inner 1 (inner_len - 2))
+  else Some inner
+
+and import_url_inner_string url len =
+  (* Lift the inner string out of [url(...)] - either the quoted form
+     [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
+     unquoted body so the [@import] / [@namespace] minify path can re-emit it as
+     a bare double-quoted string. *)
+  if not (import_url_starts_with_url url len) then None
+  else if len < 5 || url.[len - 1] <> ')' then None
+  else
+    let inner = String.sub url 4 (len - 5) |> String.trim in
+    import_url_strip_inner_quotes inner
+
+and pp_import_url_minified ctx url len =
+  (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
+     (CSS Syntax 4.3.5 prefers double quotes). The [url()] wrapping is five
+     characters of overhead that the bare-string form omits per CSS Conditional
+     Rules 3, and a single-quoted source string re-emits with double quotes. *)
+  match import_url_inner_string url len with
+  | Some s -> Pp.quoted_string ctx s
+  | None -> (
+      match import_url_unwrap_quoted url len with
+      | Some s -> Pp.quoted_string ctx s
+      | None ->
+          if len > 0 && import_url_starts_with_url url len then
+            Pp.string ctx url
+          else Pp.quoted_string ctx url)
+
 and pp_import_url ctx url =
   let len = String.length url in
-  let starts_with_url () =
-    len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
-  in
-  let unwrap_quoted () =
-    if len >= 2 && (url.[0] = '"' || url.[0] = '\'') && url.[len - 1] = url.[0]
-    then Some (String.sub url 1 (len - 2))
-    else None
-  in
-  let url_inner_string () =
-    (* Lift the inner string out of [url(...)] - either the quoted form
-       [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
-       unquoted body so the [@import] / [@namespace] minify path can re-emit it
-       as a bare double-quoted string. *)
-    if not (starts_with_url ()) then None
-    else if len < 5 || url.[len - 1] <> ')' then None
-    else
-      let inner = String.sub url 4 (len - 5) |> String.trim in
-      let inner_len = String.length inner in
-      if inner_len = 0 then None
-      else if
-        inner_len >= 2
-        && (inner.[0] = '"' || inner.[0] = '\'')
-        && inner.[inner_len - 1] = inner.[0]
-      then Some (String.sub inner 1 (inner_len - 2))
-      else Some inner
-  in
-  if Pp.minified ctx then
-    (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
-       (CSS Syntax 4.3.5 prefers double quotes). The [url()] wrapping is five
-       characters of overhead that the bare-string form omits per CSS
-       Conditional Rules 3, and a single-quoted source string re-emits with
-       double quotes. *)
-    match url_inner_string () with
-    | Some s -> Pp.quoted_string ctx s
-    | None -> (
-        match unwrap_quoted () with
-        | Some s -> Pp.quoted_string ctx s
-        | None ->
-            if len > 0 && starts_with_url () then Pp.string ctx url
-            else Pp.quoted_string ctx url)
-  else if len > 0 && (url.[0] = '"' || url.[0] = '\'' || starts_with_url ())
+  if Pp.minified ctx then pp_import_url_minified ctx url len
+  else if
+    len > 0
+    && (url.[0] = '"' || url.[0] = '\'' || import_url_starts_with_url url len)
   then Pp.string ctx url
   else Pp.quoted_string ctx url
 
@@ -692,15 +699,230 @@ and pp_moz_document_condition ctx = function
       Pp.quoted_string ctx prefix;
       Pp.char ctx ')'
 
+and pp_declarations_statement ctx raw_decls =
+  (* Bare declarations for CSS nesting - no selector/braces, just declarations.
+     No extra indent since the containing block handles it *)
+  let decls = Declaration.resolve_theme_guards ctx raw_decls in
+  Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
+  if decls <> [] && not ctx.Pp.minify then Pp.semicolon ctx ()
+
+and pp_namespace_uri ctx = function
+  | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
+  | Url (value, Url_bare) ->
+      Pp.string ctx "url(";
+      Pp.string ctx value;
+      Pp.char ctx ')'
+  | Url (value, Url_quoted q) ->
+      Pp.string ctx "url(";
+      Pp.char ctx q;
+      Pp.string ctx value;
+      Pp.char ctx q;
+      Pp.char ctx ')'
+  | Quoted value -> Pp.quoted_string ctx value
+
+and pp_namespace_statement ctx prefix uri =
+  Pp.string ctx "@namespace ";
+  (match prefix with
+  | Some p ->
+      Pp.string ctx p;
+      Pp.sp ctx ()
+  | None -> ());
+  pp_namespace_uri ctx uri;
+  Pp.semicolon ctx ()
+
+and pp_layer_statement ctx name content =
+  Pp.string ctx "@layer";
+  (match name with
+  | Some n ->
+      Pp.string ctx " ";
+      Pp.string ctx n
+  | None -> ());
+  (* For empty layers: use statement form when minifying (more concise), but
+     preserve block form otherwise for roundtrip fidelity *)
+  if content = [] && Pp.minified ctx then Pp.semicolon ctx ()
+  else (
+    Pp.sp ctx ();
+    Pp.braces pp_block ctx content)
+
+and pp_media_statement ctx condition content =
+  Pp.string ctx "@media";
+  (match condition with
+  | Media.List [] -> ()
+  | _ ->
+      Pp.string ctx " ";
+      Media.pp ctx condition);
+  Pp.sp ctx ();
+  Pp.braces pp_block ctx content
+
+and pp_container_statement ctx name condition content =
+  Pp.string ctx "@container";
+  (match name with
+  | Some n ->
+      Pp.char ctx ' ';
+      Pp.string ctx n
+  | None -> ());
+  (match condition with
+  | Some condition ->
+      let condition_str =
+        Container.to_stylesheet_string ~minify:ctx.Pp.minify condition
+      in
+      if condition_str <> "" then (
+        Pp.char ctx ' ';
+        Pp.string ctx condition_str)
+  | None -> ());
+  Pp.sp ctx ();
+  Pp.braces pp_block ctx content
+
+and pp_supports_condition_value ctx condition =
+  match condition with
+  | Supports.And (_, Supports.Function _) | Supports.And (Supports.Function _, _)
+    ->
+      Pp.char ctx '(';
+      Supports.pp ctx condition;
+      Pp.char ctx ')'
+  | _ -> Supports.pp ctx condition
+
+and pp_supports_statement ctx condition content =
+  Pp.string ctx "@supports ";
+  pp_supports_condition_value ctx condition;
+  Pp.sp ctx ();
+  Pp.braces pp_block ctx content
+
+and pp_else_statement ctx condition content =
+  Pp.string ctx "@else";
+  (match condition with
+  | None -> ()
+  | Some c ->
+      Pp.string ctx " ";
+      pp_conditional ctx c);
+  Pp.sp ctx ();
+  Pp.braces pp_block ctx content
+
+and scope_replace_all pattern replacement s =
+  let plen = String.length pattern in
+  let slen = String.length s in
+  let buf = Buffer.create slen in
+  let rec loop i =
+    if i >= slen then ()
+    else if i + plen <= slen && String.sub s i plen = pattern then (
+      Buffer.add_string buf replacement;
+      loop (i + plen))
+    else (
+      Buffer.add_char buf s.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
+and compact_scope_combinators s =
+  s
+  |> scope_replace_all " > " ">"
+  |> scope_replace_all " + " "+"
+  |> scope_replace_all " ~ " "~"
+  |> scope_replace_all " || " "||"
+
+and pp_scope_selector ctx s =
+  let s =
+    try Selector.(to_string ~minify:(Pp.minified ctx) (of_string s))
+    with Cursor.Parse_error _ | Invalid_argument _ -> s
+  in
+  let s = String.trim s in
+  let s = compact_scope_combinators s in
+  Pp.string ctx (String.trim s)
+
+and pp_scope_statement ctx start end_ content =
+  Pp.string ctx "@scope";
+  (match start with
+  | Some s ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "(";
+      pp_scope_selector ctx s;
+      Pp.string ctx ")"
+  | None -> ());
+  (match end_ with
+  | Some e ->
+      Pp.string ctx (if Pp.minified ctx then "to (" else " to (");
+      pp_scope_selector ctx e;
+      Pp.string ctx ")"
+  | None -> ());
+  Pp.sp ctx ();
+  Pp.braces pp_block ctx content
+
+and pp_keyframes_block_statement ctx header name frames =
+  Pp.string ctx header;
+  pp_keyframes_name ctx name;
+  Pp.sp ctx ();
+  Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
+
+and pp_page_with_margins_body ctx descriptors margins =
+  Pp.braces
+    (fun ctx () ->
+      Pp.cut ctx ();
+      Pp.nest 2
+        (fun ctx () ->
+          Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx
+            descriptors;
+          if descriptors <> [] && margins <> [] then (
+            Pp.semicolon ctx ();
+            Pp.cut ctx ());
+          Pp.list ~sep:Pp.cut pp_page_margin_rule ctx margins)
+        ctx ();
+      Pp.cut ctx ())
+    ctx ()
+
+and pp_viewport_prefix_keyword = function
+  | Standard -> "@viewport"
+  | Ms_prefixed -> "@-ms-viewport"
+
+and pp_viewport_descriptor ctx { name; value } =
+  Pp.string ctx name;
+  Pp.char ctx ':';
+  Pp.string ctx value
+
+and pp_viewport_statement ctx prefix descriptors =
+  Pp.string ctx (pp_viewport_prefix_keyword prefix);
+  Pp.sp ctx ();
+  Pp.braced_semicolon_list pp_viewport_descriptor ctx descriptors
+
+and trim_unknown_at_prelude prelude =
+  let rec trim_end i =
+    if i < 0 then 0
+    else
+      match prelude.[i] with
+      | ';' | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
+      | _ -> i + 1
+  in
+  let n = String.length prelude in
+  String.sub prelude 0 (trim_end (n - 1))
+
+and pp_unknown_at_rule_statement ctx name prelude block =
+  (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;], [}], or EOF. When
+     the Parser captures an unterminated nested block ([(...], [[...], [{...])
+     its source slice can include the at-rule terminator or the enclosing
+     block's close - don't echo them as part of the prelude or each round-trip
+     stacks another [;]/[}]. *)
+  let prelude = trim_unknown_at_prelude prelude in
+  Pp.char ctx '@';
+  (* CSS Syntax 3 section 9.1: an at-rule name with non-ident-continue code
+     points (control chars, escapes, non-ASCII) must round-trip through
+     [escape_ident] so the serialized [\6 T] re-tokenizes back to the same
+     at-keyword token. *)
+  Pp.string ctx (Parser.escape_ident name);
+  if prelude <> "" then (
+    Pp.sp ctx ();
+    Pp.string ctx prelude);
+  match block with
+  | None -> Pp.semicolon ctx ()
+  | Some body ->
+      Pp.sp ctx ();
+      Pp.char ctx '{';
+      Pp.string ctx body;
+      Pp.char ctx '}'
+
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
-  | Declarations raw_decls ->
-      (* Bare declarations for CSS nesting - no selector/braces, just
-         declarations. No extra indent since the containing block handles it *)
-      let decls = Declaration.resolve_theme_guards ctx raw_decls in
-      Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
-      if decls <> [] && not ctx.minify then Pp.semicolon ctx ()
+  | Declarations raw_decls -> pp_declarations_statement ctx raw_decls
   | Charset encoding ->
       Pp.string ctx "@charset \"";
       Pp.string ctx encoding;
@@ -709,83 +931,17 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@import";
       pp_import_components ctx { url; layer; supports; media };
       Pp.semicolon ctx ()
-  | Namespace (prefix, uri) ->
-      Pp.string ctx "@namespace ";
-      (match prefix with
-      | Some p ->
-          Pp.string ctx p;
-          Pp.sp ctx ()
-      | None -> ());
-      (match uri with
-      | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
-      | Url (value, Url_bare) ->
-          Pp.string ctx "url(";
-          Pp.string ctx value;
-          Pp.char ctx ')'
-      | Url (value, Url_quoted q) ->
-          Pp.string ctx "url(";
-          Pp.char ctx q;
-          Pp.string ctx value;
-          Pp.char ctx q;
-          Pp.char ctx ')'
-      | Quoted value -> Pp.quoted_string ctx value);
-      Pp.semicolon ctx ()
+  | Namespace (prefix, uri) -> pp_namespace_statement ctx prefix uri
   | Property r -> pp_property_rule ctx r
   | Layer_decl names ->
       Pp.string ctx "@layer ";
       Pp.list ~sep:Pp.comma Pp.string ctx names;
       Pp.semicolon ctx ()
-  | Layer (name, content) ->
-      Pp.string ctx "@layer";
-      (match name with
-      | Some n ->
-          Pp.string ctx " ";
-          Pp.string ctx n
-      | None -> ());
-      (* For empty layers: use statement form when minifying (more concise), but
-         preserve block form otherwise for roundtrip fidelity *)
-      if content = [] && Pp.minified ctx then Pp.semicolon ctx ()
-      else (
-        Pp.sp ctx ();
-        Pp.braces pp_block ctx content)
-  | Media (condition, content) ->
-      Pp.string ctx "@media";
-      (match condition with
-      | Media.List [] -> ()
-      | _ ->
-          Pp.string ctx " ";
-          Media.pp ctx condition);
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
+  | Layer (name, content) -> pp_layer_statement ctx name content
+  | Media (condition, content) -> pp_media_statement ctx condition content
   | Container (name, condition, content) ->
-      Pp.string ctx "@container";
-      (match name with
-      | Some n ->
-          Pp.char ctx ' ';
-          Pp.string ctx n
-      | None -> ());
-      (match condition with
-      | Some condition ->
-          let condition_str =
-            Container.to_stylesheet_string ~minify:ctx.minify condition
-          in
-          if condition_str <> "" then (
-            Pp.char ctx ' ';
-            Pp.string ctx condition_str)
-      | None -> ());
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
-  | Supports (condition, content) ->
-      Pp.string ctx "@supports ";
-      (match condition with
-      | Supports.And (_, Supports.Function _)
-      | Supports.And (Supports.Function _, _) ->
-          Pp.char ctx '(';
-          Supports.pp ctx condition;
-          Pp.char ctx ')'
-      | _ -> Supports.pp ctx condition);
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
+      pp_container_statement ctx name condition content
+  | Supports (condition, content) -> pp_supports_statement ctx condition content
   | Moz_document (conditions, content) ->
       Pp.string ctx "@-moz-document ";
       Pp.list ~sep:Pp.comma pp_moz_document_condition ctx conditions;
@@ -799,82 +955,20 @@ and pp_statement : statement Pp.t =
       pp_conditional ctx condition;
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
-  | Else (condition, content) ->
-      Pp.string ctx "@else";
-      (match condition with
-      | None -> ()
-      | Some c ->
-          Pp.string ctx " ";
-          pp_conditional ctx c);
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
+  | Else (condition, content) -> pp_else_statement ctx condition content
   | Supports_condition (name, declarations) ->
       Pp.string ctx "@supports-condition ";
       Pp.string ctx name;
       Pp.sp ctx ();
       Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Origin (_, content) -> pp_block ctx content
-  | Scope (start, end_, content) ->
-      Pp.string ctx "@scope";
-      let replace_all pattern replacement s =
-        let plen = String.length pattern in
-        let slen = String.length s in
-        let buf = Buffer.create slen in
-        let rec loop i =
-          if i >= slen then ()
-          else if i + plen <= slen && String.sub s i plen = pattern then (
-            Buffer.add_string buf replacement;
-            loop (i + plen))
-          else (
-            Buffer.add_char buf s.[i];
-            loop (i + 1))
-        in
-        loop 0;
-        Buffer.contents buf
-      in
-      let compact_scope_combinators s =
-        s |> replace_all " > " ">" |> replace_all " + " "+"
-        |> replace_all " ~ " "~" |> replace_all " || " "||"
-      in
-      let pp_scope_selector ctx s =
-        let s =
-          try Selector.(to_string ~minify:(Pp.minified ctx) (of_string s))
-          with Cursor.Parse_error _ | Invalid_argument _ -> s
-        in
-        let s = String.trim s in
-        let s = compact_scope_combinators s in
-        Pp.string ctx (String.trim s)
-      in
-      (match start with
-      | Some s ->
-          Pp.space_if_pretty ctx ();
-          Pp.string ctx "(";
-          pp_scope_selector ctx s;
-          Pp.string ctx ")"
-      | None -> ());
-      (match end_ with
-      | Some e ->
-          Pp.string ctx (if Pp.minified ctx then "to (" else " to (");
-          pp_scope_selector ctx e;
-          Pp.string ctx ")"
-      | None -> ());
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
+  | Scope (start, end_, content) -> pp_scope_statement ctx start end_ content
   | Keyframes (name, frames) ->
-      Pp.string ctx "@keyframes ";
-      pp_keyframes_name ctx name;
-      Pp.sp ctx ();
-      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
+      pp_keyframes_block_statement ctx "@keyframes " name frames
   | Webkit_keyframes (name, frames) ->
-      Pp.string ctx "@-webkit-keyframes ";
-      pp_keyframes_name ctx name;
-      Pp.sp ctx ();
-      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
+      pp_keyframes_block_statement ctx "@-webkit-keyframes " name frames
   | Moz_keyframes (name, frames) ->
-      Pp.string ctx "@-moz-keyframes ";
-      pp_keyframes_name ctx name;
-      Pp.sp ctx ();
-      Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
+      pp_keyframes_block_statement ctx "@-moz-keyframes " name frames
   | Font_face descriptors ->
       Pp.string ctx "@font-face";
       Pp.sp ctx ();
@@ -896,20 +990,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
       Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (fun ctx () ->
-              Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx
-                descriptors;
-              if descriptors <> [] && margins <> [] then (
-                Pp.semicolon ctx ();
-                Pp.cut ctx ());
-              Pp.list ~sep:Pp.cut pp_page_margin_rule ctx margins)
-            ctx ();
-          Pp.cut ctx ())
-        ctx ()
+      pp_page_with_margins_body ctx descriptors margins
   | Font_palette_values (name, descriptors) ->
       Pp.string ctx "@font-palette-values ";
       Pp.string ctx name;
@@ -930,50 +1011,9 @@ and pp_statement : statement Pp.t =
       Pp.sp ctx ();
       Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Viewport (prefix, descriptors) ->
-      Pp.string ctx
-        (match prefix with
-        | Standard -> "@viewport"
-        | Ms_prefixed -> "@-ms-viewport");
-      Pp.sp ctx ();
-      Pp.braced_semicolon_list
-        (fun ctx { name; value } ->
-          Pp.string ctx name;
-          Pp.char ctx ':';
-          Pp.string ctx value)
-        ctx descriptors
-  | Unknown_at_rule { name; prelude; block } -> (
-      (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;], [}], or EOF.
-         When the Parser captures an unterminated nested block ([(...], [[...],
-         [{...]) its source slice can include the at-rule terminator or the
-         enclosing block's close - don't echo them as part of the prelude or
-         each round-trip stacks another [;]/[}]. *)
-      let prelude =
-        let rec trim_end i =
-          if i < 0 then 0
-          else
-            match prelude.[i] with
-            | ';' | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
-            | _ -> i + 1
-        in
-        let n = String.length prelude in
-        String.sub prelude 0 (trim_end (n - 1))
-      in
-      Pp.char ctx '@';
-      (* CSS Syntax 3 section 9.1: an at-rule name with non-ident-continue code
-         points (control chars, escapes, non-ASCII) must round-trip through
-         [escape_ident] so the serialized [\6 T] re-tokenizes back to the same
-         at-keyword token. *)
-      Pp.string ctx (Parser.escape_ident name);
-      if prelude <> "" then (
-        Pp.sp ctx ();
-        Pp.string ctx prelude);
-      match block with
-      | None -> Pp.semicolon ctx ()
-      | Some body ->
-          Pp.sp ctx ();
-          Pp.char ctx '{';
-          Pp.string ctx body;
-          Pp.char ctx '}')
+      pp_viewport_statement ctx prefix descriptors
+  | Unknown_at_rule { name; prelude; block } ->
+      pp_unknown_at_rule_statement ctx name prelude block
 
 and font_face_participates descriptors =
   List.exists (function Font_family _ -> true | _ -> false) descriptors
@@ -1243,9 +1283,10 @@ let read_import_media (r : Cursor.t) =
   else
     let loc = Cursor.position r in
     let raw = Cursor.consume_until_semicolon ~trim:true r in
-    try Some (Media.of_string_strict raw)
-    with Failure reason ->
-      Error.fail_bad_condition loc ~at_rule:"@media" ~reason
+    match Media.of_string_strict raw with
+    | media -> Some media
+    | exception Failure reason ->
+        Error.fail_bad_condition loc ~at_rule:"@media" ~reason
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
@@ -1304,42 +1345,46 @@ let read_namespace (r : Cursor.t) : statement =
   if Cursor.peek_semicolon r then Cursor.skip r;
   Namespace (prefix, uri)
 
+let rec skip_bad_keyframe inner =
+  match Cursor.peek_raw inner with
+  | None -> ()
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      ignore (Cursor.next_raw inner : Component.t option)
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
+      ignore (Cursor.next_raw inner : Component.t option)
+  | Some _ ->
+      ignore (Cursor.next_raw inner : Component.t option);
+      skip_bad_keyframe inner
+
+let read_keyframe_or_skip inner acc =
+  let snap = Cursor.save inner in
+  match read_keyframe inner with
+  | frame -> `Frame frame
+  | exception Cursor.Parse_error e ->
+      (* Invalid keyframe rules are ignored, but the surrounding block keeps
+         parsing. *)
+      Cursor.restore inner snap;
+      Cursor.push_warning inner e;
+      skip_bad_keyframe inner;
+      `Skip acc
+
+let read_keyframes_step inner acc =
+  match Cursor.peek inner with
+  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
+      Cursor.err_invalid inner ("@keyframes nested @" ^ name)
+  | _ -> (
+      match read_keyframe_or_skip inner acc with
+      | `Frame frame -> frame :: acc
+      | `Skip acc -> acc)
+
 let read_keyframes_block inner =
   (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
      selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only drops
      that rule, the surrounding block keeps parsing. *)
-  let skip_bad_item () =
-    let rec skip () =
-      match Cursor.peek_raw inner with
-      | None -> ()
-      | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-          ignore (Cursor.next_raw inner : Component.t option)
-      | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-          ignore (Cursor.next_raw inner : Component.t option)
-      | Some _ ->
-          ignore (Cursor.next_raw inner : Component.t option);
-          skip ()
-    in
-    skip ()
-  in
   let rec read_frames acc =
     Cursor.ws inner;
     if Cursor.is_done inner then List.rev acc
-    else
-      match Cursor.peek inner with
-      | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-          Cursor.err_invalid inner ("@keyframes nested @" ^ name)
-      | _ -> (
-          let snap = Cursor.save inner in
-          match read_keyframe inner with
-          | frame -> read_frames (frame :: acc)
-          | exception Cursor.Parse_error e ->
-              (* Invalid keyframe rules are ignored, but the surrounding block
-                 keeps parsing. *)
-              Cursor.restore inner snap;
-              Cursor.push_warning inner e;
-              skip_bad_item ();
-              read_frames acc)
+    else read_frames (read_keyframes_step inner acc)
   in
   read_frames []
 
@@ -1483,6 +1528,78 @@ let read_string_descriptor name constructor r =
       constructor value)
     r
 
+let read_font_family_descriptor r =
+  read_descriptor_value
+    (fun r -> Cursor.list ~sep:Cursor.comma Properties.read_font_family r)
+    (fun v -> Font_family v)
+    r
+
+let read_font_stretch_descriptor_value value =
+  let c = Cursor.of_string value in
+  let first = Properties.read_font_stretch c in
+  Cursor.ws c;
+  if Cursor.is_done c then Font_stretch first
+  else (
+    ignore (Properties.read_font_stretch c);
+    Cursor.ws c;
+    Cursor.expect_eof c;
+    Font_stretch_range value)
+
+let read_font_stretch_descriptor r =
+  read_descriptor_value Declaration.read_property_value
+    read_font_stretch_descriptor_value r
+
+let read_unicode_range_descriptor r =
+  read_descriptor_value
+    (fun cur ->
+      Cursor.list ~at_least:1 ~sep:Cursor.comma Properties.read_unicode_range
+        cur)
+    (fun vs -> Unicode_range vs)
+    r
+
+let read_font_face_desc name r =
+  match name with
+  | "font-family" -> read_font_family_descriptor r
+  | "src" -> read_descriptor_value Font_face.read_src (fun v -> Src v) r
+  | "font-style" -> read_font_style_descriptor r
+  | "font-weight" -> read_font_weight_descriptor r
+  | "font-stretch" -> read_font_stretch_descriptor r
+  | "font-display" ->
+      read_descriptor_value Properties.read_font_display
+        (fun v -> Font_display v)
+        r
+  | "unicode-range" -> read_unicode_range_descriptor r
+  | "font-variant" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Font_variant v)
+        r
+  | "font-feature-settings" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Font_feature_settings v)
+        r
+  | "font-variation-settings" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Font_variation_settings v)
+        r
+  | "font-tech" -> read_string_descriptor "font-tech" (fun v -> Font_tech v) r
+  | "size-adjust" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Size_adjust (Font_face.size_adjust_of_string v))
+        r
+  | "ascent-override" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Ascent_override (Font_face.metric_override_of_string v))
+        r
+  | "descent-override" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Descent_override (Font_face.metric_override_of_string v))
+        r
+  | "line-gap-override" ->
+      read_descriptor_value Declaration.read_property_value
+        (fun v -> Line_gap_override (Font_face.metric_override_of_string v))
+        r
+  | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
+
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -1491,73 +1608,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
     None)
   else
     let name = Cursor.ident ~keep_case:false r in
-    let descriptor =
-      match name with
-      | "font-family" ->
-          read_descriptor_value
-            (fun r ->
-              Cursor.list ~sep:Cursor.comma Properties.read_font_family r)
-            (fun v -> Font_family v)
-            r
-      | "src" -> read_descriptor_value Font_face.read_src (fun v -> Src v) r
-      | "font-style" -> read_font_style_descriptor r
-      | "font-weight" -> read_font_weight_descriptor r
-      | "font-stretch" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun value ->
-              let c = Cursor.of_string value in
-              let first = Properties.read_font_stretch c in
-              Cursor.ws c;
-              if Cursor.is_done c then Font_stretch first
-              else (
-                ignore (Properties.read_font_stretch c);
-                Cursor.ws c;
-                Cursor.expect_eof c;
-                Font_stretch_range value))
-            r
-      | "font-display" ->
-          read_descriptor_value Properties.read_font_display
-            (fun v -> Font_display v)
-            r
-      | "unicode-range" ->
-          read_descriptor_value
-            (fun cur ->
-              Cursor.list ~at_least:1 ~sep:Cursor.comma
-                Properties.read_unicode_range cur)
-            (fun vs -> Unicode_range vs)
-            r
-      | "font-variant" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Font_variant v)
-            r
-      | "font-feature-settings" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Font_feature_settings v)
-            r
-      | "font-variation-settings" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Font_variation_settings v)
-            r
-      | "font-tech" ->
-          read_string_descriptor "font-tech" (fun v -> Font_tech v) r
-      | "size-adjust" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Size_adjust (Font_face.size_adjust_of_string v))
-            r
-      | "ascent-override" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Ascent_override (Font_face.metric_override_of_string v))
-            r
-      | "descent-override" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Descent_override (Font_face.metric_override_of_string v))
-            r
-      | "line-gap-override" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Line_gap_override (Font_face.metric_override_of_string v))
-            r
-      | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
-    in
+    let descriptor = read_font_face_desc name r in
     Cursor.ws r;
     if Cursor.peek_semicolon r then Cursor.skip r;
     Some descriptor
@@ -1694,15 +1745,17 @@ let replace_counter_style_descriptor desc acc =
          <> counter_style_descriptor_rank desc)
        acc
 
+let continue_descriptor_loop inner acc loop =
+  Cursor.ws inner;
+  if Cursor.is_done inner then List.rev acc else loop acc
+
 let read_counter_style_descriptors r =
   Cursor.braces
     (fun inner ->
       let rec loop acc =
         match read_counter_style_descriptor inner with
         | Some desc -> loop (replace_counter_style_descriptor desc acc)
-        | None ->
-            Cursor.ws inner;
-            if Cursor.is_done inner then List.rev acc else loop acc
+        | None -> continue_descriptor_loop inner acc loop
       in
       loop [])
     r
@@ -2062,15 +2115,12 @@ let skip_semicolon_tail inner =
 
 let read_font_feature_values_entries outer =
   let rec loop inner acc =
-    match
-      try Ok (read_font_feature_value_entry outer inner)
-      with Error.Parse_error e -> Error e
-    with
-    | Ok (Some entry) -> loop inner (replace_font_feature_value entry acc)
-    | Ok None ->
+    match read_font_feature_value_entry outer inner with
+    | Some entry -> loop inner (replace_font_feature_value entry acc)
+    | None ->
         Cursor.ws inner;
         if Cursor.is_done inner then List.rev acc else loop inner acc
-    | Error e ->
+    | exception Error.Parse_error e ->
         Cursor.push_warning inner e;
         skip_semicolon_tail inner;
         loop inner acc
@@ -2173,9 +2223,7 @@ let read_view_transition_descriptors outer =
       let rec loop acc =
         match read_view_transition_descriptor outer inner with
         | Some desc -> loop (replace_view_transition_descriptor desc acc)
-        | None ->
-            Cursor.ws inner;
-            if Cursor.is_done inner then List.rev acc else loop acc
+        | None -> continue_descriptor_loop inner acc loop
       in
       loop [])
     outer
@@ -2266,6 +2314,27 @@ let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
+let trim_unknown_block_body body =
+  let rec trim_end i =
+    if i < 0 then 0
+    else
+      match body.[i] with
+      | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
+      | _ -> i + 1
+  in
+  let n = String.length body in
+  String.sub body 0 (trim_end (n - 1))
+
+let unknown_block_body slice value =
+  match value with
+  | [] -> ""
+  | _ ->
+      let first = Component.source_loc (List.hd value) in
+      let last =
+        Component.source_loc (List.nth value (List.length value - 1))
+      in
+      slice first.Loc.start_pos last.Loc.end_pos |> trim_unknown_block_body
+
 (* CSS Syntax 3 §5.4.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
    prelude/block strings are sliced from the original source so the at-rule
@@ -2287,33 +2356,12 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
         ignore (Cursor.next_raw r)
     | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
       ->
-        let body =
-          match value with
-          | [] -> ""
-          | _ ->
-              let first = Component.source_loc (List.hd value) in
-              let last =
-                Component.source_loc (List.nth value (List.length value - 1))
-              in
-              slice first.Loc.start_pos last.Loc.end_pos
-        in
         (* CSS Syntax 3 section 5.4.2: when an unterminated nested block
            ([(...], [[...]) inside the at-rule's body extends to EOF, the
            Parser's source slice carries the close [}] and any trailing
            whitespace from outside the block - trim them so the serializer
            re-adds its own [}] without stacking. *)
-        let body =
-          let rec trim_end i =
-            if i < 0 then 0
-            else
-              match body.[i] with
-              | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
-              | _ -> i + 1
-          in
-          let n = String.length body in
-          String.sub body 0 (trim_end (n - 1))
-        in
-        block := Option.Some body;
+        block := Option.Some (unknown_block_body slice value);
         ignore (Cursor.next_raw r)
     | Some comp ->
         let loc = Component.source_loc comp in
@@ -2532,8 +2580,9 @@ and read_else (r : Cursor.t) : statement =
     with
     | [] -> None
     | _ -> (
-        try Some (conditional_components prelude)
-        with Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
+        match conditional_components prelude with
+        | condition -> Some condition
+        | exception Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
   in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Else (condition, content)
@@ -2620,8 +2669,9 @@ and read_container (r : Cursor.t) : statement =
   let condition =
     if condition_str = "" then None
     else
-      try Some (Container.of_string condition_str)
-      with Failure msg -> Cursor.err_invalid r msg
+      match Container.of_string condition_str with
+      | condition -> Some condition
+      | exception Failure msg -> Cursor.err_invalid r msg
   in
   (* CSS Containment 3 section 4: [@container] requires a query (with an
      optional [<container-name>] in front). Bare [@container { ... }] is a parse
@@ -2672,23 +2722,6 @@ and read_layer (r : Cursor.t) : statement =
           Layer (Some first, content)
       | _ -> Cursor.err_invalid r "expected ';' or '{' after @layer name")
 
-(* Helper: Read declarations until closing brace *)
-and _read_declarations_block (r : Cursor.t) : Declaration.declaration list =
-  let rec loop acc =
-    Cursor.ws r;
-    if Cursor.is_done r then List.rev acc
-    else
-      match Declaration.read_declaration r with
-      | Some d ->
-          Cursor.ws r;
-          if Cursor.peek_semicolon r then Cursor.skip r;
-          loop (d :: acc)
-      | None ->
-          (* If we can't read a declaration, check if we're at the end *)
-          List.rev acc
-  in
-  loop []
-
 (* Helper: Read a block that can contain either bare declarations or statements.
    Used for CSS nesting contexts where content inside @media/@supports/etc can
    be either bare declarations (inheriting the parent selector) or nested
@@ -2696,44 +2729,48 @@ and _read_declarations_block (r : Cursor.t) : Declaration.declaration list =
 and read_nesting_block (r : Cursor.t) : block =
   let rec read_items acc =
     Cursor.ws r;
-    match Cursor.peek r with
-    | None -> List.rev acc
-    | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-        let stmt = read_statement r in
-        read_items (stmt :: acc)
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-        Cursor.skip r;
-        read_items acc
-    | _ -> (
-        match Declaration.read_declaration r with
-        | Some decl ->
-            Cursor.ws r;
-            let rec read_more_decls acc =
-              match Cursor.peek r with
-              | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> (
-                  Cursor.skip r;
-                  Cursor.ws r;
-                  match Cursor.peek r with
-                  | None -> List.rev acc
-                  | Some (Component.Preserved { kind = Token.At_keyword _; _ })
-                    ->
-                      List.rev acc
-                  | _ -> (
-                      match Declaration.read_declaration r with
-                      | Some d ->
-                          Cursor.ws r;
-                          read_more_decls (d :: acc)
-                      | None -> List.rev acc))
-              | _ -> List.rev acc
-            in
-            let all_decls = read_more_decls [ decl ] in
-            let stmt = Declarations all_decls in
-            read_items (stmt :: acc)
-        | None ->
-            let stmt = read_statement r in
-            read_items (stmt :: acc))
+    match read_nesting_item r with
+    | `Done -> List.rev acc
+    | `Skip -> read_items acc
+    | `Stmt stmt -> read_items (stmt :: acc)
   in
   read_items []
+
+and read_nesting_item r =
+  match Cursor.peek r with
+  | None -> `Done
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      `Stmt (read_statement r)
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      Cursor.skip r;
+      `Skip
+  | _ -> read_nesting_declaration_or_statement r
+
+and read_nesting_declaration_or_statement r =
+  match Declaration.read_declaration r with
+  | Some decl ->
+      Cursor.ws r;
+      `Stmt (Declarations (read_more_nested_decls r [ decl ]))
+  | None -> `Stmt (read_statement r)
+
+and read_more_nested_decls r acc =
+  match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      Cursor.skip r;
+      Cursor.ws r;
+      read_nested_decl_after_semicolon r acc
+  | _ -> List.rev acc
+
+and read_nested_decl_after_semicolon r acc =
+  match Cursor.peek r with
+  | None | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      List.rev acc
+  | _ -> (
+      match Declaration.read_declaration r with
+      | Some d ->
+          Cursor.ws r;
+          read_more_nested_decls r (d :: acc)
+      | None -> List.rev acc)
 
 (* Helper: Read nested at-rule with declarations content *)
 and read_nested_at_rule (r : Cursor.t) (at_rule : string)
@@ -2743,37 +2780,45 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   Cursor.expect_at_keyword name r;
   Cursor.ws r;
   match at_rule with
-  | "@container" ->
-      let container_name = Cursor.option Cursor.ident r in
-      Cursor.ws r;
-      let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
-      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      let condition =
-        if condition_str = "" then None
-        else Some (Container.of_string condition_str)
-      in
-      Container (container_name, condition, content)
-  | "@supports" ->
-      let cond_loc = Cursor.position r in
-      let condition = Cursor.drain_until_block_as_string ~trim:true r in
-      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Supports (supports_condition ~loc:cond_loc condition, content)
-  | "@media" ->
-      let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
-      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      let condition =
-        if String.length condition_str = 0 then Media.List []
-        else
-          try Media.of_string_strict condition_str
-          with Failure _ -> Media.of_string "not all"
-      in
-      Media (condition, content)
-  | "@scope" ->
-      let prelude_components = Cursor.drain_until_block r in
-      let scope_start, scope_end = scope_prelude r prelude_components in
-      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Scope (scope_start, scope_end, content)
+  | "@container" -> read_nested_container_rule r
+  | "@supports" -> read_nested_supports_rule r
+  | "@media" -> read_nested_media_rule r
+  | "@scope" -> read_nested_scope_rule r
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
+
+and read_nested_container_rule r =
+  let container_name = Cursor.option Cursor.ident r in
+  Cursor.ws r;
+  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+  let condition =
+    if condition_str = "" then None
+    else Some (Container.of_string condition_str)
+  in
+  Container (container_name, condition, content)
+
+and read_nested_supports_rule r =
+  let cond_loc = Cursor.position r in
+  let condition = Cursor.drain_until_block_as_string ~trim:true r in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+  Supports (supports_condition ~loc:cond_loc condition, content)
+
+and read_nested_media_rule r =
+  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+  Media (read_nested_media_condition condition_str, content)
+
+and read_nested_media_condition condition_str =
+  if String.length condition_str = 0 then Media.List []
+  else
+    try Media.of_string_strict condition_str
+    with Failure _ -> Media.of_string "not all"
+
+and read_nested_scope_rule r =
+  let prelude_components = Cursor.drain_until_block r in
+  let scope_start, scope_end = scope_prelude r prelude_components in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+  Scope (scope_start, scope_end, content)
 
 and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
     statement =
@@ -2836,55 +2881,57 @@ and read_rule_item selector inner decls nested =
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip inner;
       `Continue (decls, nested)
-  | _ -> (
-      match Declaration.read_declaration inner with
-      | Some d ->
-          Cursor.ws inner;
-          if Cursor.peek_semicolon inner then Cursor.skip inner;
-          `Continue (d :: decls, nested)
-      | None ->
-          if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
-          else
-            let nr = read_rule inner in
-            if
-              is_bare_nesting_selector selector
-              && is_bare_nesting_selector nr.selector
-            then
-              Cursor.err_invalid inner
-                "bare nesting selector cannot directly nest another bare \
-                 nesting selector";
-            `Continue (decls, Rule nr :: nested))
+  | _ -> read_rule_decl_or_nested selector inner decls nested
+
+and read_rule_decl_or_nested selector inner decls nested =
+  match Declaration.read_declaration inner with
+  | Some d ->
+      Cursor.ws inner;
+      if Cursor.peek_semicolon inner then Cursor.skip inner;
+      `Continue (d :: decls, nested)
+  | None -> read_nested_rule_or_done selector inner decls nested
+
+and read_nested_rule_or_done selector inner decls nested =
+  if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
+  else
+    let nr = read_rule inner in
+    validate_nested_rule_selector inner selector nr.selector;
+    `Continue (decls, Rule nr :: nested)
+
+and validate_nested_rule_selector inner selector nested_selector =
+  if
+    is_bare_nesting_selector selector
+    && is_bare_nesting_selector nested_selector
+  then
+    Cursor.err_invalid inner
+      "bare nesting selector cannot directly nest another bare nesting selector"
 
 and read_rule_body selector inner =
   let rec loop decls nested =
     Cursor.ws inner;
-    if Cursor.recover inner then (
-      match
-        try Ok (read_rule_item selector inner decls nested)
-        with Error.Parse_error e -> Error e
-      with
-      | Ok (`Done result) -> result
-      | Ok (`Continue (decls, nested)) -> loop decls nested
-      | Error e ->
-          (* Per 5.4.4, an invalid declaration is discarded; the enclosing rule
-             survives. Push the warning on the cursor so the top-level
-             [read_stylesheet_of_rules] drain sees it, and skip to the next [;]
-             or end of block. *)
-          Cursor.push_warning inner e;
-          let rec skip () =
-            match Cursor.next_raw inner with
-            | None -> ()
-            | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-            | Some _ -> skip ()
-          in
-          skip ();
-          loop decls nested)
+    if Cursor.recover inner then
+      read_recovering_rule_item selector inner loop decls nested
     else
       match read_rule_item selector inner decls nested with
       | `Done result -> result
       | `Continue (decls, nested) -> loop decls nested
   in
   loop [] []
+
+and read_recovering_rule_item selector inner loop decls nested =
+  match read_rule_item selector inner decls nested with
+  | `Done result -> result
+  | `Continue (decls, nested) -> loop decls nested
+  | exception Error.Parse_error e ->
+      Cursor.push_warning inner e;
+      skip_bad_rule_item inner;
+      loop decls nested
+
+and skip_bad_rule_item inner =
+  match Cursor.next_raw inner with
+  | None -> ()
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+  | Some _ -> skip_bad_rule_item inner
 
 and read_rule (r : Cursor.t) : rule =
   Cursor.with_context r "rule" @@ fun () ->
@@ -3036,7 +3083,9 @@ let read_statement_of_rule ?source ?meta (rule : Component.rule) :
     Cursor.t * (statement, Error.t) result =
   let r = cursor_of_rule ?source ?meta rule in
   let result =
-    try Ok (read_statement r) with Error.Parse_error e -> Error e
+    match read_statement r with
+    | stmt -> Ok stmt
+    | exception Error.Parse_error e -> Error e
   in
   (r, result)
 

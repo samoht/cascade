@@ -203,7 +203,7 @@ let test_color () =
   check_color ~expected:"#FFF" "#FFFFFF";
   (* Additional named colors *)
   check_color ~expected:"#639" "rebeccapurple";
-  check_color "aliceblue";
+  check_color ~expected:"#f0f8ff" "aliceblue";
 
   (* Modern color notations *)
   (* Hue 'deg' unit is default and should be dropped in minified output *)
@@ -243,8 +243,7 @@ let test_color () =
 
   (* Named colors - all variants. Under minification, named colors serialize to
      the shortest spec-equivalent spelling; equal-length named/hex ties use the
-     hex spelling to match the Lightning CSS oracle and keep color
-     canonicalization idempotent. *)
+     hex spelling to match the documented minified-mode policy. *)
   check_color "red";
   check_color ~expected:"#00f" "blue";
   check_color "green";

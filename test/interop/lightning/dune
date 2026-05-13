@@ -1,22 +1,13 @@
 (test
  (name test)
  (libraries cascade alcotest unix re.str fmt)
- (modules test trace_pairs)
  (deps
   (source_tree traces)))
 
-(executable
- (name bench)
- (libraries cascade unix fmt)
- (modules bench trace_pairs))
+; Regenerate the Lightning-derived input corpus and cached oracle answers from
+; the configured minifiers. Normal test runs read this trace and do not call
+; external minifier CLIs. Only run on demand: [dune build @regen-traces].
 
-; Regenerate traces against Lightning CSS: dune build @regen-traces
-
-(rule
- (alias regen-traces)
- (deps
-  (source_tree scripts))
- (action
-  (chdir
-   scripts
-   (run ./generate.sh))))
+(alias
+ (name regen-traces)
+ (deps traces/minify.pairs))

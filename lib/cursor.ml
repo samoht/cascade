@@ -121,7 +121,7 @@ let position t =
 let remaining t = t.cvs
 
 let string_of_components ?(trim = false) cvs =
-  let s = Parser.to_string cvs in
+  let s = Parser.string_of_components cvs in
   if trim then String.trim s else s
 
 let string_of_remaining ?(trim = false) t =
@@ -206,11 +206,12 @@ let try_typed_call (typed : t -> 'a) (t : t) : ('a, Component.t) result =
   let snap = save t in
   match peek t with
   | Some (Component.Func _ as comp) -> (
-      try Ok (typed t)
-      with Parse_error _ ->
-        restore t snap;
-        skip t;
-        Error comp)
+      match typed t with
+      | value -> Ok value
+      | exception Parse_error _ ->
+          restore t snap;
+          skip t;
+          Error comp)
   | _ -> Ok (typed t)
 
 (** {1 Token-shape helpers - option variants} *)
@@ -461,6 +462,19 @@ let closer_loc (node_loc : Loc.t) =
 let func_sub (fn : Component.func Component.node) t =
   sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments
 
+let url_from_func t (fn : Component.func Component.node) =
+  if not fn.node.terminated then err_expected t "terminated url";
+  skip t;
+  let inner = func_sub fn t in
+  match string_opt inner with
+  | Some s ->
+      ws inner;
+      if is_done inner then s else err_expected t "url argument"
+  | None ->
+      let components = remaining inner in
+      let raw = Parser.to_string_minified components in
+      if raw = "" then err_expected t "url argument" else raw
+
 let url t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Url ""; loc }) ->
@@ -470,23 +484,9 @@ let url t =
   | Some (Component.Preserved { kind = Token.Url s; _ }) ->
       skip t;
       s
-  | _ -> (
-      match peek t with
-      | Some
-          (Component.Func ({ node = { name = "url"; terminated; _ }; _ } as fn))
-        -> (
-          if not terminated then err_expected t "terminated url";
-          skip t;
-          let inner = func_sub fn t in
-          match string_opt inner with
-          | Some s ->
-              ws inner;
-              if is_done inner then s else err_expected t "url argument"
-          | None ->
-              let components = remaining inner in
-              let raw = Parser.to_string_minified components in
-              if raw = "" then err_expected t "url argument" else raw)
-      | _ -> err_expected t "url")
+  | Some (Component.Func ({ node = { name = "url"; _ }; _ } as fn)) ->
+      url_from_func t fn
+  | _ -> err_expected t "url"
 
 let pct ?(clamp = false) t =
   match percentage_opt t with
@@ -804,30 +804,42 @@ let fold_many p ~init ~f t =
   in
   loop init
 
+let list_consume_separator sep t =
+  match sep with
+  | None -> true
+  | Some s -> (
+      let snap = save t in
+      match s t with
+      | () -> true
+      | exception Parse_error _ ->
+          restore t snap;
+          false)
+
+type 'a collect_step =
+  | Collect_done of 'a list
+  | Collect_continue of 'a list * int
+
+let list_collect_step sep item t acc n max =
+  if n >= max then Collect_done (List.rev acc)
+  else
+    let snap = save t in
+    match option item t with
+    | None -> Collect_done (List.rev acc)
+    | Some v ->
+        if t.cvs == snap then err t "list item consumed no input";
+        let acc = v :: acc in
+        if n + 1 >= max then Collect_done (List.rev acc)
+        else if list_consume_separator sep t then Collect_continue (acc, n + 1)
+        else Collect_done (List.rev acc)
+
+let rec list_collect sep item t acc n max =
+  match list_collect_step sep item t acc n max with
+  | Collect_done items -> items
+  | Collect_continue (acc, n) -> list_collect sep item t acc n max
+
 let list ?sep ?(at_least = 0) ?at_most item t =
   let max = Option.value at_most ~default:max_int in
-  let rec loop acc n =
-    if n >= max then List.rev acc
-    else
-      let snap = save t in
-      match option item t with
-      | None -> List.rev acc
-      | Some v -> (
-          if t.cvs == snap then err t "list item consumed no input";
-          let acc = v :: acc in
-          if n + 1 >= max then List.rev acc
-          else
-            match sep with
-            | None -> loop acc (n + 1)
-            | Some s -> (
-                let snap = save t in
-                match s t with
-                | () -> loop acc (n + 1)
-                | exception Parse_error _ ->
-                    restore t snap;
-                    List.rev acc))
-  in
-  let items = loop [] 0 in
+  let items = list_collect sep item t [] 0 max in
   let len = List.length items in
   if len < at_least then
     err_expected t
