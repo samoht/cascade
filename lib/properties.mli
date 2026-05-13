@@ -1319,9 +1319,8 @@ val pp_hue_interpolation_method : hue_interpolation_method Pp.t
 (** [pp_hue_interpolation_method] pretty-prints a hue interpolation method. *)
 
 val read_hue_interpolation_method : Cursor.t -> hue_interpolation_method option
-(** [read_hue_interpolation_method t] parses a trailing hue interpolation
-    method such as ["shorter hue"], returning [None] when no method is present.
-*)
+(** [read_hue_interpolation_method t] parses a trailing hue interpolation method
+    such as ["shorter hue"], returning [None] when no method is present. *)
 
 val pp_radial_shape : radial_shape Pp.t
 (** [pp_radial_shape] is the pretty-printer for [radial_shape]. *)

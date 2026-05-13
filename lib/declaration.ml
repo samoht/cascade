@@ -267,11 +267,11 @@ let is_decl_unknown_property_name name =
       Cursor.ws r;
       Cursor.is_done r
   | Prop _ -> false
-  | exception Cursor.Parse_error _ ->
+  | exception Cursor.Parse_error _ -> (
       (* [read_any_property] now rejects unrecognized names; treat them as
          unknown if the input was otherwise a well-formed ident. *)
       let r = Cursor.of_string name in
-      (match Cursor.ident r with
+      match Cursor.ident r with
       | _ ->
           Cursor.ws r;
           Cursor.is_done r
@@ -1678,9 +1678,9 @@ let is_unknown_property_name name =
       Cursor.ws r;
       Cursor.is_done r
   | Prop _ -> false
-  | exception Cursor.Parse_error _ ->
+  | exception Cursor.Parse_error _ -> (
       let r = Cursor.of_string name in
-      (match Cursor.ident r with
+      match Cursor.ident r with
       | _ ->
           Cursor.ws r;
           Cursor.is_done r

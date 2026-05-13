@@ -765,7 +765,8 @@ let list_properties () =
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
   check_declaration ~expected:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
-  check_declaration ~expected:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
+  check_declaration
+    ~expected:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
   check_declaration ~expected:"box-shadow:inset 0 2px 4px #0000000f"
     "box-shadow: inset 0 2px 4px rgba(0,0,0,0.06)";
@@ -789,8 +790,7 @@ let list_properties () =
 
   (* Transition *)
   check_declaration ~expected:"transition:none" "transition: none";
-  check_declaration ~expected:"transition:all .3s"
-    "transition: all 0.3s ease";
+  check_declaration ~expected:"transition:all .3s" "transition: all 0.3s ease";
   check_declaration ~expected:"transition:all .3s linear"
     "transition: all .3s linear";
   check_declaration ~expected:"transition:opacity 1s ease-in .5s"
@@ -1121,8 +1121,8 @@ let edge_cases () =
   in
   check_declaration
     ~expected:
-      "box-shadow:0 1px 2px #0000001a,0 2px 4px #0000001a,0 4px 8px #0000001a,0 \
-       8px 16px #0000001a"
+      "box-shadow:0 1px 2px #0000001a,0 2px 4px #0000001a,0 4px 8px \
+       #0000001a,0 8px 16px #0000001a"
     ("box-shadow: " ^ long_shadow)
 
 let css_wide_keywords () =
@@ -1402,8 +1402,8 @@ let spec_platform_property_vectors () =
         "color:light-dark(canvastext,#fff)" );
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
          url(a.png) type(\"image/png\") 1x)",
-        "background-image:image-set(url(a.avif) type(\"image/avif\")\
-         1x,url(a.png) type(\"image/png\")1x)" );
+        "background-image:image-set(url(a.avif) \
+         type(\"image/avif\")1x,url(a.png) type(\"image/png\")1x)" );
       ("width: attr(data-w px, 10px)", "width:attr(data-w px,10px)");
       ( "width: attr(data-w px, calc(100% - 1rem))",
         "width:attr(data-w px,calc(100% - 1rem))" );
@@ -1507,8 +1507,7 @@ let spec_values_l45_edges () =
         "filter:drop-shadow(0 0 2px #0006)" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
         "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
-      ( "background-position: left 10px top 20%",
-        "background-position:10px 20%" );
+      ("background-position: left 10px top 20%", "background-position:10px 20%");
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
       ( "clip-path: xywh(0 0 100% 100% round 10px)",
         "clip-path:xywh(0 0 100% 100% round 10px)" );
