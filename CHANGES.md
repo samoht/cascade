@@ -1,9 +1,8 @@
 ## 0.9.0
 
 First public release. Cascade was extracted from the [tw](https://github.com/samoht/tw)
-(Tailwind CSS v4 in OCaml) project as a standalone library and stabilised over
-several internal milestones; this release consolidates that work behind a
-typed public API.
+(Tailwind CSS v4 in OCaml) project as a standalone CSS command-line tool and
+library, then stabilised over several internal milestones.
 
 ### Library
 
@@ -20,8 +19,8 @@ typed public API.
   (`Css.to_string ?minify`), with several typed printers exposed
   (`pp_color`, `pp_length`, ...).
 - Structural transforms (`fold`, `map`, `sort`, `flatten_nesting`,
-  `inline_imports`) and a structural CSS diff via the `cascade.diff`
-  sub-library.
+  `inline_imports`) and structural CSS diff utilities via the
+  `cascade.diff` sub-library.
 - Optimizer with deduplication, rule merging, selector combining, and
   shorthand/longhand coverage including `all` reset folding.
 - Spec coverage:
@@ -55,18 +54,27 @@ typed public API.
 
 ### CLI tools
 
-- `cascade` -- pretty-print, minify, and optimize CSS files. Accepts
-  stdin via `-`.
-- `cssdiff` -- structural CSS diff between two files with `auto`,
-  `tree`, and `string` modes; respects `NO_COLOR`.
+- `cascade` -- pretty-print and minify CSS files. It accepts stdin via `-`
+  or a missing file argument, and writes output to stdout.
+- `cascade --minify` applies the standard safe transforms, including
+  deduplication, rule merging, selector grouping, empty-rule elimination, and
+  nested-rule flattening.
+- `cascade --inline-imports` resolves local `@import` rules relative to the
+  input file, and `cascade --inline-vars` substitutes static custom-property
+  references. `--keep-vars=NAMES` preserves selected custom properties.
+- `cascade diff` provides structural CSS diffing between two files with
+  `auto`, `tree`, `string`, and `semantic` modes; respects `NO_COLOR` and
+  `CASCADE_COLOR`.
+- The CLI is installable as a binary through the Homebrew tap
+  `samoht/tap/cascade`, with opam installation still available for OCaml users.
 
 ### Notes
 
 - `cascade` parses already-decoded UTF-8 strings. The CSS Syntax Level 3
   byte-stream decoding step (BOM handling, `@charset` byte sniffing,
   HTTP/environment charset fallback) is the caller's responsibility.
-- CSS nesting round-trips through the parser and printer; the optimizer
-  does not yet flatten nested rules.
-- `@import` rules are preserved as-is; cascade does not resolve or inline
-  imports.
+- CSS nesting round-trips through the parser and printer, and the minifier
+  flattens nested rules when safe.
+- `@import` rules are preserved by default. Use `--inline-imports` for
+  explicit closed-world filesystem inlining.
 - No source-map support.
