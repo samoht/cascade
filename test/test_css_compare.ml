@@ -175,6 +175,21 @@ let semantic_before_content_redundant_seed () =
     true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let semantic_legacy_pseudo_element_alias () =
+  let legacy =
+    "@layer utilities{.prose :where(blockquote \
+     p:first-of-type):not(:where([class~=not-prose],[class~=not-prose] \
+     *)):before{content:\"\"}}"
+  in
+  let modern =
+    "@layer utilities{.prose :where(blockquote \
+     p:first-of-type):not(:where([class~=not-prose],[class~=not-prose] \
+     *))::before{content:\"\"}}"
+  in
+  match Cascade_diff.Css_compare.diff ~mode:`Canonical legacy modern with
+  | Cascade_diff.Css_compare.No_diff -> ()
+  | _ -> Alcotest.fail "expected :before and ::before to canonicalize equally"
+
 let semantic_vendor_recovered () =
   let expected =
     "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent }"
@@ -472,6 +487,8 @@ let suite =
         semantic_prose_shadow_unknown_var;
       Alcotest.test_case "semantic before content redundant seed" `Quick
         semantic_before_content_redundant_seed;
+      Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
+        semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick
         semantic_vendor_recovered;
       Alcotest.test_case "semantic transparent string is literal" `Quick
