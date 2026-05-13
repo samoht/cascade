@@ -4,10 +4,15 @@
  (deps
   (source_tree traces)))
 
-; Regenerate the Lightning-derived input corpus and cached oracle answers from
-; the configured minifiers. Normal test runs read this trace and do not call
-; external minifier CLIs. Only run on demand: [dune build @regen-traces].
+; Regenerate the Lightning-derived input corpus and cached oracle answers
+; from the configured minifiers. Normal test runs read this trace and do not
+; call external minifier CLIs. Only run on demand: [dune build @regen-traces].
 
-(alias
- (name regen-traces)
- (deps traces/minify.pairs))
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))
