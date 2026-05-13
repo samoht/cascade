@@ -163,6 +163,10 @@ val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
 
+val calc_contains_var : 'a calc -> bool
+(** [calc_contains_var calc] is true when [calc] contains a calc-level [var()]
+    reference, including inside numeric math functions. *)
+
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)
 
@@ -227,7 +231,7 @@ module Calc : sig
   val ( / ) : 'a calc -> 'a calc -> 'a calc
   (** [a / b] is the calc division. *)
 
-  val length : 'a -> 'a calc
+  val length : length -> length calc
   (** [length v] wraps a value as a calc leaf. *)
 
   val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc

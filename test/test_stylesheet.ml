@@ -4603,6 +4603,46 @@ let customprops12_inlining () =
     ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing)) }");
   Alcotest.(check string)
+    "calc var times one keeps var arithmetic"
+    ".x{padding:calc(var(--spacing)*1)}"
+    (normalize ".x { padding: calc(var(--spacing) * 1) }");
+  Alcotest.(check string)
+    "calc one times var keeps var arithmetic"
+    ".x{padding:calc(1*var(--spacing))}"
+    (normalize ".x { padding: calc(1 * var(--spacing)) }");
+  Alcotest.(check string)
+    "calc var divided by one keeps var arithmetic"
+    ".x{padding:calc(var(--spacing)/1)}"
+    (normalize ".x { padding: calc(var(--spacing) / 1) }");
+  Alcotest.(check string)
+    "calc var plus zero keeps var arithmetic"
+    ".x{padding:calc(var(--spacing) + 0px)}"
+    (normalize ".x { padding: calc(var(--spacing) + 0px) }");
+  Alcotest.(check string)
+    "calc zero plus var keeps var arithmetic"
+    ".x{padding:calc(0px + var(--spacing))}"
+    (normalize ".x { padding: calc(0px + var(--spacing)) }");
+  Alcotest.(check string)
+    "calc var minus zero keeps var arithmetic"
+    ".x{padding:calc(var(--spacing) - 0px)}"
+    (normalize ".x { padding: calc(var(--spacing) - 0px) }");
+  Alcotest.(check string)
+    "calc nested var identities keep var arithmetic"
+    ".x{padding:calc(var(--spacing)*1 + 0px)}"
+    (normalize ".x { padding: calc((var(--spacing) * 1) + 0px) }");
+  Alcotest.(check string)
+    "calc var-free left subtree may fold before var"
+    ".x{padding:calc(3px + var(--spacing))}"
+    (normalize ".x { padding: calc((1px + 2px) + var(--spacing)) }");
+  Alcotest.(check string)
+    "calc var-free right subtree may fold after var"
+    ".x{padding:calc(var(--spacing)*6)}"
+    (normalize ".x { padding: calc(var(--spacing) * (2 * 3)) }");
+  Alcotest.(check string)
+    "calc var-free percentage subtree may fold before var"
+    ".x{padding:calc(50% - var(--spacing))}"
+    (normalize ".x { padding: calc((100% / 2) - var(--spacing)) }");
+  Alcotest.(check string)
     "rule defining the variable preserved alongside its use"
     ":root{--brand:red}.x{color:var(--brand)}"
     (normalize ":root { --brand: red } .x { color: var(--brand) }")
