@@ -30,31 +30,51 @@ type stats = {
 
 (** Extract path component for an at-rule statement. Returns Some (path_segment,
     inner_statements) if the statement is an at-rule, None otherwise. *)
-let at_rule_path_and_inner stmt =
+let supports_path_and_inner stmt =
   match Css.as_supports stmt with
   | Some (cond, inner) ->
       Some ("@supports " ^ Css.Supports.to_string cond, inner)
-  | None -> (
-      match Css.as_media stmt with
-      | Some (cond, inner) -> Some ("@media " ^ Css.Media.to_string cond, inner)
-      | None -> (
-          match Css.as_layer stmt with
-          | Some (name_opt, inner) ->
-              let name = match name_opt with Some n -> n | None -> "" in
-              Some ("@layer " ^ name, inner)
-          | None -> (
-              match Css.as_container stmt with
-              | Some (name_opt, cond, inner) ->
-                  let prefix =
-                    match name_opt with Some n -> n ^ " " | None -> ""
-                  in
-                  let cond_str =
-                    match cond with
-                    | Some c -> Css.Container.to_string c
-                    | None -> ""
-                  in
-                  Some ("@container " ^ prefix ^ cond_str, inner)
-              | None -> None)))
+  | None -> None
+
+let media_path_and_inner stmt =
+  match Css.as_media stmt with
+  | Some (cond, inner) -> Some ("@media " ^ Css.Media.to_string cond, inner)
+  | None -> None
+
+let layer_path_and_inner stmt =
+  match Css.as_layer stmt with
+  | Some (name_opt, inner) ->
+      let name = match name_opt with Some n -> n | None -> "" in
+      Some ("@layer " ^ name, inner)
+  | None -> None
+
+let container_path_and_inner stmt =
+  match Css.as_container stmt with
+  | Some (name_opt, cond, inner) ->
+      let prefix = match name_opt with Some n -> n ^ " " | None -> "" in
+      let cond_str =
+        match cond with Some c -> Css.Container.to_string c | None -> ""
+      in
+      Some ("@container " ^ prefix ^ cond_str, inner)
+  | None -> None
+
+let first_some thunks stmt =
+  let rec try_each = function
+    | [] -> None
+    | f :: rest -> (
+        match f stmt with Some _ as r -> r | None -> try_each rest)
+  in
+  try_each thunks
+
+let at_rule_path_and_inner stmt =
+  first_some
+    [
+      supports_path_and_inner;
+      media_path_and_inner;
+      layer_path_and_inner;
+      container_path_and_inner;
+    ]
+    stmt
 
 let strip_header css =
   (* Strip a leading /*!...*/ header comment with simpler flow to reduce
@@ -165,6 +185,21 @@ let diff_count_mismatch key ds1 ds2 =
       { selector = key ^ " (missing)"; declarations = List.nth ds1 (n1 - 1) }
 
 (* Detect declaration-reordering-only differences throughout a stylesheet *)
+let collect_pairwise_diffs ~diffs key ds1 ds2 =
+  List.iter2
+    (fun d1 d2 ->
+      match diff_same_key_pair key d1 d2 with
+      | Some d -> diffs := d :: !diffs
+      | None -> ())
+    ds1 ds2
+
+let collect_key_diffs ~tbl2 ~diffs key ds1 =
+  match Hashtbl.find_opt tbl2 key with
+  | Some ds2 when List.length ds1 = List.length ds2 ->
+      collect_pairwise_diffs ~diffs key ds1 ds2
+  | Some ds2 -> diffs := diff_count_mismatch key ds1 ds2 :: !diffs
+  | None -> ()
+
 let build_reorder_diff expected_css actual_css =
   let rules1 =
     collect_keyed_rules [] [] (Css.statements expected_css) |> List.rev
@@ -175,19 +210,7 @@ let build_reorder_diff expected_css actual_css =
   let tbl1 = group_into_table rules1 in
   let tbl2 = group_into_table rules2 in
   let diffs = ref [] in
-  Hashtbl.iter
-    (fun key ds1 ->
-      match Hashtbl.find_opt tbl2 key with
-      | Some ds2 when List.length ds1 = List.length ds2 ->
-          List.iter2
-            (fun d1 d2 ->
-              match diff_same_key_pair key d1 d2 with
-              | Some d -> diffs := d :: !diffs
-              | None -> ())
-            ds1 ds2
-      | Some ds2 -> diffs := diff_count_mismatch key ds1 ds2 :: !diffs
-      | None -> ())
-    tbl1;
+  Hashtbl.iter (collect_key_diffs ~tbl2 ~diffs) tbl1;
   if !diffs = [] then None
   else Some D.{ rules = List.rev !diffs; containers = [] }
 
@@ -215,6 +238,30 @@ type t =
   | Expected_error of Error.t
   | Actual_error of Error.t
 
+let fallback_to_string_diff ~expected ~actual =
+  (* Use original (header-stripped) strings for string diff *)
+  match String_diff.diff ~expected actual with
+  | Some sdiff -> String_diff sdiff
+  | None ->
+      failwith "BUG: different strings but String_diff found no difference"
+
+let diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm =
+  (* Structural diff is empty but strings differ - attempt to classify
+     declaration ordering-only differences throughout the stylesheet
+     (recursively inside containers) as structural Rule_reordered changes. If
+     none detected, fall back to string diff. *)
+  match build_reorder_diff expected_norm actual_norm with
+  | Some d -> Tree_diff d
+  | None -> fallback_to_string_diff ~expected ~actual
+
+let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
+  (* Do NOT normalize @property order - their order matters for tests *)
+  let expected_norm = expected_ast in
+  let actual_norm = actual_ast in
+  let structural_diff = tree_diff ~expected:expected_norm ~actual:actual_norm in
+  if not (is_empty structural_diff) then Tree_diff structural_diff
+  else diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm
+
 let diff ~expected ~actual =
   let expected = strip_header expected in
   let actual = strip_header actual in
@@ -222,30 +269,8 @@ let diff ~expected ~actual =
   if expected = actual then No_diff
   else
     match (Css.of_string expected, Css.of_string actual) with
-    | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ }
-      -> (
-        (* Do NOT normalize @property order - their order matters for tests *)
-        let expected_norm = expected_ast in
-        let actual_norm = actual_ast in
-        let structural_diff =
-          tree_diff ~expected:expected_norm ~actual:actual_norm
-        in
-        if not (is_empty structural_diff) then Tree_diff structural_diff
-        else
-          (* Structural diff is empty but strings differ - attempt to classify
-             declaration ordering-only differences throughout the stylesheet
-             (recursively inside containers) as structural Rule_reordered
-             changes. If none detected, fall back to string diff. *)
-          match build_reorder_diff expected_norm actual_norm with
-          | Some d -> Tree_diff d
-          | None -> (
-              (* Use original (header-stripped) strings for string diff *)
-              match String_diff.diff ~expected actual with
-              | Some sdiff -> String_diff sdiff
-              | None ->
-                  failwith
-                    "BUG: different strings but String_diff found no difference"
-              ))
+    | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+        diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast
     | Error e1, Error e2 -> Both_errors (e1, e2)
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e

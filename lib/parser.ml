@@ -108,55 +108,59 @@ let add_hex_escape_cp buf cp =
   emit cp [];
   Buffer.add_char buf ' '
 
+(* Emit an ASCII (cp < 0x80) code point into [buf]: keep ident-continue
+   characters verbatim, otherwise backslash-quote the single byte. *)
+let escape_ident_emit_ascii buf cp =
+  if is_ascii_ident_continue (Char.chr cp) then
+    Buffer.add_char buf (Char.chr cp)
+  else (
+    Buffer.add_char buf '\\';
+    Buffer.add_char buf (Char.chr cp))
+
+(* Emit one code point of an ident-like name, honouring the leading-digit
+   restriction recorded in [needs_leading_escape]. *)
+let escape_ident_emit_cp buf ~needs_leading_escape u =
+  let cp = Uchar.to_int u in
+  if needs_leading_escape then add_hex_escape_cp buf cp
+  else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
+  else if cp < 0x80 then escape_ident_emit_ascii buf cp
+  else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
+  else add_hex_escape_cp buf cp
+
+let escape_ident_starts s n =
+  let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
+  let starts_dash_digit =
+    n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
+  in
+  (starts_with_digit, starts_dash_digit)
+
+let escape_ident_needs_leading (starts_with_digit, starts_dash_digit) i =
+  (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit)
+
+let escape_ident_emit_item buf starts () i = function
+  | `Uchar u ->
+      let needs_leading_escape = escape_ident_needs_leading starts i in
+      escape_ident_emit_cp buf ~needs_leading_escape u
+  | `Malformed bs ->
+      (* Malformed UTF-8 bytes (e.g., a lone continuation byte the lexer's
+         [consume_escape] dropped into an ident) can't be re-tokenized as the
+         same ident. Hex-escape each byte so the serialized form round-trips. *)
+      String.iter (fun c -> add_hex_escape buf c) bs
+
 let escape_ident s =
   let n = String.length s in
   if n = 1 && s.[0] = '-' then "\\-"
   else
     let buf = Buffer.create n in
-    let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
-    let starts_dash_digit =
-      n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
-    in
-    let folder () i = function
-      | `Uchar u ->
-          let cp = Uchar.to_int u in
-          if (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit) then
-            add_hex_escape_cp buf cp
-          else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
-          else if cp < 0x80 then
-            if is_ascii_ident_continue (Char.chr cp) then
-              Buffer.add_char buf (Char.chr cp)
-            else (
-              Buffer.add_char buf '\\';
-              Buffer.add_char buf (Char.chr cp))
-          else if Lexer.is_non_ascii_ident_cp cp then
-            Uutf.Buffer.add_utf_8 buf u
-          else add_hex_escape_cp buf cp
-      | `Malformed bs ->
-          (* Malformed UTF-8 bytes (e.g., a lone continuation byte the lexer's
-             [consume_escape] dropped into an ident) can't be re-tokenized as
-             the same ident. Hex-escape each byte so the serialized form
-             round-trips. *)
-          String.iter (fun c -> add_hex_escape buf c) bs
-    in
-    Uutf.String.fold_utf_8 folder () s;
+    let starts = escape_ident_starts s n in
+    Uutf.String.fold_utf_8 (escape_ident_emit_item buf starts) () s;
     Buffer.contents buf
 
 let escape_name s =
   let n = String.length s in
   let buf = Buffer.create n in
   let folder () _ = function
-    | `Uchar u ->
-        let cp = Uchar.to_int u in
-        if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
-        else if cp < 0x80 then
-          if is_ascii_ident_continue (Char.chr cp) then
-            Buffer.add_char buf (Char.chr cp)
-          else (
-            Buffer.add_char buf '\\';
-            Buffer.add_char buf (Char.chr cp))
-        else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
-        else add_hex_escape_cp buf cp
+    | `Uchar u -> escape_ident_emit_cp buf ~needs_leading_escape:false u
     | `Malformed bs -> Buffer.add_string buf bs
   in
   Uutf.String.fold_utf_8 folder () s;
@@ -380,7 +384,7 @@ and cvs_to_buffer buf cvs =
   in
   loop None cvs
 
-let to_string cvs =
+let string_of_components cvs =
   let buf = Buffer.create 64 in
   cvs_to_buffer buf cvs;
   Buffer.contents buf
@@ -614,6 +618,65 @@ let url_args_as_bare_string args =
       Some value
   | _ -> None
 
+let rec drop_whitespace_components = function
+  | cv :: rest when is_whitespace cv -> drop_whitespace_components rest
+  | other -> other
+
+let custom_min_is_math_delim = function
+  | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
+  | _ -> false
+
+let custom_min_is_bang = function
+  | Component.Preserved { kind = Token.Delim "!"; _ } -> true
+  | _ -> false
+
+let custom_min_is_important = function
+  | Component.Preserved { kind = Token.Ident s; _ }
+    when String.lowercase_ascii s = "important" ->
+      true
+  | _ -> false
+
+let custom_min_after_bang rest =
+  match rest with _ :: more -> drop_whitespace_components more | [] -> []
+
+let custom_min_bang_boundary prev next rest =
+  match (prev, next) with
+  | _, Component.Preserved { kind = Token.Delim "!"; _ } -> (
+      match custom_min_after_bang rest with
+      | head :: _ -> custom_min_is_important head
+      | [] -> false)
+  | Some p, _ when custom_min_is_bang p && custom_min_is_important next -> true
+  | _ -> false
+
+let custom_min_word_boundary p next =
+  (not (signed_number_pair p next))
+  && word_like_end p
+  && (not (is_backslash_delim p))
+  && word_like_start next
+
+let custom_min_needs_separator prev next rest =
+  match prev with
+  | None -> false
+  | Some p ->
+      pair_forms_multichar_token p next
+      || custom_min_is_math_delim p
+      || custom_min_is_math_delim next
+      || custom_min_bang_boundary prev next rest
+      || custom_min_word_boundary p next
+
+let custom_min_ws_separator buf prev separated rest =
+  match rest with
+  | next :: _ when custom_min_needs_separator prev next rest ->
+      Buffer.add_char buf ' ';
+      true
+  | _ -> separated
+
+let custom_min_item_separator buf prev separated cv =
+  match prev with
+  | Some p when (not separated) && pair_needs_token_boundary p cv ->
+      Buffer.add_char buf ' '
+  | _ -> ()
+
 let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
   | Block { node = { opening; value; _ }; _ } ->
@@ -642,67 +705,14 @@ let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
 and cvs_to_buffer_min_custom buf cvs =
-  let rec drop_ws = function
-    | cv :: rest when is_whitespace cv -> drop_ws rest
-    | other -> other
-  in
-  let is_math_delim = function
-    | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
-    | _ -> false
-  in
-  let is_bang = function
-    | Component.Preserved { kind = Token.Delim "!"; _ } -> true
-    | _ -> false
-  in
-  let is_important_ident = function
-    | Component.Preserved { kind = Token.Ident s; _ }
-      when String.lowercase_ascii s = "important" ->
-        true
-    | _ -> false
-  in
-  (* Preserve ws on both sides of [! important]: collapsing it would parse as
-     the [!important] flag on re-parse. *)
-  let bang_important_boundary prev next rest =
-    match (prev, next) with
-    | _, Component.Preserved { kind = Token.Delim "!"; _ } -> (
-        let after_bang =
-          match rest with _ :: more -> drop_ws more | [] -> []
-        in
-        match after_bang with
-        | head :: _ -> is_important_ident head
-        | [] -> false)
-    | Some p, _ when is_bang p && is_important_ident next -> true
-    | _ -> false
-  in
-  let needs_separator prev next rest =
-    match prev with
-    | None -> false
-    | Some p ->
-        pair_forms_multichar_token p next
-        || is_math_delim p || is_math_delim next
-        || bang_important_boundary prev next rest
-        || (not (signed_number_pair p next))
-           && word_like_end p
-           && (not (is_backslash_delim p))
-           && word_like_start next
-  in
   let rec loop prev separated = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
-        let rest' = drop_ws rest in
-        let separated' =
-          match rest' with
-          | next :: _ when needs_separator prev next rest' ->
-              Buffer.add_char buf ' ';
-              true
-          | _ -> separated
-        in
+        let rest' = drop_whitespace_components rest in
+        let separated' = custom_min_ws_separator buf prev separated rest' in
         loop prev separated' rest'
     | cv :: rest ->
-        (match prev with
-        | Some p when (not separated) && pair_needs_token_boundary p cv ->
-            Buffer.add_char buf ' '
-        | _ -> ());
+        custom_min_item_separator buf prev separated cv;
         cv_to_buffer_custom_min buf cv;
         loop (Some cv) false rest
   in
@@ -925,41 +935,51 @@ let consume_declaration_body lexer =
   in
   loop []
 
+let skip_bad_declaration lexer tok =
+  let rec skip () =
+    let t = Lexer.next lexer in
+    match t.Token.kind with
+    | Token.Semicolon | Token.Eof -> ()
+    | _ ->
+        let _ = consume_component_value_from lexer t in
+        skip ()
+  in
+  let _ = consume_component_value_from lexer tok in
+  skip ()
+
+let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
+  let body = consume_declaration_body lexer in
+  match declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings body with
+  | Some d -> Some (`Decl d)
+  | None -> None
+
+let consume_decl_list_item ~meta lexer ~warnings tok =
+  match tok.Token.kind with
+  | Token.Eof -> `Done
+  | Token.Whitespace | Token.Semicolon | Token.Close Curly -> `Skip
+  | Token.At_keyword name ->
+      let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
+      `Item (`At ar)
+  | Token.Ident name -> (
+      match
+        consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc:tok.loc
+      with
+      | Some item -> `Item item
+      | None -> `Skip)
+  | _ ->
+      warn ~meta lexer warnings
+        (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
+      skip_bad_declaration lexer tok;
+      `Skip
+
 let consume_list_of_declarations ~meta lexer ~warnings :
     [ `Decl of Component.declaration | `At of Component.at_rule ] list =
   let rec loop acc =
     let tok = Lexer.next lexer in
-    match tok.Token.kind with
-    | Token.Eof -> List.rev acc
-    | Token.Whitespace | Token.Semicolon -> loop acc
-    (* Section 5.5.6: a stray right curly brace at the top of a declaration list
-       is silently dropped, not consumed as part of a bad declaration. *)
-    | Token.Close Curly -> loop acc
-    | Token.At_keyword name ->
-        let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
-        loop (`At ar :: acc)
-    | Token.Ident name -> (
-        let body = consume_declaration_body lexer in
-        match
-          declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
-            body
-        with
-        | Some d -> loop (`Decl d :: acc)
-        | None -> loop acc)
-    | _ ->
-        warn ~meta lexer warnings
-          (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
-        let rec skip () =
-          let t = Lexer.next lexer in
-          match t.Token.kind with
-          | Token.Semicolon | Token.Eof -> ()
-          | _ ->
-              let _ = consume_component_value_from lexer t in
-              skip ()
-        in
-        let _ = consume_component_value_from lexer tok in
-        skip ();
-        loop acc
+    match consume_decl_list_item ~meta lexer ~warnings tok with
+    | `Done -> List.rev acc
+    | `Skip -> loop acc
+    | `Item item -> loop (item :: acc)
   in
   loop []
 
@@ -987,6 +1007,40 @@ let stylesheet_contents = stylesheet
 (* CSS Syntax Level 3 section 5.4.5: a block's contents is a mix of declarations
    and nested rules. Consecutive declarations are grouped into a single [`Decls]
    item so callers can re-emit them as a contiguous run. *)
+
+(* Try to consume a nested qualified rule at the current [tok] position. On
+   success, push it as a [`Rule] onto [result]; on failure, leave [result]
+   unchanged. The caller is expected to have already reconsumed [tok]. *)
+let try_consume_nested_qualified ~meta lexer ~start_loc ~warnings ~result =
+  match
+    consume_qualified_rule ~nested:true ~meta lexer ~start_loc ~warnings
+  with
+  | Some qr -> result := `Rule (Component.Qualified qr) :: !result
+  | None -> ()
+
+(* Section 5.5.5: an [Ident] in a block's contents may begin either a
+   declaration or a nested qualified rule. Try declaration first; if it fails,
+   rewind and parse a qualified rule. *)
+let consume_block_ident ~meta lexer ~name ~tok ~warnings ~pending ~result ~flush
+    =
+  Lexer.save lexer;
+  let body = consume_declaration_body lexer in
+  let warnings_snapshot = !warnings in
+  match
+    declaration_of_buffer ~meta lexer ~name ~name_loc:tok.Token.loc ~warnings
+      body
+  with
+  | Some d ->
+      Lexer.commit lexer;
+      pending := d :: !pending
+  | None ->
+      warnings := warnings_snapshot;
+      Lexer.restore lexer;
+      Lexer.reconsume lexer tok;
+      flush ();
+      try_consume_nested_qualified ~meta lexer ~start_loc:tok.loc ~warnings
+        ~result
+
 let consume_block_contents ~meta lexer ~warnings : block_item list =
   let pending = ref [] in
   let result = ref [] in
@@ -1010,39 +1064,14 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
         result := `Rule (Component.At ar) :: !result;
         loop ()
     | Token.Ident name ->
-        (* Section 5.5.5: try a declaration first; on failure, rewind and re-try
-           as a nested qualified rule. *)
-        Lexer.save lexer;
-        let body = consume_declaration_body lexer in
-        let warnings_snapshot = !warnings in
-        (match
-           declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
-             body
-         with
-        | Some d ->
-            Lexer.commit lexer;
-            pending := d :: !pending
-        | None -> (
-            warnings := warnings_snapshot;
-            Lexer.restore lexer;
-            Lexer.reconsume lexer tok;
-            flush ();
-            match
-              consume_qualified_rule ~nested:true ~meta lexer ~start_loc:tok.loc
-                ~warnings
-            with
-            | Some qr -> result := `Rule (Component.Qualified qr) :: !result
-            | None -> ()));
+        consume_block_ident ~meta lexer ~name ~tok ~warnings ~pending ~result
+          ~flush;
         loop ()
     | _ ->
         flush ();
         Lexer.reconsume lexer tok;
-        (match
-           consume_qualified_rule ~nested:true ~meta lexer ~start_loc:tok.loc
-             ~warnings
-         with
-        | Some qr -> result := `Rule (Component.Qualified qr) :: !result
-        | None -> ());
+        try_consume_nested_qualified ~meta lexer ~start_loc:tok.loc ~warnings
+          ~result;
         loop ()
   in
   loop ()
@@ -1112,25 +1141,24 @@ let list_of_component_values r =
       in
       loop [])
 
+let rec next_non_ws p =
+  match next p with
+  | Preserved { kind = Token.Whitespace; _ } -> next_non_ws p
+  | cv -> cv
+
+let rec rest_is_ws_then_eof p =
+  match next p with
+  | Preserved { kind = Token.Eof; _ } -> true
+  | Preserved { kind = Token.Whitespace; _ } -> rest_is_ws_then_eof p
+  | _ -> false
+
 let component_value r =
   with_warnings (fun ~warnings:_ ->
       let p = of_reader r in
-      let rec next_non_ws () =
-        match next p with
-        | Preserved { kind = Token.Whitespace; _ } -> next_non_ws ()
-        | cv -> cv
-      in
-      let first = next_non_ws () in
+      let first = next_non_ws p in
       match first with
       | Preserved { kind = Token.Eof; _ } -> None
-      | _ ->
-          let rec rest_is_ws_then_eof () =
-            match next p with
-            | Preserved { kind = Token.Eof; _ } -> true
-            | Preserved { kind = Token.Whitespace; _ } -> rest_is_ws_then_eof ()
-            | _ -> false
-          in
-          if rest_is_ws_then_eof () then Some first else None)
+      | _ -> if rest_is_ws_then_eof p then Some first else None)
 
 let split_comma_groups cvs =
   let rec split current groups = function

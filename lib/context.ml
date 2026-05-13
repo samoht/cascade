@@ -740,13 +740,15 @@ let property_is_inherited = function
   | _ -> false
 
 let read_full_components read components =
-  try
+  match
     let cursor = Cursor.of_components components in
     let value = read cursor in
     Cursor.ws cursor;
     Cursor.expect_eof cursor;
-    Some value
-  with Cursor.Parse_error _ -> None
+    value
+  with
+  | value -> Some value
+  | exception Cursor.Parse_error _ -> None
 
 let read_custom_value : type a.
     a Properties.kind -> (Cursor.t -> a) -> Declaration.declaration -> a option
@@ -834,34 +836,37 @@ module Var_residual = struct
           map_var_fallback (simplify ~authored:false ~visited) var.fallback;
         default = Option.map (simplify ~authored:false ~visited) var.default;
       }
-    and resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
+    in
+    let lookup_parsed name =
+      match Hashtbl.find_opt parsed_custom name with
+      | Some value -> value
+      | None ->
+          let value =
+            Option.bind
+              (lookup_custom_property ?layer ?layer_order cascade name)
+              read_custom
+          in
+          Hashtbl.add parsed_custom name value;
+          value
+    in
+    let resolve_fallback_value ~(simplify : a simplifier) ~visited
+        (var : a Values.var) : a option =
+      match var.fallback with
+      | Values.Fallback fallback when resolve_fallback fallback ->
+          Some (simplify ~authored:false ~visited fallback)
+      | Values.Fallback _ -> None
+      | Values.Empty | Values.Empty2 | Values.None | Values.Syntax_fallback _
+      | Values.Var_fallback _ ->
+          None
+    in
+    let resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
       if List.mem var.name visited then None
       else
-        let read_decl () =
-          Option.bind
-            (lookup_custom_property ?layer ?layer_order cascade var.name)
-            read_custom
-        in
-        let parsed =
-          match Hashtbl.find_opt parsed_custom var.name with
-          | Some value -> value
-          | None ->
-              let value = read_decl () in
-              Hashtbl.add parsed_custom var.name value;
-              value
-        in
-        match parsed with
+        match lookup_parsed var.name with
         | Some value ->
             Some (simplify ~authored:false ~visited:(var.name :: visited) value)
-        | None -> (
-            match var.fallback with
-            | Values.Fallback fallback when resolve_fallback fallback ->
-                Some (simplify ~authored:false ~visited fallback)
-            | Values.Fallback _ -> None
-            | Values.Empty | Values.Empty2 | Values.None
-            | Values.Syntax_fallback _ | Values.Var_fallback _ ->
-                None)
+        | None -> resolve_fallback_value ~simplify ~visited var
     in
     f ~resolve_var ~simplify_var_record
 
@@ -869,25 +874,27 @@ module Var_residual = struct
       a =
     with_resolver ?layer_order ?layer cascade ~read_custom:ops.read_custom
     @@ fun ~resolve_var ~simplify_var_record ->
-    let rec simplify ~authored ~visited value =
+    let rec on_var_residual ~visited (var : a Values.var) result =
+      match var.fallback with
+      | Values.Fallback fb -> simplify ~authored:false ~visited fb
+      | Values.Syntax_fallback _ | Values.Var_fallback _ ->
+          ops.of_var (simplify_var_record ~simplify ~visited var)
+      | _ -> result
+    and on_var_unresolved ~visited (var : a Values.var) =
+      match var.fallback with
+      | Values.Fallback fb -> simplify ~authored:false ~visited fb
+      | Values.Syntax_fallback _ | Values.Var_fallback _ | Values.Empty
+      | Values.Empty2 | Values.None ->
+          ops.of_var (simplify_var_record ~simplify ~visited var)
+    and on_var ~visited (var : a Values.var) =
+      match resolve_var ~simplify ~visited var with
+      | Some result when ops.as_var result <> None ->
+          on_var_residual ~visited var result
+      | Some result -> result
+      | None -> on_var_unresolved ~visited var
+    and simplify ~authored ~visited value =
       match ops.as_var value with
-      | Some var -> (
-          match resolve_var ~simplify ~visited var with
-          | Some result when ops.as_var result <> None -> (
-              match var.fallback with
-              | Values.Fallback fb -> simplify ~authored:false ~visited fb
-              | Values.Syntax_fallback _ | Values.Var_fallback _ ->
-                  ops.of_var (simplify_var_record ~simplify ~visited var)
-              | _ -> result)
-          | Some result -> result
-          | None -> (
-              match var.fallback with
-              | Values.Fallback fb -> simplify ~authored:false ~visited fb
-              | Values.Syntax_fallback _ | Values.Var_fallback _ | Values.Empty
-              | Values.Empty2 ->
-                  ops.of_var (simplify_var_record ~simplify ~visited var)
-              | Values.None ->
-                  ops.of_var (simplify_var_record ~simplify ~visited var)))
+      | Some var -> on_var ~visited var
       | None -> ops.simplify_leaf simplify ~authored ~visited value
     in
     simplify ~authored:true ~visited:[] value
@@ -920,16 +927,108 @@ module Calc_residual = struct
     | Values.Sibling_index | Values.Sibling_count ->
         false
 
-  let simplify (type a) ?resolve_fallback ?layer_order ?layer cascade
-      (ops : a ops) (value : a) : a =
-    Var_residual.with_resolver ?resolve_fallback ?layer_order ?layer cascade
-      ~read_custom:ops.read_custom
-    @@ fun ~resolve_var ~simplify_var_record ->
-    let rec calc_of_value ~visited (value : a) : a Values.calc =
+  let fold_num_expr : type a.
+      a Values.calc -> Values.calc_op -> a Values.calc -> a Values.calc option =
+   fun left op right ->
+    let open Values in
+    match (left, op, right) with
+    | Num a, Add, Num b -> Some (Num (a +. b))
+    | Num a, Sub, Num b -> Some (Num (a -. b))
+    | Num a, Mul, Num b -> Some (Num (a *. b))
+    | Num a, Div, Num b when b <> 0. -> Some (Num (a /. b))
+    | _ -> None
+
+  let fold_value_expr : type a.
+      a ops ->
+      a Values.calc ->
+      Values.calc_op ->
+      a Values.calc ->
+      a Values.calc option =
+   fun ops left op right ->
+    let open Values in
+    match (left, op, right) with
+    | Val a, _, Val b ->
+        Option.map (fun value -> Val value) (ops.combine_values a op b)
+    | Val value, _, Num n ->
+        Option.map (fun value -> Val value) (ops.combine_value_num value op n)
+    | Num n, Mul, Val value ->
+        Option.map
+          (fun value -> Val value)
+          (ops.combine_value_num value Values.Mul n)
+    | _ -> None
+
+  let fold_calc_expr ops left op right =
+    match fold_num_expr left op right with
+    | Some folded -> folded
+    | None -> (
+        match fold_value_expr ops left op right with
+        | Some folded -> folded
+        | None -> Values.Expr (left, op, right))
+
+  let fold_calc_wrapper wrap reduced =
+    let open Values in
+    match reduced with
+    | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
+    | reduced -> wrap reduced
+
+  let rec fold_calc : type a. a ops -> a Values.calc -> a Values.calc =
+   fun ops calc ->
+    let open Values in
+    match calc with
+    | Expr (left, op, right) ->
+        let left = fold_calc ops left in
+        let right = fold_calc ops right in
+        fold_calc_expr ops left op right
+    | Nested inner ->
+        fold_calc_wrapper (fun v -> Nested v) (fold_calc ops inner)
+    | Parens inner ->
+        fold_calc_wrapper (fun v -> Parens v) (fold_calc ops inner)
+    | leaf -> leaf
+
+  let calc_result_to_value (type a) (ops : a ops) simplify ~visited
+      (calc : a Values.calc) : a =
+    match calc with
+    | Values.Val value -> simplify ~authored:false ~visited value
+    | Values.Num n -> (
+        match ops.of_unitless_number n with
+        | Some value -> value
+        | None -> ops.of_calc (Values.Num n))
+    | calc -> ops.of_calc calc
+
+  let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =
+    let preserve = authored && contains_var calc in
+    simplify_calc ~preserve ~visited calc
+    |> calc_result_to_value ops simplify ~visited
+
+  let simplify_plain_value ops simplify simplify_calc ~visited value =
+    let simplify_authored = simplify ~authored:true in
+    let simplify_calc_authored = simplify_calc ~preserve:false in
+    let value =
+      ops.simplify_leaf simplify_authored simplify_calc_authored ~visited value
+    in
+    ops.normalize_value value
+
+  let simplify_calc_non_var ops simplify simplify_calc ~authored ~visited value
+      =
+    match ops.as_calc value with
+    | Some calc ->
+        simplify_calc_value ops simplify simplify_calc ~authored ~visited calc
+    | None -> simplify_plain_value ops simplify simplify_calc ~visited value
+
+  let simplify_calc_var ops resolve_var simplify_var_record simplify_resolved
+      ~visited var =
+    match resolve_var ~simplify:simplify_resolved ~visited var with
+    | Some value -> value
+    | None ->
+        ops.of_var
+          (simplify_var_record ~simplify:simplify_resolved ~visited var)
+
+  let run_simplify ops ~resolve_var ~simplify_var_record value =
+    let rec calc_of_value ~visited value =
       match simplify ~authored:false ~visited value |> ops.as_calc with
       | Some inner -> Values.Nested (simplify_calc ~visited inner)
       | None -> Values.Val (simplify ~authored:false ~visited value)
-    and walk_calc ~visited (calc : a Values.calc) : a Values.calc =
+    and walk_calc ~visited calc =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
       match calc with
       | Values.Val value -> calc_of_value ~visited value
@@ -948,81 +1047,29 @@ module Calc_residual = struct
       | Values.Parens inner -> Values.Parens (walk_calc ~visited inner)
       | Values.Expr (left, op, right) ->
           Values.Expr (walk_calc ~visited left, op, walk_calc ~visited right)
-    and combine_values (left : a) op (right : a) : a option =
-      ops.combine_values left op right
-    and combine_value_num (value : a) op num : a option =
-      ops.combine_value_num value op num
-    and fold_calc (calc : a Values.calc) : a Values.calc =
-      match calc with
-      | Values.Expr (left, op, right) -> (
-          let left = fold_calc left in
-          let right = fold_calc right in
-          match (left, op, right) with
-          | Values.Num a, Values.Add, Values.Num b -> Values.Num (a +. b)
-          | Values.Num a, Values.Sub, Values.Num b -> Values.Num (a -. b)
-          | Values.Num a, Values.Mul, Values.Num b -> Values.Num (a *. b)
-          | Values.Num a, Values.Div, Values.Num b when b <> 0. ->
-              Values.Num (a /. b)
-          | Values.Val a, _, Values.Val b -> (
-              match combine_values a op b with
-              | Some value -> Values.Val value
-              | None -> Values.Expr (left, op, right))
-          | Values.Val value, _, Values.Num n -> (
-              match combine_value_num value op n with
-              | Some value -> Values.Val value
-              | None -> Values.Expr (left, op, right))
-          | Values.Num n, Values.Mul, Values.Val value -> (
-              match combine_value_num value Values.Mul n with
-              | Some value -> Values.Val value
-              | None -> Values.Expr (left, op, right))
-          | _ -> Values.Expr (left, op, right))
-      | Values.Nested inner -> (
-          match fold_calc inner with
-          | (Values.Val _ | Values.Num _ | Values.Math_const _ | Values.Var _)
-            as leaf ->
-              leaf
-          | reduced -> Values.Nested reduced)
-      | Values.Parens inner -> (
-          match fold_calc inner with
-          | (Values.Val _ | Values.Num _ | Values.Math_const _ | Values.Var _)
-            as leaf ->
-              leaf
-          | reduced -> Values.Parens reduced)
-      | leaf -> leaf
-    and simplify_calc ?(preserve = false) ~visited (calc : a Values.calc) :
-        a Values.calc =
+    and simplify_calc ?(preserve = false) ~visited calc =
       let calc = walk_calc ~visited calc in
-      if preserve && contains_var calc then calc else fold_calc calc
-    and simplify ~authored ~visited (value : a) : a =
+      if preserve && contains_var calc then calc else fold_calc ops calc
+    and simplify ~authored ~visited value =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
+      let run_calc ~preserve ~visited calc =
+        simplify_calc ~preserve ~visited calc
+      in
       match ops.as_var value with
-      | Some var -> (
-          match resolve_var ~simplify:simplify_resolved ~visited var with
-          | Some value -> value
-          | None ->
-              ops.of_var
-                (simplify_var_record ~simplify:simplify_resolved ~visited var))
-      | None -> (
-          match ops.as_calc value with
-          | Some calc -> (
-              let preserve = authored && contains_var calc in
-              match simplify_calc ~preserve ~visited calc with
-              | Values.Val value -> simplify ~authored:false ~visited value
-              | Values.Num n -> (
-                  match ops.of_unitless_number n with
-                  | Some value -> value
-                  | None -> ops.of_calc (Values.Num n))
-              | calc -> ops.of_calc calc)
-          | None ->
-              let simplify_authored = simplify ~authored:true in
-              let simplify_calc_authored = simplify_calc ~preserve:false in
-              let value =
-                ops.simplify_leaf simplify_authored simplify_calc_authored
-                  ~visited value
-              in
-              ops.normalize_value value)
+      | Some var ->
+          simplify_calc_var ops resolve_var simplify_var_record
+            simplify_resolved ~visited var
+      | None ->
+          simplify_calc_non_var ops simplify run_calc ~authored ~visited value
     in
     simplify ~authored:true ~visited:[] value
+
+  let simplify (type a) ?resolve_fallback ?layer_order ?layer cascade
+      (ops : a ops) (value : a) : a =
+    Var_residual.with_resolver ?resolve_fallback ?layer_order ?layer cascade
+      ~read_custom:ops.read_custom
+    @@ fun ~resolve_var ~simplify_var_record ->
+    run_simplify ops ~resolve_var ~simplify_var_record value
 end
 
 (** {2 Length canonicalisation (CSS Values 4 §6)}
@@ -1114,7 +1161,7 @@ module Length = struct
     | value -> value
 
   let read_math_args s =
-    try
+    match
       let cursor = Cursor.of_string s in
       let args =
         Cursor.list ~sep:Cursor.comma ~at_least:1
@@ -1123,8 +1170,10 @@ module Length = struct
       in
       Cursor.ws cursor;
       Cursor.expect_eof cursor;
-      Some args
-    with Cursor.Parse_error _ -> None
+      args
+    with
+    | args -> Some args
+    | exception Cursor.Parse_error _ -> None
 
   let string_of_math_args args =
     Pp.to_string ~minify:true (Pp.list ~sep:Pp.comma Values.pp_length) args
@@ -1154,100 +1203,116 @@ module Length = struct
      still a [length calc]: a fully reducible body collapses to [Val (Px _)]
      (caller decides whether to keep the [calc()] wrapper); a partially
      reducible body keeps the [Expr] structure with the simplified operands. *)
-  let eval_calc =
-    let combine_lengths ctx la lb (op : Values.calc_op) : Values.length option =
-      match (to_px ctx la, to_px ctx lb) with
-      | Some pa, Some pb -> (
-          match op with
-          | Add -> Some (Px (pa +. pb))
-          | Sub -> Some (Px (pa -. pb))
-          | _ -> None)
-      | _ -> None
-    in
-    let combine_length_num ctx l n (op : Values.calc_op) : Values.length option
+  let eval_combine_lengths ctx la lb (op : Values.calc_op) :
+      Values.length option =
+    match (to_px ctx la, to_px ctx lb, op) with
+    | Some pa, Some pb, Add -> Some (Px (pa +. pb))
+    | Some pa, Some pb, Sub -> Some (Px (pa -. pb))
+    | _ -> None
+
+  let eval_combine_length_num ctx l n (op : Values.calc_op) :
+      Values.length option =
+    match (to_px ctx l, op) with
+    | Some p, Mul -> Some (Px (p *. n))
+    | Some p, Div when n <> 0. -> Some (Px (p /. n))
+    | _ -> None
+
+  let eval_num_expr (l : Values.length Values.calc) op
+      (r : Values.length Values.calc) : Values.length Values.calc option =
+    let open Values in
+    match (l, op, r) with
+    | Num a, Add, Num b -> Some (Num (a +. b))
+    | Num a, Sub, Num b -> Some (Num (a -. b))
+    | Num a, Mul, Num b -> Some (Num (a *. b))
+    | Num a, Div, Num b when b <> 0. -> Some (Num (a /. b))
+    | _ -> None
+
+  let eval_value_expr ctx (l : Values.length Values.calc) op
+      (r : Values.length Values.calc) : Values.length Values.calc option =
+    let open Values in
+    match (l, op, r) with
+    | Val la, _, Val lb ->
+        Option.map (fun out -> Val out) (eval_combine_lengths ctx la lb op)
+    | Val la, _, Num n ->
+        Option.map (fun out -> Val out) (eval_combine_length_num ctx la n op)
+    | Num n, Mul, Val lb ->
+        (* Multiplication is commutative on length × number. *)
+        Option.map (fun out -> Val out) (eval_combine_length_num ctx lb n Mul)
+    | _ -> None
+
+  let eval_calc_expr_values ctx (l : Values.length Values.calc) op
+      (r : Values.length Values.calc) : Values.length Values.calc =
+    let open Values in
+    match eval_num_expr l op r with
+    | Some folded -> folded
+    | None -> (
+        match eval_value_expr ctx l op r with
+        | Some folded -> folded
+        | None -> Expr (l, op, r))
+
+  let eval_calc_wrapper_value wrap reduced =
+    let open Values in
+    match reduced with
+    | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
+    | reduced -> wrap reduced
+
+  let eval_calc ctx (calc : Values.length Values.calc) :
+      Values.length Values.calc =
+    let rec eval (calc : Values.length Values.calc) : Values.length Values.calc
         =
-      match to_px ctx l with
-      | None -> None
-      | Some p -> (
-          match op with
-          | Mul -> Some (Px (p *. n))
-          | Div when n <> 0. -> Some (Px (p /. n))
-          | _ -> None)
-    in
-    let rec eval ctx (calc : Values.length Values.calc) :
-        Values.length Values.calc =
       let open Values in
       match calc with
       | Num _ | Val _ | Var _ | Math_const _ | Math_fn _ | Sibling_index
       | Sibling_count ->
           calc
-      | Nested inner -> (
-          match eval ctx inner with
-          | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
-          | reduced -> Nested reduced)
-      | Parens inner -> (
-          match eval ctx inner with
-          | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
-          | reduced -> Parens reduced)
-      | Expr (l, op, r) -> (
-          let l = eval ctx l in
-          let r = eval ctx r in
-          match (l, op, r) with
-          | Num a, Add, Num b -> Num (a +. b)
-          | Num a, Sub, Num b -> Num (a -. b)
-          | Num a, Mul, Num b -> Num (a *. b)
-          | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-          | Val la, _, Val lb -> (
-              match combine_lengths ctx la lb op with
-              | Some out -> Val out
-              | None -> Expr (l, op, r))
-          | Val la, _, Num n -> (
-              match combine_length_num ctx la n op with
-              | Some out -> Val out
-              | None -> Expr (l, op, r))
-          | Num n, Mul, Val lb -> (
-              (* Multiplication is commutative on length × number. *)
-              match combine_length_num ctx lb n Mul with
-              | Some out -> Val out
-              | None -> Expr (l, op, r))
-          | _ -> Expr (l, op, r))
+      | Nested inner -> eval_calc_wrapper_value (fun v -> Nested v) (eval inner)
+      | Parens inner -> eval_calc_wrapper_value (fun v -> Parens v) (eval inner)
+      | Expr (l, op, r) -> eval_calc_expr_values ctx (eval l) op (eval r)
     in
-    eval
+    eval calc
+
+  let simplify_math_args simplify ~visited args =
+    List.map (simplify ~visited) args
+
+  let simplify_length_min ctx simplify ~visited raw_args =
+    match read_math_args raw_args with
+    | None -> Values.Min raw_args
+    | Some args -> (
+        let args = simplify_math_args simplify ~visited args in
+        match all_px ctx args with
+        | Some (first :: rest) ->
+            normalize_zero (Values.Px (List.fold_left Float.min first rest))
+        | _ -> Values.Min (string_of_math_args args))
+
+  let simplify_length_max ctx simplify ~visited raw_args =
+    match read_math_args raw_args with
+    | None -> Values.Max raw_args
+    | Some args -> (
+        let args = simplify_math_args simplify ~visited args in
+        match all_px ctx args with
+        | Some (first :: rest) ->
+            normalize_zero (Values.Px (List.fold_left Float.max first rest))
+        | _ -> Values.Max (string_of_math_args args))
+
+  let simplify_length_clamp ctx simplify ~visited raw_args =
+    match read_math_args raw_args with
+    | Some [ min; preferred; max ] -> (
+        let args =
+          simplify_math_args simplify ~visited [ min; preferred; max ]
+        in
+        match all_px ctx args with
+        | Some [ min; preferred; max ] ->
+            normalize_zero (Values.Px (Float.max min (Float.min preferred max)))
+        | _ -> Values.Clamp (string_of_math_args args))
+    | _ -> Values.Clamp raw_args
 
   let simplify ?(preserve_authored_calc = true) ?layer_order ?layer cascade ctx
       value =
     let simplify_leaf simplify simplify_calc ~visited value =
       match value with
-      | Values.Min args -> (
-          match read_math_args args with
-          | None -> value
-          | Some args -> (
-              let args = List.map (simplify ~visited) args in
-              match all_px ctx args with
-              | Some (first :: rest) ->
-                  normalize_zero
-                    (Values.Px (List.fold_left Float.min first rest))
-              | _ -> Values.Min (string_of_math_args args)))
-      | Values.Max args -> (
-          match read_math_args args with
-          | None -> value
-          | Some args -> (
-              let args = List.map (simplify ~visited) args in
-              match all_px ctx args with
-              | Some (first :: rest) ->
-                  normalize_zero
-                    (Values.Px (List.fold_left Float.max first rest))
-              | _ -> Values.Max (string_of_math_args args)))
-      | Values.Clamp args -> (
-          match read_math_args args with
-          | Some [ min; preferred; max ] -> (
-              let args = List.map (simplify ~visited) [ min; preferred; max ] in
-              match all_px ctx args with
-              | Some [ min; preferred; max ] ->
-                  normalize_zero
-                    (Values.Px (Float.max min (Float.min preferred max)))
-              | _ -> Values.Clamp (string_of_math_args args))
-          | _ -> value)
+      | Values.Min args -> simplify_length_min ctx simplify ~visited args
+      | Values.Max args -> simplify_length_max ctx simplify ~visited args
+      | Values.Clamp args -> simplify_length_clamp ctx simplify ~visited args
       | Values.Fit_content_arg value ->
           Values.Fit_content_arg (simplify ~visited value)
       | Values.Round (strategy, value, step) ->
@@ -1787,32 +1852,39 @@ module Url = struct
     in
     String.concat "/" (loop [] parts)
 
+  let resolve_absolute base href =
+    match cut ~sep:"://" base with
+    | None -> Ok href
+    | Some (scheme, rest) -> (
+        match cut ~sep:"/" rest with
+        | None -> Ok (scheme ^ "://" ^ rest ^ href)
+        | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href))
+
+  let resolve_combined combined =
+    match cut ~sep:"://" combined with
+    | None -> Ok (normalise_path combined)
+    | Some (scheme, rest) -> (
+        match cut ~sep:"/" rest with
+        | None -> Ok (scheme ^ "://" ^ normalise_path rest)
+        | Some (host, path) ->
+            Ok (scheme ^ "://" ^ host ^ "/" ^ normalise_path path))
+
+  let resolve_relative base href =
+    match cut ~rev:true ~sep:"/" base with
+    | None -> Ok href
+    | Some (dir, _) -> resolve_combined (dir ^ "/" ^ href)
+
+  let is_absolute_url href =
+    starts_with ~prefix:"http://" href || starts_with ~prefix:"https://" href
+
   let resolve loader href =
-    match loader.base_url with
-    | None when starts_with ~prefix:"http://" href -> Ok href
-    | None when starts_with ~prefix:"https://" href -> Ok href
-    | None -> Error ("no base URL to resolve " ^ href)
-    | Some _ when starts_with ~prefix:"http://" href -> Ok href
-    | Some _ when starts_with ~prefix:"https://" href -> Ok href
-    | Some base when starts_with ~prefix:"/" href -> (
-        match cut ~sep:"://" base with
-        | None -> Ok href
-        | Some (scheme, rest) -> (
-            match cut ~sep:"/" rest with
-            | None -> Ok (scheme ^ "://" ^ rest ^ href)
-            | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href)))
-    | Some base -> (
-        match cut ~rev:true ~sep:"/" base with
-        | None -> Ok href
-        | Some (dir, _) -> (
-            let combined = dir ^ "/" ^ href in
-            match cut ~sep:"://" combined with
-            | None -> Ok (normalise_path combined)
-            | Some (scheme, rest) -> (
-                match cut ~sep:"/" rest with
-                | None -> Ok (scheme ^ "://" ^ normalise_path rest)
-                | Some (host, path) ->
-                    Ok (scheme ^ "://" ^ host ^ "/" ^ normalise_path path))))
+    if is_absolute_url href then Ok href
+    else
+      match loader.base_url with
+      | None -> Error ("no base URL to resolve " ^ href)
+      | Some base when starts_with ~prefix:"/" href ->
+          resolve_absolute base href
+      | Some base -> resolve_relative base href
 end
 
 (** {2 [@import] loader (CSS Cascade 5 §6)}
@@ -1843,28 +1915,37 @@ module Import = struct
     | None -> statements
     | Some name -> [ Stylesheet.Layer (Some name, statements) ]
 
-  let load ?query ?(layer_order = []) loader (rule : Stylesheet.import_rule) =
-    let layer_name = rule.layer in
+  let parse_source rule source =
+    try
+      let cursor = Cursor.of_string source in
+      let sheet = Stylesheet.read_stylesheet cursor in
+      Ok (wrap_in_layer rule sheet)
+    with
+    | Failure msg -> Error msg
+    | Cursor.Parse_error _ -> Error "stylesheet parse error"
+
+  let load_resolved loader rule resolved =
+    match List.assoc_opt resolved loader.imports with
+    | None -> Error ("import not in loader table: " ^ resolved)
+    | Some source -> parse_source rule source
+
+  let guards_ok ?query ~layer_order rule =
+    let layer_name = (rule : Stylesheet.import_rule).layer in
     if not (layer_known ~layer_order layer_name) then
       Error ("unknown layer " ^ Option.value layer_name ~default:"")
     else if not (supports_ok ?query rule) then
       Error "supports() guard rejected the import"
     else if not (media_ok ?query rule) then
       Error "media guard rejected the import"
-    else
-      match Url.resolve loader rule.url with
-      | Error _ as e -> e
-      | Ok resolved -> (
-          match List.assoc_opt resolved loader.imports with
-          | None -> Error ("import not in loader table: " ^ resolved)
-          | Some source -> (
-              try
-                let cursor = Cursor.of_string source in
-                let sheet = Stylesheet.read_stylesheet cursor in
-                Ok (wrap_in_layer rule sheet)
-              with
-              | Failure msg -> Error msg
-              | Cursor.Parse_error _ -> Error "stylesheet parse error"))
+    else Ok ()
+
+  let load ?query ?(layer_order = []) loader (rule : Stylesheet.import_rule) =
+    match guards_ok ?query ~layer_order rule with
+    | Error _ as e -> e
+    | Ok () -> (
+        match Url.resolve loader rule.url with
+        | Error _ as e -> e
+        | Ok resolved -> load_resolved loader rule resolved)
 end
 
 (** {2 Public API surface (forwards to the internal modules)} *)
@@ -3209,33 +3290,35 @@ let simplify_animation_item ?layer_order ?layer ctx duration value =
       (lookup_custom_property ?layer ?layer_order ctx var.Values.name)
       (read_custom_components Properties.read_animation_name)
   in
+  let resolve_name_from_timing (shorthand : Properties.animation_shorthand) =
+    match (shorthand.name, shorthand.timing_function) with
+    | None, Some (Properties.Var var) -> (
+        match name_from_timing_var var with
+        | Some name -> (Some name, None)
+        | None -> (shorthand.name, shorthand.timing_function))
+    | _ -> (shorthand.name, shorthand.timing_function)
+  in
+  let rebuild_shorthand (shorthand : Properties.animation_shorthand) =
+    let name, timing_function = resolve_name_from_timing shorthand in
+    let shorthand : Properties.animation_shorthand =
+      {
+        name = Option.map (simplify_animation_name ?layer_order ?layer ctx) name;
+        duration = Option.map duration shorthand.duration;
+        timing_function;
+        delay = Option.map duration shorthand.delay;
+        iteration_count = shorthand.iteration_count;
+        direction = shorthand.direction;
+        fill_mode = shorthand.fill_mode;
+        play_state = shorthand.play_state;
+        timeline = shorthand.timeline;
+      }
+    in
+    (Properties.Shorthand shorthand : Properties.animation)
+  in
   let simplify_leaf _simplify ~authored:_ ~visited:_
       (value : Properties.animation) =
     match value with
-    | Properties.Shorthand (shorthand : Properties.animation_shorthand) ->
-        let name, timing_function =
-          match (shorthand.name, shorthand.timing_function) with
-          | None, Some (Properties.Var var) -> (
-              match name_from_timing_var var with
-              | Some name -> (Some name, None)
-              | None -> (shorthand.name, shorthand.timing_function))
-          | _ -> (shorthand.name, shorthand.timing_function)
-        in
-        let shorthand : Properties.animation_shorthand =
-          {
-            name =
-              Option.map (simplify_animation_name ?layer_order ?layer ctx) name;
-            duration = Option.map duration shorthand.duration;
-            timing_function;
-            delay = Option.map duration shorthand.delay;
-            iteration_count = shorthand.iteration_count;
-            direction = shorthand.direction;
-            fill_mode = shorthand.fill_mode;
-            play_state = shorthand.play_state;
-            timeline = shorthand.timeline;
-          }
-        in
-        (Properties.Shorthand shorthand : Properties.animation)
+    | Properties.Shorthand shorthand -> rebuild_shorthand shorthand
     | value -> value
   in
   let ops : Properties.animation Var_residual.ops =

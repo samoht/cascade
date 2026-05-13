@@ -643,206 +643,244 @@ let scope_boundary_allows document start boundary =
   | None -> true
   | Some _ -> not (scope_selector_matches document boundary)
 
-let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
-    ~property stylesheet =
-  let source_order = ref 0 in
-  let add_declarations ~origin ~layer ~specificity ~scope_hops acc declarations
-      =
-    List.fold_left
-      (fun acc decl ->
-        let order = !source_order in
-        incr source_order;
-        if Css.Declaration.property_name decl = property then
-          let candidate : Css.Stylesheet.cascade_candidate =
-            {
-              candidate_origin = origin;
-              candidate_important = Css.Declaration.is_important decl;
-              candidate_layer = layer;
-              candidate_specificity = specificity;
-              candidate_scope_hops = scope_hops;
-              candidate_source_order = order;
-              candidate_value = declaration_value_source decl;
-            }
-          in
-          candidate :: acc
-        else acc)
-      acc declarations
+let rec conditional_matches query = function
+  | Css.Stylesheet.Media_condition condition ->
+      Css.Context.matches_media query condition
+  | Supports_condition_test condition ->
+      Css.Context.matches_supports query condition
+  | And (left, right) ->
+      conditional_matches query left && conditional_matches query right
+  | Or (left, right) ->
+      conditional_matches query left || conditional_matches query right
+
+let add_matching_declarations ~source_order ~property ~origin ~layer
+    ~specificity ~scope_hops acc declarations =
+  List.fold_left
+    (fun acc decl ->
+      let order = !source_order in
+      incr source_order;
+      if Css.Declaration.property_name decl <> property then acc
+      else
+        let candidate : Css.Stylesheet.cascade_candidate =
+          {
+            candidate_origin = origin;
+            candidate_important = Css.Declaration.is_important decl;
+            candidate_layer = layer;
+            candidate_specificity = specificity;
+            candidate_scope_hops = scope_hops;
+            candidate_source_order = order;
+            candidate_value = declaration_value_source decl;
+          }
+        in
+        candidate :: acc)
+    acc declarations
+
+let rec collect_matching_block ~source_order ~property ~document ~query ~origin
+    ~layer ~current_specificity ~scope_hops acc block =
+  let step (acc, chain_matched) stmt =
+    collect_matching_statement ~source_order ~property ~document ~query ~origin
+      ~layer ~current_specificity ~scope_hops ~chain_matched acc stmt
   in
-  let rec collect_block ~origin ~layer ~current_specificity ~scope_hops acc
-      block =
-    block
-    |> List.fold_left
-         (fun (acc, chain_matched) stmt ->
-           collect_statement ~origin ~layer ~current_specificity ~scope_hops
-             ~chain_matched acc stmt)
-         (acc, None)
-    |> fst
-  and conditional_matches = function
-    | Css.Stylesheet.Media_condition condition ->
-        Css.Context.matches_media query condition
-    | Supports_condition_test condition ->
-        Css.Context.matches_supports query condition
-    | And (left, right) -> conditional_matches left && conditional_matches right
-    | Or (left, right) -> conditional_matches left || conditional_matches right
-  and collect_conditional_block ~origin ~layer ~current_specificity ~scope_hops
-      acc block matched =
+  fst (List.fold_left step (acc, None) block)
+
+and collect_matching_statement ~source_order ~property ~document ~query ~origin
+    ~layer ~current_specificity ~scope_hops ~chain_matched acc stmt =
+  match
+    collect_rule_like_statement ~source_order ~property ~document ~query ~origin
+      ~layer ~current_specificity ~scope_hops acc stmt
+  with
+  | Some result -> result
+  | None -> (
+      match
+        collect_conditional_statement ~source_order ~property ~document ~query
+          ~origin ~layer ~current_specificity ~scope_hops ~chain_matched acc
+          stmt
+      with
+      | Some result -> result
+      | None ->
+          collect_declaration_statement ~source_order ~property ~origin ~layer
+            ~current_specificity ~scope_hops acc stmt)
+
+and collect_rule_like_statement ~source_order ~property ~document ~query ~origin
+    ~layer ~current_specificity ~scope_hops acc = function
+  | Css.Stylesheet.Rule rule ->
+      Some
+        (if Css.Context.matches_selector document rule.selector then
+           let specificity = specificity_score rule.selector in
+           let acc =
+             add_matching_declarations ~source_order ~property ~origin ~layer
+               ~specificity ~scope_hops acc rule.declarations
+           in
+           ( collect_matching_block ~source_order ~property ~document ~query
+               ~origin ~layer ~current_specificity:(Some specificity)
+               ~scope_hops acc rule.nested,
+             None )
+         else (acc, None))
+  | Layer (name, block) ->
+      Some
+        ( collect_matching_block ~source_order ~property ~document ~query
+            ~origin ~layer:name ~current_specificity ~scope_hops acc block,
+          None )
+  | Starting_style block ->
+      Some
+        ( collect_matching_block ~source_order ~property ~document ~query
+            ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
+  | Origin (origin, block) ->
+      Some
+        ( collect_matching_block ~source_order ~property ~document ~query
+            ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
+  | Moz_document (_, block) ->
+      Some
+        ( collect_matching_block ~source_order ~property ~document ~query
+            ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
+  | Scope (start, boundary, block) ->
+      Some
+        (if scope_boundary_allows document start boundary then
+           ( collect_matching_block ~source_order ~property ~document ~query
+               ~origin ~layer ~current_specificity ~scope_hops:(Some 0) acc
+               block,
+             None )
+         else (acc, None))
+  | _ -> None
+
+and collect_conditional_statement ~source_order ~property ~document ~query
+    ~origin ~layer ~current_specificity ~scope_hops ~chain_matched acc =
+  let collect_if matched block =
     let acc =
       if matched then
-        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+        collect_matching_block ~source_order ~property ~document ~query ~origin
+          ~layer ~current_specificity ~scope_hops acc block
       else acc
     in
     (acc, Some matched)
-  and collect_statement ~origin ~layer ~current_specificity ~scope_hops
-      ~chain_matched acc = function
-    | Css.Stylesheet.Rule rule ->
-        if Css.Context.matches_selector document rule.selector then
-          let specificity = specificity_score rule.selector in
-          let acc =
-            add_declarations ~origin ~layer ~specificity ~scope_hops acc
-              rule.declarations
-          in
-          ( collect_block ~origin ~layer ~current_specificity:(Some specificity)
-              ~scope_hops acc rule.nested,
-            None )
-        else (acc, None)
-    | Declarations declarations -> (
-        match current_specificity with
-        | None -> (acc, None)
-        | Some specificity ->
-            ( add_declarations ~origin ~layer ~specificity ~scope_hops acc
-                declarations,
-              None ))
-    | Layer (name, block) ->
-        ( collect_block ~origin ~layer:name ~current_specificity ~scope_hops acc
-            block,
-          None )
-    | Media (condition, block) ->
-        collect_conditional_block ~origin ~layer ~current_specificity
-          ~scope_hops acc block
-          (Css.Context.matches_media query condition)
-    | Supports (condition, block) ->
-        collect_conditional_block ~origin ~layer ~current_specificity
-          ~scope_hops acc block
-          (Css.Context.matches_supports query condition)
-    | Container (name, condition, block) ->
-        let matches =
-          match condition with
-          | Some c -> Css.Context.matches_container query ?name c
-          | None -> true
-        in
-        collect_conditional_block ~origin ~layer ~current_specificity
-          ~scope_hops acc block matches
-    | When (condition, block) ->
-        collect_conditional_block ~origin ~layer ~current_specificity
-          ~scope_hops acc block
-          (conditional_matches condition)
-    | Else (condition, block) -> (
-        match chain_matched with
+  in
+  function
+  | Media (condition, block) ->
+      Some (collect_if (Css.Context.matches_media query condition) block)
+  | Supports (condition, block) ->
+      Some (collect_if (Css.Context.matches_supports query condition) block)
+  | Container (name, condition, block) ->
+      let matches =
+        match condition with
+        | Some c -> Css.Context.matches_container query ?name c
+        | None -> true
+      in
+      Some (collect_if matches block)
+  | When (condition, block) ->
+      Some (collect_if (conditional_matches query condition) block)
+  | Else (condition, block) ->
+      Some
+        (match chain_matched with
         | None -> (acc, None)
         | Some previous_matched ->
             let condition_matched =
               match condition with
               | None -> true
-              | Some condition -> conditional_matches condition
+              | Some condition -> conditional_matches query condition
             in
             let matched = (not previous_matched) && condition_matched in
             let acc =
               if matched then
-                collect_block ~origin ~layer ~current_specificity ~scope_hops
-                  acc block
+                collect_matching_block ~source_order ~property ~document ~query
+                  ~origin ~layer ~current_specificity ~scope_hops acc block
               else acc
             in
             (acc, Some (previous_matched || matched)))
-    | Starting_style block ->
-        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
-          None )
-    | Origin (origin, block) ->
-        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
-          None )
-    | Moz_document (_, block) ->
-        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
-          None )
-    | Scope (start, boundary, block) ->
-        if scope_boundary_allows document start boundary then
-          ( collect_block ~origin ~layer ~current_specificity
-              ~scope_hops:(Some 0) acc block,
-            None )
-        else (acc, None)
-    | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-    | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Page _
-    | Page_with_margins _ | Counter_style _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _
-    | Supports_condition _ | Viewport _ | Unknown_at_rule _ ->
-        (acc, None)
-  in
+  | _ -> None
+
+and collect_declaration_statement ~source_order ~property ~origin ~layer
+    ~current_specificity ~scope_hops acc = function
+  | Declarations declarations -> (
+      match current_specificity with
+      | None -> (acc, None)
+      | Some specificity ->
+          ( add_matching_declarations ~source_order ~property ~origin ~layer
+              ~specificity ~scope_hops acc declarations,
+            None ))
+  | _ -> (acc, None)
+
+let cascade_layer_candidate_of (c : Css.Stylesheet.cascade_candidate) :
+    Css.Stylesheet.cascade_layer_candidate =
+  {
+    layer = c.candidate_layer;
+    important = c.candidate_important;
+    source_order = c.candidate_source_order;
+    value = c.candidate_value;
+  }
+
+let cascade_origin_candidate_of (c : Css.Stylesheet.cascade_candidate) :
+    Css.Stylesheet.cascade_origin_candidate =
+  {
+    origin = c.candidate_origin;
+    important = c.candidate_important;
+    source_order = c.candidate_source_order;
+    value = c.candidate_value;
+  }
+
+let same_layer_candidate (c : Css.Stylesheet.cascade_candidate)
+    (l : Css.Stylesheet.cascade_layer_candidate) =
+  l.layer = c.candidate_layer
+  && l.important = c.candidate_important
+  && l.source_order = c.candidate_source_order
+
+let same_origin_candidate (c : Css.Stylesheet.cascade_candidate)
+    (l : Css.Stylesheet.cascade_origin_candidate) =
+  l.origin = c.candidate_origin
+  && l.important = c.candidate_important
+  && l.source_order = c.candidate_source_order
+
+let lower_layer_candidates ~layer_order
+    (candidate : Css.Stylesheet.cascade_candidate) candidates =
+  Css.Stylesheet.cascade_revert_layer_candidates ~layer_order
+    ~important:candidate.candidate_important
+    ~current_layer:candidate.candidate_layer
+    (List.map cascade_layer_candidate_of candidates)
+
+let lower_origin_candidates (candidate : Css.Stylesheet.cascade_candidate)
+    candidates =
+  Css.Stylesheet.cascade_revert_origin_candidates
+    ~important:candidate.candidate_important
+    ~current_origin:candidate.candidate_origin
+    (List.map cascade_origin_candidate_of candidates)
+
+let rec winning_resolved_candidate ~layer_order candidates =
+  Option.bind (Css.Stylesheet.winning_cascade_candidate ~layer_order candidates)
+    (fun (candidate : Css.Stylesheet.cascade_candidate) ->
+      match candidate.candidate_value with
+      | "revert-layer" ->
+          let lower =
+            lower_layer_candidates ~layer_order candidate candidates
+          in
+          let candidates =
+            List.filter
+              (fun candidate ->
+                List.exists (same_layer_candidate candidate) lower)
+              candidates
+          in
+          winning_resolved_candidate ~layer_order candidates
+      | "revert" ->
+          let lower = lower_origin_candidates candidate candidates in
+          let candidates =
+            List.filter
+              (fun candidate ->
+                List.exists (same_origin_candidate candidate) lower)
+              candidates
+          in
+          winning_resolved_candidate ~layer_order candidates
+      | value -> Some (candidate, value))
+
+let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
+    ~property stylesheet =
+  let source_order = ref 0 in
   let candidates =
-    collect_block ~origin:Css.Stylesheet.Author ~layer:None
-      ~current_specificity:None ~scope_hops:None [] stylesheet
+    collect_matching_block ~source_order ~property ~document ~query
+      ~origin:Css.Stylesheet.Author ~layer:None ~current_specificity:None
+      ~scope_hops:None [] stylesheet
   in
-  let rec winner candidates =
-    Option.bind
-      (Css.Stylesheet.winning_cascade_candidate ~layer_order candidates)
-      (fun (candidate : Css.Stylesheet.cascade_candidate) ->
-        match candidate.candidate_value with
-        | "revert-layer" ->
-            let lower =
-              Css.Stylesheet.cascade_revert_layer_candidates ~layer_order
-                ~important:candidate.candidate_important
-                ~current_layer:candidate.candidate_layer
-                (List.map
-                   (fun (c : Css.Stylesheet.cascade_candidate) :
-                        Css.Stylesheet.cascade_layer_candidate ->
-                     {
-                       layer = c.candidate_layer;
-                       important = c.candidate_important;
-                       source_order = c.candidate_source_order;
-                       value = c.candidate_value;
-                     })
-                   candidates)
-            in
-            let lower_candidates =
-              List.filter
-                (fun (c : Css.Stylesheet.cascade_candidate) ->
-                  List.exists
-                    (fun (l : Css.Stylesheet.cascade_layer_candidate) ->
-                      l.layer = c.candidate_layer
-                      && l.important = c.candidate_important
-                      && l.source_order = c.candidate_source_order)
-                    lower)
-                candidates
-            in
-            winner lower_candidates
-        | "revert" ->
-            let lower =
-              Css.Stylesheet.cascade_revert_origin_candidates
-                ~important:candidate.candidate_important
-                ~current_origin:candidate.candidate_origin
-                (List.map
-                   (fun (c : Css.Stylesheet.cascade_candidate) :
-                        Css.Stylesheet.cascade_origin_candidate ->
-                     {
-                       origin = c.candidate_origin;
-                       important = c.candidate_important;
-                       source_order = c.candidate_source_order;
-                       value = c.candidate_value;
-                     })
-                   candidates)
-            in
-            let lower_candidates =
-              List.filter
-                (fun (c : Css.Stylesheet.cascade_candidate) ->
-                  List.exists
-                    (fun (l : Css.Stylesheet.cascade_origin_candidate) ->
-                      l.origin = c.candidate_origin
-                      && l.important = c.candidate_important
-                      && l.source_order = c.candidate_source_order)
-                    lower)
-                candidates
-            in
-            winner lower_candidates
-        | value -> Some (candidate, value))
-  in
-  winner candidates
+  winning_resolved_candidate ~layer_order candidates
   |> Option.map (fun ((candidate : Css.Stylesheet.cascade_candidate), value) ->
       let decl = Css.Declaration.of_string (property ^ ": " ^ value) in
       match candidate.candidate_layer with

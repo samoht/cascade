@@ -152,7 +152,7 @@ let spec_error_handling_eof_closes () =
   | [
    Component.Qualified { node = { block = { node = { value; _ }; _ }; _ }; _ };
   ] ->
-      let serialized = Parser.to_string value in
+      let serialized = Parser.string_of_components value in
       Alcotest.(check string)
         "auto-closed declaration value" " transform: translate(50px)" serialized
   | _ -> Alcotest.fail "expected one auto-closed qualified rule"
@@ -171,7 +171,7 @@ let spec_parse_grammar_entry_points () =
   Alcotest.(check bool)
     "single ident matches grammar" true
     (match parse_one "foo" with
-    | Some cvs -> Parser.to_string cvs = "foo"
+    | Some cvs -> Parser.string_of_components cvs = "foo"
     | _ -> false);
   Alcotest.(check bool)
     "multiple components do not match grammar" true
@@ -459,7 +459,8 @@ let spec_component_entry_point () =
     | Some cv ->
         Alcotest.(check string)
           (Fmt.str "component %S" input)
-          expected (Parser.to_string [ cv ])
+          expected
+          (Parser.string_of_components [ cv ])
     | None -> Alcotest.failf "expected one component value for %S" input
   in
   check_some "  [a b]  " "[a b]";
@@ -482,16 +483,16 @@ let spec_list_components_entry () =
   in
   Alcotest.(check string)
     "component value list" "a [b c] rgb(1, 2) }"
-    (Parser.to_string (parse_list "a [b c] rgb(1, 2) }"));
+    (Parser.string_of_components (parse_list "a [b c] rgb(1, 2) }"));
   Alcotest.(check string)
     "unmatched closing tokens are preserved" ")]}"
-    (Parser.to_string (parse_list ")]}"));
+    (Parser.string_of_components (parse_list ")]}"));
   Alcotest.(check string)
     "comments preserve token boundary" "a b"
-    (Parser.to_string (parse_list "a/*x*/b"));
+    (Parser.string_of_components (parse_list "a/*x*/b"));
   Alcotest.(check string)
     "EOF closes nested blocks and functions" "[a f(b)]"
-    (Parser.to_string (parse_list "[a f(b"));
+    (Parser.string_of_components (parse_list "[a f(b"));
   Alcotest.(check int) "empty list" 0 (List.length (parse_list ""))
 
 let spec_csv_components () =
@@ -597,7 +598,7 @@ let spec_serialization_string_escaping () =
   let roundtrip_string input =
     match parse_one input with
     | Some cv ->
-        let serialized = Parser.to_string [ cv ] in
+        let serialized = Parser.string_of_components [ cv ] in
         (serialized, string_value (parse_one serialized))
     | None -> Alcotest.failf "expected string component for %S" input
   in
@@ -656,7 +657,7 @@ let spec_serialization_roundtrip_boundaries () =
     ];
   Alcotest.(check string)
     "backslash delim serialization" "\\\n"
-    (Parser.to_string (parse_list "\\"))
+    (Parser.string_of_components (parse_list "\\"))
 
 let spec_wpt_unclosed_construct_edges () =
   (* WPT unclosed-constructs vectors at the component parser layer. *)
@@ -665,7 +666,7 @@ let spec_wpt_unclosed_construct_edges () =
   in
   Alcotest.(check string)
     "unclosed function and block auto-close" "calc(1px + [2em])"
-    (Parser.to_string (list "calc(1px + [2em"));
+    (Parser.string_of_components (list "calc(1px + [2em"));
   Alcotest.(check string)
     "unclosed nested function auto-closes" "f(g(h))"
     (Parser.to_string_minified (list "f(g(h"))
@@ -723,7 +724,7 @@ let spec_wpt_parser_branch_matrix () =
   | _ -> Alcotest.fail "expected bad-url token and following ident to survive");
   Alcotest.(check string)
     "nested block EOF recovery" "[a {b (c)}]"
-    (Parser.to_string (list "[a {b (c"));
+    (Parser.string_of_components (list "[a {b (c"));
   (match parse_ss "@a; @b{} .c{}" with
   | [
    Component.At { node = { name = "a"; block = None; _ }; _ };
@@ -857,7 +858,7 @@ let spec12_parsing_checklist () =
   | _ -> Alcotest.fail "expected unicode-range descriptor declaration");
   Alcotest.(check string)
     "url string is a function component" "url(\"a.png\") url(a.png)"
-    (Parser.to_string (parse_cvs "url(\"a.png\") url(a.png)"));
+    (Parser.string_of_components (parse_cvs "url(\"a.png\") url(a.png)"));
   Alcotest.(check string)
     "semicolon in qualified-rule prelude" "a;b"
     (match parse_ss "a; b { color: red }" with
@@ -989,39 +990,41 @@ let spec_component_value_algorithms () =
      tokens, simple blocks, and functions; EOF closes an open function. *)
   let cvs = parse_cvs "[a b] rgb(1, 2)" in
   Alcotest.(check string)
-    "simple block and function" "[a b] rgb(1, 2)" (Parser.to_string cvs);
+    "simple block and function" "[a b] rgb(1, 2)"
+    (Parser.string_of_components cvs);
   let cvs = parse_cvs "rgb(1, 2" in
   Alcotest.(check string)
-    "function auto-closed at EOF" "rgb(1, 2)" (Parser.to_string cvs)
+    "function auto-closed at EOF" "rgb(1, 2)"
+    (Parser.string_of_components cvs)
 
 let spec_simple_block_branches () =
   (* CSS Syntax Level 3 section 5.5.9: simple blocks end only at their mirror
      closing token or EOF; mismatched closers are preserved inside the block. *)
   Alcotest.(check string)
     "square block mirror close" "[a) b]"
-    (Parser.to_string (parse_cvs "[a) b]"));
+    (Parser.string_of_components (parse_cvs "[a) b]"));
   Alcotest.(check string)
     "paren block mirror close" "(a] b)"
-    (Parser.to_string (parse_cvs "(a] b)"));
+    (Parser.string_of_components (parse_cvs "(a] b)"));
   Alcotest.(check string)
     "curly block mirror close" "{a] b}"
-    (Parser.to_string (parse_cvs "{a] b}"));
+    (Parser.string_of_components (parse_cvs "{a] b}"));
   Alcotest.(check string)
     "EOF closes simple block" "[a]"
-    (Parser.to_string (parse_cvs "[a"))
+    (Parser.string_of_components (parse_cvs "[a"))
 
 let spec_function_branches () =
   (* CSS Syntax Level 3 section 5.5.10: functions end at ")" or EOF; other
      tokens, including unmatched right braces, are arguments. *)
   Alcotest.(check string)
     "nested function arguments" "calc([a] rgb(1))"
-    (Parser.to_string (parse_cvs "calc([a] rgb(1))"));
+    (Parser.string_of_components (parse_cvs "calc([a] rgb(1))"));
   Alcotest.(check string)
     "right brace argument preserved" "f(})"
-    (Parser.to_string (parse_cvs "f(})"));
+    (Parser.string_of_components (parse_cvs "f(})"));
   Alcotest.(check string)
     "EOF closes function" "f(a)"
-    (Parser.to_string (parse_cvs "f(a"))
+    (Parser.string_of_components (parse_cvs "f(a"))
 
 (* ----- Declaration list parsing (5.3.6 / 5.3.7) ----- *)
 

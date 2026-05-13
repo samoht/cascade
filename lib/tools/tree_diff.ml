@@ -186,20 +186,21 @@ let adjacent_swap lst1 lst2 =
   scan lst1 lst2
 
 (* Helper to find property moves (up to max_count) *)
+let index_of_property name names =
+  let rec find_idx i = function
+    | [] -> -1
+    | x :: _ when x = name -> i
+    | _ :: rest -> find_idx (i + 1) rest
+  in
+  find_idx 0 names
+
 let property_moves ~max_count prop_names1 prop_names2 =
   let rec scan lst1 lst2 acc count =
     if count >= max_count then List.rev acc
     else
       match (lst1, lst2) with
       | x1 :: rest1, x2 :: rest2 when x1 <> x2 ->
-          let new_pos =
-            let rec find_idx i = function
-              | [] -> -1
-              | x :: _ when x = x1 -> i
-              | _ :: rest -> find_idx (i + 1) rest
-            in
-            find_idx 0 prop_names2
-          in
+          let new_pos = index_of_property x1 prop_names2 in
           scan rest1 rest2 ((x1, new_pos) :: acc) (count + 1)
       | _ :: rest1, _ :: rest2 -> scan rest1 rest2 acc count
       | _, _ -> List.rev acc
@@ -221,8 +222,8 @@ let pp_property_moves buf indent moves total_diffs =
       (" (and " ^ string_of_int (total_diffs - List.length moves) ^ " more)");
   Buffer.add_char buf '\n'
 
-let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
-    =
+let rec pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2
+    buf =
   let indent =
     if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
   in
@@ -234,21 +235,26 @@ let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
        = List.sort String.compare prop_names2
   in
   if same_props && prop_names1 <> prop_names2 then
-    match adjacent_swap prop_names1 prop_names2 with
-    | Some (prop1, prop2) ->
-        let truncate s = String_diff.truncate_middle 20 s in
-        Buffer.add_string buf
-          (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
-         ^ "\n")
-    | None ->
-        let moves = property_moves ~max_count:3 prop_names1 prop_names2 in
-        if moves <> [] then
-          let total_diffs =
-            List.fold_left2
-              (fun acc p1 p2 -> if p1 <> p2 then acc + 1 else acc)
-              0 prop_names1 prop_names2
-          in
-          pp_property_moves buf indent moves total_diffs
+    pp_same_property_reorder buf indent prop_names1 prop_names2
+
+and pp_same_property_reorder buf indent prop_names1 prop_names2 =
+  match adjacent_swap prop_names1 prop_names2 with
+  | Some (prop1, prop2) ->
+      let truncate s = String_diff.truncate_middle 20 s in
+      Buffer.add_string buf
+        (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
+       ^ "\n")
+  | None -> pp_property_move_summary buf indent prop_names1 prop_names2
+
+and pp_property_move_summary buf indent prop_names1 prop_names2 =
+  let moves = property_moves ~max_count:3 prop_names1 prop_names2 in
+  if moves <> [] then
+    let total_diffs =
+      List.fold_left2
+        (fun acc p1 p2 -> if p1 <> p2 then acc + 1 else acc)
+        0 prop_names1 prop_names2
+    in
+    pp_property_moves buf indent moves total_diffs
 
 let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     ~old_declarations ~new_declarations ~property_changes ~added_properties
@@ -831,7 +837,7 @@ let try_equivalent_props_match rules2_by_props used_rules r1 d1 props1 =
       Some (rule_selector r1, rule_selector r2, d1, d2)
   | None -> None
 
-let rules_modified_diff rules1 rules2 =
+let rec rules_modified_diff rules1 rules2 =
   let rules2_by_key, rules2_by_props = build_rule_lookup_tables rules2 in
   let used_rules = Hashtbl.create (List.length rules2) in
 
@@ -841,25 +847,29 @@ let rules_modified_diff rules1 rules2 =
         let key1 = selector_key_of_stmt r1 in
         let d1 = rule_declarations r1 in
         let props1 = decls_signature d1 in
-
         let pick =
-          match try_exact_match rules2_by_key used_rules r1 key1 d1 with
-          | Some (Some result) -> Some result
-          | Some None ->
-              None (* Exact match found but selectors are same - no diff *)
-          | None -> (
-              (* No exact match found - try other strategies *)
-              match try_same_key_match rules2_by_key used_rules r1 key1 d1 with
-              | Some result -> Some result
-              | None ->
-                  try_equivalent_props_match rules2_by_props used_rules r1 d1
-                    props1)
+          pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+            props1
         in
-
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
   in
   aux [] rules1
+
+and pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+    props1 =
+  match try_exact_match rules2_by_key used_rules r1 key1 d1 with
+  | Some (Some result) -> Some result
+  | Some None -> None
+  | None ->
+      pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+        props1
+
+and pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
+    props1 =
+  match try_same_key_match rules2_by_key used_rules r1 key1 d1 with
+  | Some result -> Some result
+  | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
@@ -932,7 +942,7 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
       | Some (s, d) -> (d, Some s)
       | None -> (decls2, None))
 
-let ordering_diff rules1 rules2 =
+let rec ordering_diff rules1 rules2 =
   let map1 = build_selector_map rules1 in
   let map2 = build_selector_map rules2 in
 
@@ -940,26 +950,29 @@ let ordering_diff rules1 rules2 =
     match (remaining1, remaining2) with
     | [], [] -> List.rev acc
     | (sel1, decls1) :: rest1, (sel2, decls2) :: rest2 ->
-        let sel1_key = selector_key_of_selector sel1 in
-        let sel2_key = selector_key_of_selector sel2 in
-        if sel1_key <> sel2_key then
-          let sel1_in_remaining2 = selector_in_list sel1_key remaining2 in
-          let sel2_in_remaining1 = selector_in_list sel2_key remaining1 in
-
-          if sel1_in_remaining2 && sel2_in_remaining1 then
-            let decls1_from_map2, sel2_opt =
-              matching_decls_in_map2 sel1_key decls1 map2 decls2
-            in
-            let sel2 = match sel2_opt with Some s -> s | None -> sel1 in
-            find_ordering_issues
-              ((sel1, sel2, decls1, decls1_from_map2) :: acc)
-              rest1 rest2
-          else find_ordering_issues acc rest1 rest2
-        else find_ordering_issues acc rest1 rest2
+        let acc =
+          add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2
+            decls2
+        in
+        find_ordering_issues acc rest1 rest2
     | _, _ -> List.rev acc
   in
 
   find_ordering_issues [] map1 map2
+
+and add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
+  let sel1_key = selector_key_of_selector sel1 in
+  let sel2_key = selector_key_of_selector sel2 in
+  if sel1_key = sel2_key then acc
+  else if
+    selector_in_list sel1_key remaining2 && selector_in_list sel2_key remaining1
+  then
+    let decls1_from_map2, sel2_opt =
+      matching_decls_in_map2 sel1_key decls1 map2 decls2
+    in
+    let sel2 = match sel2_opt with Some s -> s | None -> sel1 in
+    (sel1, sel2, decls1, decls1_from_map2) :: acc
+  else acc
 
 (* no-op: pure rule ordering is handled in handle_structural_diff via
    has_ordering_changes/ordering_diff *)
@@ -1364,24 +1377,23 @@ and detect_block_structure_changes blocks1 blocks2 =
     (fun cond blocks1_list ->
       match Hashtbl.find_opt blocks2 cond with
       | Some blocks2_list ->
-          let count_differs =
-            List.length blocks1_list <> List.length blocks2_list
-          in
-          (* Check if block positions differ significantly *)
-          let positions_differ_significantly =
-            if List.length blocks1_list = List.length blocks2_list then
-              let pos1_list = List.map fst blocks1_list in
-              let pos2_list = List.map fst blocks2_list in
-              (* Check if any corresponding positions differ by more than 10 *)
-              List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
-            else false
-          in
-          if count_differs || positions_differ_significantly then
+          if block_structure_differs blocks1_list blocks2_list then
             Hashtbl.replace block_structure_changed cond
               (blocks1_list, blocks2_list)
       | _ -> ())
     blocks1;
   block_structure_changed
+
+and block_structure_differs blocks1_list blocks2_list =
+  List.length blocks1_list <> List.length blocks2_list
+  || block_positions_differ blocks1_list blocks2_list
+
+and block_positions_differ blocks1_list blocks2_list =
+  List.length blocks1_list = List.length blocks2_list
+  &&
+  let pos1_list = List.map fst blocks1_list in
+  let pos2_list = List.map fst blocks2_list in
+  List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
 
 (* Check if only declaration reorders occurred *)
 and only_declaration_reorders rule_changes nested_containers =

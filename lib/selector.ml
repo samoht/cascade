@@ -402,42 +402,42 @@ let compound selectors = Compound selectors
 let err_expected t what = Cursor.err_expected t what
 
 (** Parse attribute value (quoted or unquoted) *)
+let read_attribute_value_ident t s (loc : Loc.t) =
+  Cursor.skip t;
+  let raw =
+    match Cursor.source t with
+    | Some source ->
+        Some (String.sub source loc.start_pos (loc.end_pos - loc.start_pos))
+    | None -> None
+  in
+  match raw with Some raw when String.contains raw '\\' -> raw | _ -> s
+
+let format_attribute_number n (unit : string option) =
+  match unit with
+  | None ->
+      if Float.is_integer n then string_of_int (int_of_float n)
+      else string_of_float n
+  | Some u ->
+      if Float.is_integer n then string_of_int (int_of_float n) ^ u
+      else string_of_float n ^ u
+
+let read_attribute_value_unquoted t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident s; loc }) ->
+      read_attribute_value_ident t s loc
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ })
+  | Some (Component.Preserved { kind = Token.Dimension _; _ })
+  | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
+      let n, unit = Cursor.number_with_unit t in
+      format_attribute_number n unit
+  | _ -> ""
+
 let read_attribute_value t =
   (* Check if we start with a quote - if so, we MUST parse as quoted string *)
   let value, quote =
     match Cursor.string_with_quote_opt t with
     | Some (s, quote) -> (s, Some quote)
-    | None ->
-        (* Otherwise parse as an ident / dimension / number *)
-        let v =
-          match Cursor.peek t with
-          | Some (Component.Preserved { kind = Token.Ident s; loc }) -> (
-              Cursor.skip t;
-              let raw =
-                match Cursor.source t with
-                | Some source ->
-                    Some
-                      (String.sub source loc.start_pos
-                         (loc.end_pos - loc.start_pos))
-                | None -> None
-              in
-              match raw with
-              | Some raw when String.contains raw '\\' -> raw
-              | _ -> s)
-          | Some (Component.Preserved { kind = Token.Number_tok _; _ })
-          | Some (Component.Preserved { kind = Token.Dimension _; _ })
-          | Some (Component.Preserved { kind = Token.Percentage _; _ }) -> (
-              let n, unit = Cursor.number_with_unit t in
-              match unit with
-              | None ->
-                  if Float.is_integer n then string_of_int (int_of_float n)
-                  else string_of_float n
-              | Some u ->
-                  if Float.is_integer n then string_of_int (int_of_float n) ^ u
-                  else string_of_float n ^ u)
-          | _ -> ""
-        in
-        (v, None)
+    | None -> (read_attribute_value_unquoted t, None)
   in
   (* CSS spec allows empty quoted strings but not empty unquoted values *)
   if value = "" && Option.is_none quote then
@@ -468,48 +468,50 @@ let read_id t =
       Cursor.err_invalid t "expected identifier"
   | _ -> Cursor.err_expected t "'#'"
 
-let read_ns t : ns option =
-  Cursor.option
+let peek_is_namespaced_name t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
+  | Some (Component.Preserved { kind = Token.Delim "*"; _ }) -> true
+  | _ -> false
+
+let lookahead_bare_pipe_ns t =
+  (* Bare ['|'] selects the default (no) namespace. Selectors Level 4 section
+     6.2 distinguishes [[|attr]] from [[attr]]: the former explicitly matches
+     the empty namespace, the latter matches any. *)
+  Cursor.lookahead
     (fun t ->
-      if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
-      else if
-        (* Bare ['|'] selects the default (no) namespace. Selectors Level 4
-           section 6.2 distinguishes [[|attr]] from [[attr]]: the former
-           explicitly matches the empty namespace, the latter matches any. *)
-        Cursor.lookahead
-          (fun t ->
-            match Cursor.peek_delim t with
-            | Some '|' -> (
-                let _ = Cursor.next t in
-                (* Reject ['|='] (the dash-match operator). *)
-                if Cursor.peek_delim t = Some '=' then false
-                else
-                  (* Bare ['|'] is only a namespace prefix when a namespaced
-                     element or attribute name follows it. *)
-                  match Cursor.peek t with
-                  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-                      true
-                  | Some (Component.Preserved { kind = Token.Delim "*"; _ }) ->
-                      true
-                  | _ -> false)
-            | _ -> false)
-          t
-      then (
-        Cursor.expect '|' t;
-        None)
-      else
-        let p = Cursor.ident ~keep_case:true t in
-        (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
-        let is_eq_pair =
-          Cursor.lookahead
-            (fun t ->
-              Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
-            t
-        in
-        if is_eq_pair then Cursor.err t "not a namespace";
-        Cursor.expect '|' t;
-        Prefix p)
+      match Cursor.peek_delim t with
+      | Some '|' ->
+          let _ = Cursor.next t in
+          (* Reject ['|='] (the dash-match operator). *)
+          if Cursor.peek_delim t = Some '=' then false
+          else
+            (* Bare ['|'] is only a namespace prefix when a namespaced element
+               or attribute name follows it. *)
+            peek_is_namespaced_name t
+      | _ -> false)
     t
+
+let read_prefixed_ns t =
+  let p = Cursor.ident ~keep_case:true t in
+  (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
+  let is_eq_pair =
+    Cursor.lookahead
+      (fun t -> Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
+      t
+  in
+  if is_eq_pair then Cursor.err t "not a namespace";
+  Cursor.expect '|' t;
+  Prefix p
+
+let read_ns_inner t =
+  if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
+  else if lookahead_bare_pipe_ns t then (
+    Cursor.expect '|' t;
+    None)
+  else read_prefixed_ns t
+
+let read_ns t : ns option = Cursor.option read_ns_inner t
 
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
@@ -575,55 +577,62 @@ let read_combinator t =
     | None when Cursor.is_done t -> Cursor.err t "empty combinator"
     | _ -> Descendant
 
+let attribute_match cons cons_quoted (value, quote) =
+  match quote with Some quote -> cons_quoted value quote | None -> cons value
+
+let try_attribute_op c cons cons_quoted t : attribute_match option =
+  if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
+  then Some (attribute_match cons cons_quoted (read_attribute_value t))
+  else None
+
+let try_whitespace_list_match t =
+  try_attribute_op '~'
+    (fun v -> Whitespace_list v)
+    (fun v q -> Whitespace_list_quoted (v, q))
+    t
+
+let try_hyphen_list_match t =
+  try_attribute_op '|'
+    (fun v -> Hyphen_list v)
+    (fun v q -> Hyphen_list_quoted (v, q))
+    t
+
+let try_prefix_match t =
+  try_attribute_op '^' (fun v -> Prefix v) (fun v q -> Prefix_quoted (v, q)) t
+
+let try_suffix_match t =
+  try_attribute_op '$' (fun v -> Suffix v) (fun v q -> Suffix_quoted (v, q)) t
+
+let try_substring_match t =
+  try_attribute_op '*'
+    (fun v -> Substring v)
+    (fun v q -> Substring_quoted (v, q))
+    t
+
+let read_exact_or_presence t =
+  if Cursor.peek_delim t = Some '=' then (
+    Cursor.skip t;
+    attribute_match
+      (fun v -> Exact v)
+      (fun v q -> Exact_quoted (v, q))
+      (read_attribute_value t))
+  else Presence
+
 let read_attribute_match t : attribute_match =
-  let make cons cons_quoted (value, quote) =
-    match quote with
-    | Some quote -> cons_quoted value quote
-    | None -> cons value
+  let try_ops =
+    [
+      try_whitespace_list_match;
+      try_hyphen_list_match;
+      try_prefix_match;
+      try_suffix_match;
+      try_substring_match;
+    ]
   in
-  let try_eq c cons cons_quoted : attribute_match option =
-    if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
-    then Some (make cons cons_quoted (read_attribute_value t))
-    else None
+  let rec find = function
+    | [] -> read_exact_or_presence t
+    | op :: rest -> ( match op t with Some v -> v | None -> find rest)
   in
-  match
-    try_eq '~'
-      (fun v -> Whitespace_list v)
-      (fun v q -> Whitespace_list_quoted (v, q))
-  with
-  | Some v -> v
-  | None -> (
-      match
-        try_eq '|'
-          (fun v -> Hyphen_list v)
-          (fun v q -> Hyphen_list_quoted (v, q))
-      with
-      | Some v -> v
-      | None -> (
-          match
-            try_eq '^' (fun v -> Prefix v) (fun v q -> Prefix_quoted (v, q))
-          with
-          | Some v -> v
-          | None -> (
-              match
-                try_eq '$' (fun v -> Suffix v) (fun v q -> Suffix_quoted (v, q))
-              with
-              | Some v -> v
-              | None -> (
-                  match
-                    try_eq '*'
-                      (fun v -> Substring v)
-                      (fun v q -> Substring_quoted (v, q))
-                  with
-                  | Some v -> v
-                  | None ->
-                      if Cursor.peek_delim t = Some '=' then (
-                        Cursor.skip t;
-                        make
-                          (fun v -> Exact v)
-                          (fun v q -> Exact_quoted (v, q))
-                          (read_attribute_value t))
-                      else Presence))))
+  find try_ops
 
 let read_attr_flag t : attr_flag option =
   Cursor.ws t;
@@ -1130,33 +1139,37 @@ and read_forgiving_complex_item t =
   if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
   sel
 
-and read_forgiving_list read_item t =
+and forgiving_take_next_in_segment t acc =
+  match Cursor.next_raw t with
+  | None -> List.rev acc
+  | Some cv -> forgiving_take_segment t (cv :: acc)
+
+and forgiving_take_segment t acc =
   let is_comma = function
     | Component.Preserved { kind = Token.Comma; _ } -> true
     | _ -> false
   in
-  let rec take_segment acc =
-    match Cursor.peek_raw t with
-    | None -> List.rev acc
-    | Some cv when is_comma cv ->
-        ignore (Cursor.next_raw t : Component.t option);
-        List.rev acc
-    | Some _ -> (
-        match Cursor.next_raw t with
-        | None -> List.rev acc
-        | Some cv -> take_segment (cv :: acc))
-  in
+  match Cursor.peek_raw t with
+  | None -> List.rev acc
+  | Some cv when is_comma cv ->
+      ignore (Cursor.next_raw t : Component.t option);
+      List.rev acc
+  | Some _ -> forgiving_take_next_in_segment t acc
+
+and read_forgiving_list read_item t =
   let rec loop acc =
     if Cursor.is_done t then List.rev acc
-    else
-      let item = Cursor.sub t (take_segment []) in
-      match read_item item with
-      | sel ->
-          Cursor.ws item;
-          if Cursor.is_done item then loop (sel :: acc) else loop acc
-      | exception Cursor.Parse_error _ -> loop acc
+    else loop (read_forgiving_segment read_item t acc)
   in
   loop []
+
+and read_forgiving_segment read_item t acc =
+  let item = Cursor.sub t (forgiving_take_segment t []) in
+  match read_item item with
+  | sel ->
+      Cursor.ws item;
+      if Cursor.is_done item then sel :: acc else acc
+  | exception Cursor.Parse_error _ -> acc
 
 (** Read nth selector with optional "of S" clause *)
 and read_nth_selector t : nth * t list option =
@@ -1375,65 +1388,73 @@ and read_view_transition_old t =
 and read_view_transition_new t =
   Cursor.call "view-transition-new" t read_view_transition_new_content
 
+and pseudo_class_all_idents () =
+  pseudo_class_base_idents
+  @ pseudo_element_legacy_idents Single
+  @ pseudo_element_modern_idents @ pseudo_vendor_idents
+
+and pseudo_class_calls () =
+  [
+    ("is", read_is);
+    ("-moz-any", read_moz_any);
+    ("-webkit-any", read_webkit_any);
+    ("has", read_has);
+    ("not", read_not);
+    ("where", read_where);
+    ("local", read_local);
+    ("global", read_global);
+    ("nth-child", read_nth_child);
+    ("nth-last-child", read_nth_last_child);
+    ("nth-of-type", read_nth_of_type);
+    ("nth-last-of-type", read_nth_last_of_type);
+    ("nth-col", read_nth_col);
+    ("nth-last-col", read_nth_last_col);
+    ("lang", read_lang);
+    ("dir", read_dir);
+    ("state", read_state);
+    ("host", read_host);
+    ("host-context", read_host_context);
+    ("current", read_current);
+    ("heading", read_heading);
+    ("active-view-transition-type", read_active_view_transition_type);
+  ]
+
+and read_unknown_pseudo_class_call ~all_idents t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+      (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
+         [:hover], ...) called with parens ([:checked()]) is invalid. Reject so
+         the rule reader drops it rather than passing through as an unknown
+         call. *)
+      let lower = String.lowercase_ascii name in
+      let is_known_non_functional =
+        List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
+      in
+      if is_known_non_functional then
+        Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
+      Cursor.skip t;
+      Unknown_pseudo_class_call (name, arguments)
+  | _ -> Cursor.err_expected t "pseudo-class call"
+
+and read_unknown_pseudo_class_ident t =
+  match Cursor.ident_opt t with
+  | Some name -> Unknown_pseudo_class name
+  | None -> Cursor.err_expected t "pseudo-class"
+
+and read_unknown_pseudo_class ~all_idents t =
+  Cursor.one_of
+    [
+      read_unknown_pseudo_class_call ~all_idents;
+      read_unknown_pseudo_class_ident;
+    ]
+    t
+
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class ?(allow_unknown = false) t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
-  let all_idents =
-    pseudo_class_base_idents
-    @ pseudo_element_legacy_idents Single
-    @ pseudo_element_modern_idents @ pseudo_vendor_idents
-  in
-  let calls =
-    [
-      ("is", read_is);
-      ("-moz-any", read_moz_any);
-      ("-webkit-any", read_webkit_any);
-      ("has", read_has);
-      ("not", read_not);
-      ("where", read_where);
-      ("local", read_local);
-      ("global", read_global);
-      ("nth-child", read_nth_child);
-      ("nth-last-child", read_nth_last_child);
-      ("nth-of-type", read_nth_of_type);
-      ("nth-last-of-type", read_nth_last_of_type);
-      ("nth-col", read_nth_col);
-      ("nth-last-col", read_nth_last_col);
-      ("lang", read_lang);
-      ("dir", read_dir);
-      ("state", read_state);
-      ("host", read_host);
-      ("host-context", read_host_context);
-      ("current", read_current);
-      ("heading", read_heading);
-      ("active-view-transition-type", read_active_view_transition_type);
-    ]
-  in
-  let known_non_functional name =
-    let lower = String.lowercase_ascii name in
-    List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
-  in
-  let read_unknown t =
-    let read_unknown_call t =
-      match Cursor.peek t with
-      | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
-          (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
-             [:hover], ...) called with parens ([:checked()]) is invalid. Reject
-             so the rule reader drops it rather than passing through as an
-             unknown call. *)
-          if known_non_functional name then
-            Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
-          Cursor.skip t;
-          Unknown_pseudo_class_call (name, arguments)
-      | _ -> Cursor.err_expected t "pseudo-class call"
-    in
-    let read_unknown_ident t =
-      match Cursor.ident_opt t with
-      | Some name -> Unknown_pseudo_class name
-      | None -> Cursor.err_expected t "pseudo-class"
-    in
-    Cursor.one_of [ read_unknown_call; read_unknown_ident ] t
-  in
+  let all_idents = pseudo_class_all_idents () in
+  let calls = pseudo_class_calls () in
+  let read_unknown = read_unknown_pseudo_class ~all_idents in
   if allow_unknown then
     Cursor.enum_or_calls "pseudo-class" all_idents ~calls ~default:read_unknown
       t
@@ -1672,20 +1693,19 @@ let can_fallback_shortcut s =
 
 (* Use the full selector parser; fall back to the single-token shortcut for
    ['.foo' / '#foo' / 'foo'] when the cursor parser would reject the input. *)
+let of_string_fallback s =
+  match s.[0] with
+  | '.' ->
+      class_ (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+  | '#' -> id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+  | _ -> Element (None, unescape_selector_name s)
+
 let of_string s =
   if String.length s = 0 then invalid_arg "of_string: empty selector string"
   else
     try read (Cursor.of_string s)
-    with Cursor.Parse_error _ as exn -> (
-      if not (can_fallback_shortcut s) then raise exn
-      else
-        match s.[0] with
-        | '.' ->
-            class_
-              (unescape_selector_name (String.sub s 1 (String.length s - 1)))
-        | '#' ->
-            id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
-        | _ -> Element (None, unescape_selector_name s))
+    with Cursor.Parse_error _ as exn ->
+      if not (can_fallback_shortcut s) then raise exn else of_string_fallback s
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
@@ -1831,6 +1851,18 @@ let add_selector_ascii buf ~first_needs_hex_escape i c =
         Buffer.add_char buf '\\';
         Buffer.add_char buf c
 
+let add_selector_uchar buf ~add_ascii i u =
+  let cp = Uchar.to_int u in
+  if cp < 0x80 then add_ascii i (Char.chr cp)
+  else add_selector_hex_escape buf cp
+
+let add_selector_malformed buf ~add_ascii i bytes =
+  String.iteri
+    (fun offset c ->
+      if Char.code c < 0x80 then add_ascii (i + offset) c
+      else add_selector_hex_escape buf (Char.code c))
+    bytes
+
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
     followed by a digit), and backslash-escape the punctuation characters that
@@ -1843,16 +1875,8 @@ let escape_selector_name name =
     let first_needs_hex_escape = first_needs_hex_escape name in
     let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
     let folder () i = function
-      | `Uchar u ->
-          let cp = Uchar.to_int u in
-          if cp < 0x80 then add_ascii i (Char.chr cp)
-          else add_selector_hex_escape buf cp
-      | `Malformed bytes ->
-          String.iteri
-            (fun offset c ->
-              if Char.code c < 0x80 then add_ascii (i + offset) c
-              else add_selector_hex_escape buf (Char.code c))
-            bytes
+      | `Uchar u -> add_selector_uchar buf ~add_ascii i u
+      | `Malformed bytes -> add_selector_malformed buf ~add_ascii i bytes
     in
     Uutf.String.fold_utf_8 folder () name;
     Buffer.contents buf
@@ -2017,7 +2041,7 @@ and pp : t Pp.t =
         (fun ctx args ->
           Pp.string ctx
             (if Pp.minified ctx then Parser.to_string_minified args
-             else Parser.to_string args))
+             else Parser.string_of_components args))
         args
   | Local_scope -> pseudo ctx "local"
   | Global_scope -> pseudo ctx "global"
@@ -2143,7 +2167,7 @@ and pp : t Pp.t =
         (fun ctx args ->
           Pp.string ctx
             (if Pp.minified ctx then Parser.to_string_minified args
-             else Parser.to_string args))
+             else Parser.string_of_components args))
         args
   | Compound selectors ->
       let to_print =

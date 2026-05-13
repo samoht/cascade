@@ -546,18 +546,21 @@ let invalid_value_mutation buf =
         | 2 -> "sqrt()"
         | _ -> value ^ " " ^ value )
 
+let check_roundtrip_once parse pp once =
+  match parse_whole parse once with
+  | None -> fail (Fmt.str "generated CSS value did not reparse: %S" once)
+  | Some reparsed ->
+      let twice = Css.Pp.to_string ~minify:true pp reparsed in
+      if once <> twice then
+        fail (Fmt.str "generated CSS value drifted: %S -> %S" once twice)
+
 let assert_value_roundtrip kind input =
   let run parse pp =
     match parse_whole parse input with
     | None -> fail (Fmt.str "generated valid CSS value rejected: %S" input)
-    | Some value -> (
+    | Some value ->
         let once = Css.Pp.to_string ~minify:true pp value in
-        match parse_whole parse once with
-        | None -> fail (Fmt.str "generated CSS value did not reparse: %S" once)
-        | Some reparsed ->
-            let twice = Css.Pp.to_string ~minify:true pp reparsed in
-            if once <> twice then
-              fail (Fmt.str "generated CSS value drifted: %S -> %S" once twice))
+        check_roundtrip_once parse pp once
   in
   match kind with
   | `Length -> run Css.Values.read_length Css.Values.pp_length

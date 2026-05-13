@@ -2965,6 +2965,20 @@ let color4121_hex_equiv () =
    in a way that changes the cascaded result. A round trip through the optimizer
    must preserve the winning value when two declarations of the same property
    tie on origin, importance, layer and specificity. *)
+let rec color_value_stop printed j =
+  if j >= String.length printed then j
+  else if printed.[j] = ';' || printed.[j] = '}' then j
+  else color_value_stop printed (j + 1)
+
+let rec last_color_value printed start_idx best =
+  match Astring.String.find_sub ~start:start_idx ~sub:"color:" printed with
+  | None -> best
+  | Some i ->
+      let after = i + String.length "color:" in
+      let stop = color_value_stop printed after in
+      let value = String.sub printed after (stop - after) in
+      last_color_value printed (i + 1) (Some value)
+
 let c61_keeps_winner () =
   let winning_color css =
     match Css.of_string ~strict:false css with
@@ -2975,24 +2989,7 @@ let c61_keeps_winner () =
         in
         (* Last occurrence of "color:" in the optimized output is the cascaded
            winner under section 6.1's "later wins" rule for tied candidates. *)
-        let rec last_color_value start_idx best =
-          match
-            Astring.String.find_sub ~start:start_idx ~sub:"color:" printed
-          with
-          | None -> best
-          | Some i ->
-              let after = i + String.length "color:" in
-              let stop_chars = [ ';'; '}' ] in
-              let rec find_stop j =
-                if j >= String.length printed then j
-                else if List.mem printed.[j] stop_chars then j
-                else find_stop (j + 1)
-              in
-              let stop = find_stop after in
-              let value = String.sub printed after (stop - after) in
-              last_color_value (i + 1) (Some value)
-        in
-        last_color_value 0 None
+        last_color_value printed 0 None
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check (option string))

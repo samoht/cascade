@@ -1,18 +1,25 @@
 (** Minifier interop tests for cascade.
 
     Inputs are generated from lightningcss df63db2c by patching
-    [minify_test_with_options] to dump every (source, expected) pair. The stored
-    expected value is treated as Lightning CSS' candidate output, not as the
-    only oracle. At test time, when other minifier CLIs are present locally,
-    each input is run through them too. Cascade passes if its output is no
-    longer than the shortest available candidate.
+    [minify_test_with_options] to dump every source case. The dumped Lightning
+    expected value is one candidate oracle answer. During [@@regen-traces], the
+    configured minifier CLIs are run over the same input and their outputs or
+    crashes are cached in the trace. Normal test runs never shell out to oracle
+    tools: Cascade passes if its output is no longer than the shortest valid
+    cached candidate.
 
-    Regenerate Lightning input candidates with [dune build @@regen-traces].
+    Regenerate Lightning inputs and oracle answers with
+    [dune build @@regen-traces].
 
     Format of [traces/minify.pairs]: a sequence of length-prefixed records, each
-    one
+    one:
 
-    {v >>> <input_len> <expected_len>\n<input bytes><expected bytes>\n v}
+    {v
+    >>> <input_len> <candidate_count> <failure_count>\n
+    <input bytes>\n
+    OK <tool_len> <css_len>\n<tool bytes><css bytes>\n
+    FAIL <tool_len> <command_len> <reason_len>\n<tool bytes><command bytes><reason bytes>\n
+    v}
 
     The suite is split into Alcotest groups by broad CSS feature and then into
     slow fixed-size shard cases. Each case batches enough pairs for useful logs
@@ -20,13 +27,18 @@
     enough longer-than-industry outputs to drive arbitrage; for full drilldown
     re-run with [VERBOSE=1] in the env.
 
-    Extra minifier commands can be supplied with [CASCADE_INTEROP_MINIFIERS],
-    separated by [;;]. Commands must read CSS from stdin and write minified CSS
-    to stdout. Example:
+    Extra minifier commands can be supplied to [@@regen-traces] with
+    [CASCADE_INTEROP_MINIFIERS], separated by [;;]. Commands must read CSS from
+    stdin and write minified CSS to stdout. Example:
 
     {v
     CASCADE_INTEROP_MINIFIERS='esbuild --loader=css --minify;;cleancss -O2 -'
     v}
+
+    Upstream tool bugs are diagnostics only. When a cached upstream minifier
+    failure or non-equivalent output is seen, the normal run appends a report to
+    [_build/_tests/lightning_minify/upstream-bugs.log]. Override the report
+    location with [CASCADE_INTEROP_UPSTREAM_REPORT].
 
     For local iteration, run one Alcotest case from [dune exec ... -- list],
     e.g. [dune exec test/interop/lightning/test.exe -- test color 0]. *)
@@ -38,103 +50,40 @@ let trace_path =
   if Sys.file_exists local then local
   else Filename.concat "test/interop/lightning/traces" "minify.pairs"
 
+type minify_result = Result_css of string | Source_parse_error of string
 type outcome = Pass | Parse_error of string | Mismatch of string
-type candidate = { tool : string; css : string }
+type candidate = Trace_pairs.candidate = { tool : string; css : string }
 type rejected_candidate = { tool : string; css : string; reason : string }
+
+type failed_candidate = Trace_pairs.failed_candidate = {
+  tool : string;
+  command : string;
+  reason : string;
+}
+
+type upstream_issue =
+  | Rejected_candidate of rejected_candidate
+  | Failed_candidate of failed_candidate
 
 let display_css css = if css = "" then "<empty>" else css
 
 let cascade_minify input =
   match Css.of_string ~strict:false input with
-  | Error e -> Parse_error (Cascade.Error.to_string e)
+  | Error e -> Source_parse_error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
         Css.to_string ~minify:true ~optimize:true ~newline:false
           parsed.stylesheet
       with
-      | s -> Mismatch s
+      | s -> Result_css s
       | exception Invalid_argument msg ->
-          Parse_error ("invalid_argument: " ^ msg))
-
-let split_commands s =
-  Re.Str.split (Re.Str.regexp_string ";;") s
-  |> List.map String.trim
-  |> List.filter (fun part -> part <> "")
+          Source_parse_error ("invalid_argument: " ^ msg))
 
 let contains_substring ~needle haystack =
   try
     let _ = Re.Str.search_forward (Re.Str.regexp_string needle) haystack 0 in
     true
   with Not_found -> false
-
-let default_minifier_commands =
-  [
-    ("esbuild", "esbuild --loader=css --minify");
-    ("cleancss", "cleancss -O2 -");
-    ("csso", "csso");
-    ("cssnano", "cssnano");
-    ("lightningcss-cli", "lightningcss --minify");
-  ]
-
-let custom_minifier_commands () =
-  match Sys.getenv_opt "CASCADE_INTEROP_MINIFIERS" with
-  | None | Some "" -> []
-  | Some s ->
-      split_commands s
-      |> List.mapi (fun i command -> (Fmt.str "custom%d" (i + 1), command))
-
-let read_all ic =
-  let buf = Buffer.create 4096 in
-  let bytes = Bytes.create 4096 in
-  let rec loop () =
-    match input ic bytes 0 (Bytes.length bytes) with
-    | 0 -> Buffer.contents buf
-    | n ->
-        Buffer.add_subbytes buf bytes 0 n;
-        loop ()
-  in
-  loop ()
-
-let err_process_status label code =
-  Fmt.kstr (fun s -> Error s) "%s %d" label code
-
-let err_exit_status n stderr =
-  Fmt.kstr
-    (fun s -> Error s)
-    "exit %d%s" n
-    (if stderr = "" then "" else ": " ^ String.trim stderr)
-
-let run_command command input =
-  let ic, oc, ec = Unix.open_process_full command (Unix.environment ()) in
-  output_string oc input;
-  close_out oc;
-  let stdout = read_all ic in
-  let stderr = read_all ec in
-  match Unix.close_process_full (ic, oc, ec) with
-  | Unix.WEXITED 0 -> Ok (String.trim stdout)
-  | Unix.WEXITED n -> err_exit_status n stderr
-  | Unix.WSIGNALED n -> err_process_status "signal" n
-  | Unix.WSTOPPED n -> err_process_status "stopped" n
-
-let command_works command =
-  match run_command command ".x{color:red}" with
-  | Ok _ -> true
-  | Error _ -> false
-
-let available_minifiers =
-  lazy
-    (let commands = custom_minifier_commands () @ default_minifier_commands in
-     commands |> List.filter (fun (_, command) -> command_works command))
-
-let external_candidates input =
-  Lazy.force available_minifiers
-  |> List.filter_map (fun (tool, command) ->
-      match run_command command input with
-      | Ok css -> Some { tool; css }
-      | Error _ -> None)
-
-let all_candidate_outputs input expected =
-  { tool = "lightningcss-trace"; css = expected } :: external_candidates input
 
 let shortest_length (candidates : candidate list) =
   List.fold_left
@@ -252,21 +201,31 @@ let split_equivalent_candidates input (candidates : candidate list) =
       | Error rejection -> (accepted, rejection :: rejected))
     candidates ([], [])
 
-let format_rejected_candidates input rejected =
-  "UPSTREAM MINIFIER BUGS: rejected non-equivalent candidates\n"
-  ^ (rejected
-    |> List.map (fun rejection ->
-        Fmt.str
-          "    UPSTREAM BUG in: %s\n\
-          \    reason: %s\n\
-          \    input:  %s\n\
-          \    output: %s"
-          rejection.tool rejection.reason input
-          (display_css rejection.css))
+let format_upstream_issues input issues =
+  "UPSTREAM MINIFIER BUGS\n"
+  ^ (issues
+    |> List.map (function
+      | Rejected_candidate rejection ->
+          Fmt.str
+            "    UPSTREAM BUG in: %s\n\
+            \    reason: %s\n\
+            \    input:  %s\n\
+            \    output: %s"
+            rejection.tool rejection.reason input
+            (display_css rejection.css)
+      | Failed_candidate failure ->
+          Fmt.str
+            "    UPSTREAM BUG in: %s\n\
+            \    command: %s\n\
+            \    reason: %s\n\
+            \    input:  %s"
+            failure.tool failure.command failure.reason input)
     |> String.concat "\n")
 
-let format_source_parse_diagnostics input expected =
-  let candidates = all_candidate_outputs input expected in
+let format_source_parse_diagnostics (pair : Trace_pairs.t) =
+  let input = pair.input in
+  let candidates = pair.candidates in
+  let failures = pair.failures in
   let parseable = ref 0 in
   let reports =
     candidates
@@ -287,27 +246,47 @@ let format_source_parse_diagnostics input expected =
               tool (display_css css) msg)
     |> String.concat "\n"
   in
+  let failure_reports =
+    failures
+    |> List.map (fun failure ->
+        Fmt.str
+          "    %s: output unavailable\n      command: %s\n      error:   %s"
+          failure.tool failure.command failure.reason)
+    |> String.concat "\n"
+  in
+  let reports =
+    if failure_reports = "" then reports else reports ^ "\n" ^ failure_reports
+  in
   Fmt.str
     "%s\n\
     \    SOURCE PARSE DIAGNOSTICS: Cascade could not parse the source fixture. \
-     External outputs are diagnostics only; they are not accepted as proof of \
-     semantic equivalence without a successful source parse.\n\
-    \    parseable_external_outputs=%d/%d\n\
+     Cached oracle outputs are diagnostics only; they are not accepted as \
+     proof of semantic equivalence without a successful source parse.\n\
+    \    parseable_cached_outputs=%d/%d\n\
      %s"
     input !parseable (List.length candidates) reports
 
-let classify (input, expected) =
+let classify (pair : Trace_pairs.t) =
+  let input = pair.input in
   match cascade_minify input with
-  | Parse_error msg ->
-      let diagnostics = format_source_parse_diagnostics input expected in
+  | Source_parse_error msg ->
+      let diagnostics = format_source_parse_diagnostics pair in
       (Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics), [])
-  | Pass -> assert false
-  | Mismatch actual ->
-      let candidates = all_candidate_outputs input expected in
-      let candidates, rejected = split_equivalent_candidates input candidates in
+  | Result_css actual ->
+      let candidates, rejected =
+        split_equivalent_candidates input pair.candidates
+      in
+      let upstream_issues =
+        List.map (fun issue -> Rejected_candidate issue) rejected
+        @ List.map (fun issue -> Failed_candidate issue) pair.failures
+      in
       let best = shortest_length candidates in
       let outcome =
-        if String.length actual <= best then Pass
+        if candidates = [] then
+          Fmt.kstr
+            (fun s -> Mismatch s)
+            "%s\n    no valid cached oracle candidates" actual
+        else if String.length actual <= best then Pass
         else
           let shortest =
             candidates
@@ -321,28 +300,75 @@ let classify (input, expected) =
             "%s\n    shortest: %s\n    actual_len=%d best_len=%d" actual
             shortest (String.length actual) best
       in
-      (outcome, rejected)
+      (outcome, upstream_issues)
 
-let available_minifier_names () =
-  match Lazy.force available_minifiers with
-  | [] -> "none"
-  | xs -> xs |> List.map fst |> String.concat ", "
+let candidate_names pairs =
+  pairs
+  |> List.fold_left
+       (fun names (pair : Trace_pairs.t) ->
+         let names =
+           List.fold_left
+             (fun acc ({ tool; _ } : candidate) -> tool :: acc)
+             names pair.candidates
+         in
+         List.fold_left
+           (fun acc ({ tool; _ } : failed_candidate) -> tool :: acc)
+           names pair.failures)
+       []
+  |> List.sort_uniq String.compare
 
-let format_divergence i (input, expected) outcome =
+let available_minifier_names pairs =
+  match candidate_names pairs with [] -> "none" | xs -> String.concat ", " xs
+
+let format_candidates (pair : Trace_pairs.t) =
+  match pair.candidates with
+  | [] -> "<none>"
+  | candidates ->
+      candidates
+      |> List.map (fun ({ tool; css } : candidate) ->
+          tool ^ ":" ^ display_css css)
+      |> String.concat " | "
+
+let format_divergence i (pair : Trace_pairs.t) outcome =
   match outcome with
   | Pass -> assert false
   | Parse_error msg ->
-      Fmt.str "  pair_%04d: parse error: %s\n    input: %s" i msg input
+      Fmt.str "  pair_%04d: parse error: %s\n    input: %s" i msg pair.input
   | Mismatch actual ->
       Fmt.str
         "  pair_%04d: mismatch\n\
         \    input:    %s\n\
-        \    trace:    %s\n\
+        \    oracles:  %s\n\
         \    actual:   %s"
-        i input expected actual
+        i pair.input (format_candidates pair) actual
 
 let verbose =
   match Sys.getenv_opt "VERBOSE" with Some "1" -> true | _ -> false
+
+let upstream_report_path =
+  match Sys.getenv_opt "CASCADE_INTEROP_UPSTREAM_REPORT" with
+  | Some path when String.trim path <> "" -> path
+  | _ -> "_build/_tests/lightning_minify/upstream-bugs.log"
+
+let rec mkdir_p path =
+  if path <> "" && not (Sys.file_exists path) then begin
+    mkdir_p (Filename.dirname path);
+    Unix.mkdir path 0o755
+  end
+
+let append_upstream_report lines =
+  mkdir_p (Filename.dirname upstream_report_path);
+  let oc =
+    open_out_gen
+      [ Open_creat; Open_text; Open_append ]
+      0o644 upstream_report_path
+  in
+  output_string oc lines;
+  output_char oc '\n';
+  close_out oc
+
+let reset_upstream_report () =
+  if Sys.file_exists upstream_report_path then Sys.remove upstream_report_path
 
 let feature_of_input input =
   let has s = contains_substring ~needle:s input in
@@ -384,7 +410,8 @@ let pairs_by_feature pairs =
     (fun feature ->
       ( feature,
         List.filter
-          (fun (_, (input, _)) -> feature_of_input input = feature)
+          (fun (_, (pair : Trace_pairs.t)) ->
+            feature_of_input pair.input = feature)
           indexed ))
     features
 
@@ -398,23 +425,26 @@ let selected_shard selected shard =
       let start = shard * shard_size in
       i >= start && i < start + shard_size)
 
-let pair_cases ~total_pairs selected ~feature ~shard ~shards () =
+let pair_cases ~total_pairs ~minifier_names selected ~feature ~shard ~shards ()
+    =
   let selected = selected_shard selected shard in
   let total = List.length selected in
   let pass = ref 0 in
   let parse_err = ref 0 in
   let mismatch = ref 0 in
-  let external_bug = ref 0 in
-  let external_bug_reports = ref [] in
+  let oracle_bug = ref 0 in
+  let oracle_bug_reports = ref [] in
   let divergences = ref [] in
   List.iter
     (fun (i, pair) ->
-      let outcome, rejected = classify pair in
-      if rejected <> [] then begin
-        external_bug := !external_bug + List.length rejected;
-        external_bug_reports :=
-          (i, pair, format_rejected_candidates (fst pair) rejected)
-          :: !external_bug_reports
+      let outcome, upstream_issues = classify pair in
+      if upstream_issues <> [] then begin
+        oracle_bug := !oracle_bug + List.length upstream_issues;
+        oracle_bug_reports :=
+          ( i,
+            pair,
+            format_upstream_issues pair.Trace_pairs.input upstream_issues )
+          :: !oracle_bug_reports
       end;
       match outcome with
       | Pass -> incr pass
@@ -426,32 +456,33 @@ let pair_cases ~total_pairs selected ~feature ~shard ~shards () =
           divergences := (i, pair, o) :: !divergences)
     selected;
   let divergences = List.rev !divergences in
-  let external_bug_reports = List.rev !external_bug_reports in
+  let oracle_bug_reports = List.rev !oracle_bug_reports in
   let summary =
     Fmt.str
       "minifier interop%s: %d/%d selected pass (%d total pairs; %d parse \
-       errors, %d longer-than-shortest mismatches, %d external minifier bugs; \
-       external minifiers: %s)"
+       errors, %d longer-than-shortest mismatches, %d cached oracle bugs; \
+       cached oracle tools: %s)"
       (Fmt.str " [%s %d/%d]" feature (shard + 1) shards)
-      !pass total total_pairs !parse_err !mismatch !external_bug
-      (available_minifier_names ())
+      !pass total total_pairs !parse_err !mismatch !oracle_bug minifier_names
   in
   print_endline summary;
-  if external_bug_reports <> [] then begin
-    let limit = if verbose then List.length external_bug_reports else 20 in
+  if oracle_bug_reports <> [] then begin
+    let limit = if verbose then List.length oracle_bug_reports else 20 in
     let head =
-      List.filteri (fun i _ -> i < limit) external_bug_reports
+      List.filteri (fun i _ -> i < limit) oracle_bug_reports
       |> List.map (fun (i, _pair, report) ->
-          Fmt.str "  pair_%04d: external minifier bug warning\n%s" i report)
+          Fmt.str "  pair_%04d: cached oracle bug warning\n%s" i report)
       |> String.concat "\n"
     in
     let tail =
-      if List.length external_bug_reports > limit then
+      if List.length oracle_bug_reports > limit then
         Fmt.str "\n  ... (%d more upstream bugs; set VERBOSE=1 for full list)"
-          (List.length external_bug_reports - limit)
+          (List.length oracle_bug_reports - limit)
       else ""
     in
-    prerr_endline (summary ^ "\n" ^ head ^ tail)
+    let report = summary ^ "\n" ^ head ^ tail in
+    append_upstream_report report;
+    Fmt.epr "%s@.upstream minifier bug report: %s@." report upstream_report_path
   end;
   if divergences <> [] then begin
     let limit = if verbose then List.length divergences else 20 in
@@ -471,6 +502,7 @@ let pair_cases ~total_pairs selected ~feature ~shard ~shards () =
 
 let grouped_cases pairs =
   let total_pairs = List.length pairs in
+  let minifier_names = available_minifier_names pairs in
   pairs_by_feature pairs
   |> List.filter_map (fun (feature, selected) ->
       let shards = shard_count selected in
@@ -479,11 +511,13 @@ let grouped_cases pairs =
         let cases =
           List.init shards (fun shard ->
               let name = Fmt.str "%02d/%02d" (shard + 1) shards in
-              Alcotest.test_case name `Slow
-                (pair_cases ~total_pairs selected ~feature ~shard ~shards))
+              Alcotest.test_case name `Quick
+                (pair_cases ~total_pairs ~minifier_names selected ~feature
+                   ~shard ~shards))
         in
         Some (feature, cases))
 
 let () =
+  reset_upstream_report ();
   let pairs = Trace_pairs.read trace_path in
   Alcotest.run "lightning_minify" (grouped_cases pairs)

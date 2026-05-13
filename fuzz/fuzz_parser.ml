@@ -18,7 +18,7 @@ let cssish buf =
   String.map (fun c -> alphabet.[Char.code c mod n]) buf
 
 let minified input = input |> parse_list |> Parser.to_string_minified
-let serialized input = input |> parse_list |> Parser.to_string
+let serialized input = input |> parse_list |> Parser.string_of_components
 
 let bracket_shape = function
   | Token.Curly -> "{}"

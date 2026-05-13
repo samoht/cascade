@@ -33,26 +33,26 @@ val reconsume : t -> Component.t -> unit
 
 (** {1 Reserialization} *)
 
-val to_string : Component.t list -> string
-(** [to_string cvs] renders a component-value list back to source text.
-    Whitespace tokens serialize to a single space; the output is
+val string_of_components : Component.t list -> string
+(** [string_of_components cvs] renders a component-value list back to source
+    text. Whitespace tokens serialize to a single space; the output is
     parse-equivalent but not byte-identical. *)
 
 val to_string_minified : Component.t list -> string
-(** Like {!to_string} but drops whitespace that sits between two components
-    where at least one side is not word-like (ident / number / etc.). Two
-    word-like components still get a separating space so they don't merge into a
-    single token. *)
+(** Like {!string_of_components} but drops whitespace that sits between two
+    components where at least one side is not word-like (ident / number / etc.).
+    Two word-like components still get a separating space so they don't merge
+    into a single token. *)
 
 val to_string_custom : Component.t list -> string
-(** Variant of {!to_string} for CSS Custom Properties Level 1 token streams.
-    Whitespace is preserved at the top level and inside nested blocks and
-    functions. *)
+(** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
+    streams. Whitespace is preserved at the top level and inside nested blocks
+    and functions. *)
 
 val to_string_custom_minified : Component.t list -> string
-(** Variant of {!to_string} for CSS Custom Properties Level 1 token streams.
-    Optional whitespace is collapsed using the rules of {!to_string_minified}
-    while preserving token boundaries. *)
+(** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
+    streams. Optional whitespace is collapsed using the rules of
+    {!to_string_minified} while preserving token boundaries. *)
 
 val escape_ident : string -> string
 (** [escape_ident s] returns [s] with non-ident-continue code points backslash-

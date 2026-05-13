@@ -164,51 +164,47 @@ let pp_line_pair buf (exp, act) =
       Buffer.add_char buf '\n'))
 
 (* Helper to format diff lines based on their length *)
+let extract_diff_window s len ~window_start ~window_end =
+  if window_start >= len then ("...", 3)
+  else
+    let actual_end = min len window_end in
+    let snippet = String.sub s window_start (actual_end - window_start) in
+    let has_prefix = window_start > 0 in
+    let has_suffix = window_end < len in
+    let prefix = if has_prefix then "..." else "" in
+    let suffix = if has_suffix then "..." else "" in
+    let full_string = prefix ^ snippet ^ suffix in
+    let prefix_len = if has_prefix then 3 else 0 in
+    (full_string, prefix_len)
+
+let format_long_diff_line ~config ~diff_pos ~len1 ~len2 expected actual =
+  let half = config.max_width / 2 in
+  let window_start = max 0 (diff_pos - half) in
+  let window_end = min (max len1 len2) (window_start + config.max_width) in
+  let s1_display, prefix_len1 =
+    extract_diff_window expected len1 ~window_start ~window_end
+  in
+  let s2_display, _prefix_len2 =
+    extract_diff_window actual len2 ~window_start ~window_end
+  in
+  let adjusted_pos =
+    if diff_pos < window_start then 0
+    else if diff_pos >= window_end then String.length s1_display - 1
+    else prefix_len1 + (diff_pos - window_start)
+  in
+  `Long (s1_display, s2_display, adjusted_pos)
+
 let format_diff_line ?(config = default_config) expected actual =
   match first_diff_pos expected actual with
   | None -> `Equal
   | Some diff_pos ->
       let len1 = String.length expected in
       let len2 = String.length actual in
-
       if len1 <= config.short_threshold && len2 <= config.short_threshold then
         `Short (expected, actual)
       else if len1 <= config.max_width && len2 <= config.max_width then
         `Medium (expected, actual, diff_pos)
-      else
-        (* Calculate window centered on the diff position *)
-        let half = config.max_width / 2 in
-        let window_start = max 0 (diff_pos - half) in
-        let window_end =
-          min (max len1 len2) (window_start + config.max_width)
-        in
-
-        (* Extract and format windows from strings *)
-        let extract_window s len =
-          if window_start >= len then ("...", 3)
-          else
-            let actual_end = min len window_end in
-            let snippet =
-              String.sub s window_start (actual_end - window_start)
-            in
-            let has_prefix = window_start > 0 in
-            let has_suffix = window_end < len in
-            let prefix = if has_prefix then "..." else "" in
-            let suffix = if has_suffix then "..." else "" in
-            let full_string = prefix ^ snippet ^ suffix in
-            let prefix_len = if has_prefix then 3 else 0 in
-            (full_string, prefix_len)
-        in
-
-        let s1_display, prefix_len1 = extract_window expected len1 in
-        let s2_display, _prefix_len2 = extract_window actual len2 in
-
-        let adjusted_pos =
-          if diff_pos < window_start then 0
-          else if diff_pos >= window_end then String.length s1_display - 1
-          else prefix_len1 + (diff_pos - window_start)
-        in
-        `Long (s1_display, s2_display, adjusted_pos)
+      else format_long_diff_line ~config ~diff_pos ~len1 ~len2 expected actual
 
 let pp ?(config = default_config) ?(expected_label = "Expected")
     ?(actual_label = "Actual") buf t =

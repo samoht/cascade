@@ -56,9 +56,25 @@ let timeline_range_names =
 
 let parse_percent s =
   if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try Some (float_of_string (String.sub s 0 (String.length s - 1)))
-    with Failure _ | Invalid_argument _ -> None
+    match float_of_string (String.sub s 0 (String.length s - 1)) with
+    | value -> Some value
+    | exception (Failure _ | Invalid_argument _) -> None
   else None
+
+(** Parse a [<timeline-range-name> <percentage>] string (Scroll-Driven
+    Animations 1 §8.1). *)
+let parse_timeline_range_position s =
+  match String.index_opt s ' ' with
+  | None -> None
+  | Some i ->
+      let name = String.sub s 0 i in
+      let rest = String.sub s (i + 1) (String.length s - i - 1) in
+      let rest = String.trim rest in
+      if not (List.mem (String.lowercase_ascii name) timeline_range_names) then
+        None
+      else
+        Option.bind (parse_percent rest) (fun p ->
+            Some (Timeline_range (name, p)))
 
 (** Parse a position string like "from", "to", "50%", or "entry 0%". *)
 let position_of_string s =
@@ -69,20 +85,7 @@ let position_of_string s =
     match parse_percent s with
     | Some p when p >= 0. && p <= 100. -> Some (Percent p)
     | Some _ -> None
-    | None -> (
-        (* Try [<timeline-range-name> <percentage>] (Scroll-Driven Animations 1
-           §8.1). *)
-        match String.index_opt s ' ' with
-        | None -> None
-        | Some i ->
-            let name = String.sub s 0 i in
-            let rest = String.sub s (i + 1) (String.length s - i - 1) in
-            let rest = String.trim rest in
-            if List.mem (String.lowercase_ascii name) timeline_range_names then
-              match parse_percent rest with
-              | Some p -> Some (Timeline_range (name, p))
-              | None -> None
-            else None)
+    | None -> parse_timeline_range_position s
 
 (** Parse a selector string like "from", "50%", or "from, 50%". *)
 let selector_of_string s =
