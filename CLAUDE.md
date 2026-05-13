@@ -40,19 +40,11 @@ lib/           CSS library (public_name: cascade)
   container.ml @container queries
   font_face.ml @font-face
   keyframe.ml  @keyframes
-  tools/       CSS comparison tools
+  diff/        CSS diff sub-library (public_name cascade.diff)
     css_compare.ml  Structural CSS diff
     tree_diff.ml    Tree-based diff algorithm
     string_diff.ml  String-level diff
 test/          CSS parser and printer tests
-bin/           CLI tools
-  cascade.ml   CSS formatting tool
-  cssdiff.ml   CSS structural diff tool
+bin/           cascade binary (fmt + diff subcommands)
 ```
 
-## TODO
-
-- ~~Rename internal module from `Css` to `Cascade`~~ (done: `open Cascade` then use `Css.*`)
-- Remove dune-build-info dependency (make version banner optional)
-- Add CSS nesting support for round-trip parse/print
-- Improve odoc documentation
