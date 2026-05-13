@@ -7,7 +7,7 @@
 
 (executable
  (name bench)
- (libraries cascade unix memtrace fmt)
+ (libraries cascade unix fmt)
  (modules bench trace_pairs))
 
 ; Regenerate traces against Lightning CSS: dune build @regen-traces
