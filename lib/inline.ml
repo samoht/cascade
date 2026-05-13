@@ -186,19 +186,19 @@ let read_custom_components read = function
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value = Properties.Custom_value { kind; value; _ };
+        value = Properties.Custom_value { value; _ };
         _;
       } -> (
-      match kind with
-      | Properties.Value -> (
-          try
-            let cursor = Cursor.of_components value in
-            let parsed = read cursor in
-            Cursor.ws cursor;
-            Cursor.expect_eof cursor;
-            Some parsed
-          with Cursor.Parse_error _ -> None)
-      | _ -> None)
+      try
+        let cursor =
+          Cursor.of_components
+            (Properties.components_of_custom_property_value value)
+        in
+        let parsed = read cursor in
+        Cursor.ws cursor;
+        Cursor.expect_eof cursor;
+        Some parsed
+      with Cursor.Parse_error _ -> None)
   | _ -> None
 
 let lookup_visible_custom visible name read =
@@ -219,12 +219,10 @@ let custom_value_components = function
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value =
-          Properties.Custom_value
-            { kind = Properties.Value; value : Component.t list; _ };
+        value = Properties.Custom_value { value; _ };
         _;
       } ->
-      Some value
+      Some (Properties.components_of_custom_property_value value)
   | _ -> None
 
 let better_custom_candidate ~important ~idx = function
@@ -719,10 +717,10 @@ let refs_of_declaration decl =
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value = Properties.Custom_value { kind; value; _ };
+        value = Properties.Custom_value { value; _ };
         _;
-      } -> (
-      match kind with Properties.Value -> refs_of_components value | _ -> [])
+      } ->
+      refs_of_components (Properties.components_of_custom_property_value value)
   | _ -> names_of_vars (Variables.vars_of_declarations [ decl ])
 
 (* Walk the stylesheet to collect, for each declaration, the scope at which it

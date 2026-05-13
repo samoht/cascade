@@ -19,6 +19,22 @@ val is_invalid_value : 'a property -> 'a -> bool
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] pretty-prints a typed custom property value. *)
 
+val pp_custom_property_value : custom_property_value Pp.t
+(** [pp_custom_property_value] pretty-prints a parsed custom-property payload.
+*)
+
+val read_custom_property_value :
+  ?font_family:bool -> Cursor.t -> custom_property_value
+(** [read_custom_property_value t] parses the remaining component values as a
+    typed self-contained payload when possible, otherwise stores the raw token
+    stream. *)
+
+val components_of_custom_property_value :
+  custom_property_value -> Component.t list
+(** [components_of_custom_property_value value] returns the component stream
+    represented by a custom-property payload. Typed values are serialized with
+    the normal minified typed printer before being parsed back to components. *)
+
 val string_of_kind_value : 'a kind -> 'a -> string
 (** [string_of_kind_value kind value] serializes a typed CSS value for a custom
     property initial value. Values that cannot be represented as a concrete

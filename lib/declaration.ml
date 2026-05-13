@@ -23,18 +23,6 @@ let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
   v ~important (Unknown_property name) components
 
-(* Smart constructor for custom declarations. CSS Custom Properties Level 1
-   restricts the name to dashed idents: an ident-token whose first two code
-   points are U+002D HYPHEN-MINUS, followed by a name body. *)
-let typed_custom_property ?(important = false) ?layer ?meta name kind value =
-  if not (String.length name > 2 && String.sub name 0 2 = "--") then
-    invalid_arg
-      ("Declaration.typed_custom_property: " ^ name
-     ^ " is not a CSS custom property name (must start with -- and include a \
-        name)");
-  v ~important (Custom_property name)
-    (Custom_value { kind; value; layer; meta })
-
 (* Helper to mark a declaration as important *)
 let rec important = function
   | Declaration { property; value; _ } ->
@@ -59,7 +47,8 @@ let custom_property ?layer name value =
      never carries a raw author string; the printer can then re-serialise with
      the active [Pp] context (handles minification). *)
   let components = Cursor.remaining (Cursor.of_string value) in
-  typed_custom_property ?layer name Value components
+  v (Custom_property name)
+    (Custom_value { value = Tokens components; layer; meta = None })
 
 (* Access the layer associated with a custom declaration, if any *)
 let rec custom_declaration_layer = function
@@ -1592,15 +1581,18 @@ let read_custom_property_declaration t : declaration =
   (* custom_property may raise Failure for invalid names like "--" *)
   try
     let decl =
-      if is_font_family_var name then
-        let trimmed = String.trim value_str in
-        if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
-          custom_property name value_str
-        else
-          match Cursor.of_string value_str |> read_font_family with
-          | ff -> typed_custom_property name Font_family ff
-          | exception _ -> custom_property name value_str
-      else custom_property name value_str
+      let custom_value =
+        if is_font_family_var name then
+          let trimmed = String.trim value_str in
+          if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
+            read_custom_property_value (Cursor.of_string value_str)
+          else
+            read_custom_property_value ~font_family:true
+              (Cursor.of_string value_str)
+        else read_custom_property_value (Cursor.of_string value_str)
+      in
+      v (Custom_property name)
+        (Custom_value { value = custom_value; layer = None; meta = None })
     in
     if is_important then important decl else decl
   with Failure msg -> Cursor.err_invalid t msg
@@ -1682,20 +1674,7 @@ let is_unsupported_color_fallback name raw_value =
       true
   | _ -> false
 
-let is_unknown_property_name name =
-  let r = Cursor.of_string name in
-  match read_any_property r with
-  | Prop (Unknown_property _) ->
-      Cursor.ws r;
-      Cursor.is_done r
-  | Prop _ -> false
-  | exception Cursor.Parse_error _ -> (
-      let r = Cursor.of_string name in
-      match Cursor.ident r with
-      | _ ->
-          Cursor.ws r;
-          Cursor.is_done r
-      | exception Cursor.Parse_error _ -> false)
+let is_unknown_property_name = is_decl_unknown_property_name
 
 (* The typed readers carry their own [Invalid] arms for spec-violations they
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
@@ -1911,7 +1890,7 @@ let rec pp_declaration : declaration Pp.t =
   | Declaration
       {
         property = Custom_property name;
-        value = Custom_value { kind; value; layer; _ };
+        value = Custom_value { value; layer; _ };
         important;
       } ->
       Pp.string ctx name;
@@ -1922,10 +1901,13 @@ let rec pp_declaration : declaration Pp.t =
           String.sub name 2 (String.length name - 2)
         else name
       in
-      (match (layer, kind, ctx.theme_defaults bare_name) with
-      | Some "theme", Font_family, _ -> pp_value ctx (kind, value)
+      (match (layer, value, ctx.theme_defaults bare_name) with
+      | Some "theme", Typed { kind = Font_family; value }, _ ->
+          pp_value ctx (Font_family, value)
       | Some "theme", _, Some override_value -> Pp.string ctx override_value
-      | _ -> pp_value ctx (kind, value));
+      | _ ->
+          pp_property_value ctx
+            (Custom_property name, Custom_value { value; layer; meta = None }));
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Declaration { property; value; important } ->
@@ -1987,7 +1969,7 @@ let box_shadows = function
 let z_index_auto = v Z_index Auto
 
 (* Font variant helpers *)
-let font_variant_numeric_tokens tokens = Tokens tokens
+let font_variant_numeric_tokens tokens = (Tokens tokens : font_variant_numeric)
 
 let font_variant_numeric_composed ?ordinal ?slashed_zero ?numeric_figure
     ?numeric_spacing ?numeric_fraction () =

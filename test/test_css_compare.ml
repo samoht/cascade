@@ -111,6 +111,70 @@ let semantic_custom_nested_functions () =
     "nested custom function token streams are compared after minification" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let semantic_custom_oklab_sign_boundaries () =
+  let expected =
+    ".prose { --tw-prose-kbd-shadows: oklab(21% -.00316127 -.0338527 / .1) }"
+  in
+  let actual = ".prose { --tw-prose-kbd-shadows: oklab(21%-.003 -.034/.1) }" in
+  Alcotest.(check bool)
+    "custom OKLab values keep channel token boundaries during canonical compare"
+    true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_prose_shadow_color_var () =
+  let selector =
+    ".hover\\:prose:hover \
+     :where(kbd):not(:where([class~=not-prose],[class~=not-prose] *))"
+  in
+  let expected =
+    "@layer utilities{@media (hover: hover){" ^ selector
+    ^ "{box-shadow:0 0 0 1px var(--tw-prose-kbd-shadows),0 3px 0 \
+       var(--tw-prose-kbd-shadows)}.hover\\:prose:hover{--tw-prose-kbd-shadows:oklab(21%-.003 \
+       -.034/.1)}}}"
+  in
+  let actual =
+    "@layer utilities{@media (hover: hover){" ^ selector
+    ^ "{box-shadow:0 0 0 1px var(--tw-prose-kbd-shadows),0 3px \
+       var(--tw-prose-kbd-shadows)}.hover\\:prose:hover{--tw-prose-kbd-shadows:oklab(21%-.003 \
+       -.034/.1)}}}"
+  in
+  Alcotest.(check bool)
+    "known color custom property allows zero blur elision before var()" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_prose_shadow_unknown_var () =
+  let selector =
+    ".hover\\:prose:hover \
+     :where(kbd):not(:where([class~=not-prose],[class~=not-prose] *))"
+  in
+  let expected =
+    "@layer utilities{@media (hover: hover){" ^ selector
+    ^ "{box-shadow:0 3px 0 var(--tw-prose-kbd-shadows)}}}"
+  in
+  let actual =
+    "@layer utilities{@media (hover: hover){" ^ selector
+    ^ "{box-shadow:0 3px var(--tw-prose-kbd-shadows)}}}"
+  in
+  Alcotest.(check bool)
+    "unknown custom property cannot justify zero blur elision before var()"
+    false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let semantic_before_content_redundant_seed () =
+  let selector = ".before\\:content-\\[\\\"\\>\\\"\\]:before" in
+  let expected =
+    "@layer utilities{" ^ selector
+    ^ "{--tw-content:\">\";content:var(--tw-content)}}"
+  in
+  let actual =
+    "@layer utilities{" ^ selector
+    ^ "{content:var(--tw-content);--tw-content:\">\";content:var(--tw-content)}}"
+  in
+  Alcotest.(check bool)
+    "leading duplicate content var() is dead before later content declaration"
+    true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_vendor_recovered () =
   let expected =
     "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent }"
@@ -400,6 +464,14 @@ let suite =
         semantic_custom_var_fallback;
       Alcotest.test_case "semantic custom nested functions" `Quick
         semantic_custom_nested_functions;
+      Alcotest.test_case "semantic custom OKLab sign boundaries" `Quick
+        semantic_custom_oklab_sign_boundaries;
+      Alcotest.test_case "semantic hover prose kbd shadow color var" `Quick
+        semantic_prose_shadow_color_var;
+      Alcotest.test_case "semantic hover prose kbd shadow unknown var" `Quick
+        semantic_prose_shadow_unknown_var;
+      Alcotest.test_case "semantic before content redundant seed" `Quick
+        semantic_before_content_redundant_seed;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick
         semantic_vendor_recovered;
       Alcotest.test_case "semantic transparent string is literal" `Quick

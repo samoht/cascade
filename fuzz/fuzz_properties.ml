@@ -46,26 +46,8 @@ let check_reader reader printer input =
       | Some _ ->
           fail (Fmt.str "serialized property left trailing input: %S" once))
 
-let assert_invalid_declaration_contract label input =
-  let css = ".x{" ^ input ^ "}" in
-  match Css.of_string ~strict:true css with
-  | Ok parsed ->
-      fail
-        (Fmt.str "%s parsed strictly as invalid declaration: %S -> %S" label
-           input
-           (Css.to_string ~minify:true parsed.stylesheet))
-  | Error _ ->
-      let { Css.warnings; stylesheet } =
-        match Css.of_string ~strict:false css with
-        | Ok parsed -> parsed
-        | Error err ->
-            fail
-              (Fmt.str "%s did not recover leniently: %s" label
-                 (Cascade.Error.to_string err))
-      in
-      ignore (Css.to_string ~minify:true stylesheet : string);
-      if warnings = [] then
-        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+let assert_invalid_declaration_contract =
+  Fuzz_helpers.assert_invalid_declaration_contract
 
 let check_reader_crash_safety reader printer input =
   let r = Cursor.of_string input in

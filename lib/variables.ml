@@ -270,7 +270,7 @@ let var : type a.
   let decl =
     Declaration.v
       (Custom_property (String.concat "" [ "--"; name ]))
-      (Custom_value { kind; value; layer; meta })
+      (Custom_value { value = Typed { kind; value }; layer; meta })
   in
   let fallback : a fallback =
     match fallback with None -> None | Some v -> v
