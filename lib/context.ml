@@ -897,6 +897,46 @@ module Calc_residual = struct
     simplify_leaf : 'a simplifier -> 'a calc_simplifier -> 'a simplifier;
   }
 
+  let rec math_arg_contains_var = function
+    | Values.Lit _ | Values.Dim _ | Values.Const _ -> false
+    | Values.Var_arg _ -> true
+    | Values.Op (l, _, r) -> math_arg_contains_var l || math_arg_contains_var r
+    | Values.Parens_arg inner -> math_arg_contains_var inner
+    | Values.Math_call fn -> math_fn_contains_var fn
+
+  and angle_arg_contains_var = function
+    | Values.Angle_deg _ | Values.Angle_rad _ | Values.Angle_turn _
+    | Values.Angle_grad _ ->
+        false
+    | Values.Angle_num arg -> math_arg_contains_var arg
+    | Values.Angle_op (l, _, r) ->
+        angle_arg_contains_var l || angle_arg_contains_var r
+    | Values.Angle_parens inner -> angle_arg_contains_var inner
+
+  and math_fn_contains_var = function
+    | Values.Sin a | Values.Cos a | Values.Tan a -> angle_arg_contains_var a
+    | Values.Asin a
+    | Values.Acos a
+    | Values.Atan a
+    | Values.Sqrt a
+    | Values.Exp a
+    | Values.Sign_n a
+    | Values.Abs_n a ->
+        math_arg_contains_var a
+    | Values.Atan2 (a, b) | Values.Log (a, Some b) | Values.Pow (a, b) ->
+        math_arg_contains_var a || math_arg_contains_var b
+    | Values.Log (a, None) -> math_arg_contains_var a
+    | Values.Hypot args -> List.exists math_arg_contains_var args
+
+  let rec contains_var : type a. a Values.calc -> bool = function
+    | Values.Var _ -> true
+    | Values.Nested inner | Values.Parens inner -> contains_var inner
+    | Values.Expr (left, _, right) -> contains_var left || contains_var right
+    | Values.Math_fn fn -> math_fn_contains_var fn
+    | Values.Num _ | Values.Val _ | Values.Math_const _ | Values.Sibling_index
+    | Values.Sibling_count ->
+        false
+
   let fold_num_expr : type a.
       a Values.calc -> Values.calc_op -> a Values.calc -> a Values.calc option =
    fun left op right ->
@@ -966,7 +1006,7 @@ module Calc_residual = struct
     | calc -> ops.of_calc calc
 
   let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =
-    let preserve = authored && Values.calc_contains_var calc in
+    let preserve = authored && contains_var calc in
     simplify_calc ~preserve ~visited calc
     |> calc_result_to_value ops simplify ~visited
 
@@ -1019,8 +1059,7 @@ module Calc_residual = struct
           Values.Expr (walk_calc ~visited left, op, walk_calc ~visited right)
     and simplify_calc ?(preserve = false) ~visited calc =
       let calc = walk_calc ~visited calc in
-      if preserve && Values.calc_contains_var calc then calc
-      else fold_calc ops calc
+      if preserve && contains_var calc then calc else fold_calc ops calc
     and simplify ~authored ~visited value =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
       let run_calc ~preserve ~visited calc =
@@ -1326,7 +1365,7 @@ module Length = struct
       preserve_authored_calc
       &&
       match (value : Values.length) with
-      | Values.Calc calc -> Values.calc_contains_var calc
+      | Values.Calc calc -> Calc_residual.contains_var calc
       | _ -> false
     in
     let value : Values.length =

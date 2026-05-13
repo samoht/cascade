@@ -562,8 +562,9 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
           (fun ctx inner ->
             pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
           ctx inner
+    | Parens inner when Pp.minified ctx ->
+        pp_calc_inner ~parent_prec ~right_of_noncommut ctx inner
     | Parens inner ->
-        (* Parenthesized expression - render as (inner) *)
         Pp.char ctx '(';
         pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
         Pp.char ctx ')'
@@ -592,45 +593,39 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    per-type "zero is the identity" cases involving typed [Val] leaves (e.g. [Val
    Zero] for [length]) are handled by per-type pre-passes that rewrite typed
    zeros to [Num 0.] before this generic fold. *)
-let rec eval_calc_without_vars : type a. a calc -> a calc = function
+let rec eval_calc : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
+  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner -> (
-      match eval_calc_without_vars inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      match eval_calc inner with
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Nested reduced)
   | Parens inner -> (
-      match eval_calc_without_vars inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      match eval_calc inner with
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Parens reduced)
   | Expr (l, op, r) -> (
-      let l = eval_calc_without_vars l in
-      let r = eval_calc_without_vars r in
+      let l = eval_calc l in
+      let r = eval_calc r in
       match (l, op, r) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. -> x
-      | Num 0., Add, x -> x
-      | x, Sub, Num 0. -> x
-      | x, Mul, Num 1. -> x
-      | Num 1., Mul, x -> x
-      | x, Div, Num 1. -> x
+      | x, Add, Num 0. when not (calc_contains_var x) -> x
+      | Num 0., Add, x when not (calc_contains_var x) -> x
+      | x, Sub, Num 0. when not (calc_contains_var x) -> x
+      | x, Mul, Num 1. when not (calc_contains_var x) -> x
+      | Num 1., Mul, x when not (calc_contains_var x) -> x
+      | x, Div, Num 1. when not (calc_contains_var x) -> x
       | _ -> Expr (l, op, r))
-
-let eval_calc calc =
-  if calc_contains_var calc then calc else eval_calc_without_vars calc
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
-  let contains_var = calc_contains_var calc in
-  let calc =
-    if Pp.minified ctx && not contains_var then eval_calc_without_vars calc
-    else calc
-  in
+  let calc = if Pp.minified ctx then eval_calc calc else calc in
   match calc with
   (* CSS Values 4 §10.10: a [var()] inside [calc()] is a runtime substitution
      boundary - the substituted tokens go through calc's typed grammar, not the
@@ -1110,6 +1105,7 @@ let rec eval_length_calc : length calc -> length calc =
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
+  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match length_of_math_fn fn with
       | Some l -> Val l
@@ -1117,11 +1113,11 @@ let rec eval_length_calc : length calc -> length calc =
           match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn))
   | Nested inner -> (
       match eval_length_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Nested reduced)
   | Parens inner -> (
       match eval_length_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Parens reduced)
   | Expr (l, op, r) -> (
       let l = eval_length_calc l in
@@ -1131,12 +1127,12 @@ let rec eval_length_calc : length calc -> length calc =
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. -> x
-      | Num 0., Add, x -> x
-      | x, Sub, Num 0. -> x
-      | x, Mul, Num 1. -> x
-      | Num 1., Mul, x -> x
-      | x, Div, Num 1. -> x
+      | x, Add, Num 0. when not (calc_contains_var x) -> x
+      | Num 0., Add, x when not (calc_contains_var x) -> x
+      | x, Sub, Num 0. when not (calc_contains_var x) -> x
+      | x, Mul, Num 1. when not (calc_contains_var x) -> x
+      | Num 1., Mul, x when not (calc_contains_var x) -> x
+      | x, Div, Num 1. when not (calc_contains_var x) -> x
       | Val a, op, Val b -> (
           match length_combine op a b with
           | Some v -> Val v
@@ -1548,6 +1544,7 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const c -> Num (math_const_value c)
+  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match lp_of_math_fn fn with
       | Some lp -> Val lp
@@ -1555,11 +1552,11 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn))
   | Nested inner -> (
       match eval_lp_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Nested reduced)
   | Parens inner -> (
       match eval_lp_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | (Val _ | Num _) as leaf -> leaf
       | reduced -> Parens reduced)
   | Expr (l, op, r) -> (
       let l = eval_lp_calc l in
@@ -1569,12 +1566,12 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. -> x
-      | Num 0., Add, x -> x
-      | x, Sub, Num 0. -> x
-      | x, Mul, Num 1. -> x
-      | Num 1., Mul, x -> x
-      | x, Div, Num 1. -> x
+      | x, Add, Num 0. when not (calc_contains_var x) -> x
+      | Num 0., Add, x when not (calc_contains_var x) -> x
+      | x, Sub, Num 0. when not (calc_contains_var x) -> x
+      | x, Mul, Num 1. when not (calc_contains_var x) -> x
+      | Num 1., Mul, x when not (calc_contains_var x) -> x
+      | x, Div, Num 1. when not (calc_contains_var x) -> x
       | Val a, op, Val b -> (
           match lp_combine op a b with
           | Some v -> Val v
@@ -1846,19 +1843,19 @@ and pp_length_calc ~always ctx cv =
   | _ -> pp_generic_length_calc ~always ctx cv
 
 and pp_generic_length_calc ~always ctx cv =
-  let contains_var = calc_contains_var cv in
   let cv =
-    if Pp.minified ctx && not contains_var then
-      cv
-      |> resolve_length_calc_vars ctx
-      |> normalize_length_calc_zeros |> eval_length_calc |> linear_length_calc
-      |> eval_length_calc
+    if Pp.minified ctx then
+      cv |> resolve_length_calc_vars ctx |> fun cv ->
+      (if calc_contains_var cv then cv else normalize_length_calc_zeros cv)
+      |> eval_length_calc |> linear_length_calc |> eval_length_calc
     else cv
   in
   match cv with
   | Val (Var _ as length) when Pp.minified ctx ->
       pp_calc_wrapped_length ~always ctx length
-  | _ -> pp_calc (pp_length ~always) ctx cv
+  | _ ->
+      let always = always || calc_contains_var cv in
+      pp_calc (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function
@@ -2915,13 +2912,14 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
-      let contains_var = calc_contains_var c in
       let c =
-        if Pp.minified ctx && not contains_var then
-          c |> resolve_lp_calc_vars ctx |> normalize_lp_calc_zeros
+        if Pp.minified ctx then
+          c |> resolve_lp_calc_vars ctx |> fun c ->
+          (if calc_contains_var c then c else normalize_lp_calc_zeros c)
           |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
         else c
       in
+      let always = always || calc_contains_var c in
       pp_calc (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
