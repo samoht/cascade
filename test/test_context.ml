@@ -675,6 +675,18 @@ let add_matching_declarations ~source_order ~property ~origin ~layer
         candidate :: acc)
     acc declarations
 
+let collect_declaration_statement ~source_order ~property ~origin ~layer
+    ~current_specificity ~scope_hops acc (stmt : Css.Stylesheet.statement) =
+  match stmt with
+  | Declarations declarations -> (
+      match current_specificity with
+      | None -> (acc, None)
+      | Some specificity ->
+          ( add_matching_declarations ~source_order ~property ~origin ~layer
+              ~specificity ~scope_hops acc declarations,
+            None ))
+  | _ -> (acc, None)
+
 let rec collect_matching_block ~source_order ~property ~document ~query ~origin
     ~layer ~current_specificity ~scope_hops acc block =
   let step (acc, chain_matched) stmt =
@@ -790,17 +802,6 @@ and collect_conditional_statement ~source_order ~property ~document ~query
             in
             (acc, Some (previous_matched || matched)))
   | _ -> None
-
-and collect_declaration_statement ~source_order ~property ~origin ~layer
-    ~current_specificity ~scope_hops acc = function
-  | Declarations declarations -> (
-      match current_specificity with
-      | None -> (acc, None)
-      | Some specificity ->
-          ( add_matching_declarations ~source_order ~property ~origin ~layer
-              ~specificity ~scope_hops acc declarations,
-            None ))
-  | _ -> (acc, None)
 
 let cascade_layer_candidate_of (c : Css.Stylesheet.cascade_candidate) :
     Css.Stylesheet.cascade_layer_candidate =
