@@ -1277,6 +1277,81 @@ let merge_layer_declarations (stmts : statement list) : statement list =
   in
   merge [] stmts
 
+let add_new_layer_names seen names =
+  let seen, added_rev =
+    List.fold_left
+      (fun (seen, added_rev) name ->
+        if List.exists (String.equal name) seen then (seen, added_rev)
+        else (name :: seen, name :: added_rev))
+      (seen, []) names
+  in
+  (seen, List.rev added_rev)
+
+let layer_names_of_statement = function
+  | Layer_decl names -> names
+  | Layer (Some name, _) -> [ name ]
+  | _ -> []
+
+let following_layer_introduction_order seen stmts =
+  let rec loop seen introduced_rev added_by_layer_decl = function
+    | [] | Import _ :: _ -> (List.rev introduced_rev, added_by_layer_decl)
+    | stmt :: rest ->
+        let names = layer_names_of_statement stmt in
+        let seen, added = add_new_layer_names seen names in
+        let added_by_layer_decl =
+          added_by_layer_decl
+          || match stmt with Layer_decl _ -> added <> [] | _ -> false
+        in
+        loop seen
+          (List.rev_append added introduced_rev)
+          added_by_layer_decl rest
+  in
+  loop seen [] false stmts
+
+let list_has_prefix prefix list =
+  let rec loop = function
+    | [], _ -> true
+    | _ :: _, [] -> false
+    | x :: xs, y :: ys -> String.equal x y && loop (xs, ys)
+  in
+  loop (prefix, list)
+
+let layer_decl_forward_redundant seen names rest =
+  let _, introduced_by_decl = add_new_layer_names seen names in
+  let introduced_by_rest, added_by_layer_decl =
+    following_layer_introduction_order seen rest
+  in
+  added_by_layer_decl && list_has_prefix introduced_by_decl introduced_by_rest
+
+let layer_decl_backward_redundant seen names =
+  List.for_all (fun name -> List.exists (String.equal name) seen) names
+
+(* Top-level CSS Cascade 6.4 cleanup. A layer statement is removable when it
+   only repeats layer order already introduced in the current import-separated
+   segment, or when the immediately following top-level layer blocks/statements
+   introduce the same new names in the same order. Nested conditional layer
+   declarations are deliberately left alone because their participation depends
+   on the condition at evaluation time. *)
+let drop_redundant_top_level_layer_declarations stmts =
+  let rec loop seen acc = function
+    | [] -> List.rev acc
+    | (Import _ as stmt) :: rest -> loop [] (stmt :: acc) rest
+    | (Layer_decl names as stmt) :: rest ->
+        if
+          layer_decl_backward_redundant seen names
+          || layer_decl_forward_redundant seen names rest
+        then loop seen acc rest
+        else
+          let seen, _ = add_new_layer_names seen names in
+          loop seen (stmt :: acc) rest
+    | stmt :: rest ->
+        let seen, _ =
+          add_new_layer_names seen (layer_names_of_statement stmt)
+        in
+        loop seen (stmt :: acc) rest
+  in
+  loop [] [] stmts
+
 (* Main statement processing function with layer optimization *)
 (* CSS Cascade 6.1: a rule with no declarations and no nested rules
    contributes nothing to the cascade. Drop it under [~optimize:true]
@@ -1444,6 +1519,7 @@ and rules_aux (rules : rule list) : rule list =
 
 let statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers
+  |> drop_redundant_top_level_layer_declarations
 
 let single_rule (rule : rule) : rule =
   {

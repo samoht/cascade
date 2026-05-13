@@ -2084,6 +2084,82 @@ let c64_statement_layer_order () =
      default{.widget{color:red}}"
     output
 
+let c64_redundant_layer_prelude () =
+  (* CSS Cascade section 6.4.4.2: when a layer statement only repeats the layer
+     order introduced immediately by following layer blocks/statements, it is a
+     redundant minified spelling. Lightning CSS drops this form too. *)
+  let input =
+    Css.Stylesheet.read
+      (Cursor.of_string
+         "@layer theme,base,components,utilities;@layer \
+          theme{:root{--x:1}}@layer base{a{color:red}}@layer \
+          components,utilities;")
+  in
+  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  Alcotest.(check string)
+    "redundant leading layer order is removed"
+    "@layer theme{:root{--x:1}}@layer base{a{color:red}}@layer \
+     components,utilities;"
+    output
+
+let c64_redundant_layer_duplicate () =
+  (* A layer statement that names only layers already introduced by earlier
+     blocks does not change layer order and can be dropped. *)
+  let input =
+    Css.Stylesheet.read
+      (Cursor.of_string "@layer theme{a{color:red}}@layer theme;")
+  in
+  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  Alcotest.(check string)
+    "duplicate layer statement after block is removed"
+    "@layer theme{a{color:red}}" output
+
+let c64_layer_prelude_order_boundary () =
+  (* The prelude is not redundant if later layer blocks introduce the same names
+     in a different order. Removing it would change normal and important layer
+     precedence. *)
+  let input =
+    Css.Stylesheet.read
+      (Cursor.of_string
+         "@layer theme,base,components;@layer base{a{color:red}}@layer \
+          theme{:root{--x:1}}@layer components;")
+  in
+  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  Alcotest.(check string)
+    "layer prelude remains when it changes later block order"
+    "@layer theme,base,components;@layer base{a{color:red}}@layer \
+     theme{:root{--x:1}}"
+    output
+
+let c64_layer_prelude_missing_name () =
+  (* The prelude is not redundant if it declares a layer that following
+     blocks/statements do not introduce. The empty layer still participates in
+     layer order. *)
+  let input =
+    Css.Stylesheet.read
+      (Cursor.of_string
+         "@layer theme,base,components;@layer theme{:root{--x:1}}@layer \
+          components;")
+  in
+  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  Alcotest.(check string)
+    "layer prelude remains when it introduces an otherwise empty layer"
+    "@layer theme,base,components;@layer theme{:root{--x:1}}" output
+
+let c64_layer_prelude_import_barrier () =
+  (* Layer statements before imports are part of the import prelude. Do not
+     remove them by looking through an import boundary to a later layer
+     block. *)
+  let input =
+    Css.Stylesheet.read
+      (Cursor.of_string
+         "@layer theme;@import \"theme.css\";@layer theme{a{color:red}}")
+  in
+  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  Alcotest.(check string)
+    "layer declaration before import is not removed across import boundary"
+    "@layer theme;@import\"theme.css\";@layer theme{a{color:red}}" output
+
 let c64_unlayered_final_layer () =
   (* CSS Cascade section 6.4 example: normal unlayered declarations are in the
      implicit final layer and can outrank more-specific explicit-layer rules.
@@ -2875,6 +2951,21 @@ let selector_merging_tests =
     ( "spec cascade 6.4 statement declares layer order",
       `Quick,
       c64_statement_layer_order );
+    ( "spec cascade 6.4 redundant layer prelude removed",
+      `Quick,
+      c64_redundant_layer_prelude );
+    ( "spec cascade 6.4 duplicate layer statement removed",
+      `Quick,
+      c64_redundant_layer_duplicate );
+    ( "spec cascade 6.4 layer prelude order boundary",
+      `Quick,
+      c64_layer_prelude_order_boundary );
+    ( "spec cascade 6.4 layer prelude missing name",
+      `Quick,
+      c64_layer_prelude_missing_name );
+    ( "spec cascade 6.4 layer prelude import barrier",
+      `Quick,
+      c64_layer_prelude_import_barrier );
     ( "spec cascade 6.4 unlayered normal is implicit final layer",
       `Quick,
       c64_unlayered_final_layer );
