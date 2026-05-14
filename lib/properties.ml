@@ -8895,11 +8895,18 @@ let rec pp_place_items : place_items Pp.t =
   | Start_safe -> Pp.string ctx "safe start"
   | End_safe -> Pp.string ctx "safe end"
   | Center_safe -> Pp.string ctx "safe center"
+  | Stretch_stretch when Pp.minified ctx -> Pp.string ctx "stretch"
   | Stretch_stretch -> Pp.string ctx "stretch stretch"
   | Align_justify (a, j) ->
-      pp_align_items ctx a;
-      Pp.space ctx ();
-      pp_justify_items ctx j
+      let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_items a in
+      let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
+      (* CSS Align 3 §6.1: when align and justify render to the same token, the
+         single-value spelling is canonical. *)
+      if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
+      else (
+        Pp.string ctx a_s;
+        Pp.space ctx ();
+        Pp.string ctx j_s)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
