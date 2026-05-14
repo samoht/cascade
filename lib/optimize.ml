@@ -434,27 +434,16 @@ let compose_box_shorthands decls =
     Declaration
       { property = Inset; value = [ top; right; bottom; left ]; important }
   in
-  let try_any decls =
-    match
-      try_compose_box ~extract:extract_margin_side ~build:build_margin decls
-    with
-    | Some _ as r -> r
-    | None -> (
-        match
-          try_compose_box ~extract:extract_padding_side ~build:build_padding
-            decls
-        with
-        | Some _ as r -> r
-        | None -> (
-            match
-              try_compose_box ~extract:extract_inset_side ~build:build_inset
-                decls
-            with
-            | Some _ as r -> r
-            | None ->
-                try_compose_box ~extract:extract_border_radius_corner
-                  ~build:build_border_radius decls))
+  let composers =
+    [
+      try_compose_box ~extract:extract_margin_side ~build:build_margin;
+      try_compose_box ~extract:extract_padding_side ~build:build_padding;
+      try_compose_box ~extract:extract_inset_side ~build:build_inset;
+      try_compose_box ~extract:extract_border_radius_corner
+        ~build:build_border_radius;
+    ]
   in
+  let try_any decls = List.find_map (fun f -> f decls) composers in
   let rec go acc decls =
     match (decls, try_any decls) with
     | [], _ -> List.rev acc
@@ -502,9 +491,96 @@ let try_compose_gap = function
       | _ -> None)
   | _ -> None
 
+(* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
+   longhands. Both longhands carry exactly one length value (wrapped in a
+   1-element list for [inset-*] grammar reasons). The result is a [length list]
+   payload: [v] when both sides match, [v_start; v_end] otherwise. *)
+type axis_side = Side_start | Side_end
+
+let try_compose_axis_pair ~extract ~build = function
+  | (idx, d1) :: (_, d2) :: rest -> (
+      match (extract d1, extract d2) with
+      | Some (s1, v1, imp1), Some (s2, v2, imp2)
+        when imp1 = imp2 && s1 <> s2
+             && (not (Values.length_has_runtime_subst v1))
+             && not (Values.length_has_runtime_subst v2) ->
+          let pair = [ (s1, v1); (s2, v2) ] in
+          let v_start = List.assoc Side_start pair in
+          let v_end = List.assoc Side_end pair in
+          let value =
+            if v_start = v_end then [ v_start ] else [ v_start; v_end ]
+          in
+          Some ((idx, build ~important:imp1 ~value), rest)
+      | _ -> None)
+  | _ -> None
+
+let extract_margin_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Margin_inline_start; value; important } ->
+      Some (Side_start, value, important)
+  | Declaration { property = Margin_inline_end; value; important } ->
+      Some (Side_end, value, important)
+  | _ -> None
+
+let extract_margin_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Margin_block_start; value; important } ->
+      Some (Side_start, value, important)
+  | Declaration { property = Margin_block_end; value; important } ->
+      Some (Side_end, value, important)
+  | _ -> None
+
+let extract_padding_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Padding_inline_start; value; important } ->
+      Some (Side_start, value, important)
+  | Declaration { property = Padding_inline_end; value; important } ->
+      Some (Side_end, value, important)
+  | _ -> None
+
+let extract_padding_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Padding_block_start; value; important } ->
+      Some (Side_start, value, important)
+  | Declaration { property = Padding_block_end; value; important } ->
+      Some (Side_end, value, important)
+  | _ -> None
+
+let extract_inset_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Inset_inline_start; value = [ v ]; important } ->
+      Some (Side_start, v, important)
+  | Declaration { property = Inset_inline_end; value = [ v ]; important } ->
+      Some (Side_end, v, important)
+  | _ -> None
+
+let extract_inset_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Inset_block_start; value = [ v ]; important } ->
+      Some (Side_start, v, important)
+  | Declaration { property = Inset_block_end; value = [ v ]; important } ->
+      Some (Side_end, v, important)
+  | _ -> None
+
 let compose_pair_shorthands decls =
+  let axis property extract decls =
+    let build ~important ~value = Declaration { property; value; important } in
+    try_compose_axis_pair ~extract ~build decls
+  in
+  let composers =
+    [
+      try_compose_gap;
+      axis Margin_inline extract_margin_inline_side;
+      axis Margin_block extract_margin_block_side;
+      axis Padding_inline extract_padding_inline_side;
+      axis Padding_block extract_padding_block_side;
+      axis Inset_inline extract_inset_inline_side;
+      axis Inset_block extract_inset_block_side;
+    ]
+  in
+  let try_any decls = List.find_map (fun f -> f decls) composers in
   let rec go acc decls =
-    match (decls, try_compose_gap decls) with
+    match (decls, try_any decls) with
     | [], _ -> List.rev acc
     | _, Some (merged, rest) -> go (merged :: acc) rest
     | hd :: rest, None -> go (hd :: acc) rest
@@ -567,6 +643,98 @@ let try_compose_outline = function
 let compose_outline_shorthand decls =
   let rec go acc decls =
     match (decls, try_compose_outline decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
+(* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
+   <size>[/<line-height>]? <family>+] Cascade stores [font] as a string, so
+   composition renders each longhand via its pretty-printer and stitches the
+   shorthand together. Default-valued components ([normal] style, [400] weight,
+   [normal] line-height) drop. Requires both font-size and font-family. *)
+type font_kind = FStyle | FWeight | FSize | FLine_height | FFamily
+
+let font_kind_of : declaration -> font_kind option = function
+  | Declaration { property = Font_style; _ } -> Some FStyle
+  | Declaration { property = Font_weight; _ } -> Some FWeight
+  | Declaration { property = Font_size; _ } -> Some FSize
+  | Declaration { property = Line_height; _ } -> Some FLine_height
+  | Declaration { property = Font_family; _ } -> Some FFamily
+  | _ -> None
+
+let minified_value d = Declaration.string_of_value ~minify:true d
+let drop_if_default ~default v = if v = default then None else Some v
+
+let render_font_shorthand parts =
+  let find k =
+    List.find_map
+      (fun (kind, decl) -> if kind = k then Some decl else None)
+      parts
+  in
+  let style =
+    Option.bind (find FStyle) (fun d ->
+        drop_if_default ~default:"normal" (minified_value d))
+  in
+  let weight =
+    Option.bind (find FWeight) (fun d ->
+        drop_if_default ~default:"400" (minified_value d))
+  in
+  let line_height =
+    Option.bind (find FLine_height) (fun d ->
+        drop_if_default ~default:"normal" (minified_value d))
+  in
+  match (find FSize, find FFamily) with
+  | Some size_d, Some family_d ->
+      let size = minified_value size_d in
+      let family = minified_value family_d in
+      let size_lh =
+        match line_height with
+        | Some lh -> String.concat "" [ size; "/"; lh ]
+        | None -> size
+      in
+      let leading =
+        [ style; weight ] |> List.filter_map (fun x -> x) |> String.concat " "
+      in
+      let body =
+        if leading = "" then String.concat " " [ size_lh; family ]
+        else String.concat " " [ leading; size_lh; family ]
+      in
+      Some body
+  | _ -> None
+
+let try_compose_font = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: (_, d5) :: rest -> (
+      match
+        ( font_kind_of d1,
+          font_kind_of d2,
+          font_kind_of d3,
+          font_kind_of d4,
+          font_kind_of d5 )
+      with
+      | Some k1, Some k2, Some k3, Some k4, Some k5
+        when is_important d1 = is_important d2
+             && is_important d2 = is_important d3
+             && is_important d3 = is_important d4
+             && is_important d4 = is_important d5
+             && List.length (List.sort_uniq compare [ k1; k2; k3; k4; k5 ]) = 5
+        -> (
+          let parts = [ (k1, d1); (k2, d2); (k3, d3); (k4, d4); (k5, d5) ] in
+          match render_font_shorthand parts with
+          | Some s ->
+              let merged =
+                Declaration
+                  { property = Font; value = s; important = is_important d1 }
+              in
+              Some ((idx, merged), rest)
+          | None -> None)
+      | _ -> None)
+  | _ -> None
+
+let compose_font_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_font decls) with
     | [], _ -> List.rev acc
     | _, Some (merged, rest) -> go (merged :: acc) rest
     | hd :: rest, None -> go (hd :: acc) rest
@@ -684,6 +852,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
     let kept = if merge_box then compose_box_shorthands kept else kept in
     let kept = if merge_box then compose_pair_shorthands kept else kept in
     let kept = if merge_box then compose_outline_shorthand kept else kept in
+    let kept = if merge_box then compose_font_shorthand kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
