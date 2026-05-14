@@ -4616,6 +4616,18 @@ let pp_text_decoration_shorthand : text_decoration_shorthand Pp.t =
  fun ctx { lines; style; color; thickness } ->
   let first = ref true in
   let space_if_needed () = if !first then first := false else Pp.space ctx () in
+  (* CSS Text Decoration 4 sec. 2: under minify, drop components that equal the
+     longhand default ([style: solid], [color: currentcolor]); the shorthand is
+     interpreted with the dropped fields restored to default. *)
+  let drop_default = Pp.minified ctx in
+  let style : text_decoration_style option =
+    if drop_default then match style with Some Solid -> None | s -> s
+    else style
+  in
+  let color : Values.color option =
+    if drop_default then match color with Some Values.Current -> None | c -> c
+    else color
+  in
   (match lines with
   | [] -> ()
   | ls ->
