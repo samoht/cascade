@@ -287,6 +287,92 @@ the shortest-valid comparison when:
 Excluded answers are recorded in the per-test `*.output` logs and the
 rolled-up `_build/_tests/lightning_minify/upstream-bugs.log`.
 
+A second, stricter oracle is vendored from
+[keithamus/css-minify-tests](https://github.com/keithamus/css-minify-tests):
+a vendor-neutral hand-curated set of `source.css` / `expected.css`
+pairs covering 29 CSS feature categories (at-rules, colors, comments,
+duplicates, gradients, merging, selectors, shorthands, transforms,
+values, whitespace, zero-units, ...). Inputs live under
+[test/interop/css-minify-tests/traces/](test/interop/css-minify-tests/traces/);
+refresh them with `dune build @regen-traces` from that directory. Each
+pair passes when Cascade's minified output equals the
+upstream-curated `expected.css` byte for byte (trailing whitespace
+ignored). The suite runs under `@runtest` so divergences are visible
+on every test run.
+
+## References
+
+### OCaml CSS libraries
+
+- [css-parser](https://github.com/astrada/ocaml-css-parser) parses
+  CSS Syntax Level 3 into a spec-shaped AST.
+- [OCaml-css](https://zoggy.frama.io/ocaml-css/) is a parser and
+  printer for CSS.
+
+### Open-source CSS implementations
+
+- [Lightning CSS](https://github.com/parcel-bundler/lightningcss)
+  is a Rust parser, transformer, bundler, and minifier. Cascade uses
+  a Lightning CSS-derived trace as the main minified-output oracle.
+- [esbuild](https://github.com/evanw/esbuild) is a Go bundler and
+  minifier with first-class CSS input support; its CLI is one of the
+  cached minifier oracles used by `@regen-traces`.
+- [clean-css](https://github.com/clean-css/clean-css),
+  [CSSO](https://github.com/css/csso), and
+  [cssnano](https://github.com/cssnano/cssnano) are JavaScript CSS
+  optimizers/minifiers used as additional cached oracles.
+- [PostCSS](https://github.com/postcss/postcss) and
+  [CSSTree](https://github.com/csstree/csstree) are widely used
+  JavaScript CSS parser/AST/tooling projects worth comparing against
+  when extending Cascade's syntax surface.
+
+### CSS optimization research
+
+- [CSS Minification via Constraint Solving](https://arxiv.org/abs/1812.02989)
+  by Hague, Lin, and Hong formalizes rule merging as a CSS-graph
+  optimization problem: two declarations can be merged or reordered only
+  when selector intersection and the intervening cascade dependencies make
+  the transformation semantics-preserving.
+- [The A-B*-A Pattern: Undoing Style in CSS](https://grammarware.net/text/2016/aba-css.pdf)
+  by Visscher, Punt, and Zaytsev studies declarations that set a property
+  to one value, override it, then restore the original value. The pattern is
+  useful adversarial input for optimizers because source order, specificity,
+  inheritance, pseudo selectors, and implicit/default values all affect
+  whether a rewrite is sound.
+- [CILLA: Automated CSS Analysis](https://github.com/saltlab/cilla)
+  by Mesbah and Mirshokraie analyses runtime DOM-CSS matching to flag
+  unmatched selectors, ineffective declarations, and properties later
+  overridden in the cascade. A practical reference for what an
+  AST-level "dead rule" or "useless declaration" check is allowed to
+  claim without observing layout.
+
+### Test suites and specifications
+
+- [Web Platform Tests](https://github.com/web-platform-tests/wpt)
+  provide the vendored CSS Syntax parser-conformance vectors.
+- [keithamus/css-minify-tests](https://github.com/keithamus/css-minify-tests)
+  is a vendor-neutral correctness corpus of CSS minifier
+  transformations agreed by maintainers across Lightning CSS, esbuild,
+  clean-css, CSSO, and cssnano. Vendored as the strict-equality
+  minifier oracle.
+- [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) defines
+  tokenization, parser recovery, and serialization boundaries.
+- [Selectors Level 4](https://www.w3.org/TR/selectors-4/) defines
+  selector parsing, specificity, pseudo-classes, and pseudo-elements.
+- [CSS Values and Units Level 4](https://www.w3.org/TR/css-values-4/)
+  defines numeric values, units, math functions, and `calc()`.
+- [CSS Color Level 4](https://www.w3.org/TR/css-color-4/) defines
+  modern color syntax, named colors, `oklab()`, `oklch()`, and
+  `color-mix()`.
+- [CSS Cascading and Inheritance Level 5](https://www.w3.org/TR/css-cascade-5/)
+  defines cascade layers, CSS-wide keywords, and shorthand/defaulting
+  behavior.
+- [CSS Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/)
+  covers `@media`, `@supports`, `@container`, `@when`, and related
+  conditional grammar.
+- [CSS Nesting Module](https://www.w3.org/TR/css-nesting-1/) defines
+  nested style rules and the `&` nesting selector.
+
 ## Licence
 
 [ISC](LICENSE)
