@@ -1296,6 +1296,9 @@ let is_layer_block = function Layer _ -> true | _ -> false
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
+  let statements =
+    if Pp.minified ctx then normalise statements else statements
+  in
   let statements = printable_statements ctx statements in
   let pp_statement_sep ctx = function
     | Declarations decls when decls <> [] && Pp.minified ctx ->
