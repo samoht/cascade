@@ -891,6 +891,64 @@ let compose_list_style_shorthand decls =
   in
   go [] decls
 
+(* CSS Flexbox 1 sec. 7.2: [flex] shorthand is grow / shrink / basis. Cascade
+   types [Flex] as [Full of grow * shrink * basis]; the composition extracts the
+   three typed longhands and builds the constructor. *)
+type flex_kind = FGrow | FShrink | FBasis
+
+let flex_kind_of : declaration -> flex_kind option = function
+  | Declaration { property = Flex_grow; _ } -> Some FGrow
+  | Declaration { property = Flex_shrink; _ } -> Some FShrink
+  | Declaration { property = Flex_basis; _ } -> Some FBasis
+  | _ -> None
+
+let flex_grow_of : declaration -> float option = function
+  | Declaration { property = Flex_grow; value = Number f; _ } -> Some f
+  | _ -> None
+
+let flex_shrink_of : declaration -> float option = function
+  | Declaration { property = Flex_shrink; value = Number f; _ } -> Some f
+  | _ -> None
+
+let flex_basis_of : declaration -> Properties.flex_basis option = function
+  | Declaration { property = Flex_basis; value; _ } -> Some value
+  | _ -> None
+
+let try_compose_flex = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
+      match (flex_kind_of d1, flex_kind_of d2, flex_kind_of d3) with
+      | Some k1, Some k2, Some k3
+        when is_important d1 = is_important d2
+             && is_important d2 = is_important d3
+             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+          let triple = [ d1; d2; d3 ] in
+          let grow = List.find_map flex_grow_of triple in
+          let shrink = List.find_map flex_shrink_of triple in
+          let basis = List.find_map flex_basis_of triple in
+          match (grow, shrink, basis) with
+          | Some g, Some s, Some b ->
+              let merged =
+                Declaration
+                  {
+                    property = Flex;
+                    value = Full (g, s, b);
+                    important = is_important d1;
+                  }
+              in
+              Some ((idx, merged), rest)
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
+
+let compose_flex_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_flex decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -1004,6 +1062,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
     let kept = if merge_box then compose_outline_shorthand kept else kept in
     let kept = if merge_box then compose_font_shorthand kept else kept in
     let kept = if merge_box then compose_list_style_shorthand kept else kept in
+    let kept = if merge_box then compose_flex_shorthand kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
