@@ -384,6 +384,35 @@ let rec value_uses_color_4 = function
   | Declaration { property; value; _ } ->
       property_value_uses_color_4 property value
 
+let length_list_has_runtime_subst lengths =
+  List.exists Values.length_has_runtime_subst lengths
+
+let property_value_uses_runtime_subst (type a)
+    (property : a Properties.property) (value : a) : bool =
+  match property with
+  | Margin_top -> Values.length_has_runtime_subst value
+  | Margin_right -> Values.length_has_runtime_subst value
+  | Margin_bottom -> Values.length_has_runtime_subst value
+  | Margin_left -> Values.length_has_runtime_subst value
+  | Padding_top -> Values.length_has_runtime_subst value
+  | Padding_right -> Values.length_has_runtime_subst value
+  | Padding_bottom -> Values.length_has_runtime_subst value
+  | Padding_left -> Values.length_has_runtime_subst value
+  | Border_top_left_radius -> Values.length_has_runtime_subst value
+  | Border_top_right_radius -> Values.length_has_runtime_subst value
+  | Border_bottom_left_radius -> Values.length_has_runtime_subst value
+  | Border_bottom_right_radius -> Values.length_has_runtime_subst value
+  | Outline_width -> Values.length_has_runtime_subst value
+  | Margin -> length_list_has_runtime_subst value
+  | Padding -> length_list_has_runtime_subst value
+  | Inset -> length_list_has_runtime_subst value
+  | _ -> false
+
+let rec value_uses_runtime_subst = function
+  | Theme_guarded { decl; _ } -> value_uses_runtime_subst decl
+  | Declaration { property; value; _ } ->
+      property_value_uses_runtime_subst property value
+
 (** Get the property name as a string from a declaration *)
 let rec property_name decl =
   let ctx =
