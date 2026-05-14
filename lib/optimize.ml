@@ -489,6 +489,68 @@ let compose_pair_shorthands decls =
   in
   go [] decls
 
+(* Compose [outline-width / -style / -color] into the [outline] shorthand when
+   all three longhands appear contiguously with matching importance. *)
+type outline_part = Width | Style | Color
+
+let outline_part_of : declaration -> outline_part option = function
+  | Declaration { property = Outline_width; _ } -> Some Width
+  | Declaration { property = Outline_style; _ } -> Some Style
+  | Declaration { property = Outline_color; _ } -> Some Color
+  | _ -> None
+
+let outline_width_value : declaration -> Values.length option = function
+  | Declaration { property = Outline_width; value; _ } -> Some value
+  | _ -> None
+
+let outline_style_value : declaration -> Properties.outline_style option =
+  function
+  | Declaration { property = Outline_style; value; _ } -> Some value
+  | _ -> None
+
+let outline_color_value : declaration -> Values.color option = function
+  | Declaration { property = Outline_color; value; _ } -> Some value
+  | _ -> None
+
+let try_compose_outline = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
+      match (outline_part_of d1, outline_part_of d2, outline_part_of d3) with
+      | Some p1, Some p2, Some p3
+        when is_important d1 = is_important d2
+             && is_important d2 = is_important d3
+             && List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
+          let triple = [ d1; d2; d3 ] in
+          let width = List.find_map outline_width_value triple in
+          let style = List.find_map outline_style_value triple in
+          let color = List.find_map outline_color_value triple in
+          let no_runtime =
+            match width with
+            | Some w -> not (Values.length_has_runtime_subst w)
+            | None -> true
+          in
+          if no_runtime then
+            let merged =
+              Declaration
+                {
+                  property = Outline;
+                  value = Shorthand { width; style; color };
+                  important = is_important d1;
+                }
+            in
+            Some ((idx, merged), rest)
+          else None
+      | _ -> None)
+  | _ -> None
+
+let compose_outline_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_outline decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -589,6 +651,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
   let kept =
     let kept = if merge_box then compose_box_shorthands kept else kept in
     let kept = if merge_box then compose_pair_shorthands kept else kept in
+    let kept = if merge_box then compose_outline_shorthand kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in

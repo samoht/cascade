@@ -1,8 +1,8 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~inline_imports_flag ~inline_vars_flag
-    ~keep_vars =
+let process_css ~input_path ~minify ~flatten_nesting ~inline_imports_flag
+    ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -21,8 +21,7 @@ let process_css ~input_path ~minify ~inline_imports_flag ~inline_vars_flag
       else stylesheet
     in
     let stylesheet =
-      if minify then Css.optimize ~flatten_nesting:true stylesheet
-      else stylesheet
+      if minify then Css.optimize ~flatten_nesting stylesheet else stylesheet
     in
     let output = Css.to_string ~minify ~mode:Css.Variables stylesheet in
     Cli_io.print_output output
@@ -46,6 +45,15 @@ let minify_arg =
      selector grouping, empty-rule removal)."
   in
   Arg.(value & flag & info [ "m"; "minify" ] ~doc)
+
+let flatten_nesting_arg =
+  let doc =
+    "Compatibility transform: flatten nested style rules into top-level rules \
+     for browsers that pre-date the CSS Nesting Module. By default, $(tname) \
+     preserves nesting since modern browsers parse it natively and the nested \
+     form is usually shorter."
+  in
+  Arg.(value & flag & info [ "flatten-nesting" ] ~doc)
 
 let inline_imports_arg =
   let doc =
@@ -75,7 +83,14 @@ let keep_vars_arg =
 let term =
   Term.(
     const
-      (fun input minify inline_imports_flag inline_vars_flag keep_vars_str ->
+      (fun
+        input
+        minify
+        flatten_nesting
+        inline_imports_flag
+        inline_vars_flag
+        keep_vars_str
+      ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
         if List.mem "*" keep_vars then begin
           Fmt.epr
@@ -86,10 +101,10 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
-        process_css ~input_path:input ~minify ~inline_imports_flag
-          ~inline_vars_flag ~keep_vars)
-    $ input_arg $ minify_arg $ inline_imports_arg $ inline_vars_arg
-    $ keep_vars_arg)
+        process_css ~input_path:input ~minify ~flatten_nesting
+          ~inline_imports_flag ~inline_vars_flag ~keep_vars)
+    $ input_arg $ minify_arg $ flatten_nesting_arg $ inline_imports_arg
+    $ inline_vars_arg $ keep_vars_arg)
 
 let man =
   [
