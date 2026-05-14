@@ -34,7 +34,7 @@ merged the namespace must travel with its rules.
 A UTF-8 BOM at the start of an imported file is stripped during parsing
 and not propagated.
 
-  $ printf '\xef\xbb\xbf.bom { color: red }\n' > bom.css
+  $ printf '\357\273\277.bom { color: red }\n' > bom.css
   $ cat > entry-bom.css <<EOF
   > @import url("bom.css");
   > .e { padding: 0 }
