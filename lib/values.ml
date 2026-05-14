@@ -2764,8 +2764,6 @@ let named_for_hex value =
   | "f5deb3" -> Some "wheat"
   | _ -> None
 
-let _ = mix_srgb_bytes
-
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
 let shorten_hex value =
