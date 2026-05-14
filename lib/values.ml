@@ -5067,7 +5067,7 @@ let read_ok_lightness t : percentage option =
     let n, unit = Cursor.number_with_unit t in
     match unit with
     | Some "%" -> Some (Pct n : percentage)
-    | None when n >= 0. && n <= 1. -> Some (Pct (n *. 100.) : percentage)
+    | None when n >= 0. && n <= 1. -> Some (Num n : percentage)
     | _ ->
         Cursor.err_invalid t
           ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
