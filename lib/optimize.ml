@@ -98,6 +98,14 @@ let expand_box vs =
 
 type sides = Values.length * Values.length * Values.length * Values.length
 
+(* A runtime-subst leaf may resolve to a 1-to-4-value sequence, so a corner
+   longhand can't be guaranteed to shadow it - bail out of the merge then. *)
+let sides_have_runtime_subst ((top, right, bottom, left) : sides) =
+  Values.length_has_runtime_subst top
+  || Values.length_has_runtime_subst right
+  || Values.length_has_runtime_subst bottom
+  || Values.length_has_runtime_subst left
+
 (* Try to absorb a corner-longhand declaration into a margin 4-tuple. Pattern
    matching is inlined here so the GADT existential value type ([length]) stays
    inside the typed branch. Returns the updated tuple, or [None] if [d] is not
@@ -179,53 +187,44 @@ let box_shorthand_had_prior_longhand source idx shorthand =
    shorthand. Tailwind / Lightning-CSS / cssnano all do this; the dead-code
    suite asserts it for [margin: 10px; margin-top: 20px] -> [margin: 20px 10px
    10px]. *)
+(* Commit the merge only when every side ends up concrete; otherwise restore
+   the original shorthand and leave its longhand tail in place. *)
+let try_merge_box_shorthand ~property ~vs ~important ~absorb ~is_same_shorthand
+    rest =
+  match expand_box vs with
+  | None -> (Declaration { property; value = vs; important }, rest)
+  | Some sides -> (
+      let ((top, right, bottom, left) as absorbed), rest' =
+        absorb_box_longhands ~absorb ~is_same_shorthand sides rest
+      in
+      match sides_have_runtime_subst absorbed with
+      | true -> (Declaration { property; value = vs; important }, rest)
+      | false ->
+          ( Declaration
+              { property; value = [ top; right; bottom; left ]; important },
+            rest' ))
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
     | (idx, (Declaration { property = Margin; value = vs; important } as d))
       :: rest
-      when not (box_shorthand_had_prior_longhand source idx d) -> (
-        match expand_box vs with
-        | None ->
-            let d = Declaration { property = Margin; value = vs; important } in
-            go ((idx, d) :: acc) rest
-        | Some sides ->
-            let (top, right, bottom, left), rest =
-              absorb_box_longhands
-                ~absorb:(absorb_margin_corner ~important)
-                ~is_same_shorthand:is_margin_shorthand sides rest
-            in
-            let merged =
-              Declaration
-                {
-                  property = Margin;
-                  value = [ top; right; bottom; left ];
-                  important;
-                }
-            in
-            go ((idx, merged) :: acc) rest)
+      when not (box_shorthand_had_prior_longhand source idx d) ->
+        let merged, rest =
+          try_merge_box_shorthand ~property:Margin ~vs ~important
+            ~absorb:(absorb_margin_corner ~important)
+            ~is_same_shorthand:is_margin_shorthand rest
+        in
+        go ((idx, merged) :: acc) rest
     | (idx, (Declaration { property = Padding; value = vs; important } as d))
       :: rest
-      when not (box_shorthand_had_prior_longhand source idx d) -> (
-        match expand_box vs with
-        | None ->
-            let d = Declaration { property = Padding; value = vs; important } in
-            go ((idx, d) :: acc) rest
-        | Some sides ->
-            let (top, right, bottom, left), rest =
-              absorb_box_longhands
-                ~absorb:(absorb_padding_corner ~important)
-                ~is_same_shorthand:is_padding_shorthand sides rest
-            in
-            let merged =
-              Declaration
-                {
-                  property = Padding;
-                  value = [ top; right; bottom; left ];
-                  important;
-                }
-            in
-            go ((idx, merged) :: acc) rest)
+      when not (box_shorthand_had_prior_longhand source idx d) ->
+        let merged, rest =
+          try_merge_box_shorthand ~property:Padding ~vs ~important
+            ~absorb:(absorb_padding_corner ~important)
+            ~is_same_shorthand:is_padding_shorthand rest
+        in
+        go ((idx, merged) :: acc) rest
     | d :: rest -> go (d :: acc) rest
   in
   go [] decls

@@ -610,17 +610,13 @@ let rec eval_calc : type a. a calc -> a calc = function
   | Expr (l, op, r) -> (
       let l = eval_calc l in
       let r = eval_calc r in
+      (* Identity rules need a type-aware [Val] inspection (runtime subst?);
+         per-type evaluators own them. *)
       match (l, op, r) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. when not (calc_contains_var x) -> x
-      | Num 0., Add, x when not (calc_contains_var x) -> x
-      | x, Sub, Num 0. when not (calc_contains_var x) -> x
-      | x, Mul, Num 1. when not (calc_contains_var x) -> x
-      | Num 1., Mul, x when not (calc_contains_var x) -> x
-      | x, Div, Num 1. when not (calc_contains_var x) -> x
       | _ -> Expr (l, op, r))
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
@@ -1100,6 +1096,22 @@ let length_of_math_fn (fn : math_fn) : length option =
       Some (length_from_calc_unit (String.lowercase_ascii unit) (Float.abs n))
   | _ -> None
 
+(* CSS Values 4 §10.10: identity-rule simplifications around a runtime
+   substitution would change the substituted-grammar context. *)
+let rec length_has_runtime_subst : length -> bool = function
+  | Var _ | Env _ | Attr _ | Anchor _ | Anchor_size _ -> true
+  | Calc c -> length_calc_has_runtime_subst c
+  | _ -> false
+
+and length_calc_has_runtime_subst : length calc -> bool = function
+  | Var _ -> true
+  | Val v -> length_has_runtime_subst v
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> false
+  | Math_fn fn -> math_fn_contains_var fn
+  | Nested inner | Parens inner -> length_calc_has_runtime_subst inner
+  | Expr (l, _, r) ->
+      length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
+
 let rec eval_length_calc : length calc -> length calc =
  fun calc ->
   match calc with
@@ -1122,17 +1134,18 @@ let rec eval_length_calc : length calc -> length calc =
   | Expr (l, op, r) -> (
       let l = eval_length_calc l in
       let r = eval_length_calc r in
+      let identity_safe x = not (length_calc_has_runtime_subst x) in
       match (l, op, r) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. when not (calc_contains_var x) -> x
-      | Num 0., Add, x when not (calc_contains_var x) -> x
-      | x, Sub, Num 0. when not (calc_contains_var x) -> x
-      | x, Mul, Num 1. when not (calc_contains_var x) -> x
-      | Num 1., Mul, x when not (calc_contains_var x) -> x
-      | x, Div, Num 1. when not (calc_contains_var x) -> x
+      | x, Add, Num 0. when identity_safe x -> x
+      | Num 0., Add, x when identity_safe x -> x
+      | x, Sub, Num 0. when identity_safe x -> x
+      | x, Mul, Num 1. when identity_safe x -> x
+      | Num 1., Mul, x when identity_safe x -> x
+      | x, Div, Num 1. when identity_safe x -> x
       | Val a, op, Val b -> (
           match length_combine op a b with
           | Some v -> Val v
@@ -1539,6 +1552,21 @@ let lp_of_math_fn (fn : math_fn) : length_percentage option =
       |> Option.some
   | _ -> None
 
+(* See [length_has_runtime_subst]. *)
+let rec lp_has_runtime_subst : length_percentage -> bool = function
+  | Env _ | Var _ -> true
+  | Length l -> length_has_runtime_subst l
+  | Calc c -> lp_calc_has_runtime_subst c
+  | Pct _ | Invalid _ -> false
+
+and lp_calc_has_runtime_subst : length_percentage calc -> bool = function
+  | Var _ -> true
+  | Val v -> lp_has_runtime_subst v
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> false
+  | Math_fn fn -> math_fn_contains_var fn
+  | Nested inner | Parens inner -> lp_calc_has_runtime_subst inner
+  | Expr (l, _, r) -> lp_calc_has_runtime_subst l || lp_calc_has_runtime_subst r
+
 let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
   match calc with
@@ -1561,17 +1589,18 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
   | Expr (l, op, r) -> (
       let l = eval_lp_calc l in
       let r = eval_lp_calc r in
+      let identity_safe x = not (lp_calc_has_runtime_subst x) in
       match (l, op, r) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | x, Add, Num 0. when not (calc_contains_var x) -> x
-      | Num 0., Add, x when not (calc_contains_var x) -> x
-      | x, Sub, Num 0. when not (calc_contains_var x) -> x
-      | x, Mul, Num 1. when not (calc_contains_var x) -> x
-      | Num 1., Mul, x when not (calc_contains_var x) -> x
-      | x, Div, Num 1. when not (calc_contains_var x) -> x
+      | x, Add, Num 0. when identity_safe x -> x
+      | Num 0., Add, x when identity_safe x -> x
+      | x, Sub, Num 0. when identity_safe x -> x
+      | x, Mul, Num 1. when identity_safe x -> x
+      | Num 1., Mul, x when identity_safe x -> x
+      | x, Div, Num 1. when identity_safe x -> x
       | Val a, op, Val b -> (
           match lp_combine op a b with
           | Some v -> Val v
