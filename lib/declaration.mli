@@ -77,6 +77,12 @@ val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
     CSS Color 4 / 5 construct. [var()] returns [false]. *)
 
+val value_uses_runtime_subst : declaration -> bool
+(** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value
+    contains a [var()] / [env()] / [attr()] / anchor query, possibly through
+    [calc()]. Covers length / length-list / length-percentage properties used in
+    cross-tier fallback patterns. *)
+
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 

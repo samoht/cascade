@@ -602,6 +602,15 @@ let legacy_color_fallback new_decl existing =
   && Declaration.value_uses_color_4 new_decl
   && not (Declaration.value_uses_color_4 existing)
 
+(* Same shape: the later value uses a runtime substitution ([var()] / [env()] /
+   [attr()]) and the earlier doesn't, so the earlier is a static fallback for
+   browsers that can't resolve the substitution at parse time. *)
+let legacy_runtime_subst_fallback new_decl existing =
+  property_name new_decl = property_name existing
+  && (not (same_minified_value new_decl existing))
+  && Declaration.value_uses_runtime_subst new_decl
+  && not (Declaration.value_uses_runtime_subst existing)
+
 let same_property_value_declaration new_decl existing =
   property_name new_decl = property_name existing
   && same_minified_value new_decl existing
@@ -614,7 +623,8 @@ let covered_by_new_declaration new_decl existing =
   && declaration_covers new_prop existing_prop
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
-  && not (legacy_color_fallback new_decl existing)
+  && (not (legacy_color_fallback new_decl existing))
+  && not (legacy_runtime_subst_fallback new_decl existing)
 
 let append_all_declaration idx decl kept =
   let before, after =
