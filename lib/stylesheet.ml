@@ -507,6 +507,202 @@ let printable_statements ctx statements =
   if Pp.minified ctx then List.filter (should_print_statement ctx) statements
   else statements
 
+module String_set = Pp.String_set
+
+let normalise_charset statements =
+  (* CSS Syntax 3 sec. 2.2: [@charset] is an encoding-declaration byte pattern
+     recognised before tokenization, not a stylesheet at-rule after parsing. In
+     minified output the serializer emits UTF-8, so [@charset "UTF-8"] is
+     redundant; keep at most the first non-UTF-8 declaration for byte-level
+     compatibility. *)
+  let is_utf8 encoding =
+    String.equal (String.lowercase_ascii encoding) "utf-8"
+  in
+  let kept_one = ref false in
+  List.filter
+    (fun stmt ->
+      match stmt with
+      | Charset enc when is_utf8 enc -> false
+      | Charset _ when !kept_one -> false
+      | Charset _ ->
+          kept_one := true;
+          true
+      | _ -> true)
+    statements
+
+let color_custom_property_names stylesheet =
+  let var_name_of_custom_property name =
+    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+      String.sub name 2 (String.length name - 2)
+    else name
+  in
+  let declaration names = function
+    | Declaration.Declaration
+        {
+          property = Properties.Custom_property name;
+          value =
+            Properties.Custom_value
+              { value = Properties.Typed { kind = Properties.Color; _ }; _ };
+          _;
+        } ->
+        String_set.add (var_name_of_custom_property name) names
+    | _ -> names
+  in
+  let declarations names decls = List.fold_left declaration names decls in
+  let rec statement names = function
+    | Rule rule ->
+        let names = declarations names rule.declarations in
+        List.fold_left statement names rule.nested
+    | Declarations decls -> declarations names decls
+    | Layer (_, block)
+    | Media (_, block)
+    | Container (_, _, block)
+    | Supports (_, block)
+    | Moz_document (_, block)
+    | When (_, block)
+    | Else (_, block)
+    | Starting_style block
+    | Origin (_, block)
+    | Scope (_, _, block) ->
+        List.fold_left statement names block
+    | Page (_, decls) | Position_try (_, decls) | Supports_condition (_, decls)
+      ->
+        declarations names decls
+    | Page_with_margins (_, descs, margins) ->
+        let names = declarations names descs in
+        List.fold_left
+          (fun names margin -> declarations names margin.margin_descriptors)
+          names margins
+    | _ -> names
+  in
+  List.fold_left statement String_set.empty stylesheet
+
+let color_fallback_of_length_fallback :
+    Values.length Values.fallback -> Values.color Values.fallback = function
+  | Values.None -> Values.None
+  | Values.Empty -> Values.Empty
+  | Values.Empty2 -> Values.Empty2
+  | Values.Syntax_fallback components -> Values.Syntax_fallback components
+  | Values.Var_fallback name -> Values.Var_fallback name
+  | Values.Fallback value ->
+      Values.Syntax_fallback
+        (Cursor.remaining
+           (Cursor.of_string (Pp.to_string ~minify:true Values.pp_length value)))
+
+(* The shadow rewrite uses the [var(--ring)] reference as the colour slot of a
+   [box-shadow]; the inline [default] (a length) doesn't apply when the var is
+   consumed in colour position, so drop it. *)
+let color_var_of_length_var (var : Values.length Values.var) :
+    Values.color Values.var =
+  {
+    name = var.name;
+    fallback = color_fallback_of_length_fallback var.fallback;
+    default = None;
+    layer = var.layer;
+    meta = var.meta;
+  }
+
+let rec rewrite_shadow_value color_vars (value : Properties.shadow) :
+    Properties.shadow =
+  match value with
+  | Properties.Shadow
+      ({ blur = Some (Values.Var var); spread = None; color = None; _ } as
+       shadow)
+    when String_set.mem var.name color_vars ->
+      Properties.Shadow
+        {
+          shadow with
+          blur = Some Values.Zero;
+          color = Some (Values.Var (color_var_of_length_var var));
+        }
+  | Properties.List shadows ->
+      Properties.List (List.map (rewrite_shadow_value color_vars) shadows)
+  | shadow -> shadow
+
+let rewrite_shadow_decl color_vars = function
+  | Declaration.Declaration
+      ({ property = Properties.Box_shadow; value; _ } as decl) ->
+      Declaration.Declaration
+        { decl with value = rewrite_shadow_value color_vars value }
+  | Declaration.Declaration
+      ({
+         property = Properties.Custom_property _;
+         value =
+           Properties.Custom_value
+             {
+               value =
+                 Properties.Typed { kind = Properties.Shadow; value = shadow };
+               layer;
+               meta;
+             };
+         _;
+       } as decl) ->
+      Declaration.Declaration
+        {
+          decl with
+          value =
+            Properties.Custom_value
+              {
+                value =
+                  Properties.Typed
+                    {
+                      kind = Properties.Shadow;
+                      value = rewrite_shadow_value color_vars shadow;
+                    };
+                layer;
+                meta;
+              };
+        }
+  | decl -> decl
+
+let normalise_shadows stylesheet =
+  let color_vars = color_custom_property_names stylesheet in
+  if String_set.is_empty color_vars then stylesheet
+  else
+    let declarations = List.map (rewrite_shadow_decl color_vars) in
+    let rec statement = function
+      | Rule rule ->
+          Rule
+            {
+              rule with
+              declarations = declarations rule.declarations;
+              nested = List.map statement rule.nested;
+            }
+      | Declarations decls -> Declarations (declarations decls)
+      | Layer (name, block) -> Layer (name, List.map statement block)
+      | Media (query, block) -> Media (query, List.map statement block)
+      | Container (name, query, block) ->
+          Container (name, query, List.map statement block)
+      | Supports (query, block) -> Supports (query, List.map statement block)
+      | Moz_document (query, block) ->
+          Moz_document (query, List.map statement block)
+      | When (query, block) -> When (query, List.map statement block)
+      | Else (query, block) -> Else (query, List.map statement block)
+      | Starting_style block -> Starting_style (List.map statement block)
+      | Origin (origin, block) -> Origin (origin, List.map statement block)
+      | Scope (start, end_, block) ->
+          Scope (start, end_, List.map statement block)
+      | Page (selector, decls) -> Page (selector, declarations decls)
+      | Page_with_margins (selector, descs, margins) ->
+          Page_with_margins
+            ( selector,
+              declarations descs,
+              List.map
+                (fun margin ->
+                  {
+                    margin with
+                    margin_descriptors = declarations margin.margin_descriptors;
+                  })
+                margins )
+      | Position_try (name, decls) -> Position_try (name, declarations decls)
+      | Supports_condition (name, decls) ->
+          Supports_condition (name, declarations decls)
+      | other -> other
+    in
+    List.map statement stylesheet
+
+let normalise statements = statements |> normalise_charset |> normalise_shadows
+
 let import_url_starts_with_url url len =
   len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
 
@@ -1124,6 +1320,7 @@ let pp_stylesheet : stylesheet Pp.t =
 
 let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
     ?(theme_defaults = Pp.no_theme_defaults) (statements : t) =
+  let statements = if minify then normalise statements else statements in
   Pp.to_string ~minify ?indent ~inline:(mode = Inline) ?theme ~theme_defaults
     (fun ctx () -> pp_stylesheet ctx statements)
     ()
