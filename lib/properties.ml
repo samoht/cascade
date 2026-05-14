@@ -8608,7 +8608,17 @@ let minify_grid_template_areas_string value =
     in
     loop [] 0
   in
-  let minify_row row = String.concat " " (row_cells row) in
+  (* CSS Grid Layout 2 §7.3: a "null cell token" is one or more sequential
+     periods, all denoting the same single empty cell. Collapse multi-dot
+     spellings ([....] / [..]) to the canonical single [.]. *)
+  let normalize_cell c =
+    let n = String.length c in
+    let rec all_dots i = i >= n || (c.[i] = '.' && all_dots (i + 1)) in
+    if n > 1 && all_dots 0 then "." else c
+  in
+  let minify_row row =
+    String.concat " " (List.map normalize_cell (row_cells row))
+  in
   let rec take_quoted quote start i =
     if i >= len then (String.sub value start (i - start), i)
     else if value.[i] = quote then (String.sub value start (i - start), i + 1)
