@@ -562,6 +562,87 @@ let extract_inset_block_side :
       Some (Side_end, v, important)
   | _ -> None
 
+(* CSS Align 3 §6.1: [place-items] / [place-content] / [place-self] are the
+   [<align> <justify>] shorthands. When the two longhands appear contiguously
+   with matching importance, fold them; the per-property printer then collapses
+   matching pairs to a single value. *)
+let try_compose_place_items = function
+  | (idx, Declaration { property = Align_items; value = a; important = i1 })
+    :: (_, Declaration { property = Justify_items; value = j; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration
+          {
+            property = Place_items;
+            value = (Align_justify (a, j) : Properties.place_items);
+            important = i1;
+          }
+      in
+      Some ((idx, merged), rest)
+  | (idx, Declaration { property = Justify_items; value = j; important = i1 })
+    :: (_, Declaration { property = Align_items; value = a; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration
+          {
+            property = Place_items;
+            value = (Align_justify (a, j) : Properties.place_items);
+            important = i1;
+          }
+      in
+      Some ((idx, merged), rest)
+  | _ -> None
+
+let try_compose_place_content = function
+  | (idx, Declaration { property = Align_content; value = a; important = i1 })
+    :: (_, Declaration { property = Justify_content; value = j; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration
+          {
+            property = Place_content;
+            value = (Align_justify (a, j) : Properties.place_content);
+            important = i1;
+          }
+      in
+      Some ((idx, merged), rest)
+  | (idx, Declaration { property = Justify_content; value = j; important = i1 })
+    :: (_, Declaration { property = Align_content; value = a; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration
+          {
+            property = Place_content;
+            value = (Align_justify (a, j) : Properties.place_content);
+            important = i1;
+          }
+      in
+      Some ((idx, merged), rest)
+  | _ -> None
+
+let try_compose_place_self = function
+  | (idx, Declaration { property = Align_self; value = a; important = i1 })
+    :: (_, Declaration { property = Justify_self; value = j; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration { property = Place_self; value = (a, j); important = i1 }
+      in
+      Some ((idx, merged), rest)
+  | (idx, Declaration { property = Justify_self; value = j; important = i1 })
+    :: (_, Declaration { property = Align_self; value = a; important = i2 })
+    :: rest
+    when i1 = i2 ->
+      let merged =
+        Declaration { property = Place_self; value = (a, j); important = i1 }
+      in
+      Some ((idx, merged), rest)
+  | _ -> None
+
 let compose_pair_shorthands decls =
   let axis property extract decls =
     let build ~important ~value = Declaration { property; value; important } in
@@ -576,6 +657,9 @@ let compose_pair_shorthands decls =
       axis Padding_block extract_padding_block_side;
       axis Inset_inline extract_inset_inline_side;
       axis Inset_block extract_inset_block_side;
+      try_compose_place_items;
+      try_compose_place_content;
+      try_compose_place_self;
     ]
   in
   let try_any decls = List.find_map (fun f -> f decls) composers in
