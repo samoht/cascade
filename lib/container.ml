@@ -124,11 +124,16 @@ and minified_operand = function
 
 and to_string_with ~pretty ~minify t =
   match t with
+  | Min_width_rem rem when minify ->
+      (* Legacy [min-width: Xrem] -> range [width>=Xrem]; same rule the
+         media-query printer applies. *)
+      "(width>=" ^ format_rem rem ^ "rem)"
+  | Min_width_px px when minify -> "(width>=" ^ Int.to_string px ^ "px)"
   | Min_width_rem rem ->
-      let sep = if pretty && not minify then ": " else ":" in
+      let sep = if pretty then ": " else ":" in
       "(min-width" ^ sep ^ format_rem rem ^ "rem)"
   | Min_width_px px ->
-      let sep = if pretty && not minify then ": " else ":" in
+      let sep = if pretty then ": " else ":" in
       "(min-width" ^ sep ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string_with ~pretty ~minify cond
   | Style { query; uppercase } ->
