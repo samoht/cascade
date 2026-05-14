@@ -64,9 +64,32 @@ let duplicate_buggy_properties decls =
       | _ -> [ decl ])
     decls
 
-let is_intentionally_duplicated prop_name =
-  prop_name = "content" || prop_name = "outline"
-  || (String.length prop_name > 12 && String.sub prop_name 0 12 = "-webkit-mask")
+(* Properties whose typed cascade keeps duplicates verbatim: [content] and
+   [outline] use the duplicate sequence for fallback patterns, and the
+   vendor-prefixed [-webkit-mask-*] longhands keep parallel prefixed/unprefixed
+   spellings for old-Safari compatibility. *)
+let is_intentionally_duplicated_typed : type a. a Properties.property -> bool =
+  function
+  | Content -> true
+  | Outline -> true
+  | Webkit_mask_image -> true
+  | Webkit_mask_composite -> true
+  | Webkit_mask_source_type -> true
+  | Webkit_mask_size -> true
+  | Webkit_mask_position -> true
+  | Webkit_mask_repeat -> true
+  | Webkit_mask_clip -> true
+  | Webkit_mask_origin -> true
+  | _ -> false
+
+let is_intentionally_duplicated decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> (
+      match decl with
+      | Declaration { property; _ } ->
+          is_intentionally_duplicated_typed property
+      | _ -> false)
+  | Declaration { property; _ } -> is_intentionally_duplicated_typed property
 
 (* Typed shorthand -> longhand coverage relation. Each match arm spells out a
    reachable [(shorthand, longhand)] pair, including transitive cases ([border]
@@ -1162,10 +1185,12 @@ let merge_box_shorthand_longhands source decls =
 let property_covered_by_important kept decl =
   List.exists
     (fun (_, existing) ->
-      (not (is_intentionally_duplicated (property_name existing)))
+      (not (is_intentionally_duplicated existing))
       && is_important existing
       && declaration_covers existing decl)
     kept
+
+let same_property d1 d2 = String.equal (property_name d1) (property_name d2)
 
 let same_minified_value new_decl existing =
   string_of_value ~minify:true new_decl = string_of_value ~minify:true existing
@@ -1173,14 +1198,14 @@ let same_minified_value new_decl existing =
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
      cascade may pick whichever the browser understands. *)
-  property_name new_decl = property_name existing
+  same_property new_decl existing
   && (not (same_minified_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
 (* The earlier declaration is a real cascade fallback when the later one uses
    CSS Color 4 / 5 syntax that older browsers drop. *)
 let legacy_color_fallback new_decl existing =
-  property_name new_decl = property_name existing
+  same_property new_decl existing
   && (not (same_minified_value new_decl existing))
   && Declaration.value_uses_color_4 new_decl
   && not (Declaration.value_uses_color_4 existing)
@@ -1189,18 +1214,18 @@ let legacy_color_fallback new_decl existing =
    [attr()]) and the earlier doesn't, so the earlier is a static fallback for
    browsers that can't resolve the substitution at parse time. *)
 let legacy_runtime_subst_fallback new_decl existing =
-  property_name new_decl = property_name existing
+  same_property new_decl existing
   && (not (same_minified_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
   && not (Declaration.value_uses_runtime_subst existing)
 
 let same_property_value_declaration new_decl existing =
-  property_name new_decl = property_name existing
+  same_property new_decl existing
   && same_minified_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
 let covered_by_new_declaration new_decl existing =
-  (not (is_intentionally_duplicated (property_name existing)))
+  (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
@@ -1224,8 +1249,7 @@ let is_all_declaration = function
   | _ -> false
 
 let deduplicate_step kept (idx, decl) =
-  let prop_name = property_name decl in
-  if is_intentionally_duplicated prop_name then
+  if is_intentionally_duplicated decl then
     let kept =
       List.filter
         (fun (_, old) -> not (same_property_value_declaration decl old))
