@@ -1,4 +1,4 @@
-(lang dune 3.8)
+(lang dune 3.21)
 (using mdx 0.4)
 (name cascade)
 (generate_opam_files true)

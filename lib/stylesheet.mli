@@ -268,24 +268,20 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
 
 val to_string :
   ?minify:bool ->
+  ?indent:int ->
   ?mode:mode ->
-  ?newline:bool ->
-  ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [to_string ?minify ?mode ?newline ?header ?theme ?theme_defaults stylesheet]
-    renders a stylesheet to CSS. When [header] is non-empty (default: [""]) and
-    the stylesheet contains [@layer] statements, the header string is prepended
-    as a comment. [theme] is the set of theme-defined variable names;
-    [theme_defaults] maps variable names to concrete CSS default values. *)
+(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet] renders
+    a stylesheet to CSS. The output doesn't end with a newline; callers append
+    one if needed. *)
 
 val pp :
   ?minify:bool ->
+  ?indent:int ->
   ?mode:mode ->
-  ?newline:bool ->
-  ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
@@ -293,7 +289,7 @@ val pp :
 (** [pp] is {!to_string}. *)
 
 val inline_style_of_declarations :
-  ?minify:bool -> ?mode:mode -> ?newline:bool -> declaration list -> string
+  ?minify:bool -> ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts declarations to inline
     style string. *)
 
@@ -325,9 +321,3 @@ val pp_import_rule : import_rule Pp.t
 
 val read_import_rule : Cursor.t -> import_rule
 (** [read_import_rule r] parses an import rule. *)
-
-val pp_config : config Pp.t
-(** [pp_config] pretty-prints a config. *)
-
-val read_config : Cursor.t -> config
-(** [read_config r] parses a config. *)

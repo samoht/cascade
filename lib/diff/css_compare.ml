@@ -222,9 +222,7 @@ let css_for_semantic_comparison ?property css =
 let canonical_semantic_css ~strict css =
   match Css.of_string ~strict css with
   | Ok { stylesheet; _ } -> (
-      try
-        Some
-          (Css.to_string ~minify:true ~optimize:true ~newline:false stylesheet)
+      try Some (Css.to_string ~minify:true stylesheet)
       with Invalid_argument _ -> None)
   | Error _ -> None
 

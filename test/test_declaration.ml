@@ -59,7 +59,7 @@ let complex_values () =
     "margin: 10px 20px 30px 40px;";
 
   (* Gradients *)
-  check_declaration ~expected:"background:linear-gradient(to right,red,#00f)"
+  check_declaration ~expected:"background:linear-gradient(90deg,red,#00f)"
     "background: linear-gradient(to right, red, blue);";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
@@ -791,8 +791,7 @@ let list_properties () =
   check_declaration ~expected:"background-image:none" "background-image: none";
   check_declaration ~expected:"background-image:url(image.png)"
     "background-image: url(image.png)";
-  check_declaration
-    ~expected:"background-image:linear-gradient(to right,red,#00f)"
+  check_declaration ~expected:"background-image:linear-gradient(90deg,red,#00f)"
     "background-image: linear-gradient(to right, red, blue)";
   check_declaration ~expected:"background-image:url(a.png),url(b.png)"
     "background-image: url(a.png), url(b.png)";
@@ -1793,7 +1792,7 @@ let test_declaration () =
 
   (* Complex values. Per CSS Transforms 1 section 11 the printer drops
      whitespace between back-to-back transform functions under minify. *)
-  check_declaration ~expected:"background:linear-gradient(to right,red,#00f)"
+  check_declaration ~expected:"background:linear-gradient(90deg,red,#00f)"
     "background:linear-gradient(to right,red,blue)";
   check "transform:translateX(10px)rotate(45deg)";
   check "font-family:Arial,sans-serif";

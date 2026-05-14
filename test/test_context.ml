@@ -11,8 +11,7 @@ let decl_t : Css.Declaration.declaration Alcotest.testable =
 let stylesheet_t : Css.Stylesheet.t Alcotest.testable =
   Alcotest.testable
     (fun fmt sheet ->
-      Format.pp_print_string fmt
-        (Css.Stylesheet.to_string ~minify:true ~newline:false sheet))
+      Format.pp_print_string fmt (Css.Stylesheet.to_string ~minify:true sheet))
     ( = )
 
 let matches pattern text =
@@ -473,9 +472,7 @@ let rec conditional_shape = function
       "(" ^ conditional_shape left ^ " or " ^ conditional_shape right ^ ")"
 
 let rec statement_shape stmt =
-  let sheet_source stmt =
-    Css.Stylesheet.to_string ~minify:true ~newline:false [ stmt ]
-  in
+  let sheet_source stmt = Css.Stylesheet.to_string ~minify:true [ stmt ] in
   let prefixed prefix lines = List.map (fun line -> prefix ^ line) lines in
   let declaration_lines declarations =
     List.map (fun decl -> "decl:" ^ declaration_shape decl) declarations
@@ -964,7 +961,7 @@ let check_import_loaded name ?query ~loader ~expected input =
   | Ok stylesheet ->
       Alcotest.(check string)
         name expected
-        (Css.Stylesheet.to_string ~minify:true ~newline:false stylesheet)
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ -> Alcotest.failf "%s: expected import %S to load" name input
 
 let check_import_error name ?query ~loader input =
@@ -973,7 +970,7 @@ let check_import_error name ?query ~loader input =
   match Css.Context.load_import ?query loader import_rule with
   | Ok stylesheet ->
       Alcotest.failf "%s: expected import %S to be blocked, got %S" name input
-        (Css.Stylesheet.to_string ~minify:true ~newline:false stylesheet)
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ -> ()
 
 let check_layered_import_loaded name ?query ~loader ~layer_order ~expected input
@@ -984,7 +981,7 @@ let check_layered_import_loaded name ?query ~loader ~layer_order ~expected input
   | Ok stylesheet ->
       Alcotest.(check string)
         name expected
-        (Css.Stylesheet.to_string ~minify:true ~newline:false stylesheet)
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ ->
       Alcotest.failf "%s: expected layered import %S to load" name input
 
@@ -995,7 +992,7 @@ let check_layered_import_error name ?query ~loader ~layer_order input =
   | Ok stylesheet ->
       Alcotest.failf "%s: expected layered import %S to be blocked, got %S" name
         input
-        (Css.Stylesheet.to_string ~minify:true ~newline:false stylesheet)
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ -> ()
 
 let test_computed_value_resolution_contract () =

@@ -7236,19 +7236,22 @@ type mode = Stylesheet.mode =
 
 val to_string :
   ?minify:bool ->
-  ?optimize:bool ->
+  ?indent:int ->
   ?mode:mode ->
-  ?newline:bool ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [to_string ?minify ?optimize ?mode ?newline ?theme ?theme_defaults
-     stylesheet] renders a complete stylesheet to CSS.
-    - If [minify] is [true], the output will be compact (no unnecessary
-      whitespace).
-    - If [optimize] is [true], rule-level optimizations are applied
-      (deduplication, merging consecutive rules, combining identical rules).
+(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet] renders
+    a stylesheet to CSS. The output doesn't end with a newline; callers append
+    one if needed.
+    - If [minify] is [true], the output is compact (no unnecessary whitespace)
+      and the AST-level optimizer runs first: declaration dedup, longhand ->
+      shorthand merging, identical-rule combining, etc. Spec recovery (drop
+      invalid declarations, unknown at-rules, empty rules) applies in both
+      modes.
+    - [indent] sets the per-level indent width. Default: [None] under [minify]
+      (no indentation), [Some 2] otherwise (2-space indent).
     - [mode] controls variable rendering. [Inline] substitutes resolvable
       custom-property references and drops dead custom-property definitions
       before printing.
@@ -7265,9 +7268,8 @@ val to_string :
 
 val pp :
   ?minify:bool ->
-  ?optimize:bool ->
+  ?indent:int ->
   ?mode:mode ->
-  ?newline:bool ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
@@ -7372,12 +7374,7 @@ val will_change : will_change -> declaration
      will-change} property for performance optimization. *)
 
 val inline_style_of_declarations :
-  ?optimize:bool ->
-  ?minify:bool ->
-  ?mode:mode ->
-  ?newline:bool ->
-  declaration list ->
-  string
+  ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts a list of declarations
     to an inline style string. *)
 

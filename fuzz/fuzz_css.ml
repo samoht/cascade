@@ -253,14 +253,11 @@ let test_public_sort_idempotent buf =
 
 let test_public_optimize_idempotent buf =
   let sheet = generated_stylesheet buf in
-  let once = Css.to_string ~minify:true ~optimize:true sheet |> String.trim in
+  let once = Css.to_string ~minify:true sheet in
   match Css.of_string ~strict:false once with
   | Error err -> fail (Cascade.Error.to_string err)
   | Ok parsed ->
-      let twice =
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
-      in
+      let twice = Css.to_string ~minify:true parsed.stylesheet in
       if once <> twice then
         fail
           (Fmt.str "public optimize output changed after reparse: %S -> %S" once
@@ -370,9 +367,7 @@ let test_css2_legacy_minified_vectors buf =
   match Css.of_string ~strict:false input with
   | Error _ -> ()
   | Ok parsed -> (
-      let minified =
-        Css.to_string ~minify:true ~newline:false parsed.stylesheet
-      in
+      let minified = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:false minified with
       | Ok _ -> ()
       | Error err ->

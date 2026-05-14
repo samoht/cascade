@@ -49,10 +49,7 @@ let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
-      match
-        Css.to_string ~minify:true ~optimize:true ~newline:false
-          parsed.stylesheet
-      with
+      match Css.to_string ~minify:true parsed.stylesheet with
       | s -> Ok s
       | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 

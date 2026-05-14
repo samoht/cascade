@@ -418,7 +418,8 @@ let rec property_name decl =
   let ctx =
     {
       Pp.minify = true;
-      indent = 0;
+      level = 0;
+      indent = None;
       buf = Buffer.create 16;
       inline = false;
       in_function = false;
@@ -438,7 +439,8 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx =
     {
       Pp.minify;
-      indent = 0;
+      level = 0;
+      indent = None;
       buf = Buffer.create 16;
       inline;
       in_function = false;
@@ -1003,7 +1005,8 @@ let prop_name (type a) (prop_type : a property) =
   let ctx =
     {
       Pp.minify = true;
-      indent = 0;
+      level = 0;
+      indent = None;
       buf;
       inline = false;
       in_function = false;
@@ -2064,7 +2067,8 @@ let string_of_declaration ?(minify = false) decl =
   let ctx =
     {
       Pp.minify;
-      indent = 0;
+      level = 0;
+      indent = None;
       buf;
       inline = false;
       in_function = false;

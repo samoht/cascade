@@ -855,7 +855,7 @@ let rec pp_rule : rule Pp.t =
   (match (decls, rule.nested) with
   | [], [] -> ()
   | decls, nested ->
-      let ctx = { ctx with indent = ctx.indent + 1 } in
+      let ctx = { ctx with level = ctx.level + 1 } in
       let pp_declarations ctx () =
         Pp.list ~sep:Pp.semicolon_cut
           (Pp.indent Declaration.pp_declaration)
@@ -878,8 +878,10 @@ let rec pp_rule : rule Pp.t =
           pp_nested ctx ());
       if not ctx.minify then (
         Pp.cut ctx ();
-        if ctx.indent > 1 then
-          Pp.string ctx (String.make (2 * (ctx.indent - 1)) ' ')));
+        match ctx.indent with
+        | Some w when ctx.level > 1 ->
+            Pp.string ctx (String.make (w * (ctx.level - 1)) ' ')
+        | _ -> ()));
   Pp.block_close ctx ()
 
 and pp_layer_statement ctx name content =
@@ -1120,28 +1122,11 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
-    ?(header = "") ?theme ?(theme_defaults = Pp.no_theme_defaults)
-    (statements : t) =
-  let pp ctx () =
-    (* In pretty mode, lead with a blank line to separate the CSS body from any
-       tooling output that printed before it (matches Lightning CSS's and
-       prettier's pretty-print convention). The minified form stays compact. *)
-    if (not minify) && mode <> Inline && header = "" && statements <> [] then
-      Pp.char ctx '\n';
-    (if header <> "" then
-       let has_layers =
-         List.exists
-           (function Layer _ | Layer_decl _ -> true | _ -> false)
-           statements
-       in
-       if has_layers then (
-         Pp.string ctx header;
-         Pp.cut ctx ()));
-    pp_stylesheet ctx statements;
-    if newline && mode <> Inline then Pp.char ctx '\n'
-  in
-  Pp.to_string ~minify ~inline:(mode = Inline) ?theme ~theme_defaults pp ()
+let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
+    ?(theme_defaults = Pp.no_theme_defaults) (statements : t) =
+  Pp.to_string ~minify ?indent ~inline:(mode = Inline) ?theme ~theme_defaults
+    (fun ctx () -> pp_stylesheet ctx statements)
+    ()
 
 let pp = to_string
 
@@ -3349,34 +3334,32 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
 
 (** {1 Inline Styles} *)
 
-let pp_important config pp_ctx =
-  if config.minify then Pp.string pp_ctx "!important"
+let pp_important ~minify pp_ctx =
+  if minify then Pp.string pp_ctx "!important"
   else (
     Pp.space pp_ctx ();
     Pp.string pp_ctx "!important")
 
-let pp_decl_inline config pp_ctx decl =
+let pp_decl_inline ~minify ~mode pp_ctx decl =
   let name = Declaration.property_name decl in
   let value =
-    Declaration.string_of_value ~minify:config.minify
-      ~inline:(config.mode = Inline) decl
+    Declaration.string_of_value ~minify ~inline:(mode = Inline) decl
   in
   let is_important = Declaration.is_important decl in
   Pp.string pp_ctx name;
   Pp.char pp_ctx ':';
-  if not config.minify then Pp.space pp_ctx ();
+  if not minify then Pp.space pp_ctx ();
   Pp.string pp_ctx value;
-  if is_important then pp_important config pp_ctx
+  if is_important then pp_important ~minify pp_ctx
 
-let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
-    ?(newline = false) props =
-  let config = { mode; minify; optimize = false; newline } in
-  (* Build the inline style string with minimal nesting to satisfy linter *)
+let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
+    =
   let buf = Buffer.create 128 in
   let pp_ctx =
     {
-      Pp.minify = config.minify;
-      indent = 0;
+      Pp.minify;
+      level = 0;
+      indent = None;
       buf;
       inline = mode = Inline;
       in_function = false;
@@ -3390,8 +3373,8 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
       if !first then first := false
       else (
         Pp.semicolon pp_ctx ();
-        if not config.minify then Pp.space pp_ctx ());
-      pp_decl_inline config pp_ctx decl)
+        if not minify then Pp.space pp_ctx ());
+      pp_decl_inline ~minify ~mode pp_ctx decl)
     props;
   Buffer.contents buf
 
@@ -3446,63 +3429,3 @@ let pp_import_rule : import_rule Pp.t =
 let read_import_rule (r : Cursor.t) : import_rule =
   Cursor.ws r;
   read_import_prelude ~keep_url_repr:false r
-
-(* Pretty-printer for config *)
-let pp_config : config Pp.t =
- fun ctx { minify; mode; optimize; newline } ->
-  Pp.string ctx "{ minify = ";
-  Pp.string ctx (if minify then "true" else "false");
-  Pp.string ctx "; mode = ";
-  Pp.string ctx
-    (match mode with Inline -> "Inline" | Variables -> "Variables");
-  Pp.string ctx "; optimize = ";
-  Pp.string ctx (if optimize then "true" else "false");
-  Pp.string ctx "; newline = ";
-  Pp.string ctx (if newline then "true" else "false");
-  Pp.string ctx " }"
-
-(* Reader for config *)
-type config_state = {
-  mutable cfg_minify : bool;
-  mutable cfg_mode : mode;
-  mutable cfg_optimize : bool;
-  mutable cfg_newline : bool;
-}
-
-let set_config_field state field value =
-  match field with
-  | "minify" -> state.cfg_minify <- value = "true"
-  | "mode" -> state.cfg_mode <- (if value = "Inline" then Inline else Variables)
-  | "optimize" -> state.cfg_optimize <- value = "true"
-  | "newline" -> state.cfg_newline <- value = "true"
-  | _ -> ()
-
-let rec read_config_fields state inner =
-  if Cursor.is_done inner then ()
-  else
-    let field_name = Cursor.ident inner in
-    Cursor.expect '=' inner;
-    let value = Cursor.ident inner in
-    set_config_field state field_name value;
-    if Cursor.peek_semicolon inner then Cursor.skip inner;
-    read_config_fields state inner
-
-let read_config (r : Cursor.t) : config =
-  Cursor.braces
-    (fun inner ->
-      let state =
-        {
-          cfg_minify = false;
-          cfg_mode = Variables;
-          cfg_optimize = false;
-          cfg_newline = false;
-        }
-      in
-      read_config_fields state inner;
-      {
-        minify = state.cfg_minify;
-        mode = state.cfg_mode;
-        optimize = state.cfg_optimize;
-        newline = state.cfg_newline;
-      })
-    r

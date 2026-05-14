@@ -1617,7 +1617,7 @@ let test_background_box () =
 let test_background () =
   check_background "red";
   check_background "url(image.png)";
-  check_background ~expected:"linear-gradient(to right,red,#00f)"
+  check_background ~expected:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png) 50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
@@ -1860,7 +1860,7 @@ let test_background_shorthand () =
   check_background_shorthand "url(image.png)";
   check_background_shorthand ~expected:"50%" "center";
   check_background_shorthand "no-repeat";
-  check_background_shorthand "repeat repeat";
+  check_background_shorthand ~expected:"repeat" "repeat repeat";
   check_background_shorthand ~expected:"url(image.png) red" "red url(image.png)";
   check_background_shorthand ~expected:"url(image.png) 50%"
     "url(image.png) center";
@@ -2165,23 +2165,23 @@ let test_background_size () =
   neg_cursor read_background_size "invalid-size"
 
 let test_gradient_direction () =
-  check_gradient_direction "to top";
-  check_gradient_direction "to right";
-  check_gradient_direction "to bottom";
-  check_gradient_direction "to left";
+  check_gradient_direction ~expected:"0deg" "to top";
+  check_gradient_direction ~expected:"90deg" "to right";
+  check_gradient_direction ~expected:"180deg" "to bottom";
+  check_gradient_direction ~expected:"270deg" "to left";
   neg_cursor read_gradient_direction "invalid-direction"
 
 let test_gradient_stop () =
   (* Basic color stops *)
   check_gradient_stop "red";
-  check_gradient_stop ~expected:"#00f50%" "blue 50%";
-  check_gradient_stop ~expected:"#ff573325%" "#ff5733 25%";
+  check_gradient_stop ~expected:"#00f 50%" "blue 50%";
+  check_gradient_stop ~expected:"#ff5733 25%" "#ff5733 25%";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a fully-opaque rgb()
      to the equivalent named color when shorter. *)
-  check_gradient_stop ~expected:"red10px" "rgb(255,0,0) 10px";
+  check_gradient_stop ~expected:"red 10px" "rgb(255,0,0) 10px";
 
   (* Double position stops *)
-  check_gradient_stop ~expected:"green20%40%" "green 20% 40%";
+  check_gradient_stop ~expected:"green 20% 40%" "green 20% 40%";
 
   (* Hint positions *)
   check_gradient_stop "50%";
@@ -2243,11 +2243,11 @@ let test_background_image () =
      in either order are valid. *)
   check_background_image ~expected:"linear-gradient(in oklab,red,#00f)"
     "linear-gradient(in oklab, red, blue)";
-  check_background_image ~expected:"linear-gradient(to right,red,#00f)"
+  check_background_image ~expected:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
-  check_background_image ~expected:"linear-gradient(to right in oklab,red,#00f)"
+  check_background_image ~expected:"linear-gradient(90deg in oklab,red,#00f)"
     "linear-gradient(to right in oklab, red, blue)";
-  check_background_image ~expected:"linear-gradient(to right in oklab,red,#00f)"
+  check_background_image ~expected:"linear-gradient(90deg in oklab,red,#00f)"
     "linear-gradient(in oklab to right, red, blue)";
   check_background_image ~minify:false
     ~expected:"linear-gradient(in oklab, red, blue)"
@@ -2834,7 +2834,7 @@ let test_place_content () =
 let test_place_items () =
   check_place_items "stretch";
   check_place_items "start end";
-  check_place_items "center center";
+  check_place_items ~expected:"center" "center center";
   check_place_items "inherit";
   neg_cursor read_place_items "invalid-place"
 

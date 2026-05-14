@@ -1515,7 +1515,7 @@ let c61_no_merge_container () =
   Alcotest.(check string)
     "same selector is not merged across container boundary"
     ".card{color:red}@container \
-     (min-width:48px){.feature{display:flex}}.card{background-color:#00f}"
+     (width>=48px){.feature{display:flex}}.card{background-color:#00f}"
     output
 
 let c61_no_merge_starting_style () =
@@ -2143,7 +2143,7 @@ let c64_redundant_layer_prelude () =
           theme{:root{--x:1}}@layer base{a{color:red}}@layer \
           components,utilities;")
   in
-  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  let output = Css.to_string ~minify:true input |> String.trim in
   Alcotest.(check string)
     "redundant leading layer order is removed"
     "@layer theme{:root{--x:1}}@layer base{a{color:red}}@layer \
@@ -2157,7 +2157,7 @@ let c64_redundant_layer_duplicate () =
     Css.Stylesheet.read
       (Cursor.of_string "@layer theme{a{color:red}}@layer theme;")
   in
-  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  let output = Css.to_string ~minify:true input |> String.trim in
   Alcotest.(check string)
     "duplicate layer statement after block is removed"
     "@layer theme{a{color:red}}" output
@@ -2172,7 +2172,7 @@ let c64_layer_prelude_order_boundary () =
          "@layer theme,base,components;@layer base{a{color:red}}@layer \
           theme{:root{--x:1}}@layer components;")
   in
-  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  let output = Css.to_string ~minify:true input |> String.trim in
   Alcotest.(check string)
     "layer prelude remains when it changes later block order"
     "@layer theme,base,components;@layer base{a{color:red}}@layer \
@@ -2189,7 +2189,7 @@ let c64_layer_prelude_missing_name () =
          "@layer theme,base,components;@layer theme{:root{--x:1}}@layer \
           components;")
   in
-  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  let output = Css.to_string ~minify:true input |> String.trim in
   Alcotest.(check string)
     "layer prelude remains when it introduces an otherwise empty layer"
     "@layer theme,base,components;@layer theme{:root{--x:1}}" output
@@ -2203,7 +2203,7 @@ let c64_layer_prelude_import_barrier () =
       (Cursor.of_string
          "@layer theme;@import \"theme.css\";@layer theme{a{color:red}}")
   in
-  let output = Css.to_string ~minify:true ~optimize:true input |> String.trim in
+  let output = Css.to_string ~minify:true input |> String.trim in
   Alcotest.(check string)
     "layer declaration before import is not removed across import boundary"
     "@layer theme;@import\"theme.css\";@layer theme{a{color:red}}" output
