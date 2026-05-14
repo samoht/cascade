@@ -3201,7 +3201,7 @@ let pp_hex_color ctx value =
       Pp.char ctx '#';
       Pp.string ctx "0000")
     else
-      let shortened = shorten_hex value in
+      let shortened = String.lowercase_ascii (shorten_hex value) in
       match named_for_hex shortened with
       | Some name when String.length name < String.length shortened + 1 ->
           Pp.string ctx name
