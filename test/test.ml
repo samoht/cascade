@@ -30,6 +30,7 @@ let () =
       Test_context.suite;
       Test_reader.suite;
       Test_selector.suite;
+      Test_selector_summary.suite;
       Test_aria.suite;
       Test_values.suite;
       Test_declaration.suite;

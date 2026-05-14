@@ -4,6 +4,36 @@ open Declaration
 open Stylesheet
 module String_set = Set.Make (String)
 
+(** {1 Edge Model} *)
+
+type edge = {
+  summary : Selector_summary.t;
+  property : string;
+  important : bool;
+}
+
+let selectors_of_rule_selector (sel : Selector.t) =
+  match Selector.as_list sel with Some xs -> xs | None -> [ sel ]
+
+let edges_of_decl summary = function
+  | Declaration _ as d ->
+      Some
+        {
+          summary;
+          property = Declaration.property_name d;
+          important = Declaration.is_important d;
+        }
+  | _ -> None
+
+let edges_of_rule (rule : Stylesheet.rule) : edge list =
+  let summaries =
+    selectors_of_rule_selector rule.selector
+    |> List.map Selector_summary.of_selector
+  in
+  List.concat_map
+    (fun summary -> List.filter_map (edges_of_decl summary) rule.declarations)
+    summaries
+
 (** {1 Declaration Optimization} *)
 
 let duplicate_buggy_properties decls =
@@ -1001,29 +1031,60 @@ let prev_rule_of_group_head (prev_sel, prev_decls, prev_merge_key) =
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
-  (* Only combine consecutive rules to preserve cascade semantics *)
-  let extend_or_restart acc current_group rule rest combine =
-    match current_group with
-    | [] ->
-        (* Start a new group *)
-        combine acc [ group_member_of_rule rule ] rest
-    | head :: _ ->
-        let prev_rule = prev_rule_of_group_head head in
-        if can_combine_rules prev_rule rule then
-          combine acc (group_member_of_rule rule :: current_group) rest
-        else
-          let acc' = flush_group acc current_group in
-          combine acc' [ group_member_of_rule rule ] rest
+  (* Cross-rule combining is sound when an intervening rule's subject is
+     definitely disjoint from every member of the merge group: no element can
+     match both, so moving the intervening rule past the merged group can't
+     change the cascade for any element. We carry a [delayed] list of such
+     rules; on flush they are emitted after the merged group rule, preserving
+     their relative order. The invariant is: every rule in [delayed] has a
+     subject summary that does not [may_overlap] any group member's subject. *)
+  let summary_of_rule (rule : Stylesheet.rule) =
+    Selector_summary.of_selector rule.Stylesheet_intf.selector
   in
-  let rec combine_consecutive acc current_group = function
-    | [] -> List.rev (flush_group acc current_group)
+  let disjoint_from summaries candidate =
+    List.for_all
+      (fun s -> not (Selector_summary.may_overlap s candidate))
+      summaries
+  in
+  let flush acc current_group delayed =
+    let group_members = List.map fst current_group in
+    let acc = flush_group acc group_members in
+    List.fold_left (fun acc (rule, _) -> rule :: acc) acc delayed
+  in
+  let rec combine_consecutive acc current_group delayed = function
+    | [] -> List.rev (flush acc current_group delayed)
     | (rule : Stylesheet.rule) :: rest ->
         if rule_cannot_combine rule then
-          let acc' = rule :: flush_group acc current_group in
-          combine_consecutive acc' [] rest
-        else extend_or_restart acc current_group rule rest combine_consecutive
+          let acc = rule :: flush acc current_group delayed in
+          combine_consecutive acc [] [] rest
+        else extend_delay_or_restart acc current_group delayed rule rest
+  and extend_delay_or_restart acc current_group delayed rule rest =
+    let rule_summary = summary_of_rule rule in
+    let push_to_group () =
+      let member = (group_member_of_rule rule, rule_summary) in
+      combine_consecutive acc (member :: current_group) delayed rest
+    in
+    match current_group with
+    | [] -> push_to_group ()
+    | (head_member, _) :: _ ->
+        let prev_rule = prev_rule_of_group_head head_member in
+        let delayed_summaries = List.map snd delayed in
+        if
+          can_combine_rules prev_rule rule
+          && disjoint_from delayed_summaries rule_summary
+        then push_to_group ()
+        else
+          let group_summaries = List.map snd current_group in
+          if disjoint_from group_summaries rule_summary then
+            combine_consecutive acc current_group
+              (delayed @ [ (rule, rule_summary) ])
+              rest
+          else
+            let acc = flush acc current_group delayed in
+            let member = (group_member_of_rule rule, rule_summary) in
+            combine_consecutive acc [ member ] [] rest
   in
-  combine_consecutive [] [] rules
+  combine_consecutive [] [] [] rules
 
 (** {1 Statement Optimization} *)
 

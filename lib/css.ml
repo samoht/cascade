@@ -18,6 +18,7 @@ module Context = Context
 module Declaration = Declaration
 module Properties = Properties
 module Selector = Selector
+module Selector_summary = Selector_summary
 module Stylesheet = Stylesheet
 
 let eval_declaration ?layer_order ?layer ctx decl =

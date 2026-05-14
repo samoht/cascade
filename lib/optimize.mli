@@ -32,6 +32,26 @@ val drop_empty_rules : t -> t
 (** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
     is empty (no declarations and no nested rules). *)
 
+(** {1 Edge Model} *)
+
+type edge = {
+  summary : Selector_summary.t;
+  property : string;
+  important : bool;
+}
+(** A single property write in the CSS graph: a selector's subject summary
+    paired with the property name it writes. This is the (selector, property)
+    edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
+    cheap subject-summary fingerprint used in place of full selector
+    intersection. *)
+
+val edges_of_rule : rule -> edge list
+(** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector] is
+    a comma-separated list, one edge is emitted per (subject summary, property)
+    pair; otherwise one edge per declaration. Useful for asserting no-new-edges
+    invariants on rule rewrites and for the fuzz harness's selector-intersection
+    and biclique vectors. *)
+
 (** {1 Rule Optimization} *)
 
 val single_rule : rule -> rule
