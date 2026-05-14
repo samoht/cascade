@@ -825,6 +825,72 @@ let compose_font_shorthand decls =
   in
   go [] decls
 
+(* CSS Lists 3 sec. 1.2: [list-style: <position> <image> <type>] in any order,
+   any subset of components. Cascade stores [List_style] as a string. Drop
+   defaults ([outside] / [none] / [disc]) on emit; if all three are defaulted,
+   leave a single [outside] - never an empty value. *)
+type list_style_kind = LS_type | LS_position | LS_image
+
+let list_style_kind_of : declaration -> list_style_kind option = function
+  | Declaration { property = List_style_type; _ } -> Some LS_type
+  | Declaration { property = List_style_position; _ } -> Some LS_position
+  | Declaration { property = List_style_image; _ } -> Some LS_image
+  | _ -> None
+
+let list_style_default = function
+  | LS_type -> "disc"
+  | LS_position -> "outside"
+  | LS_image -> "none"
+
+let render_list_style parts =
+  let component k =
+    List.find_map
+      (fun (kind, decl) ->
+        if kind = k then
+          let v = minified_value decl in
+          if v = list_style_default k then None else Some v
+        else None)
+      parts
+  in
+  match
+    List.filter_map
+      (fun x -> x)
+      [ component LS_position; component LS_image; component LS_type ]
+  with
+  | [] -> "outside"
+  | parts -> String.concat " " parts
+
+let try_compose_list_style = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
+      match
+        (list_style_kind_of d1, list_style_kind_of d2, list_style_kind_of d3)
+      with
+      | Some k1, Some k2, Some k3
+        when is_important d1 = is_important d2
+             && is_important d2 = is_important d3
+             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 ->
+          let parts = [ (k1, d1); (k2, d2); (k3, d3) ] in
+          let merged =
+            Declaration
+              {
+                property = List_style;
+                value = render_list_style parts;
+                important = is_important d1;
+              }
+          in
+          Some ((idx, merged), rest)
+      | _ -> None)
+  | _ -> None
+
+let compose_list_style_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_list_style decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -937,6 +1003,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
     let kept = if merge_box then compose_pair_shorthands kept else kept in
     let kept = if merge_box then compose_outline_shorthand kept else kept in
     let kept = if merge_box then compose_font_shorthand kept else kept in
+    let kept = if merge_box then compose_list_style_shorthand kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
