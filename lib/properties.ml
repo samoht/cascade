@@ -6276,6 +6276,15 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | No_repeat -> Pp.string ctx "no-repeat"
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
+  (* CSS Backgrounds 3 §3.6.1: the two-value forms collapse when both axes match
+     ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
+     no-repeat] -> [repeat-x], [no-repeat repeat] -> [repeat-y]). *)
+  | Repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat"
+  | Space_space when Pp.minified ctx -> Pp.string ctx "space"
+  | Round_round when Pp.minified ctx -> Pp.string ctx "round"
+  | No_repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "no-repeat"
+  | Repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "repeat-x"
+  | No_repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat-y"
   | Repeat_repeat -> Pp.string ctx "repeat repeat"
   | Repeat_space -> Pp.string ctx "repeat space"
   | Repeat_round -> Pp.string ctx "repeat round"
@@ -15202,10 +15211,7 @@ let rec read_background_repeat t : background_repeat =
     Cursor.ws t;
     match Cursor.option read_style t with
     | None -> first
-    | Some second ->
-        Cursor.ws t;
-        Cursor.expect_eof t;
-        pair first second
+    | Some second -> pair first second
   in
   Cursor.enum_or_var "background-repeat"
     [
