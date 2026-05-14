@@ -1167,7 +1167,7 @@ let test_border () =
   check_border ~expected:"2px solid" "solid 2px";
   (* Test with zero width *)
   check_border "0 solid";
-  check_border ~expected:"0 solid #000" "0 solid black";
+  check_border ~expected:"0 solid#000" "0 solid black";
   (* Test with inherit/initial *)
   check_border "inherit";
   check_border "initial";
@@ -1801,7 +1801,7 @@ let test_border_shorthand () =
   check_border_shorthand "1px solid";
   check_border_shorthand "1px solid red";
   check_border_shorthand ~expected:"solid red" "red solid";
-  check_border_shorthand ~expected:"2px dashed #00f" "blue 2px dashed";
+  check_border_shorthand ~expected:"2px dashed#00f" "blue 2px dashed";
   neg_cursor read_border_shorthand "1px 2px"
 
 let test_justify_items () =

@@ -3815,8 +3815,15 @@ let pp_border_shorthand : border_shorthand Pp.t =
     style;
   Option.iter
     (fun c ->
-      add_space ();
-      pp_color ctx c)
+      let rendered = Pp.to_string ~minify:(Pp.minified ctx) pp_color c in
+      (* CSS Syntax: a [#hex] hash token is unambiguous after an ident, so
+         minified output drops the separating space. *)
+      let leads_with_delim =
+        Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '#'
+      in
+      if not !first then if not leads_with_delim then Pp.space ctx ();
+      first := false;
+      Pp.string ctx rendered)
     color;
   if !first then Pp.string ctx "none"
 
