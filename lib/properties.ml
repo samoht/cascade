@@ -2840,19 +2840,27 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
   | Color_percentage (c, pos1_opt, pos2_opt) -> (
-      pp_color ctx c;
+      let rendered_color = Pp.to_string ~minify:(Pp.minified ctx) pp_color c in
+      Pp.string ctx rendered_color;
       match pos1_opt with
       | None -> () (* No positions *)
       | Some pos1 -> (
-          (* In minified mode, omit space between color and position to match
-             tailwindcss output exactly (gradient stops live inside var()
-             fallbacks where spacing is cosmetic). *)
-          Pp.space_if_pretty ctx ();
+          (* CSS Syntax 3 §4: ident- and hash-typed colours absorb the following
+             digit/hex into the same token ([red0%] -> ident [red0] + [%];
+             [#00f50%] -> hash [#00f50] + [%]), so the separator before the
+             position is mandatory. Function-shaped colours ([var(...)] /
+             [rgb(...)] / etc.) end with [)] which closes their token cleanly,
+             so the space is elidable in minified output. *)
+          let ends_with_paren =
+            String.length rendered_color > 0
+            && rendered_color.[String.length rendered_color - 1] = ')'
+          in
+          if not (Pp.minified ctx && ends_with_paren) then Pp.space ctx ();
           pp_length_percentage ~always:true ctx pos1;
           match pos2_opt with
           | None -> ()
           | Some pos2 ->
-              Pp.space_if_pretty ctx ();
+              Pp.space ctx ();
               pp_length_percentage ~always:true ctx pos2))
   | Color_length (c, len1_opt, len2_opt) -> (
       pp_color ctx c;
