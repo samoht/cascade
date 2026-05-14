@@ -1956,11 +1956,12 @@ let rec read_overflow_single (t : Cursor.t) : overflow =
 let read_overflow t : overflow =
   let first = read_overflow_single t in
   Cursor.ws t;
-  if Cursor.is_done t then first
+  if Cursor.is_done t || Cursor.peek_semicolon t then first
   else
     let second = read_overflow_single t in
     Cursor.ws t;
-    Cursor.expect_eof t;
+    if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
+      Cursor.expect_eof t;
     Overflow_pair (first, second)
 
 module Cursor_prop = struct
@@ -2779,6 +2780,14 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
+  (* CSS Images 4 §5.1: the cardinal [to <side>] keywords compute to fixed
+     angles. The angle spelling is shorter than the keyword for [to right] / [to
+     left]; the diagonal [to <corner>] forms depend on box aspect ratio and have
+     no fixed angle, so they stay as keywords. *)
+  | To_top when Pp.minified ctx -> Pp.string ctx "0deg"
+  | To_right when Pp.minified ctx -> Pp.string ctx "90deg"
+  | To_bottom when Pp.minified ctx -> Pp.string ctx "180deg"
+  | To_left when Pp.minified ctx -> Pp.string ctx "270deg"
   | To_top -> Pp.string ctx "to top"
   | To_top_right -> Pp.string ctx "to top right"
   | To_right -> Pp.string ctx "to right"
@@ -2787,7 +2796,6 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
   | To_bottom_left -> Pp.string ctx "to bottom left"
   | To_left -> Pp.string ctx "to left"
   | To_top_left -> Pp.string ctx "to top left"
-  | Angle (Deg 0.) when Pp.minified ctx -> Pp.char ctx '0'
   | Angle a -> pp_angle ctx a
   | With_interpolation (dir, interp) ->
       pp_gradient_direction ctx dir;
@@ -3111,10 +3119,18 @@ let pp_conic_gradient_named name ctx (config, stops) =
 let pp_linear_gradient_named name ctx (dir, stops) =
   Pp.call name
     (fun ctx (dir, stops) ->
+      (* CSS Images 4 §5.1: the default linear-gradient direction is [to
+         bottom], equivalent to [180deg]; both spellings can be elided. *)
+      let is_default_direction = function
+        | To_bottom -> true
+        | Angle (Deg 180.) when Pp.minified ctx -> true
+        | _ -> false
+      in
       let head : [ `Skip | `Direction | `Interp_only of color_interpolation ] =
         match dir with
-        | To_bottom -> `Skip
-        | With_interpolation (To_bottom, interp) -> `Interp_only interp
+        | dir when is_default_direction dir -> `Skip
+        | With_interpolation (inner, interp) when is_default_direction inner ->
+            `Interp_only interp
         | _ -> `Direction
       in
       (match head with
