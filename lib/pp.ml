@@ -278,17 +278,13 @@ let unit ctx f suffix =
     float ctx f;
     string ctx suffix)
 
-let pct ?(always = false) ctx f =
-  (* CSS spec allows "0" without "%" for zero percentage values. This is a
-     minification optimization used by cssnano and other tools. Ref:
-     https://www.w3.org/TR/css-values-4/#zero-value When always=true, always
-     include % unit (required for [@property] initial-value). Pretty mode
-     preserves the source spelling, so [%] survives even on zero. *)
-  let always = always || not ctx.minify in
-  if always || f <> 0. then (
-    float ctx (round_sig 6 f);
-    string ctx "%")
-  else char ctx '0'
+let pct ctx f =
+  (* CSS Values 4 §6.5 only allows the unit to drop on a zero [<length>]; a zero
+     [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%] are no
+     longer equivalent, and dimension/percentage-typed grammars reject a bare
+     [0]). *)
+  float ctx (round_sig 6 f);
+  string ctx "%"
 
 let sep ctx s =
   Buffer.add_string ctx.buf s;
