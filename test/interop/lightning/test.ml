@@ -65,6 +65,15 @@ type upstream_issue =
   | Rejected_candidate of rejected_candidate
   | Failed_candidate of failed_candidate
 
+let conic_gradient_bare_zero_angle css =
+  let pattern =
+    Re.Str.regexp "conic-gradient([^)]*from[ \t\r\n]+0\\([, \t\r\n)]\\|at\\)"
+  in
+  try
+    let _ = Re.Str.search_forward pattern css 0 in
+    true
+  with Not_found -> false
+
 let display_css css = if css = "" then "<empty>" else css
 
 let cascade_minify input =
@@ -141,57 +150,135 @@ let at_rule_fingerprint css =
       Some (List.rev (statements [] sheet))
     with Cursor.Parse_error _ | Invalid_argument _ -> None
 
+let split_top_level_commas s =
+  let len = String.length s in
+  let rec loop i depth start acc =
+    if i >= len then List.rev (String.sub s start (len - start) :: acc)
+    else
+      match s.[i] with
+      | '(' -> loop (i + 1) (depth + 1) start acc
+      | ')' when depth > 0 -> loop (i + 1) (depth - 1) start acc
+      | ',' when depth = 0 ->
+          let part = String.sub s start (i - start) in
+          loop (i + 1) depth (i + 1) (part :: acc)
+      | _ -> loop (i + 1) depth start acc
+  in
+  loop 0 0 0 []
+
+let has_trailing_bare_number segment =
+  Re.Str.string_match
+    (Re.Str.regexp ".*[ \t\r\n][+-]?\\([0-9]+\\(\\.[0-9]*\\)?\\|\\.[0-9]+\\)$")
+    segment 0
+
+let color_mix_has_bare_weight css =
+  let needle = "color-mix(" in
+  let needle_len = String.length needle in
+  let len = String.length css in
+  let rec find_matching_close i depth =
+    if i >= len then None
+    else
+      match css.[i] with
+      | '(' -> find_matching_close (i + 1) (depth + 1)
+      | ')' ->
+          if depth = 1 then Some i else find_matching_close (i + 1) (depth - 1)
+      | _ -> find_matching_close (i + 1) depth
+  in
+  let rec loop start =
+    try
+      let open_ =
+        Re.Str.search_forward (Re.Str.regexp_string needle) css start
+      in
+      let body_start = open_ + needle_len in
+      match find_matching_close body_start 1 with
+      | None -> false
+      | Some close ->
+          let body = String.sub css body_start (close - body_start) in
+          let stops =
+            match split_top_level_commas body with
+            | _space :: stops -> stops
+            | [] -> []
+          in
+          if List.exists has_trailing_bare_number stops then true
+          else loop (close + 1)
+    with Not_found -> false
+  in
+  loop 0
+
+let known_upstream_candidate_bug ({ tool; css } : candidate) =
+  if tool = "cssnano" && color_mix_has_bare_weight css then
+    Some
+      "cssnano emitted a bare number as a color-mix() weight; CSS Color 5 \
+       requires <percentage [0,100]>"
+  else if conic_gradient_bare_zero_angle css then
+    Some
+      "upstream output contains conic-gradient(from 0, ...); CSS Images 4 \
+       requires an <angle>, and bare zero is not an angle outside calc()"
+  else None
+
+let invalid_upstream_source_fixture input =
+  if conic_gradient_bare_zero_angle input then
+    Some
+      "upstream source fixture contains conic-gradient(from 0, ...); CSS \
+       Images 4 requires an <angle>, and bare zero is not an angle outside \
+       calc()"
+  else None
+
 let validate_candidate input (candidate : candidate) =
-  match
-    ( at_rule_fingerprint input,
-      at_rule_fingerprint candidate.css,
-      canonical_minified input,
-      canonical_minified candidate.css )
-  with
-  | _, _, Ok "", Ok "" -> Ok candidate
-  | Some source, Some output, Ok source_css, Ok output_css
-    when source = output && source_css = output_css ->
-      Ok candidate
-  | Some source, Some output, _, _ when source <> output ->
-      Error
-        {
-          tool = candidate.tool;
-          css = candidate.css;
-          reason =
-            Fmt.str "at-rule fingerprint changed: [%s] -> [%s]"
-              (String.concat ", " source)
-              (String.concat ", " output);
-        }
-  | Some _, None, _, _ ->
-      Error
-        {
-          tool = candidate.tool;
-          css = candidate.css;
-          reason = "candidate output failed Cascade parser roundtrip";
-        }
-  | _, _, Ok source_css, Ok output_css ->
-      Error
-        {
-          tool = candidate.tool;
-          css = candidate.css;
-          reason =
-            Fmt.str "semantic fingerprint changed after Cascade parse: %s -> %s"
-              (display_css source_css) (display_css output_css);
-        }
-  | _, _, Ok _, Error msg ->
-      Error
-        {
-          tool = candidate.tool;
-          css = candidate.css;
-          reason = "candidate output failed Cascade semantic roundtrip: " ^ msg;
-        }
-  | None, _, _, _ | _, _, Error _, _ ->
-      Error
-        {
-          tool = candidate.tool;
-          css = candidate.css;
-          reason = "source input failed Cascade parser roundtrip";
-        }
+  match known_upstream_candidate_bug candidate with
+  | Some reason -> Error { tool = candidate.tool; css = candidate.css; reason }
+  | None -> (
+      match
+        ( at_rule_fingerprint input,
+          at_rule_fingerprint candidate.css,
+          canonical_minified input,
+          canonical_minified candidate.css )
+      with
+      | _, _, Ok "", Ok "" -> Ok candidate
+      | Some source, Some output, Ok source_css, Ok output_css
+        when source = output && source_css = output_css ->
+          Ok candidate
+      | Some source, Some output, _, _ when source <> output ->
+          Error
+            {
+              tool = candidate.tool;
+              css = candidate.css;
+              reason =
+                Fmt.str "at-rule fingerprint changed: [%s] -> [%s]"
+                  (String.concat ", " source)
+                  (String.concat ", " output);
+            }
+      | Some _, None, _, _ ->
+          Error
+            {
+              tool = candidate.tool;
+              css = candidate.css;
+              reason = "candidate output failed Cascade parser roundtrip";
+            }
+      | _, _, Ok source_css, Ok output_css ->
+          Error
+            {
+              tool = candidate.tool;
+              css = candidate.css;
+              reason =
+                Fmt.str
+                  "semantic fingerprint changed after Cascade parse: %s -> %s"
+                  (display_css source_css) (display_css output_css);
+            }
+      | _, _, Ok _, Error msg ->
+          Error
+            {
+              tool = candidate.tool;
+              css = candidate.css;
+              reason =
+                "candidate output failed Cascade semantic roundtrip: " ^ msg;
+            }
+      | None, _, _, _ | _, _, Error _, _ ->
+          Error
+            {
+              tool = candidate.tool;
+              css = candidate.css;
+              reason = "source input failed Cascade parser roundtrip";
+            })
 
 let split_equivalent_candidates input (candidates : candidate list) =
   List.fold_right
@@ -273,16 +360,29 @@ let classify (pair : Trace_pairs.t) =
       let diagnostics = format_source_parse_diagnostics pair in
       (Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics), [])
   | Result_css actual ->
+      let source_issues =
+        match invalid_upstream_source_fixture input with
+        | None -> []
+        | Some reason ->
+            List.map
+              (fun ({ tool; css } : candidate) ->
+                Rejected_candidate { tool; css; reason })
+              pair.candidates
+      in
       let candidates, rejected =
-        split_equivalent_candidates input pair.candidates
+        match source_issues with
+        | [] -> split_equivalent_candidates input pair.candidates
+        | _ :: _ -> ([], [])
       in
       let upstream_issues =
-        List.map (fun issue -> Rejected_candidate issue) rejected
+        source_issues
+        @ List.map (fun issue -> Rejected_candidate issue) rejected
         @ List.map (fun issue -> Failed_candidate issue) pair.failures
       in
       let best = shortest_length candidates in
       let outcome =
-        if candidates = [] then
+        if source_issues <> [] then Pass
+        else if candidates = [] then
           Fmt.kstr
             (fun s -> Mismatch s)
             "%s\n    no valid cached oracle candidates" actual
