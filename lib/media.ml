@@ -1695,10 +1695,8 @@ let group_order = function
   | Hover -> (0, 0.)
   | Other -> (500, 0.)
   | Preference_accessibility -> (1000, 0.)
-  | Responsive_max (unit_ord, value) ->
-      (1999, (Float.of_int unit_ord *. 1e9) +. value)
-  | Responsive (unit_ord, value) ->
-      (2000, (Float.of_int unit_ord *. 1e9) +. value)
+  | Responsive_max _ -> (1999, 0.)
+  | Responsive _ -> (2000, 0.)
   | Preference_appearance -> (3000, 0.)
 
 let rec preference_order = function
@@ -1736,14 +1734,26 @@ let rec responsive_subkind = function
   | Negated inner -> responsive_subkind inner
   | _ -> 2
 
+(* Within a responsive bucket, sort by decreasing specificity: an element
+   matching [(min-width: 768px)] also matches [(min-width: 640px)], so the
+   largest [min] is the most specific and sorts last; symmetrically the smallest
+   [max] is the most specific and sorts last. The [Responsive_max] value is
+   negated so a single ascending comparator gives the largest-first order
+   ([1024, 768, 640]). *)
+let responsive_value k =
+  match k with
+  | Responsive (unit_ord, value) -> (Float.of_int unit_ord *. 1e9) +. value
+  | Responsive_max (unit_ord, value) -> (Float.of_int unit_ord *. 1e9) -. value
+  | _ -> 0.
+
 let compare a b =
   let ka, kb = (kind a, kind b) in
-  let ga, va = group_order ka and gb, vb = group_order kb in
+  let ga, _ = group_order ka and gb, _ = group_order kb in
   let comparisons =
     [
       Int.compare ga gb;
-      Float.compare va vb;
       Int.compare (responsive_subkind a) (responsive_subkind b);
+      Float.compare (responsive_value ka) (responsive_value kb);
       Int.compare (preference_order a) (preference_order b);
       String.compare (to_string a) (to_string b);
     ]
