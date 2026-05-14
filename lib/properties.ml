@@ -19,6 +19,18 @@ let read_line_height_length t : line_height =
     | None -> if Pp.string_of_float n = repr then Num n else authored ()
     | Some u -> Cursor.err_invalid t ("invalid line-height unit: " ^ u)
 
+let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
+  function
+  | Val (Num n) | Val (Number { value = n; unit = None; _ }) -> Num n
+  | Nested inner -> Nested (numeric_line_height_calc_leaves inner)
+  | Parens inner -> Parens (numeric_line_height_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_line_height_calc_leaves left,
+          op,
+          numeric_line_height_calc_leaves right )
+  | leaf -> leaf
+
 let read_vertical_align_length t : vertical_align =
   let n, unit = Cursor.number_with_unit t in
   match unit with
@@ -11198,7 +11210,9 @@ let rec read_hyphens t : hyphens =
 
 let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
-  let read_calc t : line_height = Calc (read_calc read_line_height t) in
+  let read_calc t : line_height =
+    Calc (read_calc read_line_height t |> numeric_line_height_calc_leaves)
+  in
   Cursor.enum_or_calls "line-height"
     [
       ("normal", Normal);
