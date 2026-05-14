@@ -18055,13 +18055,13 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Tab_size -> pp pp_tab_size
   | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
-  | Inset -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_inline -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_inline_start -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_inline_end -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_block -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_block_start -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_block_end -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Inset -> pp (pp_box_shorthand pp_length)
+  | Inset_inline -> pp (pp_box_shorthand pp_length)
+  | Inset_inline_start -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Inset_inline_end -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Inset_block -> pp (pp_box_shorthand pp_length)
+  | Inset_block_start -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Inset_block_end -> pp (Pp.list ~sep:Pp.space pp_length)
   | Top -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Right -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Bottom -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
