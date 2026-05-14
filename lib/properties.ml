@@ -4170,6 +4170,7 @@ let rec pp_overflow : overflow Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+  | Overflow_pair (x, y) when Pp.minified ctx && x = y -> pp_overflow ctx x
   | Overflow_pair (x, y) ->
       pp_overflow ctx x;
       Pp.space ctx ();
