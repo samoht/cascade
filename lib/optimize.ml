@@ -352,6 +352,21 @@ let extract_padding_side :
       Some (Left, value, important)
   | _ -> None
 
+(* Border-radius corners ordered clockwise from top-left per CSS Backgrounds 3
+   sec. 5.1: TL / TR / BR / BL. Reusing [box_side] - the four constructors stand
+   in for the four corners in shorthand order. *)
+let extract_border_radius_corner :
+    declaration -> (box_side * Values.length * bool) option = function
+  | Declaration { property = Border_top_left_radius; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_top_right_radius; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_right_radius; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_bottom_left_radius; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
 let try_compose_box ~extract ~build = function
   | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: rest -> (
       match (extract d1, extract d2, extract d3, extract d4) with
@@ -389,16 +404,85 @@ let compose_box_shorthands decls =
     Declaration
       { property = Padding; value = [ top; right; bottom; left ]; important }
   in
+  let build_border_radius ~important ~top ~right ~bottom ~left =
+    let lp v : Values.length_percentage = Length v in
+    Declaration
+      {
+        property = Border_radius;
+        value =
+          Radius
+            {
+              horizontal = [ lp top; lp right; lp bottom; lp left ];
+              vertical = None;
+            };
+        important;
+      }
+  in
   let try_any decls =
     match
       try_compose_box ~extract:extract_margin_side ~build:build_margin decls
     with
     | Some _ as r -> r
-    | None ->
-        try_compose_box ~extract:extract_padding_side ~build:build_padding decls
+    | None -> (
+        match
+          try_compose_box ~extract:extract_padding_side ~build:build_padding
+            decls
+        with
+        | Some _ as r -> r
+        | None ->
+            try_compose_box ~extract:extract_border_radius_corner
+              ~build:build_border_radius decls)
   in
   let rec go acc decls =
     match (decls, try_any decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
+(* Compose 2-longhand shorthands ([gap] from [row-gap] / [column-gap],
+   [place-items] from [align-items] / [justify-items], etc) when both longhands
+   appear contiguously with matching importance. *)
+type pair_side = Row | Column
+
+let extract_gap_side : declaration -> (pair_side * Values.length * bool) option
+    = function
+  | Declaration { property = Row_gap; value; important } ->
+      Some (Row, value, important)
+  | Declaration { property = Column_gap; value; important } ->
+      Some (Column, value, important)
+  | _ -> None
+
+let try_compose_gap = function
+  | (idx, d1) :: (_, d2) :: rest -> (
+      match (extract_gap_side d1, extract_gap_side d2) with
+      | Some (s1, v1, imp1), Some (s2, v2, imp2)
+        when imp1 = imp2 && s1 <> s2
+             && (not (Values.length_has_runtime_subst v1))
+             && not (Values.length_has_runtime_subst v2) ->
+          let pair = [ (s1, v1); (s2, v2) ] in
+          let find s = List.assoc s pair in
+          let merged =
+            Declaration
+              {
+                property = Gap;
+                value =
+                  Lengths
+                    {
+                      row_gap = Some (find Row);
+                      column_gap = Some (find Column);
+                    };
+                important = imp1;
+              }
+          in
+          Some ((idx, merged), rest)
+      | _ -> None)
+  | _ -> None
+
+let compose_pair_shorthands decls =
+  let rec go acc decls =
+    match (decls, try_compose_gap decls) with
     | [], _ -> List.rev acc
     | _, Some (merged, rest) -> go (merged :: acc) rest
     | hd :: rest, None -> go (hd :: acc) rest
@@ -504,6 +588,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
   let kept = List.fold_left deduplicate_step [] indexed_props in
   let kept =
     let kept = if merge_box then compose_box_shorthands kept else kept in
+    let kept = if merge_box then compose_pair_shorthands kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
