@@ -277,6 +277,113 @@ let rec is_invalid = function
       Properties.is_invalid_value property value
   | Theme_guarded { decl; _ } -> is_invalid decl
 
+let color_opt_is_color_4 = function
+  | Some c -> Values.color_is_color_4 c
+  | None -> false
+
+let rec shadow_uses_color_4 : Properties.shadow -> bool = function
+  | Shadow { color; _ } -> color_opt_is_color_4 color
+  | List shs -> List.exists shadow_uses_color_4 shs
+  | _ -> false
+
+let text_shadow_uses_color_4 : Properties.text_shadow -> bool = function
+  | Text_shadow { color; _ } -> color_opt_is_color_4 color
+  | _ -> false
+
+let border_uses_color_4 : Properties.border -> bool = function
+  | Shorthand { color; _ } -> color_opt_is_color_4 color
+  | _ -> false
+
+let outline_uses_color_4 : Properties.outline -> bool = function
+  | Shorthand { color; _ } -> color_opt_is_color_4 color
+  | _ -> false
+
+let logical_border_color_uses_color_4 : Properties.logical_border_color -> bool
+    = function
+  | Single c -> Values.color_is_color_4 c
+  | Pair (a, b) -> Values.color_is_color_4 a || Values.color_is_color_4 b
+  | _ -> false
+
+let rec gradient_stop_uses_color_4 : Properties.gradient_stop -> bool = function
+  | Color_percentage (c, _, _) | Color_length (c, _, _) ->
+      Values.color_is_color_4 c
+  | List stops -> List.exists gradient_stop_uses_color_4 stops
+  | _ -> false
+
+let rec background_image_uses_color_4 : Properties.background_image -> bool =
+  function
+  | Linear_gradient (_, stops)
+  | Repeating_linear_gradient (_, stops)
+  | Webkit_linear_gradient (_, stops)
+  | Webkit_repeating_linear_gradient (_, stops)
+  | Moz_linear_gradient (_, stops)
+  | Moz_repeating_linear_gradient (_, stops)
+  | O_linear_gradient (_, stops)
+  | O_repeating_linear_gradient (_, stops)
+  | Radial_gradient (_, stops)
+  | Repeating_radial_gradient (_, stops)
+  | Webkit_radial_gradient (_, stops)
+  | Webkit_repeating_radial_gradient (_, stops)
+  | Moz_radial_gradient (_, stops)
+  | Moz_repeating_radial_gradient (_, stops)
+  | O_radial_gradient (_, stops)
+  | O_repeating_radial_gradient (_, stops)
+  | Conic_gradient (_, stops)
+  | Repeating_conic_gradient (_, stops) ->
+      List.exists gradient_stop_uses_color_4 stops
+  | List imgs -> List.exists background_image_uses_color_4 imgs
+  | _ -> false
+
+let rec filter_uses_color_4 : Properties.filter -> bool = function
+  | Drop_shadow sh -> shadow_uses_color_4 sh
+  | List fs -> List.exists filter_uses_color_4 fs
+  | _ -> false
+
+let property_value_uses_color_4 (type a) (property : a Properties.property)
+    (value : a) : bool =
+  match property with
+  | Color -> Values.color_is_color_4 value
+  | Background_color -> Values.color_is_color_4 value
+  | Border_color -> Values.color_is_color_4 value
+  | Border_top_color -> Values.color_is_color_4 value
+  | Border_right_color -> Values.color_is_color_4 value
+  | Border_bottom_color -> Values.color_is_color_4 value
+  | Border_left_color -> Values.color_is_color_4 value
+  | Border_inline_start_color -> Values.color_is_color_4 value
+  | Border_inline_end_color -> Values.color_is_color_4 value
+  | Outline_color -> Values.color_is_color_4 value
+  | Text_decoration_color -> Values.color_is_color_4 value
+  | Text_emphasis_color -> Values.color_is_color_4 value
+  | Accent_color -> Values.color_is_color_4 value
+  | Caret_color -> Values.color_is_color_4 value
+  | Webkit_tap_highlight_color -> Values.color_is_color_4 value
+  | Webkit_text_decoration_color -> Values.color_is_color_4 value
+  | Border_inline_color -> logical_border_color_uses_color_4 value
+  | Box_shadow -> shadow_uses_color_4 value
+  | Text_shadow -> List.exists text_shadow_uses_color_4 value
+  | Border -> border_uses_color_4 value
+  | Border_top -> border_uses_color_4 value
+  | Border_right -> border_uses_color_4 value
+  | Border_bottom -> border_uses_color_4 value
+  | Border_left -> border_uses_color_4 value
+  | Border_block -> border_uses_color_4 value
+  | Column_rule -> border_uses_color_4 value
+  | Outline -> outline_uses_color_4 value
+  | Background_image -> List.exists background_image_uses_color_4 value
+  | Webkit_mask_image -> background_image_uses_color_4 value
+  | Mask_image -> background_image_uses_color_4 value
+  | Filter -> filter_uses_color_4 value
+  | Webkit_filter -> filter_uses_color_4 value
+  | Ms_filter -> filter_uses_color_4 value
+  | Backdrop_filter -> filter_uses_color_4 value
+  | Webkit_backdrop_filter -> filter_uses_color_4 value
+  | _ -> false
+
+let rec value_uses_color_4 = function
+  | Theme_guarded { decl; _ } -> value_uses_color_4 decl
+  | Declaration { property; value; _ } ->
+      property_value_uses_color_4 property value
+
 (** Get the property name as a string from a declaration *)
 let rec property_name decl =
   let ctx =
