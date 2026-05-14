@@ -234,6 +234,92 @@ let try_merge_box_shorthand ~property ~vs ~important ~absorb ~is_same_shorthand
               { property; value = [ top; right; bottom; left ]; important },
             rest' ))
 
+(* CSS Overflow 3 §3.1: [overflow] is the [overflow-x overflow-y] shorthand.
+   When the two longhands appear together with matching importance and neither
+   side is later shadowed within the same block, fold them into [overflow] -
+   single value when the two axes match, two values otherwise. *)
+let combined_overflow v_x v_y : Properties.overflow =
+  if v_x = v_y then v_x else Overflow_pair (v_x, v_y)
+
+let try_take_overflow_y ~important rest =
+  let rec loop acc :
+      (int * declaration) list ->
+      (Properties.overflow * (int * declaration) list) option = function
+    | [] -> None
+    | (_, Declaration { property = Overflow_y; value = v_y; important = i' })
+      :: rest
+      when i' = important ->
+        Some (v_y, List.rev_append acc rest)
+    | (_, Declaration { property = Overflow | Overflow_x | Overflow_y; _ }) :: _
+      ->
+        None
+    | other :: rest -> loop (other :: acc) rest
+  in
+  loop [] rest
+
+let try_take_overflow_x ~important rest =
+  let rec loop acc :
+      (int * declaration) list ->
+      (Properties.overflow * (int * declaration) list) option = function
+    | [] -> None
+    | (_, Declaration { property = Overflow_x; value = v_x; important = i' })
+      :: rest
+      when i' = important ->
+        Some (v_x, List.rev_append acc rest)
+    | (_, Declaration { property = Overflow | Overflow_x | Overflow_y; _ }) :: _
+      ->
+        None
+    | other :: rest -> loop (other :: acc) rest
+  in
+  loop [] rest
+
+let merge_overflow_longhands decls =
+  let rec go acc = function
+    | [] -> List.rev acc
+    | (idx, Declaration { property = Overflow_x; value = v_x; important })
+      :: rest -> (
+        match try_take_overflow_y ~important rest with
+        | None ->
+            go
+              (( idx,
+                 Declaration { property = Overflow_x; value = v_x; important }
+               )
+              :: acc)
+              rest
+        | Some (v_y, rest') ->
+            let merged =
+              Declaration
+                {
+                  property = Overflow;
+                  value = combined_overflow v_x v_y;
+                  important;
+                }
+            in
+            go ((idx, merged) :: acc) rest')
+    | (idx, Declaration { property = Overflow_y; value = v_y; important })
+      :: rest -> (
+        match try_take_overflow_x ~important rest with
+        | None ->
+            go
+              (( idx,
+                 Declaration { property = Overflow_y; value = v_y; important }
+               )
+              :: acc)
+              rest
+        | Some (v_x, rest') ->
+            let merged =
+              Declaration
+                {
+                  property = Overflow;
+                  value = combined_overflow v_x v_y;
+                  important;
+                }
+            in
+            go ((idx, merged) :: acc) rest')
+    | d :: rest -> go (d :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -277,6 +363,14 @@ let legacy_vendor_fallback new_decl existing =
   && (not (same_minified_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
+(* The earlier declaration is a real cascade fallback when the later one uses
+   CSS Color 4 / 5 syntax that older browsers drop. *)
+let legacy_color_fallback new_decl existing =
+  property_name new_decl = property_name existing
+  && (not (same_minified_value new_decl existing))
+  && Declaration.value_uses_color_4 new_decl
+  && not (Declaration.value_uses_color_4 existing)
+
 let same_property_value_declaration new_decl existing =
   property_name new_decl = property_name existing
   && same_minified_value new_decl existing
@@ -288,7 +382,8 @@ let covered_by_new_declaration new_decl existing =
   (not (is_intentionally_duplicated existing_prop))
   && declaration_covers new_prop existing_prop
   && (is_important new_decl || not (is_important existing))
-  && not (legacy_vendor_fallback new_decl existing)
+  && (not (legacy_vendor_fallback new_decl existing))
+  && not (legacy_color_fallback new_decl existing)
 
 let append_all_declaration idx decl kept =
   let before, after =
@@ -326,6 +421,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
+    let kept = if merge_box then merge_overflow_longhands kept else kept in
     List.map (fun (_, decl) -> decl) kept
   in
   duplicate_buggy_properties kept

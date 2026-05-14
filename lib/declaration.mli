@@ -73,6 +73,10 @@ val is_invalid : declaration -> bool
     [Optimize.drop_invalid] pass uses this predicate to remove the declaration.
 *)
 
+val value_uses_color_4 : declaration -> bool
+(** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
+    CSS Color 4 / 5 construct. [var()] returns [false]. *)
+
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 

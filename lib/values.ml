@@ -5697,6 +5697,19 @@ let rec color_has_specified_hue = function
   | Attribute (_, Some color) -> color_has_specified_hue color
   | _ -> false
 
+let rec color_is_color_4 = function
+  | Lab _ | Lch _ | Oklab _ | Oklch _ | Hwb _ | Color _ -> true
+  | Relative_rgb _ | Relative_color _ -> true
+  | Mix { color1; color2; _ } ->
+      color_is_color_4 color1 || color_is_color_4 color2
+  | Light_dark (a, b) -> color_is_color_4 a || color_is_color_4 b
+  | Contrast_color c -> color_is_color_4 c
+  | Attribute (_, Some c) -> color_is_color_4 c
+  | Hex _ | Rgb _ | Rgba _ | Hsl _ | Named _ | System _ | Current | Transparent
+  | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Var _
+  | Attribute (_, None) ->
+      false
+
 let read_system_color t : system_color =
   Cursor.ws t;
   let keyword = Cursor.ident t in

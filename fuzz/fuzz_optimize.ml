@@ -441,28 +441,35 @@ let test_biclique_no_new_edges buf =
 
 let test_smt_property_order_vectors buf =
   (* Section 4 models rule properties as an ordered sequence: selectors commute,
-     but declarations inside one rule do not. A fallback followed by a newer
-     spelling of the same property must stay in that order after
-     optimization. *)
+     but declarations inside one rule do not. When the later declaration uses
+     CSS Color 4 syntax (oklch / oklab / lab / lch / hwb / color / color-mix),
+     older browsers drop it and the earlier same-property declaration is a real
+     cascade fallback - it must survive optimization and stay first. *)
   let selector = "." ^ class_name "fallback" buf 0 in
-  let input = Fmt.str "%s{color:red;color:rgba(255,0,0,.5)}" selector in
+  let input =
+    Fmt.str "%s{color:rgb(59,130,246);color:oklch(.6 .18 254)}" selector
+  in
   match parse_stylesheet input with
   | None -> fail (Fmt.str "SMT property-order vector did not parse: %S" input)
   | Some ss ->
       let optimized = Css.Optimize.stylesheet ss |> minified in
       if count_substring ~needle:"color:" optimized <> 2 then
         fail
-          (Fmt.str "optimization dropped duplicate ordered properties: %S -> %S"
+          (Fmt.str
+             "optimization dropped legacy color fallback before Color 4 \
+              spelling: %S -> %S"
              input optimized);
       begin match
-        ( first_index ~needle:"color:red" optimized,
+        ( first_index ~needle:"color:oklch" optimized,
           first_index ~needle:"color:" optimized )
       with
-      | Some red_pos, Some first_color_pos when red_pos = first_color_pos -> ()
+      | Some oklch_pos, Some first_color_pos when oklch_pos > first_color_pos ->
+          ()
       | _ ->
           fail
             (Fmt.str
-               "optimization reordered duplicate ordered properties: %S -> %S"
+               "optimization reordered Color 4 declaration before its \
+                fallback: %S -> %S"
                input optimized)
       end
 

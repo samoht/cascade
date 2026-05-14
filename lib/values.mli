@@ -357,6 +357,12 @@ val color_has_specified_hue : color -> bool
     [specified hue] interpolation keyword. Stylesheet recovery keeps the
     declaration for compatibility, while strict parsing reports it. *)
 
+val color_is_color_4 : color -> bool
+(** [color_is_color_4 c] is [true] when [c] uses a CSS Color 4 / 5 construct
+    ([lab], [lch], [oklab], [oklch], [hwb], [color()], [color-mix()],
+    [light-dark()], [contrast-color()], or [from <origin>] relative forms).
+    Recurses through [Mix], [Light_dark], [Contrast_color]. *)
+
 val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
 
