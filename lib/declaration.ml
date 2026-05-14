@@ -268,11 +268,14 @@ let is_decl_unknown_property_name name =
 
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known
     spec-violation cascade detected at parse time. The minify-time
-    [Optimize.drop_invalid] pass removes such declarations. *)
+    [Optimize.drop_invalid] pass removes such declarations.
+
+    Unknown property names are not invalid - browsers preserve unrecognized
+    declarations (CSS Syntax 3 §5.4 ignores them at used-value time but keeps
+    them in the cascade), and Cascade emits them as raw component lists.
+    Vendor-prefix extensions are also preserved unchanged. *)
 let rec is_invalid = function
-  | Declaration { property = Unknown_property name; _ } ->
-      is_decl_unknown_property_name name
-      && not (is_vendor_extension_property_name name)
+  | Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property; value; _ } ->
       Properties.is_invalid_value property value
   | Theme_guarded { decl; _ } -> is_invalid decl
