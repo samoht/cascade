@@ -2934,6 +2934,11 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
+let minified_length_percentage_calc ctx c =
+  let c = resolve_lp_calc_vars ctx c in
+  let c = if calc_contains_var c then c else normalize_lp_calc_zeros c in
+  c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
+
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
@@ -2942,11 +2947,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
       let c =
-        if Pp.minified ctx then
-          c |> resolve_lp_calc_vars ctx |> fun c ->
-          (if calc_contains_var c then c else normalize_lp_calc_zeros c)
-          |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
-        else c
+        if Pp.minified ctx then minified_length_percentage_calc ctx c else c
       in
       let always = always || calc_contains_var c in
       pp_calc (pp_length_percentage ~always) ctx c
