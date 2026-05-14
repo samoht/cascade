@@ -68,100 +68,157 @@ let is_intentionally_duplicated prop_name =
   prop_name = "content" || prop_name = "outline"
   || (String.length prop_name > 12 && String.sub prop_name 0 12 = "-webkit-mask")
 
-let shorthand_longhands = function
-  | "margin" -> [ "margin-top"; "margin-right"; "margin-bottom"; "margin-left" ]
-  | "padding" ->
-      [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ]
-  | "inset" -> [ "top"; "right"; "bottom"; "left" ]
-  | "background" ->
-      [
-        "background-attachment";
-        "background-blend-mode";
-        "background-clip";
-        "background-color";
-        "background-image";
-        "background-origin";
-        "background-position";
-        "background-repeat";
-        "background-size";
-      ]
-  (* CSS Logical 1: physical-axis pairs. Each logical shorthand absorbs the
-     -start / -end pair on its axis. *)
-  | "margin-inline" -> [ "margin-inline-start"; "margin-inline-end" ]
-  | "margin-block" -> [ "margin-block-start"; "margin-block-end" ]
-  | "padding-inline" -> [ "padding-inline-start"; "padding-inline-end" ]
-  | "padding-block" -> [ "padding-block-start"; "padding-block-end" ]
-  | "inset-inline" -> [ "inset-inline-start"; "inset-inline-end" ]
-  | "inset-block" -> [ "inset-block-start"; "inset-block-end" ]
-  | "border-inline" -> [ "border-inline-start"; "border-inline-end" ]
-  | "border-block" -> [ "border-block-start"; "border-block-end" ]
-  (* CSS Backgrounds 3 sec. 4: [border] shorthand resets all per-side longhands
-     and the per-axis [width / style / color] groupings. *)
-  | "border" ->
-      [
-        "border-width";
-        "border-style";
-        "border-color";
-        "border-top";
-        "border-right";
-        "border-bottom";
-        "border-left";
-        "border-top-width";
-        "border-right-width";
-        "border-bottom-width";
-        "border-left-width";
-        "border-top-style";
-        "border-right-style";
-        "border-bottom-style";
-        "border-left-style";
-        "border-top-color";
-        "border-right-color";
-        "border-bottom-color";
-        "border-left-color";
-      ]
-  | "border-width" ->
-      [
-        "border-top-width";
-        "border-right-width";
-        "border-bottom-width";
-        "border-left-width";
-      ]
-  | "border-style" ->
-      [
-        "border-top-style";
-        "border-right-style";
-        "border-bottom-style";
-        "border-left-style";
-      ]
-  | "border-color" ->
-      [
-        "border-top-color";
-        "border-right-color";
-        "border-bottom-color";
-        "border-left-color";
-      ]
-  | "border-top" ->
-      [ "border-top-width"; "border-top-style"; "border-top-color" ]
-  | "border-right" ->
-      [ "border-right-width"; "border-right-style"; "border-right-color" ]
-  | "border-bottom" ->
-      [ "border-bottom-width"; "border-bottom-style"; "border-bottom-color" ]
-  | "border-left" ->
-      [ "border-left-width"; "border-left-style"; "border-left-color" ]
-  | _ -> []
+(* Typed shorthand -> longhand coverage relation. Each match arm spells out a
+   reachable [(shorthand, longhand)] pair, including transitive cases ([border]
+   covers [border-top-width] both directly and through [border-width] /
+   [border-top]). Properties not listed have no shorthand relation; they
+   self-cover by exact identity, never reset others. Custom and unknown
+   properties are handled by [declaration_covers] separately. *)
+let shorthand_covers_longhand : type a b.
+    a Properties.property -> b Properties.property -> bool =
+ fun sh lh ->
+  match (sh, lh) with
+  | Margin, Margin_top -> true
+  | Margin, Margin_right -> true
+  | Margin, Margin_bottom -> true
+  | Margin, Margin_left -> true
+  | Padding, Padding_top -> true
+  | Padding, Padding_right -> true
+  | Padding, Padding_bottom -> true
+  | Padding, Padding_left -> true
+  | Inset, Top -> true
+  | Inset, Right -> true
+  | Inset, Bottom -> true
+  | Inset, Left -> true
+  | Background, Background_attachment -> true
+  | Background, Background_blend_mode -> true
+  | Background, Background_clip -> true
+  | Background, Background_color -> true
+  | Background, Background_image -> true
+  | Background, Background_origin -> true
+  | Background, Background_position -> true
+  | Background, Background_repeat -> true
+  | Background, Background_size -> true
+  (* CSS Logical 1: physical-axis pairs. *)
+  | Margin_inline, Margin_inline_start -> true
+  | Margin_inline, Margin_inline_end -> true
+  | Margin_block, Margin_block_start -> true
+  | Margin_block, Margin_block_end -> true
+  | Padding_inline, Padding_inline_start -> true
+  | Padding_inline, Padding_inline_end -> true
+  | Padding_block, Padding_block_start -> true
+  | Padding_block, Padding_block_end -> true
+  | Inset_inline, Inset_inline_start -> true
+  | Inset_inline, Inset_inline_end -> true
+  | Inset_block, Inset_block_start -> true
+  | Inset_block, Inset_block_end -> true
+  (* CSS Backgrounds 3 sec. 4: [border] resets every per-side longhand and the
+     per-axis [width / style / color] groupings; the transitive closure is
+     listed explicitly so the match is one-shot. *)
+  | Border, Border_width -> true
+  | Border, Border_style -> true
+  | Border, Border_color -> true
+  | Border, Border_top -> true
+  | Border, Border_right -> true
+  | Border, Border_bottom -> true
+  | Border, Border_left -> true
+  | Border, Border_top_width -> true
+  | Border, Border_right_width -> true
+  | Border, Border_bottom_width -> true
+  | Border, Border_left_width -> true
+  | Border, Border_top_style -> true
+  | Border, Border_right_style -> true
+  | Border, Border_bottom_style -> true
+  | Border, Border_left_style -> true
+  | Border, Border_top_color -> true
+  | Border, Border_right_color -> true
+  | Border, Border_bottom_color -> true
+  | Border, Border_left_color -> true
+  | Border_width, Border_top_width -> true
+  | Border_width, Border_right_width -> true
+  | Border_width, Border_bottom_width -> true
+  | Border_width, Border_left_width -> true
+  | Border_style, Border_top_style -> true
+  | Border_style, Border_right_style -> true
+  | Border_style, Border_bottom_style -> true
+  | Border_style, Border_left_style -> true
+  | Border_color, Border_top_color -> true
+  | Border_color, Border_right_color -> true
+  | Border_color, Border_bottom_color -> true
+  | Border_color, Border_left_color -> true
+  | Border_top, Border_top_width -> true
+  | Border_top, Border_top_style -> true
+  | Border_top, Border_top_color -> true
+  | Border_right, Border_right_width -> true
+  | Border_right, Border_right_style -> true
+  | Border_right, Border_right_color -> true
+  | Border_bottom, Border_bottom_width -> true
+  | Border_bottom, Border_bottom_style -> true
+  | Border_bottom, Border_bottom_color -> true
+  | Border_left, Border_left_width -> true
+  | Border_left, Border_left_style -> true
+  | Border_left, Border_left_color -> true
+  (* CSS Fonts 4 sec. 2.7: [font] resets [font-style / -weight / -stretch /
+     -size / line-height / -family]. Cascade doesn't model [font-variant-css21]
+     separately; other [font-variant-*] longhands ([numeric], [ligatures], ...)
+     survive the shorthand. *)
+  | Font, Font_style -> true
+  | Font, Font_weight -> true
+  | Font, Font_stretch -> true
+  | Font, Font_size -> true
+  | Font, Line_height -> true
+  | Font, Font_family -> true
+  | _ -> false
 
-let all_resets_property name =
-  not
-    (name = "direction" || name = "unicode-bidi"
-    || (String.length name >= 2 && String.sub name 0 2 = "--"))
+(* CSS Cascade 5 sec. 7.2: [all] resets every property except [direction],
+   [unicode-bidi], and custom properties. [Unknown_property _] is reset by [all]
+   (an unrecognised non-custom property is still a CSS property). *)
+let is_excluded_from_all_reset : type a. a Properties.property -> bool =
+  function
+  | Direction -> true
+  | Unicode_bidi -> true
+  | Custom_property _ -> true
+  | _ -> false
 
-let all_preserved_reorder_property name =
-  name = "direction" || name = "unicode-bidi"
+let rec unwrap_theme_guard = function
+  | Theme_guarded { decl; _ } -> unwrap_theme_guard decl
+  | d -> d
 
+(* CSS Cascade 5 sec. 7.2: [direction] and [unicode-bidi] keep their relative
+   position after an [all] declaration; partition uses this to anchor them. *)
+let is_all_preserved_reorder : type a. a Properties.property -> bool = function
+  | Direction -> true
+  | Unicode_bidi -> true
+  | _ -> false
+
+let all_preserved_reorder_declaration decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property; _ } -> is_all_preserved_reorder property
+  | _ -> false
+
+(* Coverage relation between two declarations. Custom and unknown properties
+   have only generic behavior: cover themselves by exact name, no shorthand
+   coverage, and (for custom) exempt from the [all] reset. *)
 let declaration_covers covering covered =
-  covering = covered
-  || (covering = "all" && all_resets_property covered)
-  || List.mem covered (shorthand_longhands covering)
+  match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
+  | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
+    ->
+      not (is_excluded_from_all_reset covered_p)
+  | ( Declaration { property = Custom_property a; _ },
+      Declaration { property = Custom_property b; _ } ) ->
+      String.equal a b
+  | Declaration { property = Custom_property _; _ }, _ -> false
+  | _, Declaration { property = Custom_property _; _ } -> false
+  | ( Declaration { property = Unknown_property a; _ },
+      Declaration { property = Unknown_property b; _ } ) ->
+      String.equal a b
+  | Declaration { property = Unknown_property _; _ }, _ -> false
+  | _, Declaration { property = Unknown_property _; _ } -> false
+  | ( Declaration { property = covering_p; _ },
+      Declaration { property = covered_p; _ } ) ->
+      String.equal (property_name covering) (property_name covered)
+      || shorthand_covers_longhand covering_p covered_p
+  | _ -> false
 
 (* Detect a value that begins with a CSS vendor-prefix (-webkit-, -moz-, -ms-,
    -o-). Used to preserve legacy fallback patterns like
@@ -263,19 +320,22 @@ let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
   loop sides [] rest
 
 let box_shorthand_had_prior_longhand source idx shorthand =
-  let shorthand_prop = property_name shorthand in
-  let shorthand_important = is_important shorthand in
-  let rec loop i = function
-    | [] -> false
-    | d :: rest ->
-        i < idx
-        &&
-        let prop = property_name d in
-        List.mem prop (shorthand_longhands shorthand_prop)
-        && (shorthand_important || not (is_important d))
-        || loop (i + 1) rest
-  in
-  loop 0 source
+  match unwrap_theme_guard shorthand with
+  | Theme_guarded _ -> false
+  | Declaration
+      { property = shorthand_prop; important = shorthand_important; _ } ->
+      let rec loop i = function
+        | [] -> false
+        | d :: rest ->
+            i < idx
+            && (match unwrap_theme_guard d with
+              | Declaration { property = lh_prop; _ } ->
+                  shorthand_covers_longhand shorthand_prop lh_prop
+              | _ -> false)
+            && (shorthand_important || not (is_important d))
+            || loop (i + 1) rest
+      in
+      loop 0 source
 
 (* Fold subsequent margin/padding corner longhands into the preceding box
    shorthand. Tailwind / Lightning-CSS / cssnano all do this; the dead-code
@@ -1099,12 +1159,12 @@ let merge_box_shorthand_longhands source decls =
   in
   go [] decls
 
-let property_covered_by_important kept prop_name =
+let property_covered_by_important kept decl =
   List.exists
-    (fun (_, decl) ->
-      (not (is_intentionally_duplicated (property_name decl)))
-      && is_important decl
-      && declaration_covers (property_name decl) prop_name)
+    (fun (_, existing) ->
+      (not (is_intentionally_duplicated (property_name existing)))
+      && is_important existing
+      && declaration_covers existing decl)
     kept
 
 let same_minified_value new_decl existing =
@@ -1140,10 +1200,8 @@ let same_property_value_declaration new_decl existing =
   && (is_important new_decl || not (is_important existing))
 
 let covered_by_new_declaration new_decl existing =
-  let new_prop = property_name new_decl in
-  let existing_prop = property_name existing in
-  (not (is_intentionally_duplicated existing_prop))
-  && declaration_covers new_prop existing_prop
+  (not (is_intentionally_duplicated (property_name existing)))
+  && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
   && (not (legacy_color_fallback new_decl existing))
@@ -1152,10 +1210,18 @@ let covered_by_new_declaration new_decl existing =
 let append_all_declaration idx decl kept =
   let before, after =
     List.partition
-      (fun (_, old) -> not (all_preserved_reorder_property (property_name old)))
+      (fun (_, old) -> not (all_preserved_reorder_declaration old))
       kept
   in
   before @ [ (idx, decl) ] @ after
+
+let is_all_declaration = function
+  | Declaration { property = All; _ } -> true
+  | Theme_guarded { decl; _ } -> (
+      match unwrap_theme_guard decl with
+      | Declaration { property = All; _ } -> true
+      | _ -> false)
+  | _ -> false
 
 let deduplicate_step kept (idx, decl) =
   let prop_name = property_name decl in
@@ -1166,8 +1232,7 @@ let deduplicate_step kept (idx, decl) =
         kept
     in
     kept @ [ (idx, decl) ]
-  else if
-    (not (is_important decl)) && property_covered_by_important kept prop_name
+  else if (not (is_important decl)) && property_covered_by_important kept decl
   then kept
   else
     let kept =
@@ -1175,7 +1240,7 @@ let deduplicate_step kept (idx, decl) =
         (fun (_, old) -> not (covered_by_new_declaration decl old))
         kept
     in
-    if prop_name = "all" then append_all_declaration idx decl kept
+    if is_all_declaration decl then append_all_declaration idx decl kept
     else kept @ [ (idx, decl) ]
 
 let deduplicate_declarations_with ?(merge_box = true) props =
