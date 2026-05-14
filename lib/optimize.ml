@@ -320,6 +320,91 @@ let merge_overflow_longhands decls =
   in
   go [] decls
 
+(* Compose 4 contiguous box-side longhands ([margin-top / -right / -bottom /
+   -left], or the [padding-] equivalents) into a single shorthand. Runs before
+   [merge_box_shorthand_longhands] so the absorption pass can pick up any
+   remaining stragglers. Conservative: requires all four sides present in the
+   next four positions (any order), matching importance, and no
+   runtime-substitution leaves on any side. *)
+type box_side = Top | Right | Bottom | Left
+
+let extract_margin_side :
+    declaration -> (box_side * Values.length * bool) option = function
+  | Declaration { property = Margin_top; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Margin_right; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Margin_bottom; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Margin_left; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let extract_padding_side :
+    declaration -> (box_side * Values.length * bool) option = function
+  | Declaration { property = Padding_top; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Padding_right; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Padding_bottom; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Padding_left; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let try_compose_box ~extract ~build = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: rest -> (
+      match (extract d1, extract d2, extract d3, extract d4) with
+      | ( Some (s1, v1, imp1),
+          Some (s2, v2, imp2),
+          Some (s3, v3, imp3),
+          Some (s4, v4, imp4) )
+        when imp1 = imp2 && imp2 = imp3 && imp3 = imp4 ->
+          let sides = [ (s1, v1); (s2, v2); (s3, v3); (s4, v4) ] in
+          let distinct =
+            List.length (List.sort_uniq compare (List.map fst sides)) = 4
+          in
+          let no_runtime =
+            List.for_all
+              (fun (_, v) -> not (Values.length_has_runtime_subst v))
+              sides
+          in
+          if distinct && no_runtime then
+            let find s = List.assoc s sides in
+            let merged =
+              build ~important:imp1 ~top:(find Top) ~right:(find Right)
+                ~bottom:(find Bottom) ~left:(find Left)
+            in
+            Some ((idx, merged), rest)
+          else None
+      | _ -> None)
+  | _ -> None
+
+let compose_box_shorthands decls =
+  let build_margin ~important ~top ~right ~bottom ~left =
+    Declaration
+      { property = Margin; value = [ top; right; bottom; left ]; important }
+  in
+  let build_padding ~important ~top ~right ~bottom ~left =
+    Declaration
+      { property = Padding; value = [ top; right; bottom; left ]; important }
+  in
+  let try_any decls =
+    match
+      try_compose_box ~extract:extract_margin_side ~build:build_margin decls
+    with
+    | Some _ as r -> r
+    | None ->
+        try_compose_box ~extract:extract_padding_side ~build:build_padding decls
+  in
+  let rec go acc decls =
+    match (decls, try_any decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -418,6 +503,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.fold_left deduplicate_step [] indexed_props in
   let kept =
+    let kept = if merge_box then compose_box_shorthands kept else kept in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
@@ -1700,6 +1786,8 @@ let drop_empty_rules stmts =
       | Container (_, _, []) -> false
       | Scope (_, _, []) -> false
       | Starting_style [] -> false
+      | Page (_, []) -> false
+      | Page_with_margins (_, [], []) -> false
       | _ -> true)
     stmts
 
