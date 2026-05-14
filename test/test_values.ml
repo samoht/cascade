@@ -187,20 +187,21 @@ let test_length () =
 
 let test_color () =
   (* Hex colors with #. Per CSS Color 4 section 12.1 the printer canonicalizes
-     [#rrggbb] to [#rgb] under [~minify:true] when each channel pair matches.
-     Case of the hex digits is preserved. *)
+     [#rrggbb] to [#rgb] under [~minify:true] when each channel pair matches,
+     and lowercases the digits to match the consensus across Lightning CSS,
+     esbuild, csso, cssnano, and clean-css. *)
   check_color "#fff";
-  check_color "#FFF";
+  check_color ~expected:"#fff" "#FFF";
   check_color "#000";
   check_color "#123";
   check_color "#abc";
-  check_color "#ABC";
+  check_color ~expected:"#abc" "#ABC";
   check_color "#123456";
   check_color "#abcdef";
-  check_color "#ABCDEF";
+  check_color ~expected:"#abcdef" "#ABCDEF";
   check_color ~expected:"#000" "#000000";
   check_color ~expected:"#fff" "#ffffff";
-  check_color ~expected:"#FFF" "#FFFFFF";
+  check_color ~expected:"#fff" "#FFFFFF";
   (* Additional named colors *)
   check_color ~expected:"#639" "rebeccapurple";
   check_color ~expected:"#f0f8ff" "aliceblue";
