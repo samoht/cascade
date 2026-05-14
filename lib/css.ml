@@ -807,39 +807,34 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
-    ?(newline = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) stylesheet
-    =
+let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
+    ?(theme_defaults = Pp.no_theme_defaults) stylesheet =
   let stylesheet =
     match mode with
     | Inline -> Inline.vars stylesheet |> List.concat_map statements_for_inline
     | Variables -> stylesheet
   in
   let stylesheet =
-    if optimize then Optimize.stylesheet stylesheet
+    if minify then Optimize.stylesheet stylesheet
     else
-      (* Spec recovery: invalid declarations and unknown at-rules drop in both
-         minified and non-minified output (browsers do); empty rules left behind
-         drop too. The full [Optimize.stylesheet] pass also rewrites and merges,
-         which we want only under [--optimize]. *)
-      let stylesheet =
-        stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
-        |> Optimize.drop_empty_rules
-      in
-      if minify then Optimize.apply_property_duplication stylesheet
-      else stylesheet
+      (* Spec recovery applies in both modes: invalid declarations and unknown
+         at-rules drop (browsers do too), and empty rules left behind drop. The
+         full [Optimize.stylesheet] pass also rewrites and merges, which we only
+         want under minify. *)
+      stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
+      |> Optimize.drop_empty_rules
   in
-  Stylesheet.to_string ~minify ~mode ~newline ?theme ~theme_defaults stylesheet
+  Stylesheet.to_string ~minify ?indent ~mode ?theme ~theme_defaults stylesheet
 
 let pp = to_string
 
-let inline_style_of_declarations ?(optimize = false) ?minify ?mode ?newline
-    declarations =
+let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
+    =
   let declarations =
     if optimize then Optimize.deduplicate_declarations declarations
     else declarations
   in
-  inline_style_of_declarations ?minify ?mode ?newline declarations
+  inline_style_of_declarations ?minify ?mode declarations
 
 (* Keep Css.optimize alias for convenience *)
 let optimize = Optimize.stylesheet

@@ -38,7 +38,7 @@ let generation () =
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
     "exact css generation"
-    ".btn{color:red;padding:10px}.card{margin:5px;background-color:#fff}\n" css
+    ".btn{color:red;padding:10px}.card{margin:5px;background-color:#fff}" css
 
 (* Test optimization flag works *)
 let optimization_flag () =
@@ -54,8 +54,8 @@ let optimization_flag () =
       ]
   in
 
-  let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  Alcotest.(check string) "optimized exact" ".btn{color:#00f}\n" css_optimized
+  let css_optimized = Css.to_string ~minify:true stylesheet in
+  Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
 (* Test layers work end-to-end *)
 let layers_integration () =
@@ -86,7 +86,7 @@ let media_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "media exact" "@media(width<=640px){.btn{font-size:.875rem}}\n" css
+    "media exact" "@media(width<=640px){.btn{font-size:.875rem}}" css
 
 (* Test minify flag *)
 let minify_flag () =
@@ -95,7 +95,7 @@ let minify_flag () =
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
-  Alcotest.(check string) "minified exact" ".btn{color:red}\n" css_minified
+  Alcotest.(check string) "minified exact" ".btn{color:red}" css_minified
 
 (* Test important declarations *)
 let important_integration () =
@@ -112,7 +112,7 @@ let important_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "important exact" ".btn{color:red!important;padding:10px}\n" css
+    "important exact" ".btn{color:red!important;padding:10px}" css
 
 (* Test custom properties integration *)
 let custom_properties_integration () =
@@ -126,7 +126,7 @@ let custom_properties_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "custom properties exact" ".btn{--primary-color:blue;color:#00f}\n" css
+    "custom properties exact" ".btn{--primary-color:blue;color:#00f}" css
 
 (* Regression: a custom property name starting with a digit after the -- is a
    valid dashed-ident per CSS Syntax §4.3.11. Tailwind emits these for
@@ -137,7 +137,7 @@ let var_digit_after_dashes () =
   | Error err -> Alcotest.fail ("parse failed: " ^ Cascade.Error.to_string err)
   | Ok parsed ->
       let out = Css.to_string ~minify:true parsed.stylesheet in
-      Alcotest.(check string) "var(--1A202C) roundtrip" (css ^ "\n") out
+      Alcotest.(check string) "var(--1A202C) roundtrip" css out
 
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let roundtrip () =
@@ -290,8 +290,7 @@ let test_map () =
   in
 
   let css = Css.to_string ~minify:true (v mapped) in
-  Alcotest.(check string)
-    "map changes all rules" ".foo{color:#00f}.bar{color:#00f}\n" css
+  Alcotest.(check string) "map changes all rules" ".foo,.bar{color:#00f}" css
 
 (* Test Css.map with nested media queries *)
 let test_map_nested () =
@@ -591,10 +590,10 @@ let public_theme_edges () =
   let empty_theme = Css.Pp.String_set.empty in
   let brand_theme = Css.Pp.String_set.add "brand" empty_theme in
   Alcotest.(check string)
-    "guarded declaration hidden" ".card{background-color:#fff}\n"
+    "guarded declaration hidden" ".card{background-color:#fff}"
     (to_string ~minify:true ~theme:empty_theme sheet);
   Alcotest.(check string)
-    "guarded declaration shown" ".card{color:red;background-color:#fff}\n"
+    "guarded declaration shown" ".card{color:red;background-color:#fff}"
     (to_string ~minify:true ~theme:brand_theme sheet)
 
 let public_value_combinator_edges () =
@@ -614,7 +613,7 @@ let public_value_combinator_edges () =
   in
   Alcotest.(check string)
     "padding calc(var()) preserves runtime boundary"
-    ".p-1{padding:calc(var(--spacing))}\n"
+    ".p-1{padding:calc(var(--spacing))}"
     (to_string ~minify:true calc_var_sheet);
   let calc_lifted_var_x1_sheet =
     v
@@ -628,40 +627,40 @@ let public_value_combinator_edges () =
   in
   Alcotest.(check string)
     "padding calc lifted var times one keeps var arithmetic"
-    ".p-1{padding:calc(var(--spacing)*1)}\n"
+    ".p-1{padding:calc(var(--spacing)*1)}"
     (to_string ~minify:true calc_lifted_var_x1_sheet);
   check_padding_calc "padding one times lifted var keeps var arithmetic"
-    ".p-1{padding:calc(1*var(--spacing))}\n"
+    ".p-1{padding:calc(1*var(--spacing))}"
     (Calc.mul (Calc.float 1.0) (Calc.length (Var spacing)));
   check_padding_calc "padding lifted var divided by one keeps var arithmetic"
-    ".p-1{padding:calc(var(--spacing)/1)}\n"
+    ".p-1{padding:calc(var(--spacing)/1)}"
     (Calc.div (Calc.length (Var spacing)) (Calc.float 1.0));
   check_padding_calc "padding lifted var plus zero keeps var arithmetic"
-    ".p-1{padding:calc(var(--spacing) + 0px)}\n"
+    ".p-1{padding:calc(var(--spacing) + 0px)}"
     (Calc.add (Calc.length (Var spacing)) (Calc.length (Px 0.)));
   check_padding_calc "padding zero plus lifted var keeps var arithmetic"
-    ".p-1{padding:calc(0px + var(--spacing))}\n"
+    ".p-1{padding:calc(0px + var(--spacing))}"
     (Calc.add (Calc.length (Px 0.)) (Calc.length (Var spacing)));
   check_padding_calc "padding lifted var minus zero keeps var arithmetic"
-    ".p-1{padding:calc(var(--spacing) - 0px)}\n"
+    ".p-1{padding:calc(var(--spacing) - 0px)}"
     (Calc.sub (Calc.length (Var spacing)) (Calc.length (Px 0.)));
   check_padding_calc "padding nested lifted var identities keep var arithmetic"
-    ".p-1{padding:calc(var(--spacing)*1 + 0px)}\n"
+    ".p-1{padding:calc(var(--spacing)*1 + 0px)}"
     (Calc.add
        (Calc.mul (Calc.length (Var spacing)) (Calc.float 1.0))
        (Calc.length (Px 0.)));
   check_padding_calc "padding var-free left subtree may fold before var"
-    ".p-1{padding:calc(3px + var(--spacing))}\n"
+    ".p-1{padding:calc(3px + var(--spacing))}"
     (Calc.add
        (Calc.add (Calc.length (Px 1.)) (Calc.length (Px 2.)))
        (Calc.length (Var spacing)));
   check_padding_calc "padding var-free right subtree may fold after var"
-    ".p-1{padding:calc(var(--spacing)*6)}\n"
+    ".p-1{padding:calc(var(--spacing)*6)}"
     (Calc.mul
        (Calc.length (Var spacing))
        (Calc.mul (Calc.float 2.0) (Calc.float 3.0)));
   check_padding_calc "padding var-free percentage subtree may fold before var"
-    ".p-1{padding:calc(50% - var(--spacing))}\n"
+    ".p-1{padding:calc(50% - var(--spacing))}"
     (Calc.sub
        (Calc.div (Calc.length (Pct 100.)) (Calc.float 2.0))
        (Calc.length (Var spacing)));
@@ -669,7 +668,7 @@ let public_value_combinator_edges () =
     v [ rule ~selector:(Selector.class_ "p-1") [ padding [ Var spacing ] ] ]
   in
   Alcotest.(check string)
-    "padding bare var stays bare" ".p-1{padding:var(--spacing)}\n"
+    "padding bare var stays bare" ".p-1{padding:var(--spacing)}"
     (to_string ~minify:true bare_var_sheet);
 
   let sheet =
@@ -747,7 +746,7 @@ let public_value_combinator_edges () =
      2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
      1 2,pointer;contain:layout paint;border-spacing:1px \
      2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \
-     url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)red}\n"
+     url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)red}"
     (to_string ~minify:true sheet)
 
 let public_theme_var_rendering_edges () =
@@ -773,17 +772,17 @@ let public_theme_var_rendering_edges () =
   in
   Alcotest.(check string)
     "normal stylesheet keeps theme var reference"
-    ".font-sans{font-family:var(--font-sans)}\n"
+    ".font-sans{font-family:var(--font-sans)}"
     (to_string ~minify:true ~theme:font_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "normal stylesheet keeps theme var fallback reference"
-    ".font-sans{font-family:var(--font-fallback,Arial,sans-serif)}\n"
+    ".font-sans{font-family:var(--font-fallback,Arial,sans-serif)}"
     (to_string ~minify:true ~theme:fallback_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_fallback)));
   Alcotest.(check string)
     "normal stylesheet without explicit theme keeps var reference"
-    ".font-sans{font-family:var(--font-sans)}\n"
+    ".font-sans{font-family:var(--font-sans)}"
     (to_string ~minify:true ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
@@ -798,12 +797,12 @@ let public_theme_var_rendering_edges () =
        (sheet_for (Var font_fallback)));
   Alcotest.(check string)
     "theme_defaults still resolves non-theme vars"
-    ".font-sans{font-family:Arial,sans-serif}\n"
+    ".font-sans{font-family:Arial,sans-serif}"
     (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "theme_defaults still resolves non-theme vars with fallback"
-    ".font-sans{font-family:Arial,sans-serif}\n"
+    ".font-sans{font-family:Arial,sans-serif}"
     (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_fallback)))
 

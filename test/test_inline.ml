@@ -1,7 +1,7 @@
 open Cascade
 
 let parse s = Css.of_string_exn ~strict:false s
-let minified css = Css.to_string ~minify:true ~newline:false css
+let minified css = Css.to_string ~minify:true css
 
 let check_inline input expected =
   let actual = input |> parse |> Css.inline_vars |> minified in

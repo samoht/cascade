@@ -13,7 +13,7 @@ open Css
 let roundtrip css expected =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:true ~newline:false parsed.stylesheet in
+      let output = to_string ~minify:true parsed.stylesheet in
       Alcotest.(check string) css expected output
   | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
@@ -40,7 +40,7 @@ let contains_substring ~needle haystack =
 let preserves_non_minified css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
+      let output = to_string ~minify:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -56,7 +56,7 @@ let preserves_non_minified css fragments =
 let preserves_non_minified_exact css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
+      let output = to_string ~minify:false parsed.stylesheet in
       List.iter
         (fun fragment ->
           if not (contains_substring ~needle:fragment output) then
@@ -70,7 +70,7 @@ let preserves_non_minified_exact css fragments =
 let rejects_non_minified_fragments css fragments =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
+      let output = to_string ~minify:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun fragment ->
@@ -86,7 +86,7 @@ let rejects_non_minified_fragments css fragments =
 let rejects_non_minified_prefixes css prefixes =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:false ~newline:false parsed.stylesheet in
+      let output = to_string ~minify:false parsed.stylesheet in
       let compact_output = strip_ascii_ws output in
       List.iter
         (fun prefix ->
@@ -113,7 +113,7 @@ let rejects_invalid css =
   | Error _ -> ()
   | Ok parsed ->
       Alcotest.failf "invalid CSS vector parsed: %s -> %s" css
-        (to_string ~minify:true ~newline:false parsed.stylesheet)
+        (to_string ~minify:true parsed.stylesheet)
 
 let recover css expected min_warnings =
   let { stylesheet; warnings } =
@@ -121,7 +121,7 @@ let recover css expected min_warnings =
     | Ok parsed -> parsed
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
-  let output = to_string ~minify:true ~newline:false stylesheet in
+  let output = to_string ~minify:true stylesheet in
   Alcotest.(check string) css expected output;
   Alcotest.(check bool)
     (css ^ " warnings") true
@@ -134,7 +134,7 @@ let recover_non_minified css ~preserves ~drops min_warnings =
     | Ok parsed -> parsed
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
-  let output = to_string ~minify:false ~newline:false stylesheet in
+  let output = to_string ~minify:false stylesheet in
   let compact_output = strip_ascii_ws output in
   List.iter
     (fun fragment ->
@@ -888,7 +888,7 @@ let cross_mode_pinning () =
              tests through [of_string ~strict:false] + [recover] instead of \
              relaxing strict."
             css
-            (to_string ~minify:true ~newline:false parsed.stylesheet));
+            (to_string ~minify:true parsed.stylesheet));
       match lenient with
       | Error e ->
           Alcotest.failf "lenient mode failed to recover %S: %s" css
@@ -1017,15 +1017,13 @@ let serialization_idempotent ~minify css =
   match of_string ~strict:true css with
   | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   | Ok parsed -> (
-      let once = to_string ~minify ~newline:false parsed.stylesheet in
+      let once = to_string ~minify parsed.stylesheet in
       match of_string ~strict:true once with
       | Error e ->
           Alcotest.failf "serialized CSS did not reparse: %S\n%s" once
             (Cascade.Error.to_string e)
       | Ok reparsed ->
-          let twice =
-            to_string ~minify ~newline:false reparsed.Css.stylesheet
-          in
+          let twice = to_string ~minify reparsed.Css.stylesheet in
           Alcotest.(check string)
             (Fmt.str "idempotent minify=%b %s" minify css)
             once twice)

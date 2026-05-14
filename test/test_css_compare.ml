@@ -175,6 +175,26 @@ let semantic_before_content_redundant_seed () =
     true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let canonical_minified css =
+  match Css.of_string ~strict:true css with
+  | Ok { Css.stylesheet; _ } -> Css.to_string ~minify:true stylesheet
+  | Error error -> Alcotest.fail (Error.to_string error)
+
+let canonical_overflow_trailing_ws () =
+  let expected = ".sr-only { overflow: hidden; }" in
+  let actual = ".sr-only{overflow:hidden}" in
+  Alcotest.(check string)
+    "pretty overflow declaration survives canonicalization"
+    ".sr-only{overflow:hidden}"
+    (canonical_minified expected);
+  Alcotest.(check string)
+    "minified overflow declaration survives canonicalization"
+    ".sr-only{overflow:hidden}"
+    (canonical_minified actual);
+  Alcotest.(check bool)
+    "pretty and minified overflow compare canonically equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
     "@layer utilities{.prose :where(blockquote \
@@ -487,6 +507,8 @@ let suite =
         semantic_prose_shadow_unknown_var;
       Alcotest.test_case "semantic before content redundant seed" `Quick
         semantic_before_content_redundant_seed;
+      Alcotest.test_case "canonical overflow before semicolon" `Quick
+        canonical_overflow_trailing_ws;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick

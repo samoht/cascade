@@ -19,7 +19,10 @@ module String_set : Set.S with type elt = string
 
 type ctx = {
   minify : bool;  (** Whether to produce minified output *)
-  indent : int;  (** Current indentation level *)
+  level : int;  (** Current nesting depth *)
+  indent : int option;
+      (** Indent width per nesting level. [None] disables per-level indentation
+          even when not minifying. *)
   buf : Buffer.t;  (** Output buffer *)
   inline : bool;  (** Whether to inline variables or not *)
   in_function : bool;
@@ -57,6 +60,7 @@ val in_theme : ctx -> string -> bool
 
 val to_buffer :
   ?minify:bool ->
+  ?indent:int ->
   ?inline:bool ->
   ?theme:String_set.t ->
   ?theme_defaults:(string -> string option) ->
@@ -64,19 +68,22 @@ val to_buffer :
   'a t ->
   'a ->
   unit
-(** [to_buffer buf formatter value] runs the formatter writing into [buf].
-    Avoids allocating a fresh buffer. *)
+(** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
+    optional [indent] sets the per-level indent width (default: [None] under
+    [minify], [Some 2] otherwise). *)
 
 val to_string :
   ?minify:bool ->
+  ?indent:int ->
   ?inline:bool ->
   ?theme:String_set.t ->
   ?theme_defaults:(string -> string option) ->
   'a t ->
   'a ->
   string
-(** [to_string formatter value] runs the formatter and returns a string. Creates
-    a fresh buffer internally. *)
+(** [to_string formatter value] runs the formatter and returns a string. The
+    optional [indent] sets the per-level indent width (default: [None] under
+    [minify], [Some 2] otherwise). *)
 
 (** {2 Primitive Formatters} *)
 

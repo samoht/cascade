@@ -24,8 +24,6 @@ let check_declaration =
   check_value_cursor "declaration" Css.Declaration.read_declaration
     (Css.Pp.option Css.Declaration.pp_declaration)
 
-let check_config = check_value_cursor "config" read_config pp_config
-
 let check_stylesheet =
   check_value_cursor "stylesheet" read_stylesheet pp_stylesheet
 
@@ -110,7 +108,7 @@ let test_stylesheet () =
   check_stylesheet ~expected:"@media{}" "@media { }";
   neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
 
-let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
+let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true s
 
 (* Helper for testing rule construction *)
 let check_construct_rule name expected rule =
@@ -149,7 +147,7 @@ let test_media_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -165,7 +163,7 @@ let test_container_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -178,7 +176,7 @@ let test_supports_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -196,7 +194,7 @@ let test_supports_nested_creation () =
       [ statement_of_rule r; nested_supports ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -222,7 +220,7 @@ let test_layer_rule_creation () =
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check string)
     "layer rule creation" "@layer utilities{.red{background-color:red}}" output
 
@@ -354,7 +352,7 @@ let test_default_property_rule () =
 
   (* Test these generate valid statements *)
   let sheet = Css.Stylesheet.v [ prop_with_initial; prop_no_initial ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
 
   check_stylesheet output
 
@@ -367,7 +365,7 @@ let test_property_composite_syntax () =
       "--size"
   in
   let sheet = Css.Stylesheet.v [ prop ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
 (** Test [@property] descriptor permutations and minified canonical order *)
@@ -510,7 +508,7 @@ let test_layer_pp () =
   let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check string)
     "layer pp" "@layer utilities{.blue{color:#00f}}" output;
 
@@ -518,9 +516,7 @@ let test_layer_pp () =
      semicolon *)
   let empty_layer = layer ~name:"base" [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
-  let empty_output =
-    Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
-  in
+  let empty_output = Css.Stylesheet.pp ~minify:true empty_sheet in
   Alcotest.(check string) "empty layer" "@layer base;" empty_output
 
 (** Test complete stylesheet pp *)
@@ -540,7 +536,7 @@ let pp_case () =
 
   let sheet = Css.Stylesheet.v [ statement_of_rule r; media_stmt; prop ] in
 
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check string)
     "stylesheet pp"
     ".red{background-color:red}@media \
@@ -1318,20 +1314,6 @@ let test_import_rule () =
      token-level failure), so [\@import 'test.css] parses as a valid import. *)
   check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css"
 
-let test_config () =
-  (* Test config parsing - configs are rendering configuration objects, not CSS
-     at-rules *)
-  check_config
-    ~expected:
-      "{ minify = true; mode = Variables; optimize = false; newline = true }"
-    "{ minify = true; mode = Variables; optimize = false; newline = true }";
-  check_config
-    ~expected:
-      "{ minify = false; mode = Variables; optimize = true; newline = false }"
-    "{ minify = false; mode = Variables; optimize = true; newline = false }";
-  neg_cursor read_config "@import"
-(* Incomplete import *)
-
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
   check_stylesheet ~expected:".btn:hover{color:#00f}"
@@ -1360,7 +1342,7 @@ let test_advanced_properties () =
   check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px #0003}"
     ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
   check_stylesheet
-    ~expected:".gradient{background:linear-gradient(to right,red,#00f)}"
+    ~expected:".gradient{background:linear-gradient(90deg,red,#00f)}"
     ".gradient { background: linear-gradient(to right, red, blue); }"
 
 (* Not a roundtrip test *)
@@ -2912,9 +2894,7 @@ let s3432_no_sourcemap_print () =
 let v461_zero_length_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let zero_unitless = normalize ".a { margin: 0 }" in
@@ -2936,9 +2916,7 @@ let v461_zero_length_equiv () =
 let color4121_hex_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let pairs =
@@ -2984,8 +2962,7 @@ let c61_keeps_winner () =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
         let printed =
-          Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-          |> String.trim
+          Css.to_string ~minify:true parsed.stylesheet |> String.trim
         in
         (* Last occurrence of "color:" in the optimized output is the cascaded
            winner under section 6.1's "later wins" rule for tied candidates. *)
@@ -3074,9 +3051,7 @@ let color4_hex_tie_policy () =
 let v465_zero_percentage_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let zero = normalize ".a { width: 0 }" in
@@ -3171,9 +3146,7 @@ let color461_named_case () =
 let v481_number_format () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let pairs =
@@ -3716,9 +3689,7 @@ let v410_calc_nested_constant () =
 let c61_same_condition_merge () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3741,9 +3712,7 @@ let c61_same_condition_merge () =
 let c61_no_intervening_merge () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let output =
@@ -3799,9 +3768,7 @@ let fidelity_calc_form_preserved () =
 let c6_1_dead_shorthand_removed () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3817,9 +3784,7 @@ let c6_1_dead_shorthand_removed () =
 let c6_1_empty_rule_removed () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -3860,7 +3825,7 @@ let c67_bad_css_wide_list () =
     | Ok parsed ->
         parsed.stylesheet
         |> Css.optimize ~flatten_nesting:true
-        |> Css.to_string ~minify:true ~newline:false
+        |> Css.to_string ~minify:true
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
   Alcotest.(check string)
@@ -3894,9 +3859,7 @@ let c632_all_shorthand_kept () =
 let c64_named_layers_order () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let output =
@@ -3945,9 +3908,7 @@ let css_var_fallback_preserved () =
 let c644_anonymous_layers_distinct () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let output =
@@ -4021,9 +3982,7 @@ let bg336_position_keyword () =
 let c6_1_selector_grouping () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let grouped =
@@ -4067,9 +4026,7 @@ let vendor_prefix_preservation () =
 let webkit_decoration_color_compat () =
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed ->
-        Css.to_string ~minify:true ~optimize:true parsed.stylesheet
-        |> String.trim
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
@@ -4089,7 +4046,12 @@ let webkit_decoration_color_compat () =
     "standard and webkit pair remains in source order"
     ".x{text-decoration-color:#00f;-webkit-text-decoration-color:red}"
     (normalize
-       ".x { text-decoration-color: blue; -webkit-text-decoration-color: red }")
+       ".x { text-decoration-color: blue; -webkit-text-decoration-color: red }");
+  Alcotest.(check string)
+    "webkit text-decoration inherit triplication survives stylesheet optimize"
+    ".x{-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}"
+    (normalize
+       ".x { -webkit-text-decoration: inherit; text-decoration: inherit }")
 
 (* CSS Selectors Level 4, section 4.3 (Negation Pseudo-class): the two forms
    [:not(A, B)] and [:not(A):not(B)] are spec-distinct - the first is a single
@@ -5706,11 +5668,11 @@ let custom_props1_theme_inlining () =
   let resolve_brand = function "brand" -> Some "red" | _ -> None in
   let resolve_gap = function "gap" -> Some "16px" | _ -> None in
   Alcotest.(check string)
-    "var(--brand) inlines to red when not in theme" ".x{color:red}\n"
+    "var(--brand) inlines to red when not in theme" ".x{color:red}"
     (Css.to_string ~minify:true ~theme:no_theme ~theme_defaults:resolve_brand
        (parse ".x { color: var(--brand) }"));
   Alcotest.(check string)
-    "var(--gap) inlines to 16px when not in theme" ".x{margin:16px}\n"
+    "var(--gap) inlines to 16px when not in theme" ".x{margin:16px}"
     (Css.to_string ~minify:true ~theme:no_theme ~theme_defaults:resolve_gap
        (parse ".x { margin: var(--gap) }"));
   Alcotest.(check bool)
@@ -5734,12 +5696,12 @@ let customprops1_unresolved_fallback () =
   let no_resolve _ = None in
   Alcotest.(check string)
     "var(--undef, red) inlines to red when --undef has no default"
-    ".x{color:red}\n"
+    ".x{color:red}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:no_resolve
        (parse ".x { color: var(--undef, red) }"));
   Alcotest.(check string)
-    "nested var() chain falls through to deepest fallback" ".x{color:#00f}\n"
+    "nested var() chain falls through to deepest fallback" ".x{color:#00f}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:no_resolve
        (parse ".x { color: var(--a, var(--b, blue)) }"))
@@ -5755,7 +5717,7 @@ let customprops1_calc_inline () =
   in
   let resolve = function "gap" -> Some "5px" | _ -> None in
   Alcotest.(check string)
-    "calc(var(--gap) + 10px) inlines and reduces to 15px" ".x{width:15px}\n"
+    "calc(var(--gap) + 10px) inlines and reduces to 15px" ".x{width:15px}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:resolve
        (parse ".x { width: calc(var(--gap) + 10px) }"))
@@ -5773,7 +5735,7 @@ let customprops1_fallback_list () =
   let no_resolve _ = None in
   Alcotest.(check string)
     "var(--font, fallback) inlines to Arial when resolved"
-    ".x{font-family:Arial}\n"
+    ".x{font-family:Arial}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:resolve_font
        (parse ".x { font-family: var(--font, sans-serif) }"));
@@ -5827,13 +5789,13 @@ let custom_props1_inlined_color_canonicalizes () =
     | _ -> None
   in
   Alcotest.(check string)
-    "var(--brand)=#ff0000 canonicalizes to red after inlining" ".x{color:red}\n"
+    "var(--brand)=#ff0000 canonicalizes to red after inlining" ".x{color:red}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:resolve
        (parse ".x { color: var(--brand) }"));
   Alcotest.(check string)
     "var(--bg)=rgb(0,0,0) canonicalizes to #000 after inlining"
-    ".x{background-color:#000}\n"
+    ".x{background-color:#000}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:resolve
        (parse ".x { background-color: var(--bg) }"))
@@ -5850,7 +5812,7 @@ let fidelity_no_inlining_without_context () =
   in
   Alcotest.(check string)
     "var() without theme keeps the reference under non-minified"
-    "\n.x {\n  color: var(--brand);\n}\n"
+    ".x {\n  color: var(--brand);\n}"
     (Css.to_string (parse ".x { color: var(--brand) }"));
   Alcotest.(check bool)
     "var() with fallback under non-minified preserves both" true
@@ -5934,7 +5896,6 @@ let additional_tests =
   [
     ("check function", `Quick, test_check);
     ("import_rule", `Quick, test_import_rule);
-    ("config", `Quick, test_config);
     (* Positive tests *)
     ("advanced selectors", `Quick, test_advanced_selectors);
     ("advanced properties", `Quick, test_advanced_properties);
@@ -6538,9 +6499,7 @@ let additional_tests =
           Css.of_string ~strict:true ".a { color: red } .b { color: blue }"
         with
         | Ok parsed ->
-            let css =
-              Css.to_string ~minify:true ~newline:false parsed.stylesheet
-            in
+            let css = Css.to_string ~minify:true parsed.stylesheet in
             Alcotest.(check string)
               "strict output" ".a{color:red}.b{color:#00f}" css
         | Error e ->
@@ -6559,7 +6518,7 @@ let additional_tests =
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
               "recovered output" ".a{color:#00f}"
-              (Css.to_string ~minify:true ~newline:false parsed.stylesheet)
+              (Css.to_string ~minify:true parsed.stylesheet)
         | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"
               (Error.to_string e) );

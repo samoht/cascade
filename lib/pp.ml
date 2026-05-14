@@ -2,7 +2,10 @@ module String_set = Set.Make (String)
 
 type ctx = {
   minify : bool;
-  indent : int;
+  level : int;  (** current nesting depth *)
+  indent : int option;
+      (** indent width per nesting level. [None] disables per-level indentation
+          even when not minifying. *)
   buf : Buffer.t;
   inline : bool;
   in_function : bool;
@@ -17,11 +20,18 @@ let no_theme_defaults _ = None
 let in_theme ctx name =
   match ctx.theme with None -> true | Some set -> String_set.mem name set
 
-let ctx ?(minify = false) ?(inline = false) ?theme
+(* [resolve_indent ~minify indent]: under [minify] there is no indentation;
+   otherwise pick the explicit value or the default 2-space indent. *)
+let resolve_indent ~minify = function
+  | Some _ as i -> i
+  | None -> if minify then None else Some 2
+
+let ctx ?(minify = false) ?indent ?(inline = false) ?theme
     ?(theme_defaults = no_theme_defaults) buf =
   {
     minify;
-    indent = 0;
+    level = 0;
+    indent = resolve_indent ~minify indent;
     buf;
     inline;
     in_function = false;
@@ -29,13 +39,13 @@ let ctx ?(minify = false) ?(inline = false) ?theme
     theme_defaults;
   }
 
-let to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a =
-  let ctx = ctx ?minify ?inline ?theme ?theme_defaults buf in
+let to_buffer ?minify ?indent ?inline ?theme ?theme_defaults buf pp a =
+  let ctx = ctx ?minify ?indent ?inline ?theme ?theme_defaults buf in
   pp ctx a
 
-let to_string ?minify ?inline ?theme ?theme_defaults pp a =
+let to_string ?minify ?indent ?inline ?theme ?theme_defaults pp a =
   let buf = Buffer.create 1024 in
-  to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a;
+  to_buffer ?minify ?indent ?inline ?theme ?theme_defaults buf pp a;
   Buffer.contents buf
 
 let nop _ _ = ()
@@ -76,13 +86,15 @@ let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
 let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
 
 let nest n pp ctx a =
-  let new_ctx = { ctx with indent = ctx.indent + n } in
+  let new_ctx = { ctx with level = ctx.level + n } in
   pp new_ctx a
 
 let indent pp ctx a =
-  (* Output indentation spaces when not minifying *)
-  if not ctx.minify then
-    Buffer.add_string ctx.buf (String.make (2 * ctx.indent) ' ');
+  (* Output [level * indent] spaces when an indent width is set. *)
+  (match ctx.indent with
+  | Some w when w > 0 ->
+      Buffer.add_string ctx.buf (String.make (w * ctx.level) ' ')
+  | _ -> ());
   pp ctx a
 
 let ( ++ ) pp1 pp2 ctx a =

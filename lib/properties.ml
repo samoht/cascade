@@ -3407,8 +3407,10 @@ let rec pp_font_family : font_family Pp.t =
       else Pp.string ctx s
   | Var v -> pp_var pp_font_family ctx v
   | List fonts ->
-      Pp.list_wrap ~threshold:90 ~sep:Pp.comma
-        ~wrap_indent:((2 * ctx.Pp.indent) + 2)
+      let level_chars =
+        match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
+      in
+      Pp.list_wrap ~threshold:90 ~sep:Pp.comma ~wrap_indent:(level_chars + 2)
         pp_font_family ctx fonts
   | Invalid tokens ->
       let rendered =
@@ -15970,7 +15972,8 @@ let read_image_set_option t : image_set_option =
         let pp_ctx =
           {
             Pp.minify = true;
-            indent = 0;
+            level = 0;
+            indent = None;
             buf;
             inline = false;
             in_function = false;

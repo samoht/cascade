@@ -554,11 +554,6 @@ let test_read_import_rule buf =
   try ignore (Css.Stylesheet.read_import_rule r)
   with Cursor.Parse_error _ -> ()
 
-(** read_config — must not crash. *)
-let test_read_config buf =
-  let r = Cursor.of_string buf in
-  try ignore (Css.Stylesheet.read_config r) with Cursor.Parse_error _ -> ()
-
 (** read_declaration — must not crash. *)
 let test_read_declaration buf =
   let r = Cursor.of_string buf in
@@ -1658,7 +1653,6 @@ let parser_cases =
     test_case "read_block crash safety" [ bytes ] test_read_block;
     test_case "read crash safety" [ bytes ] test_read;
     test_case "read_import_rule crash safety" [ bytes ] test_read_import_rule;
-    test_case "read_config crash safety" [ bytes ] test_read_config;
     test_case "read_declaration crash safety" [ bytes ] test_read_declaration;
     test_case "read_declarations crash safety" [ bytes ] test_read_declarations;
     test_case "read_property_name crash safety" [ bytes ]

@@ -19,9 +19,7 @@ let contains_literal haystack needle =
   Re.execp re haystack
 
 let pp_decl decl = Css.Declaration.string_of_declaration ~minify:true decl
-
-let pp_stylesheet sheet =
-  Css.Stylesheet.to_string ~minify:true ~newline:false sheet
+let pp_stylesheet sheet = Css.Stylesheet.to_string ~minify:true sheet
 
 let normalize_decl decl =
   Css.Declaration.of_string

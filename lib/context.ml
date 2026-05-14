@@ -2708,7 +2708,8 @@ let property_name (type a) (property : a Properties.property) =
   let ctx =
     {
       Pp.minify = true;
-      indent = 0;
+      level = 0;
+      indent = None;
       buf = Buffer.create 16;
       inline = false;
       in_function = false;
