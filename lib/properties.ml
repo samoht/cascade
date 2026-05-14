@@ -3827,6 +3827,15 @@ let pp_border_shorthand : border_shorthand Pp.t =
         (None : border_style option)
     | style, _, _ -> style
   in
+  (* CSS Backgrounds 3 §4.4: [<border-width>] defaults to [medium]. When the
+     user spelled it explicitly and another slot is non-default, the keyword is
+     redundant - drop it. *)
+  let width : border_width option =
+    match (width, style, color) with
+    | (Some Medium, Some _, _ | Some Medium, _, Some _) when Pp.minified ctx ->
+        None
+    | width, _, _ -> width
+  in
   Option.iter
     (fun w ->
       add_space ();
