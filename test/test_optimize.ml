@@ -1998,7 +1998,7 @@ let c62_origin_wrapper_api () =
       | _ -> Alcotest.fail "origin child should be a rule")
   | _ -> Alcotest.fail "Css.with_origin should be visible through Css.as_origin");
   Alcotest.(check string)
-    "origin annotation has no stylesheet syntax" ".reader{color:#0f0}\n"
+    "origin annotation has no stylesheet syntax" ".reader{color:#0f0}"
     (Css.to_string ~minify:true (Css.v [ stmt ]))
 
 let c63_important_beats_normal () =
