@@ -69,6 +69,7 @@
     page instead of duplicating each full signature here. *)
 
 module Selector = Selector
+module Selector_summary = Selector_summary
 module Context = Context
 module Pp = Pp
 module Values = Values
