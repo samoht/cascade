@@ -298,8 +298,8 @@ let outline_uses_color_4 : Properties.outline -> bool = function
   | Shorthand { color; _ } -> color_opt_is_color_4 color
   | _ -> false
 
-let logical_border_color_uses_color_4 : Properties.logical_border_color -> bool
-    = function
+let logical_color_uses_color_4 : Properties.logical_border_color -> bool =
+  function
   | Single c -> Values.color_is_color_4 c
   | Pair (a, b) -> Values.color_is_color_4 a || Values.color_is_color_4 b
   | _ -> false
@@ -358,7 +358,7 @@ let property_value_uses_color_4 (type a) (property : a Properties.property)
   | Caret_color -> Values.color_is_color_4 value
   | Webkit_tap_highlight_color -> Values.color_is_color_4 value
   | Webkit_text_decoration_color -> Values.color_is_color_4 value
-  | Border_inline_color -> logical_border_color_uses_color_4 value
+  | Border_inline_color -> logical_color_uses_color_4 value
   | Box_shadow -> shadow_uses_color_4 value
   | Text_shadow -> List.exists text_shadow_uses_color_4 value
   | Border -> border_uses_color_4 value
