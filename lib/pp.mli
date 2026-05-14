@@ -187,10 +187,11 @@ val unit : ctx -> float -> string -> unit
 (** [unit ctx f suffix] formats a number with a unit suffix, e.g. "3.5px" or "0"
     for zero. *)
 
-val pct : ?always:bool -> ctx -> float -> unit
-(** [pct ?always ctx f] formats a percentage value with the % suffix. The value
-    is expected to be in the range 0-100. When [always] is true, always includes
-    the unit even for zero values (required for CSS property initial-value). *)
+val pct : ctx -> float -> unit
+(** [pct ctx f] formats a percentage value with the [%] suffix. The value is
+    expected to be in the range 0-100. The unit is always emitted: CSS Values 4
+    §6.5 only allows the unit to drop on a zero [<length>], not a zero
+    [<percentage>]. *)
 
 val comma : unit t
 (** [comma] outputs "," when minifying, ", " when formatting. *)

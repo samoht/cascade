@@ -1682,7 +1682,8 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ic f -> pp_unit_fn f "ic"
   | Ric f -> pp_unit_fn f "ric"
   | Rlh f -> pp_unit_fn f "rlh"
-  | Pct f -> pp_unit_fn f "%"
+  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
+  | Pct f -> Pp.pct ctx f
   | Vw f -> pp_unit_fn f "vw"
   | Vh f -> pp_unit_fn f "vh"
   | Vmin f -> pp_unit_fn f "vmin"
@@ -2928,7 +2929,7 @@ let pp_opt_alpha ctx = function
 (** Pretty printer for percentage types *)
 let rec pp_percentage ?(always = false) : percentage Pp.t =
  fun ctx -> function
-  | Pct f -> Pp.pct ~always ctx f
+  | Pct f -> Pp.pct ctx f
   | Num f -> Pp.float ctx f
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
@@ -2941,7 +2942,8 @@ let minified_length_percentage_calc ctx c =
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
-  | Pct f -> Pp.pct ~always ctx f
+  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
+  | Pct f -> Pp.pct ctx f
   | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
@@ -2958,7 +2960,8 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
 let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
-  | Pct f -> Pp.pct ~always ctx f
+  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
+  | Pct f -> Pp.pct ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
