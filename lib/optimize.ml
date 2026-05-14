@@ -949,6 +949,78 @@ let compose_flex_shorthand decls =
   in
   go [] decls
 
+(* CSS Text Decoration 4 sec. 2: [text-decoration] shorthand carries line list,
+   style, color, and optional thickness. The composition extracts the three
+   required typed longhands; the pretty-printer drops default-valued style and
+   color when emitting the shorthand. *)
+type td_kind = Line | Style | Color
+
+let td_kind_of : declaration -> td_kind option = function
+  | Declaration { property = Text_decoration_line; _ } -> Some Line
+  | Declaration { property = Text_decoration_style; _ } -> Some Style
+  | Declaration { property = Text_decoration_color; _ } -> Some Color
+  | _ -> None
+
+let td_line_of : declaration -> Properties.text_decoration_line list option =
+  function
+  | Declaration { property = Text_decoration_line; value; _ } -> Some value
+  | _ -> None
+
+let td_style_of : declaration -> Properties.text_decoration_style option =
+  function
+  | Declaration { property = Text_decoration_style; value; _ } -> Some value
+  | _ -> None
+
+let td_color_of : declaration -> Values.color option = function
+  | Declaration { property = Text_decoration_color; value; _ } -> Some value
+  | _ -> None
+
+let try_compose_text_decoration = function
+  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
+      match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
+      | Some k1, Some k2, Some k3
+        when is_important d1 = is_important d2
+             && is_important d2 = is_important d3
+             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+          let triple = [ d1; d2; d3 ] in
+          let lines = List.find_map td_line_of triple in
+          let style = List.find_map td_style_of triple in
+          let color = List.find_map td_color_of triple in
+          match (lines, style, color) with
+          | Some lines, Some _, Some _ ->
+              let style_norm = match style with Some Solid -> None | s -> s in
+              let color_norm =
+                match color with Some Current -> None | c -> c
+              in
+              let merged =
+                Declaration
+                  {
+                    property = Text_decoration;
+                    value =
+                      Shorthand
+                        {
+                          lines;
+                          style = style_norm;
+                          color = color_norm;
+                          thickness = None;
+                        };
+                    important = is_important d1;
+                  }
+              in
+              Some ((idx, merged), rest)
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
+
+let compose_text_decoration_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_text_decoration decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -1063,6 +1135,9 @@ let deduplicate_declarations_with ?(merge_box = true) props =
     let kept = if merge_box then compose_font_shorthand kept else kept in
     let kept = if merge_box then compose_list_style_shorthand kept else kept in
     let kept = if merge_box then compose_flex_shorthand kept else kept in
+    let kept =
+      if merge_box then compose_text_decoration_shorthand kept else kept
+    in
     let kept =
       if merge_box then merge_box_shorthand_longhands props kept else kept
     in
