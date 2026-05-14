@@ -81,6 +81,13 @@ let complex_values () =
   check_declaration ~expected:"width:calc(calc(var(--x)*2)*calc(var(--y) + 1))"
     "width: calc(calc(var(--x) * 2) * calc(var(--y) + 1));";
 
+  (* Runtime substitutions are not known at parse time, so identity-looking
+     calc() operators around env()/attr() are preserved. *)
+  check_declaration ~expected:"width:calc(env(safe-area-inset-left)*1)"
+    "width: calc(env(safe-area-inset-left) * 1);";
+  check_declaration ~expected:"width:calc(attr(data-w px)*1)"
+    "width: calc(attr(data-w px) * 1);";
+
   (* Constant calc on left, mixed on right: the constant part reduces. *)
   check_declaration ~expected:"height:calc(60px - 100%)"
     "height: calc(calc(50px + 10px) - 100%);";

@@ -743,6 +743,11 @@ let optimize_tests =
 
 (** {1 Selector merging tests (cascade semantics)} *)
 
+let optimized_string css =
+  css |> Cursor.of_string |> Css.Stylesheet.read |> Css.Optimize.stylesheet
+  |> Css.Stylesheet.to_string ~minify:true
+  |> String.trim
+
 let test_merge_consecutive_identical () =
   let input =
     [
@@ -1057,6 +1062,49 @@ let c61_no_group_nonadjacent () =
   Alcotest.(check string)
     "same declarations are not grouped across source-order competitor"
     ".a{color:red}.b{color:#00f}.c{color:red}" output
+
+let aba_intersection_dependency_edges () =
+  (* A?B?A / CSS-graph soundness: two equal A declarations cannot be grouped
+     across an intervening B declaration when B writes the same property and the
+     selector intersection is satisfiable. For an element matching all classes,
+     source order decides the winner. *)
+  Alcotest.(check string)
+    "compound selectors keep intervening same-property dependency"
+    ".a.x{color:red}.b.x{color:#00f}.c.x{color:red}"
+    (optimized_string ".a.x{color:red}.b.x{color:blue}.c.x{color:red}");
+  Alcotest.(check string)
+    "same selector keeps intervening same-property dependency"
+    ".a{color:red}.b{color:#00f}.a{color:#000}"
+    (optimized_string ".a{color:red}.b{color:blue}.a{color:black}")
+
+let aba_runtime_shorthand_boundaries () =
+  (* Shorthand reasoning is not a pure syntactic rewrite when the shorthand
+     value is provided by a runtime substitution. Keep the explicit longhand
+     next to var()/env()/attr() shorthands instead of contracting or deleting it
+     during optimization. *)
+  Alcotest.(check string)
+    "var shorthand keeps following longhand"
+    ".box{margin:var(--m);margin-left:1px}"
+    (optimized_string ".box{margin:var(--m);margin-left:1px}");
+  Alcotest.(check string)
+    "env shorthand keeps following longhand"
+    ".box{margin:env(safe-area-inset-left);margin-left:1px}"
+    (optimized_string ".box{margin:env(safe-area-inset-left);margin-left:1px}");
+  Alcotest.(check string)
+    "attr shorthand keeps following longhand"
+    ".box{margin:attr(data-m px);margin-left:1px}"
+    (optimized_string ".box{margin:attr(data-m px);margin-left:1px}")
+
+let aba_undoing_style_local_refactoring () =
+  (* Punt, Visscher, Zaytsev, "The A-B*-A Pattern: Undoing Style in CSS" (ICSME
+     2016), section IV defines undoing style as a declaration sequence that
+     assigns A, then one or more B values, then A again; section IX outlines the
+     semantics-preserving refactoring conditions. The first case below is the
+     trivial local refactoring: same selector, same property, all normal
+     importance, so the last A dominates. *)
+  Alcotest.(check string)
+    "same selector A-B-A collapses to final value" ".x{color:red}"
+    (optimized_string ".x{color:red}.x{color:blue}.x{color:red}")
 
 let c61_no_merge_atrule () =
   (* CSS Cascade section 6.1 defines style sheets and imported/nested sheets in
@@ -2843,6 +2891,15 @@ let selector_merging_tests =
     ( "spec cascade 6.1 no group non-adjacent equal declarations",
       `Quick,
       c61_no_group_nonadjacent );
+    ( "A?B?A selector-intersection dependencies block grouping",
+      `Quick,
+      aba_intersection_dependency_edges );
+    ( "A?B?A runtime shorthand boundaries block contraction",
+      `Quick,
+      aba_runtime_shorthand_boundaries );
+    ( "A?B?A undoing-style local refactoring",
+      `Quick,
+      aba_undoing_style_local_refactoring );
     ( "spec cascade 6.1 no merge across at-rule boundary",
       `Quick,
       c61_no_merge_atrule );
