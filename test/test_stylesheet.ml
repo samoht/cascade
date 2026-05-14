@@ -41,7 +41,7 @@ let test_rule () =
   check_rule "div.container{margin:auto}";
 
   (* Multiple declarations *)
-  check_rule ".card{padding:1rem;border:1px solid #ccc}";
+  check_rule ".card{padding:1rem;border:1px solid#ccc}";
   check_rule "body{margin:0;font-family:Arial,sans-serif}";
 
   (* Multiple selectors *)
@@ -3066,9 +3066,11 @@ let color4_hex_tie_policy () =
     cases
 
 (* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
-   Dimensions): [<length-percentage>] accepts either a length or a percentage.
-   When the value is zero, [0], [0%], [0px] are all spec-valid representations
-   of the same computed value. *)
+   Dimensions): in a [<length-percentage>] context the bare [0], [0%], and [0px]
+   all denote the same computed value, so the printer collapses them to the
+   shortest spelling. Properties that distinguish [0] from [0%] (e.g.
+   [flex-basis], where [0%] keeps its percentage flex semantics) carry their own
+   type and don't reach this printer. *)
 let v465_zero_percentage_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -3409,8 +3411,7 @@ let color464_transparent_shortest () =
 (* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
    Dimensions): for [<length-percentage>] a zero value can be spelled [0],
    [0px], [0em], or [0%]; all denote the same computed value when the value is
-   zero. The spec lets implementations canonicalize, and cssnano picks the bare
-   [0] form for length contexts. *)
+   zero. The printer picks the bare [0] form. *)
 let v465_zero_length_shortest () =
   let normalize css =
     match Css.of_string ~strict:false css with

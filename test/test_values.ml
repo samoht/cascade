@@ -409,8 +409,10 @@ let test_duration () =
 let test_percentage () =
   check_percentage "50%";
   check_percentage "100%";
-  (* Per CSS spec, 0% can be written as just "0" (CSS Values Level 4) *)
-  check_percentage ~expected:"0" "0%";
+  (* CSS Values 4 §6.5 only lets a [<length>] zero drop the unit; a zero
+     [<percentage>] keeps the [%] (otherwise it would type as a [<number>] and
+     the dimension/percentage grammars would reject it). *)
+  check_percentage "0%";
   check_percentage "12.5%";
   check_percentage "99.99%";
   check_percentage "200%";
