@@ -15,7 +15,7 @@
    Supports selectors, properties, values, media queries, container queries,
    @supports, @property, @layer, @keyframes, @font-face, and CSS variables.")
  (depends
-  (ocaml (>= 4.14))
+  (ocaml (>= 5.2))
   dune
   dune-build-info
   (alcotest :with-test)
