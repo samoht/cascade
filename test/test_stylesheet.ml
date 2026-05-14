@@ -5652,12 +5652,11 @@ let fidelity_custom_property_decl_preserved () =
 
 (* {2 Variable inlining via theme + theme_defaults} *)
 
-(* CSS Custom Properties L1: cascade exposes a print-time inlining API via the
-   [theme] set and [theme_defaults] callback. When a custom property name is in
-   the theme, [var(--name)] is emitted as-is; when not in the theme, the
-   [theme_defaults] callback supplies a concrete value that is inlined into the
-   declaration. This models the same substitution the cascade would perform at
-   computed-value time, but driven by an explicit caller-provided context. *)
+(* CSS Custom Properties L1: cascade exposes a print-time inlining API via an
+   explicit caller-provided context. The [theme] set is a protection set:
+   variables listed there stay as [var(--name)]. For variables outside that set,
+   only a concrete [theme_defaults] result is positive evidence for inlining;
+   [None] means "unknown", not "undefined". *)
 let custom_props1_theme_inlining () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -5684,9 +5683,10 @@ let custom_props1_theme_inlining () =
      in
      Astring.String.is_infix ~affix:"var(--brand)" out)
 
-(* CSS Custom Properties L1 section 2: when a [var()] reference cannot resolve
-   (variable name unknown) and a fallback is present, the fallback is used. The
-   print-time inliner applies the same rule. *)
+(* CSS Custom Properties L1 section 2: a fallback is used at computed-value time
+   when the referenced custom property is invalid or missing. The print-time
+   renderer should not infer that from [theme_defaults] returning [None]; it has
+   only learned that the caller did not provide a concrete replacement. *)
 let customprops1_unresolved_fallback () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -5695,13 +5695,14 @@ let customprops1_unresolved_fallback () =
   in
   let no_resolve _ = None in
   Alcotest.(check string)
-    "var(--undef, red) inlines to red when --undef has no default"
-    ".x{color:red}"
+    "var(--undef, red) is preserved when resolver has no answer"
+    ".x{color:var(--undef,red)}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:no_resolve
        (parse ".x { color: var(--undef, red) }"));
   Alcotest.(check string)
-    "nested var() chain falls through to deepest fallback" ".x{color:#00f}"
+    "nested var() chain is preserved when resolver has no answers"
+    ".x{color:var(--a,var(--b,#00f))}"
     (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
        ~theme_defaults:no_resolve
        (parse ".x { color: var(--a, var(--b, blue)) }"))
@@ -5820,13 +5821,11 @@ let fidelity_no_inlining_without_context () =
      Astring.String.is_infix ~affix:"var(--brand" out
      && Astring.String.is_infix ~affix:"red" out)
 
-(* CSS Custom Properties L1 section 2 (Variable Substitution): when the
-   referenced custom property is not defined and a fallback is present, the
-   fallback substitutes for the [var()] reference. The print-time inliner runs
-   the same rule: an empty [theme] with [theme_defaults] returning [None] for
-   the variable name drops the [var()] wrapper and emits the fallback directly.
-   The fallback then participates in normal value canonicalization (color
-   shorten, calc reduce, etc.). *)
+(* CSS Custom Properties L1 section 2 (Variable Substitution): a [var()]
+   fallback is part of the source value until the caller proves a concrete
+   replacement. An empty [theme] with [theme_defaults] returning [None] should
+   preserve the [var()] wrapper and fallback syntax. The fallback's own tokens
+   may still be canonicalized locally. *)
 let custom_props1_fallback_resolution_mode () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -5840,17 +5839,18 @@ let custom_props1_fallback_resolution_mode () =
     |> String.trim
   in
   Alcotest.(check string)
-    "var(--undef, red) resolves to red" ".x{color:red}"
+    "var(--undef, red) remains a runtime fallback" ".x{color:var(--undef,red)}"
     (inlined ".x { color: var(--undef, red) }");
   Alcotest.(check string)
-    "var(--undef, #ff0000) fallback canonicalizes after substitution"
-    ".x{color:red}"
+    "var(--undef, #ff0000) fallback canonicalizes inside var()"
+    ".x{color:var(--undef,red)}"
     (inlined ".x { color: var(--undef, #ff0000) }");
   Alcotest.(check string)
-    "calc fallback reduces after substitution" ".x{width:3px}"
+    "calc fallback reduces locally inside var()" ".x{width:var(--undef,3px)}"
     (inlined ".x { width: var(--undef, calc(1px + 2px)) }");
   Alcotest.(check string)
-    "nested var() chain resolves to deepest defined fallback" ".x{color:#00f}"
+    "nested var() chain remains runtime fallback"
+    ".x{color:var(--a,var(--b,var(--c,#00f)))}"
     (inlined ".x { color: var(--a, var(--b, var(--c, blue))) }");
   Alcotest.(check string)
     "empty fallback preserved as empty value (cascade-time invalid)"
@@ -5876,6 +5876,65 @@ let custom_props1_theme_protects_var () =
     "var(--brand, red) keeps reference when --brand is in theme" true
     (let out = inlined ".x { color: var(--brand, red) }" in
      Astring.String.is_infix ~affix:"var(--brand" out)
+
+(* UX contract for print-time theme substitution: a supplied [theme] set should
+   not make every non-theme variable look statically undefined. The set only
+   protects names that must stay dynamic; inlining still requires a concrete
+   resolver answer. *)
+let theme_set_not_undefined () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.empty |> Css.Pp.String_set.add "brand" in
+  let no_resolve _ = None in
+  let resolve_accent = function "accent" -> Some "#ff0000" | _ -> None in
+  let render ?(resolve = no_resolve) css =
+    Css.to_string ~minify:true ~theme ~theme_defaults:resolve (parse css)
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "non-theme var without resolver answer is preserved"
+    ".x{color:var(--accent)}"
+    (render ".x { color: var(--accent) }");
+  Alcotest.(check string)
+    "non-theme var fallback without resolver answer is preserved"
+    ".x{color:var(--accent,red)}"
+    (render ".x { color: var(--accent, red) }");
+  Alcotest.(check string)
+    "non-theme var with resolver answer inlines" ".x{color:red}"
+    (render ~resolve:resolve_accent ".x { color: var(--accent) }");
+  Alcotest.(check string)
+    "non-theme var fallback with resolver answer inlines" ".x{color:red}"
+    (render ~resolve:resolve_accent ".x { color: var(--accent, blue) }")
+
+let typed_var_default_fidelity () =
+  let dx, x =
+    Css.var
+      ~default:(Css.Zero : Css.length)
+      "tw-translate-x" Css.Length (Css.Px 123.)
+  in
+  let dy, y =
+    Css.var
+      ~default:(Css.Zero : Css.length)
+      "tw-translate-y" Css.Length (Css.Px 456.)
+  in
+  let stylesheet =
+    [
+      Css.rule ~selector:(Selector.class_ "x")
+        [
+          dx;
+          dy;
+          Css.translate
+            (Css.XY ((Css.Var x : Css.length), (Css.Var y : Css.length)));
+        ];
+    ]
+  in
+  Alcotest.(check string)
+    "typed defaults do not inline under normal stylesheet rendering"
+    ".x{--tw-translate-x:123px;--tw-translate-y:456px;translate:var(--tw-translate-x)var(--tw-translate-y)}"
+    (Css.to_string ~minify:true stylesheet)
 
 let cssom67_no_trailing_semicolon () =
   let normalize css =
@@ -6223,7 +6282,7 @@ let additional_tests =
     ( "spec custom-properties 1 theme inlining",
       `Quick,
       custom_props1_theme_inlining );
-    ( "spec custom-properties 1 fallback used when unresolved",
+    ( "spec custom-properties 1 fallback preserved when unknown",
       `Quick,
       customprops1_unresolved_fallback );
     ( "spec custom-properties 1 inlined var in calc simplifies",
@@ -6247,6 +6306,12 @@ let additional_tests =
     ( "spec custom-properties 1 theme protects var",
       `Quick,
       custom_props1_theme_protects_var );
+    ( "spec custom-properties 1 theme set is not undefined set",
+      `Quick,
+      theme_set_not_undefined );
+    ( "fidelity typed var default not inlined in stylesheet mode",
+      `Quick,
+      typed_var_default_fidelity );
     ( "spec color 4 12 rgb clamp canonicalization",
       `Quick,
       color4_12_rgb_clamp_canonicalization );
