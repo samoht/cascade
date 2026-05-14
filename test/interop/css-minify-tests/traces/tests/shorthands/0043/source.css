@@ -1,0 +1,4 @@
+a {
+  border-image: url(border.png) 30 round;
+  border: 1px solid red;
+}

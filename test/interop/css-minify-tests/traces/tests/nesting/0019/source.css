@@ -1,0 +1,10 @@
+.foo {
+  .bar {
+    color: red;
+    font-size: 1rem;
+  }
+  .bar {
+    color: red;
+    font-size: 1rem;
+  }
+}

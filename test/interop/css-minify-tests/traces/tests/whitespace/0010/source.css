@@ -1,0 +1,6 @@
+@supports (display: grid) and (gap: 10px) {
+  a {
+    display: grid;
+    gap: 10px;
+  }
+}

@@ -1,0 +1,26 @@
+@property --pt {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --pr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --pb {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --pl {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+a {
+  padding-top: var(--pt);
+  padding-right: var(--pr);
+  padding-bottom: var(--pb);
+  padding-left: var(--pl);
+}

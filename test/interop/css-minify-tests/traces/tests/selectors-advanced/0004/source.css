@@ -1,0 +1,3 @@
+:where(.foo, .bar) {
+  color: red;
+}

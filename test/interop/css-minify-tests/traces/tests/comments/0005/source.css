@@ -1,0 +1,5 @@
+@container style(--bar: a/**/b) {
+  a {
+    color: red;
+  }
+}
