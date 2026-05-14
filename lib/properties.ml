@@ -14693,8 +14693,11 @@ module Animation = struct
     | Cubic_bezier (0.42, 0.0, 0.58, 1.0)
       when Pp.minified ctx ->
         false
-    | (Steps (1, Some Jump_start) | Steps (1, Some Jump_end))
+    | (Steps (1, Some (Jump_start | Start)) | Steps (1, Some (Jump_end | End)))
       when Pp.minified ctx ->
+        (* These fold to the [step-start] / [step-end] keywords in
+           [pp_timing_function], so the rendered output is keyword-shaped, no
+           closing paren. *)
         false
     | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
     | Timing_functions [] -> false
