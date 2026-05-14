@@ -319,7 +319,7 @@ let test_color () =
 let test_angle () =
   (* Degrees *)
   check_angle "45deg";
-  check_angle ~expected:"0" "0deg";
+  check_angle "0deg";
   check_angle "360deg";
   check_angle "-45deg";
   check_angle "90.5deg";
