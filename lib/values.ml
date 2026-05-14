@@ -2749,6 +2749,19 @@ let named_for_hex value =
   | "808000" -> Some "olive"
   | "000080" -> Some "navy"
   | "008080" -> Some "teal"
+  | "f0ffff" -> Some "azure"
+  | "f5f5dc" -> Some "beige"
+  | "a52a2a" -> Some "brown"
+  | "ff7f50" -> Some "coral"
+  | "ffd700" -> Some "gold"
+  | "fffff0" -> Some "ivory"
+  | "f0e68c" -> Some "khaki"
+  | "faf0e6" -> Some "linen"
+  | "cd853f" -> Some "peru"
+  | "dda0dd" -> Some "plum"
+  | "fffafa" -> Some "snow"
+  | "d2b48c" -> Some "tan"
+  | "f5deb3" -> Some "wheat"
   | _ -> None
 
 let _ = mix_srgb_bytes
