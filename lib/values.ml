@@ -2844,11 +2844,10 @@ let rec pp_channel : channel Pp.t =
 
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
-  | Deg 0. when Pp.minified ctx -> Pp.char ctx '0'
-  | Deg f -> pp_unit ctx f "deg"
-  | Rad f -> pp_unit ctx f "rad"
-  | Turn f -> pp_unit ctx f "turn"
-  | Grad f -> pp_unit ctx f "grad"
+  | Deg f -> pp_unit ~always:true ctx f "deg"
+  | Rad f -> pp_unit ~always:true ctx f "rad"
+  | Turn f -> pp_unit ~always:true ctx f "turn"
+  | Grad f -> pp_unit ~always:true ctx f "grad"
   | Round (strategy, Deg value, Deg step) when Pp.minified ctx && step <> 0. ->
       pp_angle ctx (Deg (round_to_step strategy value step))
   | Round (strategy, value, step) ->
