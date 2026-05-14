@@ -197,17 +197,13 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
 
 (* CSS Custom Properties resolution at print time: - if [v.name] is in the theme
    protection set, keep [var(--name)]; - otherwise consult [theme_defaults]:
-   [Some value] inlines, [None] falls back to the typed default ([v.default])
-   and finally to [var(--name)]. The theme set acts as a denylist/protection
-   set, never as an allowlist for non-theme vars. *)
+   [Some value] inlines, [None] preserves the runtime [var()] reference. Typed
+   defaults are only used by explicit inline mode. The theme set acts as a
+   denylist/protection set, never as an allowlist for non-theme vars. *)
 let pp_var_without_fallback : type a. a Pp.t -> a var Pp.t =
- fun pp_value ctx v ->
+ fun _pp_value ctx v ->
   if in_theme ctx v.name then pp_var_ref ctx v.name
-  else
-    pp_theme_default_or ctx v.name (fun () ->
-        match v.default with
-        | Some value -> pp_value ctx value
-        | Option.None -> pp_var_ref ctx v.name)
+  else pp_theme_default_or ctx v.name (fun () -> pp_var_ref ctx v.name)
 
 let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
@@ -217,12 +213,13 @@ let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
   | Empty2 -> pp_empty2_var ctx v.name
   | Fallback value ->
       (* Same denylist semantics as [pp_var_without_fallback]: if the name is in
-         the theme protection set, keep the [var(--name, fallback)] spelling;
-         otherwise consult [theme_defaults] and fall back to the supplied
-         fallback value. *)
+         the theme protection set or has no resolver answer, keep the
+         [var(--name, fallback)] spelling. *)
       if in_theme ctx v.name then
         pp_typed_var_fallback pp_value ctx v.name value
-      else pp_theme_default_or ctx v.name (fun () -> pp_value ctx value)
+      else
+        pp_theme_default_or ctx v.name (fun () ->
+            pp_typed_var_fallback pp_value ctx v.name value)
   | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value
   | Var_fallback fallback_name ->
       Pp.string ctx "var(--";
@@ -1048,11 +1045,12 @@ let value_of_var_resolution ctx parse_default (v : 'a var) : 'a option =
   else
     match ctx.Pp.theme_defaults v.name with
     | Option.Some value -> parse_default value
-    | Option.None ->
+    | Option.None when ctx.inline ->
         Option.fold
           ~none:(fallback_of_var_resolution ctx parse_default v.fallback)
           ~some:(fun value -> Option.Some value)
           v.default
+    | Option.None -> Option.None
 
 let length_of_var_resolution ctx (v : length var) =
   value_of_var_resolution ctx length_of_default_string v
