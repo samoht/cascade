@@ -8874,9 +8874,13 @@ let rec pp_place_content : place_content Pp.t =
   | Unsafe_end -> Pp.string ctx "unsafe end"
   | Unsafe_stretch -> Pp.string ctx "unsafe stretch"
   | Align_justify (a, j) ->
-      pp_align_content ctx a;
-      Pp.space ctx ();
-      pp_justify_content ctx j
+      let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_content a in
+      let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_content j in
+      if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
+      else (
+        Pp.string ctx a_s;
+        Pp.space ctx ();
+        Pp.string ctx j_s)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -18275,7 +18279,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
              expands stretch to two values *)
           let needs_second_value =
             match (a, j) with
-            | Stretch, Stretch -> true
+            | Stretch, Stretch -> false
             | Auto, Auto -> false
             | Normal, Normal -> false
             | Baseline, Baseline -> false
