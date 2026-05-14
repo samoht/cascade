@@ -1732,16 +1732,18 @@ let test_text_decoration () =
 let test_text_decoration_shorthand () =
   (* Test individual parts *)
   check_text_decoration_shorthand "underline";
-  check_text_decoration_shorthand "underline solid";
-  check_text_decoration_shorthand "underline solid red";
-  check_text_decoration_shorthand "underline solid red 2px";
+  check_text_decoration_shorthand ~expected:"underline" "underline solid";
+  check_text_decoration_shorthand ~expected:"underline red"
+    "underline solid red";
+  check_text_decoration_shorthand ~expected:"underline red 2px"
+    "underline solid red 2px";
   (* Test multiple lines *)
   check_text_decoration_shorthand ~expected:"underline overline"
     "underline overline";
   check_text_decoration_shorthand ~expected:"underline overline dashed"
     "underline overline dashed";
   (* Test order independence *)
-  check_text_decoration_shorthand ~expected:"underline solid red"
+  check_text_decoration_shorthand ~expected:"underline red"
     "red solid underline";
   check_text_decoration_shorthand ~expected:"underline wavy #00f 3px"
     "3px wavy blue underline";
