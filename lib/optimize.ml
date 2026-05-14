@@ -72,6 +72,7 @@ let shorthand_longhands = function
   | "margin" -> [ "margin-top"; "margin-right"; "margin-bottom"; "margin-left" ]
   | "padding" ->
       [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ]
+  | "inset" -> [ "top"; "right"; "bottom"; "left" ]
   | "background" ->
       [
         "background-attachment";
@@ -84,6 +85,69 @@ let shorthand_longhands = function
         "background-repeat";
         "background-size";
       ]
+  (* CSS Logical 1: physical-axis pairs. Each logical shorthand absorbs the
+     -start / -end pair on its axis. *)
+  | "margin-inline" -> [ "margin-inline-start"; "margin-inline-end" ]
+  | "margin-block" -> [ "margin-block-start"; "margin-block-end" ]
+  | "padding-inline" -> [ "padding-inline-start"; "padding-inline-end" ]
+  | "padding-block" -> [ "padding-block-start"; "padding-block-end" ]
+  | "inset-inline" -> [ "inset-inline-start"; "inset-inline-end" ]
+  | "inset-block" -> [ "inset-block-start"; "inset-block-end" ]
+  | "border-inline" -> [ "border-inline-start"; "border-inline-end" ]
+  | "border-block" -> [ "border-block-start"; "border-block-end" ]
+  (* CSS Backgrounds 3 sec. 4: [border] shorthand resets all per-side longhands
+     and the per-axis [width / style / color] groupings. *)
+  | "border" ->
+      [
+        "border-width";
+        "border-style";
+        "border-color";
+        "border-top";
+        "border-right";
+        "border-bottom";
+        "border-left";
+        "border-top-width";
+        "border-right-width";
+        "border-bottom-width";
+        "border-left-width";
+        "border-top-style";
+        "border-right-style";
+        "border-bottom-style";
+        "border-left-style";
+        "border-top-color";
+        "border-right-color";
+        "border-bottom-color";
+        "border-left-color";
+      ]
+  | "border-width" ->
+      [
+        "border-top-width";
+        "border-right-width";
+        "border-bottom-width";
+        "border-left-width";
+      ]
+  | "border-style" ->
+      [
+        "border-top-style";
+        "border-right-style";
+        "border-bottom-style";
+        "border-left-style";
+      ]
+  | "border-color" ->
+      [
+        "border-top-color";
+        "border-right-color";
+        "border-bottom-color";
+        "border-left-color";
+      ]
+  | "border-top" ->
+      [ "border-top-width"; "border-top-style"; "border-top-color" ]
+  | "border-right" ->
+      [ "border-right-width"; "border-right-style"; "border-right-color" ]
+  | "border-bottom" ->
+      [ "border-bottom-width"; "border-bottom-style"; "border-bottom-color" ]
+  | "border-left" ->
+      [ "border-left-width"; "border-left-style"; "border-left-color" ]
   | _ -> []
 
 let all_resets_property name =
@@ -988,22 +1052,11 @@ let try_compose_text_decoration = function
           let color = List.find_map td_color_of triple in
           match (lines, style, color) with
           | Some lines, Some _, Some _ ->
-              let style_norm = match style with Some Solid -> None | s -> s in
-              let color_norm =
-                match color with Some Current -> None | c -> c
-              in
               let merged =
                 Declaration
                   {
                     property = Text_decoration;
-                    value =
-                      Shorthand
-                        {
-                          lines;
-                          style = style_norm;
-                          color = color_norm;
-                          thickness = None;
-                        };
+                    value = Shorthand { lines; style; color; thickness = None };
                     important = is_important d1;
                   }
               in
@@ -1148,168 +1201,6 @@ let deduplicate_declarations_with ?(merge_box = true) props =
 
 let deduplicate_declarations props = deduplicate_declarations_with props
 let sort_commuting_declarations decls = decls
-
-let color_custom_property_names stylesheet =
-  let var_name_of_custom_property name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
-  let declaration names = function
-    | Declaration
-        {
-          property = Custom_property name;
-          value = Custom_value { value = Typed { kind = Color; _ }; _ };
-          _;
-        } ->
-        String_set.add (var_name_of_custom_property name) names
-    | _ -> names
-  in
-  let declarations names decls = List.fold_left declaration names decls in
-  let rec statement names = function
-    | Rule rule ->
-        let names = declarations names rule.declarations in
-        List.fold_left statement names rule.nested
-    | Declarations decls -> declarations names decls
-    | Layer (_, block)
-    | Media (_, block)
-    | Container (_, _, block)
-    | Supports (_, block)
-    | Moz_document (_, block)
-    | When (_, block)
-    | Else (_, block)
-    | Starting_style block
-    | Origin (_, block)
-    | Scope (_, _, block) ->
-        List.fold_left statement names block
-    | Page (_, decls) | Position_try (_, decls) | Supports_condition (_, decls)
-      ->
-        declarations names decls
-    | Page_with_margins (_, descs, margins) ->
-        let names = declarations names descs in
-        List.fold_left
-          (fun names margin -> declarations names margin.margin_descriptors)
-          names margins
-    | _ -> names
-  in
-  List.fold_left statement String_set.empty stylesheet
-
-let color_fallback_of_length_fallback :
-    Values.length Values.fallback -> Values.color Values.fallback = function
-  | Values.None -> Values.None
-  | Values.Empty -> Values.Empty
-  | Values.Empty2 -> Values.Empty2
-  | Values.Syntax_fallback components -> Values.Syntax_fallback components
-  | Values.Var_fallback name -> Values.Var_fallback name
-  | Values.Fallback value ->
-      Values.Syntax_fallback
-        (Cursor.remaining
-           (Cursor.of_string (Pp.to_string ~minify:true Values.pp_length value)))
-
-let color_var_of_length_var (var : Values.length Values.var) :
-    Values.color Values.var =
-  {
-    name = var.name;
-    fallback = color_fallback_of_length_fallback var.fallback;
-    default = None;
-    layer = var.layer;
-    meta = var.meta;
-  }
-
-let rec normalize_shadow_color_vars color_vars (value : Properties.shadow) :
-    Properties.shadow =
-  match value with
-  | Shadow
-      ({ blur = Some (Values.Var var); spread = None; color = None; _ } as
-       shadow)
-    when String_set.mem var.name color_vars ->
-      Shadow
-        {
-          shadow with
-          blur = Some Zero;
-          color = Some (Values.Var (color_var_of_length_var var));
-        }
-  | List shadows ->
-      List (List.map (normalize_shadow_color_vars color_vars) shadows)
-  | shadow -> shadow
-
-let normalize_shadow_color_var_declaration color_vars = function
-  | Declaration ({ property = Box_shadow; value; _ } as decl) ->
-      Declaration
-        { decl with value = normalize_shadow_color_vars color_vars value }
-  | Declaration
-      ({
-         property = Custom_property _;
-         value =
-           Custom_value
-             { value = Typed { kind = Shadow; value = shadow }; layer; meta };
-         _;
-       } as decl) ->
-      Declaration
-        {
-          decl with
-          value =
-            Properties.Custom_value
-              {
-                value =
-                  Properties.Typed
-                    {
-                      kind = Shadow;
-                      value = normalize_shadow_color_vars color_vars shadow;
-                    };
-                layer;
-                meta;
-              };
-        }
-  | decl -> decl
-
-let normalize_shadow_color_var_slots stylesheet =
-  let color_vars = color_custom_property_names stylesheet in
-  if String_set.is_empty color_vars then stylesheet
-  else
-    let declarations =
-      List.map (normalize_shadow_color_var_declaration color_vars)
-    in
-    let rec statement = function
-      | Rule rule ->
-          Rule
-            {
-              rule with
-              declarations = declarations rule.declarations;
-              nested = List.map statement rule.nested;
-            }
-      | Declarations decls -> Declarations (declarations decls)
-      | Layer (name, block) -> Layer (name, List.map statement block)
-      | Media (query, block) -> Media (query, List.map statement block)
-      | Container (name, query, block) ->
-          Container (name, query, List.map statement block)
-      | Supports (query, block) -> Supports (query, List.map statement block)
-      | Moz_document (query, block) ->
-          Moz_document (query, List.map statement block)
-      | When (query, block) -> When (query, List.map statement block)
-      | Else (query, block) -> Else (query, List.map statement block)
-      | Starting_style block -> Starting_style (List.map statement block)
-      | Origin (origin, block) -> Origin (origin, List.map statement block)
-      | Scope (start, end_, block) ->
-          Scope (start, end_, List.map statement block)
-      | Page (selector, decls) -> Page (selector, declarations decls)
-      | Page_with_margins (selector, descs, margins) ->
-          Page_with_margins
-            ( selector,
-              declarations descs,
-              List.map
-                (fun margin ->
-                  {
-                    margin with
-                    margin_descriptors = declarations margin.margin_descriptors;
-                  })
-                margins )
-      | Position_try (name, decls) -> Position_try (name, declarations decls)
-      | Supports_condition (name, decls) ->
-          Supports_condition (name, declarations decls)
-      | other -> other
-    in
-    List.map statement stylesheet
 
 (** {1 Rule Optimization} *)
 
@@ -2574,25 +2465,8 @@ and rules_aux (rules : rule list) : rule list =
    cascade parser has already consumed the encoding metadata and the serialiser
    emits UTF-8, so [@charset "UTF-8"] is purely redundant. Drop any UTF-8
    charset and keep at most the first non-UTF-8 one. *)
-let normalize_charset stmts =
-  let is_utf8 encoding =
-    String.equal (String.lowercase_ascii encoding) "utf-8"
-  in
-  let kept_one = ref false in
-  List.filter
-    (fun stmt ->
-      match stmt with
-      | Charset enc when is_utf8 enc -> false
-      | Charset _ when !kept_one -> false
-      | Charset _ ->
-          kept_one := true;
-          true
-      | _ -> true)
-    stmts
-
 let statements_top_level (stmts : statement list) : statement list =
-  statements stmts |> normalize_charset |> merge_consecutive_layers
-  |> drop_redundant_layer_decls
+  statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
 
 let single_rule (rule : rule) : rule =
   {
@@ -2747,7 +2621,7 @@ let apply_property_duplication (stylesheet : t) : t =
         | other -> other)
       stmts
   in
-  apply_to_statements stylesheet |> normalize_shadow_color_var_slots
+  apply_to_statements stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
@@ -2829,5 +2703,4 @@ let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
      passes so the empty rules they leave behind get picked up by
      [drop_empty_rules]. *)
-  stylesheet |> drop_invalid |> drop_unknown_at_rules
-  |> normalize_shadow_color_var_slots |> statements_top_level
+  stylesheet |> drop_invalid |> drop_unknown_at_rules |> statements_top_level
