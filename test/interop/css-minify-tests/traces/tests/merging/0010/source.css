@@ -1,0 +1,8 @@
+.foo {
+  color: red;
+}
+
+.bar {
+  all: revert-layer;
+  color: red;
+}

@@ -1,0 +1,10 @@
+@media screen {
+  a {
+    color: red;
+  }
+}
+@media screen {
+  b {
+    margin: 0;
+  }
+}

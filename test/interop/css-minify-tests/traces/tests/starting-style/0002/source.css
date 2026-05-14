@@ -1,0 +1,10 @@
+.card {
+  transition: opacity 0.5s, display 0.5s allow-discrete;
+}
+
+@starting-style {
+  .card {
+    opacity: 0;
+    display: none;
+  }
+}

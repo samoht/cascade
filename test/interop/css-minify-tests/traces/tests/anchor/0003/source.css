@@ -1,0 +1,8 @@
+@position-try --flip {
+  position-area: top;
+}
+
+a {
+  position-area: bottom;
+  position-try-fallbacks: --flip;
+}

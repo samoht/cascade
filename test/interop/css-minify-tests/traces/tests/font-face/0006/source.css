@@ -1,0 +1,5 @@
+@font-face {
+  font-family: test;
+  src: local(test);
+  unicode-range: U+0000-00FF;
+}

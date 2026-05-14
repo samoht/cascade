@@ -1,0 +1,8 @@
+@property --brand-color {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: #000;
+}
+a {
+  --brand-color: rgb(0 0 0);
+}

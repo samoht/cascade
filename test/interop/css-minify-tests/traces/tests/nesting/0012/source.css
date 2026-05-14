@@ -1,0 +1,6 @@
+.card {
+  padding: 1rem;
+}
+.card > .title {
+  color: red;
+}

@@ -1,0 +1,9 @@
+figure {
+  margin: 0;
+  > figcaption {
+    color: red;
+    > p {
+      font-size: .9rem;
+    }
+  }
+}

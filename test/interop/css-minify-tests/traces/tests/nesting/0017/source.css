@@ -1,0 +1,11 @@
+nav {
+  a {
+    color: red;
+  }
+  > .icon {
+    width: 1rem;
+  }
+  + footer {
+    margin: 0;
+  }
+}

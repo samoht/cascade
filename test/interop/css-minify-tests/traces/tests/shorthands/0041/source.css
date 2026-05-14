@@ -1,0 +1,6 @@
+a {
+  border-image: url(border.png) 30 round;
+  border-width: 1px;
+  border-style: solid;
+  border-color: red;
+}
