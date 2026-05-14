@@ -352,9 +352,21 @@ let extract_padding_side :
       Some (Left, value, important)
   | _ -> None
 
-(* Border-radius corners ordered clockwise from top-left per CSS Backgrounds 3
-   sec. 5.1: TL / TR / BR / BL. Reusing [box_side] - the four constructors stand
-   in for the four corners in shorthand order. *)
+(* CSS Position 3 §3.1: [inset] is the [top right bottom left] shorthand. The
+   longhand values are wrapped in a [length list] for grammar reasons but carry
+   exactly one length per side. *)
+let extract_inset_side : declaration -> (box_side * Values.length * bool) option
+    = function
+  | Declaration { property = Top; value = [ v ]; important } ->
+      Some (Top, v, important)
+  | Declaration { property = Right; value = [ v ]; important } ->
+      Some (Right, v, important)
+  | Declaration { property = Bottom; value = [ v ]; important } ->
+      Some (Bottom, v, important)
+  | Declaration { property = Left; value = [ v ]; important } ->
+      Some (Left, v, important)
+  | _ -> None
+
 let extract_border_radius_corner :
     declaration -> (box_side * Values.length * bool) option = function
   | Declaration { property = Border_top_left_radius; value; important } ->
@@ -418,6 +430,10 @@ let compose_box_shorthands decls =
         important;
       }
   in
+  let build_inset ~important ~top ~right ~bottom ~left =
+    Declaration
+      { property = Inset; value = [ top; right; bottom; left ]; important }
+  in
   let try_any decls =
     match
       try_compose_box ~extract:extract_margin_side ~build:build_margin decls
@@ -429,9 +445,15 @@ let compose_box_shorthands decls =
             decls
         with
         | Some _ as r -> r
-        | None ->
-            try_compose_box ~extract:extract_border_radius_corner
-              ~build:build_border_radius decls)
+        | None -> (
+            match
+              try_compose_box ~extract:extract_inset_side ~build:build_inset
+                decls
+            with
+            | Some _ as r -> r
+            | None ->
+                try_compose_box ~extract:extract_border_radius_corner
+                  ~build:build_border_radius decls))
   in
   let rec go acc decls =
     match (decls, try_any decls) with
