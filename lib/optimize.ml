@@ -881,45 +881,55 @@ let compose_outline_shorthand decls =
   go [] decls
 
 (* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
-   <size>[/<line-height>]? <family>+] Cascade stores [font] as a string, so
+   <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
    composition renders each longhand via its pretty-printer and stitches the
    shorthand together. Default-valued components ([normal] style, [400] weight,
-   [normal] line-height) drop. Requires both font-size and font-family. *)
-type font_kind = FStyle | FWeight | FSize | FLine_height | FFamily
+   [normal] line-height) drop on emit. Requires both font-size and
+   font-family. *)
+let minified_value d = Declaration.string_of_value ~minify:true d
 
-let font_kind_of : declaration -> font_kind option = function
-  | Declaration { property = Font_style; _ } -> Some FStyle
-  | Declaration { property = Font_weight; _ } -> Some FWeight
-  | Declaration { property = Font_size; _ } -> Some FSize
-  | Declaration { property = Line_height; _ } -> Some FLine_height
-  | Declaration { property = Font_family; _ } -> Some FFamily
+let is_font_longhand : declaration -> bool = function
+  | Declaration { property = Font_style; _ } -> true
+  | Declaration { property = Font_weight; _ } -> true
+  | Declaration { property = Font_size; _ } -> true
+  | Declaration { property = Line_height; _ } -> true
+  | Declaration { property = Font_family; _ } -> true
+  | _ -> false
+
+(* Each [_string] helper returns [Some <minified spelling>] when the declaration
+   is the relevant longhand and its value is non-default; [None] otherwise (so
+   [List.find_map] over the 5-tuple naturally picks at most one). *)
+let font_style_string : declaration -> string option = function
+  | Declaration { property = Font_style; value = Normal; _ } -> None
+  | Declaration { property = Font_style; _ } as d -> Some (minified_value d)
   | _ -> None
 
-let minified_value d = Declaration.string_of_value ~minify:true d
-let drop_if_default ~default v = if v = default then None else Some v
+let font_weight_string : declaration -> string option = function
+  | Declaration { property = Font_weight; value = Normal; _ } -> None
+  | Declaration { property = Font_weight; value = Weight 400; _ } -> None
+  | Declaration { property = Font_weight; _ } as d -> Some (minified_value d)
+  | _ -> None
 
-let render_font_shorthand parts =
-  let find k =
-    List.find_map
-      (fun (kind, decl) -> if kind = k then Some decl else None)
-      parts
-  in
-  let style =
-    Option.bind (find FStyle) (fun d ->
-        drop_if_default ~default:"normal" (minified_value d))
-  in
-  let weight =
-    Option.bind (find FWeight) (fun d ->
-        drop_if_default ~default:"400" (minified_value d))
-  in
-  let line_height =
-    Option.bind (find FLine_height) (fun d ->
-        drop_if_default ~default:"normal" (minified_value d))
-  in
-  match (find FSize, find FFamily) with
-  | Some size_d, Some family_d ->
-      let size = minified_value size_d in
-      let family = minified_value family_d in
+let line_height_string : declaration -> string option = function
+  | Declaration { property = Line_height; value = Normal; _ } -> None
+  | Declaration { property = Line_height; _ } as d -> Some (minified_value d)
+  | _ -> None
+
+let font_size_string : declaration -> string option = function
+  | Declaration { property = Font_size; _ } as d -> Some (minified_value d)
+  | _ -> None
+
+let font_family_string : declaration -> string option = function
+  | Declaration { property = Font_family; _ } as d -> Some (minified_value d)
+  | _ -> None
+
+let render_font_shorthand decls =
+  let pick f = List.find_map f decls in
+  let style = pick font_style_string in
+  let weight = pick font_weight_string in
+  let line_height = pick line_height_string in
+  match (pick font_size_string, pick font_family_string) with
+  | Some size, Some family ->
       let size_lh =
         match line_height with
         | Some lh -> String.concat "" [ size; "/"; lh ]
@@ -936,31 +946,21 @@ let render_font_shorthand parts =
   | _ -> None
 
 let try_compose_font = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: (_, d5) :: rest -> (
-      match
-        ( font_kind_of d1,
-          font_kind_of d2,
-          font_kind_of d3,
-          font_kind_of d4,
-          font_kind_of d5 )
-      with
-      | Some k1, Some k2, Some k3, Some k4, Some k5
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && is_important d3 = is_important d4
-             && is_important d4 = is_important d5
-             && List.length (List.sort_uniq compare [ k1; k2; k3; k4; k5 ]) = 5
-        -> (
-          let parts = [ (k1, d1); (k2, d2); (k3, d3); (k4, d4); (k5, d5) ] in
-          match render_font_shorthand parts with
-          | Some s ->
-              let merged =
-                Declaration
-                  { property = Font; value = s; important = is_important d1 }
-              in
-              Some ((idx, merged), rest)
-          | None -> None)
-      | _ -> None)
+  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: (_, d5) :: rest
+    when is_font_longhand d1 && is_font_longhand d2 && is_font_longhand d3
+         && is_font_longhand d4 && is_font_longhand d5
+         && is_important d1 = is_important d2
+         && is_important d2 = is_important d3
+         && is_important d3 = is_important d4
+         && is_important d4 = is_important d5 -> (
+      match render_font_shorthand [ d1; d2; d3; d4; d5 ] with
+      | Some s ->
+          let merged =
+            Declaration
+              { property = Font; value = s; important = is_important d1 }
+          in
+          Some ((idx, merged), rest)
+      | None -> None)
   | _ -> None
 
 let compose_font_shorthand decls =
@@ -976,57 +976,63 @@ let compose_font_shorthand decls =
    any subset of components. Cascade stores [List_style] as a string. Drop
    defaults ([outside] / [none] / [disc]) on emit; if all three are defaulted,
    leave a single [outside] - never an empty value. *)
-type list_style_kind = LS_type | LS_position | LS_image
+let is_list_style_longhand : declaration -> bool = function
+  | Declaration { property = List_style_type; _ } -> true
+  | Declaration { property = List_style_position; _ } -> true
+  | Declaration { property = List_style_image; _ } -> true
+  | _ -> false
 
-let list_style_kind_of : declaration -> list_style_kind option = function
-  | Declaration { property = List_style_type; _ } -> Some LS_type
-  | Declaration { property = List_style_position; _ } -> Some LS_position
-  | Declaration { property = List_style_image; _ } -> Some LS_image
+(* Typed default detection for the [list-style] longhands. Each [_string] helper
+   returns [Some <minified spelling>] when the declaration is the relevant
+   longhand and its value is non-default, [None] otherwise. Defaults: [disc] for
+   type, [outside] for position, [none] for image. *)
+let list_style_type_string : declaration -> string option = function
+  | Declaration { property = List_style_type; value = Disc; _ } -> None
+  | Declaration { property = List_style_type; _ } as d ->
+      Some (minified_value d)
   | _ -> None
 
-let list_style_default = function
-  | LS_type -> "disc"
-  | LS_position -> "outside"
-  | LS_image -> "none"
+let list_style_position_string : declaration -> string option = function
+  | Declaration { property = List_style_position; value = Outside; _ } -> None
+  | Declaration { property = List_style_position; _ } as d ->
+      Some (minified_value d)
+  | _ -> None
 
-let render_list_style parts =
-  let component k =
-    List.find_map
-      (fun (kind, decl) ->
-        if kind = k then
-          let v = minified_value decl in
-          if v = list_style_default k then None else Some v
-        else None)
-      parts
-  in
+let list_style_image_string : declaration -> string option = function
+  | Declaration { property = List_style_image; value = None; _ } -> None
+  | Declaration { property = List_style_image; _ } as d ->
+      Some (minified_value d)
+  | _ -> None
+
+let render_list_style decls =
+  let pick f = List.find_map f decls in
   match
     List.filter_map
       (fun x -> x)
-      [ component LS_position; component LS_image; component LS_type ]
+      [
+        pick list_style_position_string;
+        pick list_style_image_string;
+        pick list_style_type_string;
+      ]
   with
   | [] -> "outside"
   | parts -> String.concat " " parts
 
 let try_compose_list_style = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match
-        (list_style_kind_of d1, list_style_kind_of d2, list_style_kind_of d3)
-      with
-      | Some k1, Some k2, Some k3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 ->
-          let parts = [ (k1, d1); (k2, d2); (k3, d3) ] in
-          let merged =
-            Declaration
-              {
-                property = List_style;
-                value = render_list_style parts;
-                important = is_important d1;
-              }
-          in
-          Some ((idx, merged), rest)
-      | _ -> None)
+  | (idx, d1) :: (_, d2) :: (_, d3) :: rest
+    when is_list_style_longhand d1 && is_list_style_longhand d2
+         && is_list_style_longhand d3
+         && is_important d1 = is_important d2
+         && is_important d2 = is_important d3 ->
+      let merged =
+        Declaration
+          {
+            property = List_style;
+            value = render_list_style [ d1; d2; d3 ];
+            important = is_important d1;
+          }
+      in
+      Some ((idx, merged), rest)
   | _ -> None
 
 let compose_list_style_shorthand decls =
