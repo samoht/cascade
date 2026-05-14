@@ -5177,23 +5177,16 @@ let rec read_percentage_in_color_mix t : percentage =
       Cursor.err_invalid t "color-mix percentage must be between 0% and 100%";
     (Pct n : percentage)
 
-let read_decimal_color_mix_percentage t =
-  let n = Cursor.number t in
-  if n < 0. || n > 1. then
-    Cursor.err_invalid t "color-mix percentage must be between 0 and 1";
-  Cursor.ws t;
-  (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
-  (Pct (n *. 100.0) : percentage)
-
 let read_optional_percentage t : percentage option =
-  (* Parse optional percentage immediately after a value. In color-mix(), this
-     can be a numeric percentage, a decimal (0-1), or var(). *)
+  (* CSS Color 5 §3 (https://drafts.csswg.org/css-color-5/#color-mix): the
+     [color-mix()] weight grammar is [<percentage [0,100]>?] - strictly a
+     percentage token, no [<number>] alternative. We don't accept a bare decimal
+     here even though some minifiers (cssnano) ship the [0% -> 0] shortcut as a
+     non-spec optimization that browsers tolerate. *)
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
-    (* var() percentage like var(--bg-opacity) *)
     Some (Var (read_var read_percentage_in_color_mix t))
   else
-    (* [50%] is a single [Percentage] token; a plain decimal is a [Number]. *)
     match Cursor.percentage_opt t with
     | Some n ->
         if n < 0. || n > 100. then
@@ -5201,7 +5194,7 @@ let read_optional_percentage t : percentage option =
             "color-mix percentage must be between 0% and 100%";
         Cursor.ws t;
         Some (Pct n : percentage)
-    | None -> Cursor.option read_decimal_color_mix_percentage t
+    | None -> None
 
 let hue_interpolation_start = function
   | "shorter" | "longer" | "increasing" | "decreasing" | "specified" -> true
