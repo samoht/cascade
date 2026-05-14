@@ -132,8 +132,6 @@ let pp_var_ref ctx name =
   Pp.string ctx name;
   Pp.char ctx ')'
 
-let is_theme_var v = v.layer = Some "theme"
-
 let pp_empty_var ctx name =
   Pp.string ctx "var(--";
   Pp.string ctx name;
@@ -197,10 +195,14 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
       | Empty | Empty2 -> ()
       | None -> pp_var_ref ctx v.name)
 
+(* CSS Custom Properties resolution at print time: - if [v.name] is in the theme
+   protection set, keep [var(--name)]; - otherwise consult [theme_defaults]:
+   [Some value] inlines, [None] falls back to the typed default ([v.default])
+   and finally to [var(--name)]. The theme set acts as a denylist/protection
+   set, never as an allowlist for non-theme vars. *)
 let pp_var_without_fallback : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
-  if not (is_theme_var v) then pp_var_ref ctx v.name
-  else if in_theme ctx v.name then pp_var_ref ctx v.name
+  if in_theme ctx v.name then pp_var_ref ctx v.name
   else
     pp_theme_default_or ctx v.name (fun () ->
         match v.default with
@@ -214,7 +216,11 @@ let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
   | Empty -> pp_empty_var ctx v.name
   | Empty2 -> pp_empty2_var ctx v.name
   | Fallback value ->
-      if (not (is_theme_var v)) || in_theme ctx v.name then
+      (* Same denylist semantics as [pp_var_without_fallback]: if the name is in
+         the theme protection set, keep the [var(--name, fallback)] spelling;
+         otherwise consult [theme_defaults] and fall back to the supplied
+         fallback value. *)
+      if in_theme ctx v.name then
         pp_typed_var_fallback pp_value ctx v.name value
       else pp_theme_default_or ctx v.name (fun () -> pp_value ctx value)
   | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value
