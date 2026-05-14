@@ -779,7 +779,11 @@ let pp_counter_style_descriptor ctx =
   | Counter_system system ->
       pp_descriptor "system" pp_counter_style_system system
   | Counter_symbols symbols ->
-      pp_descriptor "symbols" (Pp.list ~sep:Pp.space pp_counter_symbol) symbols
+      (* Symbols are quoted strings; the [""] delimiter is unambiguous so the
+         inter-symbol space is elidable in minified output. *)
+      pp_descriptor "symbols"
+        (Pp.list ~sep:Pp.space_if_pretty pp_counter_symbol)
+        symbols
   | Counter_suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
   | Counter_prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
   | Counter_fallback value -> pp_descriptor "fallback" Pp.string value
