@@ -120,6 +120,23 @@ let parse_stylesheet input =
   try Some (Css.Stylesheet.read_stylesheet r)
   with Cursor.Parse_error _ -> None
 
+let class_name prefix buf i = prefix ^ string_of_int (byte_at buf i mod 10)
+
+let count_substring ~needle haystack =
+  let needle_len = String.length needle in
+  let haystack_len = String.length haystack in
+  let rec loop count i =
+    if needle_len = 0 || i + needle_len > haystack_len then count
+    else if String.sub haystack i needle_len = needle then
+      loop (count + 1) (i + needle_len)
+    else loop count (i + 1)
+  in
+  loop 0 0
+
+let first_index ~needle haystack =
+  try Some (Re.Str.search_forward (Re.Str.regexp_string needle) haystack 0)
+  with Not_found -> None
+
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
@@ -360,6 +377,95 @@ let test_cascade_shorthand_importance_vectors buf =
           %S"
          optimized)
 
+let test_smt_intersection_dependency_vectors buf =
+  (* Hague, Lin, Hong, "CSS Minification via Constraint Solving", sections 4 and
+     5.4: the CSS graph carries an edge order induced by selector intersection
+     and same-property writes. These generated selectors can all match one
+     element, so the middle declaration is an ordering dependency and the equal
+     declarations around it must not be grouped across it. *)
+  let a = class_name "a" buf 0 in
+  let b = class_name "b" buf 1 in
+  let c = class_name "c" buf 2 in
+  let x = class_name "x" buf 3 in
+  let input =
+    Fmt.str ".%s.%s{color:red}.%s.%s{color:blue}.%s.%s{color:red}" a x b x c x
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "SMT dependency vector did not parse: %S" input)
+  | Some ss ->
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      let required =
+        [
+          Fmt.str ".%s.%s{color:red}" a x;
+          Fmt.str ".%s.%s{color:#00f}" b x;
+          Fmt.str ".%s.%s{color:red}" c x;
+        ]
+      in
+      if
+        not
+          (List.for_all
+             (fun chunk -> Astring.String.is_infix ~affix:chunk optimized)
+             required)
+      then
+        fail
+          (Fmt.str
+             "optimization violated selector-intersection edge order: %S -> %S"
+             input optimized)
+
+let test_biclique_no_new_edges buf =
+  (* Section 7's Max-SAT encoding constrains candidate bicliques so a merged
+     rule cannot introduce selector/property edges that were absent from the
+     original CSS graph. This missing-corner rectangle may factor out the shared
+     color edge, but must not give the second selector the first selector's
+     background-color edge. *)
+  let a = class_name "a" buf 0 in
+  let b = class_name "b" buf 1 in
+  let input =
+    Fmt.str ".%s{color:red;background-color:blue}.%s{color:red}" a b
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "SMT biclique vector did not parse: %S" input)
+  | Some ss ->
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      let unsafe_ab = Fmt.str ".%s,.%s{color:red;background-color:#00f}" a b in
+      let unsafe_ba = Fmt.str ".%s,.%s{color:red;background-color:#00f}" b a in
+      if
+        Astring.String.is_infix ~affix:unsafe_ab optimized
+        || Astring.String.is_infix ~affix:unsafe_ba optimized
+      then
+        fail
+          (Fmt.str
+             "optimization introduced a missing selector/property edge: %S -> \
+              %S"
+             input optimized)
+
+let test_smt_property_order_vectors buf =
+  (* Section 4 models rule properties as an ordered sequence: selectors commute,
+     but declarations inside one rule do not. A fallback followed by a newer
+     spelling of the same property must stay in that order after
+     optimization. *)
+  let selector = "." ^ class_name "fallback" buf 0 in
+  let input = Fmt.str "%s{color:red;color:rgba(255,0,0,.5)}" selector in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "SMT property-order vector did not parse: %S" input)
+  | Some ss ->
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      if count_substring ~needle:"color:" optimized <> 2 then
+        fail
+          (Fmt.str "optimization dropped duplicate ordered properties: %S -> %S"
+             input optimized);
+      begin match
+        ( first_index ~needle:"color:red" optimized,
+          first_index ~needle:"color:" optimized )
+      with
+      | Some red_pos, Some first_color_pos when red_pos = first_color_pos -> ()
+      | _ ->
+          fail
+            (Fmt.str
+               "optimization reordered duplicate ordered properties: %S -> %S"
+               input optimized)
+      end
+
 let test_positive_layer_statement_vectors buf =
   let input =
     [
@@ -381,6 +487,42 @@ let test_positive_layer_statement_vectors buf =
       fail
         (Fmt.str "positive layer statement optimization did not reparse: %S"
            optimized)
+
+let test_layer_before_specificity buf =
+  (* CSS Cascade 5 section 6.4: layer order is a cascade sorting criterion
+     before selector specificity. Generate an earlier layer containing a
+     higher-specificity selector and a later layer containing a
+     lower-specificity selector; optimization must not merge, reorder, or drop
+     either rule by reasoning from selector specificity alone. *)
+  let earlier = pick [ "reset"; "base"; "theme" ] buf 0 in
+  let later = pick [ "components"; "utilities"; "overrides" ] buf 1 in
+  let input =
+    Fmt.str "@layer %s,%s;@layer %s{.x.y{color:blue}}@layer %s{.x{color:red}}"
+      earlier later earlier later
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "layer specificity vector did not parse: %S" input)
+  | Some ss -> (
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      let required_prelude = Fmt.str "@layer %s,%s;" earlier later in
+      let required_earlier = Fmt.str "@layer %s{.x.y{color:#00f}}" earlier in
+      let required_later = Fmt.str "@layer %s{.x{color:red}}" later in
+      if
+        not
+          (Astring.String.is_infix ~affix:required_prelude optimized
+          && Astring.String.is_infix ~affix:required_earlier optimized
+          && Astring.String.is_infix ~affix:required_later optimized)
+      then
+        fail
+          (Fmt.str
+             "optimization ignored layer order before specificity: %S -> %S"
+             input optimized);
+      match parse_stylesheet optimized with
+      | Some _ -> ()
+      | None ->
+          fail
+            (Fmt.str "optimized layer specificity vector did not reparse: %S"
+               optimized))
 
 let test_name_defining_atrules_preserved buf =
   let css =
@@ -432,8 +574,16 @@ let suite =
         test_cascade_merge_vectors;
       test_case "cascade shorthand importance vectors" [ bytes ]
         test_cascade_shorthand_importance_vectors;
+      test_case "SMT selector-intersection dependency vectors" [ bytes ]
+        test_smt_intersection_dependency_vectors;
+      test_case "SMT biclique no-new-edges vectors" [ bytes ]
+        test_biclique_no_new_edges;
+      test_case "SMT ordered declaration vectors" [ bytes ]
+        test_smt_property_order_vectors;
       test_case "positive layer statement vectors" [ bytes ]
         test_positive_layer_statement_vectors;
+      test_case "layer order precedes specificity vectors" [ bytes ]
+        test_layer_before_specificity;
       test_case "name-defining at-rules preserved" [ bytes ]
         test_name_defining_atrules_preserved;
     ] )
