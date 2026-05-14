@@ -132,6 +132,8 @@ let pp_var_ref ctx name =
   Pp.string ctx name;
   Pp.char ctx ')'
 
+let is_theme_var v = v.layer = Some "theme"
+
 let pp_empty_var ctx name =
   Pp.string ctx "var(--";
   Pp.string ctx name;
@@ -197,7 +199,8 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
 
 let pp_var_without_fallback : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
-  if in_theme ctx v.name then pp_var_ref ctx v.name
+  if not (is_theme_var v) then pp_var_ref ctx v.name
+  else if in_theme ctx v.name then pp_var_ref ctx v.name
   else
     pp_theme_default_or ctx v.name (fun () ->
         match v.default with
@@ -211,7 +214,7 @@ let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
   | Empty -> pp_empty_var ctx v.name
   | Empty2 -> pp_empty2_var ctx v.name
   | Fallback value ->
-      if in_theme ctx v.name then
+      if (not (is_theme_var v)) || in_theme ctx v.name then
         pp_typed_var_fallback pp_value ctx v.name value
       else pp_theme_default_or ctx v.name (fun () -> pp_value ctx value)
   | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value

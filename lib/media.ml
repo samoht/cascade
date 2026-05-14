@@ -503,6 +503,11 @@ let rec pp_condition : condition Pp.t =
 let rec pp_query : query Pp.t =
  fun ctx -> function
   | Cond c -> pp_condition ctx c
+  (* CSS Mediaqueries 4 §3: [all and X] without an explicit prefix ([not] /
+     [only]) is equivalent to just [X]. *)
+  | Type { prefix = None; type_ = All; trailing = Some c } when Pp.minified ctx
+    ->
+      pp_condition ctx c
   | Type { prefix; type_; trailing } -> (
       (match prefix with
       | None -> ()
@@ -642,6 +647,11 @@ let rec pp ctx = function
   | Range_rev (value, op, name) -> pp_feature ctx (Range_rev (value, op, name))
   | Interval (a, op1, name, op2, b) ->
       pp_feature ctx (Interval (a, op1, name, op2, b))
+  (* CSS Media Queries 4 §3: [all and X] without an explicit prefix is
+     equivalent to just [X]. *)
+  | Type_query { prefix = None; type_ = All; trailing = Some cond }
+    when Pp.minified ctx ->
+      pp ctx cond
   | Type_query { prefix; type_; trailing } -> (
       (match prefix with
       | None -> ()
