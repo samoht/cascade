@@ -1935,8 +1935,30 @@ and rules_aux (rules : rule list) : rule list =
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
 
+(* CSS Syntax 3 sec. 2.2: [@charset] is an encoding-declaration byte pattern
+   recognised before tokenization, not a stylesheet at-rule after parsing. The
+   cascade parser has already consumed the encoding metadata and the serialiser
+   emits UTF-8, so [@charset "UTF-8"] is purely redundant. Drop any UTF-8
+   charset and keep at most the first non-UTF-8 one. *)
+let normalize_charset stmts =
+  let is_utf8 encoding =
+    String.equal (String.lowercase_ascii encoding) "utf-8"
+  in
+  let kept_one = ref false in
+  List.filter
+    (fun stmt ->
+      match stmt with
+      | Charset enc when is_utf8 enc -> false
+      | Charset _ when !kept_one -> false
+      | Charset _ ->
+          kept_one := true;
+          true
+      | _ -> true)
+    stmts
+
 let statements_top_level (stmts : statement list) : statement list =
-  statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
+  statements stmts |> normalize_charset |> merge_consecutive_layers
+  |> drop_redundant_layer_decls
 
 let single_rule (rule : rule) : rule =
   {

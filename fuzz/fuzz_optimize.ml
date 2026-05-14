@@ -162,7 +162,10 @@ let rec boundary_shape = function
       ("origin" :: shapes_with_rule_runs block) @ [ "/origin" ]
   | Moz_document (_, block) ->
       ("moz-document" :: shapes_with_rule_runs block) @ [ "/moz-document" ]
-  | Charset _ -> [ "charset" ]
+  (* CSS Syntax 3 section 8.3: @charset is an encoding declaration byte
+     sequence, not an actual at-rule. Parsed occurrences are invalid and may be
+     dropped, so it is not a cascade boundary shape invariant. *)
+  | Charset _ -> []
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Counter_style _ -> [ "counter-style" ]
@@ -273,7 +276,8 @@ let count_kind f ss =
 let atrule_count_checks =
   [
     ("property", function Css.Stylesheet.Property _ -> true | _ -> false);
-    ("charset", function Css.Stylesheet.Charset _ -> true | _ -> false);
+    (* CSS Syntax 3 section 8.3: @charset is not an at-rule whose count is
+       stable across grammar-checking/minification. *)
     ( "starting-style",
       function Css.Stylesheet.Starting_style _ -> true | _ -> false );
     ("origin", function Css.Stylesheet.Origin _ -> true | _ -> false);
