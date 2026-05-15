@@ -17,7 +17,7 @@ let read_line_height_length t : line_height =
     | Some "em" -> if Pp.string_of_float n = repr then Em n else authored ()
     | Some "%" -> if Pp.string_of_float n = repr then Pct n else authored ()
     | None -> if Pp.string_of_float n = repr then Num n else authored ()
-    | Some u -> Cursor.err_invalid t ("invalid line-height unit: " ^ u)
+    | Some _ -> authored ()
 
 let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
   function
@@ -5252,9 +5252,9 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
           if !first then first := false else Pp.space ctx ();
           pp ctx v
     in
+    emit pp_list_style_type type_;
     emit pp_list_style_position position;
     emit pp_list_style_image image;
-    emit pp_list_style_type type_;
     if !first then Pp.string ctx "outside"
 
 let rec pp_list_style : list_style Pp.t =
@@ -16173,6 +16173,7 @@ let read_image_set_option t : image_set_option =
             buf;
             inline = false;
             in_function = false;
+            in_calc = false;
             theme = None;
             theme_defaults = Pp.no_theme_defaults;
           }

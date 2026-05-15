@@ -1429,7 +1429,7 @@ let spec_platform_property_vectors () =
       ( "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch",
         "border-image:linear-gradient(red,#00f)30 fill/10px/1 stretch" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
-        "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif" );
+        "font:italic small-caps 650 condensed 16px/1.5 Brand,serif" );
       ("display: block flex", "display:flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
         "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );

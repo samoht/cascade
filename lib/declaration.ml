@@ -426,6 +426,7 @@ let rec property_name decl =
       buf = Buffer.create 16;
       inline = false;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -447,6 +448,7 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
       buf = Buffer.create 16;
       inline;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -1105,6 +1107,7 @@ let prop_name (type a) (prop_type : a property) =
       buf;
       inline = false;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -2167,6 +2170,7 @@ let string_of_declaration ?(minify = false) decl =
       buf;
       inline = false;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }

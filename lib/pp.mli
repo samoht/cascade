@@ -28,6 +28,10 @@ type ctx = {
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
           keyword casing: [currentColor] becomes [currentcolor]. *)
+  in_calc : bool;
+      (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
+          boundary ([calc] is type-aware so [<percentage>] and [<number>] are
+          not interchangeable). *)
   theme : String_set.t option;
       (** Optional set of theme-defined variable names. When [None] (default),
           no theme-based resolution is performed — all vars emit as

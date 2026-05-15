@@ -9,6 +9,7 @@ type ctx = {
   buf : Buffer.t;
   inline : bool;
   in_function : bool;
+  in_calc : bool;
   theme : String_set.t option;
   theme_defaults : string -> string option;
 }
@@ -35,6 +36,7 @@ let ctx ?(minify = false) ?indent ?(inline = false) ?theme
     buf;
     inline;
     in_function = false;
+    in_calc = false;
     theme;
     theme_defaults;
   }

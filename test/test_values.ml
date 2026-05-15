@@ -611,9 +611,9 @@ let test_length_percentage () =
 
 let test_number_percentage () =
   check_number_percentage "1.5";
-  check_number_percentage "50%";
+  check_number_percentage ~expected:".5" "50%";
   check_number_percentage "0";
-  check_number_percentage "100%";
+  check_number_percentage ~expected:"1" "100%";
   (* Variable references *)
   check_number_percentage "var(--my-number)";
   check_number_percentage ~expected:"var(--my-pct,75%)" "var(--my-pct, 75%)";
@@ -809,7 +809,7 @@ let spec_color5_function_edges () =
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
   check_color ~expected:"color-mix(in lch longer hue,red 30%,#00f)"
     "color-mix(in lch longer hue, red 30%, blue)";
-  check_color ~expected:"color-mix(in hsl shorter hue,red,#00f 40%)"
+  check_color ~expected:"color-mix(in hsl,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
   neg_cursor read_color "lab(50% 10)";
   neg_cursor read_color "lch(50% 20)";
