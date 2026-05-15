@@ -1354,8 +1354,21 @@ let finalize_rule_without_nested (rule : rule) : rule =
       deduplicate_declarations rule.declarations |> sort_commuting_declarations;
   }
 
+(* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]
+   target the same elements and should merge. Normalise by sorting the list
+   entries via their minified spelling. *)
+let canonical_selector_key (sel : Selector.t) : string =
+  match Selector.as_list sel with
+  | Some xs ->
+      xs
+      |> List.map (Selector.to_string ~minify:true)
+      |> List.sort String.compare |> String.concat ","
+  | None -> Selector.to_string ~minify:true sel
+
 let rules_have_same_selector (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
-  prev.selector = rule.selector
+  String.equal
+    (canonical_selector_key prev.selector)
+    (canonical_selector_key rule.selector)
   && not (contains_vendor_pseudo_element rule.selector)
 
 let merge_two_adjacent_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) :
@@ -2460,48 +2473,12 @@ and process_statements (acc : statement list) (remaining : statement list) :
         | rest -> (List.rev rules_acc, rest)
       in
       let plain_rules, rest = collect_rules [ r ] rest in
-      let rec statement_has_scope = function
-        | Scope _ -> true
-        | Rule rule -> List.exists statement_has_scope rule.nested
-        | Media (_, block)
-        | Container (_, _, block)
-        | Supports (_, block)
-        | Layer (_, block)
-        | Origin (_, block)
-        | Starting_style block
-        | When (_, block)
-        | Else (_, block) ->
-            List.exists statement_has_scope block
-        | _ -> false
-      in
-      let rule_has_scope_nested rule =
-        List.exists statement_has_scope rule.nested
-      in
-      let flattened_scope_rules =
-        List.concat_map
-          (fun rule ->
-            if rule_has_scope_nested rule then !flatten_rule_ref rule
-            else [ Rule rule ])
-          plain_rules
-      in
-      if
-        List.exists
-          (function Rule _ -> false | _ -> true)
-          flattened_scope_rules
-      then
-        let optimized = statements flattened_scope_rules in
-        process_statements (List.rev_append optimized acc) rest
-      else
-        (* Optimize this batch of consecutive rules, including their nested
-           statements *)
-        let rules =
-          List.map
-            (function Rule rule -> rule | _ -> assert false)
-            flattened_scope_rules
-        in
-        let optimized = rules_aux rules in
-        let as_statements = List.map (fun r -> Rule r) optimized in
-        process_statements (List.rev_append as_statements acc) rest
+      (* @scope is a valid nested group rule per CSS Nesting; preserve it as-is
+         during normal optimization. Flattening is reserved for the explicit
+         [flatten_nesting] transform. *)
+      let optimized = rules_aux plain_rules in
+      let as_statements = List.map (fun r -> Rule r) optimized in
+      process_statements (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
       (* Just optimize the block and pass through - grouping happens later *)
       let optimized_block = statements block in
