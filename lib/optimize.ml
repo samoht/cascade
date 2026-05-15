@@ -2530,9 +2530,39 @@ and rules_aux (rules : rule list) : rule list =
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
   List.map single_rule_without_nested with_optimized_nested
-  |> merge_rules
+  |> drop_shadowed_rules |> merge_rules
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
+
+and rule_shadows ~earlier ~later =
+  String.equal
+    (canonical_selector_key earlier.Stylesheet_intf.selector)
+    (canonical_selector_key later.Stylesheet_intf.selector)
+  && List.for_all
+       (fun ed ->
+         List.exists
+           (fun ld ->
+             same_property ed ld
+             && (Declaration.is_important ld
+                || not (Declaration.is_important ed)))
+           later.Stylesheet_intf.declarations)
+       earlier.Stylesheet_intf.declarations
+
+(* Drop an earlier rule when a later rule with the same canonical selector
+   writes every one of its property names at the same or stronger importance.
+   The later same-property write shadows the earlier value regardless of
+   intervening rules. *)
+and drop_shadowed_rules (rules : rule list) : rule list =
+  let indexed = List.mapi (fun i r -> (i, r)) rules in
+  List.filter_map
+    (fun (i, rule) ->
+      let shadowed =
+        List.exists
+          (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
+          indexed
+      in
+      if shadowed then None else Some rule)
+    indexed
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
