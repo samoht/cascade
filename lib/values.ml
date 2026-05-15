@@ -3303,31 +3303,51 @@ let rec pp_color_in_mix : color Pp.t =
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
   Pp.call "color-mix"
     (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
+      (* CSS Color 5 §3: [<color-interpolation-method>] is required; the header
+         always emits. Per §13 [shorter] is the default hue strategy and drops
+         under minify. *)
+      let hue_is_default = hue = Default || hue = Shorter in
       (match in_space with
       | Some space ->
           Pp.string ctx "in ";
           pp_color_space ctx space
       | None -> Pp.string ctx "in oklab");
-      (match hue with
-      | Default -> ()
-      | _ ->
-          Pp.space ctx ();
-          pp_hue_interpolation ctx hue;
-          Pp.string ctx " hue");
+      (if (not hue_is_default) || not (Pp.minified ctx) then
+         match hue with
+         | Default -> ()
+         | _ ->
+             Pp.space ctx ();
+             pp_hue_interpolation ctx hue;
+             Pp.string ctx " hue");
       Pp.comma ctx ();
+      (* CSS Color 5 §3: percentages default per the rule "if only one is given,
+         the second is [100% - first]". Drop both when both are 50% (both at
+         default), or drop just the second when [p1 + p2 = 100%]. *)
+      let pct_value (p : percentage option) =
+        match p with Some (Pct f) -> Some f | _ -> None
+      in
+      let pcts_sum_100 =
+        match (pct_value percent1, pct_value percent2) with
+        | Some a, Some b -> Float.abs (a +. b -. 100.) < 0.0001
+        | _ -> false
+      in
+      let omit_first =
+        Pp.minified ctx && pcts_sum_100 && pct_value percent1 = Some 50.
+      in
+      let omit_second = Pp.minified ctx && pcts_sum_100 in
       pp_color_in_mix ctx color1;
       (match percent1 with
-      | Some p ->
+      | Some p when not omit_first ->
           Pp.space ctx ();
           pp_percentage ctx p
-      | None -> ());
+      | _ -> ());
       Pp.comma ctx ();
       pp_color_in_mix ctx color2;
       match percent2 with
-      | Some p ->
+      | Some p when not omit_second ->
           Pp.space ctx ();
           pp_percentage ctx p
-      | None -> ())
+      | _ -> ())
     ctx
     (in_space, hue, color1, percent1, color2, percent2)
 
