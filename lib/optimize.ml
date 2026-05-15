@@ -2290,11 +2290,27 @@ let rec collect_empty_layer_names names remaining =
 
 (* Merge consecutive Layer_decl statements *)
 let merge_layer_declarations (stmts : statement list) : statement list =
+  (* CSS Cascade 5 sec. 6.6.2: [@layer A, B;] declares layers in source order;
+     re-declaring a layer name is a no-op for cascade order. Merge consecutive
+     [@layer ...;] statements and dedupe repeated names so [@layer u; @layer u]
+     emits one [@layer u]. *)
+  let dedup_preserving_order names =
+    let seen = Hashtbl.create (List.length names) in
+    List.filter
+      (fun name ->
+        if Hashtbl.mem seen name then false
+        else begin
+          Hashtbl.add seen name ();
+          true
+        end)
+      names
+  in
   let rec merge acc = function
     | [] -> List.rev acc
     | Layer_decl names1 :: Layer_decl names2 :: rest ->
-        (* Merge consecutive layer declarations *)
-        merge acc (Layer_decl (names1 @ names2) :: rest)
+        merge acc (Layer_decl (dedup_preserving_order (names1 @ names2)) :: rest)
+    | Layer_decl names :: rest ->
+        merge (Layer_decl (dedup_preserving_order names) :: acc) rest
     | stmt :: rest -> merge (stmt :: acc) rest
   in
   merge [] stmts
@@ -2541,13 +2557,39 @@ and rules_aux (rules : rule list) : rule list =
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
 
-(* CSS Syntax 3 sec. 2.2: [@charset] is an encoding-declaration byte pattern
-   recognised before tokenization, not a stylesheet at-rule after parsing. The
-   cascade parser has already consumed the encoding metadata and the serialiser
-   emits UTF-8, so [@charset "UTF-8"] is purely redundant. Drop any UTF-8
-   charset and keep at most the first non-UTF-8 one. *)
+(* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
+   earlier definition in source order. Drop earlier same-name keyframes; the
+   later one wins. Vendor-prefixed [-webkit-] / [-moz-] variants are separate
+   namespaces, so they are not dedup'd against the unprefixed form. *)
+let drop_shadowed_keyframes (stmts : statement list) : statement list =
+  let exists_later kind name tail =
+    List.exists
+      (fun stmt ->
+        match (kind, stmt) with
+        | `Plain, Keyframes (n, _) -> n = name
+        | `Webkit, Webkit_keyframes (n, _) -> n = name
+        | `Moz, Moz_keyframes (n, _) -> n = name
+        | _ -> false)
+      tail
+  in
+  let rec walk acc = function
+    | [] -> List.rev acc
+    | (Keyframes (name, _) as kf) :: rest ->
+        if exists_later `Plain name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | (Webkit_keyframes (name, _) as kf) :: rest ->
+        if exists_later `Webkit name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | (Moz_keyframes (name, _) as kf) :: rest ->
+        if exists_later `Moz name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | stmt :: rest -> walk (stmt :: acc) rest
+  in
+  walk [] stmts
+
 let statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
+  |> drop_shadowed_keyframes
 
 let single_rule (rule : rule) : rule =
   {
