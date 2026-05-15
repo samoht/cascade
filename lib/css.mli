@@ -4497,6 +4497,33 @@ type font_stretch = Properties.font_stretch =
   | Revert_layer
   | Var of font_stretch var
 
+type font_variant_css21 = Properties.font_variant_css21 = Normal | Small_caps
+
+type font_shorthand = Properties.font_shorthand = {
+  style : font_style option;
+  variant : font_variant_css21 option;
+  weight : font_weight option;
+  stretch : font_stretch option;
+  size : font_size;
+  line_height : line_height option;
+  family : font_family;
+}
+
+type font = Properties.font =
+  | Shorthand of font_shorthand
+  | Caption
+  | Icon
+  | Menu
+  | Message_box
+  | Small_caption
+  | Status_bar
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font var
+
 val font_stretch : font_stretch -> declaration
 (** [font_stretch stretch] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-stretch}
@@ -4874,7 +4901,7 @@ val text_shadow : text_shadow -> declaration
 val text_shadows : text_shadow list -> declaration
 (** [text_shadows shadows] is the text-shadow property with multiple shadows. *)
 
-val font : string -> declaration
+val font : font -> declaration
 (** [font spec] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font} font} shorthand
     property. *)

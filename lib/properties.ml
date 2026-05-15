@@ -9107,54 +9107,48 @@ let rec pp_transition : transition Pp.t =
   | Var v -> pp_var pp_transition ctx v
   | Shorthand s -> pp_transition_shorthand ctx s
 
+(* CSS Syntax 3 §4: two adjacent [<number-percentage>] tokens need a separator
+   unless the boundary is unambiguous - the previous ends with [%] (the unit
+   terminates the token), or the next starts with [-]/[+] (a sign starts a new
+   number). Render values to strings first since [pp_number_percentage] picks
+   between [<number>] and [<percentage>] spelling and the spacing depends on the
+   choice. *)
+let render_number_percentages ctx vs =
+  List.map (Pp.to_string ~minify:(Pp.minified ctx) pp_number_percentage) vs
+
+let pp_number_percentage_separated ctx vs =
+  let needs_sep prev next =
+    (not (Pp.minified ctx))
+    ||
+    let last = prev.[String.length prev - 1] in
+    last <> '%' && (String.length next = 0 || next.[0] <> '-')
+  in
+  let rec loop = function
+    | [] -> ()
+    | [ s ] -> Pp.string ctx s
+    | s :: (next :: _ as rest) ->
+        Pp.string ctx s;
+        if needs_sep s next then Pp.space ctx ();
+        loop rest
+  in
+  loop vs
+
 let rec pp_scale : scale Pp.t =
-  (* Two adjacent [<number-percentage>] values must be separated by whitespace
-     unless the boundary between their tokens is unambiguous: - the previous
-     token ends with a unit ([%]) and tokenisation stops there, or - the next
-     token starts with an explicit sign ([-]/[+]) which begins a new number. *)
-  let is_negative : number_percentage -> bool = function
-    | Num n | Pct n -> n < 0.
-    | _ -> false
-  in
-  let ends_with_unit : number_percentage -> bool = function
-    | Pct _ -> true
-    | _ -> false
-  in
-  let pp_sep ctx prev next =
-    if Pp.minified ctx && (ends_with_unit prev || is_negative next) then ()
-    else Pp.space ctx ()
-  in
-  fun ctx -> function
-    | X n -> pp_number_percentage ctx n
-    | XY (Var x, Var y) ->
-        (* In minified mode, Tailwind omits spaces between var() values *)
-        pp_number_percentage ctx (Var x);
-        Pp.space_if_pretty ctx ();
-        pp_number_percentage ctx (Var y)
-    | XY (x, y) ->
-        pp_number_percentage ctx x;
-        pp_sep ctx x y;
-        pp_number_percentage ctx y
-    | XYZ (Var x, Var y, Var z) ->
-        (* In minified mode, Tailwind omits spaces between var() values *)
-        pp_number_percentage ctx (Var x);
-        Pp.space_if_pretty ctx ();
-        pp_number_percentage ctx (Var y);
-        Pp.space_if_pretty ctx ();
-        pp_number_percentage ctx (Var z)
-    | XYZ (x, y, z) ->
-        pp_number_percentage ctx x;
-        pp_sep ctx x y;
-        pp_number_percentage ctx y;
-        pp_sep ctx y z;
-        pp_number_percentage ctx z
-    | None -> Pp.string ctx "none"
-    | Inherit -> Pp.string ctx "inherit"
-    | Initial -> Pp.string ctx "initial"
-    | Unset -> Pp.string ctx "unset"
-    | Revert -> Pp.string ctx "revert"
-    | Revert_layer -> Pp.string ctx "revert-layer"
-    | Var v -> pp_var pp_scale ctx v
+ fun ctx -> function
+  | X n -> pp_number_percentage ctx n
+  | XY (x, y) ->
+      pp_number_percentage_separated ctx
+        (render_number_percentages ctx [ x; y ])
+  | XYZ (x, y, z) ->
+      pp_number_percentage_separated ctx
+        (render_number_percentages ctx [ x; y; z ])
+  | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_scale ctx v
 
 let rec pp_translate_value : translate_value Pp.t =
  fun ctx -> function
@@ -9608,6 +9602,96 @@ let rec pp_font_weight : font_weight Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_weight ctx v
+
+(* CSS Fonts 4 sec. 2.7: under minify, drop [<style>? <weight>? <stretch>?]
+   components that equal their longhand initial value, and drop [line-height]
+   when it's [normal]. The shorthand body itself is always [<size>
+   [/<line-height>]? <family>+]; size and family are required. *)
+let pp_font_variant_css21 ctx = function
+  | (Normal : font_variant_css21) -> Pp.string ctx "normal"
+  | Small_caps -> Pp.string ctx "small-caps"
+
+let pp_font_shorthand : font_shorthand Pp.t =
+ fun ctx { style; variant; weight; stretch; size; line_height; family } ->
+  let drop_default = Pp.minified ctx in
+  let style : font_style option =
+    if drop_default then match style with Some Normal -> Option.None | s -> s
+    else style
+  in
+  let variant : font_variant_css21 option =
+    if drop_default then
+      match variant with
+      | Some (Normal : font_variant_css21) -> Option.None
+      | v -> v
+    else variant
+  in
+  let weight : font_weight option =
+    if drop_default then
+      match weight with
+      | Some Normal -> Option.None
+      | Some (Weight 400) -> Option.None
+      | w -> w
+    else weight
+  in
+  let stretch : font_stretch option =
+    if drop_default then
+      match stretch with Some (Normal : font_stretch) -> Option.None | s -> s
+    else stretch
+  in
+  let line_height : line_height option =
+    if drop_default then
+      match line_height with
+      | Some (Normal : line_height) -> Option.None
+      | lh -> lh
+    else line_height
+  in
+  let first = ref true in
+  let space_if_needed () = if !first then first := false else Pp.space ctx () in
+  (match style with
+  | None -> ()
+  | Some s ->
+      space_if_needed ();
+      pp_font_style ctx s);
+  (match variant with
+  | None -> ()
+  | Some v ->
+      space_if_needed ();
+      pp_font_variant_css21 ctx v);
+  (match weight with
+  | None -> ()
+  | Some w ->
+      space_if_needed ();
+      pp_font_weight ctx w);
+  (match stretch with
+  | None -> ()
+  | Some s ->
+      space_if_needed ();
+      pp_font_stretch ctx s);
+  space_if_needed ();
+  pp_font_size ctx size;
+  (match line_height with
+  | None -> ()
+  | Some lh ->
+      Pp.char ctx '/';
+      pp_line_height ctx lh);
+  Pp.space ctx ();
+  pp_font_family ctx family
+
+let rec pp_font : font Pp.t =
+ fun ctx -> function
+  | Shorthand sh -> pp_font_shorthand ctx sh
+  | Caption -> Pp.string ctx "caption"
+  | Icon -> Pp.string ctx "icon"
+  | Menu -> Pp.string ctx "menu"
+  | Message_box -> Pp.string ctx "message-box"
+  | Small_caption -> Pp.string ctx "small-caption"
+  | Status_bar -> Pp.string ctx "status-bar"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_font ctx v
 
 let rec pp_webkit_box_orient : webkit_box_orient Pp.t =
  fun ctx -> function
@@ -18527,46 +18611,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Accent_color -> pp pp_color
   | Caret_color -> pp pp_color
   | List_style -> pp Pp.string
-  | Font ->
-      (* The font shorthand is captured as a raw string by
-         [read_font_shorthand]; re-tokenise it through the component parser so
-         the minifier can drop optional whitespace (e.g. the space after the
-         comma in ["Brand", serif]). [bold] is the only font-weight keyword that
-         is unambiguous inside the shorthand (no other longhand spells it), so
-         under minify a whole-token [bold] is rewritten to [700] per CSS Fonts 4
-         5.1.2. *)
-      let rendered =
-        if Pp.minified ctx then
-          Parser.to_string_minified (Cursor.remaining (Cursor.of_string value))
-        else value
-      in
-      let rendered =
-        if not (Pp.minified ctx) then rendered
-        else
-          let len = String.length rendered in
-          let buf = Buffer.create len in
-          let is_word_char c =
-            (c >= 'a' && c <= 'z')
-            || (c >= 'A' && c <= 'Z')
-            || (c >= '0' && c <= '9')
-            || c = '-' || c = '_'
-          in
-          let i = ref 0 in
-          while !i < len do
-            let start = !i in
-            while !i < len && is_word_char rendered.[!i] do
-              incr i
-            done;
-            let word = String.sub rendered start (!i - start) in
-            if word = "bold" then Buffer.add_string buf "700"
-            else Buffer.add_string buf word;
-            if !i < len then (
-              Buffer.add_char buf rendered.[!i];
-              incr i)
-          done;
-          Buffer.contents buf
-      in
-      Pp.string ctx rendered
+  | Font -> pp pp_font
   | Source -> pp pp_font_src
   | Webkit_appearance -> pp pp_webkit_appearance
   | Letter_spacing -> pp pp_length

@@ -610,15 +610,13 @@ let read_shape_outside t =
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
 
-let read_shorthand_line_height r =
-  Cursor.one_of
-    [
-      (fun r -> ignore (read_length r : length));
-      (fun r -> ignore (read_percentage r : percentage));
-      (fun r -> ignore (Cursor.number r : float));
-      (fun r -> ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
-    ]
-    r
+let read_shorthand_line_height_typed r : line_height =
+  let before = Cursor.save r in
+  match Properties.read_line_height r with
+  | lh -> lh
+  | exception Cursor.Parse_error _ ->
+      Cursor.restore r before;
+      Cursor.err_invalid r "invalid line-height in font shorthand"
 
 let generic_font_family_keywords =
   [
@@ -661,22 +659,6 @@ let long_generic_family_start r =
       List.mem (String.lowercase_ascii first) generic_font_family_keywords
   | _ -> false
 
-let read_optional_line_height r =
-  match Cursor.peek_delim r with
-  | Some '/' ->
-      Cursor.skip r;
-      read_shorthand_line_height r
-  | _ -> ()
-
-let read_font_shorthand_size_tail r =
-  let _ = read_font_size r in
-  read_optional_line_height r;
-  if long_generic_family_start r then
-    Cursor.err_invalid r "generic font family must be a standalone family item";
-  ignore (read_font_family r : font_family);
-  Cursor.ws r;
-  Cursor.expect_eof r
-
 let font_shorthand_prefix_ident = function
   | Some
       ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
@@ -684,68 +666,117 @@ let font_shorthand_prefix_ident = function
       true
   | _ -> false
 
-let read_font_shorthand_step r =
-  Cursor.ws r;
-  if Cursor.is_done r then `Done false
-  else if font_shorthand_prefix_ident (Cursor.peek_ident r) then
-    let _ = Cursor.ident r in
-    `Continue
-  else
-    let before = Cursor.save r in
-    match read_font_weight r with
-    | _ -> `Continue
-    | exception Cursor.Parse_error _ ->
-        Cursor.restore r before;
-        read_font_shorthand_size_tail r;
-        `Done true
-
-let read_font_shorthand_body r =
-  let rec loop () =
-    match read_font_shorthand_step r with
-    | `Continue -> loop ()
-    | `Done saw_size -> saw_size
+(* Parse the [font] shorthand body into a typed [font_shorthand] record. The
+   keyword prefix loop ([italic] / [bold] / etc.) populates [style] / [variant]
+   / [weight] / [stretch] as it sees the relevant keywords; [normal] is consumed
+   without binding any slot. Once a non-prefix token appears, we fall through to
+   required [size] [/ <line-height>?] <family>. *)
+let read_font_shorthand_body_typed r :
+    font_style option
+    * font_variant_css21 option
+    * font_weight option
+    * font_stretch option
+    * font_size
+    * line_height option
+    * font_family =
+  let style : font_style option ref = ref Option.None in
+  let variant : font_variant_css21 option ref = ref Option.None in
+  let weight : font_weight option ref = ref Option.None in
+  let stretch : font_stretch option ref = ref Option.None in
+  let consume_prefix_keyword kw =
+    match kw with
+    | "italic" -> if !style = None then style := Some (Italic : font_style)
+    | "oblique" -> if !style = None then style := Some (Oblique : font_style)
+    | "small-caps" ->
+        if !variant = None then
+          variant := Some (Small_caps : font_variant_css21)
+    | "bold" -> if !weight = None then weight := Some (Bold : font_weight)
+    | "bolder" -> if !weight = None then weight := Some (Bolder : font_weight)
+    | "lighter" -> if !weight = None then weight := Some (Lighter : font_weight)
+    | "condensed" ->
+        if !stretch = None then stretch := Some (Condensed : font_stretch)
+    | "expanded" ->
+        if !stretch = None then stretch := Some (Expanded : font_stretch)
+    | "normal" -> ()
+    | _ -> ()
   in
-  loop ()
-
-let is_system_font_keyword = function
-  | "caption" | "icon" | "menu" | "message-box" | "small-caption" | "status-bar"
-    ->
-      true
-  | _ -> false
-
-let rec read_font_shorthand t =
-  let raw = Cursor.consume_to_decl_end ~trim:true t in
-  let lower = String.lowercase_ascii raw in
-  if is_css_wide_keyword lower then raw
-    (* CSS Fonts 4 2.4: a [font:] declaration may be a single system font
-       keyword like [caption] / [icon] / [menu]. They are bare idents and skip
-       the regular [font-size]-required shorthand structure. *)
-  else if is_system_font_keyword (String.trim lower) then raw
-  else
-    let is_valid_var () =
-      let r = Cursor.of_string raw in
-      match Values.read_var read_font_shorthand r with
-      | (_ : string var) ->
-          Cursor.ws r;
-          Cursor.is_done r
-      | exception Cursor.Parse_error _ -> false
-    in
-    if is_valid_var () then raw
-    else if
-      (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
-         cannot appear inside a multi-value shorthand like [font: initial 16px
-         serif]. *)
-      value_has_css_wide_mix raw
-    then Cursor.err_invalid t "CSS-wide keyword mixed with other values"
+  let rec consume_prefix () =
+    Cursor.ws r;
+    if Cursor.is_done r then ()
+    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then begin
+      let kw = Cursor.ident r in
+      consume_prefix_keyword kw;
+      consume_prefix ()
+    end
     else
-      let r = Cursor.of_string raw in
-      let saw_size =
-        try read_font_shorthand_body r
-        with Cursor.Parse_error _ ->
-          Cursor.err_invalid t "invalid font shorthand"
+      let before = Cursor.save r in
+      match Properties.read_font_weight r with
+      | w when !weight = None ->
+          weight := Some w;
+          consume_prefix ()
+      | _ -> Cursor.restore r before
+      | exception Cursor.Parse_error _ -> Cursor.restore r before
+  in
+  consume_prefix ();
+  Cursor.ws r;
+  let size = Properties.read_font_size r in
+  let line_height =
+    match Cursor.peek_delim r with
+    | Some '/' ->
+        Cursor.skip r;
+        Cursor.ws r;
+        Some (read_shorthand_line_height_typed r)
+    | _ -> None
+  in
+  Cursor.ws r;
+  if long_generic_family_start r then
+    Cursor.err_invalid r "generic font family must be a standalone family item";
+  let family = Properties.read_font_family r in
+  Cursor.ws r;
+  Cursor.expect_eof r;
+  (!style, !variant, !weight, !stretch, size, line_height, family)
+
+let rec read_font_shorthand t : font =
+  let raw = Cursor.consume_to_decl_end ~trim:true t in
+  let lower = String.lowercase_ascii (String.trim raw) in
+  match lower with
+  | "inherit" -> Inherit
+  | "initial" -> Initial
+  | "unset" -> Unset
+  | "revert" -> Revert
+  | "revert-layer" -> Revert_layer
+  | "caption" -> Caption
+  | "icon" -> Icon
+  | "menu" -> Menu
+  | "message-box" -> Message_box
+  | "small-caption" -> Small_caption
+  | "status-bar" -> Status_bar
+  | _ ->
+      let is_valid_var () =
+        let r = Cursor.of_string raw in
+        match Values.read_var (fun r -> read_font_shorthand r) r with
+        | (_ : font var) ->
+            Cursor.ws r;
+            Cursor.is_done r
+        | exception Cursor.Parse_error _ -> false
       in
-      if not saw_size then Cursor.err_invalid t "font shorthand missing size";
-      raw
+      if is_valid_var () then
+        let r = Cursor.of_string raw in
+        Var (Values.read_var (fun r -> read_font_shorthand r) r)
+      else if
+        (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
+           cannot appear inside a multi-value shorthand like [font: initial 16px
+           serif]. *)
+        value_has_css_wide_mix raw
+      then Cursor.err_invalid t "CSS-wide keyword mixed with other values"
+      else
+        let r = Cursor.of_string raw in
+        let style, variant, weight, stretch, size, line_height, family =
+          try read_font_shorthand_body_typed r
+          with Cursor.Parse_error _ ->
+            Cursor.err_invalid t "invalid font shorthand"
+        in
+        Shorthand { style; variant; weight; stretch; size; line_height; family }
 
 let read_grid_template_list t = read_grid_template t
 
