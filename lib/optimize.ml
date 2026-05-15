@@ -6,9 +6,11 @@ module String_set = Set.Make (String)
 
 (** {1 Edge Model} *)
 
+type packed_property = Packed : 'a Properties.property -> packed_property
+
 type edge = {
   summary : Selector_summary.t;
-  property : string;
+  property : packed_property;
   important : bool;
 }
 
@@ -16,11 +18,11 @@ let selectors_of_rule_selector (sel : Selector.t) =
   match Selector.as_list sel with Some xs -> xs | None -> [ sel ]
 
 let edges_of_decl summary = function
-  | Declaration _ as d ->
+  | Declaration { property; _ } as d ->
       Some
         {
           summary;
-          property = Declaration.property_name d;
+          property = Packed property;
           important = Declaration.is_important d;
         }
   | _ -> None

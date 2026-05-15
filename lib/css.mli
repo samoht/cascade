@@ -2790,9 +2790,9 @@ type radial_gradient_config = Properties.radial_gradient_config = {
     optional [in <color-interpolation-method>] clause. *)
 
 type conic_gradient_config = Properties.conic_gradient_config = {
-  from_angle : angle option;  (** [from <angle>] starting angle *)
-  conic_position : position_value option;  (** [at <position>] center *)
-  conic_interpolation : color_interpolation option;
+  angle : angle option;  (** [from <angle>] starting angle *)
+  position : position_value option;  (** [at <position>] center *)
+  interpolation : color_interpolation option;
       (** Optional [in <color-interpolation-method>] clause. *)
 }
 (** Configuration for conic-gradient prefix: starting angle, center, and
@@ -2809,12 +2809,12 @@ val radial_gradient_config :
     radial-gradient prefix. *)
 
 val conic_gradient_config :
-  ?from_angle:angle ->
+  ?angle:angle ->
   ?position:position_value ->
   ?interpolation:color_interpolation ->
   unit ->
   conic_gradient_config
-(** [conic_gradient_config ?from_angle ?position ?interpolation ()] builds a
+(** [conic_gradient_config ?angle ?position ?interpolation ()] builds a
     conic-gradient prefix. *)
 
 type border_radius = Properties.border_radius =
@@ -2946,10 +2946,9 @@ type background_image = Properties.background_image =
       (** CSS variable reference: var(--my-gradient) *)
 
 and image_set_option = Properties.image_set_option = {
-  image_set_source : image_set_source;
-  image_set_resolution : string option;
-      (** [<resolution>] like ["1x"] or ["300dpi"] *)
-  image_set_mime_type : string option;  (** [type("image/avif")] *)
+  source : image_set_source;
+  resolution : string option;  (** [<resolution>] like ["1x"] or ["300dpi"] *)
+  mime_type : string option;  (** [type("image/avif")] *)
 }
 
 and image_set_source = Properties.image_set_source =
@@ -2957,8 +2956,8 @@ and image_set_source = Properties.image_set_source =
   | Image_set_string of string
 
 and cross_fade_option = Properties.cross_fade_option = {
-  cross_fade_image : background_image;
-  cross_fade_percent : percentage option;
+  image : background_image;
+  percent : percentage option;
 }
 
 type background_box = Properties.background_box =

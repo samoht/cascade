@@ -3003,12 +3003,12 @@ let pp_radial_gradient_config : radial_gradient_config Pp.t =
 let pp_conic_gradient_config : conic_gradient_config Pp.t =
  fun ctx config ->
   let has_output = ref false in
-  (match config.conic_interpolation with
+  (match config.interpolation with
   | Some i ->
       pp_color_interpolation ctx i;
       has_output := true
   | None -> ());
-  (match config.from_angle with
+  (match config.angle with
   | Some a ->
       if !has_output then Pp.space ctx ();
       Pp.string ctx "from";
@@ -3016,7 +3016,7 @@ let pp_conic_gradient_config : conic_gradient_config Pp.t =
       pp_angle ctx a;
       has_output := true
   | None -> ());
-  match config.conic_position with
+  match config.position with
   | Some p ->
       if !has_output then Pp.space ctx ();
       Pp.string ctx "at";
@@ -3100,10 +3100,9 @@ let pp_quoted_url quote ctx url =
   Pp.char ctx quote;
   Pp.char ctx ')'
 
-let conic_gradient_has_config config =
-  config.from_angle <> None
-  || config.conic_position <> None
-  || config.conic_interpolation <> None
+let conic_gradient_has_config (config : conic_gradient_config) =
+  config.angle <> None || config.position <> None
+  || config.interpolation <> None
 
 let pp_conic_gradient_named name ctx (config, stops) =
   Pp.call name
@@ -3173,9 +3172,8 @@ let pp_radial_gradient_named name ctx (config, stops) =
       | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
-let pp_image_set_option ctx
-    { image_set_source; image_set_resolution; image_set_mime_type } =
-  (match image_set_source with
+let pp_image_set_option ctx { source; resolution; mime_type } =
+  (match source with
   | Image_set_url u -> Pp.url ctx u
   | Image_set_string s -> Pp.quoted ctx s);
   Option.iter
@@ -3184,12 +3182,12 @@ let pp_image_set_option ctx
       Pp.string ctx "type(";
       Pp.quoted ctx mime;
       Pp.char ctx ')')
-    image_set_mime_type;
+    mime_type;
   Option.iter
     (fun res ->
       Pp.sp ctx ();
       Pp.string ctx res)
-    image_set_resolution
+    resolution
 
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
@@ -3271,13 +3269,13 @@ let rec pp_background_image : background_image Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-and pp_cross_fade_option ctx { cross_fade_image; cross_fade_percent } =
-  pp_background_image ctx cross_fade_image;
+and pp_cross_fade_option ctx { image; percent } =
+  pp_background_image ctx image;
   Option.iter
     (fun pct ->
       Pp.space ctx ();
       Values.pp_percentage ~always:true ctx pct)
-    cross_fade_percent
+    percent
 
 let is_font_family_ident_word s =
   let len = String.length s in
@@ -15860,7 +15858,7 @@ let read_conic_gradient_config t : conic_gradient_config =
      <angle>]? || [at <position>]? || <color-interpolation-method>]? - the [||]
      combinator allows any order. Loop trying each missing slot until no
      progress is made. *)
-  let from_angle : angle option ref = ref Option.None in
+  let angle : angle option ref = ref Option.None in
   let position : position_value option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
   let read_from t =
@@ -15892,21 +15890,16 @@ let read_conic_gradient_config t : conic_gradient_config =
   let rec loop () =
     Cursor.ws t;
     if
-      try_slot from_angle read_from
-      || try_slot position read_at
+      try_slot angle read_from || try_slot position read_at
       || try_slot interpolation read_color_interpolation
     then loop ()
   in
   loop ();
   if
-    !from_angle = Option.None && !position = Option.None
+    !angle = Option.None && !position = Option.None
     && !interpolation = Option.None
   then Cursor.err_invalid t "conic-gradient config";
-  {
-    from_angle = !from_angle;
-    conic_position = !position;
-    conic_interpolation = !interpolation;
-  }
+  { angle = !angle; position = !position; interpolation = !interpolation }
 
 let read_linear_gradient_body_stops t =
   (* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to
@@ -16039,7 +16032,8 @@ let read_conic_gradient_body t =
     match config with
     | Some config -> config
     | None ->
-        { from_angle = None; conic_position = None; conic_interpolation = None }
+        ({ angle = None; position = None; interpolation = None }
+          : conic_gradient_config)
   in
   Conic_gradient (config, stops)
 
@@ -16200,11 +16194,7 @@ let read_image_set_option t : image_set_option =
   if Option.is_none mime && Option.is_none resolution then
     Cursor.err_invalid t
       "image-set option requires a <resolution> or type(<string>)";
-  {
-    image_set_source = source;
-    image_set_resolution = resolution;
-    image_set_mime_type = mime;
-  }
+  { source; resolution; mime_type = mime }
 
 let read_image_set_body t : background_image =
   Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
@@ -16425,7 +16415,7 @@ and read_cross_fade_option t : cross_fade_option =
             Some (Values.read_percentage t)
         | _ -> None)
   in
-  { cross_fade_image = image; cross_fade_percent = pct }
+  { image; percent = pct }
 
 let read_background_image t : background_image =
   let first = read_bg_image t in
