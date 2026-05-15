@@ -133,6 +133,9 @@ and statement =
   | Rule of rule
   | Declarations of Declaration.declaration list
       (** Bare declarations for CSS nesting (no selector) *)
+  | Bang_comment of string
+      (** Preserved [/*! ... */] comment (license header convention). The body
+          excludes the surrounding [/*!] / [*/] delimiters. *)
   | Charset of string  (** [@charset "UTF-8";] *)
   | Import of import_rule  (** [@import url(...) layer(...) supports(...);] *)
   | Namespace of string option * namespace_url  (** [@namespace prefix? url;] *)

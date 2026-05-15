@@ -6757,7 +6757,7 @@ let position_is_default_origin (p : position_value) =
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->
   let first = ref true in
-  let maybe_space () = if !first then first := false else Pp.space ctx () in
+  let maybe_space () = if !first then first := false else Pp.token_sp ctx () in
 
   let position : position_value option =
     if Pp.minified ctx && bg.size = None then
@@ -8628,7 +8628,12 @@ let rec pp_grid_template : grid_template Pp.t =
   | Vmin f -> Pp.unit ctx f "vmin"
   | Vmax f -> Pp.unit ctx f "vmax"
   | Zero -> Pp.char ctx '0'
-  | Fr f -> Pp.unit ctx f "fr"
+  (* CSS Grid 2 sec. 7.2: [<flex>] is [<number>fr]; the unit-drop rule is for
+     [<length>] only. [0fr] is a zero flex factor, distinct from a [0]
+     [<length>] in [grid-template]'s union grammar. *)
+  | Fr f ->
+      Pp.float ctx f;
+      Pp.string ctx "fr"
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
@@ -10342,6 +10347,12 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Unset -> Unset
   | Revert -> Revert
   | Revert_layer -> Revert_layer
+  (* [read_length_unit] wraps a known-unit zero in [Dimension { unit; repr }] to
+     preserve the authored spelling. Map back to the typed [flex_basis] form so
+     [flex-basis: 0px] / [flex-basis: 0%] type-check. CSS Flexbox 1 sec. 7.2:
+     [flex-basis] accepts [<'width'>] which accepts [<length-percentage>]. *)
+  | Dimension { value = 0.; unit = "%"; _ } -> Pct 0.
+  | Dimension { value = 0.; _ } -> Zero
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
 let rec read_flex_basis t : flex_basis =

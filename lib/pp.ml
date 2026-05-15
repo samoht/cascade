@@ -127,6 +127,20 @@ let list ?sep pp ctx l =
           pp ctx x)
         t
 
+(* CSS Syntax 3 sec. 4 token-boundary separator: under minify, drop the space
+   when the previous token ends with [)] or [%] - both close cleanly so the
+   following ident/number cannot be re-tokenised into a single token. Falls back
+   to a regular space in pretty mode. *)
+let token_sp ctx () =
+  if not ctx.minify then Buffer.add_char ctx.buf ' '
+  else
+    let len = Buffer.length ctx.buf in
+    if len = 0 then ()
+    else
+      match Buffer.nth ctx.buf (len - 1) with
+      | ')' | '%' -> ()
+      | _ -> Buffer.add_char ctx.buf ' '
+
 let column ctx =
   let buf = ctx.buf in
   let len = Buffer.length buf in

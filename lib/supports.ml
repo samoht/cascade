@@ -289,7 +289,11 @@ and pp_and_branch ctx = function
 
 and pp_and ctx a b =
   pp_and_branch ctx a;
-  Pp.string ctx " and ";
+  (* CSS Conditional 5 sec. 4.4: a [)and ] sequence is unambiguous so the
+     leading space is droppable under minify; the trailing space is required to
+     keep [and(] from re-tokenising as a function call. *)
+  Pp.sp ctx ();
+  Pp.string ctx "and ";
   pp_and_branch ctx b
 
 and pp_or_branch ~is_left ctx = function
@@ -311,7 +315,8 @@ and pp_or_and_left ~is_left ctx = function
 
 and pp_or ctx a b =
   pp_or_branch ~is_left:true ctx a;
-  Pp.string ctx " or ";
+  Pp.sp ctx ();
+  Pp.string ctx "or ";
   pp_or_branch ~is_left:false ctx b
 
 let pp ctx t = pp_aux ~in_and:false ctx t

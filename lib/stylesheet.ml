@@ -1099,10 +1099,9 @@ and pp_media_statement ctx condition content =
   (match condition with
   | Media.List [] -> ()
   | _ ->
-      (* Under minify the space between [@media] and the condition is needed
-         only when the condition starts with an ident ([@media screen ...]); a
-         leading [(] (any parenthesised feature query) provides its own token
-         boundary, so [@media(width<240px)] reparses identically. *)
+      (* Per cascade's minify policy (README sec. "Minify policy"), elide
+         whitespace at safe token boundaries: a leading [(] needs no space.
+         Idents like [screen] still need it. *)
       let rendered = Pp.to_string ~minify:ctx.Pp.minify Media.pp condition in
       if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '('
       then ()
@@ -1124,15 +1123,29 @@ and pp_container_statement ctx name condition content =
         Container.to_stylesheet_string ~minify:ctx.Pp.minify condition
       in
       if condition_str <> "" then (
-        Pp.char ctx ' ';
+        (* Per cascade's minify policy: elide whitespace at safe token
+           boundaries. A leading [(] needs no space; a name component (after
+           [@container <name>] or a non-paren condition like [not (...)] /
+           [style(...)]) does. *)
+        if Pp.minified ctx && name = None && condition_str.[0] = '(' then ()
+        else Pp.char ctx ' ';
         Pp.string ctx condition_str)
   | None -> ());
   Pp.sp ctx ();
   Pp.braces pp_block ctx content
 
 and pp_supports_statement ctx condition content =
-  Pp.string ctx "@supports ";
-  pp_supports_condition_value ctx condition;
+  (* Per cascade's minify policy (README sec. "Minify policy"): elide whitespace
+     at safe token boundaries. The space after [@supports] is droppable only
+     when the condition opens with [(] - any other start ([not],
+     [selector(...)], etc.) needs the space to keep token shape. *)
+  Pp.string ctx "@supports";
+  let rendered =
+    Pp.to_string ~minify:ctx.Pp.minify pp_supports_condition_value condition
+  in
+  if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '(' then ()
+  else Pp.string ctx " ";
+  Pp.string ctx rendered;
   Pp.sp ctx ();
   Pp.braces pp_block ctx content
 
@@ -1168,6 +1181,10 @@ and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
   | Declarations raw_decls -> pp_declarations_statement ctx raw_decls
+  | Bang_comment body ->
+      Pp.string ctx "/*";
+      Pp.string ctx body;
+      Pp.string ctx "*/"
   | Charset encoding ->
       Pp.string ctx "@charset \"";
       Pp.string ctx encoding;
@@ -3519,17 +3536,71 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
   in
   (statements, List.rev !warnings)
 
+(* Scan [source] for top-level [/*! ... */] bang comments. The lexer drops
+   ordinary comments per CSS Syntax 3 sec. 4.3.2; bang comments are the minifier
+   convention for license headers and need to round-trip. Returns pairs
+   [(start_offset, body)] in source order; nested comments inside strings or
+   other comments are not handled because CSS comments don't nest. *)
+let extract_bang_comments (source : string) : (int * string) list =
+  let len = String.length source in
+  let acc = ref [] in
+  let i = ref 0 in
+  while !i + 2 < len do
+    if
+      String.unsafe_get source !i = '/'
+      && String.unsafe_get source (!i + 1) = '*'
+      && String.unsafe_get source (!i + 2) = '!'
+    then (
+      let start_offset = !i in
+      let body_start = !i + 2 in
+      let j = ref (!i + 3) in
+      let stop = ref None in
+      while !stop = None && !j + 1 < len do
+        if
+          String.unsafe_get source !j = '*'
+          && String.unsafe_get source (!j + 1) = '/'
+        then stop := Some !j
+        else incr j
+      done;
+      match !stop with
+      | Some end_ ->
+          let body = String.sub source body_start (end_ - body_start) in
+          acc := (start_offset, body) :: !acc;
+          i := end_ + 2
+      | None -> i := len)
+    else incr i
+  done;
+  List.rev !acc
+
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
    from [Parser.stylesheet] with per-rule typed-validation warnings. *)
 let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
     : stylesheet * Error.t list =
   let reader = Reader.of_string source in
   let out = Parser.stylesheet ~meta reader in
-  (* Snippets must be sliced from the preprocessed buffer so their offsets line
-     up with the locs the lexer produced (see Cursor.of_string). *)
   let sheet, typed_warnings =
     read_stylesheet_of_rules ~source:(Reader.source reader) ~meta out.value
   in
+  (* Interleave preserved [/*! ... */] bang comments at their source position by
+     walking the original rules and the bang-comment list in parallel; any bang
+     comments after the last rule are appended at the end. The typed [sheet] may
+     be shorter than [out.value] when validation drops a rule, but each typed
+     statement still corresponds to the next unconsumed rule, so the position
+     mapping survives. *)
+  let bangs = extract_bang_comments source in
+  let rule_starts = List.map (fun r -> (rule_loc r).start_pos) out.value in
+  let rec interleave bangs rule_starts sheet =
+    match (bangs, rule_starts, sheet) with
+    | [], _, _ -> sheet
+    | (_, body) :: rest_b, [], _ ->
+        Bang_comment body :: interleave rest_b [] sheet
+    | (offset, body) :: rest_b, start :: _, _ when offset < start ->
+        Bang_comment body :: interleave rest_b rule_starts sheet
+    | _, _ :: rest_s, [] -> interleave bangs rest_s []
+    | _, _ :: rest_s, stmt :: rest_sheet ->
+        stmt :: interleave bangs rest_s rest_sheet
+  in
+  let sheet = interleave bangs rule_starts sheet in
   (sheet, out.warnings @ typed_warnings)
 
 (** {1 Inline Styles} *)
@@ -3607,7 +3678,7 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Viewport _ | Font_palette_values _ | Font_feature_values _
   | View_transition _ | Charset _ | Import _ | Namespace _ | Property _
   | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-  | Unknown_at_rule _ ->
+  | Unknown_at_rule _ | Bang_comment _ ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =

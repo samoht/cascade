@@ -877,6 +877,57 @@ let strip_top_level_calc_arg arg =
   then String.sub arg plen (len - plen - 1)
   else arg
 
+(* CSSOM serialisation (CSS Values 4 sec. 6.7.2) drops a leading zero on
+   fractional values ([.5rem], not [0.5rem]); apply that to fresh numbers under
+   minify. A digit-[0] is the start of a new number when the previous char is a
+   separator ([(], [,], whitespace, or a math operator). *)
+let is_leading_zero ~minify ~prev args i len =
+  minify
+  && i + 1 < len
+  && String.unsafe_get args i = '0'
+  && String.unsafe_get args (i + 1) = '.'
+  && i + 2 < len
+  && (match String.unsafe_get args (i + 2) with
+    | '0' .. '9' -> true
+    | _ -> false)
+  &&
+  match prev with
+  | '(' | ',' | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' -> true
+  | _ -> false
+
+let emit_math_args ctx args =
+  let buf = ctx.Pp.buf in
+  let depth = ref 0 in
+  let after_comma = ref false in
+  let minify = ctx.Pp.minify in
+  let prev = ref '(' in
+  let len = String.length args in
+  let i = ref 0 in
+  while !i < len do
+    let c = String.unsafe_get args !i in
+    (match c with
+    | '(' ->
+        after_comma := false;
+        incr depth;
+        Buffer.add_char buf c
+    | ')' ->
+        after_comma := false;
+        decr depth;
+        Buffer.add_char buf c
+    | ',' when !depth = 0 ->
+        after_comma := true;
+        Buffer.add_char buf ',';
+        if not minify then Buffer.add_char buf ' '
+    | ' ' when !after_comma -> ()
+    | _ when is_leading_zero ~minify ~prev:!prev args !i len ->
+        after_comma := false
+    | _ ->
+        after_comma := false;
+        Buffer.add_char buf c);
+    prev := c;
+    incr i
+  done
+
 let pp_math_call ctx name args =
   let args =
     if Pp.minified ctx then
@@ -892,30 +943,7 @@ let pp_math_call ctx name args =
   in
   Pp.string ctx name;
   Pp.char ctx '(';
-  let buf = ctx.Pp.buf in
-  let depth = ref 0 in
-  let after_comma = ref false in
-  let minify = ctx.Pp.minify in
-  String.iter
-    (fun c ->
-      match c with
-      | '(' ->
-          after_comma := false;
-          incr depth;
-          Buffer.add_char buf c
-      | ')' ->
-          after_comma := false;
-          decr depth;
-          Buffer.add_char buf c
-      | ',' when !depth = 0 ->
-          after_comma := true;
-          Buffer.add_char buf ',';
-          if not minify then Buffer.add_char buf ' '
-      | ' ' when !after_comma -> ()
-      | _ ->
-          after_comma := false;
-          Buffer.add_char buf c)
-    args;
+  emit_math_args ctx args;
   Pp.char ctx ')'
 
 let normalize_math_args args =
@@ -1691,7 +1719,9 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ic f -> pp_unit_fn f "ic"
   | Ric f -> pp_unit_fn f "ric"
   | Rlh f -> pp_unit_fn f "rlh"
-  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
+  (* CSS Values 4 sec. 6.5: the unit-drop on a zero is for [<length>] only; [Pct
+     0.] is a [<percentage>] zero and must keep [%] - dropping it would change
+     the value's type from percentage to length. *)
   | Pct f -> Pp.pct ctx f
   | Vw f -> pp_unit_fn f "vw"
   | Vh f -> pp_unit_fn f "vh"
@@ -2962,7 +2992,6 @@ let minified_length_percentage_calc ctx c =
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
-  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
   | Pct f -> Pp.pct ctx f
   | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v

@@ -499,6 +499,7 @@ let rec boundary_shape = function
   | Viewport _ -> [ "viewport" ]
   | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
   | Property _ -> [ "property" ]
+  | Bang_comment _ -> [ "bang-comment" ]
 
 let boundary_shapes ss = List.concat_map boundary_shape ss
 
@@ -521,7 +522,7 @@ let anonymous_layer_count ss =
     | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
     | Font_palette_values _ | Font_feature_values _ | View_transition _
     | Position_try _ | Property _ | Supports_condition _ | Viewport _
-    | Unknown_at_rule _ ->
+    | Unknown_at_rule _ | Bang_comment _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss
