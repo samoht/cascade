@@ -25,5 +25,6 @@
   (mdx :with-test)
   (re :with-test)
   fmt
+  base-unix
   uutf
   cmdliner))
