@@ -1501,7 +1501,7 @@ val border_collapse : border_collapse -> declaration
 val list_style : string -> declaration
 (** [list_style v] is the CSS [list-style] shorthand. *)
 
-val font : string -> declaration
+val font : font -> declaration
 (** [font v] is the CSS [font] shorthand. *)
 
 val webkit_appearance : webkit_appearance -> declaration

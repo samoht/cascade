@@ -1778,6 +1778,38 @@ type font_stretch =
   | Revert_layer
   | Var of font_stretch var
 
+(* CSS Fonts 4 sec. 2.7: [font] shorthand body is [<style>? <variant-css21>?
+   <weight>? <stretch>? <size>[/<line-height>]? <family>+]. Required: [size] and
+   [family]; the rest default to the longhand initial. *)
+type font_variant_css21 = Normal | Small_caps
+
+type font_shorthand = {
+  style : font_style option;
+  variant : font_variant_css21 option;
+  weight : font_weight option;
+  stretch : font_stretch option;
+  size : font_size;
+  line_height : line_height option;
+  family : font_family;
+}
+
+(* CSS Fonts 4 sec. 2.7: [font] is either a structured shorthand, one of the six
+   system-font keywords, a CSS-wide keyword, or a [var()] reference. *)
+type font =
+  | Shorthand of font_shorthand
+  | Caption
+  | Icon
+  | Menu
+  | Message_box
+  | Small_caption
+  | Status_bar
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font var
+
 type font_size_adjust_metric =
   | Ex_height
   | Cap_height
@@ -4295,7 +4327,7 @@ type 'a property =
   | Webkit_text_decoration_color : color property
   | Text_indent : text_indent_value property
   | List_style : string property
-  | Font : string property
+  | Font : font property
   | Source : Font_face.src property
   | Webkit_appearance : webkit_appearance property
   | Webkit_transform : transform list property

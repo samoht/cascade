@@ -896,54 +896,45 @@ let is_font_longhand : declaration -> bool = function
   | Declaration { property = Font_family; _ } -> true
   | _ -> false
 
-(* Each [_string] helper returns [Some <minified spelling>] when the declaration
-   is the relevant longhand and its value is non-default; [None] otherwise (so
-   [List.find_map] over the 5-tuple naturally picks at most one). *)
-let font_style_string : declaration -> string option = function
-  | Declaration { property = Font_style; value = Normal; _ } -> None
-  | Declaration { property = Font_style; _ } as d -> Some (minified_value d)
-  | _ -> None
+(* Each helper returns [Some <typed value>] when the declaration is the relevant
+   longhand; [None] otherwise. The pretty-printer drops default components on
+   emit, so the composer doesn't normalise here. *)
+let font_style_of : declaration -> Properties.font_style option = function
+  | Declaration { property = Font_style; value; _ } -> Some value
+  | _ -> Option.None
 
-let font_weight_string : declaration -> string option = function
-  | Declaration { property = Font_weight; value = Normal; _ } -> None
-  | Declaration { property = Font_weight; value = Weight 400; _ } -> None
-  | Declaration { property = Font_weight; _ } as d -> Some (minified_value d)
-  | _ -> None
+let font_weight_of : declaration -> Properties.font_weight option = function
+  | Declaration { property = Font_weight; value; _ } -> Some value
+  | _ -> Option.None
 
-let line_height_string : declaration -> string option = function
-  | Declaration { property = Line_height; value = Normal; _ } -> None
-  | Declaration { property = Line_height; _ } as d -> Some (minified_value d)
-  | _ -> None
+let line_height_of : declaration -> Properties.line_height option = function
+  | Declaration { property = Line_height; value; _ } -> Some value
+  | _ -> Option.None
 
-let font_size_string : declaration -> string option = function
-  | Declaration { property = Font_size; _ } as d -> Some (minified_value d)
-  | _ -> None
+let font_size_of : declaration -> Properties.font_size option = function
+  | Declaration { property = Font_size; value; _ } -> Some value
+  | _ -> Option.None
 
-let font_family_string : declaration -> string option = function
-  | Declaration { property = Font_family; _ } as d -> Some (minified_value d)
-  | _ -> None
+let font_family_of : declaration -> Properties.font_family option = function
+  | Declaration { property = Font_family; value; _ } -> Some value
+  | _ -> Option.None
 
-let render_font_shorthand decls =
+let render_font_shorthand decls : Properties.font option =
   let pick f = List.find_map f decls in
-  let style = pick font_style_string in
-  let weight = pick font_weight_string in
-  let line_height = pick line_height_string in
-  match (pick font_size_string, pick font_family_string) with
+  match (pick font_size_of, pick font_family_of) with
   | Some size, Some family ->
-      let size_lh =
-        match line_height with
-        | Some lh -> String.concat "" [ size; "/"; lh ]
-        | None -> size
-      in
-      let leading =
-        [ style; weight ] |> List.filter_map (fun x -> x) |> String.concat " "
-      in
-      let body =
-        if leading = "" then String.concat " " [ size_lh; family ]
-        else String.concat " " [ leading; size_lh; family ]
-      in
-      Some body
-  | _ -> None
+      Some
+        (Shorthand
+           {
+             style = pick font_style_of;
+             variant = Option.None;
+             weight = pick font_weight_of;
+             stretch = Option.None;
+             size;
+             line_height = pick line_height_of;
+             family;
+           })
+  | _ -> Option.None
 
 let try_compose_font = function
   | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: (_, d5) :: rest
@@ -954,10 +945,14 @@ let try_compose_font = function
          && is_important d3 = is_important d4
          && is_important d4 = is_important d5 -> (
       match render_font_shorthand [ d1; d2; d3; d4; d5 ] with
-      | Some s ->
+      | Some font_value ->
           let merged =
             Declaration
-              { property = Font; value = s; important = is_important d1 }
+              {
+                property = Font;
+                value = font_value;
+                important = is_important d1;
+              }
           in
           Some ((idx, merged), rest)
       | None -> None)
