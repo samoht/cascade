@@ -2521,9 +2521,9 @@ type border_radius =
   | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
 
 type conic_gradient_config = {
-  from_angle : angle option;  (** [from <angle>] starting angle *)
-  conic_position : position_value option;  (** [at <position>] center *)
-  conic_interpolation : color_interpolation option;
+  angle : angle option;  (** [from <angle>] starting angle *)
+  position : position_value option;  (** [at <position>] center *)
+  interpolation : color_interpolation option;
       (** Optional [in <color-interpolation-method>] clause. *)
 }
 
@@ -2593,17 +2593,16 @@ type background_image =
       (** CSS variable reference: var(--my-gradient) *)
 
 and image_set_option = {
-  image_set_source : image_set_source;
-  image_set_resolution : string option;
-      (** [<resolution>] like ["1x"] or ["300dpi"] *)
-  image_set_mime_type : string option;  (** [type("image/avif")] *)
+  source : image_set_source;
+  resolution : string option;  (** [<resolution>] like ["1x"] or ["300dpi"] *)
+  mime_type : string option;  (** [type("image/avif")] *)
 }
 
 and image_set_source = Image_set_url of string | Image_set_string of string
 
 and cross_fade_option = {
-  cross_fade_image : background_image;
-  cross_fade_percent : percentage option;
+  image : background_image;
+  percent : percentage option;
 }
 
 (* Background position can be complex with 1-4 values mixing keywords and

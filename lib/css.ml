@@ -346,13 +346,12 @@ let gradient_hint_percentage value = (Percentage value : gradient_stop)
 let radial_gradient_config ?shape ?size ?position ?interpolation () =
   { shape; size; position; interpolation }
 
-let conic_gradient_config ?from_angle ?position ?interpolation () =
-  { from_angle; conic_position = position; conic_interpolation = interpolation }
+let conic_gradient_config ?angle ?position ?interpolation () =
+  { angle; position; interpolation }
 
 let conic_gradient
-    ?(config =
-      { from_angle = None; conic_position = None; conic_interpolation = None })
-    stops =
+    ?(config : conic_gradient_config =
+      { angle = None; position = None; interpolation = None }) stops =
   (Conic_gradient (config, stops) : background_image)
 
 let object_view_box_inset ?right ?bottom ?left top : object_view_box =

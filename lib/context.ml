@@ -3127,13 +3127,13 @@ let simplify_gradient_stop ?(layer_order = []) ?layer ctx
   Var_residual.simplify ~layer_order ?layer ctx ops value
 
 let resolve_image_set_option ctx (option : Properties.image_set_option) =
-  let image_set_source =
-    match option.Properties.image_set_source with
+  let source =
+    match option.Properties.source with
     | Properties.Image_set_url url ->
         Properties.Image_set_url (resolve_url_leaf ctx url)
     | Properties.Image_set_string _ as source -> source
   in
-  { option with Properties.image_set_source }
+  { option with Properties.source }
 
 let simplify_background_image ?(layer_order = []) ?layer ctx
     (value : Properties.background_image) : Properties.background_image =
@@ -3181,9 +3181,8 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
              (fun (option : Properties.cross_fade_option) ->
                {
                  option with
-                 Properties.cross_fade_image =
-                   simplify ~authored ~visited
-                     option.Properties.cross_fade_image;
+                 Properties.image =
+                   simplify ~authored ~visited option.Properties.image;
                })
              options)
     | Properties.List images ->

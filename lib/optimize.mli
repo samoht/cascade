@@ -34,13 +34,19 @@ val drop_empty_rules : t -> t
 
 (** {1 Edge Model} *)
 
+type packed_property =
+  | Packed : 'a Properties.property -> packed_property
+      (** Existential wrapper that hides the value type of a typed property tag,
+          so properties of different value types can live in the same edge list.
+      *)
+
 type edge = {
   summary : Selector_summary.t;
-  property : string;
+  property : packed_property;
   important : bool;
 }
 (** A single property write in the CSS graph: a selector's subject summary
-    paired with the property name it writes. This is the (selector, property)
+    paired with the typed property it writes. This is the (selector, property)
     edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
     cheap subject-summary fingerprint used in place of full selector
     intersection. *)
