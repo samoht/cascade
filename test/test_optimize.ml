@@ -1624,8 +1624,8 @@ let c61_no_nested_boundary_merge () =
   check_case "nested scope boundary"
     ".card{& .title{color:red}@scope(&) to (.boundary){& \
      .title{display:block}}& .title{padding:1rem}}"
-    ".card .title{color:red}@scope(.card)to (.boundary){.card \
-     .title{display:block}}.card .title{padding:1rem}"
+    ".card{& .title{color:red}@scope(&)to (.boundary){& \
+     .title{display:block}}& .title{padding:1rem}}"
 
 let c61_no_pseudo_group () =
   (* Grouping equal declarations across an overlapping pseudo-class competitor
