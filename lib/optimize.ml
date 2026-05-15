@@ -38,33 +38,7 @@ let edges_of_rule (rule : Stylesheet.rule) : edge list =
 
 (** {1 Declaration Optimization} *)
 
-let duplicate_buggy_properties decls =
-  (* Check if webkit-text-decoration:inherit is already duplicated *)
-  let webkit_text_decoration_inherit_count =
-    List.fold_left
-      (fun count decl ->
-        match decl with
-        | Declaration { property = Webkit_text_decoration; value = Inherit; _ }
-          ->
-            count + 1
-        | _ -> count)
-      0 decls
-  in
-
-  List.concat_map
-    (fun decl ->
-      match decl with
-      | Declaration { property = Webkit_text_decoration; value = Inherit; _ } ->
-          if webkit_text_decoration_inherit_count >= 3 then [ decl ]
-            (* Already tripled *)
-          else [ decl; decl; decl ] (* Triplicate only when inherit *)
-      | Declaration { property = Transform; _ } ->
-          (* Do not duplicate transform to -webkit-transform. Tailwind v4 does
-             not emit vendor-prefixed transform here, and tests expect a single
-             canonical property. *)
-          [ decl ]
-      | _ -> [ decl ])
-    decls
+let duplicate_buggy_properties decls = decls
 
 (* Properties whose typed cascade keeps duplicates verbatim: [content] and
    [outline] use the duplicate sequence for fallback patterns, and the
@@ -1262,6 +1236,49 @@ let deduplicate_step kept (idx, decl) =
     if is_all_declaration decl then append_all_declaration idx decl kept
     else kept @ [ (idx, decl) ]
 
+(* For each typed vendor-prefixed property, the typed unprefixed sibling. [None]
+   for vendor-only properties ([-webkit-line-clamp],
+   [-webkit-tap-highlight-color], ...). Drop-vendor-when-standard-present only
+   fires when this returns [Some _] - keeps [text-decoration] off the list
+   because dropping the WebKit copy regresses documented inheritance quirks. *)
+let unprefixed_property_name : type a. a Properties.property -> string option =
+  function
+  | Webkit_transform -> Some "transform"
+  | Webkit_transition -> Some "transition"
+  | Webkit_filter -> Some "filter"
+  | Webkit_backdrop_filter -> Some "backdrop-filter"
+  | Webkit_user_select -> Some "user-select"
+  | Webkit_appearance -> Some "appearance"
+  | Webkit_text_size_adjust -> Some "text-size-adjust"
+  | Webkit_hyphens -> Some "hyphens"
+  | Moz_user_select -> Some "user-select"
+  | O_transition -> Some "transition"
+  | _ -> None
+
+let unprefixed_property_of_decl decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property; _ } -> unprefixed_property_name property
+  | _ -> None
+
+(* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
+   same rule with the same minified value and importance. The unprefixed form
+   supersedes in modern browsers, so the vendor copy is dead under the
+   recent-browser policy. *)
+let drop_vendor_aliases (kept : (int * declaration) list) :
+    (int * declaration) list =
+  let has_unprefixed_twin (_, decl) =
+    match unprefixed_property_of_decl decl with
+    | None -> false
+    | Some unprefixed ->
+        List.exists
+          (fun (_, other) ->
+            String.equal (property_name other) unprefixed
+            && same_minified_value decl other
+            && is_important decl = is_important other)
+          kept
+  in
+  List.filter (fun item -> not (has_unprefixed_twin item)) kept
+
 let deduplicate_declarations_with ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.fold_left deduplicate_step [] indexed_props in
@@ -1279,6 +1296,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
       if merge_box then merge_box_shorthand_longhands kept kept else kept
     in
     let kept = if merge_box then merge_overflow_longhands kept else kept in
+    let kept = drop_vendor_aliases kept in
     List.map (fun (_, decl) -> decl) kept
   in
   duplicate_buggy_properties kept
@@ -2452,17 +2470,77 @@ let drop_misplaced_imports stmts =
           true)
     stmts
 
-(* CSS Cascade 6.4: consecutive same-name [@layer] blocks merge only at the
-   level the user wrote them at. Two [@layer foo] siblings inside the same
-   [@layer { ... }] anonymous parent stay distinct because re-ordering them
-   would change the layer-declaration shape - the fuzz boundary invariant
-   catches this. The top-level entry point applies the layer merge once; nested
-   invocations from [process_statements] skip it. *)
+(* CSS Cascade 5 sec 6.4.2: same-name [@layer] blocks in the same enclosing
+   context accumulate into one layer. Merge them at every level (top-level and
+   nested inside @media / @supports / @container) but only when the first
+   occurrence is non-empty - leading empty blocks fold into Layer_decl
+   downstream. *)
+let merge_named_layers_by_name (stmts : statement list) : statement list =
+  let is_empty_block = function [] -> true | _ -> false in
+  let content : (string, statement list) Hashtbl.t = Hashtbl.create 8 in
+  let first_nonempty : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  List.iter
+    (fun stmt ->
+      match stmt with
+      | Layer (Some name, block) when not (is_empty_block block) ->
+          let prev =
+            Hashtbl.find_opt content name |> Option.value ~default:[]
+          in
+          Hashtbl.replace content name (prev @ block);
+          if not (Hashtbl.mem first_nonempty name) then
+            Hashtbl.add first_nonempty name ()
+      | _ -> ())
+    stmts;
+  let emitted = Hashtbl.create 8 in
+  List.filter_map
+    (fun stmt ->
+      match stmt with
+      | Layer (Some name, block) when not (is_empty_block block) ->
+          if Hashtbl.mem emitted name then None
+          else begin
+            Hashtbl.add emitted name ();
+            Some (Layer (Some name, Hashtbl.find content name))
+          end
+      | _ -> Some stmt)
+    stmts
+
+(* Require structural selector equality (not just set-equality) so that [h1, h2]
+   and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
+   rule's selector spelling, which is the form authors are more likely to want
+   preserved. *)
+let rule_shadows ~earlier ~later =
+  earlier.Stylesheet_intf.selector = later.Stylesheet_intf.selector
+  && List.for_all
+       (fun ed ->
+         List.exists
+           (fun ld ->
+             same_property ed ld
+             && (Declaration.is_important ld
+                || not (Declaration.is_important ed)))
+           later.Stylesheet_intf.declarations)
+       earlier.Stylesheet_intf.declarations
+
+(* Drop an earlier rule when a later rule with the same canonical selector
+   writes every one of its property names at the same or stronger importance.
+   The later same-property write shadows the earlier value regardless of
+   intervening rules. *)
+let drop_shadowed_rules (rules : rule list) : rule list =
+  let indexed = List.mapi (fun i r -> (i, r)) rules in
+  List.filter_map
+    (fun (i, rule) ->
+      let shadowed =
+        List.exists
+          (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
+          indexed
+      in
+      if shadowed then None else Some rule)
+    indexed
+
 let rec statements (stmts : statement list) : statement list =
-  process_statements [] stmts
-  |> merge_consecutive_media |> merge_consecutive_supports
-  |> merge_consecutive_containers |> merge_layer_declarations
-  |> drop_misplaced_imports |> drop_empty_rules
+  merge_named_layers_by_name stmts
+  |> process_statements [] |> merge_consecutive_media
+  |> merge_consecutive_supports |> merge_consecutive_containers
+  |> merge_layer_declarations |> drop_misplaced_imports |> drop_empty_rules
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
@@ -2537,38 +2615,6 @@ and rules_aux (rules : rule list) : rule list =
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
 
-(* Require structural selector equality (not just set-equality) so that [h1, h2]
-   and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
-   rule's selector spelling, which is the form authors are more likely to want
-   preserved. *)
-and rule_shadows ~earlier ~later =
-  earlier.Stylesheet_intf.selector = later.Stylesheet_intf.selector
-  && List.for_all
-       (fun ed ->
-         List.exists
-           (fun ld ->
-             same_property ed ld
-             && (Declaration.is_important ld
-                || not (Declaration.is_important ed)))
-           later.Stylesheet_intf.declarations)
-       earlier.Stylesheet_intf.declarations
-
-(* Drop an earlier rule when a later rule with the same canonical selector
-   writes every one of its property names at the same or stronger importance.
-   The later same-property write shadows the earlier value regardless of
-   intervening rules. *)
-and drop_shadowed_rules (rules : rule list) : rule list =
-  let indexed = List.mapi (fun i r -> (i, r)) rules in
-  List.filter_map
-    (fun (i, rule) ->
-      let shadowed =
-        List.exists
-          (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
-          indexed
-      in
-      if shadowed then None else Some rule)
-    indexed
-
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
    later one wins. Vendor-prefixed [-webkit-] / [-moz-] variants are separate
@@ -2599,6 +2645,13 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
   in
   walk [] stmts
 
+(* CSS Cascade 5 sec. 6.4.2: when a named layer is declared multiple times the
+   rules from all occurrences accumulate into the layer. Merge same-name blocks
+   at the position of the FIRST NON-EMPTY occurrence so the merged content stays
+   where the author placed the layer's first real declaration. Leading empty
+   blocks ([@layer name {}]) stay in place so the [empty-named-layer ->
+   Layer_decl] normalisation in [process_statements] still folds them into the
+   order-only declaration. *)
 let statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
   |> drop_shadowed_keyframes
