@@ -178,6 +178,7 @@ let rec boundary_shape = function
   | Viewport _ -> [ "viewport" ]
   | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
   | Property _ -> [ "property" ]
+  | Bang_comment _ -> [ "bang-comment" ]
 
 (* The optimizer is allowed to merge a contiguous run of [Rule]s into fewer
    rules (e.g. [combine_identical_rules]). Collapse consecutive [Rule] entries

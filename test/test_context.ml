@@ -597,6 +597,7 @@ let rec statement_shape stmt =
   | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
   | Font_feature_values (families, _) ->
       [ "font-feature-values:" ^ string_of_int (List.length families) ]
+  | Bang_comment _ -> [ "bang-comment" ]
 
 let stylesheet_shape sheet = List.concat_map statement_shape sheet
 
