@@ -344,23 +344,26 @@ let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
   in
   loop sides [] rest
 
+(* [source] carries the deduplicated declarations with their original indices;
+   the prior-longhand check fires only on a longhand that survived dedup as a
+   real cascade fallback (legacy color, vendor prefix, runtime substitution
+   shape), not on one that was already eliminated as shadowed by the current
+   shorthand. *)
 let box_shorthand_had_prior_longhand source idx shorthand =
   match unwrap_theme_guard shorthand with
   | Theme_guarded _ -> false
   | Declaration
       { property = shorthand_prop; important = shorthand_important; _ } ->
-      let rec loop i = function
-        | [] -> false
-        | d :: rest ->
-            i < idx
-            && (match unwrap_theme_guard d with
-              | Declaration { property = lh_prop; _ } ->
-                  shorthand_covers_longhand shorthand_prop lh_prop
-              | _ -> false)
-            && (shorthand_important || not (is_important d))
-            || loop (i + 1) rest
-      in
-      loop 0 source
+      List.exists
+        (fun (i, d) ->
+          i < idx
+          && (shorthand_important || not (is_important d))
+          &&
+          match unwrap_theme_guard d with
+          | Declaration { property = lh_prop; _ } ->
+              shorthand_covers_longhand shorthand_prop lh_prop
+          | _ -> false)
+        source
 
 (* Fold subsequent margin/padding corner longhands into the preceding box
    shorthand. Tailwind / Lightning-CSS / cssnano all do this; the dead-code
@@ -1273,7 +1276,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
       if merge_box then compose_text_decoration_shorthand kept else kept
     in
     let kept =
-      if merge_box then merge_box_shorthand_longhands props kept else kept
+      if merge_box then merge_box_shorthand_longhands kept kept else kept
     in
     let kept = if merge_box then merge_overflow_longhands kept else kept in
     List.map (fun (_, decl) -> decl) kept
@@ -2534,10 +2537,12 @@ and rules_aux (rules : rule list) : rule list =
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules
 
+(* Require structural selector equality (not just set-equality) so that [h1, h2]
+   and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
+   rule's selector spelling, which is the form authors are more likely to want
+   preserved. *)
 and rule_shadows ~earlier ~later =
-  String.equal
-    (canonical_selector_key earlier.Stylesheet_intf.selector)
-    (canonical_selector_key later.Stylesheet_intf.selector)
+  earlier.Stylesheet_intf.selector = later.Stylesheet_intf.selector
   && List.for_all
        (fun ed ->
          List.exists
