@@ -3563,6 +3563,7 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
       buf;
       inline = mode = Inline;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }

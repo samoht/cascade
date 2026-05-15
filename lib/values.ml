@@ -635,7 +635,9 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
      [var(--x)] would change which substitution shape is valid. *)
   | Val v when Pp.minified ctx -> pp_value ctx v
   | Num n when Pp.minified ctx -> Pp.float ctx n
-  | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
+  | _ ->
+      let ctx = { ctx with in_calc = true } in
+      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 (* Small helpers *)
 let pp_unit ?(always = true) ctx f suffix =
@@ -2978,10 +2980,13 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
 let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
-  | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
-  | Pct f when Pp.minified ctx && not always ->
-      (* [<number-percentage>] is the union type; both spellings are
-         spec-equivalent and the printer picks the shorter one. *)
+  | Pct 0.
+    when Pp.minified ctx && (not always) && (not ctx.in_calc)
+         && not ctx.in_function ->
+      Pp.char ctx '0'
+  | Pct f
+    when Pp.minified ctx && (not always) && (not ctx.in_calc)
+         && not ctx.in_function ->
       let pct_str = Pp.string_of_float ~drop_leading_zero:true f ^ "%" in
       let num_str = Pp.string_of_float ~drop_leading_zero:true (f /. 100.) in
       if String.length num_str <= String.length pct_str then

@@ -701,7 +701,7 @@ let public_value_combinator_edges () =
             background_image
               (conic_gradient
                  ~config:
-                   (conic_gradient_config ~from_angle:(Deg 45.)
+                   (conic_gradient_config ~angle:(Deg 45.)
                       ~position:(position_length (Pct 50.))
                       ())
                  [ color_stop (hex "#ff0000"); color_stop (hex "#0000ff") ]);

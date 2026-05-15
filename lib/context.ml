@@ -2713,6 +2713,7 @@ let property_name (type a) (property : a Properties.property) =
       buf = Buffer.create 16;
       inline = false;
       in_function = false;
+      in_calc = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
