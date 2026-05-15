@@ -785,6 +785,24 @@ type grid_line_pair =
   | Lines of grid_line * grid_line
   | Var of grid_line_pair var
 
+(* CSS Grid 2 §8.4: [grid-area: <grid-line> [/ <grid-line>]{0,3}] - row-start /
+   column-start / row-end / column-end. The 1/2/3-value source forms are
+   defaulting per the spec; they all canonicalise to the four-line record so the
+   printer can pick the shortest equivalent spelling. *)
+type grid_area =
+  | Lines of {
+      row_start : grid_line;
+      column_start : grid_line;
+      row_end : grid_line;
+      column_end : grid_line;
+    }
+  | Var of grid_area var
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+
 type aspect_ratio =
   | Auto
   | Auto_ratio of float * float
@@ -1549,6 +1567,26 @@ type list_style_image =
   | Revert
   | Revert_layer
   | Var of list_style_image var
+
+(* CSS Lists 3 sec. 4.1: [list-style] is the shorthand for [list-style-type],
+   [list-style-position], and [list-style-image]. All components are optional;
+   omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
+   single bare [none] keyword in the source sets both [type_] and [image] to
+   [None]. *)
+type list_style_shorthand = {
+  type_ : list_style_type option;
+  position : list_style_position option;
+  image : list_style_image option;
+}
+
+type list_style =
+  | Shorthand of list_style_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style var
 
 (* Table Types *)
 type table_layout =
@@ -4233,7 +4271,7 @@ type 'a property =
           syntax with area strings) round-trip through the same AST as
           [grid-template], and inputs that exercise the auto-flow branches fall
           back to the raw [Template] preservation arm. *)
-  | Grid_area : string property
+  | Grid_area : grid_area property
   | Grid_auto_flow : grid_auto_flow property
   | Grid_auto_columns : grid_template property
   | Grid_auto_rows : grid_template property
@@ -4326,7 +4364,7 @@ type 'a property =
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
   | Text_indent : text_indent_value property
-  | List_style : string property
+  | List_style : list_style property
   | Font : font property
   | Source : Font_face.src property
   | Webkit_appearance : webkit_appearance property

@@ -3776,6 +3776,20 @@ type grid_line_pair = Properties.grid_line_pair =
   | Lines of grid_line * grid_line
   | Var of grid_line_pair var
 
+type grid_area = Properties.grid_area =
+  | Lines of {
+      row_start : grid_line;
+      column_start : grid_line;
+      row_end : grid_line;
+      column_end : grid_line;
+    }
+  | Var of grid_area var
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+
 val grid_tracks : grid_template list -> grid_template
 (** [grid_tracks tracks] is a track list. *)
 
@@ -3862,7 +3876,7 @@ val grid_column : grid_line * grid_line -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
      grid-column} shorthand property. *)
 
-val grid_area : string -> declaration
+val grid_area : grid_area -> declaration
 (** [grid_area area] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-area} grid-area}
     property. *)
@@ -6612,6 +6626,21 @@ type list_style_image = Properties.list_style_image =
   | Revert_layer
   | Var of list_style_image var
 
+type list_style_shorthand = Properties.list_style_shorthand = {
+  type_ : list_style_type option;
+  position : list_style_position option;
+  image : list_style_image option;
+}
+
+type list_style = Properties.list_style =
+  | Shorthand of list_style_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style var
+
 val list_style_image_url : string -> list_style_image
 (** [list_style_image_url value] is a URL [list-style-image]. *)
 
@@ -6666,7 +6695,7 @@ val vertical_align : vertical_align -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/vertical-align}
      vertical-align} property. *)
 
-val list_style : string -> declaration
+val list_style : list_style -> declaration
 (** [list_style value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style} list-style}
     shorthand property. *)

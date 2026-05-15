@@ -721,9 +721,15 @@ val read_grid_line_pair : Cursor.t -> grid_line_pair
     [<grid-line> [ / <grid-line> ]?]. If no slash is present, the second value
     defaults to [Auto]. *)
 
-val read_grid_area : Cursor.t -> string
+val read_grid_area : Cursor.t -> grid_area
 (** [read_grid_area t] parses a [grid-area] shorthand value as one to four
-    structured grid-line values and returns the minified spelling. *)
+    grid-line values, applying the spec's defaulting rules so the returned
+    record always has all four longhands populated. *)
+
+val pp_grid_area : grid_area Pp.t
+(** [pp_grid_area] pretty-prints {!grid_area}, picking the shortest 1-/2-/3-/
+    4-value spelling that the spec's defaulting rules round-trip to the same
+    record. *)
 
 val pp_aspect_ratio : aspect_ratio Pp.t
 (** [pp_aspect_ratio] is the pretty-printer for [aspect_ratio]. *)

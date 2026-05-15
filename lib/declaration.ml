@@ -485,61 +485,102 @@ let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_length t
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
 
-type list_style_slot = Type | Position | Image
-
-let slot_seen slot seen = List.mem slot seen
-
-let read_list_style_slot slot t =
-  match slot with
-  | Type -> ignore (read_list_style_type t)
-  | Position -> ignore (read_list_style_position t)
-  | Image -> ignore (read_list_style_image t)
-
-let list_style_try_slot parse slot seen r =
-  if slot_seen slot seen then false
+(* Parse the [list-style] shorthand into a typed [list_style_shorthand] record.
+   Each slot is recognised by the longhand reader; a single bare [none]
+   populates both [type_] and [image] per CSS Lists 3 sec. 4.1. *)
+let try_list_style_slot r read_fn (slot : 'a option ref) =
+  if !slot <> Option.None then false
   else
     let pos = Cursor.save r in
-    try
-      read_list_style_slot slot r;
-      if parse (slot :: seen) r then true
-      else (
+    match read_fn r with
+    | v ->
+        slot := Some v;
+        true
+    | exception Cursor.Parse_error _ ->
         Cursor.restore r pos;
-        false)
-    with Cursor.Parse_error _ ->
-      Cursor.restore r pos;
-      false
+        false
 
-let parse_list_style_slots slots =
-  let rec parse seen r =
+let read_list_style_shorthand_body r : list_style_shorthand =
+  let type_ : list_style_type option ref = ref Option.None in
+  let position : list_style_position option ref = ref Option.None in
+  let image : list_style_image option ref = ref Option.None in
+  let saw_none = ref false in
+  let try_one () =
+    try_list_style_slot r read_list_style_position position
+    || try_list_style_slot r read_list_style_image image
+    || try_list_style_slot r read_list_style_type type_
+  in
+  let rec consume () =
     Cursor.ws r;
-    if Cursor.is_done r then seen <> []
-    else List.exists (fun slot -> list_style_try_slot parse slot seen r) slots
+    if Cursor.is_done r then ()
+    else
+      let saved = Cursor.save r in
+      let kw = Cursor.peek_ident r in
+      if kw = Some "none" then begin
+        let _ = Cursor.ident r in
+        saw_none := true;
+        consume ()
+      end
+      else if try_one () then consume ()
+      else Cursor.restore r saved
   in
-  parse
+  consume ();
+  Cursor.ws r;
+  if not (Cursor.is_done r) then
+    Cursor.err_invalid r "invalid list-style shorthand";
+  if !saw_none then begin
+    if !type_ = Option.None then type_ := Some (None : list_style_type);
+    if !image = Option.None then image := Some (None : list_style_image)
+  end;
+  if
+    !type_ = Option.None && !position = Option.None && !image = Option.None
+    && not !saw_none
+  then Cursor.err_invalid r "invalid list-style shorthand";
+  { type_ = !type_; position = !position; image = !image }
 
-let read_list_style_shorthand t =
+let rec read_list_style_shorthand t : list_style =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  let lower = String.lowercase_ascii raw in
-  let is_valid_var () =
-    let r = Cursor.of_string raw in
-    match
-      Values.read_var (fun r -> Cursor.consume_to_decl_end ~trim:true r) r
-    with
-    | (_ : string var) ->
-        Cursor.ws r;
-        Cursor.is_done r
-    | exception Cursor.Parse_error _ -> false
-  in
-  if is_css_wide_keyword lower || is_valid_var () then (
-    ignore (Cursor.consume_to_decl_end ~trim:true t);
-    raw)
-  else
-    let slots : list_style_slot list = [ Position; Image; Type ] in
-    let parse = parse_list_style_slots slots in
-    if not (parse [] (Cursor.of_string raw)) then
-      Cursor.err_invalid t "invalid list-style shorthand";
-    ignore (Cursor.consume_to_decl_end ~trim:true t);
-    raw
+  let lower = String.lowercase_ascii (String.trim raw) in
+  match lower with
+  | "inherit" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Inherit
+  | "initial" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Initial
+  | "unset" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Unset
+  | "revert" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Revert
+  | "revert-layer" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Revert_layer
+  | _ ->
+      let is_valid_var () =
+        let r = Cursor.of_string raw in
+        match
+          Values.read_var (fun r -> Cursor.consume_to_decl_end ~trim:true r) r
+        with
+        | (_ : string var) ->
+            Cursor.ws r;
+            Cursor.is_done r
+        | exception Cursor.Parse_error _ -> false
+      in
+      if is_valid_var () then (
+        let r = Cursor.of_string raw in
+        let var = Values.read_var (fun r -> read_list_style_shorthand r) r in
+        ignore (Cursor.consume_to_decl_end ~trim:true t);
+        Var var)
+      else
+        let body =
+          try read_list_style_shorthand_body (Cursor.of_string raw)
+          with Cursor.Parse_error _ ->
+            Cursor.err_invalid t "invalid list-style shorthand"
+        in
+        ignore (Cursor.consume_to_decl_end ~trim:true t);
+        Shorthand body
 
 let read_text_decoration_lines t =
   let lines = Cursor.list ~at_least:1 read_text_decoration_line t in
@@ -671,6 +712,59 @@ let font_shorthand_prefix_ident = function
    / [weight] / [stretch] as it sees the relevant keywords; [normal] is consumed
    without binding any slot. Once a non-prefix token appears, we fall through to
    required [size] [/ <line-height>?] <family>. *)
+(* Keyword -> which prefix slot it fills. [Normal] is the absence keyword
+   (style/variant/weight/stretch each have their own [normal]); we just
+   accept it and move on. *)
+type font_prefix_slot =
+  | Style of font_style
+  | Variant of font_variant_css21
+  | Weight of font_weight
+  | Stretch of font_stretch
+  | No_op
+
+let font_prefix_slot_of = function
+  | "italic" -> Style Italic
+  | "oblique" -> Style Oblique
+  | "small-caps" -> Variant Small_caps
+  | "bold" -> Weight Bold
+  | "bolder" -> Weight Bolder
+  | "lighter" -> Weight Lighter
+  | "condensed" -> Stretch Condensed
+  | "expanded" -> Stretch Expanded
+  | "normal" | _ -> No_op
+
+let assign_font_prefix_slot ~(style : font_style option ref)
+    ~(variant : font_variant_css21 option ref)
+    ~(weight : font_weight option ref) ~(stretch : font_stretch option ref) =
+  function
+  | Style s -> if !style = None then style := Some s
+  | Variant v -> if !variant = None then variant := Some v
+  | Weight w -> if !weight = None then weight := Some w
+  | Stretch st -> if !stretch = None then stretch := Some st
+  | No_op -> ()
+
+let try_numeric_font_weight r (weight : font_weight option ref) =
+  let before = Cursor.save r in
+  match Properties.read_font_weight r with
+  | w when !weight = None ->
+      weight := Some w;
+      true
+  | _ ->
+      Cursor.restore r before;
+      false
+  | exception Cursor.Parse_error _ ->
+      Cursor.restore r before;
+      false
+
+let read_optional_line_height r =
+  Cursor.ws r;
+  match Cursor.peek_delim r with
+  | Some '/' ->
+      Cursor.skip r;
+      Cursor.ws r;
+      Some (read_shorthand_line_height_typed r)
+  | _ -> None
+
 let read_font_shorthand_body_typed r :
     font_style option
     * font_variant_css21 option
@@ -683,52 +777,19 @@ let read_font_shorthand_body_typed r :
   let variant : font_variant_css21 option ref = ref Option.None in
   let weight : font_weight option ref = ref Option.None in
   let stretch : font_stretch option ref = ref Option.None in
-  let consume_prefix_keyword kw =
-    match kw with
-    | "italic" -> if !style = None then style := Some (Italic : font_style)
-    | "oblique" -> if !style = None then style := Some (Oblique : font_style)
-    | "small-caps" ->
-        if !variant = None then
-          variant := Some (Small_caps : font_variant_css21)
-    | "bold" -> if !weight = None then weight := Some (Bold : font_weight)
-    | "bolder" -> if !weight = None then weight := Some (Bolder : font_weight)
-    | "lighter" -> if !weight = None then weight := Some (Lighter : font_weight)
-    | "condensed" ->
-        if !stretch = None then stretch := Some (Condensed : font_stretch)
-    | "expanded" ->
-        if !stretch = None then stretch := Some (Expanded : font_stretch)
-    | "normal" -> ()
-    | _ -> ()
-  in
+  let assign = assign_font_prefix_slot ~style ~variant ~weight ~stretch in
   let rec consume_prefix () =
     Cursor.ws r;
     if Cursor.is_done r then ()
-    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then begin
-      let kw = Cursor.ident r in
-      consume_prefix_keyword kw;
-      consume_prefix ()
-    end
-    else
-      let before = Cursor.save r in
-      match Properties.read_font_weight r with
-      | w when !weight = None ->
-          weight := Some w;
-          consume_prefix ()
-      | _ -> Cursor.restore r before
-      | exception Cursor.Parse_error _ -> Cursor.restore r before
+    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then (
+      assign (font_prefix_slot_of (Cursor.ident r));
+      consume_prefix ())
+    else if try_numeric_font_weight r weight then consume_prefix ()
   in
   consume_prefix ();
   Cursor.ws r;
   let size = Properties.read_font_size r in
-  let line_height =
-    match Cursor.peek_delim r with
-    | Some '/' ->
-        Cursor.skip r;
-        Cursor.ws r;
-        Some (read_shorthand_line_height_typed r)
-    | _ -> None
-  in
-  Cursor.ws r;
+  let line_height = read_optional_line_height r in
   if long_generic_family_start r then
     Cursor.err_invalid r "generic font family must be a standalone family item";
   let family = Properties.read_font_family r in

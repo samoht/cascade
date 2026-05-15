@@ -2979,6 +2979,14 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
   | Pct 0. when Pp.minified ctx && not always -> Pp.char ctx '0'
+  | Pct f when Pp.minified ctx && not always ->
+      (* [<number-percentage>] is the union type; both spellings are
+         spec-equivalent and the printer picks the shorter one. *)
+      let pct_str = Pp.string_of_float ~drop_leading_zero:true f ^ "%" in
+      let num_str = Pp.string_of_float ~drop_leading_zero:true (f /. 100.) in
+      if String.length num_str <= String.length pct_str then
+        Pp.string ctx num_str
+      else Pp.string ctx pct_str
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
