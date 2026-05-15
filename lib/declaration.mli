@@ -377,7 +377,7 @@ val grid_column : grid_line * grid_line -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
      grid-column} property. *)
 
-val grid_area : string -> declaration
+val grid_area : grid_area -> declaration
 (** [grid_area v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-area} grid-area}
     property. *)
@@ -1498,7 +1498,7 @@ val text_indent : text_indent_value -> declaration
 val border_collapse : border_collapse -> declaration
 (** [border_collapse v] is the CSS [border-collapse] property. *)
 
-val list_style : string -> declaration
+val list_style : list_style -> declaration
 (** [list_style v] is the CSS [list-style] shorthand. *)
 
 val font : font -> declaration

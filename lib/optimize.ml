@@ -886,8 +886,6 @@ let compose_outline_shorthand decls =
    shorthand together. Default-valued components ([normal] style, [400] weight,
    [normal] line-height) drop on emit. Requires both font-size and
    font-family. *)
-let minified_value d = Declaration.string_of_value ~minify:true d
-
 let is_font_longhand : declaration -> bool = function
   | Declaration { property = Font_style; _ } -> true
   | Declaration { property = Font_weight; _ } -> true
@@ -977,41 +975,32 @@ let is_list_style_longhand : declaration -> bool = function
   | Declaration { property = List_style_image; _ } -> true
   | _ -> false
 
-(* Typed default detection for the [list-style] longhands. Each [_string] helper
-   returns [Some <minified spelling>] when the declaration is the relevant
-   longhand and its value is non-default, [None] otherwise. Defaults: [disc] for
-   type, [outside] for position, [none] for image. *)
-let list_style_type_string : declaration -> string option = function
-  | Declaration { property = List_style_type; value = Disc; _ } -> None
-  | Declaration { property = List_style_type; _ } as d ->
-      Some (minified_value d)
-  | _ -> None
+(* Extract each list-style longhand's typed value, [None] when the declaration
+   isn't the relevant longhand; the pretty-printer drops default components on
+   emit. *)
+let list_style_type_of : declaration -> Properties.list_style_type option =
+  function
+  | Declaration { property = List_style_type; value; _ } -> Some value
+  | _ -> Option.None
 
-let list_style_position_string : declaration -> string option = function
-  | Declaration { property = List_style_position; value = Outside; _ } -> None
-  | Declaration { property = List_style_position; _ } as d ->
-      Some (minified_value d)
-  | _ -> None
+let list_style_position_of :
+    declaration -> Properties.list_style_position option = function
+  | Declaration { property = List_style_position; value; _ } -> Some value
+  | _ -> Option.None
 
-let list_style_image_string : declaration -> string option = function
-  | Declaration { property = List_style_image; value = None; _ } -> None
-  | Declaration { property = List_style_image; _ } as d ->
-      Some (minified_value d)
-  | _ -> None
+let list_style_image_of : declaration -> Properties.list_style_image option =
+  function
+  | Declaration { property = List_style_image; value; _ } -> Some value
+  | _ -> Option.None
 
-let render_list_style decls =
+let render_list_style decls : Properties.list_style =
   let pick f = List.find_map f decls in
-  match
-    List.filter_map
-      (fun x -> x)
-      [
-        pick list_style_position_string;
-        pick list_style_image_string;
-        pick list_style_type_string;
-      ]
-  with
-  | [] -> "outside"
-  | parts -> String.concat " " parts
+  Shorthand
+    {
+      type_ = pick list_style_type_of;
+      position = pick list_style_position_of;
+      image = pick list_style_image_of;
+    }
 
 let try_compose_list_style = function
   | (idx, d1) :: (_, d2) :: (_, d3) :: rest

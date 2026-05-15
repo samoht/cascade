@@ -5216,6 +5216,59 @@ let rec pp_list_style_image : list_style_image Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Lists 3 sec. 4.1: under minify, drop components equal to their longhand
+   initial ([type_: Disc], [position: Outside], [image: None]). When both
+   [type_] and [image] are [None] and [position] is omitted, emit the single
+   [none] keyword. If every component is defaulted, leave [outside] so the value
+   isn't empty. *)
+let drop_default_if ~drop ~is_default v =
+  match v with Some x when drop && is_default x -> Option.None | _ -> v
+
+let pp_list_style_shorthand : list_style_shorthand Pp.t =
+ fun ctx { type_; position; image } ->
+  let drop = Pp.minified ctx in
+  let type_ =
+    drop_default_if ~drop
+      ~is_default:(fun (t : list_style_type) -> t = Disc)
+      type_
+  in
+  let position =
+    drop_default_if ~drop
+      ~is_default:(fun (p : list_style_position) -> p = Outside)
+      position
+  in
+  let image =
+    drop_default_if ~drop
+      ~is_default:(fun (i : list_style_image) -> i = None)
+      image
+  in
+  let is_none_type = type_ = Some (None : list_style_type) in
+  let is_none_image = image = Some (None : list_style_image) in
+  if is_none_type && is_none_image && position = Option.None && drop then
+    Pp.string ctx "none"
+  else
+    let first = ref true in
+    let emit pp = function
+      | Option.None -> ()
+      | Some v ->
+          if !first then first := false else Pp.space ctx ();
+          pp ctx v
+    in
+    emit pp_list_style_position position;
+    emit pp_list_style_image image;
+    emit pp_list_style_type type_;
+    if !first then Pp.string ctx "outside"
+
+let rec pp_list_style : list_style Pp.t =
+ fun ctx -> function
+  | Shorthand sh -> pp_list_style_shorthand ctx sh
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_list_style ctx v
+
 let rec pp_table_layout : table_layout Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_table_layout ctx v
@@ -5304,6 +5357,46 @@ let rec pp_grid_line_pair : grid_line_pair Pp.t =
           Pp.sp ctx ();
           pp_grid_line ctx end_)
   | Var v -> pp_var pp_grid_line_pair ctx v
+
+(* Inverse of [grid_area_default_from]: drop trailing slots that match the value
+   the spec would have implied from the preceding slot. Yields the shortest
+   equivalent 1-/2-/3-/4-value spelling. *)
+let grid_area_default_from (line : grid_line) : grid_line =
+  match line with Name _ -> line | _ -> Auto
+
+let grid_area_compact ~(row_start : grid_line) ~(column_start : grid_line)
+    ~(row_end : grid_line) ~(column_end : grid_line) =
+  let drop_column_end = column_end = grid_area_default_from column_start in
+  let drop_row_end =
+    drop_column_end && row_end = grid_area_default_from row_start
+  in
+  let drop_column_start =
+    drop_row_end && column_start = grid_area_default_from row_start
+  in
+  match (drop_column_start, drop_row_end, drop_column_end) with
+  | true, true, true -> [ row_start ]
+  | _, true, true -> [ row_start; column_start ]
+  | _, _, true -> [ row_start; column_start; row_end ]
+  | _ -> [ row_start; column_start; row_end; column_end ]
+
+let rec pp_grid_area : grid_area Pp.t =
+ fun ctx -> function
+  | Lines { row_start; column_start; row_end; column_end } ->
+      let lines =
+        grid_area_compact ~row_start ~column_start ~row_end ~column_end
+      in
+      let sep ctx () =
+        Pp.sp ctx ();
+        Pp.slash ctx ();
+        Pp.sp ctx ()
+      in
+      Pp.list ~sep pp_grid_line ctx lines
+  | Var v -> pp_var pp_grid_area ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec eval_number_value : number -> float option = function
   | Num f -> Some f
@@ -9121,7 +9214,10 @@ let pp_number_percentage_separated ctx vs =
     (not (Pp.minified ctx))
     ||
     let last = prev.[String.length prev - 1] in
-    last <> '%' && (String.length next = 0 || next.[0] <> '-')
+    (* Tokens that end with [%] / [)] (function-shaped values like [var(...)],
+       [calc(...)]) close cleanly and need no separator; numbers and
+       neg-prefixed digits stay separated. *)
+    last <> '%' && last <> ')' && (String.length next = 0 || next.[0] <> '-')
   in
   let rec loop = function
     | [] -> ()
@@ -9613,67 +9709,57 @@ let pp_font_variant_css21 ctx = function
 
 let pp_font_shorthand : font_shorthand Pp.t =
  fun ctx { style; variant; weight; stretch; size; line_height; family } ->
-  let drop_default = Pp.minified ctx in
-  let style : font_style option =
-    if drop_default then match style with Some Normal -> Option.None | s -> s
-    else style
+  let drop_default (type a) ~(is_default : a -> bool) (opt : a option) :
+      a option =
+    if Pp.minified ctx then
+      match opt with Some v when is_default v -> None | _ -> opt
+    else opt
   in
-  let variant : font_variant_css21 option =
-    if drop_default then
-      match variant with
-      | Some (Normal : font_variant_css21) -> Option.None
-      | v -> v
-    else variant
+  let style =
+    drop_default style ~is_default:(function
+      | (Normal : font_style) -> true
+      | _ -> false)
   in
-  let weight : font_weight option =
-    if drop_default then
-      match weight with
-      | Some Normal -> Option.None
-      | Some (Weight 400) -> Option.None
-      | w -> w
-    else weight
+  let variant =
+    drop_default variant ~is_default:(function
+      | (Normal : font_variant_css21) -> true
+      | _ -> false)
   in
-  let stretch : font_stretch option =
-    if drop_default then
-      match stretch with Some (Normal : font_stretch) -> Option.None | s -> s
-    else stretch
+  let weight =
+    drop_default weight ~is_default:(function
+      | (Normal : font_weight) | Weight 400 -> true
+      | _ -> false)
   in
-  let line_height : line_height option =
-    if drop_default then
-      match line_height with
-      | Some (Normal : line_height) -> Option.None
-      | lh -> lh
-    else line_height
+  let stretch =
+    drop_default stretch ~is_default:(function
+      | (Normal : font_stretch) -> true
+      | _ -> false)
+  in
+  let line_height =
+    drop_default line_height ~is_default:(function
+      | (Normal : line_height) -> true
+      | _ -> false)
   in
   let first = ref true in
-  let space_if_needed () = if !first then first := false else Pp.space ctx () in
-  (match style with
-  | None -> ()
-  | Some s ->
-      space_if_needed ();
-      pp_font_style ctx s);
-  (match variant with
-  | None -> ()
-  | Some v ->
-      space_if_needed ();
-      pp_font_variant_css21 ctx v);
-  (match weight with
-  | None -> ()
-  | Some w ->
-      space_if_needed ();
-      pp_font_weight ctx w);
-  (match stretch with
-  | None -> ()
-  | Some s ->
-      space_if_needed ();
-      pp_font_stretch ctx s);
-  space_if_needed ();
+  let emit pp opt =
+    Option.iter
+      (fun v ->
+        if not !first then Pp.space ctx ();
+        first := false;
+        pp ctx v)
+      opt
+  in
+  emit pp_font_style style;
+  emit pp_font_variant_css21 variant;
+  emit pp_font_weight weight;
+  emit pp_font_stretch stretch;
+  if not !first then Pp.space ctx ();
   pp_font_size ctx size;
-  (match line_height with
-  | None -> ()
-  | Some lh ->
+  Option.iter
+    (fun lh ->
       Pp.char ctx '/';
-      pp_line_height ctx lh);
+      pp_line_height ctx lh)
+    line_height;
   Pp.space ctx ();
   pp_font_family ctx family
 
@@ -10589,7 +10675,11 @@ let read_grid_line_pair t : grid_line_pair =
     (Var (Values.read_var read_pair t) : grid_line_pair)
   else read_pair t
 
-let read_grid_area t =
+(* CSS Grid 2 §8.4: an omitted slot inherits from the corresponding row/column
+   start when that's a [<custom-ident>], else defaults to [auto]. The forward
+   helper is [grid_area_default_from] (defined above with the printer); both
+   directions share it. *)
+let read_grid_area t : grid_area =
   let first = read_grid_line t in
   let rest =
     Cursor.many
@@ -10599,11 +10689,22 @@ let read_grid_area t =
       t
     |> fst
   in
-  if List.length rest > 3 then
-    err_invalid_value t "grid-area" "too many grid lines";
-  Pp.to_string ~minify:true
-    (fun ctx lines -> Pp.list ~sep:Pp.slash pp_grid_line ctx lines)
-    (first :: rest)
+  let row_start, column_start, row_end, column_end =
+    match rest with
+    | [] ->
+        let other = grid_area_default_from first in
+        (first, other, other, other)
+    | [ v2 ] ->
+        let row_end = grid_area_default_from first in
+        let column_end = grid_area_default_from v2 in
+        (first, v2, row_end, column_end)
+    | [ v2; v3 ] ->
+        let column_end = grid_area_default_from v2 in
+        (first, v2, v3, column_end)
+    | [ v2; v3; v4 ] -> (first, v2, v3, v4)
+    | _ -> err_invalid_value t "grid-area" "too many grid lines"
+  in
+  Lines { row_start; column_start; row_end; column_end }
 
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
@@ -18367,7 +18468,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_template_areas -> pp pp_grid_template_areas
   | Grid_template -> pp pp_grid_template
   | Grid -> pp pp_grid_template
-  | Grid_area -> pp Pp.string
+  | Grid_area -> pp pp_grid_area
   | Grid_auto_columns -> pp pp_grid_template
   | Grid_auto_rows -> pp pp_grid_template
   | Flex -> pp pp_flex
@@ -18610,7 +18711,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Overscroll_behavior_inline -> pp pp_overscroll_behavior
   | Accent_color -> pp pp_color
   | Caret_color -> pp pp_color
-  | List_style -> pp Pp.string
+  | List_style -> pp pp_list_style
   | Font -> pp pp_font
   | Source -> pp pp_font_src
   | Webkit_appearance -> pp pp_webkit_appearance
