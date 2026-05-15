@@ -677,8 +677,8 @@ let test_tw_conditionals_layer () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "adjacent supports/container blocks merge inside utility layer"
-    "@layer utilities{@supports \
-     (display:grid){.grid{display:grid}.gap{gap:1rem}}@container \
+    "@layer \
+     utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container \
      (inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
     output
 
@@ -700,9 +700,7 @@ let test_tw_conditionals_split () =
   Alcotest.(check string)
     "non-adjacent conditionals remain split inside utility layer"
     "@layer \
-     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports \
-     (display:grid){.grid{display:grid}}.block{display:block}@supports \
-     (display:grid){.gap{gap:1rem}}}"
+     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
     output
 
 let optimize_tests =
@@ -979,12 +977,18 @@ let c61_decl_order_shorthand_boundary () =
 let c61_adjacent_shorthand_order () =
   (* CSS Cascade sections 3 and 6.1: merging adjacent equal-selector rules is
      only semantics-preserving when the declaration sequence stays in source
-     order, because a shorthand in the later rule resets earlier longhands. *)
+     order, because a shorthand in the later rule resets earlier longhands. The
+     first rule also contains a non-shadowed declaration so this remains a
+     cross-rule merge test even when dead earlier declarations are
+     eliminated. *)
   let input =
     [
       Css.rule
         ~selector:(Css.Selector.class_ "box")
-        [ Css.Declaration.margin_left (Px 1.) ];
+        [
+          Css.Declaration.color (hex_color "ff0000");
+          Css.Declaration.margin_left (Px 1.);
+        ];
       Css.rule
         ~selector:(Css.Selector.class_ "box")
         [
@@ -996,7 +1000,7 @@ let c61_adjacent_shorthand_order () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "adjacent same-selector merge keeps shorthand/longhand source order"
-    ".box{margin:2px;margin-left:3px}" output
+    ".box{color:red;margin:2px 2px 2px 3px}" output
 
 let c61_adjacent_later_dedup () =
   (* Positive merge case: adjacent same-selector rules in the same cascade slot
@@ -1063,19 +1067,33 @@ let c61_no_group_nonadjacent () =
     "same declarations are not grouped across source-order competitor"
     ".a{color:red}.b{color:#00f}.c{color:red}" output
 
-let aba_intersection_dependency_edges () =
+let aba_forbidden_intersection_dependency () =
   (* A?B?A / CSS-graph soundness: two equal A declarations cannot be grouped
      across an intervening B declaration when B writes the same property and the
-     selector intersection is satisfiable. For an element matching all classes,
-     source order decides the winner. *)
+     selector intersection is satisfiable. Here an element can match all three
+     selectors, so source order decides whether red or blue wins. *)
   Alcotest.(check string)
-    "compound selectors keep intervening same-property dependency"
-    ".a.x{color:red}.b.x{color:#00f}.c.x{color:red}"
-    (optimized_string ".a.x{color:red}.b.x{color:blue}.c.x{color:red}");
+    "overlapping selectors keep intervening same-property dependency"
+    ".a.x{color:red}.b.x{color:#00f}.a.y{color:red}"
+    (optimized_string ".a.x{color:red}.b.x{color:blue}.a.y{color:red}")
+
+let aba_allowed_same_selector_dead_a () =
+  (* Exact same selector and same property is not an A?B?A dependency: the final
+     A shadows the first A for every matched element. The first declaration may
+     be removed even with an unrelated intervening rule. *)
   Alcotest.(check string)
-    "same selector keeps intervening same-property dependency"
-    ".a{color:red}.b{color:#00f}.a{color:#000}"
+    "same selector dead A may be removed across intervening rule"
+    ".b{color:#00f}.a{color:#000}"
     (optimized_string ".a{color:red}.b{color:blue}.a{color:black}")
+
+let aba_allowed_local_refactoring () =
+  (* Punt, Visscher, Zaytsev, "The A-B*-A Pattern: Undoing Style in CSS" (ICSME
+     2016), section IV defines undoing style as assigning A, then one or more B
+     values, then A again. With one selector and one property, the final A
+     dominates locally. *)
+  Alcotest.(check string)
+    "same selector A-B-A collapses to final value" ".x{color:red}"
+    (optimized_string ".x{color:red}.x{color:blue}.x{color:red}")
 
 let aba_runtime_shorthand_boundaries () =
   (* Shorthand reasoning is not a pure syntactic rewrite when the shorthand
@@ -1094,17 +1112,6 @@ let aba_runtime_shorthand_boundaries () =
     "attr shorthand keeps following longhand"
     ".box{margin:attr(data-m px);margin-left:1px}"
     (optimized_string ".box{margin:attr(data-m px);margin-left:1px}")
-
-let aba_undoing_style_local_refactoring () =
-  (* Punt, Visscher, Zaytsev, "The A-B*-A Pattern: Undoing Style in CSS" (ICSME
-     2016), section IV defines undoing style as a declaration sequence that
-     assigns A, then one or more B values, then A again; section IX outlines the
-     semantics-preserving refactoring conditions. The first case below is the
-     trivial local refactoring: same selector, same property, all normal
-     importance, so the last A dominates. *)
-  Alcotest.(check string)
-    "same selector A-B-A collapses to final value" ".x{color:red}"
-    (optimized_string ".x{color:red}.x{color:blue}.x{color:red}")
 
 let c61_no_merge_atrule () =
   (* CSS Cascade section 6.1 defines style sheets and imported/nested sheets in
@@ -1129,6 +1136,27 @@ let c61_no_merge_atrule () =
     "same selector is not merged across media boundary"
     ".a{color:red}@media(width>=48px){.m{color:#0f0}}.a{background-color:#00f}"
     output
+
+let c61_conditional_competitor_order () =
+  (* CSS Cascade section 6.1: after conditional rules are filtered, declarations
+     with the same origin, importance, layer, specificity, and scope proximity
+     are resolved by order of appearance. These max-width conditions overlap,
+     and both write the same property for the same selector, so sorting them by
+     media condition would change the winning declaration. *)
+  Alcotest.(check string)
+    "overlapping media competitors preserve authored order"
+    "@media not all and (width>=1024px){.u{display:flex}}@media not all and \
+     (width>=640px){.u{display:grid}}"
+    (optimized_string
+       "@media not all and (min-width:1024px){.u{display:flex}}@media not all \
+        and (min-width:640px){.u{display:grid}}");
+  Alcotest.(check string)
+    "reverse authored order is also preserved"
+    "@media not all and (width>=640px){.u{display:grid}}@media not all and \
+     (width>=1024px){.u{display:flex}}"
+    (optimized_string
+       "@media not all and (min-width:640px){.u{display:grid}}@media not all \
+        and (min-width:1024px){.u{display:flex}}")
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
@@ -1487,8 +1515,7 @@ let c61_no_merge_supports () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across supports boundary"
-    ".card{color:red}@supports \
-     (display:flex){.feature{display:flex}}.card{background-color:#00f}"
+    ".card{color:red}@supports(display:flex){.feature{display:flex}}.card{background-color:#00f}"
     output
 
 let c61_no_merge_container () =
@@ -1654,8 +1681,7 @@ let c61_no_conditional_cli_merge () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "rules do not merge across conditional boundaries"
-    ".card{color:red}@supports \
-     (display:grid){.card{display:grid}}.card{padding:1rem}@container \
+    ".card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container \
      (inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
     output
 
@@ -2594,9 +2620,9 @@ let c64_conditional_layer_decls_nested () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "conditional layer declarations remain nested in their conditions"
-    "@media(width>=30em){@layer layout{.title{font-size:2rem}}}@supports \
-     (display:grid){@layer grid;@layer grid{.title{display:grid}}}@layer \
-     theme,layout;"
+    "@media(width>=30em){@layer \
+     layout{.title{font-size:2rem}}}@supports(display:grid){@layer grid;@layer \
+     grid{.title{display:grid}}}@layer theme,layout;"
     output
 
 let c64_empty_layer_before_block () =
@@ -2891,18 +2917,22 @@ let selector_merging_tests =
     ( "spec cascade 6.1 no group non-adjacent equal declarations",
       `Quick,
       c61_no_group_nonadjacent );
-    ( "A?B?A selector-intersection dependencies block grouping",
+    ( "A?B?A forbidden selector-intersection dependency",
       `Quick,
-      aba_intersection_dependency_edges );
+      aba_forbidden_intersection_dependency );
+    ( "A?B?A allowed same-selector dead A elimination",
+      `Quick,
+      aba_allowed_same_selector_dead_a );
     ( "A?B?A runtime shorthand boundaries block contraction",
       `Quick,
       aba_runtime_shorthand_boundaries );
-    ( "A?B?A undoing-style local refactoring",
-      `Quick,
-      aba_undoing_style_local_refactoring );
+    ("A?B?A allowed local refactoring", `Quick, aba_allowed_local_refactoring);
     ( "spec cascade 6.1 no merge across at-rule boundary",
       `Quick,
       c61_no_merge_atrule );
+    ( "spec cascade 6.1 conditional competitors keep source order",
+      `Quick,
+      c61_conditional_competitor_order );
     ( "spec cascade 6.1 no media merge across layer statement",
       `Quick,
       c61_no_layer_media_merge );
