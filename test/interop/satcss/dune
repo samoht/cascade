@@ -1,0 +1,17 @@
+(test
+ (name test)
+ (libraries cascade alcotest)
+ (deps
+  (source_tree traces)))
+
+; Fetch the SatCSS benchmark corpus into traces/. Not vendored in git
+; (upstream has no LICENSE; CSS belongs to each originating site).
+
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))
