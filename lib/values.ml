@@ -4752,10 +4752,12 @@ let rec read_channel t : channel =
         (* Clamp percentage to 0-100 per CSS spec *)
         Pct (max 0. (min 100. n))
     | None ->
-        (* For unitless numbers: - If it's a decimal between 0 and 1, treat as
-           Num (for alpha values) - Otherwise treat as Int (RGB 0-255 values) *)
+        (* CSS Color 4 sec. 15.1: when serialising an RGB channel back as an
+           integer, round to the nearest byte (not truncate); [rgb(127.6 ...)]
+           is [128], not [127]. Decimals in (0, 1) stay as [Num] so alpha
+           helpers can still see them as fractional. *)
         if n <= 1.0 && n <> floor n then Num n
-        else Int (int_of_float (max 0. (min 255. n)))
+        else Int (int_of_float (max 0. (min 255. (Float.round n))))
     | Some _ -> Cursor.err_invalid t "channel value"
 
 let rec read_rgb_var t : rgb var =
