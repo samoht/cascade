@@ -2844,6 +2844,33 @@ let rec pp_radial_size : radial_size Pp.t =
       Pp.space ctx ();
       pp_length_percentage ~always:true ctx b
 
+(* CSS Images 4 sec. 3.5.3 color-stop fixup: an omitted position on the first
+   stop defaults to [0%], on the last stop to [100%]. The reverse holds for
+   minify: drop an explicit [Pct 0.] from the first stop and [Pct 100.] from the
+   last when there's no second-position carrier; the resolved color stop list
+   stays identical. *)
+let canonicalise_gradient_stops stops =
+  let strip_pos stop =
+    match stop with
+    | Color_percentage (c, _, _) -> Color_percentage (c, None, None)
+    | _ -> stop
+  in
+  let trailing_default stop expected =
+    match stop with
+    | Color_percentage (_, Some (Pct p), None) when p = expected -> true
+    | _ -> false
+  in
+  let rec strip_last = function
+    | [] -> []
+    | [ last ] when trailing_default last 100. -> [ strip_pos last ]
+    | x :: rest -> x :: strip_last rest
+  in
+  match stops with
+  | [] -> []
+  | first :: rest when trailing_default first 0. ->
+      strip_pos first :: strip_last rest
+  | _ -> strip_last stops
+
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
@@ -2888,7 +2915,8 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | Percentage pct -> pp_percentage ctx pct
   | List stops ->
       (* Pretty-print multiple gradient stops separated by commas *)
-      Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
+      Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+        (if Pp.minified ctx then canonicalise_gradient_stops stops else stops)
   | Direction dir -> pp_gradient_direction ctx dir
 
 let rec pp_filter : filter Pp.t =
@@ -2972,33 +3000,73 @@ let rec pp_position_value : position_value Pp.t =
       pp_length_percentage ~always:true ctx offset2
   | Var v -> pp_var pp_position_value ctx v
 
+(* CSS Images 3 sec. 3.2.1: an omitted shape defaults to [ellipse], an omitted
+   size to [farthest-corner], and an omitted position to [center]. Under minify,
+   drop a component that equals its default - the resolved gradient stays
+   identical. *)
+let radial_shape_is_default : radial_shape -> bool = function
+  | Ellipse -> true
+  | _ -> false
+
+let radial_size_is_default : radial_size -> bool = function
+  | Farthest_corner -> true
+  | _ -> false
+
+let position_value_is_center : position_value -> bool = function
+  | Center -> true
+  | XY (Pct 50., Pct 50.) -> true
+  | _ -> false
+
+let radial_shape_kept ~drop_default (s : radial_shape option) :
+    radial_shape option =
+  match s with
+  | Some s when drop_default && radial_shape_is_default s -> None
+  | s -> s
+
+let radial_size_kept ~drop_default (s : radial_size option) : radial_size option
+    =
+  match s with
+  | Some s when drop_default && radial_size_is_default s -> None
+  | s -> s
+
+let radial_position_kept ~drop_default (p : position_value option) :
+    position_value option =
+  match p with
+  | Some p when drop_default && position_value_is_center p -> None
+  | p -> p
+
 let pp_radial_gradient_config : radial_gradient_config Pp.t =
  fun ctx config ->
+  let drop_default = Pp.minified ctx in
+  let shape = radial_shape_kept ~drop_default config.shape in
+  let size = radial_size_kept ~drop_default config.size in
+  let position = radial_position_kept ~drop_default config.position in
   let has_output = ref false in
-  (match config.interpolation with
-  | Some i ->
+  let emit_space_if_needed () =
+    if !has_output then Pp.space ctx () else has_output := true
+  in
+  Option.iter
+    (fun i ->
       pp_color_interpolation ctx i;
-      has_output := true
-  | None -> ());
-  (match config.shape with
-  | Some s ->
-      if !has_output then Pp.space ctx ();
-      pp_radial_shape ctx s;
-      has_output := true
-  | None -> ());
-  (match config.size with
-  | Some s ->
-      if !has_output then Pp.space ctx ();
-      pp_radial_size ctx s;
-      has_output := true
-  | None -> ());
-  match config.position with
-  | Some p ->
-      if !has_output then Pp.space ctx ();
+      has_output := true)
+    config.interpolation;
+  Option.iter
+    (fun s ->
+      emit_space_if_needed ();
+      pp_radial_shape ctx s)
+    shape;
+  Option.iter
+    (fun s ->
+      emit_space_if_needed ();
+      pp_radial_size ctx s)
+    size;
+  Option.iter
+    (fun p ->
+      emit_space_if_needed ();
       Pp.string ctx "at";
       Pp.space ctx ();
-      pp_position_value ctx p
-  | None -> ()
+      pp_position_value ctx p)
+    position
 
 let pp_conic_gradient_config : conic_gradient_config Pp.t =
  fun ctx config ->
@@ -3112,7 +3180,10 @@ let pp_conic_gradient_named name ctx (config, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+      | _ ->
+          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+            (if Pp.minified ctx then canonicalise_gradient_stops stops
+             else stops))
     ctx (config, stops)
 
 let pp_linear_gradient_named name ctx (dir, stops) =
@@ -3142,7 +3213,10 @@ let pp_linear_gradient_named name ctx (dir, stops) =
           match stops with [] -> () | _ -> Pp.comma ctx ()));
       match stops with
       | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+      | _ ->
+          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+            (if Pp.minified ctx then canonicalise_gradient_stops stops
+             else stops))
     ctx (dir, stops)
 
 let pp_webkit_linear_gradient_named name ctx (dir, stops) =
@@ -3154,14 +3228,20 @@ let pp_webkit_linear_gradient_named name ctx (dir, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+      | _ ->
+          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+            (if Pp.minified ctx then canonicalise_gradient_stops stops
+             else stops))
     ctx (dir, stops)
 
 let pp_radial_gradient_named name ctx (config, stops) =
   Pp.call name
     (fun ctx (config, stops) ->
+      let drop_default = Pp.minified ctx in
       let has_config =
-        config.shape <> None || config.size <> None || config.position <> None
+        radial_shape_kept ~drop_default config.shape <> None
+        || radial_size_kept ~drop_default config.size <> None
+        || radial_position_kept ~drop_default config.position <> None
         || config.interpolation <> None
       in
       if has_config then (
@@ -3169,7 +3249,10 @@ let pp_radial_gradient_named name ctx (config, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+      | _ ->
+          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+            (if Pp.minified ctx then canonicalise_gradient_stops stops
+             else stops))
     ctx (config, stops)
 
 let pp_image_set_option ctx { source; resolution; mime_type } =

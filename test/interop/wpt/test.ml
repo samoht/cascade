@@ -1,11 +1,10 @@
 (** WPT css-syntax vector harness.
 
-    Reads [test/vectors/wpt/css-syntax/*.html] and [support/*.css] and runs each
-    CSS input we can surface through {!Css.of_string}. Every WPT file
-    contributes at least one Alcotest case; files whose assertions are purely
-    dynamic (JS code-point loops, [document.querySelector] checks, etc.) have
-    dedicated per-file ports at the bottom of this module that re-encode the
-    test logic in OCaml.
+    Reads [traces/css-syntax/*.html] and [support/*.css] and runs each CSS input
+    we can surface through {!Css.of_string}. Every WPT file contributes at least
+    one Alcotest case; files whose assertions are purely dynamic (JS code-point
+    loops, [document.querySelector] checks, etc.) have dedicated per-file ports
+    at the bottom of this module that re-encode the test logic in OCaml.
 
     Static extraction uses {!Soup.parse}, so we pick up:
 
@@ -14,10 +13,15 @@
     - [<link rel=stylesheet href="support/...">] referenced files.
     - [parseRule(`...`)] template-literal calls inside [<script>] blocks.
 
-    Failure policy matches [test/vectors/README.md]: no skip list. A failing
-    vector is a code bug or a mis-extraction to be fixed. *)
+    Failure policy: no skip list. A failing vector is a code bug or a
+    mis-extraction to be fixed.
 
-let vectors_dir = "../vectors/wpt/css-syntax"
+    Traces: [traces/css-syntax/] vendored from
+    [https://github.com/web-platform-tests/wpt] commit
+    [f900489fca393464f3379d7952d227997318b851]. Regenerate via
+    [dune build @regen-traces]. *)
+
+let vectors_dir = "traces/css-syntax"
 
 (** {1 Reading files} *)
 

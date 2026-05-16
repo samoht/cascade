@@ -319,7 +319,7 @@ let test_color () =
 let test_angle () =
   (* Degrees *)
   check_angle "45deg";
-  check_angle "0deg";
+  check_angle ~expected:"0" "0deg";
   check_angle "360deg";
   check_angle "-45deg";
   check_angle "90.5deg";
@@ -327,20 +327,20 @@ let test_angle () =
 
   (* Radians *)
   check_angle "1.5rad";
-  check_angle "0rad";
+  check_angle ~expected:"0" "0rad";
   check_angle "3.14159rad";
   check_angle "-1.5rad";
 
   (* Turns *)
   check_angle ~expected:".25turn" "0.25turn";
-  check_angle "0turn";
+  check_angle ~expected:"0" "0turn";
   check_angle "1turn";
   check_angle ~expected:"-.5turn" "-0.5turn";
   check_angle "2.5turn";
 
   (* Gradians *)
   check_angle "100grad";
-  check_angle "0grad";
+  check_angle ~expected:"0" "0grad";
   check_angle "400grad";
   check_angle "-200grad";
 

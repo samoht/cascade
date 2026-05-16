@@ -2455,8 +2455,8 @@ let c64_layer_decls_import_cross () =
 
 let c64_repeated_layer_blocks_ordered () =
   (* CSS Cascade section 6.4.2: repeated explicit layer identifiers assign style
-     blocks to the same layer. They must remain layer-scoped and in source order
-     relative to other layer blocks. *)
+     blocks to the same layer. Same-name blocks in one scope may be serialized
+     as one layer block at the layer's first occurrence. *)
   let input =
     [
       Css.Stylesheet.Layer
@@ -2485,9 +2485,9 @@ let c64_repeated_layer_blocks_ordered () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "repeated named layer blocks remain in source order"
-    "@layer base{.button{color:red}}@layer theme{.button{color:#00f}}@layer \
-     base{.button{display:flex}}"
+    "repeated named layer blocks merge by layer name"
+    "@layer base{.button{color:red;display:flex}}@layer \
+     theme{.button{color:#00f}}"
     output
 
 let c64_child_layer_one_anonymous () =

@@ -1,0 +1,16 @@
+(test
+ (name test)
+ (deps
+  (source_tree traces))
+ (libraries cascade alcotest fmt lambdasoup))
+
+; Refresh traces/css-syntax from the WPT repo at the pinned commit.
+
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))

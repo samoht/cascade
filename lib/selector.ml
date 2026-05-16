@@ -766,15 +766,6 @@ let read_an_tail t =
           -read_signless_integer t
       | _ -> 0)
 
-(* Reject a leading [+] that is separated from the following ident by
-   whitespace. Per the grammar, the ['+'? n] form does not admit whitespace
-   between the [+] and [n]. *)
-let ensure_no_ws_after_plus t =
-  match Cursor.peek_raw t with
-  | Some (Component.Preserved { kind = Token.Whitespace; _ }) ->
-      Cursor.err_invalid t "whitespace after '+'"
-  | _ -> ()
-
 (* Dimension forms [<n-dimension>, <ndashdigit-dimension>, <ndash-dimension>]
    from Selectors Level 4 section 9.2. Assumes the cursor is positioned on a
    [Dimension] component. *)
@@ -808,10 +799,24 @@ let read_nth_ident_tail t s =
           An_plus_b (-1, -b)
       | None -> Cursor.err t ("not an An+B ident: " ^ s))
 
-(* After a leading [+] delim, only the positive ident forms are valid. *)
+(* After a leading [+] delim. The [+n] / [+n-...] An+B forms forbid whitespace
+   between [+] and the [n] ident (Selectors 4 sec. 9.2). [+<integer>] is the
+   bare-B form: CSS Syntax tokenizes [+ 5] as delim [+] then [Whitespace] then
+   [Number 5]; An+B accepts a signed integer there, so the whitespace is OK. *)
 let read_nth_after_plus t =
-  ensure_no_ws_after_plus t;
+  let had_ws =
+    match Cursor.peek_raw t with
+    | Some (Component.Preserved { kind = Token.Whitespace; _ }) ->
+        Cursor.ws t;
+        true
+    | _ -> false
+  in
   match Cursor.peek t with
+  | Some
+      (Component.Preserved
+         { kind = Token.Number_tok { number_flag = Integer; _ }; _ }) ->
+      Index (Cursor.int t)
+  | _ when had_ws -> Cursor.err_invalid t "whitespace after '+'"
   | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s ->
       Cursor.skip t;
       An_plus_b (1, read_an_tail t)

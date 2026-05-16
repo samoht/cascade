@@ -28,7 +28,7 @@ let rows =
         "test/test_reader.ml";
         "test/test_component.ml";
         "test/spec/test.ml";
-        "test/wpt/test.ml";
+        "test/interop/wpt/test.ml";
       ]
       [ "fuzz/fuzz_lexer.ml"; "fuzz/fuzz_parser.ml"; "fuzz/fuzz_reader.ml" ];
     row "Selectors" "4" Snapshot_2026
