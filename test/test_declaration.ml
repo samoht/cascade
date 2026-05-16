@@ -324,6 +324,7 @@ let lengths () =
 
   (* Percentages *)
   check_declaration ~expected:"width:100%" "width: 100%";
+  check_declaration ~expected:"width:0%" "width: 0%";
   check_declaration ~expected:"height:50%" "height: 50%";
 
   (* Em and rem *)
@@ -332,6 +333,7 @@ let lengths () =
   check_declaration ~expected:"margin:1.5rem" "margin: 1.5rem";
 
   (* Zero *)
+  check_declaration ~expected:"width:0" "width: 0px";
   check_declaration ~expected:"margin:0" "margin: 0";
   check_declaration ~expected:"padding:0" "padding: 0";
 
@@ -475,6 +477,8 @@ let flexbox_flex_and_basis () =
   check_declaration ~expected:"flex-shrink:1" "flex-shrink: 1";
   (* Flex basis *)
   check_declaration ~expected:"flex-basis:auto" "flex-basis: auto";
+  check_declaration ~expected:"flex-basis:0" "flex-basis: 0px";
+  check_declaration ~expected:"flex-basis:0%" "flex-basis: 0%";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
   check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%"
 
@@ -1001,7 +1005,7 @@ let spec_property_grammar_table_expansion () =
         | "border-image", "linear-gradient(red, blue) 30" ->
             Some "border-image:linear-gradient(red,#00f)30"
         | "background", "url(bg.png) no-repeat center / cover border-box" ->
-            Some "background:url(bg.png) 50%/cover no-repeat border-box"
+            Some "background:url(bg.png)50%/cover no-repeat border-box"
         | "scrollbar-color", "red blue" -> Some "scrollbar-color:red #00f"
         | "border", "1px solid currentColor" -> Some "border:1px solid"
         | "background-position", "left 10px top 20px" ->

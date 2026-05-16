@@ -163,7 +163,10 @@ let recover_non_minified css ~preserves ~drops min_warnings =
 
 let css2_selectors_and_at_rules () =
   roundtrip "body { margin: 0; color: black }" "body{margin:0;color:#000}";
-  roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
+  (* CSS Syntax 3 sec. 8.3: [@charset] is a byte-pattern encoding declaration
+     consumed before tokenisation, not a stylesheet at-rule, so [@charset
+     "UTF-8"] drops under minify (cascade always emits UTF-8). *)
+  roundtrip "@charset \"UTF-8\";" "";
   roundtrip "@import 'legacy.css';" "@import\"legacy.css\";";
   roundtrip "@media print { body { color: black } }"
     "@media print{body{color:#000}}";
@@ -502,7 +505,7 @@ let conditional_media () =
 (* SS 8 - @supports with property checks *)
 let conditional_supports () =
   roundtrip "@supports (display: grid) { .grid { display: grid } }"
-    "@supports (display:grid){.grid{display:grid}}";
+    "@supports(display:grid){.grid{display:grid}}";
   roundtrip
     "@supports at-rule(@container) { .cq { container-type: inline-size } }"
     "@supports at-rule(@container){.cq{container-type:inline-size}}"
@@ -511,7 +514,7 @@ let conditional_supports () =
    https://www.w3.org/TR/css-syntax-3/ SS 8 *)
 
 let stylesheet_at_rules () =
-  roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
+  roundtrip "@charset \"UTF-8\";" "";
   roundtrip "@namespace url(http://www.w3.org/1999/xhtml);"
     "@namespace \"http://www.w3.org/1999/xhtml\";";
   roundtrip "@namespace svg url(http://www.w3.org/2000/svg);"
@@ -899,10 +902,11 @@ let cross_mode_pinning () =
       | Ok _ -> ())
     inputs
 
-(* Comment preservation policy. Per CSS Syntax 3 SS 4.3.2 comments are
-   whitespace-equivalent tokens and can appear anywhere whitespace can.
-   Cascade's parser does not represent comments in the AST, so serialization
-   drops them in both pretty and minified output. *)
+(* Comment preservation policy. Per CSS Syntax 3 SS 4.3.2 ordinary comments are
+   whitespace-equivalent tokens and can appear anywhere whitespace can, so
+   serialization may drop them or replace them with whitespace. The minifier
+   convention for bang comments [/*! ... */] is stronger: they are used for
+   license / important headers and must survive serialization. *)
 let comment_preservation_policy () =
   rejects_non_minified_fragments
     ".a { color: red } /* divider */ .b { color: blue }" [ "/* divider */" ];
@@ -912,10 +916,32 @@ let comment_preservation_policy () =
     ".a{color:red}.b{color:#00f}";
   roundtrip ".x { color: red; /* note */ background: blue }"
     ".x{color:red;background:#00f}";
-  rejects_non_minified_fragments
+  preserves_non_minified_exact
     ".a { color: red } /*! license */ .b { color: blue }" [ "/*! license */" ];
-  roundtrip ".a { color: red } /*! license */ .b { color: blue }"
-    ".a{color:red}.b{color:#00f}";
+  (match
+     of_string ~strict:true
+       ".a { color: red } /*! license */ .b { color: blue }"
+   with
+  | Ok parsed ->
+      let output = to_string ~minify:true parsed.stylesheet in
+      let find fragment = Astring.String.find_sub ~sub:fragment output in
+      Alcotest.(check bool)
+        "minified output keeps first rule" true
+        (contains_substring ~needle:".a{color:red}" output);
+      Alcotest.(check bool)
+        "minified output keeps bang comment" true
+        (contains_substring ~needle:"/*! license */" output);
+      Alcotest.(check bool)
+        "minified output keeps second rule" true
+        (contains_substring ~needle:".b{color:#00f}" output);
+      Alcotest.(check bool)
+        "minified output keeps authored bang-comment order" true
+        (match
+           (find ".a{color:red}", find "/*! license */", find ".b{color:#00f}")
+         with
+        | Some a, Some c, Some b -> a < c && c < b
+        | _ -> false)
+  | Error e -> Alcotest.fail (Cascade.Error.to_string e));
   (* Comments inside selector lists or values are discarded (industry consensus
      - none of Lightning, cssnano, CSSO preserve these). *)
   roundtrip ".a /* between */ , .b { color: red }" ".a,.b{color:red}";
@@ -1180,7 +1206,7 @@ let () =
           Alcotest.test_case
             "cross-mode: strict rejects, lenient warns on spec-invalid input"
             `Quick cross_mode_pinning;
-          Alcotest.test_case "comments: serialization drops comments" `Quick
+          Alcotest.test_case "comments: serialization policy" `Quick
             comment_preservation_policy;
           Alcotest.test_case "fidelity: conditional forms" `Quick
             non_minified_preserves_conditional_forms;

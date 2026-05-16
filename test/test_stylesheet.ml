@@ -81,12 +81,11 @@ let test_stylesheet () =
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
   check_stylesheet ~expected:"@media screen{.test{color:#00f}}"
     "@media screen { .test { color: blue } }";
-  check_stylesheet ~expected:"@supports (display:grid){.grid{display:grid}}"
+  check_stylesheet ~expected:"@supports(display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
-    "@supports (display:grid){.grid{display:grid}@supports \
-     (color:red){.x{color:red}}}";
-  check_stylesheet ~expected:"@supports (display:grid){.grid{display:grid}}"
+    "@supports(display:grid){.grid{display:grid}@supports(color:red){.x{color:red}}}";
+  check_stylesheet ~expected:"@supports(display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
     ~expected:
@@ -546,8 +545,9 @@ let pp_case () =
 
 (** Test [@charset] rules *)
 let charset_case () =
-  (* Test charset roundtrip *)
-  check_stylesheet "@charset \"UTF-8\";"
+  (* CSS Syntax 3 section 8.3: parsed UTF-8 [@charset] is compatibility surface,
+     not an emitted stylesheet at-rule. *)
+  check_stylesheet ~expected:"" "@charset \"UTF-8\";"
 
 (** Test [@import] rules *)
 let import_case () =
@@ -829,7 +829,7 @@ let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
   let test_statements =
     [
-      ("@charset \"UTF-8\";", "@charset \"UTF-8\";");
+      ("@charset \"UTF-8\";", "");
       ("@import 'test.css';", "@import\"test.css\";");
       (".class { color: red; }", ".class{color:red}");
       ( "@media print { .class { color: black; } }",
@@ -851,8 +851,7 @@ let ordering () =
   let input =
     "@charset \"UTF-8\";\n@import 'base.css';\n.btn { color: red; }"
   in
-  check_stylesheet
-    ~expected:"@charset \"UTF-8\";@import\"base.css\";.btn{color:red}" input
+  check_stylesheet ~expected:"@import\"base.css\";.btn{color:red}" input
 
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
@@ -1362,7 +1361,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media(width>=768px){@supports (display:grid){.grid{display:grid}}}"
+      "@media(width>=768px){@supports(display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
@@ -1370,8 +1369,7 @@ let test_nested_rules () =
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
     ~expected:
-      "@container \
-       (width>400px){@media(orientation:landscape){.landscape{color:green}}}"
+      "@container(width>400px){@media(orientation:landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"
 
@@ -1474,6 +1472,16 @@ let test_invalid_at_rules () =
 
 (* Not a roundtrip test *)
 let css_syntax_recovery () =
+  let check_strict name css expected =
+    match Css.of_string ~strict:true css with
+    | Ok { Css.stylesheet; warnings = _ } ->
+        Alcotest.(check string)
+          (name ^ " stylesheet") expected
+          (Css.to_string ~minify:true stylesheet |> String.trim)
+    | Error err ->
+        Alcotest.failf "%s should parse strictly: %s" name
+          (Cascade.Error.to_string err)
+  in
   let check_recovery name css expected min_warnings =
     let { Css.stylesheet; warnings } =
       match Css.of_string ~strict:false css with
@@ -1489,8 +1497,14 @@ let css_syntax_recovery () =
       (name ^ " warning count") true
       (List.length warnings >= min_warnings)
   in
-  check_recovery "unknown declaration"
-    ".btn { unknown-property: value; color: red; }" ".btn{color:red}" 1;
+  (* Syntactically valid unknown declarations are preserved (browsers do, and
+     dropping changes the stylesheet for vendor properties / future spec
+     additions / properties Cascade just doesn't model). Only malformed or
+     known-but-invalid declarations are dropped (see [invalid declaration] case
+     below). *)
+  check_strict "unknown declaration"
+    ".btn { unknown-property: value; color: red; }"
+    ".btn{unknown-property:value;color:red}";
   check_recovery "invalid declaration"
     ".btn { color: invalid-color; color: red; }" ".btn{color:red}" 1;
   check_recovery "invalid selector list"
@@ -1710,8 +1724,7 @@ let c64_import_namespace_order () =
      @import rules. *)
   check_stylesheet
     ~expected:
-      "@charset \"UTF-8\";@layer \
-       reset,theme;@import\"theme.css\"layer(theme);@namespace \
+      "@layer reset,theme;@import\"theme.css\"layer(theme);@namespace \
        \"http://www.w3.org/1999/xhtml\";"
     "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
      layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
@@ -2151,11 +2164,11 @@ let environment_query_boundary () =
   (* Query syntax is in scope; matching needs explicit environment context. *)
   check_stylesheet
     ~expected:
-      "@media(width>=40em){@supports (display:grid){@container card \
+      "@media(width>=40em){@supports(display:grid){@container card \
        style(--theme:dark){.card{display:grid}}}}"
     "@media (width >= 40em) { @supports (display: grid) { @container card \
      style(--theme: dark) { .card { display: grid } } } }";
-  check_stylesheet ~expected:"@supports (display:){.x{color:red}}"
+  check_stylesheet ~expected:"@supports(display:){.x{color:red}}"
     "@supports (display:) { .x { color: red } }";
   neg_cursor read_stylesheet "@media (width >= ) { .x { color: red } }";
   neg_cursor read_stylesheet "@container card style() { .x { color: red } }";
@@ -2302,8 +2315,7 @@ let spec_current_at_rules () =
     "@container scroll-state() { .card { color: red } }";
   check_stylesheet
     ~expected:
-      "@container (30em<=inline-size<60em){@supports \
-       (display:grid){.grid{display:grid}}}"
+      "@container(30em<=inline-size<60em){@supports(display:grid){.grid{display:grid}}}"
     "@container (30em <= inline-size < 60em) { @supports (display: grid) { \
      .grid { display: grid } } }";
   check_stylesheet
@@ -2407,7 +2419,7 @@ let spec_at_rule_descriptor_matrix () =
         "@position-try --below { left: anchor(center); top: anchor(bottom) }" );
       ( "@media screen and (width>=40em){.card{display:grid}}",
         "@media screen and (width >= 40em) { .card { display: grid } }" );
-      ( "@supports ((display:grid) and selector(:has(img))){.card{display:grid}}",
+      ( "@supports((display:grid)and selector(:has(img))){.card{display:grid}}",
         "@supports ((display: grid) and selector(:has(img))) { .card { \
          display: grid } }" );
       ( "@container card style(--variant:featured){.card{color:red}}",
@@ -2492,8 +2504,7 @@ let test_spec_snapshot_tracking_vectors () =
     "@container card (inline-size > 30em) { .card { grid-template-columns: \
      subgrid } }";
   check_stylesheet
-    ~expected:
-      "@supports (color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
      } }";
   check_stylesheet
@@ -2668,8 +2679,8 @@ let spec_nesting_selector_edges () =
      img) { display: grid } }";
   check_stylesheet
     ~expected:
-      ".card{@supports selector(:has(img)){&:has(img){display:grid}}@container \
-       (inline-size>30em){&>.media{display:block}}}"
+      ".card{@supports \
+       selector(:has(img)){&:has(img){display:grid}}@container(inline-size>30em){&>.media{display:block}}}"
     ".card { @supports selector(:has(img)) { &:has(img) { display: grid } } \
      @container (inline-size > 30em) { & > .media { display: block } } }";
   check_stylesheet
@@ -3042,12 +3053,9 @@ let color4_hex_tie_policy () =
       Alcotest.(check string) name expected (normalize css))
     cases
 
-(* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
-   Dimensions): in a [<length-percentage>] context the bare [0], [0%], and [0px]
-   all denote the same computed value, so the printer collapses them to the
-   shortest spelling. Properties that distinguish [0] from [0%] (e.g.
-   [flex-basis], where [0%] keeps its percentage flex semantics) carry their own
-   type and don't reach this printer. *)
+(* CSS Values and Units Module Level 4, section 6.5 only allows dropping units
+   from zero lengths. Percentages keep their percent sign because [0%] is still
+   a percentage token, not the bare number [0]. *)
 let v465_zero_percentage_equiv () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -3058,10 +3066,12 @@ let v465_zero_percentage_equiv () =
   let zero_pct = normalize ".a { width: 0% }" in
   let zero_px = normalize ".a { width: 0px }" in
   Alcotest.(check string)
-    "0 and 0px are spec-equivalent for <length-percentage>" zero zero_px;
+    "0 and 0px are spec-equivalent for zero length" zero zero_px;
   Alcotest.(check string)
-    "0 and 0% are spec-equivalent for <length-percentage> at zero value" zero
-    zero_pct
+    "0% preserves its percentage token" ".a{width:0%}" zero_pct;
+  Alcotest.(check bool)
+    "0 and 0% stay distinct for width" false
+    (String.equal zero zero_pct)
 
 (* CSSOM Level 1, section 6.6.2 (Serialize a CSS declaration): the serialized
    form puts ":" between property name and value with no surrounding spaces in
@@ -3381,10 +3391,8 @@ let color464_transparent_shortest () =
     "#00000000 canonicalizes to #0000" canonical
     (normalize ".x { color: #00000000 }")
 
-(* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
-   Dimensions): for [<length-percentage>] a zero value can be spelled [0],
-   [0px], [0em], or [0%]; all denote the same computed value when the value is
-   zero. The printer picks the bare [0] form. *)
+(* CSS Values and Units Module Level 4, section 6.5 lets zero lengths drop their
+   unit. It does not turn zero percentages into numbers. *)
 let v465_zero_length_shortest () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -3399,7 +3407,7 @@ let v465_zero_length_shortest () =
     "0em canonicalizes to 0" canonical
     (normalize ".x { width: 0em }");
   Alcotest.(check string)
-    "0% canonicalizes to 0 in length context" canonical
+    "0% stays a percentage" ".x{width:0%}"
     (normalize ".x { width: 0% }");
   Alcotest.(check string)
     "0vh canonicalizes to 0" canonical
@@ -4048,8 +4056,8 @@ let webkit_decoration_color_compat () =
     (normalize
        ".x { text-decoration-color: blue; -webkit-text-decoration-color: red }");
   Alcotest.(check string)
-    "webkit text-decoration inherit triplication survives stylesheet optimize"
-    ".x{-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}"
+    "webkit text-decoration inherit fallback survives stylesheet optimize"
+    ".x{-webkit-text-decoration:inherit;text-decoration:inherit}"
     (normalize
        ".x { -webkit-text-decoration: inherit; text-decoration: inherit }")
 

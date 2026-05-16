@@ -605,6 +605,8 @@ let test_length_percentage () =
   check_length_percentage "10px";
   check_length_percentage "50%";
   check_length_percentage "0";
+  check_length_percentage "0%";
+  check_length_percentage ~expected:"0" "0px";
   neg_cursor read_length_percentage "invalid";
   neg_cursor read_length_percentage "abc";
   neg_cursor read_length_percentage ""

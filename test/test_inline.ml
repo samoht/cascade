@@ -111,7 +111,7 @@ let test_inline_vars_runtime_boundaries () =
     ":root{--bp:30em}@media(width>=var(--bp)){.x{color:red}}";
   check_inline_case "container query var is preserved outside property values"
     ":root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}"
-    ":root{--bp:30em}@container (width>=var(--bp)){.x{color:red}}"
+    ":root{--bp:30em}@container(width>=var(--bp)){.x{color:red}}"
 
 let suite =
   ( "inline",
