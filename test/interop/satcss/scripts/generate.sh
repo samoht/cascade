@@ -63,30 +63,38 @@ cp "$tmp/NOTES.md" "$TRACE_DIR/UPSTREAM-NOTES.md"
 shopt -s nullglob
 inputs=0
 oracles=0
-oracle_failures=0
+upstream_empty=0
 for src in "$tmp"/benchmarks/*-stripmq.css; do
   base=$(basename "$src" -stripmq.css)
   cp "$src" "$TRACE_DIR/inputs/$base-stripmq.css"
   inputs=$((inputs + 1))
 done
+err_log="$tmp/cascade-err"
 for src in "$tmp"/benchmarks/*-stripmq-*.css; do
   fname=$(basename "$src" .css)
   # fname is "<site>-stripmq-<tool>"; the last segment is the tool name.
   tool="${fname##*-}"
   site="${fname%-stripmq-$tool}"
   out="$TRACE_DIR/oracles/$site-$tool.css"
-  if ! "$CASCADE_BIN" fmt --minify "$src" > "$out" 2>/dev/null; then
-    rm -f "$out"
-    oracle_failures=$((oracle_failures + 1))
+  if [ ! -s "$src" ]; then
+    # Upstream minifier produced no output for this site; legitimate
+    # skip - the corresponding oracle is intentionally absent.
+    upstream_empty=$((upstream_empty + 1))
     continue
   fi
-  if [ ! -s "$out" ]; then
+  if ! "$CASCADE_BIN" fmt --minify "$src" > "$out" 2>"$err_log"; then
+    echo "ERROR: cascade failed to parse $(basename "$src"):" >&2
+    cat "$err_log" >&2
     rm -f "$out"
-    oracle_failures=$((oracle_failures + 1))
-    continue
+    exit 1
+  fi
+  if [ ! -s "$out" ]; then
+    echo "ERROR: cascade emitted empty output for non-empty $(basename "$src")" >&2
+    rm -f "$out"
+    exit 1
   fi
   oracles=$((oracles + 1))
 done
 
-echo "wrote $inputs inputs and $oracles canonicalized oracles"
-echo "skipped $oracle_failures oracles cascade could not parse"
+echo "wrote $inputs inputs and $oracles canonicalised oracles"
+echo "$upstream_empty oracle slots empty in upstream corpus (legitimate skip)"
