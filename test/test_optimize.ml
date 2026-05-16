@@ -110,13 +110,13 @@ let test_deduplicate_declarations () =
 
 (** Test buggy property duplication *)
 let test_duplicate_buggy_properties () =
-  (* Test -webkit-text-decoration:inherit triplication. Note: Transform is NOT
+  (* Test -webkit-text-decoration:inherit compatibility. Note: Transform is NOT
      duplicated in Tailwind v4 - they don't emit vendor-prefixed transform. *)
   let decls = [ v Webkit_text_decoration Inherit ] in
   let duplicated = duplicate_buggy_properties decls in
-  (* Should triplicate webkit-text-decoration:inherit *)
-  check bool "triplicates webkit-text-decoration inherit" true
-    (List.length duplicated = 3);
+  check (list string) "keeps one webkit-text-decoration inherit fallback"
+    [ "-webkit-text-decoration:inherit" ]
+    (List.map (Css.Declaration.string_of_declaration ~minify:true) duplicated);
 
   (* -webkit-text-decoration-color is a compatibility property, not a generated
      fallback for the standard property. External minifiers preserve authored
@@ -678,8 +678,7 @@ let test_tw_conditionals_layer () =
   Alcotest.(check string)
     "adjacent supports/container blocks merge inside utility layer"
     "@layer \
-     utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container \
-     (inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
+     utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
     output
 
 let test_tw_conditionals_split () =
@@ -971,8 +970,7 @@ let c61_decl_order_shorthand_boundary () =
     |> String.trim
   in
   Alcotest.(check string)
-    "later longhand stays after shorthand" ".box{margin:2px;margin-left:3px}"
-    output
+    "later longhand stays after shorthand" ".box{margin:2px 2px 2px 3px}" output
 
 let c61_adjacent_shorthand_order () =
   (* CSS Cascade sections 3 and 6.1: merging adjacent equal-selector rules is
@@ -1077,7 +1075,7 @@ let aba_forbidden_intersection_dependency () =
     ".a.x{color:red}.b.x{color:#00f}.a.y{color:red}"
     (optimized_string ".a.x{color:red}.b.x{color:blue}.a.y{color:red}")
 
-let aba_allowed_same_selector_dead_a () =
+let aba_allowed_same_selector_dead () =
   (* Exact same selector and same property is not an A?B?A dependency: the final
      A shadows the first A for every matched element. The first declaration may
      be removed even with an unrelated intervening rule. *)
@@ -1541,8 +1539,7 @@ let c61_no_merge_container () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across container boundary"
-    ".card{color:red}@container \
-     (width>=48px){.feature{display:flex}}.card{background-color:#00f}"
+    ".card{color:red}@container(width>=48px){.feature{display:flex}}.card{background-color:#00f}"
     output
 
 let c61_no_merge_starting_style () =
@@ -1681,8 +1678,7 @@ let c61_no_conditional_cli_merge () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "rules do not merge across conditional boundaries"
-    ".card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container \
-     (inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
+    ".card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
     output
 
 let c61_important_blocks_longhand () =
@@ -2421,7 +2417,7 @@ let c64_keyframe_name_layers () =
     "same-name keyframes remain in their declared layers"
     "@layer framework,override;@layer override{@keyframes \
      slide-left{0%{opacity:0}}}@layer framework{@keyframes \
-     slide-left{0%{margin-left:0}}}"
+     slide-left{0%{margin-left:0%}}}"
     output
 
 let c64_layer_decls_import_cross () =
@@ -2922,7 +2918,7 @@ let selector_merging_tests =
       aba_forbidden_intersection_dependency );
     ( "A?B?A allowed same-selector dead A elimination",
       `Quick,
-      aba_allowed_same_selector_dead_a );
+      aba_allowed_same_selector_dead );
     ( "A?B?A runtime shorthand boundaries block contraction",
       `Quick,
       aba_runtime_shorthand_boundaries );

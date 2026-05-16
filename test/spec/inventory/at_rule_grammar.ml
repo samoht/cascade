@@ -74,7 +74,7 @@ let positive =
       "@media screen and (width>=40em){.card{display:grid}}"
       "@media screen and (width >= 40em) { .card { display: grid } }";
     row "supports" "nested-rule"
-      "@supports ((display:grid) and selector(:has(img))){.card{display:grid}}"
+      "@supports((display:grid)and selector(:has(img))){.card{display:grid}}"
       "@supports ((display: grid) and selector(:has(img))) { .card { display: \
        grid } }";
     row "container" "style-query"

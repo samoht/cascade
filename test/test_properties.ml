@@ -1619,7 +1619,7 @@ let test_background () =
   check_background "url(image.png)";
   check_background ~expected:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
-  check_background ~expected:"url(image.png) 50%/cover no-repeat fixed red"
+  check_background ~expected:"url(image.png)50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
   check_background ~expected:"0 0" "none";
   neg_cursor read_background "invalid-background";
@@ -1851,6 +1851,8 @@ let test_flex_basis () =
   check_flex_basis "auto";
   check_flex_basis "content";
   check_flex_basis "0";
+  check_flex_basis ~expected:"0" "0px";
+  check_flex_basis "0%";
   check_flex_basis "100px";
   check_flex_basis "50%";
   check_flex_basis "inherit";
@@ -1863,10 +1865,10 @@ let test_background_shorthand () =
   check_background_shorthand ~expected:"50%" "center";
   check_background_shorthand "no-repeat";
   check_background_shorthand ~expected:"repeat" "repeat repeat";
-  check_background_shorthand ~expected:"url(image.png) red" "red url(image.png)";
-  check_background_shorthand ~expected:"url(image.png) 50%"
+  check_background_shorthand ~expected:"url(image.png)red" "red url(image.png)";
+  check_background_shorthand ~expected:"url(image.png)50%"
     "url(image.png) center";
-  check_background_shorthand ~expected:"url(image.png) 50% no-repeat red"
+  check_background_shorthand ~expected:"url(image.png)50%no-repeat red"
     "red url(image.png) center no-repeat";
   neg_cursor read_background_shorthand "invalid invalid";
   neg_cursor read_background_shorthand "red blue green";

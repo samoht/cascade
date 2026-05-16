@@ -1,8 +1,8 @@
 CLI: --inline-imports - what propagates and what is dropped.
 
 @charset in an imported file is ignored - per CSS Syntax L3 §3.2 only
-the entry stylesheet's @charset has effect. The entry's @charset is
-preserved.
+the entry stylesheet's @charset has effect. Cascade receives already-decoded
+UTF-8 text, so redundant UTF-8 @charset syntax is not emitted under minify.
 
   $ cat > inner-charset.css <<EOF
   > @charset "UTF-8";
@@ -14,7 +14,7 @@ preserved.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-charset.css
-  @charset "UTF-8";.x{color:red}.e{padding:0}
+  .x{color:red}.e{padding:0}
 
 @namespace from an imported file propagates into the bundle - per CSS
 Namespaces L3 §2 namespaces are stylesheet-scoped, so when the file is

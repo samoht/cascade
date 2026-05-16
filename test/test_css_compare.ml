@@ -74,6 +74,14 @@ let canonical_custom_color_mix_tokens () =
     "self-contained custom color-mix values use shortest canonical form" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let canonical_custom_calc_percentage () =
+  let expected = ".a { --tw-translate-x: calc(1 / 2 * 100%) }" in
+  let actual = ".a { --tw-translate-x: 50% }" in
+  Alcotest.(check bool)
+    "self-contained custom calc percentage values use shortest canonical form"
+    true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_with_recovered_warning () =
   let expected =
     "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent; \
@@ -493,6 +501,8 @@ let suite =
         canonical_custom_property_tokens;
       Alcotest.test_case "canonical custom color-mix tokens" `Quick
         canonical_custom_color_mix_tokens;
+      Alcotest.test_case "canonical custom calc percentage" `Quick
+        canonical_custom_calc_percentage;
       Alcotest.test_case "semantic with recovered warning" `Quick
         semantic_with_recovered_warning;
       Alcotest.test_case "semantic custom var fallback" `Quick
