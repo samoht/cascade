@@ -3104,26 +3104,6 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let space_after_color_percentage ctx (l : percentage option) ~next =
-  (* Under minify, when the previous channel ended with [%] (or a closing paren
-     from [var()] / [calc()]) the separator collapses: the next token has its
-     own boundary and cannot extend the previous one. After [none] or a bare
-     number the space stays since merging would either extend the ident or grow
-     the number. *)
-  let next_safe s =
-    String.length s > 0
-    &&
-    match s.[0] with
-    | '0' .. '9' | '.' | '+' | '-' | '#' -> true
-    | _ -> false
-  in
-  let elidable =
-    Pp.minified ctx
-    && (match l with Some (Pct _ | Var _ | Calc _) -> true | _ -> false)
-    && match next with Some s -> next_safe s | None -> false
-  in
-  if not elidable then Pp.space ctx ()
-
 (** Lab-like float string with precision control. CSSOM serialisation (CSS
     Values 4 §6.7.2) drops a leading zero on fractional numbers in both pretty
     and minified output; minified output additionally rounds to 6 sig digits for
@@ -3141,6 +3121,21 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
     let pct = string_of_lab_float ~max_decimals ctx (f /. pct_scale) ^ "%" in
     if String.length pct < String.length n then pct else n
   else n
+
+let space_after_color_percentage ctx (l : percentage option) ~next =
+  let next_safe s =
+    String.length s > 0
+    &&
+    match s.[0] with
+    | '0' .. '9' | '.' | '+' | '-' | '#' -> true
+    | _ -> false
+  in
+  let elidable =
+    Pp.minified ctx
+    && (match l with Some (Pct _ | Var _ | Calc _) -> true | _ -> false)
+    && match next with Some s -> next_safe s | None -> false
+  in
+  if not elidable then Pp.space ctx ()
 
 let starts_unsigned_number s =
   String.length s > 0
@@ -3212,6 +3207,10 @@ let pp_lab_like_args ~axis_pct_scale :
   let b = string_of_axis b in
   space_after_color_percentage ctx l ~next:(Some a);
   Pp.string ctx a;
+  (* CSS Color 4 lab / oklab tokens parse the same with or without whitespace
+     between an unsigned-number [a] and a sign-prefixed [b] ([.285] then [-.149]
+     is two number tokens either way), so under cascade's README shortest-valid
+     policy the gap elides when the boundary is unambiguous. *)
   if
     not
       (ctx.Pp.minify && starts_unsigned_number a

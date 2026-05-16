@@ -18416,10 +18416,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Inset_block -> pp (pp_box_shorthand pp_length)
   | Inset_block_start -> pp (Pp.list ~sep:Pp.space pp_length)
   | Inset_block_end -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Top -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Right -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Bottom -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Left -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Top -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Right -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Bottom -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Left -> pp (Pp.list ~sep:Pp.space pp_length)
   | Border_width -> pp (Pp.list ~sep:Pp.space pp_border_width)
   | Border_top_width -> pp pp_border_width
   | Border_right_width -> pp pp_border_width
