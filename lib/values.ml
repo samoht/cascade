@@ -2939,15 +2939,23 @@ let rec pp_angle : angle Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
+(* Hue precision: round to 1 decimal under minify. Browsers round to ~1/256 deg
+   (~0.004) but [180.5] vs [180.4567] is below display precision for a hue wheel
+   and matches the shipping-minifier convention. *)
+let pp_hue_float ctx f =
+  if Pp.minified ctx then
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:1 f)
+  else Pp.float ctx f
+
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
-  | Unitless f -> Pp.float ctx f
+  | Unitless f -> pp_hue_float ctx f
   | Angle (Deg f) when ctx.minify ->
       (* During minification, omit 'deg' since it's the default unit *)
-      Pp.float ctx f
+      pp_hue_float ctx f
   | Angle a when ctx.minify -> (
       match deg_of_hue (Angle a) with
-      | Some f -> Pp.float ctx (normalize_hue f)
+      | Some f -> pp_hue_float ctx (normalize_hue f)
       | None -> pp_angle ctx a)
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
@@ -2958,13 +2966,16 @@ let rec pp_alpha : alpha Pp.t =
   | None -> ()
   | Num f ->
       (* CSSOM serialisation (CSS Values 4 §6.7.2) drops a leading zero on
-         fractional numbers: emit [.25] not [0.25] in both modes. *)
-      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f)
+         fractional numbers: emit [.25] not [0.25] in both modes. Under minify,
+         round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB). *)
+      let max_decimals = if Pp.minified ctx then 3 else 8 in
+      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
   | Pct f when Pp.minified ctx ->
       (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
          [<number>] form divided by 100. Under minification, emit the shorter
          number form so [50%] and [0.5] round-trip identically. *)
-      Pp.float ctx (f /. 100.)
+      Pp.string ctx
+        (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 (f /. 100.))
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -3123,7 +3134,13 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   else n
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
-  let next_safe s =
+  (* The space between the L channel and the next colour component elides when
+     the L spelling closes its token cleanly and the next token starts with its
+     own boundary: [%] from [Pct], [)] from [Var] / [Calc], or a bare-number end
+     ([4] in [.654]) followed by a sign-token [+] / [-] that starts the next
+     number. [None] / unknown left-hand stays conservative. *)
+  let starts_signed s = String.length s > 0 && (s.[0] = '+' || s.[0] = '-') in
+  let next_safe_after_pct s =
     String.length s > 0
     &&
     match s.[0] with
@@ -3132,8 +3149,11 @@ let space_after_color_percentage ctx (l : percentage option) ~next =
   in
   let elidable =
     Pp.minified ctx
-    && (match l with Some (Pct _ | Var _ | Calc _) -> true | _ -> false)
-    && match next with Some s -> next_safe s | None -> false
+    &&
+    match (l, next) with
+    | Some (Pct _ | Var _ | Calc _), Some s -> next_safe_after_pct s
+    | Some (Num _), Some s -> starts_signed s
+    | _ -> false
   in
   if not elidable then Pp.space ctx ()
 
@@ -3144,11 +3164,19 @@ let starts_unsigned_number s =
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
-  (match l with Some l -> pp_percentage ctx l | None -> Pp.string ctx "none");
+  (* CSS Color 4 lch / oklch L: same 3-decimal precision rule as lab / oklab
+     under minify (4 on the [%]-scaled spelling). *)
+  (match l with
+  | Some (Pct f) ->
+      pp_lab_float ~max_decimals:4 ctx f;
+      Pp.char ctx '%'
+  | Some (Num f) -> pp_lab_float ~max_decimals:3 ctx f
+  | Some l -> pp_percentage ctx l
+  | None -> Pp.string ctx "none");
   (match c with
   | Some c ->
       let c =
-        string_of_scaled_color_axis ~max_decimals:8 ~pct_scale:chroma_pct_scale
+        string_of_scaled_color_axis ~max_decimals:3 ~pct_scale:chroma_pct_scale
           ctx c
       in
       space_after_color_percentage ctx l ~next:(Some c);
@@ -3174,9 +3202,13 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
 let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
 let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
-(** Print a float always dropping leading zeros (for lab-like color axes) *)
+(** Print a float always dropping leading zeros (for lab-like color axes). Under
+    minify the float rounds to 3 decimals - CSS Color 4 alpha precision is 1/255
+    ~ 0.004 so 3 decimals is more than display-accurate. *)
 let pp_float_drop_zero ctx f =
-  Buffer.add_string ctx.Pp.buf (Pp.string_of_float ~drop_leading_zero:true f)
+  let max_decimals = if Pp.minified ctx then 3 else 8 in
+  Buffer.add_string ctx.Pp.buf
+    (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
 
 let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
@@ -3192,11 +3224,16 @@ let string_of_lab_axis ~pct_scale ctx f =
 let pp_lab_like_args ~axis_pct_scale :
     (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
-  (* Oklab L: percentage with controlled precision *)
+  (* CSS Color 4 oklab / lab L: round to 3 decimals under minify (Lightning /
+     cssnano / clean-css convention) - the L channel is bounded [0, 1] (or [0%,
+     100%]) and three decimals over [0, 1] is finer than display precision. The
+     [%]-typed arm scales by 100 so 4 decimals there matches 3 decimals on the
+     bare [<number>] form. *)
   (match l with
   | Some (Pct f) ->
       pp_lab_float ~max_decimals:4 ctx f;
       Pp.char ctx '%'
+  | Some (Num f) -> pp_lab_float ~max_decimals:3 ctx f
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
   let string_of_axis = function

@@ -675,18 +675,18 @@ let decls_signature (decls : Css.declaration list) =
    match as the same selector - Reordering within a list is not considered a
    structural change - This prevents false positives when CSS tools reorder
    selector lists *)
-let normalize_selector_string s =
-  s |> String.split_on_char ',' |> List.map String.trim
-  |> List.filter (fun x -> x <> "")
-  |> List.sort String.compare |> String.concat ","
-
 let rule_selector stmt =
   match Css.statement_selector stmt with
   | Some s -> s
   | None -> Css.Selector.universal
 
-let selector_key_of_selector sel =
-  Css.Selector.to_string sel |> normalize_selector_string
+(* [selector_key_of_*] is called O(N M) times during structural rule diffs. Use
+   the typed selector AST as the key: normalise a [List] of selectors by sorting
+   the alternatives so [h1, h2] and [h2, h1] map to the same key, then rely on
+   structural equality + [Hashtbl.hash]. Avoids serialising through
+   [Pp.to_string] for every comparison. *)
+let selector_key_of_selector (sel : Css.Selector.t) : Css.Selector.t =
+  match sel with List subs -> List (List.sort compare subs) | _ -> sel
 
 let selector_key_of_stmt stmt = selector_key_of_selector (rule_selector stmt)
 
@@ -697,43 +697,46 @@ let rule_nested stmt =
   match Css.as_rule stmt with Some (_, _, nested) -> nested | None -> []
 
 (* Generic helper for finding added/removed/modified items between two lists.
-   Works with any item type that has a key for comparison. *)
+   Works with any item type that has a key for comparison.
+
+   Each item's key is computed once and threaded through the N*M cross checks
+   below; without this every [List.exists] pass would re-call [key_of] for every
+   item it visits. *)
 let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
     ~(is_empty_diff : 'item -> 'item -> bool) items1 items2 =
+  let items1_keyed = List.map (fun i -> (i, key_of i)) items1 in
+  let items2_keyed = List.map (fun i -> (i, key_of i)) items2 in
   let find_by_key key items =
-    List.find_opt (fun item -> key_equal (key_of item) key) items
+    List.find_opt (fun (_, k) -> key_equal k key) items
   in
   let added =
-    List.filter
-      (fun item2 ->
-        not
-          (List.exists
-             (fun item1 -> key_equal (key_of item1) (key_of item2))
-             items1))
-      items2
+    List.filter_map
+      (fun (item2, key2) ->
+        if List.exists (fun (_, k1) -> key_equal k1 key2) items1_keyed then None
+        else Some item2)
+      items2_keyed
   in
   let removed =
-    List.filter
-      (fun item1 ->
-        not
-          (List.exists
-             (fun item2 -> key_equal (key_of item1) (key_of item2))
-             items2))
-      items1
+    List.filter_map
+      (fun (item1, key1) ->
+        if List.exists (fun (_, k2) -> key_equal key1 k2) items2_keyed then None
+        else Some item1)
+      items1_keyed
   in
   let modified =
     List.filter_map
-      (fun item1 ->
-        match find_by_key (key_of item1) items2 with
-        | Some item2 when not (is_empty_diff item1 item2) -> Some (item1, item2)
+      (fun (item1, key1) ->
+        match find_by_key key1 items2_keyed with
+        | Some (item2, _) when not (is_empty_diff item1 item2) ->
+            Some (item1, item2)
         | _ -> None)
-      items1
+      items1_keyed
   in
   (added, removed, modified)
 
 let rules_added_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = String.equal in
+  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
   let added, _removed, _modified =
     diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2
@@ -742,7 +745,7 @@ let rules_added_diff rules1 rules2 =
 
 let rules_removed_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = String.equal in
+  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
   let _added, removed, _modified =
     diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2

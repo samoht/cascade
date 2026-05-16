@@ -1,4 +1,12 @@
 (executable
  (public_name cascade)
  (name main)
- (libraries cascade cascade.info cascade.diff cmdliner fmt fmt.cli fmt.tty))
+ (libraries
+  cascade
+  cascade.info
+  cascade.diff
+  cmdliner
+  fmt
+  fmt.cli
+  fmt.tty
+  nox-memtrace))

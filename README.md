@@ -72,9 +72,12 @@ cascade --inline-vars --keep-vars=theme,brand style.css > themed.css
 
 `--minify` picks the shortest spec-equivalent spelling at every choice
 point. Where the CSS spec and browser-compatible recovery rules permit
-several valid serializations, Cascade chooses the shortest valid one.
+several valid serializations, Cascade chooses the shortest valid one. For
+perceptual color spaces, minified output may also round channels to bounded
+precision when the visual difference is negligible.
 
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
+- Modern color functions: `lab()`, `lch()`, `oklab()`, and `oklch()` may round lightness/chroma/a/b channels, hue, and alpha under `--minify`.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
 - Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
 - Whitespace elided at safe token boundaries (`100% 0` -> `100%0`).

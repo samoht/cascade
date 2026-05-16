@@ -5558,7 +5558,7 @@ let customprops13_shortest_numeric_calc () =
 let customprops13_shortest_oklch_chroma () =
   Alcotest.(check string)
     "custom property OKLCH chroma uses the shortest valid percent form"
-    ".x{--color-zinc-500:oklch(55.2%4% 285.938)}"
+    ".x{--color-zinc-500:oklch(55.2%4% 285.9)}"
     (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }")
 
 let customprops13_shortest_percent_calc () =
