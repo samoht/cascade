@@ -49,10 +49,13 @@ let start_memtrace = function
           Memtrace.start_tracing ~context:None ~sampling_rate:1e-4
             ~filename:path
         in
-        at_exit (fun () -> try Memtrace.stop_tracing tracer with _ -> ())
+        at_exit (fun () ->
+            try Memtrace.stop_tracing tracer
+            with Failure msg ->
+              Fmt.epr "warning: memtrace stop failed (%s); skipping@." msg)
       with Failure msg ->
-        Printf.eprintf
-          "warning: memtrace unavailable on this runtime (%s); skipping\n%!" msg
+        Fmt.epr "warning: memtrace unavailable on this runtime (%s); skipping@."
+          msg
       )
 
 let compare_files file1 file2 style_renderer mode memtrace_path =

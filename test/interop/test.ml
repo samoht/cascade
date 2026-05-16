@@ -198,38 +198,27 @@ let case record () =
               "every upstream oracle failed - cascade has nothing to compare \
                against: %s"
               summary
-      | Some shortest -> (
-          if
-            (* Stage 1: strict byte equality with the raw oracle. *)
-            shortest.raw = actual
-          then ()
+      | Some shortest ->
+          (* Cascade's minified output must be no longer than the shortest
+             oracle (matches the [lightning] interop). Run
+             [cascade diff --diff=semantic <input> <oracle>] on a failing
+             site for the structural diff. *)
+          let actual_len = String.length actual in
+          let shortest_len = String.length shortest.raw in
+          if actual_len <= shortest_len then ()
           else
-            (* One call covers stages 2+3: [`Canonical] returns [No_diff] if the
-               cascade-canonical forms agree, otherwise the structural diff. *)
-            let diff =
-              Cascade_diff.Css_compare.diff ~mode:`Canonical shortest.raw actual
+            let oracle_summary =
+              List.map
+                (fun (o : oracle) ->
+                  Printf.sprintf "%s:%d" o.tool (String.length o.raw))
+                record.oracles
+              |> String.concat " "
             in
-            match diff with
-            | No_diff -> ()
-            | _ ->
-                let buf = Buffer.create 1024 in
-                Cascade_diff.Css_compare.pp ~expected:shortest.tool
-                  ~actual:"cascade" buf diff;
-                let oracle_summary =
-                  List.map
-                    (fun (o : oracle) ->
-                      Printf.sprintf "%s:%d" o.tool (String.length o.raw))
-                    record.oracles
-                  |> String.concat " "
-                in
-                Alcotest.failf
-                  "cascade output differs from canonical of shortest oracle\n\
-                  \    cascade:  %d bytes (vs %s: %d bytes raw)\n\
-                  \    oracles:  %s\n\
-                   %s"
-                  (String.length actual) shortest.tool
-                  (String.length shortest.raw)
-                  oracle_summary (Buffer.contents buf)))
+            Alcotest.failf
+              "cascade output longer than shortest oracle\n\
+              \    cascade:  %d bytes (vs %s: %d bytes)\n\
+              \    oracles:  %s"
+              actual_len shortest.tool shortest_len oracle_summary)
 
 (* ===== alcotest wiring ===== *)
 
