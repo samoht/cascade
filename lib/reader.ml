@@ -117,17 +117,24 @@ let utf8_byte_length cp =
    next valid codepoint, which would let the caller pretend the malformed bytes
    were part of the same code point - bad bytes in an ident-like context end up
    in the unit token. *)
+(* ASCII fast path before falling back to Uutf: skips the ref/closure
+   allocation that a [Uutf.String.fold_utf_8] requires per peek. *)
 let first_utf8_chunk_at input p len =
-  let result = ref None in
-  let seen = ref false in
-  let folder () _ chunk =
-    if !seen then ()
-    else (
-      seen := true;
-      match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
-  in
-  Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
-  !result
+  if len <= 0 then None
+  else
+    let b = Char.code (String.unsafe_get input p) in
+    if b < 0x80 then Some (Uchar.unsafe_of_int b)
+    else
+      let result = ref None in
+      let seen = ref false in
+      let folder () _ chunk =
+        if !seen then ()
+        else (
+          seen := true;
+          match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
+      in
+      Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
+      !result
 
 let peek_utf8_at t offset =
   let p = t.pos + offset in
