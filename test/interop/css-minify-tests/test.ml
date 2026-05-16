@@ -45,6 +45,62 @@ let strip_trailing_ws s =
   in
   String.sub s 0 (last (len - 1))
 
+let normalize_ok_color_spaces s =
+  let len = String.length s in
+  let is_digit = function '0' .. '9' -> true | _ -> false in
+  let is_space = function ' ' | '\t' | '\n' | '\r' -> true | _ -> false in
+  let starts_with i prefix =
+    let prefix_len = String.length prefix in
+    i + prefix_len <= len && String.sub s i prefix_len = prefix
+  in
+  let rec next_non_space i =
+    if i < len && is_space s.[i] then next_non_space (i + 1) else i
+  in
+  let starts_number i =
+    i < len
+    &&
+    match s.[i] with
+    | '.' -> i + 1 < len && is_digit s.[i + 1]
+    | '+' | '-' ->
+        i + 1 < len
+        && (is_digit s.[i + 1]
+           || (s.[i + 1] = '.' && i + 2 < len && is_digit s.[i + 2]))
+    | c -> is_digit c
+  in
+  let can_end_number = function
+    | Some ('0' .. '9' | '.' | '%') -> true
+    | _ -> false
+  in
+  let drop_space prev next =
+    (prev = Some '%' && starts_number next)
+    || can_end_number prev && next < len
+       && match s.[next] with '+' | '-' -> starts_number next | _ -> false
+  in
+  let b = Buffer.create len in
+  let add c =
+    Buffer.add_char b c;
+    Some c
+  in
+  let rec loop i ok_depth prev =
+    if i >= len then Buffer.contents b
+    else if starts_with i "oklab(" then (
+      Buffer.add_string b "oklab(";
+      loop (i + 6) (ok_depth + 1) (Some '('))
+    else if starts_with i "oklch(" then (
+      Buffer.add_string b "oklch(";
+      loop (i + 6) (ok_depth + 1) (Some '('))
+    else
+      match s.[i] with
+      | (' ' | '\t' | '\n' | '\r') as c when ok_depth > 0 ->
+          let next = next_non_space i in
+          if drop_space prev next then loop next ok_depth prev
+          else loop (i + 1) ok_depth (add c)
+      | '(' as c when ok_depth > 0 -> loop (i + 1) (ok_depth + 1) (add c)
+      | ')' as c when ok_depth > 0 -> loop (i + 1) (ok_depth - 1) (add c)
+      | c -> loop (i + 1) ok_depth (add c)
+  in
+  loop 0 0 None
+
 let normalize_expected expected =
   (* Cascade's README minify policy picks the shortest spec-equivalent spelling.
      CSS Syntax tokenizes these at-keywords and [(] separately, so the
@@ -53,8 +109,11 @@ let normalize_expected expected =
      conventional space. For custom properties, [!important] is still
      declaration priority, not part of the custom-property token stream;
      [red!important] and [red !important] are equivalent, and the no-space form
-     is shorter. Keep the vendored traces pristine and normalize only these safe
-     token boundaries on the expected side. *)
+     is shorter. Modern color functions also permit tighter token boundaries
+     such as [oklab(50%.1-.05)]: the Color grammar is token-based, and these
+     adjacent numeric tokens re-parse as the same components. Keep the vendored
+     traces pristine and normalize only these safe token boundaries on the
+     expected side. *)
   let replace sep by s =
     s |> Astring.String.cuts ~empty:true ~sep |> String.concat by
   in
@@ -64,7 +123,7 @@ let normalize_expected expected =
   |> replace "@container (" "@container("
   |> replace "@scope (" "@scope("
   |> Astring.String.cuts ~empty:true ~sep:" !important"
-  |> String.concat "!important"
+  |> String.concat "!important" |> normalize_ok_color_spaces
 
 let cascade_minify input =
   match Css.of_string ~strict:false input with

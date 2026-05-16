@@ -38,7 +38,25 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-let compare_files file1 file2 style_renderer mode =
+(* Memtrace fails on OCaml 5 (Gc.Memprof.stop is not implemented in multicore).
+   [--memtrace] writes a header-only [.ctf] and prints a notice instead of
+   taking the program down. *)
+let start_memtrace = function
+  | None -> ()
+  | Some path -> (
+      try
+        let tracer =
+          Memtrace.start_tracing ~context:None ~sampling_rate:1e-4
+            ~filename:path
+        in
+        at_exit (fun () -> try Memtrace.stop_tracing tracer with _ -> ())
+      with Failure msg ->
+        Printf.eprintf
+          "warning: memtrace unavailable on this runtime (%s); skipping\n%!" msg
+      )
+
+let compare_files file1 file2 style_renderer mode memtrace_path =
+  start_memtrace memtrace_path;
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
@@ -85,6 +103,13 @@ let mode_arg =
   in
   Arg.(value & opt mode_conv Auto & info [ "diff" ] ~docv:"MODE" ~doc)
 
+let memtrace_arg =
+  let doc =
+    "Write a Memtrace allocation profile to $(docv) covering the diff run. \
+     Open it with [memtrace-viewer] to see allocation hotspots."
+  in
+  Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
+
 let term =
   let open Term in
   let style_renderer_with_env =
@@ -92,7 +117,7 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg)
+   $ mode_arg $ memtrace_arg)
 
 let man =
   [

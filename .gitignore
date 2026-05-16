@@ -4,3 +4,5 @@ _homebrew_build/
 *~
 .DS_Store
 .claude/
+
+/mono

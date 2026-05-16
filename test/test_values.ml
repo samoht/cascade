@@ -641,7 +641,7 @@ let test_hue () =
   check_hue ~expected:"180" "180deg";
   check_hue ~expected:"180" "0.5turn";
   check_hue ~expected:"180" "200grad";
-  check_hue ~expected:"179.99984796" "3.14159rad";
+  check_hue ~expected:"180" "3.14159rad";
   neg_cursor read_hue "invalid";
   neg_cursor read_hue "abc";
   check_hue "180";

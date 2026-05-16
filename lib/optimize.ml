@@ -2136,48 +2136,48 @@ let _consolidate_media_blocks (stmts : statement list) : statement list =
    [@layer { ... }] without a name creates a new layer. *)
 let merge_consecutive_layers (stmts : statement list) : statement list =
   let optimize_merged_block block = !statements_ref block in
-  let rec merge result prev = function
+  (* [acc] holds output in REVERSE order so we cons (O(1)) rather than append
+     (O(n)); reverse once at the end. *)
+  let rec merge acc prev = function
     | [] -> (
         match prev with
         | Some (Some name, block) ->
-            result @ [ Layer (Some name, optimize_merged_block block) ]
-        | Some (None, block) -> result @ [ Layer (None, block) ]
-        | None -> result)
+            List.rev (Layer (Some name, optimize_merged_block block) :: acc)
+        | Some (None, block) -> List.rev (Layer (None, block) :: acc)
+        | None -> List.rev acc)
     | Layer (Some name, block) :: rest -> (
         match prev with
         | Some (Some prev_name, prev_block) when String.equal prev_name name ->
-            merge result (Some (Some name, prev_block @ block)) rest
+            merge acc (Some (Some name, prev_block @ block)) rest
         | Some (Some prev_name, prev_block) ->
             merge
-              (result
-              @ [ Layer (Some prev_name, optimize_merged_block prev_block) ])
+              (Layer (Some prev_name, optimize_merged_block prev_block) :: acc)
               (Some (Some name, block))
               rest
         | Some (None, prev_block) ->
             merge
-              (result @ [ Layer (None, prev_block) ])
+              (Layer (None, prev_block) :: acc)
               (Some (Some name, block))
               rest
-        | None -> merge result (Some (Some name, block)) rest)
+        | None -> merge acc (Some (Some name, block)) rest)
     | (Layer (None, _) as anon) :: rest -> (
         match prev with
         | Some (Some prev_name, prev_block) ->
             merge
-              (result
-              @ [ Layer (Some prev_name, optimize_merged_block prev_block) ])
+              (Layer (Some prev_name, optimize_merged_block prev_block) :: acc)
               None (anon :: rest)
         | Some (None, prev_block) ->
-            merge (result @ [ Layer (None, prev_block) ]) None (anon :: rest)
-        | None -> merge (result @ [ anon ]) None rest)
+            merge (Layer (None, prev_block) :: acc) None (anon :: rest)
+        | None -> merge (anon :: acc) None rest)
     | stmt :: rest -> (
         match prev with
         | Some (Some name, block) ->
             merge
-              (result @ [ Layer (Some name, optimize_merged_block block); stmt ])
+              (stmt :: Layer (Some name, optimize_merged_block block) :: acc)
               None rest
         | Some (None, block) ->
-            merge (result @ [ Layer (None, block); stmt ]) None rest
-        | None -> merge (result @ [ stmt ]) None rest)
+            merge (stmt :: Layer (None, block) :: acc) None rest
+        | None -> merge (stmt :: acc) None rest)
   in
   merge [] None stmts
 
@@ -2188,13 +2188,13 @@ let merge_consecutive_media (stmts : statement list) : statement list =
        re-run the full optimization pipeline on the merged content. *)
     !statements_ref block
   in
-  let rec merge result prev_media = function
+  (* [acc] holds output in REVERSE order; reverse once at the end. *)
+  let rec merge acc prev_media = function
     | [] -> (
         match prev_media with
         | Some (cond, block) ->
-            (* Emit pending media block with re-optimized content *)
-            result @ [ Media (cond, optimize_merged_block block) ]
-        | None -> result)
+            List.rev (Media (cond, optimize_merged_block block) :: acc)
+        | None -> List.rev acc)
     | Media (cond, block) :: rest -> (
         match prev_media with
         | Some (prev_cond, prev_block)
@@ -2206,28 +2206,21 @@ let merge_consecutive_media (stmts : statement list) : statement list =
                && not
                     (has_nested_preference_media prev_block
                     || has_nested_preference_media block) ->
-            (* Same condition and compatible structure - merge the blocks *)
             let merged_block = prev_block @ block in
-            merge result (Some (cond, merged_block)) rest
+            merge acc (Some (cond, merged_block)) rest
         | Some (prev_cond, prev_block) ->
-            (* Different condition - emit previous (with optimized content),
-               store new one *)
             merge
-              (result @ [ Media (prev_cond, optimize_merged_block prev_block) ])
+              (Media (prev_cond, optimize_merged_block prev_block) :: acc)
               (Some (cond, block))
               rest
-        | None ->
-            (* First media query - store it *)
-            merge result (Some (cond, block)) rest)
+        | None -> merge acc (Some (cond, block)) rest)
     | stmt :: rest -> (
-        (* Non-media statement - flush any pending media query *)
         match prev_media with
         | Some (cond, block) ->
-            (* Emit media query (with optimized content) then the statement *)
             merge
-              (result @ [ Media (cond, optimize_merged_block block); stmt ])
+              (stmt :: Media (cond, optimize_merged_block block) :: acc)
               None rest
-        | None -> merge (result @ [ stmt ]) None rest)
+        | None -> merge (stmt :: acc) None rest)
   in
   merge [] None stmts
 
@@ -2236,30 +2229,30 @@ let merge_consecutive_media (stmts : statement list) : statement list =
    the [@media] approach. *)
 let merge_consecutive_supports (stmts : statement list) : statement list =
   let optimize_merged_block block = !statements_ref block in
-  let rec merge result prev = function
+  (* [acc] holds output in REVERSE order; reverse once at the end. *)
+  let rec merge acc prev = function
     | [] -> (
         match prev with
         | Some (cond, block) ->
-            result @ [ Supports (cond, optimize_merged_block block) ]
-        | None -> result)
+            List.rev (Supports (cond, optimize_merged_block block) :: acc)
+        | None -> List.rev acc)
     | Supports (cond, block) :: rest -> (
         match prev with
         | Some (prev_cond, prev_block) when Supports.equal prev_cond cond ->
-            merge result (Some (cond, prev_block @ block)) rest
+            merge acc (Some (cond, prev_block @ block)) rest
         | Some (prev_cond, prev_block) ->
             merge
-              (result
-              @ [ Supports (prev_cond, optimize_merged_block prev_block) ])
+              (Supports (prev_cond, optimize_merged_block prev_block) :: acc)
               (Some (cond, block))
               rest
-        | None -> merge result (Some (cond, block)) rest)
+        | None -> merge acc (Some (cond, block)) rest)
     | stmt :: rest -> (
         match prev with
         | Some (cond, block) ->
             merge
-              (result @ [ Supports (cond, optimize_merged_block block); stmt ])
+              (stmt :: Supports (cond, optimize_merged_block block) :: acc)
               None rest
-        | None -> merge (result @ [ stmt ]) None rest)
+        | None -> merge (stmt :: acc) None rest)
   in
   merge [] None stmts
 
@@ -2272,35 +2265,34 @@ let merge_consecutive_containers (stmts : statement list) : statement list =
     | Some _, None -> 1
     | Some a, Some b -> Container.compare a b
   in
-  let rec merge result prev = function
+  (* [acc] holds output in REVERSE order; reverse once at the end. *)
+  let rec merge acc prev = function
     | [] -> (
         match prev with
         | Some (name, cond, block) ->
-            result @ [ Container (name, cond, optimize_merged_block block) ]
-        | None -> result)
+            List.rev (Container (name, cond, optimize_merged_block block) :: acc)
+        | None -> List.rev acc)
     | Container (name, cond, block) :: rest -> (
         match prev with
         | Some (prev_name, prev_cond, prev_block)
           when prev_name = name && compare_condition prev_cond cond = 0 ->
-            merge result (Some (name, cond, prev_block @ block)) rest
+            merge acc (Some (name, cond, prev_block @ block)) rest
         | Some (prev_name, prev_cond, prev_block) ->
             merge
-              (result
-              @ [
-                  Container
-                    (prev_name, prev_cond, optimize_merged_block prev_block);
-                ])
+              (Container (prev_name, prev_cond, optimize_merged_block prev_block)
+              :: acc)
               (Some (name, cond, block))
               rest
-        | None -> merge result (Some (name, cond, block)) rest)
+        | None -> merge acc (Some (name, cond, block)) rest)
     | stmt :: rest -> (
         match prev with
         | Some (name, cond, block) ->
             merge
-              (result
-              @ [ Container (name, cond, optimize_merged_block block); stmt ])
+              (stmt
+              :: Container (name, cond, optimize_merged_block block)
+              :: acc)
               None rest
-        | None -> merge (result @ [ stmt ]) None rest)
+        | None -> merge (stmt :: acc) None rest)
   in
   merge [] None stmts
 

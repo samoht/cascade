@@ -1863,13 +1863,37 @@ let add_selector_malformed buf ~add_ascii i bytes =
       else add_selector_hex_escape buf (Char.code c))
     bytes
 
+(* Fast path: most identifiers in real CSS are pure ASCII without any of the
+   characters the full escaper would need to handle. [is_safe_nmchar] is the
+   subset of {!is_valid_nmchar} that also rules out the leading-digit /
+   leading-dash-digit pattern so the unmodified bytes are a valid CSS ident
+   already. *)
+
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
     followed by a digit), and backslash-escape the punctuation characters that
     otherwise terminate or reframe the selector. *)
+let is_safe_nmchar = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
+  | _ -> false
+
+let name_is_plain_ascii_ident name =
+  let len = String.length name in
+  if len = 0 then false
+  else if first_needs_hex_escape name then false
+  else
+    let exception Not_plain in
+    try
+      for i = 0 to len - 1 do
+        if not (is_safe_nmchar name.[i]) then raise Not_plain
+      done;
+      true
+    with Not_plain -> false
+
 let escape_selector_name name =
   if String.length name = 0 then ""
   else if name = "-" then "\\-"
+  else if name_is_plain_ascii_ident name then name
   else
     let buf = Buffer.create (String.length name * 2) in
     let first_needs_hex_escape = first_needs_hex_escape name in
