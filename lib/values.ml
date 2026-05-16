@@ -2895,10 +2895,13 @@ let rec pp_channel : channel Pp.t =
 
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
-  | Deg f -> pp_unit ~always:true ctx f "deg"
-  | Rad f -> pp_unit ~always:true ctx f "rad"
-  | Turn f -> pp_unit ~always:true ctx f "turn"
-  | Grad f -> pp_unit ~always:true ctx f "grad"
+  (* CSS Values 4 sec. 10.3: an [<angle>] grammar position accepts the [<zero>]
+     token (a unitless [0]); under cascade's README minify policy a zero-angle
+     drops the unit. The non-zero arms always emit the unit. *)
+  | Deg f -> pp_unit ~always:false ctx f "deg"
+  | Rad f -> pp_unit ~always:false ctx f "rad"
+  | Turn f -> pp_unit ~always:false ctx f "turn"
+  | Grad f -> pp_unit ~always:false ctx f "grad"
   | Round (strategy, Deg value, Deg step) when Pp.minified ctx && step <> 0. ->
       pp_angle ctx (Deg (round_to_step strategy value step))
   | Round (strategy, value, step) ->
