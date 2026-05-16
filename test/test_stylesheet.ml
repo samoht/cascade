@@ -3862,8 +3862,9 @@ let c632_all_shorthand_kept () =
 
 (* CSS Cascading and Inheritance Module Level 6, section 6.4 (Cascade Layers):
    named layers preserve their declared order. Two non-adjacent [@layer base]
-   blocks separated by an [@layer theme] block must NOT merge, because the theme
-   block establishes a layer ordering that affects the cascade. *)
+   blocks separated by an [@layer theme] block still contribute to the same
+   layer, so they may be serialized in one [base] block at the first [base]
+   occurrence. *)
 let c64_named_layers_order () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -3876,20 +3877,19 @@ let c64_named_layers_order () =
        @layer base { .a { padding: 10px } }"
   in
   Alcotest.(check bool)
-    "first @layer base block remains separate" true
+    "@layer base keeps color declaration" true
     (Astring.String.is_infix ~affix:"color:red" output);
   Alcotest.(check bool)
     "@layer theme block remains" true
     (Astring.String.is_infix ~affix:"color:#00f" output);
   Alcotest.(check bool)
-    "second @layer base block remains separate" true
+    "@layer base keeps padding declaration" true
     (Astring.String.is_infix ~affix:"padding:10px" output);
   Alcotest.(check bool)
-    "the @layer theme block is positioned between the two @layer base blocks"
-    true
+    "same-name @layer base blocks are serialized together before theme" true
     (let find sub = Astring.String.find_sub ~sub output in
      match (find "color:red", find "color:#00f", find "padding:10px") with
-     | Some r, Some t, Some p -> r < t && t < p
+     | Some r, Some t, Some p -> r < p && p < t
      | _ -> false)
 
 (* CSS Cascade L6 section 2.4 (Conditional @import) and CSS Custom Properties L1

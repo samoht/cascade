@@ -1,5 +1,0 @@
-(test
- (name test)
- (deps
-  (source_tree ../vectors/wpt/css-syntax))
- (libraries cascade alcotest fmt lambdasoup))

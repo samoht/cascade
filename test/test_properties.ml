@@ -2261,11 +2261,9 @@ let test_background_image () =
     "linear-gradient(in oklab to right, red, blue)";
   check_background_image ~expected:"radial-gradient(in oklab,red,#00f)"
     "radial-gradient(in oklab, red, blue)";
-  check_background_image
-    ~expected:"radial-gradient(in oklab circle at center,red,#00f)"
+  check_background_image ~expected:"radial-gradient(in oklab circle,red,#00f)"
     "radial-gradient(in oklab circle at center, red, blue)";
-  check_background_image
-    ~expected:"radial-gradient(in oklab circle at center,red,#00f)"
+  check_background_image ~expected:"radial-gradient(in oklab circle,red,#00f)"
     "radial-gradient(circle at center in oklab, red, blue)";
   check_background_image ~expected:"conic-gradient(in hsl longer hue,red,#00f)"
     "conic-gradient(in hsl longer hue, red, blue)";
@@ -2299,9 +2297,9 @@ let test_radial_size () =
 
 let test_radial_gradient_config () =
   check_radial_gradient_config "circle";
-  check_radial_gradient_config "ellipse";
+  check_radial_gradient_config ~expected:"" "ellipse";
   check_radial_gradient_config "circle closest-side";
-  check_radial_gradient_config ~expected:"circle at center" "circle at center";
+  check_radial_gradient_config ~expected:"circle" "circle at center";
   neg_cursor read_radial_gradient_config "invalid-config"
 
 let test_conic_gradient_config () =

@@ -253,14 +253,15 @@ trace for minified-output canonicalization.
 
 The `css/css-syntax/` subset of the [Web Platform
 Tests](https://github.com/web-platform-tests/wpt) is vendored under
-[test/vectors/wpt/](test/vectors/wpt/) and replayed by
-[test/wpt/test.ml](test/wpt/test.ml). The harness pulls CSS out of
-`<style>` blocks, inline `style="..."` attributes, linked `support/*.css`
-files, and `parseRule(\`...\`)` template-literal calls inside `<script>`
-bodies, then feeds each fragment through `Css.of_string`. A test fails
-when Cascade's parser rejects an input that browsers accept or accepts
-one that browsers reject; there is no skip list. Update the vendored
-snapshot with `make update-wpt`.
+[test/interop/wpt/traces/css-syntax/](test/interop/wpt/traces/css-syntax/)
+and replayed by [test/interop/wpt/test.ml](test/interop/wpt/test.ml).
+The harness pulls CSS out of `<style>` blocks, inline `style="..."`
+attributes, linked `support/*.css` files, and `parseRule(\`...\`)`
+template-literal calls inside `<script>` bodies, then feeds each
+fragment through `Css.of_string`. A test fails when Cascade's parser
+rejects an input that browsers accept or accepts one that browsers
+reject; there is no skip list. Refresh the vendored snapshot with
+`dune build @test/interop/wpt/regen-traces`.
 
 ### Minified-output interop against other minifiers
 
