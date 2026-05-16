@@ -24,7 +24,7 @@ the `cascade` library:
 opam install cascade
 ```
 
-From source, use OCaml 4.14 or later, opam, and dune:
+From source, use OCaml 5.2 or later, opam, and dune:
 
 <!-- $MDX skip -->
 ```bash
