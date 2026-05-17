@@ -1936,9 +1936,18 @@ let common_declarations rules =
   match rules with
   | [] -> []
   | first :: rest ->
+      (* A property is "common" when every rule in the group declares it; the
+         shared block carries the FIRST rule's declaration for that property,
+         and any rule whose value differs gets a follow-up override. *)
       List.filter
         (fun d ->
-          List.for_all (fun r -> List.mem d r.Stylesheet_intf.declarations) rest)
+          let prop = Declaration.property_name d in
+          List.for_all
+            (fun r ->
+              List.exists
+                (fun d' -> Declaration.property_name d' = prop)
+                r.Stylesheet_intf.declarations)
+            rest)
         first.Stylesheet_intf.declarations
 
 let merge_selector_list (sels : Selector.t list) : Selector.t =
@@ -1947,6 +1956,31 @@ let merge_selector_list (sels : Selector.t list) : Selector.t =
   | [ s ] -> s
   | many -> Selector.List many
 
+(* [rule_leftover ~common r] returns the declarations from [r] that don't
+   appear identically in [common]. A declaration whose property is in
+   [common] but whose value differs survives as an override; declarations
+   absent from [common] survive as-is. *)
+let rule_leftover ~common (r : Stylesheet.rule) =
+  List.filter
+    (fun d ->
+      let prop = Declaration.property_name d in
+      match
+        List.find_opt
+          (fun d' -> Declaration.property_name d' = prop)
+          common
+      with
+      | None -> true (* unique property - keep *)
+      | Some d' -> d <> d' (* same property, different value - override *))
+    r.Stylesheet_intf.declarations
+
+(* Byte size of a printed rule: [<selector>{<decls>}]. *)
+let rule_pp_size (r : Stylesheet.rule) =
+  let sel =
+    Pp.to_string ~minify:true Selector.pp r.Stylesheet_intf.selector
+  in
+  let decls = decls_pp_string r.declarations in
+  String.length sel + 2 + String.length decls
+
 let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
   match rules with
   | [] | [ _ ] -> rules
@@ -1954,68 +1988,33 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
       let common = common_declarations rules in
       if List.length common < 2 then rules
       else
-        let selectors = List.map (fun r -> r.Stylesheet_intf.selector) rules in
-        let common_str = String.length (decls_pp_string common) in
-        let selectors_extra =
-          (* Length of the merged selector vs the original first selector;
-             approximation of the extra characters the grouped rule adds. *)
-          let merged_str =
-            Pp.to_string ~minify:true Selector.pp
-              (merge_selector_list selectors)
+        let grouped : Stylesheet.rule =
+          let selectors =
+            List.map (fun r -> r.Stylesheet_intf.selector) rules
           in
-          let first_sel_str =
-            Pp.to_string ~minify:true Selector.pp first.selector
-          in
-          String.length merged_str - String.length first_sel_str
+          {
+            first with
+            selector = merge_selector_list selectors;
+            declarations = common;
+          }
         in
-        let per_rule_overhead =
-          (* Each per-selector follow-up rule is [<selector>{<decls>}]; the
-             [<selector>{}] frame is 2 chars beyond the selector itself. *)
-          let rec sum acc = function
-            | [] -> acc
-            | r :: rest ->
-                let sel_len =
-                  String.length
-                    (Pp.to_string ~minify:true Selector.pp
-                       r.Stylesheet_intf.selector)
-                in
-                let leftover =
-                  List.filter (fun d -> not (List.mem d common)) r.declarations
-                in
-                if leftover = [] then sum acc rest
-                else sum (acc + sel_len + 2) rest
-          in
-          sum 0 rules
+        let leftovers =
+          List.filter_map
+            (fun r ->
+              let leftover = rule_leftover ~common r in
+              if leftover = [] then None
+              else Some { r with declarations = leftover })
+            rules
         in
-        let savings =
-          (* Common declaration string is no longer repeated (N - 1) times. We
-             pay [selectors_extra] for the merged selector plus the [<sel>{}]
-             frames of every follow-up rule. *)
-          ((List.length rules - 1) * common_str)
-          - selectors_extra - per_rule_overhead
+        let before_size =
+          List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
         in
-        if savings <= 0 then rules
-        else
-          let grouped : Stylesheet.rule =
-            {
-              first with
-              selector = merge_selector_list selectors;
-              declarations = common;
-            }
-          in
-          let leftovers =
-            List.filter_map
-              (fun r ->
-                let leftover =
-                  List.filter
-                    (fun d -> not (List.mem d common))
-                    r.Stylesheet_intf.declarations
-                in
-                if leftover = [] then None
-                else Some { r with declarations = leftover })
-              rules
-          in
-          grouped :: leftovers
+        let after_size =
+          List.fold_left
+            (fun acc r -> acc + rule_pp_size r)
+            (rule_pp_size grouped) leftovers
+        in
+        if after_size < before_size then grouped :: leftovers else rules
 
 let factor_common_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
