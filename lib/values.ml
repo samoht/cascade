@@ -3039,10 +3039,19 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
+(* CSS Color 4 color() / color-mix() components are normalized to [0, 1] for
+   srgb / srgb-linear / display-p3 / a98-rgb / prophoto-rgb / rec2020 and
+   similar spaces; under minify round to 4 decimals (~0.0001 precision, well
+   below display sensitivity). *)
+let pp_component_float ctx f =
+  if Pp.minified ctx then
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:4 f)
+  else Pp.float ctx f
+
 let rec pp_component : component Pp.t =
  fun ctx -> function
-  | Num f -> Pp.float ctx f
-  | Pct f when Pp.minified ctx -> Pp.float ctx (f /. 100.)
+  | Num f -> pp_component_float ctx f
+  | Pct f when Pp.minified ctx -> pp_component_float ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -3161,23 +3170,25 @@ let starts_unsigned_number s =
   String.length s > 0
   && match s.[0] with '0' .. '9' | '.' -> true | _ -> false
 
-let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
+let pp_pct_chroma_hue_alpha ~chroma_pct_scale ~axis_max_decimals :
     (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
-  (* CSS Color 4 lch / oklch L: same 3-decimal precision rule as lab / oklab
-     under minify (4 on the [%]-scaled spelling). *)
+  (* CSS Color 4 lch / oklch L precision under minify. [axis_max_decimals] is
+     calibrated per-space so the absolute precision is comparable: oklch L is
+     [0, 1] (3 decimals = ~0.001) while lch L is [0, 100] (1 decimal = ~0.1 =
+     same relative precision). *)
   (match l with
   | Some (Pct f) ->
-      pp_lab_float ~max_decimals:4 ctx f;
+      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
       Pp.char ctx '%'
-  | Some (Num f) -> pp_lab_float ~max_decimals:3 ctx f
+  | Some (Num f) -> pp_lab_float ~max_decimals:axis_max_decimals ctx f
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
   (match c with
   | Some c ->
       let c =
-        string_of_scaled_color_axis ~max_decimals:3 ~pct_scale:chroma_pct_scale
-          ctx c
+        string_of_scaled_color_axis ~max_decimals:axis_max_decimals
+          ~pct_scale:chroma_pct_scale ctx c
       in
       space_after_color_percentage ctx l ~next:(Some c);
       Pp.string ctx c
@@ -3188,7 +3199,9 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
-let pp_oklch = Pp.call "oklch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004)
+let pp_oklch =
+  Pp.call "oklch"
+    (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004 ~axis_max_decimals:3)
 
 let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
@@ -3218,26 +3231,27 @@ let pp_alpha_drop_zero : alpha Pp.t =
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
 
-let string_of_lab_axis ~pct_scale ctx f =
-  string_of_scaled_color_axis ~max_decimals:3 ~pct_scale ctx f
+let string_of_lab_axis ~max_decimals ~pct_scale ctx f =
+  string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f
 
-let pp_lab_like_args ~axis_pct_scale :
+let pp_lab_like_args ~axis_pct_scale ~axis_max_decimals :
     (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
-  (* CSS Color 4 oklab / lab L: round to 3 decimals under minify (Lightning /
-     cssnano / clean-css convention) - the L channel is bounded [0, 1] (or [0%,
-     100%]) and three decimals over [0, 1] is finer than display precision. The
-     [%]-typed arm scales by 100 so 4 decimals there matches 3 decimals on the
-     bare [<number>] form. *)
+  (* CSS Color 4 oklab / lab L / a / b precision under minify. The decimals are
+     calibrated per-space so the absolute precision is comparable: oklab L is
+     [0, 1] (3 decimals = ~0.001) while lab L is [0, 100] (1 decimal = ~0.1 =
+     same relative precision). *)
   (match l with
   | Some (Pct f) ->
-      pp_lab_float ~max_decimals:4 ctx f;
+      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
       Pp.char ctx '%'
-  | Some (Num f) -> pp_lab_float ~max_decimals:3 ctx f
+  | Some (Num f) -> pp_lab_float ~max_decimals:axis_max_decimals ctx f
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
   let string_of_axis = function
-    | Some f -> string_of_lab_axis ~pct_scale:axis_pct_scale ctx f
+    | Some f ->
+        string_of_lab_axis ~max_decimals:axis_max_decimals
+          ~pct_scale:axis_pct_scale ctx f
     | None -> "none"
   in
   let a = string_of_axis a in
@@ -3262,9 +3276,15 @@ let pp_lab_like_args ~axis_pct_scale :
       Pp.op_char ctx '/';
       pp_alpha_drop_zero ctx a
 
-let pp_lab = Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25)
-let pp_oklab = Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004)
-let pp_lch = Pp.call "lch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:1.5)
+let pp_lab =
+  Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25 ~axis_max_decimals:1)
+
+let pp_oklab =
+  Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004 ~axis_max_decimals:3)
+
+let pp_lch =
+  Pp.call "lch"
+    (pp_pct_chroma_hue_alpha ~chroma_pct_scale:1.5 ~axis_max_decimals:1)
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -5239,16 +5259,21 @@ let read_oklab t : color =
 
 let read_lab t : color =
   Cursor.ws t;
-  (* CSS Color 4 10: [lab()]'s L axis accepts either [<percentage>] or
-     [<number>]; the [Lab L*] coordinate is the same range either way, so a bare
-     number is folded into the [Pct] storage. *)
+  (* CSS Color 4 sec. 10: lab() L accepts [<percentage>] or [<number>]; keep
+     them distinct ([Pct] vs [Num]) so the printer can drive different precision
+     (1 decimal for [<number>] over [0, 100], 4 decimals for [<percentage>]
+     which scales by 100). *)
   let l : percentage option =
     if Cursor.looking_at t "none" then (
       Cursor.expect_string "none" t;
       Option.None)
     else
+      let n, unit = Cursor.number_with_unit t in
       Some
-        (Pct (Cursor.one_of [ read_percentage_float; Cursor.number ] t)
+        (match unit with
+         | Some "%" -> Pct (max 0. (min 100. n))
+         | None -> Num (max 0. (min 100. n))
+         | Some u -> Cursor.err_invalid t ("lab L unit: " ^ u)
           : percentage)
   in
   let a = read_number_or_none ~pct_scale:1.25 t in
@@ -5265,8 +5290,16 @@ let read_lch t : color =
       Cursor.expect_string "none" t;
       Option.None)
     else
+      (* CSS Color 4 sec. 6.2 lch(): the L channel is [<percentage> | <number>],
+         distinguish so [lch(54.321 ...)] doesn't round-trip as [lch(54.321%
+         ...)] - the [Pct] / [Num] variants drive different printers (the
+         [%]-typed one scales the precision by 100 and emits [%]). *)
+      let n, unit = Cursor.number_with_unit t in
       Some
-        (Pct (Cursor.one_of [ read_percentage_float; Cursor.number ] t)
+        (match unit with
+         | Some "%" -> Pct (max 0. (min 100. n))
+         | None -> Num (max 0. (min 100. n))
+         | Some u -> Cursor.err_invalid t ("lch L unit: " ^ u)
           : percentage)
   in
   let read_c = read_number_or_none ~pct_scale:1.5 in
