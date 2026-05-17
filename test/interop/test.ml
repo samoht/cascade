@@ -199,26 +199,38 @@ let case record () =
                against: %s"
               summary
       | Some shortest ->
-          (* Cascade's minified output must be no longer than the shortest
-             oracle (matches the [lightning] interop). Run
-             [cascade diff --diff=semantic <input> <oracle>] on a failing
-             site for the structural diff. *)
           let actual_len = String.length actual in
           let shortest_len = String.length shortest.raw in
-          if actual_len <= shortest_len then ()
+          let oracle_summary () =
+            List.map
+              (fun (o : oracle) ->
+                Printf.sprintf "%s:%d" o.tool (String.length o.raw))
+              record.oracles
+            |> String.concat " "
+          in
+          (* Correctness gate: cascade output must be cascade-canonically
+             equivalent to the shortest oracle. A shorter-but-wrong cascade
+             output is a regression, not a win. *)
+          if
+            not
+              (Cascade_diff.Css_compare.equal ~mode:`Canonical shortest.raw
+                 actual)
+          then
+            Alcotest.failf
+              "cascade output not semantically equivalent to shortest oracle\n\
+              \    cascade:  %d bytes (vs %s: %d bytes)\n\
+              \    oracles:  %s\n\
+              \    inspect: cascade diff --diff=semantic <oracle> <cascade-output>"
+              actual_len shortest.tool shortest_len (oracle_summary ())
+          (* Size gate: cascade should be no longer than the shortest
+             oracle. *)
+          else if actual_len <= shortest_len then ()
           else
-            let oracle_summary =
-              List.map
-                (fun (o : oracle) ->
-                  Printf.sprintf "%s:%d" o.tool (String.length o.raw))
-                record.oracles
-              |> String.concat " "
-            in
             Alcotest.failf
               "cascade output longer than shortest oracle\n\
               \    cascade:  %d bytes (vs %s: %d bytes)\n\
               \    oracles:  %s"
-              actual_len shortest.tool shortest_len oracle_summary)
+              actual_len shortest.tool shortest_len (oracle_summary ()))
 
 (* ===== alcotest wiring ===== *)
 
