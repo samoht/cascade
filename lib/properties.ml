@@ -6333,7 +6333,37 @@ let pp_matrix_3d : _ Pp.t =
    normal transform functions. This helper determines if a transform is a Var *)
 let is_transform_var : transform -> bool = function Var _ -> true | _ -> false
 
+(* CSS Transforms 1 sec. 11: collapse a transform function to a shorter
+   equivalent when an axis is zero / unity / matches another. Spec-equivalent
+   in every case - they all map to the same matrix. *)
+let canonicalise_transform : transform -> transform = function
+  | Translate_3d (x, y, z) when Values.length_is_zero y && Values.length_is_zero z
+    ->
+      Translate (x, None)
+  | Translate_3d (x, y, z)
+    when Values.length_is_zero x && Values.length_is_zero z ->
+      Translate_y y
+  | Translate_3d (x, y, z)
+    when Values.length_is_zero x && Values.length_is_zero y ->
+      Translate_z z
+  | Translate (x, Some y) when Values.length_is_zero y -> Translate (x, None)
+  | Translate (x, Some y) when Values.length_is_zero x -> Translate_y y
+  | Scale (x, Some (Num 1.)) -> Scale_x x
+  | Scale (Num 1., Some y) -> Scale_y y
+  | Scale (x, Some y) when x = y -> Scale (x, None)
+  | Scale_3d (x, y, Num 1.) -> Scale (x, Some y)
+  | Rotate_z a -> Rotate a
+  | Rotate_3d (1., 0., 0., a) -> Rotate_x a
+  | Rotate_3d (0., 1., 0., a) -> Rotate_y a
+  | Rotate_3d (0., 0., 1., a) -> Rotate a
+  | other -> other
+
 let rec pp_transform : transform Pp.t =
+ fun ctx t ->
+  let t = if Pp.minified ctx then canonicalise_transform t else t in
+  pp_transform_raw ctx t
+
+and pp_transform_raw : transform Pp.t =
  fun ctx -> function
   | None -> pp_keyword "none" ctx
   | Translate (x, None) -> Pp.call "translate" pp_length ctx x

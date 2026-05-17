@@ -129,6 +129,10 @@ val length_has_runtime_subst : length -> bool
 (** [length_has_runtime_subst l] is [true] when [l] is [var()] / [env()] /
     [attr()] / an anchor query, or a [calc()] containing one. *)
 
+val length_is_zero : length -> bool
+(** [length_is_zero l] is [true] when [l] is a literal zero in any length unit
+    ([0], [0px], [0%], etc.). *)
+
 val pp_color : color Pp.t
 (** [pp_color] pretty-prints {!color} values. *)
 
