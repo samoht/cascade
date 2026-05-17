@@ -1908,6 +1908,138 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
   in
   combine_consecutive [] [] [] rules
 
+(* CSS Cascade L5: when a run of adjacent rules shares two or more identical
+   declarations, hoist them into a single grouped rule whose selector is the
+   union of the originals, and keep the remaining (rule-specific) declarations
+   in per-selector follow-up rules. The transformation preserves cascade order
+   for every element, regardless of whether it matches one or several of the
+   original selectors:
+
+   S1 { X; A } S1, S2 { X } S2 { X; B } becomes S1 { A } S2 { B }
+
+   Only adjacent rules are eligible; an intervening rule's matched elements
+   could otherwise pick up declarations they didn't see in the source. Nested
+   rules and unparsed merge keys disable factoring as a precaution.
+
+   Byte budget: hoisting saves [(N - 1) * common_size] but costs
+   [sum(selector_size_i) + N] extra characters for the new rule headers and
+   commas. Only commit when the savings are positive. *)
+
+let decls_pp_string ds =
+  let pp ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
+  Pp.to_string ~minify:true pp ds
+
+let rule_factor_eligible (r : Stylesheet.rule) =
+  r.nested = [] && r.merge_key = None && not (should_not_combine r.selector)
+
+let common_declarations rules =
+  match rules with
+  | [] -> []
+  | first :: rest ->
+      List.filter
+        (fun d ->
+          List.for_all (fun r -> List.mem d r.Stylesheet_intf.declarations) rest)
+        first.Stylesheet_intf.declarations
+
+let merge_selector_list (sels : Selector.t list) : Selector.t =
+  let flatten = function Selector.List xs -> xs | s -> [ s ] in
+  match List.concat_map flatten sels with
+  | [ s ] -> s
+  | many -> Selector.List many
+
+let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
+  match rules with
+  | [] | [ _ ] -> rules
+  | first :: _ ->
+      let common = common_declarations rules in
+      if List.length common < 2 then rules
+      else
+        let selectors = List.map (fun r -> r.Stylesheet_intf.selector) rules in
+        let common_str = String.length (decls_pp_string common) in
+        let selectors_extra =
+          (* Length of the merged selector vs the original first selector;
+             approximation of the extra characters the grouped rule adds. *)
+          let merged_str =
+            Pp.to_string ~minify:true Selector.pp
+              (merge_selector_list selectors)
+          in
+          let first_sel_str =
+            Pp.to_string ~minify:true Selector.pp first.selector
+          in
+          String.length merged_str - String.length first_sel_str
+        in
+        let per_rule_overhead =
+          (* Each per-selector follow-up rule is [<selector>{<decls>}]; the
+             [<selector>{}] frame is 2 chars beyond the selector itself. *)
+          let rec sum acc = function
+            | [] -> acc
+            | r :: rest ->
+                let sel_len =
+                  String.length
+                    (Pp.to_string ~minify:true Selector.pp
+                       r.Stylesheet_intf.selector)
+                in
+                let leftover =
+                  List.filter (fun d -> not (List.mem d common)) r.declarations
+                in
+                if leftover = [] then sum acc rest
+                else sum (acc + sel_len + 2) rest
+          in
+          sum 0 rules
+        in
+        let savings =
+          (* Common declaration string is no longer repeated (N - 1) times. We
+             pay [selectors_extra] for the merged selector plus the [<sel>{}]
+             frames of every follow-up rule. *)
+          ((List.length rules - 1) * common_str)
+          - selectors_extra - per_rule_overhead
+        in
+        if savings <= 0 then rules
+        else
+          let grouped : Stylesheet.rule =
+            {
+              first with
+              selector = merge_selector_list selectors;
+              declarations = common;
+            }
+          in
+          let leftovers =
+            List.filter_map
+              (fun r ->
+                let leftover =
+                  List.filter
+                    (fun d -> not (List.mem d common))
+                    r.Stylesheet_intf.declarations
+                in
+                if leftover = [] then None
+                else Some { r with declarations = leftover })
+              rules
+          in
+          grouped :: leftovers
+
+let factor_common_declarations (rules : Stylesheet.rule list) :
+    Stylesheet.rule list =
+  let rec group acc current = function
+    | [] -> List.rev_append (factorise_group (List.rev current)) acc
+    | (r : Stylesheet.rule) :: rest ->
+        if not (rule_factor_eligible r) then
+          let acc = List.rev_append (factorise_group (List.rev current)) acc in
+          group (r :: acc) [] rest
+        else
+          let common_with_current () =
+            match current with
+            | [] -> List.length r.declarations
+            | _ -> List.length (common_declarations (List.rev (r :: current)))
+          in
+          if common_with_current () >= 2 then group acc (r :: current) rest
+          else
+            let acc =
+              List.rev_append (factorise_group (List.rev current)) acc
+            in
+            group acc [ r ] rest
+  in
+  List.rev (group [] [] rules)
+
 (** {1 Statement Optimization} *)
 
 (* Merge consecutive media queries with the same condition. This only merges
@@ -2605,7 +2737,7 @@ and rules_aux (rules : rule list) : rule list =
   List.map single_rule_without_nested with_optimized_nested
   |> drop_shadowed_rules |> merge_rules
   |> List.map finalize_rule_without_nested
-  |> combine_identical_rules
+  |> combine_identical_rules |> factor_common_declarations
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
