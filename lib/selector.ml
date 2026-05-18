@@ -1991,6 +1991,11 @@ and pp_nested_function_lists ctx = function
       Pp.list ~sep:Pp.comma pp_nested_function_lists ctx selectors
   | selector -> pp ctx selector
 
+and is_unwrap_safe_is_arg : t -> bool = function
+  | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
+  | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
+  | _ -> false
+
 and pp : t Pp.t =
  fun ctx -> function
   | Element (ns, name) ->
@@ -2151,8 +2156,23 @@ and pp : t Pp.t =
          invalid arguments so a [:is(:future-pseudo, .a)] also reduces here,
          which the spec test asserts. *)
       pp ctx single
+  | Is selectors
+    when Pp.minified ctx
+         && List.length selectors >= 2
+         && List.for_all is_unwrap_safe_is_arg selectors ->
+      (* CSS Selectors 4 sec. 17: unwrap [:is(s1, s2, ...)] to the selector
+         list [s1, s2, ...] when each member is structurally simple enough
+         that the specificity contribution is determined by the member
+         itself (so wrapping vs unwrapping is byte-different but
+         match-identical). Conservative: matches elements / classes / ids /
+         universals / attributes, and Compounds / lists of those. *)
+      sels ctx selectors
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
+  | Not [ Not [ inner ] ] when Pp.minified ctx ->
+      (* CSS Selectors 4 sec. 5: double negation [:not(:not(X))] is
+         spec-equivalent to [X] (and shorter under minify). *)
+      pp ctx inner
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (Index 1, None) when Pp.minified ctx ->
