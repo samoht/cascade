@@ -999,19 +999,41 @@ let ordering_diff rules1 rules2 =
 
   find_ordering_issues [] map1 map2
 
+(* [extract_base_parent_selector] is called by every [selector_changes]
+   bucket scan; each call previously allocated a [to_string] result. Cache
+   per selector AST. *)
+module Sel_tbl = Hashtbl.Make (struct
+  type t = Css.Selector.t
+
+  let equal = ( = )
+  let hash = Hashtbl.hash
+end)
+
+let parent_cache : string option Sel_tbl.t ref = ref (Sel_tbl.create 16)
+let reset_parent_cache () = parent_cache := Sel_tbl.create 512
+
 let extract_base_parent_selector sel =
-  (* Extract parent from selector string and strip pseudo-classes *)
-  let sel_str = Css.Selector.to_string sel in
-  let parts = String.split_on_char ' ' sel_str in
-  match parts with
-  | [] | [ _ ] -> None
-  | parent :: _ -> (
-      match String.index_opt parent ':' with
-      | Some idx -> Some (String.sub parent 0 idx)
-      | None -> Some parent)
+  let cache = !parent_cache in
+  match Sel_tbl.find_opt cache sel with
+  | Some v -> v
+  | None ->
+      let sel_str = Css.Selector.to_string sel in
+      let v =
+        match String.index_opt sel_str ' ' with
+        | None -> None
+        | Some sp ->
+            let parent = String.sub sel_str 0 sp in
+            let stripped =
+              match String.index_opt parent ':' with
+              | Some idx -> String.sub parent 0 idx
+              | None -> parent
+            in
+            Some stripped
+      in
+      Sel_tbl.add cache sel v;
+      v
 
 let selectors_share_parent_ast sel1 sel2 =
-  (* Check if two selectors share meaningful parent context *)
   match
     (extract_base_parent_selector sel1, extract_base_parent_selector sel2)
   with
@@ -2087,6 +2109,7 @@ let detect_container_position_changes stmts1 stmts2 containers =
 (* Main diff function *)
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   reset_decl_cache ();
+  reset_parent_cache ();
   let rules1 = Css.statements expected in
   let rules2 = Css.statements actual in
   let added, removed, modified = rule_diffs rules1 rules2 in
