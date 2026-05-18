@@ -652,8 +652,6 @@ let strings_of_rule stmt =
       (selector_str, decls)
   | None -> ("", [])
 
-let reset_decl_cache () = ()
-
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
   let value = Css.declaration_value ~minify:false decl in
@@ -977,8 +975,6 @@ let ordering_diff rules1 rules2 =
   in
 
   find_ordering_issues [] map1 map2
-
-let reset_parent_cache () = ()
 
 let extract_base_parent_selector sel =
   let sel_str = Css.Selector.to_string sel in
@@ -2068,8 +2064,6 @@ let detect_container_position_changes stmts1 stmts2 containers =
 
 (* Main diff function *)
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
-  reset_decl_cache ();
-  reset_parent_cache ();
   let rules1 = Css.statements expected in
   let rules2 = Css.statements actual in
   let added, removed, modified = rule_diffs rules1 rules2 in
