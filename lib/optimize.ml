@@ -2708,45 +2708,64 @@ let drop_shadowed_rules (rules : rule list) : rule list =
     indexed
 
 (* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
-   individual declarations whose property is rewritten by a later rule with the
-   same canonical selector at same-or-stronger importance. The later
-   same-selector write masks the earlier value for every element this rule could
-   match, regardless of intervening rules' specificity or [!important] state
-   (cleancss and csso both rely on this to collapse repeated declaration
-   blocks). Empty rules left behind are pruned downstream by [drop_empty_rules]
-   on the statement-list pass. *)
+   individual declarations whose property is rewritten by a later rule for
+   every selector this rule targets. The later same-selector write masks the
+   earlier value for every matching element regardless of intervening rules'
+   specificity or [!important] state (cleancss and csso both rely on this to
+   collapse repeated declaration blocks).
+
+   For list selectors ([.x, .y { width: 100px }]), the declaration is dead
+   only when EACH selector in the list is shadowed by some later rule whose
+   selector list contains that selector at same-or-stronger importance. We
+   index later rules per individual selector key so the per-selector check is
+   linear in the size of the list.
+
+   Empty rules left behind are pruned downstream by [drop_empty_rules] on the
+   statement-list pass. *)
 let drop_shadowed_declarations (rules : rule list) : rule list =
   let indexed = List.mapi (fun i r -> (i, r)) rules in
+  let single_keys r =
+    match Selector.as_list r.Stylesheet_intf.selector with
+    | Some xs -> List.map canonical_selector_key xs
+    | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
+  in
+  (* For each individual-selector key, accumulate (rule_index, declarations) of
+     every later rule whose selector list contains a member with that key. *)
   let later_by_key : (string, (int * Declaration.t list) list) Hashtbl.t =
     Hashtbl.create 16
   in
   List.iter
     (fun (i, r) ->
-      let key = canonical_selector_key r.Stylesheet_intf.selector in
-      let prev =
-        Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
-      in
-      Hashtbl.replace later_by_key key
-        ((i, r.Stylesheet_intf.declarations) :: prev))
+      List.iter
+        (fun key ->
+          let prev =
+            Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+          in
+          Hashtbl.replace later_by_key key
+            ((i, r.Stylesheet_intf.declarations) :: prev))
+        (single_keys r))
     indexed;
   List.map
     (fun (i, rule) ->
-      let key = canonical_selector_key rule.Stylesheet_intf.selector in
-      let writes =
-        Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+      let keys = single_keys rule in
+      let property_shadowed_for_key prop_decl key =
+        let writes =
+          Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+        in
+        List.exists
+          (fun (j, decls) ->
+            j > i
+            && List.exists
+                 (fun ld ->
+                   same_property prop_decl ld
+                   && (Declaration.is_important ld
+                      || not (Declaration.is_important prop_decl)))
+                 decls)
+          writes
       in
       let shadowed_by_later decl =
         (not (is_intentionally_duplicated decl))
-        && List.exists
-             (fun (j, decls) ->
-               j > i
-               && List.exists
-                    (fun ld ->
-                      same_property decl ld
-                      && (Declaration.is_important ld
-                         || not (Declaration.is_important decl)))
-                    decls)
-             writes
+        && List.for_all (property_shadowed_for_key decl) keys
       in
       let kept =
         List.filter (fun d -> not (shadowed_by_later d)) rule.declarations
