@@ -1932,47 +1932,13 @@ let decls_pp_string ds =
 let rule_factor_eligible (r : Stylesheet.rule) =
   r.nested = [] && r.merge_key = None && not (should_not_combine r.selector)
 
-let common_declarations rules =
-  match rules with
-  | [] -> []
-  | first :: rest ->
-      (* Default-picking the first rule's value when later rules redeclare the
-         same property with a DIFFERENT value is unsafe: a later rule whose
-         value happens to match [v_1] (e.g. [.a{red}.b{blue}.c{red}]) would
-         fold into the shared block at the first rule's position, dropping
-         its position-3 override of [.b]. Restrict the common set to
-         declarations that appear IDENTICALLY in every rule; this is
-         strictly safe and produces strictly shorter output. *)
-      List.filter
-        (fun d ->
-          List.for_all
-            (fun r ->
-              List.mem d r.Stylesheet_intf.declarations)
-            rest)
-        first.Stylesheet_intf.declarations
+let decl_property d = Declaration.property_name d
 
-let merge_selector_list (sels : Selector.t list) : Selector.t =
-  let flatten = function Selector.List xs -> xs | s -> [ s ] in
-  match List.concat_map flatten sels with
+let merge_selector_list = function
   | [ s ] -> s
-  | many -> Selector.List many
-
-(* [rule_leftover ~common r] returns the declarations from [r] that don't
-   appear identically in [common]. A declaration whose property is in
-   [common] but whose value differs survives as an override; declarations
-   absent from [common] survive as-is. *)
-let rule_leftover ~common (r : Stylesheet.rule) =
-  List.filter
-    (fun d ->
-      let prop = Declaration.property_name d in
-      match
-        List.find_opt
-          (fun d' -> Declaration.property_name d' = prop)
-          common
-      with
-      | None -> true (* unique property - keep *)
-      | Some d' -> d <> d' (* same property, different value - override *))
-    r.Stylesheet_intf.declarations
+  | sels ->
+      let flatten = function Selector.List xs -> xs | s -> [ s ] in
+      Selector.List (List.concat_map flatten sels)
 
 (* Byte size of the printed rule [<selector>{<d1>;<d2>;...;<dn>}].
    [decls_pp_string] concatenates declarations without separators - the [;]
@@ -1988,34 +1954,100 @@ let rule_pp_size (r : Stylesheet.rule) =
   in
   String.length sel + 2 + String.length decls + separators
 
+(* [factorable_default decl_for] returns the first rule's declaration for a
+   property iff every rule declares the same property. Default-pick is
+   considered separately because it may need a leftover override even when
+   the value matches (see [keep_default_at]). *)
+let factorable_default rules prop =
+  let decl_for r =
+    List.find_opt
+      (fun d -> decl_property d = prop)
+      r.Stylesheet_intf.declarations
+  in
+  match rules with
+  | [] -> None
+  | first :: _ -> (
+      match decl_for first with
+      | None -> None
+      | Some _ as fst ->
+          if List.for_all (fun r -> decl_for r <> None) rules then fst
+          else None)
+
+(* For a rule [R_i] whose value for [prop] equals the default, we must still
+   emit it in the leftover when an EARLIER rule [R_j] with overlapping
+   selector declares a different value - otherwise [R_j]'s leftover would
+   override the shared default for elements matching both. *)
+let earlier_overrides_overlap ~summaries ~default decls i =
+  let r_i_summary = Array.get summaries i in
+  let rec loop j =
+    if j >= i then false
+    else
+      let d_j =
+        List.find_opt
+          (fun d -> decl_property d = decl_property default)
+          (Array.get decls j)
+      in
+      match d_j with
+      | Some d when d <> default
+        && Selector_summary.may_overlap (Array.get summaries j) r_i_summary ->
+          true
+      | _ -> loop (j + 1)
+  in
+  loop 0
+
 let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
   match rules with
   | [] | [ _ ] -> rules
   | first :: _ ->
-      let common = common_declarations rules in
-      (* Even a single shared declaration is worth factoring out when the
-         byte budget says the result is no longer than the originals; the
-         exact size check below catches cases where factoring would
-         regress. *)
+      let rules_arr = Array.of_list rules in
+      let n = Array.length rules_arr in
+      let summaries =
+        Array.map
+          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
+          rules_arr
+      in
+      let decls = Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr in
+      let common =
+        List.filter_map
+          (fun d ->
+            match factorable_default rules (decl_property d) with
+            | Some default -> Some default
+            | None -> None)
+          first.Stylesheet_intf.declarations
+      in
       if common = [] then rules
       else
+        let keep_in_leftover ~default_decl ~i decl =
+          (* [decl] is rule [i]'s declaration for the property in [common].
+             Keep it in the leftover when its value differs from the default,
+             or when an earlier overlapping rule has a different value. *)
+          decl <> default_decl
+          || earlier_overrides_overlap ~summaries ~default:default_decl
+               decls i
+        in
+        let leftover_for_rule i (r : Stylesheet.rule) =
+          List.filter
+            (fun d ->
+              let prop = decl_property d in
+              match
+                List.find_opt (fun d' -> decl_property d' = prop) common
+              with
+              | None -> true (* property not shared; keep *)
+              | Some default -> keep_in_leftover ~default_decl:default ~i d)
+            r.declarations
+        in
         let grouped : Stylesheet.rule =
-          let selectors =
-            List.map (fun r -> r.Stylesheet_intf.selector) rules
-          in
-          {
-            first with
-            selector = merge_selector_list selectors;
-            declarations = common;
-          }
+          let sels = Array.to_list (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr) in
+          { first with selector = merge_selector_list sels; declarations = common }
         in
         let leftovers =
-          List.filter_map
-            (fun r ->
-              let leftover = rule_leftover ~common r in
-              if leftover = [] then None
-              else Some { r with declarations = leftover })
-            rules
+          let acc = ref [] in
+          for i = n - 1 downto 0 do
+            let r = rules_arr.(i) in
+            let l = leftover_for_rule i r in
+            if l <> [] then acc := { r with declarations = l } :: !acc
+          done;
+          !acc
         in
         let before_size =
           List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
@@ -2025,9 +2057,6 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
             (fun acc r -> acc + rule_pp_size r)
             (rule_pp_size grouped) leftovers
         in
-        (* Factor when the new shape is at least as short - ties go to the
-           factored form so cascade converges on the canonical shape other
-           minifiers also produce, even when bytes are identical. *)
         if after_size <= before_size then grouped :: leftovers else rules
 
 let factor_common_declarations (rules : Stylesheet.rule list) :
@@ -2039,12 +2068,22 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
           let acc = List.rev_append (factorise_group (List.rev current)) acc in
           group (r :: acc) [] rest
         else
-          let has_common () =
+          let shares_a_property () =
             match current with
             | [] -> r.declarations <> []
-            | _ -> common_declarations (List.rev (r :: current)) <> []
+            | _ ->
+                List.exists
+                  (fun d ->
+                    let prop = decl_property d in
+                    List.for_all
+                      (fun r' ->
+                        List.exists
+                          (fun d' -> decl_property d' = prop)
+                          r'.Stylesheet_intf.declarations)
+                      current)
+                  r.declarations
           in
-          if has_common () then group acc (r :: current) rest
+          if shares_a_property () then group acc (r :: current) rest
           else
             let acc =
               List.rev_append (factorise_group (List.rev current)) acc
