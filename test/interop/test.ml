@@ -208,22 +208,29 @@ let case record () =
               record.oracles
             |> String.concat " "
           in
-          (* Correctness gate: canonicalise the oracle once via cascade.minify
-             and string-compare against [actual]. [actual] is already cascade-
-             canonical so no second minify is needed. *)
-          let oracle_canonical = cascade_minify shortest.raw in
-          match oracle_canonical with
-          | Error msg ->
+          (* Correctness gate: cascade only minifies the input; the oracle is
+             already minified upstream so we only PARSE it (no second
+             cascade-optimize pass) and compare the parsed AST to cascade's
+             output AST. *)
+          let oracle_ast = Cascade.Css.of_string ~strict:false shortest.raw in
+          let actual_ast = Cascade.Css.of_string ~strict:false actual in
+          match (oracle_ast, actual_ast) with
+          | Error e, _ ->
               Alcotest.failf "cascade cannot parse the shortest oracle (%s): %s"
-                shortest.tool msg
-          | Ok canonical when canonical <> actual ->
+                shortest.tool (Cascade.Error.to_string e)
+          | _, Error e ->
+              Alcotest.failf "cascade output is not parseable: %s"
+                (Cascade.Error.to_string e)
+          | ( Ok { Cascade.Css.stylesheet = o; _ },
+              Ok { Cascade.Css.stylesheet = a; _ } )
+            when o <> a ->
               Alcotest.failf
-                "cascade output not semantically equivalent to shortest oracle\n\
+                "cascade output AST differs from shortest oracle AST\n\
                 \    cascade:  %d bytes (vs %s: %d bytes)\n\
                 \    oracles:  %s\n\
-                \    inspect: cascade diff --diff=semantic <oracle> <cascade-output>"
+                \    inspect: cascade diff --diff=tree <oracle> <cascade-output>"
                 actual_len shortest.tool shortest_len (oracle_summary ())
-          | Ok _ ->
+          | Ok _, Ok _ ->
               if actual_len <= shortest_len then ()
               else
                 Alcotest.failf
