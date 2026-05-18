@@ -2014,7 +2014,10 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
             (fun acc r -> acc + rule_pp_size r)
             (rule_pp_size grouped) leftovers
         in
-        if after_size < before_size then grouped :: leftovers else rules
+        (* Factor when the new shape is at least as short - ties go to the
+           factored form so cascade converges on the canonical shape other
+           minifiers also produce, even when bytes are identical. *)
+        if after_size <= before_size then grouped :: leftovers else rules
 
 let factor_common_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =

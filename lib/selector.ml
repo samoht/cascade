@@ -2221,20 +2221,28 @@ and pp : t Pp.t =
       pp_relative_combinator ctx comb;
       pp ctx right
   | List selectors ->
-      (* CSS Selectors 4 4.2: duplicate entries in a selector list are
-         redundant; the list matches the same elements with or without them. *)
+      (* CSS Selectors 4 sec. 4.2: a selector list is an unordered set; order
+         is irrelevant for matching, specificity, and invalidation. Under
+         minify we sort the alternatives by their printed form so cascade
+         emits a canonical order (e.g. [.b, .a] -> [.a, .b]). The set is also
+         de-duplicated because duplicate entries match the same elements. *)
       let seen = Hashtbl.create 4 in
-      let dedup =
-        List.filter
+      let with_key =
+        List.filter_map
           (fun s ->
             let key = Pp.to_string ~minify:true pp s in
-            if Hashtbl.mem seen key then false
+            if Hashtbl.mem seen key then None
             else (
               Hashtbl.add seen key ();
-              true))
+              Some (key, s)))
           selectors
       in
-      Pp.list ~sep:Pp.comma pp ctx dedup
+      let final =
+        if Pp.minified ctx then
+          List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) with_key
+        else with_key
+      in
+      Pp.list ~sep:Pp.comma pp ctx (List.map snd final)
   | Nesting -> Pp.char ctx '&'
 
 let to_string ?minify t = Pp.to_string ?minify pp t
