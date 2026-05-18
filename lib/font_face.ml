@@ -41,14 +41,31 @@ type t = src
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
    Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
    doesn't require whitespace between the function calls. *)
+let known_format_keywords =
+  [
+    "woff2";
+    "woff";
+    "truetype";
+    "opentype";
+    "embedded-opentype";
+    "svg";
+    "collection";
+  ]
+
 let pp_src_modifiers ctx ~format ~tech =
   (match format with
   | Some f ->
       Pp.sp ctx ();
       Pp.string ctx "format(";
-      Pp.char ctx '"';
-      Pp.string ctx f;
-      Pp.char ctx '"';
+      (* CSS Fonts 4 sec. 4.3: [format()] accepts a [<font-format>] keyword or
+         a [<string>]; under minify the unquoted keyword form is shorter for
+         the known formats ([woff2], [woff], [truetype], [opentype], ...). *)
+      if Pp.minified ctx && List.mem (String.lowercase_ascii f) known_format_keywords
+      then Pp.string ctx (String.lowercase_ascii f)
+      else (
+        Pp.char ctx '"';
+        Pp.string ctx f;
+        Pp.char ctx '"');
       Pp.char ctx ')'
   | None -> ());
   match tech with
@@ -88,9 +105,25 @@ and pp_src_entry ctx = function
       Pp.char ctx ')';
       pp_src_modifiers ctx ~format ~tech
   | Local name ->
-      Pp.string ctx "local(\"";
-      Pp.string ctx name;
-      Pp.string ctx "\")"
+      Pp.string ctx "local(";
+      (* CSS Fonts 4 sec. 4.3: [local(<family-name>)] accepts a [<custom-ident>]
+         sequence or a [<string>]; under minify the unquoted ident form is
+         shorter when the family name parses as a valid [<custom-ident>]
+         (alphanumeric + dashes, no leading digit, not a CSS-wide keyword). *)
+      if
+        Pp.minified ctx && String.length name > 0
+        && String.for_all
+             (function
+               | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+               | _ -> false)
+             name
+        && (match name.[0] with 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false)
+      then Pp.string ctx name
+      else (
+        Pp.char ctx '"';
+        Pp.string ctx name;
+        Pp.char ctx '"');
+      Pp.char ctx ')'
 
 let string_of_src_entry entry =
   Pp.to_string ~minify:false (fun ctx e -> pp_src_entry ctx e) entry
