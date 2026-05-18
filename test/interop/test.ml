@@ -208,38 +208,30 @@ let compute_case record : case_result =
               record.oracles
             |> String.concat " "
           in
-          let oracle_ast = Cascade.Css.of_string ~strict:false shortest.raw in
-          let actual_ast = Cascade.Css.of_string ~strict:false actual in
-          match (oracle_ast, actual_ast) with
-          | Error e, _ ->
+          (* Canonical equality: both sides are parsed and run through the
+             canonical-normalisation pass before comparison. Two CSS texts that
+             differ only in spelling cascade or the oracle has canonicalised
+             ([rgba(...)] vs hex, selector list order, etc.) compare equal; real
+             semantic divergences still fail. *)
+          if Cascade_diff.Css_compare.equal ~mode:`Canonical shortest.raw actual
+          then
+            if actual_len <= shortest_len then Pass
+            else
               Fail
                 (Printf.sprintf
-                   "cascade cannot parse the shortest oracle (%s): %s"
-                   shortest.tool (Cascade.Error.to_string e))
-          | _, Error e ->
-              Fail
-                (Printf.sprintf "cascade output is not parseable: %s"
-                   (Cascade.Error.to_string e))
-          | ( Ok { Cascade.Css.stylesheet = o; _ },
-              Ok { Cascade.Css.stylesheet = a; _ } )
-            when o <> a ->
-              Fail
-                (Printf.sprintf
-                   "cascade output AST differs from shortest oracle AST\n\
+                   "cascade output longer than shortest oracle\n\
                    \    cascade:  %d bytes (vs %s: %d bytes)\n\
-                   \    oracles:  %s\n\
-                   \    inspect: cascade diff --diff=tree <oracle> \
-                    <cascade-output>"
+                   \    oracles:  %s"
                    actual_len shortest.tool shortest_len (oracle_summary ()))
-          | Ok _, Ok _ ->
-              if actual_len <= shortest_len then Pass
-              else
-                Fail
-                  (Printf.sprintf
-                     "cascade output longer than shortest oracle\n\
-                     \    cascade:  %d bytes (vs %s: %d bytes)\n\
-                     \    oracles:  %s"
-                     actual_len shortest.tool shortest_len (oracle_summary ())))
+          else
+            Fail
+              (Printf.sprintf
+                 "cascade output canonically differs from shortest oracle\n\
+                 \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                 \    oracles:  %s\n\
+                 \    inspect: cascade diff --diff=tree <oracle> \
+                  <cascade-output>"
+                 actual_len shortest.tool shortest_len (oracle_summary ())))
 
 let case (result : case_result Lazy.t) () =
   match Lazy.force result with Pass -> () | Fail msg -> Alcotest.fail msg
@@ -287,17 +279,15 @@ let () =
   let arg = Sys.argv.(1) in
   let trace_path = resolve_trace_path arg in
   let records = read_trace trace_path in
-  (* Precompute each record's pass/fail result across an Eio executor pool
-     so cascade.minify / Css.of_string run in parallel. Alcotest then just
-     reports the cached results. *)
+  (* Precompute each record's pass/fail result across an Eio executor pool so
+     cascade.minify / Css.of_string run in parallel. Alcotest then just reports
+     the cached results. *)
   let results : (string, case_result) Hashtbl.t =
     Hashtbl.create (List.length records)
   in
   Eio_main.run (fun env ->
       Eio.Switch.run (fun sw ->
-          let n_domains =
-            max 1 (Domain.recommended_domain_count () - 1)
-          in
+          let n_domains = max 1 (Domain.recommended_domain_count () - 1) in
           let pool =
             Eio.Executor_pool.create ~sw ~domain_count:n_domains
               (Eio.Stdenv.domain_mgr env)
@@ -307,8 +297,8 @@ let () =
               (fun r ->
                 let res =
                   Eio.Executor_pool.submit_exn pool
-                    ~weight:(1.0 /. float_of_int n_domains) (fun () ->
-                      compute_case r)
+                    ~weight:(1.0 /. float_of_int n_domains)
+                    (fun () -> compute_case r)
                 in
                 (r.name, res))
               records

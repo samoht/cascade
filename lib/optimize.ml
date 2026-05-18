@@ -1944,12 +1944,10 @@ let merge_selector_list = function
 
 (* Byte size of the printed rule [<selector>{<d1>;<d2>;...;<dn>}].
    [decls_pp_string] concatenates declarations without separators - the [;]
-   between them is added by the rule printer at emission time, so we add
-   [n - 1] back here. *)
+   between them is added by the rule printer at emission time, so we add [n - 1]
+   back here. *)
 let rule_pp_size (r : Stylesheet.rule) =
-  let sel =
-    Pp.to_string ~minify:true Selector.pp r.Stylesheet_intf.selector
-  in
+  let sel = Pp.to_string ~minify:true Selector.pp r.Stylesheet_intf.selector in
   let decls = decls_pp_string r.Stylesheet_intf.declarations in
   let separators =
     match r.declarations with [] | [ _ ] -> 0 | _ :: rest -> List.length rest
@@ -1958,8 +1956,8 @@ let rule_pp_size (r : Stylesheet.rule) =
 
 (* [factorable_default decl_for] returns the first rule's declaration for a
    property iff every rule declares the same property. Default-pick is
-   considered separately because it may need a leftover override even when
-   the value matches (see [keep_default_at]). *)
+   considered separately because it may need a leftover override even when the
+   value matches (see [keep_default_at]). *)
 let factorable_default rules prop =
   let decl_for r =
     List.find_opt
@@ -1972,13 +1970,13 @@ let factorable_default rules prop =
       match decl_for first with
       | None -> None
       | Some _ as fst ->
-          if List.for_all (fun r -> decl_for r <> None) rules then fst
-          else None)
+          if List.for_all (fun r -> decl_for r <> None) rules then fst else None
+      )
 
 (* For a rule [R_i] whose value for [prop] equals the default, we must still
-   emit it in the leftover when an EARLIER rule [R_j] with overlapping
-   selector declares a different value - otherwise [R_j]'s leftover would
-   override the shared default for elements matching both. *)
+   emit it in the leftover when an EARLIER rule [R_j] with overlapping selector
+   declares a different value - otherwise [R_j]'s leftover would override the
+   shared default for elements matching both. *)
 let earlier_overrides_overlap ~summaries ~default decls i =
   let r_i_summary = Array.get summaries i in
   let default_prop = decl_property default in
@@ -2011,7 +2009,9 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
           (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
           rules_arr
       in
-      let decls = Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr in
+      let decls =
+        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      in
       let common =
         List.filter_map
           (fun d ->
@@ -2023,12 +2023,11 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
       if common = [] then rules
       else
         let keep_in_leftover ~default_decl ~i decl =
-          (* [decl] is rule [i]'s declaration for the property in [common].
-             Keep it in the leftover when its value differs from the default,
-             or when an earlier overlapping rule has a different value. *)
+          (* [decl] is rule [i]'s declaration for the property in [common]. Keep
+             it in the leftover when its value differs from the default, or when
+             an earlier overlapping rule has a different value. *)
           decl <> default_decl
-          || earlier_overrides_overlap ~summaries ~default:default_decl
-               decls i
+          || earlier_overrides_overlap ~summaries ~default:default_decl decls i
         in
         let leftover_for_rule i (r : Stylesheet.rule) =
           List.filter
@@ -2042,8 +2041,15 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
             r.declarations
         in
         let grouped : Stylesheet.rule =
-          let sels = Array.to_list (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr) in
-          { first with selector = merge_selector_list sels; declarations = common }
+          let sels =
+            Array.to_list
+              (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr)
+          in
+          {
+            first with
+            selector = merge_selector_list sels;
+            declarations = common;
+          }
         in
         let leftovers =
           let acc = ref [] in
@@ -2717,6 +2723,53 @@ let drop_shadowed_rules (rules : rule list) : rule list =
       if shadowed then None else Some rule)
     indexed
 
+(* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
+   individual declarations whose property is rewritten by a later rule with the
+   same canonical selector at same-or-stronger importance. The later
+   same-selector write masks the earlier value for every element this rule could
+   match, regardless of intervening rules' specificity or [!important] state
+   (cleancss and csso both rely on this to collapse repeated declaration
+   blocks). Empty rules left behind are pruned downstream by [drop_empty_rules]
+   on the statement-list pass. *)
+let drop_shadowed_declarations (rules : rule list) : rule list =
+  let indexed = List.mapi (fun i r -> (i, r)) rules in
+  let later_by_key : (string, (int * Declaration.t list) list) Hashtbl.t =
+    Hashtbl.create 16
+  in
+  List.iter
+    (fun (i, r) ->
+      let key = canonical_selector_key r.Stylesheet_intf.selector in
+      let prev =
+        Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+      in
+      Hashtbl.replace later_by_key key
+        ((i, r.Stylesheet_intf.declarations) :: prev))
+    indexed;
+  List.map
+    (fun (i, rule) ->
+      let key = canonical_selector_key rule.Stylesheet_intf.selector in
+      let writes =
+        Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+      in
+      let shadowed_by_later decl =
+        (not (is_intentionally_duplicated decl))
+        && List.exists
+             (fun (j, decls) ->
+               j > i
+               && List.exists
+                    (fun ld ->
+                      same_property decl ld
+                      && (Declaration.is_important ld
+                         || not (Declaration.is_important decl)))
+                    decls)
+             writes
+      in
+      let kept =
+        List.filter (fun d -> not (shadowed_by_later d)) rule.declarations
+      in
+      { rule with declarations = kept })
+    indexed
+
 let rec statements (stmts : statement list) : statement list =
   merge_named_layers_by_name stmts
   |> process_statements [] |> merge_consecutive_media
@@ -2792,7 +2845,7 @@ and rules_aux (rules : rule list) : rule list =
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
   List.map single_rule_without_nested with_optimized_nested
-  |> drop_shadowed_rules |> merge_rules
+  |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
   |> List.map finalize_rule_without_nested
   |> combine_identical_rules |> factor_common_declarations
 
