@@ -1027,6 +1027,7 @@ let spec_property_grammar_table_expansion () =
             Some "animation:1s linear 2 alternate both fade"
         | "animation-range", "entry 10% exit 90%" ->
             Some "animation-range:entry 10%exit 90%"
+        | "display", "inline flow-root" -> Some "display:inline-block"
         | "position-try-fallbacks", "--below, flip-block" ->
             Some "position-try-fallbacks:--below,flip-block"
         | "cursor", "url(cursor.cur), pointer" ->

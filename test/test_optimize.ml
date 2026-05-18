@@ -272,10 +272,11 @@ let test_group_complex_selectors () =
     { selector = sel3; declarations = decls; nested = []; merge_key = None }
   in
 
-  (* Complex selectors with descendant combinators are NOT combined to match
-     Tailwind v4 output behavior — each :where() selector stays separate *)
+  (* Complex selectors with descendant combinators can still be grouped when
+     their declarations and cascade context are identical. Tailwind source
+     shape compatibility is not a reason to block shortest-safe grouping. *)
   let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
-  check int "complex descendant selectors stay separate" 3 (List.length grouped)
+  check int "complex descendant selectors are grouped" 1 (List.length grouped)
 
 (** Test complete stylesheet optimization *)
 let count_rules stmts =
@@ -1208,6 +1209,28 @@ let c61_all_property_reset_boundary () =
   Alcotest.(check string)
     "all shorthand reset remains before later longhand"
     ".reset{all:unset;display:flex}" output
+
+let c61_no_factor_across_all_reset () =
+  (* CSS Cascade section 3: [all] is a reset shorthand, so factoring a shared
+     longhand out of an adjacent rule can move it before the reset and change
+     the computed value. Keep any rule containing [all] out of adjacent
+     declaration factoring. *)
+  let check_case reset =
+    let input =
+      Css.Stylesheet.read
+        (Cursor.of_string
+           (Printf.sprintf ".foo{color:red}.bar{all:%s;color:red}" reset))
+    in
+    let optimized = Css.Optimize.stylesheet input in
+    let output =
+      Css.Stylesheet.to_string ~minify:true optimized |> String.trim
+    in
+    Alcotest.(check string)
+      (Printf.sprintf "all:%s keeps later color after reset" reset)
+      (Printf.sprintf ".foo{color:red}.bar{all:%s;color:red}" reset)
+      output
+  in
+  List.iter check_case [ "unset"; "initial"; "revert-layer" ]
 
 let c61_no_merge_layer () =
   (* CSS Cascade section 6.1: layers are a cascade sorting criterion. Rules in
@@ -2935,6 +2958,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 all property reset boundary",
       `Quick,
       c61_all_property_reset_boundary );
+    ( "spec cascade 6.1 no factor across all reset",
+      `Quick,
+      c61_no_factor_across_all_reset );
     ( "spec cascade 6.1 no merge across layer boundary",
       `Quick,
       c61_no_merge_layer );
