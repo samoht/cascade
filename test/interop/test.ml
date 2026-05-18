@@ -176,28 +176,28 @@ let pick_shortest oracles =
              if String.length o.raw < String.length best.raw then o else best)
            first rest)
 
-let case record () =
+type case_result = Pass | Fail of string
+
+let compute_case record : case_result =
   match cascade_minify record.input with
-  | Error msg -> Alcotest.failf "cascade parse failure: %s" msg
+  | Error msg -> Fail (Printf.sprintf "cascade parse failure: %s" msg)
   | Ok actual -> (
       match pick_shortest record.oracles with
       | None ->
           if record.errors = [] then
-            Alcotest.failf "no oracle for %s" record.name
+            Fail (Printf.sprintf "no oracle for %s" record.name)
           else
-            (* All upstream tools failed on this input; nothing to compare
-               against, but surface upstream's reasons so they don't disappear
-               into the trace. *)
             let summary =
               List.map
                 (fun (e : err) -> Printf.sprintf "%s:%s" e.tool e.reason)
                 record.errors
               |> String.concat " | "
             in
-            Alcotest.failf
-              "every upstream oracle failed - cascade has nothing to compare \
-               against: %s"
-              summary
+            Fail
+              (Printf.sprintf
+                 "every upstream oracle failed - cascade has nothing to \
+                  compare against: %s"
+                 summary)
       | Some shortest ->
           let actual_len = String.length actual in
           let shortest_len = String.length shortest.raw in
@@ -208,36 +208,41 @@ let case record () =
               record.oracles
             |> String.concat " "
           in
-          (* Correctness gate: cascade only minifies the input; the oracle is
-             already minified upstream so we only PARSE it (no second
-             cascade-optimize pass) and compare the parsed AST to cascade's
-             output AST. *)
           let oracle_ast = Cascade.Css.of_string ~strict:false shortest.raw in
           let actual_ast = Cascade.Css.of_string ~strict:false actual in
           match (oracle_ast, actual_ast) with
           | Error e, _ ->
-              Alcotest.failf "cascade cannot parse the shortest oracle (%s): %s"
-                shortest.tool (Cascade.Error.to_string e)
+              Fail
+                (Printf.sprintf
+                   "cascade cannot parse the shortest oracle (%s): %s"
+                   shortest.tool (Cascade.Error.to_string e))
           | _, Error e ->
-              Alcotest.failf "cascade output is not parseable: %s"
-                (Cascade.Error.to_string e)
+              Fail
+                (Printf.sprintf "cascade output is not parseable: %s"
+                   (Cascade.Error.to_string e))
           | ( Ok { Cascade.Css.stylesheet = o; _ },
               Ok { Cascade.Css.stylesheet = a; _ } )
             when o <> a ->
-              Alcotest.failf
-                "cascade output AST differs from shortest oracle AST\n\
-                \    cascade:  %d bytes (vs %s: %d bytes)\n\
-                \    oracles:  %s\n\
-                \    inspect: cascade diff --diff=tree <oracle> <cascade-output>"
-                actual_len shortest.tool shortest_len (oracle_summary ())
+              Fail
+                (Printf.sprintf
+                   "cascade output AST differs from shortest oracle AST\n\
+                   \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                   \    oracles:  %s\n\
+                   \    inspect: cascade diff --diff=tree <oracle> \
+                    <cascade-output>"
+                   actual_len shortest.tool shortest_len (oracle_summary ()))
           | Ok _, Ok _ ->
-              if actual_len <= shortest_len then ()
+              if actual_len <= shortest_len then Pass
               else
-                Alcotest.failf
-                  "cascade output longer than shortest oracle\n\
-                  \    cascade:  %d bytes (vs %s: %d bytes)\n\
-                  \    oracles:  %s"
-                  actual_len shortest.tool shortest_len (oracle_summary ()))
+                Fail
+                  (Printf.sprintf
+                     "cascade output longer than shortest oracle\n\
+                     \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                     \    oracles:  %s"
+                     actual_len shortest.tool shortest_len (oracle_summary ())))
+
+let case (result : case_result Lazy.t) () =
+  match Lazy.force result with Pass -> () | Fail msg -> Alcotest.fail msg
 
 (* ===== alcotest wiring ===== *)
 
@@ -282,10 +287,45 @@ let () =
   let arg = Sys.argv.(1) in
   let trace_path = resolve_trace_path arg in
   let records = read_trace trace_path in
+  (* Precompute each record's pass/fail result across an Eio executor pool
+     so cascade.minify / Css.of_string run in parallel. Alcotest then just
+     reports the cached results. *)
+  let results : (string, case_result) Hashtbl.t =
+    Hashtbl.create (List.length records)
+  in
+  Eio_main.run (fun env ->
+      Eio.Switch.run (fun sw ->
+          let n_domains =
+            max 1 (Domain.recommended_domain_count () - 1)
+          in
+          let pool =
+            Eio.Executor_pool.create ~sw ~domain_count:n_domains
+              (Eio.Stdenv.domain_mgr env)
+          in
+          let computed =
+            Eio.Fiber.List.map
+              (fun r ->
+                let res =
+                  Eio.Executor_pool.submit_exn pool
+                    ~weight:(1.0 /. float_of_int n_domains) (fun () ->
+                      compute_case r)
+                in
+                (r.name, res))
+              records
+          in
+          List.iter
+            (fun (name, res) -> Hashtbl.replace results name res)
+            computed));
   let groups = group_by_category records in
   let cases =
     List.map
-      (fun (cat, rs) -> (cat, List.map (fun r -> (r.case, `Quick, case r)) rs))
+      (fun (cat, rs) ->
+        ( cat,
+          List.map
+            (fun r ->
+              let res = lazy (Hashtbl.find results r.name) in
+              (r.case, `Quick, case res))
+            rs ))
       groups
   in
   let alcotest_argv =

@@ -2250,38 +2250,27 @@ and pp : t Pp.t =
   | Nesting -> Pp.char ctx '&'
 
 (* CSS Selectors 4 sec. 17 [:is()] top-level unwrap. *)
-let rec is_unwrap_safe_is_arg : t -> bool = function
-  | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
-  | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
-  | _ -> false
+(* Placeholders - real definitions below after [specificity] is defined. The
+   public [pp] / [to_string] use the forward reference [top_level_is_unwrap_ref]
+   so the implementation lives near [specificity] where the equal-spec check
+   that drives the unwrap is meaningful. *)
+let top_level_is_unwrap_ref : (t -> t) ref = ref (fun s -> s)
+let top_level_is_unwrap sel = !top_level_is_unwrap_ref sel
 
-let rec top_level_is_unwrap : t -> t = function
-  | Is selectors
-    when List.length selectors >= 2
-         && List.for_all is_unwrap_safe_is_arg selectors ->
-      List selectors
-  | List selectors ->
-      let expanded =
-        List.concat_map
-          (fun sel ->
-            match top_level_is_unwrap sel with
-            | List members -> members
-            | other -> [ other ])
-          selectors
-      in
-      List expanded
-  | other -> other
+(* Public [pp] applies the top-level [:is()] unwrap under [minify] so every
+   caller (including direct [Selector.pp ctx sel] uses in the test harness)
+   sees the canonical form. The internal [pp] above still recurses through
+   the un-unwrapped tree because the unwrap is only sound at the entry
+   point - nested [Is] inside [Combinator] / [Compound] would change
+   matching if distributed. *)
+let pp_inner = pp
 
-(* Apply the top-level [:is()] unwrap under [minify] so callers that go
-   through the typed selector API see the same canonical form that pp_rule
-   emits. *)
-let to_string ?minify t =
-  let t = if minify = Some true then top_level_is_unwrap t else t in
-  Pp.to_string ?minify pp t
+let pp ctx sel =
+  let sel = if Pp.minified ctx then top_level_is_unwrap sel else sel in
+  pp_inner ctx sel
 
-let to_buffer ?minify buf t =
-  let t = if minify = Some true then top_level_is_unwrap t else t in
-  Pp.to_buffer ?minify buf pp t
+let to_string ?minify t = Pp.to_string ?minify pp t
+let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
 
 (** Recursively map over all selectors in the tree *)
 let rec map f = function
@@ -2459,6 +2448,39 @@ let rec specificity = function
   | Combined (a, _, b) -> add_specificity (specificity a) (specificity b)
   | Relative (_, sel) -> specificity sel
   | List xs -> xs |> List.map specificity |> max_specificity
+
+(* Real [top_level_is_unwrap]: unwrap [:is(s1, s2, ...)] to a selector list
+   only when every argument has the same specificity AND is structurally
+   simple. CSS Selectors 4 sec. 17 makes [:is(...)] take the [max]
+   specificity of its arguments, so unwrapping changes per-element
+   specificity unless all arguments are already equal. *)
+let rec is_unwrap_safe_is_arg : t -> bool = function
+  | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
+  | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
+  | _ -> false
+
+let rec real_top_level_is_unwrap : t -> t = function
+  | Is selectors
+    when List.length selectors >= 2
+         && List.for_all is_unwrap_safe_is_arg selectors
+         &&
+         (match List.map specificity selectors with
+         | [] -> false
+         | s :: rest -> List.for_all (fun s' -> s' = s) rest) ->
+      List selectors
+  | List selectors ->
+      let expanded =
+        List.concat_map
+          (fun sel ->
+            match real_top_level_is_unwrap sel with
+            | List members -> members
+            | other -> [ other ])
+          selectors
+      in
+      List expanded
+  | other -> other
+
+let () = top_level_is_unwrap_ref := real_top_level_is_unwrap
 
 let exists_class pred sel =
   any (function Class name -> pred name | _ -> false) sel
