@@ -3492,9 +3492,39 @@ let rec pp_font_family : font_family Pp.t =
         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
         | _ -> false
       in
+      (* A single-word [Name] that matches a generic family / CSS-wide
+         keyword must stay quoted - dropping the quotes turns the
+         [<family-name>] into the generic keyword (different semantics in
+         [@font-face] and in [font-family] cascade). *)
+      let collides_with_keyword =
+        List.mem (String.lowercase_ascii s)
+          [
+            "serif";
+            "sans-serif";
+            "monospace";
+            "cursive";
+            "fantasy";
+            "system-ui";
+            "ui-serif";
+            "ui-sans-serif";
+            "ui-monospace";
+            "ui-rounded";
+            "emoji";
+            "math";
+            "fangsong";
+            "inherit";
+            "initial";
+            "unset";
+            "revert";
+            "revert-layer";
+            "none";
+            "default";
+          ]
+      in
       if Pp.minified ctx && can_unquote_font_family_name s then Pp.string ctx s
-      else if s = "" || not (String.for_all safe_ident_char s) then
-        Pp.quoted_string ctx s
+      else if s = "" || not (String.for_all safe_ident_char s)
+              || collides_with_keyword
+      then Pp.quoted_string ctx s
       else Pp.string ctx s
   | Var v -> pp_var pp_font_family ctx v
   | List fonts ->
@@ -13950,10 +13980,16 @@ let font_family_all_enums : (string * font_family) list =
 let font_family_lookup_key name =
   name |> String.lowercase_ascii |> String.map (function ' ' -> '-' | c -> c)
 
+(* The unquoted single-word lookup matches generic family keywords; a
+   quoted name is always a [<custom-ident>] by spec, so it preserves the
+   user's intent even when its text matches a generic keyword
+   ([font-family: "serif"] is a custom family named "serif", not the
+   [serif] generic). Multi-word quoted names still match the platform-name
+   table since those entries are not keywords. *)
 let font_family_of_quoted_name name =
   match List.assoc_opt (font_family_lookup_key name) font_family_all_enums with
-  | Some family -> family
-  | None -> Name name
+  | Some family when String.contains name ' ' -> family
+  | _ -> Name name
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
