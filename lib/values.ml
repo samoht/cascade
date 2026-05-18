@@ -941,10 +941,25 @@ let pp_math_call ctx name args =
       | _ -> args
     else args
   in
-  Pp.string ctx name;
-  Pp.char ctx '(';
-  emit_math_args ctx args;
-  Pp.char ctx ')'
+  (* CSS Values 4 sec. 10.7: [clamp(min, val, max)] degenerates to a single
+     value when [min = val = max] (the clamp window is a single point). *)
+  let degenerate =
+    Pp.minified ctx && name = "clamp"
+    &&
+    match split_top_level_commas args |> List.map String.trim with
+    | [ a; b; c ] when a = b && b = c -> true
+    | _ -> false
+  in
+  if degenerate then
+    let single =
+      match split_top_level_commas args with [ x; _; _ ] -> String.trim x | _ -> args
+    in
+    emit_math_args ctx single
+  else (
+    Pp.string ctx name;
+    Pp.char ctx '(';
+    emit_math_args ctx args;
+    Pp.char ctx ')')
 
 let normalize_math_args args =
   let buf = Buffer.create (String.length args) in
