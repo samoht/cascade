@@ -55,8 +55,7 @@ let start_memtrace = function
               Fmt.epr "warning: memtrace stop failed (%s); skipping@." msg)
       with Failure msg ->
         Fmt.epr "warning: memtrace unavailable on this runtime (%s); skipping@."
-          msg
-      )
+          msg)
 
 let compare_files file1 file2 style_renderer mode memtrace_path =
   start_memtrace memtrace_path;

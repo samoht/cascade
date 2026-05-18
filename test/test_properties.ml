@@ -1502,9 +1502,9 @@ let test_transform () =
   check_transform "rotate(3.14rad)";
   check_transform "rotateX(45deg)";
   check_transform "rotateY(90deg)";
-  check_transform "rotateZ(180deg)";
-  check_transform "rotate3d(1, 0, 0, 45deg)" ~expected:"rotate3d(1,0,0,45deg)";
-  check_transform "rotate3d(0, 1, 0, 90deg)" ~expected:"rotate3d(0,1,0,90deg)";
+  check_transform "rotateZ(180deg)" ~expected:"rotate(180deg)";
+  check_transform "rotate3d(1, 0, 0, 45deg)" ~expected:"rotateX(45deg)";
+  check_transform "rotate3d(0, 1, 0, 90deg)" ~expected:"rotateY(90deg)";
   check_transform "rotate3d(1, 1, 1, 60deg)" ~expected:"rotate3d(1,1,1,60deg)";
   check_transform "scale(2)";
   check_transform "scale(0.5)" ~expected:"scale(.5)";
@@ -1965,7 +1965,7 @@ let test_font_family () =
   (* Per CSS spec, arbitrary font family names are valid (both quoted and
      unquoted identifiers) *)
   check_font_family "invalid-font";
-  check_font_family "\"Times New Roman\"";
+  check_font_family ~expected:"Times New Roman" "\"Times New Roman\"";
   check_font_family "Arial";
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";

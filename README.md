@@ -79,6 +79,7 @@ precision when the visual difference is negligible.
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
 - Modern color functions: `lab()`, `lch()`, `oklab()`, and `oklch()` may round lightness/chroma/a/b channels, hue, and alpha under `--minify`.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
+- Selector lists: sort branches into Cascade's canonical selector order (`div,.class,#id` -> `#id,.class,div`).
 - Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
 - Whitespace elided at safe token boundaries (`100% 0` -> `100%0`).
 - Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.

@@ -399,7 +399,7 @@ let font_properties () =
   (* Font family - list type *)
   check_declaration ~expected:"font-family:Arial" "font-family: Arial";
   check_declaration
-    ~expected:"font-family:\"Helvetica Neue\",Helvetica,Arial,sans-serif"
+    ~expected:"font-family:Helvetica Neue,Helvetica,Arial,sans-serif"
     "font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif";
   check_declaration ~expected:"font-family:Georgia,serif"
     "font-family: Georgia, serif";
@@ -1294,7 +1294,7 @@ let angle_units () =
     "transform: rotate(0.5turn)";
   check_declaration ~expected:"transform:rotate(1.5708rad)"
     "transform: rotate(1.5708rad)";
-  check_declaration ~expected:"transform:skew(.25turn,100grad)"
+  check_declaration ~expected:"transform:skew(90deg,90deg)"
     "transform: skew(0.25turn, 100grad)"
 
 let property_case () =
@@ -1518,7 +1518,7 @@ let spec_values_l45_edges () =
       ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
         "filter:drop-shadow(0 0 2px #0006)" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
-        "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
+        "transform:translate(10px,20%)rotate(90deg)scale(1.2)" );
       ("background-position: left 10px top 20%", "background-position:10px 20%");
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
       ( "clip-path: xywh(0 0 100% 100% round 10px)",

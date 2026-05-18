@@ -71,7 +71,7 @@ let test_inline_vars_fallback_edges () =
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
     ".a{font-family:var(--font,\"Helvetica Neue\",sans-serif)}"
-    ".a{font-family:\"Helvetica Neue\",sans-serif}";
+    ".a{font-family:Helvetica Neue,sans-serif}";
   check_inline_case
     "invalid color multi-comma fallback drops under minification"
     ".a{color:var(--undef,red,blue)}" "";

@@ -290,7 +290,7 @@ let test_map () =
   in
 
   let css = Css.to_string ~minify:true (v mapped) in
-  Alcotest.(check string) "map changes all rules" ".foo,.bar{color:#00f}" css
+  Alcotest.(check string) "map changes all rules" ".bar,.foo{color:#00f}" css
 
 (* Test Css.map with nested media queries *)
 let test_map_nested () =
