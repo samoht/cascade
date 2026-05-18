@@ -652,18 +652,37 @@ let strings_of_rule stmt =
       (selector_str, decls)
   | None -> ("", [])
 
-(* Helper to extract property-value pairs from declarations for comparison *)
-let decl_to_prop_value decl =
-  let name = Css.declaration_name decl in
-  (* Preserve original formatting to catch differences such as 0px vs 0 *)
-  let value = Css.declaration_value ~minify:false decl in
-  let value =
-    if Css.declaration_is_important decl then value ^ " !important" else value
-  in
-  (name, value)
+(* [decl_to_prop_value] is called O(N^2) times during cross-rule diffs and
+   allocates two [Pp.to_string] strings per call. Cache by physical
+   declaration identity; subsequent calls during the same diff reuse the
+   result. *)
+module Decl_tbl = Hashtbl.Make (struct
+  type t = Css.declaration
 
-(* Normalized signature of a declaration list for comparison/reordering
-   checks *)
+  let equal = ( == )
+  let hash = Hashtbl.hash
+end)
+
+let decl_to_prop_value_cache : (string * string) Decl_tbl.t ref =
+  ref (Decl_tbl.create 16)
+
+let reset_decl_cache () = decl_to_prop_value_cache := Decl_tbl.create 512
+
+let decl_to_prop_value decl =
+  let cache = !decl_to_prop_value_cache in
+  match Decl_tbl.find_opt cache decl with
+  | Some v -> v
+  | None ->
+      let name = Css.declaration_name decl in
+      let value = Css.declaration_value ~minify:false decl in
+      let value =
+        if Css.declaration_is_important decl then value ^ " !important"
+        else value
+      in
+      let r = (name, value) in
+      Decl_tbl.add cache decl r;
+      r
+
 let decls_signature (decls : Css.declaration list) =
   List.map decl_to_prop_value decls |> List.sort compare
 
@@ -1000,34 +1019,43 @@ let selectors_share_parent_ast sel1 sel2 =
   | _ -> false
 
 let selector_changes all_added_candidates all_removed_candidates =
-  (* Try to match removed rules with added rules for selector changes *)
+  (* Index added rules by their declaration signature so the inner loop is
+     a hashtable lookup, not a linear scan over [all_added_candidates].
+     With N removed and M added rules, the previous shape was O(N M)
+     [decls_signature] computations; now it's O(N + M) plus the per-bucket
+     scan for the share-parent check (buckets are typically small). *)
+  let added_by_props : (string list, Css.statement list) Hashtbl.t =
+    Hashtbl.create (List.length all_added_candidates)
+  in
+  List.iter
+    (fun added ->
+      let props = decls_signature (rule_declarations added) |> List.map snd in
+      let prev =
+        Hashtbl.find_opt added_by_props props |> Option.value ~default:[]
+      in
+      Hashtbl.replace added_by_props props (added :: prev))
+    all_added_candidates;
+  let added_with_props_sig sig_strings =
+    Hashtbl.find_opt added_by_props sig_strings |> Option.value ~default:[]
+  in
   let matched_added = ref [] in
   let matched_removed = ref [] in
   let changes = ref [] in
-
   List.iter
     (fun removed_rule ->
       let removed_sel = rule_selector removed_rule in
       let removed_decls = rule_declarations removed_rule in
-      let removed_props = decls_signature removed_decls in
-
-      (* Look for a matching added rule with same properties but different
-         selector *)
+      let removed_props =
+        decls_signature removed_decls |> List.map snd
+      in
       let matching_added =
         List.find_opt
           (fun added_rule ->
             let added_sel = rule_selector added_rule in
-            let added_decls = rule_declarations added_rule in
-            let added_props = decls_signature added_decls in
-
-            (* Same properties but different selectors that share parent
-               context *)
-            removed_props = added_props
-            && removed_sel <> added_sel
+            removed_sel <> added_sel
             && selectors_share_parent_ast removed_sel added_sel)
-          all_added_candidates
+          (added_with_props_sig removed_props)
       in
-
       match matching_added with
       | Some added_rule ->
           let added_sel = rule_selector added_rule in
@@ -1037,7 +1065,6 @@ let selector_changes all_added_candidates all_removed_candidates =
           matched_added := added_rule :: !matched_added
       | None -> ())
     all_removed_candidates;
-
   (!changes, !matched_added, !matched_removed)
 
 (* Filter other_modified to exclude changes already captured as selector
@@ -2059,6 +2086,7 @@ let detect_container_position_changes stmts1 stmts2 containers =
 
 (* Main diff function *)
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
+  reset_decl_cache ();
   let rules1 = Css.statements expected in
   let rules2 = Css.statements actual in
   let added, removed, modified = rule_diffs rules1 rules2 in
