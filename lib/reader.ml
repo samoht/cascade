@@ -140,12 +140,15 @@ let peek_utf8_at t offset =
   let p = t.pos + offset in
   if p >= t.len then None
   else
-    let len = min 4 (t.len - p) in
-    match first_utf8_chunk_at t.input p len with
-    | None -> None
-    | Some u ->
-        let cp = Uchar.to_int u in
-        Some (cp, utf8_byte_length cp)
+    let b = Char.code (String.unsafe_get t.input p) in
+    if b < 0x80 then Some (b, 1)
+    else
+      let len = min 4 (t.len - p) in
+      match first_utf8_chunk_at t.input p len with
+      | None -> None
+      | Some u ->
+          let cp = Uchar.to_int u in
+          Some (cp, utf8_byte_length cp)
 
 let peek_utf8 t = peek_utf8_at t 0
 

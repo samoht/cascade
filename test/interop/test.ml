@@ -273,6 +273,7 @@ let suite_name_of arg =
     Filename.basename trimmed
 
 let () =
+  (try Memtrace.trace_if_requested () with _ -> ());
   if Array.length Sys.argv < 2 then begin
     prerr_endline "usage: test.exe <interop-dir-or-trace> [alcotest-args...]";
     exit 2
