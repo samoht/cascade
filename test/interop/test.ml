@@ -209,28 +209,34 @@ let case record () =
             |> String.concat " "
           in
           (* Correctness gate: cascade output must be cascade-canonically
-             equivalent to the shortest oracle. A shorter-but-wrong cascade
-             output is a regression, not a win. *)
-          if
-            not
-              (Cascade_diff.Css_compare.equal ~mode:`Canonical shortest.raw
-                 actual)
-          then
-            Alcotest.failf
-              "cascade output not semantically equivalent to shortest oracle\n\
-              \    cascade:  %d bytes (vs %s: %d bytes)\n\
-              \    oracles:  %s\n\
-              \    inspect: cascade diff --diff=semantic <oracle> <cascade-output>"
-              actual_len shortest.tool shortest_len (oracle_summary ())
-          (* Size gate: cascade should be no longer than the shortest
-             oracle. *)
-          else if actual_len <= shortest_len then ()
-          else
-            Alcotest.failf
-              "cascade output longer than shortest oracle\n\
-              \    cascade:  %d bytes (vs %s: %d bytes)\n\
-              \    oracles:  %s"
-              actual_len shortest.tool shortest_len (oracle_summary ()))
+             equivalent to the shortest oracle. [actual] is already the
+             cascade-canonical form of [input] (we just produced it via
+             [cascade_minify]); cascade.minify is idempotent on its own
+             output, so we only need to canonicalise the oracle and string-
+             compare. This is ~2x faster than [Css_compare.equal Canonical]
+             which would re-parse and re-minify [actual] redundantly. *)
+          let oracle_canonical = cascade_minify shortest.raw in
+          match oracle_canonical with
+          | Error msg ->
+              Alcotest.failf "cascade cannot parse the shortest oracle (%s): %s"
+                shortest.tool msg
+          | Ok canonical when canonical <> actual ->
+              Alcotest.failf
+                "cascade output not semantically equivalent to shortest oracle\n\
+                \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                \    oracles:  %s\n\
+                \    inspect: cascade diff --diff=semantic <oracle> <cascade-output>"
+                actual_len shortest.tool shortest_len (oracle_summary ())
+          | Ok _ ->
+              (* Size gate: cascade should be no longer than the shortest
+                 oracle. *)
+              if actual_len <= shortest_len then ()
+              else
+                Alcotest.failf
+                  "cascade output longer than shortest oracle\n\
+                  \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                  \    oracles:  %s"
+                  actual_len shortest.tool shortest_len (oracle_summary ()))
 
 (* ===== alcotest wiring ===== *)
 
