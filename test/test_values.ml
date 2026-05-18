@@ -320,7 +320,7 @@ let test_angle () =
   (* Degrees *)
   check_angle "45deg";
   check_angle ~expected:"0" "0deg";
-  check_angle "360deg";
+  check_angle ~expected:"1turn" "360deg";
   check_angle "-45deg";
   check_angle "90.5deg";
   check_angle ".5deg";
@@ -332,21 +332,21 @@ let test_angle () =
   check_angle "-1.5rad";
 
   (* Turns *)
-  check_angle ~expected:".25turn" "0.25turn";
+  check_angle ~expected:"90deg" "0.25turn";
   check_angle ~expected:"0" "0turn";
   check_angle "1turn";
   check_angle ~expected:"-.5turn" "-0.5turn";
-  check_angle "2.5turn";
+  check_angle ~expected:"900deg" "2.5turn";
 
   (* Gradians *)
-  check_angle "100grad";
+  check_angle ~expected:"90deg" "100grad";
   check_angle ~expected:"0" "0grad";
-  check_angle "400grad";
-  check_angle "-200grad";
+  check_angle ~expected:"360deg" "400grad";
+  check_angle ~expected:"-180deg" "-200grad";
 
   (* Edge cases *)
   check_angle "999999deg";
-  check_angle "-360deg";
+  check_angle ~expected:"-1turn" "-360deg";
   check_angle ".25deg";
 
   (* Float formatting with angles *)

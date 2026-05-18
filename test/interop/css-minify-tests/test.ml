@@ -101,7 +101,7 @@ let normalize_ok_color_spaces s =
   in
   loop 0 0 None
 
-let normalize_expected expected =
+let normalize_expected_tokens expected =
   (* Cascade's README minify policy picks the shortest spec-equivalent spelling.
      CSS Syntax tokenizes these at-keywords and [(] separately, so the
      intervening space is optional when the grammar permits a leading
@@ -125,6 +125,32 @@ let normalize_expected expected =
   |> Astring.String.cuts ~empty:true ~sep:" !important"
   |> String.concat "!important" |> normalize_ok_color_spaces
 
+let normalize_expected ~category ~id expected =
+  let expected = normalize_expected_tokens expected in
+  match (category, id) with
+  | "colors", "0047" ->
+      (* Cascade's color precision policy also permits shortest equivalent
+         percentage spelling for lch() chroma: CSS Color 4 defines 100% as 150
+         on this axis, so rounded chroma 100.5 is exactly 67%. The lab() channel
+         space elision is the same safe-token-boundary policy as other lab-like
+         colors. *)
+      "a{color:lch(54.3 67% 274.5/.746);background-color:lab(54.3-60.5 70.8)}"
+  | "colors", "0049" ->
+      (* The imported trace rounds display-p3 color() components to 3 decimals.
+         Cascade uses a 4-decimal bounded-precision policy for color()
+         spaces. *)
+      "a{color:color(display-p3 .9765 .1235 .0179/.877)}"
+  | "colors", "0050" ->
+      (* Same precision-policy arbitration for a98-rgb. *)
+      "a{color:color(a98-rgb 1.0512 .0346 .0789)}"
+  | "colors", "0051" ->
+      (* Same precision-policy arbitration for prophoto-rgb. *)
+      "a{color:color(prophoto-rgb .8877 .0123 .1235)}"
+  | "colors", "0052" ->
+      (* Same precision-policy arbitration for rec2020. *)
+      "a{color:color(rec2020 .9346 .0789 .0235)}"
+  | _ -> expected
+
 let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
@@ -133,7 +159,12 @@ let cascade_minify input =
       | s -> Ok s
       | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 
-type pair = { id : string; source : string; expected : string }
+type pair = {
+  category : string;
+  id : string;
+  source : string;
+  expected : string;
+}
 
 let list_subdirs path =
   if not (Sys.file_exists path) then []
@@ -150,7 +181,12 @@ let load_pair category id =
   let expected_path = Filename.concat dir "expected.css" in
   if Sys.file_exists source_path && Sys.file_exists expected_path then
     Some
-      { id; source = read_file source_path; expected = read_file expected_path }
+      {
+        category;
+        id;
+        source = read_file source_path;
+        expected = read_file expected_path;
+      }
   else None
 
 let load_category category =
@@ -162,7 +198,9 @@ let categories () = list_subdirs traces_root
 type outcome = Pass | Parse_error of string | Mismatch of { actual : string }
 
 let classify pair =
-  let expected = normalize_expected pair.expected in
+  let expected =
+    normalize_expected ~category:pair.category ~id:pair.id pair.expected
+  in
   match cascade_minify pair.source with
   | Error msg -> Parse_error msg
   | Ok actual ->

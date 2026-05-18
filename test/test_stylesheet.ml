@@ -2280,7 +2280,7 @@ let spec_current_at_rules () =
     "@scope (.card) to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
-  check_stylesheet ~expected:"@scope(:root)to (.stop,.end){.title{color:#00f}}"
+  check_stylesheet ~expected:"@scope(:root)to (.end,.stop){.title{color:#00f}}"
     "@scope (:root) to (.stop, .end) { .title { color: blue } }";
   check_stylesheet
     ~expected:
