@@ -4070,6 +4070,10 @@ let rec pp_display : display Pp.t =
   | Multi (Inline, Block) when Pp.minified ctx -> Pp.string ctx "inline"
   | Multi (Run_in, Block) when Pp.minified ctx -> Pp.string ctx "run-in"
   | Multi (Block, Flow_root) when Pp.minified ctx -> Pp.string ctx "flow-root"
+  | Multi (Inline, Flow_root) when Pp.minified ctx ->
+      (* CSS Display 3 sec. 2.6: [inline flow-root] is the two-value
+         equivalent of the legacy [inline-block] keyword. *)
+      Pp.string ctx "inline-block"
   | Multi (Block, Flex) when Pp.minified ctx -> Pp.string ctx "flex"
   | Multi (Inline, Flex) when Pp.minified ctx -> Pp.string ctx "inline-flex"
   | Multi (Block, Grid) when Pp.minified ctx -> Pp.string ctx "grid"
