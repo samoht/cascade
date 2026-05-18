@@ -713,279 +713,10 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Parens inner -> Parens (map_calc f inner)
   | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
 
-(* Count the comma-separated argument groups in [s], ignoring commas inside
-   nested function calls / brackets. Used by math-function readers to validate
-   arity (clamp wants 3, minmax 2, min/max >= 1). *)
-let top_level_arg_count s =
-  let depth = ref 0 in
-  let groups = ref 1 in
-  let saw_any = ref false in
-  String.iter
-    (fun c ->
-      match c with
-      | '(' | '[' | '{' ->
-          incr depth;
-          saw_any := true
-      | ')' | ']' | '}' -> decr depth
-      | ',' when !depth = 0 -> incr groups
-      | ' ' | '\t' | '\n' | '\r' -> ()
-      | _ -> saw_any := true)
-    s;
-  if !saw_any then !groups else 0
-
 (* Top-level commas in math-function args round-trip differently in pretty vs
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
    are left untouched. *)
-(* Parse a [<number><unit>] dimension, like "1px" or "-.5em". Returns
-   [Some (value, unit)] for a clean numeric dimension, [None] otherwise. *)
-let simple_dimension_of_string s : (float * string) option =
-  let s = String.trim s in
-  let len = String.length s in
-  if len = 0 then Option.None
-  else
-    let i = ref 0 in
-    if !i < len && s.[!i] = '-' then incr i;
-    while !i < len && s.[!i] >= '0' && s.[!i] <= '9' do
-      incr i
-    done;
-    if !i < len && s.[!i] = '.' then (
-      incr i;
-      while !i < len && s.[!i] >= '0' && s.[!i] <= '9' do
-        incr i
-      done);
-    if !i = 0 || (!i = 1 && s.[0] = '-') then Option.None
-    else
-      let num_s = String.sub s 0 !i in
-      let unit_s = String.sub s !i (len - !i) in
-      try Option.Some (float_of_string num_s, unit_s)
-      with Failure _ -> Option.None
-
-(* Split [s] on top-level commas, ignoring commas inside nested parens. *)
-let split_top_level_commas s =
-  let parts = ref [] in
-  let buf = Buffer.create 16 in
-  let depth = ref 0 in
-  String.iter
-    (fun c ->
-      match c with
-      | '(' ->
-          incr depth;
-          Buffer.add_char buf c
-      | ')' ->
-          decr depth;
-          Buffer.add_char buf c
-      | ',' when !depth = 0 ->
-          parts := Buffer.contents buf :: !parts;
-          Buffer.clear buf
-      | _ -> Buffer.add_char buf c)
-    s;
-  parts := Buffer.contents buf :: !parts;
-  List.rev !parts
-
-(* Parse one [min()] / [max()] argument: either a simple dimension or a nested
-   [min()] / [max()] that itself reduces to a constant. *)
-let same_unit_min_max_pairs = function
-  | [] -> Option.None
-  | (_, first_unit) :: _ as pairs
-    when List.for_all (fun (_, unit) -> unit = first_unit) pairs ->
-      Option.Some (first_unit, pairs)
-  | _ -> Option.None
-
-let pick_min_max_value op pairs =
-  match op with
-  | `Min ->
-      List.fold_left (fun a (b, _) -> if b < a then b else a) infinity pairs
-  | `Max ->
-      List.fold_left (fun a (b, _) -> if b > a then b else a) neg_infinity pairs
-
-let reduce_min_max_pairs op pairs =
-  match same_unit_min_max_pairs pairs with
-  | Option.None -> Option.None
-  | Option.Some (first_unit, pairs) ->
-      Option.Some (pick_min_max_value op pairs, first_unit)
-
-let rec min_max_arg_of_string s : (float * string) option =
-  let s = String.trim s in
-  match simple_dimension_of_string s with
-  | Option.Some _ as r -> r
-  | Option.None ->
-      Option.fold
-        ~none:(try_min_max_call s "max" `Max)
-        ~some:(fun value -> Option.Some value)
-        (try_min_max_call s "min" `Min)
-
-and try_reduce_min_max op args : (float * string) option =
-  let parts = split_top_level_commas args in
-  match List.map min_max_arg_of_string parts with
-  | parsed when List.exists Option.is_none parsed -> Option.None
-  | parsed -> reduce_min_max_pairs op (List.filter_map (fun x -> x) parsed)
-
-and try_min_max_call s name op =
-  let len = String.length s in
-  let prefix = name ^ "(" in
-  let plen = String.length prefix in
-  if
-    len > plen && String.equal (String.sub s 0 plen) prefix && s.[len - 1] = ')'
-  then
-    let inner = String.sub s plen (len - plen - 1) in
-    try_reduce_min_max op inner
-  else Option.None
-
-let format_simple_dimension f unit =
-  Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
-
-let update_min_max_group op groups pos (n, unit) =
-  match Hashtbl.find_opt groups unit with
-  | Option.None -> Hashtbl.add groups unit (pos, n)
-  | Option.Some (old_pos, old_n) ->
-      let better = match op with `Min -> n < old_n | `Max -> n > old_n in
-      Hashtbl.replace groups unit
-        (if better then (old_pos, n) else (old_pos, old_n))
-
-let try_reduce_min_max_args op args =
-  let parts = split_top_level_commas args in
-  match List.map simple_dimension_of_string parts with
-  | parsed when List.exists Option.is_none parsed -> Option.None
-  | _ -> (
-      let groups = Hashtbl.create 4 in
-      List.iteri
-        (fun pos part ->
-          Option.iter
-            (fun item -> update_min_max_group op groups pos item)
-            (simple_dimension_of_string part))
-        parts;
-      let reduced =
-        Hashtbl.to_seq groups |> List.of_seq
-        |> List.sort (fun (_, (a, _)) (_, (b, _)) -> compare a b)
-        |> List.map (fun (unit, (_, n)) -> format_simple_dimension n unit)
-      in
-      match reduced with
-      | [] -> Option.None
-      | _ when List.length reduced = List.length parts -> Option.None
-      | _ -> Option.Some (String.concat "," reduced))
-
-let strip_top_level_calc_arg arg =
-  let arg = String.trim arg in
-  let prefix = "calc(" in
-  let plen = String.length prefix in
-  let len = String.length arg in
-  if
-    len > plen
-    && String.equal (String.sub arg 0 plen) prefix
-    && arg.[len - 1] = ')'
-  then String.sub arg plen (len - plen - 1)
-  else arg
-
-(* CSSOM serialisation (CSS Values 4 sec. 6.7.2) drops a leading zero on
-   fractional values ([.5rem], not [0.5rem]); apply that to fresh numbers under
-   minify. A digit-[0] is the start of a new number when the previous char is a
-   separator ([(], [,], whitespace, or a math operator). *)
-let is_leading_zero ~minify ~prev args i len =
-  minify
-  && i + 1 < len
-  && String.unsafe_get args i = '0'
-  && String.unsafe_get args (i + 1) = '.'
-  && i + 2 < len
-  && (match String.unsafe_get args (i + 2) with
-    | '0' .. '9' -> true
-    | _ -> false)
-  &&
-  match prev with
-  | '(' | ',' | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' -> true
-  | _ -> false
-
-let emit_math_args ctx args =
-  let buf = ctx.Pp.buf in
-  let depth = ref 0 in
-  let after_comma = ref false in
-  let minify = ctx.Pp.minify in
-  let prev = ref '(' in
-  let len = String.length args in
-  let i = ref 0 in
-  while !i < len do
-    let c = String.unsafe_get args !i in
-    (match c with
-    | '(' ->
-        after_comma := false;
-        incr depth;
-        Buffer.add_char buf c
-    | ')' ->
-        after_comma := false;
-        decr depth;
-        Buffer.add_char buf c
-    | ',' when !depth = 0 ->
-        after_comma := true;
-        Buffer.add_char buf ',';
-        if not minify then Buffer.add_char buf ' '
-    | ' ' when !after_comma -> ()
-    | _ when is_leading_zero ~minify ~prev:!prev args !i len ->
-        after_comma := false
-    | _ ->
-        after_comma := false;
-        Buffer.add_char buf c);
-    prev := c;
-    incr i
-  done
-
-let pp_math_call ctx name args =
-  let args =
-    if Pp.minified ctx then
-      match name with
-      | "min" -> Option.value ~default:args (try_reduce_min_max_args `Min args)
-      | "max" -> Option.value ~default:args (try_reduce_min_max_args `Max args)
-      | "clamp" ->
-          split_top_level_commas args
-          |> List.map strip_top_level_calc_arg
-          |> String.concat ","
-      | _ -> args
-    else args
-  in
-  (* CSS Values 4 sec. 10.7: [clamp(min, val, max)] degenerates to a single
-     value when [min = val = max] (the clamp window is a single point). *)
-  let degenerate =
-    Pp.minified ctx && name = "clamp"
-    &&
-    match split_top_level_commas args |> List.map String.trim with
-    | [ a; b; c ] when a = b && b = c -> true
-    | _ -> false
-  in
-  if degenerate then
-    let single =
-      match split_top_level_commas args with [ x; _; _ ] -> String.trim x | _ -> args
-    in
-    emit_math_args ctx single
-  else (
-    Pp.string ctx name;
-    Pp.char ctx '(';
-    emit_math_args ctx args;
-    Pp.char ctx ')')
-
-let normalize_math_args args =
-  let buf = Buffer.create (String.length args) in
-  let depth = ref 0 in
-  let after_comma = ref false in
-  String.iter
-    (fun c ->
-      match c with
-      | '(' ->
-          after_comma := false;
-          incr depth;
-          Buffer.add_char buf c
-      | ')' ->
-          after_comma := false;
-          decr depth;
-          Buffer.add_char buf c
-      | ',' when !depth = 0 ->
-          after_comma := true;
-          Buffer.add_char buf ','
-      | ' ' when !after_comma -> ()
-      | _ ->
-          after_comma := false;
-          Buffer.add_char buf c)
-    args;
-  Buffer.contents buf
-
 (* In a length calc tree, any zero-valued length and the unitless [0] are
    spec-equivalent additive identities; rewriting typed zeros to [Num 0.] lets
    the generic [eval_calc] simplifier collapse [calc(1px + 0px)] the same way it
@@ -1698,14 +1429,112 @@ let round_length_step strategy value step =
   | "to-zero" -> Float.trunc (value /. step) *. step
   | _ -> Float.round (value /. step) *. step
 
-let math_length = function Min _ | Max _ | Clamp _ -> true | _ -> false
+let math_length = function
+  | Min _ | Max _ | Clamp _ | Minmax _ -> true
+  | _ -> false
 
-let pp_min_max_length ~always ctx op name s =
-  if Pp.minified ctx then
-    match try_reduce_min_max op s with
-    | Some (v, u) -> pp_unit ~always ctx v u
-    | None -> pp_math_call ctx name s
-  else pp_math_call ctx name s
+(* Typed math-call printer: emit [name(arg1,arg2,...)] from a typed list of
+   length values, deferring to [pp_length] for each component (so nested
+   [calc()] / [var()] / [min()] / [clamp()] argument shapes Just Work). *)
+let pp_typed_math_call ctx name pp_arg args =
+  Pp.string ctx name;
+  Pp.char ctx '(';
+  let sep ctx () =
+    Pp.char ctx ',';
+    if not (Pp.minified ctx) then Pp.char ctx ' '
+  in
+  Pp.list ~sep pp_arg ctx args;
+  Pp.char ctx ')'
+
+(* CSS Values 4 sec. 10.7 [min()] / [max()] reduce when every argument is a
+   plain dimension of the same unit (so [min(1px, 2px)] -> [1px], [max(1em,
+   .5em, 2em)] -> [2em]). Mixed units or any non-literal argument (variables,
+   calc(), nested math) bail out and keep the function call. *)
+let length_simple_dimension : length -> (float * length) option = function
+  | Zero -> Some (0., Zero)
+  | Px f -> Some (f, Px 0.)
+  | Cm f -> Some (f, Cm 0.)
+  | Mm f -> Some (f, Mm 0.)
+  | Q f -> Some (f, Q 0.)
+  | In f -> Some (f, In 0.)
+  | Pt f -> Some (f, Pt 0.)
+  | Pc f -> Some (f, Pc 0.)
+  | Em f -> Some (f, Em 0.)
+  | Rem f -> Some (f, Rem 0.)
+  | Ex f -> Some (f, Ex 0.)
+  | Cap f -> Some (f, Cap 0.)
+  | Ic f -> Some (f, Ic 0.)
+  | Ric f -> Some (f, Ric 0.)
+  | Rlh f -> Some (f, Rlh 0.)
+  | Vw f -> Some (f, Vw 0.)
+  | Vh f -> Some (f, Vh 0.)
+  | Vmin f -> Some (f, Vmin 0.)
+  | Vmax f -> Some (f, Vmax 0.)
+  | Vi f -> Some (f, Vi 0.)
+  | Vb f -> Some (f, Vb 0.)
+  | Ch f -> Some (f, Ch 0.)
+  | Lh f -> Some (f, Lh 0.)
+  | Pct f -> Some (f, Pct 0.)
+  | _ -> None
+
+let with_length_value l v : length =
+  match l with
+  | Zero | Px _ -> Px v
+  | Cm _ -> Cm v
+  | Mm _ -> Mm v
+  | Q _ -> Q v
+  | In _ -> In v
+  | Pt _ -> Pt v
+  | Pc _ -> Pc v
+  | Em _ -> Em v
+  | Rem _ -> Rem v
+  | Ex _ -> Ex v
+  | Cap _ -> Cap v
+  | Ic _ -> Ic v
+  | Ric _ -> Ric v
+  | Rlh _ -> Rlh v
+  | Vw _ -> Vw v
+  | Vh _ -> Vh v
+  | Vmin _ -> Vmin v
+  | Vmax _ -> Vmax v
+  | Vi _ -> Vi v
+  | Vb _ -> Vb v
+  | Ch _ -> Ch v
+  | Lh _ -> Lh v
+  | Pct _ -> Pct v
+  | _ -> Px v
+
+let rec reduce_length_min_max : length -> length = function
+  | Min xs as orig -> (
+      let xs = List.map reduce_length_min_max xs in
+      match try_reduce_typed_min_max_simple xs Float.min with
+      | Some v -> v
+      | None ->
+          if xs = match orig with Min ys -> ys | _ -> [] then orig else Min xs)
+  | Max xs as orig -> (
+      let xs = List.map reduce_length_min_max xs in
+      match try_reduce_typed_min_max_simple xs Float.max with
+      | Some v -> v
+      | None ->
+          if xs = match orig with Max ys -> ys | _ -> [] then orig else Max xs)
+  | other -> other
+
+and try_reduce_typed_min_max_simple (xs : length list) reduce : length option =
+  let pairs = List.map length_simple_dimension xs in
+  if List.exists Option.is_none pairs then None
+  else
+    let pairs = List.filter_map (fun x -> x) pairs in
+    match pairs with
+    | [] -> None
+    | (_, sample) :: _ when List.for_all (fun (_, s) -> s = sample) pairs ->
+        let values = List.map fst pairs in
+        let reduced = List.fold_left reduce (List.hd values) (List.tl values) in
+        Some (with_length_value sample reduced)
+    | _ -> None
+
+let try_reduce_typed_min_max xs reduce =
+  let xs = List.map reduce_length_min_max xs in
+  try_reduce_typed_min_max_simple xs reduce
 
 let px_values values =
   List.fold_right
@@ -1788,10 +1617,22 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Medium -> Pp.string ctx "medium"
   | Thick -> Pp.string ctx "thick"
   | Stretch -> Pp.string ctx "stretch"
-  | Clamp s -> pp_math_call ctx "clamp" s
-  | Min s -> pp_min_max_length ~always ctx `Min "min" s
-  | Max s -> pp_min_max_length ~always ctx `Max "max" s
-  | Minmax s -> pp_math_call ctx "minmax" s
+  | Clamp (mn, v, mx) when Pp.minified ctx && mn = v && v = mx ->
+      pp_length ~always ctx v
+  | Clamp (mn, v, mx) ->
+      pp_typed_math_call ctx "clamp" (pp_length ~always) [ mn; v; mx ]
+  | Min xs when Pp.minified ctx -> (
+      match try_reduce_typed_min_max xs Float.min with
+      | Some reduced -> pp_length ~always ctx reduced
+      | None -> pp_typed_math_call ctx "min" (pp_length ~always) xs)
+  | Max xs when Pp.minified ctx -> (
+      match try_reduce_typed_min_max xs Float.max with
+      | Some reduced -> pp_length ~always ctx reduced
+      | None -> pp_typed_math_call ctx "max" (pp_length ~always) xs)
+  | Min xs -> pp_typed_math_call ctx "min" (pp_length ~always) xs
+  | Max xs -> pp_typed_math_call ctx "max" (pp_length ~always) xs
+  | Minmax (mn, mx) ->
+      pp_typed_math_call ctx "minmax" (pp_length ~always) [ mn; mx ]
   | Round (strategy, value, step) ->
       pp_round_length ~always ctx strategy value step
   | Mod (a, b) -> pp_mod_length ~always ctx a b
@@ -2930,15 +2771,13 @@ let shortest_angle_unit ctx unit f =
           let s = render cand in
           match acc with
           | Option.None -> Option.Some (cand, s)
-          | Option.Some (_, s_best)
-            when String.length s < String.length s_best ->
+          | Option.Some (_, s_best) when String.length s < String.length s_best
+            ->
               Option.Some (cand, s)
           | _ -> acc)
         Option.None candidates
     in
-    match best with
-    | Option.Some (cand, _) -> cand
-    | Option.None -> (unit, f)
+    match best with Option.Some (cand, _) -> cand | Option.None -> (unit, f)
 
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
@@ -4541,32 +4380,9 @@ let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 
 let read_numeric_expression t = read_num_expr t
 
-let read_raw_math_args inner =
-  Cursor.consume_remaining_as_string inner |> normalize_math_args
-
-let read_clamp_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s <> 3 then
-    Cursor.err_invalid inner "clamp() requires three comma-separated arguments";
-  Clamp s
-
-let read_minmax_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s <> 2 then
-    Cursor.err_invalid inner "minmax() requires two comma-separated arguments";
-  Minmax s
-
-let read_min_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s < 1 then
-    Cursor.err_invalid inner "min() requires at least one argument";
-  Min s
-
-let read_max_length inner =
-  let s = read_raw_math_args inner in
-  if top_level_arg_count s < 1 then
-    Cursor.err_invalid inner "max() requires at least one argument";
-  Max s
+(* The typed [clamp / minmax / min / max] length readers are part of the
+   [read_length] mutual-recursion group (see below); the function-call
+   dispatcher in [length_function_readers] references them. *)
 
 let read_round_strategy inner =
   let snap = Cursor.save inner in
@@ -4684,6 +4500,56 @@ and length_function_readers ~allow_negative ~with_keywords =
     ("anchor", read_anchor_length ~allow_negative ~with_keywords);
     ("attr", read_attr_length ~allow_negative ~with_keywords);
   ]
+
+and read_clamp_length inner =
+  Cursor.ws inner;
+  let min = read_length inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  Cursor.ws inner;
+  let value = read_length inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  Cursor.ws inner;
+  let max = read_length inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Clamp (min, value, max)
+
+and read_minmax_length inner =
+  Cursor.ws inner;
+  let min = read_length inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  Cursor.ws inner;
+  let max = read_length inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Minmax (min, max)
+
+and read_min_length inner =
+  let xs =
+    Cursor.list ~at_least:1 ~sep:Cursor.comma
+      (fun t ->
+        Cursor.ws t;
+        read_length t)
+      inner
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Min xs
+
+and read_max_length inner =
+  let xs =
+    Cursor.list ~at_least:1 ~sep:Cursor.comma
+      (fun t ->
+        Cursor.ws t;
+        read_length t)
+      inner
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Max xs
 
 and read_fit_content_length ~allow_negative ~with_keywords inner =
   Cursor.ws inner;

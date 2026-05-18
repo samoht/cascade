@@ -1170,24 +1170,6 @@ module Length = struct
     | Values.Px px when Float.equal px 0. -> Values.Zero
     | value -> value
 
-  let read_math_args s =
-    match
-      let cursor = Cursor.of_string s in
-      let args =
-        Cursor.list ~sep:Cursor.comma ~at_least:1
-          (fun cursor -> Values.read_length cursor)
-          cursor
-      in
-      Cursor.ws cursor;
-      Cursor.expect_eof cursor;
-      args
-    with
-    | args -> Some args
-    | exception Cursor.Parse_error _ -> None
-
-  let string_of_math_args args =
-    Pp.to_string ~minify:true (Pp.list ~sep:Pp.comma Values.pp_length) args
-
   let rec all_px ctx = function
     | [] -> Some []
     | value :: values -> (
@@ -1284,37 +1266,27 @@ module Length = struct
   let simplify_math_args simplify ~visited args =
     List.map (simplify ~visited) args
 
-  let simplify_length_min ctx simplify ~visited raw_args =
-    match read_math_args raw_args with
-    | None -> Values.Min raw_args
-    | Some args -> (
-        let args = simplify_math_args simplify ~visited args in
-        match all_px ctx args with
-        | Some (first :: rest) ->
-            normalize_zero (Values.Px (List.fold_left Float.min first rest))
-        | _ -> Values.Min (string_of_math_args args))
+  let simplify_length_min ctx simplify ~visited args =
+    let args = simplify_math_args simplify ~visited args in
+    match all_px ctx args with
+    | Some (first :: rest) ->
+        normalize_zero (Values.Px (List.fold_left Float.min first rest))
+    | _ -> Values.Min args
 
-  let simplify_length_max ctx simplify ~visited raw_args =
-    match read_math_args raw_args with
-    | None -> Values.Max raw_args
-    | Some args -> (
-        let args = simplify_math_args simplify ~visited args in
-        match all_px ctx args with
-        | Some (first :: rest) ->
-            normalize_zero (Values.Px (List.fold_left Float.max first rest))
-        | _ -> Values.Max (string_of_math_args args))
+  let simplify_length_max ctx simplify ~visited args =
+    let args = simplify_math_args simplify ~visited args in
+    match all_px ctx args with
+    | Some (first :: rest) ->
+        normalize_zero (Values.Px (List.fold_left Float.max first rest))
+    | _ -> Values.Max args
 
-  let simplify_length_clamp ctx simplify ~visited raw_args =
-    match read_math_args raw_args with
-    | Some [ min; preferred; max ] -> (
-        let args =
-          simplify_math_args simplify ~visited [ min; preferred; max ]
-        in
-        match all_px ctx args with
-        | Some [ min; preferred; max ] ->
-            normalize_zero (Values.Px (Float.max min (Float.min preferred max)))
-        | _ -> Values.Clamp (string_of_math_args args))
-    | _ -> Values.Clamp raw_args
+  let simplify_length_clamp ctx simplify ~visited (min, preferred, max) =
+    let args = simplify_math_args simplify ~visited [ min; preferred; max ] in
+    match (all_px ctx args, args) with
+    | Some [ min; preferred; max ], _ ->
+        normalize_zero (Values.Px (Float.max min (Float.min preferred max)))
+    | _, [ min; preferred; max ] -> Values.Clamp (min, preferred, max)
+    | _ -> Values.Clamp (min, preferred, max)
 
   let simplify ?(preserve_authored_calc = true) ?layer_order ?layer cascade ctx
       value =
@@ -1322,7 +1294,8 @@ module Length = struct
       match value with
       | Values.Min args -> simplify_length_min ctx simplify ~visited args
       | Values.Max args -> simplify_length_max ctx simplify ~visited args
-      | Values.Clamp args -> simplify_length_clamp ctx simplify ~visited args
+      | Values.Clamp (mn, v, mx) ->
+          simplify_length_clamp ctx simplify ~visited (mn, v, mx)
       | Values.Fit_content_arg value ->
           Values.Fit_content_arg (simplify ~visited value)
       | Values.Round (strategy, value, step) ->

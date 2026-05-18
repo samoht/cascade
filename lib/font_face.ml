@@ -57,10 +57,12 @@ let pp_src_modifiers ctx ~format ~tech =
   | Some f ->
       Pp.sp ctx ();
       Pp.string ctx "format(";
-      (* CSS Fonts 4 sec. 4.3: [format()] accepts a [<font-format>] keyword or
-         a [<string>]; under minify the unquoted keyword form is shorter for
-         the known formats ([woff2], [woff], [truetype], [opentype], ...). *)
-      if Pp.minified ctx && List.mem (String.lowercase_ascii f) known_format_keywords
+      (* CSS Fonts 4 sec. 4.3: [format()] accepts a [<font-format>] keyword or a
+         [<string>]; under minify the unquoted keyword form is shorter for the
+         known formats ([woff2], [woff], [truetype], [opentype], ...). *)
+      if
+        Pp.minified ctx
+        && List.mem (String.lowercase_ascii f) known_format_keywords
       then Pp.string ctx (String.lowercase_ascii f)
       else (
         Pp.char ctx '"';
@@ -111,13 +113,17 @@ and pp_src_entry ctx = function
          shorter when the family name parses as a valid [<custom-ident>]
          (alphanumeric + dashes, no leading digit, not a CSS-wide keyword). *)
       if
-        Pp.minified ctx && String.length name > 0
+        Pp.minified ctx
+        && String.length name > 0
         && String.for_all
              (function
                | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
                | _ -> false)
              name
-        && (match name.[0] with 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false)
+        &&
+        match name.[0] with
+        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+        | _ -> false
       then Pp.string ctx name
       else (
         Pp.char ctx '"';
