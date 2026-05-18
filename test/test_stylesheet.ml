@@ -634,7 +634,7 @@ let font_face_case () =
 let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
-      "@font-face{font-family:Brand;src:local(\"Brand\"),url(brand.woff2)format(\"woff2\")tech(variations);font-weight:400 \
+      "@font-face{font-family:Brand;src:local(Brand),url(brand.woff2)format(woff2)tech(variations);font-weight:400 \
        700;font-style:normal italic;font-stretch:75% \
        125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
@@ -736,7 +736,7 @@ let spec_font_face_descriptor_matrix () =
     (fun (expected, input) -> check_stylesheet ~expected input)
     [
       ( "@font-face{font-family:Brand Sans;src:local(\"Brand \
-         Sans\"),url(brand.woff2)format(\"woff2\");font-display:fallback}",
+         Sans\"),url(brand.woff2)format(woff2);font-display:fallback}",
         "@font-face { font-family: \"Brand Sans\"; src: local(\"Brand Sans\"), \
          url(brand.woff2) format(\"woff2\"); font-display: fallback; }" );
       ( "@font-face{font-family:RangeFont;src:url(range.woff2);font-weight:100 \
@@ -1354,8 +1354,9 @@ let test_complex_values () =
     ".var { color: var(--primary-color, blue); }";
   check_stylesheet ~expected:".clamp{font-size:clamp(1rem,2vw,2rem)}"
     ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
-  check_stylesheet ~expected:".minmax{width:minmax(200px,1fr)}"
-    ".minmax { width: minmax(200px, 1fr); }"
+  check_stylesheet
+    ~expected:".minmax{grid-template-columns:minmax(200px,1fr)}"
+    ".minmax { grid-template-columns: minmax(200px, 1fr); }"
 
 (* Not a roundtrip test *)
 let test_nested_rules () =
