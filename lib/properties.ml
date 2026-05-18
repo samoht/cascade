@@ -3531,6 +3531,22 @@ let rec pp_font_family : font_family Pp.t =
       let level_chars =
         match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
       in
+      (* CSS Fonts 4 sec. 4.1: [font-family] is a fallback list, so a
+         duplicate entry never wins under cascade resolution - drop it
+         under minify (the first occurrence keeps the source position). *)
+      let fonts =
+        if Pp.minified ctx then
+          let seen = Hashtbl.create 8 in
+          List.filter
+            (fun f ->
+              let key = Pp.to_string ~minify:true pp_font_family f in
+              if Hashtbl.mem seen key then false
+              else (
+                Hashtbl.add seen key ();
+                true))
+            fonts
+        else fonts
+      in
       Pp.list_wrap ~threshold:90 ~sep:Pp.comma ~wrap_indent:(level_chars + 2)
         pp_font_family ctx fonts
   | Invalid tokens ->
