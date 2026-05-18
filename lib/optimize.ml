@@ -1386,12 +1386,10 @@ let canonical_selector_key (sel : Selector.t) : string =
       |> List.sort String.compare |> String.concat ","
   | None -> Selector.to_string ~minify:true sel
 
-let canonical_selector_key_cached = canonical_selector_key
-
 let rules_have_same_selector (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   String.equal
-    (canonical_selector_key_cached prev.selector)
-    (canonical_selector_key_cached rule.selector)
+    (canonical_selector_key prev.selector)
+    (canonical_selector_key rule.selector)
   && not (contains_vendor_pseudo_element rule.selector)
 
 let merge_two_adjacent_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) :
@@ -1938,10 +1936,6 @@ let rule_factor_eligible (r : Stylesheet.rule) =
 
 let decl_property d = Declaration.property_name d
 
-(* Cache property names per declaration: [decl_property] allocates a Buffer
-   on every call. *)
-let prop_name_of = decl_property
-
 let merge_selector_list = function
   | [ s ] -> s
   | sels ->
@@ -1969,7 +1963,7 @@ let rule_pp_size (r : Stylesheet.rule) =
 let factorable_default rules prop =
   let decl_for r =
     List.find_opt
-      (fun d -> prop_name_of d = prop)
+      (fun d -> decl_property d = prop)
       r.Stylesheet_intf.declarations
   in
   match rules with
@@ -1987,13 +1981,13 @@ let factorable_default rules prop =
    override the shared default for elements matching both. *)
 let earlier_overrides_overlap ~summaries ~default decls i =
   let r_i_summary = Array.get summaries i in
-  let default_prop = prop_name_of default in
+  let default_prop = decl_property default in
   let rec loop j =
     if j >= i then false
     else
       let d_j =
         List.find_opt
-          (fun d -> prop_name_of d = default_prop)
+          (fun d -> decl_property d = default_prop)
           (Array.get decls j)
       in
       match d_j with
@@ -2021,7 +2015,7 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
       let common =
         List.filter_map
           (fun d ->
-            match factorable_default rules (prop_name_of d) with
+            match factorable_default rules (decl_property d) with
             | Some default -> Some default
             | None -> None)
           first.Stylesheet_intf.declarations
@@ -2039,9 +2033,9 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
         let leftover_for_rule i (r : Stylesheet.rule) =
           List.filter
             (fun d ->
-              let prop = prop_name_of d in
+              let prop = decl_property d in
               match
-                List.find_opt (fun d' -> prop_name_of d' = prop) common
+                List.find_opt (fun d' -> decl_property d' = prop) common
               with
               | None -> true
               | Some default -> keep_in_leftover ~default_decl:default ~i d)
@@ -2085,11 +2079,11 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
             | _ ->
                 List.exists
                   (fun d ->
-                    let prop = prop_name_of d in
+                    let prop = decl_property d in
                     List.for_all
                       (fun r' ->
                         List.exists
-                          (fun d' -> prop_name_of d' = prop)
+                          (fun d' -> decl_property d' = prop)
                           r'.Stylesheet_intf.declarations)
                       current)
                   r.declarations
