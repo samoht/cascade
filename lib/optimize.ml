@@ -1936,17 +1936,18 @@ let common_declarations rules =
   match rules with
   | [] -> []
   | first :: rest ->
-      (* A property is "common" when every rule in the group declares it; the
-         shared block carries the FIRST rule's declaration for that property,
-         and any rule whose value differs gets a follow-up override. *)
+      (* Default-picking the first rule's value when later rules redeclare the
+         same property with a DIFFERENT value is unsafe: a later rule whose
+         value happens to match [v_1] (e.g. [.a{red}.b{blue}.c{red}]) would
+         fold into the shared block at the first rule's position, dropping
+         its position-3 override of [.b]. Restrict the common set to
+         declarations that appear IDENTICALLY in every rule; this is
+         strictly safe and produces strictly shorter output. *)
       List.filter
         (fun d ->
-          let prop = Declaration.property_name d in
           List.for_all
             (fun r ->
-              List.exists
-                (fun d' -> Declaration.property_name d' = prop)
-                r.Stylesheet_intf.declarations)
+              List.mem d r.Stylesheet_intf.declarations)
             rest)
         first.Stylesheet_intf.declarations
 
@@ -1973,20 +1974,30 @@ let rule_leftover ~common (r : Stylesheet.rule) =
       | Some d' -> d <> d' (* same property, different value - override *))
     r.Stylesheet_intf.declarations
 
-(* Byte size of a printed rule: [<selector>{<decls>}]. *)
+(* Byte size of the printed rule [<selector>{<d1>;<d2>;...;<dn>}].
+   [decls_pp_string] concatenates declarations without separators - the [;]
+   between them is added by the rule printer at emission time, so we add
+   [n - 1] back here. *)
 let rule_pp_size (r : Stylesheet.rule) =
   let sel =
     Pp.to_string ~minify:true Selector.pp r.Stylesheet_intf.selector
   in
-  let decls = decls_pp_string r.declarations in
-  String.length sel + 2 + String.length decls
+  let decls = decls_pp_string r.Stylesheet_intf.declarations in
+  let separators =
+    match r.declarations with [] | [ _ ] -> 0 | _ :: rest -> List.length rest
+  in
+  String.length sel + 2 + String.length decls + separators
 
 let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
   match rules with
   | [] | [ _ ] -> rules
   | first :: _ ->
       let common = common_declarations rules in
-      if List.length common < 2 then rules
+      (* Even a single shared declaration is worth factoring out when the
+         byte budget says the result is no longer than the originals; the
+         exact size check below catches cases where factoring would
+         regress. *)
+      if common = [] then rules
       else
         let grouped : Stylesheet.rule =
           let selectors =
@@ -2028,12 +2039,12 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
           let acc = List.rev_append (factorise_group (List.rev current)) acc in
           group (r :: acc) [] rest
         else
-          let common_with_current () =
+          let has_common () =
             match current with
-            | [] -> List.length r.declarations
-            | _ -> List.length (common_declarations (List.rev (r :: current)))
+            | [] -> r.declarations <> []
+            | _ -> common_declarations (List.rev (r :: current)) <> []
           in
-          if common_with_current () >= 2 then group acc (r :: current) rest
+          if has_common () then group acc (r :: current) rest
           else
             let acc =
               List.rev_append (factorise_group (List.rev current)) acc
