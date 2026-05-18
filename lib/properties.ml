@@ -6907,15 +6907,41 @@ let pp_background_shorthand : background_shorthand Pp.t =
     | Some Transparent when Pp.minified ctx -> (None : color option)
     | color -> color
   in
+  (* CSS Backgrounds 3 sec. 3.10: drop longhands whose value equals the
+     [background] shorthand initial under minify - [repeat] (default for
+     [background-repeat]), [scroll] (default for [background-attachment]),
+     [padding-box] (default for [background-origin]), [border-box] (default
+     for [background-clip]). The resolved cascade value is unchanged. *)
+  let drop_default = Pp.minified ctx in
+  let repeat : background_repeat option =
+    match bg.repeat with
+    | Some Repeat when drop_default -> None
+    | other -> other
+  in
+  let attachment : background_attachment option =
+    match bg.attachment with
+    | Some Scroll when drop_default -> None
+    | other -> other
+  in
+  let origin : background_box option =
+    match bg.origin with
+    | Some Padding_box when drop_default -> None
+    | other -> other
+  in
+  let clip : background_box option =
+    match bg.clip with
+    | Some Border_box when drop_default -> None
+    | other -> other
+  in
 
   (* Add all properties in order *)
   pp_bg_prop maybe_space pp_background_image ctx image;
   pp_bg_prop maybe_space pp_background_position_value ctx position;
   pp_bg_size_with_position maybe_space bg ctx;
-  pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
-  pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
-  pp_bg_prop maybe_space pp_background_box ctx bg.origin;
-  pp_bg_prop maybe_space pp_background_box ctx bg.clip;
+  pp_bg_prop maybe_space pp_background_repeat ctx repeat;
+  pp_bg_prop maybe_space pp_background_attachment ctx attachment;
+  pp_bg_prop maybe_space pp_background_box ctx origin;
+  pp_bg_prop maybe_space pp_background_box ctx clip;
   pp_bg_prop maybe_space pp_color ctx color;
 
   (* If nothing was set, output 'none' *)
