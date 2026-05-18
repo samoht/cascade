@@ -18443,6 +18443,16 @@ let components_of_custom_property_value = function
 let pp_custom_property ctx (Custom_value { value; _ }) =
   pp_custom_property_value ctx value
 
+(* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
+   [min-block-size] have the [auto] keyword as their initial value (not the
+   generic [0]). Under minify [initial] rewrites to [auto] which is the
+   shorter shorter equivalent, and the typed value parses identically. *)
+let pp_length_min_max ctx (v : length_percentage) =
+  let v : length_percentage =
+    match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v
+  in
+  pp_length_percentage ctx v
+
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
   let pp pp_a = pp_a ctx value in
@@ -18490,15 +18500,15 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Row_gap -> pp pp_length
   | Width -> pp pp_length_percentage
   | Height -> pp pp_length_percentage
-  | Min_width -> pp pp_length_percentage
-  | Min_height -> pp pp_length_percentage
+  | Min_width -> pp pp_length_min_max
+  | Min_height -> pp pp_length_min_max
   | Max_width -> pp pp_length_percentage
   | Max_height -> pp pp_length_percentage
   | Inline_size -> pp pp_length_percentage
-  | Min_inline_size -> pp pp_length_percentage
+  | Min_inline_size -> pp pp_length_min_max
   | Max_inline_size -> pp pp_length_percentage
   | Block_size -> pp pp_length_percentage
-  | Min_block_size -> pp pp_length_percentage
+  | Min_block_size -> pp pp_length_min_max
   | Max_block_size -> pp pp_length_percentage
   | Font_size -> pp pp_font_size
   | Line_height -> pp pp_line_height
