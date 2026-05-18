@@ -189,10 +189,10 @@ type length =
   | Medium
   | Thick
   | Stretch
-  | Clamp of string
-  | Min of string
-  | Max of string
-  | Minmax of string
+  | Clamp of length * length * length
+  | Min of length list
+  | Max of length list
+  | Minmax of length * length
   | Round of string * length * length
   | Mod of length * length
   | Rem_fn of length * length

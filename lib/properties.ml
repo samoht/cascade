@@ -3444,8 +3444,8 @@ let rec pp_font_family : font_family Pp.t =
   | Josefin_sans -> Pp.string ctx "\"Josefin Sans\""
   (* Platform-specific fonts. Multi-word names emit unquoted under minify (CSS
      Fonts 4 sec. 4.1: a [<family-name>] of two or more [<custom-ident>] words
-     parses without quotes and is the shorter spelling). Pretty mode keeps
-     the quoted form for readability. *)
+     parses without quotes and is the shorter spelling). Pretty mode keeps the
+     quoted form for readability. *)
   | Helvetica -> Pp.string ctx "Helvetica"
   | Helvetica_neue -> pp_font_family_name ctx "Helvetica Neue"
   | Arial -> Pp.string ctx "Arial"
@@ -3492,10 +3492,10 @@ let rec pp_font_family : font_family Pp.t =
         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
         | _ -> false
       in
-      (* A single-word [Name] that matches a generic family / CSS-wide
-         keyword must stay quoted - dropping the quotes turns the
-         [<family-name>] into the generic keyword (different semantics in
-         [@font-face] and in [font-family] cascade). *)
+      (* A single-word [Name] that matches a generic family / CSS-wide keyword
+         must stay quoted - dropping the quotes turns the [<family-name>] into
+         the generic keyword (different semantics in [@font-face] and in
+         [font-family] cascade). *)
       let collides_with_keyword =
         List.mem (String.lowercase_ascii s)
           [
@@ -3522,8 +3522,10 @@ let rec pp_font_family : font_family Pp.t =
           ]
       in
       if Pp.minified ctx && can_unquote_font_family_name s then Pp.string ctx s
-      else if s = "" || not (String.for_all safe_ident_char s)
-              || collides_with_keyword
+      else if
+        s = ""
+        || (not (String.for_all safe_ident_char s))
+        || collides_with_keyword
       then Pp.quoted_string ctx s
       else Pp.string ctx s
   | Var v -> pp_var pp_font_family ctx v
@@ -3531,9 +3533,9 @@ let rec pp_font_family : font_family Pp.t =
       let level_chars =
         match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
       in
-      (* CSS Fonts 4 sec. 4.1: [font-family] is a fallback list, so a
-         duplicate entry never wins under cascade resolution - drop it
-         under minify (the first occurrence keeps the source position). *)
+      (* CSS Fonts 4 sec. 4.1: [font-family] is a fallback list, so a duplicate
+         entry never wins under cascade resolution - drop it under minify (the
+         first occurrence keeps the source position). *)
       let fonts =
         if Pp.minified ctx then
           let seen = Hashtbl.create 8 in
@@ -4080,15 +4082,15 @@ let rec pp_display : display Pp.t =
       Pp.string ctx "list-item"
   (* CSS Display 3 sec. 2: [<display-outside> <display-inside>] with
      [<display-inside>] = [flow] (encoded as the inner [Block] arm here)
-     collapses to just the outside keyword - [block flow] -> [block],
-     [inline flow] -> [inline]. *)
+     collapses to just the outside keyword - [block flow] -> [block], [inline
+     flow] -> [inline]. *)
   | Multi (Block, Block) when Pp.minified ctx -> Pp.string ctx "block"
   | Multi (Inline, Block) when Pp.minified ctx -> Pp.string ctx "inline"
   | Multi (Run_in, Block) when Pp.minified ctx -> Pp.string ctx "run-in"
   | Multi (Block, Flow_root) when Pp.minified ctx -> Pp.string ctx "flow-root"
   | Multi (Inline, Flow_root) when Pp.minified ctx ->
-      (* CSS Display 3 sec. 2.6: [inline flow-root] is the two-value
-         equivalent of the legacy [inline-block] keyword. *)
+      (* CSS Display 3 sec. 2.6: [inline flow-root] is the two-value equivalent
+         of the legacy [inline-block] keyword. *)
       Pp.string ctx "inline-block"
   | Multi (Block, Flex) when Pp.minified ctx -> Pp.string ctx "flex"
   | Multi (Inline, Flex) when Pp.minified ctx -> Pp.string ctx "inline-flex"
@@ -6401,11 +6403,11 @@ let pp_matrix_3d : _ Pp.t =
 let is_transform_var : transform -> bool = function Var _ -> true | _ -> false
 
 (* CSS Transforms 1 sec. 11: collapse a transform function to a shorter
-   equivalent when an axis is zero / unity / matches another. Spec-equivalent
-   in every case - they all map to the same matrix. *)
+   equivalent when an axis is zero / unity / matches another. Spec-equivalent in
+   every case - they all map to the same matrix. *)
 let canonicalise_transform : transform -> transform = function
-  | Translate_3d (x, y, z) when Values.length_is_zero y && Values.length_is_zero z
-    ->
+  | Translate_3d (x, y, z)
+    when Values.length_is_zero y && Values.length_is_zero z ->
       Translate (x, None)
   | Translate_3d (x, y, z)
     when Values.length_is_zero x && Values.length_is_zero z ->
@@ -6960,8 +6962,8 @@ let pp_background_shorthand : background_shorthand Pp.t =
   (* CSS Backgrounds 3 sec. 3.10: drop longhands whose value equals the
      [background] shorthand initial under minify - [repeat] (default for
      [background-repeat]), [scroll] (default for [background-attachment]),
-     [padding-box] (default for [background-origin]), [border-box] (default
-     for [background-clip]). The resolved cascade value is unchanged. *)
+     [padding-box] (default for [background-origin]), [border-box] (default for
+     [background-clip]). The resolved cascade value is unchanged. *)
   let drop_default = Pp.minified ctx in
   let repeat : background_repeat option =
     match bg.repeat with
@@ -9297,8 +9299,8 @@ let rec pp_timing_function : timing_function Pp.t =
   | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
       Pp.string ctx "ease-in-out"
   | Cubic_bezier (0.0, 0.0, 1.0, 1.0) when Pp.minified ctx ->
-      (* CSS Easing 1 sec. 3: [cubic-bezier(0, 0, 1, 1)] is the identity
-         curve, equivalent to the [linear] keyword. *)
+      (* CSS Easing 1 sec. 3: [cubic-bezier(0, 0, 1, 1)] is the identity curve,
+         equivalent to the [linear] keyword. *)
       Pp.string ctx "linear"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
   | Timing_functions timings ->
@@ -10469,10 +10471,9 @@ let rec read_flex_flow t : flex_flow =
       let wrap : flex_wrap option ref = ref (None : flex_wrap option) in
       let seen = ref false in
       (* CSS Flexbox 1 sec. 6.3: [flex-flow] is at most two values
-         ([flex-direction] || [flex-wrap]). Stop once both slots are
-         filled, and break on the first iteration where neither matches
-         instead of letting [read_flex_flow_part] raise on the trailing
-         [;] / [!important]. *)
+         ([flex-direction] || [flex-wrap]). Stop once both slots are filled, and
+         break on the first iteration where neither matches instead of letting
+         [read_flex_flow_part] raise on the trailing [;] / [!important]. *)
       let rec loop () =
         Cursor.ws t;
         if Cursor.is_done t then ()
@@ -11284,8 +11285,8 @@ let rec read_text_overflow t : text_overflow =
         Cursor.ws t;
         (* CSS Text 4 sec. 9.1 two-value form. The declaration cursor extends
            past the value (the [;] / [!important] / [}] terminator is the
-           caller's concern), so [Cursor.is_done] is the wrong gate here: try
-           to read a second value, restore on failure. *)
+           caller's concern), so [Cursor.is_done] is the wrong gate here: try to
+           read a second value, restore on failure. *)
         match
           try Some (Cursor.lookahead (fun t -> Some (read_single t)) t)
           with _ -> None
@@ -14019,12 +14020,12 @@ let font_family_all_enums : (string * font_family) list =
 let font_family_lookup_key name =
   name |> String.lowercase_ascii |> String.map (function ' ' -> '-' | c -> c)
 
-(* The unquoted single-word lookup matches generic family keywords; a
-   quoted name is always a [<custom-ident>] by spec, so it preserves the
-   user's intent even when its text matches a generic keyword
-   ([font-family: "serif"] is a custom family named "serif", not the
-   [serif] generic). Multi-word quoted names still match the platform-name
-   table since those entries are not keywords. *)
+(* The unquoted single-word lookup matches generic family keywords; a quoted
+   name is always a [<custom-ident>] by spec, so it preserves the user's intent
+   even when its text matches a generic keyword ([font-family: "serif"] is a
+   custom family named "serif", not the [serif] generic). Multi-word quoted
+   names still match the platform-name table since those entries are not
+   keywords. *)
 let font_family_of_quoted_name name =
   match List.assoc_opt (font_family_lookup_key name) font_family_all_enums with
   | Some family when String.contains name ' ' -> family
@@ -18484,8 +18485,8 @@ let pp_custom_property ctx (Custom_value { value; _ }) =
 
 (* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
    [min-block-size] have the [auto] keyword as their initial value (not the
-   generic [0]). Under minify [initial] rewrites to [auto] which is the
-   shorter shorter equivalent, and the typed value parses identically. *)
+   generic [0]). Under minify [initial] rewrites to [auto] which is the shorter
+   shorter equivalent, and the typed value parses identically. *)
 let pp_length_min_max ctx (v : length_percentage) =
   let v : length_percentage =
     match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v

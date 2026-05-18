@@ -997,11 +997,11 @@ let selectors_share_parent_ast sel1 sel2 =
   | _ -> false
 
 let selector_changes all_added_candidates all_removed_candidates =
-  (* Index added rules by their declaration signature so the inner loop is
-     a hashtable lookup, not a linear scan over [all_added_candidates].
-     With N removed and M added rules, the previous shape was O(N M)
-     [decls_signature] computations; now it's O(N + M) plus the per-bucket
-     scan for the share-parent check (buckets are typically small). *)
+  (* Index added rules by their declaration signature so the inner loop is a
+     hashtable lookup, not a linear scan over [all_added_candidates]. With N
+     removed and M added rules, the previous shape was O(N M) [decls_signature]
+     computations; now it's O(N + M) plus the per-bucket scan for the
+     share-parent check (buckets are typically small). *)
   let added_by_props : (string list, Css.statement list) Hashtbl.t =
     Hashtbl.create (List.length all_added_candidates)
   in
@@ -1023,9 +1023,7 @@ let selector_changes all_added_candidates all_removed_candidates =
     (fun removed_rule ->
       let removed_sel = rule_selector removed_rule in
       let removed_decls = rule_declarations removed_rule in
-      let removed_props =
-        decls_signature removed_decls |> List.map snd
-      in
+      let removed_props = decls_signature removed_decls |> List.map snd in
       let matching_added =
         List.find_opt
           (fun added_rule ->
