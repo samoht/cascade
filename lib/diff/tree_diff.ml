@@ -652,36 +652,15 @@ let strings_of_rule stmt =
       (selector_str, decls)
   | None -> ("", [])
 
-(* [decl_to_prop_value] is called O(N^2) times during cross-rule diffs and
-   allocates two [Pp.to_string] strings per call. Cache by physical
-   declaration identity; subsequent calls during the same diff reuse the
-   result. *)
-module Decl_tbl = Hashtbl.Make (struct
-  type t = Css.declaration
-
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
-
-let decl_to_prop_value_cache : (string * string) Decl_tbl.t ref =
-  ref (Decl_tbl.create 16)
-
-let reset_decl_cache () = decl_to_prop_value_cache := Decl_tbl.create 512
+let reset_decl_cache () = ()
 
 let decl_to_prop_value decl =
-  let cache = !decl_to_prop_value_cache in
-  match Decl_tbl.find_opt cache decl with
-  | Some v -> v
-  | None ->
-      let name = Css.declaration_name decl in
-      let value = Css.declaration_value ~minify:false decl in
-      let value =
-        if Css.declaration_is_important decl then value ^ " !important"
-        else value
-      in
-      let r = (name, value) in
-      Decl_tbl.add cache decl r;
-      r
+  let name = Css.declaration_name decl in
+  let value = Css.declaration_value ~minify:false decl in
+  let value =
+    if Css.declaration_is_important decl then value ^ " !important" else value
+  in
+  (name, value)
 
 let decls_signature (decls : Css.declaration list) =
   List.map decl_to_prop_value decls |> List.sort compare
@@ -999,39 +978,20 @@ let ordering_diff rules1 rules2 =
 
   find_ordering_issues [] map1 map2
 
-(* [extract_base_parent_selector] is called by every [selector_changes]
-   bucket scan; each call previously allocated a [to_string] result. Cache
-   per selector AST. *)
-module Sel_tbl = Hashtbl.Make (struct
-  type t = Css.Selector.t
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end)
-
-let parent_cache : string option Sel_tbl.t ref = ref (Sel_tbl.create 16)
-let reset_parent_cache () = parent_cache := Sel_tbl.create 512
+let reset_parent_cache () = ()
 
 let extract_base_parent_selector sel =
-  let cache = !parent_cache in
-  match Sel_tbl.find_opt cache sel with
-  | Some v -> v
-  | None ->
-      let sel_str = Css.Selector.to_string sel in
-      let v =
-        match String.index_opt sel_str ' ' with
-        | None -> None
-        | Some sp ->
-            let parent = String.sub sel_str 0 sp in
-            let stripped =
-              match String.index_opt parent ':' with
-              | Some idx -> String.sub parent 0 idx
-              | None -> parent
-            in
-            Some stripped
+  let sel_str = Css.Selector.to_string sel in
+  match String.index_opt sel_str ' ' with
+  | None -> None
+  | Some sp ->
+      let parent = String.sub sel_str 0 sp in
+      let stripped =
+        match String.index_opt parent ':' with
+        | Some idx -> String.sub parent 0 idx
+        | None -> parent
       in
-      Sel_tbl.add cache sel v;
-      v
+      Some stripped
 
 let selectors_share_parent_ast sel1 sel2 =
   match

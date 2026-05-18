@@ -1386,27 +1386,7 @@ let canonical_selector_key (sel : Selector.t) : string =
       |> List.sort String.compare |> String.concat ","
   | None -> Selector.to_string ~minify:true sel
 
-(* [merge_adjacent] calls [canonical_selector_key] on every pair of adjacent
-   rules; each call serialises the whole selector through [Pp.to_string]. For
-   a stylesheet with N rules that's O(N) selector serialisations, dominating
-   minify allocations. Cache per selector AST so each rule's key is computed
-   once across the whole minify run. *)
-module Sel_tbl = Hashtbl.Make (struct
-  type t = Selector.t
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end)
-
-let canonical_selector_key_cache : string Sel_tbl.t = Sel_tbl.create 256
-
-let canonical_selector_key_cached sel =
-  match Sel_tbl.find_opt canonical_selector_key_cache sel with
-  | Some s -> s
-  | None ->
-      let s = canonical_selector_key sel in
-      Sel_tbl.add canonical_selector_key_cache sel s;
-      s
+let canonical_selector_key_cached = canonical_selector_key
 
 let rules_have_same_selector (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   String.equal
@@ -1952,30 +1932,15 @@ let decls_pp_string ds =
   Pp.to_string ~minify:true pp ds
 
 let rule_factor_eligible (r : Stylesheet.rule) =
-  r.nested = [] && r.merge_key = None && not (should_not_combine r.selector)
+  r.nested = [] && r.merge_key = None
+  && (not (should_not_combine r.selector))
+  && not (List.exists is_all_declaration r.declarations)
 
 let decl_property d = Declaration.property_name d
 
 (* Cache property names per declaration: [decl_property] allocates a Buffer
-   on every call, so factorisation's nested loops generate 100s of MB without
-   caching. Use a physical-equality Hashtbl - declarations are immutable
-   records so structural hash + [(==)] equality is safe. *)
-module Decl_tbl = Hashtbl.Make (struct
-  type t = Declaration.declaration
-
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
-
-let decl_property_cache : string Decl_tbl.t = Decl_tbl.create 256
-
-let prop_name_of decl =
-  match Decl_tbl.find_opt decl_property_cache decl with
-  | Some s -> s
-  | None ->
-      let s = decl_property decl in
-      Decl_tbl.add decl_property_cache decl s;
-      s
+   on every call. *)
+let prop_name_of = decl_property
 
 let merge_selector_list = function
   | [ s ] -> s
