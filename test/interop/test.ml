@@ -208,13 +208,9 @@ let case record () =
               record.oracles
             |> String.concat " "
           in
-          (* Correctness gate: cascade output must be cascade-canonically
-             equivalent to the shortest oracle. [actual] is already the
-             cascade-canonical form of [input] (we just produced it via
-             [cascade_minify]); cascade.minify is idempotent on its own
-             output, so we only need to canonicalise the oracle and string-
-             compare. This is ~2x faster than [Css_compare.equal Canonical]
-             which would re-parse and re-minify [actual] redundantly. *)
+          (* Correctness gate: canonicalise the oracle once via cascade.minify
+             and string-compare against [actual]. [actual] is already cascade-
+             canonical so no second minify is needed. *)
           let oracle_canonical = cascade_minify shortest.raw in
           match oracle_canonical with
           | Error msg ->
@@ -228,8 +224,6 @@ let case record () =
                 \    inspect: cascade diff --diff=semantic <oracle> <cascade-output>"
                 actual_len shortest.tool shortest_len (oracle_summary ())
           | Ok _ ->
-              (* Size gate: cascade should be no longer than the shortest
-                 oracle. *)
               if actual_len <= shortest_len then ()
               else
                 Alcotest.failf
