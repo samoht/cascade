@@ -1441,33 +1441,17 @@ let rec has_descendant_pseudo_element : Selector.t -> bool = function
   | List sels -> List.exists has_descendant_pseudo_element sels
   | _ -> false
 
-(* Check if a selector has a descendant combinator that would make combining
-   unsafe. Descendant combinators where the ancestor is :where() are safe
-   because :where() has zero specificity and is always valid in selector lists
-   (e.g., :where(.group) .in-[.group]:flex). *)
-let rec has_descendant_combinator : Selector.t -> bool = function
-  | Combined (Where _, Descendant, _) -> false
-  | Combined (_, Descendant, _) -> true
-  | Compound sels -> List.exists has_descendant_combinator sels
-  | List sels -> List.exists has_descendant_combinator sels
-  | _ -> false
-
 let should_not_combine selector =
-  (* Already a list selector - don't combine *)
+  (* Already a list selector: nothing to combine. *)
   Selector.is_compound_list selector
-  (* Check if selector contains vendor-specific pseudo-elements These should not
-     be grouped because: - If one selector in a group is invalid in a browser,
-     the entire rule fails - Keeping them separate ensures maximum browser
-     compatibility *)
+  (* Vendor-prefixed pseudo-elements ([::-webkit-...]) are kept on their own
+     rule: if any selector in a list is invalid in a browser, the whole list
+     fails parsing, so grouping them with vendor-specific ones would break
+     cross-browser compatibility. *)
   || contains_vendor_pseudo_element selector
-  (* Descendant pseudo-element selectors (.x ::marker) must not be combined with
-     direct ones (.x::marker) — they target different elements *)
+  (* [.x ::marker] (descendant pseudo-element) must not be combined with
+     [.x::marker] (direct pseudo-element): they target different elements. *)
   || has_descendant_pseudo_element selector
-  ||
-  (* Descendant combinator selectors (e.g., .prose :where(ol[type=i
-     s]):not(...)) should not be combined — Tailwind keeps them separate even
-     with identical declarations, to match tailwindcss output exactly. *)
-  has_descendant_combinator selector
 
 (* Count the modifier depth (number of ':' separators) in a class name. E.g.,
    "group-focus:flex" has depth 1, "group-focus:group-hover:flex" has depth 2.
