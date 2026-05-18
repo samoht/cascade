@@ -2272,8 +2272,16 @@ let rec top_level_is_unwrap : t -> t = function
       List expanded
   | other -> other
 
-let to_string ?minify t = Pp.to_string ?minify pp t
-let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
+(* Apply the top-level [:is()] unwrap under [minify] so callers that go
+   through the typed selector API see the same canonical form that pp_rule
+   emits. *)
+let to_string ?minify t =
+  let t = if minify = Some true then top_level_is_unwrap t else t in
+  Pp.to_string ?minify pp t
+
+let to_buffer ?minify buf t =
+  let t = if minify = Some true then top_level_is_unwrap t else t in
+  Pp.to_buffer ?minify buf pp t
 
 (** Recursively map over all selectors in the tree *)
 let rec map f = function
