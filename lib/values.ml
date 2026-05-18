@@ -2893,15 +2893,55 @@ let rec pp_channel : channel Pp.t =
       Pp.char ctx '%'
   | Var v -> pp_var pp_channel ctx v
 
+(* Pick the shortest [<angle>] spelling under minify. Convert to [deg] / [turn]
+   when that produces a shorter token; otherwise keep the authored unit. Skip
+   the conversion when the float doesn't round to a clean decimal in the target
+   unit (e.g. [1rad] = [57.295779...deg] is longer). *)
+let shortest_angle_unit ctx unit f =
+  if not (Pp.minified ctx) then (unit, f)
+  else
+    let candidates =
+      match unit with
+      | "deg" -> [ ("deg", f); ("turn", f /. 360.) ]
+      | "turn" -> [ ("turn", f); ("deg", f *. 360.) ]
+      | "rad" -> [ ("rad", f) ]
+      | "grad" -> [ ("grad", f); ("deg", f *. 0.9) ]
+      | u -> [ (u, f) ]
+    in
+    let render (u, v) = Pp.string_of_float ~drop_leading_zero:true v ^ u in
+    let best : ((string * float) * string) option =
+      List.fold_left
+        (fun acc cand ->
+          let s = render cand in
+          match acc with
+          | Option.None -> Option.Some (cand, s)
+          | Option.Some (_, s_best)
+            when String.length s < String.length s_best ->
+              Option.Some (cand, s)
+          | _ -> acc)
+        Option.None candidates
+    in
+    match best with
+    | Option.Some (cand, _) -> cand
+    | Option.None -> (unit, f)
+
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
   (* CSS Values 4 sec. 10.3: an [<angle>] grammar position accepts the [<zero>]
      token (a unitless [0]); under cascade's README minify policy a zero-angle
      drops the unit. The non-zero arms always emit the unit. *)
-  | Deg f -> pp_unit ~always:false ctx f "deg"
-  | Rad f -> pp_unit ~always:false ctx f "rad"
-  | Turn f -> pp_unit ~always:false ctx f "turn"
-  | Grad f -> pp_unit ~always:false ctx f "grad"
+  | Deg f ->
+      let u, f = shortest_angle_unit ctx "deg" f in
+      pp_unit ~always:false ctx f u
+  | Rad f ->
+      let u, f = shortest_angle_unit ctx "rad" f in
+      pp_unit ~always:false ctx f u
+  | Turn f ->
+      let u, f = shortest_angle_unit ctx "turn" f in
+      pp_unit ~always:false ctx f u
+  | Grad f ->
+      let u, f = shortest_angle_unit ctx "grad" f in
+      pp_unit ~always:false ctx f u
   | Round (strategy, Deg value, Deg step) when Pp.minified ctx && step <> 0. ->
       pp_angle ctx (Deg (round_to_step strategy value step))
   | Round (strategy, value, step) ->

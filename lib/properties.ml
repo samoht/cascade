@@ -3373,6 +3373,13 @@ let is_font_family_ident_word s =
   && (not (len >= 2 && s.[0] = '-' && is_digit s.[1]))
   && String.for_all is_ident_char s
 
+let pp_font_family_name ctx s =
+  if Pp.minified ctx then Pp.string ctx s
+  else (
+    Pp.char ctx '"';
+    Pp.string ctx s;
+    Pp.char ctx '"')
+
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
@@ -3435,42 +3442,45 @@ let rec pp_font_family : font_family Pp.t =
   | Barlow -> Pp.string ctx "Barlow"
   | Mulish -> Pp.string ctx "Mulish"
   | Josefin_sans -> Pp.string ctx "\"Josefin Sans\""
-  (* Platform-specific fonts *)
+  (* Platform-specific fonts. Multi-word names emit unquoted under minify (CSS
+     Fonts 4 sec. 4.1: a [<family-name>] of two or more [<custom-ident>] words
+     parses without quotes and is the shorter spelling). Pretty mode keeps
+     the quoted form for readability. *)
   | Helvetica -> Pp.string ctx "Helvetica"
-  | Helvetica_neue -> Pp.string ctx "\"Helvetica Neue\""
+  | Helvetica_neue -> pp_font_family_name ctx "Helvetica Neue"
   | Arial -> Pp.string ctx "Arial"
   | Verdana -> Pp.string ctx "Verdana"
   | Tahoma -> Pp.string ctx "Tahoma"
-  | Trebuchet_ms -> Pp.string ctx "\"Trebuchet MS\""
-  | Times_new_roman -> Pp.string ctx "\"Times New Roman\""
+  | Trebuchet_ms -> pp_font_family_name ctx "Trebuchet MS"
+  | Times_new_roman -> pp_font_family_name ctx "Times New Roman"
   | Times -> Pp.string ctx "Times"
   | Georgia -> Pp.string ctx "Georgia"
   | Cambria -> Pp.string ctx "Cambria"
   | Garamond -> Pp.string ctx "Garamond"
-  | Courier_new -> Pp.string ctx "\"Courier New\""
+  | Courier_new -> pp_font_family_name ctx "Courier New"
   | Courier -> Pp.string ctx "Courier"
-  | Lucida_console -> Pp.string ctx "\"Lucida Console\""
-  | SF_pro -> Pp.string ctx "\"SF Pro\""
-  | SF_pro_display -> Pp.string ctx "\"SF Pro Display\""
-  | SF_pro_text -> Pp.string ctx "\"SF Pro Text\""
-  | SF_mono -> Pp.string ctx "\"SF Mono\""
-  | NY -> Pp.string ctx "\"New York\""
-  | Segoe_ui -> Pp.string ctx "\"Segoe UI\""
-  | Segoe_ui_emoji -> Pp.string ctx "\"Segoe UI Emoji\""
-  | Segoe_ui_symbol -> Pp.string ctx "\"Segoe UI Symbol\""
-  | Apple_color_emoji -> Pp.string ctx "\"Apple Color Emoji\""
-  | Noto_color_emoji -> Pp.string ctx "\"Noto Color Emoji\""
-  | Android_emoji -> Pp.string ctx "\"Android Emoji\""
-  | Twemoji_mozilla -> Pp.string ctx "\"Twemoji Mozilla\""
+  | Lucida_console -> pp_font_family_name ctx "Lucida Console"
+  | SF_pro -> pp_font_family_name ctx "SF Pro"
+  | SF_pro_display -> pp_font_family_name ctx "SF Pro Display"
+  | SF_pro_text -> pp_font_family_name ctx "SF Pro Text"
+  | SF_mono -> pp_font_family_name ctx "SF Mono"
+  | NY -> pp_font_family_name ctx "New York"
+  | Segoe_ui -> pp_font_family_name ctx "Segoe UI"
+  | Segoe_ui_emoji -> pp_font_family_name ctx "Segoe UI Emoji"
+  | Segoe_ui_symbol -> pp_font_family_name ctx "Segoe UI Symbol"
+  | Apple_color_emoji -> pp_font_family_name ctx "Apple Color Emoji"
+  | Noto_color_emoji -> pp_font_family_name ctx "Noto Color Emoji"
+  | Android_emoji -> pp_font_family_name ctx "Android Emoji"
+  | Twemoji_mozilla -> pp_font_family_name ctx "Twemoji Mozilla"
   (* Developer fonts *)
   | Menlo -> Pp.string ctx "Menlo"
   | Monaco -> Pp.string ctx "Monaco"
   | Consolas -> Pp.string ctx "Consolas"
-  | Liberation_mono -> Pp.string ctx "\"Liberation Mono\""
+  | Liberation_mono -> pp_font_family_name ctx "Liberation Mono"
   | SFMono_regular -> Pp.string ctx "SFMono-Regular"
-  | Cascadia_code -> Pp.string ctx "\"Cascadia Code\""
-  | Cascadia_mono -> Pp.string ctx "\"Cascadia Mono\""
-  | Victor_mono -> Pp.string ctx "\"Victor Mono\""
+  | Cascadia_code -> pp_font_family_name ctx "Cascadia Code"
+  | Cascadia_mono -> pp_font_family_name ctx "Cascadia Mono"
+  | Victor_mono -> pp_font_family_name ctx "Victor Mono"
   | Inconsolata -> Pp.string ctx "Inconsolata"
   | Hack -> Pp.string ctx "Hack"
   (* CSS keywords *)
@@ -4022,6 +4032,13 @@ let rec pp_display : display Pp.t =
       pp_display_inside ctx inside;
       Pp.space ctx ();
       Pp.string ctx "list-item"
+  (* CSS Display 3 sec. 2: [<display-outside> <display-inside>] with
+     [<display-inside>] = [flow] (encoded as the inner [Block] arm here)
+     collapses to just the outside keyword - [block flow] -> [block],
+     [inline flow] -> [inline]. *)
+  | Multi (Block, Block) when Pp.minified ctx -> Pp.string ctx "block"
+  | Multi (Inline, Block) when Pp.minified ctx -> Pp.string ctx "inline"
+  | Multi (Run_in, Block) when Pp.minified ctx -> Pp.string ctx "run-in"
   | Multi (Block, Flow_root) when Pp.minified ctx -> Pp.string ctx "flow-root"
   | Multi (Block, Flex) when Pp.minified ctx -> Pp.string ctx "flex"
   | Multi (Inline, Flex) when Pp.minified ctx -> Pp.string ctx "inline-flex"
@@ -9203,6 +9220,10 @@ let rec pp_timing_function : timing_function Pp.t =
       Pp.string ctx "ease-out"
   | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
       Pp.string ctx "ease-in-out"
+  | Cubic_bezier (0.0, 0.0, 1.0, 1.0) when Pp.minified ctx ->
+      (* CSS Easing 1 sec. 3: [cubic-bezier(0, 0, 1, 1)] is the identity
+         curve, equivalent to the [linear] keyword. *)
+      Pp.string ctx "linear"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
   | Timing_functions timings ->
       Pp.list ~sep:Pp.comma pp_timing_function ctx timings
