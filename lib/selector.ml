@@ -2157,6 +2157,12 @@ and pp : t Pp.t =
       (* CSS Selectors 4 sec. 5: double negation [:not(:not(X))] is
          spec-equivalent to [X] (and shorter under minify). *)
       pp ctx inner
+  | Not [ Enabled ] when Pp.minified ctx -> pseudo ctx "disabled"
+  | Not [ Disabled ] when Pp.minified ctx -> pseudo ctx "enabled"
+  | Not [ Valid ] when Pp.minified ctx -> pseudo ctx "invalid"
+  | Not [ Invalid ] when Pp.minified ctx -> pseudo ctx "valid"
+  | Not [ Required ] when Pp.minified ctx -> pseudo ctx "optional"
+  | Not [ Optional ] when Pp.minified ctx -> pseudo ctx "required"
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (Index 1, None) when Pp.minified ctx ->
