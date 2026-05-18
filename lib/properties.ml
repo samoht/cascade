@@ -10468,11 +10468,23 @@ let rec read_flex_flow t : flex_flow =
       in
       let wrap : flex_wrap option ref = ref (None : flex_wrap option) in
       let seen = ref false in
+      (* CSS Flexbox 1 sec. 6.3: [flex-flow] is at most two values
+         ([flex-direction] || [flex-wrap]). Stop once both slots are
+         filled, and break on the first iteration where neither matches
+         instead of letting [read_flex_flow_part] raise on the trailing
+         [;] / [!important]. *)
       let rec loop () =
         Cursor.ws t;
-        if not (Cursor.is_done t) then (
-          seen := read_flex_flow_part direction wrap t || !seen;
-          loop ())
+        if Cursor.is_done t then ()
+        else if Option.is_some !direction && Option.is_some !wrap then ()
+        else
+          let before = Cursor.save t in
+          match read_flex_flow_part direction wrap t with
+          | true ->
+              seen := true;
+              loop ()
+          | false -> Cursor.restore t before
+          | exception Cursor.Parse_error _ -> Cursor.restore t before
       in
       loop ();
       if not !seen then Cursor.err_expected t "flex-flow";
@@ -11270,12 +11282,19 @@ let rec read_text_overflow t : text_overflow =
       (fun t ->
         let first = read_single t in
         Cursor.ws t;
-        if Cursor.is_done t then first
-        else
-          let second = read_single t in
-          Cursor.ws t;
-          Cursor.expect_eof t;
-          Pair (first, second));
+        (* CSS Text 4 sec. 9.1 two-value form. The declaration cursor extends
+           past the value (the [;] / [!important] / [}] terminator is the
+           caller's concern), so [Cursor.is_done] is the wrong gate here: try
+           to read a second value, restore on failure. *)
+        match
+          try Some (Cursor.lookahead (fun t -> Some (read_single t)) t)
+          with _ -> None
+        with
+        | Some (Some _) ->
+            let second = read_single t in
+            Cursor.ws t;
+            Pair (first, second)
+        | _ -> first);
     ]
     t
 
