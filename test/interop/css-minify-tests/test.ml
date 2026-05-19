@@ -162,6 +162,17 @@ let normalize_expected ~category ~id expected =
          also folds constant math expressions; calc(100% * 2) stays a percentage
          and shortens to 200%. *)
       "a{width:200%}"
+  | "anchor", "0003" ->
+      (* The upstream rewrites [position-try-fallbacks: --flip] to the built-in
+         [flip-block] tactic by inlining the [@position-try --flip {
+         position-area: top }] body. That requires whole-stylesheet proof
+         (writing mode, direction, other [@position-try] descriptors, no
+         downstream uses of [--flip]) that cascade's open-world minify default
+         cannot make; per [feedback_world_assumption_knob], rewrites depending
+         on the whole cascade graph need [--closed-world]. Preserve the custom
+         [@position-try] and the [--flip] reference. *)
+      "@position-try \
+       --flip{position-area:top}a{position-area:bottom;position-try-fallbacks:--flip}"
   | _ -> expected
 
 let cascade_minify input =
