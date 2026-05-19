@@ -1397,6 +1397,308 @@ let compose_background_shorthand decls =
   in
   go [] decls
 
+(* CSS Transitions 1 sec. 2.1: [transition] composes from
+   [transition-{property,duration,timing-function,delay}]. Compose when a
+   contiguous run covers a single layer (each longhand carries a one-entry
+   list), the importance matches, no CSS-wide keyword leaks in, and
+   [transition-property] is present (it has no default, so the shorthand needs
+   it). *)
+let transition_property_singleton :
+    Properties.transition_property ->
+    Properties.transition_property_value option = function
+  | [ p ] -> ( match p with Inherit | Initial | Unset -> None | _ -> Some p)
+  | _ -> None
+
+let duration_singleton : Values.duration -> Values.duration option = function
+  | Durations _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | d -> Some d
+
+let timing_singleton :
+    Properties.timing_function -> Properties.timing_function option = function
+  | Timing_functions _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | t -> Some t
+
+let tr_property_part :
+    declaration -> Properties.transition_property_value option = function
+  | Declaration { property = Transition_property; value; _ } ->
+      transition_property_singleton value
+  | _ -> None
+
+let tr_duration_part : declaration -> Values.duration option = function
+  | Declaration { property = Transition_duration; value; _ } ->
+      duration_singleton value
+  | _ -> None
+
+let tr_timing_part : declaration -> Properties.timing_function option = function
+  | Declaration { property = Transition_timing_function; value; _ } ->
+      timing_singleton value
+  | _ -> None
+
+let tr_delay_part : declaration -> Values.duration option = function
+  | Declaration { property = Transition_delay; value; _ } ->
+      duration_singleton value
+  | _ -> None
+
+type tr_updater =
+  declaration ->
+  (Properties.transition_shorthand -> Properties.transition_shorthand) option
+
+let lift_tr_part :
+    'a.
+    (declaration -> 'a option) ->
+    (Properties.transition_shorthand -> 'a -> Properties.transition_shorthand) ->
+    tr_updater =
+ fun extract set d ->
+  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+
+let tr_updaters : tr_updater list =
+  [
+    lift_tr_part tr_property_part (fun s v -> { s with property = v });
+    lift_tr_part tr_duration_part (fun s v -> { s with duration = Some v });
+    lift_tr_part tr_timing_part (fun s v -> { s with timing_function = Some v });
+    lift_tr_part tr_delay_part (fun s v -> { s with delay = Some v });
+  ]
+
+let transition_part_of (d : declaration) =
+  List.find_map (fun f -> f d) tr_updaters
+
+let empty_tr_shorthand : Properties.transition_shorthand =
+  {
+    property = (All : Properties.transition_property_value);
+    duration = None;
+    timing_function = None;
+    delay = None;
+    behavior = None;
+  }
+
+let take_contiguous_transition indexed_decls =
+  let rec aux acc = function
+    | (i, d) :: rest -> (
+        match transition_part_of d with
+        | Some f -> aux ((d, f) :: acc) rest
+        | None -> (List.rev acc, (i, d) :: rest))
+    | [] -> (List.rev acc, [])
+  in
+  match indexed_decls with
+  | [] -> (None, [])
+  | (idx, _) :: _ -> (
+      let parts, rest = aux [] indexed_decls in
+      match parts with
+      | [] -> (None, indexed_decls)
+      | _ -> (Some (idx, parts), rest))
+
+let has_transition_property_decl raw_decls =
+  List.exists
+    (fun d ->
+      match d with
+      | Declaration { property = Transition_property; _ } -> true
+      | _ -> false)
+    raw_decls
+
+let try_compose_transition indexed_decls =
+  let idx_opt, rest = take_contiguous_transition indexed_decls in
+  match idx_opt with
+  | None -> None
+  | Some (idx, parts) ->
+      let raw_decls = List.map fst parts in
+      if List.length raw_decls < 2 then None
+      else if not (same_importance raw_decls) then None
+      else if not (has_transition_property_decl raw_decls) then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
+        in
+        let merged =
+          Declaration
+            {
+              property = Transition;
+              value = [ (Shorthand layer : Properties.transition) ];
+              important = is_important (List.hd raw_decls);
+            }
+        in
+        Some ((idx, merged), rest)
+
+let compose_transition_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_transition decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
+(* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
+   longhands. Compose when a contiguous run sticks to a single layer (no
+   multi-value list constructor leaks in), no CSS-wide keyword appears, and the
+   importance matches. *)
+let animation_name_singleton :
+    Properties.animation_name -> Properties.animation_name option = function
+  | Names _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | n -> Some n
+
+let animation_direction_singleton :
+    Properties.animation_direction -> Properties.animation_direction option =
+  function
+  | Directions _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | d -> Some d
+
+let animation_fill_mode_singleton :
+    Properties.animation_fill_mode -> Properties.animation_fill_mode option =
+  function
+  | Fill_modes _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | f -> Some f
+
+let animation_iteration_singleton :
+    Properties.animation_iteration_count ->
+    Properties.animation_iteration_count option = function
+  | Counts _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | c -> Some c
+
+let animation_play_state_singleton :
+    Properties.animation_play_state -> Properties.animation_play_state option =
+  function
+  | States _ -> None
+  | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | p -> Some p
+
+let an_name_part : declaration -> Properties.animation_name option = function
+  | Declaration { property = Animation_name; value; _ } ->
+      animation_name_singleton value
+  | _ -> None
+
+let an_duration_part : declaration -> Values.duration option = function
+  | Declaration { property = Animation_duration; value; _ } ->
+      duration_singleton value
+  | _ -> None
+
+let an_timing_part : declaration -> Properties.timing_function option = function
+  | Declaration { property = Animation_timing_function; value; _ } ->
+      timing_singleton value
+  | _ -> None
+
+let an_delay_part : declaration -> Values.duration option = function
+  | Declaration { property = Animation_delay; value; _ } ->
+      duration_singleton value
+  | _ -> None
+
+let an_iteration_part :
+    declaration -> Properties.animation_iteration_count option = function
+  | Declaration { property = Animation_iteration_count; value; _ } ->
+      animation_iteration_singleton value
+  | _ -> None
+
+let an_direction_part : declaration -> Properties.animation_direction option =
+  function
+  | Declaration { property = Animation_direction; value; _ } ->
+      animation_direction_singleton value
+  | _ -> None
+
+let an_fill_mode_part : declaration -> Properties.animation_fill_mode option =
+  function
+  | Declaration { property = Animation_fill_mode; value; _ } ->
+      animation_fill_mode_singleton value
+  | _ -> None
+
+let an_play_state_part : declaration -> Properties.animation_play_state option =
+  function
+  | Declaration { property = Animation_play_state; value; _ } ->
+      animation_play_state_singleton value
+  | _ -> None
+
+type an_updater =
+  declaration ->
+  (Properties.animation_shorthand -> Properties.animation_shorthand) option
+
+let lift_an_part :
+    'a.
+    (declaration -> 'a option) ->
+    (Properties.animation_shorthand -> 'a -> Properties.animation_shorthand) ->
+    an_updater =
+ fun extract set d ->
+  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+
+let an_updaters : an_updater list =
+  [
+    lift_an_part an_name_part (fun s v -> { s with name = Some v });
+    lift_an_part an_duration_part (fun s v -> { s with duration = Some v });
+    lift_an_part an_timing_part (fun s v -> { s with timing_function = Some v });
+    lift_an_part an_delay_part (fun s v -> { s with delay = Some v });
+    lift_an_part an_iteration_part (fun s v ->
+        { s with iteration_count = Some v });
+    lift_an_part an_direction_part (fun s v -> { s with direction = Some v });
+    lift_an_part an_fill_mode_part (fun s v -> { s with fill_mode = Some v });
+    lift_an_part an_play_state_part (fun s v -> { s with play_state = Some v });
+  ]
+
+let animation_part_of (d : declaration) =
+  List.find_map (fun f -> f d) an_updaters
+
+let empty_an_shorthand : Properties.animation_shorthand =
+  {
+    name = None;
+    duration = None;
+    timing_function = None;
+    delay = None;
+    iteration_count = None;
+    direction = None;
+    fill_mode = None;
+    play_state = None;
+    timeline = None;
+  }
+
+let take_contiguous_animation indexed_decls =
+  let rec aux acc = function
+    | (i, d) :: rest -> (
+        match animation_part_of d with
+        | Some f -> aux ((d, f) :: acc) rest
+        | None -> (List.rev acc, (i, d) :: rest))
+    | [] -> (List.rev acc, [])
+  in
+  match indexed_decls with
+  | [] -> (None, [])
+  | (idx, _) :: _ -> (
+      let parts, rest = aux [] indexed_decls in
+      match parts with
+      | [] -> (None, indexed_decls)
+      | _ -> (Some (idx, parts), rest))
+
+let try_compose_animation indexed_decls =
+  let idx_opt, rest = take_contiguous_animation indexed_decls in
+  match idx_opt with
+  | None -> None
+  | Some (idx, parts) ->
+      let raw_decls = List.map fst parts in
+      if List.length raw_decls < 2 then None
+      else if not (same_importance raw_decls) then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
+        in
+        let merged =
+          Declaration
+            {
+              property = Animation;
+              value = [ (Shorthand layer : Properties.animation) ];
+              important = is_important (List.hd raw_decls);
+            }
+        in
+        Some ((idx, merged), rest)
+
+let compose_animation_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_animation decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -1555,7 +1857,8 @@ let compose_shorthands kept =
   |> compose_outline_shorthand |> compose_font_shorthand
   |> compose_list_style_shorthand |> compose_flex_shorthand
   |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> compose_background_shorthand
+  |> compose_background_shorthand |> compose_transition_shorthand
+  |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
