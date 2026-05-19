@@ -784,7 +784,8 @@ let to_string ?world ?(minify = false) ?indent ?(mode = Variables) ?theme
   in
   Stylesheet.to_string ~minify ?indent ~mode ?theme ~theme_defaults stylesheet
 
-let pp = to_string
+let pp ?minify ?indent ?mode ?theme ?theme_defaults stylesheet =
+  to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet
 
 let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     =
