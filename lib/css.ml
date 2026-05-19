@@ -801,10 +801,35 @@ let flatten_nesting = Optimize.flatten_nesting
 
 (** {1 Closed-world inlining} *)
 
+(* Explicit AST step matching what [to_string ~mode:Inline] does internally:
+   substitute every resolvable [var()] reference, then strip the now-empty
+   [@layer] wrappers and the [@property] / [@layer-decl] rules that only
+   existed to register the substituted variables. *)
 let inline_vars ?keep_vars stylesheet =
-  match keep_vars with
-  | None -> Inline.vars stylesheet
-  | Some keep_vars -> Inline.vars ~keep_vars stylesheet
+  let substituted =
+    match keep_vars with
+    | None -> Inline.vars stylesheet
+    | Some keep_vars -> Inline.vars ~keep_vars stylesheet
+  in
+  List.concat_map statements_for_inline substituted
+
+(* Theme resolution as an explicit AST step. The [theme] set names the
+   variables that should keep their [var()] reference (acts as
+   [Inline.vars]' [keep_vars]). [theme_defaults] currently still flows
+   through [to_string]'s printer context for fallback resolution; this
+   entry exists so callers can keep the AST-level keep-set step explicit
+   even before that resolver moves to an AST pass. *)
+let resolve_theme ?theme ?theme_defaults:_ stylesheet =
+  let keep_vars =
+    match theme with None -> [] | Some set -> Pp.String_set.elements set
+  in
+  inline_vars ~keep_vars stylesheet
+
+(* Pure serialiser: whitespace + token printer, no optimisation, no theme
+   resolution, no [@layer] / [@property] rewriting. Run [optimize] /
+   [resolve_theme] / [inline_vars] explicitly when those passes are needed. *)
+let serialize ?(minify = false) ?indent stylesheet =
+  Stylesheet.to_string ~minify ?indent ~mode:Variables stylesheet
 
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

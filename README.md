@@ -76,6 +76,14 @@ several valid serializations, Cascade chooses the shortest valid one. For
 perceptual color spaces, minified output may also round channels to bounded
 precision when the visual difference is negligible.
 
+`--minify` is closed over the CSS text it is given, but open over runtime
+layout state. Cascade may use the whole parsed stylesheet for source-order,
+cascade, dependency, and dead-code reasoning, but it does not assume inherited
+or environment-dependent facts such as DOM shape, writing mode, direction, user
+styles, or runtime custom-property mutation unless those facts are explicit in
+the stylesheet or supplied through an explicit closed context. This keeps the
+output sound when a minified stylesheet is embedded into a larger page.
+
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
 - Modern color functions: `lab()`, `lch()`, `oklab()`, and `oklch()` may round lightness/chroma/a/b channels, hue, and alpha under `--minify`.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
@@ -86,9 +94,9 @@ precision when the visual difference is negligible.
 - Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
 - Media queries: legacy -> range syntax (`(min-width:48px)` -> `(width>=48px)`).
 
-These rules compose: they apply wherever a CSS value appears, including
-nested function arguments and custom-property values that parse as a
-self-contained CSS value.
+These rules compose wherever Cascade has a typed CSS value: nested function
+arguments, registered custom properties, and normal declarations. Unregistered
+custom-property values remain opaque token streams.
 
 Pretty mode (the default) preserves the authored form where the parsed
 model permits it. Spec-mandated canonicalizations (CSS Syntax 3 section
