@@ -845,16 +845,14 @@ module Var_residual = struct
         | Some value ->
             Some (simplify ~authored:false ~visited:(var.name :: visited) value)
         | None -> (
-            match resolve_fallback_value ~simplify ~visited var with
-            | Some _ as resolved -> resolved
-            | None ->
-                (* Typed [default] supplied by [Css.var ~default:...] acts as
-                   the fallback for the var() reference when no [--name]
-                   declaration is visible and no fallback arm resolves. *)
-                Option.map
-                  (fun d ->
-                    simplify ~authored:false ~visited:(var.name :: visited) d)
-                  var.default)
+            (* Typed [default] supplied by [Css.var ~default:...] is the
+               authoritative compile-time value of the variable, so it wins over
+               the var() [Fallback] arm (which is a browser-time hint for when
+               the [--name] declaration is missing at runtime). *)
+            match var.default with
+            | Some d ->
+                Some (simplify ~authored:false ~visited:(var.name :: visited) d)
+            | None -> resolve_fallback_value ~simplify ~visited var)
     in
     f ~resolve_var ~simplify_var_record
 
