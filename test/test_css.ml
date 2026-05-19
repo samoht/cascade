@@ -16,8 +16,8 @@
 open Cascade
 open Css
 
-(* Test helper: compose optimize + minified to_string the way
-   [to_string ~minify:true] used to behave implicitly. *)
+(* Test helper: compose optimize + minified to_string the way [to_string
+   ~minify:true] used to behave implicitly. *)
 let minify s = s |> Css.optimize |> Css.to_string ~minify:true
 
 (* Helper selectors for tests *)
@@ -58,9 +58,7 @@ let optimization_flag () =
       ]
   in
 
-  let css_optimized =
-    minify stylesheet
-  in
+  let css_optimized = minify stylesheet in
   Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
 (* Test layers work end-to-end *)
@@ -102,6 +100,63 @@ let minify_flag () =
 
   let css_minified = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string) "minified exact" ".btn{color:red}" css_minified
+
+let explicit_phase_pipeline () =
+  let stylesheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "foo") [ color (hex "#0000ff") ];
+        rule ~selector:(Selector.class_ "bar") [ color (hex "#0000ff") ];
+      ]
+  in
+  Alcotest.(check string)
+    "to_string minifies tokens without optimizing AST shape"
+    ".foo{color:#00f}.bar{color:#00f}"
+    (Css.to_string ~minify:true stylesheet);
+  Alcotest.(check string)
+    "optimize is the explicit AST optimization phase" ".bar,.foo{color:#00f}"
+    (minify stylesheet);
+  let theme = Css.Pp.String_set.(empty |> add "brand") in
+  let guarded =
+    v
+      [
+        rule ~selector:(Selector.class_ "card")
+          [
+            theme_guarded ~var_name:"brand" (color (hex "#ff0000"));
+            background_color (hex "#ffffff");
+          ];
+      ]
+  in
+  Alcotest.(check string)
+    "to_string does not resolve theme guards"
+    ".card{color:red;background-color:#fff}"
+    (Css.to_string ~minify:true guarded);
+  Alcotest.(check string)
+    "resolve_theme is the explicit theme phase"
+    ".card{color:red;background-color:#fff}"
+    (guarded |> Css.resolve_theme ~theme |> Css.to_string ~minify:true);
+  Alcotest.(check string)
+    "resolve_theme can drop inactive theme guards"
+    ".card{background-color:#fff}"
+    (guarded
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
+    |> Css.to_string ~minify:true);
+  let spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
+  let var_sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "p-1")
+          [ spacing_decl; padding [ Var spacing ] ];
+      ]
+  in
+  Alcotest.(check string)
+    "to_string does not inline vars"
+    ".p-1{--spacing:.25rem;padding:var(--spacing)}"
+    (Css.to_string ~minify:true var_sheet);
+  Alcotest.(check string)
+    "inline_vars is the explicit variable substitution phase"
+    ".p-1{padding:.25rem}"
+    (var_sheet |> Css.inline_vars |> Css.to_string ~minify:true)
 
 (* Test important declarations *)
 let important_integration () =
@@ -295,7 +350,7 @@ let test_map () =
       stmts
   in
 
-  let css = Css.to_string ~minify:true (v mapped) in
+  let css = minify (v mapped) in
   Alcotest.(check string) "map changes all rules" ".bar,.foo{color:#00f}" css
 
 (* Test Css.map with nested media queries *)
@@ -796,15 +851,11 @@ let public_theme_var_rendering_edges () =
   Alcotest.(check string)
     "inline stylesheet may use typed default"
     ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
-    (sheet_for (Var font_sans)
-    |> Css.inline_vars
-    |> to_string ~minify:true);
+    (sheet_for (Var font_sans) |> Css.inline_vars |> to_string ~minify:true);
   Alcotest.(check string)
     "inline stylesheet may use typed fallback default"
     ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
-    (sheet_for (Var font_fallback)
-    |> Css.inline_vars
-    |> to_string ~minify:true);
+    (sheet_for (Var font_fallback) |> Css.inline_vars |> to_string ~minify:true);
   Alcotest.(check string)
     "theme_defaults still resolves non-theme vars"
     ".font-sans{font-family:Arial,sans-serif}"
@@ -859,6 +910,8 @@ let suite =
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
+      Alcotest.test_case "explicit phase pipeline" `Quick
+        explicit_phase_pipeline;
       Alcotest.test_case "important declarations" `Quick important_integration;
       Alcotest.test_case "custom properties" `Quick
         custom_properties_integration;
