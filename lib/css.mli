@@ -7396,6 +7396,24 @@ val inline_vars : ?keep_vars:string list -> t -> t
     remain as live [var()] references in the output. The transform assumes no
     runtime mutation of custom properties. *)
 
+val resolve_theme :
+  ?theme:Pp.String_set.t ->
+  ?theme_defaults:(string -> string option) ->
+  t ->
+  t
+(** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST
+    step matching the print-time [~theme] / [~theme_defaults] knobs on
+    {!to_string}. [theme] names the variables that should keep their
+    [var()] reference live; [theme_defaults] is the external default
+    resolver consulted at print time for variables not in [theme]. *)
+
+val serialize : ?minify:bool -> ?indent:int -> t -> string
+(** [serialize ?minify ?indent stylesheet] is the pure serialiser: it walks
+    the AST and emits CSS text with the requested whitespace, doing no
+    optimisation, no theme resolution, no [@layer] / [@property]
+    rewriting. Compose explicit passes upstream when those rewrites are
+    needed: [stylesheet |> optimize |> serialize ~minify:true]. *)
+
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
     quotes from an [@import] URL string as held in
