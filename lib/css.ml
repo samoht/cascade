@@ -809,17 +809,151 @@ let inline_vars ?keep_vars stylesheet =
   in
   List.concat_map statements_for_inline substituted
 
-(* Theme resolution as an explicit AST step. [theme] names the variables
-   that should keep their [var()] reference live (handed to [Inline.vars]'
-   keep-set). [theme_defaults] would supply external defaults for non-theme
-   variables and currently has no AST-level implementation: callers that
-   need the print-time [theme_defaults] behaviour must wait for the proper
-   resolver. *)
-let resolve_theme ?theme ?theme_defaults:_ stylesheet =
-  let keep_vars =
-    match theme with None -> [] | Some set -> Pp.String_set.elements set
+(* Collect every [var(--name)] reference's name (with leading [--]) from a
+   stylesheet. Used by [resolve_theme] to know which names to ask the
+   [theme_defaults] resolver for. *)
+let collect_var_names stylesheet =
+  let seen = Hashtbl.create 8 in
+  let record_decls decls =
+    List.iter
+      (fun v ->
+        let name = Variables.any_var_name v in
+        Hashtbl.replace seen name ())
+      (Variables.vars_of_declarations decls)
   in
-  inline_vars ~keep_vars stylesheet
+  let rec walk = function
+    | [] -> ()
+    | stmt :: rest ->
+        (match stmt with
+        | Stylesheet.Rule r ->
+            record_decls r.declarations;
+            walk r.nested
+        | Declarations decls -> record_decls decls
+        | Media (_, b)
+        | Supports (_, b)
+        | Container (_, _, b)
+        | Layer (_, b)
+        | Origin (_, b)
+        | Scope (_, _, b)
+        | Starting_style b
+        | Moz_document (_, b)
+        | When (_, b)
+        | Else (_, b) ->
+            walk b
+        | _ -> ());
+        walk rest
+  in
+  walk stylesheet;
+  Hashtbl.fold (fun k () acc -> k :: acc) seen []
+
+(* Resolve [Theme_guarded { var_name; decl }] declarations against the
+   theme keep-set: keep the wrapped declaration when [var_name] is in
+   the theme, drop it otherwise. When no [theme] is supplied the guards
+   pass through unchanged (the default "everything is in theme"
+   behaviour mirrors [Pp.in_theme]'s no-theme branch). *)
+let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
+  match theme with
+  | Option.None -> decls
+  | Option.Some set ->
+      List.filter_map
+        (function
+          | Declaration.Theme_guarded { var_name; decl } ->
+              if Pp.String_set.mem var_name set then Option.Some decl
+              else Option.None
+          | d -> Option.Some d)
+        decls
+
+let rec resolve_theme_guards_in_stmts ~theme = function
+  | [] -> []
+  | stmt :: rest ->
+      let stmt =
+        match stmt with
+        | Stylesheet.Rule r ->
+            Stylesheet.Rule
+              {
+                r with
+                declarations =
+                  resolve_theme_guards_in_decls ~theme r.declarations;
+                nested = resolve_theme_guards_in_stmts ~theme r.nested;
+              }
+        | Declarations decls ->
+            Declarations (resolve_theme_guards_in_decls ~theme decls)
+        | Media (c, b) -> Media (c, resolve_theme_guards_in_stmts ~theme b)
+        | Supports (c, b) ->
+            Supports (c, resolve_theme_guards_in_stmts ~theme b)
+        | Container (n, c, b) ->
+            Container (n, c, resolve_theme_guards_in_stmts ~theme b)
+        | Layer (n, b) -> Layer (n, resolve_theme_guards_in_stmts ~theme b)
+        | Origin (o, b) ->
+            Origin (o, resolve_theme_guards_in_stmts ~theme b)
+        | Scope (s, e, b) ->
+            Scope (s, e, resolve_theme_guards_in_stmts ~theme b)
+        | Starting_style b ->
+            Starting_style (resolve_theme_guards_in_stmts ~theme b)
+        | Moz_document (c, b) ->
+            Moz_document (c, resolve_theme_guards_in_stmts ~theme b)
+        | When (c, b) -> When (c, resolve_theme_guards_in_stmts ~theme b)
+        | Else (c, b) -> Else (c, resolve_theme_guards_in_stmts ~theme b)
+        | other -> other
+      in
+      stmt :: resolve_theme_guards_in_stmts ~theme rest
+
+(* Theme resolution as an explicit AST step. [theme] names the variables
+   whose [var()] references should survive (handed to [Inline.vars]'
+   keep-set) and filters [Theme_guarded] declarations to keep only those
+   whose [var_name] is in the set. [theme_defaults] supplies external
+   defaults for the other variables: each [var(--name)] reference whose
+   [name] isn't in [theme] is collected, the resolver is asked for a
+   default, and any returned value is injected as a [:root { --name:
+   <default> }] declaration so the subsequent [Inline.vars] pass
+   substitutes the reference in place. Names the resolver returns [None]
+   for stay as live [var()] sites. *)
+let resolve_theme ?theme ?theme_defaults stylesheet =
+  let stylesheet = resolve_theme_guards_in_stmts ~theme stylesheet in
+  let keep_set =
+    match theme with None -> Pp.String_set.empty | Some set -> set
+  in
+  let keep_vars = Pp.String_set.elements keep_set in
+  (* [theme=None] is "no theme declared": preserve [var()] references as-is.
+     [theme=Some set] is "theme declared, with this keep-set": variables not
+     in the keep-set are candidates for [theme_defaults] inlining. *)
+  let defaults =
+    match (theme, theme_defaults) with
+    | Option.Some _, Option.Some lookup ->
+        collect_var_names stylesheet
+        |> List.filter_map (fun raw_name ->
+               let bare =
+                 if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--"
+                 then String.sub raw_name 2 (String.length raw_name - 2)
+                 else raw_name
+               in
+               if Pp.String_set.mem bare keep_set then Option.None
+               else
+                 match lookup bare with
+                 | Option.Some value -> Option.Some (raw_name, value)
+                 | Option.None -> Option.None)
+    | _ -> []
+  in
+  let injected =
+    if defaults = [] then stylesheet
+    else
+      let body =
+        defaults
+        |> List.map (fun (name, value) ->
+               let n =
+                 if String.length name >= 2 && String.sub name 0 2 = "--" then
+                   name
+                 else "--" ^ name
+               in
+               n ^ ":" ^ value)
+        |> String.concat ";"
+      in
+      let source = ":root{" ^ body ^ "}" in
+      match of_string ~strict:false source with
+      | Ok { stylesheet = root_stmts; _ } -> root_stmts @ stylesheet
+      | Error _ -> stylesheet
+  in
+  inline_vars ~keep_vars injected
 
 
 let decode_import_url = Inline.decode_import_url
