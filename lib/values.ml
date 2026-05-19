@@ -1507,19 +1507,19 @@ let with_length_value l v : length =
 let rec reduce_length_min_max : length -> length = function
   | Min xs as orig -> (
       let xs = List.map reduce_length_min_max xs in
-      match try_reduce_typed_min_max_simple xs Float.min with
+      match reduce_typed_min_max_simple xs Float.min with
       | Some v -> v
       | None ->
           if xs = match orig with Min ys -> ys | _ -> [] then orig else Min xs)
   | Max xs as orig -> (
       let xs = List.map reduce_length_min_max xs in
-      match try_reduce_typed_min_max_simple xs Float.max with
+      match reduce_typed_min_max_simple xs Float.max with
       | Some v -> v
       | None ->
           if xs = match orig with Max ys -> ys | _ -> [] then orig else Max xs)
   | other -> other
 
-and try_reduce_typed_min_max_simple (xs : length list) reduce : length option =
+and reduce_typed_min_max_simple (xs : length list) reduce : length option =
   let pairs = List.map length_simple_dimension xs in
   if List.exists Option.is_none pairs then None
   else
@@ -1534,7 +1534,7 @@ and try_reduce_typed_min_max_simple (xs : length list) reduce : length option =
 
 let try_reduce_typed_min_max xs reduce =
   let xs = List.map reduce_length_min_max xs in
-  try_reduce_typed_min_max_simple xs reduce
+  reduce_typed_min_max_simple xs reduce
 
 let px_values values =
   List.fold_right
@@ -1620,19 +1620,19 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Clamp (mn, v, mx) when Pp.minified ctx && mn = v && v = mx ->
       pp_length ~always ctx v
   | Clamp (mn, v, mx) ->
-      pp_typed_math_call ctx "clamp" (pp_length ~always) [ mn; v; mx ]
+      pp_typed_math_call ctx "clamp" (pp_length_math_arg ~always) [ mn; v; mx ]
   | Min xs when Pp.minified ctx -> (
       match try_reduce_typed_min_max xs Float.min with
       | Some reduced -> pp_length ~always ctx reduced
-      | None -> pp_typed_math_call ctx "min" (pp_length ~always) xs)
+      | None -> pp_typed_math_call ctx "min" (pp_length_math_arg ~always) xs)
   | Max xs when Pp.minified ctx -> (
       match try_reduce_typed_min_max xs Float.max with
       | Some reduced -> pp_length ~always ctx reduced
-      | None -> pp_typed_math_call ctx "max" (pp_length ~always) xs)
-  | Min xs -> pp_typed_math_call ctx "min" (pp_length ~always) xs
-  | Max xs -> pp_typed_math_call ctx "max" (pp_length ~always) xs
+      | None -> pp_typed_math_call ctx "max" (pp_length_math_arg ~always) xs)
+  | Min xs -> pp_typed_math_call ctx "min" (pp_length_math_arg ~always) xs
+  | Max xs -> pp_typed_math_call ctx "max" (pp_length_math_arg ~always) xs
   | Minmax (mn, mx) ->
-      pp_typed_math_call ctx "minmax" (pp_length ~always) [ mn; mx ]
+      pp_typed_math_call ctx "minmax" (pp_length_math_arg ~always) [ mn; mx ]
   | Round (strategy, value, step) ->
       pp_round_length ~always ctx strategy value step
   | Mod (a, b) -> pp_mod_length ~always ctx a b
@@ -1670,6 +1670,17 @@ and pp_calc_wrapped_length ~always ctx length =
   Pp.string ctx "calc(";
   pp_length ~always ctx length;
   Pp.char ctx ')'
+
+(* CSS Values 4 sec. 10.5: arguments to math functions ([clamp()], [min()],
+   [max()], [minmax()]) are implicit calc expressions. A top-level [Calc] node
+   is emitted as its bare expression body (no surrounding [calc(...)]). Nested
+   [Calc] inside other length shapes still serializes through [pp_length]. *)
+and pp_length_math_arg ~always ctx (length : length) =
+  match length with
+  | Calc cv ->
+      let ctx = { ctx with in_calc = true } in
+      pp_calc_contents (pp_length ~always) ctx cv
+  | _ -> pp_length ~always ctx length
 
 and pp_anchor_length ~always ctx name side fallback =
   Pp.call "anchor"
@@ -4501,28 +4512,38 @@ and length_function_readers ~allow_negative ~with_keywords =
     ("attr", read_attr_length ~allow_negative ~with_keywords);
   ]
 
+(* CSS Values 4 sec. 10.5: arguments to [clamp()], [min()], [max()], [minmax()]
+   are implicit math expressions, so [clamp(.5rem, 2vw + .5rem, 2rem)] is valid
+   without a surrounding [calc()]. Parse each argument with [read_calc_expr] and
+   collapse a singleton [Val] back to the plain length so the AST stays compact
+   for the common case. *)
+and read_implicit_calc_length inner =
+  match read_calc_expr (fun t -> read_length t) inner with
+  | Val l -> l
+  | expr -> Calc expr
+
 and read_clamp_length inner =
   Cursor.ws inner;
-  let min = read_length inner in
+  let min = read_implicit_calc_length inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let value = read_length inner in
+  let value = read_implicit_calc_length inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_length inner in
+  let max = read_implicit_calc_length inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Clamp (min, value, max)
 
 and read_minmax_length inner =
   Cursor.ws inner;
-  let min = read_length inner in
+  let min = read_implicit_calc_length inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_length inner in
+  let max = read_implicit_calc_length inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Minmax (min, max)
@@ -4532,7 +4553,7 @@ and read_min_length inner =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_length t)
+        read_implicit_calc_length t)
       inner
   in
   Cursor.ws inner;
@@ -4544,7 +4565,7 @@ and read_max_length inner =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_length t)
+        read_implicit_calc_length t)
       inner
   in
   Cursor.ws inner;
@@ -5833,50 +5854,40 @@ let read_time_number t : duration =
   | "ms" -> Ms n
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
+let read_duration_round read_duration_self t =
+  Cursor.call "round" t (fun inner ->
+      let snap = Cursor.save inner in
+      let strategy =
+        match Cursor.peek_ident inner with
+        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+            Cursor.skip inner;
+            Cursor.ws inner;
+            Cursor.comma inner;
+            kw
+        | _ ->
+            Cursor.restore inner snap;
+            "nearest"
+      in
+      let value = read_duration_self inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let step = read_duration_self inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Round (strategy, value, step) : duration))
+
+let read_duration_binary_call name make read_duration_self t =
+  Cursor.call name t (fun inner ->
+      let a = read_duration_self inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let b = read_duration_self inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (make a b : duration))
+
 let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
   let read_duration_self t = read_duration_with ~css_wide ~canonicalize_ms t in
-  let read_round t =
-    Cursor.call "round" t (fun inner ->
-        let snap = Cursor.save inner in
-        let strategy =
-          match Cursor.peek_ident inner with
-          | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-              Cursor.skip inner;
-              Cursor.ws inner;
-              Cursor.comma inner;
-              kw
-          | _ ->
-              Cursor.restore inner snap;
-              "nearest"
-        in
-        let value = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let step = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Round (strategy, value, step) : duration))
-  in
-  let read_rem t =
-    Cursor.call "rem" t (fun inner ->
-        let a = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Rem (a, b) : duration))
-  in
-  let read_mod t =
-    Cursor.call "mod" t (fun inner ->
-        let a = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_duration_self inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Mod (a, b) : duration))
-  in
   Cursor.enum_or_calls
     ~default:(read_duration_number ~canonicalize_ms)
     "duration"
@@ -5885,9 +5896,15 @@ let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
       [
         ("var", fun t -> Var (read_var read_duration_self t));
         ("calc", fun t -> Calc (read_calc read_duration_in_calc t));
-        ("round", read_round);
-        ("rem", read_rem);
-        ("mod", read_mod);
+        ("round", read_duration_round read_duration_self);
+        ( "rem",
+          read_duration_binary_call "rem"
+            (fun a b -> Rem (a, b))
+            read_duration_self );
+        ( "mod",
+          read_duration_binary_call "mod"
+            (fun a b -> Mod (a, b))
+            read_duration_self );
       ]
     t
 
