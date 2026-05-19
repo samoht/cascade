@@ -2634,51 +2634,57 @@ let pp_color_after_length ctx color =
   Pp.space ctx ();
   pp_color ctx color
 
-let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
-    color =
+let pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback =
   (* If inset_var is set, output var(--<name>,) or var(--<name>) before shadow
      values. The variable value includes trailing space when set to "inset ".
      Otherwise use the bool inset flag. *)
+  match inset_var with
+  | Some var_name ->
+      if inset_var_no_fallback then Pp.string ctx ("var(--" ^ var_name ^ ")")
+      else (
+        (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified.
+           The two pretty-mode spaces are: comma-space + fallback-space. *)
+        Pp.string ctx ("var(--" ^ var_name ^ ",");
+        Pp.space_if_pretty ctx ();
+        Pp.space_if_pretty ctx ();
+        Pp.string ctx ")");
+      true
+  | None ->
+      if inset then (
+        Pp.string ctx "inset";
+        Pp.space ctx ());
+      false
+
+let pp_shadow_spread ctx (spread : length option) : length option =
+  match spread with
+  | Some spread when Pp.minified ctx && is_zero_length spread ->
+      (None : length option)
+  | Some spread -> Some spread
+  | None -> (None : length option)
+
+let pp_shadow_blur ctx ~has_var_color (blur : length option)
+    (spread : length option) : length option =
+  match (blur, spread) with
+  | Some blur, None
+    when Pp.minified ctx && is_zero_length blur && not has_var_color ->
+      (None : length option)
+  | None, None when Pp.minified ctx && has_var_color -> Some Zero
+  | blur, _ -> blur
+
+let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
+    color =
   let has_inset_var =
-    match inset_var with
-    | Some var_name ->
-        if inset_var_no_fallback then Pp.string ctx ("var(--" ^ var_name ^ ")")
-        else (
-          (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified.
-             The two pretty-mode spaces are: comma-space + fallback-space. *)
-          Pp.string ctx ("var(--" ^ var_name ^ ",");
-          Pp.space_if_pretty ctx ();
-          Pp.space_if_pretty ctx ();
-          Pp.string ctx ")");
-        true
-    | None ->
-        if inset then (
-          Pp.string ctx "inset";
-          Pp.space ctx ());
-        false
+    pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback
   in
   if has_inset_var then Pp.space_if_pretty ctx ();
   pp_length ctx h;
   Pp.space ctx ();
   pp_length ctx v;
-  let spread : length option =
-    match spread with
-    | Some spread when Pp.minified ctx && is_zero_length spread ->
-        (None : length option)
-    | Some spread -> Some spread
-    | None -> None
-  in
+  let spread = pp_shadow_spread ctx spread in
   let has_var_color =
     match (color : color option) with Some (Var _) -> true | _ -> false
   in
-  let blur : length option =
-    match (blur, spread) with
-    | Some blur, None
-      when Pp.minified ctx && is_zero_length blur && not has_var_color ->
-        (None : length option)
-    | None, None when Pp.minified ctx && has_var_color -> Some Zero
-    | blur, _ -> blur
-  in
+  let blur = pp_shadow_blur ctx ~has_var_color blur spread in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
   match color with Some c -> pp_color_after_length ctx c | None -> ()
@@ -3615,7 +3621,7 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
-let border_width_to_length : border_width -> length option = function
+let length_of_border_width : border_width -> length option = function
   | Px n -> Some (Px n)
   | Cm n -> Some (Cm n)
   | Mm n -> Some (Mm n)
@@ -3643,7 +3649,7 @@ let border_width_to_length : border_width -> length option = function
 let length_of_border_width_calc calc =
   let rec aux : border_width calc -> length calc option = function
     | Val width ->
-        Option.map (fun length -> Val length) (border_width_to_length width)
+        Option.map (fun length -> Val length) (length_of_border_width width)
     | Num n -> Some (Num n)
     | Math_const c -> Some (Math_const c)
     | Math_fn fn -> Some (Math_fn fn)
@@ -6937,17 +6943,17 @@ let position_is_default_origin (p : position_value) =
   | Left_top | Top_left -> true
   | _ -> false
 
-(* CSS Backgrounds 3 sec. 3.10: under minify, drop a longhand whose value
-   equals its [background] shorthand initial. The resolved cascade is
-   unchanged because the omitted slot inherits that same initial. *)
-let drop_initial_when_minified :
-      'a. Pp.ctx -> 'a -> 'a option -> 'a option =
+(* CSS Backgrounds 3 sec. 3.10: under minify, drop a longhand whose value equals
+   its [background] shorthand initial. The resolved cascade is unchanged because
+   the omitted slot inherits that same initial. *)
+let drop_initial_when_minified : 'a. Pp.ctx -> 'a -> 'a option -> 'a option =
  fun ctx initial opt ->
   match opt with
   | Some x when Pp.minified ctx && x = initial -> (None : _ option)
   | _ -> opt
 
-let drop_default_position ctx (opt : position_value option) : position_value option =
+let drop_default_position ctx (opt : position_value option) :
+    position_value option =
   match opt with
   | Some pos when Pp.minified ctx && position_is_default_origin pos ->
       (None : _ option)
@@ -6970,7 +6976,8 @@ let pp_background_shorthand : background_shorthand Pp.t =
     drop_initial_when_minified ctx (Repeat : background_repeat) bg.repeat
   in
   let attachment =
-    drop_initial_when_minified ctx (Scroll : background_attachment)
+    drop_initial_when_minified ctx
+      (Scroll : background_attachment)
       bg.attachment
   in
   let origin =
@@ -7016,34 +7023,31 @@ let rec pp_gap : gap Pp.t =
           (* Fallback - shouldn't happen with proper parsing *)
           Pp.string ctx "0")
 
-let rec pp_transform_origin : transform_origin Pp.t =
- fun ctx ->
-  let pp_pair a b =
-    pp_length ctx a;
-    Pp.space ctx ();
-    pp_length ctx b
-  in
+let pp_transform_origin_pair ctx a b =
+  pp_length ctx a;
+  Pp.space ctx ();
+  pp_length ctx b
+
+let pp_minified_transform_origin ctx value =
   let pct n = (Pct n : length) in
   let zero = (Zero : length) in
-  function
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
-  | Center_center when Pp.minified ctx -> pp_length ctx (pct 50.)
-  | Left when Pp.minified ctx -> pp_length ctx zero
-  | Right when Pp.minified ctx -> pp_length ctx (pct 100.)
-  | (Left_top | Top_left) when Pp.minified ctx -> pp_pair zero zero
-  | Left_center when Pp.minified ctx -> pp_length ctx zero
-  | (Right_top | Top_right) when Pp.minified ctx -> pp_pair (pct 100.) zero
-  | Right_center when Pp.minified ctx -> pp_length ctx (pct 100.)
-  | (Left_bottom | Bottom_left) when Pp.minified ctx -> pp_pair zero (pct 100.)
-  | (Right_bottom | Bottom_right) when Pp.minified ctx ->
-      pp_pair (pct 100.) (pct 100.)
-  | Center_top when Pp.minified ctx -> Pp.string ctx "top"
-  | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
+  match value with
+  | Center | Center_center -> Some (fun () -> pp_length ctx (pct 50.))
+  | Left | Left_center -> Some (fun () -> pp_length ctx zero)
+  | Right | Right_center -> Some (fun () -> pp_length ctx (pct 100.))
+  | Left_top | Top_left ->
+      Some (fun () -> pp_transform_origin_pair ctx zero zero)
+  | Right_top | Top_right ->
+      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) zero)
+  | Left_bottom | Bottom_left ->
+      Some (fun () -> pp_transform_origin_pair ctx zero (pct 100.))
+  | Right_bottom | Bottom_right ->
+      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) (pct 100.))
+  | Center_top -> Some (fun () -> Pp.string ctx "top")
+  | Center_bottom -> Some (fun () -> Pp.string ctx "bottom")
+  | _ -> None
+
+let pp_transform_origin_keywords ctx = function
   | Center -> Pp.string ctx "center"
   | Center_center -> Pp.string ctx "center center"
   | Left -> Pp.string ctx "left"
@@ -7062,24 +7066,44 @@ let rec pp_transform_origin : transform_origin Pp.t =
   | Top_right -> Pp.string ctx "top right"
   | Bottom_left -> Pp.string ctx "bottom left"
   | Bottom_right -> Pp.string ctx "bottom right"
-  | Position position -> pp_position_value ctx position
-  | X a -> pp_length ctx a
-  | XY (a, Pct 50.) when Pp.minified ctx -> pp_length ctx a
-  | XY (a, b) ->
-      pp_length ctx a;
-      Pp.space ctx ();
-      pp_length ctx b
-  | XYZ (a, b, z) ->
-      pp_length ctx a;
-      Pp.space ctx ();
-      pp_length ctx b;
-      Pp.space ctx ();
-      pp_length ctx z
-  | Position_z (position, z) ->
-      pp_position_value ctx position;
-      Pp.space ctx ();
-      pp_length ctx z
-  | Var v -> pp_var pp_transform_origin ctx v
+  | _ -> ()
+
+let rec pp_transform_origin : transform_origin Pp.t =
+ fun ctx value ->
+  match
+    if Pp.minified ctx then pp_minified_transform_origin ctx value else None
+  with
+  | Some pp -> pp ()
+  | None -> (
+      match value with
+      | Inherit -> Pp.string ctx "inherit"
+      | Initial -> Pp.string ctx "initial"
+      | Unset -> Pp.string ctx "unset"
+      | Revert -> Pp.string ctx "revert"
+      | Revert_layer -> Pp.string ctx "revert-layer"
+      | Center | Center_center | Left | Right | Top | Bottom | Left_top
+      | Left_center | Left_bottom | Right_top | Right_center | Right_bottom
+      | Center_top | Center_bottom | Top_left | Top_right | Bottom_left
+      | Bottom_right ->
+          pp_transform_origin_keywords ctx value
+      | Position position -> pp_position_value ctx position
+      | X a -> pp_length ctx a
+      | XY (a, Pct 50.) when Pp.minified ctx -> pp_length ctx a
+      | XY (a, b) ->
+          pp_length ctx a;
+          Pp.space ctx ();
+          pp_length ctx b
+      | XYZ (a, b, z) ->
+          pp_length ctx a;
+          Pp.space ctx ();
+          pp_length ctx b;
+          Pp.space ctx ();
+          pp_length ctx z
+      | Position_z (position, z) ->
+          pp_position_value ctx position;
+          Pp.space ctx ();
+          pp_length ctx z
+      | Var v -> pp_var pp_transform_origin ctx v)
 
 let rec pp_transform_box : transform_box Pp.t =
  fun ctx -> function
@@ -8933,42 +8957,44 @@ and pp_grid_track_list ctx tracks =
   in
   loop tracks
 
+let grid_area_row_ws = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let grid_template_area_row_cells row =
+  let row_len = String.length row in
+  let rec skip_ws i =
+    if i < row_len && grid_area_row_ws row.[i] then skip_ws (i + 1) else i
+  in
+  let rec take_cell start i =
+    if i < row_len && not (grid_area_row_ws row.[i]) then take_cell start (i + 1)
+    else (String.sub row start (i - start), i)
+  in
+  let rec loop acc i =
+    let start = skip_ws i in
+    if start >= row_len then List.rev acc
+    else
+      let cell, next = take_cell start start in
+      loop (cell :: acc) next
+  in
+  loop [] 0
+
+(* CSS Grid Layout 2 §7.3: a "null cell token" is one or more sequential
+   periods, all denoting the same single empty cell. Collapse multi-dot
+   spellings ([....] / [..]) to the canonical single [.]. *)
+let normalize_grid_template_area_cell c =
+  let n = String.length c in
+  let rec all_dots i = i >= n || (c.[i] = '.' && all_dots (i + 1)) in
+  if n > 1 && all_dots 0 then "." else c
+
+let minify_grid_template_area_row row =
+  String.concat " "
+    (List.map normalize_grid_template_area_cell
+       (grid_template_area_row_cells row))
+
 let minify_grid_template_areas_string value =
   let len = String.length value in
   let buf = Buffer.create len in
-  let is_row_ws = function
-    | ' ' | '\t' | '\n' | '\r' | '\012' -> true
-    | _ -> false
-  in
-  let row_cells row =
-    let row_len = String.length row in
-    let rec skip_ws i =
-      if i < row_len && is_row_ws row.[i] then skip_ws (i + 1) else i
-    in
-    let rec take_cell start i =
-      if i < row_len && not (is_row_ws row.[i]) then take_cell start (i + 1)
-      else (String.sub row start (i - start), i)
-    in
-    let rec loop acc i =
-      let start = skip_ws i in
-      if start >= row_len then List.rev acc
-      else
-        let cell, next = take_cell start start in
-        loop (cell :: acc) next
-    in
-    loop [] 0
-  in
-  (* CSS Grid Layout 2 §7.3: a "null cell token" is one or more sequential
-     periods, all denoting the same single empty cell. Collapse multi-dot
-     spellings ([....] / [..]) to the canonical single [.]. *)
-  let normalize_cell c =
-    let n = String.length c in
-    let rec all_dots i = i >= n || (c.[i] = '.' && all_dots (i + 1)) in
-    if n > 1 && all_dots 0 then "." else c
-  in
-  let minify_row row =
-    String.concat " " (List.map normalize_cell (row_cells row))
-  in
   let rec take_quoted quote start i =
     if i >= len then (String.sub value start (i - start), i)
     else if value.[i] = quote then (String.sub value start (i - start), i + 1)
@@ -8980,7 +9006,7 @@ let minify_grid_template_areas_string value =
       | ('"' | '\'') as quote ->
           let row, next = take_quoted quote (i + 1) (i + 1) in
           Buffer.add_char buf '"';
-          Buffer.add_string buf (minify_row row);
+          Buffer.add_string buf (minify_grid_template_area_row row);
           Buffer.add_char buf '"';
           loop next
       | ' ' | '\t' | '\n' | '\r' | '\012' -> loop (i + 1)
@@ -9530,8 +9556,8 @@ let rec read_translate_value t : translate_value =
 
 (* CSS Transforms 2 sec. 3.3: the standalone [rotate] / individual transform
    properties accept [<angle>] but reject the bare [0] from the CSS Values
-   [<zero>] token shortcut (browsers don't apply the parse-time fallback).
-   Emit the unit even on zero so [rotate: 0deg] survives minification. *)
+   [<zero>] token shortcut (browsers don't apply the parse-time fallback). Emit
+   the unit even on zero so [rotate: 0deg] survives minification. *)
 let pp_required_unit_angle ctx = function
   | (Deg f | Rad f | Turn f | Grad f) as _a when f = 0. ->
       (* Round-trip stable: input [0deg] / [0rad] / etc. keeps its unit. *)
@@ -9587,60 +9613,60 @@ let rec pp_rotate_value : rotate_value Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_rotate_value ctx v
 
+let read_rotate_axis prefix make t =
+  Cursor.expect_string prefix t;
+  Cursor.ws t;
+  make (read_angle t)
+
+let read_rotate_x t : rotate_value =
+  read_rotate_axis "x" (fun a -> (X a : rotate_value)) t
+
+let read_rotate_y t : rotate_value =
+  read_rotate_axis "y" (fun a -> (Y a : rotate_value)) t
+
+let read_rotate_z t : rotate_value =
+  read_rotate_axis "z" (fun a -> (Z a : rotate_value)) t
+
+(* Read custom axis: x y z angle. *)
+let read_rotate_axis_angle t : rotate_value =
+  let first = Cursor.number t in
+  Cursor.ws t;
+  let second = Cursor.number t in
+  Cursor.ws t;
+  let third = Cursor.number t in
+  Cursor.ws t;
+  let angle = read_angle t in
+  Axis (first, second, third, angle)
+
+let read_rotate_angle_axis_tail angle t =
+  match Cursor.peek_ident t with
+  | Some "x" ->
+      Cursor.skip t;
+      (X angle : rotate_value)
+  | Some "y" ->
+      Cursor.skip t;
+      (Y angle : rotate_value)
+  | Some "z" ->
+      Cursor.skip t;
+      (Z angle : rotate_value)
+  | _ ->
+      let first = Cursor.number t in
+      Cursor.ws t;
+      let second = Cursor.number t in
+      Cursor.ws t;
+      let third = Cursor.number t in
+      (Axis (first, second, third, angle) : rotate_value)
+
+(* CSS Transforms 2 §3.3 [rotate] also accepts angle then axis: [<angle> x|y|z]
+   or [<angle> <number>{3}]. Try angle-first after the plain forms; consume the
+   angle, then look for a trailing axis. *)
+let read_rotate_angle_then_axis t : rotate_value =
+  let angle = read_angle t in
+  Cursor.ws t;
+  if Cursor.is_done t || Cursor.peek_semicolon t then Angle angle
+  else read_rotate_angle_axis_tail angle t
+
 let rec read_rotate_value t : rotate_value =
-  let read_rotate_var t : rotate_value = Var (read_var read_rotate_value t) in
-  let read_x t : rotate_value =
-    Cursor.expect_string "x" t;
-    Cursor.ws t;
-    X (read_angle t)
-  in
-  let read_y t : rotate_value =
-    Cursor.expect_string "y" t;
-    Cursor.ws t;
-    Y (read_angle t)
-  in
-  let read_z t : rotate_value =
-    Cursor.expect_string "z" t;
-    Cursor.ws t;
-    Z (read_angle t)
-  in
-  (* Read custom axis: x y z angle *)
-  let read_axis_angle t : rotate_value =
-    let first = Cursor.number t in
-    Cursor.ws t;
-    let second = Cursor.number t in
-    Cursor.ws t;
-    let third = Cursor.number t in
-    Cursor.ws t;
-    let angle = read_angle t in
-    Axis (first, second, third, angle)
-  in
-  (* CSS Transforms 2 §3.3 [rotate] also accepts angle then axis: [<angle>
-     x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
-     consume the angle, then look for a trailing axis. *)
-  let read_angle_then_axis t : rotate_value =
-    let angle = read_angle t in
-    Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_semicolon t then Angle angle
-    else
-      match Cursor.peek_ident t with
-      | Some "x" ->
-          Cursor.skip t;
-          X angle
-      | Some "y" ->
-          Cursor.skip t;
-          Y angle
-      | Some "z" ->
-          Cursor.skip t;
-          Z angle
-      | _ ->
-          let first = Cursor.number t in
-          Cursor.ws t;
-          let second = Cursor.number t in
-          Cursor.ws t;
-          let third = Cursor.number t in
-          Axis (first, second, third, angle)
-  in
   Cursor.enum_or_calls "rotate"
     [
       ("none", (None : rotate_value));
@@ -9652,12 +9678,18 @@ let rec read_rotate_value t : rotate_value =
     ]
     ~calls:
       [
-        ("var", read_rotate_var);
+        ("var", fun t -> (Var (read_var read_rotate_value t) : rotate_value));
         ("calc", fun t -> Angle (Calc (read_calc read_angle t)));
       ]
     ~default:(fun t ->
       Cursor.one_of
-        [ read_x; read_y; read_z; read_axis_angle; read_angle_then_axis ]
+        [
+          read_rotate_x;
+          read_rotate_y;
+          read_rotate_z;
+          read_rotate_axis_angle;
+          read_rotate_angle_then_axis;
+        ]
         t)
     t
 
@@ -9933,39 +9965,41 @@ let pp_font_variant_css21 ctx = function
   | (Normal : font_variant_css21) -> Pp.string ctx "normal"
   | Small_caps -> Pp.string ctx "small-caps"
 
-let pp_font_shorthand : font_shorthand Pp.t =
- fun ctx { style; variant; weight; stretch; size; line_height; family } ->
-  let drop_default (type a) ~(is_default : a -> bool) (opt : a option) :
-      a option =
-    if Pp.minified ctx then
-      match opt with Some v when is_default v -> None | _ -> opt
-    else opt
-  in
+let drop_font_default ctx (type a) ~(is_default : a -> bool) (opt : a option) :
+    a option =
+  if Pp.minified ctx then
+    match opt with Some v when is_default v -> None | _ -> opt
+  else opt
+
+let drop_font_shorthand_defaults ctx style variant weight stretch line_height =
   let style =
-    drop_default style ~is_default:(function
+    drop_font_default ctx style ~is_default:(function
       | (Normal : font_style) -> true
       | _ -> false)
   in
   let variant =
-    drop_default variant ~is_default:(function
+    drop_font_default ctx variant ~is_default:(function
       | (Normal : font_variant_css21) -> true
       | _ -> false)
   in
   let weight =
-    drop_default weight ~is_default:(function
+    drop_font_default ctx weight ~is_default:(function
       | (Normal : font_weight) | Weight 400 -> true
       | _ -> false)
   in
   let stretch =
-    drop_default stretch ~is_default:(function
+    drop_font_default ctx stretch ~is_default:(function
       | (Normal : font_stretch) -> true
       | _ -> false)
   in
   let line_height =
-    drop_default line_height ~is_default:(function
+    drop_font_default ctx line_height ~is_default:(function
       | (Normal : line_height) -> true
       | _ -> false)
   in
+  (style, variant, weight, stretch, line_height)
+
+let pp_font_prefix ctx style variant weight stretch =
   let first = ref true in
   let emit pp opt =
     Option.iter
@@ -9979,7 +10013,14 @@ let pp_font_shorthand : font_shorthand Pp.t =
   emit pp_font_variant_css21 variant;
   emit pp_font_weight weight;
   emit pp_font_stretch stretch;
-  if not !first then Pp.space ctx ();
+  !first
+
+let pp_font_shorthand : font_shorthand Pp.t =
+ fun ctx { style; variant; weight; stretch; size; line_height; family } ->
+  let style, variant, weight, stretch, line_height =
+    drop_font_shorthand_defaults ctx style variant weight stretch line_height
+  in
+  if not (pp_font_prefix ctx style variant weight stretch) then Pp.space ctx ();
   pp_font_size ctx size;
   Option.iter
     (fun lh ->
@@ -10306,6 +10347,31 @@ let rec read_baseline_shift t : baseline_shift =
       Shift (Values.read_length_percentage ~with_keywords:false t))
     t
 
+let string_of_calc_const = function
+  | Pi -> "pi"
+  | E -> "e"
+  | Infinity -> "infinity"
+  | Neg_infinity -> "-infinity"
+  | Nan -> "NaN"
+
+let string_of_calc_op (op : calc_op) =
+  match op with Add -> " + " | Sub -> " - " | Mul -> " * " | Div -> " / "
+
+let add_string_of_calc_var : type a. (string -> unit) -> a var -> unit =
+ fun add v ->
+  add "var(--";
+  add v.Values.name;
+  (match v.Values.fallback with
+  | Fallback _ | Syntax_fallback _ -> add ", <fallback>"
+  | Var_fallback name ->
+      add ", var(--";
+      add name;
+      add ")"
+  | Empty -> add ","
+  | Empty2 -> add ",  "
+  | None -> ());
+  add ")"
+
 let string_of_calc (type a) (expr : a calc) : string =
   let buf = Buffer.create 32 in
   let add = Buffer.add_string buf in
@@ -10313,30 +10379,10 @@ let string_of_calc (type a) (expr : a calc) : string =
     | Num n ->
         if Float.is_integer n then add (string_of_int (int_of_float n))
         else add (string_of_float n)
-    | Math_const c ->
-        add
-          (match c with
-          | Pi -> "pi"
-          | E -> "e"
-          | Infinity -> "infinity"
-          | Neg_infinity -> "-infinity"
-          | Nan -> "NaN")
+    | Math_const c -> add (string_of_calc_const c)
     | Sibling_index -> add "sibling-index()"
     | Sibling_count -> add "sibling-count()"
-    | Var v ->
-        add "var(--";
-        add v.name;
-        (match v.fallback with
-        | Fallback _ -> add ", <fallback>"
-        | Syntax_fallback _ -> add ", <fallback>"
-        | Var_fallback name ->
-            add ", var(--";
-            add name;
-            add ")"
-        | Empty -> add ","
-        | Empty2 -> add ",  "
-        | None -> ());
-        add ")"
+    | Var v -> add_string_of_calc_var add v
     | Val _ -> add "<val>"
     | Math_fn _ -> add "<math-fn>"
     | Nested inner ->
@@ -10349,11 +10395,7 @@ let string_of_calc (type a) (expr : a calc) : string =
         add ")"
     | Expr (left, op, right) ->
         pp_expr left;
-        (match op with
-        | Add -> add " + "
-        | Sub -> add " - "
-        | Mul -> add " * "
-        | Div -> add " / ");
+        add (string_of_calc_op op);
         pp_expr right
   in
   add "calc(";
@@ -10667,56 +10709,56 @@ let rec read_flex t : flex =
       (Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
     t
 
+let read_place_align_content t =
+  match read_align_content t with
+  | Left | Right | Safe_left | Safe_right | Unsafe_left | Unsafe_right ->
+      Cursor.err_invalid t "place-content align value cannot be left or right"
+  | value -> value
+
+let read_place_content_pair t =
+  let a, j = Cursor.pair read_place_align_content read_justify_content t in
+  (Align_justify (a, j) : place_content)
+
+let read_place_content_safe t =
+  Cursor.expect_string "safe" t;
+  Cursor.ws t;
+  Cursor.enum "place-content safe"
+    [
+      ("center", (Safe_center : place_content));
+      ("start", Safe_start);
+      ("end", Safe_end);
+      ("stretch", Safe_stretch);
+    ]
+    t
+
+let read_place_content_unsafe t =
+  Cursor.expect_string "unsafe" t;
+  Cursor.ws t;
+  Cursor.enum "place-content unsafe"
+    [
+      ("center", (Unsafe_center : place_content));
+      ("start", Unsafe_start);
+      ("end", Unsafe_end);
+      ("stretch", Unsafe_stretch);
+    ]
+    t
+
+let read_place_content_single t =
+  Cursor.enum "place-content"
+    [
+      ("normal", (Normal : place_content));
+      ("start", Start);
+      ("end", End);
+      ("center", Center);
+      ("stretch", Stretch);
+      ("space-between", Space_between);
+      ("space-around", Space_around);
+      ("space-evenly", Space_evenly);
+      ("inherit", Inherit);
+    ]
+    t
+
 let rec read_place_content t : place_content =
-  let read_place_align_content t =
-    match read_align_content t with
-    | Left | Right | Safe_left | Safe_right | Unsafe_left | Unsafe_right ->
-        Cursor.err_invalid t "place-content align value cannot be left or right"
-    | value -> value
-  in
-  let read_pair t =
-    let a, j = Cursor.pair read_place_align_content read_justify_content t in
-    (Align_justify (a, j) : place_content)
-  in
-  let read_safe t =
-    Cursor.expect_string "safe" t;
-    Cursor.ws t;
-    Cursor.enum "place-content safe"
-      [
-        ("center", (Safe_center : place_content));
-        ("start", Safe_start);
-        ("end", Safe_end);
-        ("stretch", Safe_stretch);
-      ]
-      t
-  in
-  let read_unsafe t =
-    Cursor.expect_string "unsafe" t;
-    Cursor.ws t;
-    Cursor.enum "place-content unsafe"
-      [
-        ("center", (Unsafe_center : place_content));
-        ("start", Unsafe_start);
-        ("end", Unsafe_end);
-        ("stretch", Unsafe_stretch);
-      ]
-      t
-  in
-  let read_single t =
-    Cursor.enum "place-content"
-      [
-        ("normal", (Normal : place_content));
-        ("start", Start);
-        ("end", End);
-        ("center", Center);
-        ("stretch", Stretch);
-        ("space-between", Space_between);
-        ("space-around", Space_around);
-        ("space-evenly", Space_evenly);
-        ("inherit", Inherit);
-      ]
-      t
-  in
   Cursor.enum_or_var "place-content"
     [
       ("inherit", (Inherit : place_content));
@@ -10726,7 +10768,14 @@ let rec read_place_content t : place_content =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_place_content t))
-    ~default:(Cursor.one_of [ read_pair; read_safe; read_unsafe; read_single ])
+    ~default:
+      (Cursor.one_of
+         [
+           read_place_content_pair;
+           read_place_content_safe;
+           read_place_content_unsafe;
+           read_place_content_single;
+         ])
     t
 
 let read_place_items_safe t =
@@ -11300,7 +11349,7 @@ let rec read_text_overflow t : text_overflow =
            read a second value, restore on failure. *)
         match
           try Some (Cursor.lookahead (fun t -> Some (read_single t)) t)
-          with _ -> None
+          with Cursor.Parse_error _ -> None
         with
         | Some (Some _) ->
             let second = read_single t in
@@ -14662,6 +14711,36 @@ let transition_duration_delay parts =
   | [ d ] -> (Option.Some d, Option.None)
   | d :: l :: _ -> (Option.Some d, Option.Some l)
 
+let read_transition_next_part parts t =
+  read_transition_var_property_part parts t
+  || read_transition_time_part parts t
+  || read_transition_timing_part parts t
+  || read_transition_behavior_part parts t
+  || read_transition_property_part parts t
+
+let transition_property_or_all = function
+  | Option.Some property -> property
+  | Option.None -> (All : transition_property_value)
+
+let transition_needs_duration = function
+  | Option.Some (Property _) -> true
+  | _ -> false
+
+let transition_has_no_explicit_effect parts =
+  parts.transition_times = []
+  && parts.transition_timing = Option.None
+  && parts.transition_behavior = Option.None
+
+let validate_transition_shorthand_duration t parts =
+  (* CSS Transitions 1: a single-transition that names a specific property must
+     carry at least a [<time>] (duration); without one the entry produces no
+     observable transition. The implicit/explicit [all] form (no property or
+     [all]) and the [none] form are still accepted bare. *)
+  if
+    transition_needs_duration parts.transition_property
+    && transition_has_no_explicit_effect parts
+  then Cursor.err_invalid t "transition shorthand requires a duration"
+
 let read_transition_shorthand t : transition_shorthand =
   let parts =
     {
@@ -14674,34 +14753,11 @@ let read_transition_shorthand t : transition_shorthand =
   let consumed = ref true in
   while !consumed do
     Cursor.ws t;
-    consumed :=
-      read_transition_var_property_part parts t
-      || read_transition_time_part parts t
-      || read_transition_timing_part parts t
-      || read_transition_behavior_part parts t
-      || read_transition_property_part parts t
+    consumed := read_transition_next_part parts t
   done;
-  let property =
-    match parts.transition_property with
-    | Option.Some p -> p
-    | Option.None -> (All : transition_property_value)
-  in
+  let property = transition_property_or_all parts.transition_property in
   let duration, delay = transition_duration_delay parts in
-  (* CSS Transitions 1: a single-transition that names a specific property must
-     carry at least a [<time>] (duration); without one the entry produces no
-     observable transition. The implicit/explicit [all] form (no property or
-     [all]) and the [none] form are still accepted bare. *)
-  let needs_duration =
-    match parts.transition_property with
-    | Option.Some (Property _) -> true
-    | _ -> false
-  in
-  if
-    needs_duration
-    && parts.transition_times = []
-    && parts.transition_timing = Option.None
-    && parts.transition_behavior = Option.None
-  then Cursor.err_invalid t "transition shorthand requires a duration";
+  validate_transition_shorthand_duration t parts;
   {
     property;
     duration;
@@ -15348,91 +15404,118 @@ end
 let read_animation_shorthand t : animation_shorthand =
   Animation.read_shorthand t
 
-let pp_animation_shorthand : animation_shorthand Pp.t =
- fun ctx anim ->
-  let first = ref true in
-  (* Track if the previous value ends with ')' - timing functions end with
-     ')' *)
-  let prev_ends_with_paren = ref false in
-  let prev_ends_with_quote = ref false in
-  let space_before ?(ends_with_paren = false) ?(ends_with_quote = false)
-      ?(starts_with_quote = false) pp ctx x =
-    if !first then first := false
-    else if
-      Pp.minified ctx
-      && (!prev_ends_with_paren || !prev_ends_with_quote || starts_with_quote)
-    then
-      (* Minified output drops the inter-token space when one side already
-         carries a self-delimiting boundary - a closing function paren, a
-         closing string quote, or an upcoming opening string quote. *)
-      ()
-    else Pp.char ctx ' ';
-    prev_ends_with_paren := ends_with_paren;
-    prev_ends_with_quote := ends_with_quote;
-    pp ctx x
-  in
-  let has_any_non_default = Animation.has_non_defaults ctx anim in
-  (* An explicit animation-name [none] is redundant when another shorthand slot
-     is non-default. *)
-  let name_is_default_none =
-    match anim.name with
-    | Some (None : animation_name) -> true
-    | Some (Quoted s) when Pp.minified ctx && String.lowercase_ascii s = "none"
-      ->
-        true
-    | _ -> false
-  in
-  (* Quote ambiguous animation names in minified output when the colliding slot
-     would otherwise need a default-value placeholder. When the slot already
-     carries an explicit non-default value the bare ident is unambiguous on
-     re-parse, so leave the printer alone. *)
-  let quote_ambiguous_name =
+type animation_pp_state = {
+  first : bool ref;
+  prev_ends_with_paren : bool ref;
+  prev_ends_with_quote : bool ref;
+}
+
+let animation_pp_state () =
+  {
+    first = ref true;
+    prev_ends_with_paren = ref false;
+    prev_ends_with_quote = ref false;
+  }
+
+let pp_animation_space_before state ?(ends_with_paren = false)
+    ?(ends_with_quote = false) ?(starts_with_quote = false) pp ctx x =
+  if !(state.first) then state.first := false
+  else if
     Pp.minified ctx
-    && Animation.ambiguous_name_kind anim <> None
-    && not (Animation.bare_ambiguous_safe ctx anim)
-  in
-  (match (anim.name, name_is_default_none, has_any_non_default) with
+    && (!(state.prev_ends_with_paren)
+       || !(state.prev_ends_with_quote)
+       || starts_with_quote)
+  then
+    (* Minified output drops the inter-token space when one side already carries
+       a self-delimiting boundary - a closing function paren, a closing string
+       quote, or an upcoming opening string quote. *)
+    ()
+  else Pp.char ctx ' ';
+  state.prev_ends_with_paren := ends_with_paren;
+  state.prev_ends_with_quote := ends_with_quote;
+  pp ctx x
+
+let animation_name_is_default_none ctx = function
+  | Some (None : animation_name) -> true
+  | Some (Quoted s) when Pp.minified ctx && String.lowercase_ascii s = "none" ->
+      true
+  | _ -> false
+
+let animation_quote_ambiguous_name ctx anim =
+  Pp.minified ctx
+  && Animation.ambiguous_name_kind anim <> None
+  && not (Animation.bare_ambiguous_safe ctx anim)
+
+let pp_animation_initial_none ctx (anim : animation_shorthand)
+    ~name_is_default_none ~has_any_non_default =
+  match (anim.name, name_is_default_none, has_any_non_default) with
   | _, true, true -> ()
-  | None, _, false -> Pp.string ctx "none"
-  | None, _, true -> ()
-  | Some _, _, _ -> ());
-  Pp.option (space_before pp_duration) ctx (Animation.duration anim);
-  (match Animation.timing ~quote_name:quote_ambiguous_name ctx anim with
-  | Some tf ->
-      let ends = Animation.ends_with_paren ctx tf in
-      space_before ~ends_with_paren:ends Animation.pp_timing ctx tf
-  | None -> ());
-  Pp.option (space_before pp_duration) ctx (Animation.delay anim);
-  Pp.option
-    (space_before Animation.pp_iter_count)
-    ctx
-    (Animation.iteration ~quote_name:quote_ambiguous_name anim);
-  Pp.option
-    (space_before pp_animation_direction)
-    ctx
-    (Animation.direction ~quote_name:quote_ambiguous_name anim);
-  Pp.option
-    (space_before pp_animation_fill_mode)
-    ctx
-    (Animation.fill_mode ~quote_name:quote_ambiguous_name anim);
-  Pp.option
-    (space_before pp_animation_play_state)
-    ctx
-    (Animation.play_state ~quote_name:quote_ambiguous_name anim);
-  if not name_is_default_none then
+  | Option.None, _, false -> Pp.string ctx "none"
+  | Option.None, _, true -> ()
+  | Option.Some _, _, _ -> ()
+
+let pp_animation_name_slot ctx state ~quote_ambiguous_name
+    (anim : animation_shorthand) =
+  if not (animation_name_is_default_none ctx anim.name) then
     Option.iter
       (fun (name : animation_name) ->
         match name with
         | Ambiguous s when quote_ambiguous_name ->
-            space_before ~starts_with_quote:true ~ends_with_quote:true
-              Pp.quoted_string ctx s
+            pp_animation_space_before state ~starts_with_quote:true
+              ~ends_with_quote:true Pp.quoted_string ctx s
         | Quoted s ->
-            space_before ~starts_with_quote:true ~ends_with_quote:true
-              Pp.quoted_string ctx s
-        | _ -> space_before pp_animation_name ctx name)
-      anim.name;
+            pp_animation_space_before state ~starts_with_quote:true
+              ~ends_with_quote:true Pp.quoted_string ctx s
+        | _ -> pp_animation_space_before state pp_animation_name ctx name)
+      anim.name
+
+let pp_animation_timing_slot ctx state ~quote_ambiguous_name anim =
+  match Animation.timing ~quote_name:quote_ambiguous_name ctx anim with
+  | Some tf ->
+      let ends = Animation.ends_with_paren ctx tf in
+      pp_animation_space_before state ~ends_with_paren:ends Animation.pp_timing
+        ctx tf
+  | None -> ()
+
+let pp_animation_shorthand : animation_shorthand Pp.t =
+ fun ctx anim ->
+  let state = animation_pp_state () in
+  let has_any_non_default = Animation.has_non_defaults ctx anim in
+  let name_is_default_none = animation_name_is_default_none ctx anim.name in
+  let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
+  pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
+  (* CSS Animations 1 sec. 3.1: the shorthand has free token order, so emit
+     the [name] first under minify to match the csso / cssnano canonical
+     spelling. *)
+  if Pp.minified ctx then
+    pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
-    (space_before pp_animation_timeline)
+    (pp_animation_space_before state pp_duration)
+    ctx (Animation.duration anim);
+  pp_animation_timing_slot ctx state ~quote_ambiguous_name anim;
+  Pp.option
+    (pp_animation_space_before state pp_duration)
+    ctx (Animation.delay anim);
+  Pp.option
+    (pp_animation_space_before state Animation.pp_iter_count)
+    ctx
+    (Animation.iteration ~quote_name:quote_ambiguous_name anim);
+  Pp.option
+    (pp_animation_space_before state pp_animation_direction)
+    ctx
+    (Animation.direction ~quote_name:quote_ambiguous_name anim);
+  Pp.option
+    (pp_animation_space_before state pp_animation_fill_mode)
+    ctx
+    (Animation.fill_mode ~quote_name:quote_ambiguous_name anim);
+  Pp.option
+    (pp_animation_space_before state pp_animation_play_state)
+    ctx
+    (Animation.play_state ~quote_name:quote_ambiguous_name anim);
+  if not (Pp.minified ctx) then
+    pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
+  Pp.option
+    (pp_animation_space_before state pp_animation_timeline)
     ctx
     (Animation.timeline ~quote_name:quote_ambiguous_name anim)
 
@@ -16458,6 +16541,145 @@ let read_image_set_option t : image_set_option =
 let read_image_set_body t : background_image =
   Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
 
+let read_repeating_linear_gradient t =
+  match Cursor.call "repeating-linear-gradient" t read_linear_gradient_body with
+  | Linear_gradient (d, stops) -> Repeating_linear_gradient (d, stops)
+  | other -> other
+
+let read_repeating_radial_gradient t =
+  match Cursor.call "repeating-radial-gradient" t read_radial_gradient_body with
+  | Radial_gradient (c, stops) -> Repeating_radial_gradient (c, stops)
+  | other -> other
+
+let read_repeating_conic_gradient t =
+  match Cursor.call "repeating-conic-gradient" t read_conic_gradient_body with
+  | Conic_gradient (c, stops) -> Repeating_conic_gradient (c, stops)
+  | other -> other
+
+let read_webkit_repeating_linear_gradient t =
+  match
+    Cursor.call "-webkit-repeating-linear-gradient" t
+      read_webkit_linear_gradient_body
+  with
+  | Webkit_linear_gradient (d, stops) ->
+      Webkit_repeating_linear_gradient (d, stops)
+  | other -> other
+
+let webkit_radial_gradient_of_radial = function
+  | Radial_gradient (c, stops) -> Webkit_radial_gradient (c, stops)
+  | other -> other
+
+let webkit_repeat_radial_of_radial = function
+  | Radial_gradient (c, stops) -> Webkit_repeating_radial_gradient (c, stops)
+  | other -> other
+
+let moz_linear_gradient_of_webkit = function
+  | Webkit_linear_gradient (d, stops) -> Moz_linear_gradient (d, stops)
+  | other -> other
+
+let moz_repeat_linear_of_webkit = function
+  | Webkit_linear_gradient (d, stops) -> Moz_repeating_linear_gradient (d, stops)
+  | other -> other
+
+let moz_radial_gradient_of_radial = function
+  | Radial_gradient (c, stops) -> Moz_radial_gradient (c, stops)
+  | other -> other
+
+let moz_repeat_radial_of_radial = function
+  | Radial_gradient (c, stops) -> Moz_repeating_radial_gradient (c, stops)
+  | other -> other
+
+let o_linear_gradient_of_webkit = function
+  | Webkit_linear_gradient (d, stops) -> O_linear_gradient (d, stops)
+  | other -> other
+
+let o_repeat_linear_of_webkit = function
+  | Webkit_linear_gradient (d, stops) -> O_repeating_linear_gradient (d, stops)
+  | other -> other
+
+let o_radial_gradient_of_radial = function
+  | Radial_gradient (c, stops) -> O_radial_gradient (c, stops)
+  | other -> other
+
+let o_repeat_radial_of_radial = function
+  | Radial_gradient (c, stops) -> O_repeating_radial_gradient (c, stops)
+  | other -> other
+
+let webkit_image_set_of_set = function
+  | Image_set options -> Webkit_image_set options
+  | other -> other
+
+let read_bg_image_standard_calls =
+  [
+    ( "linear-gradient",
+      fun t -> Cursor.call "linear-gradient" t read_linear_gradient_body );
+    ( "radial-gradient",
+      fun t -> Cursor.call "radial-gradient" t read_radial_gradient_body );
+    ( "conic-gradient",
+      fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body );
+    ("repeating-linear-gradient", read_repeating_linear_gradient);
+    ("repeating-radial-gradient", read_repeating_radial_gradient);
+    ("repeating-conic-gradient", read_repeating_conic_gradient);
+  ]
+
+let webkit_bg_image_calls =
+  [
+    ( "-webkit-linear-gradient",
+      fun t ->
+        Cursor.call "-webkit-linear-gradient" t read_webkit_linear_gradient_body
+    );
+    ("-webkit-repeating-linear-gradient", read_webkit_repeating_linear_gradient);
+    ( "-webkit-radial-gradient",
+      fun t ->
+        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body
+        |> webkit_radial_gradient_of_radial );
+    ( "-webkit-repeating-radial-gradient",
+      fun t ->
+        Cursor.call "-webkit-repeating-radial-gradient" t
+          read_radial_gradient_body
+        |> webkit_repeat_radial_of_radial );
+  ]
+
+let legacy_bg_image_calls =
+  [
+    ( "-moz-linear-gradient",
+      fun t ->
+        Cursor.call "-moz-linear-gradient" t read_webkit_linear_gradient_body
+        |> moz_linear_gradient_of_webkit );
+    ( "-moz-repeating-linear-gradient",
+      fun t ->
+        Cursor.call "-moz-repeating-linear-gradient" t
+          read_webkit_linear_gradient_body
+        |> moz_repeat_linear_of_webkit );
+    ( "-moz-radial-gradient",
+      fun t ->
+        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body
+        |> moz_radial_gradient_of_radial );
+    ( "-moz-repeating-radial-gradient",
+      fun t ->
+        Cursor.call "-moz-repeating-radial-gradient" t read_radial_gradient_body
+        |> moz_repeat_radial_of_radial );
+    ( "-o-linear-gradient",
+      fun t ->
+        Cursor.call "-o-linear-gradient" t read_webkit_linear_gradient_body
+        |> o_linear_gradient_of_webkit );
+    ( "-o-repeating-linear-gradient",
+      fun t ->
+        Cursor.call "-o-repeating-linear-gradient" t
+          read_webkit_linear_gradient_body
+        |> o_repeat_linear_of_webkit );
+    ( "-o-radial-gradient",
+      fun t ->
+        Cursor.call "-o-radial-gradient" t read_radial_gradient_body
+        |> o_radial_gradient_of_radial );
+    ( "-o-repeating-radial-gradient",
+      fun t ->
+        Cursor.call "-o-repeating-radial-gradient" t read_radial_gradient_body
+        |> o_repeat_radial_of_radial );
+  ]
+
+let read_bg_image_vendor_calls = webkit_bg_image_calls @ legacy_bg_image_calls
+
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
      explicitly before dispatching on the function/ident shape. *)
@@ -16474,163 +16696,26 @@ let rec read_bg_image t : background_image =
             ("revert", Revert);
             ("revert-layer", Revert_layer);
           ]
-          ~calls:
-            [
-              ( "linear-gradient",
-                fun t ->
-                  Cursor.call "linear-gradient" t read_linear_gradient_body );
-              ( "radial-gradient",
-                fun t ->
-                  Cursor.call "radial-gradient" t read_radial_gradient_body );
-              ( "conic-gradient",
-                fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
-              );
-              ( "repeating-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "repeating-linear-gradient" t
-                      read_linear_gradient_body
-                  with
-                  | Linear_gradient (d, stops) ->
-                      Repeating_linear_gradient (d, stops)
-                  | other -> other );
-              ( "repeating-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "repeating-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) ->
-                      Repeating_radial_gradient (c, stops)
-                  | other -> other );
-              ( "repeating-conic-gradient",
-                fun t ->
-                  match
-                    Cursor.call "repeating-conic-gradient" t
-                      read_conic_gradient_body
-                  with
-                  | Conic_gradient (c, stops) ->
-                      Repeating_conic_gradient (c, stops)
-                  | other -> other );
-              ( "-webkit-linear-gradient",
-                fun t ->
-                  Cursor.call "-webkit-linear-gradient" t
-                    read_webkit_linear_gradient_body );
-              ( "-webkit-repeating-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-webkit-repeating-linear-gradient" t
-                      read_webkit_linear_gradient_body
-                  with
-                  | Webkit_linear_gradient (d, stops) ->
-                      Webkit_repeating_linear_gradient (d, stops)
-                  | other -> other );
-              ( "-webkit-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-webkit-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) ->
-                      Webkit_radial_gradient (c, stops)
-                  | other -> other );
-              ( "-webkit-repeating-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-webkit-repeating-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) ->
-                      Webkit_repeating_radial_gradient (c, stops)
-                  | other -> other );
-              ( "-moz-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-moz-linear-gradient" t
-                      read_webkit_linear_gradient_body
-                  with
-                  | Webkit_linear_gradient (d, stops) ->
-                      Moz_linear_gradient (d, stops)
-                  | other -> other );
-              ( "-moz-repeating-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-moz-repeating-linear-gradient" t
-                      read_webkit_linear_gradient_body
-                  with
-                  | Webkit_linear_gradient (d, stops) ->
-                      Moz_repeating_linear_gradient (d, stops)
-                  | other -> other );
-              ( "-moz-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-moz-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) -> Moz_radial_gradient (c, stops)
-                  | other -> other );
-              ( "-moz-repeating-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-moz-repeating-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) ->
-                      Moz_repeating_radial_gradient (c, stops)
-                  | other -> other );
-              ( "-o-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-o-linear-gradient" t
-                      read_webkit_linear_gradient_body
-                  with
-                  | Webkit_linear_gradient (d, stops) ->
-                      O_linear_gradient (d, stops)
-                  | other -> other );
-              ( "-o-repeating-linear-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-o-repeating-linear-gradient" t
-                      read_webkit_linear_gradient_body
-                  with
-                  | Webkit_linear_gradient (d, stops) ->
-                      O_repeating_linear_gradient (d, stops)
-                  | other -> other );
-              ( "-o-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-o-radial-gradient" t read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) -> O_radial_gradient (c, stops)
-                  | other -> other );
-              ( "-o-repeating-radial-gradient",
-                fun t ->
-                  match
-                    Cursor.call "-o-repeating-radial-gradient" t
-                      read_radial_gradient_body
-                  with
-                  | Radial_gradient (c, stops) ->
-                      O_repeating_radial_gradient (c, stops)
-                  | other -> other );
-              ( "image-set",
-                fun t -> Cursor.call "image-set" t read_image_set_body );
-              ( "-webkit-image-set",
-                fun t ->
-                  match
-                    Cursor.call "-webkit-image-set" t read_image_set_body
-                  with
-                  | Image_set options -> Webkit_image_set options
-                  | other -> other );
-              ( "cross-fade",
-                fun t -> Cursor.call "cross-fade" t read_cross_fade_body );
-              ( "-webkit-gradient",
-                fun t ->
-                  Cursor.call "-webkit-gradient" t read_webkit_gradient_body );
-              ("var", fun t -> Var (Values.read_var read_bg_image t));
-            ]
-          t);
+          ~calls:(read_bg_image_calls ()) t);
     ]
     t
+
+and read_bg_image_misc_calls () =
+  [
+    ("image-set", fun t -> Cursor.call "image-set" t read_image_set_body);
+    ( "-webkit-image-set",
+      fun t ->
+        Cursor.call "-webkit-image-set" t read_image_set_body
+        |> webkit_image_set_of_set );
+    ("cross-fade", fun t -> Cursor.call "cross-fade" t read_cross_fade_body);
+    ( "-webkit-gradient",
+      fun t -> Cursor.call "-webkit-gradient" t read_webkit_gradient_body );
+    ("var", fun t -> Var (Values.read_var read_bg_image t));
+  ]
+
+and read_bg_image_calls () =
+  read_bg_image_standard_calls @ read_bg_image_vendor_calls
+  @ read_bg_image_misc_calls ()
 
 and read_cross_fade_body t : background_image =
   (* Parse a non-empty comma-separated list where every comma must be followed
@@ -18505,8 +18590,44 @@ let pp_length_min_max ctx (v : length_percentage) =
   in
   pp_length_percentage ctx v
 
+(* CSS Values 4 sec. 6.5: the [initial] keyword resolves to the property's
+   spec-defined initial value at computed time. Under [--minify] swap the
+   keyword for that value when its serialization is shorter (or the same length
+   but a more canonical spelling that cleancss / csso emit). *)
+(* Detect the [<css-wide-keyword>] keyword sequences that the box-shorthand
+   expander leaves behind: [margin: initial] is read as the singleton
+   [[Initial]], then [try_merge_box_shorthand] fans it out to
+   [[Initial; Initial; Initial; Initial]] before we reach the printer. *)
+let box_is_all_initial : length list -> bool = function
+  | [ Initial ] | [ Initial; Initial; Initial; Initial ] -> true
+  | _ -> false
+
+let canonical_initial_for_minify : type a. a property -> a -> a =
+ fun prop value ->
+  match (prop, value) with
+  | Z_index, Initial -> Auto
+  | Opacity, Initial -> Opacity_number 1.
+  | Margin, vs when box_is_all_initial vs -> [ Px 0. ]
+  | Padding, vs when box_is_all_initial vs -> [ Px 0. ]
+  | Margin_top, Initial -> Px 0.
+  | Margin_right, Initial -> Px 0.
+  | Margin_bottom, Initial -> Px 0.
+  | Margin_left, Initial -> Px 0.
+  | Padding_top, Initial -> Px 0.
+  | Padding_right, Initial -> Px 0.
+  | Padding_bottom, Initial -> Px 0.
+  | Padding_left, Initial -> Px 0.
+  | Width, Length Initial -> Length Auto
+  | Height, Length Initial -> Length Auto
+  | Min_width, Length Initial -> Length Auto
+  | Min_height, Length Initial -> Length Auto
+  | _ -> value
+
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
+  let value =
+    if Pp.minified ctx then canonical_initial_for_minify prop value else value
+  in
   let pp pp_a = pp_a ctx value in
   match prop with
   | Custom_property _ -> pp pp_custom_property
@@ -19418,128 +19539,136 @@ let rec read_initial_letter_wrap t : initial_letter_wrap =
         : initial_letter_wrap))
     t
 
+let margin_trim_axis_of_ident t = function
+  | "block" -> (Block : margin_trim_axis)
+  | "inline" -> Inline
+  | s -> Cursor.err_invalid t ("invalid margin-trim axis: " ^ s)
+
+let read_margin_trim_axes t : margin_trim option =
+  let axes = [ "block"; "inline" ] in
+  let rec loop acc =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some s
+      when List.mem s axes && not (List.mem (margin_trim_axis_of_ident t s) acc)
+      ->
+        let _ = Cursor.ident t in
+        loop (margin_trim_axis_of_ident t s :: acc)
+    | Some s when List.mem s axes ->
+        Cursor.err_invalid t
+          (String.concat "" [ "duplicate margin-trim axis: "; s ])
+    | _ -> List.rev acc
+  in
+  match loop [] with
+  | [] -> None
+  | [ Block ] -> Some (Block : margin_trim)
+  | [ Inline ] -> Some (Inline : margin_trim)
+  | axes -> Some (Axes axes : margin_trim)
+
+let margin_trim_edge_of_ident t = function
+  | "block-start" -> (Block_start : margin_trim_edge)
+  | "inline-start" -> Inline_start
+  | "block-end" -> Block_end
+  | "inline-end" -> Inline_end
+  | s -> Cursor.err_invalid t ("invalid margin-trim edge: " ^ s)
+
+let read_margin_trim_edges t =
+  let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in
+  let rec loop acc =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some s
+      when List.mem s edges
+           && not (List.mem (margin_trim_edge_of_ident t s) acc) ->
+        let _ = Cursor.ident t in
+        loop (margin_trim_edge_of_ident t s :: acc)
+    | Some s when List.mem s edges ->
+        Cursor.err_invalid t
+          (String.concat "" [ "duplicate margin-trim edge: "; s ])
+    | _ -> List.rev acc
+  in
+  let chosen = loop [] in
+  if chosen = [] then Cursor.err_expected t "margin-trim value"
+  else (Edges chosen : margin_trim)
+
+let margin_trim_keywords : (string * margin_trim) list =
+  [
+    ("none", None);
+    ("initial", Initial);
+    ("inherit", Inherit);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
 let rec read_margin_trim t : margin_trim =
-  let keywords : (string * margin_trim) list =
-    [
-      ("none", None);
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-  in
-  let read_axis = function
-    | "block" -> (Block : margin_trim_axis)
-    | "inline" -> Inline
-    | s -> Cursor.err_invalid t ("invalid margin-trim axis: " ^ s)
-  in
-  let read_axes t : margin_trim option =
-    let axes = [ "block"; "inline" ] in
-    let rec loop acc =
-      Cursor.ws t;
-      match Cursor.peek_ident t with
-      | Some s when List.mem s axes && not (List.mem (read_axis s) acc) ->
-          let _ = Cursor.ident t in
-          loop (read_axis s :: acc)
-      | Some s when List.mem s axes ->
-          Cursor.err_invalid t
-            (String.concat "" [ "duplicate margin-trim axis: "; s ])
-      | _ -> List.rev acc
-    in
-    match loop [] with
-    | [] -> None
-    | [ Block ] -> Some (Block : margin_trim)
-    | [ Inline ] -> Some (Inline : margin_trim)
-    | axes -> Some (Axes axes : margin_trim)
-  in
-  let read_edges t =
-    let read_edge = function
-      | "block-start" -> (Block_start : margin_trim_edge)
-      | "inline-start" -> Inline_start
-      | "block-end" -> Block_end
-      | "inline-end" -> Inline_end
-      | s -> Cursor.err_invalid t ("invalid margin-trim edge: " ^ s)
-    in
-    let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in
-    let rec loop acc =
-      Cursor.ws t;
-      match Cursor.peek_ident t with
-      | Some s when List.mem s edges && not (List.mem (read_edge s) acc) ->
-          let _ = Cursor.ident t in
-          loop (read_edge s :: acc)
-      | Some s when List.mem s edges ->
-          Cursor.err_invalid t
-            (String.concat "" [ "duplicate margin-trim edge: "; s ])
-      | _ -> List.rev acc
-    in
-    let chosen = loop [] in
-    if chosen = [] then Cursor.err_expected t "margin-trim value"
-    else (Edges chosen : margin_trim)
-  in
-  (Cursor.enum_or_var "margin-trim" keywords
+  (Cursor.enum_or_var "margin-trim" margin_trim_keywords
      ~var:(fun t -> (Var (Values.read_var read_margin_trim t) : margin_trim))
      ~default:(fun t ->
-       match read_axes t with Some value -> value | None -> read_edges t)
+       match read_margin_trim_axes t with
+       | Some value -> value
+       | None -> read_margin_trim_edges t)
      t
     : margin_trim)
 
+let read_offset_path_path t =
+  Cursor.call "path" t @@ fun inner ->
+  Cursor.ws inner;
+  match Cursor.string_opt inner with
+  | Some path when path <> "" ->
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Path path : offset_path)
+  | Some _ -> Cursor.err_invalid inner "empty offset path"
+  | None -> Cursor.err_expected inner "path string"
+
+let read_offset_path_ray_contain inner =
+  match Cursor.peek_ident inner with
+  | Some "contain" ->
+      let _ = Cursor.ident inner in
+      true
+  | _ -> false
+
+let read_offset_path_ray_position inner =
+  match Cursor.peek_ident inner with
+  | Some "at" ->
+      let _ = Cursor.ident inner in
+      Cursor.ws inner;
+      Some (read_position_value inner)
+  | _ -> None
+
+let read_offset_path_ray t =
+  Cursor.call "ray" t @@ fun inner ->
+  Cursor.ws inner;
+  let angle = Values.read_angle inner in
+  Cursor.ws inner;
+  let size = Cursor.option read_ray_size inner in
+  Cursor.ws inner;
+  let contain = read_offset_path_ray_contain inner in
+  Cursor.ws inner;
+  let position = read_offset_path_ray_position inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  (Ray { angle; size; contain; position } : offset_path)
+
+let read_offset_path_url_function t =
+  Cursor.call "url" t @@ fun inner ->
+  Cursor.ws inner;
+  match Cursor.string_opt inner with
+  | Some url when url <> "" ->
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Url url : offset_path)
+  | Some _ -> Cursor.err_invalid inner "empty offset path url"
+  | None -> Cursor.err_expected inner "url string"
+
+let read_offset_path_url_token t =
+  match Cursor.url_opt t with
+  | Some url when url <> "" -> (Url url : offset_path)
+  | Some _ -> Cursor.err_invalid t "empty offset path url"
+  | None -> Cursor.err_expected t "offset-path"
+
 let rec read_offset_path t : offset_path =
-  let read_path t =
-    Cursor.call "path" t @@ fun inner ->
-    Cursor.ws inner;
-    match Cursor.string_opt inner with
-    | Some path when path <> "" ->
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Path path : offset_path)
-    | Some _ -> Cursor.err_invalid inner "empty offset path"
-    | None -> Cursor.err_expected inner "path string"
-  in
-  let read_ray t =
-    Cursor.call "ray" t @@ fun inner ->
-    Cursor.ws inner;
-    let angle = Values.read_angle inner in
-    Cursor.ws inner;
-    let size = Cursor.option read_ray_size inner in
-    Cursor.ws inner;
-    let contain =
-      match Cursor.peek_ident inner with
-      | Some "contain" ->
-          let _ = Cursor.ident inner in
-          true
-      | _ -> false
-    in
-    Cursor.ws inner;
-    let position =
-      match Cursor.peek_ident inner with
-      | Some "at" ->
-          let _ = Cursor.ident inner in
-          Cursor.ws inner;
-          Some (read_position_value inner)
-      | _ -> None
-    in
-    Cursor.ws inner;
-    Cursor.expect_eof inner;
-    (Ray { angle; size; contain; position } : offset_path)
-  in
-  let read_url_function t =
-    Cursor.call "url" t @@ fun inner ->
-    Cursor.ws inner;
-    match Cursor.string_opt inner with
-    | Some url when url <> "" ->
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        (Url url : offset_path)
-    | Some _ -> Cursor.err_invalid inner "empty offset path url"
-    | None -> Cursor.err_expected inner "url string"
-  in
-  let read_url_token t =
-    match Cursor.url_opt t with
-    | Some url when url <> "" -> (Url url : offset_path)
-    | Some _ -> Cursor.err_invalid t "empty offset path url"
-    | None -> Cursor.err_expected t "offset-path"
-  in
   Cursor.enum_or_calls "offset-path"
     [
       ("none", (None : offset_path));
@@ -19551,13 +19680,13 @@ let rec read_offset_path t : offset_path =
     ]
     ~calls:
       [
-        ("path", read_path);
-        ("ray", read_ray);
-        ("url", read_url_function);
+        ("path", read_offset_path_path);
+        ("ray", read_offset_path_ray);
+        ("url", read_offset_path_url_function);
         ( "var",
           fun t -> (Var (Values.read_var read_offset_path t) : offset_path) );
       ]
-    ~default:read_url_token t
+    ~default:read_offset_path_url_token t
 
 let animation_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
