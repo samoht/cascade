@@ -3,6 +3,26 @@
 open Declaration
 open Stylesheet
 
+(** {1 World Assumption} *)
+
+(** The [world] knob tells the optimizer whether the stylesheet is the whole
+    relevant author stylesheet graph or only a fragment.
+
+    {b Open_world} (the default) makes no assumption about surrounding CSS:
+    earlier [<link>], later [<style>], bundler concatenation, layer
+    statements outside the file, or caller-side composition may all be in
+    play. Only semantics-preserving rewrites under arbitrary surrounding CSS
+    are allowed; in particular, resetful shorthands are only synthesized when
+    the local longhand run is {e reset-closed} -- every absent longhand the
+    shorthand would reset is present in the run, so the shorthand cannot
+    shadow a prior cascade write the optimizer cannot see.
+
+    {b Closed_world} asserts the caller controls the whole author stylesheet
+    graph (after [@import] resolution). The optimizer may then synthesize a
+    partial-coverage shorthand because the omitted longhand resets are
+    guaranteed not to disturb any prior write. *)
+type world = Open_world | Closed_world
+
 (** {1 Declaration Optimization} *)
 
 val duplicate_buggy_properties : declaration list -> declaration list
@@ -11,10 +31,11 @@ val duplicate_buggy_properties : declaration list -> declaration list
     older Safari versions. See: https://bugs.webkit.org/show_bug.cgi?id=101180.
 *)
 
-val deduplicate_declarations : declaration list -> declaration list
-(** [deduplicate_declarations decls] removes overridden declarations following
-    CSS cascade rules: !important wins over normal, and among same importance
-    the last one wins. *)
+val deduplicate_declarations : ?world:world -> declaration list -> declaration list
+(** [deduplicate_declarations ?world decls] removes overridden declarations
+    following CSS cascade rules: !important wins over normal, and among same
+    importance the last one wins. [world] (default {!Open_world}) gates
+    partial-coverage shorthand synthesis; see the {!world} doc. *)
 
 val drop_invalid : t -> t
 (** [drop_invalid ss] removes every declaration whose typed value contains an
@@ -60,8 +81,8 @@ val edges_of_rule : rule -> edge list
 
 (** {1 Rule Optimization} *)
 
-val single_rule : rule -> rule
-(** [single_rule rule] deduplicates declarations in one rule. *)
+val single_rule : ?world:world -> rule -> rule
+(** [single_rule ?world rule] deduplicates declarations in one rule. *)
 
 val merge_rules : rule list -> rule list
 (** [merge_rules rules] merges adjacent rules with identical selectors while
@@ -71,8 +92,8 @@ val combine_identical_rules : rule list -> rule list
 (** [combine_identical_rules rules] combines consecutive rules with identical
     declarations into comma-separated selectors. *)
 
-val rules : rule list -> rule list
-(** [rules rs] optimizes a list of flat rules. *)
+val rules : ?world:world -> rule list -> rule list
+(** [rules ?world rs] optimizes a list of flat rules. *)
 
 (** {1 Nested Structure Optimization} *)
 
@@ -82,17 +103,22 @@ val apply_property_duplication : t -> t
 (** [apply_property_duplication ss] applies only property duplication for
     browser compatibility without other optimizations. *)
 
-val stylesheet : ?flatten_nesting:bool -> t -> t
-(** [stylesheet ?flatten_nesting ss] optimizes an entire stylesheet while
-    preserving cascade semantics. When [@supports] blocks are present alongside
-    top-level rules, optimization is limited because the stylesheet structure
-    separates rules from [@supports] blocks, losing their relative ordering.
+val stylesheet : ?world:world -> ?flatten_nesting:bool -> t -> t
+(** [stylesheet ?world ?flatten_nesting ss] optimizes an entire stylesheet
+    while preserving cascade semantics. When [@supports] blocks are present
+    alongside top-level rules, optimization is limited because the stylesheet
+    structure separates rules from [@supports] blocks, losing their relative
+    ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
-    desugared into flat rules: child selectors with [&] have the parent selector
-    substituted in, child selectors without [&] are joined to the parent with
-    the descendant combinator, and at-rules nested inside a rule are emitted at
-    the top level with the parent selector applied to their inner rules. *)
+    desugared into flat rules: child selectors with [&] have the parent
+    selector substituted in, child selectors without [&] are joined to the
+    parent with the descendant combinator, and at-rules nested inside a rule
+    are emitted at the top level with the parent selector applied to their
+    inner rules.
+
+    [world] (default {!Open_world}) gates partial-coverage shorthand
+    synthesis; see the {!world} doc. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting ss] returns [ss] with every nested rule flattened into a
