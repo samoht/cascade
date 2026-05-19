@@ -765,14 +765,14 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-(* Pure serialiser. Walks the AST and emits CSS text. No optimisation, no
-   theme resolution, no inline-vars rewriting. Spec recovery (drop invalid
-   declarations, unknown at-rules, empty rules) still applies because the
-   parser already preserved those shapes for round-trip and browsers
-   discard them during parse - that isn't an optimisation, just keeping
-   the output observationally equivalent to what a fresh parse would
-   produce. Compose {!optimize}, {!resolve_theme}, {!inline_vars}
-   upstream when those rewrites are needed. *)
+(* Pure serialiser. Walks the AST and emits CSS text. No optimisation, no theme
+   resolution, no inline-vars rewriting. Spec recovery (drop invalid
+   declarations, unknown at-rules, empty rules) still applies because the parser
+   already preserved those shapes for round-trip and browsers discard them
+   during parse - that isn't an optimisation, just keeping the output
+   observationally equivalent to what a fresh parse would produce. Compose
+   {!optimize}, {!resolve_theme}, {!inline_vars} upstream when those rewrites
+   are needed. *)
 let to_string ?(minify = false) ?indent stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
@@ -799,8 +799,8 @@ let flatten_nesting = Optimize.flatten_nesting
 
 (* Explicit AST step matching what [to_string ~mode:Inline] does internally:
    substitute every resolvable [var()] reference, then strip the now-empty
-   [@layer] wrappers and the [@property] / [@layer-decl] rules that only
-   existed to register the substituted variables. *)
+   [@layer] wrappers and the [@property] / [@layer-decl] rules that only existed
+   to register the substituted variables. *)
 let inline_vars ?keep_vars stylesheet =
   let substituted =
     match keep_vars with
@@ -846,11 +846,11 @@ let collect_var_names stylesheet =
   walk stylesheet;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
 
-(* Resolve [Theme_guarded { var_name; decl }] declarations against the
-   theme keep-set: keep the wrapped declaration when [var_name] is in
-   the theme, drop it otherwise. When no [theme] is supplied the guards
-   pass through unchanged (the default "everything is in theme"
-   behaviour mirrors [Pp.in_theme]'s no-theme branch). *)
+(* Resolve [Theme_guarded { var_name; decl }] declarations against the theme
+   keep-set: keep the wrapped declaration when [var_name] is in the theme, drop
+   it otherwise. When no [theme] is supplied the guards pass through unchanged
+   (the default "everything is in theme" behaviour mirrors [Pp.in_theme]'s
+   no-theme branch). *)
 let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
   match theme with
   | Option.None -> decls
@@ -879,15 +879,12 @@ let rec resolve_theme_guards_in_stmts ~theme = function
         | Declarations decls ->
             Declarations (resolve_theme_guards_in_decls ~theme decls)
         | Media (c, b) -> Media (c, resolve_theme_guards_in_stmts ~theme b)
-        | Supports (c, b) ->
-            Supports (c, resolve_theme_guards_in_stmts ~theme b)
+        | Supports (c, b) -> Supports (c, resolve_theme_guards_in_stmts ~theme b)
         | Container (n, c, b) ->
             Container (n, c, resolve_theme_guards_in_stmts ~theme b)
         | Layer (n, b) -> Layer (n, resolve_theme_guards_in_stmts ~theme b)
-        | Origin (o, b) ->
-            Origin (o, resolve_theme_guards_in_stmts ~theme b)
-        | Scope (s, e, b) ->
-            Scope (s, e, resolve_theme_guards_in_stmts ~theme b)
+        | Origin (o, b) -> Origin (o, resolve_theme_guards_in_stmts ~theme b)
+        | Scope (s, e, b) -> Scope (s, e, resolve_theme_guards_in_stmts ~theme b)
         | Starting_style b ->
             Starting_style (resolve_theme_guards_in_stmts ~theme b)
         | Moz_document (c, b) ->
@@ -898,16 +895,15 @@ let rec resolve_theme_guards_in_stmts ~theme = function
       in
       stmt :: resolve_theme_guards_in_stmts ~theme rest
 
-(* Theme resolution as an explicit AST step. [theme] names the variables
-   whose [var()] references should survive (handed to [Inline.vars]'
-   keep-set) and filters [Theme_guarded] declarations to keep only those
-   whose [var_name] is in the set. [theme_defaults] supplies external
-   defaults for the other variables: each [var(--name)] reference whose
-   [name] isn't in [theme] is collected, the resolver is asked for a
-   default, and any returned value is injected as a [:root { --name:
-   <default> }] declaration so the subsequent [Inline.vars] pass
-   substitutes the reference in place. Names the resolver returns [None]
-   for stay as live [var()] sites. *)
+(* Theme resolution as an explicit AST step. [theme] names the variables whose
+   [var()] references should survive (handed to [Inline.vars]' keep-set) and
+   filters [Theme_guarded] declarations to keep only those whose [var_name] is
+   in the set. [theme_defaults] supplies external defaults for the other
+   variables: each [var(--name)] reference whose [name] isn't in [theme] is
+   collected, the resolver is asked for a default, and any returned value is
+   injected as a [:root { --name: <default> }] declaration so the subsequent
+   [Inline.vars] pass substitutes the reference in place. Names the resolver
+   returns [None] for stay as live [var()] sites. *)
 let resolve_theme ?theme ?theme_defaults stylesheet =
   let stylesheet = resolve_theme_guards_in_stmts ~theme stylesheet in
   let keep_set =
@@ -915,39 +911,38 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
   in
   let keep_vars = Pp.String_set.elements keep_set in
   (* [theme=None] is "no theme declared": preserve [var()] references as-is.
-     [theme=Some set] is "theme declared, with this keep-set": variables not
-     in the keep-set are candidates for [theme_defaults] inlining. *)
+     [theme=Some set] is "theme declared, with this keep-set": variables not in
+     the keep-set are candidates for [theme_defaults] inlining. *)
   let defaults =
     match (theme, theme_defaults) with
     | Option.Some _, Option.Some lookup ->
         collect_var_names stylesheet
         |> List.filter_map (fun raw_name ->
-               let bare =
-                 if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--"
-                 then String.sub raw_name 2 (String.length raw_name - 2)
-                 else raw_name
-               in
-               if Pp.String_set.mem bare keep_set then Option.None
-               else
-                 match lookup bare with
-                 | Option.Some value -> Option.Some (raw_name, value)
-                 | Option.None -> Option.None)
+            let bare =
+              if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--"
+              then String.sub raw_name 2 (String.length raw_name - 2)
+              else raw_name
+            in
+            if Pp.String_set.mem bare keep_set then Option.None
+            else
+              match lookup bare with
+              | Option.Some value -> Option.Some (raw_name, value)
+              | Option.None -> Option.None)
     | _ -> []
   in
   if defaults = [] then stylesheet
   else
     (* Only the names [theme_defaults] resolved get their [var()] references
        substituted. [Inline.vars] applied here would also collapse [var(--x,
-       fallback)] references for names the resolver returned [None] on
-       (because [var()]'s built-in fallback arm is consulted when no
-       declaration is visible); the explicit semantics keep those references
-       live. Limit [Inline.vars] to a stylesheet containing only the injected
-       [:root] declarations and the matching subtrees, then merge the result
-       back at the source's position. We achieve that by injecting a [:root]
-       rule plus extending [keep_vars] with every var name we did *not*
-       resolve, so the unresolved sites keep their declarations live and the
-       substitution falls through to [fallback_or_original]'s original-Func
-       branch. *)
+       fallback)] references for names the resolver returned [None] on (because
+       [var()]'s built-in fallback arm is consulted when no declaration is
+       visible); the explicit semantics keep those references live. Limit
+       [Inline.vars] to a stylesheet containing only the injected [:root]
+       declarations and the matching subtrees, then merge the result back at the
+       source's position. We achieve that by injecting a [:root] rule plus
+       extending [keep_vars] with every var name we did *not* resolve, so the
+       unresolved sites keep their declarations live and the substitution falls
+       through to [fallback_or_original]'s original-Func branch. *)
     let resolved_names = List.map fst defaults in
     let unresolved_keep =
       collect_var_names stylesheet
@@ -961,12 +956,11 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
     let body =
       defaults
       |> List.map (fun (name, value) ->
-             let n =
-               if String.length name >= 2 && String.sub name 0 2 = "--" then
-                 name
-               else "--" ^ name
-             in
-             n ^ ":" ^ value)
+          let n =
+            if String.length name >= 2 && String.sub name 0 2 = "--" then name
+            else "--" ^ name
+          in
+          n ^ ":" ^ value)
       |> String.concat ";"
     in
     let source = ":root{" ^ body ^ "}" in
@@ -974,7 +968,6 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
     | Ok { stylesheet = root_stmts; _ } ->
         inline_vars ~keep_vars (root_stmts @ stylesheet)
     | Error _ -> stylesheet
-
 
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

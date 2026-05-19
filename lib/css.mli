@@ -7290,13 +7290,13 @@ type mode = Stylesheet.mode =
             their values) *)
 
 val to_string : ?minify:bool -> ?indent:int -> t -> string
-(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS.
-    Pure formatter - no optimisation, no theme resolution, no
-    [var()] substitution. Run {!optimize}, {!resolve_theme}, and
-    {!inline_vars} explicitly when those passes are needed. Spec recovery
-    (drop invalid declarations, unknown at-rules, empty rules) still
-    applies because the parser preserved those shapes for round-trip and
-    browsers discard them during parse. Output never ends with a newline.
+(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
+    formatter - no optimisation, no theme resolution, no [var()] substitution.
+    Run {!optimize}, {!resolve_theme}, and {!inline_vars} explicitly when those
+    passes are needed. Spec recovery (drop invalid declarations, unknown
+    at-rules, empty rules) still applies because the parser preserved those
+    shapes for round-trip and browsers discard them during parse. Output never
+    ends with a newline.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
@@ -7338,14 +7338,13 @@ val of_string_exn :
     Tools for optimizing CSS output for performance and file size. *)
 
 val optimize : ?scope:Optimize.scope -> ?flatten_nesting:bool -> t -> t
-(** [optimize ?scope ?flatten_nesting stylesheet] applies CSS optimizations
-    to the stylesheet, including merging consecutive identical selectors
-    and combining rules with identical properties. Preserves CSS cascade
-    semantics.
+(** [optimize ?scope ?flatten_nesting stylesheet] applies CSS optimizations to
+    the stylesheet, including merging consecutive identical selectors and
+    combining rules with identical properties. Preserves CSS cascade semantics.
 
-    [scope] (default [`Fragment]) gates partial-coverage shorthand
-    synthesis. Pass [`Stylesheet] when the caller controls the whole author
-    stylesheet graph. See {!Optimize.scope} for the details.
+    [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
+    Pass [`Stylesheet] when the caller controls the whole author stylesheet
+    graph. See {!Optimize.scope} for the details.
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
@@ -7373,16 +7372,12 @@ val inline_vars : ?keep_vars:string list -> t -> t
     runtime mutation of custom properties. *)
 
 val resolve_theme :
-  ?theme:Pp.String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  t ->
-  t
-(** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST
-    step matching the print-time [~theme] / [~theme_defaults] knobs on
-    {!to_string}. [theme] names the variables that should keep their
-    [var()] reference live; [theme_defaults] is the external default
-    resolver consulted at print time for variables not in [theme]. *)
-
+  ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t
+(** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST step
+    matching the print-time [~theme] / [~theme_defaults] knobs on {!to_string}.
+    [theme] names the variables that should keep their [var()] reference live;
+    [theme_defaults] is the external default resolver consulted at print time
+    for variables not in [theme]. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

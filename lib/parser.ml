@@ -724,8 +724,8 @@ and cvs_to_buffer_min_custom buf cvs =
      whitespace IS the value's sole token. The minifier's
      [drop_whitespace_components] would otherwise collapse it to nothing,
      turning the spec-valid input into the technically-out-of-grammar form
-     [--foo:;] (which browsers tolerate but the spec doesn't admit). Emit
-     a single space so the token count stays >= 1. *)
+     [--foo:;] (which browsers tolerate but the spec doesn't admit). Emit a
+     single space so the token count stays >= 1. *)
   if Buffer.length buf = start && cvs <> [] then Buffer.add_char buf ' '
 
 let to_string_custom_minified cvs =

@@ -1,8 +1,8 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~scope ~flatten_nesting
-    ~inline_imports_flag ~inline_vars_flag ~keep_vars =
+let process_css ~input_path ~minify ~scope ~flatten_nesting ~inline_imports_flag
+    ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -63,15 +63,14 @@ let scope_arg =
   in
   let doc =
     "Tell the optimizer how much surrounding CSS context the input might be \
-     embedded in. $(b,fragment) (default) treats the input as an excerpt \
-     that may be concatenated with arbitrary other author CSS - earlier \
-     $(b,<link>), later $(b,<style>), bundler concatenation, layer \
-     statements outside the file, caller-side composition. Only \
-     semantics-preserving rewrites under any surrounding CSS run. \
-     $(b,stylesheet) asserts the input is the whole relevant author CSS \
-     graph; the optimizer may then synthesize a partial $(b,background) / \
-     $(b,border) shorthand whose omitted longhand resets are proved safe \
-     because no prior author write can be shadowed."
+     embedded in. $(b,fragment) (default) treats the input as an excerpt that \
+     may be concatenated with arbitrary other author CSS - earlier \
+     $(b,<link>), later $(b,<style>), bundler concatenation, layer statements \
+     outside the file, caller-side composition. Only semantics-preserving \
+     rewrites under any surrounding CSS run. $(b,stylesheet) asserts the input \
+     is the whole relevant author CSS graph; the optimizer may then synthesize \
+     a partial $(b,background) / $(b,border) shorthand whose omitted longhand \
+     resets are proved safe because no prior author write can be shadowed."
   in
   Arg.(value & opt scope_conv `Fragment & info [ "scope" ] ~docv:"SCOPE" ~doc)
 
