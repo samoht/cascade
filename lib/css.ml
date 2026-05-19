@@ -765,6 +765,11 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
+(* Pure serialiser. No [Optimize.stylesheet] runs; callers wanting AST-level
+   rewrites pipe through {!optimize} first. Spec recovery (drop invalid
+   declarations, unknown at-rules, empty rules) still applies because the
+   parser already preserved those shapes for round-trip and browsers discard
+   them during parse. *)
 let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
     ?(theme_defaults = Pp.no_theme_defaults) stylesheet =
   let stylesheet =
@@ -773,14 +778,8 @@ let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
     | Variables -> stylesheet
   in
   let stylesheet =
-    if minify then Optimize.stylesheet stylesheet
-    else
-      (* Spec recovery applies in both modes: invalid declarations and unknown
-         at-rules drop (browsers do too), and empty rules left behind drop. The
-         full [Optimize.stylesheet] pass also rewrites and merges, which we only
-         want under minify. *)
-      stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
-      |> Optimize.drop_empty_rules
+    stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
+    |> Optimize.drop_empty_rules
   in
   Stylesheet.to_string ~minify ?indent ~mode ?theme ~theme_defaults stylesheet
 
@@ -825,11 +824,6 @@ let resolve_theme ?theme ?theme_defaults:_ stylesheet =
   in
   inline_vars ~keep_vars stylesheet
 
-(* Pure serialiser: whitespace + token printer, no optimisation, no theme
-   resolution, no [@layer] / [@property] rewriting. Run [optimize] /
-   [resolve_theme] / [inline_vars] explicitly when those passes are needed. *)
-let serialize ?(minify = false) ?indent stylesheet =
-  Stylesheet.to_string ~minify ?indent ~mode:Variables stylesheet
 
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

@@ -7298,25 +7298,17 @@ val to_string :
   t ->
   string
 (** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet]
-    serialises a stylesheet to CSS. Pure formatter - no optimisation
-    runs; call {!optimize} first when [minify:true] should benefit from
-    AST-level rewrites. Spec recovery (drop invalid declarations, unknown
-    at-rules, empty rules) still applies because the parser already
-    preserved those shapes for round-trip, and browsers discard them too.
-    Output never ends with a newline; callers append one if needed.
+    serialises a stylesheet to CSS. Pure serialiser - no [Optimize.stylesheet]
+    runs; callers wanting AST-level rewrites pipe through {!optimize}
+    first. Spec recovery (drop invalid declarations, unknown at-rules,
+    empty rules) still applies. Output never ends with a newline; callers
+    append one if needed.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
-    - [indent] sets the per-level indent width. Default: [None] under
-      [minify] (no indentation), [Some 2] otherwise (2-space indent).
-    - [mode] controls variable rendering. [Inline] substitutes resolvable
-      custom-property references and drops dead custom-property definitions
-      before printing.
-    - [theme] is the set of theme-defined variable names. When a variable
-      name is in this set, [var(--name)] is emitted; otherwise the concrete
-      default value is used. This is AST transformation/printing behaviour,
-      not ambient computed-style resolution.
-    - [theme_defaults] maps variable names to concrete CSS default values
-      for variables not in the theme set.
+    - [indent] sets the per-level indent width.
+    - [mode] / [theme] / [theme_defaults] control how [var()] references
+      print; use the explicit {!inline_vars} / {!resolve_theme} AST steps
+      when the same effect is wanted before optimisation.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
@@ -7407,12 +7399,6 @@ val resolve_theme :
     [var()] reference live; [theme_defaults] is the external default
     resolver consulted at print time for variables not in [theme]. *)
 
-val serialize : ?minify:bool -> ?indent:int -> t -> string
-(** [serialize ?minify ?indent stylesheet] is the pure serialiser: it walks
-    the AST and emits CSS text with the requested whitespace, doing no
-    optimisation, no theme resolution, no [@layer] / [@property]
-    rewriting. Compose explicit passes upstream when those rewrites are
-    needed: [stylesheet |> optimize |> serialize ~minify:true]. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
