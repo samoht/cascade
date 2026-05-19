@@ -735,8 +735,18 @@ let length_is_zero = function
   | Dimension { value; _ } -> value = 0.
   | _ -> false
 
+(* A zero [Pct 0.] inside [calc()] is type-significant: it elevates the
+   surrounding sum from [<length>] to [<length-percentage>], and the result
+   keeps that mixed type for animations and computed-value resolution. CSS
+   Values 4 sec. 10.10 makes calc's result type depend on the union of its
+   arguments' types, so [calc(100px + 0%)] must not fold to [100px]. Only
+   normalise zeros whose canonical unit is [px] (length-typed). *)
+let length_zero_is_length_only : length -> bool = function
+  | Pct _ -> false
+  | other -> length_is_zero other
+
 let rec normalize_length_calc_zeros : length calc -> length calc = function
-  | Val v when length_is_zero v -> Num 0.
+  | Val v when length_zero_is_length_only v -> Num 0.
   | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
     | Math_fn _ ) as leaf ->
       leaf
@@ -1185,10 +1195,24 @@ let ordered_linear_terms terms =
           Hashtbl.replace table unit
             { term with value = term.value +. n; count = term.count + 1 })
     terms;
+  (* CSS Values 4 sec. 10.10: a calc() expression's resulting type is the union
+     of its argument types. Dropping a zero-percentage term from [calc(100px +
+     0%)] would narrow [<length-percentage>] to [<length>] and break
+     transitions / animations interpolating against another [<length-
+     percentage>], so [0%] is kept as a type sentinel. Other zero-valued terms
+     (e.g. [0px] when another [px] term carries the value) are dropped because
+     their unit is already represented in the result. *)
+  let keep_zero_term term =
+    length_unit_is_pct term.unit
+    && Hashtbl.fold
+         (fun _ t acc -> acc + if t.unit = term.unit then 0 else 1)
+         table 0
+       > 0
+  in
   let terms =
     Hashtbl.to_seq_values table
     |> List.of_seq
-    |> List.filter (fun term -> term.value <> 0.)
+    |> List.filter (fun term -> term.value <> 0. || keep_zero_term term)
   in
   let first_pos =
     List.fold_left (fun acc term -> min acc term.first_pos) max_int terms
@@ -1252,9 +1276,15 @@ let linear_length_calc calc =
 let lp_is_zero (v : length_percentage) =
   match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
 
+(* See [length_zero_is_length_only]: a zero percentage in a calc is a
+   type sentinel for [<length-percentage>] and must survive minification. *)
+let lp_zero_is_length_only : length_percentage -> bool = function
+  | Pct _ -> false
+  | other -> lp_is_zero other
+
 let rec normalize_lp_calc_zeros :
     length_percentage calc -> length_percentage calc = function
-  | Val v when lp_is_zero v -> Num 0.
+  | Val v when lp_zero_is_length_only v -> Num 0.
   | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
     | Math_fn _ ) as leaf ->
       leaf
