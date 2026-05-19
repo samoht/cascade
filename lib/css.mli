@@ -7324,7 +7324,6 @@ val to_string :
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
 val pp :
-  ?world:Optimize.world ->
   ?minify:bool ->
   ?indent:int ->
   ?mode:mode ->
@@ -7332,7 +7331,8 @@ val pp :
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [pp] is {!to_string}. *)
+(** [pp] is {!to_string} without the optimizer-only [?world] knob - use the
+    full [to_string] when you need to flip the closed/open-world policy. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }
 (** A partially-recovered parse: the [stylesheet] composed of every rule that
