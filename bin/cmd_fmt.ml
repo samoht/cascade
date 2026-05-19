@@ -1,7 +1,7 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~closed_world ~flatten_nesting
+let process_css ~input_path ~minify ~scope ~flatten_nesting
     ~inline_imports_flag ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
@@ -21,11 +21,7 @@ let process_css ~input_path ~minify ~closed_world ~flatten_nesting
       else stylesheet
     in
     let stylesheet =
-      if minify then
-        let world : Cascade.Optimize.world =
-          if closed_world then Closed_world else Open_world
-        in
-        Css.optimize ~world ~flatten_nesting stylesheet
+      if minify then Css.optimize ~scope ~flatten_nesting stylesheet
       else stylesheet
     in
     let output = Css.to_string ~minify ~mode:Css.Variables stylesheet in
@@ -51,18 +47,32 @@ let minify_arg =
   in
   Arg.(value & flag & info [ "m"; "minify" ] ~doc)
 
-let closed_world_arg =
-  let doc =
-    "Closed-world: assert this stylesheet is the whole relevant author CSS \
-     graph (no earlier $(b,<link>), later $(b,<style>), bundler \
-     concatenation, layer statement outside the file, or caller-side \
-     composition). Enables stronger rewrites such as synthesizing a partial \
-     $(b,background) / $(b,border) shorthand whose omitted longhand resets \
-     are proved safe because no prior author write can be shadowed. Default \
-     is open-world (only semantics-preserving rewrites under arbitrary \
-     surrounding CSS)."
+let scope_arg =
+  let scope_conv =
+    let parse = function
+      | "fragment" -> Ok `Fragment
+      | "stylesheet" -> Ok `Stylesheet
+      | s -> Error (`Msg ("expected 'fragment' or 'stylesheet', got: " ^ s))
+    in
+    let print fmt = function
+      | `Fragment -> Format.pp_print_string fmt "fragment"
+      | `Stylesheet -> Format.pp_print_string fmt "stylesheet"
+    in
+    Arg.conv ~docv:"SCOPE" (parse, print)
   in
-  Arg.(value & flag & info [ "closed-world" ] ~doc)
+  let doc =
+    "Tell the optimizer how much surrounding CSS context the input might be \
+     embedded in. $(b,fragment) (default) treats the input as an excerpt \
+     that may be concatenated with arbitrary other author CSS - earlier \
+     $(b,<link>), later $(b,<style>), bundler concatenation, layer \
+     statements outside the file, caller-side composition. Only \
+     semantics-preserving rewrites under any surrounding CSS run. \
+     $(b,stylesheet) asserts the input is the whole relevant author CSS \
+     graph; the optimizer may then synthesize a partial $(b,background) / \
+     $(b,border) shorthand whose omitted longhand resets are proved safe \
+     because no prior author write can be shadowed."
+  in
+  Arg.(value & opt scope_conv `Fragment & info [ "scope" ] ~docv:"SCOPE" ~doc)
 
 let flatten_nesting_arg =
   let doc =
@@ -104,7 +114,7 @@ let term =
       (fun
         input
         minify
-        closed_world
+        scope
         flatten_nesting
         inline_imports_flag
         inline_vars_flag
@@ -120,11 +130,11 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
-        if closed_world && not minify then
-          Fmt.epr "Warning: --closed-world has no effect without --minify@.";
-        process_css ~input_path:input ~minify ~closed_world ~flatten_nesting
+        if scope = `Stylesheet && not minify then
+          Fmt.epr "Warning: --scope=stylesheet has no effect without --minify@.";
+        process_css ~input_path:input ~minify ~scope ~flatten_nesting
           ~inline_imports_flag ~inline_vars_flag ~keep_vars)
-    $ input_arg $ minify_arg $ closed_world_arg $ flatten_nesting_arg
+    $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg
     $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
 
 let man =

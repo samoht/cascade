@@ -6,17 +6,17 @@ module String_set = Set.Make (String)
 
 (** {1 Edge Model} *)
 
-type world = Open_world | Closed_world
+type scope = [ `Fragment | `Stylesheet ]
 
 (* Threaded by the entry points ([stylesheet], [rules], [single_rule],
    [deduplicate_declarations]); shorthand composers read it for the
-   open-vs-closed-world policy decision. Default open. *)
-let current_world = ref Open_world
+   fragment-vs-stylesheet scope decision. Default fragment. *)
+let current_scope : scope ref = ref `Fragment
 
-let with_world w f =
-  let saved = !current_world in
-  current_world := w;
-  Fun.protect ~finally:(fun () -> current_world := saved) f
+let with_scope (w : scope) f =
+  let saved = !current_scope in
+  current_scope := w;
+  Fun.protect ~finally:(fun () -> current_scope := saved) f
 
 type packed_property = Packed : 'a Properties.property -> packed_property
 
@@ -1424,13 +1424,13 @@ let try_compose_background indexed_decls =
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
         in
-        (* [Open_world] requires the run to cover every reset field; in
-           [Closed_world] the caller asserts no prior author CSS exists that
-           the shorthand could shadow. *)
+        (* [`Fragment] requires the run to cover every reset field; in
+           [`Stylesheet] the caller asserts no prior author CSS exists
+           that the shorthand could shadow. *)
         let permit =
-          match !current_world with
-          | Closed_world -> true
-          | Open_world -> background_run_is_reset_closed layer
+          match !current_scope with
+          | `Stylesheet -> true
+          | `Fragment -> background_run_is_reset_closed layer
         in
         if not permit then None
         else
@@ -1928,9 +1928,9 @@ let deduplicate_declarations_with ?(merge_box = true) props =
   in
   duplicate_buggy_properties kept
 
-let deduplicate_declarations ?world props =
+let deduplicate_declarations ?scope props =
   let run () = deduplicate_declarations_with props in
-  match world with Some w -> with_world w run | None -> run ()
+  match scope with Some s -> with_scope s run | None -> run ()
 let sort_commuting_declarations decls = decls
 
 (** {1 Rule Optimization} *)
@@ -3552,7 +3552,7 @@ let statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
   |> drop_shadowed_keyframes
 
-let single_rule ?world (rule : rule) : rule =
+let single_rule ?scope (rule : rule) : rule =
   let run () =
     {
       rule with
@@ -3560,11 +3560,11 @@ let single_rule ?world (rule : rule) : rule =
       nested = statements rule.nested;
     }
   in
-  match world with Some w -> with_world w run | None -> run ()
+  match scope with Some s -> with_scope s run | None -> run ()
 
-let rules ?world (rules : rule list) : rule list =
+let rules ?scope (rules : rule list) : rule list =
   let run () = rules_aux rules in
-  match world with Some w -> with_world w run | None -> run ()
+  match scope with Some s -> with_scope s run | None -> run ()
 
 (* Initialize the forward reference for merge_consecutive_media *)
 let () = statements_ref := statements
@@ -3853,7 +3853,7 @@ let promote_registered_custom_properties (stmts : statement list) :
   in
   List.map walk_stmt stmts
 
-let stylesheet ?world ?(flatten_nesting = false) (stylesheet : t) : t =
+let stylesheet ?scope ?(flatten_nesting = false) (stylesheet : t) : t =
   let run () =
     let stylesheet =
       if flatten_nesting then flatten_block stylesheet else stylesheet
@@ -3864,4 +3864,4 @@ let stylesheet ?world ?(flatten_nesting = false) (stylesheet : t) : t =
     stylesheet |> promote_registered_custom_properties |> drop_invalid
     |> drop_unknown_at_rules |> statements_top_level
   in
-  match world with Some w -> with_world w run | None -> run ()
+  match scope with Some s -> with_scope s run | None -> run ()

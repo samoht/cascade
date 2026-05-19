@@ -898,9 +898,9 @@ let c3_open_closed_world_background_synthesis () =
      assume no earlier author CSS wrote one of those omitted longhands. In a
      closed world, the caller asserts the whole relevant author stylesheet graph
      is available, so the shorter resetful shorthand is allowed. *)
-  let optimize ?world css =
+  let optimize ?scope css =
     Css.of_string_exn ~strict:false css
-    |> Css.optimize ?world |> Css.to_string ~minify:true |> String.trim
+    |> Css.optimize ?scope |> Css.to_string ~minify:true |> String.trim
   in
   let partial_run =
     {|
@@ -920,7 +920,7 @@ let c3_open_closed_world_background_synthesis () =
   Alcotest.(check string)
     "closed-world partial background run may synthesize shorthand"
     ".card{background:red}"
-    (optimize ~world:Closed_world partial_run);
+    (optimize ~scope:`Stylesheet partial_run);
   let reset_closed_run =
     {|
       .card {
