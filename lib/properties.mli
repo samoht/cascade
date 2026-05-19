@@ -25,9 +25,27 @@ val pp_custom_property_value : custom_property_value Pp.t
 
 val read_custom_property_value :
   ?font_family:bool -> Cursor.t -> custom_property_value
-(** [read_custom_property_value t] parses the remaining component values as a
-    typed self-contained payload when possible, otherwise stores the raw token
-    stream. *)
+(** [read_custom_property_value t] returns the remaining component values as a
+    raw token stream. Typed promotion is deferred to the [@property]
+    registry pass. *)
+
+val try_read_custom_color : custom_value -> custom_property_value option
+(** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning
+    a typed payload when the stream matches. *)
+
+val try_read_custom_length : custom_value -> custom_property_value option
+(** [try_read_custom_length tokens] parses [tokens] as a [<length>]. *)
+
+val try_read_custom_length_percentage :
+  custom_value -> custom_property_value option
+(** [try_read_custom_length_percentage tokens] parses [tokens] as a
+    [<length-percentage>]. *)
+
+val try_read_custom_number : custom_value -> custom_property_value option
+(** [try_read_custom_number tokens] parses [tokens] as a [<number>]. *)
+
+val try_read_custom_percentage : custom_value -> custom_property_value option
+(** [try_read_custom_percentage tokens] parses [tokens] as a [<percentage>]. *)
 
 val components_of_custom_property_value :
   custom_property_value -> Component.t list

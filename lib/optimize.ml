@@ -6,6 +6,18 @@ module String_set = Set.Make (String)
 
 (** {1 Edge Model} *)
 
+type world = Open_world | Closed_world
+
+(* Threaded by the entry points ([stylesheet], [rules], [single_rule],
+   [deduplicate_declarations]); shorthand composers read it for the
+   open-vs-closed-world policy decision. Default open. *)
+let current_world = ref Open_world
+
+let with_world w f =
+  let saved = !current_world in
+  current_world := w;
+  Fun.protect ~finally:(fun () -> current_world := saved) f
+
 type packed_property = Packed : 'a Properties.property -> packed_property
 
 type edge = {
@@ -1366,6 +1378,40 @@ let empty_bg_shorthand : Properties.background_shorthand =
     origin = None;
   }
 
+(* Default open-world policy: the synthesized [background] shorthand resets
+   every absent longhand to its initial, which would shadow a prior cascade
+   write the optimizer cannot see (earlier <link>, earlier <style>, bundler
+   concatenation, layer outside the file). Cascade composes only when the
+   local run is reset-closed -- every reset field has a declaration in the
+   run, so the shorthand cannot disturb prior writes. *)
+let bg_longhand_property_name :
+    Properties.background_shorthand -> string -> bool =
+ fun s name ->
+  match name with
+  | "color" -> s.color <> None
+  | "image" -> s.image <> None
+  | "position" -> s.position <> None
+  | "size" -> s.size <> None
+  | "repeat" -> s.repeat <> None
+  | "attachment" -> s.attachment <> None
+  | "origin" -> s.origin <> None
+  | "clip" -> s.clip <> None
+  | _ -> false
+
+let background_run_is_reset_closed layer =
+  List.for_all
+    (bg_longhand_property_name layer)
+    [
+      "color";
+      "image";
+      "position";
+      "size";
+      "repeat";
+      "attachment";
+      "origin";
+      "clip";
+    ]
+
 let try_compose_background indexed_decls =
   let idx_opt, rest = take_contiguous_background indexed_decls in
   match idx_opt with
@@ -1378,15 +1424,25 @@ let try_compose_background indexed_decls =
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
         in
-        let merged =
-          Declaration
-            {
-              property = Background;
-              value = [ (Shorthand layer : Properties.background) ];
-              important = is_important (List.hd raw_decls);
-            }
+        (* [Open_world] requires the run to cover every reset field; in
+           [Closed_world] the caller asserts no prior author CSS exists that
+           the shorthand could shadow. *)
+        let permit =
+          match !current_world with
+          | Closed_world -> true
+          | Open_world -> background_run_is_reset_closed layer
         in
-        Some ((idx, merged), rest)
+        if not permit then None
+        else
+          let merged =
+            Declaration
+              {
+                property = Background;
+                value = [ (Shorthand layer : Properties.background) ];
+                important = is_important (List.hd raw_decls);
+              }
+          in
+          Some ((idx, merged), rest)
 
 let compose_background_shorthand decls =
   let rec go acc decls =
@@ -1872,7 +1928,9 @@ let deduplicate_declarations_with ?(merge_box = true) props =
   in
   duplicate_buggy_properties kept
 
-let deduplicate_declarations props = deduplicate_declarations_with props
+let deduplicate_declarations ?world props =
+  let run () = deduplicate_declarations_with props in
+  match world with Some w -> with_world w run | None -> run ()
 let sort_commuting_declarations decls = decls
 
 (** {1 Rule Optimization} *)
@@ -3494,14 +3552,19 @@ let statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers |> drop_redundant_layer_decls
   |> drop_shadowed_keyframes
 
-let single_rule (rule : rule) : rule =
-  {
-    rule with
-    declarations = deduplicate_declarations rule.declarations;
-    nested = statements rule.nested;
-  }
+let single_rule ?world (rule : rule) : rule =
+  let run () =
+    {
+      rule with
+      declarations = deduplicate_declarations rule.declarations;
+      nested = statements rule.nested;
+    }
+  in
+  match world with Some w -> with_world w run | None -> run ()
 
-let rules (rules : rule list) : rule list = rules_aux rules
+let rules ?world (rules : rule list) : rule list =
+  let run () = rules_aux rules in
+  match world with Some w -> with_world w run | None -> run ()
 
 (* Initialize the forward reference for merge_consecutive_media *)
 let () = statements_ref := statements
@@ -3722,11 +3785,83 @@ let drop_unknown_at_rules (stylesheet : t) : t =
   in
   List.filter_map statement stylesheet
 
-let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
-  let stylesheet =
-    if flatten_nesting then flatten_block stylesheet else stylesheet
+(* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
+   declaration registers [name] with a typed CSS syntax, lifting later
+   [--name: ...] uses out of the unregistered opaque-token-stream rule.
+   Apply registrations in source order so a [@property] only affects uses
+   that follow it; later registrations of the same name overwrite, matching
+   how the browser registry resolves duplicate declarations. *)
+let promote_registered_custom_properties (stmts : statement list) :
+    statement list =
+  let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
+  let try_promote_with (type a) (syntax : a Variables.syntax) components =
+    match syntax with
+    | Variables.Color -> Properties.try_read_custom_color components
+    | Variables.Length -> Properties.try_read_custom_length components
+    | Variables.Length_percentage ->
+        Properties.try_read_custom_length_percentage components
+    | Variables.Number -> Properties.try_read_custom_number components
+    | Variables.Percentage -> Properties.try_read_custom_percentage components
+    | _ -> None
   in
-  (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
-     passes so the empty rules they leave behind get picked up by
-     [drop_empty_rules]. *)
-  stylesheet |> drop_invalid |> drop_unknown_at_rules |> statements_top_level
+  let promote_decl (decl : Declaration.declaration) : Declaration.declaration =
+    match decl with
+    | Declaration
+        {
+          property = Custom_property name;
+          value = Custom_value { value = Tokens components; layer; meta };
+          important;
+        } -> (
+        match Hashtbl.find_opt registry name with
+        | None -> decl
+        | Some (Variables.Syntax syntax) -> (
+            match try_promote_with syntax components with
+            | None -> decl
+            | Some typed ->
+                Declaration
+                  {
+                    property = Custom_property name;
+                    value = Custom_value { value = typed; layer; meta };
+                    important;
+                  }))
+    | _ -> decl
+  in
+  let rec walk_stmt (stmt : statement) : statement =
+    match stmt with
+    | Property pr ->
+        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax);
+        stmt
+    | Rule r ->
+        Rule
+          {
+            r with
+            declarations = List.map promote_decl r.declarations;
+            nested = List.map walk_stmt r.nested;
+          }
+    | Declarations decls -> Declarations (List.map promote_decl decls)
+    | Media (c, b) -> Media (c, List.map walk_stmt b)
+    | Container (n, c, b) -> Container (n, c, List.map walk_stmt b)
+    | Supports (c, b) -> Supports (c, List.map walk_stmt b)
+    | Layer (n, b) -> Layer (n, List.map walk_stmt b)
+    | Origin (o, b) -> Origin (o, List.map walk_stmt b)
+    | Scope (s, e, b) -> Scope (s, e, List.map walk_stmt b)
+    | Starting_style b -> Starting_style (List.map walk_stmt b)
+    | Moz_document (c, b) -> Moz_document (c, List.map walk_stmt b)
+    | When (c, b) -> When (c, List.map walk_stmt b)
+    | Else (c, b) -> Else (c, List.map walk_stmt b)
+    | _ -> stmt
+  in
+  List.map walk_stmt stmts
+
+let stylesheet ?world ?(flatten_nesting = false) (stylesheet : t) : t =
+  let run () =
+    let stylesheet =
+      if flatten_nesting then flatten_block stylesheet else stylesheet
+    in
+    (* [drop_invalid] and [drop_unknown_at_rules] run before the main
+       optimisation passes so the empty rules they leave behind get picked up
+       by [drop_empty_rules]. *)
+    stylesheet |> promote_registered_custom_properties |> drop_invalid
+    |> drop_unknown_at_rules |> statements_top_level
+  in
+  match world with Some w -> with_world w run | None -> run ()

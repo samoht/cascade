@@ -152,62 +152,21 @@ let rec eval_block ?ctx_for_layer ~layer_order ?layer ctx block =
 and eval_nested_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer
     ctx =
   let open Stylesheet in
+  let eval block =
+    eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx block
+  in
   function
-  | Media (condition, block) ->
-      Some
-        (Media
-           ( condition,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
+  | Media (condition, block) -> Some (Media (condition, eval block))
   | Container (name, condition, block) ->
-      Some
-        (Container
-           ( name,
-             condition,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
-  | Supports (condition, block) ->
-      Some
-        (Supports
-           ( condition,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
+      Some (Container (name, condition, eval block))
+  | Supports (condition, block) -> Some (Supports (condition, eval block))
   | Moz_document (conditions, block) ->
-      Some
-        (Moz_document
-           ( conditions,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
-  | When (condition, block) ->
-      Some
-        (When
-           ( condition,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
-  | Else (condition, block) ->
-      Some
-        (Else
-           ( condition,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
-  | Starting_style block ->
-      Some
-        (Starting_style
-           (eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-              block))
-  | Origin (origin, block) ->
-      Some
-        (Origin
-           ( origin,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
-  | Scope (start, end_, block) ->
-      Some
-        (Scope
-           ( start,
-             end_,
-             eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-               block ))
+      Some (Moz_document (conditions, eval block))
+  | When (condition, block) -> Some (When (condition, eval block))
+  | Else (condition, block) -> Some (Else (condition, eval block))
+  | Starting_style block -> Some (Starting_style (eval block))
+  | Origin (origin, block) -> Some (Origin (origin, eval block))
+  | Scope (start, end_, block) -> Some (Scope (start, end_, eval block))
   | _ -> None
 
 and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
@@ -836,7 +795,9 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   inline_style_of_declarations ?minify ?mode declarations
 
 (* Keep Css.optimize alias for convenience *)
-let optimize = Optimize.stylesheet
+let optimize ?world ?flatten_nesting stylesheet =
+  Optimize.stylesheet ?world ?flatten_nesting stylesheet
+
 let flatten_nesting = Optimize.flatten_nesting
 
 (** {1 Closed-world inlining} *)
