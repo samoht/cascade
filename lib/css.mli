@@ -7290,6 +7290,7 @@ type mode = Stylesheet.mode =
             their values) *)
 
 val to_string :
+  ?world:Optimize.world ->
   ?minify:bool ->
   ?indent:int ->
   ?mode:mode ->
@@ -7297,7 +7298,8 @@ val to_string :
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet] renders
+(** [to_string ?world ?minify ?indent ?mode ?theme ?theme_defaults stylesheet]
+    renders
     a stylesheet to CSS. The output doesn't end with a newline; callers append
     one if needed.
     - If [minify] is [true], the output is compact (no unnecessary whitespace)
@@ -7322,6 +7324,7 @@ val to_string :
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
 val pp :
+  ?world:Optimize.world ->
   ?minify:bool ->
   ?indent:int ->
   ?mode:mode ->

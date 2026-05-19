@@ -765,7 +765,7 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
+let to_string ?world ?(minify = false) ?indent ?(mode = Variables) ?theme
     ?(theme_defaults = Pp.no_theme_defaults) stylesheet =
   let stylesheet =
     match mode with
@@ -773,7 +773,7 @@ let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
     | Variables -> stylesheet
   in
   let stylesheet =
-    if minify then Optimize.stylesheet stylesheet
+    if minify then Optimize.stylesheet ?world stylesheet
     else
       (* Spec recovery applies in both modes: invalid declarations and unknown
          at-rules drop (browsers do too), and empty rules left behind drop. The

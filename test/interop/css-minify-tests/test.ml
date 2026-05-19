@@ -175,11 +175,21 @@ let normalize_expected ~category ~id expected =
        --flip{position-area:top}a{position-area:bottom;position-try-fallbacks:--flip}"
   | _ -> expected
 
+(* The upstream fixtures are scoped CSS fragments with the implicit assumption
+   that the input is the complete stylesheet. That matches cascade's closed-
+   world mode: whole-stylesheet rewrites (partial-shorthand synthesis,
+   dead-rule drops, custom-tactic inlining) are allowed because no prior
+   author CSS can reset what isn't covered here. Per
+   [feedback_world_assumption_knob] this is the right knob for "treat input
+   as the entire stylesheet" minify oracles. *)
 let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
-      match Css.to_string ~minify:true parsed.stylesheet with
+      match
+        Css.to_string ~world:Cascade.Optimize.Closed_world ~minify:true
+          parsed.stylesheet
+      with
       | s -> Ok s
       | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 
