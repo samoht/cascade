@@ -1215,6 +1215,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Webkit_transform -> read_webkit_transform_value t
   (* Webkit Transition *)
   | Webkit_transition -> v Webkit_transition (read_transitions t)
+  (* Webkit Animation *)
+  | Webkit_animation -> v Webkit_animation (read_animations t)
   (* Webkit Filter *)
   | Webkit_filter -> v Webkit_filter (read_filter t)
   (* Moz Appearance *)
@@ -2178,7 +2180,7 @@ let string_of_declaration ?(minify = false) decl =
   pp_declaration ctx decl;
   Buffer.contents buf
 
-let to_string = string_of_declaration
+let to_string ?minify (decl : t) = string_of_declaration ?minify decl
 
 (* Resolve theme guards: filter out Theme_guarded declarations whose var_name is
    not in the theme, and unwrap those that are *)
