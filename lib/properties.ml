@@ -6937,62 +6937,49 @@ let position_is_default_origin (p : position_value) =
   | Left_top | Top_left -> true
   | _ -> false
 
+(* CSS Backgrounds 3 sec. 3.10: under minify, drop a longhand whose value
+   equals its [background] shorthand initial. The resolved cascade is
+   unchanged because the omitted slot inherits that same initial. *)
+let drop_initial_when_minified :
+      'a. Pp.ctx -> 'a -> 'a option -> 'a option =
+ fun ctx initial opt ->
+  match opt with
+  | Some x when Pp.minified ctx && x = initial -> (None : _ option)
+  | _ -> opt
+
+let drop_default_position ctx (opt : position_value option) : position_value option =
+  match opt with
+  | Some pos when Pp.minified ctx && position_is_default_origin pos ->
+      (None : _ option)
+  | _ -> opt
+
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->
   let first = ref true in
   let maybe_space () = if !first then first := false else Pp.token_sp ctx () in
 
-  (* CSS Backgrounds 3 sec. 3.10: drop default <bg-size> Auto under minify so
-     the slot pair (position/size) collapses. *)
-  let size : background_size option =
-    match bg.size with Some Auto when Pp.minified ctx -> None | other -> other
+  let size = drop_initial_when_minified ctx (Auto : background_size) bg.size in
+  let position =
+    if size = None then drop_default_position ctx bg.position else bg.position
   in
-  let position : position_value option =
-    if Pp.minified ctx && size = None then
-      match bg.position with
-      | Some pos when position_is_default_origin pos -> None
-      | other -> other
-    else bg.position
+  let image =
+    drop_initial_when_minified ctx (None : background_image) bg.image
   in
-  let image : background_image option =
-    match bg.image with
-    | Some (None : background_image) when Pp.minified ctx ->
-        (None : background_image option)
-    | image -> image
+  let color = drop_initial_when_minified ctx (Transparent : color) bg.color in
+  let repeat =
+    drop_initial_when_minified ctx (Repeat : background_repeat) bg.repeat
   in
-  let color : color option =
-    match bg.color with
-    | Some Transparent when Pp.minified ctx -> (None : color option)
-    | color -> color
+  let attachment =
+    drop_initial_when_minified ctx (Scroll : background_attachment)
+      bg.attachment
   in
-  (* CSS Backgrounds 3 sec. 3.10: drop longhands whose value equals the
-     [background] shorthand initial under minify - [repeat] (default for
-     [background-repeat]), [scroll] (default for [background-attachment]),
-     [padding-box] (default for [background-origin]), [border-box] (default for
-     [background-clip]). The resolved cascade value is unchanged. *)
-  let drop_default = Pp.minified ctx in
-  let repeat : background_repeat option =
-    match bg.repeat with
-    | Some Repeat when drop_default -> None
-    | other -> other
+  let origin =
+    drop_initial_when_minified ctx (Padding_box : background_box) bg.origin
   in
-  let attachment : background_attachment option =
-    match bg.attachment with
-    | Some Scroll when drop_default -> None
-    | other -> other
-  in
-  let origin : background_box option =
-    match bg.origin with
-    | Some Padding_box when drop_default -> None
-    | other -> other
-  in
-  let clip : background_box option =
-    match bg.clip with
-    | Some Border_box when drop_default -> None
-    | other -> other
+  let clip =
+    drop_initial_when_minified ctx (Border_box : background_box) bg.clip
   in
 
-  (* Add all properties in order *)
   pp_bg_prop maybe_space pp_background_image ctx image;
   pp_bg_prop maybe_space pp_background_position_value ctx position;
   pp_bg_size_with_position maybe_space { bg with position; size } ctx;
@@ -7002,7 +6989,6 @@ let pp_background_shorthand : background_shorthand Pp.t =
   pp_bg_prop maybe_space pp_background_box ctx clip;
   pp_bg_prop maybe_space pp_color ctx color;
 
-  (* If nothing was set, output 'none' *)
   if !first then Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
 
 let rec pp_gap : gap Pp.t =
@@ -9542,32 +9528,51 @@ let rec read_translate_value t : translate_value =
     ~calls:[ ("var", read_var_or_components) ]
     ~default:read_lengths t
 
+(* CSS Transforms 2 sec. 3.3: the standalone [rotate] / individual transform
+   properties accept [<angle>] but reject the bare [0] from the CSS Values
+   [<zero>] token shortcut (browsers don't apply the parse-time fallback).
+   Emit the unit even on zero so [rotate: 0deg] survives minification. *)
+let pp_required_unit_angle ctx = function
+  | (Deg f | Rad f | Turn f | Grad f) as _a when f = 0. ->
+      (* Round-trip stable: input [0deg] / [0rad] / etc. keeps its unit. *)
+      let suffix =
+        match _a with
+        | Deg _ -> "deg"
+        | Rad _ -> "rad"
+        | Turn _ -> "turn"
+        | Grad _ -> "grad"
+        | _ -> "deg"
+      in
+      Pp.char ctx '0';
+      Pp.string ctx suffix
+  | a -> pp_angle ctx a
+
 let rec pp_rotate_value : rotate_value Pp.t =
  fun ctx -> function
-  | Angle a -> pp_angle ctx a
+  | Angle a -> pp_required_unit_angle ctx a
   | X a ->
       Pp.string ctx "x";
       Pp.space ctx ();
-      pp_angle ctx a
+      pp_required_unit_angle ctx a
   | Y a ->
       Pp.string ctx "y";
       Pp.space ctx ();
-      pp_angle ctx a
+      pp_required_unit_angle ctx a
   | Z a ->
       Pp.string ctx "z";
       Pp.space ctx ();
-      pp_angle ctx a
+      pp_required_unit_angle ctx a
   | Axis (1., 0., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (X a)
   | Axis (0., 1., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (Y a)
   | Axis (0., 0., 1., a) when Pp.minified ctx -> pp_rotate_value ctx (Z a)
   | Axis (x, y, z, a) ->
-      (* CSS Transforms 2 §3.3 [rotate] [<angle> <number>{3}] is shorter under
-         minify when the angle leads (csso convention) and the second / third
-         numbers drop the separator if they start with a sign. *)
+      (* CSS Transforms 2 sec. 3.3 [rotate] [<angle> <number>{3}] is shorter
+         under minify when the angle leads (csso convention) and the second /
+         third numbers drop the separator if they start with a sign. *)
       let pp_sep ctx (next : float) =
         if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
       in
-      pp_angle ctx a;
+      pp_required_unit_angle ctx a;
       pp_sep ctx x;
       Pp.float ctx x;
       pp_sep ctx y;
