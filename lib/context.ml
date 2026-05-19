@@ -844,7 +844,17 @@ module Var_residual = struct
         match lookup_parsed var.name with
         | Some value ->
             Some (simplify ~authored:false ~visited:(var.name :: visited) value)
-        | None -> resolve_fallback_value ~simplify ~visited var
+        | None -> (
+            match resolve_fallback_value ~simplify ~visited var with
+            | Some _ as resolved -> resolved
+            | None ->
+                (* Typed [default] supplied by [Css.var ~default:...] acts as
+                   the fallback for the var() reference when no [--name]
+                   declaration is visible and no fallback arm resolves. *)
+                Option.map
+                  (fun d ->
+                    simplify ~authored:false ~visited:(var.name :: visited) d)
+                  var.default)
     in
     f ~resolve_var ~simplify_var_record
 
