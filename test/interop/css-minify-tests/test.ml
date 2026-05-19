@@ -165,30 +165,29 @@ let normalize_expected ~category ~id expected =
   | "anchor", "0003" ->
       (* The upstream rewrites [position-try-fallbacks: --flip] to the built-in
          [flip-block] tactic by inlining the [@position-try --flip {
-         position-area: top }] body. That requires whole-stylesheet proof
-         (writing mode, direction, other [@position-try] descriptors, no
-         downstream uses of [--flip]) that cascade's open-world minify default
-         cannot make; per [feedback_world_assumption_knob], rewrites depending
-         on the whole cascade graph need [--closed-world]. Preserve the custom
-         [@position-try] and the [--flip] reference. *)
+         position-area: top }] body. Cascade treats this fixture as closed over
+         the provided CSS text, but still open over runtime layout state. The
+         equivalence depends on block-axis facts such as writing mode/direction,
+         which the fixture does not pin, so preserve the custom [@position-try]
+         and the [--flip] reference. *)
       "@position-try \
        --flip{position-area:top}a{position-area:bottom;position-try-fallbacks:--flip}"
   | _ -> expected
 
 (* The upstream fixtures are scoped CSS fragments with the implicit assumption
-   that the input is the complete stylesheet. That matches cascade's closed-
-   world mode: whole-stylesheet rewrites (partial-shorthand synthesis,
-   dead-rule drops, custom-tactic inlining) are allowed because no prior
-   author CSS can reset what isn't covered here. Per
-   [feedback_world_assumption_knob] this is the right knob for "treat input
-   as the entire stylesheet" minify oracles. *)
+   that the input is the complete stylesheet. Cascade treats them as closed over
+   the provided CSS text, which permits whole-stylesheet source-order and
+   dependency reasoning, but still open over runtime layout state such as DOM
+   shape, writing mode, direction, user styles, and runtime custom-property
+   mutation. *)
 let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
-        Css.to_string ~world:Cascade.Optimize.Closed_world ~minify:true
-          parsed.stylesheet
+        parsed.stylesheet
+        |> Css.optimize ~scope:`Stylesheet
+        |> Css.to_string ~minify:true
       with
       | s -> Ok s
       | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))

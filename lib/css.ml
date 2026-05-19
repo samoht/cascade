@@ -765,7 +765,7 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-let to_string ?world ?(minify = false) ?indent ?(mode = Variables) ?theme
+let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
     ?(theme_defaults = Pp.no_theme_defaults) stylesheet =
   let stylesheet =
     match mode with
@@ -773,7 +773,7 @@ let to_string ?world ?(minify = false) ?indent ?(mode = Variables) ?theme
     | Variables -> stylesheet
   in
   let stylesheet =
-    if minify then Optimize.stylesheet ?world stylesheet
+    if minify then Optimize.stylesheet stylesheet
     else
       (* Spec recovery applies in both modes: invalid declarations and unknown
          at-rules drop (browsers do too), and empty rules left behind drop. The
@@ -784,8 +784,7 @@ let to_string ?world ?(minify = false) ?indent ?(mode = Variables) ?theme
   in
   Stylesheet.to_string ~minify ?indent ~mode ?theme ~theme_defaults stylesheet
 
-let pp ?minify ?indent ?mode ?theme ?theme_defaults stylesheet =
-  to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet
+let pp = to_string
 
 let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     =
@@ -795,9 +794,8 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   in
   inline_style_of_declarations ?minify ?mode declarations
 
-(* Keep Css.optimize alias for convenience *)
-let optimize ?world ?flatten_nesting stylesheet =
-  Optimize.stylesheet ?world ?flatten_nesting stylesheet
+let optimize ?scope ?flatten_nesting stylesheet =
+  Optimize.stylesheet ?scope ?flatten_nesting stylesheet
 
 let flatten_nesting = Optimize.flatten_nesting
 

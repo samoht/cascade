@@ -7290,7 +7290,6 @@ type mode = Stylesheet.mode =
             their values) *)
 
 val to_string :
-  ?world:Optimize.world ->
   ?minify:bool ->
   ?indent:int ->
   ?mode:mode ->
@@ -7298,28 +7297,26 @@ val to_string :
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [to_string ?world ?minify ?indent ?mode ?theme ?theme_defaults stylesheet]
-    renders
-    a stylesheet to CSS. The output doesn't end with a newline; callers append
-    one if needed.
-    - If [minify] is [true], the output is compact (no unnecessary whitespace)
-      and the AST-level optimizer runs first: declaration dedup, longhand ->
-      shorthand merging, identical-rule combining, etc. Spec recovery (drop
-      invalid declarations, unknown at-rules, empty rules) applies in both
-      modes.
-    - [indent] sets the per-level indent width. Default: [None] under [minify]
-      (no indentation), [Some 2] otherwise (2-space indent).
+(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet]
+    serialises a stylesheet to CSS. Pure formatter - no optimisation
+    runs; call {!optimize} first when [minify:true] should benefit from
+    AST-level rewrites. Spec recovery (drop invalid declarations, unknown
+    at-rules, empty rules) still applies because the parser already
+    preserved those shapes for round-trip, and browsers discard them too.
+    Output never ends with a newline; callers append one if needed.
+
+    - [minify] toggles compact serialisation (no insignificant whitespace).
+    - [indent] sets the per-level indent width. Default: [None] under
+      [minify] (no indentation), [Some 2] otherwise (2-space indent).
     - [mode] controls variable rendering. [Inline] substitutes resolvable
       custom-property references and drops dead custom-property definitions
       before printing.
-    - If [newline] is [true] (default), adds a trailing newline for POSIX
-      compliance.
-    - [theme] is the set of theme-defined variable names. When a variable name
-      is in this set, [var(--name)] is emitted; otherwise the concrete default
-      value is used. This is current CSS AST transformation/printing behavior,
+    - [theme] is the set of theme-defined variable names. When a variable
+      name is in this set, [var(--name)] is emitted; otherwise the concrete
+      default value is used. This is AST transformation/printing behaviour,
       not ambient computed-style resolution.
-    - [theme_defaults] maps variable names to concrete CSS default values for
-      variables not in the theme set.
+    - [theme_defaults] maps variable names to concrete CSS default values
+      for variables not in the theme set.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
@@ -7331,8 +7328,7 @@ val pp :
   ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [pp] is {!to_string} without the optimizer-only [?world] knob - use the
-    full [to_string] when you need to flip the closed/open-world policy. *)
+(** [pp] is {!to_string}. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }
 (** A partially-recovered parse: the [stylesheet] composed of every rule that
@@ -7365,15 +7361,15 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val optimize :
-  ?world:Optimize.world -> ?flatten_nesting:bool -> t -> t
-(** [optimize ?world ?flatten_nesting stylesheet] applies CSS optimizations to
-    the stylesheet, including merging consecutive identical selectors and
-    combining rules with identical properties. Preserves CSS cascade semantics.
+val optimize : ?scope:Optimize.scope -> ?flatten_nesting:bool -> t -> t
+(** [optimize ?scope ?flatten_nesting stylesheet] applies CSS optimizations
+    to the stylesheet, including merging consecutive identical selectors
+    and combining rules with identical properties. Preserves CSS cascade
+    semantics.
 
-    [world] (default {!Optimize.Open_world}) gates partial-coverage shorthand
-    synthesis. Pass {!Optimize.Closed_world} when the caller controls the
-    whole author stylesheet graph. See {!Optimize.world} for the details.
+    [scope] (default [`Fragment]) gates partial-coverage shorthand
+    synthesis. Pass [`Stylesheet] when the caller controls the whole author
+    stylesheet graph. See {!Optimize.scope} for the details.
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
