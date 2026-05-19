@@ -765,23 +765,20 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-(* Pure serialiser. No [Optimize.stylesheet] runs; callers wanting AST-level
-   rewrites pipe through {!optimize} first. Spec recovery (drop invalid
+(* Pure serialiser. Walks the AST and emits CSS text. No optimisation, no
+   theme resolution, no inline-vars rewriting. Spec recovery (drop invalid
    declarations, unknown at-rules, empty rules) still applies because the
-   parser already preserved those shapes for round-trip and browsers discard
-   them during parse. *)
-let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
-    ?(theme_defaults = Pp.no_theme_defaults) stylesheet =
-  let stylesheet =
-    match mode with
-    | Inline -> Inline.vars stylesheet |> List.concat_map statements_for_inline
-    | Variables -> stylesheet
-  in
+   parser already preserved those shapes for round-trip and browsers
+   discard them during parse - that isn't an optimisation, just keeping
+   the output observationally equivalent to what a fresh parse would
+   produce. Compose {!optimize}, {!resolve_theme}, {!inline_vars}
+   upstream when those rewrites are needed. *)
+let to_string ?(minify = false) ?indent stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
     |> Optimize.drop_empty_rules
   in
-  Stylesheet.to_string ~minify ?indent ~mode ?theme ~theme_defaults stylesheet
+  Stylesheet.to_string ~minify ?indent stylesheet
 
 let pp = to_string
 
@@ -812,12 +809,12 @@ let inline_vars ?keep_vars stylesheet =
   in
   List.concat_map statements_for_inline substituted
 
-(* Theme resolution as an explicit AST step. The [theme] set names the
-   variables that should keep their [var()] reference (acts as
-   [Inline.vars]' [keep_vars]). [theme_defaults] currently still flows
-   through [to_string]'s printer context for fallback resolution; this
-   entry exists so callers can keep the AST-level keep-set step explicit
-   even before that resolver moves to an AST pass. *)
+(* Theme resolution as an explicit AST step. [theme] names the variables
+   that should keep their [var()] reference live (handed to [Inline.vars]'
+   keep-set). [theme_defaults] would supply external defaults for non-theme
+   variables and currently has no AST-level implementation: callers that
+   need the print-time [theme_defaults] behaviour must wait for the proper
+   resolver. *)
 let resolve_theme ?theme ?theme_defaults:_ stylesheet =
   let keep_vars =
     match theme with None -> [] | Some set -> Pp.String_set.elements set
