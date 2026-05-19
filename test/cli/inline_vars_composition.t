@@ -82,7 +82,7 @@ appropriate component.
   > .b { animation: var(--anim) 1s ease infinite }
   > EOF
   $ cascade --minify --inline-vars shorthand-anim.css
-  .a{transition:opacity .3s}.b{animation:1s infinite slide}
+  .a{transition:opacity .3s}.b{animation:slide 1s infinite}
 
 A custom property holding a CSS-wide keyword (initial / inherit / unset
 / revert) inlines literally - the keyword's effect is at computed time.

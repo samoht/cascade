@@ -273,8 +273,8 @@ let test_group_complex_selectors () =
   in
 
   (* Complex selectors with descendant combinators can still be grouped when
-     their declarations and cascade context are identical. Tailwind source
-     shape compatibility is not a reason to block shortest-safe grouping. *)
+     their declarations and cascade context are identical. Tailwind source shape
+     compatibility is not a reason to block shortest-safe grouping. *)
   let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
   check int "complex descendant selectors are grouped" 1 (List.length grouped)
 
@@ -781,7 +781,7 @@ let test_no_merge_different_declarations () =
   Alcotest.(check bool)
     "keeps rules with different declarations separate" true (has_foo && has_bar)
 
-let test_no_merge_non_consecutive () =
+let test_merge_non_consecutive_non_conflicting () =
   let input =
     [
       Css.rule
@@ -797,11 +797,9 @@ let test_no_merge_non_consecutive () =
   in
   let optimized = Css.Optimize.stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let foo_separate = Astring.String.is_infix ~affix:".foo{" output_str in
-  let bar_separate = Astring.String.is_infix ~affix:".bar{" output_str in
-  Alcotest.(check bool)
-    "keeps non-consecutive rules separate" true
-    (foo_separate && bar_separate)
+  Alcotest.(check string)
+    "merges non-consecutive non-conflicting rules"
+    ".bar,.foo{margin:5px}.baz{padding:10px}" output_str
 
 let test_no_merge_vendor_pseudo () =
   let input =
@@ -893,6 +891,54 @@ let c3_shorthand_resets () =
   Alcotest.(check string)
     "background shorthand resets previous background-image"
     ".hero{background:green}" background_output
+
+let c3_open_closed_world_background_synthesis () =
+  (* CSS Backgrounds shorthands are resetful: synthesizing [background] resets
+     omitted background longhands. In the default open world, a fragment cannot
+     assume no earlier author CSS wrote one of those omitted longhands. In a
+     closed world, the caller asserts the whole relevant author stylesheet graph
+     is available, so the shorter resetful shorthand is allowed. *)
+  let optimize ?world css =
+    Css.of_string_exn ~strict:false css
+    |> Css.optimize ?world |> Css.to_string ~minify:true |> String.trim
+  in
+  let partial_run =
+    {|
+      .card {
+        background-color: red;
+        background-image: none;
+        background-repeat: repeat;
+        background-position: 0% 0%;
+        background-attachment: scroll;
+      }
+    |}
+  in
+  Alcotest.(check string)
+    "open-world partial background run keeps longhands"
+    ".card{background-color:red;background-image:none;background-repeat:repeat;background-position:0;background-attachment:scroll}"
+    (optimize partial_run);
+  Alcotest.(check string)
+    "closed-world partial background run may synthesize shorthand"
+    ".card{background:red}"
+    (optimize ~world:Closed_world partial_run);
+  let reset_closed_run =
+    {|
+      .card {
+        background-color: red;
+        background-image: none;
+        background-repeat: repeat;
+        background-position: 0% 0%;
+        background-size: auto;
+        background-attachment: scroll;
+        background-origin: padding-box;
+        background-clip: border-box;
+      }
+    |}
+  in
+  Alcotest.(check string)
+    "open-world reset-closed background run may synthesize shorthand"
+    ".card{background:red}"
+    (optimize reset_closed_run)
 
 let c3_shorthand_order_edges () =
   (* CSS Cascade section 3 plus source order: a later shorthand resets all
@@ -1218,16 +1264,15 @@ let c61_no_factor_across_all_reset () =
   let check_case reset =
     let input =
       Css.Stylesheet.read
-        (Cursor.of_string
-           (Printf.sprintf ".foo{color:red}.bar{all:%s;color:red}" reset))
+        (Fmt.kstr Cursor.of_string ".foo{color:red}.bar{all:%s;color:red}" reset)
     in
     let optimized = Css.Optimize.stylesheet input in
     let output =
       Css.Stylesheet.to_string ~minify:true optimized |> String.trim
     in
     Alcotest.(check string)
-      (Printf.sprintf "all:%s keeps later color after reset" reset)
-      (Printf.sprintf ".foo{color:red}.bar{all:%s;color:red}" reset)
+      (Fmt.str "all:%s keeps later color after reset" reset)
+      (Fmt.str ".foo{color:red}.bar{all:%s;color:red}" reset)
       output
   in
   List.iter check_case [ "unset"; "initial"; "revert-layer" ]
@@ -2909,12 +2954,17 @@ let selector_merging_tests =
     ( "no merge different declarations",
       `Quick,
       test_no_merge_different_declarations );
-    ("no merge non-consecutive", `Quick, test_no_merge_non_consecutive);
+    ( "merge non-consecutive non-conflicting",
+      `Quick,
+      test_merge_non_consecutive_non_conflicting );
     ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
     ("no merge with nested", `Quick, test_no_merge_with_nested);
     ( "spec cascade 3 shorthand resets omitted longhands",
       `Quick,
       c3_shorthand_resets );
+    ( "spec cascade 3 open/closed world background synthesis",
+      `Quick,
+      c3_open_closed_world_background_synthesis );
     ( "spec cascade 3 shorthand source order corner cases",
       `Quick,
       c3_shorthand_order_edges );

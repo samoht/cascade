@@ -8,7 +8,7 @@
 # [cleancss], [cssmin], [cssnano], [csso], [minify], and [yui].
 #
 # This script writes a single binary trace [traces/cases.trace] consumed
-# by the shared interop runner [test/interop/test.exe]. Format:
+# by the shared interop runner [test/interop_runner/test.exe]. Format:
 #
 #     "CASCADE-INTEROP/v1\n"
 #     ">>> <name_len> <input_len> <n_ok> <n_err>\n"

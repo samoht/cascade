@@ -52,7 +52,7 @@ let test_pp_matches_to_string buf =
   let direct = Css.Media.to_string query in
   let pretty = Css.Pp.to_string Css.Media.pp query in
   if direct <> pretty then
-    fail (Fmt.str "media pp/to_string mismatch: %S <> %S" direct pretty)
+    failf "media pp/to_string mismatch: %S <> %S" direct pretty
 
 let test_compare_antisymmetric buf =
   let a = media buf 0 in
@@ -97,8 +97,7 @@ let test_raw_range_serialization_stable buf =
   let once = Css.Media.to_string (Css.Media.of_string raw) in
   let twice = Css.Media.to_string (Css.Media.of_string once) in
   if once <> twice then
-    fail
-      (Fmt.str "media of_string/to_string not idempotent: %S vs %S" once twice)
+    failf "media of_string/to_string not idempotent: %S vs %S" once twice
 
 let spec_media_vector buf =
   let open Css.Media in
@@ -138,26 +137,23 @@ let test_spec_media_structural_vectors buf =
   let input, expected = spec_media_vector buf in
   let actual = Css.Media.of_string input in
   if not (Css.Media.equal expected actual) then
-    fail
-      (Fmt.str "media vector parsed to wrong AST: %S -> %S" input
-         (Css.Media.to_string actual))
+    failf "media vector parsed to wrong AST: %S -> %S" input
+      (Css.Media.to_string actual)
 
 let test_media_error_recovery buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_negative buf 0 in
   let input = row.input in
   let actual = Css.Media.to_string (Css.Media.of_string input) in
   if actual <> "not all" then
-    fail
-      (Fmt.str "invalid media vector did not recover to not all: %S -> %S" input
-         actual)
+    failf "invalid media vector did not recover to not all: %S -> %S" input
+      actual
 
 let test_media_list_recovery buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_recovery buf 0 in
   let actual = Css.Media.to_string (Css.Media.of_string row.input) in
   if actual <> row.expected then
-    fail
-      (Fmt.str "media list recovery drifted: %S -> %S, expected %S" row.input
-         actual row.expected)
+    failf "media list recovery drifted: %S -> %S, expected %S" row.input actual
+      row.expected
 
 let test_media_feature_family buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_positive buf 2 in
@@ -165,8 +161,7 @@ let test_media_feature_family buf =
   let once = Css.Media.to_string (Css.Media.of_string input) in
   let twice = Css.Media.to_string (Css.Media.of_string once) in
   if once <> twice then
-    fail
-      (Fmt.str "media feature family serialization drifted: %S -> %S" once twice)
+    failf "media feature family serialization drifted: %S -> %S" once twice
 
 let test_media_feature_recovery buf =
   let valid = pick Cascade_spec_inventory.Query_grammar.media_positive buf 3 in
@@ -178,9 +173,7 @@ let test_media_feature_recovery buf =
   in
   let actual = Css.Media.to_string (Css.Media.of_string input) in
   if actual <> "not all" then
-    fail
-      (Fmt.str "invalid media feature family did not recover: %S -> %S" input
-         actual)
+    failf "invalid media feature family did not recover: %S -> %S" input actual
 
 let suite =
   ( "media",

@@ -1620,6 +1620,26 @@ let process_font_face_rules ~depth:_ stmts1 stmts2 =
           :: !diffs;
       !diffs
 
+let container_condition_string name_opt condition =
+  let cond_str =
+    match condition with Some c -> Css.Container.to_string c | None -> ""
+  in
+  match name_opt with Some name -> name ^ " " ^ cond_str | None -> cond_str
+
+let container_key (name_opt, condition, _) =
+  (* Use both name and condition as key to distinguish different containers. *)
+  String.concat ":"
+    [
+      Option.value ~default:"" name_opt;
+      Option.fold ~none:"" ~some:Css.Container.to_string condition;
+    ]
+
+let condition_rules_of_container (name_opt, condition, rules) =
+  (container_condition_string name_opt condition, rules)
+
+let modified_container_of_pair ((name_opt, condition, rules1), (_, _, rules2)) =
+  (container_condition_string name_opt condition, rules1, rules2)
+
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
 let rec media_condition_differs rules_list1 rules_list2 =
@@ -1821,77 +1841,23 @@ and process_nested_layers ~depth stmts1 stmts2 =
   let added, removed, modified = layer_diff items1 items2 in
   collect_container_diffs ~container_type:`Layer ~depth added removed modified
 
+and container_has_no_diff (_, _, rules1) (_, _, rules2) =
+  let a_r, r_r, m_r = rule_diffs rules1 rules2 in
+  let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] in
+  if has_immediate_diffs then false
+  else nested_differences ~depth:1 rules1 rules2 = []
+
 (* Container diff function for @container rules *)
 and container_diff items1 items2 =
-  let key_of (name_opt, condition, _) =
-    (* Use both name and condition as key to distinguish different containers *)
-    let cond_str =
-      match condition with Some c -> Css.Container.to_string c | None -> ""
-    in
-    match name_opt with Some name -> name ^ ":" ^ cond_str | None -> cond_str
-  in
   let key_equal = String.equal in
-  let is_empty_diff (_, _, rules1) (_, _, rules2) =
-    let a_r, r_r, m_r = rule_diffs rules1 rules2 in
-    let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] in
-    if has_immediate_diffs then false
-    else
-      (* Also check for nested differences *)
-      let nested_diffs = nested_differences ~depth:1 rules1 rules2 in
-      nested_diffs = []
-  in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+    diffs ~key_of:container_key ~key_equal ~is_empty_diff:container_has_no_diff
+      items1 items2
   in
-  (* Transform to consistent format with media_diff *)
-  let added =
-    List.map
-      (fun (name_opt, condition, rules) ->
-        let cond_str =
-          match condition with
-          | Some c -> Css.Container.to_string c
-          | None -> ""
-        in
-        let condition_str =
-          match name_opt with
-          | Some name -> name ^ " " ^ cond_str
-          | None -> cond_str
-        in
-        (condition_str, rules))
-      added
-  in
-  let removed =
-    List.map
-      (fun (name_opt, condition, rules) ->
-        let cond_str =
-          match condition with
-          | Some c -> Css.Container.to_string c
-          | None -> ""
-        in
-        let condition_str =
-          match name_opt with
-          | Some name -> name ^ " " ^ cond_str
-          | None -> cond_str
-        in
-        (condition_str, rules))
-      removed
-  in
-  let modified =
-    List.map
-      (fun ((name_opt, condition, rules1), (_, _, rules2)) ->
-        let cond_str =
-          match condition with
-          | Some c -> Css.Container.to_string c
-          | None -> ""
-        in
-        let condition_str =
-          match name_opt with
-          | Some name -> name ^ " " ^ cond_str
-          | None -> cond_str
-        in
-        (condition_str, rules1, rules2))
-      modified_pairs
-  in
+  (* Transform to consistent format with media_diff. *)
+  let added = List.map condition_rules_of_container added in
+  let removed = List.map condition_rules_of_container removed in
+  let modified = List.map modified_container_of_pair modified_pairs in
   (added, removed, modified)
 
 (* Process container rules *)

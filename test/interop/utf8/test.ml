@@ -22,7 +22,7 @@ let read_file path =
 (* Wrap the bytes in a synthetic stylesheet body so the parser is exercised
    end-to-end. Whatever malformed sequences land in identifiers, comments, or
    strings must survive without exception. *)
-let wrap body = Printf.sprintf "/* %s */ a { content: \"%s\" }" body body
+let wrap body = Fmt.str "/* %s */ a { content: \"%s\" }" body body
 
 let parses_without_crash bytes =
   match Cascade.Css.of_string ~strict:false (wrap bytes) with
@@ -38,7 +38,7 @@ let test_per_line () =
   List.iteri
     (fun i line ->
       Alcotest.(check bool)
-        (Printf.sprintf "line %d accepted" (i + 1))
+        (Fmt.str "line %d accepted" (i + 1))
         true
         (parses_without_crash line))
     lines

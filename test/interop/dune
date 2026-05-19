@@ -1,3 +1,0 @@
-(executable
- (name test)
- (libraries cascade cascade.diff alcotest nox-memtrace eio eio_main))

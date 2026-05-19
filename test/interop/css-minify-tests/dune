@@ -1,6 +1,6 @@
 (test
  (name test)
- (libraries cascade alcotest fmt)
+ (libraries cascade alcotest astring fmt)
  (deps
   (source_tree traces)))
 

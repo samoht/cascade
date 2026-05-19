@@ -111,9 +111,8 @@ let test_spec_token_family_vectors buf =
   let expected = row.expected in
   let actual = kind_strings_no_eof input in
   if actual <> expected then
-    fail
-      (Fmt.str "CSS Syntax token vector %s changed for %S: %S" row.branch input
-         (String.concat " " actual))
+    failf "CSS Syntax token vector %s changed for %S: %S" row.branch input
+      (String.concat " " actual)
 
 let suite =
   ( "lexer",

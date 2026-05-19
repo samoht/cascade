@@ -827,7 +827,7 @@ let custom_properties () =
   (* With var() references *)
   check_declaration ~expected:"--primary:var(--base-color)"
     "--primary: var(--base-color)";
-  check_declaration ~expected:"--size:calc(var(--base)*2)"
+  check_declaration ~expected:"--size:calc(var(--base) * 2)"
     "--size: calc(var(--base) * 2)";
   check_declaration ~expected:"--fallback:var(--undefined,10px)"
     "--fallback: var(--undefined, 10px)";
@@ -1169,7 +1169,7 @@ let spec_cascade3_shorthands () =
   check_declaration ~expected:"font:700 12pt/14pt Helvetica"
     "font: bold 12pt/14pt Helvetica";
   check_declaration ~expected:"margin:inherit" "margin: inherit";
-  check_declaration ~expected:"padding:initial" "padding: initial";
+  check_declaration ~expected:"padding:0" "padding: initial";
   check_declaration ~expected:"background:unset" "background: unset";
   check_declaration ~expected:"border:revert" "border: revert";
   check_declaration ~expected:"font:revert-layer" "font: revert-layer";
@@ -1828,7 +1828,11 @@ let css_wide_custom_property_vectors () =
   List.iter
     (fun keyword ->
       check_declaration ("color:" ^ keyword);
-      check_declaration ("margin:" ^ keyword);
+      check_declaration
+        ~expected:
+          (if String.equal keyword "initial" then "margin:0"
+           else "margin:" ^ keyword)
+        ("margin:" ^ keyword);
       none_cursor read_declaration ("color:" ^ keyword ^ " red");
       none_cursor read_declaration ("margin:1px " ^ keyword);
       none_cursor read_declaration ("background:red " ^ keyword))

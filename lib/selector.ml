@@ -141,23 +141,32 @@ let skip_css_escape name i =
     if !i = start then incr i (* single escaped char *)
     else if !i < len && name.[!i] = ' ' then incr i
 
-let validate_css_identifier name =
+let validate_identifier_start name =
   if String.length name = 0 then err_invalid_identifier name "cannot be empty";
-
   let first_char = name.[0] in
-
-  (* Check for invalid starting patterns *)
   if first_char >= '0' && first_char <= '9' then
     err_invalid_identifier name "cannot start with digit";
-
   if String.length name >= 2 then (
     if name.[0] = '-' && name.[1] = '-' then
       err_invalid_identifier name
         "cannot start with '--' (reserved for custom properties)";
     if name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9' then
-      err_invalid_identifier name "cannot start with '-' followed by digit");
+      err_invalid_identifier name "cannot start with '-' followed by digit")
 
-  (* Validate characters with CSS escape support *)
+let identifier_char_valid idx c =
+  if idx = 0 then is_valid_nmstart c || c = '-' else is_valid_nmchar c
+
+let invalid_identifier_char_message c idx =
+  String.concat ""
+    [
+      "contains invalid character '";
+      String.make 1 c;
+      "' at position ";
+      Int.to_string idx;
+    ]
+
+let validate_css_identifier name =
+  validate_identifier_start name;
   let len = String.length name in
   let i = ref 0 in
   while !i < len do
@@ -165,18 +174,8 @@ let validate_css_identifier name =
     if c = '\\' then skip_css_escape name i
     else
       let idx = !i in
-      let is_valid =
-        if idx = 0 then is_valid_nmstart c || c = '-' else is_valid_nmchar c
-      in
-      if (not is_valid) && Char.code c <= 127 then
-        err_invalid_identifier name
-          (String.concat ""
-             [
-               "contains invalid character '";
-               String.make 1 c;
-               "' at position ";
-               Int.to_string idx;
-             ]);
+      if (not (identifier_char_valid idx c)) && Char.code c <= 127 then
+        err_invalid_identifier name (invalid_identifier_char_message c idx);
       incr i
   done
 

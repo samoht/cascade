@@ -77,8 +77,7 @@ let test_metric_override_serialization_idempotent buf =
       let reparsed = Css.Font_face.metric_override_of_string once in
       let twice = Css.Font_face.string_of_metric_override reparsed in
       if once <> twice then
-        fail
-          (Fmt.str "metric override serialization changed: %S -> %S" once twice)
+        failf "metric override serialization changed: %S -> %S" once twice
 
 let test_generated_src_serialization_idempotent buf =
   let entry =
@@ -91,7 +90,7 @@ let test_generated_src_serialization_idempotent buf =
   let once = Css.Font_face.(entry |> src_of_string |> string_of_src) in
   let twice = Css.Font_face.(once |> src_of_string |> string_of_src) in
   if once <> twice then
-    fail (Fmt.str "font src serialization changed: %S -> %S" once twice)
+    failf "font src serialization changed: %S -> %S" once twice
 
 let test_generated_metric_edge_idempotent buf =
   let input =
@@ -122,13 +121,12 @@ let test_spec_src_vectors buf =
       buf 1
   in
   match parse_src input with
-  | None -> fail (Fmt.str "valid font-face src vector rejected: %S" input)
+  | None -> failf "valid font-face src vector rejected: %S" input
   | Some src ->
       let serialized = Css.Font_face.string_of_src src in
       let reparsed = Css.Font_face.src_of_string serialized in
       if src <> reparsed then
-        fail
-          (Fmt.str "font-face src structure changed: %S -> %S" input serialized)
+        failf "font-face src structure changed: %S -> %S" input serialized
 
 let test_invalid_src_vectors buf =
   let input =
@@ -145,9 +143,8 @@ let test_invalid_src_vectors buf =
   match parse_src input with
   | None -> ()
   | Some src ->
-      fail
-        (Fmt.str "invalid font-face src vector parsed: %S -> %S" input
-           (Css.Font_face.string_of_src src))
+      failf "invalid font-face src vector parsed: %S -> %S" input
+        (Css.Font_face.string_of_src src)
 
 let test_spec_metric_vectors buf =
   let input, expected =
@@ -163,19 +160,17 @@ let test_spec_metric_vectors buf =
   match parse_metric input with
   | Some actual when actual = expected -> ()
   | Some actual ->
-      fail
-        (Fmt.str "font metric structure changed: %S -> %S" input
-           (Css.Font_face.string_of_metric_override actual))
-  | None -> fail (Fmt.str "valid font metric vector rejected: %S" input)
+      failf "font metric structure changed: %S -> %S" input
+        (Css.Font_face.string_of_metric_override actual)
+  | None -> failf "valid font metric vector rejected: %S" input
 
 let test_invalid_metric_vectors buf =
   let input = pick [ "-1%"; "auto"; "100"; "calc(1%)" ] buf 4 in
   match parse_metric input with
   | None -> ()
   | Some metric ->
-      fail
-        (Fmt.str "invalid font metric vector parsed: %S -> %S" input
-           (Css.Font_face.string_of_metric_override metric))
+      failf "invalid font metric vector parsed: %S -> %S" input
+        (Css.Font_face.string_of_metric_override metric)
 
 let test_spec_size_adjust_vectors buf =
   let input, expected =
@@ -184,17 +179,15 @@ let test_spec_size_adjust_vectors buf =
   match parse_size_adjust input with
   | Some actual when actual = expected -> ()
   | Some actual ->
-      fail (Fmt.str "font size-adjust structure changed: %S -> %g" input actual)
-  | None -> fail (Fmt.str "valid font size-adjust vector rejected: %S" input)
+      failf "font size-adjust structure changed: %S -> %g" input actual
+  | None -> failf "valid font size-adjust vector rejected: %S" input
 
 let test_invalid_size_adjust_vectors buf =
   let input = pick [ "-1%"; "normal"; "auto"; "100"; "calc(100%)" ] buf 6 in
   match parse_size_adjust input with
   | None -> ()
   | Some size_adjust ->
-      fail
-        (Fmt.str "invalid font size-adjust vector parsed: %S -> %g" input
-           size_adjust)
+      failf "invalid font size-adjust vector parsed: %S -> %g" input size_adjust
 
 let suite =
   ( "font_face",

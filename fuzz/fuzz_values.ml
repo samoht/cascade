@@ -144,8 +144,7 @@ let assert_value_idempotent ~label read pp buf =
   let reparse_or_fail step s =
     match parse s with
     | Some v -> v
-    | None ->
-        fail (Fmt.str "%s serialization did not reparse at %s: %S" label step s)
+    | None -> failf "%s serialization did not reparse at %s: %S" label step s
   in
   match parse buf with
   | None -> ()
@@ -154,10 +153,8 @@ let assert_value_idempotent ~label read pp buf =
       let twice = serialize (reparse_or_fail "first reparse" once) in
       let thrice = serialize (reparse_or_fail "second reparse" twice) in
       if twice <> thrice then
-        fail
-          (Fmt.str
-             "%s serialization drifted past canonicalization: %S -> %S -> %S"
-             label once twice thrice)
+        failf "%s serialization drifted past canonicalization: %S -> %S -> %S"
+          label once twice thrice
 
 (** Length serialization should reparse to the same canonical form for accepted
     values, including calc()/var() shapes. *)
@@ -208,13 +205,13 @@ let test_modern_color_stable buf =
       match
         try Some (Css.Values.read_color r2) with Cursor.Parse_error _ -> None
       with
-      | None -> fail (Fmt.str "modern color did not reparse: %S" once)
+      | None -> failf "modern color did not reparse: %S" once
       | Some reparsed ->
           let twice =
             Css.Pp.to_string ~minify:true Css.Values.pp_color reparsed
           in
           if once <> twice then
-            fail (Fmt.str "modern color changed: %S -> %S" once twice))
+            failf "modern color changed: %S -> %S" once twice)
 
 let test_modern_math_stable buf =
   let input =
@@ -242,13 +239,13 @@ let test_modern_math_stable buf =
       match
         try Some (Css.Values.read_length r2) with Cursor.Parse_error _ -> None
       with
-      | None -> fail (Fmt.str "modern math length did not reparse: %S" once)
+      | None -> failf "modern math length did not reparse: %S" once
       | Some reparsed ->
           let twice =
             Css.Pp.to_string ~minify:true Css.Values.pp_length reparsed
           in
           if once <> twice then
-            fail (Fmt.str "modern math length changed: %S -> %S" once twice))
+            failf "modern math length changed: %S -> %S" once twice)
 
 let valid_length_vectors =
   [
@@ -286,20 +283,17 @@ let valid_number_vectors =
 
 let assert_parse_print parse pp input =
   match parse_whole parse input with
-  | None -> fail (Fmt.str "valid CSS value vector did not parse: %S" input)
+  | None -> failf "valid CSS value vector did not parse: %S" input
   | Some value -> (
       let once = Css.Pp.to_string ~minify:true pp value in
       match parse_whole parse once with
       | None ->
-          fail
-            (Fmt.str "valid CSS value serialization did not reparse: %S -> %S"
-               input once)
+          failf "valid CSS value serialization did not reparse: %S -> %S" input
+            once
       | Some reparsed ->
           let twice = Css.Pp.to_string ~minify:true pp reparsed in
           if once <> twice then
-            fail
-              (Fmt.str "valid CSS value serialization drifted: %S -> %S" once
-                 twice))
+            failf "valid CSS value serialization drifted: %S -> %S" once twice)
 
 let test_spec_valid_value_vectors buf =
   match byte_at buf 0 mod 6 with
@@ -327,7 +321,7 @@ let test_spec_invalid_value_vectors buf =
   let rejected parse input =
     match parse_whole parse input with
     | None -> ()
-    | Some _ -> fail (Fmt.str "invalid CSS value vector parsed: %S" input)
+    | Some _ -> failf "invalid CSS value vector parsed: %S" input
   in
   match byte_at buf 0 mod 6 with
   | 0 ->
@@ -395,7 +389,7 @@ let assert_color_branch input =
   match
     try Some (Css.Values.read_color r) with Cursor.Parse_error _ -> None
   with
-  | None -> fail (Fmt.str "valid CSS color branch vector rejected: %S" input)
+  | None -> failf "valid CSS color branch vector rejected: %S" input
   | Some color -> (
       let serialized =
         Css.Pp.to_string ~minify:true Css.Values.pp_color color
@@ -405,9 +399,8 @@ let assert_color_branch input =
         try Some (Css.Values.read_color r2) with Cursor.Parse_error _ -> None
       with
       | None ->
-          fail
-            (Fmt.str "CSS color branch serialization did not reparse: %S -> %S"
-               input serialized)
+          failf "CSS color branch serialization did not reparse: %S -> %S" input
+            serialized
       | Some reparsed ->
           (* After one minification pass the color is in its canonical short
              form (CSS Color 4 section 12.1 hex shortening, etc.), so further
@@ -418,9 +411,8 @@ let assert_color_branch input =
             Css.Pp.to_string ~minify:true Css.Values.pp_color reparsed
           in
           if reserialized <> serialized then
-            fail
-              (Fmt.str "CSS color branch not idempotent: %S -> %S -> %S" input
-                 serialized reserialized))
+            failf "CSS color branch not idempotent: %S -> %S -> %S" input
+              serialized reserialized)
 
 let test_spec_color_branch_vectors buf =
   assert_color_branch (pick color_branch_vectors buf 2)
@@ -472,9 +464,8 @@ let test_invalid_color_branches buf =
   with
   | None -> ()
   | Some color ->
-      fail
-        (Fmt.str "invalid CSS color branch vector parsed: %S -> %S" input
-           (Css.Pp.to_string ~minify:true Css.Values.pp_color color))
+      failf "invalid CSS color branch vector parsed: %S -> %S" input
+        (Css.Pp.to_string ~minify:true Css.Values.pp_color color)
 
 let generated_number buf i = pick [ "0"; ".5"; "1"; "12"; "-3"; "100" ] buf i
 
@@ -548,16 +539,16 @@ let invalid_value_mutation buf =
 
 let check_roundtrip_once parse pp once =
   match parse_whole parse once with
-  | None -> fail (Fmt.str "generated CSS value did not reparse: %S" once)
+  | None -> failf "generated CSS value did not reparse: %S" once
   | Some reparsed ->
       let twice = Css.Pp.to_string ~minify:true pp reparsed in
       if once <> twice then
-        fail (Fmt.str "generated CSS value drifted: %S -> %S" once twice)
+        failf "generated CSS value drifted: %S -> %S" once twice
 
 let assert_value_roundtrip kind input =
   let run parse pp =
     match parse_whole parse input with
-    | None -> fail (Fmt.str "generated valid CSS value rejected: %S" input)
+    | None -> failf "generated valid CSS value rejected: %S" input
     | Some value ->
         let once = Css.Pp.to_string ~minify:true pp value in
         check_roundtrip_once parse pp once
@@ -571,7 +562,7 @@ let assert_value_reject kind input =
   let reject parse =
     match parse_whole parse input with
     | None -> ()
-    | Some _ -> fail (Fmt.str "generated invalid CSS value parsed: %S" input)
+    | Some _ -> failf "generated invalid CSS value parsed: %S" input
   in
   match kind with
   | `Length -> reject Css.Values.read_length

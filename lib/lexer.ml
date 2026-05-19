@@ -261,51 +261,57 @@ let consume_string_token ~quote r =
   in
   loop ()
 
-(* 4.3.14 Consume a number. *)
-let consume_number r =
-  let buf = Buffer.create 16 in
-  let is_int = ref true in
-  let take_digits () =
-    let rec loop () =
-      match Reader.peek r with
-      | Some c when is_digit c ->
-          Buffer.add_char buf c;
-          Reader.skip r;
-          loop ()
-      | _ -> ()
-    in
-    loop ()
+let take_number_digits r buf =
+  let rec loop () =
+    match Reader.peek r with
+    | Some c when is_digit c ->
+        Buffer.add_char buf c;
+        Reader.skip r;
+        loop ()
+    | _ -> ()
   in
-  (match Reader.peek r with
+  loop ()
+
+let consume_number_sign r buf =
+  match Reader.peek r with
   | Some (('+' | '-') as c) ->
       Buffer.add_char buf c;
       Reader.skip r
-  | _ -> ());
-  take_digits ();
-  (match Reader.peek_string r 2 with
+  | _ -> ()
+
+let consume_fraction r buf is_int =
+  match Reader.peek_string r 2 with
   | s when String.length s = 2 && s.[0] = '.' && is_digit s.[1] ->
       Buffer.add_char buf '.';
       Reader.skip r;
       is_int := false;
-      take_digits ()
-  | _ -> ());
-  (match Reader.peek_string r 3 with
-  | s when String.length s >= 2 && (s.[0] = 'e' || s.[0] = 'E') ->
-      let has_sign_digit =
-        String.length s >= 3 && (s.[1] = '+' || s.[1] = '-') && is_digit s.[2]
-      in
-      let has_digit = is_digit s.[1] in
-      if has_digit || has_sign_digit then (
-        Buffer.add_char buf s.[0];
-        Reader.skip r;
-        is_int := false;
-        (match Reader.peek r with
-        | Some (('+' | '-') as c) ->
-            Buffer.add_char buf c;
-            Reader.skip r
-        | _ -> ());
-        take_digits ())
-  | _ -> ());
+      take_number_digits r buf
+  | _ -> ()
+
+let exponent_continues_number s =
+  if String.length s < 2 || (s.[0] <> 'e' && s.[0] <> 'E') then false
+  else
+    is_digit s.[1]
+    || (String.length s >= 3 && (s.[1] = '+' || s.[1] = '-') && is_digit s.[2])
+
+let consume_exponent r buf is_int =
+  match Reader.peek_string r 3 with
+  | s when exponent_continues_number s ->
+      Buffer.add_char buf s.[0];
+      Reader.skip r;
+      is_int := false;
+      consume_number_sign r buf;
+      take_number_digits r buf
+  | _ -> ()
+
+(* 4.3.14 Consume a number. *)
+let consume_number r =
+  let buf = Buffer.create 16 in
+  let is_int = ref true in
+  consume_number_sign r buf;
+  take_number_digits r buf;
+  consume_fraction r buf is_int;
+  consume_exponent r buf is_int;
   let repr = Buffer.contents buf in
   let value = try float_of_string repr with Failure _ -> 0.0 in
   let number_flag = if !is_int then Integer else Number in

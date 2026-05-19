@@ -1354,8 +1354,7 @@ let test_complex_values () =
     ".var { color: var(--primary-color, blue); }";
   check_stylesheet ~expected:".clamp{font-size:clamp(1rem,2vw,2rem)}"
     ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
-  check_stylesheet
-    ~expected:".minmax{grid-template-columns:minmax(200px,1fr)}"
+  check_stylesheet ~expected:".minmax{grid-template-columns:minmax(200px,1fr)}"
     ".minmax { grid-template-columns: minmax(200px, 1fr); }"
 
 (* Not a roundtrip test *)
@@ -4390,7 +4389,10 @@ let v4102_calc_percentage () =
     (normalize ".x { width: calc(100% - 50%) }");
   Alcotest.(check string)
     "calc(50% + 50%) -> 100%" ".x{width:100%}"
-    (normalize ".x { width: calc(50% + 50%) }")
+    (normalize ".x { width: calc(50% + 50%) }");
+  Alcotest.(check string)
+    "calc(100% * 2) -> 200%" ".x{width:200%}"
+    (normalize ".x { width: calc(100% * 2) }")
 
 (* CSS Values and Units Module Level 4, section 10.2: calc() with mixed units
    that cannot be reduced at parse time must be preserved. Examples are
@@ -5536,69 +5538,111 @@ let customprops13_declaration () =
   Alcotest.(check string)
     "--x: red blue preserved" ".x{--x:red blue}"
     (normalize ".x { --x: red blue }");
-  Alcotest.(check bool)
-    "--x: (empty value) parses and serializes" true
-    (let out = normalize ".x { --x: }" in
-     Astring.String.is_infix ~affix:"--x:" out)
+  Alcotest.(check string)
+    "--x: before block close preserves whitespace-token value" ".x{--x: }"
+    (normalize ".x { --x: }");
+  Alcotest.(check string)
+    "--x: ; preserves the whitespace-token value" ".x{--x: }"
+    (normalize ".x { --x: ; }")
 
 let normalize_minified css =
   match Css.of_string ~strict:false css with
   | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet |> String.trim
   | Error _ -> Alcotest.failf "failed to parse: %s" css
 
-(* CSS Custom Properties L1 section 2 preserves custom-property declarations as
-   CSS values until substitution. Under Cascade's minifier contract, when that
-   value is a valid self-contained CSS value, the serialized form still follows
-   shortest-wins. *)
-let customprops13_shortest_numeric_calc () =
+(* CSS Custom Properties L1 section 2 preserves unregistered custom-property
+   declarations as opaque token streams. CSS Properties and Values API 1 section
+   2 lifts a custom property into a typed value only after an @property
+   registration for that name. *)
+let customprops13_registered_numeric_calc () =
   Alcotest.(check string)
-    "custom property numeric calc reduces to the shortest number"
-    ".x{--text-sm--line-height:1.42857}"
-    (normalize_minified ".x { --text-sm--line-height: calc(1.25 / .875) }")
+    "unregistered numeric custom property keeps token stream"
+    ".x{--text-sm--line-height:calc(1.25 / .875)}"
+    (normalize_minified ".x { --text-sm--line-height: calc(1.25 / .875) }");
+  Alcotest.(check string)
+    "registered numeric custom property reduces to typed number"
+    "@property \
+     --text-sm--line-height{syntax:\"<number>\";inherits:true;initial-value:1}.x{--text-sm--line-height:1.42857}"
+    (normalize_minified
+       "@property --text-sm--line-height { syntax: \"<number>\"; inherits: \
+        true; initial-value: 1 } .x { --text-sm--line-height: calc(1.25 / \
+        .875) }")
 
-let customprops13_shortest_oklch_chroma () =
+let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
-    "custom property OKLCH chroma uses the shortest valid percent form"
-    ".x{--color-zinc-500:oklch(55.2%4% 285.9)}"
-    (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }")
+    "unregistered OKLCH custom property keeps token stream"
+    ".x{--color-zinc-500:oklch(55.2% .016 285.938)}"
+    (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }");
+  Alcotest.(check string)
+    "registered OKLCH custom property uses typed color minification"
+    "@property \
+     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:oklch(55.2%4% \
+     285.9)}"
+    (normalize_minified
+       "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
+        initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
+        285.938) }")
 
-let customprops13_shortest_percent_calc () =
+let customprops13_registered_percent_calc () =
   Alcotest.(check string)
-    "custom property percent calc reduces to a percentage"
-    ".x{--tw-translate-x:50%}"
-    (normalize_minified ".x { --tw-translate-x: calc(1 / 2 * 100%) }")
+    "unregistered percent calc custom property keeps token stream"
+    ".x{--tw-translate-x:calc(1 / 2 * 100%)}"
+    (normalize_minified ".x { --tw-translate-x: calc(1 / 2 * 100%) }");
+  Alcotest.(check string)
+    "registered percent custom property uses typed calc minification"
+    "@property \
+     --tw-translate-x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{--tw-translate-x:calc(.5*100%)}"
+    (normalize_minified
+       "@property --tw-translate-x { syntax: \"<percentage>\"; inherits: \
+        false; initial-value: 0% } .x { --tw-translate-x: calc(1 / 2 * 100%) }")
 
-let customprops13_shortest_negative_dimension_calc () =
+let customprops13_registered_negative_dimension_calc () =
   Alcotest.(check string)
-    "custom property negative calc reduces to a dimension"
-    ".x{--tw-tracking:-.05em}"
-    (normalize_minified ".x { --tw-tracking: calc(.05em * -1) }")
+    "unregistered dimension calc custom property keeps token stream"
+    ".x{--tw-tracking:calc(.05em * -1)}"
+    (normalize_minified ".x { --tw-tracking: calc(.05em * -1) }");
+  Alcotest.(check string)
+    "registered length custom property reduces to dimension"
+    "@property \
+     --tw-tracking{syntax:\"<length>\";inherits:false;initial-value:0px}.x{--tw-tracking:-.05em}"
+    (normalize_minified
+       "@property --tw-tracking { syntax: \"<length>\"; inherits: false; \
+        initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")
 
 let customprops13_shortest_unresolved_calc_spacing () =
   Alcotest.(check string)
-    "custom property unresolved calc drops unnecessary operator spaces"
-    ".x{--tw-border-spacing-x:calc(var(--spacing)*4)}"
+    "unregistered unresolved calc custom property keeps token stream"
+    ".x{--tw-border-spacing-x:calc(var(--spacing) * 4)}"
     (normalize_minified ".x { --tw-border-spacing-x: calc(var(--spacing) * 4) }")
 
 let customprops13_box_shadow_zero_spread () =
   Alcotest.(check string)
-    "custom property box-shadow drops zero spread"
-    ".shadow-sm{--tw-shadow:0 1px 3px var(--tw-shadow-color,#0000001a)}"
+    "unregistered box-shadow custom property keeps token stream"
+    ".shadow-sm{--tw-shadow:0 1px 3px 0 var(--tw-shadow-color,#0000001a)}"
     (normalize_minified
        ".shadow-sm { --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, \
         #0000001a) }")
 
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
-    "custom property OKLab sign boundaries match shortest color serialization"
-    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003 -.034/.1)}"
+    "unregistered OKLab custom property keeps opaque token stream"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
-    "custom property OKLab equal-length raw token stream uses typed spacing"
-    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003 -.034/.1)}"
+    "unregistered OKLab custom property preserves required token boundary"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
     (normalize_minified
-       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }")
+       ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
+  Alcotest.(check string)
+    "registered OKLab custom property uses typed color minification"
+    "@property \
+     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:oklab(21%-.003 \
+     -.034/.1)}"
+    (normalize_minified
+       "@property --tw-prose-kbd-shadows { syntax: \"<color>\"; inherits: \
+        true; initial-value: black } .prose { --tw-prose-kbd-shadows: \
+        oklab(21% -.003 -.034 / .1) }")
 
 let customprops12_invalid_var () =
   Alcotest.(check bool)
@@ -6252,25 +6296,25 @@ let additional_tests =
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
       customprops13_declaration );
-    ( "spec custom-properties 1 3 shortest numeric calc",
+    ( "spec custom-properties 1 3 registered numeric calc",
       `Quick,
-      customprops13_shortest_numeric_calc );
-    ( "spec custom-properties 1 3 shortest oklch chroma",
+      customprops13_registered_numeric_calc );
+    ( "spec custom-properties 1 3 registered oklch chroma",
       `Quick,
-      customprops13_shortest_oklch_chroma );
-    ( "spec custom-properties 1 3 shortest percent calc",
+      customprops13_registered_oklch_chroma );
+    ( "spec custom-properties 1 3 registered percent calc",
       `Quick,
-      customprops13_shortest_percent_calc );
-    ( "spec custom-properties 1 3 shortest negative dimension calc",
+      customprops13_registered_percent_calc );
+    ( "spec custom-properties 1 3 registered negative dimension calc",
       `Quick,
-      customprops13_shortest_negative_dimension_calc );
-    ( "spec custom-properties 1 3 shortest unresolved calc spacing",
+      customprops13_registered_negative_dimension_calc );
+    ( "spec custom-properties 1 3 unregistered unresolved calc spacing",
       `Quick,
       customprops13_shortest_unresolved_calc_spacing );
-    ( "spec custom-properties 1 3 shortest box-shadow zero spread",
+    ( "spec custom-properties 1 3 unregistered box-shadow token stream",
       `Quick,
       customprops13_box_shadow_zero_spread );
-    ( "spec custom-properties 1 3 shortest oklab sign boundaries",
+    ( "spec custom-properties 1 3 registered oklab sign boundaries",
       `Quick,
       customprops13_shortest_oklab_sign_boundaries );
     ( "spec custom-properties 1 2 invalid var rejected (negative)",

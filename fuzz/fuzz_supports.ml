@@ -96,23 +96,21 @@ let recovered_css label css =
   match Css.of_string ~strict:false css with
   | Ok parsed -> parsed
   | Error err ->
-      fail
-        (Fmt.str "%s did not recover leniently: %s" label
-           (Cascade.Error.to_string err))
+      failf "%s did not recover leniently: %s" label
+        (Cascade.Error.to_string err)
 
 let assert_invalid_supports_contract label input =
   let css = "@supports " ^ input ^ "{.x{color:red}}" in
   match Css.of_string ~strict:true css with
   | Ok parsed ->
-      fail
-        (Fmt.str "%s parsed strictly as invalid supports condition: %S -> %S"
-           label input
-           (Css.to_string ~minify:true parsed.stylesheet))
+      failf "%s parsed strictly as invalid supports condition: %S -> %S" label
+        input
+        (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
       let { Css.warnings; stylesheet } = recovered_css label css in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
-        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+        failf "%s recovered without a lenient warning: %S" label input
 
 let generated_condition buf =
   let property =
@@ -145,15 +143,14 @@ let test_generated_condition_serialization_idempotent buf =
   let once = Css.Supports.to_string condition in
   let twice = Css.Supports.(once |> of_string |> to_string) in
   if once <> twice then
-    fail
-      (Fmt.str "generated supports serialization changed: %S -> %S" once twice)
+    failf "generated supports serialization changed: %S -> %S" once twice
 
 let test_supports_context_syntax buf =
   let condition = generated_condition buf in
   let serialized = Css.Supports.to_string condition in
   let reparsed = Css.Supports.(serialized |> of_string |> to_string) in
   if serialized <> reparsed then
-    fail (Fmt.str "supports syntax changed: %S -> %S" serialized reparsed)
+    failf "supports syntax changed: %S -> %S" serialized reparsed
 
 let spec_supports_vector buf = pick Supports_inventory.rows buf 0
 
@@ -161,9 +158,8 @@ let test_spec_supports_structural_vectors buf =
   let row = spec_supports_vector buf in
   let actual = Css.Supports.of_string row.input in
   if not (Css.Supports.equal (supports_of_expected row.expected) actual) then
-    fail
-      (Fmt.str "supports vector parsed to wrong AST: %S -> %S" row.input
-         (Css.Supports.to_string actual))
+    failf "supports vector parsed to wrong AST: %S -> %S" row.input
+      (Css.Supports.to_string actual)
 
 let test_spec_supports_invalid_vectors buf =
   let input = pick Supports_inventory.invalid buf 0 in
@@ -175,9 +171,7 @@ let test_supports_conditions buf =
   let once = Css.Supports.to_string (Css.Supports.of_string input) in
   let twice = Css.Supports.to_string (Css.Supports.of_string once) in
   if once <> twice then
-    fail
-      (Fmt.str "supports condition family serialization drifted: %S -> %S" once
-         twice)
+    failf "supports condition family serialization drifted: %S -> %S" once twice
 
 let test_supports_invalid_conditions buf =
   let row = pick Supports_inventory.rows buf 3 in

@@ -29,28 +29,24 @@ let check_same_decl label expected actual =
   let expected = normalize_decl expected in
   let actual = normalize_decl actual in
   if expected <> actual then
-    fail
-      (Fmt.str "%s: expected %S, got %S" label (pp_decl expected)
-         (pp_decl actual))
+    failf "%s: expected %S, got %S" label (pp_decl expected) (pp_decl actual)
 
 let check_eval_shape label input actual =
   let before_name = Css.Declaration.property_name input in
   let after_name = Css.Declaration.property_name actual in
   if before_name <> after_name then
-    fail
-      (Fmt.str "%s: property changed from %S to %S" label before_name after_name);
+    failf "%s: property changed from %S to %S" label before_name after_name;
   let reparsed = Css.Declaration.of_string (pp_decl actual) in
   check_same_decl (label ^ " roundtrip") actual reparsed
 
 let check_same_stylesheet label expected actual =
   if expected <> actual then
-    fail
-      (Fmt.str "%s: expected %S, got %S" label (pp_stylesheet expected)
-         (pp_stylesheet actual))
+    failf "%s: expected %S, got %S" label (pp_stylesheet expected)
+      (pp_stylesheet actual)
 
 let expect_contains label haystack needle =
   if not (contains_literal haystack needle) then
-    fail (Fmt.str "%s missing %S in %S" label needle haystack)
+    failf "%s missing %S in %S" label needle haystack
 
 let number buf i =
   let n = byte_at buf i mod 9 in
@@ -274,7 +270,7 @@ let eval_ctx ?viewport_height buf =
 let stylesheet_of_string css =
   try Css.Stylesheet.read_stylesheet (Cursor.of_string css)
   with Cursor.Parse_error err ->
-    fail (Fmt.str "stylesheet did not parse: %s" (Error.to_string err))
+    failf "stylesheet did not parse: %s" (Error.to_string err)
 
 let fuzz_stylesheet buf =
   pick
@@ -324,36 +320,85 @@ let fuzz_layered_decl buf =
     buf 7
   |> Css.Declaration.of_string
 
-let test_empty_contexts _buf =
-  let value = Css.Context.empty in
-  if
-    value.custom_properties <> []
-    || value.inherited_values <> []
-    || value.initial_values <> [] || value.base_url <> None
-    || value.root_font_size <> None
-    || value.parent_font_size <> None
-    || value.current_color <> None
-    || value.viewport_width <> None
-    || value.viewport_height <> None
-    || value.container_width <> None
-    || value.container_height <> None
-  then fail "empty property-value context changed";
-  let document = Css.Context.empty_document in
+let assert_empty_property_value_context (value : Css.Context.t) =
+  let empty_lists =
+    [
+      value.custom_properties = [];
+      value.inherited_values = [];
+      value.initial_values = [];
+    ]
+  in
+  let empty_options =
+    [
+      value.base_url = None;
+      value.root_font_size = None;
+      value.parent_font_size = None;
+      value.current_color = None;
+      value.viewport_width = None;
+      value.viewport_height = None;
+      value.container_width = None;
+      value.container_height = None;
+    ]
+  in
+  if not (List.for_all Fun.id (empty_lists @ empty_options)) then
+    fail "empty property-value context changed"
+
+let assert_empty_document_context document =
   if Css.Context.has_class "x" document || Css.Context.has_id "x" document then
     fail "empty document context matched a class or id";
   if Css.Context.attribute "x" document <> None then
-    fail "empty document context matched an attribute";
-  let query = Css.Context.empty_query in
+    fail "empty document context matched an attribute"
+
+let assert_empty_query_context query =
   if Css.Context.media_feature "width" query <> None then
     fail "empty query context matched a media feature";
   if Css.Context.matches_supports query (Css.Supports.property "display" "grid")
   then fail "empty query context matched a support declaration";
   if Css.Context.container_feature "inline-size" query <> None then
-    fail "empty query context matched a container feature";
+    fail "empty query context matched a container feature"
+
+let assert_empty_runtime_contexts () =
   if Css.Context.import_source "theme.css" Css.Context.empty_loader <> None then
     fail "empty loader context matched an import";
   if Css.Context.animates_property "opacity" Css.Context.empty_animation then
     fail "empty animation context matched a property"
+
+let test_empty_contexts _buf =
+  assert_empty_property_value_context Css.Context.empty;
+  assert_empty_document_context Css.Context.empty_document;
+  assert_empty_query_context Css.Context.empty_query;
+  assert_empty_runtime_contexts ()
+
+let assert_property_value_lookups ctx custom custom_decl property inherited_decl
+    =
+  if Css.Context.custom_property custom ctx <> Some custom_decl then
+    fail "custom property lookup changed";
+  if Css.Context.inherited_value property ctx <> Some inherited_decl then
+    fail "inherited value lookup changed";
+  if Css.Context.custom_property (custom ^ "-missing") ctx <> None then
+    fail "custom property lookup stopped being exact";
+  if Css.Context.inherited_value (property ^ "-missing") ctx <> None then
+    fail "inherited value lookup stopped being exact"
+
+let assert_initial_and_urls (ctx : Css.Context.t) initial_decl =
+  if Css.Context.initial_value "display" ctx <> Some initial_decl then
+    fail "initial value lookup changed";
+  if ctx.base_url <> Some "https://example.test/a.css" then
+    fail "base URL context changed"
+
+let assert_context_dimensions (ctx : Css.Context.t) =
+  let open Css.Values in
+  if
+    ctx.root_font_size <> Some (Px 16.) || ctx.parent_font_size <> Some (Px 14.)
+  then fail "font-size context changed";
+  if
+    ctx.viewport_width <> Some (Px 1024.)
+    || ctx.viewport_height <> Some (Px 768.)
+  then fail "viewport context changed";
+  if
+    ctx.container_width <> Some (Px 640.)
+    || ctx.container_height <> Some (Px 480.)
+  then fail "container dimension context changed"
 
 let test_property_value_context buf =
   let open Css.Values in
@@ -379,29 +424,9 @@ let test_property_value_context buf =
       ~viewport_width:(Px 1024.) ~viewport_height:(Px 768.)
       ~container_width:(Px 640.) ~container_height:(Px 480.) ()
   in
-  if Css.Context.custom_property custom ctx <> Some custom_decl then
-    fail "custom property lookup changed";
-  if Css.Context.inherited_value property ctx <> Some inherited_decl then
-    fail "inherited value lookup changed";
-  if Css.Context.initial_value "display" ctx <> Some initial_decl then
-    fail "initial value lookup changed";
-  if Css.Context.custom_property (custom ^ "-missing") ctx <> None then
-    fail "custom property lookup stopped being exact";
-  if Css.Context.inherited_value (property ^ "-missing") ctx <> None then
-    fail "inherited value lookup stopped being exact";
-  if ctx.base_url <> Some "https://example.test/a.css" then
-    fail "base URL context changed";
-  if
-    ctx.root_font_size <> Some (Px 16.) || ctx.parent_font_size <> Some (Px 14.)
-  then fail "font-size context changed";
-  if
-    ctx.viewport_width <> Some (Px 1024.)
-    || ctx.viewport_height <> Some (Px 768.)
-  then fail "viewport context changed";
-  if
-    ctx.container_width <> Some (Px 640.)
-    || ctx.container_height <> Some (Px 480.)
-  then fail "container dimension context changed"
+  assert_property_value_lookups ctx custom custom_decl property inherited_decl;
+  assert_initial_and_urls ctx initial_decl;
+  assert_context_dimensions ctx
 
 let document_context class_name id attr =
   Css.Context.document ~element:"div" ~classes:[ class_name ] ~ids:[ id ]
@@ -557,7 +582,7 @@ let test_property_registration_context buf =
      Css.Context.validate_registered_custom_property registry valid_decl
    with
   | Ok () -> ()
-  | Error msg -> fail (Fmt.str "registered valid value rejected: %S" msg));
+  | Error msg -> failf "registered valid value rejected: %S" msg);
   if invalid_value <> "" then
     let invalid_decl =
       Css.Declaration.of_string (name ^ ": " ^ invalid_value)
@@ -682,8 +707,7 @@ let test_full_context_observables buf =
   check_eval_shape "eval full-context conservativity shape" decl actual;
   let rendered = pp_decl actual in
   if contains_residual rendered then
-    fail
-      (Fmt.str "eval full-context conservativity left residual in %S" rendered)
+    failf "eval full-context conservativity left residual in %S" rendered
 
 let test_layered_eval_laws buf =
   let layer_order = [ "theme"; "base"; "components"; "utilities" ] in

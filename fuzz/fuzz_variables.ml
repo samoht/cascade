@@ -46,11 +46,9 @@ let test_generated_var_reference_roundtrip buf =
   | None -> ()
   | Some (parsed_name, Some parsed_fallback) ->
       if parsed_name <> name then
-        fail (Fmt.str "var() name changed: %S -> %S" name parsed_name);
+        failf "var() name changed: %S -> %S" name parsed_name;
       if fallback <> "" && parsed_fallback = "" then
-        fail
-          (Fmt.str "var() fallback was emptied: %S -> %S" fallback
-             parsed_fallback)
+        failf "var() fallback was emptied: %S -> %S" fallback parsed_fallback
   | Some (_, None) -> fail "generated var() fallback was dropped"
 
 let test_empty_fallback_is_preserved buf =
@@ -70,9 +68,7 @@ let test_nested_fallback_stays_balanced buf =
     when parsed_name = name && parsed_fallback = fallback ->
       ()
   | Some (_, Some parsed_fallback) ->
-      fail
-        (Fmt.str "nested var() fallback changed: %S -> %S" fallback
-           parsed_fallback)
+      failf "nested var() fallback changed: %S -> %S" fallback parsed_fallback
   | Some (_, None) -> fail "nested var() fallback was dropped"
   | None -> fail "nested var() fallback did not parse"
 
@@ -81,7 +77,7 @@ let test_custom_declaration_name_invariant buf =
   let decl = Css.Declaration.custom_property name (cssish buf) in
   match Css.Variables.custom_declaration_name decl with
   | Some parsed when parsed = name -> ()
-  | Some parsed -> fail (Fmt.str "custom declaration name changed: %S" parsed)
+  | Some parsed -> failf "custom declaration name changed: %S" parsed
   | None -> fail "custom property declaration was not recognized"
 
 let test_var_compare_antisym buf =

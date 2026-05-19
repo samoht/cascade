@@ -203,16 +203,15 @@ let test_optimize_idempotent buf =
   let once_s = minified once in
   let twice_s = minified twice in
   if once_s <> twice_s then
-    fail
-      (Fmt.str "optimization serialization changed on second pass: %S -> %S"
-         once_s twice_s)
+    failf "optimization serialization changed on second pass: %S -> %S" once_s
+      twice_s
 
 let test_optimized_stylesheet_reparses buf =
   let optimized = Css.Optimize.stylesheet (generated_stylesheet buf) in
   let serialized = minified optimized in
   match parse_stylesheet serialized with
   | Some _ -> ()
-  | None -> fail (Fmt.str "optimized stylesheet did not reparse: %S" serialized)
+  | None -> failf "optimized stylesheet did not reparse: %S" serialized
 
 (* Optimizer monotonicity: minifying after optimize must never be longer than
    minifying without optimize. Any regression here means optimize emitted bytes
@@ -223,11 +222,10 @@ let test_optimize_minify_monotonicity buf =
   let baseline = minified ss in
   let optimized = minified (Css.Optimize.stylesheet ss) in
   if String.length optimized > String.length baseline then
-    fail
-      (Fmt.str
-         "optimize is not monotonic: optimized output is longer than minify \
-          alone (%d > %d): %S vs %S"
-         (String.length optimized) (String.length baseline) optimized baseline)
+    failf
+      "optimize is not monotonic: optimized output is longer than minify alone \
+       (%d > %d): %S vs %S"
+      (String.length optimized) (String.length baseline) optimized baseline
 
 let test_optimization_preserves_boundary_shape buf =
   let ss = generated_stylesheet buf in
@@ -235,10 +233,8 @@ let test_optimization_preserves_boundary_shape buf =
   let before = boundary_shapes ss in
   let after = boundary_shapes optimized in
   if before <> after then
-    fail
-      (Fmt.str
-         "optimization changed conditional/cascade boundary shape: %S -> %S"
-         (String.concat " " before) (String.concat " " after))
+    failf "optimization changed conditional/cascade boundary shape: %S -> %S"
+      (String.concat " " before) (String.concat " " after)
 
 let test_optimized_reparse_idempotent buf =
   let optimized = Css.Optimize.stylesheet (generated_stylesheet buf) in
@@ -249,9 +245,8 @@ let test_optimized_reparse_idempotent buf =
       let reparsed_optimized = Css.Optimize.stylesheet parsed in
       let serialized2 = minified reparsed_optimized in
       if serialized <> serialized2 then
-        fail
-          (Fmt.str "optimized reparse serialization changed: %S -> %S"
-             serialized serialized2)
+        failf "optimized reparse serialization changed: %S -> %S" serialized
+          serialized2
 
 let count_imports ss =
   List.fold_left
@@ -297,8 +292,7 @@ let test_atrule_counts_stable buf =
     let before = count_kind pred ss in
     let after = count_kind pred optimized in
     if before <> after then
-      fail
-        (Fmt.str "optimization changed %s count: %d -> %d" label before after)
+      failf "optimization changed %s count: %d -> %d" label before after
   in
   List.iter check atrule_count_checks
 
@@ -346,9 +340,8 @@ let test_cascade_merge_vectors buf =
   let before = boundary_shapes input in
   let after = boundary_shapes optimized in
   if before <> after then
-    fail
-      (Fmt.str "merge vector changed cascade boundary shape: %S -> %S"
-         (String.concat " " before) (String.concat " " after));
+    failf "merge vector changed cascade boundary shape: %S -> %S"
+      (String.concat " " before) (String.concat " " after);
   ignore (minified optimized)
 
 let test_cascade_shorthand_importance_vectors buf =
@@ -376,11 +369,9 @@ let test_cascade_shorthand_importance_vectors buf =
       && Astring.String.is_infix ~affix:"margin:" optimized
       && Astring.String.is_infix ~affix:"margin-left:" optimized)
   then
-    fail
-      (Fmt.str
-         "optimization dropped a required mixed-importance shorthand/longhand: \
-          %S"
-         optimized)
+    failf
+      "optimization dropped a required mixed-importance shorthand/longhand: %S"
+      optimized
 
 let test_smt_intersection_dependency_vectors buf =
   (* Hague, Lin, Hong, "CSS Minification via Constraint Solving", sections 4 and
@@ -396,7 +387,7 @@ let test_smt_intersection_dependency_vectors buf =
     Fmt.str ".%s.%s{color:red}.%s.%s{color:blue}.%s.%s{color:red}" a x b x c x
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "SMT dependency vector did not parse: %S" input)
+  | None -> failf "SMT dependency vector did not parse: %S" input
   | Some ss ->
       let optimized = Css.Optimize.stylesheet ss |> minified in
       let required =
@@ -412,10 +403,8 @@ let test_smt_intersection_dependency_vectors buf =
              (fun chunk -> Astring.String.is_infix ~affix:chunk optimized)
              required)
       then
-        fail
-          (Fmt.str
-             "optimization violated selector-intersection edge order: %S -> %S"
-             input optimized)
+        failf "optimization violated selector-intersection edge order: %S -> %S"
+          input optimized
 
 let test_biclique_no_new_edges buf =
   (* Section 7's Max-SAT encoding constrains candidate bicliques so a merged
@@ -429,7 +418,7 @@ let test_biclique_no_new_edges buf =
     Fmt.str ".%s{color:red;background-color:blue}.%s{color:red}" a b
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "SMT biclique vector did not parse: %S" input)
+  | None -> failf "SMT biclique vector did not parse: %S" input
   | Some ss ->
       let optimized = Css.Optimize.stylesheet ss |> minified in
       let unsafe_ab = Fmt.str ".%s,.%s{color:red;background-color:#00f}" a b in
@@ -438,11 +427,9 @@ let test_biclique_no_new_edges buf =
         Astring.String.is_infix ~affix:unsafe_ab optimized
         || Astring.String.is_infix ~affix:unsafe_ba optimized
       then
-        fail
-          (Fmt.str
-             "optimization introduced a missing selector/property edge: %S -> \
-              %S"
-             input optimized)
+        failf
+          "optimization introduced a missing selector/property edge: %S -> %S"
+          input optimized
 
 let test_smt_property_order_vectors buf =
   (* Section 4 models rule properties as an ordered sequence: selectors commute,
@@ -455,15 +442,14 @@ let test_smt_property_order_vectors buf =
     Fmt.str "%s{color:rgb(59,130,246);color:oklch(.6 .18 254)}" selector
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "SMT property-order vector did not parse: %S" input)
+  | None -> failf "SMT property-order vector did not parse: %S" input
   | Some ss ->
       let optimized = Css.Optimize.stylesheet ss |> minified in
       if count_substring ~needle:"color:" optimized <> 2 then
-        fail
-          (Fmt.str
-             "optimization dropped legacy color fallback before Color 4 \
-              spelling: %S -> %S"
-             input optimized);
+        failf
+          "optimization dropped legacy color fallback before Color 4 spelling: \
+           %S -> %S"
+          input optimized;
       begin match
         ( first_index ~needle:"color:oklch" optimized,
           first_index ~needle:"color:" optimized )
@@ -471,11 +457,10 @@ let test_smt_property_order_vectors buf =
       | Some oklch_pos, Some first_color_pos when oklch_pos > first_color_pos ->
           ()
       | _ ->
-          fail
-            (Fmt.str
-               "optimization reordered Color 4 declaration before its \
-                fallback: %S -> %S"
-               input optimized)
+          failf
+            "optimization reordered Color 4 declaration before its fallback: \
+             %S -> %S"
+            input optimized
       end
 
 let test_positive_layer_statement_vectors buf =
@@ -490,15 +475,13 @@ let test_positive_layer_statement_vectors buf =
   in
   let optimized = Css.Optimize.stylesheet input |> minified in
   if not (Astring.String.is_prefix ~affix:"@layer " optimized) then
-    fail
-      (Fmt.str "empty named layers did not canonicalize to layer statement: %S"
-         optimized);
+    failf "empty named layers did not canonicalize to layer statement: %S"
+      optimized;
   match parse_stylesheet optimized with
   | Some _ -> ()
   | None ->
-      fail
-        (Fmt.str "positive layer statement optimization did not reparse: %S"
-           optimized)
+      failf "positive layer statement optimization did not reparse: %S"
+        optimized
 
 let test_layer_before_specificity buf =
   (* CSS Cascade 5 section 6.4: layer order is a cascade sorting criterion
@@ -513,7 +496,7 @@ let test_layer_before_specificity buf =
       earlier later earlier later
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "layer specificity vector did not parse: %S" input)
+  | None -> failf "layer specificity vector did not parse: %S" input
   | Some ss -> (
       let optimized = Css.Optimize.stylesheet ss |> minified in
       let required_prelude = Fmt.str "@layer %s,%s;" earlier later in
@@ -525,16 +508,13 @@ let test_layer_before_specificity buf =
           && Astring.String.is_infix ~affix:required_earlier optimized
           && Astring.String.is_infix ~affix:required_later optimized)
       then
-        fail
-          (Fmt.str
-             "optimization ignored layer order before specificity: %S -> %S"
-             input optimized);
+        failf "optimization ignored layer order before specificity: %S -> %S"
+          input optimized;
       match parse_stylesheet optimized with
       | Some _ -> ()
       | None ->
-          fail
-            (Fmt.str "optimized layer specificity vector did not reparse: %S"
-               optimized))
+          failf "optimized layer specificity vector did not reparse: %S"
+            optimized)
 
 let test_name_defining_atrules_preserved buf =
   let css =
@@ -549,7 +529,7 @@ let test_name_defining_atrules_preserved buf =
       buf 0
   in
   match parse_stylesheet css with
-  | None -> fail (Fmt.str "name-defining at-rule vector did not parse: %S" css)
+  | None -> failf "name-defining at-rule vector did not parse: %S" css
   | Some ss -> (
       let optimized = Css.Optimize.stylesheet ss |> minified in
       let required =
@@ -558,15 +538,12 @@ let test_name_defining_atrules_preserved buf =
           buf 0
       in
       if not (Astring.String.is_infix ~affix:required optimized) then
-        fail
-          (Fmt.str "optimization dropped name-defining at-rule %S from %S -> %S"
-             required css optimized);
+        failf "optimization dropped name-defining at-rule %S from %S -> %S"
+          required css optimized;
       match parse_stylesheet optimized with
       | Some _ -> ()
       | None ->
-          fail
-            (Fmt.str "optimized name-defining at-rule did not reparse: %S"
-               optimized))
+          failf "optimized name-defining at-rule did not reparse: %S" optimized)
 
 let suite =
   ( "optimize",

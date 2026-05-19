@@ -1556,7 +1556,7 @@ let normalise_value name value =
   | name, Ident s -> normalise_ident_value name (string_of_ident s)
   | _ -> None
 
-let feature_to_t : feature -> t = function
+let of_feature : feature -> t = function
   | Plain (name, value) -> (
       match normalise_value (string_of_name name) value with
       | Some t -> t
@@ -1566,17 +1566,17 @@ let feature_to_t : feature -> t = function
   | Range_rev (value, op, name) -> Range_rev (value, op, name)
   | Interval (a, op1, name, op2, b) -> Interval (a, op1, name, op2, b)
 
-let rec condition_to_t : condition -> t = function
-  | Feature f -> feature_to_t f
-  | Not cond -> Negated (condition_to_t cond)
-  | And (a, b) -> And (condition_to_t a, condition_to_t b)
-  | Or (a, b) -> Or (condition_to_t a, condition_to_t b)
+let rec of_condition : condition -> t = function
+  | Feature f -> of_feature f
+  | Not cond -> Negated (of_condition cond)
+  | And (a, b) -> And (of_condition a, of_condition b)
+  | Or (a, b) -> Or (of_condition a, of_condition b)
 
 let rec collapse_query (q : query) : t =
   match q with
-  | Cond cond -> condition_to_t cond
+  | Cond cond -> of_condition cond
   | Type { prefix = Some Not; type_ = All; trailing = Some cond } -> (
-      match condition_to_t cond with
+      match of_condition cond with
       | Min_width f -> Not_min_width f
       | Min_width_rem f -> Not_min_width_rem f
       | Min_width_length l -> Not_min_width_length l
@@ -1584,8 +1584,7 @@ let rec collapse_query (q : query) : t =
   | Type { prefix = Some Not; type_ = Print; trailing = None } -> Negated Print
   | Type { prefix = None; type_ = Print; trailing = None } -> Print
   | Type { prefix; type_; trailing } ->
-      Type_query
-        { prefix; type_; trailing = Option.map condition_to_t trailing }
+      Type_query { prefix; type_; trailing = Option.map of_condition trailing }
   | List qs -> List (List.map collapse_query qs)
 
 let of_string s = collapse_query (query_of_string s)
@@ -1593,13 +1592,13 @@ let of_string_strict s = collapse_query (query_of_string ~recover:false s)
 
 let of_function_body s =
   match feature_in_parens s with
-  | Some feature -> feature_to_t feature
+  | Some feature -> of_feature feature
   | None -> of_string s
 
 let feature name value : t =
-  feature_to_t (plain_feature (name_of_string name) value)
+  of_feature (plain_feature (name_of_string name) value)
 
-let boolean name : t = feature_to_t (Boolean (name_of_string name) : feature)
+let boolean name : t = of_feature (Boolean (name_of_string name) : feature)
 
 (* ===== Sorting / classification ===== *)
 

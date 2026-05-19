@@ -40,11 +40,8 @@ let check_reader reader printer input =
       | Some reparsed when Cursor.is_done r2 ->
           let twice = Css.Pp.to_string ~minify:true printer reparsed in
           if once <> twice then
-            fail
-              (Fmt.str "property reader serialization changed: %S -> %S" once
-                 twice)
-      | Some _ ->
-          fail (Fmt.str "serialized property left trailing input: %S" once))
+            failf "property reader serialization changed: %S -> %S" once twice
+      | Some _ -> failf "serialized property left trailing input: %S" once)
 
 let assert_invalid_declaration_contract =
   Fuzz_helpers.assert_invalid_declaration_contract
@@ -63,7 +60,7 @@ let check_reader_crash_safety reader printer input =
         (try Some (reader r2)
          with Cursor.Parse_error _ | Reader.Parse_error _ -> None)
 
-let property_vectors =
+let property_core_vectors =
   [
     ( "display",
       fun input ->
@@ -101,6 +98,10 @@ let property_vectors =
       fun input ->
         check_reader Css.Properties.read_transforms Css.Properties.pp_transforms
           input );
+  ]
+
+let property_effect_vectors =
+  [
     ( "timing-function",
       fun input ->
         check_reader Css.Properties.read_timing_function
@@ -139,6 +140,7 @@ let property_vectors =
           input );
   ]
 
+let property_vectors = property_core_vectors @ property_effect_vectors
 let generated_property_vector buf = pick property_vectors buf 0
 
 let generated_property_crash_vector buf =
@@ -294,7 +296,7 @@ type property_grammar_vector = {
 let vector property reader printer positives negatives =
   { property; positives; negatives; accept = check_reader reader printer }
 
-let property_grammar_vectors =
+let property_grammar_basic_vectors =
   [
     vector "display" Css.Properties.read_display Css.Properties.pp_display
       [ "block"; "inline"; "inline flow-root"; "list-item flow-root" ]
@@ -331,6 +333,10 @@ let property_grammar_vectors =
       Css.Properties.pp_timing_function
       [ "ease"; "steps(4, jump-end)"; "cubic-bezier(.1,.2,.3,.4)" ]
       [ "steps()"; "cubic-bezier(1,2)" ];
+  ]
+
+let property_grammar_shorthand_vectors =
+  [
     vector "transition" Css.Properties.read_transition
       Css.Properties.pp_transition
       [ "opacity 1s ease"; "all .2s linear .1s" ]
@@ -338,21 +344,6 @@ let property_grammar_vectors =
     vector "animation" Css.Properties.read_animation Css.Properties.pp_animation
       [ "spin 1s linear infinite"; "none"; "fade .2s ease" ]
       [ "1s 2s 3s"; "infinite infinite" ];
-    vector "background-image" Css.Properties.read_background_image
-      Css.Properties.pp_background_image
-      [
-        "none";
-        "url(a.png)";
-        "linear-gradient(red, blue)";
-        "linear-gradient(in oklab, red, blue)";
-        "linear-gradient(to right in oklab, red, blue)";
-        "linear-gradient(in oklab to right, red, blue)";
-        "radial-gradient(in oklab, red, blue)";
-        "radial-gradient(circle at center in oklab, red, blue)";
-        "conic-gradient(in hsl longer hue, red, blue)";
-        "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
-      ]
-      [ "linear-gradient()"; "image-set()" ];
     vector "background" Css.Properties.read_background
       Css.Properties.pp_background
       [ "red"; "url(a.png) no-repeat center/cover"; "none" ]
@@ -380,6 +371,29 @@ let property_grammar_vectors =
          and [at <position>] are optional, defaulting to [closest-side] /
          [center]); [inset()] needs 1-4 args. *)
       [ "inset()" ];
+  ]
+
+let property_grammar_image_vectors =
+  [
+    vector "background-image" Css.Properties.read_background_image
+      Css.Properties.pp_background_image
+      [
+        "none";
+        "url(a.png)";
+        "linear-gradient(red, blue)";
+        "linear-gradient(in oklab, red, blue)";
+        "linear-gradient(to right in oklab, red, blue)";
+        "linear-gradient(in oklab to right, red, blue)";
+        "radial-gradient(in oklab, red, blue)";
+        "radial-gradient(circle at center in oklab, red, blue)";
+        "conic-gradient(in hsl longer hue, red, blue)";
+        "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
+      ]
+      [ "linear-gradient()"; "image-set()" ];
+  ]
+
+let property_grammar_box_vectors =
+  [
     vector "touch-action" Css.Properties.read_touch_action
       Css.Properties.pp_touch_action
       [ "auto"; "none"; "pan-x pinch-zoom" ]
@@ -423,6 +437,10 @@ let property_grammar_vectors =
     vector "mask-box" Css.Properties.read_mask_box Css.Properties.pp_mask_box
       [ "border-box"; "padding-box"; "content-box"; "no-clip" ]
       [ "margin-box"; "border-box padding-box content-box content-box" ];
+  ]
+
+let property_grammar_ui_vectors =
+  [
     vector "resize" Css.Properties.read_resize Css.Properties.pp_resize
       [ "none"; "both"; "horizontal"; "block" ]
       [ "horizontal vertical"; "auto" ];
@@ -452,6 +470,10 @@ let property_grammar_vectors =
     vector "hyphens" Css.Properties.read_hyphens Css.Properties.pp_hyphens
       [ "none"; "manual"; "auto" ]
       [ "manual auto"; "normal" ];
+  ]
+
+let property_grammar_animation_vectors =
+  [
     vector "animation-iteration-count"
       Css.Properties.read_animation_iteration_count
       Css.Properties.pp_animation_iteration_count [ "infinite"; "1"; "2.5" ]
@@ -474,6 +496,10 @@ let property_grammar_vectors =
          Overscroll Behavior 1 section 5.1; [contain auto none] is the
          three-value invalid form, [hidden] is not a valid value. *)
       [ "contain auto none"; "hidden" ];
+  ]
+
+let property_grammar_text_vectors =
+  [
     vector "direction" Css.Properties.read_direction Css.Properties.pp_direction
       [ "ltr"; "rtl" ] [ "ltr rtl"; "auto" ];
     vector "unicode-bidi" Css.Properties.read_unicode_bidi
@@ -510,6 +536,12 @@ let property_grammar_vectors =
       [ "collapse separate"; "none" ];
   ]
 
+let property_grammar_vectors =
+  property_grammar_basic_vectors @ property_grammar_shorthand_vectors
+  @ property_grammar_image_vectors @ property_grammar_box_vectors
+  @ property_grammar_ui_vectors @ property_grammar_animation_vectors
+  @ property_grammar_text_vectors
+
 let test_property_grammar_manifest_valid buf =
   let row = pick property_grammar_vectors buf 0 in
   row.accept (pick row.positives buf 1)
@@ -527,9 +559,9 @@ let test_property_manifest_kinds _buf =
   List.iter
     (fun row ->
       if row.positives = [] then
-        fail (Fmt.str "%s fuzz row has no positive vectors" row.property);
+        failf "%s fuzz row has no positive vectors" row.property;
       if row.negatives = [] then
-        fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
+        failf "%s fuzz row has no negative vectors" row.property)
     property_grammar_vectors
 
 let normalize_value = String.trim
@@ -541,9 +573,8 @@ let shared_property_names rows =
 
 let assert_inventory_size rows =
   if List.length rows < 431 then
-    fail
-      (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length rows))
+    failf "shared property grammar inventory drifted: %d rows"
+      (List.length rows)
 
 let assert_unique_property_names rows =
   let names = shared_property_names rows in
@@ -553,15 +584,12 @@ let assert_unique_property_names rows =
 
 let assert_css_property_name property =
   if String.trim property <> property then
-    fail
-      (Fmt.str "%S has leading or trailing property-name whitespace" property);
+    failf "%S has leading or trailing property-name whitespace" property;
   if property = "" then fail "shared inventory has empty property row";
   String.iter
     (function
       | 'a' .. 'z' | '0' .. '9' | '-' -> ()
-      | c ->
-          fail
-            (Fmt.str "%s contains non-CSS property-name character %C" property c))
+      | c -> failf "%s contains non-CSS property-name character %C" property c)
     property
 
 let duplicate_values values =
@@ -572,21 +600,19 @@ let duplicate_values values =
 let assert_branch_inventory (row : Cascade_spec_inventory.Property_grammar.row)
     =
   if row.positives = [] then
-    fail (Fmt.str "%s shared row has no positive vectors" row.property);
+    failf "%s shared row has no positive vectors" row.property;
   if row.negatives = [] then
-    fail (Fmt.str "%s shared row has no negative vectors" row.property);
+    failf "%s shared row has no negative vectors" row.property;
   if List.length row.positives < 2 then
-    fail
-      (Fmt.str "%s shared row needs at least two positive branch vectors"
-         row.property);
+    failf "%s shared row needs at least two positive branch vectors"
+      row.property;
   if List.length row.negatives < 2 then
-    fail
-      (Fmt.str "%s shared row needs at least two negative branch vectors"
-         row.property);
+    failf "%s shared row needs at least two negative branch vectors"
+      row.property;
   if duplicate_values row.positives then
-    fail (Fmt.str "%s shared row has duplicate positive vectors" row.property);
+    failf "%s shared row has duplicate positive vectors" row.property;
   if duplicate_values row.negatives then
-    fail (Fmt.str "%s shared row has duplicate negative vectors" row.property)
+    failf "%s shared row has duplicate negative vectors" row.property
 
 let assert_branch_disjoint (row : Cascade_spec_inventory.Property_grammar.row) =
   let positive_set =
@@ -595,15 +621,14 @@ let assert_branch_disjoint (row : Cascade_spec_inventory.Property_grammar.row) =
   List.iter
     (fun value ->
       if normalize_value value = "" then
-        fail (Fmt.str "%s shared row has an empty vector" row.property))
+        failf "%s shared row has an empty vector" row.property)
     (row.positives @ row.negatives);
   List.iter
     (fun negative ->
       let normalized = normalize_value negative in
       if List.mem normalized positive_set then
-        fail
-          (Fmt.str "%s shared grammar vector is both positive and negative: %S"
-             row.property normalized))
+        failf "%s shared grammar vector is both positive and negative: %S"
+          row.property normalized)
     row.negatives
 
 let assert_shared_row (row : Cascade_spec_inventory.Property_grammar.row) =
@@ -621,9 +646,8 @@ let test_shared_inventory_row_shape _buf = assert_shared_inventory_shape ()
 
 let test_inventory_css_wide_generation buf =
   if List.length inventory_properties < 431 then
-    fail
-      (Fmt.str "shared property grammar inventory drifted: only %d rows"
-         (List.length inventory_properties));
+    failf "shared property grammar inventory drifted: only %d rows"
+      (List.length inventory_properties);
   let property = pick inventory_properties buf 0 in
   let keyword =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
@@ -632,9 +656,7 @@ let test_inventory_css_wide_generation buf =
   let c = Cursor.of_string input in
   match Css.Declaration.read_declaration c with
   | None ->
-      fail
-        (Fmt.str "deterministic manifest CSS-wide declaration rejected: %S"
-           input)
+      failf "deterministic manifest CSS-wide declaration rejected: %S" input
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -646,11 +668,10 @@ let test_inventory_css_wide_generation buf =
              = serialized ->
           ()
       | _ ->
-          fail
-            (Fmt.str
-               "deterministic manifest CSS-wide declaration did not \
-                structurally roundtrip: %S -> %S"
-               input serialized))
+          failf
+            "deterministic manifest CSS-wide declaration did not structurally \
+             roundtrip: %S -> %S"
+            input serialized)
 
 let parse_declaration input =
   let c = Cursor.of_string input in
@@ -658,7 +679,7 @@ let parse_declaration input =
 
 let assert_decl_roundtrip label input =
   match parse_declaration input with
-  | None -> fail (Fmt.str "%s declaration rejected: %S" label input)
+  | None -> failf "%s declaration rejected: %S" label input
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -669,9 +690,8 @@ let assert_decl_roundtrip label input =
              = serialized ->
           ()
       | _ ->
-          fail
-            (Fmt.str "%s declaration did not structurally roundtrip: %S -> %S"
-               label input serialized))
+          failf "%s declaration did not structurally roundtrip: %S -> %S" label
+            input serialized)
 
 let assert_decl_reject label input =
   assert_invalid_declaration_contract label input
@@ -700,17 +720,14 @@ let var_token_stream_fallback buf =
 let test_inventory_positive_values buf =
   let rows = property_inventory in
   if List.length rows < 431 then
-    fail
-      (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length rows));
+    failf "shared property grammar inventory drifted: %d rows"
+      (List.length rows);
   let row = pick rows buf 0 in
   let value = pick row.positives buf 1 in
   let input = row.property ^ ":" ^ value in
   match parse_declaration input with
   | None ->
-      fail
-        (Fmt.str "deterministic manifest positive declaration rejected: %S"
-           input)
+      failf "deterministic manifest positive declaration rejected: %S" input
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -721,18 +738,16 @@ let test_inventory_positive_values buf =
              = serialized ->
           ()
       | _ ->
-          fail
-            (Fmt.str
-               "deterministic manifest positive declaration did not \
-                structurally roundtrip: %S -> %S"
-               input serialized))
+          failf
+            "deterministic manifest positive declaration did not structurally \
+             roundtrip: %S -> %S"
+            input serialized)
 
 let test_inventory_negative_values buf =
   let rows = property_inventory in
   if List.length rows < 431 then
-    fail
-      (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length rows));
+    failf "shared property grammar inventory drifted: %d rows"
+      (List.length rows);
   let row = pick rows buf 0 in
   let value = pick row.negatives buf 1 in
   let input = row.property ^ ":" ^ value in
@@ -740,9 +755,8 @@ let test_inventory_negative_values buf =
 
 let test_inventory_var_values buf =
   if List.length property_inventory < 431 then
-    fail
-      (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length property_inventory));
+    failf "shared property grammar inventory drifted: %d rows"
+      (List.length property_inventory);
   let row = pick property_inventory buf 0 in
   let fallback =
     if byte_at buf 2 mod 2 = 0 then pick row.positives buf 1
@@ -750,9 +764,7 @@ let test_inventory_var_values buf =
   in
   let input = row.property ^ ":var(--spec-value," ^ fallback ^ ")" in
   match parse_declaration input with
-  | None ->
-      fail
-        (Fmt.str "deterministic manifest var() declaration rejected: %S" input)
+  | None -> failf "deterministic manifest var() declaration rejected: %S" input
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -763,11 +775,10 @@ let test_inventory_var_values buf =
              = serialized ->
           ()
       | _ ->
-          fail
-            (Fmt.str
-               "deterministic manifest var() declaration did not structurally \
-                roundtrip: %S -> %S"
-               input serialized))
+          failf
+            "deterministic manifest var() declaration did not structurally \
+             roundtrip: %S -> %S"
+            input serialized)
 
 let test_inventory_valid_generation buf =
   let row = pick property_inventory buf 0 in
@@ -918,8 +929,7 @@ let positive_branch_vectors =
 let assert_branch_roundtrip input =
   match parse_declaration input with
   | None ->
-      fail
-        (Fmt.str "property branch-depth positive declaration rejected: %S" input)
+      failf "property branch-depth positive declaration rejected: %S" input
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -930,11 +940,10 @@ let assert_branch_roundtrip input =
              = serialized ->
           ()
       | _ ->
-          fail
-            (Fmt.str
-               "property branch-depth declaration did not structurally \
-                roundtrip: %S -> %S"
-               input serialized))
+          failf
+            "property branch-depth declaration did not structurally roundtrip: \
+             %S -> %S"
+            input serialized)
 
 let test_value_branch_positive buf =
   assert_branch_roundtrip (pick positive_branch_vectors buf 2)
