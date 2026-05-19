@@ -53,8 +53,7 @@ let test_save_restore_remaining_stable buf =
   Cursor.restore c snap2;
   let after = Cursor.string_of_remaining c in
   if before <> after then
-    fail
-      (Fmt.str "cursor restore changed remaining text: %S -> %S" before after)
+    failf "cursor restore changed remaining text: %S -> %S" before after
 
 let test_lookahead_does_not_advance buf =
   let c = cursor buf in
@@ -79,9 +78,8 @@ let test_components_to_string_idempotent buf =
   let c3 = Cursor.of_string twice in
   let thrice = Cursor.string_of_remaining c3 in
   if twice <> thrice then
-    fail
-      (Fmt.str "cursor component serialization did not stabilize: %S -> %S"
-         twice thrice)
+    failf "cursor component serialization did not stabilize: %S -> %S" twice
+      thrice
 
 let test_consume_to_boundaries_reparse buf =
   let input = cssish buf ^ "; tail { x: y } / rest" in

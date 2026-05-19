@@ -2072,10 +2072,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Default case for all other properties *)
   | _ -> []
 
-let rec extract_vars_from_declaration : declaration -> any_var list = function
+let rec extract_vars_of_declaration : declaration -> any_var list = function
   | Declaration { property = Custom_property _; _ } -> []
   | Declaration { property; value; _ } -> vars_of_property property value
-  | Theme_guarded { decl; _ } -> extract_vars_from_declaration decl
+  | Theme_guarded { decl; _ } -> extract_vars_of_declaration decl
 
 (* Stable dedup: preserves first occurrence of each var, removes later
    duplicates *)
@@ -2090,7 +2090,7 @@ let stable_dedup_vars vars =
     vars
 
 let vars_of_declarations properties =
-  List.concat_map extract_vars_from_declaration properties |> stable_dedup_vars
+  List.concat_map extract_vars_of_declaration properties |> stable_dedup_vars
 
 (* Extract only custom property declarations (variable definitions) *)
 let custom_declarations ?layer (decls : declaration list) : declaration list =

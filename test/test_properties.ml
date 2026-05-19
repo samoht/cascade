@@ -1884,6 +1884,7 @@ let test_animation_shorthand () =
   check_animation_shorthand "1s";
   (* name only, duration defaults to 0s *)
   check_animation_shorthand "slide";
+  check_animation_shorthand ~expected:"1s slide" "1s slide";
   check_animation_shorthand ~expected:"1s slide" "slide 1s";
   check_animation_shorthand ~expected:"1s ease-in slide" "slide 1s ease-in";
   check_animation_shorthand ~expected:"1s ease-in .5s infinite slide"

@@ -80,6 +80,7 @@ precision when the visual difference is negligible.
 - Modern color functions: `lab()`, `lch()`, `oklab()`, and `oklch()` may round lightness/chroma/a/b channels, hue, and alpha under `--minify`.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
 - Selector lists: sort branches into Cascade's canonical selector order (`div,.class,#id` -> `#id,.class,div`).
+- Shorthands with unordered components serialize in Cascade's canonical order; when shortest forms tie, Cascade follows common minifier convention (`animation:1s slide` -> `animation:slide 1s`).
 - Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
 - Whitespace elided at safe token boundaries (`100% 0` -> `100%0`).
 - Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.

@@ -64,22 +64,35 @@ let canonical_custom_property_tokens () =
   let expected = ".a { --tw-ring-color: transparent }" in
   let actual = ".a { --tw-ring-color: #0000 }" in
   Alcotest.(check bool)
-    "self-contained custom property values use shortest canonical form" true
+    "unregistered custom property token streams stay opaque" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let registered_custom_property_tokens () =
+  let expected =
+    "@property --tw-ring-color { syntax: \"<color>\"; inherits: true; \
+     initial-value: transparent } .a { --tw-ring-color: transparent }"
+  in
+  let actual =
+    "@property --tw-ring-color { syntax: \"<color>\"; inherits: true; \
+     initial-value: transparent } .a { --tw-ring-color: #0000 }"
+  in
+  Alcotest.(check bool)
+    "registered color custom properties compare after typed canonicalization"
+    true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_mix_tokens () =
   let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
   Alcotest.(check bool)
-    "self-contained custom color-mix values use shortest canonical form" true
+    "unregistered custom color-mix token streams stay opaque" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_calc_percentage () =
   let expected = ".a { --tw-translate-x: calc(1 / 2 * 100%) }" in
   let actual = ".a { --tw-translate-x: 50% }" in
   Alcotest.(check bool)
-    "self-contained custom calc percentage values use shortest canonical form"
-    true
+    "unregistered custom calc token streams stay opaque" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_with_recovered_warning () =
@@ -103,7 +116,7 @@ let semantic_custom_var_fallback () =
     ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
   in
   Alcotest.(check bool)
-    "self-contained custom shadow values use shortest canonical form" true
+    "custom property var fallback token streams stay opaque" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_custom_nested_functions () =
@@ -125,8 +138,7 @@ let semantic_custom_oklab_sign_boundaries () =
   in
   let actual = ".prose { --tw-prose-kbd-shadows: oklab(21%-.003 -.034/.1) }" in
   Alcotest.(check bool)
-    "custom OKLab values keep channel token boundaries during canonical compare"
-    true
+    "unregistered OKLab custom property token streams stay opaque" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_prose_shadow_color_var () =
@@ -147,7 +159,8 @@ let semantic_prose_shadow_color_var () =
        -.034/.1)}}}"
   in
   Alcotest.(check bool)
-    "known color custom property allows zero blur elision before var()" true
+    "unregistered custom property cannot justify zero blur elision before var()"
+    false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_prose_shadow_unknown_var () =
@@ -499,6 +512,8 @@ let suite =
         semantically_equivalent_color_mix_css;
       Alcotest.test_case "canonical custom property tokens" `Quick
         canonical_custom_property_tokens;
+      Alcotest.test_case "registered custom property tokens" `Quick
+        registered_custom_property_tokens;
       Alcotest.test_case "canonical custom color-mix tokens" `Quick
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom calc percentage" `Quick

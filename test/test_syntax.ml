@@ -1,34 +1,35 @@
 open Cascade
 
-let check_bool name expected actual = Alcotest.(check bool) name expected actual
+let check_true name actual = Alcotest.(check bool) name true actual
+let check_false name actual = Alcotest.(check bool) name false actual
 
 let is_ascii_ident_start () =
-  check_bool "letter" true (Syntax.is_ascii_ident_start 'a');
-  check_bool "uppercase" true (Syntax.is_ascii_ident_start 'Z');
-  check_bool "underscore" true (Syntax.is_ascii_ident_start '_');
-  check_bool "hyphen" true (Syntax.is_ascii_ident_start '-');
-  check_bool "digit" false (Syntax.is_ascii_ident_start '0');
-  check_bool "space" false (Syntax.is_ascii_ident_start ' ')
+  check_true "letter" (Syntax.is_ascii_ident_start 'a');
+  check_true "uppercase" (Syntax.is_ascii_ident_start 'Z');
+  check_true "underscore" (Syntax.is_ascii_ident_start '_');
+  check_true "hyphen" (Syntax.is_ascii_ident_start '-');
+  check_false "digit" (Syntax.is_ascii_ident_start '0');
+  check_false "space" (Syntax.is_ascii_ident_start ' ')
 
 let is_ascii_ident_continue () =
-  check_bool "letter" true (Syntax.is_ascii_ident_continue 'a');
-  check_bool "digit" true (Syntax.is_ascii_ident_continue '5');
-  check_bool "hyphen" true (Syntax.is_ascii_ident_continue '-');
-  check_bool "underscore" true (Syntax.is_ascii_ident_continue '_');
-  check_bool "punctuation" false (Syntax.is_ascii_ident_continue '!')
+  check_true "letter" (Syntax.is_ascii_ident_continue 'a');
+  check_true "digit" (Syntax.is_ascii_ident_continue '5');
+  check_true "hyphen" (Syntax.is_ascii_ident_continue '-');
+  check_true "underscore" (Syntax.is_ascii_ident_continue '_');
+  check_false "punctuation" (Syntax.is_ascii_ident_continue '!')
 
 let is_hex () =
-  check_bool "digit" true (Syntax.is_hex '0');
-  check_bool "lower a-f" true (Syntax.is_hex 'a');
-  check_bool "upper A-F" true (Syntax.is_hex 'F');
-  check_bool "outside" false (Syntax.is_hex 'g');
-  check_bool "non-letter" false (Syntax.is_hex '!')
+  check_true "digit" (Syntax.is_hex '0');
+  check_true "lower a-f" (Syntax.is_hex 'a');
+  check_true "upper A-F" (Syntax.is_hex 'F');
+  check_false "outside" (Syntax.is_hex 'g');
+  check_false "non-letter" (Syntax.is_hex '!')
 
 let url_needs_quotes () =
-  check_bool "plain" false (Syntax.url_needs_quotes "foo.css");
-  check_bool "space" true (Syntax.url_needs_quotes "foo bar.css");
-  check_bool "quote" true (Syntax.url_needs_quotes "foo\"bar");
-  check_bool "paren" true (Syntax.url_needs_quotes "foo(bar)")
+  check_false "plain" (Syntax.url_needs_quotes "foo.css");
+  check_true "space" (Syntax.url_needs_quotes "foo bar.css");
+  check_true "quote" (Syntax.url_needs_quotes "foo\"bar");
+  check_true "paren" (Syntax.url_needs_quotes "foo(bar)")
 
 let strip_url_suffix () =
   Alcotest.(check string)

@@ -22,22 +22,21 @@ let minified sel = Css.Selector.to_string ~minify:true sel
 
 let assert_stable input =
   match parse_selector input with
-  | None -> fail (Fmt.str "selector should parse: %S" input)
+  | None -> failf "selector should parse: %S" input
   | Some sel -> (
       let output = minified sel in
       match parse_selector output with
-      | None -> fail (Fmt.str "minified selector did not reparse: %S" output)
+      | None -> failf "minified selector did not reparse: %S" output
       | Some reparsed ->
           let before = Css.Selector.specificity sel in
           let after = Css.Selector.specificity reparsed in
           if before <> after then
-            fail (Fmt.str "specificity changed: %S -> %S" input output))
+            failf "specificity changed: %S -> %S" input output)
 
 let assert_reject input =
   match parse_selector input with
   | None -> ()
-  | Some sel ->
-      fail (Fmt.str "selector should reject: %S -> %S" input (minified sel))
+  | Some sel -> failf "selector should reject: %S -> %S" input (minified sel)
 
 (** Selector.of_string — must not crash on arbitrary input. *)
 let test_of_string buf =
@@ -113,9 +112,8 @@ let test_specificity_roundtrip buf =
           let before = Css.Selector.specificity sel in
           let after = Css.Selector.specificity reparsed in
           if before <> after then
-            fail
-              (Fmt.str "specificity changed across serialization: %S -> %S" buf
-                 serialized))
+            failf "specificity changed across serialization: %S -> %S" buf
+              serialized)
 
 (* Allow one canonicalization pass (CSS Syntax 4.3.7 NUL -> U+FFFD, escape
    canonical form) that only fires on re-parse, then require fixed point.
@@ -132,9 +130,8 @@ let parse_or_skip parse buf k =
 let reparse_or_fail parse step s =
   try parse s
   with (Cursor.Parse_error _ | Invalid_argument _) as exn ->
-    fail
-      (Fmt.str "serializer emitted un-reparseable output at %s: %S (%s)" step s
-         (Printexc.to_string exn))
+    failf "serializer emitted un-reparseable output at %s: %S (%s)" step s
+      (Printexc.to_string exn)
 
 let test_serialization_idempotent buf =
   parse_or_skip Css.Selector.of_string buf @@ fun sel ->
@@ -147,10 +144,8 @@ let test_serialization_idempotent buf =
     serialize (reparse_or_fail Css.Selector.of_string "second reparse" twice)
   in
   if twice <> thrice then
-    fail
-      (Fmt.str
-         "selector serialization drifted past canonicalization: %S -> %S -> %S"
-         once twice thrice)
+    failf "selector serialization drifted past canonicalization: %S -> %S -> %S"
+      once twice thrice
 
 let test_selector_list_serialization_idempotent buf =
   let serialize = Css.Selector.to_string ~minify:true in
@@ -160,11 +155,10 @@ let test_selector_list_serialization_idempotent buf =
   let twice = serialize (reparse_or_fail parse "first reparse" once) in
   let thrice = serialize (reparse_or_fail parse "second reparse" twice) in
   if twice <> thrice then
-    fail
-      (Fmt.str
-         "selector-list serialization drifted past canonicalization: %S -> %S \
-          -> %S"
-         once twice thrice)
+    failf
+      "selector-list serialization drifted past canonicalization: %S -> %S -> \
+       %S"
+      once twice thrice
 
 let test_noisy_forgiving buf =
   let wrapper = pick [ ":is"; ":where" ] buf 0 in
@@ -175,14 +169,14 @@ let test_noisy_forgiving buf =
   let last = pick [ ".fallback"; ":where(.zero)"; "[role=button]" ] buf 3 in
   let input = Fmt.str "%s(%s,%s,%s)" wrapper first noisy last in
   match parse_selector input with
-  | None -> fail (Fmt.str "forgiving selector should parse: %S" input)
+  | None -> failf "forgiving selector should parse: %S" input
   | Some sel ->
       let output = minified sel in
       if
         matches_literal output "future-pseudo"
         || matches_literal output "before"
         || matches_literal output "[=bad]"
-      then fail (Fmt.str "invalid forgiving branch survived: %S" output);
+      then failf "invalid forgiving branch survived: %S" output;
       assert_stable output
 
 let test_empty_forgiving buf =
@@ -236,11 +230,11 @@ let test_attr_flags buf =
       buf 0
   in
   match parse_selector input with
-  | None -> fail (Fmt.str "attribute/namespace selector should parse: %S" input)
+  | None -> failf "attribute/namespace selector should parse: %S" input
   | Some sel ->
       let output = minified sel in
       if matches_literal output " I]" || matches_literal output " S]" then
-        fail (Fmt.str "attribute flag should be ASCII-lowercase: %S" output);
+        failf "attribute flag should be ASCII-lowercase: %S" output;
       assert_stable output
 
 let test_where_specificity_zero buf =
@@ -256,15 +250,13 @@ let test_where_specificity_zero buf =
       buf 0
   in
   match parse_selector (":where(" ^ branch ^ ")") with
-  | None -> fail (Fmt.str ":where() branch should parse: %S" branch)
+  | None -> failf ":where() branch should parse: %S" branch
   | Some sel ->
       let specificity = Css.Selector.specificity sel in
       if
         specificity.ids <> 0 || specificity.classes <> 0
         || specificity.elements <> 0
-      then
-        fail
-          (Fmt.str ":where() specificity was not zero after parsing: %S" branch)
+      then failf ":where() specificity was not zero after parsing: %S" branch
 
 let test_selector_specificity_minify buf =
   let input =
@@ -279,20 +271,17 @@ let test_selector_specificity_minify buf =
       buf 0
   in
   match parse_selector input with
-  | None -> fail (Fmt.str "specificity vector should parse: %S" input)
+  | None -> failf "specificity vector should parse: %S" input
   | Some sel -> (
       let serialized = minified sel in
       match parse_selector serialized with
       | None ->
-          fail
-            (Fmt.str "specificity vector did not reparse after minify: %S"
-               serialized)
+          failf "specificity vector did not reparse after minify: %S" serialized
       | Some reparsed ->
           if Css.Selector.specificity sel <> Css.Selector.specificity reparsed
           then
-            fail
-              (Fmt.str "selector minification changed specificity: %S -> %S"
-                 input serialized))
+            failf "selector minification changed specificity: %S -> %S" input
+              serialized)
 
 let test_pseudo_class_family_vectors buf =
   let input =
@@ -373,22 +362,20 @@ let test_selector_l4_serialization_matrix buf =
       buf 1
   in
   match parse_selector input with
-  | None -> fail (Fmt.str "selector L4 serialization vector rejected: %S" input)
+  | None -> failf "selector L4 serialization vector rejected: %S" input
   | Some selector -> (
       let serialized = minified selector in
       match parse_selector serialized with
       | None ->
-          fail
-            (Fmt.str "selector L4 serialization did not reparse: %S -> %S" input
-               serialized)
+          failf "selector L4 serialization did not reparse: %S -> %S" input
+            serialized
       | Some reparsed ->
           if
             Css.Selector.specificity selector
             <> Css.Selector.specificity reparsed
           then
-            fail
-              (Fmt.str "selector L4 serialization changed specificity: %S -> %S"
-                 input serialized))
+            failf "selector L4 serialization changed specificity: %S -> %S"
+              input serialized)
 
 let ident buf i = pick [ "article"; "card"; "item"; "nav"; "dialog" ] buf i
 

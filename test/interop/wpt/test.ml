@@ -48,11 +48,10 @@ let index_from ~from s needle =
 
 (* Extract template-literal arguments from [name(`...`)] calls inside a JS
    string. Handles backslash-escaped backticks. *)
-let rec find_unescaped_backtick s ~from =
+let rec unescaped_backtick s ~from =
   match index_from ~from s "`" with
   | None -> None
-  | Some k when k > 0 && s.[k - 1] = '\\' ->
-      find_unescaped_backtick s ~from:(k + 1)
+  | Some k when k > 0 && s.[k - 1] = '\\' -> unescaped_backtick s ~from:(k + 1)
   | some -> some
 
 let extract_template_args ~call_name s =
@@ -63,7 +62,7 @@ let extract_template_args ~call_name s =
     | None -> List.rev acc
     | Some i -> (
         let body_start = i + mlen in
-        match find_unescaped_backtick s ~from:body_start with
+        match unescaped_backtick s ~from:body_start with
         | None -> List.rev acc
         | Some c ->
             let body = String.sub s body_start (c - body_start) in

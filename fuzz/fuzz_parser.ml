@@ -42,10 +42,9 @@ let assert_same_shape label input output =
   let before = parse_list input |> shapes in
   let after = parse_list output |> shapes in
   if before <> after then
-    fail
-      (Fmt.str "%s changed non-whitespace component shape for %S: %S -> %S"
-         label input output
-         (String.concat " -> " after))
+    failf "%s changed non-whitespace component shape for %S: %S -> %S" label
+      input output
+      (String.concat " -> " after)
 
 let has_quote_or_escape s =
   String.contains s '"' || String.contains s '\'' || String.contains s '\\'
@@ -122,9 +121,8 @@ let test_component_value_minified_idempotent buf =
   let once = minified buf in
   let twice = minified once in
   if once <> twice then
-    fail
-      (Fmt.str "component-value minified serialization changed for %S: %S -> %S"
-         buf once twice)
+    failf "component-value minified serialization changed for %S: %S -> %S" buf
+      once twice
 
 (** Non-minified serialization should be idempotent after reparsing. *)
 let test_component_value_serialized_idempotent buf =
@@ -132,9 +130,8 @@ let test_component_value_serialized_idempotent buf =
   let once = serialized buf in
   let twice = serialized once in
   if once <> twice then
-    fail
-      (Fmt.str "component-value serialization changed for %S: %S -> %S" buf once
-         twice)
+    failf "component-value serialization changed for %S: %S -> %S" buf once
+      twice
 
 (** Serialization output should always be accepted by the component parser. *)
 let test_component_value_serialized_reparse buf =
@@ -169,7 +166,7 @@ let test_csv_group_roundtrip buf =
   in
   let after = parse_comma_list serialized |> comma_shapes in
   if before <> after then
-    fail (Fmt.str "comma-list shape changed for %S: %S" input serialized)
+    failf "comma-list shape changed for %S: %S" input serialized
 
 let test_block_commas_stable buf =
   let payload =
@@ -181,9 +178,8 @@ let test_block_commas_stable buf =
   let input = "fn(" ^ payload ^ ", x), [a,b], {c:d,e:f}" in
   let groups = parse_comma_list input in
   if List.length groups <> 3 then
-    fail
-      (Fmt.str "top-level comma grouping changed; expected 3 groups, got %d"
-         (List.length groups))
+    failf "top-level comma grouping changed; expected 3 groups, got %d"
+      (List.length groups)
 
 let test_bounded_unterminated_nesting_reparse buf =
   let depth = 1 + (byte_at buf 0 mod 256) in
@@ -210,7 +206,7 @@ let test_comment_confusion_stable buf =
   let input = "safe/*" ^ payload ^ ".evil{color:red}" in
   let output = minified input in
   if String.contains output '{' || String.contains output '}' then
-    fail (Fmt.str "unterminated comment surfaced block syntax: %S" output)
+    failf "unterminated comment surfaced block syntax: %S" output
 
 let test_spec_parser_branch_vectors buf =
   let row =
@@ -228,9 +224,8 @@ let test_spec_parser_branch_vectors buf =
   let serialized = serialized input in
   let after = parse_list serialized |> shapes in
   if (not (has_quote_or_escape input)) && before <> after then
-    fail
-      (Fmt.str "CSS Syntax parser branch vector changed shape: %S -> %S" input
-         serialized)
+    failf "CSS Syntax parser branch vector changed shape: %S -> %S" input
+      serialized
 
 let suite =
   ( "parser",

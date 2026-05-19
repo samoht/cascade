@@ -3480,6 +3480,28 @@ let validate_partial_strict_warnings loc stmt =
          ~reason:"strict stylesheet warning")
   else None
 
+let add_warning warnings warning = warnings := warning :: !warnings
+
+let drain_statement_warnings warnings cursor =
+  List.iter (add_warning warnings) (Cursor.drain_warnings cursor)
+
+let validate_else_orphan previous rule stmt =
+  match stmt with
+  | Else _
+    when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
+      Some
+        (Error.bad_value (rule_loc rule) ~property:"stylesheet"
+           ~reason:"@else without preceding @when")
+  | _ -> None
+
+let validate_partial_statement_warnings warnings validate_prelude rule stmt =
+  let loc = rule_loc rule in
+  Option.iter (add_warning warnings) (validate_prelude loc stmt);
+  Option.iter (add_warning warnings) (validate_partial_statement loc stmt);
+  Option.iter (add_warning warnings)
+    (validate_partial_invalid_declarations loc stmt);
+  Option.iter (add_warning warnings) (validate_partial_strict_warnings loc stmt)
+
 let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
@@ -3488,15 +3510,6 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
      must follow [@when] or another [@else]. A bare top-level [@else] is a parse
      error. *)
   let previous = ref None in
-  let validate_else_orphan rule stmt =
-    match stmt with
-    | Else _
-      when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
-        Some
-          (Error.bad_value (rule_loc rule) ~property:"stylesheet"
-             ~reason:"@else without preceding @when")
-    | _ -> None
-  in
   let statements =
     List.filter_map
       (fun rule ->
@@ -3504,33 +3517,21 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if
            any) comes after them. *)
-        List.iter
-          (fun w -> warnings := w :: !warnings)
-          (Cursor.drain_warnings cursor);
+        drain_statement_warnings warnings cursor;
         match result with
         | Ok stmt -> (
-            Option.iter
-              (fun w -> warnings := w :: !warnings)
-              (validate_prelude (rule_loc rule) stmt);
-            Option.iter
-              (fun w -> warnings := w :: !warnings)
-              (validate_partial_statement (rule_loc rule) stmt);
-            Option.iter
-              (fun w -> warnings := w :: !warnings)
-              (validate_partial_invalid_declarations (rule_loc rule) stmt);
-            Option.iter
-              (fun w -> warnings := w :: !warnings)
-              (validate_partial_strict_warnings (rule_loc rule) stmt);
-            match validate_else_orphan rule stmt with
+            validate_partial_statement_warnings warnings validate_prelude rule
+              stmt;
+            match validate_else_orphan previous rule stmt with
             | Some w ->
-                warnings := w :: !warnings;
+                add_warning warnings w;
                 previous := Some stmt;
                 None
             | None ->
                 previous := Some stmt;
                 Some stmt)
         | Error e ->
-            warnings := e :: !warnings;
+            add_warning warnings e;
             None)
       rules
   in

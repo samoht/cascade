@@ -575,56 +575,18 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
 
 (** {1 Pass 3 - dead-code elimination} *)
 
+let strip_component_ws =
+  List.filter (function
+    | Component.Preserved { kind = Token.Whitespace; _ } -> false
+    | _ -> true)
+
+let rec split_var_fallback acc = function
+  | [] -> []
+  | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+      List.rev_append acc rest
+  | cv :: rest -> split_var_fallback (cv :: acc) rest
+
 let rec refs_of_components components =
-  let strip_ws =
-    List.filter (function
-      | Component.Preserved { kind = Token.Whitespace; _ } -> false
-      | _ -> true)
-  in
-  let rec split_fallback acc = function
-    | [] -> []
-    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
-        List.rev_append acc rest
-    | cv :: rest -> split_fallback (cv :: acc) rest
-  in
-  let refs_of_var_args args =
-    match
-      let func : Component.func =
-        { name = "var"; arguments = args; terminated = true }
-      in
-      let cursor =
-        Cursor.of_components [ Component.Func { node = func; loc = Loc.dummy } ]
-      in
-      let var = Values.read_var (fun t -> Cursor.remaining t) cursor in
-      Cursor.ws cursor;
-      Cursor.expect_eof cursor;
-      let fallback_refs =
-        match var.Values.fallback with
-        | Values.Fallback components | Values.Syntax_fallback components ->
-            refs_of_components components
-        | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _ ->
-            []
-      in
-      Some (("--" ^ var.Values.name) :: fallback_refs)
-    with
-    | Some refs -> refs
-    | None -> []
-    | exception _ -> (
-        match strip_ws args with
-        | Component.Preserved { kind = Token.Ident name; _ } :: rest
-          when String.length name >= 2 && String.sub name 0 2 = "--" ->
-            name :: refs_of_components (split_fallback [] rest)
-        | Component.Preserved { kind = Token.Delim "--"; _ }
-          :: Component.Preserved { kind = Token.Ident name; _ }
-          :: rest ->
-            ("--" ^ name) :: refs_of_components (split_fallback [] rest)
-        | Component.Preserved { kind = Token.Delim "-"; _ }
-          :: Component.Preserved { kind = Token.Delim "-"; _ }
-          :: Component.Preserved { kind = Token.Ident name; _ }
-          :: rest ->
-            ("--" ^ name) :: refs_of_components (split_fallback [] rest)
-        | rest -> refs_of_components rest)
-  in
   List.concat_map
     (function
       | Component.Func { node = { name; arguments; _ }; _ }
@@ -635,6 +597,40 @@ let rec refs_of_components components =
       | Component.Block { node = { value; _ }; _ } -> refs_of_components value
       | Component.Preserved _ -> [])
     components
+
+and refs_of_var_args args =
+  try
+    let func : Component.func =
+      { name = "var"; arguments = args; terminated = true }
+    in
+    let cursor =
+      Cursor.of_components [ Component.Func { node = func; loc = Loc.dummy } ]
+    in
+    let var = Values.read_var (fun t -> Cursor.remaining t) cursor in
+    Cursor.ws cursor;
+    Cursor.expect_eof cursor;
+    let fallback_refs =
+      match var.Values.fallback with
+      | Values.Fallback components | Values.Syntax_fallback components ->
+          refs_of_components components
+      | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _ -> []
+    in
+    ("--" ^ var.Values.name) :: fallback_refs
+  with Cursor.Parse_error _ -> (
+    match strip_component_ws args with
+    | Component.Preserved { kind = Token.Ident name; _ } :: rest
+      when String.length name >= 2 && String.sub name 0 2 = "--" ->
+        name :: refs_of_components (split_var_fallback [] rest)
+    | Component.Preserved { kind = Token.Delim "--"; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+    | Component.Preserved { kind = Token.Delim "-"; _ }
+      :: Component.Preserved { kind = Token.Delim "-"; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+    | rest -> refs_of_components rest)
 
 let refs_of_component_string value =
   try refs_of_components (Cursor.remaining (Cursor.of_string value))

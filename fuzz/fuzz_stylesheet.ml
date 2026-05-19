@@ -329,36 +329,32 @@ let recovered_css label input =
   match Css.of_string ~strict:false input with
   | Ok parsed -> parsed
   | Error err ->
-      fail
-        (Fmt.str "%s did not recover leniently: %s" label
-           (Cascade.Error.to_string err))
+      failf "%s did not recover leniently: %s" label
+        (Cascade.Error.to_string err)
 
 let assert_strict_rejects_lenient_warns label input =
   match Css.of_string ~strict:true input with
   | Ok parsed ->
-      fail
-        (Fmt.str "%s parsed strictly as invalid CSS: %S -> %S" label input
-           (Css.to_string ~minify:true parsed.stylesheet))
+      failf "%s parsed strictly as invalid CSS: %S -> %S" label input
+        (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
       let { Css.stylesheet; warnings } = recovered_css label input in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
-        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+        failf "%s recovered without a lenient warning: %S" label input
 
 let assert_strict_accepts_cleanly label input =
   match Css.of_string ~strict:true input with
-  | Error _ -> fail (Fmt.str "%s rejected valid CSS strictly: %S" label input)
+  | Error _ -> failf "%s rejected valid CSS strictly: %S" label input
   | Ok parsed ->
       let strict_output = Css.to_string ~minify:true parsed.stylesheet in
       let { Css.stylesheet; warnings } = recovered_css label input in
       if warnings <> [] then
-        fail
-          (Fmt.str "%s emitted lenient warnings for valid CSS: %S" label input);
+        failf "%s emitted lenient warnings for valid CSS: %S" label input;
       let lenient_output = Css.to_string ~minify:true stylesheet in
       if strict_output <> lenient_output then
-        fail
-          (Fmt.str "%s strict/lenient output changed: %S -> %S / %S" label input
-             strict_output lenient_output)
+        failf "%s strict/lenient output changed: %S -> %S / %S" label input
+          strict_output lenient_output
 
 let assert_invalid_declaration_contract label input =
   assert_strict_rejects_lenient_warns label (".x{" ^ input ^ "}")
@@ -600,8 +596,7 @@ let assert_stylesheet_idempotent ~label serialize buf =
   let reparse_or_fail step s =
     match parse_stylesheet s with
     | Some ss -> ss
-    | None ->
-        fail (Fmt.str "%s stylesheet did not reparse at %s: %S" label step s)
+    | None -> failf "%s stylesheet did not reparse at %s: %S" label step s
   in
   match parse_stylesheet buf with
   | None -> ()
@@ -610,11 +605,10 @@ let assert_stylesheet_idempotent ~label serialize buf =
       let twice = serialize (reparse_or_fail "first reparse" once) in
       let thrice = serialize (reparse_or_fail "second reparse" twice) in
       if twice <> thrice then
-        fail
-          (Fmt.str
-             "stylesheet %s serialization drifted past canonicalization: %S -> \
-              %S -> %S"
-             label once twice thrice)
+        failf
+          "stylesheet %s serialization drifted past canonicalization: %S -> %S \
+           -> %S"
+          label once twice thrice
 
 (** Minified stylesheet serialization should reach a fixed point after at most
     one canonicalization pass on reparsed CSS-shaped input. *)
@@ -632,42 +626,35 @@ let test_generated_layer_stylesheet_roundtrip buf =
   let ss = generated_layer_stylesheet buf in
   let once = minified_stylesheet ss in
   match parse_stylesheet once with
-  | None -> fail (Fmt.str "generated layer stylesheet did not reparse: %S" once)
+  | None -> failf "generated layer stylesheet did not reparse: %S" once
   | Some reparsed ->
       let twice = minified_stylesheet reparsed in
       if once <> twice then
-        fail
-          (Fmt.str "generated layer stylesheet serialization changed: %S -> %S"
-             once twice)
+        failf "generated layer stylesheet serialization changed: %S -> %S" once
+          twice
 
 let test_generated_condition_stylesheet_roundtrip buf =
   let ss = generated_condition_stylesheet buf in
   let once = minified_stylesheet ss in
   match parse_stylesheet once with
-  | None ->
-      fail (Fmt.str "generated conditional stylesheet did not reparse: %S" once)
+  | None -> failf "generated conditional stylesheet did not reparse: %S" once
   | Some reparsed ->
       let twice = minified_stylesheet reparsed in
       if once <> twice then
-        fail
-          (Fmt.str
-             "generated conditional stylesheet serialization changed: %S -> %S"
-             once twice)
+        failf "generated conditional stylesheet serialization changed: %S -> %S"
+          once twice
 
 let test_generated_stylesheets_pretty_roundtrip buf =
   List.iter
     (fun ss ->
       let once = pretty_stylesheet ss in
       match parse_stylesheet once with
-      | None ->
-          fail (Fmt.str "generated pretty stylesheet did not reparse: %S" once)
+      | None -> failf "generated pretty stylesheet did not reparse: %S" once
       | Some reparsed ->
           let twice = pretty_stylesheet reparsed in
           if once <> twice then
-            fail
-              (Fmt.str
-                 "generated pretty stylesheet serialization changed: %S -> %S"
-                 once twice))
+            failf "generated pretty stylesheet serialization changed: %S -> %S"
+              once twice)
     [ generated_layer_stylesheet buf; generated_condition_stylesheet buf ]
 
 (** CSS Cascade section 6.4: optimization must preserve cascade boundaries that
@@ -679,9 +666,8 @@ let test_layer_boundary_shape_invariant buf =
   let before = boundary_shapes ss in
   let after = boundary_shapes optimized in
   if before <> after then
-    fail
-      (Fmt.str "layer boundary shape changed: %S -> %S"
-         (String.concat " " before) (String.concat " " after))
+    failf "layer boundary shape changed: %S -> %S" (String.concat " " before)
+      (String.concat " " after)
 
 (** CSS Cascade section 6.4.2.1: anonymous layer declarations have unique
     identities and must not be collapsed away by optimization. *)
@@ -691,7 +677,7 @@ let test_anonymous_layer_count_invariant buf =
   let before = anonymous_layer_count ss in
   let after = anonymous_layer_count optimized in
   if before <> after then
-    fail (Fmt.str "anonymous layer count changed: %d -> %d" before after)
+    failf "anonymous layer count changed: %d -> %d" before after
 
 let test_condition_boundary_shape_invariant buf =
   let ss = generated_condition_stylesheet buf in
@@ -699,9 +685,8 @@ let test_condition_boundary_shape_invariant buf =
   let before = boundary_shapes ss in
   let after = boundary_shapes optimized in
   if before <> after then
-    fail
-      (Fmt.str "conditional boundary shape changed: %S -> %S"
-         (String.concat " " before) (String.concat " " after))
+    failf "conditional boundary shape changed: %S -> %S"
+      (String.concat " " before) (String.concat " " after)
 
 (** CSS Cascade section 3: CSS-wide keywords used on shorthands are whole
     declaration values and serialize as the shorthand property plus the keyword.
@@ -711,11 +696,11 @@ let test_shorthand_wide_keyword buf =
   let keyword = css_wide_keyword buf 1 in
   let input = property ^ ":" ^ keyword in
   match parse_declaration input with
-  | None -> fail (Fmt.str "CSS-wide shorthand did not parse: %S" input)
+  | None -> failf "CSS-wide shorthand did not parse: %S" input
   | Some serialized ->
       let expected = property ^ ":" ^ keyword in
       if serialized <> expected then
-        fail (Fmt.str "CSS-wide shorthand changed: %S -> %S" input serialized)
+        failf "CSS-wide shorthand changed: %S -> %S" input serialized
 
 (** CSS Cascade section 3: CSS-wide keywords cannot be combined with other
     component values in a single declaration, including in shorthands. *)
@@ -737,14 +722,12 @@ let test_legacy_alias_stable buf =
       buf 0
   in
   match parse_declaration input with
-  | None -> fail (Fmt.str "legacy shorthand alias did not parse: %S" input)
+  | None -> failf "legacy shorthand alias did not parse: %S" input
   | Some serialized ->
       if starts_with ~prefix:"page-break-" serialized then
-        fail
-          (Fmt.str "legacy shorthand serialized with old name: %S" serialized);
+        failf "legacy shorthand serialized with old name: %S" serialized;
       if serialized <> expected then
-        fail
-          (Fmt.str "legacy shorthand alias changed: %S -> %S" input serialized)
+        failf "legacy shorthand alias changed: %S -> %S" input serialized
 
 (** CSS Cascade section 4.1: declared values preserve declaration source order
     before cascade sorting. *)
@@ -772,9 +755,8 @@ let test_declared_order_stable buf =
     List.map (fun (d : Css.Stylesheet.declared_value) -> d.important) colors
   in
   if orders <> [ 0; 2 ] then
-    fail
-      (Fmt.str "declared color source order changed: %s"
-         (String.concat "," (List.map string_of_int orders)));
+    failf "declared color source order changed: %s"
+      (String.concat "," (List.map string_of_int orders));
   if important <> [ false; true ] then
     fail "declared value importance did not follow declarations"
 
@@ -792,13 +774,11 @@ let test_unset_inheritance buf =
       ~cascaded:(Some "unset")
   in
   if inherited_property.specified_value <> Option.get inherited then
-    fail
-      (Fmt.str "unset inherited property did not inherit: %S"
-         inherited_property.specified_value);
+    failf "unset inherited property did not inherit: %S"
+      inherited_property.specified_value;
   if non_inherited_property.specified_value <> initial then
-    fail
-      (Fmt.str "unset non-inherited property did not use initial: %S"
-         non_inherited_property.specified_value)
+    failf "unset non-inherited property did not use initial: %S"
+      non_inherited_property.specified_value
 
 (** CSS Cascade sections 4.2 and 6.1: after all higher-priority criteria tie,
     later source order determines the cascaded value. *)
@@ -822,9 +802,8 @@ let test_cascade_source_order buf =
   with
   | Some winner when winner.candidate_value = second -> ()
   | Some winner ->
-      fail
-        (Fmt.str "later source-order candidate lost: %S vs %S" second
-           winner.candidate_value)
+      failf "later source-order candidate lost: %S vs %S" second
+        winner.candidate_value
   | None -> fail "integrated cascade returned no winner"
 
 (** CSS Cascade section 7.3.5 as used by section 4.3: [revert-layer] falls back
@@ -844,9 +823,8 @@ let test_revert_layer_value buf =
       ]
   in
   if specified.specified_value <> fallback then
-    fail
-      (Fmt.str "revert-layer did not expose lower layer: %S"
-         specified.specified_value)
+    failf "revert-layer did not expose lower layer: %S"
+      specified.specified_value
 
 let test_platform_decl_name buf =
   let property, input = platform_declaration_vector buf 0 in
@@ -855,9 +833,8 @@ let test_platform_decl_name buf =
   | Some serialized ->
       let prefix = property ^ ":" in
       if not (starts_with ~prefix serialized) then
-        fail
-          (Fmt.str "accepted platform declaration changed property: %S -> %S"
-             input serialized)
+        failf "accepted platform declaration changed property: %S -> %S" input
+          serialized
 
 let test_invalid_platform_declaration_rejected buf =
   let input = invalid_platform_declaration_vector buf 0 in
@@ -886,11 +863,11 @@ let test_import_url_syntax buf =
   let ss = [ Css.Stylesheet.Import import ] in
   let once = minified_stylesheet ss in
   match parse_stylesheet once with
-  | None -> fail (Fmt.str "import/url syntax did not reparse: %S" once)
+  | None -> failf "import/url syntax did not reparse: %S" once
   | Some reparsed ->
       let twice = minified_stylesheet reparsed in
       if once <> twice then
-        fail (Fmt.str "import/url syntax changed: %S -> %S" once twice)
+        failf "import/url syntax changed: %S -> %S" once twice
 
 let test_namespace_prefix_separator buf =
   let prefix = pick [ "svg"; "math"; "html"; "foo" ] buf 0 in
@@ -905,7 +882,7 @@ let test_namespace_prefix_separator buf =
   in
   let input = Fmt.str "@namespace %s url(%s);" prefix url in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "valid prefixed namespace did not parse: %S" input)
+  | None -> failf "valid prefixed namespace did not parse: %S" input
   | Some ss -> (
       let output = minified_stylesheet ss in
       match parse_stylesheet output with
@@ -924,17 +901,14 @@ let test_namespace_prefix_separator buf =
         when output_prefix = prefix && u = url ->
           ()
       | Some reparsed ->
-          fail
-            (Fmt.str
-               "CSS Namespaces serialization changed namespace structure: %S \
-                -> %S -> %S"
-               input output
-               (String.concat " " (boundary_shapes reparsed)))
+          failf
+            "CSS Namespaces serialization changed namespace structure: %S -> \
+             %S -> %S"
+            input output
+            (String.concat " " (boundary_shapes reparsed))
       | None ->
-          fail
-            (Fmt.str
-               "CSS Namespaces serialization emitted unparsable CSS: %S -> %S"
-               input output))
+          failf "CSS Namespaces serialization emitted unparsable CSS: %S -> %S"
+            input output)
 
 let test_valid_atrule_descriptor buf =
   let input =
@@ -982,11 +956,10 @@ let test_valid_atrule_descriptor buf =
   in
   assert_strict_accepts_cleanly "valid spec at-rule vector" input;
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "valid spec at-rule vector did not parse: %S" input)
+  | None -> failf "valid spec at-rule vector did not parse: %S" input
   | Some ss ->
       let output = minified_stylesheet ss in
-      if output = "" then
-        fail (Fmt.str "valid at-rule serialized empty: %S" input)
+      if output = "" then failf "valid at-rule serialized empty: %S" input
 
 let test_invalid_atrule_descriptor buf =
   let input =
@@ -1034,30 +1007,23 @@ let test_atrule_inventory_valid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.positive buf 0 in
   match parse_stylesheet row.input with
   | None ->
-      fail
-        (Fmt.str "shared at-rule inventory valid row rejected: %s/%s %S"
-           row.feature row.branch row.input)
+      failf "shared at-rule inventory valid row rejected: %s/%s %S" row.feature
+        row.branch row.input
   | Some ss -> (
       let output = minified_stylesheet ss in
       if output <> row.expected then
-        fail
-          (Fmt.str
-             "shared at-rule inventory serialization changed: %s/%s %S -> %S"
-             row.feature row.branch row.input output);
+        failf "shared at-rule inventory serialization changed: %s/%s %S -> %S"
+          row.feature row.branch row.input output;
       match parse_stylesheet output with
       | None ->
-          fail
-            (Fmt.str
-               "shared at-rule inventory serialization did not reparse: %S"
-               output)
+          failf "shared at-rule inventory serialization did not reparse: %S"
+            output
       | Some reparsed ->
           let twice = minified_stylesheet reparsed in
           if twice <> output then
-            fail
-              (Fmt.str
-                 "shared at-rule inventory serialization not idempotent: %S -> \
-                  %S"
-                 output twice))
+            failf
+              "shared at-rule inventory serialization not idempotent: %S -> %S"
+              output twice)
 
 let test_atrule_inventory_invalid buf =
   let row = pick Cascade_spec_inventory.At_rule_grammar.negative buf 0 in
@@ -1081,7 +1047,7 @@ let test_font_face_descriptor_matrix buf =
       buf 0
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "font-face descriptor vector rejected: %S" input)
+  | None -> failf "font-face descriptor vector rejected: %S" input
   | Some ss ->
       if minified_stylesheet ss = "" then
         fail "font-face vector serialized empty"
@@ -1113,7 +1079,7 @@ let test_page_margin_descriptor_matrix buf =
       buf 0
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "page margin descriptor vector rejected: %S" input)
+  | None -> failf "page margin descriptor vector rejected: %S" input
   | Some ss ->
       if minified_stylesheet ss = "" then fail "page vector serialized empty"
 
@@ -1140,7 +1106,7 @@ let test_palette_descriptor_matrix buf =
       buf 0
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "font-palette-values vector rejected: %S" input)
+  | None -> failf "font-palette-values vector rejected: %S" input
   | Some ss ->
       if minified_stylesheet ss = "" then
         fail "font-palette-values vector serialized empty"
@@ -1168,7 +1134,7 @@ let test_view_transition_descriptor_matrix buf =
       buf 0
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "view-transition vector rejected: %S" input)
+  | None -> failf "view-transition vector rejected: %S" input
   | Some ss ->
       if minified_stylesheet ss = "" then
         fail "view-transition vector serialized empty"
@@ -1197,7 +1163,7 @@ let test_position_try_descriptor_matrix buf =
       buf 0
   in
   match parse_stylesheet input with
-  | None -> fail (Fmt.str "position-try vector rejected: %S" input)
+  | None -> failf "position-try vector rejected: %S" input
   | Some ss ->
       if minified_stylesheet ss = "" then
         fail "position-try vector serialized empty"
@@ -1252,8 +1218,8 @@ let test_recovery_keeps_rules buf =
   in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 0; 1 ] then
-    fail (Fmt.str "CSS Syntax recovery changed rule/declaration shape: %S" css);
-  if warnings = [] then fail (Fmt.str "recovery emitted no warning: %S" css)
+    failf "CSS Syntax recovery changed rule/declaration shape: %S" css;
+  if warnings = [] then failf "recovery emitted no warning: %S" css
 
 let test_recovery_invalid_rule_boundary buf =
   let invalid_rule =
@@ -1272,11 +1238,9 @@ let test_recovery_invalid_rule_boundary buf =
   in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1; 1 ] then
-    fail
-      (Fmt.str
-         "CSS Syntax invalid-rule recovery did not preserve sibling rules: %S"
-         css);
-  if warnings = [] then fail (Fmt.str "invalid rule emitted no warning: %S" css)
+    failf "CSS Syntax invalid-rule recovery did not preserve sibling rules: %S"
+      css;
+  if warnings = [] then failf "invalid rule emitted no warning: %S" css
 
 let test_recovery_bad_declaration buf =
   let bad_decl =
@@ -1291,12 +1255,9 @@ let test_recovery_bad_declaration buf =
   in
   let counts = recovered_declaration_counts stylesheet in
   if counts <> [ 1 ] then
-    fail
-      (Fmt.str
-         "CSS Syntax recovery dropped valid declaration after invalid one: %S"
-         css);
-  if warnings = [] then
-    fail (Fmt.str "bad declaration emitted no warning: %S" css)
+    failf "CSS Syntax recovery dropped valid declaration after invalid one: %S"
+      css;
+  if warnings = [] then failf "bad declaration emitted no warning: %S" css
 
 let test_random_stylesheet_contract buf =
   let input = css_like_stylesheet buf in
@@ -1304,26 +1265,21 @@ let test_random_stylesheet_contract buf =
   match Css.of_string ~strict:true input with
   | Ok strict_result ->
       if lenient.warnings <> [] then
-        fail
-          (Fmt.str "strict accepted fuzz input but lenient emitted warnings: %S"
-             input);
+        failf "strict accepted fuzz input but lenient emitted warnings: %S"
+          input;
       let strict_output =
         Css.to_string ~minify:true strict_result.Css.stylesheet
       in
       let lenient_output = Css.to_string ~minify:true lenient.stylesheet in
       if strict_output <> lenient_output then
-        fail
-          (Fmt.str
-             "strict/lenient serialization diverged for fuzz input: %S -> %S / \
-              %S"
-             input strict_output lenient_output)
+        failf
+          "strict/lenient serialization diverged for fuzz input: %S -> %S / %S"
+          input strict_output lenient_output
   | Error _ ->
       ignore (Css.to_string ~minify:true lenient.stylesheet : string);
       if lenient.warnings = [] then
-        fail
-          (Fmt.str
-             "strict rejected fuzz input but lenient recovered silently: %S"
-             input)
+        failf "strict rejected fuzz input but lenient recovered silently: %S"
+          input
 
 (* Count [!important] declarations across all top-level statements. *)
 let count_important sheet =
@@ -1345,17 +1301,14 @@ let test_important_roundtrip buf =
       let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Error err ->
-          fail
-            (Fmt.str "!important roundtrip: reparse failed: %S (%s)" serialized
-               (Cascade.Error.to_string err))
+          failf "!important roundtrip: reparse failed: %S (%s)" serialized
+            (Cascade.Error.to_string err)
       | Ok reparsed ->
           let after = count_important reparsed.Css.stylesheet in
           if before <> after then
-            fail
-              (Fmt.str
-                 "!important count drifted across roundtrip (%d -> %d): %S -> \
-                  %S"
-                 before after buf serialized))
+            failf
+              "!important count drifted across roundtrip (%d -> %d): %S -> %S"
+              before after buf serialized)
 
 (* Cascade source order: serializing a stylesheet then reparsing it must yield
    the same number of top-level statements in the same order (by minified
@@ -1379,12 +1332,11 @@ let test_source_order_preserved buf =
       | Ok reparsed ->
           let after = render_each reparsed.Css.stylesheet in
           if before <> after then
-            fail
-              (Fmt.str
-                 "cascade source order changed across roundtrip:\n\
-                 \  before: %s\n\
-                 \  after:  %s"
-                 (String.concat "|" before) (String.concat "|" after)))
+            failf
+              "cascade source order changed across roundtrip:\n\
+              \  before: %s\n\
+              \  after:  %s"
+              (String.concat "|" before) (String.concat "|" after))
 
 (* Comments must be dropped: cascade is an AST library, not a token preserver.
    Minified output of any input - clean or recovered - must never contain CSS
@@ -1401,7 +1353,7 @@ let test_no_comments_in_output buf =
       scan 0
     in
     if contains_comment_open then
-      fail (Fmt.str "%s output contains comment delimiter: %S" label output)
+      failf "%s output contains comment delimiter: %S" label output
   in
   (match Css.of_string ~strict:true buf with
   | Error _ -> ()
@@ -1426,12 +1378,11 @@ let test_lenient_output_strict_parseable buf =
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
-          fail
-            (Fmt.str
-               "lenient output is not strict-parseable: lenient cleaned %S to \
-                %S but strict rejected it (%s)"
-               buf serialized
-               (Cascade.Error.to_string err)))
+          failf
+            "lenient output is not strict-parseable: lenient cleaned %S to %S \
+             but strict rejected it (%s)"
+            buf serialized
+            (Cascade.Error.to_string err))
 
 (* Recovery is total: after lenient parse, the recovered AST is clean - so
    re-parsing its serialization in lenient mode must yield zero warnings.
@@ -1443,19 +1394,17 @@ let test_lenient_recovery_is_total buf =
       let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:false serialized with
       | Error err ->
-          fail
-            (Fmt.str
-               "lenient recovery is not total: recovered serialization failed \
-                to reparse: %S (%s)"
-               serialized
-               (Cascade.Error.to_string err))
+          failf
+            "lenient recovery is not total: recovered serialization failed to \
+             reparse: %S (%s)"
+            serialized
+            (Cascade.Error.to_string err)
       | Ok reparsed ->
           if reparsed.Css.warnings <> [] then
-            fail
-              (Fmt.str
-                 "lenient recovery is not total: recovered AST re-serialized \
-                  to CSS that still emits warnings: %S -> %S"
-                 buf serialized))
+            failf
+              "lenient recovery is not total: recovered AST re-serialized to \
+               CSS that still emits warnings: %S -> %S"
+              buf serialized)
 
 (* Strict output reparses strictly: if [Css.of_string ~strict:true] accepted the
    input, the serialized output must also be strict-accepted (no new warnings
@@ -1469,12 +1418,11 @@ let test_strict_output_reparses_strictly buf =
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
-          fail
-            (Fmt.str
-               "strict-accepted input serialized to strict-rejected output: %S \
-                -> %S (%s)"
-               buf serialized
-               (Cascade.Error.to_string err)))
+          failf
+            "strict-accepted input serialized to strict-rejected output: %S -> \
+             %S (%s)"
+            buf serialized
+            (Cascade.Error.to_string err))
 
 (* Optimize preserves strict-validity: if strict accepted the input, the
    optimized stylesheet must also be strict-accepted after serialization. *)
@@ -1487,10 +1435,8 @@ let test_optimize_preserves_strict_validity buf =
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
       | Error err ->
-          fail
-            (Fmt.str "optimize broke strict-validity: %S -> %S (%s)" buf
-               serialized
-               (Cascade.Error.to_string err)))
+          failf "optimize broke strict-validity: %S -> %S (%s)" buf serialized
+            (Cascade.Error.to_string err))
 
 (* Comments-anywhere robustness: per CSS Syntax 3 SS 4.3.2 comments are
    whitespace-equivalent and can appear between any two tokens. Insert a random
@@ -1516,10 +1462,9 @@ let test_comments_anywhere_robust buf =
   match Css.of_string ~strict:false mutated with
   | Ok _ -> ()
   | Error err ->
-      fail
-        (Fmt.str "lenient parse must accept comments anywhere; failed on %S: %s"
-           mutated
-           (Cascade.Error.to_string err))
+      failf "lenient parse must accept comments anywhere; failed on %S: %s"
+        mutated
+        (Cascade.Error.to_string err)
 
 (* Comments in raw bytes: the lower-level [read_stylesheet] (used through
    [Cursor.of_string]) must also not crash when the input contains comments at
@@ -1535,9 +1480,8 @@ let test_comments_random_no_crash buf =
     in
     try ignore (Css.of_string ~strict:false mutated : (_, _) result)
     with exn ->
-      fail
-        (Fmt.str "lenient parse raised on comment-inserted input %S: %s" mutated
-           (Printexc.to_string exn))
+      failf "lenient parse raised on comment-inserted input %S: %s" mutated
+        (Printexc.to_string exn)
 
 (* Minify monotonicity: minified output must never be longer than pretty output
    for the same stylesheet. A regression here means the minifier added bytes -
@@ -1550,11 +1494,10 @@ let test_minify_monotonicity buf =
       let m = minified_stylesheet ss in
       let p = pretty_stylesheet ss in
       if String.length m > String.length p then
-        fail
-          (Fmt.str
-             "minify is not monotonic: minified is longer than pretty (%d > \
-              %d): %S vs %S"
-             (String.length m) (String.length p) m p)
+        failf
+          "minify is not monotonic: minified is longer than pretty (%d > %d): \
+           %S vs %S"
+          (String.length m) (String.length p) m p
 
 (* Universal dual-mode invariant on raw bytes: (A) [of_string ~strict:false _]
    is total - never returns [Error] no matter what bytes you feed it. (B)
@@ -1565,36 +1508,31 @@ let test_dual_mode_invariant_raw buf =
     match Css.of_string ~strict:false buf with
     | Ok parsed -> parsed
     | Error err ->
-        fail
-          (Fmt.str
-             "lenient mode is not total: returned Error on raw input %S: %s" buf
-             (Cascade.Error.to_string err))
+        failf "lenient mode is not total: returned Error on raw input %S: %s"
+          buf
+          (Cascade.Error.to_string err)
   in
   match Css.of_string ~strict:true buf with
   | Ok strict_result ->
       if lenient.warnings <> [] then
-        fail
-          (Fmt.str
-             "dual-mode drift: strict accepted but lenient warned on raw input \
-              %S"
-             buf);
+        failf
+          "dual-mode drift: strict accepted but lenient warned on raw input %S"
+          buf;
       let strict_output =
         Css.to_string ~minify:true strict_result.Css.stylesheet
       in
       let lenient_output = Css.to_string ~minify:true lenient.stylesheet in
       if strict_output <> lenient_output then
-        fail
-          (Fmt.str
-             "dual-mode drift: strict/lenient outputs diverged on raw input \
-              %S: %S vs %S"
-             buf strict_output lenient_output)
+        failf
+          "dual-mode drift: strict/lenient outputs diverged on raw input %S: \
+           %S vs %S"
+          buf strict_output lenient_output
   | Error _ ->
       if lenient.warnings = [] then
-        fail
-          (Fmt.str
-             "dual-mode drift: strict rejected raw input %S but lenient \
-              emitted no warning"
-             buf)
+        failf
+          "dual-mode drift: strict rejected raw input %S but lenient emitted \
+           no warning"
+          buf
 
 let test_stylesheet_prelude_order_vectors buf =
   let input =
@@ -1614,13 +1552,11 @@ let test_stylesheet_prelude_order_vectors buf =
   in
   assert_strict_accepts_cleanly "valid stylesheet prelude order" input;
   match parse_stylesheet input with
-  | None ->
-      fail (Fmt.str "valid stylesheet prelude order did not parse: %S" input)
+  | None -> failf "valid stylesheet prelude order did not parse: %S" input
   | Some ss ->
       let shapes = boundary_shapes ss in
       if shapes = [] then
-        fail
-          (Fmt.str "valid stylesheet prelude produced no statements: %S" input)
+        failf "valid stylesheet prelude produced no statements: %S" input
 
 let test_invalid_prelude_order buf =
   let input =

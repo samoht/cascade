@@ -13,23 +13,21 @@ let recovered_css label css =
   match Css.of_string ~strict:false css with
   | Ok parsed -> parsed
   | Error err ->
-      fail
-        (Fmt.str "%s did not recover leniently: %s" label
-           (Cascade.Error.to_string err))
+      failf "%s did not recover leniently: %s" label
+        (Cascade.Error.to_string err)
 
 let assert_invalid_container_contract label input =
   let css = "@container " ^ input ^ "{.x{color:red}}" in
   match Css.of_string ~strict:true css with
   | Ok parsed ->
-      fail
-        (Fmt.str "%s parsed strictly as invalid container query: %S -> %S" label
-           input
-           (Css.to_string ~minify:true parsed.stylesheet))
+      failf "%s parsed strictly as invalid container query: %S -> %S" label
+        input
+        (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
       let { Css.warnings; stylesheet } = recovered_css label css in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
-        fail (Fmt.str "%s recovered without a lenient warning: %S" label input)
+        failf "%s recovered without a lenient warning: %S" label input
 
 let raw buf i =
   (pick Cascade_spec_inventory.Query_grammar.container_positive buf i).input
@@ -80,9 +78,8 @@ let test_named_prefix_stable buf =
   let serialized = Css.Container.to_string query in
   let expected = name ^ " " ^ Css.Container.to_string inner in
   if serialized <> expected then
-    fail
-      (Fmt.str "named container query serialization changed: %S <> %S" expected
-         serialized)
+    failf "named container query serialization changed: %S <> %S" expected
+      serialized
 
 let test_container_context_shape buf =
   let open Css.Values in
@@ -111,7 +108,7 @@ let test_spec_container_vectors buf =
   let expected = row.expected in
   let actual = to_string query in
   if actual <> expected then
-    fail (Fmt.str "container spec vector changed: %S <> %S" expected actual)
+    failf "container spec vector changed: %S <> %S" expected actual
 
 let test_invalid_container_vectors buf =
   let valid =

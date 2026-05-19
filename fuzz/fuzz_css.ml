@@ -155,28 +155,25 @@ let recovered_css label input =
   match Css.of_string ~strict:false input with
   | Ok parsed -> parsed
   | Error err ->
-      fail
-        (Fmt.str "%s did not recover leniently: %s" label
-           (Cascade.Error.to_string err))
+      failf "%s did not recover leniently: %s" label
+        (Cascade.Error.to_string err)
 
 let assert_strict_lenient_contract label input =
   let lenient = recovered_css label input in
   match Css.of_string ~strict:true input with
   | Ok strict_result ->
       if lenient.warnings <> [] then
-        fail (Fmt.str "%s: strict accepted but lenient warned: %S" label input);
+        failf "%s: strict accepted but lenient warned: %S" label input;
       let strict_output = minified strict_result.Css.stylesheet in
       let lenient_output = minified lenient.stylesheet in
       if strict_output <> lenient_output then
-        fail
-          (Fmt.str "%s: strict/lenient serialization diverged: %S -> %S / %S"
-             label input strict_output lenient_output)
+        failf "%s: strict/lenient serialization diverged: %S -> %S / %S" label
+          input strict_output lenient_output
   | Error _ ->
       ignore (minified lenient.stylesheet : string);
       if lenient.warnings = [] then
-        fail
-          (Fmt.str "%s: strict rejected but lenient recovered silently: %S"
-             label input)
+        failf "%s: strict rejected but lenient recovered silently: %S" label
+          input
 
 let test_parse_crash_safety buf =
   ignore (Css.of_string ~strict:false (cssish buf));
@@ -201,14 +198,12 @@ let test_generated_public_roundtrip buf =
   let once = minified sheet in
   match Css.of_string ~strict:false once with
   | Error err ->
-      fail
-        (Fmt.str "public generated stylesheet did not parse: %s"
-           (Cascade.Error.to_string err))
+      failf "public generated stylesheet did not parse: %s"
+        (Cascade.Error.to_string err)
   | Ok parsed ->
       let twice = minified parsed.stylesheet in
       if once <> twice then
-        fail
-          (Fmt.str "public generated stylesheet changed: %S -> %S" once twice)
+        failf "public generated stylesheet changed: %S -> %S" once twice
 
 let test_parse_partial_stringify_reparse buf =
   let parsed = recovered_css "partial stringify reparse" (css_like_text buf) in
@@ -217,10 +212,8 @@ let test_parse_partial_stringify_reparse buf =
     match Css.of_string ~strict:false serialized with
     | Ok _ -> ()
     | Error err ->
-        fail
-          (Fmt.str
-             "Css.of_string ~strict:false output did not reparse strictly: %s"
-             (Cascade.Error.to_string err))
+        failf "Css.of_string ~strict:false output did not reparse strictly: %s"
+          (Cascade.Error.to_string err)
 
 let test_map_preserves_rules buf =
   let sheet = generated_stylesheet buf in
@@ -234,7 +227,7 @@ let test_map_preserves_rules buf =
   in
   let after = List.length (Css.rule_statements mapped) in
   if before <> after then
-    fail (Fmt.str "Css.map changed rule count: %d -> %d" before after)
+    failf "Css.map changed rule count: %d -> %d" before after
 
 let test_public_sort_idempotent buf =
   let cmp (sel1, _) (sel2, _) =
@@ -249,7 +242,7 @@ let test_public_sort_idempotent buf =
         Css.sort cmp (Css.statements parsed.stylesheet) |> Css.v |> minified
   in
   if once <> twice then
-    fail (Fmt.str "Css.sort changed after reparse: %S -> %S" once twice)
+    failf "Css.sort changed after reparse: %S -> %S" once twice
 
 let test_public_optimize_idempotent buf =
   let sheet = generated_stylesheet buf in
@@ -259,9 +252,8 @@ let test_public_optimize_idempotent buf =
   | Ok parsed ->
       let twice = Css.to_string ~minify:true parsed.stylesheet in
       if once <> twice then
-        fail
-          (Fmt.str "public optimize output changed after reparse: %S -> %S" once
-             twice)
+        failf "public optimize output changed after reparse: %S -> %S" once
+          twice
 
 let test_public_fold_count buf =
   let sheet = generated_api_stylesheet buf in
@@ -270,8 +262,7 @@ let test_public_fold_count buf =
       (fun n stmt -> match Css.as_rule stmt with Some _ -> n + 1 | None -> n)
       0 sheet
   in
-  if count <> 6 then
-    fail (Fmt.str "Css.fold visited %d rules instead of 6" count)
+  if count <> 6 then failf "Css.fold visited %d rules instead of 6" count
 
 let test_custom_props_scope buf =
   let sheet = generated_api_stylesheet buf in
@@ -279,18 +270,16 @@ let test_custom_props_scope buf =
   let theme_props = Css.custom_props ~layer:"theme" sheet in
   let util_props = Css.custom_props ~layer:"utilities" sheet in
   if List.length all_props < 3 then
-    fail
-      (Fmt.str "Css.custom_props lost properties: %S"
-         (String.concat "," all_props));
+    failf "Css.custom_props lost properties: %S" (String.concat "," all_props);
   List.iter
     (fun name ->
       if List.mem name util_props then
-        fail (Fmt.str "theme property leaked into utilities: %S" name))
+        failf "theme property leaked into utilities: %S" name)
     theme_props;
   List.iter
     (fun name ->
       if List.mem name theme_props then
-        fail (Fmt.str "utility property leaked into theme: %S" name))
+        failf "utility property leaked into theme: %S" name)
     util_props
 
 let test_public_theme_guard buf =
@@ -316,9 +305,9 @@ let test_public_theme_guard buf =
   in
   if
     String.contains hidden '#' && Astring.String.is_infix ~affix:"ff0000" hidden
-  then fail (Fmt.str "theme guard emitted without theme: %S" hidden);
+  then failf "theme guard emitted without theme: %S" hidden;
   if not (Astring.String.is_infix ~affix:"color:" shown) then
-    fail (Fmt.str "theme guard omitted with theme: %S" shown)
+    failf "theme guard omitted with theme: %S" shown
 
 let test_public_property_shape buf =
   let name = "--fuzz-" ^ string_of_int (byte_at buf 0) in
@@ -332,7 +321,7 @@ let test_public_property_shape buf =
       match Css.as_property stmt with
       | Some (Css.Property_info info) ->
           if info.name <> name then
-            fail (Fmt.str "@property name changed: %S -> %S" name info.name)
+            failf "@property name changed: %S -> %S" name info.name
       | None -> fail "Css.property did not create @property statement")
   | _ -> fail "Css.property did not create one statement"
 
@@ -371,9 +360,8 @@ let test_css2_legacy_minified_vectors buf =
       match Css.of_string ~strict:false minified with
       | Ok _ -> ()
       | Error err ->
-          fail
-            (Fmt.str "CSS2 legacy minified output rejected: %S (%s)" minified
-               (Cascade.Error.to_string err)))
+          failf "CSS2 legacy minified output rejected: %S (%s)" minified
+            (Cascade.Error.to_string err))
 
 let test_css2_legacy_invalid_vectors buf =
   let input =

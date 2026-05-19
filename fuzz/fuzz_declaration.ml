@@ -29,6 +29,8 @@ let declaration_text buf i =
       "width:calc(100% - 2rem)";
       "font:italic 700 1rem/1.5 \"Brand\", sans-serif";
       "background-image:url(../img/" ^ ident buf (i + 1) ^ ".svg)";
+      "--" ^ ident buf (i + 1) ^ ":";
+      "--" ^ ident buf (i + 1) ^ ": ";
       "--" ^ ident buf (i + 1) ^ ":[a,b] (c) { d:e }";
       "color:red!important";
     ]
@@ -69,8 +71,7 @@ let test_serialization_idempotent buf =
   let reparse_or_fail step s =
     match parse_declaration s with
     | Some d -> d
-    | None ->
-        fail (Fmt.str "serialized declaration did not reparse at %s: %S" step s)
+    | None -> failf "serialized declaration did not reparse at %s: %S" step s
   in
   match parse_declaration (declaration_text buf 0) with
   | None -> ()
@@ -79,11 +80,10 @@ let test_serialization_idempotent buf =
       let twice = serialize (reparse_or_fail "first reparse" once) in
       let thrice = serialize (reparse_or_fail "second reparse" twice) in
       if twice <> thrice then
-        fail
-          (Fmt.str
-             "declaration serialization drifted past canonicalization: %S -> \
-              %S -> %S"
-             once twice thrice)
+        failf
+          "declaration serialization drifted past canonicalization: %S -> %S \
+           -> %S"
+          once twice thrice
 
 let test_property_name_stable buf =
   match parse_declaration (declaration_text buf 0) with
@@ -96,9 +96,8 @@ let test_property_name_stable buf =
       | Some reparsed ->
           let reparsed_property = Css.Declaration.property_name reparsed in
           if property <> reparsed_property then
-            fail
-              (Fmt.str "declaration property changed: %S -> %S" property
-                 reparsed_property))
+            failf "declaration property changed: %S -> %S" property
+              reparsed_property)
 
 let test_important_flag_stable buf =
   match parse_declaration (declaration_text buf 0) with
@@ -121,7 +120,7 @@ let test_custom_property_serialization_shape buf =
   let decl = Css.Declaration.custom_property name value in
   let serialized = serialize decl in
   if not (starts_with ~prefix:(name ^ ":") serialized) then
-    fail (Fmt.str "custom property lost its name: %S" serialized);
+    failf "custom property lost its name: %S" serialized;
   match parse_declaration serialized with
   | None -> ()
   | Some reparsed ->
@@ -142,9 +141,8 @@ let test_block_declarations_serialize_individually buf =
         let serialized = serialize decl in
         match parse_declaration serialized with
         | None ->
-            fail
-              (Fmt.str "block declaration serialization did not reparse: %S"
-                 serialized)
+            failf "block declaration serialization did not reparse: %S"
+              serialized
         | Some _ -> ())
       declarations
   with Cursor.Parse_error _ -> ()
@@ -165,7 +163,7 @@ let test_url_decl_local buf =
   | Some decl ->
       let serialized = serialize decl in
       if not (starts_with ~prefix:"background-image:url(" serialized) then
-        fail (Fmt.str "url declaration changed shape: %S" serialized);
+        failf "url declaration changed shape: %S" serialized;
       let ctx =
         {
           Css.Context.empty with
@@ -183,7 +181,7 @@ let test_custom_cycle_context buf =
   let decl = Css.Declaration.custom_property name specified in
   let serialized = serialize decl in
   if not (starts_with ~prefix:(name ^ ":var(") serialized) then
-    fail (Fmt.str "custom property var() shape changed: %S" serialized);
+    failf "custom property var() shape changed: %S" serialized;
   let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
   if Css.Context.custom_property name ctx <> Some decl then
     fail "custom property context lost var() value"
@@ -256,9 +254,7 @@ let test_feature_decl_table buf =
   | Some decl ->
       let serialized = serialize decl in
       if not (starts_with ~prefix:(property ^ ":") serialized) then
-        fail
-          (Fmt.str "feature declaration changed property: %S -> %S" input
-             serialized)
+        failf "feature declaration changed property: %S -> %S" input serialized
 
 let test_invalid_features buf =
   let input = invalid_feature_decl buf in
@@ -277,9 +273,7 @@ let test_css_wide_keyword_vectors buf =
   | Some decl ->
       let serialized = serialize decl in
       if serialized <> input then
-        fail
-          (Fmt.str "CSS-wide keyword declaration changed: %S -> %S" input
-             serialized)
+        failf "CSS-wide keyword declaration changed: %S -> %S" input serialized
 
 let test_invalid_css_wide buf =
   let keyword =
@@ -304,13 +298,12 @@ let test_shared_css_wide_inventory buf =
     pick Cascade_spec_inventory.Declaration_grammar.css_wide_positive buf 0
   in
   match parse_declaration row.input with
-  | None -> fail (Fmt.str "shared CSS-wide declaration rejected: %S" row.input)
+  | None -> failf "shared CSS-wide declaration rejected: %S" row.input
   | Some decl ->
       let serialized = serialize decl in
       if serialized <> row.expected then
-        fail
-          (Fmt.str "shared CSS-wide declaration changed: %S -> %S" row.input
-             serialized)
+        failf "shared CSS-wide declaration changed: %S -> %S" row.input
+          serialized
 
 let test_css_wide_inventory buf =
   let row =
@@ -324,15 +317,13 @@ let test_shared_alias_inventory buf =
     pick Cascade_spec_inventory.Declaration_grammar.alias_positive buf 0
   in
   match parse_declaration row.input with
-  | None -> fail (Fmt.str "shared alias declaration rejected: %S" row.input)
+  | None -> failf "shared alias declaration rejected: %S" row.input
   | Some decl ->
       let serialized = serialize decl in
       if starts_with ~prefix:"page-break-" serialized then
-        fail (Fmt.str "legacy alias serialized with old name: %S" serialized);
+        failf "legacy alias serialized with old name: %S" serialized;
       if serialized <> row.expected then
-        fail
-          (Fmt.str "shared alias declaration changed: %S -> %S" row.input
-             serialized)
+        failf "shared alias declaration changed: %S -> %S" row.input serialized
 
 let test_shared_invalid_alias_inventory buf =
   let row =
@@ -356,20 +347,29 @@ let test_custom_tokens buf =
   in
   let input = name ^ ":" ^ value in
   match parse_declaration input with
-  | None ->
-      fail (Fmt.str "custom property token stream did not parse: %S" input)
+  | None -> failf "custom property token stream did not parse: %S" input
   | Some decl -> (
       if Css.Declaration.property_name decl <> name then
-        fail (Fmt.str "custom property name changed: %S" input);
+        failf "custom property name changed: %S" input;
       let serialized = serialize decl in
       match parse_declaration serialized with
       | None ->
-          fail
-            (Fmt.str "custom property serialization did not reparse: %S"
-               serialized)
+          failf "custom property serialization did not reparse: %S" serialized
       | Some reparsed ->
           if Css.Declaration.property_name reparsed <> name then
             fail "custom property name changed after serialization")
+
+let test_custom_property_empty_value_edges _buf =
+  let assert_serializes label input expected =
+    match parse_declaration input with
+    | None -> failf "%s custom property rejected: %S" label input
+    | Some decl ->
+        let serialized = serialize decl in
+        if serialized <> expected then
+          failf "%s custom property changed: %S -> %S" label input serialized
+  in
+  assert_serializes "browser-compatible empty value" "--x:" "--x:";
+  assert_serializes "spec whitespace-token value" "--x: " "--x: "
 
 let suite =
   ( "declaration",
@@ -407,4 +407,6 @@ let suite =
         test_shared_invalid_alias_inventory;
       test_case "custom property token stream vectors" [ bytes ]
         test_custom_tokens;
+      test_case "custom property empty value edges" [ bytes ]
+        test_custom_property_empty_value_edges;
     ] )

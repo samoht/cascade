@@ -19,7 +19,7 @@ let read_exact ic len =
 let consume_separator ?(allow_eof = false) ic =
   match input_char ic with
   | '\n' -> ()
-  | c -> Fmt.kstr failwith "unexpected trace separator: %C" c
+  | c -> Fmt.failwith "unexpected trace separator: %C" c
   | exception End_of_file when allow_eof -> ()
   | exception End_of_file -> failwith "unexpected EOF in trace record"
 

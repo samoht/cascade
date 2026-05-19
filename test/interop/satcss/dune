@@ -5,7 +5,9 @@
  (deps
   (source_tree traces))
  (action
-  (run %{exe:../test.exe} %{project_root}/test/interop/satcss)))
+  (run
+   %{exe:../../interop_runner/test.exe}
+   %{project_root}/test/interop/satcss)))
 
 ; Refresh traces/cases.trace from the SatCSS corpus on demand.
 
