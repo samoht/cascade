@@ -7362,10 +7362,15 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val optimize : ?flatten_nesting:bool -> t -> t
-(** [optimize ?flatten_nesting stylesheet] applies CSS optimizations to the
-    stylesheet, including merging consecutive identical selectors and combining
-    rules with identical properties. Preserves CSS cascade semantics.
+val optimize :
+  ?world:Optimize.world -> ?flatten_nesting:bool -> t -> t
+(** [optimize ?world ?flatten_nesting stylesheet] applies CSS optimizations to
+    the stylesheet, including merging consecutive identical selectors and
+    combining rules with identical properties. Preserves CSS cascade semantics.
+
+    [world] (default {!Optimize.Open_world}) gates partial-coverage shorthand
+    synthesis. Pass {!Optimize.Closed_world} when the caller controls the
+    whole author stylesheet graph. See {!Optimize.world} for the details.
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.

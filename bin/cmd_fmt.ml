@@ -1,8 +1,8 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~flatten_nesting ~inline_imports_flag
-    ~inline_vars_flag ~keep_vars =
+let process_css ~input_path ~minify ~closed_world ~flatten_nesting
+    ~inline_imports_flag ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -21,7 +21,12 @@ let process_css ~input_path ~minify ~flatten_nesting ~inline_imports_flag
       else stylesheet
     in
     let stylesheet =
-      if minify then Css.optimize ~flatten_nesting stylesheet else stylesheet
+      if minify then
+        let world : Cascade.Optimize.world =
+          if closed_world then Closed_world else Open_world
+        in
+        Css.optimize ~world ~flatten_nesting stylesheet
+      else stylesheet
     in
     let output = Css.to_string ~minify ~mode:Css.Variables stylesheet in
     Cli_io.print_output output
@@ -45,6 +50,19 @@ let minify_arg =
      selector grouping, empty-rule removal)."
   in
   Arg.(value & flag & info [ "m"; "minify" ] ~doc)
+
+let closed_world_arg =
+  let doc =
+    "Closed-world: assert this stylesheet is the whole relevant author CSS \
+     graph (no earlier $(b,<link>), later $(b,<style>), bundler \
+     concatenation, layer statement outside the file, or caller-side \
+     composition). Enables stronger rewrites such as synthesizing a partial \
+     $(b,background) / $(b,border) shorthand whose omitted longhand resets \
+     are proved safe because no prior author write can be shadowed. Default \
+     is open-world (only semantics-preserving rewrites under arbitrary \
+     surrounding CSS)."
+  in
+  Arg.(value & flag & info [ "closed-world" ] ~doc)
 
 let flatten_nesting_arg =
   let doc =
@@ -86,6 +104,7 @@ let term =
       (fun
         input
         minify
+        closed_world
         flatten_nesting
         inline_imports_flag
         inline_vars_flag
@@ -101,10 +120,12 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
-        process_css ~input_path:input ~minify ~flatten_nesting
+        if closed_world && not minify then
+          Fmt.epr "Warning: --closed-world has no effect without --minify@.";
+        process_css ~input_path:input ~minify ~closed_world ~flatten_nesting
           ~inline_imports_flag ~inline_vars_flag ~keep_vars)
-    $ input_arg $ minify_arg $ flatten_nesting_arg $ inline_imports_arg
-    $ inline_vars_arg $ keep_vars_arg)
+    $ input_arg $ minify_arg $ closed_world_arg $ flatten_nesting_arg
+    $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
 
 let man =
   [
