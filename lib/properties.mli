@@ -26,12 +26,12 @@ val pp_custom_property_value : custom_property_value Pp.t
 val read_custom_property_value :
   ?font_family:bool -> Cursor.t -> custom_property_value
 (** [read_custom_property_value t] returns the remaining component values as a
-    raw token stream. Typed promotion is deferred to the [@property]
-    registry pass. *)
+    raw token stream. Typed promotion is deferred to the [@property] registry
+    pass. *)
 
 val try_read_custom_color : custom_value -> custom_property_value option
-(** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning
-    a typed payload when the stream matches. *)
+(** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning a
+    typed payload when the stream matches. *)
 
 val try_read_custom_length : custom_value -> custom_property_value option
 (** [try_read_custom_length tokens] parses [tokens] as a [<length>]. *)

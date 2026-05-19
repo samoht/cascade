@@ -1381,9 +1381,9 @@ let empty_bg_shorthand : Properties.background_shorthand =
 (* Default open-world policy: the synthesized [background] shorthand resets
    every absent longhand to its initial, which would shadow a prior cascade
    write the optimizer cannot see (earlier <link>, earlier <style>, bundler
-   concatenation, layer outside the file). Cascade composes only when the
-   local run is reset-closed -- every reset field has a declaration in the
-   run, so the shorthand cannot disturb prior writes. *)
+   concatenation, layer outside the file). Cascade composes only when the local
+   run is reset-closed -- every reset field has a declaration in the run, so the
+   shorthand cannot disturb prior writes. *)
 let bg_longhand_property_name :
     Properties.background_shorthand -> string -> bool =
  fun s name ->
@@ -1425,8 +1425,8 @@ let try_compose_background indexed_decls =
           List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
         in
         (* [`Fragment] requires the run to cover every reset field; in
-           [`Stylesheet] the caller asserts no prior author CSS exists
-           that the shorthand could shadow. *)
+           [`Stylesheet] the caller asserts no prior author CSS exists that the
+           shorthand could shadow. *)
         let permit =
           match !current_scope with
           | `Stylesheet -> true
@@ -1931,6 +1931,7 @@ let deduplicate_declarations_with ?(merge_box = true) props =
 let deduplicate_declarations ?scope props =
   let run () = deduplicate_declarations_with props in
   match scope with Some s -> with_scope s run | None -> run ()
+
 let sort_commuting_declarations decls = decls
 
 (** {1 Rule Optimization} *)
@@ -3786,11 +3787,11 @@ let drop_unknown_at_rules (stylesheet : t) : t =
   List.filter_map statement stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
-   declaration registers [name] with a typed CSS syntax, lifting later
-   [--name: ...] uses out of the unregistered opaque-token-stream rule.
-   Apply registrations in source order so a [@property] only affects uses
-   that follow it; later registrations of the same name overwrite, matching
-   how the browser registry resolves duplicate declarations. *)
+   declaration registers [name] with a typed CSS syntax, lifting later [--name:
+   ...] uses out of the unregistered opaque-token-stream rule. Apply
+   registrations in source order so a [@property] only affects uses that follow
+   it; later registrations of the same name overwrite, matching how the browser
+   registry resolves duplicate declarations. *)
 let promote_registered_custom_properties (stmts : statement list) :
     statement list =
   let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
@@ -3859,8 +3860,8 @@ let stylesheet ?scope ?(flatten_nesting = false) (stylesheet : t) : t =
       if flatten_nesting then flatten_block stylesheet else stylesheet
     in
     (* [drop_invalid] and [drop_unknown_at_rules] run before the main
-       optimisation passes so the empty rules they leave behind get picked up
-       by [drop_empty_rules]. *)
+       optimisation passes so the empty rules they leave behind get picked up by
+       [drop_empty_rules]. *)
     stylesheet |> promote_registered_custom_properties |> drop_invalid
     |> drop_unknown_at_rules |> statements_top_level
   in

@@ -1985,18 +1985,16 @@ let read_custom_property_declaration t : declaration =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   (* CSS Custom Properties for Cascading Variables 1 sec. 2.1: the
      [<declaration-value>] production matches "any sequence of one or more
-     tokens". The whitespace between [:] and the value IS the value when
-     it's the only thing there ([--foo: ;] declares the property with a
-     single whitespace token); don't skip it before [consume_until_semicolon]
-     or the value's token count becomes input-dependent. *)
+     tokens". The whitespace between [:] and the value IS the value when it's
+     the only thing there ([--foo: ;] declares the property with a single
+     whitespace token); don't skip it before [consume_until_semicolon] or the
+     value's token count becomes input-dependent. *)
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
-  let raw_is_whitespace_only =
-    raw_value <> "" && String.trim raw_value = ""
-  in
+  let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_custom_important raw_value in
   let value_str =
-    (* Keep a single space when the raw declaration value was whitespace-
-       only - that one space is the spec-required token sequence. *)
+    (* Keep a single space when the raw declaration value was whitespace- only -
+       that one space is the spec-required token sequence. *)
     if value_str = "" && raw_is_whitespace_only then " " else value_str
   in
   (* custom_property may raise Failure for invalid names like "--" *)

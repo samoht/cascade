@@ -1197,11 +1197,11 @@ let ordered_linear_terms terms =
     terms;
   (* CSS Values 4 sec. 10.10: a calc() expression's resulting type is the union
      of its argument types. Dropping a zero-percentage term from [calc(100px +
-     0%)] would narrow [<length-percentage>] to [<length>] and break
-     transitions / animations interpolating against another [<length-
-     percentage>], so [0%] is kept as a type sentinel. Other zero-valued terms
-     (e.g. [0px] when another [px] term carries the value) are dropped because
-     their unit is already represented in the result. *)
+     0%)] would narrow [<length-percentage>] to [<length>] and break transitions
+     / animations interpolating against another [<length- percentage>], so [0%]
+     is kept as a type sentinel. Other zero-valued terms (e.g. [0px] when
+     another [px] term carries the value) are dropped because their unit is
+     already represented in the result. *)
   let keep_zero_term term =
     length_unit_is_pct term.unit
     && Hashtbl.fold
@@ -1276,8 +1276,8 @@ let linear_length_calc calc =
 let lp_is_zero (v : length_percentage) =
   match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
 
-(* See [length_zero_is_length_only]: a zero percentage in a calc is a
-   type sentinel for [<length-percentage>] and must survive minification. *)
+(* See [length_zero_is_length_only]: a zero percentage in a calc is a type
+   sentinel for [<length-percentage>] and must survive minification. *)
 let lp_zero_is_length_only : length_percentage -> bool = function
   | Pct _ -> false
   | other -> lp_is_zero other

@@ -267,8 +267,8 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
 (** {1 Rendering} *)
 
 val to_string : ?minify:bool -> ?indent:int -> t -> string
-(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS.
-    Pure formatter - no optimisation, no theme resolution. *)
+(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
+    formatter - no optimisation, no theme resolution. *)
 
 val pp : ?minify:bool -> ?indent:int -> t -> string
 (** [pp] is {!to_string}. *)

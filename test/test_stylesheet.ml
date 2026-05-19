@@ -5,8 +5,8 @@ module Selector = Css.Selector
 open Css.Stylesheet
 open Css_test_helpers
 
-(* Test helper: compose optimize + minified to_string the way
-   [to_string ~minify:true] used to behave implicitly. *)
+(* Test helper: compose optimize + minified to_string the way [to_string
+   ~minify:true] used to behave implicitly. *)
 let minify s = s |> Css.optimize |> Css.to_string ~minify:true
 
 let statement_of_rule (r : rule) =
@@ -919,8 +919,7 @@ let strict_accept name css =
         0 (List.length warnings);
       Alcotest.(check string)
         ("strict/lenient serialization agree for " ^ name)
-        strict_output
-        (minify stylesheet)
+        strict_output (minify stylesheet)
   | Error err ->
       Alcotest.failf "strict parser rejected valid %s: %s" name
         (string_of_strict_error err)
@@ -2976,9 +2975,7 @@ let c61_keeps_winner () =
   let winning_color css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        let printed =
-          minify parsed.stylesheet |> String.trim
-        in
+        let printed = minify parsed.stylesheet |> String.trim in
         (* Last occurrence of "color:" in the optimized output is the cascaded
            winner under section 6.1's "later wins" rule for tied candidates. *)
         last_color_value printed 0 None
@@ -5910,8 +5907,7 @@ let custom_props1_fallback_resolution_mode () =
     parse css
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
          ~theme_defaults:no_resolve
-    |> Css.to_string ~minify:true
-    |> String.trim
+    |> Css.to_string ~minify:true |> String.trim
   in
   Alcotest.(check string)
     "var(--undef, red) remains a runtime fallback" ".x{color:var(--undef,red)}"
@@ -5946,8 +5942,7 @@ let custom_props1_theme_protects_var () =
   let inlined css =
     parse css
     |> Css.resolve_theme ~theme ~theme_defaults:no_resolve
-    |> Css.to_string ~minify:true
-    |> String.trim
+    |> Css.to_string ~minify:true |> String.trim
   in
   Alcotest.(check bool)
     "var(--brand, red) keeps reference when --brand is in theme" true
@@ -5970,8 +5965,7 @@ let theme_set_not_undefined () =
   let render ?(resolve = no_resolve) css =
     parse css
     |> Css.resolve_theme ~theme ~theme_defaults:resolve
-    |> Css.to_string ~minify:true
-    |> String.trim
+    |> Css.to_string ~minify:true |> String.trim
   in
   Alcotest.(check string)
     "non-theme var without resolver answer is preserved"
@@ -6661,8 +6655,7 @@ let additional_tests =
               "warning surfaced" true
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
-              "recovered output" ".a{color:#00f}"
-              (minify parsed.stylesheet)
+              "recovered output" ".a{color:#00f}" (minify parsed.stylesheet)
         | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"
               (Error.to_string e) );
