@@ -4369,6 +4369,7 @@ type 'a property =
   | Webkit_appearance : webkit_appearance property
   | Webkit_transform : transform list property
   | Webkit_transition : transition list property
+  | Webkit_animation : animation list property
   | Webkit_filter : filter property
   | Moz_appearance : appearance property
   | Ms_filter : filter property

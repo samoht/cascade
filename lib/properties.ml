@@ -6336,6 +6336,7 @@ let pp_property : type a. a property Pp.t =
   | Caret_color -> Pp.string ctx "caret-color"
   | Webkit_transform -> Pp.string ctx "-webkit-transform"
   | Webkit_transition -> Pp.string ctx "-webkit-transition"
+  | Webkit_animation -> Pp.string ctx "-webkit-animation"
   | Webkit_filter -> Pp.string ctx "-webkit-filter"
   | Moz_appearance -> Pp.string ctx "-moz-appearance"
   | Ms_filter -> Pp.string ctx "-ms-filter"
@@ -6941,8 +6942,13 @@ let pp_background_shorthand : background_shorthand Pp.t =
   let first = ref true in
   let maybe_space () = if !first then first := false else Pp.token_sp ctx () in
 
+  (* CSS Backgrounds 3 sec. 3.10: drop default <bg-size> Auto under minify so
+     the slot pair (position/size) collapses. *)
+  let size : background_size option =
+    match bg.size with Some Auto when Pp.minified ctx -> None | other -> other
+  in
   let position : position_value option =
-    if Pp.minified ctx && bg.size = None then
+    if Pp.minified ctx && size = None then
       match bg.position with
       | Some pos when position_is_default_origin pos -> None
       | other -> other
@@ -6989,7 +6995,7 @@ let pp_background_shorthand : background_shorthand Pp.t =
   (* Add all properties in order *)
   pp_bg_prop maybe_space pp_background_image ctx image;
   pp_bg_prop maybe_space pp_background_position_value ctx position;
-  pp_bg_size_with_position maybe_space bg ctx;
+  pp_bg_size_with_position maybe_space { bg with position; size } ctx;
   pp_bg_prop maybe_space pp_background_repeat ctx repeat;
   pp_bg_prop maybe_space pp_background_attachment ctx attachment;
   pp_bg_prop maybe_space pp_background_box ctx origin;
@@ -17178,6 +17184,7 @@ let read_any_property t =
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
   | "-webkit-transition" -> Prop Webkit_transition
+  | "-webkit-animation" -> Prop Webkit_animation
   | "-webkit-filter" -> Prop Webkit_filter
   | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
@@ -18986,6 +18993,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_size_adjust -> pp pp_text_size_adjust
   | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
   | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Webkit_animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
   | Webkit_filter -> pp pp_filter
   | Moz_appearance -> pp pp_appearance
   | Moz_orient -> pp pp_moz_orient
@@ -19150,6 +19158,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Transform -> Some Transform
   | Webkit_transform -> Some Transform
   | Animation -> Some (Animation : animation list property_value_kind)
+  | Webkit_animation -> Some (Animation : animation list property_value_kind)
   | Transition -> Some (Transition : transition list property_value_kind)
   | Webkit_transition -> Some (Transition : transition list property_value_kind)
   | O_transition -> Some (Transition : transition list property_value_kind)
