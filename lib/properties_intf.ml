@@ -4648,3 +4648,4 @@ type _ property_value_kind =
   | Background_image : background_image property_value_kind
   | Background_images : background_image list property_value_kind
   | Font_src : Font_face.src property_value_kind
+  | Font_family : font_family property_value_kind

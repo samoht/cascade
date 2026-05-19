@@ -18416,19 +18416,19 @@ let read_custom_value_as kind read components =
   | exception Cursor.Parse_error _ -> None
 
 (* CSS Custom Properties for Cascading Variables 1 sec. 2: an unregistered
-   custom property is an opaque token stream that [var()] later
-   substitutes wholesale into whichever consumer site invokes it. Canonical
-   typed rewrites like [rgb(0 0 0) -> #000] assume a consumer type that
-   only [@property --foo { syntax: "<color>"; ... }] can promise, so the
-   parser leaves the tokens alone here. *)
+   custom property is an opaque token stream that [var()] later substitutes
+   wholesale into whichever consumer site invokes it. Canonical typed rewrites
+   like [rgb(0 0 0) -> #000] assume a consumer type that only [@property --foo {
+   syntax: "<color>"; ... }] can promise, so the parser leaves the tokens alone
+   here. *)
 let read_custom_property_value ?font_family:_ cursor =
   Tokens (Cursor.remaining cursor)
 
-(* Typed re-readers exposed for the registry pass that consumes
-   [@property] declarations. Each reader takes a token stream and tries
-   to parse it as the matching typed kind, returning [None] when the
-   stream doesn't match. The unregistered path stays opaque; the
-   registry pass is what flips a value to [Typed]. *)
+(* Typed re-readers exposed for the registry pass that consumes [@property]
+   declarations. Each reader takes a token stream and tries to parse it as the
+   matching typed kind, returning [None] when the stream doesn't match. The
+   unregistered path stays opaque; the registry pass is what flips a value to
+   [Typed]. *)
 let try_read_custom_color components =
   read_custom_value_as Color read_color components
 
@@ -19317,6 +19317,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_mask_image -> Some Background_image
   | Mask_image -> Some Background_image
   | Source -> Some Font_src
+  | Font_family -> Some Font_family
   | _ -> None
 
 (* ===== Readers moved here from Declaration so the API consistency script can
@@ -19914,6 +19915,7 @@ let pp_property_value_kind : type a. a property_value_kind Pp.t =
   | Background_image -> Pp.string ctx "background-image"
   | Background_images -> Pp.string ctx "background-images"
   | Font_src -> Pp.string ctx "font-src"
+  | Font_family -> Pp.string ctx "font-family"
 
 let read_property_value_kind (type a) (_ : Cursor.t) : a property_value_kind =
   invalid_arg

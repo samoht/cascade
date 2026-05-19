@@ -2536,6 +2536,13 @@ let css_wide_of_font_size (value : Properties.font_size) =
   | Properties.Revert_layer -> Some Revert_layer
   | _ -> None
 
+let css_wide_of_font_family (value : Properties.font_family) =
+  match value with
+  | Properties.Inherit -> Some Inherit
+  | Properties.Initial -> Some Initial
+  | Properties.Unset -> Some Unset
+  | _ -> None
+
 let css_wide_of_rotate_value (value : Properties.rotate_value) =
   match value with
   | Properties.Inherit -> Some Inherit
@@ -3302,6 +3309,28 @@ let simplify_animation_name ?layer_order ?layer ctx value =
   in
   Var_residual.simplify ?layer_order ?layer ctx ops value
 
+let simplify_font_family ?layer_order ?layer ctx value =
+  let simplify_leaf simplify ~authored:_ ~visited
+      (value : Properties.font_family) : Properties.font_family =
+    match value with
+    | Properties.List items ->
+        (Properties.List (List.map (simplify ~authored:false ~visited) items)
+          : Properties.font_family)
+    | _ -> value
+  in
+  let ops : Properties.font_family Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.font_family) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom = read_custom_components Properties.read_font_family;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
 let simplify_font_src ?layer_order ?layer ctx value =
   let simplify_leaf simplify ~authored ~visited entries =
     List.concat_map
@@ -3659,6 +3688,10 @@ and eval_kind_misc : type a.
         css_wide_of_background_images
   | Properties.Font_src ->
       resolve (simplify_font_src ~layer_order ?layer ctx) (fun _ -> None)
+  | Properties.Font_family ->
+      resolve
+        (simplify_font_family ~layer_order ?layer ctx)
+        css_wide_of_font_family
   | _ ->
       (* unreachable: handled by eval_kind / eval_kind_other *)
       assert false
