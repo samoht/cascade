@@ -297,11 +297,13 @@ let test_public_theme_guard buf =
       ]
   in
   let hidden =
-    Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty sheet
+    sheet
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
+    |> Css.to_string ~minify:true
   in
   let shown =
     let theme = Css.Pp.String_set.add var_name Css.Pp.String_set.empty in
-    Css.to_string ~minify:true ~theme sheet
+    sheet |> Css.resolve_theme ~theme |> Css.to_string ~minify:true
   in
   if
     String.contains hidden '#' && Astring.String.is_infix ~affix:"ff0000" hidden

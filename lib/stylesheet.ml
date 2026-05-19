@@ -1338,10 +1338,9 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-let to_string ?(minify = false) ?indent ?(mode = Variables) ?theme
-    ?(theme_defaults = Pp.no_theme_defaults) (statements : t) =
-  let statements = if minify then normalise statements else statements in
-  Pp.to_string ~minify ?indent ~inline:(mode = Inline) ?theme ~theme_defaults
+(* Pure serialiser. *)
+let to_string ?(minify = false) ?indent (statements : t) =
+  Pp.to_string ~minify ?indent
     (fun ctx () -> pp_stylesheet ctx statements)
     ()
 

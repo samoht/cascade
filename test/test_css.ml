@@ -16,6 +16,10 @@
 open Cascade
 open Css
 
+(* Test helper: compose optimize + minified to_string the way
+   [to_string ~minify:true] used to behave implicitly. *)
+let minify s = s |> Css.optimize |> Css.to_string ~minify:true
+
 (* Helper selectors for tests *)
 let btn = Selector.class_ "btn"
 let card = Selector.class_ "card"
@@ -54,7 +58,9 @@ let optimization_flag () =
       ]
   in
 
-  let css_optimized = Css.to_string ~minify:true stylesheet in
+  let css_optimized =
+    minify stylesheet
+  in
   Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
 (* Test layers work end-to-end *)
@@ -591,10 +597,10 @@ let public_theme_edges () =
   let brand_theme = Css.Pp.String_set.add "brand" empty_theme in
   Alcotest.(check string)
     "guarded declaration hidden" ".card{background-color:#fff}"
-    (to_string ~minify:true ~theme:empty_theme sheet);
+    (sheet |> Css.resolve_theme ~theme:empty_theme |> to_string ~minify:true);
   Alcotest.(check string)
     "guarded declaration shown" ".card{color:red;background-color:#fff}"
-    (to_string ~minify:true ~theme:brand_theme sheet)
+    (sheet |> Css.resolve_theme ~theme:brand_theme |> to_string ~minify:true)
 
 let public_value_combinator_edges () =
   let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
@@ -770,40 +776,44 @@ let public_theme_var_rendering_edges () =
     | "font-fallback" -> Some "Arial,sans-serif"
     | _ -> None
   in
+  let render_theme ?theme ?theme_defaults sheet =
+    sheet |> Css.resolve_theme ?theme ?theme_defaults |> to_string ~minify:true
+  in
   Alcotest.(check string)
     "normal stylesheet keeps theme var reference"
     ".font-sans{font-family:var(--font-sans)}"
-    (to_string ~minify:true ~theme:font_theme ~theme_defaults:resolve_font
+    (render_theme ~theme:font_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "normal stylesheet keeps theme var fallback reference"
     ".font-sans{font-family:var(--font-fallback,Arial,sans-serif)}"
-    (to_string ~minify:true ~theme:fallback_theme ~theme_defaults:resolve_font
+    (render_theme ~theme:fallback_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_fallback)));
   Alcotest.(check string)
     "normal stylesheet without explicit theme keeps var reference"
     ".font-sans{font-family:var(--font-sans)}"
-    (to_string ~minify:true ~theme_defaults:resolve_font
-       (sheet_for (Var font_sans)));
+    (render_theme ~theme_defaults:resolve_font (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "inline stylesheet may use typed default"
     ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
-    (to_string ~minify:true ~mode:Inline ~theme:font_theme
-       (sheet_for (Var font_sans)));
+    (sheet_for (Var font_sans)
+    |> Css.inline_vars
+    |> to_string ~minify:true);
   Alcotest.(check string)
     "inline stylesheet may use typed fallback default"
     ".font-sans{font-family:ui-sans-serif,system-ui,sans-serif}"
-    (to_string ~minify:true ~mode:Inline ~theme:fallback_theme
-       (sheet_for (Var font_fallback)));
+    (sheet_for (Var font_fallback)
+    |> Css.inline_vars
+    |> to_string ~minify:true);
   Alcotest.(check string)
     "theme_defaults still resolves non-theme vars"
     ".font-sans{font-family:Arial,sans-serif}"
-    (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
+    (render_theme ~theme:empty_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "theme_defaults still resolves non-theme vars with fallback"
     ".font-sans{font-family:Arial,sans-serif}"
-    (to_string ~minify:true ~theme:empty_theme ~theme_defaults:resolve_font
+    (render_theme ~theme:empty_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_fallback)))
 
 let public_parse_edges () =

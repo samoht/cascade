@@ -80,7 +80,9 @@ let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Source_parse_error (Cascade.Error.to_string e)
   | Ok parsed -> (
-      match Css.to_string ~minify:true parsed.stylesheet with
+      match
+        parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
+      with
       | s -> Result_css s
       | exception Invalid_argument msg ->
           Source_parse_error ("invalid_argument: " ^ msg))
@@ -102,7 +104,9 @@ let canonical_minified css =
     match Css.of_string ~strict:false css with
     | Error e -> Error (Cascade.Error.to_string e)
     | Ok parsed -> (
-        match Css.to_string ~minify:true parsed.stylesheet with
+        match
+          parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
+        with
         | s -> Ok s
         | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
 

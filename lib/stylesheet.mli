@@ -266,26 +266,11 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
 
 (** {1 Rendering} *)
 
-val to_string :
-  ?minify:bool ->
-  ?indent:int ->
-  ?mode:mode ->
-  ?theme:Pp.String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  t ->
-  string
-(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet] renders
-    a stylesheet to CSS. The output doesn't end with a newline; callers append
-    one if needed. *)
+val to_string : ?minify:bool -> ?indent:int -> t -> string
+(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS.
+    Pure formatter - no optimisation, no theme resolution. *)
 
-val pp :
-  ?minify:bool ->
-  ?indent:int ->
-  ?mode:mode ->
-  ?theme:Pp.String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  t ->
-  string
+val pp : ?minify:bool -> ?indent:int -> t -> string
 (** [pp] is {!to_string}. *)
 
 val inline_style_of_declarations :

@@ -7289,37 +7289,21 @@ type mode = Stylesheet.mode =
           - [Inline]: For inline styles (no at-rules, variables expanded with
             their values) *)
 
-val to_string :
-  ?minify:bool ->
-  ?indent:int ->
-  ?mode:mode ->
-  ?theme:Pp.String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  t ->
-  string
-(** [to_string ?minify ?indent ?mode ?theme ?theme_defaults stylesheet]
-    serialises a stylesheet to CSS. Pure serialiser - no [Optimize.stylesheet]
-    runs; callers wanting AST-level rewrites pipe through {!optimize}
-    first. Spec recovery (drop invalid declarations, unknown at-rules,
-    empty rules) still applies. Output never ends with a newline; callers
-    append one if needed.
+val to_string : ?minify:bool -> ?indent:int -> t -> string
+(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS.
+    Pure formatter - no optimisation, no theme resolution, no
+    [var()] substitution. Run {!optimize}, {!resolve_theme}, and
+    {!inline_vars} explicitly when those passes are needed. Spec recovery
+    (drop invalid declarations, unknown at-rules, empty rules) still
+    applies because the parser preserved those shapes for round-trip and
+    browsers discard them during parse. Output never ends with a newline.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
-    - [mode] / [theme] / [theme_defaults] control how [var()] references
-      print; use the explicit {!inline_vars} / {!resolve_theme} AST steps
-      when the same effect is wanted before optimisation.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
-val pp :
-  ?minify:bool ->
-  ?indent:int ->
-  ?mode:mode ->
-  ?theme:Pp.String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  t ->
-  string
+val pp : ?minify:bool -> ?indent:int -> t -> string
 (** [pp] is {!to_string}. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }
