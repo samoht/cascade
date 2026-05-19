@@ -934,26 +934,46 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
                  | Option.None -> Option.None)
     | _ -> []
   in
-  let injected =
-    if defaults = [] then stylesheet
-    else
-      let body =
-        defaults
-        |> List.map (fun (name, value) ->
-               let n =
-                 if String.length name >= 2 && String.sub name 0 2 = "--" then
-                   name
-                 else "--" ^ name
-               in
-               n ^ ":" ^ value)
-        |> String.concat ";"
-      in
-      let source = ":root{" ^ body ^ "}" in
-      match of_string ~strict:false source with
-      | Ok { stylesheet = root_stmts; _ } -> root_stmts @ stylesheet
-      | Error _ -> stylesheet
-  in
-  inline_vars ~keep_vars injected
+  if defaults = [] then stylesheet
+  else
+    (* Only the names [theme_defaults] resolved get their [var()] references
+       substituted. [Inline.vars] applied here would also collapse [var(--x,
+       fallback)] references for names the resolver returned [None] on
+       (because [var()]'s built-in fallback arm is consulted when no
+       declaration is visible); the explicit semantics keep those references
+       live. Limit [Inline.vars] to a stylesheet containing only the injected
+       [:root] declarations and the matching subtrees, then merge the result
+       back at the source's position. We achieve that by injecting a [:root]
+       rule plus extending [keep_vars] with every var name we did *not*
+       resolve, so the unresolved sites keep their declarations live and the
+       substitution falls through to [fallback_or_original]'s original-Func
+       branch. *)
+    let resolved_names = List.map fst defaults in
+    let unresolved_keep =
+      collect_var_names stylesheet
+      |> List.filter (fun n -> not (List.mem n resolved_names))
+    in
+    let keep_vars =
+      List.fold_left
+        (fun acc n -> if List.mem n acc then acc else n :: acc)
+        keep_vars unresolved_keep
+    in
+    let body =
+      defaults
+      |> List.map (fun (name, value) ->
+             let n =
+               if String.length name >= 2 && String.sub name 0 2 = "--" then
+                 name
+               else "--" ^ name
+             in
+             n ^ ":" ^ value)
+      |> String.concat ";"
+    in
+    let source = ":root{" ^ body ^ "}" in
+    match of_string ~strict:false source with
+    | Ok { stylesheet = root_stmts; _ } ->
+        inline_vars ~keep_vars (root_stmts @ stylesheet)
+    | Error _ -> stylesheet
 
 
 let decode_import_url = Inline.decode_import_url
