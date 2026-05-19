@@ -15484,11 +15484,6 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   let name_is_default_none = animation_name_is_default_none ctx anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
   pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
-  (* CSS Animations 1 sec. 3.1: the shorthand has free token order, so emit
-     the [name] first under minify to match the csso / cssnano canonical
-     spelling. *)
-  if Pp.minified ctx then
-    pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_duration)
     ctx (Animation.duration anim);
@@ -15512,8 +15507,7 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
     (pp_animation_space_before state pp_animation_play_state)
     ctx
     (Animation.play_state ~quote_name:quote_ambiguous_name anim);
-  if not (Pp.minified ctx) then
-    pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
+  pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_animation_timeline)
     ctx
@@ -18421,28 +18415,36 @@ let read_custom_value_as kind read components =
   | result -> result
   | exception Cursor.Parse_error _ -> None
 
-let read_custom_property_value ?(font_family = false) cursor =
-  let components = Cursor.remaining cursor in
-  let typed_readers =
-    [
-      read_custom_value_as Number read_number;
-      read_custom_value_as Length_percentage
-        (read_length_percentage ~with_keywords:false);
-      read_custom_value_as Length (read_length ~with_keywords:false);
-      read_custom_value_as Percentage read_percentage;
-      read_custom_value_as Number_percentage read_number_percentage;
-      read_custom_value_as Color read_color;
-      read_custom_value_as Shadow read_shadow;
-    ]
-  in
-  let typed_readers =
-    if font_family then
-      read_custom_value_as Font_family read_font_family :: typed_readers
-    else typed_readers
-  in
-  match List.find_map (fun read -> read components) typed_readers with
-  | Some value -> value
-  | None -> Tokens components
+(* CSS Custom Properties for Cascading Variables 1 sec. 2: an unregistered
+   custom property is an opaque token stream that [var()] later
+   substitutes wholesale into whichever consumer site invokes it. Canonical
+   typed rewrites like [rgb(0 0 0) -> #000] assume a consumer type that
+   only [@property --foo { syntax: "<color>"; ... }] can promise, so the
+   parser leaves the tokens alone here. *)
+let read_custom_property_value ?font_family:_ cursor =
+  Tokens (Cursor.remaining cursor)
+
+(* Typed re-readers exposed for the registry pass that consumes
+   [@property] declarations. Each reader takes a token stream and tries
+   to parse it as the matching typed kind, returning [None] when the
+   stream doesn't match. The unregistered path stays opaque; the
+   registry pass is what flips a value to [Typed]. *)
+let try_read_custom_color components =
+  read_custom_value_as Color read_color components
+
+let try_read_custom_length components =
+  read_custom_value_as Length (read_length ~with_keywords:false) components
+
+let try_read_custom_length_percentage components =
+  read_custom_value_as Length_percentage
+    (read_length_percentage ~with_keywords:false)
+    components
+
+let try_read_custom_number components =
+  read_custom_value_as Number read_number components
+
+let try_read_custom_percentage components =
+  read_custom_value_as Percentage read_percentage components
 
 let pp_number_value ctx (value : number) =
   let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
