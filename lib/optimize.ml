@@ -896,6 +896,20 @@ let font_family_of : declaration -> Properties.font_family option = function
   | Declaration { property = Font_family; value; _ } -> Some value
   | _ -> Option.None
 
+let take_first_n n xs =
+  let rec aux acc n = function
+    | rest when n = 0 -> Some (List.rev acc, rest)
+    | [] -> None
+    | x :: rest -> aux (x :: acc) (n - 1) rest
+  in
+  aux [] n xs
+
+let same_importance = function
+  | [] -> true
+  | first :: rest ->
+      let important = is_important first in
+      List.for_all (fun d -> is_important d = important) rest
+
 let render_font_shorthand decls : Properties.font option =
   let pick f = List.find_map f decls in
   match (pick font_size_of, pick font_family_of) with
@@ -913,27 +927,29 @@ let render_font_shorthand decls : Properties.font option =
            })
   | _ -> Option.None
 
-let try_compose_font = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: (_, d5) :: rest
-    when is_font_longhand d1 && is_font_longhand d2 && is_font_longhand d3
-         && is_font_longhand d4 && is_font_longhand d5
-         && is_important d1 = is_important d2
-         && is_important d2 = is_important d3
-         && is_important d3 = is_important d4
-         && is_important d4 = is_important d5 -> (
-      match render_font_shorthand [ d1; d2; d3; d4; d5 ] with
-      | Some font_value ->
-          let merged =
-            Declaration
-              {
-                property = Font;
-                value = font_value;
-                important = is_important d1;
-              }
-          in
-          Some ((idx, merged), rest)
-      | None -> None)
-  | _ -> None
+let try_compose_font indexed_decls =
+  match take_first_n 5 indexed_decls with
+  | None -> None
+  | Some (five, rest) -> (
+      let raw_decls = List.map snd five in
+      if
+        (not (List.for_all is_font_longhand raw_decls))
+        || not (same_importance raw_decls)
+      then None
+      else
+        match render_font_shorthand raw_decls with
+        | Some font_value ->
+            let idx = fst (List.hd five) in
+            let merged =
+              Declaration
+                {
+                  property = Font;
+                  value = font_value;
+                  important = is_important (List.hd raw_decls);
+                }
+            in
+            Some ((idx, merged), rest)
+        | None -> None)
 
 let compose_font_shorthand decls =
   let rec go acc decls =
@@ -1126,6 +1142,261 @@ let compose_text_decoration_shorthand decls =
   in
   go [] decls
 
+(* CSS Backgrounds 3 sec. 4.1: [border] is the shorthand for [border-{top,
+   right,bottom,left}-{width,style,color}]. Cascade composes when all 12
+   longhands appear in a contiguous run with matching importance, every width /
+   style / color is uniform across the four sides, and no runtime-substitution
+   value would change the resolved shape. *)
+let border_width_of :
+    declaration -> (box_side * Properties.border_width * bool) option = function
+  | Declaration { property = Border_top_width; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_width; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_width; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_width; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let border_style_of :
+    declaration -> (box_side * Properties.border_style * bool) option = function
+  | Declaration { property = Border_top_style; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_style; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_style; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_style; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let border_color_of : declaration -> (box_side * Values.color * bool) option =
+  function
+  | Declaration { property = Border_top_color; value; important } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_color; value; important } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_color; value; important } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_color; value; important } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let all_box_sides_present xs =
+  List.length xs = 4
+  &&
+  let sides = List.map (fun (s, _, _) -> s) xs in
+  List.sort_uniq compare sides = [ Top; Right; Bottom; Left ]
+
+let uniform_side_value = function
+  | [] -> false
+  | (_, value, _) :: rest -> List.for_all (fun (_, v, _) -> v = value) rest
+
+let border_parts_of raw_decls =
+  let widths = List.filter_map border_width_of raw_decls in
+  let styles = List.filter_map border_style_of raw_decls in
+  let colors = List.filter_map border_color_of raw_decls in
+  if
+    all_box_sides_present widths
+    && all_box_sides_present styles
+    && all_box_sides_present colors
+    && uniform_side_value widths && uniform_side_value styles
+    && uniform_side_value colors
+  then Some (widths, styles, colors)
+  else None
+
+let declaration_of_border_parts ~important widths styles colors =
+  let _, width, _ = List.hd widths in
+  let _, style, _ = List.hd styles in
+  let _, color, _ = List.hd colors in
+  Declaration
+    {
+      property = Border;
+      value =
+        Shorthand { width = Some width; style = Some style; color = Some color };
+      important;
+    }
+
+let try_compose_border indexed_decls =
+  match take_first_n 12 indexed_decls with
+  | None -> None
+  | Some twelve -> (
+      let twelve, rest = twelve in
+      let raw_decls = List.map snd twelve in
+      if not (same_importance raw_decls) then None
+      else
+        match border_parts_of raw_decls with
+        | None -> None
+        | Some (widths, styles, colors) ->
+            let merged =
+              declaration_of_border_parts
+                ~important:(is_important (List.hd raw_decls))
+                widths styles colors
+            in
+            let idx = fst (List.hd twelve) in
+            Some ((idx, merged), rest))
+
+let compose_border_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_border decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
+(* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
+   per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
+   covers a single layer: every longhand carries a single-layer value, no entry
+   uses a CSS-wide keyword or [var()], and all share the same importance. *)
+let background_image_singleton :
+    Properties.background_image list -> Properties.background_image option =
+  function
+  | [ img ] -> (
+      match img with
+      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | List _ ->
+          None
+      | _ -> Some img)
+  | _ -> None
+
+let background_position_singleton :
+    Properties.background_position -> Properties.position_value option =
+  function
+  | [ pos ] -> Some pos
+  | _ -> None
+
+let bg_color_part : declaration -> Values.color option = function
+  | Declaration { property = Background_color; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let bg_image_part : declaration -> Properties.background_image option = function
+  | Declaration { property = Background_image; value; _ } ->
+      background_image_singleton value
+  | _ -> None
+
+let bg_repeat_part : declaration -> Properties.background_repeat option =
+  function
+  | Declaration { property = Background_repeat; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let bg_position_part : declaration -> Properties.position_value option =
+  function
+  | Declaration { property = Background_position; value; _ } ->
+      background_position_singleton value
+  | _ -> None
+
+let bg_size_part : declaration -> Properties.background_size option = function
+  | Declaration { property = Background_size; value; _ } -> (
+      match value with
+      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | v -> Some v)
+  | _ -> None
+
+let bg_attachment_part : declaration -> Properties.background_attachment option
+    = function
+  | Declaration { property = Background_attachment; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let bg_origin_part : declaration -> Properties.background_box option = function
+  | Declaration { property = Background_origin; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let bg_clip_part : declaration -> Properties.background_box option = function
+  | Declaration { property = Background_clip; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+type bg_updater =
+  declaration ->
+  (Properties.background_shorthand -> Properties.background_shorthand) option
+
+let lift_part :
+    'a.
+    (declaration -> 'a option) ->
+    (Properties.background_shorthand -> 'a -> Properties.background_shorthand) ->
+    bg_updater =
+ fun extract set d ->
+  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+
+let bg_updaters : bg_updater list =
+  [
+    lift_part bg_color_part (fun s v -> { s with color = Some v });
+    lift_part bg_image_part (fun s v -> { s with image = Some v });
+    lift_part bg_repeat_part (fun s v -> { s with repeat = Some v });
+    lift_part bg_position_part (fun s v -> { s with position = Some v });
+    lift_part bg_size_part (fun s v -> { s with size = Some v });
+    lift_part bg_attachment_part (fun s v -> { s with attachment = Some v });
+    lift_part bg_origin_part (fun s v -> { s with origin = Some v });
+    lift_part bg_clip_part (fun s v -> { s with clip = Some v });
+  ]
+
+let background_part_of (d : declaration) =
+  List.find_map (fun f -> f d) bg_updaters
+
+let take_contiguous_background indexed_decls =
+  let rec aux acc = function
+    | (i, d) :: rest -> (
+        match background_part_of d with
+        | Some f -> aux ((d, f) :: acc) rest
+        | None -> (List.rev acc, (i, d) :: rest))
+    | [] -> (List.rev acc, [])
+  in
+  match indexed_decls with
+  | [] -> (None, [])
+  | (idx, _) :: _ -> (
+      let parts, rest = aux [] indexed_decls in
+      match parts with
+      | [] -> (None, indexed_decls)
+      | _ -> (Some (idx, parts), rest))
+
+let empty_bg_shorthand : Properties.background_shorthand =
+  {
+    color = None;
+    image = None;
+    position = None;
+    size = None;
+    repeat = None;
+    attachment = None;
+    clip = None;
+    origin = None;
+  }
+
+let try_compose_background indexed_decls =
+  let idx_opt, rest = take_contiguous_background indexed_decls in
+  match idx_opt with
+  | None -> None
+  | Some (idx, parts) ->
+      let raw_decls = List.map fst parts in
+      if List.length raw_decls < 2 then None
+      else if not (same_importance raw_decls) then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
+        in
+        let merged =
+          Declaration
+            {
+              property = Background;
+              value = [ (Shorthand layer : Properties.background) ];
+              important = is_important (List.hd raw_decls);
+            }
+        in
+        Some ((idx, merged), rest)
+
+let compose_background_shorthand decls =
+  let rec go acc decls =
+    match (decls, try_compose_background decls) with
+    | [], _ -> List.rev acc
+    | _, Some (merged, rest) -> go (merged :: acc) rest
+    | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
 let merge_box_shorthand_longhands source decls =
   let rec go acc = function
     | [] -> List.rev acc
@@ -1279,23 +1550,20 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   in
   List.filter (fun item -> not (has_unprefixed_twin item)) kept
 
+let compose_shorthands kept =
+  kept |> compose_box_shorthands |> compose_pair_shorthands
+  |> compose_outline_shorthand |> compose_font_shorthand
+  |> compose_list_style_shorthand |> compose_flex_shorthand
+  |> compose_text_decoration_shorthand |> compose_border_shorthand
+  |> compose_background_shorthand
+  |> fun kept ->
+  merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
+
 let deduplicate_declarations_with ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.fold_left deduplicate_step [] indexed_props in
   let kept =
-    let kept = if merge_box then compose_box_shorthands kept else kept in
-    let kept = if merge_box then compose_pair_shorthands kept else kept in
-    let kept = if merge_box then compose_outline_shorthand kept else kept in
-    let kept = if merge_box then compose_font_shorthand kept else kept in
-    let kept = if merge_box then compose_list_style_shorthand kept else kept in
-    let kept = if merge_box then compose_flex_shorthand kept else kept in
-    let kept =
-      if merge_box then compose_text_decoration_shorthand kept else kept
-    in
-    let kept =
-      if merge_box then merge_box_shorthand_longhands kept kept else kept
-    in
-    let kept = if merge_box then merge_overflow_longhands kept else kept in
+    let kept = if merge_box then compose_shorthands kept else kept in
     let kept = drop_vendor_aliases kept in
     List.map (fun (_, decl) -> decl) kept
   in
@@ -1697,7 +1965,7 @@ let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
       Int.compare i1 i2
 
 (* Convert group of selectors to a rule *)
-let group_to_rule :
+let rule_of_group :
     (Selector.t * declaration list * string option) list ->
     Stylesheet.rule option = function
   | [ (sel, decls, _) ] ->
@@ -1728,7 +1996,7 @@ let group_to_rule :
 
 (* Flush current group to accumulator *)
 let flush_group acc group =
-  match group_to_rule group with Some rule -> rule :: acc | None -> acc
+  match rule_of_group group with Some rule -> rule :: acc | None -> acc
 
 (* Don't combine selectors when one uses :is(:where()) (group/peer) and the
    other uses a newer pseudo-class directly. In a selector list, if the newer
@@ -1835,33 +2103,76 @@ let prev_rule_of_group_head (prev_sel, prev_decls, prev_merge_key) =
     merge_key = prev_merge_key;
   }
 
+let summary_of_rule (rule : Stylesheet.rule) =
+  Selector_summary.of_selector rule.Stylesheet_intf.selector
+
+let property_set decls = List.map (fun d -> Declaration.property_name d) decls
+
+let writes_any_of props decls =
+  List.exists (fun d -> List.mem (Declaration.property_name d) props) decls
+
+let delayed_blocks_group ~group_props ~rule_summary delayed =
+  List.exists
+    (fun (dr, ds) ->
+      Selector_summary.may_overlap ds rule_summary
+      && writes_any_of group_props dr.Stylesheet_intf.declarations)
+    delayed
+
+let rule_perturbs_group ~group_props ~rule_summary current_group rule =
+  let overlaps_group =
+    List.exists
+      (fun (_, s) -> Selector_summary.may_overlap s rule_summary)
+      current_group
+  in
+  overlaps_group && writes_any_of group_props rule.Stylesheet_intf.declarations
+
+let flush_combined_group acc current_group delayed =
+  let group_members = List.map fst current_group in
+  let acc = flush_group acc group_members in
+  List.fold_left (fun acc (rule, _) -> rule :: acc) acc delayed
+
+let can_join_group ~group_props ~rule_summary delayed prev_rule rule =
+  can_combine_rules prev_rule rule
+  && not (delayed_blocks_group ~group_props ~rule_summary delayed)
+
+let group_member rule rule_summary = (group_member_of_rule rule, rule_summary)
+
+(* Adjacent rules with identical declarations that combine_identical_rules
+   couldn't fold into its current group (because the group's anchor was a
+   different declaration block) end up next to each other in the output. A
+   simple post-pass folds those into a single selector-list rule. cleancss /
+   csso both rely on this peephole to collapse e.g. [.a{top:0}.b{top:0}] when
+   the previous rule wrote something unrelated. *)
+let combine_adjacent_identical_decls (rules : Stylesheet.rule list) :
+    Stylesheet.rule list =
+  let rec walk acc = function
+    | [] -> List.rev acc
+    | r1 :: r2 :: rest
+      when (not (rule_cannot_combine r1))
+           && (not (rule_cannot_combine r2))
+           && can_combine_rules r1 r2 ->
+        let group_member r = (group_member_of_rule r, ()) in
+        let members = [ group_member r2; group_member r1 ] in
+        let combined =
+          match rule_of_group (List.map fst members) with
+          | Some r -> r
+          | None -> r1
+        in
+        walk acc (combined :: rest)
+    | r :: rest -> walk (r :: acc) rest
+  in
+  walk [] rules
+
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
-  (* Cross-rule combining is sound when an intervening rule's subject is
-     definitely disjoint from every member of the merge group: no element can
-     match both, so moving the intervening rule past the merged group can't
-     change the cascade for any element. We carry a [delayed] list of such
-     rules; on flush they are emitted after the merged group rule, preserving
-     their relative order. The invariant is: every rule in [delayed] has a
-     subject summary that does not [may_overlap] any group member's subject. *)
-  let summary_of_rule (rule : Stylesheet.rule) =
-    Selector_summary.of_selector rule.Stylesheet_intf.selector
-  in
-  let disjoint_from summaries candidate =
-    List.for_all
-      (fun s -> not (Selector_summary.may_overlap s candidate))
-      summaries
-  in
-  let flush acc current_group delayed =
-    let group_members = List.map fst current_group in
-    let acc = flush_group acc group_members in
-    List.fold_left (fun acc (rule, _) -> rule :: acc) acc delayed
-  in
+  (* Delayed rules can slide around the merge group when they do not write any
+     property the group writes. That keeps the cascade observable unchanged even
+     when selector subjects may overlap. *)
   let rec combine_consecutive acc current_group delayed = function
-    | [] -> List.rev (flush acc current_group delayed)
+    | [] -> List.rev (flush_combined_group acc current_group delayed)
     | (rule : Stylesheet.rule) :: rest ->
         if rule_cannot_combine rule then
-          let acc = rule :: flush acc current_group delayed in
+          let acc = rule :: flush_combined_group acc current_group delayed in
           combine_consecutive acc [] [] rest
         else extend_delay_or_restart acc current_group delayed rule rest
   and extend_delay_or_restart acc current_group delayed rule rest =
@@ -1874,23 +2185,23 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
     | [] -> push_to_group ()
     | (head_member, _) :: _ ->
         let prev_rule = prev_rule_of_group_head head_member in
-        let delayed_summaries = List.map snd delayed in
-        if
-          can_combine_rules prev_rule rule
-          && disjoint_from delayed_summaries rule_summary
-        then push_to_group ()
+        let group_props = property_set prev_rule.declarations in
+        if can_join_group ~group_props ~rule_summary delayed prev_rule rule then
+          push_to_group ()
         else
-          let group_summaries = List.map snd current_group in
-          if disjoint_from group_summaries rule_summary then
+          let rule_perturbs_group =
+            rule_perturbs_group ~group_props ~rule_summary current_group rule
+          in
+          if not rule_perturbs_group then
             combine_consecutive acc current_group
               (delayed @ [ (rule, rule_summary) ])
               rest
           else
-            let acc = flush acc current_group delayed in
-            let member = (group_member_of_rule rule, rule_summary) in
+            let acc = flush_combined_group acc current_group delayed in
+            let member = group_member rule rule_summary in
             combine_consecutive acc [ member ] [] rest
   in
-  combine_consecutive [] [] [] rules
+  combine_consecutive [] [] [] rules |> combine_adjacent_identical_decls
 
 (* CSS Cascade L5: when a run of adjacent rules shares two or more identical
    declarations, hoist them into a single grouped rule whose selector is the
@@ -1982,12 +2293,48 @@ let earlier_overrides_overlap ~summaries ~default decls i =
   in
   loop 0
 
+let common_factorable_decls rules first =
+  List.filter_map
+    (fun d -> factorable_default rules (decl_property d))
+    first.Stylesheet_intf.declarations
+
+let keep_factor_leftover ~summaries ~decls ~default_decl ~i decl =
+  decl <> default_decl
+  || earlier_overrides_overlap ~summaries ~default:default_decl decls i
+
+let leftover_for_factor_rule ~common ~summaries ~decls i (r : Stylesheet.rule) =
+  List.filter
+    (fun d ->
+      let prop = decl_property d in
+      match List.find_opt (fun d' -> decl_property d' = prop) common with
+      | None -> true
+      | Some default ->
+          keep_factor_leftover ~summaries ~decls ~default_decl:default ~i d)
+    r.declarations
+
+let grouped_factor_rule first rules_arr common =
+  let sels =
+    Array.to_list (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr)
+  in
+  { first with selector = merge_selector_list sels; declarations = common }
+
+let factor_leftovers ~common ~summaries ~decls rules_arr =
+  let acc = ref [] in
+  for i = Array.length rules_arr - 1 downto 0 do
+    let r = rules_arr.(i) in
+    let l = leftover_for_factor_rule ~common ~summaries ~decls i r in
+    if l <> [] then acc := { r with declarations = l } :: !acc
+  done;
+  !acc
+
+let rules_pp_size rules =
+  List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
+
 let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
   match rules with
   | [] | [ _ ] -> rules
   | first :: _ ->
       let rules_arr = Array.of_list rules in
-      let n = Array.length rules_arr in
       let summaries =
         Array.map
           (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
@@ -1996,62 +2343,13 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
       let decls =
         Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
       in
-      let common =
-        List.filter_map
-          (fun d ->
-            match factorable_default rules (decl_property d) with
-            | Some default -> Some default
-            | None -> None)
-          first.Stylesheet_intf.declarations
-      in
+      let common = common_factorable_decls rules first in
       if common = [] then rules
       else
-        let keep_in_leftover ~default_decl ~i decl =
-          (* [decl] is rule [i]'s declaration for the property in [common]. Keep
-             it in the leftover when its value differs from the default, or when
-             an earlier overlapping rule has a different value. *)
-          decl <> default_decl
-          || earlier_overrides_overlap ~summaries ~default:default_decl decls i
-        in
-        let leftover_for_rule i (r : Stylesheet.rule) =
-          List.filter
-            (fun d ->
-              let prop = decl_property d in
-              match
-                List.find_opt (fun d' -> decl_property d' = prop) common
-              with
-              | None -> true
-              | Some default -> keep_in_leftover ~default_decl:default ~i d)
-            r.declarations
-        in
-        let grouped : Stylesheet.rule =
-          let sels =
-            Array.to_list
-              (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr)
-          in
-          {
-            first with
-            selector = merge_selector_list sels;
-            declarations = common;
-          }
-        in
-        let leftovers =
-          let acc = ref [] in
-          for i = n - 1 downto 0 do
-            let r = rules_arr.(i) in
-            let l = leftover_for_rule i r in
-            if l <> [] then acc := { r with declarations = l } :: !acc
-          done;
-          !acc
-        in
-        let before_size =
-          List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
-        in
-        let after_size =
-          List.fold_left
-            (fun acc r -> acc + rule_pp_size r)
-            (rule_pp_size grouped) leftovers
-        in
+        let grouped = grouped_factor_rule first rules_arr common in
+        let leftovers = factor_leftovers ~common ~summaries ~decls rules_arr in
+        let before_size = rules_pp_size rules in
+        let after_size = rule_pp_size grouped + rules_pp_size leftovers in
         if after_size <= before_size then grouped :: leftovers else rules
 
 let factor_common_declarations (rules : Stylesheet.rule list) :
@@ -2708,17 +3006,17 @@ let drop_shadowed_rules (rules : rule list) : rule list =
     indexed
 
 (* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
-   individual declarations whose property is rewritten by a later rule for
-   every selector this rule targets. The later same-selector write masks the
-   earlier value for every matching element regardless of intervening rules'
-   specificity or [!important] state (cleancss and csso both rely on this to
-   collapse repeated declaration blocks).
+   individual declarations whose property is rewritten by a later rule for every
+   selector this rule targets. The later same-selector write masks the earlier
+   value for every matching element regardless of intervening rules' specificity
+   or [!important] state (cleancss and csso both rely on this to collapse
+   repeated declaration blocks).
 
-   For list selectors ([.x, .y { width: 100px }]), the declaration is dead
-   only when EACH selector in the list is shadowed by some later rule whose
-   selector list contains that selector at same-or-stronger importance. We
-   index later rules per individual selector key so the per-selector check is
-   linear in the size of the list.
+   For list selectors ([.x, .y { width: 100px }]), the declaration is dead only
+   when EACH selector in the list is shadowed by some later rule whose selector
+   list contains that selector at same-or-stronger importance. We index later
+   rules per individual selector key so the per-selector check is linear in the
+   size of the list.
 
    Empty rules left behind are pruned downstream by [drop_empty_rules] on the
    statement-list pass. *)
