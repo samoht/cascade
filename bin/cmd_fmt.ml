@@ -20,12 +20,12 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting
       if inline_vars_flag then Cli_inline_vars.run ~keep_vars stylesheet
       else stylesheet
     in
-    (* Parse -> optional inline/resolve -> optimize with scope -> serialize. *)
+    (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
       if minify then Css.optimize ~scope ~flatten_nesting stylesheet
       else stylesheet
     in
-    let output = Css.serialize ~minify stylesheet in
+    let output = Css.to_string ~minify stylesheet in
     Cli_io.print_output output
   with
   | Sys_error msg ->
