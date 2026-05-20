@@ -243,7 +243,7 @@ let generated_media_condition buf =
       Css.Media.of_string "(width >= 40em)";
       Css.Media.of_string "(30em <= width < 60em)";
       Css.Media.of_string "(dynamic-range: high)";
-      Css.Media.Prefers_reduced_motion Css.Media.Reduce;
+      Css.Media.of_string "(prefers-reduced-motion: reduce)";
     ]
     buf 0
 

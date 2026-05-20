@@ -345,67 +345,34 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | Some _ as v -> v
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
-let media_feature_value name : Media.t -> Media.value option = function
-  | Media.Width l when String.equal name "width" -> Some (Media.Length l)
-  | Media.Height l when String.equal name "height" -> Some (Media.Length l)
-  | Media.Aspect_ratio (a, b) when String.equal name "aspect-ratio" ->
-      Some (Media.Ratio (a, b))
-  | Media.Resolution (n, unit) when String.equal name "resolution" ->
-      Some (Media.Resolution_value (n, unit))
-  | Media.Color n when String.equal name "color" -> Some (Media.Integer n)
-  | Media.Color_index n when String.equal name "color-index" ->
-      Some (Media.Integer n)
-  | Media.Monochrome n when String.equal name "monochrome" ->
-      Some (Media.Integer n)
-  | Media.Color_gamut g when String.equal name "color-gamut" ->
-      Some (Media.Ident g)
-  | Media.Video_color_gamut g when String.equal name "video-color-gamut" ->
-      Some (Media.Ident g)
-  | Media.Dynamic_range r when String.equal name "dynamic-range" ->
-      Some (Media.Ident r)
-  | Media.Video_dynamic_range r when String.equal name "video-dynamic-range" ->
-      Some (Media.Ident r)
-  | Media.Scan s when String.equal name "scan" -> Some (Media.Ident s)
-  | Media.Update u when String.equal name "update" -> Some (Media.Ident u)
-  | Media.Overflow_block o when String.equal name "overflow-block" ->
-      Some (Media.Ident o)
-  | Media.Overflow_inline o when String.equal name "overflow-inline" ->
-      Some (Media.Ident o)
-  | Media.Prefers_reduced_motion v
-    when String.equal name "prefers-reduced-motion" ->
-      Some (Media.Ident v)
-  | Media.Prefers_reduced_transparency v
-    when String.equal name "prefers-reduced-transparency" ->
-      Some (Media.Ident v)
-  | Media.Prefers_reduced_data v when String.equal name "prefers-reduced-data"
-    ->
-      Some (Media.Ident v)
-  | Media.Prefers_contrast v when String.equal name "prefers-contrast" ->
-      Some (Media.Ident v)
-  | Media.Prefers_color_scheme v when String.equal name "prefers-color-scheme"
-    ->
-      Some (Media.Ident v)
-  | Media.Forced_colors v when String.equal name "forced-colors" ->
-      Some (Media.Ident v)
-  | Media.Inverted_colors v when String.equal name "inverted-colors" ->
-      Some (Media.Ident v)
-  | Media.Pointer v when String.equal name "pointer" -> Some (Media.Ident v)
-  | Media.Any_pointer v when String.equal name "any-pointer" ->
-      Some (Media.Ident v)
-  | Media.Hover v when String.equal name "hover" -> Some (Media.Ident v)
-  | Media.Any_hover v when String.equal name "any-hover" -> Some (Media.Ident v)
-  | Media.Scripting v when String.equal name "scripting" -> Some (Media.Ident v)
-  | Media.Nav_controls v when String.equal name "nav-controls" ->
-      Some (Media.Ident v)
-  | Media.Orientation v when String.equal name "orientation" ->
-      Some (Media.Ident v)
-  | Media.Range (feature_name, Media.Eq, value)
-    when String.equal name (Media.string_of_name feature_name) ->
-      Some value
+(* Extract the value bound to feature [name] from a single media feature. A
+   [<name>: <value>] plain and an [<name> = <value>] equality range both pin the
+   feature to a concrete value; range / boolean / interval features do not. *)
+let feature_value name (f : Media.feature) : Media.value option =
+  match f with
   | Media.Plain (feature_name, value)
     when String.equal name (Media.string_of_name feature_name) ->
       Some value
+  | Media.Range (feature_name, Media.Eq, value)
+    when String.equal name (Media.string_of_name feature_name) ->
+      Some value
   | _ -> None
+
+let rec condition_feature_value name (c : Media.condition) : Media.value option
+    =
+  match c with
+  | Media.Feature f -> feature_value name f
+  | Media.Not c -> condition_feature_value name c
+  | Media.And (a, b) | Media.Or (a, b) -> (
+      match condition_feature_value name a with
+      | Some _ as v -> v
+      | None -> condition_feature_value name b)
+
+let rec media_feature_value name : Media.t -> Media.value option = function
+  | Media.Cond c -> condition_feature_value name c
+  | Media.Type { trailing = Some c; _ } -> condition_feature_value name c
+  | Media.Type _ -> None
+  | Media.List qs -> List.find_map (media_feature_value name) qs
 
 let media_feature name ctx =
   List.find_map (media_feature_value name) ctx.media_features
@@ -1100,7 +1067,6 @@ end
 
 module Length = struct
   type ctx = {
-    base_font_size : float;
     root_font_size : float option;
     parent_font_size : float option;
     viewport_width : float option;
@@ -1116,7 +1082,6 @@ module Length = struct
      [Length.ctx] without these fields will reject relative units. *)
   let media_default =
     {
-      base_font_size = 16.;
       root_font_size = Some 16.;
       parent_font_size = Some 16.;
       viewport_width = None;
@@ -1188,7 +1153,6 @@ module Length = struct
   let of_t (ctx : t) : ctx =
     let unwrap_px = function Some (Values.Px p) -> Some p | _ -> None in
     {
-      base_font_size = 16.;
       root_font_size = unwrap_px ctx.root_font_size;
       parent_font_size = unwrap_px ctx.parent_font_size;
       viewport_width = unwrap_px ctx.viewport_width;
@@ -1435,6 +1399,12 @@ module Match_media = struct
   let lookup_value (table : feature_table) feature_name : Media.value option =
     List.find_map (media_feature_value feature_name) table
 
+  let feature_present (table : feature_table) name =
+    List.exists
+      (fun q ->
+        Option.is_some (media_feature_value (Media.string_of_name name) q))
+      table
+
   let eval_feature (table : feature_table) : Media.feature -> bool =
     let with_lookup name f =
       match lookup_value table (Media.string_of_name name) with
@@ -1442,14 +1412,7 @@ module Match_media = struct
       | Some actual -> Option.value ~default:false (f actual)
     in
     function
-    | Boolean name ->
-        List.exists
-          (function
-            | Boolean n -> n = name
-            | feature ->
-                Option.is_some
-                  (media_feature_value (Media.string_of_name name) feature))
-          table
+    | Boolean name -> feature_present table name
     | Plain (name, value) -> (
         match strip_min_max name with
         | Some (`Min, base) ->
@@ -1477,120 +1440,21 @@ module Match_media = struct
     | Print -> q.media_type = Some "print"
     | Other s -> q.media_type = Some s
 
-  let bool_feature q name expected =
-    match lookup_value q.media_features name with
-    | Some (Ident s) -> String.equal (Media.string_of_ident s) expected
-    | _ -> false
+  let rec eval_condition q : Media.condition -> bool = function
+    | Feature f -> eval_feature q.media_features f
+    | Not c -> not (eval_condition q c)
+    | And (a, b) -> eval_condition q a && eval_condition q b
+    | Or (a, b) -> eval_condition q a || eval_condition q b
 
-  let plain q name value =
-    eval_feature q.media_features (Plain (Media.name_of_string name, value))
-
-  let ident q name value = bool_feature q name (Media.string_of_ident value)
-  let integer q name value = plain q name (Integer value)
-  let length q name value = plain q name (Length value)
-  let ratio q name a b = plain q name (Ratio (a, b))
-  let resolution q name n unit = plain q name (Resolution_value (n, unit))
-
-  let eval_width_range q op px =
-    match lookup_value q.media_features "width" with
-    | None -> false
-    | Some actual ->
-        Option.value ~default:false
-          (Media_value.compare_with op actual (Length (Px px)))
-
-  let eval_size q = function
-    | Width l -> Some (length q "width" l)
-    | Height l -> Some (length q "height" l)
-    | Min_width px -> Some (eval_width_range q Ge px)
-    | Max_width px -> Some (eval_width_range q Le px)
-    | Min_width_rem rem ->
-        Some
-          (eval_width_range q Ge (rem *. Length.media_default.base_font_size))
-    | Min_width_length l -> (
-        match Length.media_to_px l with
-        | Some px -> Some (eval_width_range q Ge px)
-        | None -> Some false)
-    | _ -> None
-
-  let eval_display q = function
-    | Aspect_ratio (a, b) -> Some (ratio q "aspect-ratio" a b)
-    | Resolution (n, unit) -> Some (resolution q "resolution" n unit)
-    | Color n -> Some (integer q "color" n)
-    | Color_index n -> Some (integer q "color-index" n)
-    | Monochrome n -> Some (integer q "monochrome" n)
-    | Color_gamut v -> Some (ident q "color-gamut" v)
-    | Video_color_gamut v -> Some (ident q "video-color-gamut" v)
-    | Dynamic_range v -> Some (ident q "dynamic-range" v)
-    | Video_dynamic_range v -> Some (ident q "video-dynamic-range" v)
-    | _ -> None
-
-  let eval_user_prefs q = function
-    | Prefers_reduced_motion v -> Some (ident q "prefers-reduced-motion" v)
-    | Prefers_reduced_transparency v ->
-        Some (ident q "prefers-reduced-transparency" v)
-    | Prefers_reduced_data v -> Some (ident q "prefers-reduced-data" v)
-    | Prefers_contrast v -> Some (ident q "prefers-contrast" v)
-    | Prefers_color_scheme v -> Some (ident q "prefers-color-scheme" v)
-    | Forced_colors v -> Some (ident q "forced-colors" v)
-    | Inverted_colors v -> Some (ident q "inverted-colors" v)
-    | _ -> None
-
-  let eval_interaction q = function
-    | Pointer v -> Some (ident q "pointer" v)
-    | Any_pointer v -> Some (ident q "any-pointer" v)
-    | Hover v -> Some (ident q "hover" v)
-    | Any_hover v -> Some (ident q "any-hover" v)
-    | Scripting v -> Some (ident q "scripting" v)
-    | Nav_controls v -> Some (ident q "nav-controls" v)
-    | _ -> None
-
-  let eval_output q = function
-    | Scan v -> Some (ident q "scan" v)
-    | Update v -> Some (ident q "update" v)
-    | Overflow_block v -> Some (ident q "overflow-block" v)
-    | Overflow_inline v -> Some (ident q "overflow-inline" v)
-    | Orientation v -> Some (ident q "orientation" v)
-    | _ -> None
-
-  let eval_range q = function
-    | Range (name, op, value) ->
-        Some (eval_feature q.media_features (Range (name, op, value)))
-    | Range_rev (value, op, name) ->
-        Some (eval_feature q.media_features (Range_rev (value, op, name)))
-    | Interval (a, op1, name, op2, b) ->
-        Some (eval_feature q.media_features (Interval (a, op1, name, op2, b)))
-    | Boolean name ->
-        Some (eval_feature q.media_features (Boolean name : Media.feature))
-    | _ -> None
-
-  let first_some fs q m =
-    List.find_map (fun f -> f q m) fs |> Option.value ~default:false
-
-  let rec eval q = function
-    | Not_min_width px -> not (eval q (Min_width px))
-    | Not_min_width_rem rem -> not (eval q (Min_width_rem rem))
-    | Not_min_width_length l -> not (eval q (Min_width_length l))
-    | And (a, b) -> eval q a && eval q b
-    | Or (a, b) -> eval q a || eval q b
-    | Negated m -> not (eval q m)
-    | Print -> q.media_type = Some "print"
-    | Type_query { prefix; type_; trailing } -> (
+  let rec eval q : Media.t -> bool = function
+    | Cond c -> eval_condition q c
+    | Type { prefix; type_; trailing } -> (
         let body =
-          eval_medium q type_ && Option.fold ~none:true ~some:(eval q) trailing
+          eval_medium q type_
+          && Option.fold ~none:true ~some:(eval_condition q) trailing
         in
         match prefix with Some Media.Not -> not body | _ -> body)
     | List qs -> List.exists (eval q) qs
-    | m ->
-        first_some
-          [
-            eval_size;
-            eval_display;
-            eval_user_prefs;
-            eval_interaction;
-            eval_output;
-            eval_range;
-          ]
-          q m
 end
 
 (** {2 Container-query evaluation (CSS Containment 3 §3.4)}
@@ -1674,10 +1538,15 @@ module Match_container = struct
     fun cond ->
       if not (name_matches ?name q) then false
       else
+        let min_width l =
+          Media.Cond
+            (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
+        in
         match cond with
-        | Min_width_rem rem -> Match_media.eval media_q (Min_width_rem rem)
+        | Min_width_rem rem ->
+            Match_media.eval media_q (min_width (Values.Rem rem))
         | Min_width_px px ->
-            Match_media.eval media_q (Min_width (float_of_int px))
+            Match_media.eval media_q (min_width (Values.Px (float_of_int px)))
         | Named (n, inner) -> eval q ~name:n inner
         | Style { query; _ } -> style_match q ~query
         | Scroll_state { query; _ } -> eval_scroll_state q ~query

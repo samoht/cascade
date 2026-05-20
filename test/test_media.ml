@@ -1,20 +1,31 @@
 open Cascade
 open Css.Media
 
+let feat f : t = Cond (Feature f)
+let plain name value : t = feat (Plain (name_of_string name, value))
+let print_type : t = Type { prefix = None; type_ = Print; trailing = None }
+let not_print : t = Type { prefix = Some Not; type_ = Print; trailing = None }
+
+let not_all_and f : t =
+  Type { prefix = Some Not; type_ = All; trailing = Some (Feature f) }
+
+let min_width px = plain "min-width" (Length (Css.Values.Px px))
+let max_width px = plain "max-width" (Length (Css.Values.Px px))
+
 let test_string_output () =
   Alcotest.(check string)
     "min-width" "(min-width: 640px)"
-    (to_string (Min_width 640.));
+    (to_string (min_width 640.));
   Alcotest.(check string)
     "max-width" "(max-width: 768px)"
-    (to_string (Max_width 768.));
+    (to_string (max_width 768.));
   Alcotest.(check string)
     "prefers-color-scheme" "(prefers-color-scheme: dark)"
-    (to_string (Prefers_color_scheme Dark));
+    (to_string (plain "prefers-color-scheme" (Ident Dark)));
   Alcotest.(check string)
     "prefers-reduced-motion" "(prefers-reduced-motion: reduce)"
-    (to_string (Prefers_reduced_motion Reduce));
-  Alcotest.(check string) "print" "print" (to_string Print);
+    (to_string (plain "prefers-reduced-motion" (Ident Reduce)));
+  Alcotest.(check string) "print" "print" (to_string print_type);
   Alcotest.(check string)
     "media queries 5 dynamic range" "(dynamic-range: high)"
     (to_string (of_string "(dynamic-range: high)"));
@@ -49,15 +60,14 @@ let spec_media_l45_vectors () =
     (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
       check_raw row.branch row.input)
     Cascade_spec_inventory.Query_grammar.media_positive;
-  Alcotest.(check string)
-    "negated print" "not print"
-    (to_string (Negated Print));
+  Alcotest.(check string) "negated print" "not print" (to_string not_print);
   Alcotest.(check string)
     "negated min width" "not (min-width: 40px)"
-    (to_string (Negated (Min_width 40.)));
+    (to_string
+       (Cond (Not (Feature (Plain (Min Width, Length (Css.Values.Px 40.)))))));
   Alcotest.(check string)
     "not min width rem" "not all and (min-width: 30rem)"
-    (to_string (Not_min_width_rem 30.))
+    (to_string (not_all_and (Plain (Min Width, Length (Css.Values.Rem 30.)))))
 
 let spec_media_structural_vectors () =
   let open Css.Media in
@@ -66,34 +76,41 @@ let spec_media_structural_vectors () =
     let actual = of_string input in
     Alcotest.(check bool) name true (equal expected actual)
   in
-  check "min-width plain feature" "(min-width: 640px)" (Min_width 640.);
-  check "max-width plain feature" "(max-width: 768px)" (Max_width 768.);
+  check "min-width plain feature" "(min-width: 640px)" (min_width 640.);
+  check "max-width plain feature" "(max-width: 768px)" (max_width 768.);
   check "reduced motion feature" "(prefers-reduced-motion: reduce)"
-    (Prefers_reduced_motion Reduce);
-  check "print media type" "print" Print;
+    (plain "prefers-reduced-motion" (Ident Reduce));
+  check "print media type" "print" print_type;
   check "empty media query list" "" (List []);
-  check "negated print media type" "not print" (Negated Print);
+  check "negated print media type" "not print" not_print;
   check "negated min-width shorthand" "not all and (min-width: 40px)"
-    (Not_min_width 40.);
+    (not_all_and (Plain (Min Width, length (Css.Values.Px 40.))));
   check "name first range" "(width > 40em)"
-    (Range (Width, Gt, length (Css.Values.Em 40.)));
+    (feat (Range (Width, Gt, length (Css.Values.Em 40.))));
   check "value first range" "(40em < width)"
-    (Range_rev (length (Css.Values.Em 40.), Lt, Width));
+    (feat (Range_rev (length (Css.Values.Em 40.), Lt, Width)));
   check "interval range" "(30em <= width < 60em)"
-    (Interval
-       (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.)));
+    (feat
+       (Interval
+          (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.))));
   check "media type with trailing condition" "screen and (hover: hover)"
-    (Type_query { prefix = None; type_ = Screen; trailing = Some (Hover Hover) });
+    (Type
+       {
+         prefix = None;
+         type_ = Screen;
+         trailing = Some (Feature (Plain (Hover, Ident Hover)));
+       });
   check "media query list" "screen and (width >= 40em), print"
     (List
        [
-         Type_query
+         Type
            {
              prefix = None;
              type_ = Screen;
-             trailing = Some (Range (Width, Ge, length (Css.Values.Em 40.)));
+             trailing =
+               Some (Feature (Range (Width, Ge, length (Css.Values.Em 40.))));
            };
-         Print;
+         print_type;
        ])
 
 let spec_media_error_recovery_vectors () =
@@ -114,34 +131,34 @@ let spec_media_error_recovery_vectors () =
 let test_kind () =
   Alcotest.(check bool)
     "min-width is responsive" true
-    (match kind (Min_width 640.) with Responsive _ -> true | _ -> false);
+    (match kind (min_width 640.) with Responsive _ -> true | _ -> false);
   Alcotest.(check bool)
     "prefers-color-scheme is appearance" true
-    (match kind (Prefers_color_scheme Dark) with
+    (match kind (plain "prefers-color-scheme" (Ident Dark)) with
     | Preference_appearance -> true
     | _ -> false);
   Alcotest.(check bool)
     "prefers-reduced-motion is accessibility" true
-    (match kind (Prefers_reduced_motion Reduce) with
+    (match kind (plain "prefers-reduced-motion" (Ident Reduce)) with
     | Preference_accessibility -> true
     | _ -> false)
 
 let test_compare () =
-  let cmp = compare (Min_width 640.) (Min_width 768.) in
+  let cmp = compare (min_width 640.) (min_width 768.) in
   Alcotest.(check bool) "640 < 768" true (cmp < 0)
 
 let test_spec_media_sorting_edges () =
   let sorted =
     List.sort compare
       [
-        Prefers_color_scheme Dark;
-        Min_width 768.;
-        Hover Hover;
-        Max_width 1024.;
-        Prefers_reduced_motion Reduce;
-        Print;
-        Not_min_width 768.;
-        Min_width 320.;
+        plain "prefers-color-scheme" (Ident Dark);
+        min_width 768.;
+        plain "hover" (Ident Hover);
+        max_width 1024.;
+        plain "prefers-reduced-motion" (Ident Reduce);
+        print_type;
+        not_all_and (Plain (Min Width, Length (Css.Values.Px 768.)));
+        min_width 320.;
       ]
     |> List.map to_string
   in
@@ -168,15 +185,15 @@ let spec_media_context_vectors () =
   List.iter
     (fun (condition, expected) -> check condition expected)
     [
-      (Print, "print");
-      (Min_width 640., "(min-width: 640px)");
-      (Max_width 640., "(max-width: 640px)");
+      (print_type, "print");
+      (min_width 640., "(min-width: 640px)");
+      (max_width 640., "(max-width: 640px)");
       (of_string "(width >= 40em)", "(width >= 40em)");
       (of_string "(30em <= width < 60em)", "(30em <= width < 60em)");
       ( of_string "(prefers-reduced-data: reduce)",
         "(prefers-reduced-data: reduce)" );
       (of_string "(dynamic-range: high)", "(dynamic-range: high)");
-      (Negated Print, "not print");
+      (not_print, "not print");
     ]
 
 let spec_media_query_vectors () =

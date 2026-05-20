@@ -112,67 +112,14 @@ type condition =
 type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
 
-type query =
+type t =
   | Cond of condition
   | Type of {
       prefix : prefix option;
       type_ : medium;
       trailing : condition option;
     }
-  | List of query list
-
-type t =
-  | Width of Values.length
-  | Height of Values.length
-  | Min_width of float
-  | Max_width of float
-  | Not_min_width of float
-  | Min_width_rem of float
-  | Not_min_width_rem of float
-  | Min_width_length of Values.length
-  | Not_min_width_length of Values.length
-  | Aspect_ratio of int * int
-  | Resolution of float * string
-  | Color of int
-  | Color_index of int
-  | Monochrome of int
-  | Color_gamut of ident
-  | Video_color_gamut of ident
-  | Dynamic_range of ident
-  | Video_dynamic_range of ident
-  | Scan of ident
-  | Update of ident
-  | Overflow_block of ident
-  | Overflow_inline of ident
-  | Prefers_reduced_motion of ident
-  | Prefers_reduced_transparency of ident
-  | Prefers_reduced_data of ident
-  | Prefers_contrast of ident
-  | Prefers_color_scheme of ident
-  | Forced_colors of ident
-  | Inverted_colors of ident
-  | Pointer of ident
-  | Any_pointer of ident
-  | Hover of ident
-  | Any_hover of ident
-  | Scripting of ident
-  | Nav_controls of ident
-  | Print
-  | Orientation of ident
-  | And of t * t
-  | Or of t * t
-  | Negated of t
-  | Range of name * cmp * value
-  | Range_rev of value * cmp * name
-  | Interval of value * cmp * name * cmp * value
-  | Type_query of {
-      prefix : prefix option;
-      type_ : medium;
-      trailing : t option;
-    }
-  | Plain of name * value
-  | Boolean of name
-  | List of t list
+  | List of t list  (** Comma-separated media query list. *)
 
 val of_string : string -> t
 (** [of_string s] parses [s] as a media query. *)
@@ -214,8 +161,11 @@ val to_string : ?minify:bool -> t -> string
 val pp : t Pp.t
 (** Pretty-printer for media queries. *)
 
-val pp_query : query Pp.t
-(** Pretty-printer for parsed media queries. *)
+val lower_for_minify : t -> t
+(** [lower_for_minify t] applies the target-fact grammar upgrades used under
+    minify: [min-X]/[max-X] plain features become the range form [X>=V]/[X<=V],
+    and a lower bound paired with an upper bound on the same feature across an
+    [and] collapses into the two-sided interval [V<=name<=V]. *)
 
 val pp_condition : condition Pp.t
 (** Pretty-printer for media query conditions. *)

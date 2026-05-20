@@ -10,6 +10,11 @@ open Css.Properties
 let hex_color s = Hex { hash = true; value = s }
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
+let media_min_width px : Css.Media.t =
+  Css.Media.Cond
+    (Css.Media.Feature
+       (Css.Media.Plain (Css.Media.Min Css.Media.Width, Css.Media.Length (Px px))))
+
 (* Compose optimize + minified to_string the way [to_string ~minify:true] used
    to behave implicitly. *)
 let minify s = s |> Css.optimize |> Css.to_string ~minify:true
@@ -430,8 +435,8 @@ let test_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -480,10 +485,10 @@ let test_nonconsecutive_media_unmerged () =
 
   let stylesheet =
     [
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule1 ];
       statement_of_rule rule2;
       (* Separator *)
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule3 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule3 ];
     ]
   in
 
@@ -519,8 +524,8 @@ let test_different_conditions_unmerged () =
 
   let stylesheet =
     [
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
-      Css.media ~condition:(Css.Media.Min_width 64.) [ statement_of_rule rule2 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(media_min_width 64.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -562,9 +567,9 @@ let test_multiple_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule3 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule2 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule3 ];
     ]
   in
 
@@ -605,8 +610,8 @@ let test_media_merge_in_layers () =
 
   let layer_content =
     [
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule1 ];
-      Css.media ~condition:(Css.Media.Min_width 48.) [ statement_of_rule rule2 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule1 ];
+      Css.media ~condition:(media_min_width 48.) [ statement_of_rule rule2 ];
     ]
   in
 
@@ -1185,7 +1190,7 @@ let c61_no_merge_atrule () =
     [
       Css.rule ~selector:(Css.Selector.class_ "a")
         [ Css.Declaration.color (hex_color "ff0000") ];
-      Css.media ~condition:(Css.Media.Min_width 48.)
+      Css.media ~condition:(media_min_width 48.)
         [
           Css.rule ~selector:(Css.Selector.class_ "m")
             [ Css.Declaration.color (hex_color "00ff00") ];
@@ -1299,7 +1304,7 @@ let c61_no_layer_media_merge () =
      queries still establishes layer order at that point. Media-query merging
      must not cross it. *)
   let media_rule selector color =
-    Css.media ~condition:(Css.Media.Min_width 48.)
+    Css.media ~condition:(media_min_width 48.)
       [
         Css.rule
           ~selector:(Css.Selector.class_ selector)

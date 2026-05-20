@@ -7,31 +7,47 @@ let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+let cond f : Css.Media.t = Css.Media.Cond (Css.Media.Feature f)
+
+let plain name value : Css.Media.t =
+  cond (Css.Media.Plain (Css.Media.name_of_string name, value))
+
+let not_all_and f : Css.Media.t =
+  Css.Media.Type
+    {
+      prefix = Some Css.Media.Not;
+      type_ = Css.Media.All;
+      trailing = Some (Css.Media.Feature f);
+    }
 
 let media buf i =
   let open Css.Media in
+  let px () = Length (Css.Values.Px (Float.of_int (byte_at buf (i + 1)))) in
+  let rem () =
+    Length (Css.Values.Rem (Float.of_int (byte_at buf (i + 1)) /. 4.))
+  in
   match byte_at buf i mod 22 with
-  | 0 -> Min_width (Float.of_int (byte_at buf (i + 1)))
-  | 1 -> Max_width (Float.of_int (byte_at buf (i + 1)))
-  | 2 -> Not_min_width (Float.of_int (byte_at buf (i + 1)))
-  | 3 -> Min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
-  | 4 -> Not_min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
-  | 5 -> Prefers_reduced_motion No_preference
-  | 6 -> Prefers_reduced_motion Reduce
-  | 7 -> Prefers_contrast More
-  | 8 -> Prefers_contrast Less
-  | 9 -> Prefers_color_scheme Dark
-  | 10 -> Prefers_color_scheme Light
-  | 11 -> Forced_colors Active
-  | 12 -> Forced_colors Css.Media.None
-  | 13 -> Inverted_colors Inverted
-  | 14 -> Pointer Coarse
-  | 15 -> Pointer Fine
-  | 16 -> Any_pointer Coarse
-  | 17 -> Scripting Enabled
-  | 18 -> Hover Hover
-  | 19 -> Print
-  | 20 -> Orientation Landscape
+  | 0 -> plain "min-width" (px ())
+  | 1 -> plain "max-width" (px ())
+  | 2 -> not_all_and (Plain (Min Width, px ()))
+  | 3 -> plain "min-width" (rem ())
+  | 4 -> not_all_and (Plain (Min Width, rem ()))
+  | 5 -> plain "prefers-reduced-motion" (Ident No_preference)
+  | 6 -> plain "prefers-reduced-motion" (Ident Reduce)
+  | 7 -> plain "prefers-contrast" (Ident More)
+  | 8 -> plain "prefers-contrast" (Ident Less)
+  | 9 -> plain "prefers-color-scheme" (Ident Dark)
+  | 10 -> plain "prefers-color-scheme" (Ident Light)
+  | 11 -> plain "forced-colors" (Ident Active)
+  | 12 -> plain "forced-colors" (Ident Css.Media.None)
+  | 13 -> plain "inverted-colors" (Ident Inverted)
+  | 14 -> plain "pointer" (Ident Coarse)
+  | 15 -> plain "pointer" (Ident Fine)
+  | 16 -> plain "any-pointer" (Ident Coarse)
+  | 17 -> plain "scripting" (Ident Enabled)
+  | 18 -> plain "hover" (Ident Hover)
+  | 19 -> Type { prefix = None; type_ = Print; trailing = None }
+  | 20 -> plain "orientation" (Ident Landscape)
   | _ ->
       of_string
         (pick
@@ -74,10 +90,16 @@ let test_compare_transitive buf =
   | _ -> fail "media sort changed list length"
 
 let test_negated_kind_invariant buf =
-  let query = media buf 0 in
-  let negated = Css.Media.Negated query in
-  if Css.Media.kind query <> Css.Media.kind negated then
-    fail "negated media query changed kind bucket"
+  (* A double negation [not (not c)] is semantically equivalent to [c], so it
+     must land in the same kind bucket. (A single negation flips a width lower
+     bound into an upper bound, which legitimately changes the bucket.) *)
+  match media buf 0 with
+  | Css.Media.Cond c ->
+      let query = Css.Media.Cond c in
+      let twice = Css.Media.Cond (Css.Media.Not (Css.Media.Not c)) in
+      if Css.Media.kind query <> Css.Media.kind twice then
+        fail "double-negated media query changed kind bucket"
+  | _ -> ()
 
 let test_media_context_shape buf =
   let open Css.Values in
@@ -102,33 +124,46 @@ let test_raw_range_serialization_stable buf =
 let spec_media_vector buf =
   let open Css.Media in
   let length l = Length l in
+  let print_type = Type { prefix = None; type_ = Print; trailing = None } in
   pick
     [
-      ("(min-width: 640px)", Min_width 640.);
-      ("(max-width: 768px)", Max_width 768.);
-      ("(prefers-reduced-motion: reduce)", Prefers_reduced_motion Reduce);
-      ("print", Print);
-      ("not print", Negated Print);
-      ("not all and (min-width: 40px)", Not_min_width 40.);
-      ("(width > 40em)", Range (Width, Gt, length (Css.Values.Em 40.)));
-      ("(40em < width)", Range_rev (length (Css.Values.Em 40.), Lt, Width));
+      ("(min-width: 640px)", plain "min-width" (length (Css.Values.Px 640.)));
+      ("(max-width: 768px)", plain "max-width" (length (Css.Values.Px 768.)));
+      ( "(prefers-reduced-motion: reduce)",
+        plain "prefers-reduced-motion" (Ident Reduce) );
+      ("print", print_type);
+      ("not print", Type { prefix = Some Not; type_ = Print; trailing = None });
+      ( "not all and (min-width: 40px)",
+        not_all_and (Plain (Min Width, length (Css.Values.Px 40.))) );
+      ("(width > 40em)", cond (Range (Width, Gt, length (Css.Values.Em 40.))));
+      ( "(40em < width)",
+        cond (Range_rev (length (Css.Values.Em 40.), Lt, Width)) );
       ( "(30em <= width < 60em)",
-        Interval
-          (length (Css.Values.Em 30.), Le, Width, Lt, length (Css.Values.Em 60.))
-      );
+        cond
+          (Interval
+             ( length (Css.Values.Em 30.),
+               Le,
+               Width,
+               Lt,
+               length (Css.Values.Em 60.) )) );
       ( "screen and (hover: hover)",
-        Type_query
-          { prefix = None; type_ = Screen; trailing = Some (Hover Hover) } );
+        Type
+          {
+            prefix = None;
+            type_ = Screen;
+            trailing = Some (Feature (Plain (Hover, Ident Hover)));
+          } );
       ( "screen and (width >= 40em), print",
         List
           [
-            Type_query
+            Type
               {
                 prefix = None;
                 type_ = Screen;
-                trailing = Some (Range (Width, Ge, length (Css.Values.Em 40.)));
+                trailing =
+                  Some (Feature (Range (Width, Ge, length (Css.Values.Em 40.))));
               };
-            Print;
+            print_type;
           ] );
     ]
     buf 0
