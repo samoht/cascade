@@ -1060,6 +1060,7 @@ type channel = Values.channel =
   | Num of float (* 0–255, modern/space syntax *)
   | Pct of float (* 0%–100% *)
   | Var of channel var
+  | None (* CSS Color 4 [none] sentinel *)
 
 type rgb = Values.rgb =
   | Channels of { r : channel; g : channel; b : channel }
@@ -7337,10 +7338,12 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val optimize : ?scope:Optimize.scope -> ?flatten_nesting:bool -> t -> t
-(** [optimize ?scope ?flatten_nesting stylesheet] applies CSS optimizations to
-    the stylesheet, including merging consecutive identical selectors and
-    combining rules with identical properties. Preserves CSS cascade semantics.
+val optimize :
+  ?scope:Optimize.scope -> ?flatten_nesting:bool -> ?enforce_spec:bool -> t -> t
+(** [optimize ?scope ?flatten_nesting ?enforce_spec stylesheet] applies CSS
+    optimizations to the stylesheet, including merging consecutive identical
+    selectors and combining rules with identical properties. Preserves CSS
+    cascade semantics.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
     Pass [`Stylesheet] when the caller controls the whole author stylesheet
@@ -7348,7 +7351,10 @@ val optimize : ?scope:Optimize.scope -> ?flatten_nesting:bool -> t -> t
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
-*)
+
+    When [enforce_spec] is [false] (default) the optimizer may treat baseline
+    feature queries as known facts and elide [@supports] guards satisfied in
+    maintained evergreen browsers; [true] keeps every feature query. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

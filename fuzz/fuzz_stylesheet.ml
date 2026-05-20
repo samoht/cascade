@@ -135,7 +135,7 @@ let css_known_valid_snippet_text buf i =
        \"Invoice\" } }";
       "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
       "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
-       override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+       override-colors: 0 red, 1 color(display-p3 none 0.5 1); }";
       "@view-transition { navigation: auto; }";
       "@position-try --below { top: anchor(bottom); left: anchor(center); }";
       "@container card (inline-size > 30em) { .item { display: grid } }";
@@ -937,7 +937,7 @@ let test_valid_atrule_descriptor buf =
         "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
         "@keyframes slide { 100% { translate: 10px 0 } 0% { translate: none } }";
         "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
-         override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+         override-colors: 0 red, 1 color(display-p3 none 0.5 1); }";
         "@view-transition { navigation: auto; }";
         "@position-try --below { top: anchor(bottom); left: anchor(center); }";
         "@container card (inline-size > 30em) { .item { display: grid } }";
@@ -1099,7 +1099,7 @@ let test_palette_descriptor_matrix buf =
     pick
       [
         "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
-         override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+         override-colors: 0 red, 1 color(display-p3 none 0.5 1); }";
         "@font-palette-values --dark { font-family: \"Color Font\", Brand; \
          base-palette: dark; }";
       ]

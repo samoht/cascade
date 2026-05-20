@@ -6,6 +6,7 @@
 (mdx
  (files
   aria.mli
+  color_space.mli
   component.mli
   container.mli
   context.mli

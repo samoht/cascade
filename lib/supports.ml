@@ -522,3 +522,45 @@ let rec compare t1 t2 =
   | _, And _ -> 1
 
 let equal a b = compare a b = 0
+
+(* Evergreen-baseline classification of one declaration feature. Cascade's typed
+   property set is its model of "supported in maintained evergreen browsers": a
+   [(prop: value)] test whose property Cascade recognizes (and whose value
+   parsed - the reader only builds [Declaration] on success) is treated as
+   known-true. Properties Cascade does not model parse as [Unknown_property] and
+   stay unknown, as do empty/unsupported/vendor-flag features. *)
+let declaration_feature_truth = function
+  | Declaration (Declaration.Declaration { property = Unknown_property _; _ })
+    ->
+      `Unknown
+  | Declaration (Declaration.Theme_guarded _) -> `Unknown
+  | Declaration _ -> `True
+  | Empty _ | Unsupported _ | Vendor_flag_enabled -> `Unknown
+
+(* Classify a feature query against the evergreen baseline and simplify it.
+   [`True] / [`False] mean the whole condition is statically known; [`Cond c]
+   keeps the residual condition with known-true conjuncts and known-false
+   disjuncts removed. Function features (selector(), font-tech(), env(), ...)
+   are never baseline facts, so they stay in the residual. *)
+let rec simplify_baseline (cond : t) : [ `True | `False | `Cond of t ] =
+  match cond with
+  | Property feature -> (
+      match declaration_feature_truth feature with
+      | `True -> `True
+      | `Unknown -> `Cond cond)
+  | Function _ -> `Cond cond
+  | Not inner -> (
+      match simplify_baseline inner with
+      | `True -> `False
+      | `False -> `True
+      | `Cond c -> `Cond (Not c))
+  | And (a, b) -> (
+      match (simplify_baseline a, simplify_baseline b) with
+      | `False, _ | _, `False -> `False
+      | `True, other | other, `True -> other
+      | `Cond x, `Cond y -> `Cond (And (x, y)))
+  | Or (a, b) -> (
+      match (simplify_baseline a, simplify_baseline b) with
+      | `True, _ | _, `True -> `True
+      | `False, other | other, `False -> other
+      | `Cond x, `Cond y -> `Cond (Or (x, y)))

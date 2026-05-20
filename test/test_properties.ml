@@ -1884,15 +1884,15 @@ let test_animation_shorthand () =
   check_animation_shorthand "1s";
   (* name only, duration defaults to 0s *)
   check_animation_shorthand "slide";
-  check_animation_shorthand ~expected:"1s slide" "1s slide";
-  check_animation_shorthand ~expected:"1s slide" "slide 1s";
-  check_animation_shorthand ~expected:"1s ease-in slide" "slide 1s ease-in";
-  check_animation_shorthand ~expected:"1s ease-in .5s infinite slide"
+  check_animation_shorthand ~expected:"slide 1s" "1s slide";
+  check_animation_shorthand ~expected:"slide 1s" "slide 1s";
+  check_animation_shorthand ~expected:"slide 1s ease-in" "slide 1s ease-in";
+  check_animation_shorthand ~expected:"slide 1s ease-in .5s infinite"
     "slide 1s ease-in 0.5s infinite";
-  check_animation_shorthand ~expected:"1s infinite slide" "slide 1s infinite";
-  check_animation_shorthand ~expected:"1s reverse slide" "slide 1s reverse";
-  check_animation_shorthand ~expected:"1s forwards slide" "slide 1s forwards";
-  check_animation_shorthand ~expected:"1s paused slide" "slide 1s paused";
+  check_animation_shorthand ~expected:"slide 1s infinite" "slide 1s infinite";
+  check_animation_shorthand ~expected:"slide 1s reverse" "slide 1s reverse";
+  check_animation_shorthand ~expected:"slide 1s forwards" "slide 1s forwards";
+  check_animation_shorthand ~expected:"slide 1s paused" "slide 1s paused";
 
   (* Invalid cases *)
   (* invalid time unit *)
@@ -2114,8 +2114,8 @@ let test_animation () =
   check_animation "inherit";
   check_animation "initial";
   check_animation "none";
-  check_animation ~expected:"1s slide-in" "slide-in 1s";
-  check_animation ~expected:"2s ease-in 1s infinite alternate my-animation"
+  check_animation ~expected:"slide-in 1s" "slide-in 1s";
+  check_animation ~expected:"my-animation 2s ease-in 1s infinite alternate"
     "my-animation 2s ease-in 1s infinite alternate";
   (* Test invalid animation shorthand according to CSS spec *)
   neg_cursor read_animation "1s 2s 3s";

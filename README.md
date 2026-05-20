@@ -38,7 +38,7 @@ cascade --help
 
 <!-- $MDX skip -->
 ```bash
-cascade [--minify] [--inline-imports] [--inline-vars] [--keep-vars=NAMES] [FILE]
+cascade [--minify] [--enforce-spec] [--inline-imports] [--inline-vars] [--keep-vars=NAMES] [FILE]
 cat style.css | cascade -                    # read stdin explicitly
 ```
 
@@ -84,19 +84,38 @@ styles, or runtime custom-property mutation unless those facts are explicit in
 the stylesheet or supplied through an explicit closed context. This keeps the
 output sound when a minified stylesheet is embedded into a larger page.
 
+Cascade's default minifier targets maintained evergreen browsers. That target
+baseline is part of the optimization contract: Cascade may use modern CSS syntax
+and feature-support facts when they preserve behavior for that browser set and
+shorten the output. For example, it may treat baseline feature queries such as
+`@supports(display:flex)` and `@supports(display:grid)` as true and remove the
+wrapper.
+
+Pass `--enforce-spec` with `--minify` to disable target-browser facts. In that
+mode, Cascade still serializes to the shortest CSS form it knows, but it does
+not introduce newer grammar or remove feature queries just because maintained
+evergreen browsers support them.
+
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
-- Modern color functions: `lab()`, `lch()`, `oklab()`, and `oklch()` may round lightness/chroma/a/b channels, hue, and alpha under `--minify`.
+- Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling; unresolved, out-of-gamut, or missing-channel forms stay functional.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
 - Selector lists: sort branches into Cascade's canonical selector order (`div,.class,#id` -> `#id,.class,div`).
 - Shorthands with unordered components serialize in Cascade's canonical order; when shortest forms tie, Cascade follows common minifier convention (`animation:1s slide` -> `animation:slide 1s`).
 - Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
 - Whitespace elided at safe token boundaries (`100% 0` -> `100%0`).
-- Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions.
-- Media queries: legacy -> range syntax (`(min-width:48px)` -> `(width>=48px)`).
+- Math reduction: `calc()`, `hypot()` etc. fold constant subexpressions only
+  when the serialized result is exact; approximate layout values stay symbolic
+  (`calc(100%/3)` stays `calc(100%/3)`).
+- Media and container queries: default minify uses MQ4 range syntax when it is
+  shorter for the evergreen target (`(min-width:48px)` -> `(width>=48px)`,
+  `(min-width:48px) and (max-width:64px)` -> `(48px<=width<=64px)`).
+  `--enforce-spec` preserves the legacy spelling unless the CSS text alone
+  proves a shorter rewrite without introducing newer grammar.
 
 These rules compose wherever Cascade has a typed CSS value: nested function
 arguments, registered custom properties, and normal declarations. Unregistered
-custom-property values remain opaque token streams.
+custom-property values remain opaque token streams, apart from insignificant
+source whitespace.
 
 Pretty mode (the default) preserves the authored form where the parsed
 model permits it. Spec-mandated canonicalizations (CSS Syntax 3 section

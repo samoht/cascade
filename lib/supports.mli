@@ -79,3 +79,11 @@ val compare : t -> t -> int
 
 val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)
+
+val simplify_baseline : t -> [ `True | `False | `Cond of t ]
+(** [simplify_baseline cond] classifies [cond] against Cascade's evergreen
+    feature-support baseline (its typed property set) and simplifies it. [`True]
+    / [`False] mean the whole condition is statically decided; [`Cond c] keeps
+    the residual condition with known-true [and]-conjuncts and known-false
+    [or]-disjuncts removed. Function features and properties Cascade does not
+    model stay in the residual. *)

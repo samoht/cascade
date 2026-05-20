@@ -1,8 +1,8 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~scope ~flatten_nesting ~inline_imports_flag
-    ~inline_vars_flag ~keep_vars =
+let process_css ~input_path ~minify ~scope ~flatten_nesting ~enforce_spec
+    ~inline_imports_flag ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -22,7 +22,8 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~inline_imports_flag
     in
     (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
-      if minify then Css.optimize ~scope ~flatten_nesting stylesheet
+      if minify then
+        Css.optimize ~scope ~flatten_nesting ~enforce_spec stylesheet
       else stylesheet
     in
     let output = Css.to_string ~minify stylesheet in
@@ -74,6 +75,16 @@ let scope_arg =
   in
   Arg.(value & opt scope_conv `Fragment & info [ "scope" ] ~docv:"SCOPE" ~doc)
 
+let enforce_spec_arg =
+  let doc =
+    "Keep feature queries that default $(b,--minify) would elide using \
+     evergreen-browser support facts. With $(b,--enforce-spec), $(tname) still \
+     serializes to the shortest CSS form but preserves $(b,@supports) and \
+     $(b,supports()) guards unless the CSS text and specification alone prove \
+     the rewrite. Has no effect without $(b,--minify)."
+  in
+  Arg.(value & flag & info [ "enforce-spec" ] ~doc)
+
 let flatten_nesting_arg =
   let doc =
     "Compatibility transform: flatten nested style rules into top-level rules \
@@ -116,6 +127,7 @@ let term =
         minify
         scope
         flatten_nesting
+        enforce_spec
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
@@ -132,10 +144,12 @@ let term =
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
         if scope = `Stylesheet && not minify then
           Fmt.epr "Warning: --scope=stylesheet has no effect without --minify@.";
+        if enforce_spec && not minify then
+          Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting
-          ~inline_imports_flag ~inline_vars_flag ~keep_vars)
+          ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg
-    $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
+    $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
 
 let man =
   [

@@ -33,6 +33,7 @@ let () =
       Test_selector_summary.suite;
       Test_aria.suite;
       Test_values.suite;
+      Test_color_space.suite;
       Test_declaration.suite;
       Test_properties.suite;
       Test_stylesheet.suite;

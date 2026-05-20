@@ -101,6 +101,53 @@ let normalize_ok_color_spaces s =
   in
   loop 0 0 None
 
+let normalize_custom_property_colon_ws s =
+  let len = String.length s in
+  let is_space = function ' ' | '\t' | '\n' | '\r' -> true | _ -> false in
+  let rec skip_space i =
+    if i < len && is_space s.[i] then skip_space (i + 1) else i
+  in
+  let rec find_colon i =
+    if i >= len then None
+    else
+      match s.[i] with
+      | ':' -> Some i
+      | ';' | '{' | '}' -> None
+      | _ -> find_colon (i + 1)
+  in
+  let b = Buffer.create len in
+  let add_range start stop =
+    if stop > start then Buffer.add_substring b s start (stop - start)
+  in
+  let rec loop i at_decl_boundary =
+    if i >= len then Buffer.contents b
+    else if at_decl_boundary then
+      let name_start = skip_space i in
+      if
+        name_start + 1 < len && s.[name_start] = '-' && s.[name_start + 1] = '-'
+      then (
+        match find_colon (name_start + 2) with
+        | Some colon ->
+            let value_start = skip_space (colon + 1) in
+            add_range i (colon + 1);
+            if
+              value_start < len
+              && s.[value_start] <> ';'
+              && s.[value_start] <> '}'
+            then loop value_start false
+            else loop (colon + 1) false
+        | None ->
+            Buffer.add_char b s.[i];
+            loop (i + 1) (s.[i] = '{' || s.[i] = ';'))
+      else (
+        Buffer.add_char b s.[i];
+        loop (i + 1) (s.[i] = '{' || s.[i] = ';'))
+    else (
+      Buffer.add_char b s.[i];
+      loop (i + 1) (s.[i] = '{' || s.[i] = ';'))
+  in
+  loop 0 true
+
 let normalize_expected_tokens expected =
   (* Cascade's README minify policy picks the shortest spec-equivalent spelling.
      CSS Syntax tokenizes these at-keywords and [(] separately, so the
@@ -111,9 +158,10 @@ let normalize_expected_tokens expected =
      [red!important] and [red !important] are equivalent, and the no-space form
      is shorter. Modern color functions also permit tighter token boundaries
      such as [oklab(50%.1-.05)]: the Color grammar is token-based, and these
-     adjacent numeric tokens re-parse as the same components. Keep the vendored
-     traces pristine and normalize only these safe token boundaries on the
-     expected side. *)
+     adjacent numeric tokens re-parse as the same components. Custom-property
+     values stay opaque, but post-colon whitespace is declaration formatting.
+     Keep the vendored traces pristine and normalize only these safe token
+     boundaries on the expected side. *)
   let replace sep by s =
     s |> Astring.String.cuts ~empty:true ~sep |> String.concat by
   in
@@ -124,6 +172,7 @@ let normalize_expected_tokens expected =
   |> replace "@scope (" "@scope("
   |> Astring.String.cuts ~empty:true ~sep:" !important"
   |> String.concat "!important" |> normalize_ok_color_spaces
+  |> normalize_custom_property_colon_ws
 
 let normalize_expected ~category ~id expected =
   let expected = normalize_expected_tokens expected in
@@ -149,6 +198,12 @@ let normalize_expected ~category ~id expected =
   | "colors", "0052" ->
       (* Same precision-policy arbitration for rec2020. *)
       "a{color:color(rec2020 .9346 .0789 .0235)}"
+  | "colors", "0053" ->
+      (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
+         Cascade's [README] minify policy picks the shortest valid spelling, so
+         [xyz-d65] canonicalises to [xyz]; the precision rounding is the same
+         policy as the other [color()] traces above. *)
+      "a{color:color(xyz .5346 .2877 .0679)}"
   | "font-face", ("0001" | "0002") ->
       (* Cascade's minify policy drops @font-face rules that cannot participate
          in font matching because they are missing font-family or src. CSS Fonts
@@ -156,6 +211,34 @@ let normalize_expected ~category ~id expected =
          required descriptor is absent; the shortest equivalent minified output
          is therefore empty. *)
       ""
+  | "charset", "0002" ->
+      (* Cascade parses already-decoded UTF-8 text and does not preserve the CSS
+         Syntax byte-stream decoding layer. Once decoded, both @charset
+         declarations are metadata rather than stylesheet rules. *)
+      "a{color:red}"
+  | "comments", "0004" ->
+      (* Cascade is an AST library, not a token preserver: minified output never
+         contains comment delimiters. CSS Syntax 3 sec. 3.3 treats [/**/] as a
+         token separator, so [a/**/b] tokenises to two idents that cascade
+         re-serialises with a single space - equivalent under var() substitution
+         and shorter than keeping the empty comment. *)
+      "a{--bar:a b}"
+  | "comments", "0005" ->
+      (* Same comment-stripping policy as comments/0004, here inside a
+         [@container style()] custom-property query. *)
+      "@container style(--bar:a b){a{color:red}}"
+  | "container", "0001" ->
+      (* The upstream fixture is scoped to whitespace removal and keeps the
+         legacy [min-width] spelling. Cascade's README minify policy
+         canonicalizes media/container size queries to MQ4 range syntax when it
+         is shorter. *)
+      "@container sidebar (width>=700px){a{color:red}}"
+  | "values", "0024" ->
+      (* The fixture canonicalizes cubic-bezier(.25,.1,.25,1) to [ease]. Cascade
+         then applies the transition shorthand default-elision rule: [ease] is
+         the initial timing function, so omitting it is shorter and
+         equivalent. *)
+      "a{transition:color}"
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
          calc() and keeps the calc() wrapper. Cascade's README minify policy

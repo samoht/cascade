@@ -14,6 +14,7 @@ let () =
       Fuzz_container.suite;
       Fuzz_context.suite;
       Fuzz_values.suite;
+      Fuzz_color_space.suite;
       Fuzz_properties.suite;
       Fuzz_declaration.suite;
       Fuzz_variables.suite;

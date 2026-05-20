@@ -812,9 +812,9 @@ let list_properties () =
 
   (* Animation *)
   check_declaration ~expected:"animation:none" "animation: none";
-  check_declaration ~expected:"animation:1s linear infinite spin"
+  check_declaration ~expected:"animation:spin 1s linear infinite"
     "animation: spin 1s linear infinite";
-  check_declaration ~expected:"animation:.5s ease-out slide"
+  check_declaration ~expected:"animation:slide .5s ease-out"
     "animation: slide 0.5s ease-out"
 
 let custom_properties () =

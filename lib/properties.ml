@@ -15484,6 +15484,11 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   let name_is_default_none = animation_name_is_default_none ctx anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
   pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
+  (* Cascade canonical order puts the animation [name] first: it is the only
+     ident-shaped component that survives the rest defaulting away, so leading
+     with it makes "single-token" outputs ([animation:slide]) read naturally and
+     matches the common minifier convention. *)
+  pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_duration)
     ctx (Animation.duration anim);
@@ -15507,7 +15512,6 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
     (pp_animation_space_before state pp_animation_play_state)
     ctx
     (Animation.play_state ~quote_name:quote_ambiguous_name anim);
-  pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_animation_timeline)
     ctx
@@ -18526,6 +18530,7 @@ let string_of_channel : channel -> string = function
   | Num f -> Pp.string_of_float f
   | Pct p -> Pp.string_of_float p ^ "%"
   | Var _ -> "0"
+  | None -> "none"
 
 let string_of_kind_value : type a. a kind -> a -> string =
  fun kind value ->

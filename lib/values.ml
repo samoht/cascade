@@ -593,6 +593,22 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
   in
   pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
 
+(* Fold [a / b] only when the float quotient round-trips through multiplication:
+   exact divisions like [100/4 = 25] survive but [100/3 = 33.333...] does not,
+   so the calc wrapper stays and CSS Values 4 §10.7's precision requirement
+   holds. *)
+let exact_div (a : float) (b : float) : float option =
+  if b = 0. then Option.none
+  else
+    let r = a /. b in
+    (* Round-trip alone is too lax under IEEE 754 (33.333... * 3 = 100.0 due to
+       multiplication rounding). Also require the quotient to survive the
+       6-sig-fig round used by [Pp.float], which is the precision Cascade
+       commits to in serialised output. *)
+    if Float.is_finite r && r *. b = a && Pp.round_sig 6 r = r then
+      Option.some r
+    else Option.none
+
 (* CSS Values 4 10.7 structural simplification of a typed calc AST. Folds [Expr
    (Num _, op, Num _)] subtrees and constant-identity patterns ([x + 0], [0 +
    x], [x - 0], [x * 1], [1 * x], [x / 1]) into shorter equivalents. The
@@ -622,7 +638,8 @@ let rec eval_calc : type a. a calc -> a calc = function
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | Num a, Div, Num b -> (
+          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
       | _ -> Expr (l, op, r))
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
@@ -640,6 +657,37 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 (* Small helpers *)
+
+(* CSS Values 4 §6.1: the absolute lengths share px as a canonical unit. *)
+let absolute_unit_px_ratio_of_suffix = function
+  | "px" -> Option.some 1.
+  | "in" -> Option.some 96.
+  | "cm" -> Option.some (96. /. 2.54)
+  | "mm" -> Option.some (96. /. 2.54 /. 10.)
+  | "q" -> Option.some (96. /. 2.54 /. 40.)
+  | "pt" -> Option.some (96. /. 72.)
+  | "pc" -> Option.some (96. /. 6.)
+  | _ -> Option.none
+
+let length_render_length value suffix =
+  let body =
+    Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 value)
+  in
+  String.length body + String.length suffix
+
+(* Pick the shorter spelling between the authored absolute-unit form and its
+   canonical px equivalent. Ties go to px - fewer distinct unit tokens compress
+   better, matching the keithamus minifier convention. *)
+let canonical_absolute_unit value suffix =
+  match absolute_unit_px_ratio_of_suffix suffix with
+  | None -> (value, suffix)
+  | Some _ when suffix = "px" -> (value, suffix)
+  | Some ratio ->
+      let px_value = value *. ratio in
+      if length_render_length px_value "px" <= length_render_length value suffix
+      then (px_value, "px")
+      else (value, suffix)
+
 let pp_unit ?(always = true) ctx f suffix =
   (* Dropping the unit on a zero ([0px] -> [0]) is a minify-only
      canonicalization per CSS Values 4 6.5; pretty mode preserves the source
@@ -647,6 +695,9 @@ let pp_unit ?(always = true) ctx f suffix =
   let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
   else
+    let f, suffix =
+      if Pp.minified ctx then canonical_absolute_unit f suffix else (f, suffix)
+    in
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
        fractional values ([.25rem], not [0.25rem]); we follow that canonical
        form in both minified and pretty output. Round to 6 significant digits
@@ -734,26 +785,6 @@ let length_is_zero = function
   | Cqw f | Cqh f | Cqi f | Cqb f | Cqmin f | Cqmax f -> f = 0.
   | Dimension { value; _ } -> value = 0.
   | _ -> false
-
-(* A zero [Pct 0.] inside [calc()] is type-significant: it elevates the
-   surrounding sum from [<length>] to [<length-percentage>], and the result
-   keeps that mixed type for animations and computed-value resolution. CSS
-   Values 4 sec. 10.10 makes calc's result type depend on the union of its
-   arguments' types, so [calc(100px + 0%)] must not fold to [100px]. Only
-   normalise zeros whose canonical unit is [px] (length-typed). *)
-let length_zero_is_length_only : length -> bool = function
-  | Pct _ -> false
-  | other -> length_is_zero other
-
-let rec normalize_length_calc_zeros : length calc -> length calc = function
-  | Val v when length_zero_is_length_only v -> Num 0.
-  | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
-    | Math_fn _ ) as leaf ->
-      leaf
-  | Nested c -> Nested (normalize_length_calc_zeros c)
-  | Parens c -> Parens (normalize_length_calc_zeros c)
-  | Expr (l, op, r) ->
-      Expr (normalize_length_calc_zeros l, op, normalize_length_calc_zeros r)
 
 let calc_length_unit = function
   | Zero -> Some ("px", 0.)
@@ -857,9 +888,21 @@ let rec resolve_length_calc_vars ctx : length calc -> length calc = function
     as leaf ->
       leaf
 
-(* CSS Values 4 10.7: same-unit add/sub of two typed lengths reduces to a single
-   length. Mixed-unit cases stay as a [calc] expression because the resolved
-   value depends on cascade context. *)
+(* CSS Values 4 §6.1: the absolute lengths share px as a canonical unit. *)
+let absolute_unit_px_ratio = function
+  | "px" -> Some 1.
+  | "in" -> Some 96.
+  | "cm" -> Some (96. /. 2.54)
+  | "mm" -> Some (96. /. 2.54 /. 10.)
+  | "q" -> Some (96. /. 2.54 /. 40.)
+  | "pt" -> Some (96. /. 72.)
+  | "pc" -> Some (96. /. 6.)
+  | _ -> None
+
+(* CSS Values 4 §10.7: same-unit add/sub of two typed lengths reduces to a
+   single length. Mixed cases reduce when both operands are absolute units
+   (px-compatible per §6.1) by combining in the canonical px form; relative
+   units (em/rem/vw/...) still require cascade context and stay unfolded. *)
 let length_combine op v1 v2 =
   let combine a b =
     match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
@@ -868,16 +911,22 @@ let length_combine op v1 v2 =
   | (Add | Sub), Some (unit1, a), Some (unit2, b) when String.equal unit1 unit2
     ->
       Some (length_from_calc_unit unit1 (combine a b))
+  | (Add | Sub), Some (unit1, a), Some (unit2, b) -> (
+      match (absolute_unit_px_ratio unit1, absolute_unit_px_ratio unit2) with
+      | Some r1, Some r2 ->
+          Some (length_from_calc_unit "px" (combine (a *. r1) (b *. r2)))
+      | _ -> None)
   | _ -> None
 
 (* CSS Values 4 10.7: multiplying a typed length by a unitless number scales the
-   length, leaving the unit unchanged. Same goes for division by a non- zero
-   number. *)
+   length, leaving the unit unchanged. Division folds only when the quotient is
+   exact (see [exact_div]); otherwise the caller keeps the [calc()] wrapper to
+   avoid precision loss. *)
 let length_scale op v n =
-  let scale a = match op with Mul -> a *. n | Div -> a /. n | _ -> nan in
   match (op, calc_length_unit v) with
-  | (Mul | Div), Some (unit, value) ->
-      Some (length_from_calc_unit unit (scale value))
+  | Mul, Some (unit, value) -> Some (length_from_calc_unit unit (value *. n))
+  | Div, Some (unit, value) ->
+      Option.map (length_from_calc_unit unit) (exact_div value n)
   | _ -> None
 
 (* CSS Values 4 §10.7: [abs()] preserves the input's type, so [abs(<length>)]
@@ -932,7 +981,8 @@ let rec eval_length_calc : length calc -> length calc =
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | Num a, Div, Num b -> (
+          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x
@@ -952,6 +1002,10 @@ let rec eval_length_calc : length calc -> length calc =
           match length_scale Mul a n with
           | Some v -> Val v
           | None -> Expr (l, op, r))
+      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
+         reduces back to [x]. *)
+      | Num 1., Div, Parens (Expr (Num 1., Div, x)) when identity_safe x -> x
+      | Num 1., Div, Expr (Num 1., Div, x) when identity_safe x -> x
       | _ -> Expr (l, op, r))
 
 type length_unit =
@@ -1248,8 +1302,10 @@ let linear_terms_with unit_of_value calc =
         | _ -> None)
     | Expr (left, Mul, Num n) -> Option.map (scale n) (aux left)
     | Expr (Num n, Mul, right) -> Option.map (scale n) (aux right)
-    | Expr (left, Div, Num n) when n <> 0. ->
-        Option.map (scale (1. /. n)) (aux left)
+    | Expr (left, Div, Num n) -> (
+        match exact_div 1. n with
+        | Some inv -> Option.map (scale inv) (aux left)
+        | None -> None)
     | Expr _ -> None
   in
   aux calc
@@ -1272,26 +1328,6 @@ let linear_length_calc calc =
               Expr (acc, op, Val (length_of_unit unit n)))
             (Val (length_of_unit unit n))
             rest)
-
-let lp_is_zero (v : length_percentage) =
-  match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
-
-(* See [length_zero_is_length_only]: a zero percentage in a calc is a type
-   sentinel for [<length-percentage>] and must survive minification. *)
-let lp_zero_is_length_only : length_percentage -> bool = function
-  | Pct _ -> false
-  | other -> lp_is_zero other
-
-let rec normalize_lp_calc_zeros :
-    length_percentage calc -> length_percentage calc = function
-  | Val v when lp_zero_is_length_only v -> Num 0.
-  | ( Val _ | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count
-    | Math_fn _ ) as leaf ->
-      leaf
-  | Nested c -> Nested (normalize_lp_calc_zeros c)
-  | Parens c -> Parens (normalize_lp_calc_zeros c)
-  | Expr (l, op, r) ->
-      Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
 let lp_of_default_string value : length_percentage option =
   match
@@ -1343,13 +1379,14 @@ let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
   | _ -> None
 
 let lp_scale op (v : length_percentage) n : length_percentage option =
-  let scale a = match op with Mul -> a *. n | Div -> a /. n | _ -> nan in
   match (op, v) with
   | (Mul | Div), Length a -> (
       match length_scale op a n with
       | Some lv -> Some (Length lv)
       | None -> None)
-  | (Mul | Div), Pct a -> Some (Pct (scale a))
+  | Mul, Pct a -> Some (Pct (a *. n) : length_percentage)
+  | Div, Pct a ->
+      Option.map (fun r -> (Pct r : length_percentage)) (exact_div a n)
   | _ -> None
 
 (* Same unit-preserving trick as [length_of_math_fn] but for the
@@ -1407,7 +1444,8 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | Num a, Div, Num b -> (
+          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x
@@ -1423,6 +1461,10 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match lp_scale op a n with Some v -> Val v | None -> Expr (l, op, r))
       | Num n, Mul, Val a -> (
           match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
+      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
+         reduces back to [x]. *)
+      | Num 1., Div, Parens (Expr (Num 1., Div, x)) when identity_safe x -> x
+      | Num 1., Div, Expr (Num 1., Div, x) when identity_safe x -> x
       | _ -> Expr (l, op, r))
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
@@ -1811,8 +1853,8 @@ and pp_length_calc ~always ctx cv =
 and pp_generic_length_calc ~always ctx cv =
   let cv =
     if Pp.minified ctx then
-      cv |> resolve_length_calc_vars ctx |> fun cv ->
-      (if calc_contains_var cv then cv else normalize_length_calc_zeros cv)
+      cv
+      |> resolve_length_calc_vars ctx
       |> eval_length_calc |> linear_length_calc |> eval_length_calc
     else cv
   in
@@ -2455,58 +2497,78 @@ let byte_to_hex_byte i =
   Bytes.to_string s
 
 (* Convert an [(r, g, b)] triple of integer-valued channels to the [#rrggbb]
-   string used as a key by [named_for_hex] / [shorten_hex]. *)
+   string used as a key by [named_for_hex] / [shorten_hex]. CSS Color 4 sec.
+   4.2.3: at the used-value boundary [none] resolves to [0] for the serialised
+   computed value, so fold it that way here; the [color-mix] path reads the
+   typed channel directly via [static_color_to_srgb_channels] and keeps the
+   missing-component carry-over. *)
+let channel_byte_value_for_serialisation c =
+  match c with (None : channel) -> Some 0 | c -> channel_byte_value c
+
 let rgb_to_hex_string r g b =
-  match (channel_byte_value r, channel_byte_value g, channel_byte_value b) with
+  match
+    ( channel_byte_value_for_serialisation r,
+      channel_byte_value_for_serialisation g,
+      channel_byte_value_for_serialisation b )
+  with
   | Some r, Some g, Some b ->
       Some (byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b)
   | _ -> None
 
-(* Reduce any all-static colour to its sRGB byte channels and alpha. Returns
-   [None] for colours that contain a [Var] / [Calc] / [Current] component or
-   that can't be folded statically (e.g. an unhandled [Color { space; ... }] in
-   a colour space other than sRGB). The caller can then route through the [Hex]
-   arm to pick the shortest spec-equivalent spelling. *)
-let static_color_to_srgb_bytes : color -> (int * int * int * int) option =
+(* CSS Color 4 sec. 4.2.3 [none] sentinel: per-channel folding of a static
+   colour to sRGB. Each channel is [Some byte] when the colour resolves
+   statically and the channel is a numeric value, [Option.None] when the channel
+   is the [none] keyword. The outer [Option.None] means the whole colour can't
+   be folded (e.g. contains [Var] / [Calc] / unsupported space). *)
+let static_color_to_srgb_channels :
+    color -> (int option * int option * int option * int option) option =
   function
-  | Hex { value; _ } -> hex_to_rgba_bytes value
-  | Rgb (Channels { r; g; b }) -> (
-      match
-        (channel_byte_value r, channel_byte_value g, channel_byte_value b)
-      with
-      | Some r, Some g, Some b -> Some (r, g, b, 255)
-      | _ -> Option.None)
-  | Rgba { rgb = Channels { r; g; b }; a; legacy = _ } -> (
-      match
+  | Hex { value; _ } -> (
+      match hex_to_rgba_bytes value with
+      | Some (r, g, b, a) -> Some (Some r, Some g, Some b, Some a)
+      | None -> None)
+  | Rgb (Channels { r; g; b }) ->
+      Some
+        ( channel_byte_value r,
+          channel_byte_value g,
+          channel_byte_value b,
+          Some 255 )
+  | Rgba { rgb = Channels { r; g; b }; a; legacy = _ } ->
+      Some
         ( channel_byte_value r,
           channel_byte_value g,
           channel_byte_value b,
           alpha_value_byte a )
-      with
-      | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
-      | _ -> Option.None)
   | Hsl { h; s; l; a } -> (
       match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
-      | Some hue, Some saturation, Some lightness -> (
+      | Some hue, Some saturation, Some lightness ->
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
-          match alpha_value_byte a with
-          | Some av -> Some (r, g, b, av)
-          | Option.None -> Option.None)
+          Some (Some r, Some g, Some b, alpha_value_byte a)
       | _ -> Option.None)
   | Hwb { h; w; b; a } -> (
       match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
-      | Some hue, Some whiteness, Some blackness -> (
+      | Some hue, Some whiteness, Some blackness ->
           let hue = normalize_hue hue in
           let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
-          match alpha_value_byte a with
-          | Some av -> Some (r, g, blue, av)
-          | Option.None -> Option.None)
+          Some (Some r, Some g, Some blue, alpha_value_byte a)
       | _ -> Option.None)
-  | Named name ->
+  | Named name -> (
       let _, hex = color_name_hex name in
-      if hex = "" then Option.None else hex_to_rgba_bytes hex
-  | Transparent -> Some (0, 0, 0, 0)
+      if hex = "" then Option.None
+      else
+        match hex_to_rgba_bytes hex with
+        | Some (r, g, b, a) -> Some (Some r, Some g, Some b, Some a)
+        | None -> None)
+  | Transparent -> Some (Some 0, Some 0, Some 0, Some 0)
+  | _ -> Option.None
+
+(* Reduce any all-static colour to its sRGB byte channels and alpha. Returns
+   [None] for colours that contain a [Var] / [Calc] / [Current] / [none]
+   component or that can't be folded statically. *)
+let static_color_to_srgb_bytes c : (int * int * int * int) option =
+  match static_color_to_srgb_channels c with
+  | Some (Some r, Some g, Some b, Some a) -> Some (r, g, b, a)
   | _ -> Option.None
 
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
@@ -2526,23 +2588,45 @@ let lerp_byte b1 b2 w1 w2 =
   Float.to_int
     (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
 
-(* Mix two static colours in sRGB per CSS Color 5 5; returns [None] if either
-   colour can't be folded statically or the percentages reduce to zero
-   weight. *)
+(* Mix two static colours in sRGB per CSS Color 5 sec. 5. Returns [None] if
+   either operand can't be folded statically (e.g. contains [Var] / [Calc]) or
+   the percentages reduce to zero weight. CSS Color 4 sec. 4.2.3 [none]
+   sentinel: a channel that is [none] in one operand inherits the other
+   operand's analogous channel instead of being averaged in as a zero; if both
+   are [none] the mix result is also [none] for that channel (returned as zero
+   here because the caller routes the mixed bytes through [Hex] and [#000000] is
+   the shortest spelling for a fully-[none] mix). *)
 let mix_srgb_bytes c1 c2 ~p1 ~p2 =
-  match (static_color_to_srgb_bytes c1, static_color_to_srgb_bytes c2) with
+  match
+    (static_color_to_srgb_channels c1, static_color_to_srgb_channels c2)
+  with
   | Some (r1, g1, b1, a1), Some (r2, g2, b2, a2) -> (
       match mix_weights p1 p2 with
       | None -> Option.None
       | Some (w1, w2, alpha_mult) ->
-          let r = lerp_byte r1 r2 w1 w2 in
-          let g = lerp_byte g1 g2 w1 w2 in
-          let b = lerp_byte b1 b2 w1 w2 in
-          let alpha_pre = lerp_byte a1 a2 w1 w2 in
-          let a =
-            Float.to_int (Float.round (Float.of_int alpha_pre *. alpha_mult))
+          let mix_channel x y =
+            match (x, y) with
+            | Some bx, Some by -> Some (lerp_byte bx by w1 w2)
+            | Some b, None | None, Some b -> Some b
+            | None, None -> None
           in
-          Some (r, g, b, a))
+          let r = mix_channel r1 r2 in
+          let g = mix_channel g1 g2 in
+          let b = mix_channel b1 b2 in
+          let a =
+            match (a1, a2) with
+            | Some av1, Some av2 ->
+                let alpha_pre = lerp_byte av1 av2 w1 w2 in
+                Some
+                  (Float.to_int
+                     (Float.round (Float.of_int alpha_pre *. alpha_mult)))
+            | Some av, None | None, Some av ->
+                Some
+                  (Float.to_int (Float.round (Float.of_int av *. alpha_mult)))
+            | None, None -> None
+          in
+          let unwrap = function Some v -> v | None -> 0 in
+          Some (unwrap r, unwrap g, unwrap b, unwrap a))
   | _ -> Option.None
 
 let static_alpha_value = function
@@ -2639,22 +2723,296 @@ let mix_lab_family in_space color1 color2 ~p1 ~p2 =
         l1 c1 h1 alpha1 l2 c2 h2 alpha2
   | _ -> None
 
+(* Convert any static colour to floating-point linear sRGB plus an alpha value
+   in [0, 1]. Routes through [static_color_to_srgb_bytes] for the common case
+   and through [Color_space] for spaces whose conversion matrices we now have
+   wired up. Returns [None] for colours that contain a [Var] / [Calc] /
+   [Current] component or for [none] sentinels (those need the per-channel
+   carry-over path in [static_color_to_srgb_channels]). *)
+let static_color_to_linear_srgb (c : color) :
+    ((float * float * float) * float) option =
+  let f255 b = Float.of_int b /. 255.0 in
+  match c with
+  | Color { space; components; alpha } when List.length components = 3 -> (
+      let component_value : component -> float option = function
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | Component_none -> Some 0.0
+        | _ -> None
+      in
+      match List.map component_value components with
+      | [ Some c1; Some c2; Some c3 ] -> (
+          let alpha_f =
+            match alpha with
+            | (None : alpha) -> Some 1.0
+            | Num f -> Some f
+            | Pct f -> Some (f /. 100.0)
+            | _ -> None
+          in
+          match alpha_f with
+          | None -> None
+          | Some alpha_f -> (
+              match space with
+              | Srgb ->
+                  let lin = Color_space.rgb_to_linear_rgb (c1, c2, c3) in
+                  Some (lin, alpha_f)
+              | Srgb_linear -> Some ((c1, c2, c3), alpha_f)
+              | Display_p3 ->
+                  let lin = Color_space.rgb_to_linear_rgb (c1, c2, c3) in
+                  let xyz = Color_space.linear_display_p3_to_xyz_d65 lin in
+                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+              | A98_rgb ->
+                  let lin =
+                    ( Color_space.a98_rgb_to_linear c1,
+                      Color_space.a98_rgb_to_linear c2,
+                      Color_space.a98_rgb_to_linear c3 )
+                  in
+                  let xyz = Color_space.linear_a98_rgb_to_xyz_d65 lin in
+                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+              | Prophoto_rgb ->
+                  let lin =
+                    ( Color_space.prophoto_rgb_to_linear c1,
+                      Color_space.prophoto_rgb_to_linear c2,
+                      Color_space.prophoto_rgb_to_linear c3 )
+                  in
+                  let xyz_d50 =
+                    Color_space.linear_prophoto_rgb_to_xyz_d50 lin
+                  in
+                  let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
+                  Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+              | Rec2020 ->
+                  let lin =
+                    ( Color_space.rec2020_to_linear c1,
+                      Color_space.rec2020_to_linear c2,
+                      Color_space.rec2020_to_linear c3 )
+                  in
+                  let xyz = Color_space.linear_rec2020_to_xyz_d65 lin in
+                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+              | Xyz | Xyz_d65 ->
+                  Some (Color_space.xyz_d65_to_linear_srgb (c1, c2, c3), alpha_f)
+              | Xyz_d50 ->
+                  let xyz_d65 = Color_space.xyz_d50_to_d65 (c1, c2, c3) in
+                  Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+              | _ -> None))
+      | _ -> None)
+  | Oklab { l = Some l; a = Some a; b = Some b; alpha } -> (
+      let l =
+        match l with
+        | (Num f : percentage) -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      let alpha_f =
+        match alpha with
+        | (None : alpha) -> Some 1.0
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      match (l, alpha_f) with
+      | Some l, Some alpha_f ->
+          Some (Color_space.oklab_to_linear_srgb (l, a, b), alpha_f)
+      | _ -> None)
+  | Oklch { l = Some l; c = Some c; h; alpha } -> (
+      let l =
+        match l with
+        | (Num f : percentage) -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      let h = deg_of_hue h in
+      let alpha_f =
+        match alpha with
+        | (None : alpha) -> Some 1.0
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      match (l, h, alpha_f) with
+      | Some l, Some h, Some alpha_f ->
+          let lab = Color_space.oklch_to_oklab (l, c, h) in
+          Some (Color_space.oklab_to_linear_srgb lab, alpha_f)
+      | _ -> None)
+  | Lab { l = Some l; a = Some a; b = Some b; alpha } -> (
+      let l =
+        match l with
+        | (Pct f : percentage) -> Some f
+        | Num f -> Some f
+        | _ -> None
+      in
+      let alpha_f =
+        match alpha with
+        | (None : alpha) -> Some 1.0
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      match (l, alpha_f) with
+      | Some l, Some alpha_f ->
+          let xyz_d50 = Color_space.lab_to_xyz_d50 (l, a, b) in
+          let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
+          Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+      | _ -> None)
+  | Lch { l = Some l; c = Some c; h; alpha } -> (
+      let l =
+        match l with
+        | (Pct f : percentage) -> Some f
+        | Num f -> Some f
+        | _ -> None
+      in
+      let h = deg_of_hue h in
+      let alpha_f =
+        match alpha with
+        | (None : alpha) -> Some 1.0
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.0)
+        | _ -> None
+      in
+      match (l, h, alpha_f) with
+      | Some l, Some h, Some alpha_f ->
+          let lab = Color_space.lch_to_lab (l, c, h) in
+          let xyz_d50 = Color_space.lab_to_xyz_d50 lab in
+          let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
+          Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+      | _ -> None)
+  | _ -> (
+      match static_color_to_srgb_bytes c with
+      | Some (r, g, b, a) ->
+          let lin = Color_space.rgb_to_linear_rgb (f255 r, f255 g, f255 b) in
+          Some (lin, f255 a)
+      | None -> None)
+
+(* CSS Color 4 sec. 12.2 [hue interpolation method] mapping into the simpler
+   [Color_space.hue_interpolation] enum. [Default] and [Specified] both collapse
+   to [Shorter] for the static fold; CSS Color 5 sec. 13 makes [shorter hue] the
+   default and [specified hue] is a no-op for [color-mix] inputs that aren't
+   already in a polar space. *)
+let color_space_hue (h : hue_interpolation) : Color_space.hue_interpolation =
+  match h with
+  | Shorter | Default | Specified -> Color_space.Shorter
+  | Longer -> Color_space.Longer
+  | Increasing -> Color_space.Increasing
+  | Decreasing -> Color_space.Decreasing
+
+let alpha_of_unit_float a : alpha =
+  if a >= 1.0 -. 1e-6 then None else if a <= 1e-6 then Num 0.0 else Num a
+
+let mix_in_oklab_space c1 c2 ~p1 ~p2 : color option =
+  match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
+  | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
+      match mix_weights p1 p2 with
+      | None -> None
+      | Some (w1, w2, alpha_mult) ->
+          let l1, a1, b1 = Color_space.linear_srgb_to_oklab lrgb1 in
+          let l2, a2, b2 = Color_space.linear_srgb_to_oklab lrgb2 in
+          let l = (l1 *. w1) +. (l2 *. w2) in
+          let a = (a1 *. w1) +. (a2 *. w2) in
+          let b = (b1 *. w1) +. (b2 *. w2) in
+          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          Some
+            (Oklab
+               {
+                 l = Some (Num l : percentage);
+                 a = Some a;
+                 b = Some b;
+                 alpha = alpha_of_unit_float alpha_v;
+               }))
+  | _ -> None
+
+let mix_in_oklch_space c1 c2 ~p1 ~p2 hue : color option =
+  match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
+  | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
+      match mix_weights p1 p2 with
+      | None -> None
+      | Some (w1, w2, alpha_mult) ->
+          let l1, ca1, h1 =
+            Color_space.oklab_to_oklch (Color_space.linear_srgb_to_oklab lrgb1)
+          in
+          let l2, ca2, h2 =
+            Color_space.oklab_to_oklch (Color_space.linear_srgb_to_oklab lrgb2)
+          in
+          let l = (l1 *. w1) +. (l2 *. w2) in
+          let c = (ca1 *. w1) +. (ca2 *. w2) in
+          let h = Color_space.interpolate_hue (color_space_hue hue) h1 h2 w2 in
+          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          Some
+            (Oklch
+               {
+                 l = Some (Num l : percentage);
+                 c = Some c;
+                 h = Unitless h;
+                 alpha = alpha_of_unit_float alpha_v;
+               }))
+  | _ -> None
+
+let mix_in_lab_space c1 c2 ~p1 ~p2 : color option =
+  match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
+  | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
+      match mix_weights p1 p2 with
+      | None -> None
+      | Some (w1, w2, alpha_mult) ->
+          let to_lab lrgb =
+            lrgb |> Color_space.linear_srgb_to_xyz_d65
+            |> Color_space.xyz_d65_to_d50 |> Color_space.xyz_d50_to_lab
+          in
+          let l1, a1, b1 = to_lab lrgb1 in
+          let l2, a2, b2 = to_lab lrgb2 in
+          let l = (l1 *. w1) +. (l2 *. w2) in
+          let a = (a1 *. w1) +. (a2 *. w2) in
+          let b = (b1 *. w1) +. (b2 *. w2) in
+          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          Some
+            (Lab
+               {
+                 l = Some (Num l : percentage);
+                 a = Some a;
+                 b = Some b;
+                 alpha = alpha_of_unit_float alpha_v;
+               }))
+  | _ -> None
+
+let mix_in_lch_space c1 c2 ~p1 ~p2 hue : color option =
+  match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
+  | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
+      match mix_weights p1 p2 with
+      | None -> None
+      | Some (w1, w2, alpha_mult) ->
+          let to_lch lrgb =
+            lrgb |> Color_space.linear_srgb_to_xyz_d65
+            |> Color_space.xyz_d65_to_d50 |> Color_space.xyz_d50_to_lab
+            |> Color_space.lab_to_lch
+          in
+          let l1, ca1, h1 = to_lch lrgb1 in
+          let l2, ca2, h2 = to_lch lrgb2 in
+          let l = (l1 *. w1) +. (l2 *. w2) in
+          let c = (ca1 *. w1) +. (ca2 *. w2) in
+          let h = Color_space.interpolate_hue (color_space_hue hue) h1 h2 w2 in
+          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          Some
+            (Lch
+               {
+                 l = Some (Num l : percentage);
+                 c = Some c;
+                 h = Unitless h;
+                 alpha = alpha_of_unit_float alpha_v;
+               }))
+  | _ -> None
+
+(* CSS Color 5 sec. 3 percentage normalisation: an omitted [percentN] takes the
+   complement of the other side ([100% - percentM], clamped to 0); both omitted
+   defaults to [50% / 50%]. *)
 let color_mix_percentages (percent1 : percentage option)
     (percent2 : percentage option) =
-  let p1 =
-    match percent1 with
-    | Option.None -> Some 50.
-    | Some p -> float_of_percentage p
-  in
-  let p2 =
-    match (percent1, percent2) with
-    | _, Some p -> float_of_percentage p
-    | Some _, Option.None ->
-        Option.bind (Option.bind percent1 float_of_percentage) (fun p1 ->
-            Some (Float.max 0. (100. -. p1)))
-    | Option.None, Option.None -> Some 50.
-  in
-  match (p1, p2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None
+  let f1 = Option.bind percent1 float_of_percentage in
+  let f2 = Option.bind percent2 float_of_percentage in
+  match (percent1, percent2) with
+  | Option.None, Option.None -> Some (50., 50.)
+  | Some _, Option.None ->
+      Option.map (fun p1 -> (p1, Float.max 0. (100. -. p1))) f1
+  | Option.None, Some _ ->
+      Option.map (fun p2 -> (Float.max 0. (100. -. p2), p2)) f2
+  | Some _, Some _ -> (
+      match (f1, f2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None)
 
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
@@ -2789,6 +3147,7 @@ let rec pp_channel : channel Pp.t =
       Pp.float ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_channel ctx v
+  | None -> Pp.string ctx "none"
 
 (* Pick the shortest [<angle>] spelling under minify. Convert to [deg] / [turn]
    when that produces a shorter token; otherwise keep the authored unit. Skip
@@ -2935,7 +3294,6 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
 
 let minified_length_percentage_calc ctx c =
   let c = resolve_lp_calc_vars ctx c in
-  let c = if calc_contains_var c then c else normalize_lp_calc_zeros c in
   c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
 
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
@@ -3341,13 +3699,23 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
     (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
       (* CSS Color 5 §3: [<color-interpolation-method>] is required; the header
          always emits. Per §13 [shorter] is the default hue strategy and drops
-         under minify. *)
+         under minify. The interpolation space defaults to [oklab] when omitted,
+         so under minify [in oklab] (with the default hue method) drops too. *)
       let hue_is_default = hue = Default || hue = Shorter in
-      (match in_space with
-      | Some space ->
-          Pp.string ctx "in ";
-          pp_color_space ctx space
-      | None -> Pp.string ctx "in oklab");
+      let space_is_default_oklab =
+        match in_space with
+        | Some (Oklab : color_space) | Option.None -> true
+        | _ -> false
+      in
+      let omit_header =
+        Pp.minified ctx && space_is_default_oklab && hue_is_default
+      in
+      (if not omit_header then
+         match in_space with
+         | Some space ->
+             Pp.string ctx "in ";
+             pp_color_space ctx space
+         | None -> Pp.string ctx "in oklab");
       (if (not hue_is_default) || not (Pp.minified ctx) then
          match hue with
          | Default -> ()
@@ -3355,7 +3723,7 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
              Pp.space ctx ();
              pp_hue_interpolation ctx hue;
              Pp.string ctx " hue");
-      Pp.comma ctx ();
+      if not omit_header then Pp.comma ctx ();
       (* CSS Color 5 §3: percentages default per the rule "if only one is given,
          the second is [100% - first]". Drop both when both are 50% (both at
          default), or drop just the second when [p1 + p2 = 100%]. *)
@@ -3535,13 +3903,62 @@ and pp_srgb_mix_color ctx color1 percent1 color2 percent2 =
 and pp_lab_mix_color ctx in_space color1 percent1 color2 percent2 =
   match color_mix_percentages percent1 percent2 with
   | Some (p1, p2) -> (
+      let cross_space =
+        match in_space with
+        | Some (Lab : color_space) -> mix_in_lab_space color1 color2 ~p1 ~p2
+        | Some Oklab -> mix_in_oklab_space color1 color2 ~p1 ~p2
+        | Some Lch -> mix_in_lch_space color1 color2 ~p1 ~p2 Default
+        | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
+        | _ -> None
+      in
       match mix_lab_family in_space color1 color2 ~p1 ~p2 with
       | Some color -> pp_color ctx color
-      | None ->
-          pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
+      | None -> (
+          match cross_space with
+          | Some color -> pp_color ctx color
+          | None ->
+              pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
+      )
   | None -> pp_color_mix ctx in_space Default color1 percent1 color2 percent2
 
 and pp_color : color Pp.t =
+ fun ctx color ->
+  match (color, Pp.minified ctx) with
+  | ( ( Oklab { l = Some _; a = Some _; b = Some _; _ }
+      | Oklch { l = Some _; c = Some _; _ }
+      | Lab { l = Some _; a = Some _; b = Some _; _ }
+      | Lch { l = Some _; c = Some _; _ }
+      | Color _ ),
+      true ) -> (
+      (* CSS Color 4 sec. 13.1.5: at the computed-value boundary an all-static
+         colour expressed in any colour space canonicalises through linear sRGB,
+         then sRGB bytes, then the hex/named shortest-spelling pass. Falls back
+         to the original spelling when the colour resolves out of the sRGB gamut
+         or can't reduce statically (var / calc / missing components). *)
+      match static_color_to_linear_srgb color with
+      | Some (linear, alpha_f) ->
+          let r, g, b = Color_space.linear_rgb_to_rgb linear in
+          let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+          let in_gamut v = v >= -1e-3 && v <= 1.0 +. 1e-3 in
+          if in_gamut r && in_gamut g && in_gamut b then
+            let to_byte v = Float.to_int (Float.round (clamp01 v *. 255.0)) in
+            let r = to_byte r in
+            let g = to_byte g in
+            let b = to_byte b in
+            let alpha_byte =
+              Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
+            in
+            let a : alpha =
+              if alpha_byte = 255 then None
+              else if alpha_byte = 0 then Num 0.0
+              else Num (Float.of_int alpha_byte /. 255.0)
+            in
+            pp_rgb_hex_color ctx r g b a (fun () -> pp_color_default ctx color)
+          else pp_color_default ctx color
+      | None -> pp_color_default ctx color)
+  | _ -> pp_color_default ctx color
+
+and pp_color_default : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } -> pp_hex_color ctx value
   | Rgb rgb -> pp_rgb_color ctx rgb
@@ -3583,7 +4000,7 @@ and pp_color : color Pp.t =
       pp_srgb_mix_color ctx color1 percent1 color2 percent2
   | Mix
       {
-        in_space = Some (Lab | Oklab | Lch | Oklch) as in_space;
+        in_space = (Some (Lab | Oklab | Lch | Oklch) | None) as in_space;
         hue = Default;
         color1;
         percent1;
@@ -3591,7 +4008,14 @@ and pp_color : color Pp.t =
         percent2;
       }
     when Pp.minified ctx ->
-      pp_lab_mix_color ctx in_space color1 percent1 color2 percent2
+      (* CSS Color 5 sec. 3 makes [in oklab] the default interpolation space, so
+         the [in_space = None] case folds the same as [Some Oklab]. *)
+      let effective =
+        match in_space with
+        | Some _ -> in_space
+        | None -> Some (Oklab : color_space)
+      in
+      pp_lab_mix_color ctx effective color1 percent1 color2 percent2
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
@@ -4766,7 +5190,7 @@ let rec read_channel t : channel =
   if Cursor.looking_at t "var(" then Var (read_var read_channel t)
   else if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    Int 0)
+    (None : channel))
   else if
     match Cursor.peek t with
     | Some (Component.Func { node = { name; _ }; _ })
@@ -5600,14 +6024,16 @@ let read_color_keyword_of_string keyword : color option =
 
 let rec read_color_mix t : color =
   Cursor.ws t;
-  (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
-  let in_space, hue =
+  (* CSS Color 5 sec. 3: [<color-interpolation-method>] is the [in <space>
+     [<hue> hue]?] prefix. Omitted, it defaults to [in oklab]; cascade accepts
+     the omitted form and only consumes the trailing comma when the prefix was
+     actually present. *)
+  let in_space, hue, prefix_present =
     if Cursor.peek_ident t = Some "in" then (
       Cursor.expect_string "in" t;
       Cursor.ws t;
       let space = read_color_space t in
       Cursor.ws t;
-      (* For cylindrical color spaces, check for hue interpolation *)
       let hue =
         match Cursor.peek_ident t with
         | Some name when hue_interpolation_start (String.lowercase_ascii name)
@@ -5615,13 +6041,14 @@ let rec read_color_mix t : color =
             read_full_hue_interpolation t
         | _ -> Default
       in
-      (Some space, hue))
-    else (None, Default)
+      (Some space, hue, true))
+    else (None, Default, false)
   in
 
   Cursor.ws t;
-  Cursor.comma t;
-  Cursor.ws t;
+  if prefix_present then (
+    Cursor.comma t;
+    Cursor.ws t);
 
   (* Parse first color and optional percentage *)
   let color1, percent1 = read_color_mix_component t in
@@ -5724,16 +6151,68 @@ and read_relative_color name t : color =
   Cursor.ws t;
   let origin = read_color t in
   Cursor.ws t;
-  let tail =
-    Cursor.consume_remaining_as_string ~trim:true t
-    |> normalize_relative_color_tail
+  let snap = Cursor.save t in
+  match try_fold_relative_color_static name origin t with
+  | Some folded -> folded
+  | None -> (
+      Cursor.restore t snap;
+      let tail =
+        Cursor.consume_remaining_as_string ~trim:true t
+        |> normalize_relative_color_tail
+      in
+      if tail = "" then Cursor.err_expected t (name ^ " channels");
+      match fold_relative_color_pass_through name origin tail with
+      | Some color -> color
+      | None ->
+          let origin = Pp.to_string ~minify:true pp_color origin in
+          Relative_color (name, "from " ^ origin ^ " " ^ tail))
+
+(* CSS Color 5 sec. 4.1: [color(from <origin> srgb r g b [/ <alpha>]?)] is a
+   self-substitution of the origin's sRGB channels. Static folding requires the
+   origin to be reducible to sRGB bytes and the three channel slots to be the
+   bare [r] [g] [b] keywords. Wider Color 5 substitutions (other spaces,
+   calc()-on-keyword arithmetic, swapped channels) need real per-space
+   conversion machinery; absent that we fall through and keep the original
+   [color(from ...)] string. *)
+and try_fold_relative_color_static name origin t =
+  match name with
+  | "color" -> try_fold_color_function_static origin t
+  | _ -> None
+
+and try_fold_color_function_static origin t =
+  Cursor.ws t;
+  let read_keyword kw =
+    match Cursor.peek_ident t with
+    | Some id when String.lowercase_ascii id = kw ->
+        ignore (Cursor.ident t);
+        Cursor.ws t;
+        true
+    | _ -> false
   in
-  if tail = "" then Cursor.err_expected t (name ^ " channels");
-  match fold_relative_color_pass_through name origin tail with
-  | Some color -> color
-  | None ->
-      let origin = Pp.to_string ~minify:true pp_color origin in
-      Relative_color (name, "from " ^ origin ^ " " ^ tail)
+  if not (read_keyword "srgb") then None
+  else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
+    None
+  else
+    let alpha = read_optional_alpha t in
+    Cursor.ws t;
+    if not (Cursor.is_done t) then None
+    else
+      match static_color_to_srgb_bytes origin with
+      | Some (r, g, b, origin_a_byte) ->
+          let final_alpha : alpha =
+            match alpha with
+            | None when origin_a_byte = 255 -> None
+            | None -> Num (Float.of_int origin_a_byte /. 255.)
+            | a -> a
+          in
+          Some
+            (Rgba
+               {
+                 rgb = Channels { r = Int r; g = Int g; b = Int b };
+                 a = final_alpha;
+                 legacy = false;
+               })
+      | None -> None
 
 and with_relative_fallback name fallback t =
   Cursor.ws t;

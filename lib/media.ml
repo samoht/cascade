@@ -485,12 +485,52 @@ let rec pp_feature : feature Pp.t =
       pp_value ctx b;
       Pp.char ctx ')'
 
+(* CSS Media Queries 4 sec. 3.3: a lower bound and an upper bound on the same
+   feature combine into the two-sided [<value> <op> <name> <op> <value>]
+   interval, which is shorter than repeating the feature name across an [and].
+   [feature_bound] normalises a single-bound feature ([min-]/[max-] plains and
+   the [<name> <op> <value>] / [<value> <op> <name>] range forms) into a [(name,
+   side, op, value)] view so two bounds can be paired. *)
+type bound_side = Lower | Upper
+
+let feature_bound (f : feature) : (name * bound_side * cmp * value) option =
+  let norm : feature option =
+    match f with
+    | Plain (Min base, v) -> Some (Range (base, Ge, v))
+    | Plain (Max base, v) -> Some (Range (base, Le, v))
+    | (Range _ | Range_rev _) as r -> Some r
+    | _ -> None
+  in
+  match norm with
+  | Some (Range (name, Ge, v)) -> Some (name, Lower, Le, v)
+  | Some (Range (name, Gt, v)) -> Some (name, Lower, Lt, v)
+  | Some (Range (name, Le, v)) -> Some (name, Upper, Le, v)
+  | Some (Range (name, Lt, v)) -> Some (name, Upper, Lt, v)
+  | Some (Range_rev (v, Le, name)) -> Some (name, Lower, Le, v)
+  | Some (Range_rev (v, Lt, name)) -> Some (name, Lower, Lt, v)
+  | Some (Range_rev (v, Ge, name)) -> Some (name, Upper, Le, v)
+  | Some (Range_rev (v, Gt, name)) -> Some (name, Upper, Lt, v)
+  | _ -> None
+
+let merge_interval_bounds (a : feature) (b : feature) : feature option =
+  match (feature_bound a, feature_bound b) with
+  | Some (n1, Lower, lop, lv), Some (n2, Upper, uop, uv) when n1 = n2 ->
+      Some (Interval (lv, lop, n1, uop, uv))
+  | Some (n1, Upper, uop, uv), Some (n2, Lower, lop, lv) when n1 = n2 ->
+      Some (Interval (lv, lop, n1, uop, uv))
+  | _ -> None
+
 let rec pp_condition : condition Pp.t =
  fun ctx -> function
   | Feature f -> pp_feature ctx f
   | Not c ->
       Pp.string ctx "not ";
       pp_condition ctx c
+  | And (Feature a, Feature b)
+    when Pp.minified ctx && merge_interval_bounds a b <> None -> (
+      match merge_interval_bounds a b with
+      | Some interval -> pp_feature ctx interval
+      | None -> assert false)
   | And (a, b) ->
       pp_condition ctx a;
       Pp.string ctx (if Pp.minified ctx then "and " else " and ");
@@ -553,6 +593,35 @@ let pp_feature_with pp_value ctx name value =
 let pp_named_feature ctx = pp_feature_with Pp.string ctx
 let pp_length_feature ctx = pp_feature_with pp_length ctx
 let pp_min_width_length ctx l = pp_length_feature ctx "min-width" l
+
+(* Same interval-merge as [feature_bound] / [merge_interval_bounds] but for the
+   typed [t] representation that the [@media] printer uses. A lower bound and an
+   upper bound on the same feature collapse to the two-sided interval. *)
+let t_feature_bound (m : t) : (name * bound_side * cmp * value) option =
+  match m with
+  | Min_width px -> Some (Width, Lower, Le, Length (Px px))
+  | Max_width px -> Some (Width, Upper, Le, Length (Px px))
+  | Min_width_rem rem -> Some (Width, Lower, Le, Length (Rem rem))
+  | Min_width_length l -> Some (Width, Lower, Le, Length l)
+  | Plain (Min base, v) -> Some (base, Lower, Le, v)
+  | Plain (Max base, v) -> Some (base, Upper, Le, v)
+  | Range (name, Ge, v) -> Some (name, Lower, Le, v)
+  | Range (name, Gt, v) -> Some (name, Lower, Lt, v)
+  | Range (name, Le, v) -> Some (name, Upper, Le, v)
+  | Range (name, Lt, v) -> Some (name, Upper, Lt, v)
+  | Range_rev (v, Le, name) -> Some (name, Lower, Le, v)
+  | Range_rev (v, Lt, name) -> Some (name, Lower, Lt, v)
+  | Range_rev (v, Ge, name) -> Some (name, Upper, Le, v)
+  | Range_rev (v, Gt, name) -> Some (name, Upper, Lt, v)
+  | _ -> None
+
+let merge_t_interval (a : t) (b : t) : t option =
+  match (t_feature_bound a, t_feature_bound b) with
+  | Some (n1, Lower, lop, lv), Some (n2, Upper, uop, uv) when n1 = n2 ->
+      Some (Interval (lv, lop, n1, uop, uv))
+  | Some (n1, Upper, uop, uv), Some (n2, Lower, lop, lv) when n1 = n2 ->
+      Some (Interval (lv, lop, n1, uop, uv))
+  | _ -> None
 
 let rec pp ctx = function
   | Width l -> pp_length_feature ctx "width" l
@@ -620,6 +689,10 @@ let rec pp ctx = function
   | Print -> Pp.string ctx "print"
   | Orientation ident ->
       pp_named_feature ctx "orientation" (string_of_ident ident)
+  | And (a, b) when Pp.minified ctx && merge_t_interval a b <> None -> (
+      match merge_t_interval a b with
+      | Some interval -> pp ctx interval
+      | None -> assert false)
   | And (a, b) ->
       pp ctx a;
       Pp.string ctx (if Pp.minified ctx then "and " else " and ");

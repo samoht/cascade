@@ -790,8 +790,8 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   in
   inline_style_of_declarations ?minify ?mode declarations
 
-let optimize ?scope ?flatten_nesting stylesheet =
-  Optimize.stylesheet ?scope ?flatten_nesting stylesheet
+let optimize ?scope ?flatten_nesting ?enforce_spec stylesheet =
+  Optimize.stylesheet ?scope ?flatten_nesting ?enforce_spec stylesheet
 
 let flatten_nesting = Optimize.flatten_nesting
 
