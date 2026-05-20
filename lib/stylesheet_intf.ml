@@ -253,6 +253,17 @@ and view_transition_descriptor =
   | Navigation of [ `Auto | `None ]
   | Types of string list option
 
+and font_variant_descriptor =
+  | Font_variant_normal
+  | Font_variant_none
+  | Font_variant_values of font_variant_descriptor_value list
+
+and font_variant_descriptor_value =
+  | Font_variant_ligature of Properties.font_variant_ligature
+  | Font_variant_caps of Properties.font_variant_caps
+  | Font_variant_numeric of Properties.font_variant_numeric_token
+  | Font_variant_east_asian of Properties.east_asian_feature
+
 and page_margin_rule = {
   margin_name : string;
   margin_descriptors : Declaration.declaration list;
@@ -276,11 +287,11 @@ and font_face_descriptor =
       (** auto, block, swap, fallback, optional *)
   | Unicode_range of Properties.unicode_range list
       (** CSS Fonts 4 §4.5 comma-separated [unicode-range] list. *)
-  | Font_variant of string  (** Font variant settings - TODO: proper type *)
-  | Font_feature_settings of string
-      (** OpenType feature settings - TODO: proper type *)
-  | Font_variation_settings of string
-      (** Variable font settings - TODO: proper type *)
+  | Font_variant of font_variant_descriptor  (** [font-variant] descriptor *)
+  | Font_feature_settings of Properties.font_feature_settings
+      (** OpenType feature settings *)
+  | Font_variation_settings of Properties.font_variation_settings
+      (** Variable font settings *)
   | Font_tech of string  (** [font-tech] descriptor *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)

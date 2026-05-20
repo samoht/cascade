@@ -1676,9 +1676,14 @@ let c61_no_merge_supports () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "same selector is not merged across supports boundary"
+    "default minify elides baseline supports boundary"
+    ".card{color:red}.feature{display:flex}.card{background-color:#00f}" output;
+  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
+  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
+  Alcotest.(check string)
+    "enforce-spec keeps supports boundary"
     ".card{color:red}@supports(display:flex){.feature{display:flex}}.card{background-color:#00f}"
-    output
+    spec_output
 
 let c61_no_merge_container () =
   (* CSS Cascade section 6.1 order of appearance still determines the winner
@@ -1841,9 +1846,15 @@ let c61_no_conditional_cli_merge () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "rules do not merge across conditional boundaries"
+    "default minify elides baseline supports boundary"
+    ".card{color:red}.card{display:grid}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
+    output;
+  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
+  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
+  Alcotest.(check string)
+    "enforce-spec keeps supports boundary"
     ".card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
-    output
+    spec_output
 
 let c61_important_blocks_longhand () =
   (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to

@@ -636,6 +636,27 @@ let font_face_case () =
      font-display: swap; }"
 
 let spec_fontface_descriptors () =
+  let expect_stylesheets_rejected inputs =
+    let accepted =
+      List.filter_map
+        (fun input ->
+          let c = Cursor.of_string input in
+          match read_stylesheet c with
+          | exception Error.Parse_error _ -> None
+          | sheet ->
+              if Cursor.is_done c then
+                Some
+                  (Printf.sprintf "%S -> %S" input
+                     (Css.Pp.to_string ~minify:true pp_stylesheet sheet))
+              else None)
+        inputs
+    in
+    match accepted with
+    | [] -> ()
+    | _ ->
+        Alcotest.failf "accepted invalid @font-face cases:\n%s"
+          (String.concat "\n" accepted)
+  in
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:local(Brand),url(brand.woff2)format(woff2)tech(variations);font-weight:400 \
@@ -658,11 +679,37 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: FeatureFont; src: url(feature.woff2); \
      font-feature-settings: \"kern\" 1; font-variation-settings: \"wght\" 650; \
      }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:VariantFont;src:url(variant.woff2);font-variant:common-ligatures \
+       small-caps tabular-nums ruby}"
+    "@font-face { font-family: VariantFont; src: url(variant.woff2); \
+     font-variant: common-ligatures small-caps tabular-nums ruby; }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Sparse;src:local(Sparse),url(sparse.woff2)}"
+    "@font-face { ; font-family: Sparse; ; src: local(\"Sparse\") \
+     url(\"sparse.woff2\"); ; }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:emoji;src:url(emoji.woff2);unicode-range:U+1F600-1F64F,U+???}"
+    "@font-face { font-family: Emoji; src: url(emoji.woff2); unicode-range: \
+     U+1F600-1F64F, U+???; }";
   check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
-  neg_cursor read_stylesheet
-    "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
-     maybe; }"
+  check_stylesheet ~expected:"" "@font-face { font-display: swap; }";
+  expect_stylesheets_rejected
+    [
+      "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
+       maybe; }";
+      "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
+       common-ligatures no-common-ligatures; }";
+      "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+       oblique 20deg 10deg; }";
+      "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+       200% 50%; }";
+      "@font-face { font-family: Brand; src: local(\"\"); }";
+    ]
 
 (** Test [@page] rules *)
 let page_case () =
@@ -4880,28 +4927,36 @@ let fidelity_color_space_preserved () =
    preserved. The supports-condition grammar accepts declarations, [not], [and],
    [or], [selector()], and [font-tech()]. *)
 let conditional4_2_supports_preserved () =
-  let normalize css =
+  let normalize ?(enforce_spec = false) css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> minify parsed.stylesheet
+    | Ok parsed ->
+        parsed.stylesheet |> Css.optimize ~enforce_spec
+        |> Css.to_string ~minify:true
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  Alcotest.(check bool)
-    "@supports (display: grid) preserved" true
-    (let out = normalize "@supports (display: grid) { .x { display: grid } }" in
-     Astring.String.is_infix ~affix:"@supports" out
-     && Astring.String.is_infix ~affix:"display:grid" out);
-  Alcotest.(check bool)
-    "@supports not (display: grid) preserved" true
-    (Astring.String.is_infix ~affix:"not"
-       (normalize "@supports not (display: grid) { .x { display: block } }"));
+  let grid = "@supports (display: grid) { .x { display: grid } }" in
+  Alcotest.(check string)
+    "default minify elides baseline @supports" ".x{display:grid}"
+    (normalize grid);
+  Alcotest.(check string)
+    "enforce-spec preserves baseline @supports"
+    "@supports(display:grid){.x{display:grid}}"
+    (normalize ~enforce_spec:true grid);
+  let not_grid = "@supports not (display: grid) { .x { display: block } }" in
+  Alcotest.(check string)
+    "default minify drops negated baseline @supports" "" (normalize not_grid);
+  Alcotest.(check string)
+    "enforce-spec preserves negated baseline @supports"
+    "@supports not (display:grid){.x{display:block}}"
+    (normalize ~enforce_spec:true not_grid);
   Alcotest.(check bool)
     "@supports selector(:has(img)) preserved" true
     (Astring.String.is_infix ~affix:"selector(:has(img))"
        (normalize "@supports selector(:has(img)) { .x { color: red } }"));
   Alcotest.(check bool)
-    "@supports (a) and (b) preserved" true
+    "enforce-spec preserves boolean @supports" true
     (Astring.String.is_infix ~affix:"and"
-       (normalize
+       (normalize ~enforce_spec:true
           "@supports (display: grid) and (color: red) { .x { color: red } }"))
 
 let conditional4_2_supports_invalid_rejected () =

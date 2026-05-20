@@ -233,6 +233,12 @@ let normalize_expected ~category ~id expected =
          canonicalizes media/container size queries to MQ4 range syntax when it
          is shorter. *)
       "@container sidebar (width>=700px){a{color:red}}"
+  | "duplicates", "0009" ->
+      (* The imported fixture verifies selector-list deduplication and keeps the
+         first surviving selector order. Cascade minify also applies its
+         documented canonical selector-list sort; selector branches inside one
+         rule have no observable source-order effect. *)
+      ".footer,.nav .item{color:red}"
   | "values", "0024" ->
       (* The fixture canonicalizes cubic-bezier(.25,.1,.25,1) to [ease]. Cascade
          then applies the transition shorthand default-elision rule: [ease] is

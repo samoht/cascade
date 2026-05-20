@@ -877,6 +877,19 @@ let pp_supports_condition_value ctx condition =
       Pp.char ctx ')'
   | _ -> Supports.pp ctx condition
 
+let pp_font_variant_descriptor_value ctx = function
+  | Font_variant_ligature value -> Properties.pp_font_variant_ligature ctx value
+  | Font_variant_caps value -> Properties.pp_font_variant_caps ctx value
+  | Font_variant_numeric value ->
+      Properties.pp_font_variant_numeric_token ctx value
+  | Font_variant_east_asian value -> Properties.pp_east_asian_feature ctx value
+
+let pp_font_variant_descriptor ctx = function
+  | Font_variant_normal -> Pp.string ctx "normal"
+  | Font_variant_none -> Pp.string ctx "none"
+  | Font_variant_values values ->
+      Pp.list ~sep:Pp.space pp_font_variant_descriptor_value ctx values
+
 let pp_font_face_descriptor : font_face_descriptor Pp.t =
  fun ctx desc ->
   let pp_descriptor name pp_value value =
@@ -923,11 +936,14 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
       pp_descriptor "unicode-range"
         (fun ctx vs -> Pp.list ~sep:Pp.comma Properties.pp_unicode_range ctx vs)
         values
-  | Font_variant value -> pp_descriptor "font-variant" Pp.string value
+  | Font_variant value ->
+      pp_descriptor "font-variant" pp_font_variant_descriptor value
   | Font_feature_settings value ->
-      pp_descriptor "font-feature-settings" Pp.string value
+      pp_descriptor "font-feature-settings" Properties.pp_font_feature_settings
+        value
   | Font_variation_settings value ->
-      pp_descriptor "font-variation-settings" Pp.string value
+      pp_descriptor "font-variation-settings"
+        Properties.pp_font_variation_settings value
   | Font_tech value -> pp_descriptor "font-tech" Pp.string value
   | Size_adjust value ->
       pp_descriptor "size-adjust"
@@ -1791,6 +1807,130 @@ let read_unicode_range_descriptor r =
     (fun vs -> Unicode_range vs)
     r
 
+let font_variant_descriptor_value_of_ident = function
+  | "common-ligatures" ->
+      Some (Font_variant_ligature Properties.Common_ligatures)
+  | "no-common-ligatures" ->
+      Some (Font_variant_ligature Properties.No_common_ligatures)
+  | "discretionary-ligatures" ->
+      Some (Font_variant_ligature Properties.Discretionary_ligatures)
+  | "no-discretionary-ligatures" ->
+      Some (Font_variant_ligature Properties.No_discretionary_ligatures)
+  | "historical-ligatures" ->
+      Some (Font_variant_ligature Properties.Historical_ligatures)
+  | "no-historical-ligatures" ->
+      Some (Font_variant_ligature Properties.No_historical_ligatures)
+  | "contextual" -> Some (Font_variant_ligature Properties.Contextual)
+  | "no-contextual" -> Some (Font_variant_ligature Properties.No_contextual)
+  | "small-caps" -> Some (Font_variant_caps Properties.Small_caps)
+  | "all-small-caps" -> Some (Font_variant_caps Properties.All_small_caps)
+  | "petite-caps" -> Some (Font_variant_caps Properties.Petite_caps)
+  | "all-petite-caps" -> Some (Font_variant_caps Properties.All_petite_caps)
+  | "unicase" -> Some (Font_variant_caps Properties.Unicase)
+  | "titling-caps" -> Some (Font_variant_caps Properties.Titling_caps)
+  | "lining-nums" -> Some (Font_variant_numeric Properties.Lining_nums)
+  | "oldstyle-nums" -> Some (Font_variant_numeric Properties.Oldstyle_nums)
+  | "proportional-nums" ->
+      Some (Font_variant_numeric Properties.Proportional_nums)
+  | "tabular-nums" -> Some (Font_variant_numeric Properties.Tabular_nums)
+  | "diagonal-fractions" ->
+      Some (Font_variant_numeric Properties.Diagonal_fractions)
+  | "stacked-fractions" ->
+      Some (Font_variant_numeric Properties.Stacked_fractions)
+  | "ordinal" -> Some (Font_variant_numeric Properties.Ordinal)
+  | "slashed-zero" -> Some (Font_variant_numeric Properties.Slashed_zero)
+  | "jis78" -> Some (Font_variant_east_asian Properties.Jis78)
+  | "jis83" -> Some (Font_variant_east_asian Properties.Jis83)
+  | "jis90" -> Some (Font_variant_east_asian Properties.Jis90)
+  | "jis04" -> Some (Font_variant_east_asian Properties.Jis04)
+  | "simplified" -> Some (Font_variant_east_asian Properties.Simplified)
+  | "traditional" -> Some (Font_variant_east_asian Properties.Traditional)
+  | "full-width" -> Some (Font_variant_east_asian Properties.Full_width)
+  | "proportional-width" ->
+      Some (Font_variant_east_asian Properties.Proportional_width)
+  | "ruby" -> Some (Font_variant_east_asian Properties.Ruby)
+  | _ -> None
+
+let font_variant_ligature_slot = function
+  | Properties.Common_ligatures | Properties.No_common_ligatures -> `Common
+  | Properties.Discretionary_ligatures | Properties.No_discretionary_ligatures
+    ->
+      `Discretionary
+  | Properties.Historical_ligatures | Properties.No_historical_ligatures ->
+      `Historical
+  | Properties.Contextual | Properties.No_contextual -> `Contextual
+
+let font_variant_numeric_slot = function
+  | Properties.Lining_nums | Properties.Oldstyle_nums -> `Figure
+  | Properties.Proportional_nums | Properties.Tabular_nums -> `Spacing
+  | Properties.Diagonal_fractions | Properties.Stacked_fractions -> `Fraction
+  | Properties.Ordinal -> `Ordinal
+  | Properties.Slashed_zero -> `Slashed_zero
+  | Properties.Normal | Properties.Var _ -> `Invalid
+
+let font_variant_east_asian_slot = function
+  | Properties.Jis78 | Properties.Jis83 | Properties.Jis90 | Properties.Jis04
+  | Properties.Simplified | Properties.Traditional ->
+      `Variant
+  | Properties.Full_width | Properties.Proportional_width -> `Width
+  | Properties.Ruby -> `Ruby
+
+let validate_font_variant_descriptor_values r values =
+  let seen_ligatures = ref [] in
+  let seen_numeric = ref [] in
+  let seen_east_asian = ref [] in
+  let seen_caps = ref false in
+  let duplicate slot seen =
+    if List.mem slot !seen then true
+    else (
+      seen := slot :: !seen;
+      false)
+  in
+  let invalid =
+    List.exists
+      (function
+        | Font_variant_ligature value ->
+            duplicate (font_variant_ligature_slot value) seen_ligatures
+        | Font_variant_numeric value ->
+            duplicate (font_variant_numeric_slot value) seen_numeric
+        | Font_variant_east_asian value ->
+            duplicate (font_variant_east_asian_slot value) seen_east_asian
+        | Font_variant_caps _ ->
+            let duplicate = !seen_caps in
+            seen_caps := true;
+            duplicate)
+      values
+  in
+  if invalid then Cursor.err_invalid r "font-variant descriptor"
+
+let read_font_variant_descriptor_value r =
+  let ident = Cursor.ident ~keep_case:false r in
+  match
+    font_variant_descriptor_value_of_ident (String.lowercase_ascii ident)
+  with
+  | Some value -> value
+  | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
+
+let read_font_variant_descriptor r =
+  let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
+  let snap = Cursor.save r in
+  let first = Cursor.ident ~keep_case:false r in
+  Cursor.ws r;
+  match (String.lowercase_ascii first, at_value_end ()) with
+  | "normal", true -> Font_variant_normal
+  | "none", true -> Font_variant_none
+  | _ ->
+      Cursor.restore r snap;
+      let rec loop acc =
+        Cursor.ws r;
+        if at_value_end () then List.rev acc
+        else loop (read_font_variant_descriptor_value r :: acc)
+      in
+      let values = loop [] in
+      if values = [] then Cursor.err_invalid r "font-variant descriptor";
+      validate_font_variant_descriptor_values r values;
+      Font_variant_values values
+
 let read_font_face_desc name r =
   match name with
   | "font-family" -> read_font_family_descriptor r
@@ -1804,15 +1944,15 @@ let read_font_face_desc name r =
         r
   | "unicode-range" -> read_unicode_range_descriptor r
   | "font-variant" ->
-      read_descriptor_value Declaration.read_property_value
+      read_descriptor_value read_font_variant_descriptor
         (fun v -> Font_variant v)
         r
   | "font-feature-settings" ->
-      read_descriptor_value Declaration.read_property_value
+      read_descriptor_value Properties.read_font_feature_settings
         (fun v -> Font_feature_settings v)
         r
   | "font-variation-settings" ->
-      read_descriptor_value Declaration.read_property_value
+      read_descriptor_value Properties.read_font_variation_settings
         (fun v -> Font_variation_settings v)
         r
   | "font-tech" -> read_string_descriptor "font-tech" (fun v -> Font_tech v) r
@@ -2730,7 +2870,7 @@ let read_nested_media_condition condition_str =
     try Media.of_string_strict condition_str
     with Failure _ -> Media.of_string "not all"
 
-let read_rule_selector r =
+let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
   (* Anchor selector-level EOF errors at the block's opening delimiter so a
      prelude like [.a >] reports its error just before the [{], not at the end
@@ -2745,9 +2885,12 @@ let read_rule_selector r =
   (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
      caller intact. Previously we rewrapped via [Cursor.err r (Error.to_string
      e)], which erased the structured error and relocated it to the parent
-     cursor's current position. *)
+     cursor's current position. CSS Nesting 1 sec. 2: a nested rule's prelude is
+     a [<relative-selector-list>], so it may start with a combinator ([> .bar])
+     which is implicitly relative to the parent [&]. *)
   Cursor.with_context c "selector" (fun () ->
-      Selector.read_strict_selector_list c)
+      if nested then Selector.read_relative c
+      else Selector.read_strict_selector_list c)
 
 let is_bare_nesting_selector : Selector.t -> bool = function
   | Selector.Nesting -> true
@@ -3197,7 +3340,7 @@ and read_rule_decl_or_nested selector inner decls nested =
 and read_nested_rule_or_done selector inner decls nested =
   if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
   else
-    let nr = read_rule inner in
+    let nr = read_rule ~nested:true inner in
     validate_nested_rule_selector inner selector nr.selector;
     `Continue (decls, Rule nr :: nested)
 
@@ -3222,9 +3365,9 @@ and read_recovering_rule_item selector inner loop decls nested =
       skip_bad_rule_item inner;
       loop decls nested
 
-and read_rule (r : Cursor.t) : rule =
+and read_rule ?(nested = false) (r : Cursor.t) : rule =
   Cursor.with_context r "rule" @@ fun () ->
-  let selector = read_rule_selector r in
+  let selector = read_rule_selector ~nested r in
   let declarations, nested = Cursor.braces (read_rule_body selector) r in
   { selector; declarations; nested; merge_key = None }
 
