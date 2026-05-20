@@ -124,16 +124,13 @@ and minified_operand = function
 
 and to_string_with ~pretty ~minify t =
   match t with
-  | Min_width_rem rem when minify ->
-      (* Legacy [min-width: Xrem] -> range [width>=Xrem]; same rule the
-         media-query printer applies. *)
-      "(width>=" ^ format_rem rem ^ "rem)"
-  | Min_width_px px when minify -> "(width>=" ^ Int.to_string px ^ "px)"
   | Min_width_rem rem ->
-      let sep = if pretty then ": " else ":" in
+      (* The [width>=] range upgrade is a target-fact rewrite applied by
+         [lower_for_minify] in the optimize phase, not here. *)
+      let sep = if pretty && not minify then ": " else ":" in
       "(min-width" ^ sep ^ format_rem rem ^ "rem)"
   | Min_width_px px ->
-      let sep = if pretty then ": " else ":" in
+      let sep = if pretty && not minify then ": " else ":" in
       "(min-width" ^ sep ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string_with ~pretty ~minify cond
   | Style { query; uppercase } ->
@@ -197,6 +194,24 @@ let rec kind = function
   | Named (_, cond) -> kind cond
   | And _ | Or _ | Not _ | Style _ | Scroll_state _ | Feature_query _ -> Other
 
+(* Container feature queries reuse [Media] features, so they share the same
+   minify-time grammar upgrades. The dedicated [Min_width_*] shorthands carry an
+   implicit lower [width] bound, so they lower to the same [width>=V] range. *)
+let width_ge l : t =
+  Feature_query
+    (Media.Cond
+       (Media.Feature (Media.Range (Media.Width, Media.Ge, Media.Length l))))
+
+let rec lower_for_minify = function
+  | Feature_query q -> Feature_query (Media.lower_for_minify q)
+  | Min_width_rem rem -> width_ge (Values.Rem rem)
+  | Min_width_px px -> width_ge (Values.Px (float_of_int px))
+  | Named (name, cond) -> Named (name, lower_for_minify cond)
+  | And (a, b) -> And (lower_for_minify a, lower_for_minify b)
+  | Or (a, b) -> Or (lower_for_minify a, lower_for_minify b)
+  | Not c -> Not (lower_for_minify c)
+  | (Style _ | Scroll_state _) as c -> c
+
 let contains_var_function s =
   let len = String.length s in
   let rec loop i =
@@ -219,9 +234,11 @@ let unresolved_media_feature s =
         if name <> "" && value <> "" && contains_var_function value then
           Some
             (Feature_query
-               (Media.Plain
-                  ( Media.name_of_string name,
-                    Media.Ident (Media.ident_of_string value) )))
+               (Media.Cond
+                  (Media.Feature
+                     (Media.Plain
+                        ( Media.name_of_string name,
+                          Media.Ident (Media.ident_of_string value) )))))
         else None
     | None -> None
   else None
@@ -571,10 +588,8 @@ let classify_query_surface raw =
    single feature is a parse error. *)
 let single_feature_of_media (media : Media.t) =
   match media with
-  | Media.And _ | Media.Or _ | Media.Negated _ | Media.List _
-  | Media.Type_query _ ->
-      None
-  | _ -> Some media
+  | Media.Cond (Media.Feature _) -> Some media
+  | Media.Cond _ | Media.List _ | Media.Type _ -> None
 
 let specific_of_string raw =
   let raw = String.trim raw in
@@ -598,9 +613,13 @@ let atom_of_string s =
   | Style_func _ | Scroll_state_func _ -> specific_of_string stripped
   | Parenthesized_feature | Other_query -> (
       match Media.of_string_strict s with
-      | Media.Min_width_rem rem -> Min_width_rem rem
-      | Media.Min_width px when Float.is_integer px ->
-          Min_width_px (int_of_float px)
+      | Media.Cond (Media.Feature (Media.Plain (Media.Min Media.Width, value)))
+        as media -> (
+          match value with
+          | Media.Length (Values.Rem rem) -> Min_width_rem rem
+          | Media.Length (Values.Px px) when Float.is_integer px ->
+              Min_width_px (int_of_float px)
+          | _ -> Feature_query media)
       | media -> (
           match single_feature_of_media media with
           | Some f -> Feature_query f

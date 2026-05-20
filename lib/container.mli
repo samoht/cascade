@@ -63,6 +63,11 @@ type kind = Min_width | Other  (** Coarse container condition category. *)
 val kind : t -> kind
 (** [kind t] classifies min-width-only conditions for compatibility helpers. *)
 
+val lower_for_minify : t -> t
+(** [lower_for_minify t] applies {!Media.lower_for_minify} to every nested
+    feature query, leaving the dedicated [Min_width_*], style, and scroll-state
+    forms untouched. *)
+
 val to_string : ?minify:bool -> t -> string
 (** [to_string t] converts a container condition to its CSS string
     representation. Typed [Min_width_*] shorthands keep their historical compact

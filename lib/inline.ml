@@ -647,31 +647,23 @@ let refs_of_media_value : Media.value -> string list = function
   | Function (_, args) -> refs_of_component_string args
   | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
 
-let rec refs_of_media : Media.t -> string list = function
-  | Width value
-  | Height value
-  | Min_width_length value
-  | Not_min_width_length value ->
-      refs_of_media_value (Length value)
-  | Min_width _ | Max_width _ | Not_min_width _ | Min_width_rem _
-  | Not_min_width_rem _ | Aspect_ratio _ | Resolution _ | Color _
-  | Color_index _ | Monochrome _ | Color_gamut _ | Video_color_gamut _
-  | Dynamic_range _ | Video_dynamic_range _ | Scan _ | Update _
-  | Overflow_block _ | Overflow_inline _ | Prefers_reduced_motion _
-  | Prefers_reduced_transparency _ | Prefers_reduced_data _ | Prefers_contrast _
-  | Prefers_color_scheme _ | Forced_colors _ | Inverted_colors _ | Pointer _
-  | Any_pointer _ | Hover _ | Any_hover _ | Scripting _ | Nav_controls _ | Print
-  | Orientation _ ->
-      []
-  | And (a, b) | Or (a, b) -> refs_of_media a @ refs_of_media b
-  | Negated query -> refs_of_media query
-  | Range (_, _, value) | Range_rev (value, _, _) | Plain (_, value) ->
+let refs_of_media_feature : Media.feature -> string list = function
+  | Boolean _ -> []
+  | Plain (_, value) | Range (_, _, value) | Range_rev (value, _, _) ->
       refs_of_media_value value
   | Interval (lower, _, _, _, upper) ->
       refs_of_media_value lower @ refs_of_media_value upper
-  | Type_query { trailing; _ } ->
-      Option.fold ~none:[] ~some:refs_of_media trailing
-  | Boolean _ -> []
+
+let rec refs_of_media_condition : Media.condition -> string list = function
+  | Feature f -> refs_of_media_feature f
+  | Not c -> refs_of_media_condition c
+  | And (a, b) | Or (a, b) ->
+      refs_of_media_condition a @ refs_of_media_condition b
+
+let rec refs_of_media : Media.t -> string list = function
+  | Cond c -> refs_of_media_condition c
+  | Type { trailing; _ } ->
+      Option.fold ~none:[] ~some:refs_of_media_condition trailing
   | List queries -> List.concat_map refs_of_media queries
 
 let refs_of_supports_feature : Supports.declaration_feature -> string list =

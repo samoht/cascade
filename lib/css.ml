@@ -387,8 +387,19 @@ let as_rule = function
         (Stylesheet.selector r, Stylesheet.declarations r, Stylesheet.nested r)
   | _ -> None
 
-let media_min_width_length l = Media.Min_width_length l
-let media_not_min_width_length l = Media.Not_min_width_length l
+let media_min_width_length l =
+  Media.Cond
+    (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
+
+let media_not_min_width_length l =
+  Media.Type
+    {
+      prefix = Some Media.Not;
+      type_ = Media.All;
+      trailing =
+        Some
+          (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)));
+    }
 
 let parse_length s =
   match

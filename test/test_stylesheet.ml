@@ -78,10 +78,10 @@ let test_stylesheet () =
   (* Test stylesheet with comments - comments are stripped in minified output *)
   check_stylesheet ~expected:".btn{color:red}" "/*comment*/.btn{color:red}";
 
-  check_stylesheet ~expected:"@media(width>=768px){.a{display:block}}"
+  check_stylesheet ~expected:"@media(min-width:768px){.a{display:block}}"
     "@media (min-width: 768px) { .a { display: block } }";
   check_stylesheet
-    ~expected:"@media screen and (width<=640px){.btn{font-size:.875rem}}"
+    ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
   check_stylesheet ~expected:"@media screen{.test{color:#00f}}"
     "@media screen { .test { color: blue } }";
@@ -1364,7 +1364,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media(width>=768px){@supports(display:grid){.grid{display:grid}}}"
+      "@media(min-width:768px){@supports(display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
@@ -1710,7 +1710,7 @@ let c2_import_conditions () =
   check_import_rule
     ~expected:
       "@import\"layout.css\"layer(framework.component)supports(display:grid)screen \
-       and (width>=30em);"
+       and (min-width:30em);"
     "@import url(layout.css) layer(framework.component) supports(display: \
      grid) screen and (min-width: 30em);";
   check_import_rule ~expected:"@import\"bluish.css\"projection,tv;"
@@ -2644,9 +2644,9 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media(width>=768px){color:#00f}}"
+    ~expected:".foo{color:red;@media(min-width:768px){color:#00f}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
-  test_nesting_idempotent ".foo{color:red;@media(width>=768px){color:#00f}}"
+  test_nesting_idempotent ".foo{color:red;@media(min-width:768px){color:#00f}}"
 
 (* ignore-test *)
 let test_nesting_deep () =
@@ -2757,7 +2757,7 @@ let c6_2_import_preserved_verbatim () =
     (Astring.String.is_infix ~affix:"supports(display:grid)" printed);
   Alcotest.(check bool)
     "media query list preserved on import" true
-    (Astring.String.is_infix ~affix:"screen and (width>=30em)" printed);
+    (Astring.String.is_infix ~affix:"screen and (min-width:30em)" printed);
   let optimized = Css.Optimize.stylesheet sheet in
   let opt_printed =
     String.trim (Css.Stylesheet.to_string ~minify:true optimized)

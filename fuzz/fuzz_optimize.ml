@@ -298,7 +298,11 @@ let test_atrule_counts_stable buf =
 
 let media_rule selector color =
   Css.Stylesheet.Media
-    ( Css.Media.Min_width 48.,
+    ( Css.Media.Cond
+        (Css.Media.Feature
+           (Css.Media.Plain
+              ( Css.Media.Min Css.Media.Width,
+                Css.Media.Length (Css.Values.Px 48.) ))),
       [
         Css.rule
           ~selector:(Css.Selector.class_ selector)

@@ -132,76 +132,20 @@ type condition =
 type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
 
-type query =
+type t =
   | Cond of condition
   | Type of {
       prefix : prefix option;
       type_ : medium;
       trailing : condition option;
     }
-  | List of query list  (** Comma-separated media query list. *)
-
-type t =
-  | Width of Values_intf.length
-  | Height of Values_intf.length
-  | Min_width of float
-  | Max_width of float
-  | Not_min_width of float
-  | Min_width_rem of float
-  | Not_min_width_rem of float
-  | Min_width_length of Values_intf.length
-  | Not_min_width_length of Values_intf.length
-  | Aspect_ratio of int * int
-  | Resolution of float * string
-  | Color of int
-  | Color_index of int
-  | Monochrome of int
-  | Color_gamut of ident
-  | Video_color_gamut of ident
-  | Dynamic_range of ident
-  | Video_dynamic_range of ident
-  | Scan of ident
-  | Update of ident
-  | Overflow_block of ident
-  | Overflow_inline of ident
-  | Prefers_reduced_motion of ident
-  | Prefers_reduced_transparency of ident
-  | Prefers_reduced_data of ident
-  | Prefers_contrast of ident
-  | Prefers_color_scheme of ident
-  | Forced_colors of ident
-  | Inverted_colors of ident
-  | Pointer of ident
-  | Any_pointer of ident
-  | Hover of ident
-  | Any_hover of ident
-  | Scripting of ident
-  | Nav_controls of ident
-  | Print
-  | Orientation of ident
-  | And of t * t
-  | Or of t * t
-  | Negated of t
-  | Range of name * cmp * value
-  | Range_rev of value * cmp * name
-  | Interval of value * cmp * name * cmp * value
-  | Type_query of {
-      prefix : prefix option;
-      type_ : medium;
-      trailing : t option;
-    }
-  | Plain of name * value
-  | Boolean of name
-  | List of t list
+  | List of t list  (** Comma-separated media query list. *)
 
 (* ===== Formatting helpers ===== *)
 
 let format_float f =
   if Float.is_integer f then Int.to_string (Float.to_int f)
   else Float.to_string f
-
-let format_px = format_float
-let format_rem = format_float
 
 let string_of_cmp = function
   | Lt -> "<"
@@ -419,30 +363,14 @@ let pp_value : value Pp.t =
       Pp.string ctx args;
       Pp.char ctx ')'
 
-(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
-   form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
-   name in one place so the typed and string-valued printers below share the
-   same parsing - the only [String.sub] / [String.length] arithmetic in the
-   file. *)
-type min_max_view = Range_view of cmp * name | Plain_view
-
-let as_min_max name =
-  match name with
-  | Min base -> Range_view (Ge, base)
-  | Max base -> Range_view (Le, base)
-  | _ -> Plain_view
-
-let rec pp_feature : feature Pp.t =
+let pp_feature : feature Pp.t =
  fun ctx -> function
-  | Plain (name, value) when Pp.minified ctx -> (
-      match as_min_max name with
-      | Range_view (op, base) -> pp_feature ctx (Range (base, op, value))
-      | Plain_view ->
-          Pp.char ctx '(';
-          Pp.string ctx (string_of_name name);
-          Pp.char ctx ':';
-          pp_value ctx value;
-          Pp.char ctx ')')
+  | Plain (name, value) when Pp.minified ctx ->
+      Pp.char ctx '(';
+      Pp.string ctx (string_of_name name);
+      Pp.char ctx ':';
+      pp_value ctx value;
+      Pp.char ctx ')'
   | Plain (name, value) ->
       Pp.char ctx '(';
       Pp.string ctx (string_of_name name);
@@ -526,11 +454,6 @@ let rec pp_condition : condition Pp.t =
   | Not c ->
       Pp.string ctx "not ";
       pp_condition ctx c
-  | And (Feature a, Feature b)
-    when Pp.minified ctx && merge_interval_bounds a b <> None -> (
-      match merge_interval_bounds a b with
-      | Some interval -> pp_feature ctx interval
-      | None -> assert false)
   | And (a, b) ->
       pp_condition ctx a;
       Pp.string ctx (if Pp.minified ctx then "and " else " and ");
@@ -540,10 +463,10 @@ let rec pp_condition : condition Pp.t =
       Pp.string ctx (if Pp.minified ctx then "or " else " or ");
       pp_condition ctx b
 
-let rec pp_query : query Pp.t =
+let rec pp : t Pp.t =
  fun ctx -> function
   | Cond c -> pp_condition ctx c
-  (* CSS Mediaqueries 4 §3: [all and X] without an explicit prefix ([not] /
+  (* CSS Mediaqueries 4 sec. 3: [all and X] without an explicit prefix ([not] /
      [only]) is equivalent to just [X]. *)
   | Type { prefix = None; type_ = All; trailing = Some c } when Pp.minified ctx
     ->
@@ -556,195 +479,16 @@ let rec pp_query : query Pp.t =
       Pp.string ctx (string_of_medium type_);
       match trailing with
       | None -> ()
-      | Some c ->
+      | Some c -> (
           Pp.string ctx " and ";
-          pp_condition ctx c)
-  | List qs ->
-      let rec loop = function
-        | [] -> ()
-        | [ q ] -> pp_query ctx q
-        | q :: rest ->
-            pp_query ctx q;
-            Pp.char ctx ',';
-            Pp.space_if_pretty ctx ();
-            loop rest
-      in
-      loop qs
-
-(* The named/length feature printers route through [as_min_max] under minify so
-   [(min-width: 768px)] emerges as [(width>=768px)] - same rule the typed
-   [pp_feature] applies above. *)
-let pp_feature_with pp_value ctx name value =
-  match as_min_max (name_of_string name) with
-  | Range_view (op, base) when Pp.minified ctx ->
-      Pp.char ctx '(';
-      Pp.string ctx (string_of_name base);
-      Pp.string ctx (string_of_cmp op);
-      pp_value ctx value;
-      Pp.char ctx ')'
-  | _ ->
-      Pp.char ctx '(';
-      Pp.string ctx name;
-      Pp.char ctx ':';
-      Pp.space_if_pretty ctx ();
-      pp_value ctx value;
-      Pp.char ctx ')'
-
-let pp_named_feature ctx = pp_feature_with Pp.string ctx
-let pp_length_feature ctx = pp_feature_with pp_length ctx
-let pp_min_width_length ctx l = pp_length_feature ctx "min-width" l
-
-(* Same interval-merge as [feature_bound] / [merge_interval_bounds] but for the
-   typed [t] representation that the [@media] printer uses. A lower bound and an
-   upper bound on the same feature collapse to the two-sided interval. *)
-let t_feature_bound (m : t) : (name * bound_side * cmp * value) option =
-  match m with
-  | Min_width px -> Some (Width, Lower, Le, Length (Px px))
-  | Max_width px -> Some (Width, Upper, Le, Length (Px px))
-  | Min_width_rem rem -> Some (Width, Lower, Le, Length (Rem rem))
-  | Min_width_length l -> Some (Width, Lower, Le, Length l)
-  | Plain (Min base, v) -> Some (base, Lower, Le, v)
-  | Plain (Max base, v) -> Some (base, Upper, Le, v)
-  | Range (name, Ge, v) -> Some (name, Lower, Le, v)
-  | Range (name, Gt, v) -> Some (name, Lower, Lt, v)
-  | Range (name, Le, v) -> Some (name, Upper, Le, v)
-  | Range (name, Lt, v) -> Some (name, Upper, Lt, v)
-  | Range_rev (v, Le, name) -> Some (name, Lower, Le, v)
-  | Range_rev (v, Lt, name) -> Some (name, Lower, Lt, v)
-  | Range_rev (v, Ge, name) -> Some (name, Upper, Le, v)
-  | Range_rev (v, Gt, name) -> Some (name, Upper, Lt, v)
-  | _ -> None
-
-let merge_t_interval (a : t) (b : t) : t option =
-  match (t_feature_bound a, t_feature_bound b) with
-  | Some (n1, Lower, lop, lv), Some (n2, Upper, uop, uv) when n1 = n2 ->
-      Some (Interval (lv, lop, n1, uop, uv))
-  | Some (n1, Upper, uop, uv), Some (n2, Lower, lop, lv) when n1 = n2 ->
-      Some (Interval (lv, lop, n1, uop, uv))
-  | _ -> None
-
-let rec pp ctx = function
-  | Width l -> pp_length_feature ctx "width" l
-  | Height l -> pp_length_feature ctx "height" l
-  | Min_width px -> pp_named_feature ctx "min-width" (format_px px ^ "px")
-  | Max_width px -> pp_named_feature ctx "max-width" (format_px px ^ "px")
-  | Not_min_width px ->
-      Pp.string ctx "not all and ";
-      pp_named_feature ctx "min-width" (format_px px ^ "px")
-  | Min_width_rem rem ->
-      pp_named_feature ctx "min-width" (format_rem rem ^ "rem")
-  | Not_min_width_rem rem ->
-      Pp.string ctx "not all and ";
-      pp_named_feature ctx "min-width" (format_rem rem ^ "rem")
-  | Min_width_length l -> pp_min_width_length ctx l
-  | Not_min_width_length l ->
-      Pp.string ctx "not all and ";
-      pp_min_width_length ctx l
-  | Aspect_ratio (a, 1) -> pp_named_feature ctx "aspect-ratio" (Int.to_string a)
-  | Aspect_ratio (a, b) ->
-      pp_named_feature ctx "aspect-ratio"
-        (Int.to_string a ^ "/" ^ Int.to_string b)
-  | Resolution (n, unit) ->
-      pp_named_feature ctx "resolution" (format_float n ^ unit)
-  | Color n -> pp_named_feature ctx "color" (Int.to_string n)
-  | Color_index n -> pp_named_feature ctx "color-index" (Int.to_string n)
-  | Monochrome n -> pp_named_feature ctx "monochrome" (Int.to_string n)
-  | Color_gamut ident ->
-      pp_named_feature ctx "color-gamut" (string_of_ident ident)
-  | Video_color_gamut ident ->
-      pp_named_feature ctx "video-color-gamut" (string_of_ident ident)
-  | Dynamic_range ident ->
-      pp_named_feature ctx "dynamic-range" (string_of_ident ident)
-  | Video_dynamic_range ident ->
-      pp_named_feature ctx "video-dynamic-range" (string_of_ident ident)
-  | Scan ident -> pp_named_feature ctx "scan" (string_of_ident ident)
-  | Update ident -> pp_named_feature ctx "update" (string_of_ident ident)
-  | Overflow_block ident ->
-      pp_named_feature ctx "overflow-block" (string_of_ident ident)
-  | Overflow_inline ident ->
-      pp_named_feature ctx "overflow-inline" (string_of_ident ident)
-  | Prefers_reduced_motion ident ->
-      pp_named_feature ctx "prefers-reduced-motion" (string_of_ident ident)
-  | Prefers_reduced_transparency ident ->
-      pp_named_feature ctx "prefers-reduced-transparency"
-        (string_of_ident ident)
-  | Prefers_reduced_data ident ->
-      pp_named_feature ctx "prefers-reduced-data" (string_of_ident ident)
-  | Prefers_contrast ident ->
-      pp_named_feature ctx "prefers-contrast" (string_of_ident ident)
-  | Prefers_color_scheme ident ->
-      pp_named_feature ctx "prefers-color-scheme" (string_of_ident ident)
-  | Forced_colors ident ->
-      pp_named_feature ctx "forced-colors" (string_of_ident ident)
-  | Inverted_colors ident ->
-      pp_named_feature ctx "inverted-colors" (string_of_ident ident)
-  | Pointer ident -> pp_named_feature ctx "pointer" (string_of_ident ident)
-  | Any_pointer ident ->
-      pp_named_feature ctx "any-pointer" (string_of_ident ident)
-  | Hover ident -> pp_named_feature ctx "hover" (string_of_ident ident)
-  | Any_hover ident -> pp_named_feature ctx "any-hover" (string_of_ident ident)
-  | Scripting ident -> pp_named_feature ctx "scripting" (string_of_ident ident)
-  | Nav_controls ident ->
-      pp_named_feature ctx "nav-controls" (string_of_ident ident)
-  | Print -> Pp.string ctx "print"
-  | Orientation ident ->
-      pp_named_feature ctx "orientation" (string_of_ident ident)
-  | And (a, b) when Pp.minified ctx && merge_t_interval a b <> None -> (
-      match merge_t_interval a b with
-      | Some interval -> pp ctx interval
-      | None -> assert false)
-  | And (a, b) ->
-      pp ctx a;
-      Pp.string ctx (if Pp.minified ctx then "and " else " and ");
-      pp ctx b
-  | Or (a, b) ->
-      pp ctx a;
-      Pp.string ctx (if Pp.minified ctx then "or " else " or ");
-      pp ctx b
-  | Negated Print -> Pp.string ctx "not print"
-  | Negated inner ->
-      (* MQ4 [not <media-in-parens>]: the legacy [not all and <feature>] rewrite
-         reassociates against any surrounding [and]/[or] and only survives
-         intact for feature leaves at the query top level. Emit the MQ4 form and
-         self-wrap when the inner condition is not already a parenthesised
-         feature. *)
-      let rendered = Pp.to_string ~minify:ctx.Pp.minify pp inner in
-      Pp.string ctx "not ";
-      if String.length rendered > 0 && rendered.[0] = '(' then
-        Pp.string ctx rendered
-      else (
-        Pp.char ctx '(';
-        Pp.string ctx rendered;
-        Pp.char ctx ')')
-  | Range (name, op, value) -> pp_feature ctx (Range (name, op, value))
-  | Range_rev (value, op, name) -> pp_feature ctx (Range_rev (value, op, name))
-  | Interval (a, op1, name, op2, b) ->
-      pp_feature ctx (Interval (a, op1, name, op2, b))
-  (* CSS Media Queries 4 §3: [all and X] without an explicit prefix is
-     equivalent to just [X]. *)
-  | Type_query { prefix = None; type_ = All; trailing = Some cond }
-    when Pp.minified ctx ->
-      pp ctx cond
-  | Type_query { prefix; type_; trailing } -> (
-      (match prefix with
-      | None -> ()
-      | Some Not -> Pp.string ctx "not "
-      | Some Only -> Pp.string ctx "only ");
-      Pp.string ctx (string_of_medium type_);
-      match trailing with
-      | None -> ()
-      | Some cond -> (
-          Pp.string ctx " and ";
-          (* CSS Media Queries 4 §3 [media-condition-without-or]: Or
+          (* CSS Media Queries 4 sec. 3 [media-condition-without-or]: Or
              sub-expressions need explicit parens in this context. *)
-          match cond with
+          match c with
           | Or _ ->
               Pp.char ctx '(';
-              pp ctx cond;
+              pp_condition ctx c;
               Pp.char ctx ')'
-          | _ -> pp ctx cond))
-  | Plain (name, value) -> pp_feature ctx (Plain (name, value))
-  | Boolean name -> pp_feature ctx (Boolean name)
+          | _ -> pp_condition ctx c))
   | List qs ->
       let rec loop = function
         | [] -> ()
@@ -1389,8 +1133,7 @@ let single_query sc =
   else if starts_with_condition sc then Cond (condition sc)
   else read_media_type_query sc
 
-let not_all_query : query =
-  Type { prefix = Some Not; type_ = All; trailing = None }
+let not_all_query : t = Type { prefix = Some Not; type_ = All; trailing = None }
 
 let skip_recovery_branch sc =
   let depth = ref 0 in
@@ -1442,7 +1185,7 @@ let trailing_content_failure sc =
          String.sub sc.s sc.pos (String.length sc.s - sc.pos);
        ])
 
-let query_of_string ?(recover = true) s : query =
+let query_of_string ?(recover = true) s : t =
   let comma_query_list sc branch first recovered_at_eof =
     let rec loop acc =
       match peek sc with
@@ -1460,7 +1203,7 @@ let query_of_string ?(recover = true) s : query =
     if !recovered_at_eof then not_all_query else List (first :: rest)
   in
   let sc = mk_scanner s in
-  if at_end sc then (List [] : query)
+  if at_end sc then (List [] : t)
   else
     let recovered_at_eof = ref false in
     let branch () = query_branch ~recover ~recovered_at_eof sc in
@@ -1471,207 +1214,44 @@ let query_of_string ?(recover = true) s : query =
     | false, Some ',' -> comma_query_list sc branch first recovered_at_eof
     | false, _ -> trailing_content_failure sc
 
-let normalise_preference_value name s =
-  match name with
-  | "prefers-reduced-motion" -> (
-      match s with
-      | "no-preference" -> Some (Prefers_reduced_motion No_preference)
-      | "reduce" -> Some (Prefers_reduced_motion Reduce)
-      | _ -> None)
-  | "prefers-contrast" -> (
-      match s with
-      | "more" -> Some (Prefers_contrast More)
-      | "less" -> Some (Prefers_contrast Less)
-      | _ -> None)
-  | "prefers-color-scheme" -> (
-      match s with
-      | "dark" -> Some (Prefers_color_scheme Dark)
-      | "light" -> Some (Prefers_color_scheme Light)
-      | _ -> None)
-  | "prefers-reduced-transparency" -> (
-      match s with
-      | "no-preference" -> Some (Prefers_reduced_transparency No_preference)
-      | "reduce" -> Some (Prefers_reduced_transparency Reduce)
-      | _ -> None)
-  | "prefers-reduced-data" -> (
-      match s with
-      | "no-preference" -> Some (Prefers_reduced_data No_preference)
-      | "reduce" -> Some (Prefers_reduced_data Reduce)
-      | _ -> None)
-  | "forced-colors" -> (
-      match s with
-      | "active" -> Some (Forced_colors Active)
-      | "none" -> Some (Forced_colors None)
-      | _ -> None)
-  | "inverted-colors" -> (
-      match s with
-      | "inverted" -> Some (Inverted_colors Inverted)
-      | "none" -> Some (Inverted_colors None)
-      | _ -> None)
-  | _ -> None
+let of_string s = query_of_string s
+let of_string_strict s = query_of_string ~recover:false s
 
-let normalise_capability_value name s =
-  match name with
-  | "pointer" -> (
-      match s with
-      | "none" -> Some (Pointer None)
-      | "coarse" -> Some (Pointer Coarse)
-      | "fine" -> Some (Pointer Fine)
-      | _ -> None)
-  | "any-pointer" -> (
-      match s with
-      | "none" -> Some (Any_pointer None)
-      | "coarse" -> Some (Any_pointer Coarse)
-      | "fine" -> Some (Any_pointer Fine)
-      | _ -> None)
-  | "hover" -> (
-      match s with
-      | "none" -> Some (Hover None)
-      | "hover" -> Some (Hover Hover)
-      | _ -> None)
-  | "any-hover" -> (
-      match s with
-      | "none" -> Some (Any_hover None)
-      | "hover" -> Some (Any_hover Hover)
-      | _ -> None)
-  | "scripting" -> (
-      match s with
-      | "none" -> Some (Scripting None)
-      | "initial-only" -> Some (Scripting Initial_only)
-      | "enabled" -> Some (Scripting Enabled)
-      | _ -> None)
-  | "nav-controls" -> (
-      match s with
-      | "none" -> Some (Nav_controls None)
-      | "back" -> Some (Nav_controls Back)
-      | _ -> None)
-  | "orientation" -> (
-      match s with
-      | "portrait" -> Some (Orientation Portrait)
-      | "landscape" -> Some (Orientation Landscape)
-      | _ -> None)
-  | _ -> None
-
-let normalise_display_value name s =
-  match name with
-  | "color-gamut" -> (
-      match s with
-      | "srgb" -> Some (Color_gamut Srgb)
-      | "p3" -> Some (Color_gamut P3)
-      | "rec2020" -> Some (Color_gamut Rec2020)
-      | _ -> None)
-  | "video-color-gamut" -> (
-      match s with
-      | "srgb" -> Some (Video_color_gamut Srgb)
-      | "p3" -> Some (Video_color_gamut P3)
-      | "rec2020" -> Some (Video_color_gamut Rec2020)
-      | _ -> None)
-  | "dynamic-range" -> (
-      match s with
-      | "standard" -> Some (Dynamic_range Standard)
-      | "high" -> Some (Dynamic_range High)
-      | _ -> None)
-  | "video-dynamic-range" -> (
-      match s with
-      | "standard" -> Some (Video_dynamic_range Standard)
-      | "high" -> Some (Video_dynamic_range High)
-      | _ -> None)
-  | "scan" -> (
-      match s with
-      | "interlace" -> Some (Scan Interlace)
-      | "progressive" -> Some (Scan Progressive)
-      | _ -> None)
-  | "update" -> (
-      match s with
-      | "none" -> Some (Update None)
-      | "slow" -> Some (Update Slow)
-      | "fast" -> Some (Update Fast)
-      | _ -> None)
-  | "overflow-block" -> (
-      match s with
-      | "none" -> Some (Overflow_block None)
-      | "scroll" -> Some (Overflow_block Scroll)
-      | "optional-paged" -> Some (Overflow_block Optional_paged)
-      | "paged" -> Some (Overflow_block Paged)
-      | _ -> None)
-  | "overflow-inline" -> (
-      match s with
-      | "none" -> Some (Overflow_inline None)
-      | "scroll" -> Some (Overflow_inline Scroll)
-      | _ -> None)
-  | _ -> None
-
-let normalise_ident_value name s =
-  let s = String.lowercase_ascii s in
-  match normalise_preference_value name s with
-  | Some _ as v -> v
-  | None -> (
-      match normalise_capability_value name s with
-      | Some _ as v -> v
-      | None -> normalise_display_value name s)
-
-(* Smart constructor: try to recognise a known shorthand, otherwise wrap as
-   Custom. *)
-let normalise_value name value =
-  match (String.lowercase_ascii name, value) with
-  | "min-width", Length (Values_intf.Px f) -> Some (Min_width f)
-  | "max-width", Length (Values_intf.Px f) -> Some (Max_width f)
-  | "min-width", Length (Values_intf.Rem f) -> Some (Min_width_rem f)
-  | "min-width", Length l -> Some (Min_width_length l)
-  | "width", Length l -> Some (Width l)
-  | "height", Length l -> Some (Height l)
-  | "aspect-ratio", Ratio (a, b) -> Some (Aspect_ratio (a, b))
-  | "aspect-ratio", Integer n -> Some (Aspect_ratio (n, 1))
-  | "resolution", Resolution_value (n, u) -> Some (Resolution (n, u))
-  | "color", Integer n -> Some (Color n)
-  | "color-index", Integer n -> Some (Color_index n)
-  | "monochrome", Integer n -> Some (Monochrome n)
-  | name, Ident s -> normalise_ident_value name (string_of_ident s)
-  | _ -> None
-
-let of_feature : feature -> t = function
-  | Plain (name, value) -> (
-      match normalise_value (string_of_name name) value with
-      | Some t -> t
-      | None -> Plain (name, value))
-  | Boolean name -> (Boolean name : t)
-  | Range (name, op, value) -> Range (name, op, value)
-  | Range_rev (value, op, name) -> Range_rev (value, op, name)
-  | Interval (a, op1, name, op2, b) -> Interval (a, op1, name, op2, b)
-
-let rec of_condition : condition -> t = function
-  | Feature f -> of_feature f
-  | Not cond -> Negated (of_condition cond)
-  | And (a, b) -> And (of_condition a, of_condition b)
-  | Or (a, b) -> Or (of_condition a, of_condition b)
-
-let rec collapse_query (q : query) : t =
-  match q with
-  | Cond cond -> of_condition cond
-  | Type { prefix = Some Not; type_ = All; trailing = Some cond } -> (
-      match of_condition cond with
-      | Min_width f -> Not_min_width f
-      | Min_width_rem f -> Not_min_width_rem f
-      | Min_width_length l -> Not_min_width_length l
-      | other -> Negated other)
-  | Type { prefix = Some Not; type_ = Print; trailing = None } -> Negated Print
-  | Type { prefix = None; type_ = Print; trailing = None } -> Print
-  | Type { prefix; type_; trailing } ->
-      Type_query { prefix; type_; trailing = Option.map of_condition trailing }
-  | List qs -> List (List.map collapse_query qs)
-
-let of_string s = collapse_query (query_of_string s)
-let of_string_strict s = collapse_query (query_of_string ~recover:false s)
-
-let of_function_body s =
+let of_function_body s : t =
   match feature_in_parens s with
-  | Some feature -> of_feature feature
+  | Some feature -> Cond (Feature feature)
   | None -> of_string s
 
 let feature name value : t =
-  of_feature (plain_feature (name_of_string name) value)
+  Cond (Feature (plain_feature (name_of_string name) value))
 
-let boolean name : t = of_feature (Boolean (name_of_string name) : feature)
+let boolean name : t = Cond (Feature (Boolean (name_of_string name)))
+
+(* CSS Media Queries 4 sec. 3.4 / 3.3: under minify the optimizer rewrites
+   [min-X]/[max-X] plains into the range form [X>=V]/[X<=V], and pairs a lower
+   and upper bound on the same feature across an [and] into the two-sided
+   interval. These are target-fact grammar upgrades, so they live in the
+   optimize phase (gated by [~enforce_spec]) rather than the printer. *)
+let lower_feature : feature -> feature = function
+  | Plain (Min base, v) -> Range (base, Ge, v)
+  | Plain (Max base, v) -> Range (base, Le, v)
+  | f -> f
+
+let rec lower_condition : condition -> condition = function
+  | Feature f -> Feature (lower_feature f)
+  | Not c -> Not (lower_condition c)
+  | And (Feature a, Feature b) -> (
+      match merge_interval_bounds a b with
+      | Some interval -> Feature interval
+      | None -> And (Feature (lower_feature a), Feature (lower_feature b)))
+  | And (a, b) -> And (lower_condition a, lower_condition b)
+  | Or (a, b) -> Or (lower_condition a, lower_condition b)
+
+let rec lower_for_minify : t -> t = function
+  | Cond c -> Cond (lower_condition c)
+  | Type { prefix; type_; trailing } ->
+      Type { prefix; type_; trailing = Option.map lower_condition trailing }
+  | List qs -> List (List.map lower_for_minify qs)
 
 (* ===== Sorting / classification ===== *)
 
@@ -1707,61 +1287,80 @@ let value_sort_key = function
   | Ident _ -> (100, 0.)
   | Function _ -> (200, 0.)
 
-let rec kind : t -> kind = function
-  | Hover _ | Any_hover _ -> Hover
-  | Min_width px -> Responsive (0, px)
-  | Max_width px -> Responsive_max (0, px)
-  | Not_min_width px -> Responsive_max (0, px)
-  | Min_width_rem rem -> Responsive (0, rem *. 16.)
-  | Not_min_width_rem rem -> Responsive_max (0, rem *. 16.)
-  | Min_width_length l ->
-      let u, v = length_sort_key l in
-      Responsive (u, v)
-  | Not_min_width_length l ->
-      let u, v = length_sort_key l in
-      Responsive_max (u, v)
-  | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _
-  | Inverted_colors _ | Pointer _ | Any_pointer _ | Scripting _ ->
-      Preference_accessibility
-  | Prefers_color_scheme _ -> Preference_appearance
-  | Width l | Height l ->
-      let u, v = length_sort_key l in
-      Responsive (u, v)
-  | Aspect_ratio _ | Resolution _ | Color _ | Color_index _ | Monochrome _
-  | Color_gamut _ | Video_color_gamut _ | Dynamic_range _
-  | Video_dynamic_range _ | Scan _ | Update _ | Overflow_block _
-  | Overflow_inline _ | Prefers_reduced_transparency _ | Prefers_reduced_data _
-  | Nav_controls _ | Print | Orientation _ | Type_query _ | Boolean _ | List _
-    ->
-      Other
-  | Plain (name, value) -> (
-      match name with
-      | Min Width | Max Width | Width ->
-          let u, v = value_sort_key value in
-          Responsive (u, v)
-      | Prefers_color_scheme -> Preference_appearance
-      | Prefers_reduced_motion | Prefers_contrast | Forced_colors
-      | Inverted_colors | Pointer | Any_pointer | Scripting ->
-          Preference_accessibility
-      | Hover -> Hover
-      | _ -> Other)
-  | Range (name, _, value) | Range_rev (value, _, name) -> (
-      match name with
-      | Width | Min Width | Max Width ->
-          let u, v = value_sort_key value in
-          Responsive (u, v)
-      | _ -> Other)
-  | Interval (lo, _, name, _, _) -> (
-      match name with
-      | Width | Min Width | Max Width ->
-          let u, v = value_sort_key lo in
-          Responsive (u, v)
-      | _ -> Other)
+(* A width feature classifies into the responsive buckets by which side of the
+   range it bounds: a lower bound ([min-width] / [width>=] / [width<=value]) is
+   [Responsive], an upper bound ([max-width] / [width<=] / [width>=value]) is
+   [Responsive_max]. Other width plains and [height] keep the plain
+   length-sorted [Responsive] classification. *)
+let width_bound_kind name side value : kind option =
+  match name with
+  | Width ->
+      let u, v = value_sort_key value in
+      Some
+        (match side with
+        | Lower -> Responsive (u, v)
+        | Upper -> Responsive_max (u, v))
+  | _ -> None
+
+let preference_kind (name : name) : kind option =
+  match name with
+  | Prefers_reduced_motion | Prefers_contrast | Forced_colors | Inverted_colors
+  | Pointer | Any_pointer | Scripting ->
+      Some Preference_accessibility
+  | Prefers_color_scheme -> Some Preference_appearance
+  | _ -> None
+
+let feature_kind (f : feature) : kind =
+  match f with
+  | Boolean (Hover | Any_hover) -> Hover
+  | Plain ((Hover | Any_hover), _) -> Hover
+  | _ -> (
+      match feature_bound f with
+      | Some (name, side, _, value) -> (
+          match width_bound_kind name side value with
+          | Some k -> k
+          | None -> Other)
+      | None -> (
+          match f with
+          | Plain (name, value) -> (
+              match preference_kind name with
+              | Some k -> k
+              | None -> (
+                  match name with
+                  | Width | Height ->
+                      let u, v = value_sort_key value in
+                      Responsive (u, v)
+                  | _ -> Other))
+          | Boolean name -> (
+              match preference_kind name with Some k -> k | None -> Other)
+          | Interval (lo, _, name, _, _) -> (
+              match name with
+              | Width ->
+                  let u, v = value_sort_key lo in
+                  Responsive (u, v)
+              | _ -> Other)
+          | Range _ | Range_rev _ -> Other))
+
+let rec condition_kind (c : condition) : kind =
+  match c with
+  | Feature f -> feature_kind f
+  | Not c -> condition_kind c
   | And (a, b) | Or (a, b) -> (
-      match (kind a, kind b) with
+      match (condition_kind a, condition_kind b) with
       | Other, other | other, Other -> other
       | ka, _ -> ka)
-  | Negated inner -> kind inner
+
+let kind : t -> kind = function
+  | Cond c -> condition_kind c
+  (* [not all and X] negates a single feature: a negated width lower bound
+     covers the complementary upper range, so it classifies as [Responsive_max]
+     and vice versa, matching the legacy [Not_min_width] classification. *)
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
+      match condition_kind c with
+      | Responsive (u, v) -> Responsive_max (u, v)
+      | Responsive_max (u, v) -> Responsive (u, v)
+      | other -> other)
+  | Type _ | List _ -> Other
 
 let group_order = function
   | Hover -> (0, 0.)
@@ -1771,40 +1370,67 @@ let group_order = function
   | Responsive _ -> (2000, 0.)
   | Preference_appearance -> (3000, 0.)
 
-let rec preference_order = function
-  | Prefers_reduced_motion No_preference -> 0
-  | Prefers_reduced_motion Reduce -> 1
-  | Prefers_contrast More -> 2
-  | Prefers_contrast Less -> 3
-  | Prefers_color_scheme _ -> 4
-  | Forced_colors _ -> 5
-  | Inverted_colors _ -> 6
-  | Pointer None -> 7
-  | Pointer Coarse -> 8
-  | Pointer Fine -> 9
-  | Any_pointer None -> 10
-  | Any_pointer Coarse -> 11
-  | Any_pointer Fine -> 12
-  | Scripting None -> 13
-  | Scripting Initial_only -> 14
-  | Scripting Enabled -> 15
-  | Hover _ | Any_hover _ -> 16
-  | Prefers_reduced_transparency No_preference -> 17
-  | Prefers_reduced_transparency Reduce -> 18
-  | Prefers_reduced_data No_preference -> 19
-  | Prefers_reduced_data Reduce -> 20
-  | Nav_controls _ -> 21
-  | And (a, _) | Or (a, _) -> preference_order a
-  | Negated inner -> preference_order inner
-  | _ -> 30
+let feature_preference_order (f : feature) : int option =
+  let by_name name v =
+    match (name, v) with
+    | Prefers_reduced_motion, No_preference -> Some 0
+    | Prefers_reduced_motion, Reduce -> Some 1
+    | Prefers_contrast, More -> Some 2
+    | Prefers_contrast, Less -> Some 3
+    | Prefers_color_scheme, _ -> Some 4
+    | Forced_colors, _ -> Some 5
+    | Inverted_colors, _ -> Some 6
+    | Pointer, None -> Some 7
+    | Pointer, Coarse -> Some 8
+    | Pointer, Fine -> Some 9
+    | Any_pointer, None -> Some 10
+    | Any_pointer, Coarse -> Some 11
+    | Any_pointer, Fine -> Some 12
+    | Scripting, None -> Some 13
+    | Scripting, Initial_only -> Some 14
+    | Scripting, Enabled -> Some 15
+    | (Hover | Any_hover), _ -> Some 16
+    | Prefers_reduced_transparency, No_preference -> Some 17
+    | Prefers_reduced_transparency, Reduce -> Some 18
+    | Prefers_reduced_data, No_preference -> Some 19
+    | Prefers_reduced_data, Reduce -> Some 20
+    | Nav_controls, _ -> Some 21
+    | _ -> None
+  in
+  match f with
+  | Plain (name, Ident v) -> by_name name v
+  | Boolean (Hover | Any_hover) -> Some 16
+  | _ -> None
 
-let rec responsive_subkind = function
-  | Not_min_width _ | Not_min_width_rem _ | Not_min_width_length _ -> 0
-  | Max_width _ -> 1
-  | Min_width _ | Min_width_rem _ | Min_width_length _ -> 2
-  | And (a, _) | Or (a, _) -> responsive_subkind a
-  | Negated inner -> responsive_subkind inner
+let rec condition_preference_order (c : condition) : int =
+  match c with
+  | Feature f -> (
+      match feature_preference_order f with Some n -> n | None -> 30)
+  | Not c -> condition_preference_order c
+  | And (a, _) | Or (a, _) -> condition_preference_order a
+
+let preference_order : t -> int = function
+  | Cond c -> condition_preference_order c
+  | Type { trailing = Some c; _ } -> condition_preference_order c
+  | Type _ | List _ -> 30
+
+(* Within a responsive bucket [Not_min_width] (a negated lower bound) sorts
+   first, then [Max_width] (upper bound), then [Min_width] (lower bound). *)
+let condition_subkind (c : condition) : int =
+  match condition_kind c with
+  | Responsive_max _ -> 1
+  | Responsive _ -> 2
   | _ -> 2
+
+let responsive_subkind : t -> int = function
+  | Cond c -> condition_subkind c
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
+      (* [not all and (min-width)] is the legacy [Not_min_width] form. *)
+      match condition_kind c with
+      | Responsive _ -> 0
+      | _ -> 2)
+  | Type { trailing = Some c; _ } -> condition_subkind c
+  | Type _ | List _ -> 2
 
 (* Within a responsive bucket, sort by decreasing specificity: an element
    matching [(min-width: 768px)] also matches [(min-width: 640px)], so the

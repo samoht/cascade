@@ -2761,40 +2761,53 @@ let statements_ref : (enforce_spec:bool -> statement list -> statement list) ref
 let flatten_rule_ref : (rule -> statement list) ref =
   ref (fun _ -> assert false)
 
-(* Shared predicates for media block optimization *)
-let rec should_consolidate cond =
-  match cond with
-  | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-  | Media.Min_width_length _ | Media.Not_min_width_length _
-  | Media.Prefers_reduced_motion _ | Media.Prefers_color_scheme _ ->
-      true
-  | Media.Negated inner -> should_consolidate inner
+(* Shared predicates for media block optimization. Width bounds reach these
+   helpers either as [min-]/[max-] plains or, after [lower_for_minify], as the
+   range forms on the [width] feature; both classify identically through
+   [Media.kind]. *)
+let media_feature_is name (f : Media.feature) =
+  match f with
+  | Media.Plain (n, _) | Media.Boolean n -> n = name
+  | Media.Range (n, _, _) | Media.Range_rev (_, _, n) -> n = name
+  | Media.Interval (_, _, n, _, _) -> n = name
+
+let rec condition_has_feature name (c : Media.condition) =
+  match c with
+  | Media.Feature f -> media_feature_is name f
+  | Media.Not c -> condition_has_feature name c
+  | Media.And (a, b) | Media.Or (a, b) ->
+      condition_has_feature name a || condition_has_feature name b
+
+(* A query mentions feature [name] either directly or as the trailing condition
+   of a media type ([not all and (min-width: ...)]). *)
+let rec query_has_feature name (q : Media.t) =
+  match q with
+  | Media.Cond c -> condition_has_feature name c
+  | Media.Type { trailing = Some c; _ } -> condition_has_feature name c
+  | Media.Type _ -> false
+  | Media.List qs -> List.exists (query_has_feature name) qs
+
+let is_width_bound cond =
+  match Media.kind cond with
+  | Media.Responsive _ | Media.Responsive_max _ -> true
   | _ -> false
 
+let should_consolidate cond =
+  is_width_bound cond
+  || query_has_feature Media.Prefers_reduced_motion cond
+  || query_has_feature Media.Prefers_color_scheme cond
+
 let is_responsive_media = function
-  | Media (cond, _) -> (
-      match cond with
-      | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-      | Media.Min_width_length _ | Media.Not_min_width_length _ ->
-          true
-      | Media.Negated inner -> (
-          match inner with
-          | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-          | Media.Min_width_length _ | Media.Not_min_width_length _ ->
-              true
-          | _ -> false)
-      | _ -> false)
+  | Media (cond, _) -> is_width_bound cond
   | _ -> false
 
 let has_nested_preference_media block =
   List.exists
     (function
-      | Media (cond, _) -> (
-          match cond with
-          | Prefers_contrast _ | Prefers_reduced_motion _
-          | Prefers_color_scheme _ ->
-              true
-          | _ -> false)
+      | Media (cond, _) ->
+          query_has_feature Media.Prefers_contrast cond
+          || query_has_feature Media.Prefers_reduced_motion cond
+          || query_has_feature Media.Prefers_color_scheme cond
       | _ -> false)
     block
 
@@ -2805,11 +2818,10 @@ let is_container_block block =
       | _ -> false)
     block
 
-let is_preference_media_cond = function
-  | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
-  | Media.Prefers_contrast _ ->
-      true
-  | _ -> false
+let is_preference_media_cond cond =
+  query_has_feature Media.Prefers_color_scheme cond
+  || query_has_feature Media.Prefers_reduced_motion cond
+  || query_has_feature Media.Prefers_contrast cond
 
 let record_consolidated_media ~media_map ~last_pos ~first_responsive_pos
     ~has_responsive i stmt cond block =
@@ -2896,23 +2908,30 @@ let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
 
 (* Route a consolidated media block: either defer it to a pending list for later
    repositioning, or emit it directly at the current position. *)
+let is_hover_hover (cond : Media.t) =
+  match cond with
+  | Media.Cond
+      (Media.Feature (Media.Plain (Media.Hover, Media.Ident Media.Hover))) ->
+      true
+  | _ -> false
+
 let route_consolidated ~should_reposition_hover ~is_top_level
     ~pending_hover_blocks ~pending_motion_blocks:_ consolidated (cond : Media.t)
     acc =
-  match cond with
-  | Media.Hover Media.Hover when should_reposition_hover ->
-      (* For hover at top-level, add to pending list for repositioning. Append
-         to maintain order (first occurrence stays first). *)
-      pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
-      acc
-  | Media.Prefers_reduced_motion _ when is_top_level ->
-      (* Motion blocks are positioned correctly by variant_order sorting. Emit
-         directly at their sorted position. *)
-      consolidated :: acc
-  | _ ->
-      (* For responsive media, or hover in nested context, emit at last
-         position *)
-      consolidated :: acc
+  if is_hover_hover cond && should_reposition_hover then (
+    (* For hover at top-level, add to pending list for repositioning. Append to
+       maintain order (first occurrence stays first). *)
+    pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
+    acc)
+  else if query_has_feature Media.Prefers_reduced_motion cond && is_top_level
+  then
+    (* Motion blocks are positioned correctly by variant_order sorting. Emit
+       directly at their sorted position. *)
+    consolidated :: acc
+  else
+    (* For responsive media, or hover in nested context, emit at last
+       position *)
+    consolidated :: acc
 
 let try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
     ~emitted_media ~should_reposition_hover ~is_top_level ~pending_hover_blocks
@@ -3466,12 +3485,20 @@ and process_statements ~enforce_spec (acc : statement list)
       let as_statements = List.map (fun r -> Rule r) optimized in
       process_statements ~enforce_spec (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
-      (* Just optimize the block and pass through - grouping happens later *)
+      (* Just optimize the block and pass through - grouping happens later.
+         Outside [enforce_spec], apply the target-fact grammar upgrades
+         ([min-]/[max-] to range syntax, lower+upper bound to interval) that the
+         pretty-printer no longer performs. *)
+      let cond = if enforce_spec then cond else Media.lower_for_minify cond in
       let optimized_block = statements ~enforce_spec block in
       let optimized = Media (cond, optimized_block) in
       process_statements ~enforce_spec (optimized :: acc) rest
   | Container (name, cond, block) :: rest ->
       (* Recursively optimize container query content *)
+      let cond =
+        if enforce_spec then cond
+        else Option.map Container.lower_for_minify cond
+      in
       let optimized = Container (name, cond, statements ~enforce_spec block) in
       process_statements ~enforce_spec (optimized :: acc) rest
   | Supports (cond, block) :: rest -> (
