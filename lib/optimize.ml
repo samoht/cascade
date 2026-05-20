@@ -2753,14 +2753,6 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
    immediately adjacent media queries to preserve cascade order. When blocks are
    merged, we recursively call merge_consecutive_media on the combined content
    to merge any inner consecutive media queries. *)
-(* Forward declaration to allow merge_consecutive_media to call statements *)
-let statements_ref : (enforce_spec:bool -> statement list -> statement list) ref
-    =
-  ref (fun ~enforce_spec:_ stmts -> stmts)
-
-let flatten_rule_ref : (rule -> statement list) ref =
-  ref (fun _ -> assert false)
-
 (* Shared predicates for media block optimization. Width bounds reach these
    helpers either as [min-]/[max-] plains or, after [lower_for_minify], as the
    range forms on the [width] feature; both classify identically through
@@ -2787,20 +2779,6 @@ let rec query_has_feature name (q : Media.t) =
   | Media.Type _ -> false
   | Media.List qs -> List.exists (query_has_feature name) qs
 
-let is_width_bound cond =
-  match Media.kind cond with
-  | Media.Responsive _ | Media.Responsive_max _ -> true
-  | _ -> false
-
-let should_consolidate cond =
-  is_width_bound cond
-  || query_has_feature Media.Prefers_reduced_motion cond
-  || query_has_feature Media.Prefers_color_scheme cond
-
-let is_responsive_media = function
-  | Media (cond, _) -> is_width_bound cond
-  | _ -> false
-
 let has_nested_preference_media block =
   List.exists
     (function
@@ -2811,192 +2789,12 @@ let has_nested_preference_media block =
       | _ -> false)
     block
 
-let is_container_block block =
-  List.exists
-    (function
-      | Rule { selector; _ } -> Selector.to_string selector = ".container"
-      | _ -> false)
-    block
-
-let is_preference_media_cond cond =
-  query_has_feature Media.Prefers_color_scheme cond
-  || query_has_feature Media.Prefers_reduced_motion cond
-  || query_has_feature Media.Prefers_contrast cond
-
-let record_consolidated_media ~media_map ~last_pos ~first_responsive_pos
-    ~has_responsive i stmt cond block =
-  let key = Media.to_string cond in
-  Hashtbl.replace last_pos key i;
-  let existing =
-    try Hashtbl.find media_map key with Not_found -> (cond, [])
-  in
-  let _, blocks = existing in
-  Hashtbl.replace media_map key (cond, blocks @ [ block ]);
-  if is_responsive_media stmt then (
-    has_responsive := true;
-    if !first_responsive_pos = None then first_responsive_pos := Some i)
-
-let collect_media_step ~media_map ~last_pos ~first_responsive_pos
-    ~has_responsive ~has_preference_media i stmt =
-  match stmt with
-  | Media (cond, block)
-    when should_consolidate cond
-         && (not (has_nested_preference_media block))
-         && not (is_container_block block) ->
-      record_consolidated_media ~media_map ~last_pos ~first_responsive_pos
-        ~has_responsive i stmt cond block
-  | Media (cond, _) ->
-      if is_preference_media_cond cond then has_preference_media := true
-  | _ when is_responsive_media stmt ->
-      has_responsive := true;
-      if !first_responsive_pos = None then first_responsive_pos := Some i
-  | _ -> ()
-
-let collect_media_data stmts =
-  let media_map = Hashtbl.create 16 in
-  let last_pos = Hashtbl.create 16 in
-  let first_responsive_pos = ref None in
-  let has_responsive = ref false in
-  let has_preference_media = ref false in
-  List.iteri
-    (collect_media_step ~media_map ~last_pos ~first_responsive_pos
-       ~has_responsive ~has_preference_media)
-    stmts;
-  ( media_map,
-    last_pos,
-    !first_responsive_pos,
-    !has_responsive,
-    !has_preference_media )
-
-let compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
-    ~has_preference_media =
-  let regular_stmt_count =
-    List.fold_left
-      (fun acc stmt -> match stmt with Rule _ -> acc + 1 | _ -> acc)
-      0 stmts
-  in
-  let is_top_level =
-    has_responsive || has_preference_media || regular_stmt_count > 10
-  in
-  let hover_insert_pos =
-    match (first_responsive_pos, is_top_level) with
-    | Some pos, _ -> pos
-    | None, true -> List.length stmts
-    | None, false -> -1
-  in
-  (hover_insert_pos, is_top_level)
-
-(* Group all media blocks with the same condition together, for specific media
-   types (Hover, Min_width, Max_width, Prefers_reduced_motion). This allows
-   @media (hover:hover) blocks to be consolidated into a single block matching
-   Tailwind's behavior.
-
-   For @media (hover:hover), the consolidated block is placed after all Regular
-   utilities but before responsive media queries (@media (min-width:...)). For
-   responsive media, the consolidated block is placed at the last occurrence. *)
-(* Flush pending hover/motion blocks at the insertion point. Returns the
-   updated accumulator with pending blocks prepended (in reverse order). *)
-let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
-    ~pending_motion_blocks i acc =
-  if i = hover_insert_pos && List.length !pending_hover_blocks > 0 then (
-    let all_pending = !pending_hover_blocks @ !pending_motion_blocks in
-    let hover_acc = List.rev_append all_pending acc in
-    pending_hover_blocks := [];
-    pending_motion_blocks := [];
-    hover_acc)
-  else acc
-
-(* Route a consolidated media block: either defer it to a pending list for later
-   repositioning, or emit it directly at the current position. *)
-let is_hover_hover (cond : Media.t) =
-  match cond with
-  | Media.Cond
-      (Media.Feature (Media.Plain (Media.Hover, Media.Ident Media.Hover))) ->
-      true
-  | _ -> false
-
-let route_consolidated ~should_reposition_hover ~is_top_level
-    ~pending_hover_blocks ~pending_motion_blocks:_ consolidated (cond : Media.t)
-    acc =
-  if is_hover_hover cond && should_reposition_hover then (
-    (* For hover at top-level, add to pending list for repositioning. Append to
-       maintain order (first occurrence stays first). *)
-    pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
-    acc)
-  else if query_has_feature Media.Prefers_reduced_motion cond && is_top_level
-  then
-    (* Motion blocks are positioned correctly by variant_order sorting. Emit
-       directly at their sorted position. *)
-    consolidated :: acc
-  else
-    (* For responsive media, or hover in nested context, emit at last
-       position *)
-    consolidated :: acc
-
-let try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
-    ~emitted_media ~should_reposition_hover ~is_top_level ~pending_hover_blocks
-    ~pending_motion_blocks i stmt acc =
-  match stmt with
-  | Media (cond, block)
-    when should_consolidate cond
-         && (not (has_nested_preference_media block))
-         && not (is_container_block block) ->
-      let key = Media.to_string cond in
-      if Hashtbl.mem last_pos key then
-        let is_last_pos = Hashtbl.find last_pos key = i in
-        if is_last_pos && not (Hashtbl.mem emitted_media key) then (
-          Hashtbl.add emitted_media key true;
-          let _, all_blocks = Hashtbl.find media_map key in
-          let merged = List.concat all_blocks in
-          let consolidated = Media (cond, optimize_merged_block merged) in
-          route_consolidated ~should_reposition_hover ~is_top_level
-            ~pending_hover_blocks ~pending_motion_blocks consolidated cond acc)
-        else acc
-      else stmt :: acc
-  | _ -> stmt :: acc
-
-let _consolidate_media_blocks ~enforce_spec (stmts : statement list) :
-    statement list =
-  let optimize_merged_block block = !statements_ref ~enforce_spec block in
-  let ( media_map,
-        last_pos,
-        first_responsive_pos,
-        has_responsive,
-        has_preference_media ) =
-    collect_media_data stmts
-  in
-  let hover_insert_pos, is_top_level =
-    compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
-      ~has_preference_media
-  in
-  let emitted_media = Hashtbl.create 16 in
-  let pending_hover_blocks = ref [] in
-  let pending_motion_blocks = ref [] in
-  let should_reposition_hover = hover_insert_pos >= 0 in
-
-  let rec filter_with_index i acc = function
-    | [] -> List.rev_append acc (!pending_hover_blocks @ !pending_motion_blocks)
-    | stmt :: rest ->
-        let acc_with_hover =
-          emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
-            ~pending_motion_blocks i acc
-        in
-        let new_acc =
-          try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
-            ~emitted_media ~should_reposition_hover ~is_top_level
-            ~pending_hover_blocks ~pending_motion_blocks i stmt acc_with_hover
-        in
-        filter_with_index (i + 1) new_acc rest
-  in
-  filter_with_index 0 [] stmts
-
 (* CSS Cascade 6.4: consecutive named [@layer] blocks with the same name are
    spec-equivalent to a single block. Merge them when no rule with a conflicting
    condition appears between. Anonymous layers stay distinct because each
    [@layer { ... }] without a name creates a new layer. *)
-let merge_consecutive_layers ~enforce_spec (stmts : statement list) :
+let merge_consecutive_layers ~optimize_merged_block (stmts : statement list) :
     statement list =
-  let optimize_merged_block block = !statements_ref ~enforce_spec block in
   (* [acc] holds output in REVERSE order so we cons (O(1)) rather than append
      (O(n)); reverse once at the end. *)
   let rec merge acc prev = function
@@ -3042,14 +2840,11 @@ let merge_consecutive_layers ~enforce_spec (stmts : statement list) :
   in
   merge [] None stmts
 
-let merge_consecutive_media ~enforce_spec (stmts : statement list) :
+let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
     statement list =
-  let optimize_merged_block block =
-    (* When we merge media blocks, the resulting block may have consecutive
-       rules with identical declarations that should be combined. We need to
-       re-run the full optimization pipeline on the merged content. *)
-    !statements_ref ~enforce_spec block
-  in
+  (* When we merge media blocks, the resulting block may have consecutive rules
+     with identical declarations that should be combined. Re-run the statement
+     optimizer on the merged content. *)
   (* [acc] holds output in REVERSE order; reverse once at the end. *)
   let rec merge acc prev_media = function
     | [] -> (
@@ -3089,9 +2884,8 @@ let merge_consecutive_media ~enforce_spec (stmts : statement list) :
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
-let merge_consecutive_supports ~enforce_spec (stmts : statement list) :
+let merge_consecutive_supports ~optimize_merged_block (stmts : statement list) :
     statement list =
-  let optimize_merged_block block = !statements_ref ~enforce_spec block in
   (* [acc] holds output in REVERSE order; reverse once at the end. *)
   let rec merge acc prev = function
     | [] -> (
@@ -3119,9 +2913,8 @@ let merge_consecutive_supports ~enforce_spec (stmts : statement list) :
   in
   merge [] None stmts
 
-let merge_consecutive_containers ~enforce_spec (stmts : statement list) :
-    statement list =
-  let optimize_merged_block block = !statements_ref ~enforce_spec block in
+let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
+    : statement list =
   let compare_condition a b =
     match (a, b) with
     | None, None -> 0
@@ -3459,11 +3252,12 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
     indexed
 
 let rec statements ~enforce_spec (stmts : statement list) : statement list =
+  let optimize_merged_block = statements ~enforce_spec in
   merge_named_layers_by_name stmts
   |> process_statements ~enforce_spec []
-  |> merge_consecutive_media ~enforce_spec
-  |> merge_consecutive_supports ~enforce_spec
-  |> merge_consecutive_containers ~enforce_spec
+  |> merge_consecutive_media ~optimize_merged_block
+  |> merge_consecutive_supports ~optimize_merged_block
+  |> merge_consecutive_containers ~optimize_merged_block
   |> merge_layer_declarations |> drop_misplaced_imports |> drop_empty_rules
 
 and process_statements ~enforce_spec (acc : statement list)
@@ -3557,10 +3351,27 @@ and process_statements ~enforce_spec (acc : statement list)
       process_statements ~enforce_spec (hd :: acc) rest
 
 and rules_aux ~enforce_spec (rules : rule list) : rule list =
-  (* First optimize each rule's nested statements recursively *)
+  (* First optimize each rule's nested statements recursively. Nested rule
+     selectors are implicitly relative to the parent [&], so drop a redundant
+     leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
+  let drop_nesting_prefix (stmt : statement) : statement =
+    match stmt with
+    | Rule nr ->
+        Rule
+          {
+            nr with
+            selector = Selector.drop_redundant_nesting_prefix nr.selector;
+          }
+    | other -> other
+  in
   let with_optimized_nested =
     List.map
-      (fun rule -> { rule with nested = statements ~enforce_spec rule.nested })
+      (fun rule ->
+        {
+          rule with
+          nested =
+            statements ~enforce_spec rule.nested |> List.map drop_nesting_prefix;
+        })
       rules
   in
   (* Apply standard rule optimizations. Adjacent same-selector rules merge:
@@ -3612,8 +3423,9 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
    order-only declaration. *)
 let statements_top_level ~enforce_spec (stmts : statement list) : statement list
     =
+  let optimize_merged_block = statements ~enforce_spec in
   statements ~enforce_spec stmts
-  |> merge_consecutive_layers ~enforce_spec
+  |> merge_consecutive_layers ~optimize_merged_block
   |> drop_redundant_layer_decls |> drop_shadowed_keyframes
 
 let single_rule ?scope (rule : rule) : rule =
@@ -3629,9 +3441,6 @@ let single_rule ?scope (rule : rule) : rule =
 let rules ?scope (rules : rule list) : rule list =
   let run () = rules_aux ~enforce_spec:false rules in
   match scope with Some s -> with_scope s run | None -> run ()
-
-(* Initialize the forward reference for merge_consecutive_media *)
-let () = statements_ref := statements
 
 (** {1 Nesting Flattening} *)
 
@@ -3746,7 +3555,6 @@ and flatten_block (block : statement list) : statement list =
   List.concat_map flatten_top_statement block
 
 let flatten_nesting (stylesheet : t) : t = flatten_block stylesheet
-let () = flatten_rule_ref := flatten_rule
 
 (** {1 Stylesheet Optimization} *)
 

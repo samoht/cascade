@@ -2006,7 +2006,7 @@ let test_loader_import_condition_contract () =
     ~loader ~expected:".grid{display:grid}"
     "@import url(grid.css) supports(display: grid) screen and (width >= 40em);";
   check_import_loaded "import loads when supports color function matches" ~query
-    ~loader ~expected:".lab{color:lab(50%0 0)}"
+    ~loader ~expected:".lab{color:#777}"
     "@import url(lab.css) supports(color: lab(50% 0 0));";
   check_import_error "import blocked by unmatched media" ~query ~loader
     "@import url(print.css) print;";

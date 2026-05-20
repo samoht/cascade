@@ -1649,6 +1649,19 @@ let read_relative t =
     Cursor.err t "unexpected characters after selector";
   match selectors with [ s ] -> s | _ -> List selectors
 
+(* CSS Nesting 1 sec. 2: inside a nested rule a selector is implicitly relative
+   to the parent [&], so an explicit leading [& <combinator>] is redundant. Drop
+   it: [& .bar] -> [.bar] (the bare nested form is itself [& .bar]); [& > .bar]
+   -> [> .bar] (the relative form keeps the combinator). Only the leading [&]
+   that is the whole left operand of a combinator is removed; [&.bar] (compound)
+   and a deeper [&] stay untouched. *)
+let rec drop_redundant_nesting_prefix (sel : t) : t =
+  match sel with
+  | Combined (Nesting, Descendant, right) -> right
+  | Combined (Nesting, comb, right) -> Relative (comb, right)
+  | List sels -> List (List.map drop_redundant_nesting_prefix sels)
+  | other -> other
+
 let is_unescaped_selector_syntax s start =
   let len = String.length s in
   let rec loop i =
@@ -2254,29 +2267,6 @@ and pp : t Pp.t =
       Pp.list ~sep:Pp.comma pp ctx (List.map snd final)
   | Nesting -> Pp.char ctx '&'
 
-(* CSS Selectors 4 sec. 17 [:is()] top-level unwrap. *)
-(* Placeholders - real definitions below after [specificity] is defined. The
-   public [pp] / [to_string] use the forward reference [top_level_is_unwrap_ref]
-   so the implementation lives near [specificity] where the equal-spec check
-   that drives the unwrap is meaningful. *)
-let top_level_is_unwrap_ref : (t -> t) ref = ref (fun s -> s)
-let top_level_is_unwrap sel = !top_level_is_unwrap_ref sel
-
-(* Public [pp] applies the top-level [:is()] unwrap under [minify] so every
-   caller (including direct [Selector.pp ctx sel] uses in the test harness) sees
-   the canonical form. The internal [pp] above still recurses through the
-   un-unwrapped tree because the unwrap is only sound at the entry point -
-   nested [Is] inside [Combinator] / [Compound] would change matching if
-   distributed. *)
-let pp_inner = pp
-
-let pp ctx sel =
-  let sel = if Pp.minified ctx then top_level_is_unwrap sel else sel in
-  pp_inner ctx sel
-
-let to_string ?minify t = Pp.to_string ?minify pp t
-let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
-
 (** Recursively map over all selectors in the tree *)
 let rec map f = function
   | Combined (left, combinator, right) ->
@@ -2464,7 +2454,7 @@ let rec is_unwrap_safe_is_arg : t -> bool = function
   | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
   | _ -> false
 
-let rec real_top_level_is_unwrap : t -> t = function
+let rec top_level_is_unwrap : t -> t = function
   | Is selectors
     when List.length selectors >= 2
          && List.for_all is_unwrap_safe_is_arg selectors
@@ -2477,7 +2467,7 @@ let rec real_top_level_is_unwrap : t -> t = function
       let expanded =
         List.concat_map
           (fun sel ->
-            match real_top_level_is_unwrap sel with
+            match top_level_is_unwrap sel with
             | List members -> members
             | other -> [ other ])
           selectors
@@ -2485,7 +2475,20 @@ let rec real_top_level_is_unwrap : t -> t = function
       List expanded
   | other -> other
 
-let () = top_level_is_unwrap_ref := real_top_level_is_unwrap
+(* Public [pp] applies the top-level [:is()] unwrap under [minify] so every
+   caller (including direct [Selector.pp ctx sel] uses in the test harness) sees
+   the canonical form. The internal [pp] above still recurses through the
+   un-unwrapped tree because the unwrap is only sound at the entry point -
+   nested [Is] inside [Combinator] / [Compound] would change matching if
+   distributed. *)
+let pp_inner = pp
+
+let pp ctx sel =
+  let sel = if Pp.minified ctx then top_level_is_unwrap sel else sel in
+  pp_inner ctx sel
+
+let to_string ?minify t = Pp.to_string ?minify pp t
+let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
 
 let exists_class pred sel =
   any (function Class name -> pred name | _ -> false) sel

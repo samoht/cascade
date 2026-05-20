@@ -157,6 +157,12 @@ val read_relative : Cursor.t -> t
 (** [read_relative r] parses a CSS relative selector (may start with a
     combinator like [+], [>], or [~]). Used for :has() arguments. *)
 
+val drop_redundant_nesting_prefix : t -> t
+(** [drop_redundant_nesting_prefix sel] removes a redundant leading [&] from a
+    nested-rule selector: [& .bar] -> [.bar], [& > .bar] -> [> .bar]. A nested
+    selector is implicitly relative to the parent [&] (CSS Nesting 1 sec. 2), so
+    this is shape-preserving for selectors used in a nested position. *)
+
 val read_combinator : Cursor.t -> combinator
 (** [read_combinator r] parses a combinator. *)
 

@@ -219,8 +219,10 @@ val nested : rule -> statement list
 
 (** {1 Reading/Parsing} *)
 
-val read_rule : Cursor.t -> rule
-(** [read_rule r] reads a CSS rule from the reader. *)
+val read_rule : ?nested:bool -> Cursor.t -> rule
+(** [read_rule r] reads a CSS rule from the reader. With [~nested:true] the
+    prelude is parsed as a CSS Nesting [<relative-selector-list>], so it may
+    start with a combinator ([> .bar]) taken relative to the parent [&]. *)
 
 val read_block : Cursor.t -> block
 (** [read_block r] reads a CSS block from the reader. *)

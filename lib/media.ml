@@ -1007,24 +1007,24 @@ let extract_feature_or_fail content =
   | Some f -> f
   | None -> failwith ("invalid media feature: " ^ content)
 
-let condition_from_paren_content parse_condition content =
+let rec condition_from_paren_content content =
   let trimmed = String.trim content in
   (* Could be either ( <condition> ) or ( <feature> ). *)
   let inner = mk_scanner trimmed in
   skip_ws inner;
-  if lookahead_ident inner "not" then parse_condition trimmed
+  if lookahead_ident inner "not" then condition_of_string trimmed
   else if lookahead_ident inner "and" || lookahead_ident inner "or" then
     Feature (extract_feature_or_fail trimmed)
-  else if peek inner = Some '(' then parse_condition trimmed
+  else if peek inner = Some '(' then condition_of_string trimmed
   else Feature (extract_feature_or_fail trimmed)
 
 (* Parser for media-condition (sequence of (...) with and/or/not). *)
-let rec condition_in_parens sc =
+and condition_in_parens sc =
   skip_ws sc;
   match peek sc with
   | Some '(' ->
       advance sc;
-      condition_from_paren_content condition_of_string (read_balanced sc)
+      condition_from_paren_content (read_balanced sc)
   | _ -> failwith "expected '(' in media condition"
 
 and condition_of_string s =
@@ -1354,7 +1354,7 @@ let kind : t -> kind = function
   | Cond c -> condition_kind c
   (* [not all and X] negates a single feature: a negated width lower bound
      covers the complementary upper range, so it classifies as [Responsive_max]
-     and vice versa, matching the legacy [Not_min_width] classification. *)
+     and vice versa. *)
   | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
       match condition_kind c with
       | Responsive (u, v) -> Responsive_max (u, v)
@@ -1414,8 +1414,8 @@ let preference_order : t -> int = function
   | Type { trailing = Some c; _ } -> condition_preference_order c
   | Type _ | List _ -> 30
 
-(* Within a responsive bucket [Not_min_width] (a negated lower bound) sorts
-   first, then [Max_width] (upper bound), then [Min_width] (lower bound). *)
+(* Within a responsive bucket, a negated lower bound sorts first, then an upper
+   bound, then a lower bound. *)
 let condition_subkind (c : condition) : int =
   match condition_kind c with
   | Responsive_max _ -> 1
@@ -1425,7 +1425,7 @@ let condition_subkind (c : condition) : int =
 let responsive_subkind : t -> int = function
   | Cond c -> condition_subkind c
   | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
-      (* [not all and (min-width)] is the legacy [Not_min_width] form. *)
+      (* [not all and (min-width)] is a negated lower-bound query. *)
       match condition_kind c with
       | Responsive _ -> 0
       | _ -> 2)

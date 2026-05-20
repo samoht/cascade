@@ -7529,13 +7529,13 @@ val pp_justify_content : justify_content Pp.t
 (** [pp_justify_content] is the pretty printer for justify-content values. *)
 
 val media_min_width_length : length -> Media.t
-(** [media_min_width_length l] creates a [Min_width_length] media condition from
-    a CSS length. Bridges the type gap between [Css.length] and [Media]'s
-    internal length type. *)
+(** [media_min_width_length l] creates a [min-width] media condition from a CSS
+    length. Bridges the type gap between [Css.length] and [Media]'s internal
+    length type. *)
 
 val media_not_min_width_length : length -> Media.t
-(** [media_not_min_width_length l] creates a [Not_min_width_length] media
-    condition from a CSS length. *)
+(** [media_not_min_width_length l] creates a negated [min-width] media condition
+    from a CSS length. *)
 
 val parse_length : string -> length option
 (** [parse_length s] parses a CSS length string (including [calc()] expressions)
