@@ -4834,37 +4834,27 @@ let fidelity_string_escape_preserved () =
 
 (* {2 Color function spaces (CSS Color L4)} *)
 
-(* CSS Color Module Level 4, sections 10-13 (Color spaces): the functional forms
-   [oklch()], [oklab()], [lab()], [lch()], [color()] all round-trip preserved
-   (channel-format normalization aside). Both minifiers preserve these as
-   written; Lightning CSS converts the lightness channel to a percentage form
-   which is mathematically equivalent. *)
+(* CSS Color Module Level 4, sections 10-13 (Color spaces): static in-gamut
+   colors may fold to the shortest sRGB spelling under minify. Forms Cascade
+   cannot reduce without losing information, such as out-of-gamut colors or
+   missing components, stay in functional notation. *)
 let color4_10_color_space_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
+  Alcotest.(check string)
+    "static lab folds to shortest sRGB form" ".x{color:red}"
+    (normalize ".x { color: lab(54.29 80.81 69.89) }");
   Alcotest.(check bool)
-    "oklch preserved" true
-    (let out = normalize ".x { color: oklch(0.628 0.258 29.23) }" in
-     Astring.String.is_infix ~affix:"oklch" out);
+    "out-of-gamut oklch preserved" true
+    (Astring.String.is_infix ~affix:"oklch"
+       (normalize ".x { color: oklch(0.628 0.258 29.23) }"));
   Alcotest.(check bool)
-    "oklab preserved" true
-    (Astring.String.is_infix ~affix:"oklab"
-       (normalize ".x { color: oklab(0.628 0.225 0.126) }"));
-  Alcotest.(check bool)
-    "lab preserved" true
-    (Astring.String.is_infix ~affix:"lab"
-       (normalize ".x { color: lab(54.29 80.81 69.89) }"));
-  Alcotest.(check bool)
-    "lch preserved" true
-    (Astring.String.is_infix ~affix:"lch"
-       (normalize ".x { color: lch(54.29 106.84 40.85) }"));
-  Alcotest.(check bool)
-    "color(srgb 1 0 0) preserved" true
-    (Astring.String.is_infix ~affix:"color(srgb"
-       (normalize ".x { color: color(srgb 1 0 0) }"))
+    "none channel preserved" true
+    (Astring.String.is_infix ~affix:"color(display-p3 none"
+       (normalize ".x { color: color(display-p3 none 0.5 1) }"))
 
 let color4_invalid_color_function_rejected () =
   Alcotest.(check bool)
@@ -5282,27 +5272,27 @@ let v4107_math_product_reduction () =
       ( "calc(1px * (e - exp(1))) -> 0",
         ".x { width: calc(1px * (e - exp(1))) }",
         ".x{width:0}" );
-      ( "calc(2px * pi) -> 6.28319px",
+      ( "calc(2px * pi) stays symbolic",
         ".x { width: calc(2px * pi) }",
-        ".x{width:6.28319px}" );
-      ( "calc(2px / pi) -> .63662px",
+        ".x{width:calc(2px*pi)}" );
+      ( "calc(2px / pi) stays symbolic",
         ".x { width: calc(2px / pi) }",
-        ".x{width:.63662px}" );
-      ( "calc(100px * sin(45deg)) -> 70.7107px",
+        ".x{width:calc(2px/pi)}" );
+      ( "calc(100px * sin(45deg)) stays symbolic",
         ".x { width: calc(100px * sin(45deg)) }",
-        ".x{width:70.7107px}" );
-      ( "calc(100px * sin(.125turn)) -> 70.7107px",
+        ".x{width:calc(100px*sin(45deg))}" );
+      ( "calc(100px * sin(.125turn)) stays symbolic",
         ".x { width: calc(100px * sin(.125turn)) }",
-        ".x{width:70.7107px}" );
-      ( "calc(100px * sin(pi / 4)) -> 70.7107px",
+        ".x{width:calc(100px*sin(.125turn))}" );
+      ( "calc(100px * sin(pi / 4)) stays symbolic",
         ".x { width: calc(100px * sin(pi / 4)) }",
-        ".x{width:70.7107px}" );
-      ( "calc(100px * sin(22deg + 23deg)) -> 70.7107px",
+        ".x{width:calc(100px*sin(pi/4))}" );
+      ( "calc(100px * sin(22deg + 23deg)) stays symbolic",
         ".x { width: calc(100px * sin(22deg + 23deg)) }",
-        ".x{width:70.7107px}" );
-      ( "calc(2px * cos(45deg)) -> 1.41421px",
+        ".x{width:calc(100px*sin(45deg))}" );
+      ( "calc(2px * cos(45deg)) stays symbolic",
         ".x { width: calc(2px * cos(45deg)) }",
-        ".x{width:1.41421px}" );
+        ".x{width:calc(2px*cos(45deg))}" );
       ( "calc(2px * tan(45deg)) -> 2px",
         ".x { width: calc(2px * tan(45deg)) }",
         ".x{width:2px}" );

@@ -681,10 +681,17 @@ let test_tw_conditionals_layer () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "adjacent supports/container blocks merge inside utility layer"
+    "default minify elides baseline supports inside utility layer"
+    "@layer \
+     utilities{.grid{display:grid}.gap{gap:1rem}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
+    output;
+  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
+  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
+  Alcotest.(check string)
+    "enforce-spec keeps adjacent supports merge inside utility layer"
     "@layer \
      utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
-    output
+    spec_output
 
 let test_tw_conditionals_split () =
   (* The optimizer must not collect same-condition blocks across an intervening
@@ -702,10 +709,17 @@ let test_tw_conditionals_split () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "non-adjacent conditionals remain split inside utility layer"
+    "default minify elides non-adjacent baseline supports"
     "@layer \
-     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
-    output
+     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}.grid{display:grid}.block{display:block}.gap{gap:1rem}}"
+    output;
+  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
+  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
+  Alcotest.(check string)
+    "enforce-spec keeps non-adjacent supports split inside utility layer"
+    "@layer \
+     utilities{@media(min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(min-width:48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
+    spec_output
 
 let optimize_tests =
   [
@@ -745,8 +759,9 @@ let optimize_tests =
 
 (** {1 Selector merging tests (cascade semantics)} *)
 
-let optimized_string css =
-  css |> Cursor.of_string |> Css.Stylesheet.read |> Css.Optimize.stylesheet
+let optimized_string ?(enforce_spec = false) css =
+  css |> Cursor.of_string |> Css.Stylesheet.read
+  |> Css.Optimize.stylesheet ~enforce_spec
   |> Css.Stylesheet.to_string ~minify:true
   |> String.trim
 
@@ -1206,6 +1221,78 @@ let c61_conditional_competitor_order () =
     (optimized_string
        "@media not all and (min-width:640px){.u{display:grid}}@media not all \
         and (min-width:1024px){.u{display:flex}}")
+
+let target_minify_enforce_spec_split () =
+  let check_modes name input ~default ~spec =
+    Alcotest.(check string) (name ^ " default") default (optimized_string input);
+    Alcotest.(check string)
+      (name ^ " enforce-spec") spec
+      (optimized_string ~enforce_spec:true input)
+  in
+  check_modes "baseline supports grid"
+    "@supports (display: grid) { a { display: grid } }"
+    ~default:"a{display:grid}" ~spec:"@supports(display:grid){a{display:grid}}";
+  check_modes "baseline supports flex with several rules"
+    "@supports (display: flex) { a { display: flex } b { gap: 1rem } }"
+    ~default:"a{display:flex}b{gap:1rem}"
+    ~spec:"@supports(display:flex){a{display:flex}b{gap:1rem}}";
+  check_modes "negated baseline supports"
+    "@supports not (display: grid) { a { color: red } } b { color: blue }"
+    ~default:"b{color:#00f}"
+    ~spec:"@supports not (display:grid){a{color:red}}b{color:#00f}";
+  check_modes "unknown supports preserved"
+    "@supports (future-layout: masonry-plus) { a { color: red } }"
+    ~default:"@supports(future-layout:masonry-plus){a{color:red}}"
+    ~spec:"@supports(future-layout:masonry-plus){a{color:red}}";
+  check_modes "known supports conjunction"
+    "@supports (display: grid) and (display: flex) { a { display: grid } }"
+    ~default:"a{display:grid}"
+    ~spec:"@supports(display:grid)and (display:flex){a{display:grid}}";
+  check_modes "known supports disjunction"
+    "@supports (display: grid) or (future-layout: masonry-plus) { a { display: \
+     grid } }"
+    ~default:"a{display:grid}"
+    ~spec:
+      "@supports(display:grid)or (future-layout:masonry-plus){a{display:grid}}";
+  check_modes "known and unknown supports conjunction"
+    "@supports (display: grid) and (future-layout: masonry-plus) { a { \
+     display: grid } }"
+    ~default:"@supports(future-layout:masonry-plus){a{display:grid}}"
+    ~spec:
+      "@supports(display:grid)and (future-layout:masonry-plus){a{display:grid}}";
+  check_modes "unknown negated supports preserved"
+    "@supports not (future-layout: masonry-plus) { a { color: red } }"
+    ~default:"@supports not (future-layout:masonry-plus){a{color:red}}"
+    ~spec:"@supports not (future-layout:masonry-plus){a{color:red}}";
+  check_modes "supports nested in media"
+    "@media (min-width: 40em) { @supports (display: grid) { a { display: grid \
+     } } }"
+    ~default:"@media(width>=40em){a{display:grid}}"
+    ~spec:"@media(min-width:40em){@supports(display:grid){a{display:grid}}}";
+  check_modes "media min-width grammar"
+    "@media (min-width: 700px) { a { color: red } }"
+    ~default:"@media(width>=700px){a{color:red}}"
+    ~spec:"@media(min-width:700px){a{color:red}}";
+  check_modes "media not all min-width grammar"
+    "@media not all and (min-width: 700px) { a { color: red } }"
+    ~default:"@media not all and (width>=700px){a{color:red}}"
+    ~spec:"@media not all and (min-width:700px){a{color:red}}";
+  check_modes "media interval grammar"
+    "@media (min-width: 768px) and (max-width: 1024px) { a { color: red } }"
+    ~default:"@media(768px<=width<=1024px){a{color:red}}"
+    ~spec:"@media(min-width:768px)and (max-width:1024px){a{color:red}}";
+  check_modes "container min-width grammar"
+    "@container sidebar (min-width: 700px) { a { color: red } }"
+    ~default:"@container sidebar (width>=700px){a{color:red}}"
+    ~spec:"@container sidebar (min-width:700px){a{color:red}}";
+  check_modes "import supports baseline"
+    "@import url(\"grid.css\") supports(display: grid);"
+    ~default:"@import\"grid.css\";"
+    ~spec:"@import\"grid.css\"supports(display:grid);";
+  check_modes "import layer supports baseline"
+    "@import url(\"theme.css\") layer(theme) supports(display: flex);"
+    ~default:"@import\"theme.css\"layer(theme);"
+    ~spec:"@import\"theme.css\"layer(theme)supports(display:flex);"
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
@@ -3008,6 +3095,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 conditional competitors keep source order",
       `Quick,
       c61_conditional_competitor_order );
+    ( "target minify and enforce-spec split",
+      `Quick,
+      target_minify_enforce_spec_split );
     ( "spec cascade 6.1 no media merge across layer statement",
       `Quick,
       c61_no_layer_media_merge );

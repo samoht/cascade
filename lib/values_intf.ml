@@ -376,7 +376,16 @@ type color_name =
   | White_smoke
   | Yellow_green
 
-type channel = Int of int | Num of float | Pct of float | Var of channel var
+type channel =
+  | Int of int
+  | Num of float
+  | Pct of float
+  | Var of channel var
+  | None
+      (** CSS Color 4 sec. 4.2.3 [none] sentinel. Carries through to the
+          serialised output as the [none] keyword and participates in
+          [color-mix] / relative-color substitution by adopting the other
+          operand's analogous channel instead of being treated as a zero. *)
 
 type rgb =
   | Channels of { r : channel; g : channel; b : channel }

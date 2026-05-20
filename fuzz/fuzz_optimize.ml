@@ -434,12 +434,14 @@ let test_biclique_no_new_edges buf =
 let test_smt_property_order_vectors buf =
   (* Section 4 models rule properties as an ordered sequence: selectors commute,
      but declarations inside one rule do not. When the later declaration uses
-     CSS Color 4 syntax (oklch / oklab / lab / lch / hwb / color / color-mix),
-     older browsers drop it and the earlier same-property declaration is a real
-     cascade fallback - it must survive optimization and stay first. *)
+     runtime-dependent CSS Color 4 syntax, older browsers drop it and the
+     earlier same-property declaration is a real cascade fallback - it must
+     survive optimization and stay first. Static in-gamut Color 4 colors may
+     fold to sRGB under minify, so this vector uses a var() dependency. *)
   let selector = "." ^ class_name "fallback" buf 0 in
   let input =
-    Fmt.str "%s{color:rgb(59,130,246);color:oklch(.6 .18 254)}" selector
+    Fmt.str "%s{color:rgb(59,130,246);color:rgb(from var(--brand) r g b/.5)}"
+      selector
   in
   match parse_stylesheet input with
   | None -> failf "SMT property-order vector did not parse: %S" input
@@ -447,19 +449,20 @@ let test_smt_property_order_vectors buf =
       let optimized = Css.Optimize.stylesheet ss |> minified in
       if count_substring ~needle:"color:" optimized <> 2 then
         failf
-          "optimization dropped legacy color fallback before Color 4 spelling: \
-           %S -> %S"
+          "optimization dropped legacy color fallback before runtime Color 4 \
+           spelling: %S -> %S"
           input optimized;
       begin match
-        ( first_index ~needle:"color:oklch" optimized,
+        ( first_index ~needle:"color:rgb(from" optimized,
           first_index ~needle:"color:" optimized )
       with
-      | Some oklch_pos, Some first_color_pos when oklch_pos > first_color_pos ->
+      | Some modern_pos, Some first_color_pos when modern_pos > first_color_pos
+        ->
           ()
       | _ ->
           failf
-            "optimization reordered Color 4 declaration before its fallback: \
-             %S -> %S"
+            "optimization reordered runtime Color 4 declaration before its \
+             fallback: %S -> %S"
             input optimized
       end
 

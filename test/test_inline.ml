@@ -55,6 +55,24 @@ let test_inline_import_missing () =
   Alcotest.(check string)
     "unresolved import survives" "@import\"missing.css\";.button{color:red}" css
 
+let test_inline_import_supports_query_modes () =
+  let loader =
+    Css.Context.loader ~base_url:"entry.css"
+      ~imports:[ ("grid.css", ".grid{display:grid}") ]
+      ()
+  in
+  let input = parse "@import url(\"grid.css\") supports(display:grid);" in
+  Alcotest.(check string)
+    "without query preserves import supports wrapper"
+    "@supports(display:grid){.grid{display:grid}}"
+    (input |> Css.inline_imports loader |> minified);
+  let evergreen =
+    Css.Context.query ~supports:[ Css.Supports.property "display" "grid" ] ()
+  in
+  Alcotest.(check string)
+    "matching query unwraps import supports wrapper" ".grid{display:grid}"
+    (input |> Css.inline_imports ~query:evergreen loader |> minified)
+
 let test_inline_vars_fallback_edges () =
   check_inline_case "nested missing vars use deepest fallback"
     ".a{color:var(--undef,var(--also-undef,blue))}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
@@ -125,6 +143,8 @@ let suite =
         test_inline_import_loader;
       Alcotest.test_case "inline imports preserves unresolved import" `Quick
         test_inline_import_missing;
+      Alcotest.test_case "inline imports supports query modes" `Quick
+        test_inline_import_supports_query_modes;
       Alcotest.test_case "inline vars fallback edges" `Quick
         test_inline_vars_fallback_edges;
       Alcotest.test_case "inline vars fallback token lists" `Quick

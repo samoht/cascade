@@ -104,11 +104,13 @@ val apply_property_duplication : t -> t
 (** [apply_property_duplication ss] applies only property duplication for
     browser compatibility without other optimizations. *)
 
-val stylesheet : ?scope:scope -> ?flatten_nesting:bool -> t -> t
-(** [stylesheet ?scope ?flatten_nesting ss] optimizes an entire stylesheet while
-    preserving cascade semantics. When [@supports] blocks are present alongside
-    top-level rules, optimization is limited because the stylesheet structure
-    separates rules from [@supports] blocks, losing their relative ordering.
+val stylesheet :
+  ?scope:scope -> ?flatten_nesting:bool -> ?enforce_spec:bool -> t -> t
+(** [stylesheet ?scope ?flatten_nesting ?enforce_spec ss] optimizes an entire
+    stylesheet while preserving cascade semantics. When [@supports] blocks are
+    present alongside top-level rules, optimization is limited because the
+    stylesheet structure separates rules from [@supports] blocks, losing their
+    relative ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
     desugared into flat rules: child selectors with [&] have the parent selector
@@ -117,7 +119,12 @@ val stylesheet : ?scope:scope -> ?flatten_nesting:bool -> t -> t
     the top level with the parent selector applied to their inner rules.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
-    see the {!scope} doc. *)
+    see the {!scope} doc.
+
+    When [enforce_spec] is [false] (default) the optimizer may treat baseline
+    feature queries as known facts and elide [@supports] guards whose condition
+    is satisfied in maintained evergreen browsers; [true] keeps every feature
+    query and applies only CSS-text-and-spec-provable rewrites. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting ss] returns [ss] with every nested rule flattened into a

@@ -803,11 +803,11 @@ let spec_values_l45_math_color () =
   neg_cursor read_color "color(display-p3 1 0)"
 
 let spec_color5_function_edges () =
-  check_color ~expected:"lab(50%10 20)" "lab(50% 10 20)";
-  check_color ~expected:"lch(50%20 30)" "lch(50% 20 30)";
+  check_color ~expected:"#907055" "lab(50% 10 20)";
+  check_color ~expected:"#976c67" "lch(50% 20 30)";
   check_color ~expected:"oklab(50%.1 .2)" "oklab(50% 0.1 0.2)";
-  check_color ~expected:"oklch(50%.1 20/.5)" "oklch(50% 0.1 20 / 0.5)";
-  check_color ~expected:"color(srgb 1 0 0/.5)" "color(srgb 1 0 0 / 0.5)";
+  check_color ~expected:"#944a4b80" "oklch(50% 0.1 20 / 0.5)";
+  check_color ~expected:"#ff000080" "color(srgb 1 0 0 / 0.5)";
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
   check_color ~expected:"color-mix(in lch longer hue,red 30%,#00f)"
     "color-mix(in lch longer hue, red 30%, blue)";

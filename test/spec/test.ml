@@ -475,8 +475,8 @@ let color_hwb () =
 
 (* SS 5.2.6 - oklch() and oklab() modern color functions *)
 let color_oklch_oklab () =
-  roundtrip ".x { color: oklch(50% 0.2 30) }" ".x{color:oklch(50%.2 30)}";
-  roundtrip ".x { color: oklab(50% 0.1 -0.05) }" ".x{color:oklab(50%.1-.05)}"
+  roundtrip ".x { color: oklch(50% 0.2 30) }" ".x{color:#ba0d01}";
+  roundtrip ".x { color: oklab(50% 0.1 -0.05) }" ".x{color:#88497e}"
 
 (* SS 5.2.7 - color-mix() function *)
 let color_mix () =
