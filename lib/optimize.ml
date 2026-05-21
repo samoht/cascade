@@ -1488,13 +1488,36 @@ let try_compose_border_whole ~ctx indexed_decls =
    border-image declaration overrides that reset back. Only swap when the
    following run carries the full width/style/color trio, so the move happens
    exactly where it enables composition. *)
+let is_border_image_decl = function
+  | Declaration { property = Border_image; _ }
+  | Declaration { property = Border_image_source; _ }
+  | Declaration { property = Border_image_slice; _ }
+  | Declaration { property = Border_image_width; _ }
+  | Declaration { property = Border_image_outset; _ }
+  | Declaration { property = Border_image_repeat; _ } ->
+      true
+  | _ -> false
+
+let is_border_image_longhand d = is_border_image_decl (snd d)
+
+let is_border_width_decl d =
+  match snd d with
+  | Declaration { property = Border_width; _ } -> true
+  | _ -> false
+
+let is_border_style_decl d =
+  match snd d with
+  | Declaration { property = Border_style; _ } -> true
+  | _ -> false
+
+let is_border_color_decl d =
+  match snd d with
+  | Declaration { property = Border_color; _ } -> true
+  | _ -> false
+
 let reorder_border_image_before_border decls =
-  let prop d = property_name (snd d) in
-  let is_border_image d = String.starts_with ~prefix:"border-image" (prop d) in
   let is_border_longhand d =
-    match prop d with
-    | "border-width" | "border-style" | "border-color" -> true
-    | _ -> false
+    is_border_width_decl d || is_border_style_decl d || is_border_color_decl d
   in
   let rec span pred acc = function
     | d :: rest when pred d -> span pred (d :: acc) rest
@@ -1502,12 +1525,14 @@ let reorder_border_image_before_border decls =
   in
   let rec go acc = function
     | [] -> List.rev acc
-    | d :: _ as l when is_border_image d ->
-        let img_block, rest1 = span is_border_image [] l in
+    | d :: _ as l when is_border_image_longhand d ->
+        let img_block, rest1 = span is_border_image_longhand [] l in
         let long_block, rest2 = span is_border_longhand [] rest1 in
-        let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
-        if has "border-width" && has "border-style" && has "border-color" then
-          go (List.rev_append (long_block @ img_block) acc) rest2
+        if
+          List.exists is_border_width_decl long_block
+          && List.exists is_border_style_decl long_block
+          && List.exists is_border_color_decl long_block
+        then go (List.rev_append (long_block @ img_block) acc) rest2
         else go (List.rev_append img_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
@@ -1528,8 +1553,7 @@ let compose_border_whole_shorthand ~ctx decls =
         | [] -> List.rev acc
         | ((_, d) as hd) :: rest ->
             let seen_border_image =
-              seen_border_image
-              || String.starts_with ~prefix:"border-image" (property_name d)
+              seen_border_image || is_border_image_decl d
             in
             go ~seen_border_image (hd :: acc) rest)
   in
@@ -1541,9 +1565,7 @@ let compose_border_whole_shorthand ~ctx decls =
    [border-image*] re-establishes it. Intra-block source order is fixed
    regardless of any surrounding CSS, so the drop is safe in every scope. *)
 let drop_border_image_shadowed_by_border kept =
-  let is_bimg (_, d) =
-    String.starts_with ~prefix:"border-image" (property_name d)
-  in
+  let is_bimg (_, d) = is_border_image_decl d in
   let is_border (_, d) =
     match d with Declaration { property = Border; _ } -> true | _ -> false
   in
