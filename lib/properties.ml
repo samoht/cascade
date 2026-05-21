@@ -6207,6 +6207,8 @@ let pp_property : type a. a property Pp.t =
         (if Pp.minified ctx then "break-inside" else "page-break-inside")
   | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
+  | Column_width -> Pp.string ctx "column-width"
+  | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
   | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
@@ -6274,6 +6276,7 @@ let pp_property : type a. a property Pp.t =
   | Webkit_mask_repeat -> Pp.string ctx "-webkit-mask-repeat"
   | Webkit_mask_clip -> Pp.string ctx "-webkit-mask-clip"
   | Webkit_mask_origin -> Pp.string ctx "-webkit-mask-origin"
+  | Border_image_source -> Pp.string ctx "border-image-source"
   | Mask_image -> Pp.string ctx "mask-image"
   | Mask_composite -> Pp.string ctx "mask-composite"
   | Mask_mode -> Pp.string ctx "mask-mode"
@@ -8363,6 +8366,28 @@ let rec pp_columns_value : columns_value Pp.t =
       Pp.space ctx ();
       Pp.int ctx n
   | Var v -> pp_var pp_columns_value ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_column_width : column_width Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Width len -> pp_length ctx len
+  | Var v -> pp_var pp_column_width ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_column_count : column_count Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Count n -> Pp.int ctx n
+  | Var v -> pp_var pp_column_count ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -17071,6 +17096,7 @@ let read_any_property t =
   | "-webkit-mask-repeat" -> Prop Webkit_mask_repeat
   | "-webkit-mask-clip" -> Prop Webkit_mask_clip
   | "-webkit-mask-origin" -> Prop Webkit_mask_origin
+  | "border-image-source" -> Prop Border_image_source
   | "mask-image" -> Prop Mask_image
   | "mask-composite" -> Prop Mask_composite
   | "mask-mode" -> Prop Mask_mode
@@ -17115,6 +17141,8 @@ let read_any_property t =
   | "page-break-after" -> Prop Page_break_after
   | "page-break-inside" -> Prop Page_break_inside
   | "columns" -> Prop Columns
+  | "column-width" -> Prop Column_width
+  | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
   | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
@@ -18814,6 +18842,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
       else pp_page_break_inside_value ctx value
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
+  | Column_width -> pp pp_column_width
+  | Column_count -> pp pp_column_count
   | Column_rule -> pp pp_border
   | Column_span -> pp pp_column_span
   | Transform_style -> pp pp_transform_style
@@ -18962,6 +18992,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_mask_repeat -> pp pp_background_repeat
   | Webkit_mask_clip -> pp pp_mask_box
   | Webkit_mask_origin -> pp pp_mask_box
+  | Border_image_source -> pp pp_background_image
   | Mask_image -> pp pp_background_image
   | Mask_composite -> pp pp_mask_composite
   | Mask_mode -> pp pp_mask_mode
@@ -19358,6 +19389,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Background_image -> Some Background_images
   | Background -> Some Background
   | Webkit_mask_image -> Some Background_image
+  | Border_image_source -> Some Background_image
   | Mask_image -> Some Background_image
   | Source -> Some Font_src
   | Font_family -> Some Font_family

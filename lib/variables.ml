@@ -1840,6 +1840,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | List_style_image, value -> vars_of_list_style_image value
   | List_style_type, value -> vars_of_list_style_type value
   (* Mask image/size *)
+  | Border_image_source, value -> vars_of_background_image value
   | Mask_image, value -> vars_of_background_image value
   | Mask_size, value -> vars_of_background_size value
   | Webkit_mask_image, value -> vars_of_background_image value
