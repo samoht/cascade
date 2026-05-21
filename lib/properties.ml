@@ -6277,6 +6277,7 @@ let pp_property : type a. a property Pp.t =
   | Webkit_mask_clip -> Pp.string ctx "-webkit-mask-clip"
   | Webkit_mask_origin -> Pp.string ctx "-webkit-mask-origin"
   | Border_image_source -> Pp.string ctx "border-image-source"
+  | Border_image_slice -> Pp.string ctx "border-image-slice"
   | Mask_image -> Pp.string ctx "mask-image"
   | Mask_composite -> Pp.string ctx "mask-composite"
   | Mask_mode -> Pp.string ctx "mask-mode"
@@ -17128,6 +17129,7 @@ let read_any_property t =
   | "-webkit-mask-clip" -> Prop Webkit_mask_clip
   | "-webkit-mask-origin" -> Prop Webkit_mask_origin
   | "border-image-source" -> Prop Border_image_source
+  | "border-image-slice" -> Prop Border_image_slice
   | "mask-image" -> Prop Mask_image
   | "mask-composite" -> Prop Mask_composite
   | "mask-mode" -> Prop Mask_mode
@@ -19024,6 +19026,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_mask_clip -> pp pp_mask_box
   | Webkit_mask_origin -> pp pp_mask_box
   | Border_image_source -> pp pp_background_image
+  | Border_image_slice -> pp pp_border_image_slice
   | Mask_image -> pp pp_background_image
   | Mask_composite -> pp pp_mask_composite
   | Mask_mode -> pp pp_mask_mode

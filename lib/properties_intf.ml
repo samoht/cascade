@@ -4317,6 +4317,7 @@ type 'a property =
   | Border_block_end_width : border_width property
   | Border_image : border_image property
   | Border_image_source : background_image property
+  | Border_image_slice : border_image_slice property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
