@@ -8,15 +8,19 @@ module String_set = Set.Make (String)
 
 type scope = [ `Fragment | `Stylesheet ]
 
-(* Threaded by the entry points ([stylesheet], [rules], [single_rule],
-   [deduplicate_declarations]); shorthand composers read it for the
-   fragment-vs-stylesheet scope decision. Default fragment. *)
-let current_scope : scope ref = ref `Fragment
+(* Optimisation context threaded by the entry points ([stylesheet], [rules],
+   [single_rule], [deduplicate_declarations]) down to the shorthand composers.
+   [scope] drives the fragment-vs-stylesheet decisions; [registered] reports
+   whether a custom property is registered with an [@property] initial-value, so
+   folding its [var()] into a shorthand cannot widen an invalid-at-
+   computed-value failure. Default: fragment, nothing registered. *)
+type ctx = { scope : scope; registered : string -> bool }
 
-let with_scope (w : scope) f =
-  let saved = !current_scope in
-  current_scope := w;
-  Fun.protect ~finally:(fun () -> current_scope := saved) f
+let fragment_ctx = { scope = `Fragment; registered = (fun _ -> false) }
+
+let ctx_of_scope = function
+  | Some s -> { fragment_ctx with scope = s }
+  | None -> fragment_ctx
 
 type packed_property = Packed : 'a Properties.property -> packed_property
 
@@ -1397,13 +1401,12 @@ let compose_border_shorthand decls =
    shorthand also resets [border-image] to its initial, so only compose when no
    [border-image] declaration is present in the rule - otherwise the synthesised
    [border] would clobber it (the reset/reorder case is handled separately). *)
-let try_compose_border_whole indexed_decls =
+let try_compose_border_whole ~ctx indexed_decls =
   match take_first_n 3 indexed_decls with
   | None -> None
   | Some (three, rest) -> (
       let raw = List.map snd three in
       if not (same_importance raw) then None
-      else if List.exists has_runtime_substitution raw then None
       else
         let width : Properties.border_width option ref = ref None in
         let style : Properties.border_style option ref = ref None in
@@ -1421,23 +1424,22 @@ let try_compose_border_whole indexed_decls =
         (* CSS Variables 1 sec. 3: a [var()] invalid at computed-value time
            poisons its whole declaration. Folding [var()] longhands into the
            shorthand widens that blast radius from one longhand to the whole
-           [border], so it is only safe for registered ([@property]) custom
-           properties; lacking that signal here, decline any [var()]
-           longhand. *)
-        let is_var_width (w : Properties.border_width) =
-          match w with Var _ -> true | _ -> false
+           [border], so it is only safe when the referenced custom property is
+           registered ([@property] with an initial-value) and therefore never
+           invalid at computed-value time. *)
+        let foldable_width (w : Properties.border_width) =
+          match w with Var v -> ctx.registered v.name | _ -> true
         in
-        let is_var_style (s : Properties.border_style) =
-          match s with Var _ -> true | _ -> false
+        let foldable_style (s : Properties.border_style) =
+          match s with Var v -> ctx.registered v.name | _ -> true
         in
-        let is_var_color (c : Values.color) =
-          match c with Var _ -> true | _ -> false
+        let foldable_color (c : Values.color) =
+          match c with Var v -> ctx.registered v.name | _ -> true
         in
         match (!width, !style, !color) with
         | Some width, Some style, Some color
-          when not
-                 (is_var_width width || is_var_style style || is_var_color color)
-          ->
+          when foldable_width width && foldable_style style
+               && foldable_color color ->
             let merged =
               Declaration
                 {
@@ -1488,14 +1490,14 @@ let reorder_border_image_before_border decls =
   in
   go [] decls
 
-let compose_border_whole_shorthand decls =
+let compose_border_whole_shorthand ~ctx decls =
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
      is only safe when it ends up before every [border-image] declaration.
      Compose in place while no [border-image] has been seen earlier in the rule;
      once one is, leave the longhands alone (the reorder-before-border-image
      case is handled separately). *)
   let rec go ~seen_border_image acc decls =
-    match try_compose_border_whole decls with
+    match try_compose_border_whole ~ctx decls with
     | Some (merged, rest) when not seen_border_image ->
         go ~seen_border_image (merged :: acc) rest
     | _ -> (
@@ -1545,8 +1547,8 @@ let drop_border_image_shadowed_by_border kept =
    longhands are unknown properties, so the shorthand value is rebuilt from
    their text and re-parsed. The shorthand resets any longhand the run omits, so
    this is closed-world ([`Stylesheet]) only. *)
-let compose_border_image_shorthand decls =
-  if !current_scope <> `Stylesheet then decls
+let compose_border_image_shorthand ~ctx decls =
+  if ctx.scope <> `Stylesheet then decls
   else
     let prop d = property_name (snd d) in
     let is_bi d =
@@ -1769,7 +1771,7 @@ let background_run_is_reset_closed layer =
       "clip";
     ]
 
-let try_compose_background indexed_decls =
+let try_compose_background ~ctx indexed_decls =
   let idx_opt, rest = take_contiguous_background indexed_decls in
   match idx_opt with
   | None -> None
@@ -1785,7 +1787,7 @@ let try_compose_background indexed_decls =
            [`Stylesheet] the caller asserts no prior author CSS exists that the
            shorthand could shadow. *)
         let permit =
-          match !current_scope with
+          match ctx.scope with
           | `Stylesheet -> true
           | `Fragment -> background_run_is_reset_closed layer
         in
@@ -1801,9 +1803,9 @@ let try_compose_background indexed_decls =
           in
           Some ((idx, merged), rest)
 
-let compose_background_shorthand decls =
+let compose_background_shorthand ~ctx decls =
   let rec go acc decls =
-    match (decls, try_compose_background decls) with
+    match (decls, try_compose_background ~ctx decls) with
     | [], _ -> List.rev acc
     | _, Some (merged, rest) -> go (merged :: acc) rest
     | hd :: rest, None -> go (hd :: acc) rest
@@ -1917,7 +1919,7 @@ let take_contiguous_mask indexed_decls =
       | [] -> (None, indexed_decls)
       | _ -> (Some (idx, parts), rest))
 
-let try_compose_mask indexed_decls =
+let try_compose_mask ~ctx indexed_decls =
   let idx_opt, rest = take_contiguous_mask indexed_decls in
   match idx_opt with
   | None -> None
@@ -1925,7 +1927,7 @@ let try_compose_mask indexed_decls =
       let raw_decls = List.map fst parts in
       if List.length raw_decls < 2 then None
       else if not (same_importance raw_decls) then None
-      else if !current_scope <> `Stylesheet then None
+      else if ctx.scope <> `Stylesheet then None
       else
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
@@ -1946,9 +1948,9 @@ let try_compose_mask indexed_decls =
           in
           Some ((idx, merged), rest)
 
-let compose_mask_shorthand decls =
+let compose_mask_shorthand ~ctx decls =
   let rec go ~seen_mask_border acc decls =
-    match try_compose_mask decls with
+    match try_compose_mask ~ctx decls with
     | Some (merged, rest) when not seen_mask_border ->
         go ~seen_mask_border (merged :: acc) rest
     | _ -> (
@@ -2421,32 +2423,33 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   in
   List.filter (fun item -> not (has_unprefixed_twin item)) kept
 
-let compose_shorthands kept =
+let compose_shorthands ~ctx kept =
   kept |> compose_box_shorthands |> compose_pair_shorthands
   |> compose_outline_shorthand |> reorder_font_resets_before_font
   |> compose_font_shorthand |> compose_list_style_shorthand
   |> compose_flex_shorthand |> compose_text_decoration_shorthand
   |> compose_border_shorthand |> reorder_border_image_before_border
-  |> compose_border_whole_shorthand |> drop_border_image_shadowed_by_border
-  |> compose_border_image_shorthand |> compose_background_shorthand
-  |> compose_mask_shorthand |> compose_transition_shorthand
-  |> compose_animation_shorthand
+  |> compose_border_whole_shorthand ~ctx
+  |> drop_border_image_shadowed_by_border
+  |> compose_border_image_shorthand ~ctx
+  |> compose_background_shorthand ~ctx
+  |> compose_mask_shorthand ~ctx
+  |> compose_transition_shorthand |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
-let deduplicate_declarations_with ?(merge_box = true) props =
+let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.fold_left deduplicate_step [] indexed_props in
   let kept =
-    let kept = if merge_box then compose_shorthands kept else kept in
+    let kept = if merge_box then compose_shorthands ~ctx kept else kept in
     let kept = drop_vendor_aliases kept in
     List.map (fun (_, decl) -> decl) kept
   in
   duplicate_buggy_properties kept
 
 let deduplicate_declarations ?scope props =
-  let run () = deduplicate_declarations_with props in
-  match scope with Some s -> with_scope s run | None -> run ()
+  deduplicate_declarations_with ~ctx:(ctx_of_scope scope) props
 
 let sort_commuting_declarations decls = decls
 
@@ -2506,11 +2509,11 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | Has sels -> List.exists contains_vendor_pseudo_element sels
   | _ -> false
 
-let single_rule_without_nested (rule : rule) : rule =
+let single_rule_without_nested ~ctx (rule : rule) : rule =
   {
     rule with
     declarations =
-      deduplicate_declarations_with ~merge_box:false rule.declarations
+      deduplicate_declarations_with ~ctx ~merge_box:false rule.declarations
       |> sort_commuting_declarations;
   }
 
@@ -2619,11 +2622,11 @@ let synthesize_position_try decls =
       | exception _ -> None)
     decls
 
-let finalize_rule_without_nested (rule : rule) : rule =
+let finalize_rule_without_nested ~ctx (rule : rule) : rule =
   {
     rule with
     declarations =
-      deduplicate_declarations rule.declarations
+      deduplicate_declarations_with ~ctx rule.declarations
       |> synthesize_columns |> synthesize_position_try
       |> sort_commuting_declarations;
   }
@@ -4066,17 +4069,18 @@ let synthesize_nesting_statements (stmts : statement list) : statement list =
   in
   go [] stmts
 
-let rec statements ~enforce_spec (stmts : statement list) : statement list =
-  let optimize_merged_block = statements ~enforce_spec in
+let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
+    =
+  let optimize_merged_block = statements ~ctx ~enforce_spec in
   merge_named_layers_by_name stmts
-  |> process_statements ~enforce_spec []
+  |> process_statements ~ctx ~enforce_spec []
   |> synthesize_nesting_statements
   |> merge_consecutive_media ~optimize_merged_block
   |> merge_consecutive_supports ~optimize_merged_block
   |> merge_consecutive_containers ~optimize_merged_block
   |> merge_layer_declarations |> drop_misplaced_imports |> drop_empty_rules
 
-and process_statements ~enforce_spec (acc : statement list)
+and process_statements ~ctx ~enforce_spec (acc : statement list)
     (remaining : statement list) : statement list =
   match remaining with
   | [] -> List.rev acc
@@ -4091,50 +4095,57 @@ and process_statements ~enforce_spec (acc : statement list)
       (* @scope is a valid nested group rule per CSS Nesting; preserve it as-is
          during normal optimization. Flattening is reserved for the explicit
          [flatten_nesting] transform. *)
-      let optimized = rules_aux ~enforce_spec plain_rules in
+      let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
       let as_statements = List.map (fun r -> Rule r) optimized in
-      process_statements ~enforce_spec (List.rev_append as_statements acc) rest
+      process_statements ~ctx ~enforce_spec
+        (List.rev_append as_statements acc)
+        rest
   | Media (cond, block) :: rest ->
       (* Just optimize the block and pass through - grouping happens later.
          Outside [enforce_spec], apply the target-fact grammar upgrades
          ([min-]/[max-] to range syntax, lower+upper bound to interval) that the
          pretty-printer no longer performs. *)
       let cond = if enforce_spec then cond else Media.lower_for_minify cond in
-      let optimized_block = statements ~enforce_spec block in
+      let optimized_block = statements ~ctx ~enforce_spec block in
       let optimized = Media (cond, optimized_block) in
-      process_statements ~enforce_spec (optimized :: acc) rest
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | Container (name, cond, block) :: rest ->
       (* Recursively optimize container query content *)
       let cond =
         if enforce_spec then cond
         else Option.map Container.lower_for_minify cond
       in
-      let optimized = Container (name, cond, statements ~enforce_spec block) in
-      process_statements ~enforce_spec (optimized :: acc) rest
+      let optimized =
+        Container (name, cond, statements ~ctx ~enforce_spec block)
+      in
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | Supports (cond, block) :: rest -> (
       (* Recursively optimize supports block content *)
-      let optimized_block = statements ~enforce_spec block in
+      let optimized_block = statements ~ctx ~enforce_spec block in
       let baseline =
         if enforce_spec then `Cond cond else Supports.simplify_baseline cond
       in
       match baseline with
       (* Condition is a known-true baseline fact: unwrap the block into the
          current statement stream so its rules merge with their siblings. *)
-      | `True -> process_statements ~enforce_spec acc (optimized_block @ rest)
+      | `True ->
+          process_statements ~ctx ~enforce_spec acc (optimized_block @ rest)
       (* Condition can never hold: the guarded block is dead. *)
-      | `False -> process_statements ~enforce_spec acc rest
+      | `False -> process_statements ~ctx ~enforce_spec acc rest
       | `Cond cond' ->
-          process_statements ~enforce_spec
+          process_statements ~ctx ~enforce_spec
             (Supports (cond', optimized_block) :: acc)
             rest)
   | Scope (start, end_, block) :: rest ->
-      let optimized = Scope (start, end_, statements ~enforce_spec block) in
-      process_statements ~enforce_spec (optimized :: acc) rest
+      let optimized =
+        Scope (start, end_, statements ~ctx ~enforce_spec block)
+      in
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | Origin (origin, block) :: rest ->
-      let optimized = Origin (origin, statements ~enforce_spec block) in
-      process_statements ~enforce_spec (optimized :: acc) rest
+      let optimized = Origin (origin, statements ~ctx ~enforce_spec block) in
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | Layer (name, block) :: rest ->
-      let optimized_block = statements ~enforce_spec block in
+      let optimized_block = statements ~ctx ~enforce_spec block in
       if is_layer_empty optimized_block then
         (* Handle empty layer optimization *)
         match name with
@@ -4143,13 +4154,13 @@ and process_statements ~enforce_spec (acc : statement list)
               collect_empty_layer_names [ layer_name ] rest
             in
             let layer_decl = Layer_decl all_names in
-            process_statements ~enforce_spec (layer_decl :: acc) remaining
+            process_statements ~ctx ~enforce_spec (layer_decl :: acc) remaining
         | None ->
             (* Anonymous empty layer - just remove it *)
-            process_statements ~enforce_spec acc rest
+            process_statements ~ctx ~enforce_spec acc rest
       else
         let optimized = Layer (name, optimized_block) in
-        process_statements ~enforce_spec (optimized :: acc) rest
+        process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | Import import :: rest ->
       (* A [supports()] condition on [@import] is a feature query: when it is a
          known-true baseline fact, default minify drops just the condition (the
@@ -4161,12 +4172,12 @@ and process_statements ~enforce_spec (acc : statement list)
             { import with supports = None }
         | _ -> import
       in
-      process_statements ~enforce_spec (Import import :: acc) rest
+      process_statements ~ctx ~enforce_spec (Import import :: acc) rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
-      process_statements ~enforce_spec (hd :: acc) rest
+      process_statements ~ctx ~enforce_spec (hd :: acc) rest
 
-and rules_aux ~enforce_spec (rules : rule list) : rule list =
+and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively. Nested rule
      selectors are implicitly relative to the parent [&], so drop a redundant
      leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
@@ -4187,7 +4198,7 @@ and rules_aux ~enforce_spec (rules : rule list) : rule list =
           {
             rule with
             nested =
-              statements ~enforce_spec rule.nested
+              statements ~ctx ~enforce_spec rule.nested
               |> List.map drop_nesting_prefix;
           }
         in
@@ -4199,9 +4210,9 @@ and rules_aux ~enforce_spec (rules : rule list) : rule list =
      the merged block matches the source order of the originals.
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
-  List.map single_rule_without_nested with_optimized_nested
+  List.map (single_rule_without_nested ~ctx) with_optimized_nested
   |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-  |> List.map finalize_rule_without_nested
+  |> List.map (finalize_rule_without_nested ~ctx)
   |> combine_identical_rules |> factor_common_declarations
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
@@ -4241,26 +4252,23 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
    blocks ([@layer name {}]) stay in place so the [empty-named-layer ->
    Layer_decl] normalisation in [process_statements] still folds them into the
    order-only declaration. *)
-let statements_top_level ~enforce_spec (stmts : statement list) : statement list
-    =
-  let optimize_merged_block = statements ~enforce_spec in
-  statements ~enforce_spec stmts
+let statements_top_level ~ctx ~enforce_spec (stmts : statement list) :
+    statement list =
+  let optimize_merged_block = statements ~ctx ~enforce_spec in
+  statements ~ctx ~enforce_spec stmts
   |> merge_consecutive_layers ~optimize_merged_block
   |> drop_redundant_layer_decls |> drop_shadowed_keyframes
 
 let single_rule ?scope (rule : rule) : rule =
-  let run () =
-    {
-      rule with
-      declarations = deduplicate_declarations rule.declarations;
-      nested = statements ~enforce_spec:false rule.nested;
-    }
-  in
-  match scope with Some s -> with_scope s run | None -> run ()
+  let ctx = ctx_of_scope scope in
+  {
+    rule with
+    declarations = deduplicate_declarations_with ~ctx rule.declarations;
+    nested = statements ~ctx ~enforce_spec:false rule.nested;
+  }
 
 let rules ?scope (rules : rule list) : rule list =
-  let run () = rules_aux ~enforce_spec:false rules in
-  match scope with Some s -> with_scope s run | None -> run ()
+  rules_aux ~ctx:(ctx_of_scope scope) ~enforce_spec:false rules
 
 (** {1 Nesting Flattening} *)
 
@@ -4540,8 +4548,8 @@ let promote_registered_custom_properties (stmts : statement list) :
    prune unknown [Name] arms. Keep the [Flip_*] tactics and any [Var]
    indirection untouched. When every arm gets pruned the whole declaration drops
    (the property becomes equivalent to its initial). *)
-let prune_position_try_fallbacks (stylesheet : t) : t =
-  match !current_scope with
+let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
+  match scope with
   | `Fragment -> stylesheet
   | `Stylesheet ->
       let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
@@ -4625,17 +4633,55 @@ let prune_position_try_fallbacks (stylesheet : t) : t =
       in
       List.map walk stylesheet
 
+(* Collect the custom properties registered with an [@property] initial-value.
+   Such a property is never invalid at computed-value time, so folding its
+   [var()] into a shorthand cannot widen a failure across the other
+   longhands. *)
+let registered_foldable (stylesheet : t) : string -> bool =
+  let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let rec collect (stmt : statement) =
+    match stmt with
+    | Property pr -> (
+        match pr.initial_value with
+        | Some _ ->
+            (* [@property] names carry the [--] prefix; [var()] references store
+               the bare name, so normalise to the bare form for lookup. *)
+            let key =
+              if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
+              then String.sub pr.name 2 (String.length pr.name - 2)
+              else pr.name
+            in
+            Hashtbl.replace tbl key ()
+        | None -> ())
+    | Rule rule -> List.iter collect rule.nested
+    | Layer (_, b)
+    | Media (_, b)
+    | Container (_, _, b)
+    | Supports (_, b)
+    | Moz_document (_, b)
+    | When (_, b)
+    | Else (_, b)
+    | Starting_style b
+    | Origin (_, b)
+    | Scope (_, _, b) ->
+        List.iter collect b
+    | _ -> ()
+  in
+  List.iter collect stylesheet;
+  fun name -> Hashtbl.mem tbl name
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
     (stylesheet : t) : t =
-  let run () =
-    let stylesheet =
-      if flatten_nesting then flatten_block stylesheet else stylesheet
-    in
-    (* [drop_invalid] and [drop_unknown_at_rules] run before the main
-       optimisation passes so the empty rules they leave behind get picked up by
-       [drop_empty_rules]. *)
-    stylesheet |> promote_registered_custom_properties
-    |> prune_position_try_fallbacks |> drop_invalid |> drop_unknown_at_rules
-    |> statements_top_level ~enforce_spec
+  let scope = Option.value scope ~default:`Fragment in
+  let stylesheet =
+    if flatten_nesting then flatten_block stylesheet else stylesheet
   in
-  match scope with Some s -> with_scope s run | None -> run ()
+  let stylesheet = promote_registered_custom_properties stylesheet in
+  let ctx = { scope; registered = registered_foldable stylesheet } in
+  (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
+     passes so the empty rules they leave behind get picked up by
+     [drop_empty_rules]. *)
+  stylesheet
+  |> prune_position_try_fallbacks ~scope
+  |> drop_invalid |> drop_unknown_at_rules
+  |> statements_top_level ~ctx ~enforce_spec
