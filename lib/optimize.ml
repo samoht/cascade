@@ -545,7 +545,7 @@ let extract_border_radius_corner :
       Some (Left, value, important)
   | _ -> None
 
-let try_compose_box ~extract ~build = function
+let try_compose_box ~ctx ~extract ~build = function
   | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: rest -> (
       match (extract d1, extract d2, extract d3, extract d4) with
       | ( Some (s1, v1, imp1),
@@ -557,11 +557,17 @@ let try_compose_box ~extract ~build = function
           let distinct =
             List.length (List.sort_uniq compare (List.map fst sides)) = 4
           in
-          let no_runtime =
-            List.for_all
-              (fun (_, v) -> not (Values.length_has_runtime_subst v))
-              sides
+          (* A side with runtime substitution can only fold into the box
+             shorthand when it is a registered ([@property]) [var()]: the
+             shorthand makes the four sides share fate, so an unregistered var
+             that goes invalid at computed-value time would poison all four
+             rather than just its own side. *)
+          let subst_safe (_, v) =
+            match (v : Values.length) with
+            | Var vr -> ctx.registered vr.name
+            | _ -> not (Values.length_has_runtime_subst v)
           in
+          let no_runtime = List.for_all subst_safe sides in
           if distinct && no_runtime then
             let find s = List.assoc s sides in
             let merged =
@@ -623,7 +629,7 @@ let try_compose_box_important_split ~extract ~build = function
       | _ -> None)
   | _ -> None
 
-let compose_box_shorthands decls =
+let compose_box_shorthands ~ctx decls =
   let build_margin ~important ~top ~right ~bottom ~left =
     Declaration
       { property = Margin; value = [ top; right; bottom; left ]; important }
@@ -652,10 +658,10 @@ let compose_box_shorthands decls =
   in
   let composers =
     [
-      try_compose_box ~extract:extract_margin_side ~build:build_margin;
-      try_compose_box ~extract:extract_padding_side ~build:build_padding;
-      try_compose_box ~extract:extract_inset_side ~build:build_inset;
-      try_compose_box ~extract:extract_border_radius_corner
+      try_compose_box ~ctx ~extract:extract_margin_side ~build:build_margin;
+      try_compose_box ~ctx ~extract:extract_padding_side ~build:build_padding;
+      try_compose_box ~ctx ~extract:extract_inset_side ~build:build_inset;
+      try_compose_box ~ctx ~extract:extract_border_radius_corner
         ~build:build_border_radius;
       try_compose_box_important_split ~extract:extract_margin_side
         ~build:build_margin;
@@ -2424,11 +2430,13 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   List.filter (fun item -> not (has_unprefixed_twin item)) kept
 
 let compose_shorthands ~ctx kept =
-  kept |> compose_box_shorthands |> compose_pair_shorthands
-  |> compose_outline_shorthand |> reorder_font_resets_before_font
-  |> compose_font_shorthand |> compose_list_style_shorthand
-  |> compose_flex_shorthand |> compose_text_decoration_shorthand
-  |> compose_border_shorthand |> reorder_border_image_before_border
+  kept
+  |> compose_box_shorthands ~ctx
+  |> compose_pair_shorthands |> compose_outline_shorthand
+  |> reorder_font_resets_before_font |> compose_font_shorthand
+  |> compose_list_style_shorthand |> compose_flex_shorthand
+  |> compose_text_decoration_shorthand |> compose_border_shorthand
+  |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_border_image_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
