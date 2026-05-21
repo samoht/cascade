@@ -2004,11 +2004,7 @@ let try_compose_mask ~ctx indexed_decls =
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
         in
-        (* The layer shorthand can only express a [<size>] after a
-           [<position>/]; a size with no position would serialise without the
-           required slot and fail to reparse, so decline that combination. *)
         if layer.image = None then None
-        else if layer.size <> None && layer.position = None then None
         else
           let merged =
             Declaration

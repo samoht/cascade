@@ -6849,7 +6849,11 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
       Pp.string ctx "/";
       pp_background_size ctx size
   | Some size ->
+      (* A [<bg-size>] is only reachable after [<position> /], so emit the
+         initial position [0 0] (= [0% 0%]) when none was given, otherwise the
+         shorthand fails to reparse. *)
       maybe_space ();
+      Pp.string ctx "0 0/";
       pp_background_size ctx size
   | None -> ()
 
@@ -6884,7 +6888,10 @@ let pp_mask_layer : mask_layer Pp.t =
       maybe_space ();
       pp_position_value ctx position
   | None, Some size ->
+      (* A [<bg-size>] is only reachable after [<position> /]; emit the initial
+         position [0 0] so the layer round-trips. *)
       maybe_space ();
+      Pp.string ctx "0 0/";
       pp_background_size ctx size
   | None, None -> ());
   pp_bg_prop maybe_space pp_background_repeat ctx layer.repeat;
