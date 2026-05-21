@@ -1592,64 +1592,91 @@ let drop_border_image_shadowed_by_border kept =
    longhands are unknown properties, so the shorthand value is rebuilt from
    their text and re-parsed. The shorthand resets any longhand the run omits, so
    this is closed-world ([`Stylesheet]) only. *)
+let is_border_image_longhand_decl = function
+  | Declaration { property = Border_image_source; _ }
+  | Declaration { property = Border_image_slice; _ }
+  | Declaration { property = Border_image_width; _ }
+  | Declaration { property = Border_image_outset; _ }
+  | Declaration { property = Border_image_repeat; _ } ->
+      true
+  | _ -> false
+
 let compose_border_image_shorthand ~ctx decls =
   if ctx.scope <> `Stylesheet then decls
   else
-    let prop d = property_name (snd d) in
-    let is_bi d =
-      match prop d with
-      | "border-image-source" | "border-image-slice" | "border-image-width"
-      | "border-image-outset" | "border-image-repeat" ->
-          true
-      | _ -> false
-    in
+    let is_bi d = is_border_image_longhand_decl (snd d) in
     let rec span acc = function
       | d :: rest when is_bi d -> span (d :: acc) rest
       | rest -> (List.rev acc, rest)
     in
     let compose_run run =
-      let find name =
-        List.find_opt (fun d -> String.equal (prop d) name) run
-        |> Option.map (fun d -> string_of_value ~minify:true (snd d))
+      let source : Properties.background_image option ref = ref None in
+      let slice : Properties.border_image_slice option ref = ref None in
+      let width : Properties.border_image_width_item list option ref =
+        ref None
       in
-      let src = find "border-image-source" in
-      let slice = find "border-image-slice" in
-      let width = find "border-image-width" in
-      let outset = find "border-image-outset" in
-      let repeat = find "border-image-repeat" in
-      let slice_part =
-        match (slice, width, outset) with
-        | Some s, None, None -> Some s
-        | Some s, Some w, None -> Some (String.concat "" [ s; "/"; w ])
-        | Some s, Some w, Some o ->
-            Some (String.concat "" [ s; "/"; w; "/"; o ])
-        | _ -> None
+      let outset : Properties.border_image_outset_item list option ref =
+        ref None
       in
-      (* A width/outset with no preceding slice cannot be spelled in the
-         shorthand; leave the run alone. *)
-      let expressible =
-        (Option.is_none width && Option.is_none outset)
-        || Option.is_some slice_part
+      let repeat : Properties.border_image_repeat_keyword list option ref =
+        ref None
+      in
+      (* A CSS-wide keyword or [var()] in any longhand cannot be folded into the
+         [border_image] record, which holds plain component values. *)
+      let foldable = ref true in
+      List.iter
+        (fun (_, d) ->
+          match d with
+          | Declaration { property = Border_image_source; value; _ } ->
+              source := Some value
+          | Declaration { property = Border_image_slice; value; _ } ->
+              slice := Some value
+          | Declaration { property = Border_image_width; value = Widths l; _ }
+            ->
+              width := Some l
+          | Declaration { property = Border_image_width; _ } ->
+              foldable := false
+          | Declaration { property = Border_image_outset; value = Outsets l; _ }
+            ->
+              outset := Some l
+          | Declaration { property = Border_image_outset; _ } ->
+              foldable := false
+          | Declaration { property = Border_image_repeat; value = Repeats l; _ }
+            ->
+              repeat := Some l
+          | Declaration { property = Border_image_repeat; _ } ->
+              foldable := false
+          | _ -> ())
+        run;
+      (* The shorthand spells [/ width] only after a slice, so width/outset
+         without a slice cannot be expressed; leave the run alone. *)
+      let need_slice =
+        (Option.is_some !width || Option.is_some !outset)
+        && Option.is_none !slice
       in
       if
         List.length run < 2
         || (not (same_importance (List.map snd run)))
-        || not expressible
+        || (not !foldable) || need_slice
       then None
       else
-        match List.filter_map Fun.id [ src; slice_part; repeat ] with
-        | [] -> None
-        | parts -> (
-            let value = String.concat " " parts in
-            let important = is_important (snd (List.hd run)) in
-            match
-              Declaration.of_string
-                (String.concat "" [ "border-image:"; value ])
-            with
-            | sh ->
-                let sh = if important then Declaration.important sh else sh in
-                Some (fst (List.hd run), sh)
-            | exception _ -> None)
+        let merged =
+          Declaration
+            {
+              property = Border_image;
+              value =
+                {
+                  source = !source;
+                  slice = !slice;
+                  width = !width;
+                  outset = !outset;
+                  repeat = !repeat;
+                  mode = None;
+                };
+              important = is_important (snd (List.hd run));
+            }
+        in
+        Some (fst (List.hd run), merged)
     in
     let rec go acc = function
       | [] -> List.rev acc
@@ -1977,11 +2004,7 @@ let try_compose_mask ~ctx indexed_decls =
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
         in
-        (* The layer shorthand can only express a [<size>] after a
-           [<position>/]; a size with no position would serialise without the
-           required slot and fail to reparse, so decline that combination. *)
         if layer.image = None then None
-        else if layer.size <> None && layer.position = None then None
         else
           let merged =
             Declaration
