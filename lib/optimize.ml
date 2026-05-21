@@ -235,9 +235,24 @@ let all_preserved_reorder_declaration decl =
   | Declaration { property; _ } -> is_all_preserved_reorder property
   | _ -> false
 
+(* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
+   flow-relative longhands. Cascade does not model those longhands as typed
+   properties (they parse as [Unknown_property]), so the coverage is matched by
+   name. *)
+let logical_shorthand_covers_name covering covered =
+  match covering with
+  | "border-block" ->
+      String.equal covered "border-block-start"
+      || String.equal covered "border-block-end"
+  | "border-inline" ->
+      String.equal covered "border-inline-start"
+      || String.equal covered "border-inline-end"
+  | _ -> false
+
 (* Coverage relation between two declarations. Custom and unknown properties
-   have only generic behavior: cover themselves by exact name, no shorthand
-   coverage, and (for custom) exempt from the [all] reset. *)
+   have only generic behavior: cover themselves by exact name and no typed
+   shorthand coverage (logical border shorthands match their longhands by name),
+   and (for custom) exempt from the [all] reset. *)
 let declaration_covers covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
@@ -250,9 +265,11 @@ let declaration_covers covering covered =
   | _, Declaration { property = Custom_property _; _ } -> false
   | ( Declaration { property = Unknown_property a; _ },
       Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b
-  | Declaration { property = Unknown_property _; _ }, _ -> false
-  | _, Declaration { property = Unknown_property _; _ } -> false
+      String.equal a b || logical_shorthand_covers_name a b
+  | Declaration { property = Unknown_property a; _ }, _ ->
+      logical_shorthand_covers_name a (property_name covered)
+  | _, Declaration { property = Unknown_property b; _ } ->
+      logical_shorthand_covers_name (property_name covering) b
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
       String.equal (property_name covering) (property_name covered)
