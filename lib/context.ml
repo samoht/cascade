@@ -2543,6 +2543,9 @@ let css_wide_of_color (value : Values.color) =
   | Values.Revert_layer -> Some Revert_layer
   | _ -> None
 
+let css_wide_of_colors (value : Values.color list) =
+  match value with [ color ] -> css_wide_of_color color | _ -> None
+
 let css_wide_of_background_image (value : Properties.background_image) =
   match value with
   | Properties.Inherit -> Some Inherit
@@ -3541,6 +3544,10 @@ and eval_kind_misc : type a.
         css_wide_of_transitions
   | Properties.Color ->
       resolve (simplify_color ~layer_order ?layer ctx) css_wide_of_color
+  | Properties.Colors ->
+      resolve
+        (List.map (simplify_color ~layer_order ?layer ctx))
+        css_wide_of_colors
   | Properties.Animation_name ->
       resolve (simplify_animation_name ~layer_order ?layer ctx) (fun _ -> None)
   | Properties.Background ->

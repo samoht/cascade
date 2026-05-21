@@ -1670,7 +1670,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Color properties *)
   | Background_color, value -> vars_of_color value
   | Color, value -> vars_of_color value
-  | Border_color, value -> vars_of_color value
+  | Border_color, value -> List.concat_map vars_of_color value
   | Border_top_color, value -> vars_of_color value
   | Border_right_color, value -> vars_of_color value
   | Border_bottom_color, value -> vars_of_color value

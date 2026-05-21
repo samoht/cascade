@@ -4168,7 +4168,7 @@ type 'a property =
   | All : css_wide property
   | Background_color : color property
   | Color : color property
-  | Border_color : color property
+  | Border_color : color list property
   | Border_style : border_style property
   | Border_top_style : border_style property
   | Border_right_style : border_style property
@@ -4643,6 +4643,7 @@ type _ property_value_kind =
   | Shadow : shadow property_value_kind
   | Border_radius : border_radius property_value_kind
   | Color : color property_value_kind
+  | Colors : color list property_value_kind
   | Animation_name : animation_name property_value_kind
   | Background : background list property_value_kind
   | Background_image : background_image property_value_kind
