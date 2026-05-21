@@ -18654,7 +18654,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | All -> pp pp_css_wide
   | Background_color -> pp pp_color
   | Color -> pp pp_color
-  | Border_color -> pp pp_color
+  | Border_color -> pp (pp_box_shorthand pp_color)
   | Border_style -> pp pp_border_style
   | Border_top_style -> pp pp_border_style
   | Border_right_style -> pp pp_border_style
@@ -19313,7 +19313,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Background_color -> Some Color
   | Animation_name -> Some Animation_name
   | Color -> Some Color
-  | Border_color -> Some Color
+  | Border_color -> Some Colors
   | Text_decoration_color -> Some Color
   | Border_top_color -> Some Color
   | Border_right_color -> Some Color
@@ -19922,6 +19922,7 @@ let pp_property_value_kind : type a. a property_value_kind Pp.t =
   | Shadow -> Pp.string ctx "shadow"
   | Border_radius -> Pp.string ctx "border-radius"
   | Color -> Pp.string ctx "color"
+  | Colors -> Pp.string ctx "colors"
   | Animation_name -> Pp.string ctx "animation-name"
   | Background -> Pp.string ctx "background"
   | Background_image -> Pp.string ctx "background-image"

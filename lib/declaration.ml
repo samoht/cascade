@@ -347,7 +347,7 @@ let property_value_uses_color_4 (type a) (property : a Properties.property)
   match property with
   | Color -> Values.color_is_color_4 value
   | Background_color -> Values.color_is_color_4 value
-  | Border_color -> Values.color_is_color_4 value
+  | Border_color -> List.exists Values.color_is_color_4 value
   | Border_top_color -> Values.color_is_color_4 value
   | Border_right_color -> Values.color_is_color_4 value
   | Border_bottom_color -> Values.color_is_color_4 value
@@ -1125,7 +1125,10 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
   match prop with
   | Color -> Some (v Color (read_color t))
   | Background_color -> Some (v Background_color (read_color t))
-  | Border_color -> Some (v Border_color (read_color t))
+  | Border_color ->
+      (* CSS Backgrounds 3 sec. 4.4: [border-color] is a 1-4 value box shorthand
+         (top / right / bottom / left). *)
+      Some (v Border_color (Cursor.list ~at_least:1 ~at_most:4 read_color t))
   | Outline_color -> Some (v Outline_color (read_color t))
   | Border_top_color -> Some (v Border_top_color (read_color t))
   | Border_right_color -> Some (v Border_right_color (read_color t))
@@ -2401,7 +2404,7 @@ let font_variant_numeric_composed ?ordinal ?slashed_zero ?numeric_figure
 let background bg = v Background [ bg ]
 let background_color c = v Background_color c
 let color c = v Color c
-let border_color c = v Border_color c
+let border_color c = v Border_color [ c ]
 let border_style bs = v Border_style bs
 let border_top_style bs = v Border_top_style bs
 let border_right_style bs = v Border_right_style bs
