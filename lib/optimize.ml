@@ -1303,6 +1303,39 @@ let try_compose_border_whole indexed_decls =
             Some ((fst (List.hd three), merged), rest)
         | _ -> None)
 
+(* [border-image*] and [border-width/style/color] are independent properties, so
+   a border-image declaration (or longhand run) that immediately precedes the
+   whole-border longhands can move after them without changing any property's
+   cascade. Doing so lets [compose_border_whole_shorthand] synthesise [border]
+   in place: the synthesised [border] resets border-image, but the now-trailing
+   border-image declaration overrides that reset back. Only swap when the
+   following run carries the full width/style/color trio, so the move happens
+   exactly where it enables composition. *)
+let reorder_border_image_before_border decls =
+  let prop d = property_name (snd d) in
+  let is_border_image d = String.starts_with ~prefix:"border-image" (prop d) in
+  let is_border_longhand d =
+    match prop d with
+    | "border-width" | "border-style" | "border-color" -> true
+    | _ -> false
+  in
+  let rec span pred acc = function
+    | d :: rest when pred d -> span pred (d :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  let rec go acc = function
+    | [] -> List.rev acc
+    | d :: _ as l when is_border_image d ->
+        let img_block, rest1 = span is_border_image [] l in
+        let long_block, rest2 = span is_border_longhand [] rest1 in
+        let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
+        if has "border-width" && has "border-style" && has "border-color" then
+          go (List.rev_append (long_block @ img_block) acc) rest2
+        else go (List.rev_append img_block acc) rest1
+    | d :: rest -> go (d :: acc) rest
+  in
+  go [] decls
+
 let compose_border_whole_shorthand decls =
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
      is only safe when it ends up before every [border-image] declaration.
@@ -1980,8 +2013,9 @@ let compose_shorthands kept =
   |> compose_outline_shorthand |> compose_font_shorthand
   |> compose_list_style_shorthand |> compose_flex_shorthand
   |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> compose_border_whole_shorthand |> compose_background_shorthand
-  |> compose_transition_shorthand |> compose_animation_shorthand
+  |> reorder_border_image_before_border |> compose_border_whole_shorthand
+  |> compose_background_shorthand |> compose_transition_shorthand
+  |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
