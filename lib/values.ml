@@ -364,6 +364,14 @@ let math_const_value = function
   | Neg_infinity -> Float.neg_infinity
   | Nan -> Float.nan
 
+(* Inside a [calc()] [Expr], a math constant participates as its numeric value
+   so the surrounding fold can run ([calc(pi * 100px)] -> [314.159px]). A
+   standalone [calc(pi)] keeps the named constant, which serialises shorter than
+   the decimal, so this is applied only to [Expr] operands. *)
+let calc_operand_value : type a. a calc -> a calc = function
+  | Math_const c -> Num (math_const_value c)
+  | other -> other
+
 let rec minify_angle_arg = function
   | Angle_op (l, op, r) -> (
       let l = minify_angle_arg l in
@@ -669,16 +677,20 @@ let rec eval_calc : type a. a calc -> a calc = function
   | Expr (l, op, r) -> (
       let l = eval_calc l in
       let r = eval_calc r in
-      (* Identity rules need a type-aware [Val] inspection (runtime subst?);
+      (* Match on the const-folded operands but keep [l] / [r] in the no-fold
+         results, so an unreduced expression keeps the short [calc(.. pi ..)].
+         Identity rules need a type-aware [Val] inspection (runtime subst?);
          per-type evaluators own them. *)
-      match (l, op, r) with
+      let lc = calc_operand_value l in
+      let rc = calc_operand_value r in
+      match (lc, op, rc) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
-          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
+          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
       | _ -> (
-          match fold_zero_numeric_expr l op r with
+          match fold_zero_numeric_expr lc op rc with
           | Some zero -> zero
           | None -> Expr (l, op, r)))
 
@@ -997,15 +1009,21 @@ let rec eval_length_calc : length calc -> length calc =
   | Expr (l, op, r) -> (
       let l = eval_length_calc l in
       let r = eval_length_calc r in
+      (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
+         [r] in the no-fold results, so an expression that does not reduce to a
+         leaf keeps the short [calc(.. pi ..)] rather than leaking the
+         decimal. *)
+      let lc = calc_operand_value l in
+      let rc = calc_operand_value r in
       let identity_safe x = not (length_calc_has_runtime_subst x) in
-      match (l, op, r) with
+      match (lc, op, rc) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
-          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
-      | _ when Option.is_some (fold_zero_numeric_expr l op r) ->
-          Option.get (fold_zero_numeric_expr l op r)
+          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
+          Option.get (fold_zero_numeric_expr lc op rc)
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x
@@ -1464,15 +1482,21 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
   | Expr (l, op, r) -> (
       let l = eval_lp_calc l in
       let r = eval_lp_calc r in
+      (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
+         [r] in the no-fold results, so an expression that does not reduce to a
+         leaf (e.g. [2px / pi]) keeps the short [calc(2px/pi)] rather than
+         leaking the decimal. *)
+      let lc = calc_operand_value l in
+      let rc = calc_operand_value r in
       let identity_safe x = not (lp_calc_has_runtime_subst x) in
-      match (l, op, r) with
+      match (lc, op, rc) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
-          match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
-      | _ when Option.is_some (fold_zero_numeric_expr l op r) ->
-          Option.get (fold_zero_numeric_expr l op r)
+          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
+          Option.get (fold_zero_numeric_expr lc op rc)
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x

@@ -5327,12 +5327,15 @@ let v4107_math_product_reduction () =
       ( "calc(1px * (e - exp(1))) -> 0",
         ".x { width: calc(1px * (e - exp(1))) }",
         ".x{width:0}" );
-      ( "calc(2px * pi) stays symbolic",
+      ( "calc(2px * pi) -> 6.28319px",
         ".x { width: calc(2px * pi) }",
-        ".x{width:calc(2px*pi)}" );
-      ( "calc(2px / pi) stays symbolic",
+        ".x{width:6.28319px}" );
+      ( "calc(100px * pi) -> 314.159px",
+        ".x { width: calc(100px * pi) }",
+        ".x{width:314.159px}" );
+      ( "calc(2px / pi) -> .63662px",
         ".x { width: calc(2px / pi) }",
-        ".x{width:calc(2px/pi)}" );
+        ".x{width:.63662px}" );
       ( "calc(100px * sin(45deg)) stays symbolic",
         ".x { width: calc(100px * sin(45deg)) }",
         ".x{width:calc(100px*sin(45deg))}" );
