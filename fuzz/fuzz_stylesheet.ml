@@ -1338,9 +1338,8 @@ let test_source_order_preserved buf =
               \  after:  %s"
               (String.concat "|" before) (String.concat "|" after))
 
-(* Comments must be dropped: cascade is an AST library, not a token preserver.
-   Minified output of any input - clean or recovered - must never contain CSS
-   comment delimiters. *)
+(* CSS Syntax consumes ordinary comments before parsing. Minified output of any
+   input - clean or recovered - must never contain CSS comment delimiters. *)
 let test_no_comments_in_output buf =
   let check label output =
     let contains_comment_open =
