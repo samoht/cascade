@@ -2180,6 +2180,11 @@ and pp : t Pp.t =
   | Not [ Invalid ] when Pp.minified ctx -> pseudo ctx "valid"
   | Not [ Required ] when Pp.minified ctx -> pseudo ctx "optional"
   | Not [ Optional ] when Pp.minified ctx -> pseudo ctx "required"
+  | Not [ Dir "ltr" ] when Pp.minified ctx ->
+      (* CSS Selectors 4 sec. 6.5.1: directionality is binary, so
+         [:not(:dir(ltr))] is spec-equivalent to [:dir(rtl)] (and shorter). *)
+      func ctx "dir" Pp.string "rtl"
+  | Not [ Dir "rtl" ] when Pp.minified ctx -> func ctx "dir" Pp.string "ltr"
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (Index 1, None) when Pp.minified ctx ->
