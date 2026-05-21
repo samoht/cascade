@@ -2,9 +2,9 @@
 # Refresh traces/tests from keithamus/css-minify-tests at the pinned commit.
 #
 # The upstream "tool" here is a hand-curated corpus of source.css /
-# expected.css pairs maintained by a vendor-neutral working group of CSS
-# minifier authors. There is no binary to run: the corpus itself is the
-# oracle. This script clones the corpus at a pinned commit and copies the
+# expected.css pairs maintained upstream. There is no binary to run: the
+# corpus itself is the imported oracle. This script clones the corpus at a
+# pinned commit and copies the
 # pair files (and per-test README.md) into ../traces/tests/.
 set -euo pipefail
 

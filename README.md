@@ -70,11 +70,13 @@ cascade --inline-vars --keep-vars=theme,brand style.css > themed.css
 
 ### Minify policy (`--minify`)
 
-`--minify` picks the shortest spec-equivalent spelling at every choice
-point. Where the CSS spec and browser-compatible recovery rules permit
-several valid serializations, Cascade chooses the shortest valid one. For
-perceptual color spaces, minified output may also round channels to bounded
-precision when the visual difference is negligible.
+`--minify` picks the shortest behavior-preserving spelling at every choice
+point. Where the CSS spec and browser-compatible recovery rules permit several
+valid serializations, Cascade chooses the shortest valid one. The only
+deliberately lossy rewrite class is static color approximation: a color rewrite
+or numeric color-channel rounding is valid only when the converted colors differ
+by at most `0.001` in Oklab Euclidean distance and alpha differs by at most
+`0.0005`. Among valid color approximations, the shortest serialization wins.
 
 `--minify` is closed over the CSS text it is given, but open over runtime
 layout state. Cascade may use the whole parsed stylesheet for source-order,
@@ -97,7 +99,7 @@ not introduce newer grammar or remove feature queries just because maintained
 evergreen browsers support them.
 
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
-- Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling; unresolved, out-of-gamut, or missing-channel forms stay functional.
+- Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling, or round numeric channels, only within the color-difference budget above; unresolved, out-of-gamut, or missing-channel forms stay functional.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
 - Selector lists: sort branches into Cascade's canonical selector order (`div,.class,#id` -> `#id,.class,div`).
 - Shorthands with unordered components serialize in Cascade's canonical order; when shortest forms tie, Cascade follows common minifier convention (`animation:1s slide` -> `animation:slide 1s`).
@@ -306,6 +308,10 @@ minifier CLIs (`esbuild`, `cleancss`, `csso`, `cssnano`,
 `lightningcss-cli`) over the same inputs. Normal test runs use only
 the cached trace; they do not shell out to external tools.
 
+Each trace record is treated as the complete stylesheet (`scope:
+Stylesheet`): closed over the fixture CSS for cascade/dependency/dead-code
+reasoning, but still open over runtime layout and environment state.
+
 A case passes when Cascade's output is no longer than the shortest
 *valid* cached oracle answer; longer Cascade outputs are recorded as
 `longer-than-shortest` mismatches. A cached answer is excluded from
@@ -319,6 +325,16 @@ the shortest-valid comparison when:
 
 Excluded answers are recorded in the per-test `*.output` logs and the
 rolled-up `_build/_tests/lightning_minify/upstream-bugs.log`.
+
+The SatCSS benchmark interop lives under
+[test/interop/satcss/](test/interop/satcss/). Its trace is generated locally
+from Hague, Lin, and Hong's CSS minification corpus and is intentionally not
+vendored because the upstream repository has no license for redistributing the
+website CSS snapshots. When present, it is replayed by the shared interop runner
+with the same complete-stylesheet scope: cached minifier outputs are first
+filtered to those that canonicalize to the same stylesheet-scoped Cascade output
+as the source, and Cascade is compared against the shortest remaining valid
+oracle.
 
 A second, stricter oracle is vendored from
 [keithamus/css-minify-tests](https://github.com/keithamus/css-minify-tests):
