@@ -3392,11 +3392,13 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
 
 (* CSS Color 4 color() / color-mix() components are normalized to [0, 1] for
    srgb / srgb-linear / display-p3 / a98-rgb / prophoto-rgb / rec2020 and
-   similar spaces; under minify round to 4 decimals (~0.0001 precision, well
-   below display sensitivity). *)
+   similar spaces. Under minify, round to 3 decimals: a half-step of 0.0005 per
+   channel keeps the three-channel error within the documented 0.001 Oklab
+   budget ([sqrt(3) * 0.0005 < 0.001]), matching the [lab()] / [lch()] channel
+   precision. *)
 let pp_component_float ctx f =
   if Pp.minified ctx then
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:4 f)
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 f)
   else Pp.float ctx f
 
 let rec pp_component : component Pp.t =
