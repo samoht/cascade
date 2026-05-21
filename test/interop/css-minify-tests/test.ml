@@ -311,8 +311,10 @@ let normalize_expected ~category ~id expected =
         upstream
   | "shorthands", "0044" ->
       (* Same border/border-image shorthand composition as the fixture, plus the
-         shorter transparent-color spelling and self-delimiting url-token
-         boundary. *)
+         shorter transparent-color spelling. [transparent] is transparent black
+         and therefore #0000; the hash token after [solid] and the numeric slice
+         after [url(...)] are both self-delimiting, so the spaces are
+         removable. *)
       fixture ~category ~id
         ~upstream:
           "a{border:4px solid transparent;border-image:url(border.png) 30 \
@@ -321,21 +323,25 @@ let normalize_expected ~category ~id expected =
           "a{border:4px solid #0000;border-image:url(border.png)30 round}"
         upstream
   | "shorthands", "0049" ->
-      (* The fixture's mask shorthand composition is right; transparent black is
-         shorter as #0000, and [url(...)] is self-delimiting before the
-         following slice. *)
+      (* The fixture's mask shorthand composition and declaration reordering are
+         right, but the size component must be serialized after an explicit
+         <position> and slash. [no-repeat/cover] is not a valid way to express
+         repeat plus size; the shortest valid spelling keeps the initial
+         position as [0 0/cover]. Transparent black is #0000, and [url(...)] is
+         self-delimiting before the following slice. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \
            no-repeat/cover;mask-border:url(mask.png) 25/10px round}"
         ~cascade:
-          "a{mask:linear-gradient(#000,#0000) \
-           no-repeat/cover;mask-border:url(mask.png)25/10px round}"
+          "a{mask:linear-gradient(#000,#0000)0 0/cover \
+           no-repeat;mask-border:url(mask.png)25/10px round}"
         upstream
   | "shorthands", "0050" ->
       (* Same transparent-color and url-token boundary policy as
          shorthands/0049: transparent is transparent black, and #0000 is the
-         shorter spelling. *)
+         shorter spelling. The [)] before [no-repeat] and before the mask-border
+         slice is token-safe, so both spaces are removable. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \
@@ -365,12 +371,6 @@ let normalize_expected ~category ~id expected =
          equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
-  | "values", "0010" ->
-      (* Absolute length units have exact conversion factors. When source and
-         canonical forms tie in byte length, use px as the stable canonical
-         absolute-length unit. *)
-      fixture ~category ~id ~upstream:"a{font-size:16px}"
-        ~cascade:"a{font-size:16px}" upstream
   | "whitespace", "0009" ->
       (* Cascade's default minifier may use evergreen target facts.
          [display:flex] is true for that target, so [@supports not
