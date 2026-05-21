@@ -1882,6 +1882,8 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Border_image_source (read_background_image t))
   | Border_image_slice ->
       Some (v Border_image_slice (read_border_image_slice t))
+  | Border_image_repeat ->
+      Some (v Border_image_repeat (read_border_image_repeat_value t))
   | Mask_image -> Some (v Mask_image (read_background_image t))
   | Mask_composite -> Some (v Mask_composite (read_mask_composite t))
   | Mask_mode -> Some (v Mask_mode (read_mask_mode t))

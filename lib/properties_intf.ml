@@ -2746,6 +2746,17 @@ type border_image_width_item =
 type border_image_outset_item = Number of float | Length of length
 type border_image_repeat_keyword = Stretch | Repeat | Round | Space
 
+(* CSS Backgrounds 3 sec. 6.3: [border-image-repeat] is one or two keywords
+   (block then inline); the longhand also takes the CSS-wide keywords. *)
+type border_image_repeat =
+  | Repeats of border_image_repeat_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_repeat var
+
 (** CSS Masking 1 §6 [<mask-border-mode>]: shared with the [border_image] record
     because [mask-border] is otherwise the same shorthand as [border-image] (the
     mode is always [None] for the latter). *)
@@ -4318,6 +4329,7 @@ type 'a property =
   | Border_image : border_image property
   | Border_image_source : background_image property
   | Border_image_slice : border_image_slice property
+  | Border_image_repeat : border_image_repeat property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
