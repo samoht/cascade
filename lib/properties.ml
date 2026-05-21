@@ -6279,6 +6279,8 @@ let pp_property : type a. a property Pp.t =
   | Border_image_source -> Pp.string ctx "border-image-source"
   | Border_image_slice -> Pp.string ctx "border-image-slice"
   | Border_image_repeat -> Pp.string ctx "border-image-repeat"
+  | Border_image_width -> Pp.string ctx "border-image-width"
+  | Border_image_outset -> Pp.string ctx "border-image-outset"
   | Mask_image -> Pp.string ctx "mask-image"
   | Mask_composite -> Pp.string ctx "mask-composite"
   | Mask_mode -> Pp.string ctx "mask-mode"
@@ -6905,6 +6907,24 @@ let rec pp_border_image_repeat ctx : border_image_repeat -> unit = function
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_border_image_repeat ctx v
+
+let rec pp_border_image_width ctx : border_image_width -> unit = function
+  | Widths l -> Pp.list ~sep:Pp.space pp_border_image_width_item ctx l
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_border_image_width ctx v
+
+let rec pp_border_image_outset ctx : border_image_outset -> unit = function
+  | Outsets l -> Pp.list ~sep:Pp.space pp_border_image_outset_item ctx l
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_border_image_outset ctx v
 
 let pp_mask_border_mode ctx = function
   | (Alpha : mask_border_mode) -> Pp.string ctx "alpha"
@@ -17141,6 +17161,8 @@ let read_any_property t =
   | "border-image-source" -> Prop Border_image_source
   | "border-image-slice" -> Prop Border_image_slice
   | "border-image-repeat" -> Prop Border_image_repeat
+  | "border-image-width" -> Prop Border_image_width
+  | "border-image-outset" -> Prop Border_image_outset
   | "mask-image" -> Prop Mask_image
   | "mask-composite" -> Prop Mask_composite
   | "mask-mode" -> Prop Mask_mode
@@ -19039,6 +19061,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_image_source -> pp pp_background_image
   | Border_image_slice -> pp pp_border_image_slice
   | Border_image_repeat -> pp pp_border_image_repeat
+  | Border_image_width -> pp pp_border_image_width
+  | Border_image_outset -> pp pp_border_image_outset
   | Mask_image -> pp pp_background_image
   | Mask_composite -> pp pp_mask_composite
   | Mask_mode -> pp pp_mask_mode
@@ -20225,6 +20249,38 @@ let rec read_border_image_repeat_value t : border_image_repeat =
     ]
     ~var:(fun t -> Var (Values.read_var read_border_image_repeat_value t))
     ~default:(fun t -> Repeats (read_border_image_repeat t))
+    t
+
+let rec read_border_image_width_value t : border_image_width =
+  Cursor.enum_or_var "border-image-width"
+    [
+      ("inherit", (Inherit : border_image_width));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_border_image_width_value t))
+    ~default:(fun t ->
+      Widths
+        (read_border_image_box_values ~what:"width" read_border_image_width_item
+           t))
+    t
+
+let rec read_border_image_outset_value t : border_image_outset =
+  Cursor.enum_or_var "border-image-outset"
+    [
+      ("inherit", (Inherit : border_image_outset));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_border_image_outset_value t))
+    ~default:(fun t ->
+      Outsets
+        (read_border_image_box_values ~what:"outset"
+           read_border_image_outset_item t))
     t
 
 let read_mask_border_mode t =
