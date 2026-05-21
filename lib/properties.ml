@@ -9113,16 +9113,27 @@ let rec pp_flex : flex Pp.t =
       Pp.float ctx shrink
   | Full (grow, shrink, basis) ->
       Pp.float ctx grow;
-      Pp.space ctx ();
-      (* Omit the default shrink only when the following basis cannot be
-         confused with a shrink factor on reparse. *)
-      let basis_needs_shrink =
-        match basis with Zero | Num _ | Px 0.0 -> true | _ -> false
+      (* CSS Flexbox 1 sec. 7.1.1: an omitted flex-basis in the shorthand is
+         [0], so a [0] / [0px] basis (but not [0%]) can be dropped; an omitted
+         flex-shrink is [1]. *)
+      let basis_is_zero =
+        match basis with Zero | Px 0.0 | Num 0.0 -> true | _ -> false
       in
-      if shrink <> 1.0 || basis_needs_shrink then (
-        Pp.float ctx shrink;
-        Pp.space ctx ());
-      pp_flex_basis ctx basis
+      if basis_is_zero then (
+        if shrink <> 1.0 then (
+          Pp.space ctx ();
+          Pp.float ctx shrink))
+      else (
+        Pp.space ctx ();
+        (* A bare-number basis would reparse as a shrink factor, so keep the
+           shrink to disambiguate. *)
+        let basis_needs_shrink =
+          match basis with Num _ -> true | _ -> false
+        in
+        if shrink <> 1.0 || basis_needs_shrink then (
+          Pp.float ctx shrink;
+          Pp.space ctx ());
+        pp_flex_basis ctx basis)
 
 let rec pp_font_size : font_size Pp.t =
  fun ctx -> function
