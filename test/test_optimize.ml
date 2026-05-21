@@ -1245,6 +1245,9 @@ let target_minify_enforce_spec_split () =
     "@supports not (display: grid) { a { color: red } } b { color: blue }"
     ~default:"b{color:#00f}"
     ~spec:"@supports not (display:grid){a{color:red}}b{color:#00f}";
+  check_modes "negated baseline supports flex"
+    "@supports not (display: flex) { a { display: block } }" ~default:""
+    ~spec:"@supports not (display:flex){a{display:block}}";
   check_modes "unknown supports preserved"
     "@supports (future-layout: masonry-plus) { a { color: red } }"
     ~default:"@supports(future-layout:masonry-plus){a{color:red}}"

@@ -245,6 +245,13 @@ let normalize_expected ~category ~id expected =
          the initial timing function, so omitting it is shorter and
          equivalent. *)
       "a{transition:color}"
+  | "whitespace", "0009" ->
+      (* Cascade's default minifier targets maintained evergreen browsers.
+         [display:flex] is baseline-true for that target, so [@supports not
+         (display:flex)] is target-dead and may be dropped. The enforce-spec
+         unit tests pin the opposite mode: without target browser facts, the
+         negated feature query must be preserved. *)
+      ""
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
          calc() and keeps the calc() wrapper. Cascade's README minify policy
