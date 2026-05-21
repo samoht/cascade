@@ -8358,6 +8358,10 @@ let rec pp_columns_value : columns_value Pp.t =
       pp_length ctx len;
       Pp.space ctx ();
       Pp.int ctx n
+  | Auto_count n ->
+      Pp.string ctx "auto";
+      Pp.space ctx ();
+      Pp.int ctx n
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -12977,42 +12981,58 @@ let read_page_break_inside_value t : page_break_inside_value =
     t
 
 let rec read_columns_value t : columns_value =
-  (* CSS Multicol 2 §6.1: [<<column-count> || <column-width>>] — each side is
-     independently optional and the two may appear in either order in the
-     source. Whenever both are present we canonicalise to [<width>, <count>] so
-     the printer always emits the width first. *)
+  (* CSS Multicol 2 sec. 6.1: [<'column-width'> || <'column-count'>], where
+     column-width is [auto | <length>] and column-count is [auto | <integer>].
+     Read up to two space-separated components in any order, then assign the
+     length to the width slot and the integer to the count slot. An explicit
+     [auto] keeps the width unset; [columns: auto 3] therefore differs from the
+     bare [columns: 3] only in spelling, captured by [Auto_count]. *)
   let read_count t =
     let n = Cursor.int t in
     if n <= 0 then Cursor.err_invalid t "column count must be positive";
     n
   in
-  let read_width t = read_length t in
-  let read_width_count t =
-    let w = read_width t in
-    Cursor.ws t;
-    match Cursor.option read_count t with
-    | Some n -> (Both (w, n) : columns_value)
-    | None -> Width w
+  let read_component t =
+    Cursor.one_of
+      [
+        (fun t ->
+          Cursor.expect_string "auto" t;
+          `Auto);
+        (fun t -> `Count (read_count t));
+        (fun t -> `Width (read_length t));
+      ]
+      t
   in
-  let read_count_width t =
-    let n = read_count t in
+  let combine a b : columns_value =
+    match (a, b) with
+    | `Auto, `Auto -> Auto
+    | `Auto, `Count n | `Count n, `Auto -> Auto_count n
+    | `Auto, `Width w | `Width w, `Auto -> Width w
+    | `Width w, `Count n | `Count n, `Width w -> Both (w, n)
+    | `Count _, `Count _ -> Cursor.err_invalid t "duplicate column-count"
+    | `Width _, `Width _ -> Cursor.err_invalid t "duplicate column-width"
+  in
+  let read_components t : columns_value =
+    let first = read_component t in
     Cursor.ws t;
-    match Cursor.option read_width t with
-    | Some w -> (Both (w, n) : columns_value)
-    | None -> Count n
+    match Cursor.option read_component t with
+    | Some second -> combine first second
+    | None -> (
+        match first with
+        | `Auto -> Auto
+        | `Count n -> Count n
+        | `Width w -> Width w)
   in
   Cursor.enum_or_var "columns"
     [
-      ("auto", (Auto : columns_value));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : columns_value));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_columns_value t))
-    ~default:(Cursor.one_of [ read_width_count; read_count_width ])
-    t
+    ~default:read_components t
 
 let rec read_column_span t : column_span =
   Cursor.enum_or_var "column-span"
