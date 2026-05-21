@@ -181,16 +181,28 @@ let shorthand_covers_longhand : type a b.
   | Mask, Mask_mode -> true
   | Mask, Mask_composite -> true
   | Mask, Mask_border -> true
-  (* CSS Fonts 4 sec. 2.7: [font] resets [font-style / -weight / -stretch /
-     -size / line-height / -family]. Cascade doesn't model [font-variant-css21]
-     separately; other [font-variant-*] longhands ([numeric], [ligatures], ...)
-     survive the shorthand. *)
+  (* CSS Fonts 4 sec. 2.7: the [font] shorthand resets [font-style / -weight /
+     -stretch / -size / line-height / -family] to the given values and every
+     other [font]-subproperty to its initial - including the [font-variant-*]
+     longhands, [font-variation-settings], [font-feature-settings],
+     [font-size-adjust], [font-kerning], and [font-optical-sizing]. *)
   | Font, Font_style -> true
   | Font, Font_weight -> true
   | Font, Font_stretch -> true
   | Font, Font_size -> true
   | Font, Line_height -> true
   | Font, Font_family -> true
+  | Font, Font_variant_ligatures -> true
+  | Font, Font_variant_caps -> true
+  | Font, Font_variant_numeric -> true
+  | Font, Font_variant_position -> true
+  | Font, Font_variant_east_asian -> true
+  | Font, Font_variant_emoji -> true
+  | Font, Font_variation_settings -> true
+  | Font, Font_feature_settings -> true
+  | Font, Font_size_adjust -> true
+  | Font, Font_kerning -> true
+  | Font, Font_optical_sizing -> true
   | _ -> false
 
 (* CSS Cascade 5 sec. 7.2: [all] resets every property except [direction],
@@ -981,6 +993,48 @@ let compose_font_shorthand decls =
     | [], _ -> List.rev acc
     | _, Some (merged, rest) -> go (merged :: acc) rest
     | hd :: rest, None -> go (hd :: acc) rest
+  in
+  go [] decls
+
+(* The [font] shorthand resets the [font-variant-*] / [font-variation-settings]
+   / [font-feature-settings] / [font-size-adjust] / [font-kerning] /
+   [font-optical-sizing] subproperties to their initials. When such a reset
+   declaration precedes a run of [font] longhands that [compose_font_shorthand]
+   will fold (the run carries the mandatory [font-size] and [font-family]), move
+   it after the run so the synthesised [font] does not clobber it - the same
+   pattern as [reorder_border_image_before_border]. *)
+let reorder_font_resets_before_font decls =
+  let prop d = property_name (snd d) in
+  let is_font_reset d =
+    match prop d with
+    | "font-variant-ligatures" | "font-variant-caps" | "font-variant-numeric"
+    | "font-variant-position" | "font-variant-east-asian" | "font-variant-emoji"
+    | "font-variation-settings" | "font-feature-settings" | "font-size-adjust"
+    | "font-kerning" | "font-optical-sizing" ->
+        true
+    | _ -> false
+  in
+  let is_font_longhand d =
+    match prop d with
+    | "font-style" | "font-weight" | "font-stretch" | "font-size"
+    | "line-height" | "font-family" ->
+        true
+    | _ -> false
+  in
+  let rec span pred acc = function
+    | d :: rest when pred d -> span pred (d :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  let rec go acc = function
+    | [] -> List.rev acc
+    | d :: _ as l when is_font_reset d ->
+        let reset_block, rest1 = span is_font_reset [] l in
+        let long_block, rest2 = span is_font_longhand [] rest1 in
+        let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
+        if has "font-size" && has "font-family" then
+          go (List.rev_append (long_block @ reset_block) acc) rest2
+        else go (List.rev_append reset_block acc) rest1
+    | d :: rest -> go (d :: acc) rest
   in
   go [] decls
 
@@ -2236,13 +2290,13 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
 
 let compose_shorthands kept =
   kept |> compose_box_shorthands |> compose_pair_shorthands
-  |> compose_outline_shorthand |> compose_font_shorthand
-  |> compose_list_style_shorthand |> compose_flex_shorthand
-  |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> reorder_border_image_before_border |> compose_border_whole_shorthand
-  |> drop_border_image_shadowed_by_border |> compose_background_shorthand
-  |> compose_mask_shorthand |> compose_transition_shorthand
-  |> compose_animation_shorthand
+  |> compose_outline_shorthand |> reorder_font_resets_before_font
+  |> compose_font_shorthand |> compose_list_style_shorthand
+  |> compose_flex_shorthand |> compose_text_decoration_shorthand
+  |> compose_border_shorthand |> reorder_border_image_before_border
+  |> compose_border_whole_shorthand |> drop_border_image_shadowed_by_border
+  |> compose_background_shorthand |> compose_mask_shorthand
+  |> compose_transition_shorthand |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
