@@ -1242,6 +1242,14 @@ let declaration_of_border_parts ~important widths styles colors =
       important;
     }
 
+(* [border] / [border-<edge>] disambiguate width/style/color by type, so a
+   [var()] (or other runtime substitution) in a longhand cannot be safely folded
+   into the shorthand: the substituted tokens might re-assign to a different
+   component, and one bad substitution invalidates the whole shorthand rather
+   than the single longhand. Positional same-type shorthands (padding, ...) are
+   exempt. *)
+let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
+
 let try_compose_border indexed_decls =
   match take_first_n 12 indexed_decls with
   | None -> None
@@ -1249,6 +1257,7 @@ let try_compose_border indexed_decls =
       let twelve, rest = twelve in
       let raw_decls = List.map snd twelve in
       if not (same_importance raw_decls) then None
+      else if List.exists has_runtime_substitution raw_decls then None
       else
         match border_parts_of raw_decls with
         | None -> None
@@ -1282,6 +1291,7 @@ let try_compose_border_whole indexed_decls =
   | Some (three, rest) -> (
       let raw = List.map snd three in
       if not (same_importance raw) then None
+      else if List.exists has_runtime_substitution raw then None
       else
         let width : Properties.border_width option ref = ref None in
         let style : Properties.border_style option ref = ref None in
@@ -1296,8 +1306,26 @@ let try_compose_border_whole indexed_decls =
                 color := Some c
             | _ -> ())
           raw;
+        (* CSS Variables 1 sec. 3: a [var()] invalid at computed-value time
+           poisons its whole declaration. Folding [var()] longhands into the
+           shorthand widens that blast radius from one longhand to the whole
+           [border], so it is only safe for registered ([@property]) custom
+           properties; lacking that signal here, decline any [var()]
+           longhand. *)
+        let is_var_width (w : Properties.border_width) =
+          match w with Var _ -> true | _ -> false
+        in
+        let is_var_style (s : Properties.border_style) =
+          match s with Var _ -> true | _ -> false
+        in
+        let is_var_color (c : Values.color) =
+          match c with Var _ -> true | _ -> false
+        in
         match (!width, !style, !color) with
-        | Some width, Some style, Some color ->
+        | Some width, Some style, Some color
+          when not
+                 (is_var_width width || is_var_style style || is_var_color color)
+          ->
             let merged =
               Declaration
                 {
