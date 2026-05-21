@@ -1817,8 +1817,58 @@ let c61_no_nested_boundary_merge () =
   check_case "nested scope boundary"
     ".card{& .title{color:red}@scope(&) to (.boundary){& \
      .title{display:block}}& .title{padding:1rem}}"
-    ".card{& .title{color:red}@scope(&)to (.boundary){& \
-     .title{display:block}}& .title{padding:1rem}}"
+    ".card{.title{color:red}@scope(&)to (.boundary){& \
+     .title{display:block}}.title{padding:1rem}}"
+
+let c61_nesting_synthesis_source_order () =
+  (* CSS Cascade section 6.1: order of appearance is a cascade criterion.
+     Synthesizing [B] as a nested rule under an earlier [A] is only a
+     serialization change when [B] is adjacent to [A] in the same cascade
+     context. Non-adjacent synthesis moves [B] before intervening rules in the
+     stylesheet tree, so the optimizer must leave those rules as siblings even
+     when [B]'s selector extends [A]. *)
+  let run_case ((label, css, expected) : string * string * string) :
+      string option =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet input in
+    let output =
+      Css.Stylesheet.to_string ~minify:true optimized |> String.trim
+    in
+    if String.equal output expected then None
+    else
+      Some
+        (Printf.sprintf "%s\n  input:    %S\n  expected: %S\n  actual:   %S"
+           label css expected output)
+  in
+  let mismatches =
+    List.filter_map run_case
+      [
+        ( "adjacent extended selector may synthesize nesting",
+          ".card{color:red}.card .title{color:blue}",
+          ".card{color:red;.title{color:#00f}}" );
+        ( "same-context adjacent synthesis is allowed inside media",
+          "@media(min-width:40em){.card{color:red}.card .title{color:blue}}",
+          "@media(width>=40em){.card{color:red;.title{color:#00f}}}" );
+        ( "intervening rule blocks nesting synthesis",
+          ".card{color:red}.other{display:block}.card .title{color:blue}",
+          ".card{color:red}.other{display:block}.card .title{color:#00f}" );
+        ( "intervening cascade competitor blocks nesting synthesis",
+          ".card{color:red}.card:hover{color:green}.card .title{color:blue}",
+          ".card{color:red}.card:hover{color:green}.card .title{color:#00f}" );
+        ( "conditional boundary blocks nesting synthesis",
+          ".card{color:red}@media(min-width:40em){.card .title{color:blue}}",
+          ".card{color:red}@media(width>=40em){.card .title{color:#00f}}" );
+        ( "source order after boundary blocks nesting synthesis",
+          ".card{color:red}@supports(display:grid){.card{display:grid}}.card \
+           .title{color:blue}",
+          ".card{color:red}.card{display:grid}.card .title{color:#00f}" );
+      ]
+  in
+  match mismatches with
+  | [] -> ()
+  | _ ->
+      Alcotest.failf "nesting synthesis source-order oracle mismatches:\n%s"
+        (String.concat "\n" mismatches)
 
 let c61_no_pseudo_group () =
   (* Grouping equal declarations across an overlapping pseudo-class competitor
@@ -3171,6 +3221,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 scope/page/nested boundaries are opaque",
       `Quick,
       c61_no_nested_boundary_merge );
+    ( "spec cascade 6.1 nesting synthesis preserves source order",
+      `Quick,
+      c61_nesting_synthesis_source_order );
     ( "spec cascade 6.1 no group across pseudo competitor",
       `Quick,
       c61_no_pseudo_group );

@@ -2775,7 +2775,7 @@ let nesting_module_l1_preserves_structure () =
   in
   Alcotest.(check string)
     "optimize keeps nested rules nested (no flattening)"
-    ".card{color:red;& .title{color:#00f}&:hover{color:green}}" opt_printed
+    ".card{color:red;.title{color:#00f}&:hover{color:green}}" opt_printed
 
 (* CSS Cascade Module Level 6, section 2 (Importing Style Sheets): @import
    identifies an external style sheet by URL. The cascade treats the import as a
