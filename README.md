@@ -329,9 +329,15 @@ values, whitespace, zero-units, ...). Inputs live under
 [test/interop/css-minify-tests/traces/](test/interop/css-minify-tests/traces/);
 refresh them with `dune build @regen-traces` from that directory. Each
 pair passes when Cascade's minified output equals the
-upstream-curated `expected.css` byte for byte (trailing whitespace
-ignored). The suite runs under `@runtest` so divergences are visible
-on every test run.
+upstream-curated `expected.css` after Cascade's documented policy
+normalizations (trailing whitespace ignored). The harness treats each fixture as
+the complete stylesheet (`scope: Stylesheet`): closed over the fixture CSS for
+cascade/dependency/dead-code reasoning, but still open over runtime layout and
+environment state. The vendored traces stay pristine; local harness overrides
+cover cases where Cascade deliberately chooses a shorter form, an
+evergreen-target rewrite, or a stricter CSS-semantics oracle than the
+imported fixture. The suite runs under `@runtest` so divergences are visible on
+every test run.
 
 ## References
 

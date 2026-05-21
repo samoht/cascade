@@ -8,14 +8,14 @@
     Refresh inputs with [dune build @regen-traces]. Upstream pinned in
     [scripts/generate.sh].
 
-    Pass criterion: Cascade's minified output must equal [expected.css] byte for
-    byte (trailing whitespace ignored). Strict equality surfaces legitimate
-    canonical-form divergences (e.g. [.5rem] vs [0.5rem]) so they can be
-    arbitrated per-case rather than silently swept into the test oracle.
+    Pass criterion: Cascade's minified output must equal the Cascade oracle for
+    that fixture (trailing whitespace ignored). Most fixtures use [expected.css]
+    directly. Where Cascade deliberately diverges, the override records both the
+    upstream oracle and the Cascade oracle so the difference stays reviewable.
 
     The harness is one Alcotest case per pair, grouped under its upstream
-    category. Each failing case prints its input, expected output, and actual
-    output. *)
+    category. Each failing case prints its input, upstream oracle, Cascade
+    oracle, and actual output. *)
 
 open Cascade
 
@@ -149,19 +149,18 @@ let normalize_custom_property_colon_ws s =
   loop 0 true
 
 let normalize_expected_tokens expected =
-  (* Cascade's README minify policy picks the shortest spec-equivalent spelling.
-     CSS Syntax tokenizes these at-keywords and [(] separately, so the
+  (* These normalizations are token-boundary differences, not semantic fixture
+     overrides. CSS Syntax tokenizes at-keywords and [(] separately, so the
      intervening space is optional when the grammar permits a leading
-     parenthesized condition. Some imported keithamus fixtures keep the
-     conventional space. For custom properties, [!important] is still
-     declaration priority, not part of the custom-property token stream;
-     [red!important] and [red !important] are equivalent, and the no-space form
-     is shorter. Modern color functions also permit tighter token boundaries
-     such as [oklab(50%.1-.05)]: the Color grammar is token-based, and these
-     adjacent numeric tokens re-parse as the same components. Custom-property
-     values stay opaque, but post-colon whitespace is declaration formatting.
-     Keep the vendored traces pristine and normalize only these safe token
-     boundaries on the expected side. *)
+     parenthesized condition. For custom properties, [!important] is declaration
+     priority, not part of the custom-property token stream; [red!important] and
+     [red !important] are equivalent, and the no-space form is shorter. Modern
+     color functions also permit tighter token boundaries such as
+     [oklab(50%.1-.05)]: the Color grammar is token-based, and these adjacent
+     numeric tokens re-parse as the same components. Custom-property values stay
+     opaque, but post-colon whitespace is declaration formatting. Keep the
+     vendored traces pristine and normalize only these safe token boundaries on
+     the expected side. *)
   let replace sep by s =
     s |> Astring.String.cuts ~empty:true ~sep |> String.concat by
   in
@@ -174,144 +173,225 @@ let normalize_expected_tokens expected =
   |> String.concat "!important" |> normalize_ok_color_spaces
   |> normalize_custom_property_colon_ws
 
+let fixture ~category ~id ~upstream ~cascade expected =
+  let upstream = strip_trailing_ws upstream in
+  let expected = strip_trailing_ws expected in
+  if expected <> upstream then
+    invalid_arg
+      (Printf.sprintf
+         "stale css-minify override for %s/%s\n  upstream: %s\n  expected: %s"
+         category id upstream expected);
+  cascade
+
 let normalize_expected ~category ~id expected =
+  let upstream = expected in
   let expected = normalize_expected_tokens expected in
   match (category, id) with
   | "colors", "0047" ->
-      (* Cascade's color precision policy also permits shortest equivalent
-         percentage spelling for lch() chroma: CSS Color 4 defines 100% as 150
-         on this axis, so rounded chroma 100.5 is exactly 67%. The lab() channel
-         space elision is the same safe-token-boundary policy as other lab-like
-         colors. *)
-      "a{color:lch(54.3 67% 274.5/.746);background-color:lab(54.3-60.5 70.8)}"
-  | "colors", "0049" ->
-      (* The imported trace rounds display-p3 color() components to 3 decimals.
-         Cascade uses a 4-decimal bounded-precision policy for color()
-         spaces. *)
-      "a{color:color(display-p3 .9765 .1235 .0179/.877)}"
-  | "colors", "0050" ->
-      (* Same precision-policy arbitration for a98-rgb. *)
-      "a{color:color(a98-rgb 1.0512 .0346 .0789)}"
-  | "colors", "0051" ->
-      (* Same precision-policy arbitration for prophoto-rgb. *)
-      "a{color:color(prophoto-rgb .8877 .0123 .1235)}"
-  | "colors", "0052" ->
-      (* Same precision-policy arbitration for rec2020. *)
-      "a{color:color(rec2020 .9346 .0789 .0235)}"
+      (* CSS Color 4 defines 100% lch() chroma as 150 on this axis, so rounded
+         chroma 100.5 is exactly 67%, and [67%] is shorter. The lab() channel
+         space elision is the same safe-token-boundary normalization as other
+         lab-like colors. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{color:lch(54.3 100.5 274.5/.746);background-color:lab(54.3 -60.5 \
+           70.8)}"
+        ~cascade:
+          "a{color:lch(54.3 67% 274.5/.746);background-color:lab(54.3-60.5 \
+           70.8)}"
+        upstream
   | "colors", "0053" ->
       (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
-         Cascade's [README] minify policy picks the shortest valid spelling, so
-         [xyz-d65] canonicalises to [xyz]; the precision rounding is the same
-         policy as the other [color()] traces above. *)
-      "a{color:color(xyz .5346 .2877 .0679)}"
-  | "font-face", ("0001" | "0002") ->
-      (* Cascade's minify policy drops @font-face rules that cannot participate
-         in font matching because they are missing font-family or src. CSS Fonts
-         4 parses these rules, but says they must not be considered when either
-         required descriptor is absent; the shortest equivalent minified output
-         is therefore empty. *)
-      ""
+         The shorter alias is the better minified spelling; the channel
+         precision follows the same bounded color() precision policy as the
+         other color-space fixtures. *)
+      fixture ~category ~id
+        ~upstream:"a{color:color(xyz-d65 .5346 .2877 .0679)}"
+        ~cascade:"a{color:color(xyz .5346 .2877 .0679)}" upstream
+  | "font-face", "0001" ->
+      (* A @font-face rule without font-family or src cannot participate in font
+         matching. CSS Fonts 4 parses these rules, but says they must not be
+         considered when either required descriptor is absent; the shortest
+         equivalent minified output is therefore empty. *)
+      fixture ~category ~id
+        ~upstream:"@font-face{font-display:swap;font-weight:400}" ~cascade:""
+        upstream
+  | "font-face", "0002" ->
+      (* Same non-participating @font-face policy as font-face/0001. *)
+      fixture ~category ~id
+        ~upstream:"@font-face{font-family:Custom;font-display:swap}" ~cascade:""
+        upstream
   | "charset", "0002" ->
       (* Cascade parses already-decoded UTF-8 text and does not preserve the CSS
          Syntax byte-stream decoding layer. Once decoded, both @charset
          declarations are metadata rather than stylesheet rules. *)
-      "a{color:red}"
-  | "comments", "0004" ->
-      (* Cascade is an AST library, not a token preserver: minified output never
-         contains comment delimiters. CSS Syntax 3 sec. 3.3 treats [/**/] as a
-         token separator, so [a/**/b] tokenises to two idents that cascade
-         re-serialises with a single space - equivalent under var() substitution
-         and shorter than keeping the empty comment. *)
-      "a{--bar:a b}"
-  | "comments", "0005" ->
-      (* Same comment-stripping policy as comments/0004, here inside a
-         [@container style()] custom-property query. *)
-      "@container style(--bar:a b){a{color:red}}"
+      fixture ~category ~id ~upstream:"@charset \"ISO-8859-1\";a{color:red}"
+        ~cascade:"a{color:red}" upstream
   | "container", "0001" ->
       (* The upstream fixture is scoped to whitespace removal and keeps the
-         legacy [min-width] spelling. Cascade's README minify policy
-         canonicalizes media/container size queries to MQ4 range syntax when it
-         is shorter. *)
-      "@container sidebar (width>=700px){a{color:red}}"
+         legacy [min-width] spelling. Default Cascade minify may use evergreen
+         target facts; for that target, MQ4 range syntax is available, so the
+         shorter [(width>=700px)] form is the Cascade oracle. *)
+      fixture ~category ~id
+        ~upstream:"@container sidebar (min-width:700px){a{color:red}}"
+        ~cascade:"@container sidebar (width>=700px){a{color:red}}" upstream
   | "duplicates", "0009" ->
       (* The imported fixture verifies selector-list deduplication and keeps the
-         first surviving selector order. Cascade minify also applies its
-         documented canonical selector-list sort; selector branches inside one
-         rule have no observable source-order effect. *)
-      ".footer,.nav .item{color:red}"
+         first surviving selector order. Cascade also canonicalizes selector
+         lists; selector branches inside one rule have no observable
+         source-order effect. *)
+      fixture ~category ~id ~upstream:".nav .item,.footer{color:red}"
+        ~cascade:".footer,.nav .item{color:red}" upstream
   | "nesting", "0011" ->
       (* Synthesis of CSS nesting is only a minification win when it preserves
          source-order semantics and is actually shorter. Here the nested form
          [a{color:red;&:hover{margin:0}}] is one byte longer than keeping the
          adjacent rules flat, so Cascade keeps the flat form. *)
-      "a{color:red}a:hover{margin:0}"
+      fixture ~category ~id ~upstream:"a{color:red;&:hover{margin:0}}"
+        ~cascade:"a{color:red}a:hover{margin:0}" upstream
   | "selectors", "0003" ->
       (* CSS Syntax An+B tokenization makes [+5] a single integer, but [+ 5] is
          a delimiter followed by whitespace and a number. It does not match the
          Selectors An+B grammar, so the invalid rule is dropped rather than
          repaired to [:nth-child(5)]. *)
-      ""
+      fixture ~category ~id ~upstream:"a:nth-child(5){color:red}" ~cascade:""
+        upstream
   | "selectors", "0008" ->
       (* [:nth-child(1n)] may shorten to [:nth-child(n)], but dropping the
          pseudo-class changes selector specificity from (0,1,1) to (0,0,1). *)
-      "a:nth-child(n){color:red}"
-  | "selectors-advanced", "0006" ->
-      (* [:dir()] is matched by document language and directionality state; the
-         fixture does not prove that every element is either ltr or rtl in a way
-         that makes [:not(:dir(ltr))] equivalent to [:dir(rtl)]. *)
-      "a:not(:dir(ltr)){color:red}"
+      fixture ~category ~id ~upstream:"a{color:red}"
+        ~cascade:"a:nth-child(n){color:red}" upstream
   | "selectors-advanced", "0010" ->
       (* [a:not(:link)] is not equivalent to [a:visited]: anchors without [href]
          are neither [:link] nor [:visited]. *)
-      "a:not(:link){color:red}"
+      fixture ~category ~id ~upstream:"a:visited{color:red}"
+        ~cascade:"a:not(:link){color:red}" upstream
   | "selectors-advanced", "0013" ->
-      (* [:heading] is a Selectors 5 pseudo-class and is not a drop-in
-         replacement for this selector list under Cascade's maintained-browser
-         target: it changes both grammar support and specificity. *)
-      "h1,h2,h3,h4,h5,h6{color:red}"
-  | "values", "0010" ->
-      (* CSS absolute units make [12pt] exactly equal to [16px], but both
-         spellings are the same length. Without a byte win, Cascade preserves
-         the authored unit rather than canonicalizing all absolute lengths to
-         px. *)
-      "a{font-size:12pt}"
+      (* [:heading] is a Selectors 5 pseudo-class, but it is not part of
+         Cascade's evergreen target today. It is also not a drop-in replacement:
+         [:heading] has class specificity, while each h1-h6 branch has type
+         specificity. *)
+      fixture ~category ~id ~upstream:":heading{color:red}"
+        ~cascade:"h1,h2,h3,h4,h5,h6{color:red}" upstream
+  | "shorthands", "0034" ->
+      (* Background layer components are order-insensitive where their grammar
+         roles are unambiguous. Image-before-color plus the safe url-token
+         boundary elision is the shortest spelling here. *)
+      fixture ~category ~id ~upstream:"a{background:red url(bg.png)}"
+        ~cascade:"a{background:url(bg.png)red}" upstream
+  | "shorthands", "0041" ->
+      (* The fixture's shorthand composition is right; Cascade also elides the
+         safe boundary between the url-token and following numeric slice. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{border:1px solid red;border-image:url(border.png) 30 round}"
+        ~cascade:"a{border:1px solid red;border-image:url(border.png)30 round}"
+        upstream
+  | "shorthands", "0042" ->
+      (* Same url-token boundary policy as shorthands/0041. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{border:1px solid red;border-image:url(border.png) 30 round}"
+        ~cascade:"a{border:1px solid red;border-image:url(border.png)30 round}"
+        upstream
+  | "shorthands", "0044" ->
+      (* Same border/border-image shorthand composition as the fixture, plus
+         Cascade's shorter transparent-color spelling and url-token boundary. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{border:4px solid transparent;border-image:url(border.png) 30 \
+           round}"
+        ~cascade:
+          "a{border:4px solid #0000;border-image:url(border.png)30 round}"
+        upstream
+  | "shorthands", "0049" ->
+      (* The fixture's mask shorthand composition is right; transparent black is
+         shorter as #0000, and the url/slice boundary is optional. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{mask:linear-gradient(#000,transparent) \
+           no-repeat/cover;mask-border:url(mask.png) 25/10px round}"
+        ~cascade:
+          "a{mask:linear-gradient(#000,#0000) \
+           no-repeat/cover;mask-border:url(mask.png)25/10px round}"
+        upstream
+  | "shorthands", "0050" ->
+      (* Same transparent-color and url-token boundary policy as
+         shorthands/0049. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{mask:linear-gradient(#000,transparent) \
+           no-repeat;mask-border:url(mask.png) 25 round}"
+        ~cascade:
+          "a{mask:linear-gradient(#000,#0000) \
+           no-repeat;mask-border:url(mask.png)25 round}"
+        upstream
+  | "shorthands", "0051" ->
+      (* The later mask shorthand resets the earlier mask-border state; keep the
+         fixture's dead-declaration drop, with Cascade's #0000 spelling. *)
+      fixture ~category ~id
+        ~upstream:"a{mask:linear-gradient(#000,transparent)}"
+        ~cascade:"a{mask:linear-gradient(#000,#0000)}" upstream
+  | "shorthands", "0065" ->
+      (* The fixture runs under stylesheet scope: [--custom] has no matching
+         @position-try rule anywhere in the fixture, so the fallback list can
+         drop it; the remaining default order plus fallback is shortest as the
+         shorthand. *)
+      fixture ~category ~id ~upstream:"a{position-try:flip-block,--custom}"
+        ~cascade:"a{position-try:flip-block}" upstream
   | "values", "0024" ->
       (* The fixture canonicalizes cubic-bezier(.25,.1,.25,1) to [ease]. Cascade
          then applies the transition shorthand default-elision rule: [ease] is
          the initial timing function, so omitting it is shorter and
          equivalent. *)
-      "a{transition:color}"
+      fixture ~category ~id ~upstream:"a{transition:color ease}"
+        ~cascade:"a{transition:color}" upstream
   | "whitespace", "0009" ->
-      (* Cascade's default minifier targets maintained evergreen browsers.
-         [display:flex] is baseline-true for that target, so [@supports not
-         (display:flex)] is target-dead and may be dropped. The enforce-spec
-         unit tests pin the opposite mode: without target browser facts, the
-         negated feature query must be preserved. *)
-      ""
+      (* Cascade's default minifier may use evergreen target facts.
+         [display:flex] is true for that target, so [@supports not
+         (display:flex)] is target-dead and may be dropped. The css-minify-tests
+         harness intentionally exercises default minify, not --enforce-spec. *)
+      fixture ~category ~id
+        ~upstream:"@supports not (display:flex){a{display:block}}" ~cascade:""
+        upstream
+  | "whitespace", "0010" ->
+      (* Same evergreen-target policy as whitespace/0009. The positive feature
+         query [(display:grid) and (gap:10px)] is always true for Cascade's
+         evergreen target, so default minify may elide the wrapper and keep the
+         inner rule. *)
+      fixture ~category ~id
+        ~upstream:
+          "@supports(display:grid)and (gap:10px){a{display:grid;gap:10px}}"
+        ~cascade:"a{display:grid;gap:10px}" upstream
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
-         calc() and keeps the calc() wrapper. Cascade's README minify policy
-         also folds constant math expressions; calc(100% * 2) stays a percentage
-         and shortens to 200%. *)
-      "a{width:200%}"
+         calc() and keeps the calc() wrapper. Cascade folds exact constant math:
+         [calc(100% * 2)] stays a percentage and shortens to [200%] without
+         rounding. *)
+      fixture ~category ~id ~upstream:"a{width:calc(100%*2)}"
+        ~cascade:"a{width:200%}" upstream
   | "anchor", "0003" ->
       (* The upstream rewrites [position-try-fallbacks: --flip] to the built-in
          [flip-block] tactic by inlining the [@position-try --flip {
-         position-area: top }] body. Cascade treats this fixture as closed over
-         the provided CSS text, but still open over runtime layout state. The
-         equivalence depends on block-axis facts such as writing mode/direction,
-         which the fixture does not pin, so preserve the custom [@position-try]
-         and the [--flip] reference. *)
-      "@position-try \
-       --flip{position-area:top}a{position-area:bottom;position-try-fallbacks:--flip}"
+         position-area: top }] body. Stylesheet scope lets the harness reason
+         over all rules in the fixture, but not over unpinned runtime layout
+         state. The equivalence depends on block-axis facts such as writing
+         mode/direction, so preserve the custom [@position-try] and the [--flip]
+         reference. *)
+      fixture ~category ~id
+        ~upstream:"a{position-area:bottom;position-try-fallbacks:flip-block}"
+        ~cascade:
+          "@position-try \
+           --flip{position-area:top}a{position-area:bottom;position-try-fallbacks:--flip}"
+        upstream
   | _ -> expected
 
 (* The upstream fixtures are scoped CSS fragments with the implicit assumption
-   that the input is the complete stylesheet. Cascade treats them as closed over
-   the provided CSS text, which permits whole-stylesheet source-order and
-   dependency reasoning, but still open over runtime layout state such as DOM
-   shape, writing mode, direction, user styles, and runtime custom-property
-   mutation. *)
+   that the input is the complete stylesheet. The harness therefore optimizes at
+   [scope:`Stylesheet]: closed over the fixture's CSS text for source-order,
+   cascade, dependency, and dead-code reasoning, but still open over runtime
+   layout state such as DOM shape, writing mode, direction, user styles, and
+   runtime custom-property mutation. *)
 let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
@@ -360,7 +440,10 @@ let load_category category =
 
 let categories () = list_subdirs traces_root
 
-type outcome = Pass | Parse_error of string | Mismatch of { actual : string }
+type outcome =
+  | Pass
+  | Parse_error of string
+  | Mismatch of { expected : string; actual : string }
 
 let classify pair =
   let expected =
@@ -370,17 +453,21 @@ let classify pair =
   | Error msg -> Parse_error msg
   | Ok actual ->
       if strip_trailing_ws actual = strip_trailing_ws expected then Pass
-      else Mismatch { actual }
+      else Mismatch { expected; actual }
 
 let pair_case pair () =
   match classify pair with
   | Pass -> ()
   | Parse_error msg ->
       Alcotest.failf "parse error: %s\n    input:    %s" msg pair.source
-  | Mismatch { actual } ->
+  | Mismatch { expected; actual } ->
       Alcotest.failf
-        "mismatch\n    input:    %s\n    expected: %s\n    actual:   %s"
-        pair.source pair.expected actual
+        "mismatch\n\
+        \    input:            %s\n\
+        \    upstream oracle:  %s\n\
+        \    cascade oracle:   %s\n\
+        \    actual:           %s"
+        pair.source pair.expected expected actual
 
 let () =
   let cases =
