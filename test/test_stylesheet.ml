@@ -3515,7 +3515,7 @@ let bg336_bgpos_collapse () =
     ".x{background-position:50%}"
     (normalize ".x { background-position: 50% 50% }");
   Alcotest.(check string)
-    "background-position: 0 0 collapses to 0" ".x{background-position:0}"
+    "background-position: 0 0 preserves both axes" ".x{background-position:0 0}"
     (normalize ".x { background-position: 0 0 }")
 
 (* {2 Non-minified fidelity}

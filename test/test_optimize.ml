@@ -939,7 +939,8 @@ let c3_open_closed_world_background_synthesis () =
   in
   Alcotest.(check string)
     "open-world partial background run keeps longhands"
-    ".card{background-color:red;background-image:none;background-repeat:repeat;background-position:0;background-attachment:scroll}"
+    ".card{background-color:red;background-image:none;background-repeat:repeat;background-position:0 \
+     0;background-attachment:scroll}"
     (optimize partial_run);
   Alcotest.(check string)
     "closed-world partial background run may synthesize shorthand"
