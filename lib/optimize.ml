@@ -1998,11 +1998,78 @@ let single_rule_without_nested (rule : rule) : rule =
       |> sort_commuting_declarations;
   }
 
+(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] in the same rule
+   collapse to the [columns] shorthand. [columns] resets exactly those two
+   longhands, so the rewrite preserves every other property's cascade and needs
+   no closed-world assumption. Cascade models the longhands as unknown
+   properties, so their values are re-parsed from text here. *)
+let parse_column_width s : [ `Auto | `Width of Values.length ] option =
+  if String.trim s = "auto" then Some `Auto
+  else
+    let t = Cursor.of_string s in
+    match Values.read_length ~with_keywords:false t with
+    | w ->
+        Cursor.ws t;
+        if Cursor.is_done t then Some (`Width w) else None
+    | exception Cursor.Parse_error _ -> None
+
+let parse_column_count s : [ `Auto | `Count of int ] option =
+  if String.trim s = "auto" then Some `Auto
+  else
+    let t = Cursor.of_string s in
+    match Cursor.int t with
+    | n ->
+        Cursor.ws t;
+        if n > 0 && Cursor.is_done t then Some (`Count n) else None
+    | exception Cursor.Parse_error _ -> None
+
+let columns_value_of_longhands width count : Properties.columns_value =
+  match (width, count) with
+  | `Auto, `Auto -> (Auto : Properties.columns_value)
+  | `Auto, `Count n -> Auto_count n
+  | `Width w, `Auto -> Width w
+  | `Width w, `Count n -> Both (w, n)
+
+let synthesize_columns (decls : declaration list) : declaration list =
+  let named name d = String.equal (property_name d) name in
+  let count_named name = List.length (List.filter (named name) decls) in
+  match
+    ( List.find_opt (named "column-width") decls,
+      count_named "column-width",
+      List.find_opt (named "column-count") decls,
+      count_named "column-count" )
+  with
+  | Some wd, 1, Some cd, 1 when is_important wd = is_important cd -> (
+      match
+        ( parse_column_width (string_of_value wd),
+          parse_column_count (string_of_value cd) )
+      with
+      | Some width, Some count ->
+          let shorthand =
+            Declaration.v ~important:(is_important wd) Properties.Columns
+              (columns_value_of_longhands width count)
+          in
+          (* Emit the shorthand where the first longhand appeared and drop both;
+             [columns] touches only these two longhands so the move is safe. *)
+          let placed = ref false in
+          List.filter_map
+            (fun d ->
+              if named "column-width" d || named "column-count" d then
+                if !placed then None
+                else (
+                  placed := true;
+                  Some shorthand)
+              else Some d)
+            decls
+      | _ -> decls)
+  | _ -> decls
+
 let finalize_rule_without_nested (rule : rule) : rule =
   {
     rule with
     declarations =
-      deduplicate_declarations rule.declarations |> sort_commuting_declarations;
+      deduplicate_declarations rule.declarations
+      |> synthesize_columns |> sort_commuting_declarations;
   }
 
 (* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]

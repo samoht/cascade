@@ -2049,6 +2049,7 @@ type columns_value = Properties.columns_value =
   | Count of int
   | Width of length
   | Both of length * int
+  | Auto_count of int
   | Inherit
   | Initial
   | Unset

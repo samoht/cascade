@@ -3546,10 +3546,14 @@ type columns_value =
   | Count of int
   | Width of length
   | Both of length * int
-      (** [<column-width> <column-count>] per CSS Multicol 2 §6.1. The two
+      (** [<column-width> <column-count>] per CSS Multicol 2 sec. 6.1. The two
           components can appear in either order in the source; we canonicalise
           to [<width>, <count>] internally so the printer always emits the width
           first. *)
+  | Auto_count of int
+      (** [auto <column-count>]: an explicit [auto] column-width paired with a
+          count, e.g. [columns: auto 3]. Distinct from [Count] (bare
+          [columns: 3]) so the explicit-[auto] spelling round-trips. *)
   | Inherit
   | Initial
   | Unset
