@@ -2603,43 +2603,6 @@ let columns_value_of_longhands width count : Properties.columns_value =
   | `Width w, `Auto -> Width w
   | `Width w, `Count n -> Both (w, n)
 
-(* Emit [shorthand] where the first of the [name_a] / [name_b] longhands
-   appeared and drop both. Used by shorthand synthesis whose shorthand resets
-   exactly those two longhands, so the position move is cascade-safe. *)
-let replace_longhand_pair ~name_a ~name_b ~shorthand decls =
-  let is_pair d =
-    String.equal (property_name d) name_a
-    || String.equal (property_name d) name_b
-  in
-  let placed = ref false in
-  List.filter_map
-    (fun d ->
-      if is_pair d then
-        if !placed then None
-        else (
-          placed := true;
-          Some shorthand)
-      else Some d)
-    decls
-
-(* Synthesise a shorthand from the unique [name_a] + [name_b] longhands when
-   both are present with matching importance and [build] accepts their value
-   strings. *)
-let synthesize_pair ~name_a ~name_b ~build decls =
-  let named name d = String.equal (property_name d) name in
-  let count name = List.length (List.filter (named name) decls) in
-  match
-    ( List.find_opt (named name_a) decls,
-      count name_a,
-      List.find_opt (named name_b) decls,
-      count name_b )
-  with
-  | Some da, 1, Some db, 1 when is_important da = is_important db -> (
-      match build ~important:(is_important da) da db with
-      | Some shorthand -> replace_longhand_pair ~name_a ~name_b ~shorthand decls
-      | None -> decls)
-  | _ -> decls
-
 (* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] collapse to the
    [columns] shorthand, which resets exactly those two longhands. Compose the
    unique pair of matching importance when both carry a plain (non-[var()],
@@ -2701,22 +2664,53 @@ let synthesize_columns decls =
    value and folds away. Cascade has no typed [position-try] shorthand, so the
    synthesised value is re-parsed into the (round-tripping) unknown property. *)
 let synthesize_position_try decls =
-  synthesize_pair ~name_a:"position-try-order" ~name_b:"position-try-fallbacks"
-    ~build:(fun ~important od fd ->
-      let order = string_of_value ~minify:true od in
+  let is_order = function
+    | Declaration { property = Position_try_order; _ } -> true
+    | _ -> false
+  in
+  let is_fallbacks = function
+    | Declaration { property = Position_try_fallbacks; _ } -> true
+    | _ -> false
+  in
+  let uniq pred =
+    match List.filter pred decls with [ x ] -> Some x | _ -> None
+  in
+  match (uniq is_order, uniq is_fallbacks) with
+  | Some od, Some fd when is_important od = is_important fd -> (
+      let order_is_normal =
+        match od with
+        | Declaration { property = Position_try_order; value = Normal; _ } ->
+            true
+        | _ -> false
+      in
+      (* [position-try] has no typed shorthand, so the value is rebuilt from the
+         longhands' serialised text and re-parsed into the unknown property; a
+         [normal] order is the initial value and is dropped. *)
       let fallbacks = string_of_value ~minify:true fd in
       let body =
-        if String.equal order "normal" then fallbacks
-        else String.concat " " [ order; fallbacks ]
+        if order_is_normal then fallbacks
+        else String.concat " " [ string_of_value ~minify:true od; fallbacks ]
       in
       match
         Declaration.of_string (String.concat "" [ "position-try:"; body ])
       with
       | shorthand ->
-          Some
-            (if important then Declaration.important shorthand else shorthand)
-      | exception _ -> None)
-    decls
+          let shorthand =
+            if is_important od then Declaration.important shorthand
+            else shorthand
+          in
+          let placed = ref false in
+          List.filter_map
+            (fun d ->
+              if is_order d || is_fallbacks d then
+                if !placed then None
+                else (
+                  placed := true;
+                  Some shorthand)
+              else Some d)
+            decls
+      | exception _ -> decls)
+  | _ -> decls
 
 let finalize_rule_without_nested ~ctx (rule : rule) : rule =
   {
