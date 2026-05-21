@@ -1482,6 +1482,81 @@ let drop_border_image_shadowed_by_border kept =
   in
   List.filteri (fun i item -> not (is_bimg item && dead i)) kept
 
+(* CSS Backgrounds 3 sec. 6.1: compose [border-image] from a contiguous run of
+   its longhands ([source] / [slice] [/ width [/ outset]] / [repeat]). The
+   longhands are unknown properties, so the shorthand value is rebuilt from
+   their text and re-parsed. The shorthand resets any longhand the run omits, so
+   this is closed-world ([`Stylesheet]) only. *)
+let compose_border_image_shorthand decls =
+  if !current_scope <> `Stylesheet then decls
+  else
+    let prop d = property_name (snd d) in
+    let is_bi d =
+      match prop d with
+      | "border-image-source" | "border-image-slice" | "border-image-width"
+      | "border-image-outset" | "border-image-repeat" ->
+          true
+      | _ -> false
+    in
+    let rec span acc = function
+      | d :: rest when is_bi d -> span (d :: acc) rest
+      | rest -> (List.rev acc, rest)
+    in
+    let compose_run run =
+      let find name =
+        List.find_opt (fun d -> String.equal (prop d) name) run
+        |> Option.map (fun d -> string_of_value ~minify:true (snd d))
+      in
+      let src = find "border-image-source" in
+      let slice = find "border-image-slice" in
+      let width = find "border-image-width" in
+      let outset = find "border-image-outset" in
+      let repeat = find "border-image-repeat" in
+      let slice_part =
+        match (slice, width, outset) with
+        | Some s, None, None -> Some s
+        | Some s, Some w, None -> Some (String.concat "" [ s; "/"; w ])
+        | Some s, Some w, Some o ->
+            Some (String.concat "" [ s; "/"; w; "/"; o ])
+        | _ -> None
+      in
+      (* A width/outset with no preceding slice cannot be spelled in the
+         shorthand; leave the run alone. *)
+      let expressible =
+        (Option.is_none width && Option.is_none outset)
+        || Option.is_some slice_part
+      in
+      if
+        List.length run < 2
+        || (not (same_importance (List.map snd run)))
+        || not expressible
+      then None
+      else
+        match List.filter_map Fun.id [ src; slice_part; repeat ] with
+        | [] -> None
+        | parts -> (
+            let value = String.concat " " parts in
+            let important = is_important (snd (List.hd run)) in
+            match
+              Declaration.of_string
+                (String.concat "" [ "border-image:"; value ])
+            with
+            | sh ->
+                let sh = if important then Declaration.important sh else sh in
+                Some (fst (List.hd run), sh)
+            | exception _ -> None)
+    in
+    let rec go acc = function
+      | [] -> List.rev acc
+      | d :: _ as l when is_bi d -> (
+          let run, rest = span [] l in
+          match compose_run run with
+          | Some merged -> go (merged :: acc) rest
+          | None -> go (List.rev_append run acc) rest)
+      | d :: rest -> go (d :: acc) rest
+    in
+    go [] decls
+
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
    covers a single layer: every longhand carries a single-layer value, no entry
@@ -2295,8 +2370,9 @@ let compose_shorthands kept =
   |> compose_flex_shorthand |> compose_text_decoration_shorthand
   |> compose_border_shorthand |> reorder_border_image_before_border
   |> compose_border_whole_shorthand |> drop_border_image_shadowed_by_border
-  |> compose_background_shorthand |> compose_mask_shorthand
-  |> compose_transition_shorthand |> compose_animation_shorthand
+  |> compose_border_image_shorthand |> compose_background_shorthand
+  |> compose_mask_shorthand |> compose_transition_shorthand
+  |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
