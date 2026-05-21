@@ -3561,6 +3561,28 @@ type columns_value =
   | Revert_layer
   | Var of columns_value var
 
+(* CSS Multicol 2 sec. 4: [column-width] is [auto | <length [0,inf]>]. *)
+type column_width =
+  | Auto
+  | Width of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_width var
+
+(* CSS Multicol 2 sec. 3: [column-count] is [auto | <integer [1,inf]>]. *)
+type column_count =
+  | Auto
+  | Count of int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_count var
+
 type column_span =
   | None
   | All
@@ -4294,6 +4316,7 @@ type 'a property =
   | Border_block_start_width : border_width property
   | Border_block_end_width : border_width property
   | Border_image : border_image property
+  | Border_image_source : background_image property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
@@ -4471,6 +4494,8 @@ type 'a property =
   | Page_break_inside : page_break_inside_value property
   | Page_size : page_size property
   | Columns : columns_value property
+  | Column_width : column_width property
+  | Column_count : column_count property
   | Column_rule : border property
   | Column_span : column_span property
   | Word_spacing : length property
