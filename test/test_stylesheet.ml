@@ -5604,6 +5604,31 @@ let normalize_minified css =
    declarations as opaque token streams. CSS Properties and Values API 1 section
    2 lifts a custom property into a typed value only after an @property
    registration for that name. *)
+let customprops13_unregistered_font_stack () =
+  Alcotest.(check string)
+    "unregistered font-stack custom property keeps string tokens"
+    ".x{--font-sans:ui-sans-serif,system-ui,sans-serif,\"Segoe UI \
+     Symbol\",\"Noto Color Emoji\"}"
+    (normalize_minified
+       ".x { --font-sans: ui-sans-serif, system-ui, sans-serif, \"Segoe UI \
+        Symbol\", \"Noto Color Emoji\" }")
+
+let customprops13_unregistered_theme_tokens () =
+  Alcotest.(check string)
+    "unregistered theme custom properties keep font strings and calc tokens"
+    "@layer \
+     theme{:host,:root{--font-sans:ui-sans-serif,system-ui,sans-serif,\"Segoe \
+     UI Symbol\",\"Noto Color \
+     Emoji\";--font-mono:ui-monospace,SFMono-Regular,\"Roboto Mono\",\"Courier \
+     New\",monospace;--text-sm--line-height:calc(1.25 / \
+     .875);--text-lg--line-height:calc(1.75 / 1.125)}}"
+    (normalize_minified
+       "@layer theme { :host, :root { --font-sans: ui-sans-serif, system-ui, \
+        sans-serif, \"Segoe UI Symbol\", \"Noto Color Emoji\"; --font-mono: \
+        ui-monospace, SFMono-Regular, \"Roboto Mono\", \"Courier New\", \
+        monospace; --text-sm--line-height: calc(1.25 / .875); \
+        --text-lg--line-height: calc(1.75 / 1.125) } }")
+
 let customprops13_registered_numeric_calc () =
   Alcotest.(check string)
     "unregistered numeric custom property keeps token stream"
@@ -6364,6 +6389,12 @@ let additional_tests =
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
       customprops13_declaration );
+    ( "spec custom-properties 1 3 unregistered font stack",
+      `Quick,
+      customprops13_unregistered_font_stack );
+    ( "spec custom-properties 1 3 unregistered theme tokens",
+      `Quick,
+      customprops13_unregistered_theme_tokens );
     ( "spec custom-properties 1 3 registered numeric calc",
       `Quick,
       customprops13_registered_numeric_calc );

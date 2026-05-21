@@ -1,8 +1,8 @@
 (** Shared interop runner.
 
     Invoked as [test.exe <interop-dir>] (or from a per-tool [dune] rule on
-    [@runtest]). Reads [<interop-dir>/traces/cases.trace] and runs a 3-stage
-    gate per case.
+    [@runtest]). Reads [<interop-dir>/traces/cases.trace] and runs the oracle
+    gate below for each case.
 
     Trace format ([CASCADE-INTEROP/v1]):
 
@@ -28,12 +28,20 @@
 
     Names are [<category>/<case>] so alcotest groups by category.
 
-    3-stage gate per record (against the shortest OK oracle):
+    Each record is treated as a complete stylesheet, matching standalone
+    optimizer/minifier inputs: closed over the fixture CSS text for
+    cascade/dependency/dead-code reasoning, but still open over runtime layout
+    and environment state.
 
-    + strict byte-equality between [actual] and the shortest raw oracle;
-    + structural equality via [Cascade_diff.Css_compare.equal ~mode:`Canonical];
-    + [Cascade_diff.Css_compare.diff ~mode:`Tree] renders the tree diff into the
-      alcotest report. *)
+    Gate per record:
+
+    + first, filter cached OK outputs to the ones that parse and canonicalize to
+      the same stylesheet-scoped Cascade output as the source input;
+    + then Cascade's byte length must be no longer than the shortest valid
+      oracle.
+
+    Failure output includes enough context to inspect the structural diff with
+    [cascade diff --diff=tree]. *)
 
 let magic = "CASCADE-INTEROP/v1"
 
@@ -156,14 +164,15 @@ let read_trace path =
   in
   loop pos []
 
-(* ===== 3-stage gate ===== *)
+(* ===== Oracle gate ===== *)
 
 let cascade_minify input =
   match Cascade.Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok { Cascade.Css.stylesheet; warnings = _ } ->
       Ok
-        (stylesheet |> Cascade.Css.optimize
+        (stylesheet
+        |> Cascade.Css.optimize ~scope:`Stylesheet
         |> Cascade.Css.to_string ~minify:true)
 
 let pick_shortest oracles =
@@ -180,54 +189,90 @@ type case_result = Pass | Fail of string
 
 let failf fmt = Fmt.kstr (fun msg -> Fail msg) fmt
 
+let css_fingerprint css =
+  Fmt.str "%d bytes:%s" (String.length css) (Digest.to_hex (Digest.string css))
+
+type invalid_oracle = { oracle : oracle; reason : string }
+type oracle_check = Valid of oracle | Invalid of invalid_oracle
+
+let validate_oracle ~source_canonical (oracle : oracle) =
+  match cascade_minify oracle.raw with
+  | Error msg -> Invalid { oracle; reason = "oracle parse failure: " ^ msg }
+  | Ok oracle_canonical ->
+      if String.equal source_canonical oracle_canonical then Valid oracle
+      else
+        Invalid
+          {
+            oracle;
+            reason =
+              Fmt.str "canonicalized differently: source=%s oracle=%s"
+                (css_fingerprint source_canonical)
+                (css_fingerprint oracle_canonical);
+          }
+
+let split_valid_oracles ~source_canonical oracles =
+  List.fold_right
+    (fun oracle (valid, invalid) ->
+      match validate_oracle ~source_canonical oracle with
+      | Valid oracle -> (oracle :: valid, invalid)
+      | Invalid issue -> (valid, issue :: invalid))
+    oracles ([], [])
+
 let compute_case record : case_result =
   match cascade_minify record.input with
   | Error msg -> failf "cascade parse failure: %s" msg
   | Ok actual -> (
-      match pick_shortest record.oracles with
+      let valid_oracles, invalid_oracles =
+        split_valid_oracles ~source_canonical:actual record.oracles
+      in
+      let oracle_summary oracles =
+        List.map
+          (fun (o : oracle) -> Fmt.str "%s:%d" o.tool (String.length o.raw))
+          oracles
+        |> String.concat " "
+      in
+      let invalid_summary () =
+        invalid_oracles
+        |> List.map (fun { oracle; reason } ->
+            Fmt.str "%s:%d:%s" oracle.tool (String.length oracle.raw) reason)
+        |> String.concat " | "
+      in
+      match pick_shortest valid_oracles with
       | None ->
-          if record.errors = [] then failf "no oracle for %s" record.name
+          if record.errors = [] && invalid_oracles = [] then
+            failf "no oracle for %s" record.name
           else
-            let summary =
+            let upstream_errors =
               List.map
                 (fun (e : err) -> Fmt.str "%s:%s" e.tool e.reason)
                 record.errors
               |> String.concat " | "
             in
+            let invalid = invalid_summary () in
+            let summary =
+              match (upstream_errors, invalid) with
+              | "", "" -> "none"
+              | "", invalid -> invalid
+              | upstream_errors, "" -> upstream_errors
+              | upstream_errors, invalid -> upstream_errors ^ " | " ^ invalid
+            in
             failf
-              "every upstream oracle failed - cascade has nothing to compare \
+              "no valid upstream oracle - cascade has nothing to compare \
                against: %s"
               summary
       | Some shortest ->
           let actual_len = String.length actual in
           let shortest_len = String.length shortest.raw in
-          let oracle_summary () =
-            List.map
-              (fun (o : oracle) -> Fmt.str "%s:%d" o.tool (String.length o.raw))
-              record.oracles
-            |> String.concat " "
-          in
-          (* Canonical equality: both sides are parsed and run through the
-             canonical-normalisation pass before comparison. Two CSS texts that
-             differ only in spelling cascade or the oracle has canonicalised
-             ([rgba(...)] vs hex, selector list order, etc.) compare equal; real
-             semantic divergences still fail. *)
-          if Cascade_diff.Css_compare.equal ~mode:`Canonical shortest.raw actual
-          then
-            if actual_len <= shortest_len then Pass
-            else
-              failf
-                "cascade output longer than shortest oracle\n\
-                \    cascade:  %d bytes (vs %s: %d bytes)\n\
-                \    oracles:  %s"
-                actual_len shortest.tool shortest_len (oracle_summary ())
+          if actual_len <= shortest_len then Pass
           else
             failf
-              "cascade output canonically differs from shortest oracle\n\
+              "cascade output longer than shortest valid oracle\n\
               \    cascade:  %d bytes (vs %s: %d bytes)\n\
-              \    oracles:  %s\n\
-              \    inspect: cascade diff --diff=tree <oracle> <cascade-output>"
-              actual_len shortest.tool shortest_len (oracle_summary ()))
+              \    valid_oracles:    %s\n\
+              \    rejected_oracles: %s"
+              actual_len shortest.tool shortest_len
+              (oracle_summary valid_oracles)
+              (invalid_summary ()))
 
 let case (result : case_result Lazy.t) () =
   match Lazy.force result with Pass -> () | Fail msg -> Alcotest.fail msg

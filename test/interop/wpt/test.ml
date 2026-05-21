@@ -623,15 +623,11 @@ let anb_serialization =
     (fun (input, expected) -> anb_pair_test ~source ~input ~expected)
     pairs
 
-(* serialize-consecutive-tokens.html: the WPT test checks that CSSOM var()
-   substitution inserts a [/**/] comment between adjacent tokens that would
-   otherwise merge. Cascade doesn't do runtime var substitution -- that's a
-   computed-style operation we don't ship -- so the WPT check as written isn't
-   portable. The nearest Cascade-side invariant is that
-   [Parser.to_string_minified] doesn't merge two word-like tokens into a single
-   one (that's exactly what the WPT comment insertion exists to prevent). Test
-   that here: for each adjacent token pair, the minified serialization keeps the
-   pair separable. *)
+(* serialize-consecutive-tokens.html: the browser WPT checks CSSOM runtime var()
+   substitution, where serialization may insert [/**/] between adjacent tokens
+   that would otherwise merge. This parser/serializer harness checks the
+   underlying token-boundary invariant directly: minified component-value
+   serialization must keep adjacent tokens separable after re-tokenization. *)
 let serialize_consecutive_tokens =
   let pairs =
     [

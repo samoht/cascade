@@ -8,9 +8,9 @@
 # This script clones WPT at the pinned commit and copies the
 # [css/css-syntax/] subtree into ../traces/css-syntax/.
 #
-# [@charset] with legacy encodings is intentionally dropped - Cascade is
-# UTF-8 only and does not implement the CSS byte-stream decoder
-# algorithm.
+# The WPT charset/ subtree is intentionally not imported. Cascade receives
+# already-decoded UTF-8 text and does not implement the CSS byte-stream decoder
+# algorithm, so those browser byte-sniffing vectors are outside this harness.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

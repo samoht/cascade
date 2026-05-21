@@ -2,16 +2,18 @@
 
     Inputs are vendored under [traces/tests/<category>/<NNNN>/], each test pair
     being a [source.css] (unminified) plus an [expected.css] (the canonical
-    minified output agreed on by the upstream maintainers). The corpus is a
-    vendor-neutral correctness oracle for CSS minifiers.
+    minified output agreed on by the upstream maintainers). The corpus is an
+    upstream minifier-oracle corpus, not a spec oracle; Cascade keeps explicit
+    local oracles for deliberate policy differences.
 
     Refresh inputs with [dune build @regen-traces]. Upstream pinned in
     [scripts/generate.sh].
 
     Pass criterion: Cascade's minified output must equal the Cascade oracle for
     that fixture (trailing whitespace ignored). Most fixtures use [expected.css]
-    directly. Where Cascade deliberately diverges, the override records both the
-    upstream oracle and the Cascade oracle so the difference stays reviewable.
+    directly. An override is allowed only when the imported oracle conflicts
+    with Cascade's documented minify semantics; the override records both the
+    upstream oracle and the local oracle so the difference stays reviewable.
 
     The harness is one Alcotest case per pair, grouped under its upstream
     category. Each failing case prints its input, upstream oracle, Cascade
@@ -202,9 +204,7 @@ let normalize_expected ~category ~id expected =
         upstream
   | "colors", "0053" ->
       (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
-         The shorter alias is the better minified spelling; the channel
-         precision follows the same bounded color() precision policy as the
-         other color-space fixtures. *)
+         The shorter alias is the better minified spelling. *)
       fixture ~category ~id
         ~upstream:"a{color:color(xyz-d65 .5346 .2877 .0679)}"
         ~cascade:"a{color:color(xyz .5346 .2877 .0679)}" upstream
@@ -267,36 +267,40 @@ let normalize_expected ~category ~id expected =
       fixture ~category ~id ~upstream:"a:visited{color:red}"
         ~cascade:"a:not(:link){color:red}" upstream
   | "selectors-advanced", "0013" ->
-      (* [:heading] is a Selectors 5 pseudo-class, but it is not part of
-         Cascade's evergreen target today. It is also not a drop-in replacement:
+      (* [:heading] is an experimental Selectors 5 pseudo-class with limited
+         browser availability. It is also not a drop-in replacement here:
          [:heading] has class specificity, while each h1-h6 branch has type
          specificity. *)
       fixture ~category ~id ~upstream:":heading{color:red}"
         ~cascade:"h1,h2,h3,h4,h5,h6{color:red}" upstream
   | "shorthands", "0034" ->
-      (* Background layer components are order-insensitive where their grammar
-         roles are unambiguous. Image-before-color plus the safe url-token
-         boundary elision is the shortest spelling here. *)
+      (* Background color and image occupy distinct grammar roles in a final
+         background layer, so their order is immaterial once both roles are
+         unambiguous. [url(...)] is self-delimiting before the color token, so
+         [url(bg.png)red] is the shortest round-trip-stable spelling. *)
       fixture ~category ~id ~upstream:"a{background:red url(bg.png)}"
         ~cascade:"a{background:url(bg.png)red}" upstream
   | "shorthands", "0041" ->
-      (* The fixture's shorthand composition is right; Cascade also elides the
-         safe boundary between the url-token and following numeric slice. *)
+      (* The shorthand composition is valid; the space after [url(...)] is not
+         part of the value. The URL token ends at [)], so the following numeric
+         slice remains a separate token without whitespace. *)
       fixture ~category ~id
         ~upstream:
           "a{border:1px solid red;border-image:url(border.png) 30 round}"
         ~cascade:"a{border:1px solid red;border-image:url(border.png)30 round}"
         upstream
   | "shorthands", "0042" ->
-      (* Same url-token boundary policy as shorthands/0041. *)
+      (* Pure url-boundary override: [url(...)] ends at [)], so the following
+         numeric slice remains a separate token without whitespace. *)
       fixture ~category ~id
         ~upstream:
           "a{border:1px solid red;border-image:url(border.png) 30 round}"
         ~cascade:"a{border:1px solid red;border-image:url(border.png)30 round}"
         upstream
   | "shorthands", "0044" ->
-      (* Same border/border-image shorthand composition as the fixture, plus
-         Cascade's shorter transparent-color spelling and url-token boundary. *)
+      (* Same border/border-image shorthand composition as the fixture, plus the
+         shorter transparent-color spelling and self-delimiting url-token
+         boundary. *)
       fixture ~category ~id
         ~upstream:
           "a{border:4px solid transparent;border-image:url(border.png) 30 \
@@ -306,7 +310,8 @@ let normalize_expected ~category ~id expected =
         upstream
   | "shorthands", "0049" ->
       (* The fixture's mask shorthand composition is right; transparent black is
-         shorter as #0000, and the url/slice boundary is optional. *)
+         shorter as #0000, and [url(...)] is self-delimiting before the
+         following slice. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \

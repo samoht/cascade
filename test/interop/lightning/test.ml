@@ -8,6 +8,12 @@
     tools: Cascade passes if its output is no longer than the shortest valid
     cached candidate.
 
+    Each trace record is treated as a complete stylesheet, matching the way the
+    upstream minifier CLIs see the input: closed over the fixture CSS text for
+    cascade/dependency/dead-code reasoning, but still open over runtime layout
+    state such as DOM shape, writing mode, direction, user styles, and runtime
+    custom-property mutation.
+
     Regenerate Lightning inputs and oracle answers with
     [dune build @@regen-traces].
 
@@ -65,22 +71,17 @@ type upstream_issue =
   | Rejected_candidate of rejected_candidate
   | Failed_candidate of failed_candidate
 
-let conic_gradient_bare_zero_angle css =
-  let pattern =
-    Re.Str.regexp "conic-gradient([^)]*from[ \t\r\n]+0\\([, \t\r\n)]\\|at\\)"
-  in
-  try
-    let _ = Re.Str.search_forward pattern css 0 in
-    true
-  with Not_found -> false
-
 let display_css css = if css = "" then "<empty>" else css
 
 let cascade_minify input =
   match Css.of_string ~strict:false input with
   | Error e -> Source_parse_error (Cascade.Error.to_string e)
   | Ok parsed -> (
-      match parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true with
+      match
+        parsed.stylesheet
+        |> Css.optimize ~scope:`Stylesheet
+        |> Css.to_string ~minify:true
+      with
       | s -> Result_css s
       | exception Invalid_argument msg ->
           Source_parse_error ("invalid_argument: " ^ msg))
@@ -103,48 +104,12 @@ let canonical_minified css =
     | Error e -> Error (Cascade.Error.to_string e)
     | Ok parsed -> (
         match
-          parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
+          parsed.stylesheet
+          |> Css.optimize ~scope:`Stylesheet
+          |> Css.to_string ~minify:true
         with
         | s -> Ok s
         | exception Invalid_argument msg -> Error ("invalid_argument: " ^ msg))
-
-let at_rule_fingerprint css =
-  if css = "" then Some []
-  else
-    try
-      let sheet = Css.Stylesheet.read_stylesheet (Cursor.of_string css) in
-      let rec statements acc = List.fold_left statement acc
-      and statement acc = function
-        | Css.Stylesheet.Rule rule -> statements acc rule.nested
-        | Charset _ -> "charset" :: acc
-        | Import _ -> "import" :: acc
-        | Namespace _ -> "namespace" :: acc
-        | Property _ -> "property" :: acc
-        | Layer_decl _ -> "layer-decl" :: acc
-        | Layer (_, block) -> statements ("layer" :: acc) block
-        | Media (_, block) -> statements ("media" :: acc) block
-        | Container (_, _, block) -> statements ("container" :: acc) block
-        | Supports (_, block) -> statements ("supports" :: acc) block
-        | Starting_style block -> statements ("starting-style" :: acc) block
-        | When (_, block) -> statements ("when" :: acc) block
-        | Else (_, block) -> statements ("else" :: acc) block
-        | Supports_condition _ -> "supports-condition" :: acc
-        | Origin (_, block) -> statements ("origin" :: acc) block
-        | Scope (_, _, block) -> statements ("scope" :: acc) block
-        | Keyframes _ -> "keyframes" :: acc
-        | Webkit_keyframes _ -> "webkit-keyframes" :: acc
-        | Moz_keyframes _ -> "moz-keyframes" :: acc
-        | Font_face _ -> "font-face" :: acc
-        | Page _ -> "page" :: acc
-        | Page_with_margins _ -> "page" :: acc
-        | Font_palette_values _ -> "font-palette-values" :: acc
-        | View_transition _ -> "view-transition" :: acc
-        | Position_try _ -> "position-try" :: acc
-        | Declarations _ -> acc
-        | _ -> "unknown" :: acc
-      in
-      Some (List.rev (statements [] sheet))
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let split_top_level_commas s =
   let len = String.length s in
@@ -205,52 +170,24 @@ let known_upstream_candidate_bug ({ tool; css } : candidate) =
     Some
       "cssnano emitted a bare number as a color-mix() weight; CSS Color 5 \
        requires <percentage [0,100]>"
-  else if conic_gradient_bare_zero_angle css then
-    Some
-      "upstream output contains conic-gradient(from 0, ...); CSS Images 4 \
-       requires an <angle>, and bare zero is not an angle outside calc()"
-  else None
-
-let invalid_upstream_source_fixture input =
-  if conic_gradient_bare_zero_angle input then
-    Some
-      "upstream source fixture contains conic-gradient(from 0, ...); CSS \
-       Images 4 requires an <angle>, and bare zero is not an angle outside \
-       calc()"
   else None
 
 let validate_candidate input (candidate : candidate) =
+  (* Candidate filtering is deliberately narrow. A cached upstream answer is an
+     oracle only if it parses and canonicalizes to the same stylesheet-scoped
+     Cascade output as the source. Raw at-rule shape is not a validity
+     requirement here: default minify may remove wrappers that are target-dead,
+     redundant, empty, or otherwise non-participating. Hard-coded exclusions
+     above cover known tool/source bugs where the CSS text itself is invalid
+     despite being short. *)
   match known_upstream_candidate_bug candidate with
   | Some reason -> Error { tool = candidate.tool; css = candidate.css; reason }
   | None -> (
-      match
-        ( at_rule_fingerprint input,
-          at_rule_fingerprint candidate.css,
-          canonical_minified input,
-          canonical_minified candidate.css )
-      with
-      | _, _, Ok "", Ok "" -> Ok candidate
-      | Some source, Some output, Ok source_css, Ok output_css
-        when source = output && source_css = output_css ->
+      match (canonical_minified input, canonical_minified candidate.css) with
+      | Ok "", Ok "" -> Ok candidate
+      | Ok source_css, Ok output_css when source_css = output_css ->
           Ok candidate
-      | Some source, Some output, _, _ when source <> output ->
-          Error
-            {
-              tool = candidate.tool;
-              css = candidate.css;
-              reason =
-                Fmt.str "at-rule fingerprint changed: [%s] -> [%s]"
-                  (String.concat ", " source)
-                  (String.concat ", " output);
-            }
-      | Some _, None, _, _ ->
-          Error
-            {
-              tool = candidate.tool;
-              css = candidate.css;
-              reason = "candidate output failed Cascade parser roundtrip";
-            }
-      | _, _, Ok source_css, Ok output_css ->
+      | Ok source_css, Ok output_css ->
           Error
             {
               tool = candidate.tool;
@@ -260,7 +197,7 @@ let validate_candidate input (candidate : candidate) =
                   "semantic fingerprint changed after Cascade parse: %s -> %s"
                   (display_css source_css) (display_css output_css);
             }
-      | _, _, Ok _, Error msg ->
+      | Ok _, Error msg ->
           Error
             {
               tool = candidate.tool;
@@ -268,7 +205,7 @@ let validate_candidate input (candidate : candidate) =
               reason =
                 "candidate output failed Cascade semantic roundtrip: " ^ msg;
             }
-      | None, _, _, _ | _, _, Error _, _ ->
+      | Error _, _ ->
           Error
             {
               tool = candidate.tool;
@@ -356,29 +293,16 @@ let classify (pair : Trace_pairs.t) =
       let diagnostics = format_source_parse_diagnostics pair in
       (Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics), [])
   | Result_css actual ->
-      let source_issues =
-        match invalid_upstream_source_fixture input with
-        | None -> []
-        | Some reason ->
-            List.map
-              (fun ({ tool; css } : candidate) ->
-                Rejected_candidate { tool; css; reason })
-              pair.candidates
-      in
       let candidates, rejected =
-        match source_issues with
-        | [] -> split_equivalent_candidates input pair.candidates
-        | _ :: _ -> ([], [])
+        split_equivalent_candidates input pair.candidates
       in
       let upstream_issues =
-        source_issues
-        @ List.map (fun issue -> Rejected_candidate issue) rejected
+        List.map (fun issue -> Rejected_candidate issue) rejected
         @ List.map (fun issue -> Failed_candidate issue) pair.failures
       in
       let best = shortest_length candidates in
       let outcome =
-        if source_issues <> [] then Pass
-        else if candidates = [] then
+        if candidates = [] then
           Fmt.kstr
             (fun s -> Mismatch s)
             "%s\n    no valid cached oracle candidates" actual
