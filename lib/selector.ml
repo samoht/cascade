@@ -2163,6 +2163,11 @@ and pp : t Pp.t =
          invalid arguments so a [:is(:future-pseudo, .a)] also reduces here,
          which the spec test asserts. *)
       pp ctx single
+  | Is selectors
+    when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
+      (* CSS Selectors 4 sec. 8.2: [:any-link] is defined as equivalent to
+         [:is(:link, :visited)], same specificity and shorter. *)
+      pp ctx Any_link
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
   | Not [ Not [ inner ] ] when Pp.minified ctx ->
