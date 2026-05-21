@@ -3251,10 +3251,203 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
       { rule with declarations = kept })
     indexed
 
+let contains_nesting sel =
+  Selector.any (function Selector.Nesting -> true | _ -> false) sel
+
+let substitute_nesting ~parent sel =
+  Selector.map (function Selector.Nesting -> parent | s -> s) sel
+
+let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
+    =
+  match child with
+  | Selector.Relative (comb, right) ->
+      (* A nested rule that starts with a combinator ([> .bar]) is parsed as a
+         relative selector; the combinator is taken relative to the parent, so
+         [parent { > .bar }] flattens to [parent > .bar]. *)
+      Selector.Combined (parent, comb, substitute_nesting ~parent right)
+  | _ when contains_nesting child -> substitute_nesting ~parent child
+  | _ -> Selector.Combined (parent, Selector.Descendant, child)
+
+let is_selector_list = function Selector.List _ -> true | _ -> false
+
+(* CSS Nesting 1: a rule with no declarations and exactly one nested rule is a
+   pure wrapper. Merge the child up by substituting the parent for the child's
+   [&] (or appending it as a descendant): this drops the wrapper braces without
+   duplicating the parent selector, so it always shortens. Restricted to a
+   non-[List] parent because [&] expands to [:is(<parent>)], whose specificity
+   equals the parent only when the parent is a single complex selector, so
+   textual substitution is specificity-preserving only there. The child's nested
+   statements are assumed already optimised by the caller. *)
+let rec merge_lone_nested_rule (rule : rule) : rule =
+  match (rule.declarations, rule.nested) with
+  | [], [ Rule child ] when not (is_selector_list rule.selector) ->
+      merge_lone_nested_rule
+        {
+          child with
+          selector = combine_with_parent rule.selector child.selector;
+        }
+  | _ -> rule
+
+(* CSS Nesting synthesis (inverse of flattening). [strip_prefix parent child] is
+   the relative nested selector [rel] with [combine_with_parent parent rel =
+   child], when [child] is an exact local extension of [parent]: a trailing
+   combinator step ([parent > x] -> [> x] / a bare descendant) or a compound
+   suffix on the rightmost compound ([a] -> [a:hover] -> [&:hover]). [None] for
+   anything that is not a plain prefix extension, so [:is] / [:where] / list
+   distribution never sneak in. *)
+let rec strip_prefix (parent : Selector.t) (child : Selector.t) :
+    Selector.t option =
+  match (parent, child) with
+  | _, Selector.Combined (cp, comb, crest) when cp = parent ->
+      Some
+        (if comb = Selector.Descendant then crest
+         else Selector.Relative (comb, crest))
+  | Selector.Combined (pp, pcomb, prest), Selector.Combined (cp, ccomb, crest)
+    when pcomb = ccomb && pp = cp ->
+      strip_prefix prest crest
+  | _, Selector.Compound cps -> (
+      let pps =
+        match parent with Selector.Compound l -> l | single -> [ single ]
+      in
+      let rec drop p c =
+        match (p, c) with
+        | [], rest -> Some rest
+        | ph :: pt, ch :: ct when ph = ch -> drop pt ct
+        | _ -> None
+      in
+      match drop pps cps with
+      | Some (_ :: _ as suffix) ->
+          Some (Selector.Compound (Selector.Nesting :: suffix))
+      | _ -> None)
+  | _ -> None
+
+let extends a b = strip_prefix a b <> None
+
+(* The class / id / element / attribute simple selectors that identify which
+   elements a selector can match. Collected by traversing with [Selector.any]
+   under an always-[false] predicate (visits the whole tree). *)
+let identifying_components sel =
+  let acc = ref [] in
+  ignore
+    (Selector.any
+       (fun s ->
+         (match s with
+         | Selector.Class _ | Selector.Id _
+         | Selector.Element (_, _)
+         | Selector.Attribute _ ->
+             acc := s :: !acc
+         | _ -> ());
+         false)
+       sel);
+  !acc
+
+(* Two selectors "compete" when they could match a common element - a sound
+   (conservative) approximation is that they share an identifying component.
+   Synthesis only fires for a chain that is isolated from every other rule in
+   the run under this relation, which blocks the fan case ([.card:hover] +
+   [.card .title] both off [.card]), the cascade competitor case ([.item.active]
+   beside a later [.active]), and the boundary-duplicate case ([.card] hoisted
+   out of [@supports] beside another [.card]). *)
+let selectors_compete a b =
+  let ca = identifying_components a in
+  List.exists (fun t -> List.mem t (identifying_components b)) ca
+
+(* Fold a chain [r0; r1; ...; rk] (each [r(i+1)] extends [ri]'s selector) into a
+   single nested rule rooted at [r0], substituting the running parent for each
+   child's [&]. *)
+let rec nest_chain (root : rule) : rule list -> rule = function
+  | [] -> root
+  | child :: rest -> (
+      match strip_prefix root.selector child.selector with
+      | Some rel ->
+          (* Recurse with [child]'s absolute selector so [rest] is stripped
+             against the right parent, then relativise [child]'s own
+             selector. *)
+          let nested_child = nest_chain child rest in
+          let nested_child = { nested_child with selector = rel } in
+          { root with nested = root.nested @ [ Rule nested_child ] }
+      | None -> root)
+
+let synthesize_shortens (before : rule list) (after : rule) : bool =
+  let len rules =
+    String.length
+      (Stylesheet.to_string ~minify:true (List.map (fun r -> Rule r) rules))
+  in
+  len [ after ] < len before
+
+(* CSS Nesting synthesis under [feedback_nesting_synthesis_safety]: split the
+   run into maximal chains where each rule extends its immediate predecessor,
+   and fold a chain into nested form only when (1) the parent is a single
+   (non-[List]) selector so [&] preserves specificity, (2) the chain is isolated
+   - no rule outside it [selectors_compete]s with any member (adjacency / no
+   competitor / no boundary-duplicate), and (3) the result is strictly shorter.
+   Chains that fail any guard stay flat. *)
+let synthesize_nesting_rules (rules : rule list) : rule list =
+  let arr = Array.of_list rules in
+  let n = Array.length arr in
+  (* Maximal chains as [start, length] over consecutive-extends. *)
+  let chains = ref [] in
+  let i = ref 0 in
+  while !i < n do
+    let start = !i in
+    incr i;
+    while !i < n && extends arr.(!i - 1).selector arr.(!i).selector do
+      incr i
+    done;
+    chains := (start, !i - start) :: !chains
+  done;
+  let chains = List.rev !chains in
+  let isolated start len =
+    let members = Array.sub arr start len in
+    let related_outside =
+      Array.to_list arr
+      |> List.mapi (fun idx r -> (idx, r))
+      |> List.exists (fun (idx, r) ->
+          (idx < start || idx >= start + len)
+          && Array.exists
+               (fun m -> selectors_compete m.selector r.selector)
+               members)
+    in
+    not related_outside
+  in
+  List.concat_map
+    (fun (start, len) ->
+      let members = Array.to_list (Array.sub arr start len) in
+      match members with
+      | root :: (_ :: _ as rest)
+        when (not (is_selector_list root.selector)) && isolated start len ->
+          let nested = nest_chain root rest in
+          if synthesize_shortens members nested then [ nested ] else members
+      | _ -> members)
+    chains
+
+(* Apply [synthesize_nesting_rules] to each maximal run of consecutive [Rule]
+   statements. Runs at the statement-list level (not inside [rules_aux]) so that
+   rules unwrapped from a baseline [@supports] are contiguous with their
+   siblings here: the chain isolation check then sees the duplicate-selector
+   competitor and declines to synthesize across the former boundary. *)
+let synthesize_nesting_statements (stmts : statement list) : statement list =
+  let rec span_rules acc = function
+    | Rule r :: rest -> span_rules (r :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  let rec go acc = function
+    | [] -> List.rev acc
+    | Rule _ :: _ as l ->
+        let run, rest = span_rules [] l in
+        let synthesized =
+          synthesize_nesting_rules run |> List.map (fun r -> Rule r)
+        in
+        go (List.rev_append synthesized acc) rest
+    | s :: rest -> go (s :: acc) rest
+  in
+  go [] stmts
+
 let rec statements ~enforce_spec (stmts : statement list) : statement list =
   let optimize_merged_block = statements ~enforce_spec in
   merge_named_layers_by_name stmts
   |> process_statements ~enforce_spec []
+  |> synthesize_nesting_statements
   |> merge_consecutive_media ~optimize_merged_block
   |> merge_consecutive_supports ~optimize_merged_block
   |> merge_consecutive_containers ~optimize_merged_block
@@ -3367,11 +3560,15 @@ and rules_aux ~enforce_spec (rules : rule list) : rule list =
   let with_optimized_nested =
     List.map
       (fun rule ->
-        {
-          rule with
-          nested =
-            statements ~enforce_spec rule.nested |> List.map drop_nesting_prefix;
-        })
+        let rule =
+          {
+            rule with
+            nested =
+              statements ~enforce_spec rule.nested
+              |> List.map drop_nesting_prefix;
+          }
+        in
+        merge_lone_nested_rule rule)
       rules
   in
   (* Apply standard rule optimizations. Adjacent same-selector rules merge:
@@ -3443,17 +3640,6 @@ let rules ?scope (rules : rule list) : rule list =
   match scope with Some s -> with_scope s run | None -> run ()
 
 (** {1 Nesting Flattening} *)
-
-let contains_nesting sel =
-  Selector.any (function Selector.Nesting -> true | _ -> false) sel
-
-let substitute_nesting ~parent sel =
-  Selector.map (function Selector.Nesting -> parent | s -> s) sel
-
-let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
-    =
-  if contains_nesting child then substitute_nesting ~parent child
-  else Selector.Combined (parent, Selector.Descendant, child)
 
 let scope_selector_in_context (parent : Selector.t) s =
   try
