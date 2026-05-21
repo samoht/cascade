@@ -1553,6 +1553,158 @@ let compose_background_shorthand decls =
   in
   go [] decls
 
+(* CSS Masking 1 sec. 6.1: [mask] is the layer shorthand for [mask-image] /
+   [mask-position] / [mask-size] / [mask-repeat] / [mask-origin] / [mask-clip] /
+   [mask-mode] / [mask-composite] (analogous to [background]). Compose a
+   contiguous run that carries a [mask-image]; like [border], [mask] resets
+   [mask-border] to its initial, so only compose while no [mask-border] precedes
+   (the reorder / dead-drop cases are handled separately). Closed-world
+   ([`Stylesheet]) only, since the shorthand resets the layer fields the run
+   leaves unset. *)
+let mask_image_part : declaration -> Properties.background_image option =
+  function
+  | Declaration { property = Mask_image; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let mask_repeat_part : declaration -> Properties.background_repeat option =
+  function
+  | Declaration { property = Mask_repeat; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let mask_size_part : declaration -> Properties.background_size option = function
+  | Declaration { property = Mask_size; value; _ } -> (
+      match value with
+      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | v -> Some v)
+  | _ -> None
+
+let mask_position_part : declaration -> Properties.position_value option =
+  function
+  | Declaration { property = Mask_position; value; _ } ->
+      background_position_singleton value
+  | _ -> None
+
+let mask_origin_part : declaration -> Properties.mask_box option = function
+  | Declaration { property = Mask_origin; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let mask_clip_part : declaration -> Properties.mask_box option = function
+  | Declaration { property = Mask_clip; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let mask_mode_part : declaration -> Properties.mask_mode option = function
+  | Declaration { property = Mask_mode; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+let mask_composite_part : declaration -> Properties.mask_composite option =
+  function
+  | Declaration { property = Mask_composite; value; _ } -> (
+      match value with Inherit | Initial | Unset -> None | v -> Some v)
+  | _ -> None
+
+type mask_updater =
+  declaration -> (Properties.mask_layer -> Properties.mask_layer) option
+
+let lift_mask :
+    'a.
+    (declaration -> 'a option) ->
+    (Properties.mask_layer -> 'a -> Properties.mask_layer) ->
+    mask_updater =
+ fun extract set d ->
+  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+
+let mask_updaters : mask_updater list =
+  [
+    lift_mask mask_image_part (fun s v -> { s with image = Some v });
+    lift_mask mask_repeat_part (fun s v -> { s with repeat = Some v });
+    lift_mask mask_size_part (fun s v -> { s with size = Some v });
+    lift_mask mask_position_part (fun s v -> { s with position = Some v });
+    lift_mask mask_origin_part (fun s v -> { s with origin = Some v });
+    lift_mask mask_clip_part (fun s v -> { s with clip = Some v });
+    lift_mask mask_mode_part (fun s v -> { s with mode = Some v });
+    lift_mask mask_composite_part (fun s v -> { s with composite = Some v });
+  ]
+
+let mask_part_of (d : declaration) = List.find_map (fun f -> f d) mask_updaters
+
+let empty_mask_layer : Properties.mask_layer =
+  {
+    image = None;
+    position = None;
+    size = None;
+    repeat = None;
+    origin = None;
+    clip = None;
+    mode = None;
+    composite = None;
+  }
+
+let take_contiguous_mask indexed_decls =
+  let rec aux acc = function
+    | (i, d) :: rest -> (
+        match mask_part_of d with
+        | Some f -> aux ((d, f) :: acc) rest
+        | None -> (List.rev acc, (i, d) :: rest))
+    | [] -> (List.rev acc, [])
+  in
+  match indexed_decls with
+  | [] -> (None, [])
+  | (idx, _) :: _ -> (
+      let parts, rest = aux [] indexed_decls in
+      match parts with
+      | [] -> (None, indexed_decls)
+      | _ -> (Some (idx, parts), rest))
+
+let try_compose_mask indexed_decls =
+  let idx_opt, rest = take_contiguous_mask indexed_decls in
+  match idx_opt with
+  | None -> None
+  | Some (idx, parts) ->
+      let raw_decls = List.map fst parts in
+      if List.length raw_decls < 2 then None
+      else if not (same_importance raw_decls) then None
+      else if !current_scope <> `Stylesheet then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
+        in
+        if layer.image = None then None
+        else
+          let merged =
+            Declaration
+              {
+                property = Mask;
+                value = (Layer layer : Properties.mask);
+                important = is_important (List.hd raw_decls);
+              }
+          in
+          Some ((idx, merged), rest)
+
+let compose_mask_shorthand decls =
+  let rec go ~seen_mask_border acc decls =
+    match try_compose_mask decls with
+    | Some (merged, rest) when not seen_mask_border ->
+        go ~seen_mask_border (merged :: acc) rest
+    | _ -> (
+        match decls with
+        | [] -> List.rev acc
+        | ((_, d) as hd) :: rest ->
+            let seen_mask_border =
+              seen_mask_border
+              ||
+              match d with
+              | Declaration { property = Mask_border; _ } -> true
+              | _ -> false
+            in
+            go ~seen_mask_border (hd :: acc) rest)
+  in
+  go ~seen_mask_border:false [] decls
+
 (* CSS Transitions 1 sec. 2.1: [transition] composes from
    [transition-{property,duration,timing-function,delay}]. Compose when a
    contiguous run covers a single layer (each longhand carries a one-entry
@@ -2014,8 +2166,8 @@ let compose_shorthands kept =
   |> compose_list_style_shorthand |> compose_flex_shorthand
   |> compose_text_decoration_shorthand |> compose_border_shorthand
   |> reorder_border_image_before_border |> compose_border_whole_shorthand
-  |> compose_background_shorthand |> compose_transition_shorthand
-  |> compose_animation_shorthand
+  |> compose_background_shorthand |> compose_mask_shorthand
+  |> compose_transition_shorthand |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
