@@ -569,6 +569,56 @@ let try_compose_box ~extract ~build = function
       | _ -> None)
   | _ -> None
 
+(* When the four box longhands are all present but importance is mixed, emit a
+   non-important shorthand carrying every side's value and re-state the
+   [!important] side(s) after it. An [!important] longhand wins over the
+   shorthand for its side regardless of order, while the non-important sides
+   take the shorthand's value, so the cascade is preserved. Worthwhile only when
+   at most two sides are important (otherwise the longhand count is not
+   reduced). *)
+let try_compose_box_important_split ~extract ~build = function
+  | (idx1, d1) :: (idx2, d2) :: (idx3, d3) :: (idx4, d4) :: rest -> (
+      match (extract d1, extract d2, extract d3, extract d4) with
+      | ( Some (s1, v1, i1),
+          Some (s2, v2, i2),
+          Some (s3, v3, i3),
+          Some (s4, v4, i4) ) ->
+          let sides =
+            [
+              (s1, v1, i1, (idx1, d1));
+              (s2, v2, i2, (idx2, d2));
+              (s3, v3, i3, (idx3, d3));
+              (s4, v4, i4, (idx4, d4));
+            ]
+          in
+          let distinct =
+            List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
+          in
+          let no_runtime =
+            List.for_all
+              (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
+              sides
+          in
+          let important_pairs =
+            List.filter_map
+              (fun (_, _, i, p) -> if i then Some p else None)
+              sides
+          in
+          let n_imp = List.length important_pairs in
+          if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
+            let find s =
+              let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) sides in
+              v
+            in
+            let shorthand =
+              build ~important:false ~top:(find Top) ~right:(find Right)
+                ~bottom:(find Bottom) ~left:(find Left)
+            in
+            Some ((idx1, shorthand), important_pairs @ rest)
+          else None
+      | _ -> None)
+  | _ -> None
+
 let compose_box_shorthands decls =
   let build_margin ~important ~top ~right ~bottom ~left =
     Declaration
@@ -602,6 +652,14 @@ let compose_box_shorthands decls =
       try_compose_box ~extract:extract_padding_side ~build:build_padding;
       try_compose_box ~extract:extract_inset_side ~build:build_inset;
       try_compose_box ~extract:extract_border_radius_corner
+        ~build:build_border_radius;
+      try_compose_box_important_split ~extract:extract_margin_side
+        ~build:build_margin;
+      try_compose_box_important_split ~extract:extract_padding_side
+        ~build:build_padding;
+      try_compose_box_important_split ~extract:extract_inset_side
+        ~build:build_inset;
+      try_compose_box_important_split ~extract:extract_border_radius_corner
         ~build:build_border_radius;
     ]
   in
