@@ -6278,6 +6278,7 @@ let pp_property : type a. a property Pp.t =
   | Webkit_mask_origin -> Pp.string ctx "-webkit-mask-origin"
   | Border_image_source -> Pp.string ctx "border-image-source"
   | Border_image_slice -> Pp.string ctx "border-image-slice"
+  | Border_image_repeat -> Pp.string ctx "border-image-repeat"
   | Mask_image -> Pp.string ctx "mask-image"
   | Mask_composite -> Pp.string ctx "mask-composite"
   | Mask_mode -> Pp.string ctx "mask-mode"
@@ -6895,6 +6896,15 @@ let pp_border_image_repeat_keyword ctx (value : border_image_repeat_keyword) =
   | Repeat -> Pp.string ctx "repeat"
   | Round -> Pp.string ctx "round"
   | Space -> Pp.string ctx "space"
+
+let rec pp_border_image_repeat ctx : border_image_repeat -> unit = function
+  | Repeats l -> Pp.list ~sep:Pp.space pp_border_image_repeat_keyword ctx l
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_border_image_repeat ctx v
 
 let pp_mask_border_mode ctx = function
   | (Alpha : mask_border_mode) -> Pp.string ctx "alpha"
@@ -17130,6 +17140,7 @@ let read_any_property t =
   | "-webkit-mask-origin" -> Prop Webkit_mask_origin
   | "border-image-source" -> Prop Border_image_source
   | "border-image-slice" -> Prop Border_image_slice
+  | "border-image-repeat" -> Prop Border_image_repeat
   | "mask-image" -> Prop Mask_image
   | "mask-composite" -> Prop Mask_composite
   | "mask-mode" -> Prop Mask_mode
@@ -19027,6 +19038,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_mask_origin -> pp pp_mask_box
   | Border_image_source -> pp pp_background_image
   | Border_image_slice -> pp pp_border_image_slice
+  | Border_image_repeat -> pp pp_border_image_repeat
   | Mask_image -> pp pp_background_image
   | Mask_composite -> pp pp_mask_composite
   | Mask_mode -> pp pp_mask_mode
@@ -20201,6 +20213,19 @@ let read_border_image_repeat t =
   match Cursor.option read_border_image_repeat_keyword t with
   | None -> [ first ]
   | Some second -> [ first; second ]
+
+let rec read_border_image_repeat_value t : border_image_repeat =
+  Cursor.enum_or_var "border-image-repeat"
+    [
+      ("inherit", (Inherit : border_image_repeat));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_border_image_repeat_value t))
+    ~default:(fun t -> Repeats (read_border_image_repeat t))
+    t
 
 let read_mask_border_mode t =
   Cursor.enum "mask-border-mode"

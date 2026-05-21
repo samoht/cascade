@@ -340,6 +340,10 @@ val pp_border_image_slice : border_image_slice Pp.t
 val read_border_image_slice : Cursor.t -> border_image_slice
 (** [read_border_image_slice t] parses [border-image-slice]. *)
 
+val read_border_image_repeat_value : Cursor.t -> border_image_repeat
+(** [read_border_image_repeat_value t] parses the [border-image-repeat]
+    longhand, including the CSS-wide keywords. *)
+
 val pp_border_image_width_item : border_image_width_item Pp.t
 (** [pp_border_image_width_item] pretty-prints one [border-image-width] item. *)
 

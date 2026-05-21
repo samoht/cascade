@@ -690,6 +690,10 @@ let vars_of_columns_value (value : Properties.columns_value) : any_var list =
   | Both (l, _) -> vars_of_length l
   | _ -> []
 
+let vars_of_border_image_repeat (value : Properties.border_image_repeat) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_column_width (value : Properties.column_width) : any_var list =
   match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
 
@@ -1849,6 +1853,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | List_style_type, value -> vars_of_list_style_type value
   (* Mask image/size *)
   | Border_image_source, value -> vars_of_background_image value
+  | Border_image_repeat, value -> vars_of_border_image_repeat value
   | Mask_image, value -> vars_of_background_image value
   | Mask_size, value -> vars_of_background_size value
   | Webkit_mask_image, value -> vars_of_background_image value
