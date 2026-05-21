@@ -169,6 +169,18 @@ let shorthand_covers_longhand : type a b.
   | Border_left, Border_left_width -> true
   | Border_left, Border_left_style -> true
   | Border_left, Border_left_color -> true
+  | Border, Border_image -> true
+  (* CSS Masking 1 sec. 6.1: [mask] resets every mask layer longhand and
+     [mask-border]. *)
+  | Mask, Mask_image -> true
+  | Mask, Mask_repeat -> true
+  | Mask, Mask_size -> true
+  | Mask, Mask_position -> true
+  | Mask, Mask_origin -> true
+  | Mask, Mask_clip -> true
+  | Mask, Mask_mode -> true
+  | Mask, Mask_composite -> true
+  | Mask, Mask_border -> true
   (* CSS Fonts 4 sec. 2.7: [font] resets [font-style / -weight / -stretch /
      -size / line-height / -family]. Cascade doesn't model [font-variant-css21]
      separately; other [font-variant-*] longhands ([numeric], [ligatures], ...)
@@ -1358,6 +1370,36 @@ let compose_border_whole_shorthand decls =
   in
   go ~seen_border_image:false [] decls
 
+(* CSS Backgrounds 3: the [border] shorthand resets [border-image] to its
+   initial. A [border-image*] declaration is therefore dead when a later
+   [border] shorthand of at least equal importance resets it and no later
+   [border-image*] re-establishes it. Intra-block source order is fixed
+   regardless of any surrounding CSS, so the drop is safe in every scope. *)
+let drop_border_image_shadowed_by_border kept =
+  let is_bimg (_, d) =
+    String.starts_with ~prefix:"border-image" (property_name d)
+  in
+  let is_border (_, d) =
+    match d with Declaration { property = Border; _ } -> true | _ -> false
+  in
+  let arr = Array.of_list kept in
+  let n = Array.length arr in
+  let rec any_bimg_from k =
+    k < n && (is_bimg arr.(k) || any_bimg_from (k + 1))
+  in
+  let dead i =
+    let img_important = is_important (snd arr.(i)) in
+    let rec scan j =
+      if j >= n then false
+      else if
+        is_border arr.(j) && (is_important (snd arr.(j)) || not img_important)
+      then if any_bimg_from (j + 1) then scan (j + 1) else true
+      else scan (j + 1)
+    in
+    scan (i + 1)
+  in
+  List.filteri (fun i item -> not (is_bimg item && dead i)) kept
+
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
    covers a single layer: every longhand carries a single-layer value, no entry
@@ -2170,8 +2212,9 @@ let compose_shorthands kept =
   |> compose_list_style_shorthand |> compose_flex_shorthand
   |> compose_text_decoration_shorthand |> compose_border_shorthand
   |> reorder_border_image_before_border |> compose_border_whole_shorthand
-  |> compose_background_shorthand |> compose_mask_shorthand
-  |> compose_transition_shorthand |> compose_animation_shorthand
+  |> drop_border_image_shadowed_by_border |> compose_background_shorthand
+  |> compose_mask_shorthand |> compose_transition_shorthand
+  |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
