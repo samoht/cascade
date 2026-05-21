@@ -1304,21 +1304,26 @@ let try_compose_border_whole indexed_decls =
         | _ -> None)
 
 let compose_border_whole_shorthand decls =
-  let has_border_image =
-    List.exists
-      (fun (_, d) ->
-        String.starts_with ~prefix:"border-image" (property_name d))
-      decls
+  (* [border] resets [border-image] to its initial, so the synthesised shorthand
+     is only safe when it ends up before every [border-image] declaration.
+     Compose in place while no [border-image] has been seen earlier in the rule;
+     once one is, leave the longhands alone (the reorder-before-border-image
+     case is handled separately). *)
+  let rec go ~seen_border_image acc decls =
+    match try_compose_border_whole decls with
+    | Some (merged, rest) when not seen_border_image ->
+        go ~seen_border_image (merged :: acc) rest
+    | _ -> (
+        match decls with
+        | [] -> List.rev acc
+        | ((_, d) as hd) :: rest ->
+            let seen_border_image =
+              seen_border_image
+              || String.starts_with ~prefix:"border-image" (property_name d)
+            in
+            go ~seen_border_image (hd :: acc) rest)
   in
-  if has_border_image then decls
-  else
-    let rec go acc decls =
-      match (decls, try_compose_border_whole decls) with
-      | [], _ -> List.rev acc
-      | _, Some (merged, rest) -> go (merged :: acc) rest
-      | hd :: rest, None -> go (hd :: acc) rest
-    in
-    go [] decls
+  go ~seen_border_image:false [] decls
 
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
@@ -2092,46 +2097,86 @@ let columns_value_of_longhands width count : Properties.columns_value =
   | `Width w, `Auto -> Width w
   | `Width w, `Count n -> Both (w, n)
 
-let synthesize_columns (decls : declaration list) : declaration list =
+(* Emit [shorthand] where the first of the [name_a] / [name_b] longhands
+   appeared and drop both. Used by shorthand synthesis whose shorthand resets
+   exactly those two longhands, so the position move is cascade-safe. *)
+let replace_longhand_pair ~name_a ~name_b ~shorthand decls =
+  let is_pair d =
+    String.equal (property_name d) name_a
+    || String.equal (property_name d) name_b
+  in
+  let placed = ref false in
+  List.filter_map
+    (fun d ->
+      if is_pair d then
+        if !placed then None
+        else (
+          placed := true;
+          Some shorthand)
+      else Some d)
+    decls
+
+(* Synthesise a shorthand from the unique [name_a] + [name_b] longhands when
+   both are present with matching importance and [build] accepts their value
+   strings. *)
+let synthesize_pair ~name_a ~name_b ~build decls =
   let named name d = String.equal (property_name d) name in
-  let count_named name = List.length (List.filter (named name) decls) in
+  let count name = List.length (List.filter (named name) decls) in
   match
-    ( List.find_opt (named "column-width") decls,
-      count_named "column-width",
-      List.find_opt (named "column-count") decls,
-      count_named "column-count" )
+    ( List.find_opt (named name_a) decls,
+      count name_a,
+      List.find_opt (named name_b) decls,
+      count name_b )
   with
-  | Some wd, 1, Some cd, 1 when is_important wd = is_important cd -> (
+  | Some da, 1, Some db, 1 when is_important da = is_important db -> (
+      match build ~important:(is_important da) da db with
+      | Some shorthand -> replace_longhand_pair ~name_a ~name_b ~shorthand decls
+      | None -> decls)
+  | _ -> decls
+
+let synthesize_columns decls =
+  synthesize_pair ~name_a:"column-width" ~name_b:"column-count"
+    ~build:(fun ~important wd cd ->
       match
         ( parse_column_width (string_of_value wd),
           parse_column_count (string_of_value cd) )
       with
       | Some width, Some count ->
-          let shorthand =
-            Declaration.v ~important:(is_important wd) Properties.Columns
-              (columns_value_of_longhands width count)
-          in
-          (* Emit the shorthand where the first longhand appeared and drop both;
-             [columns] touches only these two longhands so the move is safe. *)
-          let placed = ref false in
-          List.filter_map
-            (fun d ->
-              if named "column-width" d || named "column-count" d then
-                if !placed then None
-                else (
-                  placed := true;
-                  Some shorthand)
-              else Some d)
-            decls
-      | _ -> decls)
-  | _ -> decls
+          Some
+            (Declaration.v ~important Properties.Columns
+               (columns_value_of_longhands width count))
+      | _ -> None)
+    decls
+
+(* CSS Anchor Positioning 1: [position-try] is [<'position-try-order'> ||
+   <'position-try-fallbacks'>]. [position-try-order: normal] is the initial
+   value and folds away. Cascade has no typed [position-try] shorthand, so the
+   synthesised value is re-parsed into the (round-tripping) unknown property. *)
+let synthesize_position_try decls =
+  synthesize_pair ~name_a:"position-try-order" ~name_b:"position-try-fallbacks"
+    ~build:(fun ~important od fd ->
+      let order = string_of_value ~minify:true od in
+      let fallbacks = string_of_value ~minify:true fd in
+      let body =
+        if String.equal order "normal" then fallbacks
+        else String.concat " " [ order; fallbacks ]
+      in
+      match
+        Declaration.of_string (String.concat "" [ "position-try:"; body ])
+      with
+      | shorthand ->
+          Some
+            (if important then Declaration.important shorthand else shorthand)
+      | exception _ -> None)
+    decls
 
 let finalize_rule_without_nested (rule : rule) : rule =
   {
     rule with
     declarations =
       deduplicate_declarations rule.declarations
-      |> synthesize_columns |> sort_commuting_declarations;
+      |> synthesize_columns |> synthesize_position_try
+      |> sort_commuting_declarations;
   }
 
 (* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]
