@@ -1738,6 +1738,19 @@ let validate_font_weight_range r first second =
       ()
   | _ -> Cursor.err_invalid r "invalid font-weight descriptor range"
 
+let validate_font_style_oblique_range r first second =
+  match (Values.angle_degrees_opt first, Values.angle_degrees_opt second) with
+  | Some a, Some b when a <= b -> ()
+  | Some _, Some _ -> Cursor.err_invalid r "invalid font-style descriptor range"
+  | _ -> ()
+
+let validate_font_style_descriptor_range r first second =
+  match (first, second) with
+  | ( (Properties.Oblique_angle first : Properties.font_style),
+      Properties.Oblique_angle second ) ->
+      validate_font_style_oblique_range r first second
+  | _ -> ()
+
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -1764,6 +1777,7 @@ let read_font_style_descriptor r =
         let second = Properties.read_font_style c in
         Cursor.ws c;
         Cursor.expect_eof c;
+        validate_font_style_descriptor_range r first second;
         Font_style_range (first, second))
     r
 
@@ -1784,16 +1798,35 @@ let read_font_family_descriptor r =
     (fun v -> Font_family v)
     r
 
+let font_stretch_pct_opt = function
+  | (Properties.Pct value : Properties.font_stretch) -> Some value
+  | Properties.Ultra_condensed -> Some 50.
+  | Properties.Extra_condensed -> Some 62.5
+  | Properties.Condensed -> Some 75.
+  | Properties.Semi_condensed -> Some 87.5
+  | Properties.Normal -> Some 100.
+  | Properties.Semi_expanded -> Some 112.5
+  | Properties.Expanded -> Some 125.
+  | Properties.Extra_expanded -> Some 150.
+  | Properties.Ultra_expanded -> Some 200.
+  | _ -> None
+
+let validate_font_stretch_range r first second =
+  match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
+  | Some a, Some b when a <= b -> ()
+  | _ -> Cursor.err_invalid r "invalid font-stretch descriptor range"
+
 let read_font_stretch_descriptor_value value =
   let c = Cursor.of_string value in
   let first = Properties.read_font_stretch c in
   Cursor.ws c;
   if Cursor.is_done c then Font_stretch first
-  else (
-    ignore (Properties.read_font_stretch c);
+  else
+    let second = Properties.read_font_stretch c in
     Cursor.ws c;
     Cursor.expect_eof c;
-    Font_stretch_range value)
+    validate_font_stretch_range c first second;
+    Font_stretch_range value
 
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value

@@ -57,19 +57,20 @@ let expect_size_adjust_rejected input =
     Alcotest.failf "invalid font size-adjust parsed: %S -> %g" input size_adjust
   with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
+let accepted_invalid_cases label parse render inputs =
+  List.filter_map
+    (fun input ->
+      try
+        Some (Printf.sprintf "%s: %S -> %S" label input (parse input |> render))
+      with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None)
+    inputs
+
 let expect_rejected_cases label parse render inputs =
-  let accepted =
-    List.filter_map
-      (fun input ->
-        try Some (Printf.sprintf "%S -> %S" input (parse input |> render))
-        with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None)
-      inputs
-  in
+  let accepted = accepted_invalid_cases label parse render inputs in
   match accepted with
   | [] -> ()
   | _ ->
-      Alcotest.failf "accepted invalid %s cases:\n%s" label
-        (String.concat "\n" accepted)
+      Alcotest.failf "accepted invalid cases:\n%s" (String.concat "\n" accepted)
 
 let test_spec_src_parser_vectors () =
   let check_src name input expected =
@@ -180,40 +181,65 @@ let spec_fontface_metric_edges () =
     [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5); (" 87.25% ", 87.25) ]
 
 let spec_fontface_src_minify_edges () =
-  let check name input expected =
-    Alcotest.(check string)
-      name expected
-      (input |> src_of_string |> string_of_src ~minify:true)
+  let check_all cases =
+    let mismatches =
+      List.filter_map
+        (fun (name, input, expected) ->
+          let actual = input |> src_of_string |> string_of_src ~minify:true in
+          if String.equal actual expected then None
+          else
+            Some
+              (Printf.sprintf
+                 "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
+                 expected actual))
+        cases
+    in
+    match mismatches with
+    | [] -> ()
+    | _ ->
+        Alcotest.failf "font-face src minify oracle mismatches:\n%s"
+          (String.concat "\n" mismatches)
   in
-  check "local ident unquotes under minify" "local(\"Brand\")" "local(Brand)";
-  check "local underscore ident unquotes under minify" "local(\"Brand_2\")"
-    "local(Brand_2)";
-  check "local css-wide keyword stays quoted" "local(\"inherit\")"
-    "local(\"inherit\")";
-  check "local leading digit stays quoted" "local(\"2Brand\")"
-    "local(\"2Brand\")";
-  check "local family with space stays quoted" "local(\"Brand Sans\")"
-    "local(\"Brand Sans\")";
-  check "bare url with spaces stays quoted" "url(\"fonts/brand v1.woff2\")"
-    "url(\"fonts/brand v1.woff2\")";
-  check "url with fragment stays bare" "url(\"brand.woff2#iefix\")"
-    "url(brand.woff2#iefix)";
-  check "known format keyword lowercases and unquotes"
-    "url(\"brand.woff2\") format(\"WOFF2\")" "url(brand.woff2)format(woff2)";
-  check "collection format keyword unquotes"
-    "url(\"brand.ttc\") format(\"collection\")"
-    "url(brand.ttc)format(collection)";
-  check "unknown format string stays quoted"
-    "url(\"brand.font\") format(\"my-format\")"
-    "url(brand.font)format(\"my-format\")";
-  check "tech before format serializes in canonical modifier order"
-    "url(\"color.woff2\") tech(color-COLRv1) format(\"woff2\")"
-    "url(color.woff2)format(woff2)tech(color-COLRv1)";
-  check "whitespace-only source separator is accepted"
-    "local(\"Brand\") url(\"brand.woff2\")" "local(Brand),url(brand.woff2)";
-  check "var source fallback survives"
-    "var(--font-src, url(\"fallback.woff2\") format(\"woff2\"))"
-    "var(--font-src,url(fallback.woff2)format(woff2))"
+  check_all
+    [
+      ("local ident unquotes under minify", "local(\"Brand\")", "local(Brand)");
+      ( "local underscore ident unquotes under minify",
+        "local(\"Brand_2\")",
+        "local(Brand_2)" );
+      ( "local css-wide keyword stays quoted",
+        "local(\"inherit\")",
+        "local(\"inherit\")" );
+      ( "local leading digit stays quoted",
+        "local(\"2Brand\")",
+        "local(\"2Brand\")" );
+      ( "local family with space stays quoted",
+        "local(\"Brand Sans\")",
+        "local(\"Brand Sans\")" );
+      ( "bare url with spaces stays quoted",
+        "url(\"fonts/brand v1.woff2\")",
+        "url(\"fonts/brand v1.woff2\")" );
+      ( "url with fragment stays bare",
+        "url(\"brand.woff2#iefix\")",
+        "url(brand.woff2#iefix)" );
+      ( "known format keyword lowercases and unquotes",
+        "url(\"brand.woff2\") format(\"WOFF2\")",
+        "url(brand.woff2)format(woff2)" );
+      ( "collection format keyword unquotes",
+        "url(\"brand.ttc\") format(\"collection\")",
+        "url(brand.ttc)format(collection)" );
+      ( "unknown format string stays quoted",
+        "url(\"brand.font\") format(\"my-format\")",
+        "url(brand.font)format(\"my-format\")" );
+      ( "tech before format serializes in canonical modifier order",
+        "url(\"color.woff2\") tech(color-COLRv1) format(\"woff2\")",
+        "url(color.woff2)format(woff2)tech(color-COLRv1)" );
+      ( "whitespace-only source separator is accepted",
+        "local(\"Brand\") url(\"brand.woff2\")",
+        "local(Brand),url(brand.woff2)" );
+      ( "var source fallback survives",
+        "var(--font-src, url(\"fallback.woff2\") format(\"woff2\"))",
+        "var(--font-src,url(fallback.woff2)format(woff2))" );
+    ]
 
 let spec_fontface_src_invalid_edges () =
   expect_rejected_cases "font-face src" src_of_string string_of_src
@@ -242,11 +268,18 @@ let spec_fontface_metric_numeric_edges () =
         input expected
         (size_adjust_of_string input))
     [ ("+10%", 10.); (".5%", 0.5); ("1e2%", 100.); ("0e0%", 0.) ];
-  expect_rejected_cases "font metric override" metric_override_of_string
-    string_of_metric_override [ ""; "%"; "+%"; "NaN%" ];
-  expect_rejected_cases "font size-adjust" size_adjust_of_string
-    (fun v -> string_of_size_adjust v)
-    [ ""; "%"; "+%"; "NaN%" ]
+  let accepted =
+    accepted_invalid_cases "font metric override" metric_override_of_string
+      string_of_metric_override [ ""; "%"; "+%"; "NaN%" ]
+    @ accepted_invalid_cases "font size-adjust" size_adjust_of_string
+        (fun v -> string_of_size_adjust v)
+        [ ""; "%"; "+%"; "NaN%" ]
+  in
+  match accepted with
+  | [] -> ()
+  | _ ->
+      Alcotest.failf "accepted invalid font metric cases:\n%s"
+        (String.concat "\n" accepted)
 
 let suite =
   let open Alcotest in

@@ -131,12 +131,20 @@ val length_is_zero : length -> bool
 val pp_color : color Pp.t
 (** [pp_color] pretty-prints {!color} values. *)
 
+val pp_specified_color : color Pp.t
+(** [pp_specified_color] pretty-prints {!color} values without crossing the
+    computed-value color-space boundary. *)
+
 val pp_color_in_mix : color Pp.t
 (** [pp_color_in_mix] pretty-prints color values for use inside color-mix
     functions, using lowercase [currentcolor]. *)
 
 val pp_angle : angle Pp.t
 (** [pp_angle] pretty-prints {!angle} values. *)
+
+val angle_degrees_opt : angle -> float option
+(** [angle_degrees_opt a] converts concrete angle units to degrees. Dynamic
+    angles such as [calc()] and [var()] return [None]. *)
 
 val pp_duration : duration Pp.t
 (** [pp_duration] pretty-prints {!duration} values. *)

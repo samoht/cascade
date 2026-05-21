@@ -704,6 +704,12 @@ let rec read_font_weight t : font_weight =
     t
 
 let rec read_font_style t : font_style =
+  let validate_oblique_range first second =
+    match (angle_degrees_opt first, angle_degrees_opt second) with
+    | Some a, Some b when a <= b -> ()
+    | Some _, Some _ -> Cursor.err_invalid t "font-style oblique range"
+    | _ -> ()
+  in
   Cursor.enum_or_var "font-style"
     [
       ("normal", (Normal : font_style));
@@ -725,6 +731,7 @@ let rec read_font_style t : font_style =
         if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
         else
           let second = read_angle t in
+          validate_oblique_range first second;
           Oblique_range (first, second))
     t
 
@@ -18455,9 +18462,9 @@ let pp_number_value ctx (value : number) =
   match value with
   | Num f when Pp.minified ctx -> pp_rounded f
   | Calc c when Pp.minified ctx -> (
-      match eval_calc c with
-      | Num f -> pp_rounded f
-      | c -> pp_number ctx (Calc c))
+      match eval_numeric_calc c with
+      | Some f -> pp_rounded f
+      | None -> pp_number ctx (Calc (eval_calc c)))
   | _ -> pp_number ctx value
 
 let pp_value : type a. (a kind * a) Pp.t =
@@ -18465,7 +18472,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   let pp pp_a = pp_a ctx value in
   match kind with
   | Length -> pp (pp_length ~always:true)
-  | Color -> pp pp_color_in_mix
+  | Color -> pp pp_specified_color
   | Rgb ->
       let rec pp_rgb_type : rgb Pp.t =
        fun ctx rgb ->

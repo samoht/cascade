@@ -364,6 +364,26 @@ let math_const_value = function
   | Neg_infinity -> Float.neg_infinity
   | Nan -> Float.nan
 
+let rec minify_angle_arg = function
+  | Angle_op (l, op, r) -> (
+      let l = minify_angle_arg l in
+      let r = minify_angle_arg r in
+      match (l, op, r) with
+      | Angle_deg a, Add, Angle_deg b -> Angle_deg (a +. b)
+      | Angle_deg a, Sub, Angle_deg b -> Angle_deg (a -. b)
+      | Angle_rad a, Add, Angle_rad b -> Angle_rad (a +. b)
+      | Angle_rad a, Sub, Angle_rad b -> Angle_rad (a -. b)
+      | Angle_turn a, Add, Angle_turn b -> Angle_turn (a +. b)
+      | Angle_turn a, Sub, Angle_turn b -> Angle_turn (a -. b)
+      | Angle_grad a, Add, Angle_grad b -> Angle_grad (a +. b)
+      | Angle_grad a, Sub, Angle_grad b -> Angle_grad (a -. b)
+      | _ -> Angle_op (l, op, r))
+  | Angle_parens inner -> (
+      match minify_angle_arg inner with
+      | Angle_op _ as inner -> Angle_parens inner
+      | inner -> inner)
+  | arg -> arg
+
 let rec pp_math_arg ctx = function
   | Lit f -> Pp.float ctx f
   | Dim (f, unit_) ->
@@ -414,7 +434,8 @@ and pp_math_fn ctx fn =
   | Sign_n a -> call "sign" [ a ]
   | Abs_n a -> call "abs" [ a ]
 
-and pp_angle_arg ctx = function
+and pp_angle_arg ctx arg =
+  match if Pp.minified ctx then minify_angle_arg arg else arg with
   | Angle_deg f ->
       Pp.float ctx f;
       Pp.string ctx "deg"
@@ -552,12 +573,7 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
     | Val v -> pp_value ctx v
     | Var v -> pp_var pp_value ctx v
     | Num n -> Pp.float ctx n
-    | Math_const c when Pp.minified ctx -> Pp.float ctx (math_const_value c)
     | Math_const c -> pp_math_const ctx c
-    | Math_fn fn when Pp.minified ctx -> (
-        match eval_math_fn fn with
-        | Some v -> Pp.float ctx v
-        | None -> pp_math_fn ctx fn)
     | Math_fn fn -> pp_math_fn ctx fn
     | Sibling_index -> Pp.string ctx "sibling-index()"
     | Sibling_count -> Pp.string ctx "sibling-count()"
@@ -609,6 +625,27 @@ let exact_div (a : float) (b : float) : float option =
       Option.some r
     else Option.none
 
+let numeric_leaf_value : type a. a calc -> float option = function
+  | Num n -> Some n
+  | Math_const c -> Some (math_const_value c)
+  | _ -> None
+
+let fold_zero_numeric_expr : type a.
+    a calc -> calc_op -> a calc -> a calc option =
+ fun l op r ->
+  match (numeric_leaf_value l, numeric_leaf_value r) with
+  | Some a, Some b -> (
+      let value =
+        match op with
+        | Add -> Some (a +. b)
+        | Sub -> Some (a -. b)
+        | Mul -> Some (a *. b)
+        | Div when b <> 0. -> Some (a /. b)
+        | Div -> None
+      in
+      match value with Some 0. -> Some (Num 0.) | _ -> None)
+  | _ -> None
+
 (* CSS Values 4 10.7 structural simplification of a typed calc AST. Folds [Expr
    (Num _, op, Num _)] subtrees and constant-identity patterns ([x + 0], [0 +
    x], [x - 0], [x * 1], [1 * x], [x / 1]) into shorter equivalents. The
@@ -617,7 +654,7 @@ let exact_div (a : float) (b : float) : float option =
    zeros to [Num 0.] before this generic fold. *)
 let rec eval_calc : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const c -> Num (math_const_value c)
+  | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
@@ -640,7 +677,10 @@ let rec eval_calc : type a. a calc -> a calc = function
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
           match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
-      | _ -> Expr (l, op, r))
+      | _ -> (
+          match fold_zero_numeric_expr l op r with
+          | Some zero -> zero
+          | None -> Expr (l, op, r)))
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
@@ -656,37 +696,16 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
+let pp_calc_presolved : type a. a Pp.t -> a calc Pp.t =
+ fun pp_value ctx calc ->
+  match calc with
+  | Val v when Pp.minified ctx -> pp_value ctx v
+  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | _ ->
+      let ctx = { ctx with in_calc = true } in
+      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
+
 (* Small helpers *)
-
-(* CSS Values 4 §6.1: the absolute lengths share px as a canonical unit. *)
-let absolute_unit_px_ratio_of_suffix = function
-  | "px" -> Option.some 1.
-  | "in" -> Option.some 96.
-  | "cm" -> Option.some (96. /. 2.54)
-  | "mm" -> Option.some (96. /. 2.54 /. 10.)
-  | "q" -> Option.some (96. /. 2.54 /. 40.)
-  | "pt" -> Option.some (96. /. 72.)
-  | "pc" -> Option.some (96. /. 6.)
-  | _ -> Option.none
-
-let length_render_length value suffix =
-  let body =
-    Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 value)
-  in
-  String.length body + String.length suffix
-
-(* Pick the shorter spelling between the authored absolute-unit form and its
-   canonical px equivalent. Ties go to px - fewer distinct unit tokens compress
-   better, matching the keithamus minifier convention. *)
-let canonical_absolute_unit value suffix =
-  match absolute_unit_px_ratio_of_suffix suffix with
-  | None -> (value, suffix)
-  | Some _ when suffix = "px" -> (value, suffix)
-  | Some ratio ->
-      let px_value = value *. ratio in
-      if length_render_length px_value "px" <= length_render_length value suffix
-      then (px_value, "px")
-      else (value, suffix)
 
 let pp_unit ?(always = true) ctx f suffix =
   (* Dropping the unit on a zero ([0px] -> [0]) is a minify-only
@@ -695,9 +714,6 @@ let pp_unit ?(always = true) ctx f suffix =
   let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
   else
-    let f, suffix =
-      if Pp.minified ctx then canonical_absolute_unit f suffix else (f, suffix)
-    in
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
        fractional values ([.25rem], not [0.25rem]); we follow that canonical
        form in both minified and pretty output. Round to 6 significant digits
@@ -938,6 +954,9 @@ let length_of_math_fn (fn : math_fn) : length option =
       Some (length_from_calc_unit (String.lowercase_ascii unit) (Float.abs n))
   | _ -> None
 
+let length_math_fn_value (fn : math_fn) : float option =
+  match fn with Sin _ | Cos _ -> None | fn -> eval_math_fn fn
+
 (* CSS Values 4 §10.10: identity-rule simplifications around a runtime
    substitution would change the substituted-grammar context. *)
 let rec length_has_runtime_subst : length -> bool = function
@@ -958,13 +977,15 @@ let rec eval_length_calc : length calc -> length calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const c -> Num (math_const_value c)
+  | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match length_of_math_fn fn with
       | Some l -> Val l
       | None -> (
-          match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn))
+          match length_math_fn_value fn with
+          | Some v -> Num v
+          | None -> Math_fn fn))
   | Nested inner -> (
       match eval_length_calc inner with
       | (Val _ | Num _) as leaf -> leaf
@@ -983,6 +1004,8 @@ let rec eval_length_calc : length calc -> length calc =
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
           match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
+      | _ when Option.is_some (fold_zero_numeric_expr l op r) ->
+          Option.get (fold_zero_numeric_expr l op r)
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x
@@ -1421,13 +1444,15 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const c -> Num (math_const_value c)
+  | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match lp_of_math_fn fn with
       | Some lp -> Val lp
       | None -> (
-          match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn))
+          match length_math_fn_value fn with
+          | Some v -> Num v
+          | None -> Math_fn fn))
   | Nested inner -> (
       match eval_lp_calc inner with
       | (Val _ | Num _) as leaf -> leaf
@@ -1446,6 +1471,8 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
           match exact_div a b with Some r -> Num r | None -> Expr (l, op, r))
+      | _ when Option.is_some (fold_zero_numeric_expr l op r) ->
+          Option.get (fold_zero_numeric_expr l op r)
       | x, Add, Num 0. when identity_safe x -> x
       | Num 0., Add, x when identity_safe x -> x
       | x, Sub, Num 0. when identity_safe x -> x
@@ -1863,7 +1890,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc (pp_length ~always) ctx cv
+      pp_calc_presolved (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function
@@ -3179,6 +3206,13 @@ let shortest_angle_unit ctx unit f =
     in
     match best with Option.Some (cand, _) -> cand | Option.None -> (unit, f)
 
+let angle_degrees_opt = function
+  | Deg value -> Some value
+  | Rad value -> Some (value *. 180. /. Float.pi)
+  | Turn value -> Some (value *. 360.)
+  | Grad value -> Some (value *. 0.9)
+  | _ -> None
+
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
   (* CSS Values 4 sec. 10.3: an [<angle>] grammar position accepts the [<zero>]
@@ -3307,7 +3341,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
         if Pp.minified ctx then minified_length_percentage_calc ctx c else c
       in
       let always = always || calc_contains_var c in
-      pp_calc (pp_length_percentage ~always) ctx c
+      pp_calc_presolved (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -3925,7 +3959,6 @@ and pp_color : color Pp.t =
  fun ctx color ->
   match (color, Pp.minified ctx) with
   | ( ( Oklab { l = Some _; a = Some _; b = Some _; _ }
-      | Oklch { l = Some _; c = Some _; _ }
       | Lab { l = Some _; a = Some _; b = Some _; _ }
       | Lch { l = Some _; c = Some _; _ }
       | Color _ ),
@@ -4018,6 +4051,8 @@ and pp_color_default : color Pp.t =
       pp_lab_mix_color ctx effective color1 percent1 color2 percent2
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
+
+let pp_specified_color = pp_color_default
 
 (* CSS Values 4 §6.3: [ms] and [s] are interchangeable; pick the shorter
    spelling when minifying. The "s" suffix is one character shorter than "ms",

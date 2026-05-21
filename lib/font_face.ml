@@ -88,6 +88,20 @@ let pp_url_arg ctx s =
     Pp.char ctx '"')
   else Pp.string ctx s
 
+let css_wide_keyword s =
+  match String.lowercase_ascii s with
+  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+  | _ -> false
+
+let local_name_can_unquote name =
+  String.length name > 0
+  && (not (css_wide_keyword name))
+  && String.for_all
+       (function
+         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true | _ -> false)
+       name
+  && match name.[0] with 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false
+
 let rec pp_src ctx entries = Pp.list ~sep:Pp.comma pp_src_entry ctx entries
 
 and pp_src_entry ctx = function
@@ -112,19 +126,7 @@ and pp_src_entry ctx = function
          sequence or a [<string>]; under minify the unquoted ident form is
          shorter when the family name parses as a valid [<custom-ident>]
          (alphanumeric + dashes, no leading digit, not a CSS-wide keyword). *)
-      if
-        Pp.minified ctx
-        && String.length name > 0
-        && String.for_all
-             (function
-               | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-               | _ -> false)
-             name
-        &&
-        match name.[0] with
-        | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
-        | _ -> false
-      then Pp.string ctx name
+      if Pp.minified ctx && local_name_can_unquote name then Pp.string ctx name
       else (
         Pp.char ctx '"';
         Pp.string ctx name;
@@ -141,13 +143,15 @@ let to_string = string_of_src
 
 (** {1 Parsing} *)
 
+let valid_percentage p = Float.is_finite p && p >= 0.
+
 (** Parse a metric override string like "normal" or "90%". *)
 let metric_override_of_string s =
   let s = String.trim s in
   if String.equal s "normal" then Normal
   else if String.length s > 0 && s.[String.length s - 1] = '%' then (
     let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-    if p < 0. then failwith "negative metric override";
+    if not (valid_percentage p) then failwith "invalid metric override";
     Percent p)
   else failwith "invalid metric override"
 
@@ -156,7 +160,7 @@ let size_adjust_of_string s =
   let s = String.trim s in
   if String.length s > 0 && s.[String.length s - 1] = '%' then (
     let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-    if p < 0. then failwith "negative size-adjust";
+    if not (valid_percentage p) then failwith "invalid size-adjust";
     p)
   else failwith "invalid size-adjust"
 
@@ -177,6 +181,7 @@ let read_function_arg name t =
 
 let read_url t =
   match Cursor.url_opt t with
+  | Some "" -> Cursor.err_invalid t "url() argument"
   | Some url -> `Bare url
   | None -> (
       Cursor.call "url" t @@ fun inner ->
@@ -212,8 +217,14 @@ let read_src_url_modifiers t url =
     Cursor.ws t;
     match Cursor.option read_src_modifier t with
     | None -> finalise_src_url url format tech
-    | Some (`Format value) -> loop (Some value) tech
-    | Some (`Tech value) -> loop format (Some value)
+    | Some (`Format value) ->
+        if Option.is_some format then
+          Cursor.err_invalid t "duplicate font source format()";
+        loop (Some value) tech
+    | Some (`Tech value) ->
+        if Option.is_some tech then
+          Cursor.err_invalid t "duplicate font source tech()";
+        loop format (Some value)
   in
   loop None None
 
@@ -238,7 +249,11 @@ let rec read_src_entry t =
 and read_src t =
   let sep t =
     Cursor.ws t;
-    if not (Cursor.comma_opt t) then
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_semicolon t then
+        Cursor.err_invalid t "trailing comma in font src")
+    else
       (* No comma - whitespace alone separates entries; succeed silently so
          [Cursor.list]'s peeker calls back into [read_src_entry]. *)
       ()
