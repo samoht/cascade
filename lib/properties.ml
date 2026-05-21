@@ -13059,6 +13059,37 @@ let rec read_columns_value t : columns_value =
     ~var:(fun t -> Var (Values.read_var read_columns_value t))
     ~default:read_components t
 
+let rec read_column_width t : column_width =
+  Cursor.enum_or_var "column-width"
+    [
+      ("auto", (Auto : column_width));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_column_width t))
+    ~default:(fun t -> (Width (read_length t) : column_width))
+    t
+
+let rec read_column_count t : column_count =
+  Cursor.enum_or_var "column-count"
+    [
+      ("auto", (Auto : column_count));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_column_count t))
+    ~default:(fun t ->
+      let n = Cursor.int t in
+      if n <= 0 then Cursor.err_invalid t "column count must be positive";
+      Count n)
+    t
+
 let rec read_column_span t : column_span =
   Cursor.enum_or_var "column-span"
     [

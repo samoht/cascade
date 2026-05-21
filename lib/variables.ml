@@ -690,6 +690,12 @@ let vars_of_columns_value (value : Properties.columns_value) : any_var list =
   | Both (l, _) -> vars_of_length l
   | _ -> []
 
+let vars_of_column_width (value : Properties.column_width) : any_var list =
+  match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
+
+let vars_of_column_count (value : Properties.column_count) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_column_span (value : Properties.column_span) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1805,6 +1811,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_size, value -> vars_of_background_size value
   (* Columns *)
   | Columns, value -> vars_of_columns_value value
+  | Column_width, value -> vars_of_column_width value
+  | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
   | Column_span, value -> vars_of_column_span value
   (* Contain *)

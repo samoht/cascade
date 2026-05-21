@@ -1701,6 +1701,8 @@ let read_object_transition_value : type a.
       Some (v Page_break_inside (read_page_break_inside_value t))
   | Page_size -> Some (v Page_size (read_page_size t))
   | Columns -> Some (v Columns (read_columns_value t))
+  | Column_width -> Some (v Column_width (read_column_width t))
+  | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
