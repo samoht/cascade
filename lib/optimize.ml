@@ -2016,6 +2016,53 @@ let try_compose_mask ~ctx indexed_decls =
           in
           Some ((idx, merged), rest)
 
+let is_mask_border_decl d =
+  match snd d with
+  | Declaration { property = Mask_border; _ } -> true
+  | _ -> false
+
+let is_mask_image_decl d =
+  match snd d with
+  | Declaration { property = Mask_image; _ } -> true
+  | _ -> false
+
+let is_mask_layer_longhand d =
+  match snd d with
+  | Declaration { property = Mask_image; _ }
+  | Declaration { property = Mask_repeat; _ }
+  | Declaration { property = Mask_size; _ }
+  | Declaration { property = Mask_position; _ }
+  | Declaration { property = Mask_origin; _ }
+  | Declaration { property = Mask_clip; _ }
+  | Declaration { property = Mask_mode; _ }
+  | Declaration { property = Mask_composite; _ } ->
+      true
+  | _ -> false
+
+(* The [mask] shorthand resets [mask-border] (CSS Masking 1 sec. 6.1), so a
+   [mask-border] that precedes a run of mask layer longhands can move after them
+   without changing any property's cascade: the synthesised [mask] resets
+   [mask-border], but the now-trailing [mask-border] overrides that reset back.
+   Only swap when the following run carries a [mask-image] (what the composer
+   needs), so the move happens exactly where it enables composition. Mirror of
+   [reorder_border_image_before_border]. *)
+let reorder_mask_border_before_mask decls =
+  let rec span pred acc = function
+    | d :: rest when pred d -> span pred (d :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  let rec go acc = function
+    | [] -> List.rev acc
+    | d :: _ as l when is_mask_border_decl d ->
+        let border_block, rest1 = span is_mask_border_decl [] l in
+        let long_block, rest2 = span is_mask_layer_longhand [] rest1 in
+        if List.exists is_mask_image_decl long_block then
+          go (List.rev_append (long_block @ border_block) acc) rest2
+        else go (List.rev_append border_block acc) rest1
+    | d :: rest -> go (d :: acc) rest
+  in
+  go [] decls
+
 let compose_mask_shorthand ~ctx decls =
   let rec go ~seen_mask_border acc decls =
     match try_compose_mask ~ctx decls with
@@ -2503,6 +2550,7 @@ let compose_shorthands ~ctx kept =
   |> drop_border_image_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
+  |> reorder_mask_border_before_mask
   |> compose_mask_shorthand ~ctx
   |> compose_transition_shorthand |> compose_animation_shorthand
   |> fun kept ->
