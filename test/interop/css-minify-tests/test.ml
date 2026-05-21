@@ -227,6 +227,18 @@ let normalize_expected ~category ~id expected =
          declarations are metadata rather than stylesheet rules. *)
       fixture ~category ~id ~upstream:"@charset \"ISO-8859-1\";a{color:red}"
         ~cascade:"a{color:red}" upstream
+  | "comments", "0004" ->
+      (* Comments are not component-value tokens. In a custom-property value
+         they can act only as token separators, so the shortest serialization of
+         [a/**/b] is [a b], not a preserved comment. *)
+      fixture ~category ~id ~upstream:"a{--bar:a/**/b}" ~cascade:"a{--bar:a b}"
+        upstream
+  | "comments", "0005" ->
+      (* Same comment-as-token-separator rule as comments/0004, here inside a
+         style() query over a custom-property value. *)
+      fixture ~category ~id
+        ~upstream:"@container style(--bar:a/**/b){a{color:red}}"
+        ~cascade:"@container style(--bar:a b){a{color:red}}" upstream
   | "container", "0001" ->
       (* The upstream fixture is scoped to whitespace removal and keeps the
          legacy [min-width] spelling. Default Cascade minify may use evergreen
@@ -322,7 +334,8 @@ let normalize_expected ~category ~id expected =
         upstream
   | "shorthands", "0050" ->
       (* Same transparent-color and url-token boundary policy as
-         shorthands/0049. *)
+         shorthands/0049: transparent is transparent black, and #0000 is the
+         shorter spelling. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \
@@ -333,7 +346,8 @@ let normalize_expected ~category ~id expected =
         upstream
   | "shorthands", "0051" ->
       (* The later mask shorthand resets the earlier mask-border state; keep the
-         fixture's dead-declaration drop, with Cascade's #0000 spelling. *)
+         fixture's dead-declaration drop, with the shorter #0000 spelling for
+         transparent black. *)
       fixture ~category ~id
         ~upstream:"a{mask:linear-gradient(#000,transparent)}"
         ~cascade:"a{mask:linear-gradient(#000,#0000)}" upstream
@@ -351,6 +365,12 @@ let normalize_expected ~category ~id expected =
          equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
+  | "values", "0010" ->
+      (* Absolute length units have exact conversion factors. When source and
+         canonical forms tie in byte length, use px as the stable canonical
+         absolute-length unit. *)
+      fixture ~category ~id ~upstream:"a{font-size:16px}"
+        ~cascade:"a{font-size:16px}" upstream
   | "whitespace", "0009" ->
       (* Cascade's default minifier may use evergreen target facts.
          [display:flex] is true for that target, so [@supports not
