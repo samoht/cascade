@@ -694,6 +694,14 @@ let vars_of_border_image_repeat (value : Properties.border_image_repeat) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_border_image_width (value : Properties.border_image_width) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_border_image_outset (value : Properties.border_image_outset) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_column_width (value : Properties.column_width) : any_var list =
   match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
 
@@ -1854,6 +1862,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Mask image/size *)
   | Border_image_source, value -> vars_of_background_image value
   | Border_image_repeat, value -> vars_of_border_image_repeat value
+  | Border_image_width, value -> vars_of_border_image_width value
+  | Border_image_outset, value -> vars_of_border_image_outset value
   | Mask_image, value -> vars_of_background_image value
   | Mask_size, value -> vars_of_background_size value
   | Webkit_mask_image, value -> vars_of_background_image value

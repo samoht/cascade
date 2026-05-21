@@ -344,6 +344,14 @@ val read_border_image_repeat_value : Cursor.t -> border_image_repeat
 (** [read_border_image_repeat_value t] parses the [border-image-repeat]
     longhand, including the CSS-wide keywords. *)
 
+val read_border_image_width_value : Cursor.t -> border_image_width
+(** [read_border_image_width_value t] parses the [border-image-width] longhand,
+    including the CSS-wide keywords. *)
+
+val read_border_image_outset_value : Cursor.t -> border_image_outset
+(** [read_border_image_outset_value t] parses the [border-image-outset]
+    longhand, including the CSS-wide keywords. *)
+
 val pp_border_image_width_item : border_image_width_item Pp.t
 (** [pp_border_image_width_item] pretty-prints one [border-image-width] item. *)
 

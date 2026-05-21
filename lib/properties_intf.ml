@@ -2757,6 +2757,28 @@ type border_image_repeat =
   | Revert_layer
   | Var of border_image_repeat var
 
+(* CSS Backgrounds 3 sec. 6.2: [border-image-width] is one to four items; the
+   longhand also takes the CSS-wide keywords. *)
+type border_image_width =
+  | Widths of border_image_width_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_width var
+
+(* CSS Backgrounds 3 sec. 6.4: [border-image-outset] is one to four items; the
+   longhand also takes the CSS-wide keywords. *)
+type border_image_outset =
+  | Outsets of border_image_outset_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_outset var
+
 (** CSS Masking 1 §6 [<mask-border-mode>]: shared with the [border_image] record
     because [mask-border] is otherwise the same shorthand as [border-image] (the
     mode is always [None] for the latter). *)
@@ -4330,6 +4352,8 @@ type 'a property =
   | Border_image_source : background_image property
   | Border_image_slice : border_image_slice property
   | Border_image_repeat : border_image_repeat property
+  | Border_image_width : border_image_width property
+  | Border_image_outset : border_image_outset property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
