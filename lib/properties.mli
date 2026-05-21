@@ -1805,6 +1805,12 @@ val pp_columns_value : columns_value Pp.t
 val read_columns_value : Cursor.t -> columns_value
 (** [read_columns_value t] is the [columns_value] parsed from [t]. *)
 
+val read_column_width : Cursor.t -> column_width
+(** [read_column_width t] is the [column_width] parsed from [t]. *)
+
+val read_column_count : Cursor.t -> column_count
+(** [read_column_count t] is the [column_count] parsed from [t]. *)
+
 val pp_logical_border_color : logical_border_color Pp.t
 (** [pp_logical_border_color] is the pretty-printer for [logical_border_color].
 *)

@@ -2547,26 +2547,6 @@ let single_rule_without_nested ~ctx (rule : rule) : rule =
    longhands, so the rewrite preserves every other property's cascade and needs
    no closed-world assumption. Cascade models the longhands as unknown
    properties, so their values are re-parsed from text here. *)
-let parse_column_width s : [ `Auto | `Width of Values.length ] option =
-  if String.trim s = "auto" then Some `Auto
-  else
-    let t = Cursor.of_string s in
-    match Values.read_length ~with_keywords:false t with
-    | w ->
-        Cursor.ws t;
-        if Cursor.is_done t then Some (`Width w) else None
-    | exception Cursor.Parse_error _ -> None
-
-let parse_column_count s : [ `Auto | `Count of int ] option =
-  if String.trim s = "auto" then Some `Auto
-  else
-    let t = Cursor.of_string s in
-    match Cursor.int t with
-    | n ->
-        Cursor.ws t;
-        if n > 0 && Cursor.is_done t then Some (`Count n) else None
-    | exception Cursor.Parse_error _ -> None
-
 let columns_value_of_longhands width count : Properties.columns_value =
   match (width, count) with
   | `Auto, `Auto -> (Auto : Properties.columns_value)
@@ -2611,19 +2591,61 @@ let synthesize_pair ~name_a ~name_b ~build decls =
       | None -> decls)
   | _ -> decls
 
+(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] collapse to the
+   [columns] shorthand, which resets exactly those two longhands. Compose the
+   unique pair of matching importance when both carry a plain (non-[var()],
+   non-CSS-wide) value, emitting the shorthand where the first appeared. *)
 let synthesize_columns decls =
-  synthesize_pair ~name_a:"column-width" ~name_b:"column-count"
-    ~build:(fun ~important wd cd ->
-      match
-        ( parse_column_width (string_of_value wd),
-          parse_column_count (string_of_value cd) )
-      with
-      | Some width, Some count ->
-          Some
-            (Declaration.v ~important Properties.Columns
-               (columns_value_of_longhands width count))
-      | _ -> None)
-    decls
+  let width_of d : (Properties.column_width * bool) option =
+    match d with
+    | Declaration { property = Column_width; value; important } ->
+        Some (value, important)
+    | _ -> None
+  in
+  let count_of d : (Properties.column_count * bool) option =
+    match d with
+    | Declaration { property = Column_count; value; important } ->
+        Some (value, important)
+    | _ -> None
+  in
+  let uniq f =
+    match List.filter_map f decls with [ x ] -> Some x | _ -> None
+  in
+  match (uniq width_of, uniq count_of) with
+  | Some (w, wi), Some (c, ci) when wi = ci -> (
+      let plain_width :
+          Properties.column_width -> [ `Auto | `Width of Values.length ] option
+          = function
+        | Auto -> Some `Auto
+        | Width l -> Some (`Width l)
+        | _ -> None
+      in
+      let plain_count :
+          Properties.column_count -> [ `Auto | `Count of int ] option = function
+        | Auto -> Some `Auto
+        | Count n -> Some (`Count n)
+        | _ -> None
+      in
+      match (plain_width w, plain_count c) with
+      | Some w, Some c ->
+          let shorthand =
+            Declaration.v ~important:wi Properties.Columns
+              (columns_value_of_longhands w c)
+          in
+          let placed = ref false in
+          List.filter_map
+            (fun d ->
+              match d with
+              | Declaration { property = Column_width; _ }
+              | Declaration { property = Column_count; _ } ->
+                  if !placed then None
+                  else (
+                    placed := true;
+                    Some shorthand)
+              | _ -> Some d)
+            decls
+      | _ -> decls)
+  | _ -> decls
 
 (* CSS Anchor Positioning 1: [position-try] is [<'position-try-order'> ||
    <'position-try-fallbacks'>]. [position-try-order: normal] is the initial
