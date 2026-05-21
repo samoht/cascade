@@ -1258,6 +1258,68 @@ let compose_border_shorthand decls =
   in
   go [] decls
 
+(* Compose the [border] shorthand from the three whole-border longhands
+   [border-width] / [border-style] / [border-color] when they appear as a
+   contiguous run (any order, single-valued, same importance). The [border]
+   shorthand also resets [border-image] to its initial, so only compose when no
+   [border-image] declaration is present in the rule - otherwise the synthesised
+   [border] would clobber it (the reset/reorder case is handled separately). *)
+let try_compose_border_whole indexed_decls =
+  match take_first_n 3 indexed_decls with
+  | None -> None
+  | Some (three, rest) -> (
+      let raw = List.map snd three in
+      if not (same_importance raw) then None
+      else
+        let width : Properties.border_width option ref = ref None in
+        let style : Properties.border_style option ref = ref None in
+        let color : Values.color option ref = ref None in
+        List.iter
+          (function
+            | Declaration { property = Border_width; value = [ w ]; _ } ->
+                width := Some w
+            | Declaration { property = Border_style; value = s; _ } ->
+                style := Some s
+            | Declaration { property = Border_color; value = [ c ]; _ } ->
+                color := Some c
+            | _ -> ())
+          raw;
+        match (!width, !style, !color) with
+        | Some width, Some style, Some color ->
+            let merged =
+              Declaration
+                {
+                  property = Border;
+                  value =
+                    Shorthand
+                      {
+                        width = Some width;
+                        style = Some style;
+                        color = Some color;
+                      };
+                  important = is_important (List.hd raw);
+                }
+            in
+            Some ((fst (List.hd three), merged), rest)
+        | _ -> None)
+
+let compose_border_whole_shorthand decls =
+  let has_border_image =
+    List.exists
+      (fun (_, d) ->
+        String.starts_with ~prefix:"border-image" (property_name d))
+      decls
+  in
+  if has_border_image then decls
+  else
+    let rec go acc decls =
+      match (decls, try_compose_border_whole decls) with
+      | [], _ -> List.rev acc
+      | _, Some (merged, rest) -> go (merged :: acc) rest
+      | hd :: rest, None -> go (hd :: acc) rest
+    in
+    go [] decls
+
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
    covers a single layer: every longhand carries a single-layer value, no entry
@@ -1913,8 +1975,8 @@ let compose_shorthands kept =
   |> compose_outline_shorthand |> compose_font_shorthand
   |> compose_list_style_shorthand |> compose_flex_shorthand
   |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> compose_background_shorthand |> compose_transition_shorthand
-  |> compose_animation_shorthand
+  |> compose_border_whole_shorthand |> compose_background_shorthand
+  |> compose_transition_shorthand |> compose_animation_shorthand
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
