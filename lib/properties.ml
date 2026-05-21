@@ -2982,9 +2982,12 @@ let rec pp_position_value : position_value Pp.t =
   | Top_right -> Pp.string ctx "top right"
   | Bottom_left -> Pp.string ctx "bottom left"
   | Bottom_right -> Pp.string ctx "bottom right"
-  | XY (a, b) when Pp.minified ctx && a = b ->
-      (* CSS Backgrounds 3 3.6: when x and y agree the single-value form is
-         spec-equivalent. *)
+  | XY (a, b)
+    when Pp.minified ctx && match b with Pct 50. -> true | _ -> false ->
+      (* CSS Backgrounds 3 sec. 3.6: a single-value position sets the horizontal
+         component and defaults the vertical to [center] ([50%]). So [<a> 50%]
+         (e.g. [50% 50%], [10px 50%]) collapses to the single value [<a>], but a
+         non-centred vertical like [0 0] must keep both values. *)
       pp_length ctx a
   | XY (a, b) ->
       pp_length ctx a;
