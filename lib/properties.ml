@@ -6376,10 +6376,41 @@ let rec pp_font_feature_settings : font_feature_settings Pp.t =
   | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_feature_settings ctx v
 
+(* Collapse the optional whitespace after each axis-separator comma in a
+   [font-variation-settings] list. Commas inside a quoted axis tag (a 4-char tag
+   may contain U+2C) are left untouched. *)
+let minify_axis_list s =
+  let buf = Buffer.create (String.length s) in
+  let n = String.length s in
+  let in_quote = ref false in
+  let i = ref 0 in
+  while !i < n do
+    let c = s.[!i] in
+    if !in_quote then (
+      Buffer.add_char buf c;
+      if c = '"' then in_quote := false;
+      incr i)
+    else if c = '"' then (
+      Buffer.add_char buf c;
+      in_quote := true;
+      incr i)
+    else if c = ',' then (
+      Buffer.add_char buf ',';
+      incr i;
+      while !i < n && s.[!i] = ' ' do
+        incr i
+      done)
+    else (
+      Buffer.add_char buf c;
+      incr i)
+  done;
+  Buffer.contents buf
+
 let rec pp_font_variation_settings : font_variation_settings Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Axis_list s -> Pp.string ctx s
+  | Axis_list s ->
+      Pp.string ctx (if Pp.minified ctx then minify_axis_list s else s)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
