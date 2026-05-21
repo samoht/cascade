@@ -60,26 +60,39 @@ let quoted ctx s =
 
 let char ctx c = Buffer.add_char ctx.buf c
 
-let hex_escape_byte ctx c =
-  (* CSS section 9: emit "\HH " for code points that cannot appear literally. *)
+let is_hex_digit = function
+  | '0' .. '9' | 'a' .. 'f' | 'A' .. 'F' -> true
+  | _ -> false
+
+(* CSS Syntax 3 sec. 4.3.7: a hex escape consumes up to 6 hex digits and one
+   trailing whitespace. The space terminator is only needed when the following
+   character would otherwise be eaten by the escape - a hex digit or a
+   whitespace. Omit it everywhere else for the shortest spelling. *)
+let hex_escape_byte ctx ~next c =
   let code = Char.code c in
-  let hex_digits = "0123456789ABCDEF" in
+  let hex_digits = "0123456789abcdef" in
   char ctx '\\';
   if code >= 0x10 then char ctx hex_digits.[code lsr 4];
   char ctx hex_digits.[code land 0xF];
-  char ctx ' '
+  match next with
+  | Some (' ' | '\t' | '\n' | '\r' | '\012') -> char ctx ' '
+  | Some c when is_hex_digit c -> char ctx ' '
+  | _ -> ()
 
 (* Output a string literal with CSS section 9.2 escaping: backslash for the
    delimiter and for '\', hex escapes for control bytes (U+0000..U+001F, U+007F)
    so the serialized form parses back to the same string. *)
 let quoted_string ctx s =
   char ctx '"';
-  String.iter
-    (fun c ->
+  let len = String.length s in
+  String.iteri
+    (fun i c ->
       match c with
       | '"' -> string ctx "\\\""
       | '\\' -> string ctx "\\\\"
-      | '\x00' .. '\x1F' | '\x7F' -> hex_escape_byte ctx c
+      | '\x00' .. '\x1F' | '\x7F' ->
+          let next = if i + 1 < len then Some s.[i + 1] else None in
+          hex_escape_byte ctx ~next c
       | c -> char ctx c)
     s;
   char ctx '"'
