@@ -223,8 +223,23 @@ let matrix =
     };
     {
       property = "font-family";
-      positives = [ "Arial, sans-serif"; "\"A B\", serif"; "system-ui" ];
-      negatives = [ "Arial,,serif"; "," ];
+      positives =
+        [
+          "Arial, sans-serif";
+          "\"A B\", serif";
+          "\"default\"";
+          "\"revert\", serif";
+          "system-ui";
+        ];
+      negatives =
+        [
+          "Arial,,serif";
+          ",";
+          "default";
+          "system-ui default";
+          "revert-layer, serif";
+          "system-ui revert-layer, serif";
+        ];
     };
     {
       property = "font-weight";

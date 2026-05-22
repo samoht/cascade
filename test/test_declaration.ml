@@ -403,6 +403,14 @@ let font_properties () =
     "font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif";
   check_declaration ~expected:"font-family:Georgia,serif"
     "font-family: Georgia, serif";
+  (* CSS Fonts 4 defines font-family names as <custom-ident> sequences. Quoted
+     reserved words are family names; unquoted CSS-wide keywords remain CSS-wide
+     keywords and must not be reinterpreted as family names. *)
+  check_declaration ~expected:"font-family:\"default\"" "font-family: 'default'";
+  check_declaration ~expected:"font-family:\"revert\"" "font-family: 'revert'";
+  check_declaration ~expected:"font-family:revert" "font-family: revert";
+  check_declaration ~expected:"font-family:revert-layer"
+    "font-family: revert-layer";
 
   (* Line height *)
   check_declaration ~expected:"line-height:1.5" "line-height: 1.5";
@@ -885,6 +893,10 @@ let invalid () =
   neg "opacity: red";
   neg "z-index: blue";
   neg "font-weight: green";
+  neg "font-family: default";
+  neg "font-family: system-ui default";
+  neg "font-family: revert-layer, serif";
+  neg "font-family: system-ui revert-layer, serif";
 
   (* CSS-wide keywords mixing - should fail when mixed with other values *)
   neg "margin: inherit 10px";

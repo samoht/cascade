@@ -4249,6 +4249,8 @@ type font_family = Properties.font_family =
   | Inherit
   | Initial
   | Unset
+  | Revert
+  | Revert_layer
   (* Custom font family name *)
   | Name of string
   (* CSS variables *)
