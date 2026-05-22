@@ -3436,7 +3436,7 @@ let color_numeric_channels (components : component list) =
       | _ -> None)
   | _ -> None
 
-(* Fewest decimals whose round-trip stays within the documented 0.001 Oklab
+(* Fewest decimals whose round-trip stays within the documented 0.002 Oklab
    budget (README). Channels in gamma-encoded RGB spaces reach it at 3 decimals;
    linear-light / XYZ spaces, where a fixed channel step carries more Oklab
    distance, need 4. Falls back to 4 when the budget cannot be checked. *)
@@ -3457,7 +3457,7 @@ let color_channel_decimals (space : color_space)
               color_func_to_oklab space
                 (round_dec n c1, round_dec n c2, round_dec n c3)
             with
-            | Some rounded -> Color_space.oklab_distance orig rounded <= 0.001
+            | Some rounded -> Color_space.oklab_distance orig rounded <= 0.002
             | None -> false
           in
           let rec find n =
