@@ -3048,7 +3048,8 @@ let test_css_wide () =
 let spec_property_grammar_edges () =
   check_font_feature_settings "\"kern\" on";
   check_font_feature_settings "\"liga\" off, \"calt\" 1";
-  check_font_variation_settings "\"wght\" 650, \"wdth\" 75";
+  check_font_variation_settings ~expected:"\"wght\" 650,\"wdth\" 75"
+    "\"wght\" 650, \"wdth\" 75";
   check_timing_function "linear(0, .25 50%, 1)";
   check_timing_function ~expected:"steps(4,jump-none)" "steps(4, jump-none)";
   check_transform "translate(10px, 20%)" ~expected:"translate(10px,20%)";

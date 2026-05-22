@@ -2554,7 +2554,7 @@ let test_spec_snapshot_tracking_vectors () =
     "@container card (inline-size > 30em) { .card { grid-template-columns: \
      subgrid } }";
   check_stylesheet
-    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:#944a4b}}"
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
      } }";
   check_stylesheet
@@ -5979,9 +5979,12 @@ let theme_chain_resolution () =
     ".x{text-shadow:0 0 2px red}"
     (render ".x { text-shadow: 0 0 2px var(--shadow-color) }")
 
-(* Resolver cycles are not evidence that a variable is statically undefined.
-   Stop resolution at the cycle and preserve the runtime [var()] reference
-   instead of selecting a fallback or looping. *)
+(* CSS Custom Properties L1 section 2.3: a real per-element dependency cycle
+   makes the variables in that cycle invalid at computed-value time. A
+   caller-provided theme resolver is not that full computed-value graph, so a
+   cycle in resolver output should stop resolution and preserve the authored
+   runtime expression at the boundary instead of looping or guessing that the
+   fallback is safe to select statically. *)
 let theme_cycle_preserved () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -6004,20 +6007,20 @@ let theme_cycle_preserved () =
     |> Css.to_string ~minify:true |> String.trim
   in
   Alcotest.(check string)
-    "cyclic var replacement preserves the original runtime reference"
-    ".x{color:var(--a)}"
+    "cyclic var replacement preserves the authored fallback boundary"
+    ".x{color:var(--a,red)}"
     (render ".x { color: var(--a, red) }");
   Alcotest.(check string)
-    "cycle nested inside calc preserves the unresolved cycle point"
-    ".x{width:calc(1px + var(--loop-a))}"
+    "cycle nested inside calc preserves the authored outer expression"
+    ".x{width:var(--outer)}"
     (render ".x { width: var(--outer) }");
   Alcotest.(check string)
-    "cycle reached through fallback preserves the fallback var"
-    ".x{color:var(--loop-a)}"
+    "cycle reached through fallback preserves the authored outer expression"
+    ".x{color:var(--fallback-loop)}"
     (render ".x { color: var(--fallback-loop) }");
   Alcotest.(check string)
-    "cycle inside calculated fallback keeps the cyclic reference"
-    ".x{width:calc(1px + var(--loop-a))}"
+    "cycle inside calculated fallback preserves the authored outer expression"
+    ".x{width:var(--deep-fallback-loop)}"
     (render ".x { width: var(--deep-fallback-loop) }")
 
 (* CSS Custom Properties L1 section 2: when the variable's resolved value is a
