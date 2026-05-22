@@ -202,12 +202,27 @@ let normalize_expected ~category ~id expected =
           "a{color:lch(54.3 67% 274.5/.746);background-color:lab(54.3-60.5 \
            70.8)}"
         upstream
+  | "colors", "0048" ->
+      (* The 3-decimal srgb-linear spelling passes Cascade's Oklab/alpha
+         guardrail for decimal color minification and is shorter than the
+         imported 4-decimal oracle. *)
+      fixture ~category ~id
+        ~upstream:"a{color:color(srgb-linear .2159 .0451 1.5312/.877)}"
+        ~cascade:"a{color:color(srgb-linear .216 .045 1.531/.877)}" upstream
   | "colors", "0053" ->
       (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
-         The shorter alias is the better minified spelling. *)
+         The shorter alias is the better minified spelling; the 3-decimal
+         channels pass Cascade's Oklab guardrail for decimal color
+         minification. *)
       fixture ~category ~id
         ~upstream:"a{color:color(xyz-d65 .5346 .2877 .0679)}"
-        ~cascade:"a{color:color(xyz .5346 .2877 .0679)}" upstream
+        ~cascade:"a{color:color(xyz .535 .288 .068)}" upstream
+  | "colors", "0054" ->
+      (* The 3-decimal xyz-d50 spelling passes Cascade's Oklab guardrail for
+         decimal color minification and is shorter than the imported 4-decimal
+         oracle. *)
+      fixture ~category ~id ~upstream:"a{color:color(xyz-d50 .5457 .311 .0488)}"
+        ~cascade:"a{color:color(xyz-d50 .546 .311 .049)}" upstream
   | "font-face", "0001" ->
       (* A @font-face rule without font-family or src cannot participate in font
          matching. CSS Fonts 4 parses these rules, but says they must not be
@@ -312,15 +327,14 @@ let normalize_expected ~category ~id expected =
   | "shorthands", "0044" ->
       (* Same border/border-image shorthand composition as the fixture, plus the
          shorter transparent-color spelling. [transparent] is transparent black
-         and therefore #0000; the hash token after [solid] and the numeric slice
-         after [url(...)] are both self-delimiting, so the spaces are
-         removable. *)
+         and therefore #0000; [solid] and [#0000] remain distinct tokens without
+         whitespace, and the numeric slice after [url(...)] is also
+         self-delimiting. *)
       fixture ~category ~id
         ~upstream:
           "a{border:4px solid transparent;border-image:url(border.png) 30 \
            round}"
-        ~cascade:
-          "a{border:4px solid #0000;border-image:url(border.png)30 round}"
+        ~cascade:"a{border:4px solid#0000;border-image:url(border.png)30 round}"
         upstream
   | "shorthands", "0049" ->
       (* The fixture's mask shorthand composition and declaration reordering are
@@ -347,8 +361,8 @@ let normalize_expected ~category ~id expected =
           "a{mask:linear-gradient(#000,transparent) \
            no-repeat;mask-border:url(mask.png) 25 round}"
         ~cascade:
-          "a{mask:linear-gradient(#000,#0000) \
-           no-repeat;mask-border:url(mask.png)25 round}"
+          "a{mask:linear-gradient(#000,#0000)no-repeat;mask-border:url(mask.png)25 \
+           round}"
         upstream
   | "shorthands", "0051" ->
       (* The later mask shorthand resets the earlier mask-border state; keep the
@@ -371,6 +385,12 @@ let normalize_expected ~category ~id expected =
          equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
+  | "values", "0010" ->
+      (* [12pt] and [16px] are exact absolute-length equivalents, but the
+         rewrite is not a byte win. Without a shorter spelling, keep the
+         authored unit. *)
+      fixture ~category ~id ~upstream:"a{font-size:16px}"
+        ~cascade:"a{font-size:12pt}" upstream
   | "whitespace", "0009" ->
       (* Cascade's default minifier may use evergreen target facts.
          [display:flex] is true for that target, so [@supports not

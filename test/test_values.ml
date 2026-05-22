@@ -218,7 +218,7 @@ let test_color () =
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
   check_color ~expected:"#2060604d" "hsl(180deg 50% 25% / 30%)";
-  check_color "color(srgb 1 0 0)";
+  check_color ~expected:"red" "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
   check_color ~expected:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
