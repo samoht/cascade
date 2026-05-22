@@ -106,15 +106,15 @@ let test_oklab_distance_formula () =
 let test_oklab_distance_budget_edges () =
   let distance = Color_space.oklab_distance in
   Alcotest.(check approx_float_tight)
-    "nearest 3-decimal rounding in all channels stays under 0.001"
+    "nearest 3-decimal rounding in all channels stays under 0.002"
     0.000866025403784
     (distance (0.5, 0.1, -0.05) (0.5005, 0.1005, -0.0495));
   Alcotest.(check bool)
     "nearest 3-decimal rounding is inside budget" true
-    (distance (0.5, 0.1, -0.05) (0.5005, 0.1005, -0.0495) < 0.001);
+    (distance (0.5, 0.1, -0.05) (0.5005, 0.1005, -0.0495) < 0.002);
   Alcotest.(check bool)
-    "two millisteps on one channel exceed budget" true
-    (distance (0.5, 0.1, -0.05) (0.502, 0.1, -0.05) > 0.001)
+    "three millisteps on one channel exceed budget" true
+    (distance (0.5, 0.1, -0.05) (0.503, 0.1, -0.05) > 0.002)
 
 let test_oklab_distance_reference_colours () =
   (* OKLab reference coordinates for linear-sRGB primaries, generated from the
@@ -207,11 +207,14 @@ let test_fold_linear_srgb_to_bytes () =
     "oklch(50% .2 30) is within budget and folds" true
     (fold (of_oklch (0.5, 0.2, 30.0)) <> None);
   Alcotest.(check bool)
-    "oklch(50% .1 20) is past budget and is preserved" true
-    (fold (of_oklch (0.5, 0.1, 20.0)) = None);
+    "oklch(50% .1 20) is within budget and folds" true
+    (fold (of_oklch (0.5, 0.1, 20.0)) <> None);
   Alcotest.(check bool)
-    "lab(50% 20 30) is past budget and is preserved" true
-    (fold (of_lab (50.0, 20.0, 30.0)) = None);
+    "lab(50% 20 30) is within budget and folds" true
+    (fold (of_lab (50.0, 20.0, 30.0)) <> None);
+  Alcotest.(check bool)
+    "the same fold is rejected under a tighter budget" true
+    (fold ~budget:0.0005 (of_oklch (0.5, 0.1, 20.0)) = None);
   Alcotest.(check bool)
     "out-of-sRGB-gamut colour is preserved" true
     (fold (2.0, 0.0, 0.0) = None)

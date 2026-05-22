@@ -74,7 +74,7 @@ val oklab_distance : lab -> lab -> float
 val fold_linear_srgb_to_bytes : ?budget:float -> rgb -> (int * int * int) option
 (** [fold_linear_srgb_to_bytes linear] is the nearest 8-bit sRGB byte triple for
     the linear-sRGB colour [linear], or [None] when it is out of the sRGB gamut
-    or its 8-bit quantisation lies more than [budget] (default [0.001]) in OKLab
+    or its 8-bit quantisation lies more than [budget] (default [0.002]) in OKLab
     distance from the source. Alpha is not considered. *)
 
 (** {1 Hue interpolation} *)

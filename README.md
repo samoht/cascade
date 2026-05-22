@@ -74,16 +74,29 @@ cascade --inline-vars --keep-vars=theme,brand style.css > themed.css
 point. Where the CSS spec and browser-compatible recovery rules permit several
 valid serializations, Cascade chooses the shortest valid one. The only
 deliberately lossy rewrite class is static color approximation: a color rewrite
-or numeric color-channel rounding is valid only when the converted colors differ
-by at most `0.001` in Oklab Euclidean distance and alpha differs by at most
-`0.0005`. Among valid color approximations, the shortest serialization wins.
-This is an engineering guardrail for decimal color minification, not a claim
-about the threshold of human perception. The budget is chosen to admit nearest
-3-decimal rounding of three color channels (`sqrt(3) * 0.0005 < 0.001`) while
-rejecting coarser approximations. Oklab is used because its Euclidean distance
-is a better proxy for visible color error than raw component distance. Alpha
-uses its own `0.0005` half-step because opacity error is not a color-distance
-error.
+or numeric color-channel rounding, including fully static `color-mix()`, is
+valid only when the converted colors differ by at most `0.002` in `ΔEOK`, the
+CSS Color 4 Delta-E metric for Oklab/OkLCh. Among valid color approximations,
+the shortest serialization wins.
+
+That budget is an engineering guardrail, not a claim about human perception.
+CSS Color 4 treats `ΔEOK ≈ 0.02` as roughly one just-noticeable difference, so
+`0.002` is about 10% of a JND. The aim is not "probably invisible on a typical
+monitor": it is to keep the error provably negligible under any plausible
+rendering — higher-bit-depth, HDR, and wide-gamut displays included, and inside
+gradients, where 8-bit quantization is what produces visible banding. So
+Cascade only admits folds that are visually lossless in the worst case (3-decimal
+channel rounding, safe nearest-byte or named sRGB folds), never perceptible
+color substitution.
+
+Alpha is handled separately and is not part of `ΔEOK`. Opacity is not an Oklab
+coordinate, and its visible effect depends on the compositing background, so no
+fixed color distance can be assigned to it. Alpha instead gets a plain numeric
+precision tolerance: `0.0005`, the half-step of the nearest-3-decimal rounding
+Cascade uses for functional alpha (`0.8765` -> `.877`). The 8-bit alpha of a hex
+fold is coarser (`1/255`, up to ~`0.002` error) and is the canonical hex
+spelling, so hex folds such as `color(srgb 1 0 0 / .5)` -> `#ff000080` are not
+gated by that tolerance.
 
 `--minify` is closed over the CSS text it is given, but open over runtime
 layout state. Cascade may use the whole parsed stylesheet for source-order,

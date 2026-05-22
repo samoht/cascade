@@ -256,11 +256,11 @@ let oklab_distance (l1, a1, b1) (l2, a2, b2) =
 (* Fold a colour given as linear sRGB to its nearest 8-bit sRGB byte triple,
    when that is sound. Returns [None] when the colour is out of the sRGB gamut,
    or when the 8-bit quantisation drifts past [budget] (default the documented
-   0.001) in OKLab distance - a wide-gamut / high-precision source whose nearest
-   byte triple is perceptibly off keeps its functional spelling. Alpha is not
-   considered here: 8-bit alpha is the canonical hex form and is handled by the
-   caller. *)
-let fold_linear_srgb_to_bytes ?(budget = 0.001) (linear : rgb) :
+   0.002, ~10% of an OKLab JND) in OKLab distance - a wide-gamut /
+   high-precision source whose nearest byte triple is perceptibly off keeps its
+   functional spelling. Alpha is not considered here: 8-bit alpha is the
+   canonical hex form and is handled by the caller. *)
+let fold_linear_srgb_to_bytes ?(budget = 0.002) (linear : rgb) :
     (int * int * int) option =
   let r, g, b = linear_rgb_to_rgb linear in
   let in_gamut v = v >= -1e-3 && v <= 1.0 +. 1e-3 in
