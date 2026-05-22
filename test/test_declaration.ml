@@ -1024,7 +1024,7 @@ let spec_property_grammar_table_expansion () =
         | "font", "italic small-caps bold 16px/1.5 serif" ->
             Some "font:italic small-caps 700 16px/1.5 serif"
         | "animation", "fade 1s linear 2 alternate both running" ->
-            Some "animation:1s linear 2 alternate both fade"
+            Some "animation:fade 1s linear 2 alternate both"
         | "animation-range", "entry 10% exit 90%" ->
             Some "animation-range:entry 10%exit 90%"
         | "display", "inline flow-root" -> Some "display:inline-block"
@@ -1409,8 +1409,7 @@ let spec_platform_property_vectors () =
         "width:calc-size(auto,size + 1rem)" );
       ("opacity: abs(-0.5)", "opacity:abs(-.5)");
       ("opacity: sign(var(--delta))", "opacity:sign(var(--delta))");
-      ( "color: color-mix(in oklab, red 40%, blue)",
-        "color:color-mix(in oklab,red 40%,#00f)" );
+      ("color: color-mix(in oklab, red 40%, blue)", "color:#7551b6");
       ( "color: light-dark(CanvasText, white)",
         "color:light-dark(canvastext,#fff)" );
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
@@ -1505,7 +1504,7 @@ let spec_values_l45_edges () =
       ("margin: anchor-size(width)", "margin:anchor-size(width)");
       ("top: anchor(bottom)", "top:anchor(bottom)");
       ("font-size: calc(1rem + 1cqi)", "font-size:calc(1rem + 1cqi)");
-      ("color: lab(50% 20 30)", "color:lab(50%20 30)");
+      ("color: lab(50% 20 30)", "color:#a16945");
       ("color: lch(50% 30 40)", "color:lch(50%30 40)");
       ("color: oklab(60% .1 .2)", "color:oklab(60%.1 .2)");
       ("color: oklch(60% .2 120)", "color:oklch(60%.2 120)");

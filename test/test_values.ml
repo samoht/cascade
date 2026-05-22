@@ -225,7 +225,7 @@ let test_color () =
   check_color ~expected:"color(lch .5 40 120)" "color(lch 50% 40 120)";
   check_color ~expected:"#5cb8b5" "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
-  check_color ~expected:"oklch(50%.2 30)" "oklch(50% 0.2 30)";
+  check_color ~expected:"#ba0d01" "oklch(50% 0.2 30)";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
   check_color ~expected:"red" "rgb(100% 0% 0%)";

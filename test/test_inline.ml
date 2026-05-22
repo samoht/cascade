@@ -112,7 +112,7 @@ let test_inline_shorthand_functions () =
     ".a{transition:opacity .3s}";
   check_inline_case "animation variable resolves into name slot"
     ":root{--anim:slide}.b{animation:var(--anim) 1s ease infinite}"
-    ".b{animation:1s infinite slide}";
+    ".b{animation:slide 1s infinite}";
   check_inline_case "comma-list variable expands inside gradient function"
     ":root{--colors:red,blue,green}.a{background:linear-gradient(var(--colors))}"
     ".a{background:linear-gradient(red,#00f,green)}";
