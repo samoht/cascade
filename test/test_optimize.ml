@@ -1278,6 +1278,16 @@ let target_minify_enforce_spec_split () =
      } } }"
     ~default:"@media(width>=40em){a{display:grid}}"
     ~spec:"@media(min-width:40em){@supports(display:grid){a{display:grid}}}";
+  check_modes "baseline supports layer declaration preserves order"
+    "@layer base; @supports (display: grid) { @layer grid; } @layer theme, \
+     grid; @layer grid { .x { color: red } } @layer theme { .x { color: blue } \
+     }"
+    ~default:
+      "@layer base,grid,theme;@layer grid{.x{color:red}}@layer \
+       theme{.x{color:#00f}}"
+    ~spec:
+      "@layer base;@supports(display:grid){@layer grid;}@layer \
+       theme,grid;@layer grid{.x{color:red}}@layer theme{.x{color:#00f}}";
   check_modes "media min-width grammar"
     "@media (min-width: 700px) { a { color: red } }"
     ~default:"@media(width>=700px){a{color:red}}"
@@ -1862,10 +1872,10 @@ let c61_nesting_synthesis_source_order () =
         ( "conditional boundary blocks nesting synthesis",
           ".card{color:red}@media(min-width:40em){.card .title{color:blue}}",
           ".card{color:red}@media(width>=40em){.card .title{color:#00f}}" );
-        ( "source order after boundary blocks nesting synthesis",
+        ( "elided baseline supports exposes adjacent nesting",
           ".card{color:red}@supports(display:grid){.card{display:grid}}.card \
            .title{color:blue}",
-          ".card{color:red}.card{display:grid}.card .title{color:#00f}" );
+          ".card{color:red;display:grid;.title{color:#00f}}" );
       ]
   in
   match mismatches with
@@ -1875,8 +1885,9 @@ let c61_nesting_synthesis_source_order () =
         (String.concat "\n" mismatches)
 
 let c61_no_pseudo_group () =
-  (* Grouping equal declarations across an overlapping pseudo-class competitor
-     can move source-order ties for elements matching both selectors. *)
+  (* CSS Cascade section 6.1: adjacent selector extension may be serialized as
+     nesting when it preserves source order, but equal declarations must not be
+     grouped across the overlapping pseudo-class competitor. *)
   let input =
     Css.Stylesheet.read
       (Cursor.of_string ".btn{color:red}.btn:hover{color:blue}.link{color:red}")
@@ -1884,12 +1895,13 @@ let c61_no_pseudo_group () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "equal declarations do not group across pseudo-class competitor"
-    ".btn{color:red}.btn:hover{color:#00f}.link{color:red}" output
+    "adjacent pseudo-class extension may nest without grouping later peer"
+    ".btn{color:red;&:hover{color:#00f}}.link{color:red}" output
 
 let c61_no_conditional_cli_merge () =
-  (* Surrounding rules must stay split across supports/container/starting-style
-     boundaries; each condition filters declarations independently. *)
+  (* Default minify may elide baseline @supports, making its inner rule part of
+     the surrounding cascade context. Remaining conditional boundaries still
+     filter declarations independently and must block cross-boundary merging. *)
   let css =
     ".card{color:red}@supports \
      (display:grid){.card{display:grid}}.card{padding:1rem}@container \
@@ -1901,7 +1913,7 @@ let c61_no_conditional_cli_merge () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "default minify elides baseline supports boundary"
-    ".card{color:red}.card{display:grid}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
+    ".card{color:red;display:grid;padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
     output;
   let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
   let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
