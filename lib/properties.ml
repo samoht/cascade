@@ -9230,24 +9230,24 @@ let rec pp_flex : flex Pp.t =
       Pp.float ctx shrink
   | Full (grow, shrink, basis) ->
       Pp.float ctx grow;
-      (* CSS Flexbox 1 sec. 7.1.1: an omitted flex-basis in the shorthand is
-         [0], so a [0] / [0px] basis (but not [0%]) can be dropped; an omitted
-         flex-shrink is [1]. *)
-      let basis_is_zero =
-        match basis with Zero | Px 0.0 | Num 0.0 -> true | _ -> false
-      in
-      if basis_is_zero then (
+      (* CSS Flexbox 1 sec. 7.1.1: the one-number [flex: g] form expands to [g 1
+         0%], so only a [0%] basis (with the default [1] shrink) is the
+         droppable shorthand default. A length [0] / [0px] basis is a different
+         computed value and is kept. An omitted flex-shrink is [1]. *)
+      let basis_is_default = match basis with Pct 0.0 -> true | _ -> false in
+      if basis_is_default then (
         if shrink <> 1.0 then (
           Pp.space ctx ();
           Pp.float ctx shrink))
       else (
         Pp.space ctx ();
-        (* A bare-number basis would reparse as a shrink factor, so keep the
+        (* A basis that serialises as a bare number ([0], [0px] -> [0], or a
+           unitless basis) would reparse as the shrink factor, so keep the
            shrink to disambiguate. *)
-        let basis_needs_shrink =
-          match basis with Num _ -> true | _ -> false
+        let basis_bare_number =
+          match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
         in
-        if shrink <> 1.0 || basis_needs_shrink then (
+        if shrink <> 1.0 || basis_bare_number then (
           Pp.float ctx shrink;
           Pp.space ctx ());
         pp_flex_basis ctx basis)
