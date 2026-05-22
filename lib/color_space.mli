@@ -67,6 +67,16 @@ val oklab_to_linear_srgb : lab -> rgb
 val oklab_to_oklch : lab -> lch
 val oklch_to_oklab : lch -> lab
 
+val oklab_distance : lab -> lab -> float
+(** [oklab_distance a b] is the Euclidean distance between two OKLab colours,
+    the perceptual difference metric used by the colour-folding budget. *)
+
+val fold_linear_srgb_to_bytes : ?budget:float -> rgb -> (int * int * int) option
+(** [fold_linear_srgb_to_bytes linear] is the nearest 8-bit sRGB byte triple for
+    the linear-sRGB colour [linear], or [None] when it is out of the sRGB gamut
+    or its 8-bit quantisation lies more than [budget] (default [0.001]) in OKLab
+    distance from the source. Alpha is not considered. *)
+
 (** {1 Hue interpolation} *)
 
 type hue_interpolation =

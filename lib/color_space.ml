@@ -248,6 +248,35 @@ let lch_to_lab (l, c, h) =
 let oklab_to_oklch = lab_to_lch
 let oklch_to_oklab = lch_to_lab
 
+(* CSS Color 4 perceptual difference: Euclidean distance in OKLab. *)
+let oklab_distance (l1, a1, b1) (l2, a2, b2) =
+  let dl = l1 -. l2 and da = a1 -. a2 and db = b1 -. b2 in
+  Float.sqrt ((dl *. dl) +. (da *. da) +. (db *. db))
+
+(* Fold a colour given as linear sRGB to its nearest 8-bit sRGB byte triple,
+   when that is sound. Returns [None] when the colour is out of the sRGB gamut,
+   or when the 8-bit quantisation drifts past [budget] (default the documented
+   0.001) in OKLab distance - a wide-gamut / high-precision source whose nearest
+   byte triple is perceptibly off keeps its functional spelling. Alpha is not
+   considered here: 8-bit alpha is the canonical hex form and is handled by the
+   caller. *)
+let fold_linear_srgb_to_bytes ?(budget = 0.001) (linear : rgb) :
+    (int * int * int) option =
+  let r, g, b = linear_rgb_to_rgb linear in
+  let in_gamut v = v >= -1e-3 && v <= 1.0 +. 1e-3 in
+  if not (in_gamut r && in_gamut g && in_gamut b) then None
+  else
+    let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+    let to_byte v = Float.to_int (Float.round (clamp01 v *. 255.0)) in
+    let rb = to_byte r and gb = to_byte g and bb = to_byte b in
+    let byte_srgb x = Float.of_int x /. 255.0 in
+    let folded = rgb_to_linear_rgb (byte_srgb rb, byte_srgb gb, byte_srgb bb) in
+    if
+      oklab_distance (linear_srgb_to_oklab linear) (linear_srgb_to_oklab folded)
+      <= budget
+    then Some (rb, gb, bb)
+    else None
+
 (* Hue interpolation. CSS Color 4 sec. 12.4. *)
 
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing
