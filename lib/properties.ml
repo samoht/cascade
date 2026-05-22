@@ -9212,6 +9212,17 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Var v -> pp_var pp_flex_basis ctx v
   | Calc cv -> pp_calc pp_flex_basis ctx cv
 
+(* CSS Flexbox 1 sec. 7.1.1: the spec says an omitted flex-basis is [0], so a
+   length [0] / [0px] basis equals the omitted shorthand default and the basis
+   drops ([flex: 1 1 0] -> [flex: 1]). Browsers compute the omitted basis as
+   [0%] instead, so this collapse only holds under the spec-literal
+   [--enforce-spec] mode - default browser-targeted minify keeps the basis. *)
+let collapse_flex_zero_basis (v : flex) : flex =
+  match v with
+  | Full (grow, shrink, (Zero | Px 0.0 | Num 0.0)) ->
+      if shrink = 1.0 then Grow grow else Grow_shrink (grow, shrink)
+  | other -> other
+
 let rec pp_flex : flex Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex ctx v
