@@ -3834,25 +3834,16 @@ let rec pp_color_in_mix : color Pp.t =
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
   Pp.call "color-mix"
     (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
-      (* CSS Color 5 §3: [<color-interpolation-method>] is required; the header
-         always emits. Per §13 [shorter] is the default hue strategy and drops
-         under minify. The interpolation space defaults to [oklab] when omitted,
-         so under minify [in oklab] (with the default hue method) drops too. *)
+      (* CSS Color 5 §3: [<color-interpolation-method>] is required, so the [in
+         <space>] header always emits ([in oklab] when the space is omitted) -
+         dropping it would produce an invalid [color-mix(a, b)]. Per §13
+         [shorter] is the default hue strategy and drops under minify. *)
       let hue_is_default = hue = Default || hue = Shorter in
-      let space_is_default_oklab =
-        match in_space with
-        | Some (Oklab : color_space) | Option.None -> true
-        | _ -> false
-      in
-      let omit_header =
-        Pp.minified ctx && space_is_default_oklab && hue_is_default
-      in
-      (if not omit_header then
-         match in_space with
-         | Some space ->
-             Pp.string ctx "in ";
-             pp_color_space ctx space
-         | None -> Pp.string ctx "in oklab");
+      (match in_space with
+      | Some space ->
+          Pp.string ctx "in ";
+          pp_color_space ctx space
+      | None -> Pp.string ctx "in oklab");
       (if (not hue_is_default) || not (Pp.minified ctx) then
          match hue with
          | Default -> ()
@@ -3860,7 +3851,7 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
              Pp.space ctx ();
              pp_hue_interpolation ctx hue;
              Pp.string ctx " hue");
-      if not omit_header then Pp.comma ctx ();
+      Pp.comma ctx ();
       (* CSS Color 5 §3: percentages default per the rule "if only one is given,
          the second is [100% - first]". Drop both when both are 50% (both at
          default), or drop just the second when [p1 + p2 = 100%]. *)
@@ -6160,11 +6151,10 @@ let read_color_keyword_of_string keyword : color option =
 
 let rec read_color_mix t : color =
   Cursor.ws t;
-  (* CSS Color 5 sec. 3: [<color-interpolation-method>] is the [in <space>
-     [<hue> hue]?] prefix. Omitted, it defaults to [in oklab]; cascade accepts
-     the omitted form and only consumes the trailing comma when the prefix was
-     actually present. *)
-  let in_space, hue, prefix_present =
+  (* CSS Color 5 sec. 3: the [<color-interpolation-method>] prefix ([in <space>
+     [<hue> hue]?]) is required. Reject the omitted form rather than mutating an
+     invalid [color-mix(a, b)] into an [in oklab] mix. *)
+  let in_space, hue =
     if Cursor.peek_ident t = Some "in" then (
       Cursor.expect_string "in" t;
       Cursor.ws t;
@@ -6177,14 +6167,15 @@ let rec read_color_mix t : color =
             read_full_hue_interpolation t
         | _ -> Default
       in
-      (Some space, hue, true))
-    else (None, Default, false)
+      (Some space, hue))
+    else
+      Cursor.err t
+        "color-mix() requires an 'in <colorspace>' interpolation method"
   in
 
   Cursor.ws t;
-  if prefix_present then (
-    Cursor.comma t;
-    Cursor.ws t);
+  Cursor.comma t;
+  Cursor.ws t;
 
   (* Parse first color and optional percentage *)
   let color1, percent1 = read_color_mix_component t in
