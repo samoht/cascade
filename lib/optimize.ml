@@ -4869,6 +4869,46 @@ let registered_foldable (stylesheet : t) : string -> bool =
   List.iter collect stylesheet;
   fun name -> Hashtbl.mem tbl name
 
+(* Under [--enforce-spec] a length [0] flex-basis equals the spec's
+   omitted-basis default, so [flex: 1 1 0] collapses to [flex: 1]. Default
+   browser-targeted minify keeps the explicit basis (browsers treat the omitted
+   basis as [0%]). *)
+let collapse_flex_zero_basis_stmts (stmts : t) : t =
+  let collapse_decl (decl : declaration) : declaration =
+    match decl with
+    | Declaration { property = Flex; value; important } ->
+        Declaration
+          {
+            property = Flex;
+            value = Properties.collapse_flex_zero_basis value;
+            important;
+          }
+    | _ -> decl
+  in
+  let rec walk_stmt (stmt : statement) : statement =
+    match stmt with
+    | Rule r ->
+        Rule
+          {
+            r with
+            declarations = List.map collapse_decl r.declarations;
+            nested = List.map walk_stmt r.nested;
+          }
+    | Declarations decls -> Declarations (List.map collapse_decl decls)
+    | Media (c, b) -> Media (c, List.map walk_stmt b)
+    | Container (n, c, b) -> Container (n, c, List.map walk_stmt b)
+    | Supports (c, b) -> Supports (c, List.map walk_stmt b)
+    | Layer (n, b) -> Layer (n, List.map walk_stmt b)
+    | Origin (o, b) -> Origin (o, List.map walk_stmt b)
+    | Scope (s, e, b) -> Scope (s, e, List.map walk_stmt b)
+    | Starting_style b -> Starting_style (List.map walk_stmt b)
+    | Moz_document (c, b) -> Moz_document (c, List.map walk_stmt b)
+    | When (c, b) -> When (c, List.map walk_stmt b)
+    | Else (c, b) -> Else (c, List.map walk_stmt b)
+    | _ -> stmt
+  in
+  List.map walk_stmt stmts
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
     (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
@@ -4883,4 +4923,5 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
   stylesheet
   |> prune_position_try_fallbacks ~scope
   |> drop_invalid |> drop_unknown_at_rules
+  |> (if enforce_spec then collapse_flex_zero_basis_stmts else Fun.id)
   |> statements_top_level ~ctx ~enforce_spec
