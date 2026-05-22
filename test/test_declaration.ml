@@ -1481,7 +1481,6 @@ let spec_platform_property_vectors () =
       "width: mod(10px)";
       "opacity: abs()";
       "opacity: sign()";
-      "color: color-mix(red, blue)";
       "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";

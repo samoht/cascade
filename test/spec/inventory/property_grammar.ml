@@ -185,6 +185,7 @@ let matrix =
           "oklab(50% 0.1 0.2)";
           "oklch(50% 0.1 20 / .5)";
           "color-mix(in lch longer hue, red 30%, blue)";
+          "color-mix(var(--a), var(--b))";
           "attr(data-color type(<color>), var(--fallback-color, red))";
         ];
       negatives =

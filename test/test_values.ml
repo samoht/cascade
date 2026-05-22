@@ -812,6 +812,10 @@ let spec_color5_function_edges () =
     "color-mix(in lch longer hue, red 30%, blue)";
   check_color ~expected:"color-mix(in hsl,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
+  check_color ~expected:"color-mix(var(--a),var(--b))"
+    "color-mix(in oklab, var(--a), var(--b))";
+  check_color ~expected:"color-mix(var(--a),var(--b))"
+    "color-mix(var(--a), var(--b))";
   neg_cursor read_color "lab(50% 10)";
   neg_cursor read_color "lch(50% 20)";
   neg_cursor read_color "oklch(50% .1 20 /)";
@@ -844,7 +848,6 @@ let spec_color_invalid_mutation_matrix () =
       "color(display-p3 1 0)";
       "color(unknown 1 0 0)";
       "color(display-p3 1 0 0 1 2)";
-      "color-mix(red, blue)";
       "color-mix(in srgb, red,)";
       "color-mix(in srgb, red 20% 30%, blue)";
       "light-dark(black)";
