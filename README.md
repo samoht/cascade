@@ -77,30 +77,43 @@ deliberately lossy rewrite class is static color approximation: a color rewrite
 or numeric color-channel rounding is valid only when the converted colors differ
 by at most `0.001` in Oklab Euclidean distance and alpha differs by at most
 `0.0005`. Among valid color approximations, the shortest serialization wins.
+This is an engineering guardrail for decimal color minification, not a claim
+about the threshold of human perception. The budget is chosen to admit nearest
+3-decimal rounding of three color channels (`sqrt(3) * 0.0005 < 0.001`) while
+rejecting coarser approximations. Oklab is used because its Euclidean distance
+is a better proxy for visible color error than raw component distance. Alpha
+uses its own `0.0005` half-step because opacity error is not a color-distance
+error.
 
 `--minify` is closed over the CSS text it is given, but open over runtime
 layout state. Cascade may use the whole parsed stylesheet for source-order,
 cascade, dependency, and dead-code reasoning, but it does not assume inherited
-or environment-dependent facts such as DOM shape, writing mode, direction, user
-styles, or runtime custom-property mutation unless those facts are explicit in
-the stylesheet or supplied through an explicit closed context. This keeps the
-output sound when a minified stylesheet is embedded into a larger page.
+or environment-dependent facts such as DOM shape, writing mode, which direction
+value applies, user styles, or runtime custom-property mutation unless those
+facts are explicit in the stylesheet or supplied through an explicit closed
+context. This keeps the output sound when a minified stylesheet is embedded into
+a larger page.
 
 Cascade's default minifier targets maintained evergreen browsers. That target
 baseline is part of the optimization contract: Cascade may use modern CSS syntax
 and feature-support facts when they preserve behavior for that browser set and
 shorten the output. For example, it may treat baseline feature queries such as
 `@supports(display:flex)` and `@supports(display:grid)` as true and remove the
-wrapper.
+wrapper. It may also use target document-model facts, such as HTML direction
+resolution being `ltr` or `rtl`, so `:not(:dir(ltr))` may shorten to
+`:dir(rtl)`.
 
 Pass `--enforce-spec` with `--minify` to disable target-browser facts. In that
 mode, Cascade still serializes to the shortest CSS form it knows, but it does
 not introduce newer grammar or remove feature queries just because maintained
-evergreen browsers support them.
+evergreen browsers support them, and it does not rely on the HTML-specific
+binary direction model.
 
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
 - Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling, or round numeric channels, only within the color-difference budget above; unresolved, out-of-gamut, or missing-channel forms stay functional.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
+- Lengths: convert compatible units only when the result is shorter; otherwise
+  preserve the authored unit (`12pt` stays `12pt`, not same-length `16px`).
 - Selector lists: sort branches into Cascade's canonical selector order (`div,.class,#id` -> `#id,.class,div`).
 - Shorthands with unordered components serialize in Cascade's canonical order; when shortest forms tie, Cascade follows common minifier convention (`animation:1s slide` -> `animation:slide 1s`).
 - Pseudo-elements: legacy single-colon form (`::before` -> `:before`).
