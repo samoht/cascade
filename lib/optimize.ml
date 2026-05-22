@@ -4206,6 +4206,16 @@ let synthesize_nesting_statements (stmts : statement list) : statement list =
   in
   go [] stmts
 
+(* A block holds a conditional named layer when it directly contains a named
+   [@layer] block with content. Unwrapping a known-true [@supports] around such
+   a block would move that layer's rules - and its place in the layer order (CSS
+   Cascade 6.4) - from conditional to unconditional, so the wrapper must stay
+   even when the condition is baseline-true. A bare [@layer name;] declaration
+   carries no rules, and self-guarding declarations carry no side effect, so
+   both unwrap freely. *)
+let block_introduces_layer_order stmts =
+  List.exists (function Layer (Some _, _ :: _) -> true | _ -> false) stmts
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -4264,7 +4274,13 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
       in
       match baseline with
       (* Condition is a known-true baseline fact: unwrap the block into the
-         current statement stream so its rules merge with their siblings. *)
+         current statement stream so its rules merge with their siblings -
+         unless the block introduces layer order, whose conditional
+         participation the wrapper must preserve. *)
+      | `True when block_introduces_layer_order optimized_block ->
+          process_statements ~ctx ~enforce_spec
+            (Supports (cond, optimized_block) :: acc)
+            rest
       | `True ->
           process_statements ~ctx ~enforce_spec acc (optimized_block @ rest)
       (* Condition can never hold: the guarded block is dead. *)
