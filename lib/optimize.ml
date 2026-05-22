@@ -4216,6 +4216,19 @@ let synthesize_nesting_statements (stmts : statement list) : statement list =
 let block_introduces_layer_order stmts =
   List.exists (function Layer (Some _, _ :: _) -> true | _ -> false) stmts
 
+(* Pop the run of [Rule]s most recently pushed onto a reversed accumulator,
+   returning them in forward order alongside the remaining accumulator. Used
+   when unwrapping a known-true [@supports] exposes its inner rules to rules
+   already emitted: those preceding rules must rejoin the merge pass so an
+   adjacency the wrapper had hidden can collapse. *)
+let pop_trailing_rules acc =
+  let rec loop acc rules =
+    match acc with
+    | (Rule _ as r) :: rest -> loop rest (r :: rules)
+    | _ -> (rules, acc)
+  in
+  loop acc []
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -4282,7 +4295,12 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
             (Supports (cond, optimized_block) :: acc)
             rest
       | `True ->
-          process_statements ~ctx ~enforce_spec acc (optimized_block @ rest)
+          (* Re-collect the rules already emitted just before this wrapper so a
+             same-selector adjacency the [@supports] had hidden can now
+             merge. *)
+          let trailing, acc = pop_trailing_rules acc in
+          process_statements ~ctx ~enforce_spec acc
+            (trailing @ optimized_block @ rest)
       (* Condition can never hold: the guarded block is dead. *)
       | `False -> process_statements ~ctx ~enforce_spec acc rest
       | `Cond cond' ->
