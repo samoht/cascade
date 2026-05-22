@@ -5891,8 +5891,7 @@ let customprops1_fallback_list () =
 
 (* CSS Custom Properties L1 section 2: a custom-property declaration may itself
    contain [var()] references. Inlining a chain [--accent: var(--brand)]
-   requires resolving the inner variable first. The Context-based eval handles
-   this; the print-time theme_defaults callback resolves a single level. *)
+   requires resolving the inner variable first. *)
 let customprops1_value_position () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -5914,6 +5913,112 @@ let customprops1_value_position () =
      in
      Astring.String.is_infix ~affix:"16px 16px" out
      || Astring.String.is_infix ~affix:"16px" out)
+
+(* CSS Custom Properties L1 section 2: explicit theme resolution is a transform
+   phase, not merely a print-time spelling hook. If a resolver replacement is
+   another [var()] reference, the transform should keep resolving until it
+   reaches a concrete value, then normal minified serialization applies to that
+   concrete value. *)
+let theme_chain_resolution () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function
+    | "accent" -> Some "var(--brand)"
+    | "brand" -> Some "color(srgb 1 0 0)"
+    | "gap" -> Some "var(--space)"
+    | "space" -> Some "calc(1px + 2px)"
+    | "nested-gap" -> Some "var(--nested-space)"
+    | "nested-space" -> Some "calc(1px + var(--foo))"
+    | "foo" -> Some "2px"
+    | "runtime-gap" -> Some "var(--runtime-space)"
+    | "runtime-space" -> Some "calc(1px + var(--runtime-foo))"
+    | "fallback-gap" -> Some "var(--maybe, var(--space))"
+    | "deep-fallback" -> Some "var(--unknown, calc(1px + var(--foo)))"
+    | "two-axis" -> Some "var(--x) var(--y)"
+    | "x" -> Some "1px"
+    | "y" -> Some "calc(1px + 1px)"
+    | "shadow-color" -> Some "var(--brand)"
+    | _ -> None
+  in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
+    |> Css.to_string ~minify:true |> String.trim
+  in
+  Alcotest.(check string)
+    "var replacement chains resolve to a concrete color, then minify"
+    ".x{color:red}"
+    (render ".x { color: var(--accent) }");
+  Alcotest.(check string)
+    "var replacement chains resolve to calc, then reduce" ".x{width:3px}"
+    (render ".x { width: var(--gap) }");
+  Alcotest.(check string)
+    "nested var inside replacement resolves before calc reduction"
+    ".x{width:3px}"
+    (render ".x { width: var(--nested-gap) }");
+  Alcotest.(check string)
+    "unresolved nested var inside replacement stays runtime-dynamic"
+    ".x{width:calc(1px + var(--runtime-foo))}"
+    (render ".x { width: var(--runtime-gap) }");
+  Alcotest.(check string)
+    "fallback arm inside replacement resolves when primary stays unknown"
+    ".x{width:3px}"
+    (render ".x { width: var(--fallback-gap) }");
+  Alcotest.(check string)
+    "var inside calculated fallback arm resolves, then calc reduces"
+    ".x{width:3px}"
+    (render ".x { width: var(--deep-fallback) }");
+  Alcotest.(check string)
+    "replacement with multiple vars resolves every slot" ".x{margin:1px 2px}"
+    (render ".x { margin: var(--two-axis) }");
+  Alcotest.(check string)
+    "nested color replacement resolves through another replacement"
+    ".x{text-shadow:0 0 2px red}"
+    (render ".x { text-shadow: 0 0 2px var(--shadow-color) }")
+
+(* Resolver cycles are not evidence that a variable is statically undefined.
+   Stop resolution at the cycle and preserve the runtime [var()] reference
+   instead of selecting a fallback or looping. *)
+let theme_cycle_preserved () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function
+    | "a" -> Some "var(--b)"
+    | "b" -> Some "var(--a)"
+    | "outer" -> Some "calc(1px + var(--loop-a))"
+    | "loop-a" -> Some "var(--loop-b)"
+    | "loop-b" -> Some "var(--loop-a)"
+    | "fallback-loop" -> Some "var(--missing, var(--loop-a))"
+    | "deep-fallback-loop" -> Some "var(--missing, calc(1px + var(--loop-a)))"
+    | _ -> None
+  in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
+    |> Css.to_string ~minify:true |> String.trim
+  in
+  Alcotest.(check string)
+    "cyclic var replacement preserves the original runtime reference"
+    ".x{color:var(--a)}"
+    (render ".x { color: var(--a, red) }");
+  Alcotest.(check string)
+    "cycle nested inside calc preserves the unresolved cycle point"
+    ".x{width:calc(1px + var(--loop-a))}"
+    (render ".x { width: var(--outer) }");
+  Alcotest.(check string)
+    "cycle reached through fallback preserves the fallback var"
+    ".x{color:var(--loop-a)}"
+    (render ".x { color: var(--fallback-loop) }");
+  Alcotest.(check string)
+    "cycle inside calculated fallback keeps the cyclic reference"
+    ".x{width:calc(1px + var(--loop-a))}"
+    (render ".x { width: var(--deep-fallback-loop) }")
 
 (* CSS Custom Properties L1 section 2: when the variable's resolved value is a
    color, the color canonicalization rules (hex shorten, named conversion) apply
@@ -6446,6 +6551,12 @@ let additional_tests =
     ( "spec custom-properties 1 var in value position",
       `Quick,
       customprops1_value_position );
+    ( "spec custom-properties 1 theme chain resolution",
+      `Quick,
+      theme_chain_resolution );
+    ( "spec custom-properties 1 theme cycle preserved",
+      `Quick,
+      theme_cycle_preserved );
     ( "spec custom-properties 1 inlined color canonicalizes",
       `Quick,
       custom_props1_inlined_color_canonicalizes );
