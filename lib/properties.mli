@@ -107,6 +107,9 @@ val read_position_try_fallbacks : Cursor.t -> position_try_fallbacks
 val read_position_try_order : Cursor.t -> position_try_order
 (** [read_position_try_order t] parses [position-try-order]. *)
 
+val read_position_try : Cursor.t -> position_try
+(** [read_position_try t] parses the [position-try] shorthand. *)
+
 val pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t
 (** [pp_contain_intrinsic_size_item] pretty-prints one [contain-intrinsic-size]
     item. *)

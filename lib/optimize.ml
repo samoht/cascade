@@ -2708,52 +2708,55 @@ let synthesize_columns decls =
    value and folds away. Cascade has no typed [position-try] shorthand, so the
    synthesised value is re-parsed into the (round-tripping) unknown property. *)
 let synthesize_position_try decls =
-  let is_order = function
-    | Declaration { property = Position_try_order; _ } -> true
-    | _ -> false
+  let order_of d : (Properties.position_try_order * bool) option =
+    match d with
+    | Declaration { property = Position_try_order; value; important } ->
+        Some (value, important)
+    | _ -> None
   in
-  let is_fallbacks = function
-    | Declaration { property = Position_try_fallbacks; _ } -> true
-    | _ -> false
+  let fallbacks_of d : (Properties.position_try_fallbacks * bool) option =
+    match d with
+    | Declaration { property = Position_try_fallbacks; value; important } ->
+        Some (value, important)
+    | _ -> None
   in
-  let uniq pred =
-    match List.filter pred decls with [ x ] -> Some x | _ -> None
+  let uniq f =
+    match List.filter_map f decls with [ x ] -> Some x | _ -> None
   in
-  match (uniq is_order, uniq is_fallbacks) with
-  | Some od, Some fd when is_important od = is_important fd -> (
-      let order_is_normal =
-        match od with
-        | Declaration { property = Position_try_order; value = Normal; _ } ->
+  match (uniq order_of, uniq fallbacks_of) with
+  | Some (order, oi), Some (fallbacks, fi) when oi = fi -> (
+      (* Compose only plain component values; a CSS-wide keyword or [var()] in
+         one longhand cannot share a shorthand with a real value in the
+         other. *)
+      let plain_order : Properties.position_try_order -> bool = function
+        | Normal | Most_width | Most_height | Most_block_size | Most_inline_size
+          ->
             true
         | _ -> false
       in
-      (* [position-try] has no typed shorthand, so the value is rebuilt from the
-         longhands' serialised text and re-parsed into the unknown property; a
-         [normal] order is the initial value and is dropped. *)
-      let fallbacks = string_of_value ~minify:true fd in
-      let body =
-        if order_is_normal then fallbacks
-        else String.concat " " [ string_of_value ~minify:true od; fallbacks ]
+      let plain_fallbacks : Properties.position_try_fallbacks -> bool = function
+        | None | Fallbacks _ -> true
+        | _ -> false
       in
-      match
-        Declaration.of_string (String.concat "" [ "position-try:"; body ])
-      with
-      | shorthand ->
+      match (plain_order order, plain_fallbacks fallbacks) with
+      | true, true ->
           let shorthand =
-            if is_important od then Declaration.important shorthand
-            else shorthand
+            Declaration.v ~important:oi Properties.Position_try
+              (Try (order, fallbacks))
           in
           let placed = ref false in
           List.filter_map
             (fun d ->
-              if is_order d || is_fallbacks d then
-                if !placed then None
-                else (
-                  placed := true;
-                  Some shorthand)
-              else Some d)
+              match d with
+              | Declaration { property = Position_try_order; _ }
+              | Declaration { property = Position_try_fallbacks; _ } ->
+                  if !placed then None
+                  else (
+                    placed := true;
+                    Some shorthand)
+              | _ -> Some d)
             decls
-      | exception _ -> decls)
+      | _ -> decls)
   | _ -> decls
 
 let finalize_rule_without_nested ~ctx (rule : rule) : rule =
