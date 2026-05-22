@@ -4229,23 +4229,6 @@ let pop_trailing_rules acc =
   in
   loop acc []
 
-(* CSS Flexbox 1 sec. 7.1.1: per the spec an omitted flex-basis in the numeric
-   shorthand is [0], so a zero-length basis is the shorthand default and folds
-   to the [flex:<grow> [<shrink>]] form. Browsers expand the omitted form as
-   [0%] (a different computed value), so this is only sound when not targeting
-   browser behaviour, i.e. under [--enforce-spec]. *)
-let collapse_flex_basis_for_spec (decl : declaration) : declaration =
-  match decl with
-  | Declaration
-      { property = Flex; value = Full (grow, shrink, basis); important }
-    when match basis with Zero | Num 0.0 | Px 0.0 -> true | _ -> false ->
-      let value =
-        if shrink = 1.0 then (Grow grow : Properties.flex)
-        else Grow_shrink (grow, shrink)
-      in
-      Declaration { property = Flex; value; important }
-  | _ -> decl
-
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -4398,21 +4381,10 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      the merged block matches the source order of the originals.
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
-  let result =
-    List.map (single_rule_without_nested ~ctx) with_optimized_nested
-    |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-    |> List.map (finalize_rule_without_nested ~ctx)
-    |> combine_identical_rules |> factor_common_declarations
-  in
-  if not enforce_spec then result
-  else
-    List.map
-      (fun (r : rule) ->
-        {
-          r with
-          declarations = List.map collapse_flex_basis_for_spec r.declarations;
-        })
-      result
+  List.map (single_rule_without_nested ~ctx) with_optimized_nested
+  |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
+  |> List.map (finalize_rule_without_nested ~ctx)
+  |> combine_identical_rules |> factor_common_declarations
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
@@ -4869,46 +4841,6 @@ let registered_foldable (stylesheet : t) : string -> bool =
   List.iter collect stylesheet;
   fun name -> Hashtbl.mem tbl name
 
-(* Under [--enforce-spec] a length [0] flex-basis equals the spec's
-   omitted-basis default, so [flex: 1 1 0] collapses to [flex: 1]. Default
-   browser-targeted minify keeps the explicit basis (browsers treat the omitted
-   basis as [0%]). *)
-let collapse_flex_zero_basis_stmts (stmts : t) : t =
-  let collapse_decl (decl : declaration) : declaration =
-    match decl with
-    | Declaration { property = Flex; value; important } ->
-        Declaration
-          {
-            property = Flex;
-            value = Properties.collapse_flex_zero_basis value;
-            important;
-          }
-    | _ -> decl
-  in
-  let rec walk_stmt (stmt : statement) : statement =
-    match stmt with
-    | Rule r ->
-        Rule
-          {
-            r with
-            declarations = List.map collapse_decl r.declarations;
-            nested = List.map walk_stmt r.nested;
-          }
-    | Declarations decls -> Declarations (List.map collapse_decl decls)
-    | Media (c, b) -> Media (c, List.map walk_stmt b)
-    | Container (n, c, b) -> Container (n, c, List.map walk_stmt b)
-    | Supports (c, b) -> Supports (c, List.map walk_stmt b)
-    | Layer (n, b) -> Layer (n, List.map walk_stmt b)
-    | Origin (o, b) -> Origin (o, List.map walk_stmt b)
-    | Scope (s, e, b) -> Scope (s, e, List.map walk_stmt b)
-    | Starting_style b -> Starting_style (List.map walk_stmt b)
-    | Moz_document (c, b) -> Moz_document (c, List.map walk_stmt b)
-    | When (c, b) -> When (c, List.map walk_stmt b)
-    | Else (c, b) -> Else (c, List.map walk_stmt b)
-    | _ -> stmt
-  in
-  List.map walk_stmt stmts
-
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
     (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
@@ -4923,5 +4855,4 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
   stylesheet
   |> prune_position_try_fallbacks ~scope
   |> drop_invalid |> drop_unknown_at_rules
-  |> (if enforce_spec then collapse_flex_zero_basis_stmts else Fun.id)
   |> statements_top_level ~ctx ~enforce_spec
