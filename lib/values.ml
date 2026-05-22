@@ -916,13 +916,18 @@ let length_combine op v1 v2 =
 
 (* CSS Values 4 10.7: multiplying a typed length by a unitless number scales the
    length, leaving the unit unchanged. Division folds only when the quotient is
-   exact (see [exact_div]); otherwise the caller keeps the [calc()] wrapper to
-   avoid precision loss. *)
-let length_scale op v n =
+   [exact] (see [exact_div]); otherwise the caller keeps the [calc()] wrapper to
+   avoid precision loss. Dividing by a math constant ([pi] / [e] / ...) is an
+   exception: the divisor is irrational, so the quotient can never be exact and
+   keeping [calc()] preserves no more precision than the browser computes - fold
+   to the rounded value, matching multiplication by the same constant. *)
+let length_scale ?(exact = true) op v n =
   match (op, calc_length_unit v) with
   | Mul, Some (unit, value) -> Some (length_from_calc_unit unit (value *. n))
   | Div, Some (unit, value) ->
-      Option.map (length_from_calc_unit unit) (exact_div value n)
+      if exact then Option.map (length_from_calc_unit unit) (exact_div value n)
+      else if n = 0. then None
+      else Some (length_from_calc_unit unit (value /. n))
   | _ -> None
 
 (* CSS Values 4 §10.7: [abs()] preserves the input's type, so [abs(<length>)]
@@ -1004,7 +1009,8 @@ let rec eval_length_calc : length calc -> length calc =
           | None -> Expr (l, op, r))
       | Val _, Div, Num 0. -> Expr (l, op, r)
       | Val a, ((Mul | Div) as op), Num n -> (
-          match length_scale op a n with
+          let exact = match r with Math_const _ -> false | _ -> true in
+          match length_scale ~exact op a n with
           | Some v -> Val v
           | None -> Expr (l, op, r))
       | Num n, Mul, Val a -> (
@@ -1387,15 +1393,19 @@ let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
   | (Add | Sub), Pct a, Pct b -> Some (Pct (combine a b))
   | _ -> None
 
-let lp_scale op (v : length_percentage) n : length_percentage option =
+let lp_scale ?(exact = true) op (v : length_percentage) n :
+    length_percentage option =
   match (op, v) with
   | (Mul | Div), Length a -> (
-      match length_scale op a n with
+      match length_scale ~exact op a n with
       | Some lv -> Some (Length lv)
       | None -> None)
   | Mul, Pct a -> Some (Pct (a *. n) : length_percentage)
   | Div, Pct a ->
-      Option.map (fun r -> (Pct r : length_percentage)) (exact_div a n)
+      if exact then
+        Option.map (fun r -> (Pct r : length_percentage)) (exact_div a n)
+      else if n = 0. then None
+      else Some (Pct (a /. n) : length_percentage)
   | _ -> None
 
 (* Same unit-preserving trick as [length_of_math_fn] but for the
@@ -1477,7 +1487,10 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           | None -> Expr (l, op, r))
       | Val _, Div, Num 0. -> Expr (l, op, r)
       | Val a, ((Mul | Div) as op), Num n -> (
-          match lp_scale op a n with Some v -> Val v | None -> Expr (l, op, r))
+          let exact = match r with Math_const _ -> false | _ -> true in
+          match lp_scale ~exact op a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
       | Num n, Mul, Val a -> (
           match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
       (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
