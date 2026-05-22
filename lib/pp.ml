@@ -10,6 +10,11 @@ type ctx = {
   inline : bool;
   in_function : bool;
   in_calc : bool;
+  in_feature_query : bool;
+      (** Set while serialising the value of an [@supports (property: value)]
+          feature test. The value is a capability predicate for that exact
+          syntax, so lossy rewrites (e.g. static colour folding) must be
+          suppressed there. *)
   theme : String_set.t option;
   theme_defaults : string -> string option;
 }
@@ -37,6 +42,7 @@ let ctx ?(minify = false) ?indent ?(inline = false) ?theme
     inline;
     in_function = false;
     in_calc = false;
+    in_feature_query = false;
     theme;
     theme_defaults;
   }
@@ -338,6 +344,8 @@ let space ctx () = Buffer.add_char ctx.buf ' '
 let block_open ctx () = Buffer.add_char ctx.buf '{'
 let block_close ctx () = Buffer.add_char ctx.buf '}'
 let minified ctx = ctx.minify
+let in_feature_query ctx = ctx.in_feature_query
+let enter_feature_query ctx = { ctx with in_feature_query = true }
 let cond p a b ctx x = if p ctx then a ctx x else b ctx x
 let space_if_pretty = sp
 

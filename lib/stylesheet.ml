@@ -3800,19 +3800,7 @@ let pp_decl_inline ~minify ~mode pp_ctx decl =
 let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
     =
   let buf = Buffer.create 128 in
-  let pp_ctx =
-    {
-      Pp.minify;
-      level = 0;
-      indent = None;
-      buf;
-      inline = mode = Inline;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let pp_ctx = Pp.ctx ~minify ~inline:(mode = Inline) buf in
   let first = ref true in
   List.iter
     (fun decl ->

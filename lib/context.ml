@@ -2591,19 +2591,7 @@ let rec declaration_with_importance important = function
         { var_name; decl = declaration_with_importance important decl }
 
 let property_name (type a) (property : a Properties.property) =
-  let ctx =
-    {
-      Pp.minify = true;
-      level = 0;
-      indent = None;
-      buf = Buffer.create 16;
-      inline = false;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let ctx = Pp.ctx ~minify:true (Buffer.create 16) in
   Properties.pp_property ctx property;
   Buffer.contents ctx.buf
 

@@ -234,7 +234,10 @@ and render_branch operator = function
 let to_string condition = render `Root condition
 
 let pp_declaration_feature ctx = function
-  | Declaration decl -> Declaration.pp_declaration ctx decl
+  | Declaration decl ->
+      (* The declaration is a capability predicate for this exact value, so
+         suppress lossy value rewrites (e.g. static colour folding). *)
+      Declaration.pp_declaration (Pp.enter_feature_query ctx) decl
   | Empty name ->
       Pp.string ctx (string_of_property_name name);
       Pp.char ctx ':'
