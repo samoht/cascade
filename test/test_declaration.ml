@@ -1505,7 +1505,7 @@ let spec_values_l45_edges () =
       ("top: anchor(bottom)", "top:anchor(bottom)");
       ("font-size: calc(1rem + 1cqi)", "font-size:calc(1rem + 1cqi)");
       ("color: lab(50% 20 30)", "color:#a16945");
-      ("color: lch(50% 30 40)", "color:lch(50%30 40)");
+      ("color: lch(50% 30 40)", "color:#a26757");
       ("color: oklab(60% .1 .2)", "color:oklab(60%.1 .2)");
       ("color: oklch(60% .2 120)", "color:oklch(60%.2 120)");
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");

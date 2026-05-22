@@ -1288,6 +1288,8 @@ let target_minify_enforce_spec_split () =
     ~spec:
       "@layer base;@supports(display:grid){@layer grid;}@layer \
        theme,grid;@layer grid{.x{color:red}}@layer theme{.x{color:#00f}}";
+  check_modes "explicit flex zero basis is not one-value shorthand"
+    "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1}";
   check_modes "media min-width grammar"
     "@media (min-width: 700px) { a { color: red } }"
     ~default:"@media(width>=700px){a{color:red}}"

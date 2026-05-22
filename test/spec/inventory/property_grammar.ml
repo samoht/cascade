@@ -370,7 +370,6 @@ let matrix =
   @ rows_for
       [
         "background-color";
-        "border-color";
         "border-top-color";
         "border-right-color";
         "border-bottom-color";
@@ -388,6 +387,13 @@ let matrix =
       ]
       [ "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
       [ "1px"; "red blue" ]
+  @ [
+      {
+        property = "border-color";
+        positives = [ "red"; "red blue"; "red blue green"; "currentColor" ];
+        negatives = [ "1px"; "red blue green black white" ];
+      };
+    ]
   @ rows_for
       [
         "border-style";

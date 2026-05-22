@@ -4229,6 +4229,23 @@ let pop_trailing_rules acc =
   in
   loop acc []
 
+(* CSS Flexbox 1 sec. 7.1.1: per the spec an omitted flex-basis in the numeric
+   shorthand is [0], so a zero-length basis is the shorthand default and folds
+   to the [flex:<grow> [<shrink>]] form. Browsers expand the omitted form as
+   [0%] (a different computed value), so this is only sound when not targeting
+   browser behaviour, i.e. under [--enforce-spec]. *)
+let collapse_flex_basis_for_spec (decl : declaration) : declaration =
+  match decl with
+  | Declaration
+      { property = Flex; value = Full (grow, shrink, basis); important }
+    when match basis with Zero | Num 0.0 | Px 0.0 -> true | _ -> false ->
+      let value =
+        if shrink = 1.0 then (Grow grow : Properties.flex)
+        else Grow_shrink (grow, shrink)
+      in
+      Declaration { property = Flex; value; important }
+  | _ -> decl
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -4381,10 +4398,21 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      the merged block matches the source order of the originals.
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
-  List.map (single_rule_without_nested ~ctx) with_optimized_nested
-  |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-  |> List.map (finalize_rule_without_nested ~ctx)
-  |> combine_identical_rules |> factor_common_declarations
+  let result =
+    List.map (single_rule_without_nested ~ctx) with_optimized_nested
+    |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
+    |> List.map (finalize_rule_without_nested ~ctx)
+    |> combine_identical_rules |> factor_common_declarations
+  in
+  if not enforce_spec then result
+  else
+    List.map
+      (fun (r : rule) ->
+        {
+          r with
+          declarations = List.map collapse_flex_basis_for_spec r.declarations;
+        })
+      result
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
