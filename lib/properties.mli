@@ -701,11 +701,6 @@ val read_justify_self : Cursor.t -> justify_self
 val pp_flex : flex Pp.t
 (** [pp_flex] is the pretty-printer for [flex]. *)
 
-val collapse_flex_zero_basis : flex -> flex
-(** [collapse_flex_zero_basis v] drops a length [0] / [0px] flex-basis, treating
-    it as the spec's omitted-basis default ([flex: 1 1 0] -> [flex: 1]). Only
-    sound under [--enforce-spec]: browsers compute the omitted basis as [0%]. *)
-
 val read_flex : Cursor.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
 

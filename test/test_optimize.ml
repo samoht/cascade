@@ -1289,7 +1289,7 @@ let target_minify_enforce_spec_split () =
       "@layer base;@supports(display:grid){@layer grid;}@layer \
        theme,grid;@layer grid{.x{color:red}}@layer theme{.x{color:#00f}}";
   check_modes "explicit flex zero basis is not one-value shorthand"
-    "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1}";
+    "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
   check_modes "color-mix default oklab elides in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(var(--a),var(--b))}"
