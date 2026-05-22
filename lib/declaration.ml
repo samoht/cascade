@@ -1566,6 +1566,7 @@ let read_modern_layout_value : type a.
       Some (v Position_try_fallbacks (Properties.read_position_try_fallbacks t))
   | Position_try_order ->
       Some (v Position_try_order (read_position_try_order t))
+  | Position_try -> Some (v Position_try (read_position_try t))
   | Position_visibility ->
       Some (v Position_visibility (read_position_visibility t))
   | Position_area -> Some (v Position_area (read_position_area t))

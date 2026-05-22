@@ -6117,6 +6117,7 @@ let pp_property : type a. a property Pp.t =
   | Position_anchor -> Pp.string ctx "position-anchor"
   | Position_try_fallbacks -> Pp.string ctx "position-try-fallbacks"
   | Position_try_order -> Pp.string ctx "position-try-order"
+  | Position_try -> Pp.string ctx "position-try"
   | Position_visibility -> Pp.string ctx "position-visibility"
   | Position_area -> Pp.string ctx "position-area"
   | Shape_outside -> Pp.string ctx "shape-outside"
@@ -7555,6 +7556,21 @@ let rec pp_position_try_order : position_try_order Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_position_try : position_try Pp.t =
+ fun ctx -> function
+  | Try (Normal, fallbacks) -> pp_position_try_fallbacks ctx fallbacks
+  | Try (order, None) -> pp_position_try_order ctx order
+  | Try (order, fallbacks) ->
+      pp_position_try_order ctx order;
+      Pp.space ctx ();
+      pp_position_try_fallbacks ctx fallbacks
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_position_try ctx v
 
 let pp_position_visibility_condition : position_visibility_condition Pp.t =
  fun ctx -> function
@@ -13360,6 +13376,38 @@ let rec read_position_try_order t : position_try_order =
       (Var (Values.read_var read_position_try_order t) : position_try_order))
     t
 
+let rec read_position_try t : position_try =
+  Cursor.enum_or_var "position-try"
+    [
+      ("initial", (Initial : position_try));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_position_try t))
+    ~default:(fun t ->
+      (* [<order> || <fallbacks>]: an optional leading order keyword (which
+         never collides with a fallback dashed-ident or try-tactic), then the
+         fallbacks. An order alone leaves fallbacks at its initial [none]. *)
+      let order : position_try_order =
+        match Cursor.peek_ident t with
+        | Some
+            ( "normal" | "most-width" | "most-height" | "most-block-size"
+            | "most-inline-size" ) ->
+            let o = read_position_try_order t in
+            Cursor.ws t;
+            o
+        | _ -> Normal
+      in
+      let fallbacks =
+        match Cursor.option read_position_try_fallbacks t with
+        | Some f -> f
+        | None -> (None : position_try_fallbacks)
+      in
+      Try (order, fallbacks))
+    t
+
 let rec read_position_visibility t : position_visibility =
   Cursor.enum_or_var "position-visibility"
     [
@@ -17264,6 +17312,7 @@ let read_any_property t =
   | "position-anchor" -> Prop Position_anchor
   | "position-try-fallbacks" -> Prop Position_try_fallbacks
   | "position-try-order" -> Prop Position_try_order
+  | "position-try" -> Prop Position_try
   | "position-visibility" -> Prop Position_visibility
   | "position-area" -> Prop Position_area
   | "shape-outside" -> Prop Shape_outside
@@ -19119,6 +19168,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Position_anchor -> pp pp_position_anchor
   | Position_try_fallbacks -> pp pp_position_try_fallbacks
   | Position_try_order -> pp pp_position_try_order
+  | Position_try -> pp pp_position_try
   | Position_visibility -> pp pp_position_visibility
   | Position_area -> pp pp_position_area
   | Shape_outside -> pp Pp.string

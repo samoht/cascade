@@ -932,6 +932,14 @@ let vars_of_position_try_fallbacks (value : Properties.position_try_fallbacks) =
 let vars_of_position_try_order (value : Properties.position_try_order) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_position_try (value : Properties.position_try) =
+  match value with
+  | Var v -> [ V v ]
+  | Try (order, fallbacks) ->
+      vars_of_position_try_order order
+      @ vars_of_position_try_fallbacks fallbacks
+  | _ -> []
+
 let vars_of_position_visibility (value : Properties.position_visibility) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1925,6 +1933,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Position_anchor, value -> vars_of_position_anchor value
   | Position_try_fallbacks, value -> vars_of_position_try_fallbacks value
   | Position_try_order, value -> vars_of_position_try_order value
+  | Position_try, value -> vars_of_position_try value
   | Position_visibility, value -> vars_of_position_visibility value
   | Position_area, value -> vars_of_position_area value
   | Shape_image_threshold, value -> vars_of_shape_image_threshold value

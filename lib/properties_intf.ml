@@ -3174,6 +3174,18 @@ type position_try_order =
   | Revert_layer
   | Var of position_try_order var
 
+(* CSS Anchor Positioning 1 sec. 4: [position-try] is [<'position-try-order'> ||
+   <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
+   omitted from the serialisation. *)
+type position_try =
+  | Try of position_try_order * position_try_fallbacks
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try var
+
 type position_visibility_condition = Anchors_visible | No_overflow
 
 type position_visibility =
@@ -4445,6 +4457,7 @@ type 'a property =
   | Position_anchor : position_anchor property
   | Position_try_fallbacks : position_try_fallbacks property
   | Position_try_order : position_try_order property
+  | Position_try : position_try property
   | Position_visibility : position_visibility property
   | Position_area : position_area property
   | Shape_outside : string property
