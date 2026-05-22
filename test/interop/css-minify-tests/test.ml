@@ -3,8 +3,9 @@
     Inputs are vendored under [traces/tests/<category>/<NNNN>/], each test pair
     being a [source.css] (unminified) plus an [expected.css] (the canonical
     minified output agreed on by the upstream maintainers). The corpus is an
-    upstream minifier-oracle corpus, not a spec oracle; Cascade keeps explicit
-    local oracles for deliberate policy differences.
+    upstream minifier-oracle corpus, not a spec oracle; this harness keeps
+    explicit Cascade oracles for deliberate CSS/evergreen-browser policy
+    differences.
 
     Refresh inputs with [dune build @regen-traces]. Upstream pinned in
     [scripts/generate.sh].
@@ -12,8 +13,9 @@
     Pass criterion: Cascade's minified output must equal the Cascade oracle for
     that fixture (trailing whitespace ignored). Most fixtures use [expected.css]
     directly. An override is allowed only when the imported oracle conflicts
-    with Cascade's documented minify semantics; the override records both the
-    upstream oracle and the local oracle so the difference stays reviewable.
+    with the CSS-spec/maintained-evergreen-browser oracle for that fixture; the
+    override records both the upstream oracle and the Cascade oracle so the
+    difference stays reviewable.
 
     The harness is one Alcotest case per pair, grouped under its upstream
     category. Each failing case prints its input, upstream oracle, Cascade
@@ -203,23 +205,24 @@ let normalize_expected ~category ~id expected =
            70.8)}"
         upstream
   | "colors", "0048" ->
-      (* The 3-decimal srgb-linear spelling passes Cascade's Oklab/alpha
-         guardrail for decimal color minification and is shorter than the
-         imported 4-decimal oracle. *)
+      (* Decimal color channels may be rounded when the resulting color stays
+         below the documented Oklab/alpha perceptual error budget. Here the
+         3-decimal spelling is within budget and shorter than the imported
+         4-decimal oracle. *)
       fixture ~category ~id
         ~upstream:"a{color:color(srgb-linear .2159 .0451 1.5312/.877)}"
         ~cascade:"a{color:color(srgb-linear .216 .045 1.531/.877)}" upstream
   | "colors", "0053" ->
       (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
-         The shorter alias is the better minified spelling; the 3-decimal
-         channels pass Cascade's Oklab guardrail for decimal color
-         minification. *)
+         The shorter alias is the better minified spelling. The rounded
+         3-decimal channels stay below the documented Oklab perceptual error
+         budget. *)
       fixture ~category ~id
         ~upstream:"a{color:color(xyz-d65 .5346 .2877 .0679)}"
         ~cascade:"a{color:color(xyz .535 .288 .068)}" upstream
   | "colors", "0054" ->
-      (* The 3-decimal xyz-d50 spelling passes Cascade's Oklab guardrail for
-         decimal color minification and is shorter than the imported 4-decimal
+      (* The rounded 3-decimal xyz-d50 spelling stays below the documented Oklab
+         perceptual error budget and is shorter than the imported 4-decimal
          oracle. *)
       fixture ~category ~id ~upstream:"a{color:color(xyz-d50 .5457 .311 .0488)}"
         ~cascade:"a{color:color(xyz-d50 .546 .311 .049)}" upstream
@@ -237,9 +240,9 @@ let normalize_expected ~category ~id expected =
         ~upstream:"@font-face{font-family:Custom;font-display:swap}" ~cascade:""
         upstream
   | "charset", "0002" ->
-      (* Cascade parses already-decoded UTF-8 text and does not preserve the CSS
-         Syntax byte-stream decoding layer. Once decoded, both @charset
-         declarations are metadata rather than stylesheet rules. *)
+      (* @charset belongs to the CSS Syntax byte-stream decoding layer, not the
+         stylesheet rule layer. These fixtures are already decoded CSS text, so
+         the @charset declarations are metadata and can be omitted. *)
       fixture ~category ~id ~upstream:"@charset \"ISO-8859-1\";a{color:red}"
         ~cascade:"a{color:red}" upstream
   | "comments", "0004" ->
@@ -256,24 +259,24 @@ let normalize_expected ~category ~id expected =
         ~cascade:"@container style(--bar:a b){a{color:red}}" upstream
   | "container", "0001" ->
       (* The upstream fixture is scoped to whitespace removal and keeps the
-         legacy [min-width] spelling. Default Cascade minify may use evergreen
-         target facts; for that target, MQ4 range syntax is available, so the
-         shorter [(width>=700px)] form is the Cascade oracle. *)
+         legacy [min-width] spelling. The default minify target is maintained
+         evergreen browsers, where MQ4 range syntax is available, so the shorter
+         [(width>=700px)] form is the oracle. *)
       fixture ~category ~id
         ~upstream:"@container sidebar (min-width:700px){a{color:red}}"
         ~cascade:"@container sidebar (width>=700px){a{color:red}}" upstream
   | "duplicates", "0009" ->
       (* The imported fixture verifies selector-list deduplication and keeps the
-         first surviving selector order. Cascade also canonicalizes selector
-         lists; selector branches inside one rule have no observable
-         source-order effect. *)
+         first surviving selector order. Selector branches inside one rule have
+         no observable source-order effect, so the stable minified oracle sorts
+         them canonically. *)
       fixture ~category ~id ~upstream:".nav .item,.footer{color:red}"
         ~cascade:".footer,.nav .item{color:red}" upstream
   | "nesting", "0011" ->
       (* Synthesis of CSS nesting is only a minification win when it preserves
          source-order semantics and is actually shorter. Here the nested form
          [a{color:red;&:hover{margin:0}}] is one byte longer than keeping the
-         adjacent rules flat, so Cascade keeps the flat form. *)
+         adjacent rules flat, so the flat form is the oracle. *)
       fixture ~category ~id ~upstream:"a{color:red;&:hover{margin:0}}"
         ~cascade:"a{color:red}a:hover{margin:0}" upstream
   | "selectors", "0003" ->
@@ -378,11 +381,16 @@ let normalize_expected ~category ~id expected =
          shorthand. *)
       fixture ~category ~id ~upstream:"a{position-try:flip-block,--custom}"
         ~cascade:"a{position-try:flip-block}" upstream
+  | "shorthands", "0074" ->
+      (* [flex:0 0] omits flex-basis. Browser engines expand omitted numeric
+         shorthand basis as [0%], while the source has an explicit length-zero
+         basis. Preserve the explicit basis and only drop the [px] unit. *)
+      fixture ~category ~id ~upstream:"a{flex:0 0}" ~cascade:"a{flex:0 0 0}"
+        upstream
   | "values", "0024" ->
-      (* The fixture canonicalizes cubic-bezier(.25,.1,.25,1) to [ease]. Cascade
-         then applies the transition shorthand default-elision rule: [ease] is
-         the initial timing function, so omitting it is shorter and
-         equivalent. *)
+      (* The fixture canonicalizes cubic-bezier(.25,.1,.25,1) to [ease]. The
+         transition shorthand's initial timing function is [ease], so omitting
+         it is shorter and equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
   | "values", "0010" ->
@@ -392,7 +400,7 @@ let normalize_expected ~category ~id expected =
       fixture ~category ~id ~upstream:"a{font-size:16px}"
         ~cascade:"a{font-size:12pt}" upstream
   | "whitespace", "0009" ->
-      (* Cascade's default minifier may use evergreen target facts.
+      (* The default minifier may use maintained-evergreen target facts.
          [display:flex] is true for that target, so [@supports not
          (display:flex)] is target-dead and may be dropped. The css-minify-tests
          harness intentionally exercises default minify, not --enforce-spec. *)
@@ -401,16 +409,16 @@ let normalize_expected ~category ~id expected =
         upstream
   | "whitespace", "0010" ->
       (* Same evergreen-target policy as whitespace/0009. The positive feature
-         query [(display:grid) and (gap:10px)] is always true for Cascade's
-         evergreen target, so default minify may elide the wrapper and keep the
-         inner rule. *)
+         query [(display:grid) and (gap:10px)] is always true for maintained
+         evergreen browsers, so default minify may elide the wrapper and keep
+         the inner rule. *)
       fixture ~category ~id
         ~upstream:
           "@supports(display:grid)and (gap:10px){a{display:grid;gap:10px}}"
         ~cascade:"a{display:grid;gap:10px}" upstream
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
-         calc() and keeps the calc() wrapper. Cascade folds exact constant math:
+         calc() and keeps the calc() wrapper. Exact constant math may fold:
          [calc(100% * 2)] stays a percentage and shortens to [200%] without
          rounding. *)
       fixture ~category ~id ~upstream:"a{width:calc(100%*2)}"
