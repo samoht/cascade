@@ -3390,28 +3390,125 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
-(* CSS Color 4 color() / color-mix() components are normalized to [0, 1] for
-   srgb / srgb-linear / display-p3 / a98-rgb / prophoto-rgb / rec2020 and
-   similar spaces. Under minify, round to 3 decimals: a half-step of 0.0005 per
-   channel keeps the three-channel error within the documented 0.001 Oklab
-   budget ([sqrt(3) * 0.0005 < 0.001]), matching the [lab()] / [lch()] channel
-   precision. *)
-let pp_component_float ctx f =
+(* Convert the three channels of a [color(<space> ...)] value to Oklab so a
+   candidate rounding can be measured against the color-difference budget.
+   Returns [None] for spaces that are not [color()] predefined-RGB / XYZ
+   spaces. *)
+let color_func_to_oklab (space : color_space) (c1, c2, c3) :
+    Color_space.lab option =
+  let to_oklab = Color_space.linear_srgb_to_oklab in
+  let from_xyz_d65 xyz = to_oklab (Color_space.xyz_d65_to_linear_srgb xyz) in
+  match space with
+  | Srgb ->
+      Some
+        (to_oklab
+           ( Color_space.srgb_to_linear c1,
+             Color_space.srgb_to_linear c2,
+             Color_space.srgb_to_linear c3 ))
+  | Srgb_linear -> Some (to_oklab (c1, c2, c3))
+  | Display_p3 ->
+      Some
+        (from_xyz_d65
+           (Color_space.linear_display_p3_to_xyz_d65
+              ( Color_space.display_p3_to_linear c1,
+                Color_space.display_p3_to_linear c2,
+                Color_space.display_p3_to_linear c3 )))
+  | A98_rgb ->
+      Some
+        (from_xyz_d65
+           (Color_space.linear_a98_rgb_to_xyz_d65
+              ( Color_space.a98_rgb_to_linear c1,
+                Color_space.a98_rgb_to_linear c2,
+                Color_space.a98_rgb_to_linear c3 )))
+  | Prophoto_rgb ->
+      Some
+        (from_xyz_d65
+           (Color_space.xyz_d50_to_d65
+              (Color_space.linear_prophoto_rgb_to_xyz_d50
+                 ( Color_space.prophoto_rgb_to_linear c1,
+                   Color_space.prophoto_rgb_to_linear c2,
+                   Color_space.prophoto_rgb_to_linear c3 ))))
+  | Rec2020 ->
+      Some
+        (from_xyz_d65
+           (Color_space.linear_rec2020_to_xyz_d65
+              ( Color_space.rec2020_to_linear c1,
+                Color_space.rec2020_to_linear c2,
+                Color_space.rec2020_to_linear c3 )))
+  | Xyz | Xyz_d65 -> Some (from_xyz_d65 (c1, c2, c3))
+  | Xyz_d50 -> Some (from_xyz_d65 (Color_space.xyz_d50_to_d65 (c1, c2, c3)))
+  | Lab | Oklab | Lch | Oklch | Hsl | Hwb -> None
+
+let oklab_distance (l1, a1, b1) (l2, a2, b2) =
+  let dl = l1 -. l2 and da = a1 -. a2 and db = b1 -. b2 in
+  sqrt ((dl *. dl) +. (da *. da) +. (db *. db))
+
+(* The three numeric channels of a [color()] value, with percentages normalised
+   to [0, 1]; [None] when any channel is non-numeric (var/calc/none). *)
+let color_numeric_channels (components : component list) =
+  match components with
+  | [ a; b; c ] -> (
+      let value (component : component) =
+        match component with
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.)
+        | _ -> None
+      in
+      match (value a, value b, value c) with
+      | Some a, Some b, Some c -> Some (a, b, c)
+      | _ -> None)
+  | _ -> None
+
+(* Fewest decimals whose round-trip stays within the documented 0.001 Oklab
+   budget (README). Channels in gamma-encoded RGB spaces reach it at 3 decimals;
+   linear-light / XYZ spaces, where a fixed channel step carries more Oklab
+   distance, need 4. Falls back to 4 when the budget cannot be checked. *)
+let color_channel_decimals (space : color_space)
+    (channels : (float * float * float) option) =
+  match channels with
+  | None -> 4
+  | Some (c1, c2, c3) -> (
+      match color_func_to_oklab space (c1, c2, c3) with
+      | None -> 4
+      | Some orig ->
+          let round_dec n x =
+            let m = 10. ** float_of_int n in
+            Float.round (x *. m) /. m
+          in
+          let within n =
+            match
+              color_func_to_oklab space
+                (round_dec n c1, round_dec n c2, round_dec n c3)
+            with
+            | Some rounded -> oklab_distance orig rounded <= 0.001
+            | None -> false
+          in
+          let rec find n =
+            if n >= 6 then 6 else if within n then n else find (n + 1)
+          in
+          find 3)
+
+let pp_component_float ~decimals ctx f =
   if Pp.minified ctx then
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 f)
+    Pp.string ctx
+      (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:decimals f)
   else Pp.float ctx f
 
-let rec pp_component : component Pp.t =
+let rec pp_component_prec ~decimals : component Pp.t =
  fun ctx -> function
-  | Num f -> pp_component_float ctx f
-  | Pct f when Pp.minified ctx -> pp_component_float ctx (f /. 100.)
+  | Num f -> pp_component_float ~decimals ctx f
+  | Pct f when Pp.minified ctx -> pp_component_float ~decimals ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
   | Angle h -> pp_hue ctx h
-  | Var v -> pp_var pp_component ctx v
-  | Calc c -> pp_calc pp_component ctx c
+  | Var v -> pp_var (pp_component_prec ~decimals) ctx v
+  | Calc c -> pp_calc (pp_component_prec ~decimals) ctx c
   | Component_none -> Pp.string ctx "none"
+
+(* Context-free single component: without the sibling channels the Oklab budget
+   cannot be checked, so use the budget-safe 4-decimal fallback. *)
+let pp_component : component Pp.t = pp_component_prec ~decimals:4
 
 let pp_hue_interpolation : hue_interpolation Pp.t =
  fun ctx -> function
@@ -3438,19 +3535,19 @@ let color_component_needs_space ctx prev component =
     && static_component_can_touch_negative prev
     && static_component_starts_negative component)
 
-let rec pp_color_component_tail ctx prev = function
+let rec pp_color_component_tail ~decimals ctx prev = function
   | [] -> ()
   | component :: rest ->
       if color_component_needs_space ctx prev component then Pp.space ctx ();
-      pp_component ctx component;
-      pp_color_component_tail ctx component rest
+      pp_component_prec ~decimals ctx component;
+      pp_color_component_tail ~decimals ctx component rest
 
-let pp_color_components : component list Pp.t =
+let pp_color_components ~decimals : component list Pp.t =
  fun ctx -> function
   | [] -> ()
   | first :: rest ->
-      pp_component ctx first;
-      pp_color_component_tail ctx first rest
+      pp_component_prec ~decimals ctx first;
+      pp_color_component_tail ~decimals ctx first rest
 
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
@@ -3658,6 +3755,9 @@ let pp_color_space : color_space Pp.t =
   | Hwb -> Pp.string ctx "hwb"
 
 let pp_color' ctx space components alpha =
+  let decimals =
+    color_channel_decimals space (color_numeric_channels components)
+  in
   Pp.call "color"
     (fun ctx (space, components, alpha) ->
       pp_color_space ctx space;
@@ -3665,7 +3765,7 @@ let pp_color' ctx space components alpha =
       | [] -> ()
       | _ ->
           Pp.space ctx ();
-          pp_color_components ctx components);
+          pp_color_components ~decimals ctx components);
       pp_opt_alpha ctx alpha)
     ctx (space, components, alpha)
 
