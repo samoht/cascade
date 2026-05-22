@@ -485,10 +485,6 @@ val custom_prop_names : declaration list -> string list
 (** [custom_prop_names decls] extracts all custom property names from a list of
     declarations. *)
 
-val resolve_theme_guards : Pp.ctx -> declaration list -> declaration list
-(** [resolve_theme_guards ctx decls] filters out [Theme_guarded] declarations
-    whose [var_name] is not in the theme, and unwraps those that are. *)
-
 val theme_guarded : var_name:string -> declaration -> declaration
 (** [theme_guarded ~var_name decl] wraps [decl] so it is only emitted when
     [var_name] is present in the theme. *)

@@ -15,16 +15,9 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) must be
           suppressed there. *)
-  theme : String_set.t option;
-  theme_defaults : string -> string option;
 }
 
 type 'a t = ctx -> 'a -> unit
-
-let no_theme_defaults _ = None
-
-let in_theme ctx name =
-  match ctx.theme with None -> true | Some set -> String_set.mem name set
 
 (* [resolve_indent ~minify indent]: under [minify] there is no indentation;
    otherwise pick the explicit value or the default 2-space indent. *)
@@ -32,8 +25,7 @@ let resolve_indent ~minify = function
   | Some _ as i -> i
   | None -> if minify then None else Some 2
 
-let ctx ?(minify = false) ?indent ?(inline = false) ?theme
-    ?(theme_defaults = no_theme_defaults) buf =
+let ctx ?(minify = false) ?indent ?(inline = false) buf =
   {
     minify;
     level = 0;
@@ -43,17 +35,15 @@ let ctx ?(minify = false) ?indent ?(inline = false) ?theme
     in_function = false;
     in_calc = false;
     in_feature_query = false;
-    theme;
-    theme_defaults;
   }
 
-let to_buffer ?minify ?indent ?inline ?theme ?theme_defaults buf pp a =
-  let ctx = ctx ?minify ?indent ?inline ?theme ?theme_defaults buf in
+let to_buffer ?minify ?indent ?inline buf pp a =
+  let ctx = ctx ?minify ?indent ?inline buf in
   pp ctx a
 
-let to_string ?minify ?indent ?inline ?theme ?theme_defaults pp a =
+let to_string ?minify ?indent ?inline pp a =
   let buf = Buffer.create 1024 in
-  to_buffer ?minify ?indent ?inline ?theme ?theme_defaults buf pp a;
+  to_buffer ?minify ?indent ?inline buf pp a;
   Buffer.contents buf
 
 let nop _ _ = ()

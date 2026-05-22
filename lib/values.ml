@@ -105,22 +105,13 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
 
 (** Pretty-printing functions *)
 
-let in_theme = Pp.in_theme
-
+(* Prints the [var(--fallback_name)] used as another var's fallback, then the
+   outer var's closing paren. Theme resolution is a transform, not a print
+   concern, so the reference is emitted structurally. *)
 let pp_var_fallback ctx fallback_name =
-  if in_theme ctx fallback_name then (
-    Pp.string ctx "var(--";
-    Pp.string ctx fallback_name;
-    Pp.string ctx "))")
-  else
-    match ctx.theme_defaults fallback_name with
-    | Some resolved ->
-        Pp.string ctx resolved;
-        Pp.char ctx ')'
-    | Option.None ->
-        Pp.string ctx "var(--";
-        Pp.string ctx fallback_name;
-        Pp.string ctx "))"
+  Pp.string ctx "var(--";
+  Pp.string ctx fallback_name;
+  Pp.string ctx "))"
 
 let pp_syntax_fallback ctx value =
   Pp.string ctx
@@ -142,11 +133,6 @@ let pp_empty2_var ctx name =
   Pp.string ctx "var(--";
   Pp.string ctx name;
   Pp.string ctx ",  )"
-
-let pp_theme_default_or ctx name none =
-  match ctx.Pp.theme_defaults name with
-  | Some resolved -> Pp.string ctx resolved
-  | Option.None -> none ()
 
 let pp_typed_var_fallback pp_value ctx name value =
   Pp.string ctx "var(--";
@@ -188,38 +174,22 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
   | Option.None -> (
       match v.fallback with
       | Fallback value -> pp_value ctx value
-      | Var_fallback name ->
-          pp_theme_default_or ctx name (fun () -> pp_var_ref ctx v.name)
+      | Var_fallback _ -> pp_var_ref ctx v.name
       | Syntax_fallback value ->
           pp_syntax_fallback { ctx with in_function = true } value
       | Empty | Empty2 -> ()
       | None -> pp_var_ref ctx v.name)
 
-(* CSS Custom Properties resolution at print time: - if [v.name] is in the theme
-   protection set, keep [var(--name)]; - otherwise consult [theme_defaults]:
-   [Some value] inlines, [None] preserves the runtime [var()] reference. Typed
-   defaults are only used by explicit inline mode. The theme set acts as a
-   denylist/protection set, never as an allowlist for non-theme vars. *)
-let pp_var_without_fallback : type a. a Pp.t -> a var Pp.t =
- fun _pp_value ctx v ->
-  if in_theme ctx v.name then pp_var_ref ctx v.name
-  else pp_theme_default_or ctx v.name (fun () -> pp_var_ref ctx v.name)
-
+(* Print the [var()] reference structurally. Theme resolution (keep / inline a
+   default) is an AST transform that runs before printing, so the printer never
+   consults a theme set or resolver. *)
 let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   match v.fallback with
-  | None -> pp_var_without_fallback pp_value ctx v
+  | None -> pp_var_ref ctx v.name
   | Empty -> pp_empty_var ctx v.name
   | Empty2 -> pp_empty2_var ctx v.name
-  | Fallback value ->
-      (* Same denylist semantics as [pp_var_without_fallback]: if the name is in
-         the theme protection set or has no resolver answer, keep the
-         [var(--name, fallback)] spelling. *)
-      if in_theme ctx v.name then
-        pp_typed_var_fallback pp_value ctx v.name value
-      else
-        pp_theme_default_or ctx v.name (fun () ->
-            pp_typed_var_fallback pp_value ctx v.name value)
+  | Fallback value -> pp_typed_var_fallback pp_value ctx v.name value
   | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value
   | Var_fallback fallback_name ->
       Pp.string ctx "var(--";
@@ -879,23 +849,21 @@ let length_of_default_string value : length option =
   | value -> value
   | exception Cursor.Parse_error _ -> None
 
-let fallback_of_var_resolution ctx parse_default : 'a fallback -> 'a option =
+let fallback_of_var_resolution _parse_default : 'a fallback -> 'a option =
   function
   | Fallback value -> Option.Some value
-  | Var_fallback name -> Option.bind (ctx.Pp.theme_defaults name) parse_default
-  | None | Empty | Empty2 | Syntax_fallback _ -> Option.None
+  | Var_fallback _ | None | Empty | Empty2 | Syntax_fallback _ -> Option.None
 
+(* Var resolution at print time covers only [inline] mode, which reads the
+   already-resolved [v.default] from the AST. Theme resolution is a transform
+   that runs earlier, so the printer never consults a resolver. *)
 let value_of_var_resolution ctx parse_default (v : 'a var) : 'a option =
-  if in_theme ctx v.name then Option.None
-  else
-    match ctx.Pp.theme_defaults v.name with
-    | Option.Some value -> parse_default value
-    | Option.None when ctx.inline ->
-        Option.fold
-          ~none:(fallback_of_var_resolution ctx parse_default v.fallback)
-          ~some:(fun value -> Option.Some value)
-          v.default
-    | Option.None -> Option.None
+  if ctx.Pp.inline then
+    Option.fold
+      ~none:(fallback_of_var_resolution parse_default v.fallback)
+      ~some:(fun value -> Option.Some value)
+      v.default
+  else Option.None
 
 let length_of_var_resolution ctx (v : length var) =
   value_of_var_resolution ctx length_of_default_string v

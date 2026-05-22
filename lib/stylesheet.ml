@@ -840,7 +840,7 @@ let pp_moz_document_condition ctx = function
 let pp_declarations_statement ctx raw_decls =
   (* Bare declarations for CSS nesting - no selector/braces, just declarations.
      No extra indent since the containing block handles it *)
-  let decls = Declaration.resolve_theme_guards ctx raw_decls in
+  let decls = raw_decls in
   Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
   if decls <> [] && not ctx.Pp.minify then Pp.semicolon ctx ()
 
@@ -1063,7 +1063,7 @@ let rec pp_rule : rule Pp.t =
   Selector.pp ctx rule.selector;
   Pp.sp ctx ();
   Pp.block_open ctx ();
-  let decls = Declaration.resolve_theme_guards ctx rule.declarations in
+  let decls = rule.declarations in
   (match (decls, rule.nested) with
   | [], [] -> ()
   | decls, nested ->
@@ -1260,10 +1260,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
       Pp.sp ctx ();
-      let declarations =
-        Declaration.resolve_theme_guards ctx raw_declarations
-      in
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
+      Pp.braced_semicolon_list Declaration.pp_declaration ctx raw_declarations
   | Page_with_margins (selector, descriptors, margins) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
