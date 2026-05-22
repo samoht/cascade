@@ -3420,10 +3420,6 @@ let color_func_to_oklab (space : color_space) (c1, c2, c3) :
   | Xyz_d50 -> Some (from_xyz_d65 (Color_space.xyz_d50_to_d65 (c1, c2, c3)))
   | Lab | Oklab | Lch | Oklch | Hsl | Hwb -> None
 
-let oklab_distance (l1, a1, b1) (l2, a2, b2) =
-  let dl = l1 -. l2 and da = a1 -. a2 and db = b1 -. b2 in
-  sqrt ((dl *. dl) +. (da *. da) +. (db *. db))
-
 (* The three numeric channels of a [color()] value, with percentages normalised
    to [0, 1]; [None] when any channel is non-numeric (var/calc/none). *)
 let color_numeric_channels (components : component list) =
@@ -3461,7 +3457,7 @@ let color_channel_decimals (space : color_space)
               color_func_to_oklab space
                 (round_dec n c1, round_dec n c2, round_dec n c3)
             with
-            | Some rounded -> oklab_distance orig rounded <= 0.001
+            | Some rounded -> Color_space.oklab_distance orig rounded <= 0.001
             | None -> false
           in
           let rec find n =
@@ -4078,25 +4074,21 @@ and pp_color : color Pp.t =
          to the original spelling when the colour resolves out of the sRGB gamut
          or can't reduce statically (var / calc / missing components). *)
       match static_color_to_linear_srgb color with
-      | Some (linear, alpha_f) ->
-          let r, g, b = Color_space.linear_rgb_to_rgb linear in
-          let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-          let in_gamut v = v >= -1e-3 && v <= 1.0 +. 1e-3 in
-          if in_gamut r && in_gamut g && in_gamut b then
-            let to_byte v = Float.to_int (Float.round (clamp01 v *. 255.0)) in
-            let r = to_byte r in
-            let g = to_byte g in
-            let b = to_byte b in
-            let alpha_byte =
-              Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
-            in
-            let a : alpha =
-              if alpha_byte = 255 then None
-              else if alpha_byte = 0 then Num 0.0
-              else Num (Float.of_int alpha_byte /. 255.0)
-            in
-            pp_rgb_hex_color ctx r g b a (fun () -> pp_color_default ctx color)
-          else pp_color_default ctx color
+      | Some (linear, alpha_f) -> (
+          match Color_space.fold_linear_srgb_to_bytes linear with
+          | Some (r, g, b) ->
+              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+              let alpha_byte =
+                Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
+              in
+              let a : alpha =
+                if alpha_byte = 255 then None
+                else if alpha_byte = 0 then Num 0.0
+                else Num (Float.of_int alpha_byte /. 255.0)
+              in
+              pp_rgb_hex_color ctx r g b a (fun () ->
+                  pp_color_default ctx color)
+          | None -> pp_color_default ctx color)
       | None -> pp_color_default ctx color)
   | _ -> pp_color_default ctx color
 
