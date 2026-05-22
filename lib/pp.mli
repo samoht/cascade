@@ -37,18 +37,6 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) are suppressed
           there. *)
-  theme : String_set.t option;
-      (** Optional set of theme-defined variable names. When [None] (default),
-          no theme-based resolution is performed — all vars emit as
-          [var(--name)]. When [Some set], bare theme var refs check the set:
-          names in the set emit [var(--name)], names not in the set resolve to
-          their typed defaults. For [Var_fallback], the fallback name is checked
-          similarly. *)
-  theme_defaults : string -> string option;
-      (** Lookup function for concrete CSS defaults of theme variable names.
-          Used when a [Var_fallback] name is not in the theme set: the fallback
-          name is looked up to get its concrete CSS string value. Defaults to
-          [fun _ -> None]. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -57,50 +45,18 @@ type 'a t = ctx -> 'a -> unit
 
 (** {2 Running Formatters} *)
 
-val no_theme_defaults : string -> string option
-(** [no_theme_defaults s] is the default [theme_defaults] function that always
-    returns [None]. *)
-
-val in_theme : ctx -> string -> bool
-(** [in_theme ctx name] checks if [name] is in the theme set. When [theme] is
-    [None] (no theme resolution), returns [true] — all vars are treated as if
-    they're in the theme. When [theme] is [Some set], returns
-    [String_set.mem name set]. *)
-
-val ctx :
-  ?minify:bool ->
-  ?indent:int ->
-  ?inline:bool ->
-  ?theme:String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  Buffer.t ->
-  ctx
+val ctx : ?minify:bool -> ?indent:int -> ?inline:bool -> Buffer.t -> ctx
 (** [ctx buf] builds a formatter context writing to [buf], for the
     serialise-to-string / measuring helpers. *)
 
 val to_buffer :
-  ?minify:bool ->
-  ?indent:int ->
-  ?inline:bool ->
-  ?theme:String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  Buffer.t ->
-  'a t ->
-  'a ->
-  unit
+  ?minify:bool -> ?indent:int -> ?inline:bool -> Buffer.t -> 'a t -> 'a -> unit
 (** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
     optional [indent] sets the per-level indent width (default: [None] under
     [minify], [Some 2] otherwise). *)
 
 val to_string :
-  ?minify:bool ->
-  ?indent:int ->
-  ?inline:bool ->
-  ?theme:String_set.t ->
-  ?theme_defaults:(string -> string option) ->
-  'a t ->
-  'a ->
-  string
+  ?minify:bool -> ?indent:int -> ?inline:bool -> 'a t -> 'a -> string
 (** [to_string formatter value] runs the formatter and returns a string. The
     optional [indent] sets the per-level indent width (default: [None] under
     [minify], [Some 2] otherwise). *)

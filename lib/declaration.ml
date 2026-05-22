@@ -2295,15 +2295,9 @@ let rec pp_declaration : declaration Pp.t =
       Pp.string ctx name;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      let bare_name =
-        if String.length name > 2 && String.sub name 0 2 = "--" then
-          String.sub name 2 (String.length name - 2)
-        else name
-      in
-      (match (layer, value, ctx.theme_defaults bare_name) with
-      | Some "theme", Typed { kind = Font_family; value }, _ ->
+      (match (layer, value) with
+      | Some "theme", Typed { kind = Font_family; value } ->
           pp_value ctx (Font_family, value)
-      | Some "theme", _, Some override_value -> Pp.string ctx override_value
       | _ ->
           pp_property_value ctx
             (Custom_property name, Custom_value { value; layer; meta = None }));
@@ -2316,8 +2310,10 @@ let rec pp_declaration : declaration Pp.t =
       pp_property_value ctx (property, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
-  | Theme_guarded { var_name; decl } ->
-      if Pp.in_theme ctx var_name then pp_declaration ctx decl
+  | Theme_guarded { decl; _ } ->
+      (* Theme guards are resolved by the transform layer; if one survives to
+         print time, emit the wrapped declaration. *)
+      pp_declaration ctx decl
 
 let pp = pp_declaration
 
@@ -2329,17 +2325,6 @@ let string_of_declaration ?(minify = false) decl =
   Buffer.contents buf
 
 let to_string ?minify (decl : t) = string_of_declaration ?minify decl
-
-(* Resolve theme guards: filter out Theme_guarded declarations whose var_name is
-   not in the theme, and unwrap those that are *)
-let resolve_theme_guards ctx decls =
-  List.filter_map
-    (fun decl ->
-      match decl with
-      | Theme_guarded { var_name; decl } ->
-          if Pp.in_theme ctx var_name then Some decl else None
-      | d -> Some d)
-    decls
 
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]
