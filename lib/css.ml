@@ -924,23 +924,77 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
   (* [theme=None] is "no theme declared": preserve [var()] references as-is.
      [theme=Some set] is "theme declared, with this keep-set": variables not in
      the keep-set are candidates for [theme_defaults] inlining. *)
-  let defaults =
-    match (theme, theme_defaults) with
-    | Option.Some _, Option.Some lookup ->
-        collect_var_names stylesheet
-        |> List.filter_map (fun raw_name ->
-            let bare =
-              if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--"
-              then String.sub raw_name 2 (String.length raw_name - 2)
-              else raw_name
-            in
-            if Pp.String_set.mem bare keep_set then Option.None
-            else
-              match lookup bare with
-              | Option.Some value -> Option.Some (raw_name, value)
-              | Option.None -> Option.None)
-    | _ -> []
+  let bare raw_name =
+    if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
+      String.sub raw_name 2 (String.length raw_name - 2)
+    else raw_name
   in
+  (* The [var()] references nested anywhere inside a default value (e.g.
+     [calc(1px + var(--foo))]), so resolving one default pulls its targets into
+     the inject set, and [Inline.vars]' recursive substitution chains them. Scan
+     the value text for [var(--name)] starts; a custom-property value is an
+     opaque token stream, so the AST var collector does not see inside it. *)
+  let var_names_in_value value =
+    let n = String.length value in
+    let names = ref [] in
+    let i = ref 0 in
+    while !i + 4 <= n do
+      if String.sub value !i 4 = "var(" then (
+        let j = ref (!i + 4) in
+        while !j < n && (value.[!j] = ' ' || value.[!j] = '\t') do
+          incr j
+        done;
+        if !j + 1 < n && value.[!j] = '-' && value.[!j + 1] = '-' then (
+          let k = ref !j in
+          while
+            !k < n
+            &&
+            match value.[!k] with
+            | ',' | ')' | ' ' | '\t' -> false
+            | _ -> true
+          do
+            incr k
+          done;
+          names := String.sub value !j (!k - !j) :: !names);
+        i := !i + 4)
+      else incr i
+    done;
+    !names
+  in
+  (* Resolve theme defaults transitively. Walk the dependency graph depth-first:
+     a name reached again while still on the current path is on a cycle and is
+     left live (added to [cyclic]) rather than injected; every other resolvable
+     name is injected so [Inline.vars] can chain through it. *)
+  let resolved : (string, string) Hashtbl.t = Hashtbl.create 16 in
+  let cyclic = ref [] in
+  let visiting : (string, unit) Hashtbl.t = Hashtbl.create 16 in
+  let mark_cyclic raw_name =
+    if not (List.mem raw_name !cyclic) then cyclic := raw_name :: !cyclic
+  in
+  let rec dfs raw_name =
+    if Hashtbl.mem resolved raw_name then ()
+    else if Hashtbl.mem visiting raw_name then
+      (* Back-edge: every name on the current path is on the cycle, so none of
+         them resolves to a concrete value - keep them all live. *)
+      Hashtbl.iter (fun k () -> mark_cyclic k) visiting
+    else if Pp.String_set.mem (bare raw_name) keep_set then ()
+    else
+      match theme_defaults with
+      | Option.None -> ()
+      | Option.Some lookup -> (
+          match lookup (bare raw_name) with
+          | Option.None -> ()
+          | Option.Some value ->
+              Hashtbl.replace visiting raw_name ();
+              List.iter dfs (var_names_in_value value);
+              Hashtbl.remove visiting raw_name;
+              if not (List.mem raw_name !cyclic) then
+                Hashtbl.replace resolved raw_name value)
+  in
+  (match theme with
+  | Option.Some _ -> List.iter dfs (collect_var_names stylesheet)
+  | Option.None -> ());
+  let defaults = Hashtbl.fold (fun k v acc -> (k, v) :: acc) resolved [] in
   if defaults = [] then stylesheet
   else
     (* Only the names [theme_defaults] resolved get their [var()] references
