@@ -418,19 +418,7 @@ let rec value_uses_runtime_subst = function
 
 (** Get the property name as a string from a declaration *)
 let rec property_name decl =
-  let ctx =
-    {
-      Pp.minify = true;
-      level = 0;
-      indent = None;
-      buf = Buffer.create 16;
-      inline = false;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let ctx = Pp.ctx ~minify:true (Buffer.create 16) in
   match decl with
   | Declaration { property; _ } ->
       pp_property ctx property;
@@ -440,19 +428,7 @@ let rec property_name decl =
 let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
-  let ctx =
-    {
-      Pp.minify;
-      level = 0;
-      indent = None;
-      buf = Buffer.create 16;
-      inline;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let ctx = Pp.ctx ~minify ~inline (Buffer.create 16) in
   match decl with
   | Declaration { property; value; _ } ->
       pp_property_value ctx (property, value);
@@ -1100,19 +1076,7 @@ let read_background_blend_mode_value t =
 
 let prop_name (type a) (prop_type : a property) =
   let buf = Buffer.create 32 in
-  let ctx =
-    {
-      Pp.minify = true;
-      level = 0;
-      indent = None;
-      buf;
-      inline = false;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let ctx = Pp.ctx ~minify:true buf in
   pp_property ctx prop_type;
   Buffer.contents buf
 
@@ -2360,19 +2324,7 @@ let pp = pp_declaration
 (* Convert a declaration to its string representation *)
 let string_of_declaration ?(minify = false) decl =
   let buf = Buffer.create 32 in
-  let ctx =
-    {
-      Pp.minify;
-      level = 0;
-      indent = None;
-      buf;
-      inline = false;
-      in_function = false;
-      in_calc = false;
-      theme = None;
-      theme_defaults = Pp.no_theme_defaults;
-    }
-  in
+  let ctx = Pp.ctx ~minify buf in
   pp_declaration ctx decl;
   Buffer.contents buf
 

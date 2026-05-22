@@ -4085,10 +4085,12 @@ and pp_color : color Pp.t =
  fun ctx color ->
   match (color, Pp.minified ctx) with
   | ( ( Oklab { l = Some _; a = Some _; b = Some _; _ }
+      | Oklch { l = Some _; c = Some _; _ }
       | Lab { l = Some _; a = Some _; b = Some _; _ }
       | Lch { l = Some _; c = Some _; _ }
       | Color _ ),
-      true ) -> (
+      true )
+    when not (Pp.in_feature_query ctx) -> (
       (* CSS Color 4 sec. 13.1.5: at the computed-value boundary an all-static
          colour expressed in any colour space canonicalises through linear sRGB,
          then sRGB bytes, then the hex/named shortest-spelling pass. Falls back

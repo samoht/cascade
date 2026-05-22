@@ -32,6 +32,11 @@ type ctx = {
       (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
           boundary ([calc] is type-aware so [<percentage>] and [<number>] are
           not interchangeable). *)
+  in_feature_query : bool;
+      (** Set while serialising the value of an [@supports (property: value)]
+          feature test. The value is a capability predicate for that exact
+          syntax, so lossy rewrites (e.g. static colour folding) are suppressed
+          there. *)
   theme : String_set.t option;
       (** Optional set of theme-defined variable names. When [None] (default),
           no theme-based resolution is performed — all vars emit as
@@ -61,6 +66,17 @@ val in_theme : ctx -> string -> bool
     [None] (no theme resolution), returns [true] — all vars are treated as if
     they're in the theme. When [theme] is [Some set], returns
     [String_set.mem name set]. *)
+
+val ctx :
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?theme:String_set.t ->
+  ?theme_defaults:(string -> string option) ->
+  Buffer.t ->
+  ctx
+(** [ctx buf] builds a formatter context writing to [buf], for the
+    serialise-to-string / measuring helpers. *)
 
 val to_buffer :
   ?minify:bool ->
@@ -232,6 +248,14 @@ val block_close : unit t
 
 val minified : ctx -> bool
 (** [minified ctx] queries whether context is in minification mode. *)
+
+val in_feature_query : ctx -> bool
+(** [in_feature_query ctx] is true while serialising an [@supports] feature-test
+    value, where lossy rewrites must be suppressed. *)
+
+val enter_feature_query : ctx -> ctx
+(** [enter_feature_query ctx] marks [ctx] as inside an [@supports] feature-test
+    value. *)
 
 val cond : (ctx -> bool) -> 'a t -> 'a t -> 'a t
 (** [cond predicate then_fmt else_fmt] conditionally chooses formatter based on

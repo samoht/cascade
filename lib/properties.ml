@@ -16718,19 +16718,7 @@ let read_image_set_option t : image_set_option =
     | None -> None
     | Some (value, unit_) ->
         let buf = Buffer.create 8 in
-        let pp_ctx =
-          {
-            Pp.minify = true;
-            level = 0;
-            indent = None;
-            buf;
-            inline = false;
-            in_function = false;
-            in_calc = false;
-            theme = None;
-            theme_defaults = Pp.no_theme_defaults;
-          }
-        in
+        let pp_ctx = Pp.ctx ~minify:true buf in
         Pp.float pp_ctx value;
         Buffer.add_string buf unit_;
         Some (Buffer.contents buf)
