@@ -3503,6 +3503,8 @@ let rec pp_font_family : font_family Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Name s ->
       let safe_ident_char = function
         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
@@ -14203,7 +14205,13 @@ let font_family_generic_css =
   ]
 
 let font_family_css_keywords : (string * font_family) list =
-  [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
+  [
+    ("inherit", Inherit);
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
 
 let font_family_popular_web =
   [
@@ -14307,9 +14315,20 @@ let font_family_of_quoted_name name =
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
+  (* CSS Fonts 4 sec. 2.1 / CSS Cascade 5 sec. 7.3: the CSS-wide keywords and
+     the reserved [default] are excluded from [<custom-ident>], so none may
+     appear as any word of an unquoted family name. *)
+  let is_reserved_word word =
+    List.mem
+      (String.lowercase_ascii word)
+      [ "inherit"; "initial"; "unset"; "revert"; "revert-layer"; "default" ]
+  in
   (* Read unquoted multi-word font names, e.g., "arial rounded" *)
   let rec read_unquoted_name_words acc =
     let word = Cursor.ident ~keep_case:true t in
+    if is_reserved_word word then
+      Cursor.err_invalid t
+        "font-family: reserved word cannot appear in an unquoted family name";
     let acc = word :: acc in
     Cursor.ws t;
     if Option.is_some (Cursor.peek_ident t) then read_unquoted_name_words acc
@@ -14319,7 +14338,14 @@ let rec read_font_family_single t : font_family =
     (* For single-word names, try enum match first *)
     (Cursor.enum_or_calls "font-family" font_family_all_enums
        ~calls:[ ("var", read_var) ]
-       ~default:(fun t -> (Name (Cursor.ident ~keep_case:true t) : font_family))
+       ~default:(fun t ->
+         let name = Cursor.ident ~keep_case:true t in
+         (* CSS Fonts 4 sec. 2.1: [default] is reserved and is not a valid
+            unquoted [<custom-ident>] family name; it must be quoted. *)
+         if String.lowercase_ascii name = "default" then
+           Cursor.err_invalid t
+             "font-family: 'default' is reserved and must be quoted"
+         else (Name name : font_family))
        t
       : font_family)
   in
@@ -14338,20 +14364,9 @@ let rec read_font_family_single t : font_family =
           t
       in
       if is_multi_word then
-        (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
-           can't be the first word of a multi-word [<custom-ident>+] font-family
-           value (e.g. [initial system-ui] is invalid). *)
-        let first_word = Cursor.lookahead (Cursor.ident ~keep_case:true) t in
-        if
-          List.mem
-            (String.lowercase_ascii first_word)
-            [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
-        then
-          Cursor.err_invalid t
-            "font-family: CSS-wide keyword cannot be mixed with other values"
-        else
-          (* Multi-word unquoted name - read all words *)
-          Name (read_unquoted_name_words [])
+        (* Multi-word unquoted name; [read_unquoted_name_words] rejects any
+           reserved word in the sequence. *)
+        Name (read_unquoted_name_words [])
       else
         (* Single word - try enum match *)
         read_single_word t
@@ -14361,7 +14376,6 @@ and read_font_family t : font_family =
   (* CSS Cascade 5 §7.3: a CSS-wide keyword ([inherit] / [initial] / [unset] /
      [revert] / [revert-layer]) must stand alone; mixed inside a
      [<custom-ident>#] list it makes the whole declaration invalid. *)
-  let before = Cursor.remaining t in
   let rec loop acc =
     Cursor.ws t;
     if Cursor.comma_opt t then (
@@ -14372,20 +14386,16 @@ and read_font_family t : font_family =
   let first = read_font_family_single t in
   let items = loop [ first ] in
   let is_css_wide = function
-    | (Inherit : font_family) | Initial | Unset -> true
+    | (Inherit : font_family) | Initial | Unset | Revert | Revert_layer -> true
     | _ -> false
   in
   match items with
   | [ x ] -> x
   | _ when List.exists is_css_wide items ->
-      let after = Cursor.remaining t in
-      let consumed_count = List.length before - List.length after in
-      let rec take n = function
-        | [] -> []
-        | _ when n <= 0 -> []
-        | x :: xs -> x :: take (n - 1) xs
-      in
-      Invalid (take consumed_count before)
+      (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword must be the sole value; in a
+         [<family-name>#] list it makes the whole declaration invalid. *)
+      Cursor.err_invalid t
+        "font-family: a CSS-wide keyword cannot appear in a family list"
   | l -> List l
 
 let rec read_font_stretch t : font_stretch =

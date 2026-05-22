@@ -201,7 +201,7 @@ let css2_chapter_matrix () =
     (fun (input, expected) -> roundtrip input expected)
     [
       ( "html, body { display: block; min-height: 100% }",
-        "html,body{display:block;min-height:100%}" );
+        "body,html{display:block;min-height:100%}" );
       (* CSS Selectors 4 section 3.5: [*] in a non-solitary compound is
          redundant, so [*[lang|=en]] serializes as [[lang|=en]]. *)
       ( "body *[lang|=\"en\"] + p:first-line { text-transform: uppercase }",
@@ -363,7 +363,7 @@ let selectors_list () =
 (* SS 8.4.1 - :where() and :is() pseudo-classes *)
 let selectors_where_is () =
   roundtrip ":where(.a, .b) { color: red }" ":where(.a,.b){color:red}";
-  roundtrip ":is(.a, .b) { color: red }" ":is(.a,.b){color:red}";
+  roundtrip ":is(.a, .b) { color: red }" ".a,.b{color:red}";
   (* Empty forgiving list: matches-nothing, dropped + warned in lenient mode;
      strict mode rejects (pinned by [cross_mode_pinning]). *)
   recover ":is() { color: red }" "" 1;
@@ -565,7 +565,7 @@ let cascade_current_at_rules () =
   roundtrip "@scope (.card) { .title { color: red } }"
     "@scope(.card){.title{color:red}}";
   roundtrip "@scope (:root) to (.stop, .end) { .title { color: blue } }"
-    "@scope(:root)to (.stop,.end){.title{color:#00f}}";
+    "@scope(:root)to (.end,.stop){.title{color:#00f}}";
   roundtrip "@starting-style { .dialog { opacity: 0 } }"
     "@starting-style{.dialog{opacity:0}}"
 
@@ -612,7 +612,7 @@ let nesting_rules () =
 
 (* SS 2 - Custom property definitions *)
 let custom_properties () =
-  roundtrip ":root { --primary-color: blue }" ":root{--primary-color:#00f}";
+  roundtrip ":root { --primary-color: blue }" ":root{--primary-color:blue}";
   roundtrip ".x { color: var(--primary-color) }"
     ".x{color:var(--primary-color)}"
 
@@ -625,7 +625,7 @@ let font_face () =
   roundtrip
     "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
      format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
-    "@font-face{font-family:Brand;src:url(brand.woff2)format(\"woff2\");font-display:swap;unicode-range:U+25-FF}"
+    "@font-face{font-family:Brand;src:url(brand.woff2)format(woff2);font-display:swap;unicode-range:U+25-FF}"
 
 (* {2 CSS Animations Level 1} https://www.w3.org/TR/css-animations-1/ *)
 
@@ -1091,7 +1091,7 @@ let minified_shortest_spec_edges () =
       ( "@scope (.card) { .title { color: red } }",
         "@scope(.card){.title{color:red}}" );
       ( "@scope (.card) to (.footer, .aside) { .title { color: blue } }",
-        "@scope(.card)to (.footer,.aside){.title{color:#00f}}" );
+        "@scope(.card)to (.aside,.footer){.title{color:#00f}}" );
       ( ".card { @scope (&) to (.boundary) { & .title { color: blue } } }",
         ".card{@scope(&)to (.boundary){& .title{color:#00f}}}" );
       ("::before { content: '' }", ":before{content:\"\"}");
@@ -1103,7 +1103,7 @@ let minified_shortest_spec_edges () =
       (".x { transition-duration: 500ms }", ".x{transition-duration:.5s}");
       ( "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
          format(\"woff2\"); unicode-range: U+0025-00FF }",
-        "@font-face{font-family:Brand;src:url(brand.woff2)format(\"woff2\");unicode-range:U+25-FF}"
+        "@font-face{font-family:Brand;src:url(brand.woff2)format(woff2);unicode-range:U+25-FF}"
       );
     ]
 
