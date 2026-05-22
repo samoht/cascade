@@ -2711,6 +2711,8 @@ let test_aspect_ratio () =
 
 let test_flex () =
   check_flex "1";
+  check_flex ~expected:"1 1 0" "1 1 0";
+  check_flex ~expected:"1 1 0" "1 1 0px";
   check_flex ~expected:"1 auto" "1 1 auto";
   check_flex "none";
   check_flex "auto";
