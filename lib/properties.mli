@@ -704,6 +704,18 @@ val pp_flex : flex Pp.t
 val read_flex : Cursor.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
 
+val pp_column_width : column_width Pp.t
+(** [pp_column_width] is the pretty-printer for [column_width]. *)
+
+val pp_column_count : column_count Pp.t
+(** [pp_column_count] is the pretty-printer for [column_count]. *)
+
+val pp_position_try : position_try Pp.t
+(** [pp_position_try] is the pretty-printer for [position_try]. *)
+
+val pp_border_image_repeat : border_image_repeat Pp.t
+(** [pp_border_image_repeat] is the pretty-printer for [border_image_repeat]. *)
+
 val pp_flex_basis : flex_basis Pp.t
 (** [pp_flex_basis] pretty-prints a flex-basis value. *)
 
