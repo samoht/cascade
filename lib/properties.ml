@@ -5425,7 +5425,12 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
     emit pp_list_style_type type_;
     emit pp_list_style_position position;
     emit pp_list_style_image image;
-    if !first then Pp.string ctx "outside"
+    (* Everything was an initial value and got dropped: the shorthand still
+       needs one token. Emit the type initial [disc] (the shortest spelling of
+       the all-initial value), not the position initial [outside] - a lone
+       [outside] would set the position, changing nothing, but [disc] is shorter
+       and is the canonical single-value form. *)
+    if !first then Pp.string ctx "disc"
 
 let rec pp_list_style : list_style Pp.t =
  fun ctx -> function
