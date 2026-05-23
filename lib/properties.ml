@@ -12031,6 +12031,103 @@ let rec read_list_style_image t : list_style_image =
     ]
     t
 
+(* Parse the [list-style] shorthand into a typed [list_style_shorthand] record.
+   Each slot is recognised by the longhand reader; a single bare [none]
+   populates both [type_] and [image] per CSS Lists 3 sec. 4.1. *)
+let try_list_style_slot r read_fn (slot : 'a option ref) =
+  if !slot <> Option.None then false
+  else
+    let pos = Cursor.save r in
+    match read_fn r with
+    | v ->
+        slot := Some v;
+        true
+    | exception Cursor.Parse_error _ ->
+        Cursor.restore r pos;
+        false
+
+let read_list_style_shorthand r : list_style_shorthand =
+  let type_ : list_style_type option ref = ref Option.None in
+  let position : list_style_position option ref = ref Option.None in
+  let image : list_style_image option ref = ref Option.None in
+  let saw_none = ref false in
+  let try_one () =
+    try_list_style_slot r read_list_style_position position
+    || try_list_style_slot r read_list_style_image image
+    || try_list_style_slot r read_list_style_type type_
+  in
+  let rec consume () =
+    Cursor.ws r;
+    if Cursor.is_done r then ()
+    else
+      let saved = Cursor.save r in
+      let kw = Cursor.peek_ident r in
+      if kw = Some "none" then begin
+        let _ = Cursor.ident r in
+        saw_none := true;
+        consume ()
+      end
+      else if try_one () then consume ()
+      else Cursor.restore r saved
+  in
+  consume ();
+  Cursor.ws r;
+  if not (Cursor.is_done r) then
+    Cursor.err_invalid r "invalid list-style shorthand";
+  if !saw_none then begin
+    if !type_ = Option.None then type_ := Some (None : list_style_type);
+    if !image = Option.None then image := Some (None : list_style_image)
+  end;
+  if
+    !type_ = Option.None && !position = Option.None && !image = Option.None
+    && not !saw_none
+  then Cursor.err_invalid r "invalid list-style shorthand";
+  { type_ = !type_; position = !position; image = !image }
+
+let rec read_list_style t : list_style =
+  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  let lower = String.lowercase_ascii (String.trim raw) in
+  match lower with
+  | "inherit" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Inherit
+  | "initial" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Initial
+  | "unset" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Unset
+  | "revert" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Revert
+  | "revert-layer" ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      Revert_layer
+  | _ ->
+      let is_valid_var () =
+        let r = Cursor.of_string raw in
+        match
+          Values.read_var (fun r -> Cursor.consume_to_decl_end ~trim:true r) r
+        with
+        | (_ : string var) ->
+            Cursor.ws r;
+            Cursor.is_done r
+        | exception Cursor.Parse_error _ -> false
+      in
+      if is_valid_var () then (
+        let r = Cursor.of_string raw in
+        let var = Values.read_var (fun r -> read_list_style r) r in
+        ignore (Cursor.consume_to_decl_end ~trim:true t);
+        Var var)
+      else
+        let body =
+          try read_list_style_shorthand (Cursor.of_string raw)
+          with Cursor.Parse_error _ ->
+            Cursor.err_invalid t "invalid list-style shorthand"
+        in
+        ignore (Cursor.consume_to_decl_end ~trim:true t);
+        Shorthand body
+
 let rec read_table_layout t : table_layout =
   Cursor.enum_or_var "table-layout"
     [
