@@ -373,6 +373,18 @@ let check_column_count =
 let check_position_try =
   check_value_cursor "position-try" read_position_try pp_position_try
 
+let check_border_image_repeat =
+  check_value_cursor "border-image-repeat" read_border_image_repeat
+    pp_border_image_repeat
+
+let check_border_image_width =
+  check_value_cursor "border-image-width" read_border_image_width
+    pp_border_image_width
+
+let check_border_image_outset =
+  check_value_cursor "border-image-outset" read_border_image_outset
+    pp_border_image_outset
+
 let check_place_items =
   check_value_cursor "place-items" read_place_items pp_place_items
 
@@ -2755,6 +2767,28 @@ let test_position_try () =
   check_position_try "most-width --bar";
   neg_cursor read_position_try "123"
 
+let test_border_image_repeat () =
+  check_border_image_repeat "stretch";
+  check_border_image_repeat "repeat";
+  check_border_image_repeat "stretch repeat";
+  check_border_image_repeat "inherit";
+  neg_cursor read_border_image_repeat "blue"
+
+let test_border_image_width () =
+  check_border_image_width "1";
+  check_border_image_width "10px";
+  check_border_image_width "auto";
+  check_border_image_width "1 2";
+  check_border_image_width "inherit";
+  neg_cursor read_border_image_width "blue"
+
+let test_border_image_outset () =
+  check_border_image_outset "1";
+  check_border_image_outset "10px";
+  check_border_image_outset "1 2";
+  check_border_image_outset "inherit";
+  neg_cursor read_border_image_outset "blue"
+
 let test_grid_line () =
   check_grid_line "auto";
   check_grid_line "1";
@@ -3498,6 +3532,9 @@ let tests =
     test_case "column-width" `Quick test_column_width;
     test_case "column-count" `Quick test_column_count;
     test_case "position-try" `Quick test_position_try;
+    test_case "border-image-repeat" `Quick test_border_image_repeat;
+    test_case "border-image-width" `Quick test_border_image_width;
+    test_case "border-image-outset" `Quick test_border_image_outset;
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
