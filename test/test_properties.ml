@@ -360,6 +360,10 @@ let check_justify_content =
 
 let check_flex = check_value_cursor "flex" read_flex pp_flex
 
+let check_font_variant_css21 =
+  check_value_cursor "font-variant-css21" read_font_variant_css21
+    pp_font_variant_css21
+
 let check_place_items =
   check_value_cursor "place-items" read_place_items pp_place_items
 
@@ -2719,6 +2723,11 @@ let test_flex () =
   check_flex "inherit";
   neg_cursor read_flex "invalid-flex"
 
+let test_font_variant_css21 () =
+  check_font_variant_css21 "normal";
+  check_font_variant_css21 "small-caps";
+  neg_cursor read_font_variant_css21 "oblique"
+
 let test_grid_line () =
   check_grid_line "auto";
   check_grid_line "1";
@@ -3458,6 +3467,7 @@ let tests =
     test_case "place-items" `Quick test_place_items;
     test_case "place-content" `Quick test_place_content;
     test_case "flex" `Quick test_flex;
+    test_case "font-variant-css21" `Quick test_font_variant_css21;
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
