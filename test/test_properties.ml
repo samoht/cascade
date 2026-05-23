@@ -364,6 +364,15 @@ let check_font_variant_css21 =
   check_value_cursor "font-variant-css21" read_font_variant_css21
     pp_font_variant_css21
 
+let check_column_width =
+  check_value_cursor "column-width" read_column_width pp_column_width
+
+let check_column_count =
+  check_value_cursor "column-count" read_column_count pp_column_count
+
+let check_position_try =
+  check_value_cursor "position-try" read_position_try pp_position_try
+
 let check_place_items =
   check_value_cursor "place-items" read_place_items pp_place_items
 
@@ -2728,6 +2737,24 @@ let test_font_variant_css21 () =
   check_font_variant_css21 "small-caps";
   neg_cursor read_font_variant_css21 "oblique"
 
+let test_column_width () =
+  check_column_width "auto";
+  check_column_width "200px";
+  check_column_width "inherit";
+  neg_cursor read_column_width "small-caps"
+
+let test_column_count () =
+  check_column_count "auto";
+  check_column_count "3";
+  check_column_count "inherit";
+  neg_cursor read_column_count "small-caps"
+
+let test_position_try () =
+  check_position_try "inherit";
+  check_position_try "--foo";
+  check_position_try "most-width --bar";
+  neg_cursor read_position_try "123"
+
 let test_grid_line () =
   check_grid_line "auto";
   check_grid_line "1";
@@ -3468,6 +3495,9 @@ let tests =
     test_case "place-content" `Quick test_place_content;
     test_case "flex" `Quick test_flex;
     test_case "font-variant-css21" `Quick test_font_variant_css21;
+    test_case "column-width" `Quick test_column_width;
+    test_case "column-count" `Quick test_column_count;
+    test_case "position-try" `Quick test_position_try;
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
