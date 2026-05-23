@@ -10102,6 +10102,11 @@ let pp_font_variant_css21 ctx = function
   | (Normal : font_variant_css21) -> Pp.string ctx "normal"
   | Small_caps -> Pp.string ctx "small-caps"
 
+let read_font_variant_css21 t : font_variant_css21 =
+  Cursor.enum "font-variant-css21"
+    [ ("normal", (Normal : font_variant_css21)); ("small-caps", Small_caps) ]
+    t
+
 let drop_font_default ctx (type a) ~(is_default : a -> bool) (opt : a option) :
     a option =
   if Pp.minified ctx then

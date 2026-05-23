@@ -716,6 +716,12 @@ val pp_position_try : position_try Pp.t
 val pp_border_image_repeat : border_image_repeat Pp.t
 (** [pp_border_image_repeat] is the pretty-printer for [border_image_repeat]. *)
 
+val pp_font_variant_css21 : font_variant_css21 Pp.t
+(** [pp_font_variant_css21] is the pretty-printer for [font_variant_css21]. *)
+
+val read_font_variant_css21 : Cursor.t -> font_variant_css21
+(** [read_font_variant_css21 t] is the [font_variant_css21] parsed from [t]. *)
+
 val pp_flex_basis : flex_basis Pp.t
 (** [pp_flex_basis] pretty-prints a flex-basis value. *)
 
