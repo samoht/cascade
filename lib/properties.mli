@@ -343,17 +343,17 @@ val pp_border_image_slice : border_image_slice Pp.t
 val read_border_image_slice : Cursor.t -> border_image_slice
 (** [read_border_image_slice t] parses [border-image-slice]. *)
 
-val read_border_image_repeat_value : Cursor.t -> border_image_repeat
-(** [read_border_image_repeat_value t] parses the [border-image-repeat]
-    longhand, including the CSS-wide keywords. *)
-
-val read_border_image_width_value : Cursor.t -> border_image_width
-(** [read_border_image_width_value t] parses the [border-image-width] longhand,
+val read_border_image_repeat : Cursor.t -> border_image_repeat
+(** [read_border_image_repeat t] parses the [border-image-repeat] longhand,
     including the CSS-wide keywords. *)
 
-val read_border_image_outset_value : Cursor.t -> border_image_outset
-(** [read_border_image_outset_value t] parses the [border-image-outset]
-    longhand, including the CSS-wide keywords. *)
+val read_border_image_width : Cursor.t -> border_image_width
+(** [read_border_image_width t] parses the [border-image-width] longhand,
+    including the CSS-wide keywords. *)
+
+val read_border_image_outset : Cursor.t -> border_image_outset
+(** [read_border_image_outset t] parses the [border-image-outset] longhand,
+    including the CSS-wide keywords. *)
 
 val pp_border_image_width_item : border_image_width_item Pp.t
 (** [pp_border_image_width_item] pretty-prints one [border-image-width] item. *)
@@ -715,6 +715,12 @@ val pp_position_try : position_try Pp.t
 
 val pp_border_image_repeat : border_image_repeat Pp.t
 (** [pp_border_image_repeat] is the pretty-printer for [border_image_repeat]. *)
+
+val pp_border_image_width : border_image_width Pp.t
+(** [pp_border_image_width] is the pretty-printer for [border_image_width]. *)
+
+val pp_border_image_outset : border_image_outset Pp.t
+(** [pp_border_image_outset] is the pretty-printer for [border_image_outset]. *)
 
 val pp_font_variant_css21 : font_variant_css21 Pp.t
 (** [pp_font_variant_css21] is the pretty-printer for [font_variant_css21]. *)

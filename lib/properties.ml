@@ -20325,14 +20325,14 @@ let read_border_image_box_values ~what read_item t =
   | [] -> Cursor.err_expected t ("border-image " ^ what)
   | values -> values
 
-let read_border_image_repeat t =
+let read_border_image_repeat_keywords t =
   let first = read_border_image_repeat_keyword t in
   Cursor.ws t;
   match Cursor.option read_border_image_repeat_keyword t with
   | None -> [ first ]
   | Some second -> [ first; second ]
 
-let rec read_border_image_repeat_value t : border_image_repeat =
+let rec read_border_image_repeat t : border_image_repeat =
   Cursor.enum_or_var "border-image-repeat"
     [
       ("inherit", (Inherit : border_image_repeat));
@@ -20341,11 +20341,11 @@ let rec read_border_image_repeat_value t : border_image_repeat =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_border_image_repeat_value t))
-    ~default:(fun t -> Repeats (read_border_image_repeat t))
+    ~var:(fun t -> Var (Values.read_var read_border_image_repeat t))
+    ~default:(fun t -> Repeats (read_border_image_repeat_keywords t))
     t
 
-let rec read_border_image_width_value t : border_image_width =
+let rec read_border_image_width t : border_image_width =
   Cursor.enum_or_var "border-image-width"
     [
       ("inherit", (Inherit : border_image_width));
@@ -20354,14 +20354,14 @@ let rec read_border_image_width_value t : border_image_width =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_border_image_width_value t))
+    ~var:(fun t -> Var (Values.read_var read_border_image_width t))
     ~default:(fun t ->
       Widths
         (read_border_image_box_values ~what:"width" read_border_image_width_item
            t))
     t
 
-let rec read_border_image_outset_value t : border_image_outset =
+let rec read_border_image_outset t : border_image_outset =
   Cursor.enum_or_var "border-image-outset"
     [
       ("inherit", (Inherit : border_image_outset));
@@ -20370,7 +20370,7 @@ let rec read_border_image_outset_value t : border_image_outset =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_border_image_outset_value t))
+    ~var:(fun t -> Var (Values.read_var read_border_image_outset t))
     ~default:(fun t ->
       Outsets
         (read_border_image_box_values ~what:"outset"
@@ -20410,7 +20410,7 @@ let read_border_image t : border_image =
     else (None, None)
   in
   Cursor.ws t;
-  let repeat = Cursor.option read_border_image_repeat t in
+  let repeat = Cursor.option read_border_image_repeat_keywords t in
   Cursor.ws t;
   let mode_late : mask_border_mode option =
     if Option.is_some mode_early then (None : mask_border_mode option)
