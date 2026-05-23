@@ -385,6 +385,13 @@ let check_border_image_outset =
   check_value_cursor "border-image-outset" read_border_image_outset
     pp_border_image_outset
 
+let check_list_style =
+  check_value_cursor "list-style" read_list_style pp_list_style
+
+let check_list_style_shorthand =
+  check_value_cursor "list-style-shorthand" read_list_style_shorthand
+    pp_list_style_shorthand
+
 let check_place_items =
   check_value_cursor "place-items" read_place_items pp_place_items
 
@@ -2789,6 +2796,18 @@ let test_border_image_outset () =
   check_border_image_outset "inherit";
   neg_cursor read_border_image_outset "blue"
 
+let test_list_style () =
+  check_list_style "square inside";
+  check_list_style "none";
+  check_list_style "url(a.png)";
+  check_list_style "inherit";
+  neg_cursor read_list_style "12px"
+
+let test_list_style_shorthand () =
+  check_list_style_shorthand "square inside";
+  check_list_style_shorthand "square";
+  neg_cursor read_list_style_shorthand "12px"
+
 let test_grid_line () =
   check_grid_line "auto";
   check_grid_line "1";
@@ -3535,6 +3554,8 @@ let tests =
     test_case "border-image-repeat" `Quick test_border_image_repeat;
     test_case "border-image-width" `Quick test_border_image_width;
     test_case "border-image-outset" `Quick test_border_image_outset;
+    test_case "list-style" `Quick test_list_style;
+    test_case "list-style-shorthand" `Quick test_list_style_shorthand;
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;

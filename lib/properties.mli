@@ -728,6 +728,20 @@ val pp_font_variant_css21 : font_variant_css21 Pp.t
 val read_font_variant_css21 : Cursor.t -> font_variant_css21
 (** [read_font_variant_css21 t] is the [font_variant_css21] parsed from [t]. *)
 
+val pp_list_style : list_style Pp.t
+(** [pp_list_style] is the pretty-printer for [list_style]. *)
+
+val read_list_style : Cursor.t -> list_style
+(** [read_list_style t] is the [list_style] shorthand parsed from [t]. *)
+
+val pp_list_style_shorthand : list_style_shorthand Pp.t
+(** [pp_list_style_shorthand] is the pretty-printer for [list_style_shorthand].
+*)
+
+val read_list_style_shorthand : Cursor.t -> list_style_shorthand
+(** [read_list_style_shorthand t] is the [list_style_shorthand] record parsed
+    from [t]. *)
+
 val pp_flex_basis : flex_basis Pp.t
 (** [pp_flex_basis] pretty-prints a flex-basis value. *)
 
