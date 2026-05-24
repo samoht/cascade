@@ -2636,9 +2636,31 @@ let mix_srgb_bytes c1 c2 ~p1 ~p2 =
       match mix_weights p1 p2 with
       | None -> Option.None
       | Some (w1, w2, alpha_mult) ->
+          (* CSS Color 4 sec. 12.3: colours with alpha interpolate
+             premultiplied, then un-premultiply by the result alpha - otherwise
+             a transparent operand ([#0000]) bleeds its zero channels in and
+             darkens the result. A [none] (or absent) alpha contributes as fully
+             opaque to its own channels. *)
+          let alpha_f = function
+            | Some a -> Float.of_int a /. 255.
+            | None -> 1.
+          in
+          let af1 = alpha_f a1 and af2 = alpha_f a2 in
+          (* Un-premultiply by the interpolated alpha only; the [alpha_mult]
+             (<100%-sum) scaling applies to the final alpha, not the
+             channels. *)
+          let interp_alpha = (af1 *. w1) +. (af2 *. w2) in
           let mix_channel x y =
             match (x, y) with
-            | Some bx, Some by -> Some (lerp_byte bx by w1 w2)
+            | Some bx, Some by ->
+                let pre =
+                  (Float.of_int bx *. af1 *. w1)
+                  +. (Float.of_int by *. af2 *. w2)
+                in
+                let v =
+                  if interp_alpha <= 0. then 0. else pre /. interp_alpha
+                in
+                Some (Float.to_int (Float.round v))
             | Some b, None | None, Some b -> Some b
             | None, None -> None
           in
@@ -2913,6 +2935,32 @@ let static_color_to_linear_srgb (c : color) :
           let lin = Color_space.rgb_to_linear_rgb (f255 r, f255 g, f255 b) in
           Some (lin, f255 a)
       | None -> None)
+
+(* Resolve a static colour to its in-gamut sRGB [Hex] form so a [color-mix(in
+   srgb, ...)] over a modern-space argument ([oklch] / [lab] / ...) folds in a
+   single pass: [mix_srgb_bytes] only understands sRGB-family inputs, while the
+   modern spaces resolve through [static_color_to_linear_srgb]. Leaves the
+   colour unchanged when it is already sRGB-foldable, resolves out of gamut, or
+   isn't static. *)
+let resolve_static_srgb (c : color) : color =
+  match static_color_to_srgb_channels c with
+  | Some _ -> c
+  | None -> (
+      match static_color_to_linear_srgb c with
+      | Some (linear, alpha_f) -> (
+          match Color_space.fold_linear_srgb_to_bytes linear with
+          | Some (r, g, b) ->
+              let clamp01 v = Float.max 0. (Float.min 1. v) in
+              let a_byte =
+                Float.to_int (Float.round (clamp01 alpha_f *. 255.))
+              in
+              let value =
+                byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
+                ^ if a_byte = 255 then "" else byte_to_hex_byte a_byte
+              in
+              Hex { hash = true; value }
+          | None -> c)
+      | None -> c)
 
 (* CSS Color 4 sec. 12.2 [hue interpolation method] mapping into the simpler
    [Color_space.hue_interpolation] enum. [Default] and [Specified] both collapse
@@ -4014,7 +4062,12 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
 and pp_srgb_mix_color ctx color1 percent1 color2 percent2 =
   match color_mix_percentages percent1 percent2 with
   | Some (p1, p2) -> (
-      match mix_srgb_bytes color1 color2 ~p1 ~p2 with
+      match
+        mix_srgb_bytes
+          (resolve_static_srgb color1)
+          (resolve_static_srgb color2)
+          ~p1 ~p2
+      with
       | Some (r, g, b, 255) ->
           pp_color ctx
             (Hex

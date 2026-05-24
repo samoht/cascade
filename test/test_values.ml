@@ -816,6 +816,23 @@ let spec_color5_function_edges () =
     "color-mix(in lch longer hue, red 30%, blue)";
   check_color ~expected:"color-mix(in hsl,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
+  (* CSS Color 4 sec. 12.3: [color-mix(in srgb, ...)] interpolates premultiplied
+     channels then un-premultiplies by the interpolated alpha; the <100%-sum
+     scaling applies only to the result alpha. *)
+  (* Opaque 50/50: straight average. *)
+  check_color ~expected:"#404040" "color-mix(in srgb, #fff 25%, #000 75%)";
+  (* A transparent component must not bleed its zero channels: un-premultiply
+     restores the opaque operand's colour, only the alpha halves. *)
+  check_color ~expected:"#944a4b80" "color-mix(in srgb, #944a4b 50%, #0000)";
+  check_color ~expected:"#ff000080" "color-mix(in srgb, #0000, red)";
+  check_color ~expected:"#ff000080" "color-mix(in srgb, transparent, red)";
+  (* Percentages summing to <100% scale only the result alpha (here 60%), not
+     the colour channels. *)
+  check_color ~expected:"#80008099" "color-mix(in srgb, red 30%, blue 30%)";
+  (* A modern-space argument resolves and the mix folds in a single pass
+     (idempotent minify), not only once both operands are already hex. *)
+  check_color ~expected:"#944b4080"
+    "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
   check_color ~expected:"color-mix(var(--a),var(--b))"
     "color-mix(in oklab, var(--a), var(--b))";
   check_color ~expected:"color-mix(var(--a),var(--b))"
