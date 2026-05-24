@@ -37,6 +37,11 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) are suppressed
           there. *)
+  enforce_spec : bool;
+      (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
+          serialisation without evergreen-target facts, so target-dependent
+          shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
+          suppressed. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -45,21 +50,41 @@ type 'a t = ctx -> 'a -> unit
 
 (** {2 Running Formatters} *)
 
-val ctx : ?minify:bool -> ?indent:int -> ?inline:bool -> Buffer.t -> ctx
+val ctx :
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?enforce_spec:bool ->
+  Buffer.t ->
+  ctx
 (** [ctx buf] builds a formatter context writing to [buf], for the
     serialise-to-string / measuring helpers. *)
 
 val to_buffer :
-  ?minify:bool -> ?indent:int -> ?inline:bool -> Buffer.t -> 'a t -> 'a -> unit
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?enforce_spec:bool ->
+  Buffer.t ->
+  'a t ->
+  'a ->
+  unit
 (** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
     optional [indent] sets the per-level indent width (default: [None] under
     [minify], [Some 2] otherwise). *)
 
 val to_string :
-  ?minify:bool -> ?indent:int -> ?inline:bool -> 'a t -> 'a -> string
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?enforce_spec:bool ->
+  'a t ->
+  'a ->
+  string
 (** [to_string formatter value] runs the formatter and returns a string. The
     optional [indent] sets the per-level indent width (default: [None] under
-    [minify], [Some 2] otherwise). *)
+    [minify], [Some 2] otherwise). [enforce_spec] suppresses target-dependent
+    shortenings. *)
 
 (** {2 Primitive Formatters} *)
 

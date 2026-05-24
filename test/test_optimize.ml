@@ -767,7 +767,7 @@ let optimize_tests =
 let optimized_string ?(enforce_spec = false) css =
   css |> Cursor.of_string |> Css.Stylesheet.read
   |> Css.Optimize.stylesheet ~enforce_spec
-  |> Css.Stylesheet.to_string ~minify:true
+  |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
 let test_merge_consecutive_identical () =
@@ -1294,6 +1294,21 @@ let target_minify_enforce_spec_split () =
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(var(--a),var(--b))}"
     ~spec:"a{color:color-mix(var(--a),var(--b))}";
+  (* oklch/oklab chroma takes <number> | <percentage>, exactly interchangeable
+     (CSS Color 4: 100% = 0.4 on this axis). Default minify picks the shorter
+     spelling per axis - .304 becomes 76%, but .1 stays because 25% is longer.
+     --enforce-spec emits the spec-canonical resolved form, which is the number,
+     and never introduces a percentage even when it would be shorter. *)
+  check_modes "oklch chroma uses the shorter percentage on the default target"
+    "a { color: oklch(.5 .304 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    ~spec:"a{color:oklch(.5 .304 200)}";
+  check_modes
+    "oklch chroma keeps the number when the number is already shortest"
+    "a { color: oklch(.5 .1 200) }" ~default:"a{color:oklch(.5 .1 200)}"
+    ~spec:"a{color:oklch(.5 .1 200)}";
+  check_modes "enforce-spec renders oklch chroma as the canonical number"
+    "a { color: oklch(.5 76% 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    ~spec:"a{color:oklch(.5 .304 200)}";
   check_modes "media min-width grammar"
     "@media (min-width: 700px) { a { color: red } }"
     ~default:"@media(width>=700px){a{color:red}}"

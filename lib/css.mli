@@ -7289,7 +7289,7 @@ type mode = Stylesheet.mode =
           - [Inline]: For inline styles (no at-rules, variables expanded with
             their values) *)
 
-val to_string : ?minify:bool -> ?indent:int -> t -> string
+val to_string : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
 (** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
     formatter - no optimisation, no theme resolution, no [var()] substitution.
     Run {!optimize}, {!resolve_theme}, and {!inline_vars} explicitly when those
@@ -7303,7 +7303,7 @@ val to_string : ?minify:bool -> ?indent:int -> t -> string
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
-val pp : ?minify:bool -> ?indent:int -> t -> string
+val pp : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
 (** [pp] is {!to_string}. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }

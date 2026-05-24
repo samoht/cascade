@@ -15,6 +15,11 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) must be
           suppressed there. *)
+  enforce_spec : bool;
+      (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
+          serialisation but without evergreen-target facts, so target-dependent
+          shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
+          suppressed. *)
 }
 
 type 'a t = ctx -> 'a -> unit
@@ -25,7 +30,8 @@ let resolve_indent ~minify = function
   | Some _ as i -> i
   | None -> if minify then None else Some 2
 
-let ctx ?(minify = false) ?indent ?(inline = false) buf =
+let ctx ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) buf
+    =
   {
     minify;
     level = 0;
@@ -35,15 +41,16 @@ let ctx ?(minify = false) ?indent ?(inline = false) buf =
     in_function = false;
     in_calc = false;
     in_feature_query = false;
+    enforce_spec;
   }
 
-let to_buffer ?minify ?indent ?inline buf pp a =
-  let ctx = ctx ?minify ?indent ?inline buf in
+let to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a =
+  let ctx = ctx ?minify ?indent ?inline ?enforce_spec buf in
   pp ctx a
 
-let to_string ?minify ?indent ?inline pp a =
+let to_string ?minify ?indent ?inline ?enforce_spec pp a =
   let buf = Buffer.create 1024 in
-  to_buffer ?minify ?indent ?inline buf pp a;
+  to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a;
   Buffer.contents buf
 
 let nop _ _ = ()

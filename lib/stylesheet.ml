@@ -1352,8 +1352,10 @@ let pp_stylesheet : stylesheet Pp.t =
 (** {1 Rendering} *)
 
 (* Pure serialiser. *)
-let to_string ?(minify = false) ?indent (statements : t) =
-  Pp.to_string ~minify ?indent (fun ctx () -> pp_stylesheet ctx statements) ()
+let to_string ?(minify = false) ?indent ?enforce_spec (statements : t) =
+  Pp.to_string ~minify ?indent ?enforce_spec
+    (fun ctx () -> pp_stylesheet ctx statements)
+    ()
 
 let pp = to_string
 
