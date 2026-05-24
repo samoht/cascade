@@ -692,8 +692,14 @@ let pp_calc_presolved : type a. a Pp.t -> a calc Pp.t =
 let pp_unit ?(always = true) ctx f suffix =
   (* Dropping the unit on a zero ([0px] -> [0]) is a minify-only
      canonicalization per CSS Values 4 6.5; pretty mode preserves the source
-     spelling. *)
-  let always = always || not (Pp.minified ctx) in
+     spelling. Inside a [calc()] / function context the unit is a typed-boundary
+     and must be kept (CSS Values 4 10.x): [clamp(0px, 0em, 0vh)] is not the
+     foldable [clamp(0, 0, 0)], so stripping the units there would make a
+     non-foldable expression masquerade as a foldable one and break round-trip
+     idempotency. *)
+  let always =
+    always || (not (Pp.minified ctx)) || ctx.Pp.in_calc || ctx.Pp.in_function
+  in
   if f = 0. && not always then Pp.char ctx '0'
   else
     (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
@@ -1543,6 +1549,11 @@ let math_length = function
 let pp_typed_math_call ctx name pp_arg args =
   Pp.string ctx name;
   Pp.char ctx '(';
+  (* A calc-family math function's arguments are a typed-boundary calc context:
+     keep the unit on a zero so [clamp(0px, 0em, 0vh)] stays unit-tagged rather
+     than collapsing to the foldable-looking [clamp(0, 0, 0)] (which would lose
+     round-trip stability). *)
+  let ctx = { ctx with Pp.in_calc = true } in
   let sep ctx () =
     Pp.char ctx ',';
     if not (Pp.minified ctx) then Pp.char ctx ' '
