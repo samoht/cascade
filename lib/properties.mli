@@ -582,6 +582,15 @@ val pp_css_wide : css_wide Pp.t
 val read_css_wide : Cursor.t -> css_wide
 (** [read_css_wide t] reads a CSS-wide keyword (and only those) from [t]. *)
 
+val is_css_wide_keyword : string -> bool
+(** [is_css_wide_keyword s] is [true] when [s] (case-insensitively) is one of
+    [initial], [inherit], [unset], [revert], [revert-layer]. *)
+
+val value_has_css_wide_mix : string -> bool
+(** [value_has_css_wide_mix value] is [true] when [value] is not itself a lone
+    CSS-wide keyword but contains one mixed with other tokens (CSS Cascade 5
+    sec. 7.3 forbids this in a multi-value shorthand). *)
+
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)
 
@@ -1076,6 +1085,21 @@ val pp_font_family : font_family Pp.t
 
 val read_font_family : Cursor.t -> font_family
 (** [read_font_family t] is the [font_family] parsed from [t]. *)
+
+val pp_font : font Pp.t
+(** [pp_font] is the pretty-printer for the [font] shorthand. *)
+
+val read_font : Cursor.t -> font
+(** [read_font t] is the [font] shorthand parsed from [t]. *)
+
+val pp_font_shorthand : font_shorthand Pp.t
+(** [pp_font_shorthand] is the pretty-printer for the [font_shorthand] record.
+*)
+
+val read_font_shorthand : Cursor.t -> font_shorthand
+(** [read_font_shorthand t] is the [font_shorthand] record (the
+    [<size>[/<line-height>]? <family>+] body with optional prefixes) parsed from
+    [t]. *)
 
 val pp_font_src : Font_face.src Pp.t
 (** [pp_font_src] is the pretty-printer for [@font-face] [src] values. *)
