@@ -1820,9 +1820,13 @@ and pp_round_length ~always ctx strategy value step =
   | _ ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
+          (* [round()] is a math function (CSS Values 4 10.x): its value/step
+             operands are a typed calc context, so keep their units. The
+             [strategy] keyword is not a math operand and is emitted as-is. *)
           if strategy <> "nearest" then (
             Pp.string ctx strategy;
             Pp.comma ctx ());
+          let ctx = { ctx with in_calc = true } in
           pp_length ~always ctx value;
           Pp.comma ctx ();
           pp_length ~always ctx step)
@@ -1838,6 +1842,7 @@ and pp_mod_length ~always ctx a b =
   | _ ->
       Pp.call "mod"
         (fun ctx (a, b) ->
+          let ctx = { ctx with in_calc = true } in
           pp_length ~always ctx a;
           Pp.comma ctx ();
           pp_length ~always ctx b)
@@ -1852,6 +1857,7 @@ and pp_rem_length ~always ctx a b =
   | _ ->
       Pp.call "rem"
         (fun ctx (a, b) ->
+          let ctx = { ctx with in_calc = true } in
           pp_length ~always ctx a;
           Pp.comma ctx ();
           pp_length ~always ctx b)
@@ -1859,7 +1865,8 @@ and pp_rem_length ~always ctx a b =
 
 and pp_hypot_length ~always ctx values =
   if Pp.minified ctx then pp_minified_hypot_length ~always ctx values
-  else Pp.call_list "hypot" (pp_length ~always) ctx values
+  else
+    Pp.call_list "hypot" (pp_length ~always) { ctx with in_calc = true } values
 
 and pp_minified_hypot_length ~always ctx = function
   | [ (Px _ as value) ] -> pp_length ~always ctx value
@@ -1870,7 +1877,10 @@ and pp_minified_hypot_length ~always ctx = function
             List.fold_left (fun acc f -> acc +. (f *. f)) 0. values
           in
           pp_unit ~always ctx (Float.sqrt sum_sq) "px"
-      | _ -> Pp.call_list "hypot" (pp_length ~always) ctx values)
+      | _ ->
+          Pp.call_list "hypot" (pp_length ~always)
+            { ctx with in_calc = true }
+            values)
 
 and pp_length_calc ~always ctx cv =
   match cv with
@@ -3623,7 +3633,10 @@ let pp_lab_float ~max_decimals ctx f =
 
 let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   let n = string_of_lab_float ~max_decimals ctx f in
-  if ctx.Pp.minify then
+  (* The number -> percentage axis swap (e.g. oklch chroma [.304] -> [76%]) is a
+     shortest-spelling minify win, but [%] on these axes is an evergreen-target
+     fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
+  if ctx.Pp.minify && not ctx.Pp.enforce_spec then
     (* Derive the percentage form from the value the number string [n] actually
        re-parses to, not from the raw float [f]. Otherwise an [f] that rounds to
        [n] (e.g. -0.00798 -> "-.008") can keep the number because its raw
