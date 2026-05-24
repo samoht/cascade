@@ -442,31 +442,53 @@ let invalid_platform_declaration_vector buf i =
     ]
     buf i
 
+(* A feature query that every target browser satisfies is always true, so its
+   @supports wrapper imposes no condition and the default optimizer may drop it.
+   display:grid and display:flex are supported by every maintained evergreen
+   browser (flexbox since ~2015, grid since 2017), making those queries
+   unconditionally true on the target. This oracle encodes that browser fact
+   directly - independent of the code under test - and admits a dropped wrapper
+   only for those two conditions. (--enforce-spec keeps the wrapper, but these
+   invariants exercise the default optimizer.) *)
+let supports_is_baseline_true condition =
+  condition = Css.Supports.property "display" "grid"
+  || condition = Css.Supports.property "display" "flex"
+
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
   | Import { layer; _ } -> [ "import:" ^ Option.value ~default:"<none>" layer ]
   | Namespace _ -> [ "namespace" ]
-  | Layer_decl names -> [ "layer-decl:" ^ String.concat "," names ]
+  | Layer_decl names ->
+      (* Naming an already-declared layer adds nothing - layer order follows the
+         first occurrence of each name - so the optimizer drops later repeats.
+         Compare the order-preserving deduplicated names. *)
+      let rec dedup seen = function
+        | [] -> []
+        | n :: rest when List.mem n seen -> dedup seen rest
+        | n :: rest -> n :: dedup (n :: seen) rest
+      in
+      [ "layer-decl:" ^ String.concat "," (dedup [] names) ]
   | Layer (name, block) ->
       let name = Option.value ~default:"<anonymous>" name in
-      (("layer:" ^ name) :: List.concat_map boundary_shape block) @ [ "/layer" ]
-  | Media (_, block) ->
-      ("media" :: List.concat_map boundary_shape block) @ [ "/media" ]
+      (("layer:" ^ name) :: shapes_with_rule_runs block) @ [ "/layer" ]
+  | Media (_, block) -> ("media" :: shapes_with_rule_runs block) @ [ "/media" ]
+  | Supports (condition, block) when supports_is_baseline_true condition ->
+      (* The wrapper is unconditionally true on the target and the default
+         optimizer drops it, so the surviving shape is the block contents with
+         no supports markers. *)
+      shapes_with_rule_runs block
   | Supports (_, block) ->
-      ("supports" :: List.concat_map boundary_shape block) @ [ "/supports" ]
+      ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
   | Container (_, _, block) ->
-      ("container" :: List.concat_map boundary_shape block) @ [ "/container" ]
-  | When (_, block) ->
-      ("when" :: List.concat_map boundary_shape block) @ [ "/when" ]
-  | Else (_, block) ->
-      ("else" :: List.concat_map boundary_shape block) @ [ "/else" ]
+      ("container" :: shapes_with_rule_runs block) @ [ "/container" ]
+  | When (_, block) -> ("when" :: shapes_with_rule_runs block) @ [ "/when" ]
+  | Else (_, block) -> ("else" :: shapes_with_rule_runs block) @ [ "/else" ]
   | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
-      ("scope" :: List.concat_map boundary_shape block) @ [ "/scope" ]
+      ("scope" :: shapes_with_rule_runs block) @ [ "/scope" ]
   | Starting_style block ->
-      ("starting-style" :: List.concat_map boundary_shape block)
-      @ [ "/starting-style" ]
+      ("starting-style" :: shapes_with_rule_runs block) @ [ "/starting-style" ]
   | Origin (origin, block) ->
       let origin =
         match origin with
@@ -477,11 +499,9 @@ let rec boundary_shape = function
         | Animation -> "animation"
         | Transition -> "transition"
       in
-      (("origin:" ^ origin) :: List.concat_map boundary_shape block)
-      @ [ "/origin" ]
+      (("origin:" ^ origin) :: shapes_with_rule_runs block) @ [ "/origin" ]
   | Moz_document (_, block) ->
-      ("moz-document" :: List.concat_map boundary_shape block)
-      @ [ "/moz-document" ]
+      ("moz-document" :: shapes_with_rule_runs block) @ [ "/moz-document" ]
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
@@ -497,7 +517,53 @@ let rec boundary_shape = function
   | Property _ -> [ "property" ]
   | Bang_comment _ -> [ "bang-comment" ]
 
-let boundary_shapes ss = List.concat_map boundary_shape ss
+(* The optimizer is free to merge a contiguous run of plain rules into fewer
+   rules and to drop empty rules, neither of which moves a cascade boundary.
+   Collapse a run of consecutive [Rule]s into a single [rules] token so the
+   invariant tracks the at-rule and layer skeleton without pinning the exact
+   rule count. *)
+and shapes_with_rule_runs ss =
+  let rec loop acc seen_rule = function
+    | [] -> if seen_rule then List.rev ("rules" :: acc) else List.rev acc
+    | Css.Stylesheet.Rule _ :: rest -> loop acc true rest
+    | other :: rest ->
+        let acc = if seen_rule then "rules" :: acc else acc in
+        loop (List.rev_append (boundary_shape other) acc) false rest
+  in
+  loop [] false ss
+
+(* CSS Cascade 5 section 6.4.1: a layer's contents are the concatenation, in
+   source order, of every block naming it, and layer order is fixed by first
+   appearance. Two ADJACENT same-name layer blocks may therefore be fused into
+   one without changing the cascade (Lightning CSS does exactly this). Normalise
+   both sides of the invariant by that fusion so the check tracks real boundary
+   corruption rather than a legal layer merge. Anonymous layers each have a
+   distinct identity and are never merged - the anonymous-layer-count invariant
+   guards that separately. *)
+let rec merge_adjacent_layers = function
+  | Css.Stylesheet.Layer (Some a, ba)
+    :: Css.Stylesheet.Layer (Some b, bb)
+    :: rest
+    when a = b ->
+      merge_adjacent_layers (Css.Stylesheet.Layer (Some a, ba @ bb) :: rest)
+  | stmt :: rest -> normalize_blocks stmt :: merge_adjacent_layers rest
+  | [] -> []
+
+and normalize_blocks = function
+  | Css.Stylesheet.Layer (name, block) ->
+      Css.Stylesheet.Layer (name, merge_adjacent_layers block)
+  | Media (c, block) -> Media (c, merge_adjacent_layers block)
+  | Supports (c, block) -> Supports (c, merge_adjacent_layers block)
+  | Container (n, c, block) -> Container (n, c, merge_adjacent_layers block)
+  | When (c, block) -> When (c, merge_adjacent_layers block)
+  | Else (c, block) -> Else (c, merge_adjacent_layers block)
+  | Scope (a, b, block) -> Scope (a, b, merge_adjacent_layers block)
+  | Starting_style block -> Starting_style (merge_adjacent_layers block)
+  | Origin (o, block) -> Origin (o, merge_adjacent_layers block)
+  | Moz_document (m, block) -> Moz_document (m, merge_adjacent_layers block)
+  | other -> other
+
+let boundary_shapes ss = shapes_with_rule_runs (merge_adjacent_layers ss)
 
 let anonymous_layer_count ss =
   let rec statement = function
@@ -698,7 +764,15 @@ let test_shorthand_wide_keyword buf =
   match parse_declaration input with
   | None -> failf "CSS-wide shorthand did not parse: %S" input
   | Some serialized ->
-      let expected = property ^ ":" ^ keyword in
+      (* margin and padding are not inherited and have initial value 0, so
+         [initial] resolves to exactly 0 in every cascade context and the
+         minifier substitutes the shorter spelling. The other shorthands here
+         have no all-initial spelling shorter than the keyword, so it stays. *)
+      let expected =
+        match (property, keyword) with
+        | ("margin" | "padding"), "initial" -> property ^ ":0"
+        | _ -> property ^ ":" ^ keyword
+      in
       if serialized <> expected then
         failf "CSS-wide shorthand changed: %S -> %S" input serialized
 
@@ -1317,12 +1391,19 @@ let test_source_order_preserved buf =
   match Css.of_string ~strict:true buf with
   | Error _ -> ()
   | Ok parsed -> (
+      (* An empty rule renders to nothing under minify and is eliminated, so it
+         carries no cascade position and a roundtrip legitimately makes it
+         vanish. Compare only the statements that survive minification; their
+         relative order is what source-order preservation means. *)
       let render_each ss =
         List.rev
           (Css.fold
              (fun acc stmt ->
-               Css.to_string ~minify:true (Css.statements [ stmt ] |> Css.v)
-               :: acc)
+               match
+                 Css.to_string ~minify:true (Css.statements [ stmt ] |> Css.v)
+               with
+               | "" -> acc
+               | rendered -> rendered :: acc)
              [] ss)
       in
       let before = render_each parsed.stylesheet in

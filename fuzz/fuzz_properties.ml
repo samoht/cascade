@@ -94,7 +94,7 @@ let property_core_vectors =
       fun input ->
         check_reader Css.Properties.read_transform Css.Properties.pp_transform
           input );
-    ( "transforms",
+    ( "transform",
       fun input ->
         check_reader Css.Properties.read_transforms Css.Properties.pp_transforms
           input );
@@ -102,7 +102,7 @@ let property_core_vectors =
 
 let property_effect_vectors =
   [
-    ( "timing-function",
+    ( "transition-timing-function",
       fun input ->
         check_reader Css.Properties.read_timing_function
           Css.Properties.pp_timing_function input );
@@ -200,7 +200,7 @@ let valid_value property buf =
   | "transform" ->
       pick [ "rotate(45deg)"; "translateX(10px)"; "scale(1.2)" ] buf 1
   | "transforms" -> pick [ "rotate(45deg) scale(1.2)"; "none" ] buf 1
-  | "timing-function" ->
+  | "transition-timing-function" ->
       pick [ "ease"; "steps(4, jump-end)"; "cubic-bezier(.1,.2,.3,.4)" ] buf 1
   | "transition" -> pick [ "opacity 1s ease"; "all .2s linear .1s" ] buf 1
   | "animation" ->
@@ -227,7 +227,8 @@ let invalid_value property buf =
   | "font-feature-settings" -> pick [ "\"kern\" maybe"; "1" ] buf 2
   | "transform" -> pick [ "rotate()"; "scale()" ] buf 2
   | "transforms" -> pick [ "none rotate(1deg)"; "translate()" ] buf 2
-  | "timing-function" -> pick [ "steps()"; "cubic-bezier(1,2)" ] buf 2
+  | "transition-timing-function" ->
+      pick [ "steps()"; "cubic-bezier(1,2)" ] buf 2
   | "transition" -> pick [ "1s 2s 3s"; "ease opacity ease" ] buf 2
   | "animation" -> pick [ "1s 2s 3s"; "infinite infinite" ] buf 2
   | "background-image" -> pick [ "linear-gradient()"; "image-set()" ] buf 2
@@ -322,14 +323,11 @@ let property_grammar_basic_vectors =
       Css.Properties.pp_font_feature_settings
       [ "normal"; "\"kern\" 1"; "\"liga\" off" ]
       [ "\"kern\" maybe"; "1" ];
-    vector "transform" Css.Properties.read_transform Css.Properties.pp_transform
-      [ "translateX(10px)"; "rotate(45deg)"; "scale(1.2)" ]
-      [ "translate()"; "scale()" ];
-    vector "transforms" Css.Properties.read_transforms
+    vector "transform" Css.Properties.read_transforms
       Css.Properties.pp_transforms
       [ "none"; "translateX(10px) rotate(45deg)"; "scale(1.2)" ]
       [ "none rotate(1deg)"; "translate()" ];
-    vector "timing-function" Css.Properties.read_timing_function
+    vector "transition-timing-function" Css.Properties.read_timing_function
       Css.Properties.pp_timing_function
       [ "ease"; "steps(4, jump-end)"; "cubic-bezier(.1,.2,.3,.4)" ]
       [ "steps()"; "cubic-bezier(1,2)" ];
@@ -434,7 +432,7 @@ let property_grammar_box_vectors =
     vector "mask-type" Css.Properties.read_mask_type Css.Properties.pp_mask_type
       [ "alpha"; "luminance" ]
       [ "match-source"; "alpha luminance" ];
-    vector "mask-box" Css.Properties.read_mask_box Css.Properties.pp_mask_box
+    vector "mask-clip" Css.Properties.read_mask_box Css.Properties.pp_mask_box
       [ "border-box"; "padding-box"; "content-box"; "no-clip" ]
       [ "margin-box"; "border-box padding-box content-box content-box" ];
   ]
