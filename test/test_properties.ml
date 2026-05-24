@@ -392,6 +392,11 @@ let check_list_style_shorthand =
   check_value_cursor "list-style-shorthand" read_list_style_shorthand
     pp_list_style_shorthand
 
+let check_font = check_value_cursor "font" read_font pp_font
+
+let check_font_shorthand =
+  check_value_cursor "font-shorthand" read_font_shorthand pp_font_shorthand
+
 let check_place_items =
   check_value_cursor "place-items" read_place_items pp_place_items
 
@@ -2821,6 +2826,22 @@ let test_list_style_shorthand () =
   check_list_style_shorthand "none";
   neg_cursor read_list_style_shorthand "12px"
 
+let test_font () =
+  check_font "16px serif";
+  check_font "italic 700 16px/1.5 serif";
+  check_font ~expected:"italic 700 16px/1.5 serif" "italic bold 16px/1.5 serif";
+  check_font "small-caps 12px monospace";
+  check_font "inherit";
+  check_font "caption";
+  neg_cursor read_font "16px";
+  (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword cannot be mixed with values. *)
+  neg_cursor read_font "initial 16px serif"
+
+let test_font_shorthand () =
+  check_font_shorthand "16px serif";
+  check_font_shorthand "italic 700 16px/1.5 serif";
+  neg_cursor read_font_shorthand "16px"
+
 let test_grid_line () =
   check_grid_line "auto";
   check_grid_line "1";
@@ -3569,6 +3590,8 @@ let tests =
     test_case "border-image-outset" `Quick test_border_image_outset;
     test_case "list-style" `Quick test_list_style;
     test_case "list-style-shorthand" `Quick test_list_style_shorthand;
+    test_case "font" `Quick test_font;
+    test_case "font-shorthand" `Quick test_font_shorthand;
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;

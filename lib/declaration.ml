@@ -122,12 +122,6 @@ let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
 
-let css_wide_keywords =
-  [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-
-let is_css_wide_keyword value =
-  List.mem (String.lowercase_ascii value) css_wide_keywords
-
 let is_css_wide_value value =
   let reader = Cursor.of_string value in
   match Properties.read_css_wide reader with
@@ -181,18 +175,6 @@ let raw_value_contains_var raw_value =
     | _ -> false
   in
   Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level_var
-
-let value_has_css_wide_mix value =
-  let trimmed = String.trim value in
-  (not (is_css_wide_keyword trimmed))
-  &&
-  let components = Cursor.remaining (Cursor.of_string trimmed) in
-  List.exists
-    (function
-      | Component.Preserved { kind = Token.Ident ident; _ } ->
-          is_css_wide_keyword ident
-      | _ -> false)
-    components
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
@@ -507,7 +489,7 @@ let read_shape_outside t =
   in
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident keyword; _ })
-    when is_css_wide_keyword keyword ->
+    when Properties.is_css_wide_keyword keyword ->
       accept_single ()
   | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
       accept_single ()
@@ -531,194 +513,6 @@ let read_shape_outside t =
   | Some (Component.Func { node = { name = "inset"; _ }; _ }) ->
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
-
-let read_shorthand_line_height_typed r : line_height =
-  let before = Cursor.save r in
-  match Properties.read_line_height r with
-  | lh -> lh
-  | exception Cursor.Parse_error _ ->
-      Cursor.restore r before;
-      Cursor.err_invalid r "invalid line-height in font shorthand"
-
-let generic_font_family_keywords =
-  [
-    "sans-serif";
-    "serif";
-    "monospace";
-    "cursive";
-    "fantasy";
-    "system-ui";
-    "ui-sans-serif";
-    "ui-serif";
-    "ui-monospace";
-    "ui-rounded";
-    "emoji";
-    "math";
-    "fangsong";
-  ]
-
-let long_generic_family_start r =
-  let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> true
-    | _ -> false
-  in
-  let is_comma = function
-    | Component.Preserved { kind = Token.Comma; _ } -> true
-    | _ -> false
-  in
-  let rec drop_while p = function
-    | x :: rest when p x -> drop_while p rest
-    | l -> l
-  in
-  let item =
-    Cursor.remaining r |> drop_while is_ws |> List.to_seq
-    |> Seq.take_while (fun cv -> not (is_comma cv))
-    |> List.of_seq
-    |> List.filter (fun cv -> not (is_ws cv))
-  in
-  match item with
-  | Component.Preserved { kind = Token.Ident first; _ } :: _ :: _ ->
-      List.mem (String.lowercase_ascii first) generic_font_family_keywords
-  | _ -> false
-
-let font_shorthand_prefix_ident = function
-  | Some
-      ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
-      | "lighter" | "condensed" | "expanded" ) ->
-      true
-  | _ -> false
-
-(* Parse the [font] shorthand body into a typed [font_shorthand] record. The
-   keyword prefix loop ([italic] / [bold] / etc.) populates [style] / [variant]
-   / [weight] / [stretch] as it sees the relevant keywords; [normal] is consumed
-   without binding any slot. Once a non-prefix token appears, we fall through to
-   required [size] [/ <line-height>?] <family>. *)
-(* Keyword -> which prefix slot it fills. [Normal] is the absence keyword
-   (style/variant/weight/stretch each have their own [normal]); we just
-   accept it and move on. *)
-type font_prefix_slot =
-  | Style of font_style
-  | Variant of font_variant_css21
-  | Weight of font_weight
-  | Stretch of font_stretch
-  | No_op
-
-let font_prefix_slot_of = function
-  | "italic" -> Style Italic
-  | "oblique" -> Style Oblique
-  | "small-caps" -> Variant Small_caps
-  | "bold" -> Weight Bold
-  | "bolder" -> Weight Bolder
-  | "lighter" -> Weight Lighter
-  | "condensed" -> Stretch Condensed
-  | "expanded" -> Stretch Expanded
-  | "normal" | _ -> No_op
-
-let assign_font_prefix_slot ~(style : font_style option ref)
-    ~(variant : font_variant_css21 option ref)
-    ~(weight : font_weight option ref) ~(stretch : font_stretch option ref) =
-  function
-  | Style s -> if !style = None then style := Some s
-  | Variant v -> if !variant = None then variant := Some v
-  | Weight w -> if !weight = None then weight := Some w
-  | Stretch st -> if !stretch = None then stretch := Some st
-  | No_op -> ()
-
-let try_numeric_font_weight r (weight : font_weight option ref) =
-  let before = Cursor.save r in
-  match Properties.read_font_weight r with
-  | w when !weight = None ->
-      weight := Some w;
-      true
-  | _ ->
-      Cursor.restore r before;
-      false
-  | exception Cursor.Parse_error _ ->
-      Cursor.restore r before;
-      false
-
-let read_optional_line_height r =
-  Cursor.ws r;
-  match Cursor.peek_delim r with
-  | Some '/' ->
-      Cursor.skip r;
-      Cursor.ws r;
-      Some (read_shorthand_line_height_typed r)
-  | _ -> None
-
-let read_font_shorthand_body_typed r :
-    font_style option
-    * font_variant_css21 option
-    * font_weight option
-    * font_stretch option
-    * font_size
-    * line_height option
-    * font_family =
-  let style : font_style option ref = ref Option.None in
-  let variant : font_variant_css21 option ref = ref Option.None in
-  let weight : font_weight option ref = ref Option.None in
-  let stretch : font_stretch option ref = ref Option.None in
-  let assign = assign_font_prefix_slot ~style ~variant ~weight ~stretch in
-  let rec consume_prefix () =
-    Cursor.ws r;
-    if Cursor.is_done r then ()
-    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then (
-      assign (font_prefix_slot_of (Cursor.ident r));
-      consume_prefix ())
-    else if try_numeric_font_weight r weight then consume_prefix ()
-  in
-  consume_prefix ();
-  Cursor.ws r;
-  let size = Properties.read_font_size r in
-  let line_height = read_optional_line_height r in
-  if long_generic_family_start r then
-    Cursor.err_invalid r "generic font family must be a standalone family item";
-  let family = Properties.read_font_family r in
-  Cursor.ws r;
-  Cursor.expect_eof r;
-  (!style, !variant, !weight, !stretch, size, line_height, family)
-
-let rec read_font_shorthand t : font =
-  let raw = Cursor.consume_to_decl_end ~trim:true t in
-  let lower = String.lowercase_ascii (String.trim raw) in
-  match lower with
-  | "inherit" -> Inherit
-  | "initial" -> Initial
-  | "unset" -> Unset
-  | "revert" -> Revert
-  | "revert-layer" -> Revert_layer
-  | "caption" -> Caption
-  | "icon" -> Icon
-  | "menu" -> Menu
-  | "message-box" -> Message_box
-  | "small-caption" -> Small_caption
-  | "status-bar" -> Status_bar
-  | _ ->
-      let is_valid_var () =
-        let r = Cursor.of_string raw in
-        match Values.read_var (fun r -> read_font_shorthand r) r with
-        | (_ : font var) ->
-            Cursor.ws r;
-            Cursor.is_done r
-        | exception Cursor.Parse_error _ -> false
-      in
-      if is_valid_var () then
-        let r = Cursor.of_string raw in
-        Var (Values.read_var (fun r -> read_font_shorthand r) r)
-      else if
-        (* CSS Cascade 5 section 7.3: a CSS-wide keyword stands alone, so it
-           cannot appear inside a multi-value shorthand like [font: initial 16px
-           serif]. *)
-        value_has_css_wide_mix raw
-      then Cursor.err_invalid t "CSS-wide keyword mixed with other values"
-      else
-        let r = Cursor.of_string raw in
-        let style, variant, weight, stretch, size, line_height, family =
-          try read_font_shorthand_body_typed r
-          with Cursor.Parse_error _ ->
-            Cursor.err_invalid t "invalid font shorthand"
-        in
-        Shorthand { style; variant; weight; stretch; size; line_height; family }
 
 let read_grid_template_list t = read_grid_template t
 
@@ -1130,7 +924,7 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
   | Font_weight -> Some (v Font_weight (read_font_weight t))
   | Font_style -> Some (v Font_style (read_font_style t))
   | Font_family -> Some (v Font_family (read_font_family t))
-  | Font -> Some (v Font (read_font_shorthand t))
+  | Font -> Some (v Font (Properties.read_font t))
   | Source -> Some (v Source (Properties.read_font_src t))
   | Text_align -> Some (v Text_align (read_text_align t))
   | Text_transform -> Some (v Text_transform (read_text_transform t))
@@ -1900,7 +1694,7 @@ let read_custom_property_declaration t : declaration =
   with Failure msg -> Cursor.err_invalid t msg
 
 let validate_legacy_page_break t name raw_value =
-  if not (is_css_wide_keyword raw_value) then
+  if not (Properties.is_css_wide_keyword raw_value) then
     match name with
     | ("page-break-before" | "page-break-after")
       when not
@@ -1927,7 +1721,7 @@ let property_allows_keyword_as_ident = function
 let validate_regular_property_raw t name raw_value =
   if
     (not (property_allows_keyword_as_ident name))
-    && value_has_css_wide_mix raw_value
+    && Properties.value_has_css_wide_mix raw_value
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
   if name = "all" && not (is_css_wide_value raw_value) then
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
