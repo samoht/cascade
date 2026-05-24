@@ -1637,6 +1637,40 @@ let vars_of_z_index (value : Properties.z_index) =
 
 (** {1 Advanced variable extraction} *)
 
+let vars_of_font (value : Properties.font) : any_var list =
+  let opt f = function Some x -> f x | None -> [] in
+  match value with
+  | Var v -> [ V v ]
+  | Shorthand { style; variant = _; weight; stretch; size; line_height; family }
+    ->
+      opt vars_of_font_style style
+      @ opt vars_of_font_weight weight
+      @ opt vars_of_font_stretch stretch
+      @ vars_of_font_size size
+      @ opt vars_of_line_height line_height
+      @ vars_of_font_family family
+  | _ -> []
+
+let vars_of_grid_area (value : Properties.grid_area) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Lines { row_start; column_start; row_end; column_end } ->
+      vars_of_grid_line row_start
+      @ vars_of_grid_line column_start
+      @ vars_of_grid_line row_end
+      @ vars_of_grid_line column_end
+  | _ -> []
+
+let vars_of_list_style (value : Properties.list_style) : any_var list =
+  let opt f = function Some x -> f x | None -> [] in
+  match value with
+  | Var v -> [ V v ]
+  | Shorthand { type_; position; image } ->
+      opt vars_of_list_style_type type_
+      @ opt vars_of_list_style_position position
+      @ opt vars_of_list_style_image image
+  | _ -> []
+
 (* Extract variables from CSS property values using type-specific extraction
    functions *)
 let vars_of_property : type a. a property -> a -> any_var list =
@@ -2102,6 +2136,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Writing_mode, value -> vars_of_writing_mode value
   | Z_index, value -> vars_of_z_index value
   | Text_combine_upright, value -> vars_of_text_combine_upright value
+  | Font, value -> vars_of_font value
+  | Grid_area, value -> vars_of_grid_area value
+  | List_style, value -> vars_of_list_style value
+  | Webkit_animation, value -> List.concat_map vars_of_animation value
   (* Default case for all other properties *)
   | _ -> []
 
