@@ -3613,7 +3613,16 @@ let pp_lab_float ~max_decimals ctx f =
 let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   let n = string_of_lab_float ~max_decimals ctx f in
   if ctx.Pp.minify then
-    let pct = string_of_lab_float ~max_decimals ctx (f /. pct_scale) ^ "%" in
+    (* Derive the percentage form from the value the number string [n] actually
+       re-parses to, not from the raw float [f]. Otherwise an [f] that rounds to
+       [n] (e.g. -0.00798 -> "-.008") can keep the number because its raw
+       percentage is long ("-1.995%"), while the re-parsed -0.008 has a short
+       percentage ("-2%") and flips on the next pass - making the spelling
+       non-idempotent. *)
+    let n_value = try float_of_string n with _ -> f in
+    let pct =
+      string_of_lab_float ~max_decimals ctx (n_value /. pct_scale) ^ "%"
+    in
     if String.length pct < String.length n then pct else n
   else n
 
