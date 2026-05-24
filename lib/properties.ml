@@ -2979,6 +2979,21 @@ let rec pp_filter : filter Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_filter ctx v
 
+(* CSS Backgrounds 3 sec. 3.6: a <position> offset resolves as [offset = P% *
+   (positioning_area - object_size)], so at [0%] the offset is 0 regardless of
+   any size - [0%] is unconditionally [0] here. Fold it under minify (sound only
+   at the <position> boundary; <length-percentage> sizing keeps [0%] because
+   definiteness can make them differ). *)
+let pp_position_length ctx (l : Values.length) =
+  match l with
+  | Pct 0. when Pp.minified ctx -> Pp.char ctx '0'
+  | _ -> pp_length ctx l
+
+let pp_position_offset ctx (lp : Values.length_percentage) =
+  match lp with
+  | (Pct 0. | Length (Pct 0.)) when Pp.minified ctx -> Pp.char ctx '0'
+  | _ -> pp_length_percentage ~always:true ctx lp
+
 let rec pp_position_value : position_value Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
@@ -3009,16 +3024,16 @@ let rec pp_position_value : position_value Pp.t =
          component and defaults the vertical to [center] ([50%]). So [<a> 50%]
          (e.g. [50% 50%], [10px 50%]) collapses to the single value [<a>], but a
          non-centred vertical like [0 0] must keep both values. *)
-      pp_length ctx a
+      pp_position_length ctx a
   | XY (a, b) ->
-      pp_length ctx a;
+      pp_position_length ctx a;
       Pp.space ctx ();
-      pp_length ctx b
-  | Single l -> pp_length ctx l
+      pp_position_length ctx b
+  | Single l -> pp_position_length ctx l
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_length_percentage ~always:true ctx offset;
+      pp_position_offset ctx offset;
       Pp.space ctx ();
       Pp.string ctx axis
   | Axis_edge_offset (axis, edge, offset) ->
@@ -3026,15 +3041,15 @@ let rec pp_position_value : position_value Pp.t =
       Pp.space ctx ();
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_length ctx offset
+      pp_position_length ctx offset
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
-      pp_length_percentage ~always:true ctx offset1;
+      pp_position_offset ctx offset1;
       Pp.space ctx ();
       Pp.string ctx edge2;
       Pp.space ctx ();
-      pp_length_percentage ~always:true ctx offset2
+      pp_position_offset ctx offset2
   | Var v -> pp_var pp_position_value ctx v
 
 (* CSS Images 3 sec. 3.2.1: an omitted shape defaults to [ellipse], an omitted

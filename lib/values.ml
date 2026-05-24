@@ -4472,6 +4472,10 @@ let read_length_unit ?(allow_negative = true) t =
         Dimension { value = n; unit = Option.value unit_raw ~default:""; repr }
   in
   match unit with
+  (* CSS Values 4 sec. 6.5: a [<percentage>] is its own type, so [0%] is [Pct
+     0.] and keeps [%]; folding it to the length zero would change its type (and
+     is unsound for definiteness-sensitive properties like [height]). *)
+  | "%" -> (Pct n : length)
   | "" when n = 0.0 -> Zero
   | "" -> Cursor.err t "length values must have units (except for zero)"
   | unit -> (
