@@ -26,7 +26,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~enforce_spec
         Css.optimize ~scope ~flatten_nesting ~enforce_spec stylesheet
       else stylesheet
     in
-    let output = Css.to_string ~minify stylesheet in
+    let output = Css.to_string ~minify ~enforce_spec stylesheet in
     Cli_io.print_output output
   with
   | Sys_error msg ->

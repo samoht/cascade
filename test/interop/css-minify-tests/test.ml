@@ -191,6 +191,15 @@ let normalize_expected ~category ~id expected =
   let upstream = expected in
   let expected = normalize_expected_tokens expected in
   match (category, id) with
+  | "colors", "0044" ->
+      (* color-mix(in oklch, lime, blue) folds to a static oklch(). On the
+         evergreen default target oklch chroma takes a <percentage> (CSS Color
+         4: 100% = 0.4 on this axis), so chroma .304 serializes as the exact,
+         shorter 76% - the same number->% chroma canonicalization as
+         colors/0047. The keithamus oracle keeps the number form, which
+         --enforce-spec emits. *)
+      fixture ~category ~id ~upstream:"a{color:oklch(.659 .304 203.3)}"
+        ~cascade:"a{color:oklch(.659 76% 203.3)}" upstream
   | "colors", "0047" ->
       (* CSS Color 4 defines 100% lch() chroma as 150 on this axis, so rounded
          chroma 100.5 is exactly 67%, and [67%] is shorter. The lab() channel
