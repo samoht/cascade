@@ -392,6 +392,7 @@ let check_list_style_shorthand =
   check_value_cursor "list-style-shorthand" read_list_style_shorthand
     pp_list_style_shorthand
 
+let check_grid_area = check_value_cursor "grid-area" read_grid_area pp_grid_area
 let check_font = check_value_cursor "font" read_font pp_font
 
 let check_font_shorthand =
@@ -2826,6 +2827,13 @@ let test_list_style_shorthand () =
   check_list_style_shorthand "none";
   neg_cursor read_list_style_shorthand "12px"
 
+let test_grid_area () =
+  check_grid_area "1/2/3/4";
+  check_grid_area ~expected:"1/2/3/4" "1 / 2 / 3 / 4";
+  check_grid_area "auto";
+  check_grid_area "span 2";
+  neg_cursor read_grid_area "1/2/3/4/5"
+
 let test_font () =
   check_font "16px serif";
   check_font "italic 700 16px/1.5 serif";
@@ -3590,6 +3598,7 @@ let tests =
     test_case "border-image-outset" `Quick test_border_image_outset;
     test_case "list-style" `Quick test_list_style;
     test_case "list-style-shorthand" `Quick test_list_style_shorthand;
+    test_case "grid-area" `Quick test_grid_area;
     test_case "font" `Quick test_font;
     test_case "font-shorthand" `Quick test_font_shorthand;
     test_case "transform" `Quick test_transform;
