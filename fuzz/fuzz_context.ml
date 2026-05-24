@@ -28,8 +28,10 @@ let normalize_decl decl =
 let check_same_decl label expected actual =
   let expected = normalize_decl expected in
   let actual = normalize_decl actual in
+  let expected = pp_decl expected in
+  let actual = pp_decl actual in
   if expected <> actual then
-    failf "%s: expected %S, got %S" label (pp_decl expected) (pp_decl actual)
+    failf "%s: expected %S, got %S" label expected actual
 
 let check_eval_shape label input actual =
   let before_name = Css.Declaration.property_name input in

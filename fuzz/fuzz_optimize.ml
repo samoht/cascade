@@ -137,6 +137,17 @@ let first_index ~needle haystack =
   try Some (Re.Str.search_forward (Re.Str.regexp_string needle) haystack 0)
   with Not_found -> None
 
+(* A feature query that every target browser satisfies is always true, so its
+   @supports wrapper imposes no condition and the optimizer may drop it.
+   display:grid and display:flex are supported by every maintained evergreen
+   browser (flexbox since ~2015, grid since 2017), making those queries
+   unconditionally true on the target. This oracle encodes that browser fact
+   directly - independent of the code under test - and admits a dropped wrapper
+   only for those two conditions. *)
+let baseline_true_supports condition =
+  condition = Css.Supports.property "display" "grid"
+  || condition = Css.Supports.property "display" "flex"
+
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
@@ -147,6 +158,8 @@ let rec boundary_shape = function
       let name = Option.value ~default:"<anonymous>" name in
       (("layer:" ^ name) :: shapes_with_rule_runs block) @ [ "/layer" ]
   | Media (_, block) -> ("media" :: shapes_with_rule_runs block) @ [ "/media" ]
+  | Supports (condition, block) when baseline_true_supports condition ->
+      shapes_with_rule_runs block
   | Supports (_, block) ->
       ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
   | Container (_, _, block) ->

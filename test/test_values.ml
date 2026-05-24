@@ -76,7 +76,11 @@ let test_length () =
   check_length ~expected:".5em" "0.5em";
   check_length "-1.5em";
   check_length "100%";
-  check_length ~expected:"0" "0%";
+  (* 0% is a percentage, not the length 0: a percentage against an indefinite
+     basis need not resolve to 0 (e.g. height:0% with an auto-height container
+     acts as auto), so 0% is preserved. Contrast 0px above, where every absolute
+     length zero is the length 0 and folds. *)
+  check_length "0%";
   check_length "-50%";
 
   (* Viewport units *)
