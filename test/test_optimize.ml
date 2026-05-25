@@ -830,6 +830,15 @@ let minify_str css =
   | Ok { Css.stylesheet; _ } -> minify stylesheet |> String.trim
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
+(* pp alone, with no optimize pass: serialize the parsed AST minified. Under the
+   policy "pp must not change semantics", this is faithful - it may pick the
+   shortest spelling of a node but must not transform one node into another. *)
+let pp_min css =
+  match Css.of_string ~strict:false css with
+  | Ok { Css.stylesheet; _ } ->
+      Css.to_string ~minify:true stylesheet |> String.trim
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
 let test_factor_shared_declarations () =
   (* Two sibling rules sharing a declaration subset factor that subset into a
      combined selector, leaving each rule its unique declarations. Safe here -
@@ -900,6 +909,74 @@ let test_keep_bang_comment_leading () =
   Alcotest.(check string)
     "leading bang comment stays leading" "/*! important */a{color:red}"
     (minify_str "/*! important */a{color:red}")
+
+(* New policy: pp serializes the AST faithfully and must not change semantics.
+   The litmus for where a normalization belongs: if two spellings parse to the
+   SAME node it is a pure serialization choice and pp picks the shortest; if
+   they parse to DIFFERENT nodes the unification is semantic and belongs in
+   optimize, so pp must keep them textually distinct. The pairs below are
+   semantically equal but parse to distinct nodes - a math function vs a
+   literal, a named vs a hex colour, a color-mix() vs its result. *)
+let normalize_pairs =
+  [
+    ("a{width:calc(1px + 2px)}", "a{width:3px}");
+    ("a{width:calc(2 * 5px)}", "a{width:10px}");
+    ("a{color:red}", "a{color:#f00}");
+    ("a{color:black}", "a{color:#000}");
+    ("a{color:rgb(255 255 255)}", "a{color:#fff}");
+    ("a{color:color-mix(in srgb,red,red)}", "a{color:red}");
+  ]
+
+let test_pp_keeps_distinct_nodes () =
+  (* pp must keep each pair textually distinct: collapsing them is a node
+     transform, which is optimize's job, not pp's. *)
+  List.iter
+    (fun (a, b) ->
+      if String.equal (pp_min a) (pp_min b) then
+        Alcotest.failf
+          "pp collapsed distinct nodes %S and %S to %S (normalize in optimize, \
+           not pp)"
+          a b (pp_min a))
+    normalize_pairs
+
+let test_optimize_unifies_equivalent_nodes () =
+  (* The flip side: optimize is the AST->AST transform that collapses each pair
+     to one canonical node, so the optimized minified output matches. *)
+  List.iter
+    (fun (a, b) ->
+      Alcotest.(check string)
+        (Printf.sprintf "optimize unifies %s / %s" a b)
+        (minify_str a) (minify_str b))
+    normalize_pairs
+
+let test_pp_picks_shortest_same_node () =
+  (* Spellings that parse to the SAME node are a pure serialization choice, so
+     pp emits one shortest spelling for both with no optimize pass. *)
+  let same a b =
+    Alcotest.(check string)
+      (Printf.sprintf "pp canonicalizes same-node %s / %s" a b)
+      (pp_min a) (pp_min b)
+  in
+  same "a{width:0.5px}" "a{width:.5px}";
+  same "a{width:10.0px}" "a{width:10px}";
+  same "a{color:#FFFFFF}" "a{color:#fff}";
+  same "a{color:#AbC}" "a{color:#abc}";
+  same "a{color:RED}" "a{color:red}"
+
+let test_pp_minify_is_idempotent () =
+  (* pp alone (no optimize) is a fixed point: re-parsing minified output and
+     re-printing changes nothing, because pp emits canonical bytes per node. *)
+  List.iter
+    (fun (a, b) ->
+      Alcotest.(check string)
+        (Printf.sprintf "pp idempotent on %s" a)
+        (pp_min a)
+        (pp_min (pp_min a));
+      Alcotest.(check string)
+        (Printf.sprintf "pp idempotent on %s" b)
+        (pp_min b)
+        (pp_min (pp_min b)))
+    normalize_pairs
 
 let test_no_merge_vendor_pseudo () =
   let input =
@@ -3229,6 +3306,14 @@ let selector_merging_tests =
     ( "leading bang comment stays leading",
       `Quick,
       test_keep_bang_comment_leading );
+    ("pp keeps distinct nodes distinct", `Quick, test_pp_keeps_distinct_nodes);
+    ( "optimize unifies equivalent nodes",
+      `Quick,
+      test_optimize_unifies_equivalent_nodes );
+    ( "pp picks shortest spelling of same node",
+      `Quick,
+      test_pp_picks_shortest_same_node );
+    ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
     ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
     ("no merge with nested", `Quick, test_no_merge_with_nested);
     ( "spec cascade 3 shorthand resets omitted longhands",

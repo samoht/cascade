@@ -17,13 +17,19 @@
 module String_set : Set.S with type elt = string
 (** Set of strings, used for theme variable names. *)
 
+type out
+(** The output sink a formatter writes to: a [Buffer] for serialisation, or a
+    counter that records only length and last byte for {!size} (no allocation).
+    Abstract - emit through {!string} / {!char} and inspect with {!last_char}.
+*)
+
 type ctx = {
   minify : bool;  (** Whether to produce minified output *)
   level : int;  (** Current nesting depth *)
   indent : int option;
       (** Indent width per nesting level. [None] disables per-level indentation
           even when not minifying. *)
-  buf : Buffer.t;  (** Output buffer *)
+  out : out;  (** Output sink *)
   inline : bool;  (** Whether to inline variables or not *)
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
@@ -73,6 +79,18 @@ val to_buffer :
     optional [indent] sets the per-level indent width (default: [None] under
     [minify], [Some 2] otherwise). *)
 
+val size :
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?enforce_spec:bool ->
+  'a t ->
+  'a ->
+  int
+(** [size formatter value] is the byte length of [to_string formatter value]
+    without allocating the result string. Use it for size-based decisions
+    instead of measuring [String.length (to_string ...)]. *)
+
 val to_string :
   ?minify:bool ->
   ?indent:int ->
@@ -99,6 +117,11 @@ val quoted : string t
 
 val char : char t
 (** [char] writes a single character to the buffer. *)
+
+val last_char : ctx -> char option
+(** [last_char ctx] is the most recently emitted byte, or [None] if nothing has
+    been written yet. Use it for token-boundary spacing decisions instead of
+    reaching into the output sink directly. *)
 
 val quoted_string : string t
 (** [quoted_string] writes a double-quoted string with proper escaping of quotes

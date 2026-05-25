@@ -6540,7 +6540,8 @@ let rec normalize_transform (t : transform) : transform =
 
 let rec pp_transform : transform Pp.t =
  fun ctx t ->
-  let t = if Pp.minified ctx then canonicalise_transform t else t in
+  (* Pure serialiser: the [canonicalise_transform] fold lives in
+     [normalize_transform], so minify makes no semantic choice here. *)
   pp_transform_raw ctx t
 
 and pp_transform_raw : transform Pp.t =
@@ -6925,13 +6926,7 @@ let pp_mask_layer : mask_layer Pp.t =
      self-delimiting, so under minify we can drop the inter-slot space after
      [url(...)] / [<image>]. *)
   let last_is_self_delim () =
-    let buf = ctx.Pp.buf in
-    let len = Buffer.length buf in
-    len > 0
-    &&
-    match Buffer.nth buf (len - 1) with
-    | ')' | ']' | '}' -> true
-    | _ -> false
+    match Pp.last_char ctx with Some (')' | ']' | '}') -> true | _ -> false
   in
   let maybe_space () =
     if !first then first := false
@@ -7039,13 +7034,7 @@ let pp_border_image : border_image Pp.t =
      inter-slot space after [url(...)] / [<image>] can be elided under
      minify. *)
   let last_is_self_delim () =
-    let buf = ctx.Pp.buf in
-    let len = Buffer.length buf in
-    len > 0
-    &&
-    match Buffer.nth buf (len - 1) with
-    | ')' | ']' | '}' -> true
-    | _ -> false
+    match Pp.last_char ctx with Some (')' | ']' | '}') -> true | _ -> false
   in
   let maybe_space () =
     if !first then first := false
@@ -7881,8 +7870,9 @@ let animation_range_boundary_char = function
 let animation_range_needs_space ctx =
   if not (Pp.minified ctx) then true
   else
-    let len = Buffer.length ctx.Pp.buf in
-    len = 0 || animation_range_boundary_char (Buffer.nth ctx.Pp.buf (len - 1))
+    match Pp.last_char ctx with
+    | None -> true
+    | Some c -> animation_range_boundary_char c
 
 let rec pp_animation_range : animation_range Pp.t =
  fun ctx -> function
@@ -9118,11 +9108,7 @@ and pp_grid_track_list ctx tracks =
      output ends with [\]] or [\)] (line-name block / function call) or the next
      item is a line-name block - matching the lightning / csso minified
      spelling. *)
-  let buf_last_char ctx : char option =
-    let buf = ctx.Pp.buf in
-    let len = Buffer.length buf in
-    if len = 0 then Option.None else Option.Some (Buffer.nth buf (len - 1))
-  in
+  let buf_last_char ctx : char option = Pp.last_char ctx in
   let starts_with_bracket = function Line_names _ -> true | _ -> false in
   let rec loop = function
     | [] -> ()
@@ -19247,6 +19233,9 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
    identity. *)
 let normalize_property_value : type a. a property -> a -> a =
  fun property value ->
+  (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
+     semantic rewrite, so it belongs here, not in pp. *)
+  let value = canonical_initial_for_minify property value in
   match property with
   | Transform -> List.map normalize_transform value
   | Webkit_transform -> List.map normalize_transform value
@@ -19254,9 +19243,6 @@ let normalize_property_value : type a. a property -> a -> a =
 
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
-  let value =
-    if Pp.minified ctx then canonical_initial_for_minify prop value else value
-  in
   let pp pp_a = pp_a ctx value in
   match prop with
   | Custom_property _ -> pp pp_custom_property

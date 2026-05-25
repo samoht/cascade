@@ -1,12 +1,20 @@
 module String_set = Set.Make (String)
 
+type counter = { mutable count : int; mutable last : char }
+(** A byte sink that records only the running length and the last emitted byte.
+    It lets [size] measure output with no [Buffer] (hence no allocation): the
+    last byte is all the emission-time lookback under minify needs, and the
+    backward newline scan in [column] only runs in pretty mode. *)
+
+type out = Out_buffer of Buffer.t | Out_counter of counter
+
 type ctx = {
   minify : bool;
   level : int;  (** current nesting depth *)
   indent : int option;
       (** indent width per nesting level. [None] disables per-level indentation
           even when not minifying. *)
-  buf : Buffer.t;
+  out : out;
   inline : bool;
   in_function : bool;
   in_calc : bool;
@@ -24,25 +32,57 @@ type ctx = {
 
 type 'a t = ctx -> 'a -> unit
 
+let emit_string out s =
+  match out with
+  | Out_buffer b -> Buffer.add_string b s
+  | Out_counter c ->
+      let n = String.length s in
+      if n > 0 then (
+        c.count <- c.count + n;
+        c.last <- s.[n - 1])
+
+let emit_char out ch =
+  match out with
+  | Out_buffer b -> Buffer.add_char b ch
+  | Out_counter c ->
+      c.count <- c.count + 1;
+      c.last <- ch
+
+let out_length = function
+  | Out_buffer b -> Buffer.length b
+  | Out_counter c -> c.count
+
+(* Only the backward newline scan in [column] reads positions other than the
+   last byte, and that runs in pretty mode; under minify (the only mode
+   [Out_counter] serves) there are no newlines, so the counter answers for the
+   last byte and yields [\000] elsewhere. *)
+let out_nth out i =
+  match out with
+  | Out_buffer b -> Buffer.nth b i
+  | Out_counter c -> if i = c.count - 1 then c.last else '\000'
+
 (* [resolve_indent ~minify indent]: under [minify] there is no indentation;
    otherwise pick the explicit value or the default 2-space indent. *)
 let resolve_indent ~minify = function
   | Some _ as i -> i
   | None -> if minify then None else Some 2
 
-let ctx ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) buf
+let make ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out
     =
   {
     minify;
     level = 0;
     indent = resolve_indent ~minify indent;
-    buf;
+    out;
     inline;
     in_function = false;
     in_calc = false;
     in_feature_query = false;
     enforce_spec;
   }
+
+let ctx ?minify ?indent ?inline ?enforce_spec buf =
+  make ?minify ?indent ?inline ?enforce_spec (Out_buffer buf)
 
 let to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a =
   let ctx = ctx ?minify ?indent ?inline ?enforce_spec buf in
@@ -53,15 +93,28 @@ let to_string ?minify ?indent ?inline ?enforce_spec pp a =
   to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a;
   Buffer.contents buf
 
+(* Byte length of [pp a] with no allocation: the counter sink records only the
+   running length and last byte, so there is no [Buffer] and no result
+   string. *)
+let size ?minify ?indent ?inline ?enforce_spec pp a =
+  let counter = { count = 0; last = '\000' } in
+  let ctx = make ?minify ?indent ?inline ?enforce_spec (Out_counter counter) in
+  pp ctx a;
+  counter.count
+
 let nop _ _ = ()
-let string ctx s = Buffer.add_string ctx.buf s
+let string ctx s = emit_string ctx.out s
+let char ctx c = emit_char ctx.out c
 
 let quoted ctx s =
-  Buffer.add_char ctx.buf '"';
-  Buffer.add_string ctx.buf s;
-  Buffer.add_char ctx.buf '"'
+  char ctx '"';
+  string ctx s;
+  char ctx '"'
 
-let char ctx c = Buffer.add_char ctx.buf c
+(* The last byte emitted so far, for token-boundary spacing decisions. *)
+let last_char ctx =
+  let len = out_length ctx.out in
+  if len = 0 then None else Some (out_nth ctx.out (len - 1))
 
 let is_hex_digit = function
   | '0' .. '9' | 'a' .. 'f' | 'A' .. 'F' -> true
@@ -100,8 +153,8 @@ let quoted_string ctx s =
     s;
   char ctx '"'
 
-let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
-let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
+let sp ctx () = if not ctx.minify then char ctx ' '
+let cut ctx () = if not ctx.minify then string ctx "\n" else ()
 
 let nest n pp ctx a =
   let new_ctx = { ctx with level = ctx.level + n } in
@@ -110,8 +163,7 @@ let nest n pp ctx a =
 let indent pp ctx a =
   (* Output [level * indent] spaces when an indent width is set. *)
   (match ctx.indent with
-  | Some w when w > 0 ->
-      Buffer.add_string ctx.buf (String.make (w * ctx.level) ' ')
+  | Some w when w > 0 -> string ctx (String.make (w * ctx.level) ' ')
   | _ -> ());
   pp ctx a
 
@@ -148,39 +200,36 @@ let list ?sep pp ctx l =
    following ident/number cannot be re-tokenised into a single token. Falls back
    to a regular space in pretty mode. *)
 let token_sp ctx () =
-  if not ctx.minify then Buffer.add_char ctx.buf ' '
+  if not ctx.minify then char ctx ' '
   else
-    let len = Buffer.length ctx.buf in
+    let len = out_length ctx.out in
     if len = 0 then ()
     else
-      match Buffer.nth ctx.buf (len - 1) with
-      | ')' | '%' -> ()
-      | _ -> Buffer.add_char ctx.buf ' '
+      match out_nth ctx.out (len - 1) with ')' | '%' -> () | _ -> char ctx ' '
 
 let column ctx =
-  let buf = ctx.buf in
-  let len = Buffer.length buf in
+  let len = out_length ctx.out in
   let rec find_newline i =
     if i < 0 then len
-    else if Buffer.nth buf i = '\n' then len - i - 1
+    else if out_nth ctx.out i = '\n' then len - i - 1
     else find_newline (i - 1)
   in
   find_newline (len - 1)
 
 let list_wrap_append ~threshold ~wrap_sep ctx s =
-  Buffer.add_char ctx.buf ',';
+  char ctx ',';
   if column ctx + 1 + String.length s > threshold then (
-    Buffer.add_char ctx.buf '\n';
-    Buffer.add_string ctx.buf wrap_sep)
-  else Buffer.add_char ctx.buf ' ';
-  Buffer.add_string ctx.buf s
+    char ctx '\n';
+    string ctx wrap_sep)
+  else char ctx ' ';
+  string ctx s
 
 let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
   if ctx.minify then list ~sep pp ctx l
   else
     let measure_item x =
       let tmp = Buffer.create 64 in
-      let tmp_ctx = { ctx with buf = tmp } in
+      let tmp_ctx = { ctx with out = Out_buffer tmp } in
       pp tmp_ctx x;
       Buffer.contents tmp
     in
@@ -286,17 +335,13 @@ let round_sig n f =
     let factor = 10.0 ** (Float.of_int n -. d) in
     Float.round (f *. factor) /. factor
 
-let float ctx f =
-  Buffer.add_string ctx.buf (string_of_float ~drop_leading_zero:true f)
-
-let float_compact ctx f =
-  Buffer.add_string ctx.buf (string_of_float ~drop_leading_zero:true f)
+let float ctx f = string ctx (string_of_float ~drop_leading_zero:true f)
+let float_compact ctx f = string ctx (string_of_float ~drop_leading_zero:true f)
 
 let float_n n ctx f =
-  let s = string_of_float ~drop_leading_zero:true ~max_decimals:n f in
-  Buffer.add_string ctx.buf s
+  string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
-let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
+let int ctx i = string ctx (string_of_int i)
 
 let hex ctx i =
   let hex_digit n =
@@ -314,7 +359,7 @@ let hex ctx i =
     else if n < 16 then String.make 1 (hex_digit n)
     else to_hex (n / 16) ^ to_hex (n mod 16)
   in
-  Buffer.add_string ctx.buf (to_hex i)
+  string ctx (to_hex i)
 
 let unit ctx f suffix =
   if f = 0. then char ctx '0'
@@ -331,15 +376,15 @@ let pct ctx f =
   string ctx "%"
 
 let sep ctx s =
-  Buffer.add_string ctx.buf s;
-  if not ctx.minify then Buffer.add_char ctx.buf ' '
+  string ctx s;
+  if not ctx.minify then char ctx ' '
 
 let comma ctx () = sep ctx ","
-let semicolon ctx () = Buffer.add_char ctx.buf ';'
-let slash ctx () = Buffer.add_char ctx.buf '/'
-let space ctx () = Buffer.add_char ctx.buf ' '
-let block_open ctx () = Buffer.add_char ctx.buf '{'
-let block_close ctx () = Buffer.add_char ctx.buf '}'
+let semicolon ctx () = char ctx ';'
+let slash ctx () = char ctx '/'
+let space ctx () = char ctx ' '
+let block_open ctx () = char ctx '{'
+let block_close ctx () = char ctx '}'
 let minified ctx = ctx.minify
 let in_feature_query ctx = ctx.in_feature_query
 let enter_feature_query ctx = { ctx with in_feature_query = true }

@@ -3349,9 +3349,9 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
    [sum(selector_size_i) + N] extra characters for the new rule headers and
    commas. Only commit when the savings are positive. *)
 
-let decls_pp_string ds =
+let decls_pp_size ds =
   let pp ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
-  Pp.to_string ~minify:true pp ds
+  Pp.size ~minify:true pp ds
 
 let rule_factor_eligible (r : Stylesheet.rule) =
   r.nested = [] && r.merge_key = None
@@ -3367,16 +3367,16 @@ let merge_selector_list = function
       Selector.List (List.concat_map flatten sels)
 
 (* Byte size of the printed rule [<selector>{<d1>;<d2>;...;<dn>}].
-   [decls_pp_string] concatenates declarations without separators - the [;]
+   [decls_pp_size] measures declarations without their separators - the [;]
    between them is added by the rule printer at emission time, so we add [n - 1]
    back here. *)
 let rule_pp_size (r : Stylesheet.rule) =
-  let sel = Pp.to_string ~minify:true Selector.pp r.Stylesheet_intf.selector in
-  let decls = decls_pp_string r.Stylesheet_intf.declarations in
+  let sel = Pp.size ~minify:true Selector.pp r.Stylesheet_intf.selector in
+  let decls = decls_pp_size r.Stylesheet_intf.declarations in
   let separators =
     match r.declarations with [] | [ _ ] -> 0 | _ :: rest -> List.length rest
   in
-  String.length sel + 2 + String.length decls + separators
+  sel + 2 + decls + separators
 
 (* [factorable_default decl_for] returns the first rule's declaration for a
    property iff every rule declares the same property. Default-pick is
@@ -4872,9 +4872,63 @@ let registered_foldable (stylesheet : t) : string -> bool =
   List.iter collect stylesheet;
   fun name -> Hashtbl.mem tbl name
 
+(* Canonicalise every declaration's value so the whole AST is canonical before
+   structural optimization. Cover all declaration-bearing contexts - style rules
+   and their nesting, [@keyframes] frames, [@page] and its margin rules,
+   [@position-try], [@supports-condition], bare nesting declarations - and
+   recurse through grouping blocks, so canonicalisation is uniform wherever a
+   declaration sits. *)
+let rec normalize_block (b : statement list) : statement list =
+  List.map normalize_statement b
+
+and normalize_statement (s : statement) : statement =
+  let nd = List.map Declaration.normalize in
+  match s with
+  | Rule r ->
+      Rule
+        {
+          r with
+          declarations = nd r.declarations;
+          nested = normalize_block r.nested;
+        }
+  | Declarations d -> Declarations (nd d)
+  | Page (n, d) -> Page (n, nd d)
+  | Page_with_margins (n, descs, margins) ->
+      Page_with_margins
+        ( n,
+          nd descs,
+          List.map
+            (fun m -> { m with margin_descriptors = nd m.margin_descriptors })
+            margins )
+  | Position_try (n, d) -> Position_try (n, nd d)
+  | Supports_condition (n, d) -> Supports_condition (n, nd d)
+  | Keyframes (n, ks) -> Keyframes (n, List.map normalize_keyframe ks)
+  | Webkit_keyframes (n, ks) ->
+      Webkit_keyframes (n, List.map normalize_keyframe ks)
+  | Moz_keyframes (n, ks) -> Moz_keyframes (n, List.map normalize_keyframe ks)
+  | Layer (n, b) -> Layer (n, normalize_block b)
+  | Media (c, b) -> Media (c, normalize_block b)
+  | Container (n, c, b) -> Container (n, c, normalize_block b)
+  | Supports (c, b) -> Supports (c, normalize_block b)
+  | Moz_document (c, b) -> Moz_document (c, normalize_block b)
+  | Starting_style b -> Starting_style (normalize_block b)
+  | When (c, b) -> When (c, normalize_block b)
+  | Else (c, b) -> Else (c, normalize_block b)
+  | Origin (o, b) -> Origin (o, normalize_block b)
+  | Scope (s1, s2, b) -> Scope (s1, s2, normalize_block b)
+  | other -> other
+
+and normalize_keyframe (k : keyframe) : keyframe =
+  {
+    k with
+    keyframe_declarations =
+      List.map Declaration.normalize k.keyframe_declarations;
+  }
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
     (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
+  let stylesheet = normalize_block stylesheet in
   let stylesheet =
     if flatten_nesting then flatten_block stylesheet else stylesheet
   in

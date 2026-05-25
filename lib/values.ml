@@ -3629,7 +3629,7 @@ let string_of_lab_float ~max_decimals ctx f =
     (if ctx.Pp.minify then Pp.round_sig 6 f else f)
 
 let pp_lab_float ~max_decimals ctx f =
-  Buffer.add_string ctx.Pp.buf (string_of_lab_float ~max_decimals ctx f)
+  Pp.string ctx (string_of_lab_float ~max_decimals ctx f)
 
 let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   let n = string_of_lab_float ~max_decimals ctx f in
@@ -3728,8 +3728,7 @@ let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
     ~ 0.004 so 3 decimals is more than display-accurate. *)
 let pp_float_drop_zero ctx f =
   let max_decimals = if Pp.minified ctx then 3 else 8 in
-  Buffer.add_string ctx.Pp.buf
-    (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
+  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
 
 let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function

@@ -2591,9 +2591,7 @@ let rec declaration_with_importance important = function
         { var_name; decl = declaration_with_importance important decl }
 
 let property_name (type a) (property : a Properties.property) =
-  let ctx = Pp.ctx ~minify:true (Buffer.create 16) in
-  Properties.pp_property ctx property;
-  Buffer.contents ctx.buf
+  Pp.to_string ~minify:true Properties.pp_property property
 
 let simplify_component ?layer_order ?layer ctx value =
   let combine_values (left : Values.component) op (right : Values.component) =
