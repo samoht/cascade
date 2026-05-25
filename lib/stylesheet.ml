@@ -3761,19 +3761,25 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
      statement still corresponds to the next unconsumed rule, so the position
      mapping survives. *)
   let bangs = extract_bang_comments source in
-  let rule_starts = List.map (fun r -> (rule_loc r).start_pos) out.value in
-  let rec interleave bangs rule_starts sheet =
-    match (bangs, rule_starts, sheet) with
+  (* Compare a comment's offset against each rule's END, not its start: a rule's
+     start absorbs an immediately-preceding comment ([/*!x*/a{}] starts at 0),
+     which would push a leading comment after its rule, but the closing-brace
+     end is unaffected by leading trivia. A leading comment always precedes its
+     rule's end; a comment between two rules precedes the later rule's end and
+     is emitted before it. *)
+  let rule_ends = List.map (fun r -> (rule_loc r).Loc.end_pos) out.value in
+  let rec interleave bangs rule_ends sheet =
+    match (bangs, rule_ends, sheet) with
     | [], _, _ -> sheet
     | (_, body) :: rest_b, [], _ ->
         Bang_comment body :: interleave rest_b [] sheet
-    | (offset, body) :: rest_b, start :: _, _ when offset < start ->
-        Bang_comment body :: interleave rest_b rule_starts sheet
+    | (offset, body) :: rest_b, end_ :: _, _ when offset < end_ ->
+        Bang_comment body :: interleave rest_b rule_ends sheet
     | _, _ :: rest_s, [] -> interleave bangs rest_s []
     | _, _ :: rest_s, stmt :: rest_sheet ->
         stmt :: interleave bangs rest_s rest_sheet
   in
-  let sheet = interleave bangs rule_starts sheet in
+  let sheet = interleave bangs rule_ends sheet in
   (sheet, out.warnings @ typed_warnings)
 
 (** {1 Inline Styles} *)
