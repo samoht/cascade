@@ -167,6 +167,11 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
+val normalize_length_percentage : length_percentage -> length_percentage
+(** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
+    keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
+    [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
+
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
     When [always] is true, always includes units even for 0. *)
