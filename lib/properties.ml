@@ -10406,11 +10406,36 @@ module Border = struct
 end
 
 let read_border_shorthand t : border_shorthand =
-  let acc, _ =
-    Cursor.fold_many Border.read_component ~init:Border.empty
-      ~f:(Border.merge t) t
-  in
-  Border.to_shorthand acc
+  (* A [var()] in the border shorthand is type-ambiguous (it could substitute a
+     width, style, or colour), so it cannot be assigned by matching a typed
+     reader - assign it to the next unfilled slot in width/style/colour order
+     and read its fallback with that slot's reader. Concrete components still
+     bind by type. *)
+  let acc = ref Border.empty in
+  let consumed = ref true in
+  while !consumed do
+    Cursor.ws t;
+    consumed :=
+      if Cursor.is_done t || Cursor.peek_comma t then false
+      else if Cursor.looking_at_func "var" t then (
+        let a = !acc in
+        acc :=
+          if a.width = Option.None then
+            { a with width = Some (Var (read_var read_border_width t)) }
+          else if a.style = Option.None then
+            { a with style = Some (Var (read_var read_border_style t)) }
+          else if a.color = Option.None then
+            { a with color = Some (Var (read_var read_color t)) }
+          else Cursor.err_invalid t "too many border components";
+        true)
+      else
+        match Cursor.option Border.read_component t with
+        | Some c ->
+            acc := Border.merge t !acc c;
+            true
+        | Option.None -> false
+  done;
+  Border.to_shorthand !acc
 
 let border_keyword = function
   | "inherit" -> Some (Inherit : border)
@@ -10438,8 +10463,16 @@ let read_border_keyword_or_shorthand t : border =
   | None -> read_border_shorthand_from t snap
 
 let rec read_border (t : Cursor.t) : border =
-  if Cursor.looking_at_func "var" t then
-    (Var (Values.read_var read_border t) : border)
+  if Cursor.looking_at_func "var" t then (
+    (* A lone [var()] is the whole value; a [var()] followed by more components
+       is a shorthand whose first component happens to be a var. *)
+    let snap = Cursor.save t in
+    let v = Values.read_var read_border t in
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_comma t then (Var v : border)
+    else (
+      Cursor.restore t snap;
+      read_border_keyword_or_shorthand t))
   else read_border_keyword_or_shorthand t
 
 let rec read_logical_border_color t : logical_border_color =
