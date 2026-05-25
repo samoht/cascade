@@ -172,6 +172,13 @@ val normalize_length_percentage : length_percentage -> length_percentage
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
 
+val normalize_color : in_feature_query:bool -> color -> color
+(** [normalize_color ~in_feature_query c] canonicalises a color to its shortest
+    spelling: a static colour in any space folds through sRGB to hex/named, hex
+    shortens, and named↔hex picks the shorter. [in_feature_query] keeps a colour
+    untouched inside an [@supports] test, where the exact spelling is the
+    capability being probed. *)
+
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
     When [always] is true, always includes units even for 0. *)

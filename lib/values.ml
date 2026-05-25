@@ -6946,6 +6946,67 @@ let read_color_name t : color_name =
   | "rebeccapurple" -> Rebecca_purple
   | _ -> Cursor.err_invalid t ("color name: " ^ s)
 
+(* Shortest spelling of a hex value as a [color]: shorten, then pick the named
+   form when it is strictly shorter (the [pp_hex_color] choice, as an AST
+   rewrite producing a [color] instead of printing). *)
+let canonical_color_of_hex (value : string) : color =
+  let shortened = String.lowercase_ascii (shorten_hex value) in
+  match named_for_hex shortened with
+  | Some name when String.length name < String.length shortened + 1 ->
+      Named (read_color_name (Cursor.of_string name))
+  | _ -> Hex { hash = true; value = shortened }
+
+(* AST-level color canonicalisation: the folds the printer used to do, producing
+   a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
+   gates the static colour-space fold (suppressed inside [@supports] tests). *)
+let rec normalize_color ~in_feature_query (c : color) : color =
+  let hex_of_bytes r g b a =
+    let rgb =
+      String.concat ""
+        [ byte_to_hex_byte r; byte_to_hex_byte g; byte_to_hex_byte b ]
+    in
+    match alpha_value_byte a with
+    | Some 255 -> canonical_color_of_hex rgb
+    | Some ab ->
+        canonical_color_of_hex (String.concat "" [ rgb; byte_to_hex_byte ab ])
+    | Option.None -> c
+  in
+  match c with
+  | Oklab { l = Some _; a = Some _; b = Some _; _ }
+  | Oklch { l = Some _; c = Some _; _ }
+  | Lab { l = Some _; a = Some _; b = Some _; _ }
+  | Lch { l = Some _; c = Some _; _ }
+  | Color _
+    when not in_feature_query -> (
+      match static_color_to_linear_srgb c with
+      | Some (linear, alpha_f) -> (
+          match Color_space.fold_linear_srgb_to_bytes linear with
+          | Some (r, g, b) ->
+              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+              let alpha_byte =
+                Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
+              in
+              let a : alpha =
+                if alpha_byte = 255 then None
+                else if alpha_byte = 0 then Num 0.0
+                else Num (Float.of_int alpha_byte /. 255.0)
+              in
+              hex_of_bytes r g b a
+          | None -> c)
+      | None -> c)
+  | Hex { value; _ } -> canonical_color_of_hex value
+  | Named _ -> (
+      match minify_color c with
+      | Hex { value; _ } -> canonical_color_of_hex value
+      | other -> other)
+  | Light_dark (l, d) ->
+      Light_dark
+        ( normalize_color ~in_feature_query l,
+          normalize_color ~in_feature_query d )
+  | Contrast_color inner ->
+      Contrast_color (normalize_color ~in_feature_query inner)
+  | _ -> c
+
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =
   Cursor.ws t;
