@@ -3302,11 +3302,11 @@ type flex = Properties.flex =
   | Revert_layer
   | Auto  (** 1 1 auto *)
   | None  (** 0 0 auto *)
-  | Grow of float  (** Single grow value *)
+  | Grow of flex_factor  (** Single grow value *)
   | Basis of flex_basis  (** 1 1 <flex-basis> *)
-  | Grow_shrink of float * float  (** grow shrink 0% *)
-  | Full of float * float * flex_basis  (** grow shrink basis *)
-  | Var of flex var  (** Font-size values including relative keywords *)
+  | Grow_shrink of flex_factor * flex_factor  (** grow shrink 0% *)
+  | Full of flex_factor * flex_factor * flex_basis  (** grow shrink basis *)
+  | Var of flex var
 
 type font_size = Properties.font_size =
   | Length of length

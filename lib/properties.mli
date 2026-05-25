@@ -10,6 +10,12 @@ val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
 
+val normalize_property_value : 'a property -> 'a -> 'a
+(** [normalize_property_value prop value] applies semantic (equivalence)
+    canonicalisation to [value] so the optimizer holds a canonical AST and the
+    pretty-printer stays a pure serialiser. Identity for properties whose folds
+    have not yet migrated out of [pp]. *)
+
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
     arm cascade detected at parse time (CSS spec violations preserved verbatim
