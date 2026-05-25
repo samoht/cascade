@@ -28,4 +28,5 @@
   fmt
   base-unix
   uutf
-  cmdliner))
+  cmdliner
+  nox-memtrace))

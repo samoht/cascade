@@ -24,6 +24,7 @@ depends: [
   "base-unix"
   "uutf"
   "cmdliner"
+  "nox-memtrace"
   "odoc" {with-doc}
 ]
 build: [
