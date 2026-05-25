@@ -413,21 +413,17 @@ let rec value_uses_runtime_subst = function
 
 (** Get the property name as a string from a declaration *)
 let rec property_name decl =
-  let ctx = Pp.ctx ~minify:true (Buffer.create 16) in
   match decl with
   | Declaration { property; _ } ->
-      pp_property ctx property;
-      Buffer.contents ctx.buf
+      Pp.to_string ~minify:true pp_property property
   | Theme_guarded { decl; _ } -> property_name decl
 
 let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
-  let ctx = Pp.ctx ~minify ~inline (Buffer.create 16) in
   match decl with
   | Declaration { property; value; _ } ->
-      pp_property_value ctx (property, value);
-      Buffer.contents ctx.buf
+      Pp.to_string ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
 (* Helper to validate no extra tokens remain *)

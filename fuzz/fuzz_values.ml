@@ -573,6 +573,33 @@ let test_generated_value_grammar buf =
   let kind, input = generated_value buf in
   assert_value_roundtrip kind input
 
+(* Pp.size counts the serialized bytes with the same spelling logic as to_string
+   but without allocating the string. It must equal the length of what to_string
+   would produce, for every formatter and value, in both minified and pretty
+   modes. *)
+let assert_pp_size_matches pp v =
+  List.iter
+    (fun minify ->
+      let s = Css.Pp.to_string ~minify pp v in
+      let n = Css.Pp.size ~minify pp v in
+      if n <> String.length s then
+        failf
+          "Pp.size disagrees with to_string (minify=%b): size=%d, len=%d for %S"
+          minify n (String.length s) s)
+    [ true; false ]
+
+let test_pp_size_matches_length buf =
+  let kind, input = generated_value buf in
+  let run parse pp =
+    match parse_whole parse input with
+    | None -> ()
+    | Some v -> assert_pp_size_matches pp v
+  in
+  match kind with
+  | `Length -> run Css.Values.read_length Css.Values.pp_length
+  | `Color -> run Css.Values.read_color Css.Values.pp_color
+  | `Number -> run Css.Values.read_number Css.Values.pp_number
+
 let test_invalid_value_mutations buf =
   let kind, input = invalid_value_mutation buf in
   assert_value_reject kind input
@@ -618,6 +645,8 @@ let roundtrip_cases =
       test_duration_serialization_idempotent;
     test_case "modern color stable" [ bytes ] test_modern_color_stable;
     test_case "modern math stable" [ bytes ] test_modern_math_stable;
+    test_case "pp size matches serialized length" [ bytes ]
+      test_pp_size_matches_length;
   ]
 
 let grammar_cases =

@@ -56,10 +56,9 @@ let pp_parse_error (err : parse_error) =
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
-  let open Buffer in
-  add_string ctx.buf "<reader pos=";
-  add_string ctx.buf (string_of_int t.pos);
-  add_string ctx.buf ">"
+  Pp.string ctx "<reader pos=";
+  Pp.string ctx (string_of_int t.pos);
+  Pp.string ctx ">"
 
 (** {1 Creation} *)
 
