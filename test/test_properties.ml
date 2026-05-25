@@ -1893,6 +1893,11 @@ let test_flex_basis () =
   check_flex_basis "100px";
   check_flex_basis "50%";
   check_flex_basis "inherit";
+  (* flex-basis is a <length-percentage>, so it takes var() and calc(); a calc()
+     that cannot resolve to a constant is preserved. *)
+  check_flex_basis "var(--b)";
+  check_flex_basis "calc(100% - 10px)";
+  check_flex_basis "calc(100% - var(--x))";
   neg_cursor read_flex_basis "invalid";
   neg_cursor read_flex_basis "-100px"
 
@@ -2760,6 +2765,10 @@ let test_flex () =
   check_flex "none";
   check_flex "auto";
   check_flex "inherit";
+  (* In the shorthand var() stays opaque, and a constant calc() in the grow
+     position (a <number>) reduces to the shortest form like a literal would. *)
+  check_flex "var(--f)";
+  check_flex ~expected:"3 1 0" "calc(1 + 2) 1 0";
   neg_cursor read_flex "invalid-flex"
 
 let test_font_variant_css21 () =
@@ -3335,6 +3344,13 @@ let spec_generated_box_layout_edges () =
   check_counter_set "section 2 subsection";
   check_dominant_baseline "text-bottom";
   check_flex_factor "2";
+  (* flex-grow/flex-shrink are <number> (CSS Flexbox 1), so var() and calc() are
+     valid. Ideal minified output: var() stays opaque, a constant calc() reduces
+     to the shortest <number> (calc(1 + 2) -> 3), and a calc() that cannot
+     reduce keeps its form. *)
+  check_flex_factor "var(--g)";
+  check_flex_factor ~expected:"3" "calc(1 + 2)";
+  check_flex_factor "calc(var(--g) + 1)";
   check_flex_flow "row wrap";
   check_grid_line_pair ~expected:"1/span 2" "1 / span 2";
   check_grid_template_areas ~expected:"\"a a\"\"b c\"" "\"a a\" \"b c\"";
