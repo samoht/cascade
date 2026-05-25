@@ -4232,13 +4232,20 @@ let pop_trailing_rules acc =
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
-  merge_named_layers_by_name stmts
+  (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
+     invalid and ignored by every browser, so it is a no-op that must not act as
+     a cascade boundary. Stripping it up front lets the rules it falsely
+     separated merge in this same pass, which keeps [statements] idempotent -
+     stripping after the merge would leave two adjacent same-selector rules that
+     only a re-run would combine. *)
+  drop_misplaced_imports stmts
+  |> merge_named_layers_by_name
   |> process_statements ~ctx ~enforce_spec []
   |> synthesize_nesting_statements
   |> merge_consecutive_media ~optimize_merged_block
   |> merge_consecutive_supports ~optimize_merged_block
   |> merge_consecutive_containers ~optimize_merged_block
-  |> merge_layer_declarations |> drop_misplaced_imports |> drop_empty_rules
+  |> merge_layer_declarations |> drop_empty_rules
 
 and process_statements ~ctx ~enforce_spec (acc : statement list)
     (remaining : statement list) : statement list =
@@ -4381,10 +4388,30 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      the merged block matches the source order of the originals.
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
-  List.map (single_rule_without_nested ~ctx) with_optimized_nested
-  |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-  |> List.map (finalize_rule_without_nested ~ctx)
-  |> combine_identical_rules |> factor_common_declarations
+  let prepared =
+    List.map (single_rule_without_nested ~ctx) with_optimized_nested
+    |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
+    |> List.map (finalize_rule_without_nested ~ctx)
+  in
+  (* Factoring is greedy: extracting one shared declaration subset can leave
+     behind leftovers that are themselves factorable - a "triangle" where each
+     pair of rules shares a different declaration needs more than one round to
+     settle. Iterate the boundary-checked [combine_identical_rules] /
+     [factor_common_declarations] steps to a local fixed point so the pass is
+     exhaustive in a single top-level pass. Safe to iterate because both only
+     re-apply the same cascade-checked grouping; unlike a whole-pipeline
+     fixpoint it never re-runs boundary-sensitive passes such as import
+     stripping. [fuel] bounds the loop against a non-converging structural
+     comparison. *)
+  let rec factor_to_fixpoint fuel rules =
+    if fuel <= 0 then rules
+    else
+      let rules' =
+        combine_identical_rules rules |> factor_common_declarations
+      in
+      if rules' = rules then rules else factor_to_fixpoint (fuel - 1) rules'
+  in
+  factor_to_fixpoint 16 prepared
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the

@@ -825,6 +825,82 @@ let test_merge_non_consecutive_non_conflicting () =
     "merges non-consecutive non-conflicting rules"
     ".bar,.foo{margin:5px}.baz{padding:10px}" output_str
 
+let minify_str css =
+  match Css.of_string ~strict:false css with
+  | Ok { Css.stylesheet; _ } -> minify stylesheet |> String.trim
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+let test_factor_shared_declarations () =
+  (* Two sibling rules sharing a declaration subset factor that subset into a
+     combined selector, leaving each rule its unique declarations. Safe here -
+     adjacent, distinct selectors, no conflicting property - and shorter, in a
+     single pass. *)
+  let once =
+    minify_str
+      ".emoji-icon{display:inline-block;height:20px;width:20px}.emoji-result{display:inline-block;font-size:18px;height:20px}"
+  in
+  Alcotest.(check string)
+    "shared declarations factor into a combined selector"
+    ".emoji-icon,.emoji-result{display:inline-block;height:20px}.emoji-icon{width:20px}.emoji-result{font-size:18px}"
+    once;
+  Alcotest.(check string) "factoring reached in one pass" once (minify_str once)
+
+let test_factoring_reaches_fixpoint () =
+  (* Factoring one shared subset can expose another: grouping .a/.b on color:red
+     leaves .b with padding:0, now groupable with .c. A correct optimizer
+     applies every such factoring in a single pass - a second pass that shrinks
+     the output means the first stopped early. This pins idempotence rather than
+     the exact grouping, since the triangle of shared declarations has several
+     equal-length factorings. *)
+  let once =
+    minify_str
+      ".a{color:red;margin:0}.b{color:red;padding:0}.c{margin:0;padding:0}"
+  in
+  Alcotest.(check string)
+    "interacting factorings converge in one pass" once (minify_str once)
+
+let test_no_factor_across_conflict () =
+  (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
+     wins). The later .y carries the first .x's value, but grouping it with that
+     .x would reorder it past the conflicting .x{color:blue} and change the
+     cascade - so .y stays separate. *)
+  Alcotest.(check string)
+    "no grouping across a conflicting same-selector override"
+    ".x{color:#00f}.y{color:red}"
+    (minify_str ".x{color:red}.x{color:blue}.y{color:red}")
+
+let test_keep_zero_duration_transition () =
+  (* transition:color has 0s duration, so nothing animates now - but it still
+     sets transition-property:color, which becomes live the moment any duration
+     override applies (a :hover rule, inline style, or JS). Minify is open over
+     that runtime state, so the declaration is not dead and must not be dropped.
+     cubic-bezier(.25,.1,.25,1) is ease (the default timing function), so only
+     the timing function drops; lightningcss agrees on transition:color. *)
+  Alcotest.(check string)
+    "0s transition keeps its property, not dropped" "a{transition:color}"
+    (minify_str "a{transition:color}");
+  Alcotest.(check string)
+    "bezier folds to ease, the default ease then drops" "a{transition:color}"
+    (minify_str "a{transition:color cubic-bezier(0.25,0.1,0.25,1)}")
+
+let test_keep_var_border_spaces () =
+  (* The spaces between var() references in a border value are significant: they
+     are token separators in the substituted value, so [var(--bw) var(--bs)]
+     keeps the components apart where [var(--bw)var(--bs)] would glue them into
+     a single token on substitution. The minify round trip must preserve
+     them. *)
+  Alcotest.(check string)
+    "var()-valued border keeps significant spaces"
+    "a{border:var(--bw) var(--bs) var(--bc)}"
+    (minify_str "a{border:var(--bw) var(--bs) var(--bc)}")
+
+let test_keep_bang_comment_leading () =
+  (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
+     authored rather than being moved past the following rule. *)
+  Alcotest.(check string)
+    "leading bang comment stays leading" "/*! important */a{color:red}"
+    (minify_str "/*! important */a{color:red}")
+
 let test_no_merge_vendor_pseudo () =
   let input =
     [
@@ -1774,30 +1850,24 @@ let c61_no_merge_starting_style () =
     output
 
 let c61_import_substitution_point () =
-  (* The optimizer strips this unresolved import placeholder, but it still must
-     not merge the surrounding same-selector rules. *)
-  let input =
-    [
-      Css.rule
-        ~selector:(Css.Selector.class_ "theme")
-        [ Css.Declaration.color (hex_color "ff0000") ];
-      Css.Stylesheet.Import
-        {
-          url = "url(\"base.css\")";
-          layer = None;
-          supports = None;
-          media = None;
-        };
-      Css.rule
-        ~selector:(Css.Selector.class_ "theme")
-        [ Css.Declaration.display Flex ];
-    ]
+  (* A misplaced @import - one that follows a style rule - is invalid, and every
+     browser ignores it (CSS Cascade 5 section 3.5, CSS 2.1 section 6.3). It is
+     a no-op, not a cascade boundary and not a live substitution point: an
+     invalid import is never resolved, even under inline-imports. So the
+     optimizer drops it, and the now-adjacent same-selector rules merge. Matches
+     browsers and csso, and stays idempotent in a single pass. *)
+  let stylesheet =
+    match
+      Css.of_string ~strict:false
+        ".theme{color:red}@import url(\"base.css\");.theme{display:flex}"
+    with
+    | Ok { Css.stylesheet; _ } -> stylesheet
+    | Error e -> Alcotest.failf "lenient parse failed: %s" (Error.to_string e)
   in
-  let optimized = Css.Optimize.stylesheet input in
-  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  let output = minify stylesheet |> String.trim in
   Alcotest.(check string)
-    "same selector is not merged across import substitution point"
-    ".theme{color:red}.theme{display:flex}" output
+    "misplaced @import is a no-op: dropped, surrounding rules merge"
+    ".theme{color:red;display:flex}" output
 
 let c61_no_named_atrule_merge () =
   (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
@@ -2207,8 +2277,10 @@ let c62_no_group_across_origins () =
         "optimizer must not group identical declarations across origins"
 
 let c62_imports_keep_origin () =
-  (* The unresolved import placeholder is stripped during optimization; the
-     surrounding rules still remain in their author-origin wrapper. *)
+  (* A misplaced @import (after a style rule) is an invalid no-op the optimizer
+     drops; the surrounding same-selector rules then merge, and the merge stays
+     inside the author-origin wrapper since both rules share that origin (CSS
+     Cascade 5 section 6.2). *)
   let before_rule =
     {
       Css.Stylesheet.selector = Css.Selector.class_ "theme";
@@ -2242,22 +2314,14 @@ let c62_imports_keep_origin () =
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
-  | [ Css.Stylesheet.Origin (Author, [ before_stmt; after_stmt ]) ] ->
-      let before = rule_of_statement before_stmt in
-      let after_ = rule_of_statement after_stmt in
+  | [ Css.Stylesheet.Origin (Author, [ merged ]) ] ->
       Alcotest.(check string)
-        "rule before stripped import remains in author origin"
-        ".theme{color:red}"
-        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule before ]
-        |> String.trim);
-      Alcotest.(check string)
-        "rule after stripped import remains in author origin"
-        ".theme{display:flex}"
-        (Css.Stylesheet.to_string ~minify:true [ statement_of_rule after_ ]
-        |> String.trim)
+        "import neighbors merge into one rule within the author origin"
+        ".theme{color:red;display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ merged ] |> String.trim)
   | _ ->
       Alcotest.fail
-        "optimizer must preserve author-origin wrapper around import neighbors"
+        "import neighbors should merge into one rule inside the author origin"
 
 let c62_origin_wrapper_api () =
   (* CSS Cascade section 6.2 has no CSS syntax for choosing a stylesheet origin
@@ -3153,6 +3217,18 @@ let selector_merging_tests =
     ( "merge non-consecutive non-conflicting",
       `Quick,
       test_merge_non_consecutive_non_conflicting );
+    ("factor shared declarations", `Quick, test_factor_shared_declarations);
+    ( "factoring reaches fixpoint in one pass",
+      `Quick,
+      test_factoring_reaches_fixpoint );
+    ("no factor across conflict", `Quick, test_no_factor_across_conflict);
+    ( "0s transition keeps its property",
+      `Quick,
+      test_keep_zero_duration_transition );
+    ("var border keeps significant spaces", `Quick, test_keep_var_border_spaces);
+    ( "leading bang comment stays leading",
+      `Quick,
+      test_keep_bang_comment_leading );
     ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
     ("no merge with nested", `Quick, test_no_merge_with_nested);
     ( "spec cascade 3 shorthand resets omitted longhands",

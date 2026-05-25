@@ -1879,9 +1879,8 @@ let test_transition_shorthand () =
   check_transition_shorthand ~expected:"all .3s linear" "all 0.3s linear";
   neg_cursor read_transition_shorthand "2invalid";
   neg_cursor read_transition_shorthand "-1s";
-  (* negative duration *)
-  neg_cursor read_transition_shorthand "opacity";
-  (* missing duration *)
+  (* negative duration. [transition:opacity] (property only, 0s duration) is
+     valid - the shorthand components are all optional - so it is not rejected. *)
   (* too many durations *)
   neg_cursor read_transition_shorthand "1s 2s 3s 4s"
 
@@ -2672,6 +2671,12 @@ let test_transform_origin () =
      (Lightning CSS) the printer emits the numeric form. *)
   check_transform_origin ~expected:"50%" "center";
   check_transform_origin ~expected:"0 0" "left top";
+  (* A single value sets the X origin; Y defaults to center (50%), so it must
+     not be duplicated onto the Y axis: [100%] means [100% 50%], not [100%
+     100%], and [0] means [0 50%], not [0 0]. Only [50%] coincides with center.
+     CSS Transforms 1 section 6; lightningcss and csso keep the single value. *)
+  check_transform_origin "100%";
+  check_transform_origin "0";
   check_transform_origin "50% 25%";
   check_transform_origin "50% 50% 10px";
   check_transform_origin "inherit";
