@@ -3400,10 +3400,6 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
-let minified_length_percentage_calc ctx c =
-  let c = resolve_lp_calc_vars ctx c in
-  c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
-
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. *)
@@ -3422,9 +3418,8 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Env env -> pp_env (pp_length_percentage ~always) ctx env
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
-      let c =
-        if Pp.minified ctx then minified_length_percentage_calc ctx c else c
-      in
+      (* Inline mode substitutes a [var()]'s default value into the calc. *)
+      let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
       pp_calc_presolved (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
