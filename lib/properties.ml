@@ -14319,7 +14319,16 @@ let outline_at_end t =
   Cursor.is_done t || Cursor.peek_semicolon t || Cursor.peek_delim t = Some '!'
 
 let read_outline_part ~width ~style ~color t =
-  if Option.is_none !style && outline_starts_style t then
+  if Cursor.looking_at_func "var" t then
+    (* A var() is type-ambiguous; assign it to the next unfilled
+       width/style/color slot, reading its fallback with that slot's reader. *)
+    if Option.is_none !width then
+      width := Some (Var (read_var read_length t) : length)
+    else if Option.is_none !style then
+      style := Some (Var (read_var read_outline_style t) : outline_style)
+    else if Option.is_none !color then color := Some (read_color t)
+    else Cursor.err_expected t "outline"
+  else if Option.is_none !style && outline_starts_style t then
     style := Some (read_outline_style t)
   else if Option.is_none !width && outline_starts_length t then
     width := Some (read_length t)
@@ -14353,7 +14362,16 @@ let rec read_outline t : outline =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_outline t))
+    ~var:(fun t ->
+      (* A lone var() is the whole value; a var() followed by more components is
+         a shorthand whose first slot happens to be a var. *)
+      let snap = Cursor.save t in
+      let v = Values.read_var read_outline t in
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_comma t then (Var v : outline)
+      else (
+        Cursor.restore t snap;
+        read_outline_shorthand_value t))
     ~default:read_outline_shorthand_value t
 
 let read_outline_shorthand t : outline_shorthand =
