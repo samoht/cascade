@@ -19239,6 +19239,16 @@ let normalize_property_value : type a. a property -> a -> a =
   match property with
   | Transform -> List.map normalize_transform value
   | Webkit_transform -> List.map normalize_transform value
+  | Width -> Values.normalize_length_percentage value
+  | Height -> Values.normalize_length_percentage value
+  | Max_width -> Values.normalize_length_percentage value
+  | Max_height -> Values.normalize_length_percentage value
+  | Inline_size -> Values.normalize_length_percentage value
+  | Max_inline_size -> Values.normalize_length_percentage value
+  | Block_size -> Values.normalize_length_percentage value
+  | Max_block_size -> Values.normalize_length_percentage value
+  | Shape_margin -> Values.normalize_length_percentage value
+  | Offset_distance -> Values.normalize_length_percentage value
   | _ -> value
 
 let pp_property_value : type a. (a property * a) Pp.t =

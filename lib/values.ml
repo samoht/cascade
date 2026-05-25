@@ -3404,6 +3404,17 @@ let minified_length_percentage_calc ctx c =
   let c = resolve_lp_calc_vars ctx c in
   c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc
 
+(* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
+   [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
+   [3px]. *)
+let normalize_length_percentage (lp : length_percentage) : length_percentage =
+  match lp with
+  | Calc c -> (
+      match c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc with
+      | Val v -> v
+      | folded -> Calc folded)
+  | _ -> lp
+
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
