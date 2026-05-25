@@ -41,19 +41,6 @@ let read_vertical_align_length t : vertical_align =
   | None -> Cursor.err_invalid t "vertical-align requires a unit"
   | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
 
-let read_background_size_length t : background_size =
-  let n, unit = Cursor.number_with_unit t in
-  if n < 0. then Cursor.err_invalid t "background-size cannot be negative";
-  match unit with
-  | Some "px" -> Px n
-  | Some "rem" -> Rem n
-  | Some "em" -> Em n
-  | Some "%" -> Pct n
-  | Some "vw" -> Vw n
-  | Some "vh" -> Vh n
-  | None -> Cursor.err_invalid t "background-size requires a unit"
-  | Some u -> Cursor.err_invalid t ("invalid background-size unit: " ^ u)
-
 (* CSS Display 3 §2.1 [display-outside]: pre-existing aliases inside the
    single-value vocabulary that compose with a [display-inside] in the two-value
    form. The composite [<outside> <inside>] is a [Multi]. *)
@@ -3669,6 +3656,176 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
+let normalize_border_radius : border_radius -> border_radius = function
+  | Radius { horizontal; vertical } ->
+      Radius
+        {
+          horizontal = List.map Values.normalize_length_percentage horizontal;
+          vertical =
+            Option.map (List.map Values.normalize_length_percentage) vertical;
+        }
+  | other -> other
+
+let normalize_radial_size : radial_size -> radial_size = function
+  | Ellipse_radii (a, b) ->
+      Ellipse_radii
+        ( Values.normalize_length_percentage a,
+          Values.normalize_length_percentage b )
+  | other -> other
+
+let rec normalize_gradient_stop : gradient_stop -> gradient_stop = function
+  | Color_percentage (c, p1, p2) ->
+      Color_percentage
+        ( c,
+          Option.map Values.normalize_length_percentage p1,
+          Option.map Values.normalize_length_percentage p2 )
+  | List stops -> List (List.map normalize_gradient_stop stops)
+  | other -> other
+
+let normalize_radial_config (c : radial_gradient_config) =
+  { c with size = Option.map normalize_radial_size c.size }
+
+let rec normalize_background_image : background_image -> background_image =
+  let stops = List.map normalize_gradient_stop in
+  function
+  | Linear_gradient (d, s) -> Linear_gradient (d, stops s)
+  | Radial_gradient (c, s) ->
+      Radial_gradient (normalize_radial_config c, stops s)
+  | Conic_gradient (c, s) -> Conic_gradient (c, stops s)
+  | Repeating_linear_gradient (d, s) -> Repeating_linear_gradient (d, stops s)
+  | Repeating_radial_gradient (c, s) ->
+      Repeating_radial_gradient (normalize_radial_config c, stops s)
+  | Repeating_conic_gradient (c, s) -> Repeating_conic_gradient (c, stops s)
+  | Webkit_linear_gradient (d, s) -> Webkit_linear_gradient (d, stops s)
+  | Webkit_repeating_linear_gradient (d, s) ->
+      Webkit_repeating_linear_gradient (d, stops s)
+  | Webkit_radial_gradient (c, s) ->
+      Webkit_radial_gradient (normalize_radial_config c, stops s)
+  | Webkit_repeating_radial_gradient (c, s) ->
+      Webkit_repeating_radial_gradient (normalize_radial_config c, stops s)
+  | Moz_linear_gradient (d, s) -> Moz_linear_gradient (d, stops s)
+  | Moz_repeating_linear_gradient (d, s) ->
+      Moz_repeating_linear_gradient (d, stops s)
+  | Moz_radial_gradient (c, s) ->
+      Moz_radial_gradient (normalize_radial_config c, stops s)
+  | Moz_repeating_radial_gradient (c, s) ->
+      Moz_repeating_radial_gradient (normalize_radial_config c, stops s)
+  | O_linear_gradient (d, s) -> O_linear_gradient (d, stops s)
+  | O_repeating_linear_gradient (d, s) ->
+      O_repeating_linear_gradient (d, stops s)
+  | O_radial_gradient (c, s) ->
+      O_radial_gradient (normalize_radial_config c, stops s)
+  | O_repeating_radial_gradient (c, s) ->
+      O_repeating_radial_gradient (normalize_radial_config c, stops s)
+  | List imgs -> List (List.map normalize_background_image imgs)
+  | other -> other
+
+let normalize_position_value : position_value -> position_value = function
+  | Edge_offset_axis (e, lp, a) ->
+      Edge_offset_axis (e, Values.normalize_length_percentage lp, a)
+  | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
+      Edge_offset_edge_offset
+        ( e1,
+          Values.normalize_length_percentage lp1,
+          e2,
+          Values.normalize_length_percentage lp2 )
+  | other -> other
+
+let rec normalize_clip_path : clip_path -> clip_path =
+  let lp = Values.normalize_length_percentage in
+  let nr = Option.map normalize_border_radius in
+  let np = Option.map normalize_position_value in
+  function
+  | Clip_path_inset r ->
+      Clip_path_inset
+        {
+          top = lp r.top;
+          right = Option.map lp r.right;
+          bottom = Option.map lp r.bottom;
+          left = Option.map lp r.left;
+          rounded = nr r.rounded;
+        }
+  | Clip_path_xywh r ->
+      Clip_path_xywh
+        {
+          x = lp r.x;
+          y = lp r.y;
+          width = lp r.width;
+          height = lp r.height;
+          rounded = nr r.rounded;
+        }
+  | Clip_path_rect r ->
+      Clip_path_rect
+        {
+          top = lp r.top;
+          right = lp r.right;
+          bottom = lp r.bottom;
+          left = lp r.left;
+          rounded = nr r.rounded;
+        }
+  | Clip_path_circle r -> Clip_path_circle { r with position = np r.position }
+  | Clip_path_ellipse r -> Clip_path_ellipse { r with position = np r.position }
+  | Clip_path_with_box r ->
+      Clip_path_with_box { r with shape = normalize_clip_path r.shape }
+  | other -> other
+
+let normalize_background_shorthand (b : background_shorthand) =
+  {
+    b with
+    image = Option.map normalize_background_image b.image;
+    position = Option.map normalize_position_value b.position;
+  }
+
+let normalize_background : background -> background = function
+  | Shorthand s -> Shorthand (normalize_background_shorthand s)
+  | other -> other
+
+let normalize_mask_layer (l : mask_layer) =
+  {
+    l with
+    image = Option.map normalize_background_image l.image;
+    position = Option.map normalize_position_value l.position;
+  }
+
+let normalize_mask : mask -> mask = function
+  | Layer l -> Layer (normalize_mask_layer l)
+  | Layers ls -> Layers (List.map normalize_mask_layer ls)
+  | other -> other
+
+let normalize_text_indent : text_indent_value -> text_indent_value = function
+  | Indent r ->
+      Indent { r with length = Values.normalize_length_percentage r.length }
+  | other -> other
+
+let normalize_animation_range_item :
+    animation_range_item -> animation_range_item = function
+  | Offset lp -> Offset (Values.normalize_length_percentage lp)
+  | Named (n, lp) -> Named (n, Option.map Values.normalize_length_percentage lp)
+  | other -> other
+
+let normalize_animation_range : animation_range -> animation_range = function
+  | Range (a, b) ->
+      Range
+        ( normalize_animation_range_item a,
+          Option.map normalize_animation_range_item b )
+  | other -> other
+
+let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
+  function
+  | Length lp -> Length (Values.normalize_length_percentage lp)
+  | other -> other
+
+let normalize_timeline_inset : timeline_inset -> timeline_inset = function
+  | Inset (a, b) ->
+      Inset
+        ( normalize_timeline_inset_item a,
+          Option.map normalize_timeline_inset_item b )
+  | other -> other
+
+let normalize_baseline_shift : baseline_shift -> baseline_shift = function
+  | Shift lp -> Shift (Values.normalize_length_percentage lp)
+  | other -> other
+
 let length_of_border_width : border_width -> length option = function
   | Px n -> Some (Px n)
   | Cm n -> Some (Cm n)
@@ -6830,12 +6987,7 @@ let rec pp_background_size : background_size Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Cover -> Pp.string ctx "cover"
   | Contain -> Pp.string ctx "contain"
-  | Px f -> Pp.unit ctx f "px"
-  | Rem f -> Pp.unit ctx f "rem"
-  | Em f -> Pp.unit ctx f "em"
-  | Pct p -> Pp.pct ctx p
-  | Vw f -> Pp.unit ctx f "vw"
-  | Vh f -> Pp.unit ctx f "vh"
+  | Length l -> pp_length ctx l
   | Size (w, h) ->
       pp_length ctx w;
       Pp.char ctx ' ';
@@ -16413,12 +16565,9 @@ let rec read_background_size t : background_size =
     in
     Size (a, b)
   in
-  let read_pct t : background_size =
-    let pct = Cursor.pct t in
-    if pct < 0. then Cursor.err_invalid t "background-size cannot be negative";
-    Pct pct
+  let read_single t : background_size =
+    Length (read_length ~allow_negative:false t)
   in
-  let read_length_value t : background_size = read_background_size_length t in
   let read_var_call t : background_size =
     (Var (read_var read_background_size t) : background_size)
   in
@@ -16434,8 +16583,7 @@ let rec read_background_size t : background_size =
       ("revert-layer", Revert_layer);
     ]
     ~var:read_var_call
-    ~default:(fun t ->
-      Cursor.one_of [ read_pair; read_length_value; read_pct ] t)
+    ~default:(fun t -> Cursor.one_of [ read_pair; read_single ] t)
     t
 
 module Gradient_direction = struct
@@ -19241,6 +19389,10 @@ let normalize_property_value : type a. a property -> a -> a =
   | Webkit_transform -> List.map normalize_transform value
   | Width -> Values.normalize_length_percentage value
   | Height -> Values.normalize_length_percentage value
+  | Min_width -> Values.normalize_length_percentage value
+  | Min_height -> Values.normalize_length_percentage value
+  | Min_inline_size -> Values.normalize_length_percentage value
+  | Min_block_size -> Values.normalize_length_percentage value
   | Max_width -> Values.normalize_length_percentage value
   | Max_height -> Values.normalize_length_percentage value
   | Inline_size -> Values.normalize_length_percentage value
@@ -19249,6 +19401,19 @@ let normalize_property_value : type a. a property -> a -> a =
   | Max_block_size -> Values.normalize_length_percentage value
   | Shape_margin -> Values.normalize_length_percentage value
   | Offset_distance -> Values.normalize_length_percentage value
+  | Border_radius -> normalize_border_radius value
+  | Background_image -> List.map normalize_background_image value
+  | Mask_image -> normalize_background_image value
+  | Border_image_source -> normalize_background_image value
+  | Background -> List.map normalize_background value
+  | Mask -> normalize_mask value
+  | Clip_path -> normalize_clip_path value
+  | Object_position -> normalize_position_value value
+  | Perspective_origin -> normalize_position_value value
+  | Text_indent -> normalize_text_indent value
+  | Animation_range -> normalize_animation_range value
+  | View_timeline_inset -> normalize_timeline_inset value
+  | Baseline_shift -> normalize_baseline_shift value
   | _ -> value
 
 let pp_property_value : type a. (a property * a) Pp.t =
