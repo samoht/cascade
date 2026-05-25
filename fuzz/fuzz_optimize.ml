@@ -261,6 +261,57 @@ let test_optimized_reparse_idempotent buf =
         failf "optimized reparse serialization changed: %S -> %S" serialized
           serialized2
 
+(* Declarations that the optimizer either groups across rules or folds in place,
+   including ones whose fold or canonical order has historically been reached
+   only on a second pass (background-position 0%, transition component order,
+   transform-origin, var()-spaced border). *)
+let fold_prone_decls =
+  [|
+    "color:red";
+    "margin:0";
+    "padding:0";
+    "display:block";
+    "top:0";
+    "left:0";
+    "background:url(a) 0%/44px";
+    "transition:opacity linear .25s";
+    "transform-origin:100%";
+    "border:var(--w) var(--s) var(--c)";
+  |]
+
+(* A cluster of sibling rules drawing overlapping declaration subsets from
+   [fold_prone_decls]. Overlap creates factoring opportunities, and grouping one
+   subset can expose another, so a single optimize pass must still reach a fixed
+   point - the emergent non-idempotence that the uniform generator does not hit
+   and that only surfaced at scale in the SatCSS benchmark. *)
+let generated_cluster_css buf =
+  let len = max 1 (String.length buf) in
+  let at i = Char.code buf.[i mod len] in
+  let sel i = "c" ^ string_of_int (at i mod 8) in
+  let decl i = fold_prone_decls.(at i mod Array.length fold_prone_decls) in
+  let rule ri =
+    let b = ri * 3 in
+    String.concat ""
+      [
+        "."; sel b; "{"; decl (b + 1); ";"; decl (b + 2); ";"; decl (b + 3); "}";
+      ]
+  in
+  String.concat "" (List.init 6 rule)
+
+let test_minify_cluster_fixpoint buf =
+  match parse_stylesheet (generated_cluster_css buf) with
+  | None -> ()
+  | Some ss -> (
+      let once = minified (Css.Optimize.stylesheet ss) in
+      match parse_stylesheet once with
+      | None -> failf "cluster minified output did not reparse: %S" once
+      | Some parsed ->
+          let twice = minified (Css.Optimize.stylesheet parsed) in
+          if once <> twice then
+            failf
+              "minify is not a fixed point on an interacting cluster: %S -> %S"
+              once twice)
+
 let count_imports ss =
   List.fold_left
     (fun acc -> function Css.Stylesheet.Import _ -> acc + 1 | _ -> acc)
@@ -577,6 +628,8 @@ let suite =
         test_optimization_preserves_boundary_shape;
       test_case "optimized reparse idempotent" [ bytes ]
         test_optimized_reparse_idempotent;
+      test_case "minify fixpoint on interacting clusters" [ bytes ]
+        test_minify_cluster_fixpoint;
       test_case "import namespace counts" [ bytes ] test_import_namespace_counts;
       test_case "at-rule counts stable" [ bytes ] test_atrule_counts_stable;
       test_case "cascade positive negative merge vectors" [ bytes ]
