@@ -20,6 +20,11 @@ val meta_of_declaration : declaration -> Values.meta option
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
+val normalize : declaration -> declaration
+(** [normalize d] applies AST-level semantic value canonicalisation so the
+    optimizer holds a canonical declaration and the pretty-printer stays a pure
+    serialiser. *)
+
 val string_of_declaration : ?minify:bool -> declaration -> string
 (** [string_of_declaration ~minify decl] converts a declaration to its string
     representation. If [minify] is [true] (default: [false]), the output is

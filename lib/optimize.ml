@@ -1197,12 +1197,15 @@ let flex_kind_of : declaration -> flex_kind option = function
   | Declaration { property = Flex_basis; _ } -> Some FBasis
   | _ -> None
 
-let flex_grow_of : declaration -> float option = function
-  | Declaration { property = Flex_grow; value = Number f; _ } -> Some f
+let flex_grow_of : declaration -> Properties.flex_factor option = function
+  | Declaration { property = Flex_grow; value = (Number _ | Var _) as v; _ } ->
+      Some v
   | _ -> None
 
-let flex_shrink_of : declaration -> float option = function
-  | Declaration { property = Flex_shrink; value = Number f; _ } -> Some f
+let flex_shrink_of : declaration -> Properties.flex_factor option = function
+  | Declaration { property = Flex_shrink; value = (Number _ | Var _) as v; _ }
+    ->
+      Some v
   | _ -> None
 
 let flex_basis_of : declaration -> Properties.flex_basis option = function
@@ -2631,7 +2634,8 @@ let single_rule_without_nested ~ctx (rule : rule) : rule =
   {
     rule with
     declarations =
-      deduplicate_declarations_with ~ctx ~merge_box:false rule.declarations
+      List.map Declaration.normalize rule.declarations
+      |> deduplicate_declarations_with ~ctx ~merge_box:false
       |> sort_commuting_declarations;
   }
 

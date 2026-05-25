@@ -29,6 +29,19 @@ let rec important = function
       Declaration { property; value; important = true }
   | Theme_guarded g -> Theme_guarded { g with decl = important g.decl }
 
+(* Apply AST-level value normalisation so the optimizer holds a canonical AST.
+   The pretty-printer is a pure serialiser of the result; this is where semantic
+   value folds live (see [Properties.normalize_property_value]). *)
+let rec normalize = function
+  | Declaration { property; value; important } ->
+      Declaration
+        {
+          property;
+          value = Properties.normalize_property_value property value;
+          important;
+        }
+  | Theme_guarded g -> Theme_guarded { g with decl = normalize g.decl }
+
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =

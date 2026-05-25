@@ -1040,15 +1040,18 @@ let vars_of_offset_rotate (value : Properties.offset_rotate) =
   | Angle angle | With_angle (_, angle) -> vars_of_angle angle
   | Auto | Reverse | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
+let vars_of_flex_basis (value : Properties.flex_basis) =
+  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
+
 let vars_of_flex (value : Properties.flex) =
   match value with
   | Var v -> [ V v ]
-  | Basis b | Full (_, _, b) -> (
-      match b with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> [])
+  | Grow g -> vars_of_flex_factor g
+  | Grow_shrink (g, s) -> vars_of_flex_factor g @ vars_of_flex_factor s
+  | Full (g, s, b) ->
+      vars_of_flex_factor g @ vars_of_flex_factor s @ vars_of_flex_basis b
+  | Basis b -> vars_of_flex_basis b
   | _ -> []
-
-let vars_of_flex_basis (value : Properties.flex_basis) =
-  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
 
 let vars_of_font_style (value : Properties.font_style) =
   match value with Var v -> [ V v ] | _ -> []

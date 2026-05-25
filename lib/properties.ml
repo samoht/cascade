@@ -6526,6 +6526,18 @@ let canonicalise_transform : transform -> transform = function
   | Rotate_3d (0., 0., 1., a) -> Rotate a
   | other -> other
 
+(* Drive [canonicalise_transform] to a fixed point and recurse into a transform
+   list: one rewrite can expose another (e.g. [scale3d(a,a,1)] -> [scale(a,a)]
+   -> [scale(a)]), so a single application is not idempotent. This is the
+   AST-level normaliser; [pp_transform] stays a pure serialiser of its
+   result. *)
+let rec normalize_transform (t : transform) : transform =
+  match t with
+  | List ts -> List (List.map normalize_transform ts)
+  | _ ->
+      let t' = canonicalise_transform t in
+      if t' = t then t else normalize_transform t'
+
 let rec pp_transform : transform Pp.t =
  fun ctx t ->
   let t = if Pp.minified ctx then canonicalise_transform t else t in
@@ -9270,23 +9282,26 @@ let rec pp_flex : flex Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
-  | Grow f -> Pp.float ctx f
+  | Grow f -> pp_flex_factor ctx f
   | Basis fb -> pp_flex_basis ctx fb
   | Grow_shrink (grow, shrink) ->
-      Pp.float ctx grow;
+      pp_flex_factor ctx grow;
       Pp.space ctx ();
-      Pp.float ctx shrink
+      pp_flex_factor ctx shrink
   | Full (grow, shrink, basis) ->
-      Pp.float ctx grow;
+      pp_flex_factor ctx grow;
       (* CSS Flexbox 1 sec. 7.1.1: the one-number [flex: g] form expands to [g 1
          0%], so only a [0%] basis (with the default [1] shrink) is the
          droppable shorthand default. A length [0] / [0px] basis is a different
          computed value and is kept. An omitted flex-shrink is [1]. *)
       let basis_is_default = match basis with Pct 0.0 -> true | _ -> false in
+      let shrink_is_default =
+        match shrink with Number 1.0 -> true | _ -> false
+      in
       if basis_is_default then (
-        if shrink <> 1.0 then (
+        if not shrink_is_default then (
           Pp.space ctx ();
-          Pp.float ctx shrink))
+          pp_flex_factor ctx shrink))
       else (
         Pp.space ctx ();
         (* A basis that serialises as a bare number ([0], [0px] -> [0], or a
@@ -9295,8 +9310,8 @@ let rec pp_flex : flex Pp.t =
         let basis_bare_number =
           match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
         in
-        if shrink <> 1.0 || basis_bare_number then (
-          Pp.float ctx shrink;
+        if (not shrink_is_default) || basis_bare_number then (
+          pp_flex_factor ctx shrink;
           Pp.space ctx ());
         pp_flex_basis ctx basis)
 
@@ -10882,35 +10897,37 @@ module Flex = struct
   (* Helper functions for flex parsing *)
   let read_basis_only t = Basis (read_flex_basis t)
 
+  let read_factor t : flex_factor =
+    (* A flex factor is a [<number>]: a [var()], or a literal / CSS-math value
+       resolved to a number by [read_non_negative_flex_number]. (Not
+       [read_flex_factor], whose enum_or_calls only recognises [var], so it
+       would reject a [calc()] factor.) *)
+    if Cursor.looking_at_func "var" t then Var (read_var read_flex_factor t)
+    else Number (read_non_negative_flex_number t)
+
   let read_grow_shrink_basis t =
-    (* Parse grow [shrink] [basis]. A [50%] or [10px] still fails here because
-       the flex factors must be unitless numbers, but static CSS math functions
-       like [clamp(1, 5.2, 20)] may resolve to a number. *)
-    let grow = read_non_negative_flex_number t in
-    let _ = () in
-    match () with
-    | () -> (
-        let shrink =
-          Cursor.option
-            (fun t ->
-              Cursor.ws t;
-              read_non_negative_flex_number t)
-            t
-        in
-
-        (* Optional basis (defaults to 0%) *)
-        let basis =
-          Cursor.option
-            (fun t ->
-              Cursor.ws t;
-              read_flex_basis t)
-            t
-        in
-
-        match (shrink, basis) with
-        | None, None -> Grow grow
-        | Some s, None -> Grow_shrink (grow, s)
-        | _, Some b -> Full (grow, Option.value shrink ~default:1.0, b))
+    (* Parse grow [shrink] [basis]; a [50%] / [10px] is a basis, not a
+       factor. *)
+    let grow = read_factor t in
+    let shrink =
+      Cursor.option
+        (fun t ->
+          Cursor.ws t;
+          read_factor t)
+        t
+    in
+    (* Optional basis (defaults to 0%) *)
+    let basis =
+      Cursor.option
+        (fun t ->
+          Cursor.ws t;
+          read_flex_basis t)
+        t
+    in
+    match (shrink, basis) with
+    | None, None -> Grow grow
+    | Some s, None -> Grow_shrink (grow, s)
+    | _, Some b -> Full (grow, Option.value shrink ~default:(Number 1.0), b)
 end
 
 let rec read_flex t : flex =
@@ -10925,7 +10942,16 @@ let rec read_flex t : flex =
       ("none", (None : flex));
       ("content", Basis Content);
     ]
-    ~var:(fun t -> Var (read_var read_flex t))
+    ~var:(fun t ->
+      (* A lone var() is the whole value; a var() followed by more components is
+         a grow/shrink/basis sequence whose first factor happens to be a var. *)
+      let snap = Cursor.save t in
+      let v = read_var read_flex t in
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_comma t then (Var v : flex)
+      else (
+        Cursor.restore t snap;
+        Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ] t))
     ~default:
       (Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
     t
@@ -19213,6 +19239,17 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Height, Length Initial -> Length Auto
   | Min_width, Length Initial -> Length Auto
   | Min_height, Length Initial -> Length Auto
+  | _ -> value
+
+(* AST-level value normaliser: applies semantic (equivalence) canonicalisation
+   so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
+   property cases here as their folds migrate out of [pp]; everything else is
+   identity. *)
+let normalize_property_value : type a. a property -> a -> a =
+ fun property value ->
+  match property with
+  | Transform -> List.map normalize_transform value
+  | Webkit_transform -> List.map normalize_transform value
   | _ -> value
 
 let pp_property_value : type a. (a property * a) Pp.t =
