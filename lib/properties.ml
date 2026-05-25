@@ -6842,27 +6842,32 @@ let pp_background_position_value : position_value Pp.t =
     | Pct n -> Some (pct n)
     | Env _ | Var _ | Calc _ | Invalid _ -> None
   in
+  (* Use [pp_position_length], not [pp_length]: a [<position>] component zero is
+     spelled [0] rather than [0%], so converting a keyword edge to its
+     percentage must compose the same [Pct 0.] -> [0] fold the directly-parsed
+     form gets. Otherwise [left center] prints [0%] here but [0] after a
+     reparse, and the optimizer is not a fixed point. *)
   let pp_pair ctx x y =
-    pp_length ctx x;
+    pp_position_length ctx x;
     Pp.space ctx ();
-    pp_length ctx y
+    pp_position_length ctx y
   in
   match value with
-  | Center when Pp.minified ctx -> pp_length ctx (pct 50.)
+  | Center when Pp.minified ctx -> pp_position_length ctx (pct 50.)
   | (Left_top | Top_left) when Pp.minified ctx -> pp_pair ctx Zero Zero
   | (Bottom_left | Left_bottom) when Pp.minified ctx ->
       pp_pair ctx (pct 0.) (pct 100.)
   | (Bottom_right | Right_bottom) when Pp.minified ctx ->
       pp_pair ctx (pct 100.) (pct 100.)
-  | Left_center when Pp.minified ctx -> pp_length ctx (pct 0.)
-  | Right_center when Pp.minified ctx -> pp_length ctx (pct 100.)
+  | Left_center when Pp.minified ctx -> pp_position_length ctx (pct 0.)
+  | Right_center when Pp.minified ctx -> pp_position_length ctx (pct 100.)
   | Center_top when Pp.minified ctx -> Pp.string ctx "top"
   | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
   | Axis_edge_offset ("center", "top", offset) when Pp.minified ctx ->
       pp_pair ctx (pct 50.) offset
   | Edge_offset_axis ("left", offset, "center") -> (
       match length_of_lp offset with
-      | Some x -> pp_length ctx x
+      | Some x -> pp_position_length ctx x
       | None ->
           pp_position_value ctx (Edge_offset_axis ("left", offset, "center")))
   | Edge_offset_axis ("left", offset, "top") -> (
