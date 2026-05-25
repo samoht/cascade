@@ -15273,25 +15273,6 @@ let transition_property_or_all = function
   | Option.Some property -> property
   | Option.None -> (All : transition_property_value)
 
-let transition_needs_duration = function
-  | Option.Some (Property _) -> true
-  | _ -> false
-
-let transition_has_no_explicit_effect parts =
-  parts.transition_times = []
-  && parts.transition_timing = Option.None
-  && parts.transition_behavior = Option.None
-
-let validate_transition_shorthand_duration t parts =
-  (* CSS Transitions 1: a single-transition that names a specific property must
-     carry at least a [<time>] (duration); without one the entry produces no
-     observable transition. The implicit/explicit [all] form (no property or
-     [all]) and the [none] form are still accepted bare. *)
-  if
-    transition_needs_duration parts.transition_property
-    && transition_has_no_explicit_effect parts
-  then Cursor.err_invalid t "transition shorthand requires a duration"
-
 let read_transition_shorthand t : transition_shorthand =
   let parts =
     {
@@ -15308,7 +15289,6 @@ let read_transition_shorthand t : transition_shorthand =
   done;
   let property = transition_property_or_all parts.transition_property in
   let duration, delay = transition_duration_delay parts in
-  validate_transition_shorthand_duration t parts;
   {
     property;
     duration;
@@ -18191,7 +18171,9 @@ module Transform_origin = struct
         match Cursor.option read_length t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
-    | None -> XY (x, x)
+    (* CSS Transforms 1 sec. 3: a single <length-percentage> sets the X origin
+       and defaults Y to [center] ([50%]); it is not duplicated into Y. *)
+    | None -> X x
 
   let read_keyword t : keyword =
     Cursor.enum "transform-origin-keyword"
