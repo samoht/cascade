@@ -1149,7 +1149,7 @@ type color = Values.color =
   | Hex of { r : int; g : int; b : int; a : int }
       (** Hex colour decoded to sRGB byte components ([a = 255] when opaque). *)
   | Rgb of rgb
-  | Rgba of { rgb : rgb; a : alpha; legacy : bool }
+  | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }

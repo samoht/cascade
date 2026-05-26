@@ -2761,8 +2761,8 @@ let simplify_rgb_color component percentage alpha_value rgb hue
     (value : Values.color) =
   match value with
   | Values.Rgb value -> Values.Rgb (rgb value)
-  | Values.Rgba { rgb = value; a; legacy } ->
-      Values.Rgba { rgb = rgb value; a = alpha_value a; legacy }
+  | Values.Rgba { rgb = value; a } ->
+      Values.Rgba { rgb = rgb value; a = alpha_value a }
   | Values.Hsl { h; s; l; a } ->
       Values.Hsl
         { h = hue h; s = percentage s; l = percentage l; a = alpha_value a }

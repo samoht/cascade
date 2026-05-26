@@ -490,7 +490,7 @@ type color =
           opaque). Every spelling ([#fff] / [#ffffff] / [#FFFFFF]) decodes to
           one node, so the printer picking the shortest spelling round-trips. *)
   | Rgb of rgb
-  | Rgba of { rgb : rgb; a : alpha; legacy : bool }
+  | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }

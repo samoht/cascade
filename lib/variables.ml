@@ -392,7 +392,7 @@ let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
   | Rgb rgb -> vars_of_rgb rgb
-  | Rgba { rgb; a; legacy = _ } -> vars_of_rgb rgb @ vars_of_alpha a
+  | Rgba { rgb; a } -> vars_of_rgb rgb @ vars_of_alpha a
   | Hsl { h; s; l; a } ->
       vars_of_hue h @ vars_of_percentage s @ vars_of_percentage l
       @ vars_of_alpha a
