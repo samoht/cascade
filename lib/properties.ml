@@ -3653,13 +3653,13 @@ let rec pp_border_radius : border_radius Pp.t =
    live in the unwalked [Supports] condition), so the static colour-space fold
    is never suppressed here. *)
 let normalize_color = Values.normalize_color ~in_feature_query:false
-let preserve_if_equal before after = if after = before then before else after
+let preserve_if_equal before after = if after == before then before else after
 
 let map_preserve f xs =
   let rec loop changed acc = function
     | [] -> if changed then List.rev acc else xs
     | x :: rest ->
-        let y = preserve_if_equal x (f x) in
+        let y = f x in
         loop (changed || not (y == x)) (y :: acc) rest
   in
   loop false [] xs
@@ -3668,8 +3668,14 @@ let option_map_preserve f opt =
   match opt with
   | Option.None -> opt
   | Option.Some x ->
-      let y = preserve_if_equal x (f x) in
+      let y = f x in
       if y == x then opt else Option.Some y
+
+let option_is_phys_same a b =
+  match (a, b) with
+  | Option.None, Option.None -> true
+  | Option.Some a, Option.Some b -> a == b
+  | _ -> false
 
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
@@ -3877,72 +3883,138 @@ let rec normalize_background_image : background_image -> background_image =
         (List (map_preserve normalize_background_image imgs))
   | other -> other
 
-let rec normalize_clip_path : clip_path -> clip_path =
- fun value ->
-  let lp = Values.normalize_length_percentage ~strip:false in
-  let len = Values.normalize_length ~strip:false in
-  let nr = option_map_preserve (normalize_border_radius ~strip:false) in
-  let np = option_map_preserve (normalize_position_value ~strip:false) in
-  let extent v =
-    match v with
-    | Extent_length l -> preserve_if_equal v (Extent_length (len l))
-    | other -> other
-  in
+let normalize_clip_path_extent v =
+  match v with
+  | Extent_length l ->
+      let l' = Values.normalize_length ~strip:false l in
+      if l' == l then v else Extent_length l'
+  | other -> other
+
+let drop_default_clip_path_position (opt : position_value option) =
+  match opt with
+  | Option.Some p when position_value_is_center p -> Option.None
+  | _ -> opt
+
+let drop_default_clip_path_extent (opt : clip_path_extent option) =
+  match opt with Option.Some Closest_side -> Option.None | _ -> opt
+
+let normalize_clip_path_inset value =
   match value with
   | Clip_path_inset r ->
-      preserve_if_equal value
-        (Clip_path_inset
-           {
-             top = lp r.top;
-             right = option_map_preserve lp r.right;
-             bottom = option_map_preserve lp r.bottom;
-             left = option_map_preserve lp r.left;
-             rounded = nr r.rounded;
-           })
+      let lp = Values.normalize_length_percentage ~strip:false in
+      let top = lp r.top in
+      let right = option_map_preserve lp r.right in
+      let bottom = option_map_preserve lp r.bottom in
+      let left = option_map_preserve lp r.left in
+      let rounded =
+        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+      in
+      if
+        top == r.top && right == r.right && bottom == r.bottom && left == r.left
+        && rounded == r.rounded
+      then value
+      else Clip_path_inset { top; right; bottom; left; rounded }
+  | _ -> value
+
+let normalize_clip_path_xywh value =
+  match value with
   | Clip_path_xywh r ->
-      preserve_if_equal value
-        (Clip_path_xywh
-           {
-             x = lp r.x;
-             y = lp r.y;
-             width = lp r.width;
-             height = lp r.height;
-             rounded = nr r.rounded;
-           })
+      let lp = Values.normalize_length_percentage ~strip:false in
+      let x = lp r.x in
+      let y = lp r.y in
+      let width = lp r.width in
+      let height = lp r.height in
+      let rounded =
+        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+      in
+      if
+        x == r.x && y == r.y && width == r.width && height == r.height
+        && rounded == r.rounded
+      then value
+      else Clip_path_xywh { x; y; width; height; rounded }
+  | _ -> value
+
+let normalize_clip_path_rect value =
+  match value with
   | Clip_path_rect r ->
-      preserve_if_equal value
-        (Clip_path_rect
-           {
-             top = lp r.top;
-             right = lp r.right;
-             bottom = lp r.bottom;
-             left = lp r.left;
-             rounded = nr r.rounded;
-           })
+      let lp = Values.normalize_length_percentage ~strip:false in
+      let top = lp r.top in
+      let right = lp r.right in
+      let bottom = lp r.bottom in
+      let left = lp r.left in
+      let rounded =
+        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+      in
+      if
+        top == r.top && right == r.right && bottom == r.bottom && left == r.left
+        && rounded == r.rounded
+      then value
+      else Clip_path_rect { top; right; bottom; left; rounded }
+  | _ -> value
+
+let normalize_clip_path_circle value =
+  match value with
   | Clip_path_circle r ->
-      preserve_if_equal value
-        (Clip_path_circle
-           {
-             radius = option_map_preserve extent r.radius;
-             position = np r.position;
-           })
+      let radius =
+        option_map_preserve normalize_clip_path_extent r.radius
+        |> drop_default_clip_path_extent
+      in
+      let position =
+        option_map_preserve (normalize_position_value ~strip:false) r.position
+        |> drop_default_clip_path_position
+      in
+      if
+        option_is_phys_same radius r.radius
+        && option_is_phys_same position r.position
+      then value
+      else Clip_path_circle { radius; position }
+  | _ -> value
+
+let normalize_clip_path_ellipse value =
+  match value with
   | Clip_path_ellipse r ->
-      preserve_if_equal value
-        (Clip_path_ellipse
-           {
-             rx = option_map_preserve extent r.rx;
-             ry = option_map_preserve extent r.ry;
-             position = np r.position;
-           })
+      let rx =
+        option_map_preserve normalize_clip_path_extent r.rx
+        |> drop_default_clip_path_extent
+      in
+      let ry =
+        option_map_preserve normalize_clip_path_extent r.ry
+        |> drop_default_clip_path_extent
+      in
+      let position =
+        option_map_preserve (normalize_position_value ~strip:false) r.position
+        |> drop_default_clip_path_position
+      in
+      if
+        option_is_phys_same rx r.rx
+        && option_is_phys_same ry r.ry
+        && option_is_phys_same position r.position
+      then value
+      else Clip_path_ellipse { rx; ry; position }
+  | _ -> value
+
+let normalize_clip_path_polygon value =
+  match value with
   | Clip_path_polygon r ->
+      let len = Values.normalize_length ~strip:false in
       let normalize_point (x, y) =
         let x' = len x in
         let y' = len y in
         if x' == x && y' == y then (x, y) else (x', y')
       in
-      preserve_if_equal value
-        (Clip_path_polygon
-           { r with points = map_preserve normalize_point r.points })
+      let points = map_preserve normalize_point r.points in
+      if points == r.points then value else Clip_path_polygon { r with points }
+  | _ -> value
+
+let rec normalize_clip_path : clip_path -> clip_path =
+ fun value ->
+  match value with
+  | Clip_path_inset _ -> normalize_clip_path_inset value
+  | Clip_path_xywh _ -> normalize_clip_path_xywh value
+  | Clip_path_rect _ -> normalize_clip_path_rect value
+  | Clip_path_circle _ -> normalize_clip_path_circle value
+  | Clip_path_ellipse _ -> normalize_clip_path_ellipse value
+  | Clip_path_polygon _ -> normalize_clip_path_polygon value
   | Clip_path_with_box r ->
       let shape = normalize_clip_path r.shape in
       if shape == r.shape then value else Clip_path_with_box { r with shape }
@@ -3959,7 +4031,8 @@ let normalize_background : background -> background =
  fun value ->
   match value with
   | Shorthand s ->
-      preserve_if_equal value (Shorthand (normalize_background_shorthand s))
+      let s' = normalize_background_shorthand s in
+      if s' == s then value else Shorthand s'
   | other -> other
 
 let normalize_mask_layer (l : mask_layer) =
@@ -3971,9 +4044,12 @@ let normalize_mask_layer (l : mask_layer) =
 let normalize_mask : mask -> mask =
  fun value ->
   match value with
-  | Layer l -> preserve_if_equal value (Layer (normalize_mask_layer l))
+  | Layer l ->
+      let l' = normalize_mask_layer l in
+      if l' == l then value else Layer l'
   | Layers ls ->
-      preserve_if_equal value (Layers (map_preserve normalize_mask_layer ls))
+      let ls' = map_preserve normalize_mask_layer ls in
+      if ls' == ls then value else Layers ls'
   | other -> other
 
 let normalize_text_indent : text_indent_value -> text_indent_value =

@@ -33,14 +33,13 @@ let rec important = function
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
 let rec normalize = function
-  | Declaration { property; value; important } ->
-      Declaration
-        {
-          property;
-          value = Properties.normalize_property_value property value;
-          important;
-        }
-  | Theme_guarded g -> Theme_guarded { g with decl = normalize g.decl }
+  | Declaration { property; value; important } as decl ->
+      let value' = Properties.normalize_property_value property value in
+      if value' == value then decl
+      else Declaration { property; value = value'; important }
+  | Theme_guarded g as themed ->
+      let decl = normalize g.decl in
+      if decl == g.decl then themed else Theme_guarded { g with decl }
 
 (* Helper for raw custom properties - primarily for internal use *)
 
