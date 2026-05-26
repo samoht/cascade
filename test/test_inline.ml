@@ -2,28 +2,47 @@ open Cascade
 
 let parse s = Css.of_string_exn ~strict:false s
 let minified css = Css.to_string ~minify:true css
+let optimized_minified css = css |> Css.optimize |> minified
 
-let check_inline input expected =
-  let actual = input |> parse |> Css.inline_vars |> minified in
-  Alcotest.(check string) "minified output" expected actual
+let check_inline ?optimized input expected =
+  let inlined = input |> parse |> Css.inline_vars in
+  Alcotest.(check string) "minified output" expected (minified inlined);
+  match optimized with
+  | None -> ()
+  | Some expected ->
+      Alcotest.(check string)
+        "optimize+minify output" expected
+        (optimized_minified inlined)
 
-let check_inline_case name input expected =
-  let actual = input |> parse |> Css.inline_vars |> minified in
-  Alcotest.(check string) name expected actual
+let check_inline_case ?optimized name input expected =
+  let inlined = input |> parse |> Css.inline_vars in
+  Alcotest.(check string) name expected (minified inlined);
+  match optimized with
+  | None -> ()
+  | Some expected ->
+      Alcotest.(check string)
+        (name ^ " optimize+minify")
+        expected (optimized_minified inlined)
 
 let test_inline_substitutes_vars () =
-  check_inline ":root{--brand:blue}.button{color:var(--brand)}"
-    ".button{color:#00f}"
+  check_inline
+    ~optimized:".button{color:#00f}"
+    ":root{--brand:blue}.button{color:var(--brand)}"
+    ".button{color:blue}"
 
 let test_inline_keep_vars () =
-  let css =
+  let inlined =
     parse ":root{--brand:blue}.button{color:var(--brand);border-color:blue}"
     |> Css.inline_vars ~keep_vars:[ "brand" ]
-    |> minified
   in
   Alcotest.(check string)
     "kept custom property remains live"
-    ":root{--brand:#00f}.button{color:var(--brand);border-color:#00f}" css
+    ":root{--brand:blue}.button{color:var(--brand);border-color:blue}"
+    (minified inlined);
+  Alcotest.(check string)
+    "kept custom property optimize+minify"
+    ":root{--brand:#00f}.button{color:var(--brand);border-color:#00f}"
+    (optimized_minified inlined)
 
 let test_decode_import_url () =
   Alcotest.(check string)
@@ -76,7 +95,8 @@ let test_inline_import_supports_query_modes () =
 let test_inline_vars_fallback_edges () =
   check_inline_case "nested missing vars use deepest fallback"
     ".a{color:var(--undef,var(--also-undef,blue))}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
-    ".a{color:#00f}.b{color:fallback}";
+    ~optimized:".a{color:#00f}.b{color:fallback}"
+    ".a{color:blue}.b{color:fallback}";
   check_inline_case "missing var without fallback stays unresolved"
     ".a{color:var(--undef)}" ".a{color:var(--undef)}";
   check_inline_case "calc fallback resolves and canonicalizes"
@@ -115,7 +135,8 @@ let test_inline_shorthand_functions () =
     ".b{animation:slide 1s infinite}";
   check_inline_case "comma-list variable expands inside gradient function"
     ":root{--colors:red,blue,green}.a{background:linear-gradient(var(--colors))}"
-    ".a{background:linear-gradient(red,#00f,green)}";
+    ~optimized:".a{background:linear-gradient(red,#00f,green)}"
+    ".a{background:linear-gradient(red,blue,green)}";
   check_inline_case "rgb channel variables canonicalize after substitution"
     ":root{--r:255;--g:0;--b:0}.a{color:rgb(var(--r) var(--g) var(--b))}"
     ".a{color:red}"

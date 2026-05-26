@@ -7,7 +7,20 @@ open Css_test_helpers
 
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value_cursor "length" read_length pp_length
-let check_color = check_value_cursor "color" read_color pp_color
+(* Always assert both paths. pp serializes the parsed colour ([expected], held);
+   optimize+minify canonicalizes it ([optimized]). When [optimized] is omitted
+   the colour has no shorter spec-equivalent spelling (already canonical, or a
+   modern colour that is out of the sRGB gamut and so cannot losslessly fold to
+   hex), and optimize must preserve the held form. *)
+let check_color ?minify ?roundtrip ?expected ?optimized input =
+  check_value_cursor "color" read_color pp_color ?minify ?roundtrip ?expected
+    input;
+  let into =
+    match optimized with
+    | Some into -> into
+    | None -> Option.value ~default:input expected
+  in
+  check_decl_optimizes ~prop:"color" ~into input
 let check_angle = check_value_cursor "angle" read_angle pp_angle
 let check_duration = check_value_cursor "duration" read_duration pp_duration
 
@@ -219,73 +232,85 @@ let test_color () =
   check_color ~expected:"#fff" "#ffffff";
   check_color ~expected:"#fff" "#FFFFFF";
   (* Additional named colors *)
-  check_color ~expected:"#639" "rebeccapurple";
-  check_color ~expected:"#f0f8ff" "aliceblue";
+  check_color ~optimized:"#639" "rebeccapurple";
+  check_color ~optimized:"#f0f8ff" "aliceblue";
 
-  (* Modern color notations *)
-  (* Hue 'deg' unit is default and should be dropped in minified output *)
-  check_color ~expected:"#206060" "hsl(180deg 50% 25%)";
-  (* Same for hwb hue: drop default 'deg' on minify *)
-  check_color ~expected:"#73cc1a" "hwb(90deg 10% 20%)";
-  check_color ~expected:"#20606080" "hsl(180 50% 25% / 0.5)";
-  check_color ~expected:"#73cc1a" "hwb(90 10% 20%)";
-  check_color ~expected:"#73cc1a40" "hwb(90 10% 20% / 0.25)";
+  (* Modern color notations. pp preserves the authored function node; the
+     equivalent hex form is the optimize+minify oracle. *)
+  check_color ~expected:"hsl(180 50% 25%)" ~optimized:"#206060"
+    "hsl(180deg 50% 25%)";
+  check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a"
+    "hwb(90deg 10% 20%)";
+  check_color ~expected:"hsl(180 50% 25%/.5)" ~optimized:"#20606080"
+    "hsl(180 50% 25% / 0.5)";
+  check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a"
+    "hwb(90 10% 20%)";
+  check_color ~expected:"hwb(90 10% 20%/.25)" ~optimized:"#73cc1a40"
+    "hwb(90 10% 20% / 0.25)";
   (* CSS Color 4 section 1.3: alpha [<percentage>] is spec-equivalent to the
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
-  check_color ~expected:"#2060604d" "hsl(180deg 50% 25% / 30%)";
-  check_color ~expected:"red" "color(srgb 1 0 0)";
+  check_color ~expected:"hsl(180 50% 25%/30%)" ~optimized:"#2060604d"
+    "hsl(180deg 50% 25% / 30%)";
+  check_color ~optimized:"red" "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
   check_color ~expected:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
   check_color ~expected:"color(lch .5 40 120)" "color(lch 50% 40 120)";
-  check_color ~expected:"#5cb8b5" "color(xyz 0.3 0.4 0.5)";
+  check_color ~expected:"color(xyz .3 .4 .5)" ~optimized:"#5cb8b5"
+    "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
-  check_color ~expected:"#ba0d01" "oklch(50% 0.2 30)";
+  check_color ~expected:"oklch(50%.2 30)" ~optimized:"#ba0d01"
+    "oklch(50% 0.2 30)";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
-  check_color ~expected:"red" "rgb(100% 0% 0%)";
-  check_color ~expected:"#88497e" "oklab(50% 0.1 -0.05)";
-  check_color ~expected:"#638038" "lch(50% 40 120)";
-  check_color ~expected:"#ff000080" "rgb(255 0 0 / 50%)";
+  check_color ~expected:"rgb(100% 0% 0%)" ~optimized:"red"
+    "rgb(100% 0% 0%)";
+  check_color ~expected:"oklab(50%.1-.05)" ~optimized:"#88497e"
+    "oklab(50% 0.1 -0.05)";
+  check_color ~expected:"lch(50%40 120)" ~optimized:"#638038"
+    "lch(50% 40 120)";
+  check_color ~expected:"rgb(255 0 0/50%)" ~optimized:"#ff000080"
+    "rgb(255 0 0 / 50%)";
 
   (* Mixed channel formats in modern rgb() syntax. Per CSS Color 4 section 1.4
      the printer canonicalizes a fully-opaque rgb() to the equivalent named/hex
      form when shorter, regardless of input channel format. *)
-  check_color ~expected:"olive" "rgb(50% 128 0)";
-  check_color ~expected:"red" "rgb(255 0% 0)";
-  check_color ~expected:"navy" "rgb(0 0 50%)";
+  check_color ~optimized:"olive" "rgb(50% 128 0)";
+  check_color ~optimized:"red" "rgb(255 0% 0)";
+  check_color ~optimized:"navy" "rgb(0 0 50%)";
   (* Mixed channels with alpha (numeric) *)
-  check_color ~expected:"#80800080" "rgb(50% 128 0 / 0.5)";
+  check_color ~expected:"rgb(50% 128 0/.5)" ~optimized:"#80800080"
+    "rgb(50% 128 0 / 0.5)";
 
   (* Named colors - all variants. Under minification, named colors serialize to
      the shortest spec-equivalent spelling; equal-length named/hex ties use the
      hex spelling to match the documented minified-mode policy. *)
   check_color "red";
-  check_color ~expected:"#00f" "blue";
+  check_color ~optimized:"#00f" "blue";
   check_color "green";
-  check_color ~expected:"#fff" "white";
-  check_color ~expected:"#000" "black";
-  check_color ~expected:"#ff0" "yellow";
-  check_color ~expected:"#0ff" "cyan";
-  check_color ~expected:"#f0f" "magenta";
+  check_color ~optimized:"#fff" "white";
+  check_color ~optimized:"#000" "black";
+  check_color ~optimized:"#ff0" "yellow";
+  check_color ~optimized:"#0ff" "cyan";
+  check_color ~optimized:"#f0f" "magenta";
   check_color "gray";
-  check_color ~expected:"gray" "grey";
+  check_color ~optimized:"gray" "grey";
   check_color "orange";
   check_color "purple";
   check_color "pink";
   check_color "silver";
   check_color "maroon";
-  check_color ~expected:"#f0f" "fuchsia";
-  check_color ~expected:"#0f0" "lime";
+  check_color ~optimized:"#f0f" "fuchsia";
+  check_color ~optimized:"#0f0" "lime";
   check_color "olive";
   check_color "navy";
   check_color "teal";
-  check_color ~expected:"#0ff" "aqua";
+  check_color ~optimized:"#0ff" "aqua";
 
   (* Special keywords. Per CSS Color 4 section 6.4 [transparent] canonicalizes
      to the shortest spec-equivalent spelling [#0000] under minify. *)
-  check_color ~expected:"#0000" "transparent";
+  check_color ~optimized:"#0000" "transparent";
   check_color ~expected:"currentColor" "currentcolor";
   check_color "inherit";
 
@@ -303,31 +328,41 @@ let test_color () =
   check_color ~expected:"var(--color,)" "var(--color,)";
 
   (* Custom properties inline mode tests with complex color fallbacks *)
-  check_color ~expected:"var(--theme-primary,#2080df)"
+  check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
+    ~optimized:"var(--theme-primary,#2080df)"
     "var(--theme-primary, hsl(210deg 75% 50%))";
-  check_color ~expected:"var(--accent,#ff0080cc)"
+  check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
+    ~optimized:"var(--accent,#ff0080cc)"
     "var(--accent, rgb(255 0 128 / 80%))";
 
   (* RGB functions - various formats. Per CSS Color 4 section 1.4 the printer
      canonicalizes a fully-opaque rgb() to the named-or-hex equivalent when
      shorter. *)
-  check_color ~expected:"red" "rgb(255, 0, 0)";
-  check_color ~expected:"#000" "rgb(0, 0, 0)";
-  check_color ~expected:"#fff" "rgb(255, 255, 255)";
-  check_color ~expected:"gray" "rgb(128, 128, 128)";
+  check_color ~expected:"rgb(255 0 0)" ~optimized:"red" "rgb(255, 0, 0)";
+  check_color ~expected:"rgb(0 0 0)" ~optimized:"#000" "rgb(0, 0, 0)";
+  check_color ~expected:"rgb(255 255 255)" ~optimized:"#fff"
+    "rgb(255, 255, 255)";
+  check_color ~expected:"rgb(128 128 128)" ~optimized:"gray"
+    "rgb(128, 128, 128)";
 
   (* RGBA with alpha. The fully-opaque case (alpha 1) collapses to the same
      named/hex form as the rgb() above; alpha < 1 keeps the rgb(...) form. *)
-  check_color ~expected:"#ff000080" "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"#0000" "rgba(255, 0, 0, 0)";
-  check_color ~expected:"red" "rgba(255, 0, 0, 1)";
-  check_color ~expected:"#00000040" "rgba(0, 0, 0, 0.25)";
-  check_color ~expected:"#808080bf" "rgba(128, 128, 128, 0.75)";
+  check_color ~expected:"rgba(255,0,0,.5)" ~optimized:"#ff000080"
+    "rgba(255, 0, 0, 0.5)";
+  check_color ~expected:"rgba(255,0,0,0)" ~optimized:"#f000"
+    "rgba(255, 0, 0, 0)";
+  check_color ~expected:"rgba(255,0,0,1)" ~optimized:"red"
+    "rgba(255, 0, 0, 1)";
+  check_color ~expected:"rgba(0,0,0,.25)" ~optimized:"#00000040"
+    "rgba(0, 0, 0, 0.25)";
+  check_color ~expected:"rgba(128,128,128,.75)" ~optimized:"#808080bf"
+    "rgba(128, 128, 128, 0.75)";
   neg_cursor read_color "invalid";
   neg_cursor read_color "abc";
   neg_cursor read_color "#gg";
-  check_color ~expected:"red" "rgb(256, 0, 0)";
-  check_color ~expected:"#bf4240" "hsl(361, 50%, 50%)";
+  check_color ~expected:"rgb(255 0 0)" ~optimized:"red" "rgb(256, 0, 0)";
+  check_color ~expected:"hsl(1 50% 50%)" ~optimized:"#bf4240"
+    "hsl(361, 50%, 50%)";
   neg_cursor read_color "";
   (* Unknown color keyword *)
   neg_cursor read_color "notacolor"
@@ -687,18 +722,19 @@ let test_color_name () =
   neg_cursor read_color_name ""
 
 let test_alpha () =
-  (* CSS Color 4 section 1.3: alpha as [<percentage>] is spec-equivalent to the
-     corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
-     number form per cssnano. *)
+  (* pp preserves percentage alpha spelling; optimize owns percentage->number
+     conversion in colour contexts. *)
   check_alpha ~expected:".5" "0.5";
-  check_alpha ~expected:".5" "50%";
+  check_alpha "50%";
+  check_decl_optimizes ~prop:"color" ~into:"#00000080" "rgb(0 0 0 / 50%)";
   check_alpha "1";
   check_alpha "0";
   neg_cursor read_alpha "invalid";
   neg_cursor read_alpha "abc";
   check_alpha ~expected:"1" "1.5";
   check_alpha ~expected:"0" "-0.5";
-  check_alpha ~expected:"1" "150%";
+  check_alpha ~expected:"100%" "150%";
+  check_decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
   neg_cursor read_alpha "1px"
 
 let test_hue_interpolation () =
@@ -791,9 +827,12 @@ let test_system_color () =
 
 let spec_values_color_current () =
   check_color ~expected:"oklch(50%.2 none)" "oklch(50% 0.2 none)";
-  check_color ~expected:"rgb(from #639 r g b)" "rgb(from rebeccapurple r g b)";
-  check_color ~expected:"contrast-color(#fff)" "contrast-color(white)";
-  check_color ~expected:"light-dark(#000,#fff)" "light-dark(black, white)";
+  check_color ~optimized:"rgb(from rebeccapurple r g b)"
+    "rgb(from rebeccapurple r g b)";
+  check_color ~expected:"contrast-color(white)" ~optimized:"contrast-color(#fff)"
+    "contrast-color(white)";
+  check_color ~expected:"light-dark(black,white)" ~optimized:"light-dark(#000,#fff)"
+    "light-dark(black, white)";
   check_duration ~expected:"calc(sibling-index()*100ms)"
     "calc(sibling-index() * 100ms)";
   neg_cursor read_color "rgb(from r g b)";
@@ -815,10 +854,13 @@ let spec_values_l45_math_color () =
   check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
   check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
   check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
-  check_color ~expected:"#7551b6" "color-mix(in oklab, red 40%, blue)";
-  check_color ~expected:"color-mix(in srgb longer hue,red,#00f)"
+  check_color ~expected:"color-mix(in oklab,red 40%,blue)" ~optimized:"#7551b6"
+    "color-mix(in oklab, red 40%, blue)";
+  check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
+    ~optimized:"color-mix(in srgb longer hue,red,#00f)"
     "color-mix(in srgb longer hue, red, blue)";
-  check_color ~expected:"#bf4040" "hsl(none 50% 50%)";
+  check_color ~expected:"hsl(0 50% 50%)" ~optimized:"#bf4040"
+    "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/.5)"
     "rgb(from var(--c) r g b / 50%)";
   check_color ~expected:"color(display-p3 none .5 1)"
@@ -832,34 +874,45 @@ let spec_values_l45_math_color () =
   neg_cursor read_color "color(display-p3 1 0)"
 
 let spec_color5_function_edges () =
-  check_color ~expected:"#907055" "lab(50% 10 20)";
-  check_color ~expected:"#976c67" "lch(50% 20 30)";
+  check_color ~expected:"lab(50%10 20)" ~optimized:"#907055" "lab(50% 10 20)";
+  check_color ~expected:"lch(50%20 30)" ~optimized:"#976c67" "lch(50% 20 30)";
   check_color ~expected:"oklab(50%.1 .2)" "oklab(50% 0.1 0.2)";
-  check_color ~expected:"#944a4b80" "oklch(50% 0.1 20 / 0.5)";
-  check_color ~expected:"#ff000080" "color(srgb 1 0 0 / 0.5)";
+  check_color ~expected:"oklch(50%.1 20/.5)" ~optimized:"#944a4b80"
+    "oklch(50% 0.1 20 / 0.5)";
+  check_color ~expected:"color(srgb 1 0 0/.5)" ~optimized:"#ff000080"
+    "color(srgb 1 0 0 / 0.5)";
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
-  check_color ~expected:"color-mix(in lch longer hue,red 30%,#00f)"
+  check_color ~expected:"color-mix(in lch longer hue,red 30%,blue)"
+    ~optimized:"color-mix(in lch longer hue,red 30%,#00f)"
     "color-mix(in lch longer hue, red 30%, blue)";
-  check_color ~expected:"color-mix(in hsl,red,#00f 40%)"
+  check_color ~expected:"color-mix(in hsl shorter hue,red,blue 40%)"
+    ~optimized:"color-mix(in hsl,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
   (* CSS Color 4 sec. 12.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
   (* Opaque 50/50: straight average. *)
-  check_color ~expected:"#404040" "color-mix(in srgb, #fff 25%, #000 75%)";
+  check_color ~expected:"color-mix(in srgb,#fff 25%,#000 75%)"
+    ~optimized:"#404040" "color-mix(in srgb, #fff 25%, #000 75%)";
   (* A transparent component must not bleed its zero channels: un-premultiply
      restores the opaque operand's colour, only the alpha halves. *)
-  check_color ~expected:"#944a4b80" "color-mix(in srgb, #944a4b 50%, #0000)";
-  check_color ~expected:"#ff000080" "color-mix(in srgb, #0000, red)";
-  check_color ~expected:"#ff000080" "color-mix(in srgb, transparent, red)";
+  check_color ~expected:"color-mix(in srgb,#944a4b 50%,#0000)"
+    ~optimized:"#944a4b80" "color-mix(in srgb, #944a4b 50%, #0000)";
+  check_color ~expected:"color-mix(in srgb,#0000,red)" ~optimized:"#ff000080"
+    "color-mix(in srgb, #0000, red)";
+  check_color ~expected:"color-mix(in srgb,transparent,red)"
+    ~optimized:"#ff000080" "color-mix(in srgb, transparent, red)";
   (* Percentages summing to <100% scale only the result alpha (here 60%), not
      the colour channels. *)
-  check_color ~expected:"#80008099" "color-mix(in srgb, red 30%, blue 30%)";
+  check_color ~expected:"color-mix(in srgb,red 30%,blue 30%)"
+    ~optimized:"#80008099" "color-mix(in srgb, red 30%, blue 30%)";
   (* A modern-space argument resolves and the mix folds in a single pass
      (idempotent minify), not only once both operands are already hex. *)
-  check_color ~expected:"#944b4080"
+  check_color ~expected:"color-mix(in srgb,oklch(50%.1 30) 50%,transparent)"
+    ~optimized:"#944b4080"
     "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
-  check_color ~expected:"color-mix(var(--a),var(--b))"
+  check_color ~expected:"color-mix(in oklab,var(--a),var(--b))"
+    ~optimized:"color-mix(var(--a),var(--b))"
     "color-mix(in oklab, var(--a), var(--b))";
   check_color ~expected:"color-mix(var(--a),var(--b))"
     "color-mix(var(--a), var(--b))";

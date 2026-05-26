@@ -101,6 +101,16 @@ let check_decl_optimizes ~prop ~into input =
         (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
+let check_decl_optimizes_to ~into input =
+  let wrap decl = String.concat "" [ ".x{"; decl; "}" ] in
+  match Css.of_string ~strict:false (wrap input) with
+  | Ok p ->
+      Alcotest.(check string)
+        (wrap input ^ " optimize+minify")
+        (wrap into)
+        (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
+  | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
+
 (** Generic check function for CSS value types. [expected] is a spec oracle, not
     a snapshot of current implementation behavior. *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)
