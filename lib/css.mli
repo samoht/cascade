@@ -1144,8 +1144,8 @@ type system_color = Values.system_color =
 
 (** CSS color values. *)
 type color = Values.color =
-  | Hex of { hash : bool; value : string }
-      (** hash indicates if # was present *)
+  | Hex of { r : int; g : int; b : int; a : int }
+      (** Hex colour decoded to sRGB byte components ([a = 255] when opaque). *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha; legacy : bool }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }

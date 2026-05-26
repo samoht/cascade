@@ -485,7 +485,10 @@ type system_color =
   | Webkit_focus_ring_color
 
 type color =
-  | Hex of { hash : bool; value : string }
+  | Hex of { r : int; g : int; b : int; a : int }
+      (** A hex colour decoded to its sRGB byte components ([a = 255] when
+          opaque). Every spelling ([#fff] / [#ffffff] / [#FFFFFF]) decodes to
+          one node, so the printer picking the shortest spelling round-trips. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha; legacy : bool }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }

@@ -600,14 +600,13 @@ let test_pp_size_matches_length buf =
   | `Color -> run Css.Values.read_color Css.Values.pp_color
   | `Number -> run Css.Values.read_number Css.Values.pp_number
 
-(* pp must be a fixed point (pp-purity policy): it may pick a shorter same-value
-   spelling for a node (hex shorten [#ffffff] -> [#fff], zero-unit strip [0px]
-   -> [0], angle / duration unit, alpha-% number), but re-printing the reparsed
-   output yields the same bytes. The node-CHANGING semantic folds - calc to a
-   literal, a colour space to hex, one function to an equivalent one - belong to
-   normalize (optimize), and are checked by the optimize suite
-   ([test_pp_keeps_distinct_nodes]) rather than here. *)
-let assert_pp_preserves_ast read pp _eq input =
+(* pp must preserve the AST node (pp-purity policy): re-parsing pp's output
+   yields a structurally identical value. Equivalent spellings decode to one
+   node (e.g. [#ffffff] / [#fff] both decode to the same [Hex] components, like
+   [0.5] / [.5] -> [Num 0.5]), so the shortest-spelling choice round-trips. Any
+   node-changing fold - calc to a literal, a colour space to hex, a unit
+   conversion - belongs to optimize and is caught here in both modes. *)
+let assert_pp_preserves_ast read pp eq input =
   match parse_whole read input with
   | None -> ()
   | Some v ->
@@ -615,14 +614,15 @@ let assert_pp_preserves_ast read pp _eq input =
         (fun minify ->
           let s = Css.Pp.to_string ~minify pp v in
           match parse_whole read s with
+          | Some v' when eq v' v -> ()
+          | Some _ ->
+              failf
+                "pp changed the AST node (minify=%b): %S serialized to %S, \
+                 which reparses to a different node"
+                minify input s
           | None ->
               failf "pp output did not reparse (minify=%b): %S -> %S" minify
-                input s
-          | Some v' ->
-              let s' = Css.Pp.to_string ~minify pp v' in
-              if not (String.equal s s') then
-                failf "pp is not a fixed point (minify=%b): %S -> %S -> %S"
-                  minify input s s')
+                input s)
         [ true; false ]
 
 let test_pp_preserves_ast buf =
