@@ -60,8 +60,7 @@ let expect_size_adjust_rejected input =
 let accepted_invalid_cases label parse render inputs =
   List.filter_map
     (fun input ->
-      try
-        Some (Printf.sprintf "%s: %S -> %S" label input (parse input |> render))
+      try Fmt.kstr (fun s -> Some s) "%s: %S -> %S" label input (parse input |> render)
       with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None)
     inputs
 
@@ -188,10 +187,10 @@ let spec_fontface_src_minify_edges () =
           let actual = input |> src_of_string |> string_of_src ~minify:true in
           if String.equal actual expected then None
           else
-            Some
-              (Printf.sprintf
-                 "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
-                 expected actual))
+            Fmt.kstr
+              (fun s -> Some s)
+              "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
+              expected actual)
         cases
     in
     match mismatches with

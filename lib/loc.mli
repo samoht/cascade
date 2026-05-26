@@ -64,7 +64,7 @@ module Path : sig
   (** [to_labels t] renders each path step as a label. *)
 
   val pp : t Pp.t
-  (** [pp] formats [t] as slash-separated labels. *)
+  (** [pp] formats {!type-t} as slash-separated labels. *)
 end
 
 module Context : sig
@@ -84,7 +84,7 @@ module Context : sig
 end
 
 val snippet : ?window:int -> string -> t -> Context.snippet
-(** [snippet source loc] extracts a snippet of [source] around [loc]: [text] is
-    the byte window (default: 40 bytes on each side of the location),
-    [marker_pos] points at [loc.start_pos] within [text], and [marker_len] spans
-    the located range. *)
+(** [snippet source loc] extracts a snippet of [source] around [loc]:
+    {!field-text} is the byte window (default: 40 bytes on each side of the
+    location), {!field-marker_pos} points at [loc.start_pos] within
+    {!field-text}, and {!field-marker_len} spans the located range. *)

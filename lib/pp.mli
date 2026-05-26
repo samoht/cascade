@@ -76,8 +76,8 @@ val to_buffer :
   'a ->
   unit
 (** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
-    optional [indent] sets the per-level indent width (default: [None] under
-    [minify], [Some 2] otherwise). *)
+    optional {!val-indent} sets the per-level indent width (default: [None]
+    under {!field-minify}, [Some 2] otherwise). *)
 
 val size :
   ?minify:bool ->
@@ -100,9 +100,9 @@ val to_string :
   'a ->
   string
 (** [to_string formatter value] runs the formatter and returns a string. The
-    optional [indent] sets the per-level indent width (default: [None] under
-    [minify], [Some 2] otherwise). [enforce_spec] suppresses target-dependent
-    shortenings. *)
+    optional {!val-indent} sets the per-level indent width (default: [None]
+    under {!field-minify}, [Some 2] otherwise). {!field-enforce_spec} suppresses
+    target-dependent shortenings. *)
 
 (** {2 Primitive Formatters} *)
 
@@ -176,8 +176,9 @@ val column : ctx -> int
 val list_wrap :
   ?threshold:int -> sep:unit t -> wrap_indent:int -> 'a t -> 'a list t
 (** [list_wrap ?threshold ~sep ~wrap_indent formatter] formats a list like
-    [list] but wraps to a new line (indented by [wrap_indent] spaces) when the
-    current column exceeds [threshold] (default 80). No-op when minifying. *)
+    {!val-list} but wraps to a new line (indented by [wrap_indent] spaces) when
+    the current column exceeds [threshold] (default 80). No-op when minifying.
+*)
 
 val option : ?none:unit t -> 'a t -> 'a option t
 (** [option ~none formatter] formats an option, using none formatter for None.
@@ -203,9 +204,9 @@ val float : float t
     - Trims trailing zeros. *)
 
 val float_compact : float t
-(** [float_compact] like [float] but always drops leading zeros regardless of
-    minification mode. Used for oklch chroma values where Tailwind always uses
-    compact format (e.g. [.034] not [0.034]). *)
+(** [float_compact] like {!val-float} but always drops leading zeros regardless
+    of minification mode. Used for oklch chroma values where Tailwind always
+    uses compact format (e.g. [.034] not [0.034]). *)
 
 val float_n : int -> float t
 (** [float_n n] formats float to exactly n decimal places using round-half-up.
@@ -266,8 +267,8 @@ val cond : (ctx -> bool) -> 'a t -> 'a t -> 'a t
     context predicate. *)
 
 val space_if_pretty : unit t
-(** [space_if_pretty] is an alias for [sp] - outputs space when not minifying.
-*)
+(** [space_if_pretty] is an alias for {!val-sp} - outputs space when not
+    minifying. *)
 
 val op_char : char t
 (** [op_char] outputs a character with spaces around it when not minifying.
@@ -289,7 +290,7 @@ val braced_list : ?sep:unit t -> 'a t -> 'a list t
 
 val braced_semicolon_list : 'a t -> 'a list t
 (** [braced_semicolon_list formatter] wraps a list in braces and separates items
-    with [semicolon_cut]. *)
+    with {!val-semicolon_cut}. *)
 
 val call : string -> 'a t -> 'a t
 (** [call name args] formats a function call: [name( args )]. *)

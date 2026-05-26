@@ -363,7 +363,7 @@ let test_custom_tokens buf =
           if Css.Declaration.property_name reparsed <> name then
             fail "custom property name changed after serialization")
 
-let test_custom_property_empty_value_edges _buf =
+let test_custom_prop_empty_edges _buf =
   let assert_serializes label input expected =
     match parse_declaration input with
     | None -> failf "%s custom property rejected: %S" label input
@@ -412,5 +412,5 @@ let suite =
       test_case "custom property token stream vectors" [ bytes ]
         test_custom_tokens;
       test_case "custom property empty value edges" [ bytes ]
-        test_custom_property_empty_value_edges;
+        test_custom_prop_empty_edges;
     ] )

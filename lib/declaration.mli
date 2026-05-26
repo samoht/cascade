@@ -150,7 +150,7 @@ val z_index_auto : declaration
 val font_variant_numeric_tokens :
   font_variant_numeric_token list -> font_variant_numeric
 (** [font_variant_numeric_tokens tokens] composes numeric font-variant tokens
-    into a [font_variant_numeric] value. *)
+    into a {!val-font_variant_numeric} value. *)
 
 val font_variant_numeric_composed :
   ?ordinal:font_variant_numeric_token ->
@@ -162,7 +162,7 @@ val font_variant_numeric_composed :
   font_variant_numeric
 (** [font_variant_numeric_composed ?ordinal ?slashed_zero ?numeric_figure
      ?numeric_spacing ?numeric_fraction ()] composes optional numeric
-    font-variant tokens into a [font_variant_numeric] value. *)
+    font-variant tokens into a {!val-font_variant_numeric} value. *)
 
 val background : background -> declaration
 (** [background bg] is the
@@ -449,8 +449,8 @@ val font_size : length -> declaration
     property. *)
 
 val font_size_kw : font_size -> declaration
-(** [font_size_kw fs] is the font-size property accepting the full [font_size]
-    type including absolute/relative size keywords. *)
+(** [font_size_kw fs] is the font-size property accepting the full
+    {!val-font_size} type including absolute/relative size keywords. *)
 
 val line_height : line_height -> declaration
 (** [line_height v] is the
@@ -1534,7 +1534,7 @@ val transform : transform -> declaration
 *)
 
 val transforms : transform list -> declaration
-(** [transforms ts] is the CSS [transform] property with multiple
+(** [transforms ts] is the CSS {!val-transform} property with multiple
     transformations. *)
 
 val rotate : rotate_value -> declaration

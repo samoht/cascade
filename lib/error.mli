@@ -32,8 +32,8 @@ type t = {
   snippet : Loc.Context.snippet option;
   filename : string option;
 }
-(** The [path] is a breadcrumb trail from the outermost context down to the
-    exact sub-production that failed, rendered with ["/"] separators. Use
+(** The {!field-path} is a breadcrumb trail from the outermost context down to
+    the exact sub-production that failed, rendered with ["/"] separators. Use
     {!context} to recover the structured path, source location, sort and source
     snippet when available. *)
 
@@ -46,6 +46,7 @@ val pp : t Pp.t
     [expected <ident> but found <delim '.'> at [12-13] (in selector)]. *)
 
 val to_string : t -> string
+(** [to_string error] renders [error] as source text. *)
 
 (** {1 Construction and raising}
 

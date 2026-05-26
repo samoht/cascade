@@ -1657,6 +1657,15 @@ let split_custom_important value =
     (String.trim head, true)
   else (trimmed, false)
 
+let read_custom_property_payload name value_str =
+  if is_font_family_var name then
+    let trimmed = String.trim value_str in
+    if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
+      read_custom_property_value (Cursor.of_string value_str)
+    else
+      read_custom_property_value ~font_family:true (Cursor.of_string value_str)
+  else read_custom_property_value (Cursor.of_string value_str)
+
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
   (* CSS Syntax 3 §4.3.7 lets [\X] escapes carry any code point into an ident,
@@ -1684,17 +1693,8 @@ let read_custom_property_declaration t : declaration =
   in
   (* custom_property may raise Failure for invalid names like "--" *)
   try
+    let custom_value = read_custom_property_payload name value_str in
     let decl =
-      let custom_value =
-        if is_font_family_var name then
-          let trimmed = String.trim value_str in
-          if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
-            read_custom_property_value (Cursor.of_string value_str)
-          else
-            read_custom_property_value ~font_family:true
-              (Cursor.of_string value_str)
-        else read_custom_property_value (Cursor.of_string value_str)
-      in
       v (Custom_property name)
         (Custom_value { value = custom_value; layer = None; meta = None })
     in

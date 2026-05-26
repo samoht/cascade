@@ -67,8 +67,7 @@ let resolve_indent ~minify = function
   | Some _ as i -> i
   | None -> if minify then None else Some 2
 
-let make ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out
-    =
+let v ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out =
   {
     minify;
     level = 0;
@@ -82,7 +81,7 @@ let make ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out
   }
 
 let ctx ?minify ?indent ?inline ?enforce_spec buf =
-  make ?minify ?indent ?inline ?enforce_spec (Out_buffer buf)
+  v ?minify ?indent ?inline ?enforce_spec (Out_buffer buf)
 
 let to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a =
   let ctx = ctx ?minify ?indent ?inline ?enforce_spec buf in
@@ -98,7 +97,7 @@ let to_string ?minify ?indent ?inline ?enforce_spec pp a =
    string. *)
 let size ?minify ?indent ?inline ?enforce_spec pp a =
   let counter = { count = 0; last = '\000' } in
-  let ctx = make ?minify ?indent ?inline ?enforce_spec (Out_counter counter) in
+  let ctx = v ?minify ?indent ?inline ?enforce_spec (Out_counter counter) in
   pp ctx a;
   counter.count
 

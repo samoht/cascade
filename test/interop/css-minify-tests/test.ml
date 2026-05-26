@@ -181,10 +181,9 @@ let fixture ~category ~id ~upstream ~cascade expected =
   let upstream = strip_trailing_ws upstream in
   let expected = strip_trailing_ws expected in
   if expected <> upstream then
-    invalid_arg
-      (Printf.sprintf
-         "stale css-minify override for %s/%s\n  upstream: %s\n  expected: %s"
-         category id upstream expected);
+    Fmt.invalid_arg
+      "stale css-minify override for %s/%s\n  upstream: %s\n  expected: %s"
+      category id upstream expected;
   cascade
 
 let normalize_expected ~category ~id expected =

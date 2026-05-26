@@ -1205,7 +1205,8 @@ let test_border () =
   check_border ~expected:"2px solid" "solid 2px";
   (* Test with zero width *)
   check_border "0 solid";
-  check_border ~expected:"0 solid#000" "0 solid black";
+  check_border ~expected:"0 solid black" "0 solid black";
+  check_decl_optimizes ~prop:"border" ~into:"0 solid#000" "0 solid black";
   (* Test with inherit/initial *)
   check_border "inherit";
   check_border "initial";
@@ -1608,7 +1609,8 @@ let test_transforms () =
 let test_gap () =
   check_gap "10px";
   check_gap "1rem 2rem";
-  check_gap ~expected:"0" "0px";
+  check_gap "0px";
+  check_decl_optimizes ~prop:"gap" ~into:"0" "0px";
   neg_cursor read_gap "invalid-gap";
   neg_cursor read_gap "-10px";
   (* negative gap *)
@@ -1663,7 +1665,8 @@ let test_background () =
   check_background ~expected:"linear-gradient(to right,red,blue)"
     "linear-gradient(to right, red, blue)";
   check_decl_optimizes ~prop:"background"
-    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
+    ~into:"linear-gradient(90deg,red,#00f)"
+    "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png)50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
   check_background ~expected:"0 0" "none";
@@ -1790,8 +1793,10 @@ let test_text_decoration_shorthand () =
   (* Test order independence *)
   check_text_decoration_shorthand ~expected:"underline red"
     "red solid underline";
-  check_text_decoration_shorthand ~expected:"underline wavy #00f 3px"
+  check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
     "3px wavy blue underline";
+  check_decl_optimizes ~prop:"text-decoration"
+    ~into:"underline wavy #00f 3px" "3px wavy blue underline";
   neg_cursor read_text_decoration_shorthand "invalid-decoration";
   neg_cursor read_text_decoration_shorthand "underline underline";
   (* duplicate line *)
@@ -1848,7 +1853,9 @@ let test_border_shorthand () =
   check_border_shorthand "1px solid";
   check_border_shorthand "1px solid red";
   check_border_shorthand ~expected:"solid red" "red solid";
-  check_border_shorthand ~expected:"2px dashed#00f" "blue 2px dashed";
+  check_border_shorthand ~expected:"2px dashed blue" "blue 2px dashed";
+  check_decl_optimizes ~prop:"border" ~into:"2px dashed#00f"
+    "blue 2px dashed";
   neg_cursor read_border_shorthand "1px 2px"
 
 let test_justify_items () =
@@ -2254,11 +2261,15 @@ let test_gradient_direction () =
 let test_gradient_stop () =
   (* Basic color stops *)
   check_gradient_stop "red";
-  check_gradient_stop ~expected:"#00f 50%" "blue 50%";
+  check_gradient_stop "blue 50%";
   check_gradient_stop ~expected:"#ff5733 25%" "#ff5733 25%";
-  (* Per CSS Color 4 section 1.4 the printer canonicalizes a fully-opaque rgb()
-     to the equivalent named color when shorter. *)
-  check_gradient_stop ~expected:"red 10px" "rgb(255,0,0) 10px";
+  check_gradient_stop ~expected:"rgb(255 0 0)10px" "rgb(255,0,0) 10px";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(#00f 50%,red)"
+    "linear-gradient(blue 50%,red)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(red 10px,#00f)"
+    "linear-gradient(rgb(255,0,0) 10px,blue)";
 
   (* Double position stops *)
   check_gradient_stop ~expected:"green 20% 40%" "green 20% 40%";
@@ -2332,12 +2343,14 @@ let test_background_image () =
     "linear-gradient(to right in oklab, red, blue)";
   check_background_image ~expected:"linear-gradient(to right in oklab,red,blue)"
     "linear-gradient(in oklab to right, red, blue)";
-  (* optimize+minify folds the side keyword to its angle and Named blue to hex. *)
+  (* optimize+minify folds the side keyword to its angle and Named blue to
+     hex. *)
   check_decl_optimizes ~prop:"background-image"
     ~into:"linear-gradient(in oklab,red,#00f)"
     "linear-gradient(in oklab, red, blue)";
   check_decl_optimizes ~prop:"background-image"
-    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
+    ~into:"linear-gradient(90deg,red,#00f)"
+    "linear-gradient(to right, red, blue)";
   check_decl_optimizes ~prop:"background-image"
     ~into:"linear-gradient(90deg in oklab,red,#00f)"
     "linear-gradient(to right in oklab, red, blue)";
@@ -2350,19 +2363,37 @@ let test_background_image () =
   check_background_image ~minify:false
     ~expected:"linear-gradient(to right in oklab, red, blue)"
     "linear-gradient(in oklab to right, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab,red,#00f)"
+  check_background_image ~expected:"radial-gradient(in oklab,red,blue)"
     "radial-gradient(in oklab, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,#00f)"
+  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
     "radial-gradient(in oklab circle at center, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,#00f)"
+  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
     "radial-gradient(circle at center in oklab, red, blue)";
-  check_background_image ~expected:"conic-gradient(in hsl longer hue,red,#00f)"
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"radial-gradient(in oklab,red,#00f)"
+    "radial-gradient(in oklab, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"radial-gradient(in oklab circle,red,#00f)"
+    "radial-gradient(in oklab circle at center, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"radial-gradient(in oklab circle,red,#00f)"
+    "radial-gradient(circle at center in oklab, red, blue)";
+  check_background_image ~expected:"conic-gradient(in hsl longer hue,red,blue)"
     "conic-gradient(in hsl longer hue, red, blue)";
   check_background_image
-    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,blue)"
     "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
   check_background_image
-    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    ~expected:"conic-gradient(in hsl longer hue from 45deg at center,red,blue)"
+    "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"conic-gradient(in hsl longer hue,red,#00f)"
+    "conic-gradient(in hsl longer hue, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
     "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
   check_background_image ~minify:false
     ~expected:"radial-gradient(in oklab, red, blue)"
@@ -2779,11 +2810,11 @@ let test_shadow () =
   check_shadow "red inset 2px 2px 4px" ~expected:"inset 2px 2px 4px red";
   check_shadow "red inset 2px 2px 4px 1px" ~expected:"inset 2px 2px 4px 1px red";
   (* Test compact printing - when blur and spread are not provided, should print
-     compactly. Per CSS Color 4 section 6.4 the printer canonicalizes fully
-     transparent colors to the shortest equivalent spelling [#0000] under
-     [~minify:true], matching Lightning CSS. *)
+     compactly. Cross-form colour canonicalization is an optimize transform. *)
   check_shadow "0 0 #0000" ~expected:"0 0 #0000";
-  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 #0000";
+  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgba(0,0,0,0)";
+  check_decl_optimizes ~prop:"box-shadow" ~into:"0 0 #0000"
+    "0 0 rgba(0,0,0,0)";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
   neg_cursor read_shadow "10px"
@@ -3417,7 +3448,8 @@ let spec_generated_box_layout_edges () =
   check_line_break "anywhere";
   check_line_fit_edge "text alphabetic";
   check_line_fit_edge_keyword "ideographic-ink";
-  check_logical_border_color ~expected:"red #00f" "red blue";
+  check_logical_border_color "red blue";
+  check_decl_optimizes ~prop:"border-inline-color" ~into:"red #00f" "red blue";
   check_min_intrinsic_sizing "legacy zero-if-scroll";
   check_min_intrinsic_sizing_keyword "zero-if-extrinsic";
   check_overflow_clip_box "content-box";
@@ -3502,7 +3534,8 @@ let spec_generated_position_interaction_edges () =
   check_ruby_overhang "none";
   check_ruby_position "alternate over";
   check_ruby_position_keyword "inter-character";
-  check_scrollbar_color ~expected:"red #00f" "red blue";
+  check_scrollbar_color "red blue";
+  check_decl_optimizes ~prop:"scrollbar-color" ~into:"red #00f" "red blue";
   check_scrollbar_gutter "stable both-edges";
   check_scrollbar_width "thin";
   neg_cursor read_anchor_name "none --x";
@@ -3719,7 +3752,9 @@ let test_will_change () =
 
 let test_clip () =
   check_clip "auto";
-  check_clip ~expected:"rect(0,10px,20px,30px)" "rect(0px,10px,20px,30px)";
+  check_clip "rect(0px,10px,20px,30px)";
+  check_decl_optimizes ~prop:"clip" ~into:"rect(0px,10px,20px,30px)"
+    "rect(0px,10px,20px,30px)";
   neg_cursor read_clip "invalid-clip"
 
 let test_clip_path () =
@@ -3733,12 +3768,15 @@ let test_clip_path () =
   (* 2 values: top/bottom, left/right *)
   check_clip_path "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
-  check_clip_path ~expected:"inset(0 10px 20px 30px)"
-    "inset(0px 10px 20px 30px)";
+  check_clip_path "inset(0px 10px 20px 30px)";
+  check_decl_optimizes ~prop:"clip-path"
+    ~into:"inset(0px 10px 20px 30px)" "inset(0px 10px 20px 30px)";
   (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
-  check_clip_path ~expected:"polygon(0 0,100px 0,50px 100px)"
+  check_clip_path "polygon(0px 0px,100px 0px,50px 100px)";
+  check_decl_optimizes ~prop:"clip-path"
+    ~into:"polygon(0px 0px,100px 0px,50px 100px)"
     "polygon(0px 0px,100px 0px,50px 100px)";
   neg_cursor read_clip_path "";
   neg_cursor read_clip_path "invalid"

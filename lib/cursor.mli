@@ -21,8 +21,8 @@ val of_components :
     [cvs]. Pass [?source] so errors raised while consuming the cursor get a
     source-context snippet attached (matching {!of_string}'s behaviour). Pass
     [~recover:true] to enable per-declaration recovery: validators that honour
-    {!recover} will catch a [Parse_error] on one declaration, push it to
-    {!push_warning}, and skip to the next [;] instead of propagating. [?meta]
+    {!recover} will catch a {!exception-Parse_error} on one declaration, push it
+    to {!push_warning}, and skip to the next [;] instead of propagating. [?meta]
     controls snippet construction and defaults to {!Loc.default_meta_level}.
     [?eof_loc] anchors end-of-input errors at a specific location. *)
 
@@ -40,7 +40,7 @@ val func_sub : Component.func Component.node -> t -> t
 val recover : t -> bool
 (** [recover t] is the recovery mode [t] was built with. Validators that support
     declaration-level recovery check this to decide whether to catch and skip on
-    a [Parse_error] or let it propagate. *)
+    a {!exception-Parse_error} or let it propagate. *)
 
 val meta : t -> Loc.meta_level
 (** [meta t] is the metadata level [t] was built with. At [`Full] errors carry
@@ -51,8 +51,8 @@ val source : t -> string option
 
 val push_warning : t -> Error.t -> unit
 (** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
-    recovery mode catches a [Parse_error], pushes it here, skips to a recovery
-    point, and keeps going. Drained via {!drain_warnings}. *)
+    recovery mode catches a {!exception-Parse_error}, pushes it here, skips to a
+    recovery point, and keeps going. Drained via {!drain_warnings}. *)
 
 val drain_warnings : t -> Error.t list
 (** [drain_warnings t] returns and clears the warnings accumulated on [t] in
@@ -84,7 +84,7 @@ val is_done : t -> bool
 
 val position : t -> Loc.t
 (** [position t] is the {!Loc.t} of the next component, or {!Loc.dummy} if
-    [is_done]. *)
+    {!val-is_done}. *)
 
 val remaining : t -> Component.t list
 (** [remaining t] is the un-consumed tail (still includes whitespace). *)
@@ -104,8 +104,8 @@ val consume_remaining_as_string : ?trim:bool -> t -> string
 
 val ws : t -> unit
 (** [ws t] drops any leading whitespace components. Usually a no-op since typed
-    helpers skip whitespace for you; useful when a raw [peek_raw] or [next_raw]
-    is about to run. *)
+    helpers skip whitespace for you; useful when a raw {!val-peek_raw} or
+    {!val-next_raw} is about to run. *)
 
 (** {1 Whitespace-aware variants}
 
@@ -148,11 +148,11 @@ val lookahead : (t -> 'a) -> t -> 'a
 
 val try_typed_call : (t -> 'a) -> t -> ('a, Component.t) result
 (** [try_typed_call typed t] runs the typed reader [typed] when the next
-    component is a [Func]. On success, returns [Ok value]. On [Parse_error],
-    restores the cursor, skips past the function call, and returns
-    [Error <captured-call>] so callers can wrap it in their type's [Invalid]
-    arm. When the next component isn't a [Func] the typed reader is run directly
-    (errors propagate). *)
+    component is a [Func]. On success, returns [Ok value]. On
+    {!exception-Parse_error}, restores the cursor, skips past the function call,
+    and returns [Error <captured-call>] so callers can wrap it in their type's
+    [Invalid] arm. When the next component isn't a [Func] the typed reader is
+    run directly (errors propagate). *)
 
 (** {1 Errors} *)
 
@@ -422,7 +422,7 @@ val enum_or_calls :
 
 val enum_or_var :
   ?default:(t -> 'a) -> string -> (string * 'a) list -> var:(t -> 'a) -> t -> 'a
-(** [enum_or_var label idents ~var t] is [enum_or_calls] specialised to the
+(** [enum_or_var label idents ~var t] is {!val-enum_or_calls} specialised to the
     common case of "match a CSS keyword from [idents], or read [var(...)] via
     [var]". Removes the boilerplate of writing the [var] entry in a [calls] list
     at every typed-property reader. *)

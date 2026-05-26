@@ -71,10 +71,10 @@ val string_of_kind_value : 'a kind -> 'a -> string
     initial value serialize to ["initial"]. *)
 
 val pp_shadow : shadow Pp.t
-(** [pp_shadow] is the pretty-printer for [shadow] values. *)
+(** [pp_shadow] is the pretty-printer for {!val-shadow} values. *)
 
 val read_shadow : Cursor.t -> shadow
-(** [read_shadow t] parses a [shadow] value from [t]. *)
+(** [read_shadow t] parses a {!val-shadow} value from [t]. *)
 
 val read_timeline_shorthand : Cursor.t -> timeline_shorthand
 (** [read_timeline_shorthand t] parses [scroll-timeline] and [view-timeline]. *)
@@ -418,9 +418,10 @@ val pp_property_value_kind : 'a property_value_kind Pp.t
     value. *)
 
 val read_property_value_kind : Cursor.t -> 'a property_value_kind
-(** [read_property_value_kind t] always raises. The [property_value_kind] GADT
-    classifies typed values for dispatch and is not addressable as a standalone
-    CSS value; the function exists only so the API surface stays symmetric. *)
+(** [read_property_value_kind t] always raises. The {!val-property_value_kind}
+    GADT classifies typed values for dispatch and is not addressable as a
+    standalone CSS value; the function exists only so the API surface stays
+    symmetric. *)
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)
@@ -1260,12 +1261,12 @@ val read_overlay : Cursor.t -> overlay
 (** [read_overlay t] parses [overlay]. *)
 
 val pp_transition_shorthand : transition_shorthand Pp.t
-(** [pp_transition_shorthand] is the pretty-printer for [transition_shorthand].
-*)
+(** [pp_transition_shorthand] is the pretty-printer for
+    {!val-transition_shorthand}. *)
 
 val read_transition_shorthand : Cursor.t -> transition_shorthand
-(** [read_transition_shorthand t] is the [transition_shorthand] parsed from [t].
-*)
+(** [read_transition_shorthand t] is the {!val-transition_shorthand} parsed from
+    [t]. *)
 
 val pp_transition : transition Pp.t
 (** [pp_transition] is the pretty-printer for [transition]. *)
@@ -1329,11 +1330,12 @@ val read_animation_composition : Cursor.t -> animation_composition
     [t]. *)
 
 val pp_animation_shorthand : animation_shorthand Pp.t
-(** [pp_animation_shorthand] is the pretty-printer for [animation_shorthand]. *)
+(** [pp_animation_shorthand] is the pretty-printer for
+    {!val-animation_shorthand}. *)
 
 val read_animation_shorthand : Cursor.t -> animation_shorthand
-(** [read_animation_shorthand t] is the [animation_shorthand] parsed from [t].
-*)
+(** [read_animation_shorthand t] is the {!val-animation_shorthand} parsed from
+    [t]. *)
 
 val pp_animation : animation Pp.t
 (** [pp_animation] is the pretty-printer for [animation]. *)

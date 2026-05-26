@@ -60,9 +60,9 @@ val position : t -> int
 
 val context_window : ?before:int -> ?after:int -> t -> string * int
 (** [context_window ~before ~after t] returns [(context, marker_pos)] where
-    [context] is text around the current position and [marker_pos] indicates
-    where in the context the current position is. Used for better error
-    messages. *)
+    [context] is text around the current position and {!field-marker_pos}
+    indicates where in the context the current position is. Used for better
+    error messages. *)
 
 (** {1 Call Stack Management} *)
 
@@ -122,10 +122,10 @@ val skip : t -> unit
 (** [skip t] consumes one character. *)
 
 val expect : char -> t -> unit
-(** [expect c t] consumes [c] or raises [Parse_error]. *)
+(** [expect c t] consumes [c] or raises {!exception-Parse_error}. *)
 
 val expect_string : string -> t -> unit
-(** [expect_string s t] consumes [s] or raises [Parse_error]. *)
+(** [expect_string s t] consumes [s] or raises {!exception-Parse_error}. *)
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] if input starts with [s]. *)
@@ -272,15 +272,16 @@ val enum_or_calls :
   t ->
   'a
 (** [enum_or_calls ?default label idents ~calls t] handles values that can be
-    either a keyword ([enum]) or a function call ([enum_calls]). It peeks after
-    the identifier: if a '(' follows, dispatches to [enum_calls]; otherwise
-    matches against [idents]. If no match is found and [~default] is provided,
-    the input position is restored before trying [default t]. *)
+    either a keyword ({!val-enum}) or a function call ({!val-enum_calls}). It
+    peeks after the identifier: if a '(' follows, dispatches to
+    {!val-enum_calls}; otherwise matches against [idents]. If no match is found
+    and [~default] is provided, the input position is restored before trying
+    [default t]. *)
 
 val fold_many :
   (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option
-(** [fold_many parser ~init ~f t] like [many] but folds into an accumulator as
-    it parses. Returns the final accumulator and the last error (if any). *)
+(** [fold_many parser ~init ~f t] like {!val-many} but folds into an accumulator
+    as it parses. Returns the final accumulator and the last error (if any). *)
 
 val number_with_unit : t -> float * string option
 (** [number_with_unit t] parses a number followed by a unit identifier (e.g.,

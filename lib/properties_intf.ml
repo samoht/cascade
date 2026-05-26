@@ -1613,6 +1613,7 @@ type vertical_align =
   | Rem of float
   | Em of float
   | Pct of float
+  | Calc of vertical_align calc
   | Inherit
   | Initial
   | Unset
@@ -2419,6 +2420,7 @@ type color_interpolation =
   | Var of color_interpolation var
 
 type gradient_direction =
+  | Default_direction
   | To_top
   | To_top_right
   | To_right

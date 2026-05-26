@@ -17,64 +17,119 @@ type lch = float * float * float
 
 (** {1 sRGB} *)
 
-val srgb_to_linear : float -> float
+val linear_of_srgb : float -> float
 (** CSS Color 4 sec. 11.5.1: [<R G B>] in [[0, 1]] linearised via the standard
     [(v + 0.055) / 1.055)^2.4] curve below the toe at [0.04045]. *)
 
-val linear_to_srgb : float -> float
-(** Inverse of [srgb_to_linear]. *)
+val srgb_of_linear : float -> float
+(** Inverse of {!val-linear_of_srgb}. *)
 
-val rgb_to_linear_rgb : rgb -> rgb
-val linear_rgb_to_rgb : rgb -> rgb
+val linear_rgb_of_rgb : rgb -> rgb
+(** Applies {!val-linear_of_srgb} to each channel. *)
+
+val rgb_of_linear_rgb : rgb -> rgb
+(** Applies {!val-srgb_of_linear} to each channel. *)
 
 (** {1 Predefined RGB spaces} *)
 
-val linear_srgb_to_xyz_d65 : rgb -> xyz
-val xyz_d65_to_linear_srgb : xyz -> rgb
-val linear_display_p3_to_xyz_d65 : rgb -> xyz
-val xyz_d65_to_linear_display_p3 : xyz -> rgb
-val display_p3_to_linear : float -> float
-val linear_to_display_p3 : float -> float
-val linear_a98_rgb_to_xyz_d65 : rgb -> xyz
-val xyz_d65_to_linear_a98_rgb : xyz -> rgb
-val a98_rgb_to_linear : float -> float
-val linear_to_a98_rgb : float -> float
-val linear_prophoto_rgb_to_xyz_d50 : rgb -> xyz
-val xyz_d50_to_linear_prophoto_rgb : xyz -> rgb
-val prophoto_rgb_to_linear : float -> float
-val linear_to_prophoto_rgb : float -> float
-val linear_rec2020_to_xyz_d65 : rgb -> xyz
-val xyz_d65_to_linear_rec2020 : xyz -> rgb
-val rec2020_to_linear : float -> float
-val linear_to_rec2020 : float -> float
+val xyz65_of_linear_srgb : rgb -> xyz
+(** Converts linear sRGB to XYZ with the D65 white point. *)
+
+val linear_srgb_of_xyz65 : xyz -> rgb
+(** Converts XYZ-D65 to linear sRGB. *)
+
+val xyz65_of_linear_p3 : rgb -> xyz
+(** Converts linear Display-P3 to XYZ-D65. *)
+
+val linear_p3_of_xyz65 : xyz -> rgb
+(** Converts XYZ-D65 to linear Display-P3. *)
+
+val linear_of_display_p3 : float -> float
+(** Linearises a Display-P3 channel. *)
+
+val display_p3_of_linear : float -> float
+(** Encodes a linear Display-P3 channel. *)
+
+val xyz65_of_linear_a98 : rgb -> xyz
+(** Converts linear A98-RGB to XYZ-D65. *)
+
+val linear_a98_of_xyz65 : xyz -> rgb
+(** Converts XYZ-D65 to linear A98-RGB. *)
+
+val linear_of_a98_rgb : float -> float
+(** Linearises an A98-RGB channel. *)
+
+val a98_rgb_of_linear : float -> float
+(** Encodes a linear A98-RGB channel. *)
+
+val xyz50_of_linear_prophoto : rgb -> xyz
+(** Converts linear ProPhoto-RGB to XYZ-D50. *)
+
+val linear_prophoto_of_xyz50 : xyz -> rgb
+(** Converts XYZ-D50 to linear ProPhoto-RGB. *)
+
+val linear_of_prophoto_rgb : float -> float
+(** Linearises a ProPhoto-RGB channel. *)
+
+val prophoto_rgb_of_linear : float -> float
+(** Encodes a linear ProPhoto-RGB channel. *)
+
+val xyz65_of_linear_rec2020 : rgb -> xyz
+(** Converts linear Rec.2020 to XYZ-D65. *)
+
+val linear_rec2020_of_xyz65 : xyz -> rgb
+(** Converts XYZ-D65 to linear Rec.2020. *)
+
+val linear_of_rec2020 : float -> float
+(** Linearises a Rec.2020 channel. *)
+
+val rec2020_of_linear : float -> float
+(** Encodes a linear Rec.2020 channel. *)
 
 (** {1 Chromatic adaptation (Bradford)} *)
 
-val xyz_d65_to_d50 : xyz -> xyz
-val xyz_d50_to_d65 : xyz -> xyz
+val d50_of_xyz65 : xyz -> xyz
+(** Adapts XYZ-D65 coordinates to XYZ-D50. *)
+
+val d65_of_xyz50 : xyz -> xyz
+(** Adapts XYZ-D50 coordinates to XYZ-D65. *)
 
 (** {1 CIE Lab / LCH} *)
 
-val xyz_d50_to_lab : xyz -> lab
-val lab_to_xyz_d50 : lab -> xyz
-val lab_to_lch : lab -> lch
-val lch_to_lab : lch -> lab
+val lab_of_xyz50 : xyz -> lab
+(** Converts XYZ-D50 to CIE Lab. *)
+
+val xyz50_of_lab : lab -> xyz
+(** Converts CIE Lab to XYZ-D50. *)
+
+val lch_of_lab : lab -> lch
+(** Converts CIE Lab to polar LCH. *)
+
+val lab_of_lch : lch -> lab
+(** Converts polar LCH to CIE Lab. *)
 
 (** {1 OKLab / OKLCH} *)
 
-val linear_srgb_to_oklab : rgb -> lab
-val oklab_to_linear_srgb : lab -> rgb
-val oklab_to_oklch : lab -> lch
-val oklch_to_oklab : lch -> lab
+val oklab_of_linear_srgb : rgb -> lab
+(** Converts linear sRGB to OKLab. *)
+
+val linear_srgb_of_oklab : lab -> rgb
+(** Converts OKLab to linear sRGB. *)
+
+val oklch_of_oklab : lab -> lch
+(** Converts OKLab to OKLCH. *)
+
+val oklab_of_oklch : lch -> lab
+(** Converts OKLCH to OKLab. *)
 
 val oklab_distance : lab -> lab -> float
 (** [oklab_distance a b] is the Euclidean distance between two OKLab colours,
     the perceptual difference metric used by the colour-folding budget. *)
 
-val fold_linear_srgb_to_bytes : ?budget:float -> rgb -> (int * int * int) option
-(** [fold_linear_srgb_to_bytes linear] is the nearest 8-bit sRGB byte triple for
-    the linear-sRGB colour [linear], or [None] when it is out of the sRGB gamut
-    or its 8-bit quantisation lies more than [budget] (default [0.002]) in OKLab
+val srgb_bytes_of_linear : ?budget:float -> rgb -> (int * int * int) option
+(** [srgb_bytes_of_linear linear] is the nearest 8-bit sRGB byte triple for the
+    linear-sRGB colour [linear], or [None] when it is out of the sRGB gamut or
+    its 8-bit quantisation lies more than [budget] (default [0.002]) in OKLab
     distance from the source. Alpha is not considered. *)
 
 (** {1 Hue interpolation} *)

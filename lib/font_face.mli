@@ -38,6 +38,9 @@ and src = src_entry list
 type t = src
 (** Font source list. *)
 
+val pp : t Pp.t
+(** [pp] renders a font source list. *)
+
 val string_of_src_entry : src_entry -> string
 (** [string_of_src_entry e] converts source entry to string. *)
 

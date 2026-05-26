@@ -1337,6 +1337,23 @@ let preference_kind (name : name) : kind option =
   | Prefers_color_scheme -> Some Preference_appearance
   | _ -> None
 
+let plain_feature_kind name value =
+  match preference_kind name with
+  | Some k -> k
+  | None -> (
+      match name with
+      | Width | Height ->
+          let u, v = value_sort_key value in
+          Responsive (u, v)
+      | _ -> Other)
+
+let interval_feature_kind name lo =
+  match name with
+  | Width ->
+      let u, v = value_sort_key lo in
+      Responsive (u, v)
+  | _ -> Other
+
 let feature_kind (f : feature) : kind =
   match f with
   | Boolean (Hover | Any_hover) -> Hover
@@ -1349,23 +1366,9 @@ let feature_kind (f : feature) : kind =
           | None -> Other)
       | None -> (
           match f with
-          | Plain (name, value) -> (
-              match preference_kind name with
-              | Some k -> k
-              | None -> (
-                  match name with
-                  | Width | Height ->
-                      let u, v = value_sort_key value in
-                      Responsive (u, v)
-                  | _ -> Other))
-          | Boolean name -> (
-              match preference_kind name with Some k -> k | None -> Other)
-          | Interval (lo, _, name, _, _) -> (
-              match name with
-              | Width ->
-                  let u, v = value_sort_key lo in
-                  Responsive (u, v)
-              | _ -> Other)
+          | Plain (name, value) -> plain_feature_kind name value
+          | Boolean name -> Option.value (preference_kind name) ~default:Other
+          | Interval (lo, _, name, _, _) -> interval_feature_kind name lo
           | Range _ | Range_rev _ -> Other))
 
 let rec condition_kind (c : condition) : kind =

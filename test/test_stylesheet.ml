@@ -644,9 +644,8 @@ let spec_fontface_descriptors () =
           | exception Error.Parse_error _ -> None
           | sheet ->
               if Cursor.is_done c then
-                Some
-                  (Printf.sprintf "%S -> %S" input
-                     (Css.Pp.to_string ~minify:true pp_stylesheet sheet))
+                Fmt.kstr (fun s -> Some s) "%S -> %S" input
+                  (Css.Pp.to_string ~minify:true pp_stylesheet sheet)
               else None)
         inputs
     in
@@ -1667,14 +1666,26 @@ let c64_layer_name_syntax () =
 let c64_layer_nesting_examples () =
   (* CSS Cascade sections 6.4.2 and 6.4.3: dotted layer names are shorthand for
      nested layer segments; nested names do not escape their parent layer. *)
+  let nested_layers =
+    "@layer base { p { max-width: 70ch } } @layer framework { @layer base { p \
+     { margin-block: 0.75em } } @layer theme { p { color: #222 } } } @layer \
+     framework.theme { blockquote { color: rebeccapurple } }"
+  in
   check_stylesheet
     ~expected:
       "@layer base{p{max-width:70ch}}@layer framework{@layer \
        base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
-       framework.theme{blockquote{color:#639}}"
-    "@layer base { p { max-width: 70ch } } @layer framework { @layer base { p \
-     { margin-block: 0.75em } } @layer theme { p { color: #222 } } } @layer \
-     framework.theme { blockquote { color: rebeccapurple } }";
+       framework.theme{blockquote{color:rebeccapurple}}"
+    nested_layers;
+  check_minify_and_optimize nested_layers
+    ~minified:
+      "@layer base{p{max-width:70ch}}@layer framework{@layer \
+       base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
+       framework.theme{blockquote{color:rebeccapurple}}"
+    ~optimized:
+      "@layer base{p{max-width:70ch}}@layer framework{@layer \
+       base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
+       framework.theme{blockquote{color:#639}}";
   check_stylesheet
     ~expected:
       "@layer reset.type{strong{font-weight:700}}@layer \
@@ -1901,13 +1912,13 @@ let c41_declared_values () =
     (List.map declared_property declared);
   Alcotest.(check (list string))
     "declared values expose serialized values"
-    [ "red"; "1px"; "#00f"; "currentColor" ]
+    [ "#f00"; "1px"; "#00f"; "currentColor" ]
     (List.map declared_value declared);
   Alcotest.(check (list int))
     "declared values preserve source order" [ 0; 1; 2; 3 ]
     (List.map declared_source_order declared);
   Alcotest.(check (list string))
-    "declared value filtering selects one property" [ "red"; "#00f" ]
+    "declared value filtering selects one property" [ "#f00"; "#00f" ]
     (List.map declared_value color_declared);
   Alcotest.(check (list bool))
     "declared values preserve importance for cascade sorting" [ false; true ]
@@ -2567,15 +2578,31 @@ let test_spec_snapshot_tracking_vectors () =
       "@container card (inline-size>30em){.card{grid-template-columns:subgrid}}"
     "@container card (inline-size > 30em) { .card { grid-template-columns: \
      subgrid } }";
-  check_stylesheet
-    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:#944a4b}}"
+  let oklch_support =
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
-     } }";
+     } }"
+  in
   check_stylesheet
     ~expected:
-      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}"
+      "@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    oklch_support;
+  check_minify_and_optimize oklch_support
+    ~minified:
+      "@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~optimized:".accent{color:#944a4b}";
+  let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
-     color: white } } }";
+     color: white } } }"
+  in
+  check_stylesheet
+    ~expected:
+      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
+    nested_media;
+  check_minify_and_optimize nested_media
+    ~minified:
+      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
+    ~optimized:
+      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}";
   neg_cursor read_stylesheet "@layer reset,,base;";
   neg_cursor read_stylesheet "@container card () { .card { color: red } }";
   neg_cursor read_stylesheet "@supports () { .accent { color: red } }"
@@ -3309,9 +3336,9 @@ let color4_3_hue_modulo_canonicalization () =
    [rgb(255 0 0 / .5)] and [rgb(255 0 0 / 50%)] denote the identical color. *)
 let color413_alpha_equiv () =
   let canonical s =
-    match Css.parse_color s with
-    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
-    | None -> Alcotest.failf "failed to parse color: %s" s
+    match Css.of_string ~strict:false (".x{color:" ^ s ^ "}") with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse color: %s" s
   in
   let pairs =
     [
@@ -3585,14 +3612,16 @@ let pretty_preserves css fragments =
             (Astring.String.is_infix ~affix:fragment printed))
         fragments
 
-(* CSS Color 4 section 12.1 + cascade convention: [#rrggbb] is canonicalized to
-   [#rgb] only under minify; the pretty printer preserves the source
-   spelling. *)
+(* CSS Color 4 section 12.1 + cascade convention: hex colours decode to sRGB
+   bytes; the pretty printer keeps the full byte form, while minify+optimize
+   emits the shorter equivalent spelling. *)
 let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
-  pretty_preserves ".x { color: #f00 }" [ "#f00" ];
-  pretty_preserves ".x { color: #FF0000 }" [ "#FF0000" ];
-  pretty_preserves ".x { color: #ABCDEF }" [ "#ABCDEF" ]
+  pretty_preserves ".x { color: #f00 }" [ "#ff0000" ];
+  pretty_preserves ".x { color: #FF0000 }" [ "#ff0000" ];
+  pretty_preserves ".x { color: #ABCDEF }" [ "#abcdef" ];
+  check_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
+    ~optimized:".x{color:red}"
 
 (* CSS Color 4 section 1.4 + cascade convention: under non-minified output, the
    named-color and rgb() forms are preserved as written - no cross-form
@@ -5683,8 +5712,7 @@ let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
     "@property \
-     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:oklch(55.2%4% \
-     285.9)}"
+     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:black}.x{--color-zinc-500:#71717b}"
     (normalize_minified
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
@@ -5744,8 +5772,7 @@ let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "registered OKLab custom property uses typed color minification"
     "@property \
-     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:oklab(21%-.003 \
-     -.034/.1)}"
+     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:black}.prose{--tw-prose-kbd-shadows:#1118281a}"
     (normalize_minified
        "@property --tw-prose-kbd-shadows { syntax: \"<color>\"; inherits: \
         true; initial-value: black } .prose { --tw-prose-kbd-shadows: \
@@ -5871,9 +5898,13 @@ let customprops1_unresolved_fallback () =
        (parse ".x { color: var(--undef, red) }"));
   Alcotest.(check string)
     "nested var() chain is preserved when resolver has no answers"
-    ".x{color:var(--a,var(--b,#00f))}"
+    ".x{color:var(--a,var(--b,blue))}"
     (render_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:no_resolve
-       (parse ".x { color: var(--a, var(--b, blue)) }"))
+       (parse ".x { color: var(--a, var(--b, blue)) }"));
+  Alcotest.(check string)
+    "optimize+minify preserves unresolved nested var fallback"
+    ".x{color:var(--a,var(--b,#00f))}"
+    (normalize_minified ".x { color: var(--a, var(--b, blue)) }")
 
 (* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
    resolves the variable, and the resulting all-constant calc reduces under
@@ -5980,10 +6011,18 @@ let theme_chain_resolution () =
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
     |> Css.to_string ~minify:true |> String.trim
   in
+  let render_optimized css =
+    parse css
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
+    |> Css.optimize |> Css.to_string ~minify:true |> String.trim
+  in
   Alcotest.(check string)
-    "var replacement chains resolve to a concrete color, then minify"
-    ".x{color:red}"
+    "var replacement chains resolve to an authored color function"
+    ".x{color:color(srgb 1 0 0)}"
     (render ".x { color: var(--accent) }");
+  Alcotest.(check string)
+    "resolved color function optimizes to the shortest color" ".x{color:red}"
+    (render_optimized ".x { color: var(--accent) }");
   Alcotest.(check string)
     "var replacement chains resolve to calc, then reduce" ".x{width:3px}"
     (render ".x { width: var(--gap) }");
@@ -6008,8 +6047,12 @@ let theme_chain_resolution () =
     (render ".x { margin: var(--two-axis) }");
   Alcotest.(check string)
     "nested color replacement resolves through another replacement"
+    ".x{text-shadow:0 0 2px color(srgb 1 0 0)}"
+    (render ".x { text-shadow: 0 0 2px var(--shadow-color) }");
+  Alcotest.(check string)
+    "nested color replacement optimizes after resolution"
     ".x{text-shadow:0 0 2px red}"
-    (render ".x { text-shadow: 0 0 2px var(--shadow-color) }")
+    (render_optimized ".x { text-shadow: 0 0 2px var(--shadow-color) }")
 
 (* CSS Custom Properties L1 section 2.3: a real per-element dependency cycle
    makes the variables in that cycle invalid at computed-value time. A
@@ -6074,14 +6117,25 @@ let custom_props1_inlined_color_canonicalizes () =
     |> Css.resolve_theme ?theme ?theme_defaults
     |> Css.to_string ~minify:true
   in
+  let render_optimized ?theme ?theme_defaults sheet =
+    sheet
+    |> Css.resolve_theme ?theme ?theme_defaults
+    |> Css.optimize |> Css.to_string ~minify:true
+  in
   Alcotest.(check string)
-    "var(--brand)=#ff0000 canonicalizes to red after inlining" ".x{color:red}"
+    "var(--brand)=#ff0000 canonicalizes to shortest color after inlining"
+    ".x{color:#f00}"
     (render_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
        (parse ".x { color: var(--brand) }"));
   Alcotest.(check string)
-    "var(--bg)=rgb(0,0,0) canonicalizes to #000 after inlining"
-    ".x{background-color:#000}"
+    "var(--bg)=rgb(0,0,0) preserves authored function after inlining"
+    ".x{background-color:rgb(0 0 0)}"
     (render_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
+       (parse ".x { background-color: var(--bg) }"));
+  Alcotest.(check string)
+    "var(--bg)=rgb(0,0,0) optimizes to #000 after inlining"
+    ".x{background-color:#000}"
+    (render_optimized ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
        (parse ".x { background-color: var(--bg) }"))
 
 (* {2 Fidelity tests for theme inlining} *)
@@ -6127,7 +6181,7 @@ let custom_props1_fallback_resolution_mode () =
     (inlined ".x { color: var(--undef, red) }");
   Alcotest.(check string)
     "var(--undef, #ff0000) fallback canonicalizes inside var()"
-    ".x{color:var(--undef,red)}"
+    ".x{color:var(--undef,#f00)}"
     (inlined ".x { color: var(--undef, #ff0000) }");
   Alcotest.(check string)
     "calc fallback is held inside var() (typed boundary)"
@@ -6135,7 +6189,7 @@ let custom_props1_fallback_resolution_mode () =
     (inlined ".x { width: var(--undef, calc(1px + 2px)) }");
   Alcotest.(check string)
     "nested var() chain remains runtime fallback"
-    ".x{color:var(--a,var(--b,var(--c,#00f)))}"
+    ".x{color:var(--a,var(--b,var(--c,blue)))}"
     (inlined ".x { color: var(--a, var(--b, var(--c, blue))) }");
   Alcotest.(check string)
     "empty fallback preserved as empty value (cascade-time invalid)"
@@ -6190,10 +6244,10 @@ let theme_set_not_undefined () =
     ".x{color:var(--accent,red)}"
     (render ".x { color: var(--accent, red) }");
   Alcotest.(check string)
-    "non-theme var with resolver answer inlines" ".x{color:red}"
+    "non-theme var with resolver answer inlines" ".x{color:#f00}"
     (render ~resolve:resolve_accent ".x { color: var(--accent) }");
   Alcotest.(check string)
-    "non-theme var fallback with resolver answer inlines" ".x{color:red}"
+    "non-theme var fallback with resolver answer inlines" ".x{color:#f00}"
     (render ~resolve:resolve_accent ".x { color: var(--accent, blue) }")
 
 let typed_var_default_fidelity () =

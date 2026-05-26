@@ -139,6 +139,7 @@ let string_of_src_entry entry =
 let string_of_src ?(minify = false) entries =
   Pp.to_string ~minify pp_src entries
 
+let pp = pp_src
 let to_string = string_of_src
 
 (** {1 Parsing} *)
