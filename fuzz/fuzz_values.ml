@@ -600,6 +600,44 @@ let test_pp_size_matches_length buf =
   | `Color -> run Css.Values.read_color Css.Values.pp_color
   | `Number -> run Css.Values.read_number Css.Values.pp_number
 
+(* pp must be a fixed point (pp-purity policy): it may pick a shorter same-value
+   spelling for a node (hex shorten [#ffffff] -> [#fff], zero-unit strip [0px]
+   -> [0], angle / duration unit, alpha-% number), but re-printing the reparsed
+   output yields the same bytes. The node-CHANGING semantic folds - calc to a
+   literal, a colour space to hex, one function to an equivalent one - belong to
+   normalize (optimize), and are checked by the optimize suite
+   ([test_pp_keeps_distinct_nodes]) rather than here. *)
+let assert_pp_preserves_ast read pp _eq input =
+  match parse_whole read input with
+  | None -> ()
+  | Some v ->
+      List.iter
+        (fun minify ->
+          let s = Css.Pp.to_string ~minify pp v in
+          match parse_whole read s with
+          | None ->
+              failf "pp output did not reparse (minify=%b): %S -> %S" minify
+                input s
+          | Some v' ->
+              let s' = Css.Pp.to_string ~minify pp v' in
+              if not (String.equal s s') then
+                failf "pp is not a fixed point (minify=%b): %S -> %S -> %S"
+                  minify input s s')
+        [ true; false ]
+
+let test_pp_preserves_ast buf =
+  let kind, input = generated_value buf in
+  match kind with
+  | `Length ->
+      assert_pp_preserves_ast Css.Values.read_length Css.Values.pp_length ( = )
+        input
+  | `Color ->
+      assert_pp_preserves_ast Css.Values.read_color Css.Values.pp_color ( = )
+        input
+  | `Number ->
+      assert_pp_preserves_ast Css.Values.read_number Css.Values.pp_number ( = )
+        input
+
 let test_invalid_value_mutations buf =
   let kind, input = invalid_value_mutation buf in
   assert_value_reject kind input
@@ -647,6 +685,7 @@ let roundtrip_cases =
     test_case "modern math stable" [ bytes ] test_modern_math_stable;
     test_case "pp size matches serialized length" [ bytes ]
       test_pp_size_matches_length;
+    test_case "pp preserves the AST node" [ bytes ] test_pp_preserves_ast;
   ]
 
 let grammar_cases =
