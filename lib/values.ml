@@ -3144,36 +3144,6 @@ let rec pp_channel : channel Pp.t =
   | Var v -> pp_var pp_channel ctx v
   | None -> Pp.string ctx "none"
 
-(* Pick the shortest [<angle>] spelling under minify. Convert to [deg] / [turn]
-   when that produces a shorter token; otherwise keep the authored unit. Skip
-   the conversion when the float doesn't round to a clean decimal in the target
-   unit (e.g. [1rad] = [57.295779...deg] is longer). *)
-let shortest_angle_unit ctx unit f =
-  if not (Pp.minified ctx) then (unit, f)
-  else
-    let candidates =
-      match unit with
-      | "deg" -> [ ("deg", f); ("turn", f /. 360.) ]
-      | "turn" -> [ ("turn", f); ("deg", f *. 360.) ]
-      | "rad" -> [ ("rad", f) ]
-      | "grad" -> [ ("grad", f); ("deg", f *. 0.9) ]
-      | u -> [ (u, f) ]
-    in
-    let render (u, v) = Pp.string_of_float ~drop_leading_zero:true v ^ u in
-    let best : ((string * float) * string) option =
-      List.fold_left
-        (fun acc cand ->
-          let s = render cand in
-          match acc with
-          | Option.None -> Option.Some (cand, s)
-          | Option.Some (_, s_best) when String.length s < String.length s_best
-            ->
-              Option.Some (cand, s)
-          | _ -> acc)
-        Option.None candidates
-    in
-    match best with Option.Some (cand, _) -> cand | Option.None -> (unit, f)
-
 let angle_degrees_opt = function
   | Deg value -> Some value
   | Rad value -> Some (value *. 180. /. Float.pi)
@@ -3183,23 +3153,13 @@ let angle_degrees_opt = function
 
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
-  (* CSS Values 4 sec. 10.3: an [<angle>] grammar position accepts the [<zero>]
-     token (a unitless [0]); under cascade's README minify policy a zero-angle
-     drops the unit. The non-zero arms always emit the unit. *)
-  | Deg f ->
-      let u, f = shortest_angle_unit ctx "deg" f in
-      pp_unit ~always:false ctx f u
-  | Rad f ->
-      let u, f = shortest_angle_unit ctx "rad" f in
-      pp_unit ~always:false ctx f u
-  | Turn f ->
-      let u, f = shortest_angle_unit ctx "turn" f in
-      pp_unit ~always:false ctx f u
-  | Grad f ->
-      let u, f = shortest_angle_unit ctx "grad" f in
-      pp_unit ~always:false ctx f u
-  | Round (strategy, Deg value, Deg step) when Pp.minified ctx && step <> 0. ->
-      pp_angle ctx (Deg (round_to_step strategy value step))
+  (* Pure serialiser: the authored unit is kept. Converting between
+     losslessly-interchangeable units (deg / turn / grad) and folding the static
+     math functions are AST rewrites done by [normalize_angle]. *)
+  | Deg f -> pp_unit ctx f "deg"
+  | Rad f -> pp_unit ctx f "rad"
+  | Turn f -> pp_unit ctx f "turn"
+  | Grad f -> pp_unit ctx f "grad"
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -3210,8 +3170,6 @@ let rec pp_angle : angle Pp.t =
           Pp.comma ctx ();
           pp_angle ctx step)
         ctx (strategy, value, step)
-  | Rem (Deg a, Deg b) when Pp.minified ctx && b <> 0. ->
-      pp_angle ctx (Deg (Float.rem a b))
   | Rem (a, b) ->
       Pp.call "rem"
         (fun ctx (a, b) ->
@@ -3219,8 +3177,6 @@ let rec pp_angle : angle Pp.t =
           Pp.comma ctx ();
           pp_angle ctx b)
         ctx (a, b)
-  | Mod (Deg a, Deg b) when Pp.minified ctx && b <> 0. ->
-      pp_angle ctx (Deg (mod_value a b))
   | Mod (a, b) ->
       Pp.call "mod"
         (fun ctx (a, b) ->
@@ -3228,7 +3184,7 @@ let rec pp_angle : angle Pp.t =
           Pp.comma ctx ();
           pp_angle ctx b)
         ctx (a, b)
-  | Calc c -> pp_calc pp_angle ctx c
+  | Calc c -> pp_calc_presolved pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
       Pp.string ctx
@@ -3414,6 +3370,57 @@ let rec normalize_number (n : number) : number =
       match normalize_number v with Num a -> Num (Float.abs a) | v -> Abs v)
   | Sign v -> Sign (normalize_number v)
   | Sin _ | Num _ | Var _ -> n
+
+(* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
+   [rem] on [deg] operands), then pick the shortest of the
+   losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
+   pi, so it cannot share one magnitude and is left as-is. *)
+let normalize_angle =
+  let render unit f =
+    String.length
+      (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
+    + String.length unit
+  in
+  let shortest (a : angle) : angle =
+    let cands =
+      match a with
+      | Deg f -> [ (f, "deg", a); (f /. 360., "turn", Turn (f /. 360.)) ]
+      | Turn f -> [ (f, "turn", a); (f *. 360., "deg", Deg (f *. 360.)) ]
+      | Grad f -> [ (f, "grad", a); (f *. 0.9, "deg", Deg (f *. 0.9)) ]
+      | _ -> []
+    in
+    match cands with
+    | [] -> a
+    | (f0, u0, n0) :: rest ->
+        snd
+          (List.fold_left
+             (fun (best_len, best) (f, u, n) ->
+               let l = render u f in
+               if l < best_len then (l, n) else (best_len, best))
+             (render u0 f0, n0)
+             rest)
+  in
+  let rec go (a : angle) : angle =
+    match a with
+    | Round (strategy, v, s) -> (
+        match (go v, go s) with
+        | Deg v, Deg s when s <> 0. ->
+            shortest (Deg (round_to_step strategy v s))
+        | v, s -> Round (strategy, v, s))
+    | Mod (x, y) -> (
+        match (go x, go y) with
+        | Deg x, Deg y when y <> 0. -> shortest (Deg (mod_value x y))
+        | x, y -> Mod (x, y))
+    | Rem (x, y) -> (
+        match (go x, go y) with
+        | Deg x, Deg y when y <> 0. -> shortest (Deg (Float.rem x y))
+        | x, y -> Rem (x, y))
+    | Calc c -> (
+        match eval_calc c with Val v -> go v | folded -> Calc folded)
+    | Deg _ | Turn _ | Grad _ -> shortest a
+    | Rad _ | Var _ | Invalid _ -> a
+  in
+  go
 
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
