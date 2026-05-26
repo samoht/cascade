@@ -85,6 +85,22 @@ let check_value_cursor type_name parse pp_func ?(minify = true)
     let s2 = Css.Pp.to_string ~minify pp_func v2 in
     Alcotest.(check string) (Fmt.str "roundtrip %s %s" type_name input) s s2
 
+(** [check_decl_optimizes ~prop ~into input] asserts that the declaration
+    [prop:input], once optimized and minified, equals [prop:into]. pp holds a
+    value's authored spelling (unit, calc, notation); cross-node conversions
+    (360deg->1turn, 1000ms->1s, 0px->0, calc folding) are optimize transforms.
+    Pair it with the pp-only [check_*] held form to cover both paths. [into] is
+    the spec-canonical shortest spelling, not a snapshot of current output. *)
+let check_decl_optimizes ~prop ~into input =
+  let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
+  match Css.of_string ~strict:false (wrap input) with
+  | Ok p ->
+      Alcotest.(check string)
+        (wrap input ^ " optimize+minify")
+        (wrap into)
+        (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
+  | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
+
 (** Generic check function for CSS value types. [expected] is a spec oracle, not
     a snapshot of current implementation behavior. *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)

@@ -68,9 +68,11 @@ let check_attr_syntax =
 let check_attr_type = check_value_cursor "attr_type" read_attr_type pp_attr_type
 
 let test_length () =
-  (* Basic units *)
+  (* Basic units. pp holds the authored unit verbatim, re-spelling only the
+     same-node float (leading-zero strip); dropping the unit from a zero length
+     (0px -> 0) is a node change and an optimize transform. *)
   check_length "10px";
-  check_length ~expected:"0" "0px";
+  check_length "0px";
   check_length "-10px";
   check_length "2.5rem";
   check_length ~expected:".5em" "0.5em";
@@ -78,8 +80,7 @@ let test_length () =
   check_length "100%";
   (* 0% is a percentage, not the length 0: a percentage against an indefinite
      basis need not resolve to 0 (e.g. height:0% with an auto-height container
-     acts as auto), so 0% is preserved. Contrast 0px above, where every absolute
-     length zero is the length 0 and folds. *)
+     acts as auto), so 0% is never dropped, in pp or optimize. *)
   check_length "0%";
   check_length "-50%";
 
@@ -167,16 +168,27 @@ let test_length () =
   check_length "10svmin";
   check_length "10svmax";
 
-  (* Zero normalization for new units *)
-  check_length ~expected:"0" "0cm";
-  check_length ~expected:"0" "0vi";
-  check_length ~expected:"0" "0svh";
+  (* Zero length keeps its unit in pp; dropping it (0cm -> 0) is optimize. *)
+  check_length "0cm";
+  check_length "0vi";
+  check_length "0svh";
 
-  (* CSS Values 4 section 10: [calc()] expressions with a zero operand simplify
-     under minify - [calc(X + 0)] becomes [X] when X is a dimension. *)
-  check_length ~expected:"100%" "calc(100% - 0)";
-  check_length ~expected:"10px" "calc(10px + 0)";
-  check_length ~expected:"10px" "calc(0 + 10px)";
+  (* calc() is held verbatim by pp (a typed boundary); the zero-operand
+     simplification [calc(X + 0)] -> [X] is an optimize fold. *)
+  check_length "calc(100% - 0)";
+  check_length "calc(10px + 0)";
+  check_length "calc(0 + 10px)";
+
+  (* optimize+minify strips the unit from a zero length and folds calc; 0% stays
+     a percentage. *)
+  check_decl_optimizes ~prop:"width" ~into:"0" "0px";
+  check_decl_optimizes ~prop:"width" ~into:"0" "0cm";
+  check_decl_optimizes ~prop:"width" ~into:"0" "0vi";
+  check_decl_optimizes ~prop:"width" ~into:"0" "0svh";
+  check_decl_optimizes ~prop:"width" ~into:"0%" "0%";
+  check_decl_optimizes ~prop:"width" ~into:"100%" "calc(100% - 0)";
+  check_decl_optimizes ~prop:"width" ~into:"10px" "calc(10px + 0)";
+  check_decl_optimizes ~prop:"width" ~into:"10px" "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
@@ -321,40 +333,56 @@ let test_color () =
   neg_cursor read_color "notacolor"
 
 let test_angle () =
+  (* pp holds the authored angle unit verbatim: the unit is part of the value
+     node and cross-unit conversion is lossy (1rad has no exact degree
+     spelling), so [360deg]<->[1turn], [400grad]->[360deg] etc. are optimize
+     transforms, not pp. pp only re-spells the same-node float (leading/trailing
+     zero strip). Unitless 0 is not a valid <angle>, so even [0deg] keeps its
+     unit. *)
+
   (* Degrees *)
   check_angle "45deg";
-  check_angle ~expected:"0" "0deg";
-  check_angle ~expected:"1turn" "360deg";
+  check_angle "0deg";
+  check_angle "360deg";
   check_angle "-45deg";
   check_angle "90.5deg";
   check_angle ".5deg";
 
   (* Radians *)
   check_angle "1.5rad";
-  check_angle ~expected:"0" "0rad";
+  check_angle "0rad";
   check_angle "3.14159rad";
   check_angle "-1.5rad";
 
-  (* Turns *)
-  check_angle ~expected:"90deg" "0.25turn";
-  check_angle ~expected:"0" "0turn";
+  (* Turns - same-node float re-spelling only (drop the leading zero) *)
+  check_angle ~expected:".25turn" "0.25turn";
+  check_angle "0turn";
   check_angle "1turn";
   check_angle ~expected:"-.5turn" "-0.5turn";
-  check_angle ~expected:"900deg" "2.5turn";
+  check_angle "2.5turn";
 
   (* Gradians *)
-  check_angle ~expected:"90deg" "100grad";
-  check_angle ~expected:"0" "0grad";
-  check_angle ~expected:"360deg" "400grad";
-  check_angle ~expected:"-180deg" "-200grad";
+  check_angle "100grad";
+  check_angle "0grad";
+  check_angle "400grad";
+  check_angle "-200grad";
 
   (* Edge cases *)
   check_angle "999999deg";
-  check_angle ~expected:"-1turn" "-360deg";
+  check_angle "-360deg";
   check_angle ".25deg";
 
   (* Float formatting with angles *)
   check_angle "-.5turn";
+
+  (* optimize+minify converts to the shortest spelling (ties prefer deg). *)
+  check_decl_optimizes ~prop:"rotate" ~into:"1turn" "360deg";
+  check_decl_optimizes ~prop:"rotate" ~into:"90deg" "0.25turn";
+  check_decl_optimizes ~prop:"rotate" ~into:"900deg" "2.5turn";
+  check_decl_optimizes ~prop:"rotate" ~into:"90deg" "100grad";
+  check_decl_optimizes ~prop:"rotate" ~into:"1turn" "400grad";
+  check_decl_optimizes ~prop:"rotate" ~into:"-180deg" "-200grad";
+  check_decl_optimizes ~prop:"rotate" ~into:"-1turn" "-360deg";
 
   (* Var with angle fallback *)
   check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
@@ -370,11 +398,13 @@ let test_angle () =
   neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
-  (* Per CSS Values 4 section 6.6 [<time>] requires the unit; [0s] does not drop
-     the unit. The printer canonicalizes [ms] to [s] when the [s]-form is
-     shorter. *)
+  (* CSS Values 4 section 6.6: [<time>] requires a unit. s and ms convert
+     exactly (1s = 1000ms), so a duration decodes to one canonical magnitude and
+     pp prints its shortest spelling - whichever of s/ms is shorter - as a
+     same-node choice. (Contrast <angle>, where rad does not convert exactly, so
+     the units stay distinct nodes and conversion is an optimize transform.) *)
   check_duration "1s";
-  check_duration ~expected:"0s" "0s";
+  check_duration "0s";
   check_duration ~expected:".5s" "0.5s";
   check_duration ".25s";
   check_duration "10s";
@@ -383,18 +413,11 @@ let test_duration () =
   check_duration ~expected:".5s" "500ms";
   check_duration ~expected:"0s" "0ms";
   check_duration "1ms";
-  (* 1ms is shorter than .001s *)
   check_duration ~expected:"1s" "1000ms";
-  (* 1000ms -> 1s is shorter *)
   check_duration ~expected:".0505s" "50.5ms";
-  (* 50.5ms → .0505s (same length, prefer seconds) *)
   check_duration ~expected:"999.999s" "999999ms";
-  (* 999999ms -> 999.999s *)
   check_duration ".1s";
-
-  (* Durations must have units in CSS *)
   check_duration ~expected:".15s" "150ms";
-  (* 150ms -> .15s is shorter *)
   check_duration "1.5s";
 
   (* Var with duration fallback *)

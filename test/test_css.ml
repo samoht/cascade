@@ -30,12 +30,9 @@ let generation () =
     v
       [
         rule ~selector:btn
-          [ color (Hex { hash = true; value = "ff0000" }); padding [ Px 10. ] ];
+          [ color (Css.Values.hex "ff0000"); padding [ Px 10. ] ];
         rule ~selector:card
-          [
-            margin [ Px 5. ];
-            background_color (Hex { hash = false; value = "ffffff" });
-          ];
+          [ margin [ Px 5. ]; background_color (Css.Values.hex "ffffff") ];
       ]
   in
 
@@ -51,8 +48,8 @@ let optimization_flag () =
       [
         rule ~selector:btn
           [
-            color (Hex { hash = true; value = "ff0000" });
-            color (Hex { hash = true; value = "0000ff" });
+            color (Css.Values.hex "ff0000");
+            color (Css.Values.hex "0000ff");
             (* duplicate - should be optimized *)
           ];
       ]
@@ -95,7 +92,7 @@ let media_integration () =
 (* Test minify flag *)
 let minify_flag () =
   let stylesheet =
-    v [ rule ~selector:btn [ color (Hex { hash = true; value = "ff0000" }) ] ]
+    v [ rule ~selector:btn [ color (Css.Values.hex "ff0000") ] ]
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
@@ -164,10 +161,7 @@ let important_integration () =
     v
       [
         rule ~selector:btn
-          [
-            important (color (Hex { hash = true; value = "ff0000" }));
-            padding [ Px 10. ];
-          ];
+          [ important (color (Css.Values.hex "ff0000")); padding [ Px 10. ] ];
       ]
   in
 
@@ -336,8 +330,8 @@ let test_map () =
   let sel2 = Selector.class_ "bar" in
   let stmts =
     [
-      rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
-      rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
+      rule ~selector:sel1 [ color (Css.Values.hex "ff0000") ];
+      rule ~selector:sel2 [ color (Css.Values.hex "00ff00") ];
     ]
   in
 
@@ -345,7 +339,7 @@ let test_map () =
   let mapped =
     Css.map
       (fun sel _decls ->
-        let new_decls = [ color (Hex { hash = true; value = "0000ff" }) ] in
+        let new_decls = [ color (Css.Values.hex "0000ff") ] in
         rule ~selector:sel new_decls)
       stmts
   in
@@ -360,9 +354,7 @@ let test_map_nested () =
     [
       media
         ~condition:(Css.Media.of_string "(min-width:768px)")
-        [
-          rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
-        ];
+        [ rule ~selector:sel1 [ color (Css.Values.hex "ff0000") ] ];
     ]
   in
 
@@ -370,7 +362,7 @@ let test_map_nested () =
   let mapped =
     Css.map
       (fun sel _decls ->
-        let new_decls = [ color (Hex { hash = true; value = "0000ff" }) ] in
+        let new_decls = [ color (Css.Values.hex "0000ff") ] in
         rule ~selector:sel new_decls)
       stmts
   in
@@ -382,7 +374,7 @@ let test_map_nested () =
 
 let test_spec_map_conditional_boundaries () =
   let recolor sel _decls =
-    rule ~selector:sel [ color (Hex { hash = true; value = "0000ff" }) ]
+    rule ~selector:sel [ color (Css.Values.hex "0000ff") ]
   in
   let stmts =
     [
@@ -420,9 +412,9 @@ let test_sort () =
   let sel3 = Selector.class_ "mmm" in
   let stmts =
     [
-      rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
-      rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
-      rule ~selector:sel3 [ color (Hex { hash = true; value = "0000ff" }) ];
+      rule ~selector:sel1 [ color (Css.Values.hex "ff0000") ];
+      rule ~selector:sel2 [ color (Css.Values.hex "00ff00") ];
+      rule ~selector:sel3 [ color (Css.Values.hex "0000ff") ];
     ]
   in
 
@@ -452,8 +444,8 @@ let test_sort_nested () =
       media
         ~condition:(Css.Media.of_string "(min-width:768px)")
         [
-          rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
-          rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
+          rule ~selector:sel1 [ color (Css.Values.hex "ff0000") ];
+          rule ~selector:sel2 [ color (Css.Values.hex "00ff00") ];
         ];
     ]
   in
