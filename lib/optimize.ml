@@ -49,6 +49,12 @@ let list_filter_map_preserve f xs =
   in
   loop false [] xs
 
+let option_map_preserve f = function
+  | None -> None
+  | Some x as o ->
+      let y = f x in
+      if y == x then o else Some y
+
 let rec list_same xs ys =
   match (xs, ys) with
   | [], [] -> true
@@ -3840,7 +3846,7 @@ let merge_layer_declarations (stmts : statement list) : statement list =
      emits one [@layer u]. *)
   let dedup_preserving_order names =
     let seen = Hashtbl.create (List.length names) in
-    List.filter
+    list_filter_preserve
       (fun name ->
         if Hashtbl.mem seen name then false
         else begin
@@ -3853,8 +3859,10 @@ let merge_layer_declarations (stmts : statement list) : statement list =
     | [] -> List.rev acc
     | Layer_decl names1 :: Layer_decl names2 :: rest ->
         merge acc (Layer_decl (dedup_preserving_order (names1 @ names2)) :: rest)
-    | Layer_decl names :: rest ->
-        merge (Layer_decl (dedup_preserving_order names) :: acc) rest
+    | (Layer_decl names as stmt) :: rest ->
+        let names' = dedup_preserving_order names in
+        let stmt = if names' == names then stmt else Layer_decl names' in
+        merge (stmt :: acc) rest
     | stmt :: rest -> merge (stmt :: acc) rest
   in
   merge [] stmts
@@ -4424,8 +4432,8 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
       process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | (Layer (name, block) as stmt) :: rest ->
       process_layer_statement ~ctx ~enforce_spec acc stmt name block rest
-  | Import import :: rest ->
-      process_import_statement ~ctx ~enforce_spec acc import rest
+  | (Import import as stmt) :: rest ->
+      process_import_statement ~ctx ~enforce_spec acc stmt import rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
       process_statements ~ctx ~enforce_spec (hd :: acc) rest
@@ -4454,7 +4462,8 @@ and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
 and process_container_statement ~ctx ~enforce_spec acc stmt name cond block rest
     =
   let cond =
-    if enforce_spec then cond else Option.map Container.lower_for_minify cond
+    if enforce_spec then cond
+    else option_map_preserve Container.lower_for_minify cond
   in
   let optimized_block = statements ~ctx ~enforce_spec block in
   let optimized =
@@ -4504,15 +4513,15 @@ and process_layer_statement ~ctx ~enforce_spec acc stmt name block rest =
     in
     process_statements ~ctx ~enforce_spec (optimized :: acc) rest
 
-and process_import_statement ~ctx ~enforce_spec acc import rest =
-  let import =
+and process_import_statement ~ctx ~enforce_spec acc stmt import rest =
+  let stmt =
     match import.supports with
     | Some cond
       when (not enforce_spec) && Supports.simplify_baseline cond = `True ->
-        { import with supports = None }
-    | _ -> import
+        Import { import with supports = None }
+    | _ -> stmt
   in
-  process_statements ~ctx ~enforce_spec (Import import :: acc) rest
+  process_statements ~ctx ~enforce_spec (stmt :: acc) rest
 
 and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively. Nested rule
