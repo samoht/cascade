@@ -6804,20 +6804,25 @@ let rec normalize_color ~in_feature_query (c : color) : color =
               hex_of_bytes r g b a
           | None -> drop_full_alpha c)
       | None -> drop_full_alpha c)
-  | Hex { r; g; b; a } -> canonical_color_of_hex r g b a
-  | Named name -> (
+  | Hex { r; g; b; a } -> (
+      match canonical_color_of_hex r g b a with
+      | Hex { r = r'; g = g'; b = b'; a = a' }
+        when r' = r && g' = g && b' = b && a' = a ->
+          c
+      | color -> color)
+  | Named orig_name -> (
       (* Pick the shortest spelling: a named colour collapses to hex only when
          the SHORTENED hex is shorter than the name. [canonical_color_name]
          first folds aliases (grey -> gray) so the choice is made on the
          canonical spelling. *)
-      let name = canonical_color_name name in
+      let name = canonical_color_name orig_name in
       let name_str, hex = color_name_hex name in
       match rgba_of_hex hex with
       | Some (r, g, b, a)
         when String.length (hex_string_of_bytes r g b a) + 1
              <= String.length name_str ->
           canonical_color_of_hex r g b a
-      | _ -> Named name)
+      | _ -> if name == orig_name then c else Named name)
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a

@@ -1238,20 +1238,47 @@ let lower_feature : feature -> feature = function
   | f -> f
 
 let rec lower_condition : condition -> condition = function
-  | Feature f -> Feature (lower_feature f)
-  | Not c -> Not (lower_condition c)
+  | Feature f as cond ->
+      let f' = lower_feature f in
+      if f' == f then cond else Feature f'
+  | Not c as cond ->
+      let c' = lower_condition c in
+      if c' == c then cond else Not c'
   | And (Feature a, Feature b) -> (
       match merge_interval_bounds a b with
       | Some interval -> Feature interval
-      | None -> And (Feature (lower_feature a), Feature (lower_feature b)))
-  | And (a, b) -> And (lower_condition a, lower_condition b)
-  | Or (a, b) -> Or (lower_condition a, lower_condition b)
+      | None ->
+          let a' = lower_feature a in
+          let b' = lower_feature b in
+          if a' == a && b' == b then And (Feature a, Feature b)
+          else And (Feature a', Feature b'))
+  | And (a, b) as cond ->
+      let a' = lower_condition a in
+      let b' = lower_condition b in
+      if a' == a && b' == b then cond else And (a', b')
+  | Or (a, b) as cond ->
+      let a' = lower_condition a in
+      let b' = lower_condition b in
+      if a' == a && b' == b then cond else Or (a', b')
 
 let rec lower_for_minify : t -> t = function
-  | Cond c -> Cond (lower_condition c)
-  | Type { prefix; type_; trailing } ->
-      Type { prefix; type_; trailing = Option.map lower_condition trailing }
-  | List qs -> List (List.map lower_for_minify qs)
+  | Cond c as query ->
+      let c' = lower_condition c in
+      if c' == c then query else Cond c'
+  | Type ({ trailing; _ } as r) as query -> (
+      match trailing with
+      | None -> query
+      | Some c ->
+          let c' = lower_condition c in
+          if c' == c then query else Type { r with trailing = Some c' })
+  | List qs as query ->
+      let rec loop changed acc = function
+        | [] -> if changed then List (List.rev acc) else query
+        | q :: rest ->
+            let q' = lower_for_minify q in
+            loop (changed || not (q' == q)) (q' :: acc) rest
+      in
+      loop false [] qs
 
 (* ===== Sorting / classification ===== *)
 

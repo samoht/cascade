@@ -22,6 +22,52 @@ let ctx_of_scope = function
   | Some s -> { fragment_ctx with scope = s }
   | None -> fragment_ctx
 
+let list_map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        let y = f x in
+        loop (changed || not (y == x)) (y :: acc) rest
+  in
+  loop false [] xs
+
+let list_filter_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        if f x then loop changed (x :: acc) rest else loop true acc rest
+  in
+  loop false [] xs
+
+let list_filter_map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest -> (
+        match f x with
+        | Some y -> loop (changed || not (y == x)) (y :: acc) rest
+        | None -> loop true acc rest)
+  in
+  loop false [] xs
+
+let rec list_same xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> x == y && list_same xs ys
+  | _ -> false
+
+let preserve_list before after =
+  if list_same before after then before else after
+
+let rule_with_declarations (rule : rule) declarations =
+  if declarations == rule.declarations then rule else { rule with declarations }
+
+let rule_with_nested (rule : rule) nested =
+  if nested == rule.nested then rule else { rule with nested }
+
+let rule_with_declarations_and_nested (rule : rule) declarations nested =
+  if declarations == rule.declarations && nested == rule.nested then rule
+  else { rule with declarations; nested }
+
 type packed_property = Packed : 'a Properties.property -> packed_property
 
 type edge = {
@@ -402,20 +448,20 @@ let box_shorthand_had_prior_longhand source idx shorthand =
    10px]. *)
 (* Commit the merge only when every side ends up concrete; otherwise restore
    the original shorthand and leave its longhand tail in place. *)
-let try_merge_box_shorthand ~property ~vs ~important ~absorb ~is_same_shorthand
-    rest =
+let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
+    ~is_same_shorthand rest =
   match expand_box vs with
-  | None -> (Declaration { property; value = vs; important }, rest)
+  | None -> (original, rest)
   | Some sides -> (
       let ((top, right, bottom, left) as absorbed), rest' =
         absorb_box_longhands ~absorb ~is_same_shorthand sides rest
       in
       match sides_have_runtime_subst absorbed with
-      | true -> (Declaration { property; value = vs; important }, rest)
+      | true -> (original, rest)
       | false ->
-          ( Declaration
-              { property; value = [ top; right; bottom; left ]; important },
-            rest' ))
+          let value = preserve_list vs [ top; right; bottom; left ] in
+          if rest' == rest && value == vs then (original, rest)
+          else (Declaration { property; value; important }, rest'))
 
 (* CSS Overflow 3 §3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
@@ -2395,7 +2441,7 @@ let merge_box_shorthand_longhands source decls =
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
-          try_merge_box_shorthand ~property:Margin ~vs ~important
+          try_merge_box_shorthand ~original:d ~property:Margin ~vs ~important
             ~absorb:(absorb_margin_corner ~important)
             ~is_same_shorthand:is_margin_shorthand rest
         in
@@ -2404,7 +2450,7 @@ let merge_box_shorthand_longhands source decls =
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
-          try_merge_box_shorthand ~property:Padding ~vs ~important
+          try_merge_box_shorthand ~original:d ~property:Padding ~vs ~important
             ~absorb:(absorb_padding_corner ~important)
             ~is_same_shorthand:is_padding_shorthand rest
         in
@@ -2631,13 +2677,13 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | _ -> false
 
 let single_rule_without_nested ~ctx (rule : rule) : rule =
-  {
-    rule with
-    declarations =
-      List.map Declaration.normalize rule.declarations
-      |> deduplicate_declarations_with ~ctx ~merge_box:false
-      |> sort_commuting_declarations;
-  }
+  let declarations =
+    list_map_preserve Declaration.normalize rule.declarations
+    |> deduplicate_declarations_with ~ctx ~merge_box:false
+    |> sort_commuting_declarations
+    |> preserve_list rule.declarations
+  in
+  rule_with_declarations rule declarations
 
 (* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] in the same rule
    collapse to the [columns] shorthand. [columns] resets exactly those two
@@ -2764,13 +2810,13 @@ let synthesize_position_try decls =
   | _ -> decls
 
 let finalize_rule_without_nested ~ctx (rule : rule) : rule =
-  {
-    rule with
-    declarations =
-      deduplicate_declarations_with ~ctx rule.declarations
-      |> synthesize_columns |> synthesize_position_try
-      |> sort_commuting_declarations;
-  }
+  let declarations =
+    deduplicate_declarations_with ~ctx rule.declarations
+    |> synthesize_columns |> synthesize_position_try
+    |> sort_commuting_declarations
+    |> preserve_list rule.declarations
+  in
+  rule_with_declarations rule declarations
 
 (* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]
    target the same elements and should merge. Normalise by sorting the list
@@ -2826,7 +2872,7 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
             let acc', prev', rest' = step acc prev rule rest in
             merge_adjacent acc' prev' rest')
   in
-  merge_adjacent [] None rules
+  preserve_list rules (merge_adjacent [] None rules)
 
 (** Check if a selector uses a descendant combinator with a pseudo-element (e.g.
     [.marker:flex ::marker]). These must not be combined with direct
@@ -3250,21 +3296,30 @@ let delayed_blocks_group ~group_props ~rule_summary delayed =
 let rule_perturbs_group ~group_props ~rule_summary current_group rule =
   let overlaps_group =
     List.exists
-      (fun (_, s) -> Selector_summary.may_overlap s rule_summary)
+      (fun (_, _, s) -> Selector_summary.may_overlap s rule_summary)
       current_group
   in
   overlaps_group && writes_any_of group_props rule.Stylesheet_intf.declarations
 
 let flush_combined_group acc current_group delayed =
-  let group_members = List.map fst current_group in
-  let acc = flush_group acc group_members in
+  let acc =
+    match current_group with
+    | [] -> acc
+    | [ (rule, _, _) ] -> rule :: acc
+    | _ ->
+        let group_members =
+          List.map (fun (_, member, _) -> member) current_group
+        in
+        flush_group acc group_members
+  in
   List.fold_left (fun acc (rule, _) -> rule :: acc) acc delayed
 
 let can_join_group ~group_props ~rule_summary delayed prev_rule rule =
   can_combine_rules prev_rule rule
   && not (delayed_blocks_group ~group_props ~rule_summary delayed)
 
-let group_member rule rule_summary = (group_member_of_rule rule, rule_summary)
+let group_member rule rule_summary =
+  (rule, group_member_of_rule rule, rule_summary)
 
 (* Adjacent rules with identical declarations that combine_identical_rules
    couldn't fold into its current group (because the group's anchor was a
@@ -3290,7 +3345,7 @@ let combine_adjacent_identical_decls (rules : Stylesheet.rule list) :
         walk acc (combined :: rest)
     | r :: rest -> walk (r :: acc) rest
   in
-  walk [] rules
+  preserve_list rules (walk [] rules)
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -3307,12 +3362,12 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
   and extend_delay_or_restart acc current_group delayed rule rest =
     let rule_summary = summary_of_rule rule in
     let push_to_group () =
-      let member = (group_member_of_rule rule, rule_summary) in
+      let member = group_member rule rule_summary in
       combine_consecutive acc (member :: current_group) delayed rest
     in
     match current_group with
     | [] -> push_to_group ()
-    | (head_member, _) :: _ ->
+    | (_, head_member, _) :: _ ->
         let prev_rule = prev_rule_of_group_head head_member in
         let group_props = property_set prev_rule.declarations in
         if can_join_group ~group_props ~rule_summary delayed prev_rule rule then
@@ -3330,7 +3385,8 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
             let member = group_member rule rule_summary in
             combine_consecutive acc [ member ] [] rest
   in
-  combine_consecutive [] [] [] rules |> combine_adjacent_identical_decls
+  combine_consecutive [] [] [] rules
+  |> preserve_list rules |> combine_adjacent_identical_decls
 
 (* CSS Cascade L5: when a run of adjacent rules shares two or more identical
    declarations, hoist them into a single grouped rule whose selector is the
@@ -3512,7 +3568,7 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
             in
             group acc [ r ] rest
   in
-  List.rev (group [] [] rules)
+  preserve_list rules (List.rev (group [] [] rules))
 
 (** {1 Statement Optimization} *)
 
@@ -3560,10 +3616,14 @@ let has_nested_preference_media block =
    spec-equivalent to a single block. Merge them when no rule with a conflicting
    condition appears between. Anonymous layers stay distinct because each
    [@layer { ... }] without a name creates a new layer. *)
-let merge_consecutive_layers ~optimize_merged_block (stmts : statement list) :
-    statement list =
-  (* [acc] holds output in REVERSE order so we cons (O(1)) rather than append
-     (O(n)); reverse once at the end. *)
+let rec needs_layer_merge = function
+  | Layer (Some prev_name, _) :: Layer (Some name, _) :: _
+    when String.equal prev_name name ->
+      true
+  | _ :: rest -> needs_layer_merge rest
+  | [] -> false
+
+let merge_layer_blocks ~optimize_merged_block stmts =
   let rec merge acc prev = function
     | [] -> (
         match prev with
@@ -3607,12 +3667,23 @@ let merge_consecutive_layers ~optimize_merged_block (stmts : statement list) :
   in
   merge [] None stmts
 
-let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
+let merge_consecutive_layers ~optimize_merged_block (stmts : statement list) :
     statement list =
-  (* When we merge media blocks, the resulting block may have consecutive rules
-     with identical declarations that should be combined. Re-run the statement
-     optimizer on the merged content. *)
-  (* [acc] holds output in REVERSE order; reverse once at the end. *)
+  if needs_layer_merge stmts then
+    merge_layer_blocks ~optimize_merged_block stmts
+  else stmts
+
+let rec needs_media_merge = function
+  | Media (prev_cond, prev_block) :: Media (cond, block) :: _
+    when Media.equal prev_cond cond
+         && not
+              (has_nested_preference_media prev_block
+              || has_nested_preference_media block) ->
+      true
+  | _ :: rest -> needs_media_merge rest
+  | [] -> false
+
+let merge_media_blocks ~optimize_merged_block stmts =
   let rec merge acc prev_media = function
     | [] -> (
         match prev_media with
@@ -3623,15 +3694,10 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
         match prev_media with
         | Some (prev_cond, prev_block)
           when Media.equal prev_cond cond
-               (* Don't merge if either block contains nested preference media.
-                  This keeps stacked preference modifiers separate while
-                  allowing other nested media (like hover inside dark) to be
-                  merged. *)
                && not
                     (has_nested_preference_media prev_block
                     || has_nested_preference_media block) ->
-            let merged_block = prev_block @ block in
-            merge acc (Some (cond, merged_block)) rest
+            merge acc (Some (cond, prev_block @ block)) rest
         | Some (prev_cond, prev_block) ->
             merge
               (Media (prev_cond, optimize_merged_block prev_block) :: acc)
@@ -3648,37 +3714,52 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
   in
   merge [] None stmts
 
+let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
+    statement list =
+  if needs_media_merge stmts then
+    merge_media_blocks ~optimize_merged_block stmts
+  else stmts
+
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
 let merge_consecutive_supports ~optimize_merged_block (stmts : statement list) :
     statement list =
-  (* [acc] holds output in REVERSE order; reverse once at the end. *)
-  let rec merge acc prev = function
-    | [] -> (
-        match prev with
-        | Some (cond, block) ->
-            List.rev (Supports (cond, optimize_merged_block block) :: acc)
-        | None -> List.rev acc)
-    | Supports (cond, block) :: rest -> (
-        match prev with
-        | Some (prev_cond, prev_block) when Supports.equal prev_cond cond ->
-            merge acc (Some (cond, prev_block @ block)) rest
-        | Some (prev_cond, prev_block) ->
-            merge
-              (Supports (prev_cond, optimize_merged_block prev_block) :: acc)
-              (Some (cond, block))
-              rest
-        | None -> merge acc (Some (cond, block)) rest)
-    | stmt :: rest -> (
-        match prev with
-        | Some (cond, block) ->
-            merge
-              (stmt :: Supports (cond, optimize_merged_block block) :: acc)
-              None rest
-        | None -> merge (stmt :: acc) None rest)
+  let rec needs_merge = function
+    | Supports (prev_cond, _) :: Supports (cond, _) :: _
+      when Supports.equal prev_cond cond ->
+        true
+    | _ :: rest -> needs_merge rest
+    | [] -> false
   in
-  merge [] None stmts
+  if not (needs_merge stmts) then stmts
+  else
+    (* [acc] holds output in REVERSE order; reverse once at the end. *)
+    let rec merge acc prev = function
+      | [] -> (
+          match prev with
+          | Some (cond, block) ->
+              List.rev (Supports (cond, optimize_merged_block block) :: acc)
+          | None -> List.rev acc)
+      | Supports (cond, block) :: rest -> (
+          match prev with
+          | Some (prev_cond, prev_block) when Supports.equal prev_cond cond ->
+              merge acc (Some (cond, prev_block @ block)) rest
+          | Some (prev_cond, prev_block) ->
+              merge
+                (Supports (prev_cond, optimize_merged_block prev_block) :: acc)
+                (Some (cond, block))
+                rest
+          | None -> merge acc (Some (cond, block)) rest)
+      | stmt :: rest -> (
+          match prev with
+          | Some (cond, block) ->
+              merge
+                (stmt :: Supports (cond, optimize_merged_block block) :: acc)
+                None rest
+          | None -> merge (stmt :: acc) None rest)
+    in
+    merge [] None stmts
 
 let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
     : statement list =
@@ -3689,36 +3770,47 @@ let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
     | Some _, None -> 1
     | Some a, Some b -> Container.compare a b
   in
-  (* [acc] holds output in REVERSE order; reverse once at the end. *)
-  let rec merge acc prev = function
-    | [] -> (
-        match prev with
-        | Some (name, cond, block) ->
-            List.rev (Container (name, cond, optimize_merged_block block) :: acc)
-        | None -> List.rev acc)
-    | Container (name, cond, block) :: rest -> (
-        match prev with
-        | Some (prev_name, prev_cond, prev_block)
-          when prev_name = name && compare_condition prev_cond cond = 0 ->
-            merge acc (Some (name, cond, prev_block @ block)) rest
-        | Some (prev_name, prev_cond, prev_block) ->
-            merge
-              (Container (prev_name, prev_cond, optimize_merged_block prev_block)
-              :: acc)
-              (Some (name, cond, block))
-              rest
-        | None -> merge acc (Some (name, cond, block)) rest)
-    | stmt :: rest -> (
-        match prev with
-        | Some (name, cond, block) ->
-            merge
-              (stmt
-              :: Container (name, cond, optimize_merged_block block)
-              :: acc)
-              None rest
-        | None -> merge (stmt :: acc) None rest)
+  let rec needs_merge = function
+    | Container (prev_name, prev_cond, _) :: Container (name, cond, _) :: _
+      when prev_name = name && compare_condition prev_cond cond = 0 ->
+        true
+    | _ :: rest -> needs_merge rest
+    | [] -> false
   in
-  merge [] None stmts
+  if not (needs_merge stmts) then stmts
+  else
+    (* [acc] holds output in REVERSE order; reverse once at the end. *)
+    let rec merge acc prev = function
+      | [] -> (
+          match prev with
+          | Some (name, cond, block) ->
+              List.rev
+                (Container (name, cond, optimize_merged_block block) :: acc)
+          | None -> List.rev acc)
+      | Container (name, cond, block) :: rest -> (
+          match prev with
+          | Some (prev_name, prev_cond, prev_block)
+            when prev_name = name && compare_condition prev_cond cond = 0 ->
+              merge acc (Some (name, cond, prev_block @ block)) rest
+          | Some (prev_name, prev_cond, prev_block) ->
+              merge
+                (Container
+                   (prev_name, prev_cond, optimize_merged_block prev_block)
+                :: acc)
+                (Some (name, cond, block))
+                rest
+          | None -> merge acc (Some (name, cond, block)) rest)
+      | stmt :: rest -> (
+          match prev with
+          | Some (name, cond, block) ->
+              merge
+                (stmt
+                :: Container (name, cond, optimize_merged_block block)
+                :: acc)
+                None rest
+          | None -> merge (stmt :: acc) None rest)
+    in
+    merge [] None stmts
 
 (* Check if a layer block contains only empty rules or no statements *)
 let is_layer_empty (block : statement list) : bool =
@@ -3849,7 +3941,7 @@ let drop_redundant_layer_decls stmts =
    as a [Layer_decl] (the layer name still contributes to the layer order
    per CSS Cascade L6 6.4). *)
 let drop_empty_rules stmts =
-  List.filter
+  list_filter_preserve
     (function
       | Rule { declarations = []; nested = []; _ } -> false
       | Rule { selector; _ } when Selector.matches_nothing selector -> false
@@ -3870,7 +3962,7 @@ let drop_empty_rules stmts =
 let drop_misplaced_imports stmts =
   let seen_body = ref false in
   let seen_import_or_namespace = ref false in
-  List.filter
+  list_filter_preserve
     (fun stmt ->
       match stmt with
       | (Charset _ | Import _ | Namespace _) when not !seen_body ->
@@ -3895,6 +3987,7 @@ let merge_named_layers_by_name (stmts : statement list) : statement list =
   let is_empty_block = function [] -> true | _ -> false in
   let content : (string, statement list) Hashtbl.t = Hashtbl.create 8 in
   let first_nonempty : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let has_merge = ref false in
   List.iter
     (fun stmt ->
       match stmt with
@@ -3902,23 +3995,26 @@ let merge_named_layers_by_name (stmts : statement list) : statement list =
           let prev =
             Hashtbl.find_opt content name |> Option.value ~default:[]
           in
+          if prev <> [] then has_merge := true;
           Hashtbl.replace content name (prev @ block);
           if not (Hashtbl.mem first_nonempty name) then
             Hashtbl.add first_nonempty name ()
       | _ -> ())
     stmts;
-  let emitted = Hashtbl.create 8 in
-  List.filter_map
-    (fun stmt ->
-      match stmt with
-      | Layer (Some name, block) when not (is_empty_block block) ->
-          if Hashtbl.mem emitted name then None
-          else begin
-            Hashtbl.add emitted name ();
-            Some (Layer (Some name, Hashtbl.find content name))
-          end
-      | _ -> Some stmt)
-    stmts
+  if not !has_merge then stmts
+  else
+    let emitted = Hashtbl.create 8 in
+    List.filter_map
+      (fun stmt ->
+        match stmt with
+        | Layer (Some name, block) when not (is_empty_block block) ->
+            if Hashtbl.mem emitted name then None
+            else begin
+              Hashtbl.add emitted name ();
+              Some (Layer (Some name, Hashtbl.find content name))
+            end
+        | _ -> Some stmt)
+      stmts
 
 (* Require structural selector equality (not just set-equality) so that [h1, h2]
    and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
@@ -3942,15 +4038,22 @@ let rule_shadows ~earlier ~later =
    intervening rules. *)
 let drop_shadowed_rules (rules : rule list) : rule list =
   let indexed = List.mapi (fun i r -> (i, r)) rules in
-  List.filter_map
-    (fun (i, rule) ->
-      let shadowed =
-        List.exists
-          (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
-          indexed
-      in
-      if shadowed then None else Some rule)
-    indexed
+  let dropped = ref false in
+  let kept =
+    List.filter_map
+      (fun (i, rule) ->
+        let shadowed =
+          List.exists
+            (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
+            indexed
+        in
+        if shadowed then (
+          dropped := true;
+          None)
+        else Some rule)
+      indexed
+  in
+  if !dropped then kept else rules
 
 (* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
    individual declarations whose property is rewritten by a later rule for every
@@ -3967,15 +4070,12 @@ let drop_shadowed_rules (rules : rule list) : rule list =
 
    Empty rules left behind are pruned downstream by [drop_empty_rules] on the
    statement-list pass. *)
-let drop_shadowed_declarations (rules : rule list) : rule list =
-  let indexed = List.mapi (fun i r -> (i, r)) rules in
-  let single_keys r =
-    match Selector.as_list r.Stylesheet_intf.selector with
-    | Some xs -> List.map canonical_selector_key xs
-    | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
-  in
-  (* For each individual-selector key, accumulate (rule_index, declarations) of
-     every later rule whose selector list contains a member with that key. *)
+let single_selector_keys r =
+  match Selector.as_list r.Stylesheet_intf.selector with
+  | Some xs -> List.map canonical_selector_key xs
+  | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
+
+let later_declarations_by_selector_key indexed =
   let later_by_key : (string, (int * Declaration.t list) list) Hashtbl.t =
     Hashtbl.create 16
   in
@@ -3988,35 +4088,51 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
           in
           Hashtbl.replace later_by_key key
             ((i, r.Stylesheet_intf.declarations) :: prev))
-        (single_keys r))
+        (single_selector_keys r))
     indexed;
-  List.map
-    (fun (i, rule) ->
-      let keys = single_keys rule in
-      let property_shadowed_for_key prop_decl key =
-        let writes =
-          Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+  later_by_key
+
+let declaration_shadowed_by_later ~later_by_key ~rule_index ~keys decl =
+  let property_shadowed_for_key key =
+    let writes =
+      Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+    in
+    List.exists
+      (fun (j, decls) ->
+        j > rule_index
+        && List.exists
+             (fun ld ->
+               same_property decl ld
+               && (Declaration.is_important ld
+                  || not (Declaration.is_important decl)))
+             decls)
+      writes
+  in
+  (not (is_intentionally_duplicated decl))
+  && List.for_all property_shadowed_for_key keys
+
+let drop_shadowed_declarations (rules : rule list) : rule list =
+  let indexed = List.mapi (fun i r -> (i, r)) rules in
+  let later_by_key = later_declarations_by_selector_key indexed in
+  let changed = ref false in
+  let rules' =
+    List.map
+      (fun (i, rule) ->
+        let keys = single_selector_keys rule in
+        let kept =
+          list_filter_preserve
+            (fun d ->
+              not
+                (declaration_shadowed_by_later ~later_by_key ~rule_index:i ~keys
+                   d))
+            rule.declarations
         in
-        List.exists
-          (fun (j, decls) ->
-            j > i
-            && List.exists
-                 (fun ld ->
-                   same_property prop_decl ld
-                   && (Declaration.is_important ld
-                      || not (Declaration.is_important prop_decl)))
-                 decls)
-          writes
-      in
-      let shadowed_by_later decl =
-        (not (is_intentionally_duplicated decl))
-        && List.for_all (property_shadowed_for_key decl) keys
-      in
-      let kept =
-        List.filter (fun d -> not (shadowed_by_later d)) rule.declarations
-      in
-      { rule with declarations = kept })
-    indexed
+        let rule' = rule_with_declarations rule kept in
+        if not (rule' == rule) then changed := true;
+        rule')
+      indexed
+  in
+  if !changed then rules' else rules
 
 let contains_nesting sel =
   Selector.any (function Selector.Nesting -> true | _ -> false) sel
@@ -4177,16 +4293,19 @@ let synthesize_nesting_rules (rules : rule list) : rule list =
     in
     not related_outside
   in
-  List.concat_map
-    (fun (start, len) ->
-      let members = Array.to_list (Array.sub arr start len) in
-      match members with
-      | root :: (_ :: _ as rest)
-        when (not (is_selector_list root.selector)) && isolated start len ->
-          let nested = nest_chain root rest in
-          if synthesize_shortens members nested then [ nested ] else members
-      | _ -> members)
-    chains
+  let rules' =
+    List.concat_map
+      (fun (start, len) ->
+        let members = Array.to_list (Array.sub arr start len) in
+        match members with
+        | root :: (_ :: _ as rest)
+          when (not (is_selector_list root.selector)) && isolated start len ->
+            let nested = nest_chain root rest in
+            if synthesize_shortens members nested then [ nested ] else members
+        | _ -> members)
+      chains
+  in
+  preserve_list rules rules'
 
 (* Apply [synthesize_nesting_rules] to each maximal run of consecutive [Rule]
    statements. Runs at the statement-list level (not inside [rules_aux]) so that
@@ -4194,21 +4313,24 @@ let synthesize_nesting_rules (rules : rule list) : rule list =
    siblings here: the chain isolation check then sees the duplicate-selector
    competitor and declines to synthesize across the former boundary. *)
 let synthesize_nesting_statements (stmts : statement list) : statement list =
-  let rec span_rules acc = function
-    | Rule r :: rest -> span_rules (r :: acc) rest
-    | rest -> (List.rev acc, rest)
+  let rec span_rules stmt_acc rule_acc = function
+    | (Rule r as stmt) :: rest ->
+        span_rules (stmt :: stmt_acc) (r :: rule_acc) rest
+    | rest -> (List.rev stmt_acc, List.rev rule_acc, rest)
   in
   let rec go acc = function
     | [] -> List.rev acc
     | Rule _ :: _ as l ->
-        let run, rest = span_rules [] l in
+        let stmts, rules, rest = span_rules [] [] l in
+        let synthesized_rules = synthesize_nesting_rules rules in
         let synthesized =
-          synthesize_nesting_rules run |> List.map (fun r -> Rule r)
+          if synthesized_rules == rules then stmts
+          else List.map (fun r -> Rule r) synthesized_rules
         in
         go (List.rev_append synthesized acc) rest
     | s :: rest -> go (s :: acc) rest
   in
-  go [] stmts
+  preserve_list stmts (go [] stmts)
 
 (* A block holds a conditional named layer when it directly contains a named
    [@layer] block with content. Unwrapping a known-true [@supports] around such
@@ -4233,6 +4355,23 @@ let pop_trailing_rules acc =
   in
   loop acc []
 
+let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
+    statement list -> statement list * rule list * statement list = function
+  | (Rule r as stmt) :: rest ->
+      collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
+  | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
+
+let rec factor_rules_to_fixpoint ~ctx fuel rules =
+  if fuel <= 0 then rules
+  else
+    let rules' =
+      combine_identical_rules rules
+      |> factor_common_declarations |> merge_rules
+      |> list_map_preserve (finalize_rule_without_nested ~ctx)
+    in
+    if rules' == rules then rules
+    else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -4242,122 +4381,136 @@ let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
      separated merge in this same pass, which keeps [statements] idempotent -
      stripping after the merge would leave two adjacent same-selector rules that
      only a re-run would combine. *)
-  drop_misplaced_imports stmts
-  |> merge_named_layers_by_name
-  |> process_statements ~ctx ~enforce_spec []
-  |> synthesize_nesting_statements
-  |> merge_consecutive_media ~optimize_merged_block
-  |> merge_consecutive_supports ~optimize_merged_block
-  |> merge_consecutive_containers ~optimize_merged_block
-  |> merge_layer_declarations |> drop_empty_rules
+  let stmts' =
+    drop_misplaced_imports stmts
+    |> merge_named_layers_by_name
+    |> process_statements ~ctx ~enforce_spec []
+    |> synthesize_nesting_statements
+    |> merge_consecutive_media ~optimize_merged_block
+    |> merge_consecutive_supports ~optimize_merged_block
+    |> merge_consecutive_containers ~optimize_merged_block
+    |> merge_layer_declarations |> drop_empty_rules
+  in
+  preserve_list stmts stmts'
 
 and process_statements ~ctx ~enforce_spec (acc : statement list)
     (remaining : statement list) : statement list =
   match remaining with
   | [] -> List.rev acc
-  | Rule r :: rest ->
-      (* Collect consecutive Rule items *)
-      let rec collect_rules (rules_acc : rule list) :
-          statement list -> rule list * statement list = function
-        | Rule r :: rest -> collect_rules (r :: rules_acc) rest
-        | rest -> (List.rev rules_acc, rest)
-      in
-      let plain_rules, rest = collect_rules [ r ] rest in
-      (* @scope is a valid nested group rule per CSS Nesting; preserve it as-is
-         during normal optimization. Flattening is reserved for the explicit
-         [flatten_nesting] transform. *)
-      let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
-      let as_statements = List.map (fun r -> Rule r) optimized in
-      process_statements ~ctx ~enforce_spec
-        (List.rev_append as_statements acc)
+  | (Rule r as stmt) :: rest ->
+      process_rule_run ~ctx ~enforce_spec acc stmt r rest
+  | (Media (cond, block) as stmt) :: rest ->
+      process_media_statement ~ctx ~enforce_spec acc stmt cond block rest
+  | (Container (name, cond, block) as stmt) :: rest ->
+      process_container_statement ~ctx ~enforce_spec acc stmt name cond block
         rest
-  | Media (cond, block) :: rest ->
-      (* Just optimize the block and pass through - grouping happens later.
-         Outside [enforce_spec], apply the target-fact grammar upgrades
-         ([min-]/[max-] to range syntax, lower+upper bound to interval) that the
-         pretty-printer no longer performs. *)
-      let cond = if enforce_spec then cond else Media.lower_for_minify cond in
+  | Supports (cond, block) :: rest ->
+      process_supports_statement ~ctx ~enforce_spec acc cond block rest
+  | (Scope (start, end_, block) as stmt) :: rest ->
       let optimized_block = statements ~ctx ~enforce_spec block in
-      let optimized = Media (cond, optimized_block) in
-      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
-  | Container (name, cond, block) :: rest ->
-      (* Recursively optimize container query content *)
-      let cond =
-        if enforce_spec then cond
-        else Option.map Container.lower_for_minify cond
-      in
       let optimized =
-        Container (name, cond, statements ~ctx ~enforce_spec block)
+        if optimized_block == block then stmt
+        else Scope (start, end_, optimized_block)
       in
       process_statements ~ctx ~enforce_spec (optimized :: acc) rest
-  | Supports (cond, block) :: rest -> (
-      (* Recursively optimize supports block content *)
+  | (Origin (origin, block) as stmt) :: rest ->
       let optimized_block = statements ~ctx ~enforce_spec block in
-      let baseline =
-        if enforce_spec then `Cond cond else Supports.simplify_baseline cond
-      in
-      match baseline with
-      (* Condition is a known-true baseline fact: unwrap the block into the
-         current statement stream so its rules merge with their siblings -
-         unless the block introduces layer order, whose conditional
-         participation the wrapper must preserve. *)
-      | `True when block_introduces_layer_order optimized_block ->
-          process_statements ~ctx ~enforce_spec
-            (Supports (cond, optimized_block) :: acc)
-            rest
-      | `True ->
-          (* Re-collect the rules already emitted just before this wrapper so a
-             same-selector adjacency the [@supports] had hidden can now
-             merge. *)
-          let trailing, acc = pop_trailing_rules acc in
-          process_statements ~ctx ~enforce_spec acc
-            (trailing @ optimized_block @ rest)
-      (* Condition can never hold: the guarded block is dead. *)
-      | `False -> process_statements ~ctx ~enforce_spec acc rest
-      | `Cond cond' ->
-          process_statements ~ctx ~enforce_spec
-            (Supports (cond', optimized_block) :: acc)
-            rest)
-  | Scope (start, end_, block) :: rest ->
       let optimized =
-        Scope (start, end_, statements ~ctx ~enforce_spec block)
+        if optimized_block == block then stmt
+        else Origin (origin, optimized_block)
       in
       process_statements ~ctx ~enforce_spec (optimized :: acc) rest
-  | Origin (origin, block) :: rest ->
-      let optimized = Origin (origin, statements ~ctx ~enforce_spec block) in
-      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
-  | Layer (name, block) :: rest ->
-      let optimized_block = statements ~ctx ~enforce_spec block in
-      if is_layer_empty optimized_block then
-        (* Handle empty layer optimization *)
-        match name with
-        | Some layer_name ->
-            let all_names, remaining =
-              collect_empty_layer_names [ layer_name ] rest
-            in
-            let layer_decl = Layer_decl all_names in
-            process_statements ~ctx ~enforce_spec (layer_decl :: acc) remaining
-        | None ->
-            (* Anonymous empty layer - just remove it *)
-            process_statements ~ctx ~enforce_spec acc rest
-      else
-        let optimized = Layer (name, optimized_block) in
-        process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+  | (Layer (name, block) as stmt) :: rest ->
+      process_layer_statement ~ctx ~enforce_spec acc stmt name block rest
   | Import import :: rest ->
-      (* A [supports()] condition on [@import] is a feature query: when it is a
-         known-true baseline fact, default minify drops just the condition (the
-         import always applies). [--enforce-spec] keeps it. *)
-      let import =
-        match import.supports with
-        | Some cond
-          when (not enforce_spec) && Supports.simplify_baseline cond = `True ->
-            { import with supports = None }
-        | _ -> import
-      in
-      process_statements ~ctx ~enforce_spec (Import import :: acc) rest
+      process_import_statement ~ctx ~enforce_spec acc import rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
       process_statements ~ctx ~enforce_spec (hd :: acc) rest
+
+and process_rule_run ~ctx ~enforce_spec acc stmt r rest =
+  let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
+  let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
+  let as_statements =
+    if optimized == plain_rules then plain_stmts
+    else List.map (fun r -> Rule r) optimized
+  in
+  process_statements ~ctx ~enforce_spec (List.rev_append as_statements acc) rest
+
+and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
+  let cond = if enforce_spec then cond else Media.lower_for_minify cond in
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized =
+    if
+      (cond == match stmt with Media (c, _) -> c | _ -> assert false)
+      && optimized_block == block
+    then stmt
+    else Media (cond, optimized_block)
+  in
+  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_container_statement ~ctx ~enforce_spec acc stmt name cond block rest
+    =
+  let cond =
+    if enforce_spec then cond else Option.map Container.lower_for_minify cond
+  in
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized =
+    if
+      (cond == match stmt with Container (_, c, _) -> c | _ -> assert false)
+      && optimized_block == block
+    then stmt
+    else Container (name, cond, optimized_block)
+  in
+  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_supports_statement ~ctx ~enforce_spec acc cond block rest =
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let baseline =
+    if enforce_spec then `Cond cond else Supports.simplify_baseline cond
+  in
+  match baseline with
+  | `True when block_introduces_layer_order optimized_block ->
+      process_statements ~ctx ~enforce_spec
+        (Supports (cond, optimized_block) :: acc)
+        rest
+  | `True ->
+      let trailing, acc = pop_trailing_rules acc in
+      process_statements ~ctx ~enforce_spec acc
+        (trailing @ optimized_block @ rest)
+  | `False -> process_statements ~ctx ~enforce_spec acc rest
+  | `Cond cond' ->
+      process_statements ~ctx ~enforce_spec
+        (Supports (cond', optimized_block) :: acc)
+        rest
+
+and process_layer_statement ~ctx ~enforce_spec acc stmt name block rest =
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  if is_layer_empty optimized_block then
+    match name with
+    | Some layer_name ->
+        let all_names, remaining =
+          collect_empty_layer_names [ layer_name ] rest
+        in
+        process_statements ~ctx ~enforce_spec
+          (Layer_decl all_names :: acc)
+          remaining
+    | None -> process_statements ~ctx ~enforce_spec acc rest
+  else
+    let optimized =
+      if optimized_block == block then stmt else Layer (name, optimized_block)
+    in
+    process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_import_statement ~ctx ~enforce_spec acc import rest =
+  let import =
+    match import.supports with
+    | Some cond
+      when (not enforce_spec) && Supports.simplify_baseline cond = `True ->
+        { import with supports = None }
+    | _ -> import
+  in
+  process_statements ~ctx ~enforce_spec (Import import :: acc) rest
 
 and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively. Nested rule
@@ -4374,16 +4527,13 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
     | other -> other
   in
   let with_optimized_nested =
-    List.map
+    list_map_preserve
       (fun rule ->
-        let rule =
-          {
-            rule with
-            nested =
-              statements ~ctx ~enforce_spec rule.nested
-              |> List.map drop_nesting_prefix;
-          }
+        let nested =
+          statements ~ctx ~enforce_spec rule.nested
+          |> list_map_preserve drop_nesting_prefix
         in
+        let rule = rule_with_nested rule nested in
         merge_lone_nested_rule rule)
       rules
   in
@@ -4393,9 +4543,9 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      [combine_identical_rules] then groups same-declaration rules under a
      selector list ([.a, .b, .c{...}]). *)
   let prepared =
-    List.map (single_rule_without_nested ~ctx) with_optimized_nested
+    list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
     |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-    |> List.map (finalize_rule_without_nested ~ctx)
+    |> list_map_preserve (finalize_rule_without_nested ~ctx)
   in
   (* Factoring is greedy: extracting one shared declaration subset can leave
      behind leftovers that are themselves factorable - a "triangle" where each
@@ -4405,19 +4555,9 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      exhaustive in a single top-level pass. Safe to iterate because both only
      re-apply the same cascade-checked grouping; unlike a whole-pipeline
      fixpoint it never re-runs boundary-sensitive passes such as import
-     stripping. [fuel] bounds the loop against a non-converging structural
-     comparison. *)
-  let rec factor_to_fixpoint fuel rules =
-    if fuel <= 0 then rules
-    else
-      let rules' =
-        combine_identical_rules rules
-        |> factor_common_declarations |> merge_rules
-        |> List.map (finalize_rule_without_nested ~ctx)
-      in
-      if rules' = rules then rules else factor_to_fixpoint (fuel - 1) rules'
-  in
-  factor_to_fixpoint 16 prepared
+     stripping. [fuel] bounds the loop against a missed identity-preserving
+     no-op. *)
+  factor_rules_to_fixpoint ~ctx 16 prepared
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
@@ -4459,9 +4599,12 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
 let statements_top_level ~ctx ~enforce_spec (stmts : statement list) :
     statement list =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
-  statements ~ctx ~enforce_spec stmts
-  |> merge_consecutive_layers ~optimize_merged_block
-  |> drop_redundant_layer_decls |> drop_shadowed_keyframes
+  let stmts' =
+    statements ~ctx ~enforce_spec stmts
+    |> merge_consecutive_layers ~optimize_merged_block
+    |> drop_redundant_layer_decls |> drop_shadowed_keyframes
+  in
+  preserve_list stmts stmts'
 
 let single_rule ?scope (rule : rule) : rule =
   let ctx = ctx_of_scope scope in
@@ -4605,78 +4748,134 @@ let apply_property_duplication (stylesheet : t) : t =
   in
   apply_to_statements stylesheet
 
+let map_statement_block_preserve f stmt =
+  let map block = list_map_preserve f block in
+  match stmt with
+  | Layer (name, block) ->
+      let block' = map block in
+      if block' == block then stmt else Layer (name, block')
+  | Media (m, block) ->
+      let block' = map block in
+      if block' == block then stmt else Media (m, block')
+  | Container (n, c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Container (n, c, block')
+  | Supports (s, block) ->
+      let block' = map block in
+      if block' == block then stmt else Supports (s, block')
+  | Moz_document (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Moz_document (c, block')
+  | When (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else When (c, block')
+  | Else (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Else (c, block')
+  | Starting_style block ->
+      let block' = map block in
+      if block' == block then stmt else Starting_style block'
+  | Origin (o, block) ->
+      let block' = map block in
+      if block' == block then stmt else Origin (o, block')
+  | Scope (a, b, block) ->
+      let block' = map block in
+      if block' == block then stmt else Scope (a, b, block')
+  | _ -> stmt
+
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
     [@position-try]) and removes declarations whose typed value contains an
     [Invalid] arm. *)
 let drop_invalid (stylesheet : t) : t =
-  let filter_decls = List.filter (fun d -> not (Declaration.is_invalid d)) in
-  let rec statement = function
+  let filter_decls =
+    list_filter_preserve (fun d -> not (Declaration.is_invalid d))
+  in
+  let rec statement stmt =
+    match stmt with
     | Rule rule ->
-        Rule
-          {
-            rule with
-            declarations = filter_decls rule.declarations;
-            nested = List.map statement rule.nested;
-          }
-    | Declarations decls -> Declarations (filter_decls decls)
-    | Layer (name, block) -> Layer (name, List.map statement block)
-    | Media (m, block) -> Media (m, List.map statement block)
-    | Container (n, c, block) -> Container (n, c, List.map statement block)
-    | Supports (s, block) -> Supports (s, List.map statement block)
-    | Moz_document (c, block) -> Moz_document (c, List.map statement block)
-    | When (c, block) -> When (c, List.map statement block)
-    | Else (c, block) -> Else (c, List.map statement block)
-    | Starting_style block -> Starting_style (List.map statement block)
-    | Origin (o, block) -> Origin (o, List.map statement block)
-    | Scope (a, b, block) -> Scope (a, b, List.map statement block)
-    | Page (sel, decls) -> Page (sel, filter_decls decls)
+        let declarations = filter_decls rule.declarations in
+        let nested = list_map_preserve statement rule.nested in
+        let rule' =
+          rule_with_declarations_and_nested rule declarations nested
+        in
+        if rule' == rule then stmt else Rule rule'
+    | Declarations decls ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Declarations decls'
+    | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
+    | Else _ | Starting_style _ | Origin _ | Scope _ ->
+        map_statement_block_preserve statement stmt
+    | Page (sel, decls) ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Page (sel, decls')
     | Page_with_margins (sel, descs, margins) ->
-        Page_with_margins
-          ( sel,
-            filter_decls descs,
-            List.map
-              (fun (m : page_margin_rule) ->
-                {
-                  m with
-                  margin_descriptors = filter_decls m.margin_descriptors;
-                })
-              margins )
-    | Position_try (name, decls) -> Position_try (name, filter_decls decls)
+        let descs' = filter_decls descs in
+        let margins' =
+          list_map_preserve
+            (fun (m : page_margin_rule) ->
+              let margin_descriptors = filter_decls m.margin_descriptors in
+              if margin_descriptors == m.margin_descriptors then m
+              else { m with margin_descriptors })
+            margins
+        in
+        if descs' == descs && margins' == margins then stmt
+        else Page_with_margins (sel, descs', margins')
+    | Position_try (name, decls) ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Position_try (name, decls')
     | Supports_condition (name, decls) ->
-        Supports_condition (name, filter_decls decls)
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Supports_condition (name, decls')
     | other -> other
   in
-  List.map statement stylesheet
+  list_map_preserve statement stylesheet
 
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
     depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
     emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
     §5.4.1 (unknown at-rules are discarded). *)
 let drop_unknown_at_rules (stylesheet : t) : t =
-  let rec statement = function
+  let rec statement stmt =
+    match stmt with
     | Unknown_at_rule _ -> None
     | Rule rule ->
-        Some (Rule { rule with nested = List.filter_map statement rule.nested })
+        let nested = list_filter_map_preserve statement rule.nested in
+        let rule' = rule_with_nested rule nested in
+        Some (if rule' == rule then stmt else Rule rule')
     | Layer (name, block) ->
-        Some (Layer (name, List.filter_map statement block))
-    | Media (m, block) -> Some (Media (m, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Layer (name, block'))
+    | Media (m, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Media (m, block'))
     | Container (n, c, block) ->
-        Some (Container (n, c, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Container (n, c, block'))
     | Supports (s, block) ->
-        Some (Supports (s, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Supports (s, block'))
     | Moz_document (c, block) ->
-        Some (Moz_document (c, List.filter_map statement block))
-    | When (c, block) -> Some (When (c, List.filter_map statement block))
-    | Else (c, block) -> Some (Else (c, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Moz_document (c, block'))
+    | When (c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else When (c, block'))
+    | Else (c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Else (c, block'))
     | Starting_style block ->
-        Some (Starting_style (List.filter_map statement block))
-    | Origin (o, block) -> Some (Origin (o, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Starting_style block')
+    | Origin (o, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Origin (o, block'))
     | Scope (a, b, block) ->
-        Some (Scope (a, b, List.filter_map statement block))
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Scope (a, b, block'))
     | other -> Some other
   in
-  List.filter_map statement stylesheet
+  list_filter_map_preserve statement stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
    declaration registers [name] with a typed CSS syntax, lifting later [--name:
@@ -4684,74 +4883,66 @@ let drop_unknown_at_rules (stylesheet : t) : t =
    registrations in source order so a [@property] only affects uses that follow
    it; later registrations of the same name overwrite, matching how the browser
    registry resolves duplicate declarations. *)
-let promote_registered_custom_properties (stmts : statement list) :
-    statement list =
+let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
+  match syntax with
+  | Variables.Color -> Properties.try_read_custom_color components
+  | Variables.Length -> Properties.try_read_custom_length components
+  | Variables.Length_percentage ->
+      Properties.try_read_custom_length_percentage components
+  | Variables.Number -> Properties.try_read_custom_number components
+  | Variables.Percentage -> Properties.try_read_custom_percentage components
+  | _ -> None
+
+let promote_registered_custom_decl registry decl =
+  match decl with
+  | Declaration
+      {
+        property = Custom_property name;
+        value = Custom_value { value = Tokens components; layer; meta };
+        important;
+      } -> (
+      match Hashtbl.find_opt registry name with
+      | None -> decl
+      | Some (Variables.Syntax syntax) -> (
+          match try_promote_custom_with syntax components with
+          | None -> decl
+          | Some typed ->
+              Declaration
+                {
+                  property = Custom_property name;
+                  value =
+                    Custom_value
+                      {
+                        value = Properties.normalize_custom_property_value typed;
+                        layer;
+                        meta;
+                      };
+                  important;
+                }))
+  | _ -> decl
+
+let promote_registered_custom_properties (stmts : statement list) =
   let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
-  let try_promote_with (type a) (syntax : a Variables.syntax) components =
-    match syntax with
-    | Variables.Color -> Properties.try_read_custom_color components
-    | Variables.Length -> Properties.try_read_custom_length components
-    | Variables.Length_percentage ->
-        Properties.try_read_custom_length_percentage components
-    | Variables.Number -> Properties.try_read_custom_number components
-    | Variables.Percentage -> Properties.try_read_custom_percentage components
-    | _ -> None
-  in
-  let promote_decl (decl : Declaration.declaration) : Declaration.declaration =
-    match decl with
-    | Declaration
-        {
-          property = Custom_property name;
-          value = Custom_value { value = Tokens components; layer; meta };
-          important;
-        } -> (
-        match Hashtbl.find_opt registry name with
-        | None -> decl
-        | Some (Variables.Syntax syntax) -> (
-            match try_promote_with syntax components with
-            | None -> decl
-            | Some typed ->
-                Declaration
-                  {
-                    property = Custom_property name;
-                    value =
-                      Custom_value
-                        {
-                          value =
-                            Properties.normalize_custom_property_value typed;
-                          layer;
-                          meta;
-                        };
-                    important;
-                  }))
-    | _ -> decl
-  in
+  let promote_decl = promote_registered_custom_decl registry in
   let rec walk_stmt (stmt : statement) : statement =
     match stmt with
     | Property pr ->
         Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax);
         stmt
     | Rule r ->
-        Rule
-          {
-            r with
-            declarations = List.map promote_decl r.declarations;
-            nested = List.map walk_stmt r.nested;
-          }
-    | Declarations decls -> Declarations (List.map promote_decl decls)
-    | Media (c, b) -> Media (c, List.map walk_stmt b)
-    | Container (n, c, b) -> Container (n, c, List.map walk_stmt b)
-    | Supports (c, b) -> Supports (c, List.map walk_stmt b)
-    | Layer (n, b) -> Layer (n, List.map walk_stmt b)
-    | Origin (o, b) -> Origin (o, List.map walk_stmt b)
-    | Scope (s, e, b) -> Scope (s, e, List.map walk_stmt b)
-    | Starting_style b -> Starting_style (List.map walk_stmt b)
-    | Moz_document (c, b) -> Moz_document (c, List.map walk_stmt b)
-    | When (c, b) -> When (c, List.map walk_stmt b)
-    | Else (c, b) -> Else (c, List.map walk_stmt b)
+        let declarations = list_map_preserve promote_decl r.declarations in
+        let nested = list_map_preserve walk_stmt r.nested in
+        let r' = rule_with_declarations_and_nested r declarations nested in
+        if r' == r then stmt else Rule r'
+    | Declarations decls ->
+        let decls' = list_map_preserve promote_decl decls in
+        if decls' == decls then stmt else Declarations decls'
+    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
+    | Starting_style _ | Moz_document _ | When _ | Else _ ->
+        map_statement_block_preserve walk_stmt stmt
     | _ -> stmt
   in
-  List.map walk_stmt stmts
+  list_map_preserve walk_stmt stmts
 
 (* Under closed-stylesheet scope the optimiser knows every [@position-try
    --name] rule defined in the sheet. A [position-try-fallbacks: --x, --y] entry
@@ -4887,52 +5078,88 @@ let registered_foldable (stylesheet : t) : string -> bool =
    [@position-try], [@supports-condition], bare nesting declarations - and
    recurse through grouping blocks, so canonicalisation is uniform wherever a
    declaration sits. *)
+let normalize_keyframe (k : keyframe) : keyframe =
+  let keyframe_declarations =
+    list_map_preserve Declaration.normalize k.keyframe_declarations
+  in
+  if keyframe_declarations == k.keyframe_declarations then k
+  else { k with keyframe_declarations }
+
 let rec normalize_block (b : statement list) : statement list =
-  List.map normalize_statement b
+  list_map_preserve normalize_statement b
 
 and normalize_statement (s : statement) : statement =
-  let nd = List.map Declaration.normalize in
+  let nd = list_map_preserve Declaration.normalize in
   match s with
   | Rule r ->
-      Rule
-        {
-          r with
-          declarations = nd r.declarations;
-          nested = normalize_block r.nested;
-        }
-  | Declarations d -> Declarations (nd d)
-  | Page (n, d) -> Page (n, nd d)
+      let declarations = nd r.declarations in
+      let nested = normalize_block r.nested in
+      let r' = rule_with_declarations_and_nested r declarations nested in
+      if r' == r then s else Rule r'
+  | Declarations d ->
+      let d' = nd d in
+      if d' == d then s else Declarations d'
+  | Page (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Page (n, d')
   | Page_with_margins (n, descs, margins) ->
-      Page_with_margins
-        ( n,
-          nd descs,
-          List.map
-            (fun m -> { m with margin_descriptors = nd m.margin_descriptors })
-            margins )
-  | Position_try (n, d) -> Position_try (n, nd d)
-  | Supports_condition (n, d) -> Supports_condition (n, nd d)
-  | Keyframes (n, ks) -> Keyframes (n, List.map normalize_keyframe ks)
+      let descs' = nd descs in
+      let margins' =
+        list_map_preserve
+          (fun m ->
+            let margin_descriptors = nd m.margin_descriptors in
+            if margin_descriptors == m.margin_descriptors then m
+            else { m with margin_descriptors })
+          margins
+      in
+      if descs' == descs && margins' == margins then s
+      else Page_with_margins (n, descs', margins')
+  | Position_try (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Position_try (n, d')
+  | Supports_condition (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Supports_condition (n, d')
+  | Keyframes (n, ks) ->
+      let ks' = list_map_preserve normalize_keyframe ks in
+      if ks' == ks then s else Keyframes (n, ks')
   | Webkit_keyframes (n, ks) ->
-      Webkit_keyframes (n, List.map normalize_keyframe ks)
-  | Moz_keyframes (n, ks) -> Moz_keyframes (n, List.map normalize_keyframe ks)
-  | Layer (n, b) -> Layer (n, normalize_block b)
-  | Media (c, b) -> Media (c, normalize_block b)
-  | Container (n, c, b) -> Container (n, c, normalize_block b)
-  | Supports (c, b) -> Supports (c, normalize_block b)
-  | Moz_document (c, b) -> Moz_document (c, normalize_block b)
-  | Starting_style b -> Starting_style (normalize_block b)
-  | When (c, b) -> When (c, normalize_block b)
-  | Else (c, b) -> Else (c, normalize_block b)
-  | Origin (o, b) -> Origin (o, normalize_block b)
-  | Scope (s1, s2, b) -> Scope (s1, s2, normalize_block b)
+      let ks' = list_map_preserve normalize_keyframe ks in
+      if ks' == ks then s else Webkit_keyframes (n, ks')
+  | Moz_keyframes (n, ks) ->
+      let ks' = list_map_preserve normalize_keyframe ks in
+      if ks' == ks then s else Moz_keyframes (n, ks')
+  | Layer (n, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Layer (n, b')
+  | Media (c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Media (c, b')
+  | Container (n, c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Container (n, c, b')
+  | Supports (c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Supports (c, b')
+  | Moz_document (c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Moz_document (c, b')
+  | Starting_style b ->
+      let b' = normalize_block b in
+      if b' == b then s else Starting_style b'
+  | When (c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else When (c, b')
+  | Else (c, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Else (c, b')
+  | Origin (o, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Origin (o, b')
+  | Scope (s1, s2, b) ->
+      let b' = normalize_block b in
+      if b' == b then s else Scope (s1, s2, b')
   | other -> other
-
-and normalize_keyframe (k : keyframe) : keyframe =
-  {
-    k with
-    keyframe_declarations =
-      List.map Declaration.normalize k.keyframe_declarations;
-  }
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)
     (stylesheet : t) : t =
