@@ -4411,7 +4411,9 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
     if fuel <= 0 then rules
     else
       let rules' =
-        combine_identical_rules rules |> factor_common_declarations
+        combine_identical_rules rules
+        |> factor_common_declarations |> merge_rules
+        |> List.map (finalize_rule_without_nested ~ctx)
       in
       if rules' = rules then rules else factor_to_fixpoint (fuel - 1) rules'
   in
