@@ -3927,7 +3927,25 @@ let normalize_text_shadow : text_shadow -> text_shadow = function
 
 let rec normalize_filter : filter -> filter = function
   | Drop_shadow s -> Drop_shadow (normalize_shadow s)
+  | Hue_rotate a -> Hue_rotate (Values.normalize_angle a)
   | List filters -> List (List.map normalize_filter filters)
+  | other -> other
+
+let normalize_rotate : rotate_value -> rotate_value =
+  let na = Values.normalize_angle in
+  function
+  | Angle a -> Angle (na a)
+  | X a -> X (na a)
+  | Y a -> Y (na a)
+  | Z a -> Z (na a)
+  | Axis (x, y, z, a) -> Axis (x, y, z, na a)
+  | other -> other
+
+let normalize_font_style : font_style -> font_style =
+  let na = Values.normalize_angle in
+  function
+  | Oblique_angle a -> Oblique_angle (na a)
+  | Oblique_range (a, b) -> Oblique_range (na a, na b)
   | other -> other
 
 let normalize_caret : caret -> caret = function
@@ -6813,8 +6831,10 @@ let canonicalise_transform : transform -> transform = function
    [calc()]. *)
 let normalize_transform_leaves : transform -> transform =
   (* The translate / perspective operands are inside a function, so they keep a
-     zero's unit ([translate(0px)] stays). *)
+     zero's unit ([translate(0px)] stays). The rotate / skew operands are
+     angles, converted to the shortest unit. *)
   let nl = Values.normalize_length ~strip:false in
+  let na = Values.normalize_angle in
   function
   | Translate (x, y) -> Translate (nl x, Option.map nl y)
   | Translate_x x -> Translate_x (nl x)
@@ -6822,6 +6842,15 @@ let normalize_transform_leaves : transform -> transform =
   | Translate_z z -> Translate_z (nl z)
   | Translate_3d (x, y, z) -> Translate_3d (nl x, nl y, nl z)
   | Perspective l -> Perspective (nl l)
+  | Rotate a -> Rotate (na a)
+  | Rotate_x a -> Rotate_x (na a)
+  | Rotate_y a -> Rotate_y (na a)
+  | Rotate_z a -> Rotate_z (na a)
+  | Rotate_3d (x, y, z, a) -> Rotate_3d (x, y, z, na a)
+  | Rotate_axis (x, y, z, a) -> Rotate_axis (x, y, z, na a)
+  | Skew (a, b) -> Skew (na a, Option.map na b)
+  | Skew_x a -> Skew_x (na a)
+  | Skew_y a -> Skew_y (na a)
   | other -> other
 
 let rec normalize_transform (t : transform) : transform =
@@ -19529,6 +19558,8 @@ let normalize_property_value : type a. a property -> a -> a =
   match property with
   | Transform -> List.map normalize_transform value
   | Webkit_transform -> List.map normalize_transform value
+  | Rotate -> normalize_rotate value
+  | Font_style -> normalize_font_style value
   | Width -> Values.normalize_length_percentage value
   | Height -> Values.normalize_length_percentage value
   | Min_width -> Values.normalize_length_percentage value

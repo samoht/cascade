@@ -181,6 +181,12 @@ val normalize_length : ?strip:bool -> length -> length
     [0]); pass [strip:false] for a calc / function operand, which keeps its
     unit. *)
 
+val normalize_angle : angle -> angle
+(** [normalize_angle a] folds the static angle math functions (round / mod / rem
+    on [deg] operands) and converts to the shortest of the
+    losslessly-interconvertible units (deg / turn / grad); [rad] (irrational via
+    pi) stays as-is. *)
+
 val normalize_number : number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
