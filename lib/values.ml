@@ -14,12 +14,6 @@ let string_of_number_percentage (np : number_percentage) =
   match np with Num f | Pct f -> Pp.string_of_float f | _ -> "initial"
 
 (** Color constructors *)
-let hex s =
-  let len = String.length s in
-  if len > 0 && s.[0] = '#' then
-    Hex { hash = true; value = String.sub s 1 (len - 1) }
-  else Hex { hash = false; value = s }
-
 let rgb ?alpha r g b =
   match alpha with
   | None -> Rgb (Channels { r = Int r; g = Int g; b = Int b })
@@ -2417,7 +2411,7 @@ let hex_digit c =
 
 (* Parse a [Hex.value] string ([RGB], [RGBA], [RRGGBB], [RRGGBBAA]) into (r, g,
    b, a) bytes. Returns [None] for malformed lengths. *)
-let hex_to_rgba_bytes s =
+let rgba_of_hex s =
   let pair a b =
     Option.bind (hex_digit a) (fun ah ->
         Option.map (fun bh -> (ah lsl 4) lor bh) (hex_digit b))
@@ -2456,12 +2450,25 @@ let channel_byte_value (c : channel) =
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
   | _ -> None
 
-let byte_to_hex_byte i =
+let hex_of_byte i =
   let hex_digits = "0123456789abcdef" in
   let s = Bytes.create 2 in
   Bytes.set s 0 hex_digits.[(i lsr 4) land 0xF];
   Bytes.set s 1 hex_digits.[i land 0xF];
   Bytes.to_string s
+
+(* Decode a hex spelling ([#rgb] / [#rrggbb] / [#rgba] / [#rrggbbaa], with or
+   without the leading [#]) to its sRGB byte components. Every equivalent
+   spelling decodes to the same node. Invalid input folds to opaque black. *)
+let hex s : color =
+  let s =
+    if String.length s > 0 && s.[0] = '#' then
+      String.sub s 1 (String.length s - 1)
+    else s
+  in
+  match rgba_of_hex s with
+  | Some (r, g, b, a) -> Hex { r; g; b; a }
+  | None -> Hex { r = 0; g = 0; b = 0; a = 255 }
 
 (* CSS Color 4 sec. 4.2.3 [none] sentinel: per-channel folding of a static
    colour to sRGB. Each channel is [Some byte] when the colour resolves
@@ -2471,10 +2478,7 @@ let byte_to_hex_byte i =
 let static_color_to_srgb_channels :
     color -> (int option * int option * int option * int option) option =
   function
-  | Hex { value; _ } -> (
-      match hex_to_rgba_bytes value with
-      | Some (r, g, b, a) -> Some (Some r, Some g, Some b, Some a)
-      | None -> None)
+  | Hex { r; g; b; a } -> Some (Some r, Some g, Some b, Some a)
   | Rgb (Channels { r; g; b }) ->
       Some
         ( channel_byte_value r,
@@ -2505,7 +2509,7 @@ let static_color_to_srgb_channels :
       let _, hex = color_name_hex name in
       if hex = "" then Option.None
       else
-        match hex_to_rgba_bytes hex with
+        match rgba_of_hex hex with
         | Some (r, g, b, a) -> Some (Some r, Some g, Some b, Some a)
         | None -> None)
   | Transparent -> Some (Some 0, Some 0, Some 0, Some 0)
@@ -2870,11 +2874,7 @@ let resolve_static_srgb (c : color) : color =
               let a_byte =
                 Float.to_int (Float.round (clamp01 alpha_f *. 255.))
               in
-              let value =
-                byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
-                ^ if a_byte = 255 then "" else byte_to_hex_byte a_byte
-              in
-              Hex { hash = true; value }
+              Hex { r; g; b; a = a_byte }
           | None -> c)
       | None -> c)
 
@@ -3098,6 +3098,14 @@ let shorten_hex value =
   then String.sub value 0 3
   else value
 
+(* Shortest hex spelling (no [#]) of decoded sRGB byte components: the opaque
+   alpha is dropped and [#rrggbb] / [#rrggbbaa] shorten to [#rgb] / [#rgba] when
+   each byte is a doubled nibble. *)
+let hex_string_of_bytes r g b a =
+  let rgb = String.concat "" [ hex_of_byte r; hex_of_byte g; hex_of_byte b ] in
+  if a = 255 then shorten_hex rgb
+  else shorten_hex (String.concat "" [ rgb; hex_of_byte a ])
+
 let minify_color : color -> color = function
   | Named n ->
       let name, hex = color_name_hex n in
@@ -3106,9 +3114,10 @@ let minify_color : color -> color = function
         (* # prefix *)
       in
       if hex <> "" && hex_len <= String.length name then
-        Hex { hash = true; value = shorten_hex hex }
+        match rgba_of_hex hex with
+        | Some (r, g, b, a) -> Hex { r; g; b; a }
+        | None -> Named n
       else Named n
-  | Hex h -> Hex { h with value = shorten_hex h.value }
   | c -> c
 
 (* CSS Color 4 §11 normalises system colour keywords to lowercase ASCII. *)
@@ -3826,16 +3835,18 @@ let pp_color' ctx space components alpha =
       pp_opt_alpha ctx alpha)
     ctx (space, components, alpha)
 
-let pp_hex_color ctx value =
-  (* Pure serialiser: a hex value prints to its shortest same-node spelling
-     (case-folded, [#rrggbb] -> [#rgb]). The cross-node folds (hex -> named, hex
-     -> #0000) are AST rewrites done by [normalize_color]. *)
-  if Pp.minified ctx then (
-    Pp.char ctx '#';
-    Pp.string ctx (String.lowercase_ascii (shorten_hex value)))
+let pp_hex_color ctx r g b a =
+  (* Pure serialiser: pick the shortest spelling of the decoded components.
+     Minify collapses [#rrggbb] -> [#rgb] and drops an opaque alpha; pretty
+     keeps the full byte form. The cross-node folds (hex -> named) are AST
+     rewrites done by [normalize_color]. *)
+  Pp.char ctx '#';
+  if Pp.minified ctx then Pp.string ctx (hex_string_of_bytes r g b a)
   else (
-    Pp.char ctx '#';
-    Pp.string ctx value)
+    Pp.string ctx (hex_of_byte r);
+    Pp.string ctx (hex_of_byte g);
+    Pp.string ctx (hex_of_byte b);
+    if a <> 255 then Pp.string ctx (hex_of_byte a))
 
 let rec pp_rgb_as_color : rgb Pp.t =
  fun ctx -> function
@@ -3874,7 +3885,10 @@ let color_of_default_string value =
     if
       (hex_len = 3 || hex_len = 4 || hex_len = 6 || hex_len = 8)
       && String.for_all is_hex hex
-    then Option.Some (Hex { hash = true; value = hex })
+    then
+      match rgba_of_hex hex with
+      | Some (r, g, b, a) -> Option.Some (Hex { r; g; b; a })
+      | None -> Option.None
     else Option.None
   else if
     len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
@@ -3991,7 +4005,7 @@ and pp_color : color Pp.t = fun ctx color -> pp_color_default ctx color
 
 and pp_color_default : color Pp.t =
  fun ctx -> function
-  | Hex { hash = _; value } -> pp_hex_color ctx value
+  | Hex { r; g; b; a } -> pp_hex_color ctx r g b a
   | Rgb rgb -> pp_rgb_color ctx rgb
   | Rgba { rgb; a; legacy } -> pp_rgba_color ctx rgb a legacy
   | Hsl { h; s; l; a } -> pp_hsl_color ctx h s l a
@@ -6247,7 +6261,7 @@ and read_color t : color =
   Cursor.ws t;
   let color =
     match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) -> (
         Cursor.skip t;
         let len = String.length value in
         let is_hex c =
@@ -6259,7 +6273,10 @@ and read_color t : color =
           Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
         else if not (String.for_all is_hex value) then
           Cursor.err_invalid t ("hex color digits: " ^ value)
-        else Hex { hash = true; value }
+        else
+          match rgba_of_hex value with
+          | Some (r, g, b, a) -> Hex { r; g; b; a }
+          | None -> Cursor.err_invalid t ("hex color digits: " ^ value))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
         match List.assoc_opt name color_parsers with
         | Some parser ->
@@ -6714,12 +6731,12 @@ let read_color_name t : color_name =
 (* Shortest spelling of a hex value as a [color]: shorten, then pick the named
    form when it is strictly shorter (the [pp_hex_color] choice, as an AST
    rewrite producing a [color] instead of printing). *)
-let canonical_color_of_hex (value : string) : color =
-  let shortened = String.lowercase_ascii (shorten_hex value) in
+let canonical_color_of_hex r g b a : color =
+  let shortened = hex_string_of_bytes r g b a in
   match named_for_hex shortened with
   | Some name when String.length name < String.length shortened + 1 ->
       Named (read_color_name (Cursor.of_string name))
-  | _ -> Hex { hash = true; value = shortened }
+  | _ -> Hex { r; g; b; a }
 
 (* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
    a [var()] channel). CSS Color 4 sec. 4.1: a fully-opaque [/ 1] / [/ 100%] is
@@ -6747,25 +6764,12 @@ let drop_full_alpha (c : color) : color =
    a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
    gates the static colour-space fold (suppressed inside [@supports] tests). *)
 let rec normalize_color ~in_feature_query (c : color) : color =
-  let hex_of_bytes r g b a =
-    let rgb =
-      String.concat ""
-        [ byte_to_hex_byte r; byte_to_hex_byte g; byte_to_hex_byte b ]
-    in
+  let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
-    | Some 255 -> canonical_color_of_hex rgb
-    | Some ab ->
-        canonical_color_of_hex (String.concat "" [ rgb; byte_to_hex_byte ab ])
+    | Some ab -> canonical_color_of_hex r g b ab
     | Option.None -> c
   in
-  let hex_of_byte_quad r g b ab =
-    let rgb =
-      String.concat ""
-        [ byte_to_hex_byte r; byte_to_hex_byte g; byte_to_hex_byte b ]
-    in
-    if ab = 255 then canonical_color_of_hex rgb
-    else canonical_color_of_hex (String.concat "" [ rgb; byte_to_hex_byte ab ])
-  in
+  let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   match c with
   | Oklab { l = Some _; a = Some _; b = Some _; _ }
   | Oklch { l = Some _; c = Some _; _ }
@@ -6789,20 +6793,20 @@ let rec normalize_color ~in_feature_query (c : color) : color =
               hex_of_bytes r g b a
           | None -> drop_full_alpha c)
       | None -> drop_full_alpha c)
-  | Hex { value; _ } -> canonical_color_of_hex value
-  | Named name ->
+  | Hex { r; g; b; a } -> canonical_color_of_hex r g b a
+  | Named name -> (
       (* Pick the shortest spelling: a named colour collapses to hex only when
          the SHORTENED hex is shorter than the name. [canonical_color_name]
          first folds aliases (grey -> gray) so the choice is made on the
          canonical spelling. *)
       let name = canonical_color_name name in
       let name_str, hex = color_name_hex name in
-      let shortened =
-        if hex = "" then "" else String.lowercase_ascii (shorten_hex hex)
-      in
-      if hex = "" || String.length shortened + 1 > String.length name_str then
-        Named name
-      else canonical_color_of_hex shortened
+      match rgba_of_hex hex with
+      | Some (r, g, b, a)
+        when String.length (hex_string_of_bytes r g b a) + 1
+             <= String.length name_str ->
+          canonical_color_of_hex r g b a
+      | _ -> Named name)
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
