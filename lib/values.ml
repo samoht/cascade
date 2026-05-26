@@ -2227,23 +2227,6 @@ let color_name_hex : color_name -> string * string = function
   | White_smoke -> ("whitesmoke", "f5f5f5")
   | Yellow_green -> ("yellowgreen", "9acd32")
 
-(* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The 4-digit
-   shorthand [#0000] and the 8-digit form [#00000000] are spec-equivalent
-   representations. *)
-let hex_is_fully_transparent value =
-  match String.length value with
-  | 4 -> String.for_all (fun c -> c = '0') value
-  | 8 -> String.for_all (fun c -> c = '0') value
-  | _ -> false
-
-let alpha_is_zero (a : alpha) =
-  match a with Num 0.0 | Pct 0.0 -> true | _ -> false
-
-(* CSS Color 4 6.4: [transparent] is the canonical name for any fully-
-   transparent colour. Any RGB triple paired with [alpha = 0] paints to the same
-   pixel; the colour stack composites them identically. *)
-let rgba_is_transparent _r _g _b a = alpha_is_zero a
-
 (* The body of a [Relative_rgb] is stored as a verbatim string of the form
    ["from <origin> r g b/<alpha>"], because the channels and alpha are part of
    the [<calc>]-derived expression. To match the typed-color path's alpha
@@ -2548,25 +2531,6 @@ let byte_to_hex_byte i =
   Bytes.set s 0 hex_digits.[(i lsr 4) land 0xF];
   Bytes.set s 1 hex_digits.[i land 0xF];
   Bytes.to_string s
-
-(* Convert an [(r, g, b)] triple of integer-valued channels to the [#rrggbb]
-   string used as a key by [named_for_hex] / [shorten_hex]. CSS Color 4 sec.
-   4.2.3: at the used-value boundary [none] resolves to [0] for the serialised
-   computed value, so fold it that way here; the [color-mix] path reads the
-   typed channel directly via [static_color_to_srgb_channels] and keeps the
-   missing-component carry-over. *)
-let channel_byte_value_for_serialisation c =
-  match c with (None : channel) -> Some 0 | c -> channel_byte_value c
-
-let rgb_to_hex_string r g b =
-  match
-    ( channel_byte_value_for_serialisation r,
-      channel_byte_value_for_serialisation g,
-      channel_byte_value_for_serialisation b )
-  with
-  | Some r, Some g, Some b ->
-      Some (byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b)
-  | _ -> None
 
 (* CSS Color 4 sec. 4.2.3 [none] sentinel: per-channel folding of a static
    colour to sRGB. Each channel is [Some byte] when the colour resolves
@@ -3833,18 +3797,12 @@ let pp_color' ctx space components alpha =
     ctx (space, components, alpha)
 
 let pp_hex_color ctx value =
+  (* Pure serialiser: a hex value prints to its shortest same-node spelling
+     (case-folded, [#rrggbb] -> [#rgb]). The cross-node folds (hex -> named, hex
+     -> #0000) are AST rewrites done by [normalize_color]. *)
   if Pp.minified ctx then (
-    if hex_is_fully_transparent value then (
-      Pp.char ctx '#';
-      Pp.string ctx "0000")
-    else
-      let shortened = String.lowercase_ascii (shorten_hex value) in
-      match named_for_hex shortened with
-      | Some name when String.length name < String.length shortened + 1 ->
-          Pp.string ctx name
-      | _ ->
-          Pp.char ctx '#';
-          Pp.string ctx shortened)
+    Pp.char ctx '#';
+    Pp.string ctx (String.lowercase_ascii (shorten_hex value)))
   else (
     Pp.char ctx '#';
     Pp.string ctx value)
@@ -3872,13 +3830,7 @@ let canonical_color_name = function
   | Dim_grey -> Dim_gray
   | other -> other
 
-let pp_transparent_color ctx =
-  (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under minify
-     pick the shorter hex form (Lightning CSS convention). *)
-  if Pp.minified ctx then (
-    Pp.char ctx '#';
-    Pp.string ctx "0000")
-  else Pp.string ctx "transparent"
+let pp_transparent_color ctx = Pp.string ctx "transparent"
 
 let color_of_default_string value =
   let value = String.trim value in
@@ -3978,30 +3930,11 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
     (in_space, hue, color1, percent1, color2, percent2)
 
 and pp_rgb_color ctx = function
-  | Channels { r; g; b } when Pp.minified ctx -> (
-      (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to the
-         [#hex] / named-colour forms. Re-emit through [pp_color] so the same
-         shortening / named lookup applies. *)
-      match rgb_to_hex_string r g b with
-      | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-      | None -> pp_rgb_func ctx (r, g, b, None))
   | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
   | Var v -> pp_rgb_as_color ctx (Var v)
 
 and pp_rgba_color ctx rgb a legacy =
   match rgb with
-  | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a ->
-      Pp.char ctx '#';
-      Pp.string ctx "0000"
-  | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
-      match rgb_to_hex_string r g b with
-      | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-      | None -> pp_rgb_func ctx (r, g, b, None))
-  | Channels { r; g; b } when Pp.minified ctx -> (
-      match (rgb_to_hex_string r g b, alpha_value_byte a) with
-      | Some hex, Some ab ->
-          pp_color ctx (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
-      | _ -> pp_rgb_func ctx (r, g, b, a))
   | Channels { r; g; b } when legacy -> pp_rgba_func ctx (r, g, b, a)
   | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
   | Var v ->
@@ -4011,42 +3944,8 @@ and pp_rgba_color ctx rgb a legacy =
           pp_opt_alpha ctx a)
         ctx (v, a)
 
-and pp_hsl_color ctx h s l a =
-  if Pp.minified ctx then pp_minified_hsl_color ctx h s l a
-  else pp_hsl ctx (h, s, l, a)
-
-and pp_minified_hsl_color ctx h s l a =
-  (* CSS Color 4 4.2.4: an [hsl()] with all-static components converts to sRGB
-     byte channels. Route through the [Hex] arm so the printer picks the
-     shortest spec-equivalent spelling. *)
-  match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
-  | Some hue, Some saturation, Some lightness ->
-      let hue = normalize_hue hue in
-      let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
-      pp_rgb_hex_color ctx r g b a (fun () -> pp_hsl ctx (h, s, l, a))
-  | _ -> pp_hsl ctx (h, s, l, a)
-
-and pp_hwb_color ctx h w b a =
-  if Pp.minified ctx then pp_minified_hwb_color ctx h w b a
-  else pp_hwb ctx (h, w, b, a)
-
-and pp_minified_hwb_color ctx h w b a =
-  (* CSS Color 4 4.2.5: like [hsl()], an [hwb()] with all-static components
-     folds to its sRGB byte channels and routes through [Hex]. *)
-  match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
-  | Some hue, Some whiteness, Some blackness ->
-      let hue = normalize_hue hue in
-      let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
-      pp_rgb_hex_color ctx r g blue a (fun () -> pp_hwb ctx (h, w, b, a))
-  | _ -> pp_hwb ctx (h, w, b, a)
-
-and pp_rgb_hex_color ctx r g b a fallback =
-  let hex = byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b in
-  match alpha_value_byte a with
-  | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
-  | Some ab ->
-      pp_color ctx (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
-  | Option.None -> fallback ()
+and pp_hsl_color ctx h s l a = pp_hsl ctx (h, s, l, a)
+and pp_hwb_color ctx h w b a = pp_hwb ctx (h, w, b, a)
 
 and pp_light_dark_color ctx light dark =
   Pp.call "light-dark"
@@ -4068,20 +3967,6 @@ and pp_color_attr ctx name fallback =
     fallback;
   Pp.char ctx ')'
 
-and pp_named_color ctx name =
-  if Pp.minified ctx then pp_minified_named_color ctx name
-  else pp_color_name ctx name
-
-and pp_minified_named_color ctx name =
-  (* Pick the shortest spec-equivalent spelling. Per README's minified policy,
-     the hex form wins when it is at most as long as the name. *)
-  let canonical = canonical_color_name name in
-  let name_str, hex = color_name_hex canonical in
-  let shortened = if hex = "" then "" else shorten_hex hex in
-  if hex = "" || String.length shortened + 1 > String.length name_str then
-    pp_color_name ctx canonical
-  else pp_color ctx (Hex { hash = true; value = hex })
-
 and pp_color_var (ctx : Pp.ctx) (v : color var) =
   match v with
   | { fallback = Syntax_fallback value; default = Option.None; _ }
@@ -4097,90 +3982,7 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
       | Option.None -> pp_var pp_color ctx v)
   | _ -> pp_var pp_color ctx v
 
-and pp_srgb_mix_color ctx color1 percent1 color2 percent2 =
-  match color_mix_percentages percent1 percent2 with
-  | Some (p1, p2) -> (
-      match
-        mix_srgb_bytes
-          (resolve_static_srgb color1)
-          (resolve_static_srgb color2)
-          ~p1 ~p2
-      with
-      | Some (r, g, b, 255) ->
-          pp_color ctx
-            (Hex
-               {
-                 hash = true;
-                 value =
-                   byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b;
-               })
-      | Some (r, g, b, a) ->
-          pp_color ctx
-            (Hex
-               {
-                 hash = true;
-                 value =
-                   byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
-                   ^ byte_to_hex_byte a;
-               })
-      | Option.None ->
-          pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2)
-  | None -> pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2
-
-and pp_lab_mix_color ctx in_space color1 percent1 color2 percent2 =
-  match color_mix_percentages percent1 percent2 with
-  | Some (p1, p2) -> (
-      let cross_space =
-        match in_space with
-        | Some (Lab : color_space) -> mix_in_lab_space color1 color2 ~p1 ~p2
-        | Some Oklab -> mix_in_oklab_space color1 color2 ~p1 ~p2
-        | Some Lch -> mix_in_lch_space color1 color2 ~p1 ~p2 Default
-        | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
-        | _ -> None
-      in
-      match mix_lab_family in_space color1 color2 ~p1 ~p2 with
-      | Some color -> pp_color ctx color
-      | None -> (
-          match cross_space with
-          | Some color -> pp_color ctx color
-          | None ->
-              pp_color_mix ctx in_space Default color1 percent1 color2 percent2)
-      )
-  | None -> pp_color_mix ctx in_space Default color1 percent1 color2 percent2
-
-and pp_color : color Pp.t =
- fun ctx color ->
-  match (color, Pp.minified ctx) with
-  | ( ( Oklab { l = Some _; a = Some _; b = Some _; _ }
-      | Oklch { l = Some _; c = Some _; _ }
-      | Lab { l = Some _; a = Some _; b = Some _; _ }
-      | Lch { l = Some _; c = Some _; _ }
-      | Color _ ),
-      true )
-    when not (Pp.in_feature_query ctx) -> (
-      (* CSS Color 4 sec. 13.1.5: at the computed-value boundary an all-static
-         colour expressed in any colour space canonicalises through linear sRGB,
-         then sRGB bytes, then the hex/named shortest-spelling pass. Falls back
-         to the original spelling when the colour resolves out of the sRGB gamut
-         or can't reduce statically (var / calc / missing components). *)
-      match static_color_to_linear_srgb color with
-      | Some (linear, alpha_f) -> (
-          match Color_space.fold_linear_srgb_to_bytes linear with
-          | Some (r, g, b) ->
-              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-              let alpha_byte =
-                Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
-              in
-              let a : alpha =
-                if alpha_byte = 255 then None
-                else if alpha_byte = 0 then Num 0.0
-                else Num (Float.of_int alpha_byte /. 255.0)
-              in
-              pp_rgb_hex_color ctx r g b a (fun () ->
-                  pp_color_default ctx color)
-          | None -> pp_color_default ctx color)
-      | None -> pp_color_default ctx color)
-  | _ -> pp_color_default ctx color
+and pp_color : color Pp.t = fun ctx color -> pp_color_default ctx color
 
 and pp_color_default : color Pp.t =
  fun ctx -> function
@@ -4199,7 +4001,7 @@ and pp_color_default : color Pp.t =
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
-  | Named name -> pp_named_color ctx name
+  | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_color_var ctx v
   | Current ->
@@ -4211,35 +4013,6 @@ and pp_color_default : color Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Mix
-      {
-        in_space = Some Srgb;
-        hue = Default;
-        color1;
-        percent1;
-        color2;
-        percent2;
-      }
-    when Pp.minified ctx ->
-      pp_srgb_mix_color ctx color1 percent1 color2 percent2
-  | Mix
-      {
-        in_space = (Some (Lab | Oklab | Lch | Oklch) | None) as in_space;
-        hue = Default;
-        color1;
-        percent1;
-        color2;
-        percent2;
-      }
-    when Pp.minified ctx ->
-      (* CSS Color 5 sec. 3 makes [in oklab] the default interpolation space, so
-         the [in_space = None] case folds the same as [Some Oklab]. *)
-      let effective =
-        match in_space with
-        | Some _ -> in_space
-        | None -> Some (Oklab : color_space)
-      in
-      pp_lab_mix_color ctx effective color1 percent1 color2 percent2
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
@@ -7003,10 +6776,19 @@ let rec normalize_color ~in_feature_query (c : color) : color =
           | None -> c)
       | None -> c)
   | Hex { value; _ } -> canonical_color_of_hex value
-  | Named _ -> (
-      match minify_color c with
-      | Hex { value; _ } -> canonical_color_of_hex value
-      | other -> other)
+  | Named name ->
+      (* Pick the shortest spelling: a named colour collapses to hex only when
+         the SHORTENED hex is shorter than the name. [canonical_color_name]
+         first folds aliases (grey -> gray) so the choice is made on the
+         canonical spelling. *)
+      let name = canonical_color_name name in
+      let name_str, hex = color_name_hex name in
+      let shortened =
+        if hex = "" then "" else String.lowercase_ascii (shorten_hex hex)
+      in
+      if hex = "" || String.length shortened + 1 > String.length name_str then
+        Named name
+      else canonical_color_of_hex shortened
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
