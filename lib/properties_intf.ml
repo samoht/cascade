@@ -279,6 +279,7 @@ type flex_factor =
   | Unset
   | Revert
   | Revert_layer
+  | Calc of flex_factor calc
   | Var of flex_factor var
 
 type align_content =
@@ -2395,12 +2396,7 @@ type background_size =
   | Auto
   | Cover
   | Contain
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Vw of float
-  | Vh of float
+  | Length of length
   | Size of length * length
   | Inherit
   | Initial

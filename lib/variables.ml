@@ -681,7 +681,11 @@ let vars_of_background_image (value : Properties.background_image) :
 
 let vars_of_background_size (value : Properties.background_size) : any_var list
     =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Length l -> vars_of_length l
+  | Size (w, h) -> vars_of_length w @ vars_of_length h
+  | _ -> []
 
 let vars_of_columns_value (value : Properties.columns_value) : any_var list =
   match value with
@@ -888,7 +892,7 @@ let vars_of_flex_flow (value : Properties.flex_flow) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_flex_factor (value : Properties.flex_factor) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
 
 let vars_of_align_content (value : Properties.align_content) =
   match value with Var v -> [ V v ] | _ -> []
