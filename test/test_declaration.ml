@@ -58,9 +58,12 @@ let complex_values () =
   check_declaration ~expected:"margin:10px 20px 30px 40px"
     "margin: 10px 20px 30px 40px;";
 
-  (* Gradients *)
-  check_declaration ~expected:"background:linear-gradient(90deg,red,#00f)"
+  (* Gradients. pp holds the side keyword and Named blue; side->angle and
+     Named->hex are optimize folds. *)
+  check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background: linear-gradient(to right, red, blue);";
+  check_decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -807,8 +810,11 @@ let list_properties () =
   check_declaration ~expected:"background-image:none" "background-image: none";
   check_declaration ~expected:"background-image:url(image.png)"
     "background-image: url(image.png)";
-  check_declaration ~expected:"background-image:linear-gradient(90deg,red,#00f)"
+  check_declaration
+    ~expected:"background-image:linear-gradient(to right,red,blue)"
     "background-image: linear-gradient(to right, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
   check_declaration ~expected:"background-image:url(a.png),url(b.png)"
     "background-image: url(a.png), url(b.png)";
 
@@ -1529,19 +1535,35 @@ let spec_values_l45_edges () =
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
+      (* pp holds the authored node: the Named blue, the rgb()/alpha, the turn
+         unit, the position keywords. The colour cross-fold, angle conversion and
+         position canonicalization are optimize transforms. *)
       ( "background: conic-gradient(from 45deg, red, blue)",
-        "background:conic-gradient(from 45deg,red,#00f)" );
+        "background:conic-gradient(from 45deg,red,blue)" );
       ( "background: cross-fade(url(a.png) 40%, url(b.png))",
         "background:cross-fade(url(a.png) 40%,url(b.png))" );
       ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
-        "filter:drop-shadow(0 0 2px #0006)" );
+        "filter:drop-shadow(0 0 2px rgb(0 0 0/.4))" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
-        "transform:translate(10px,20%)rotate(90deg)scale(1.2)" );
-      ("background-position: left 10px top 20%", "background-position:10px 20%");
+        "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
+      ( "background-position: left 10px top 20%",
+        "background-position:left 10px top 20%" );
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
       ( "clip-path: xywh(0 0 100% 100% round 10px)",
         "clip-path:xywh(0 0 100% 100% round 10px)" );
     ];
+  (* optimize+minify owns the folds pp holds above: Named->hex, rgb()->hex,
+     turn->shortest angle, and the position-keyword canonicalization. *)
+  check_decl_optimizes ~prop:"background"
+    ~into:"conic-gradient(from 45deg,red,#00f)"
+    "conic-gradient(from 45deg, red, blue)";
+  check_decl_optimizes ~prop:"filter" ~into:"drop-shadow(0 0 2px #0006)"
+    "drop-shadow(0 0 2px rgb(0 0 0 / .4))";
+  check_decl_optimizes ~prop:"transform"
+    ~into:"translate(10px,20%)rotate(90deg)scale(1.2)"
+    "translate(10px, 20%) rotate(.25turn) scale(1.2)";
+  check_decl_optimizes ~prop:"background-position" ~into:"10px 20%"
+    "left 10px top 20%";
   List.iter
     (fun input -> neg_cursor read_declaration input)
     [
@@ -1814,8 +1836,10 @@ let test_declaration () =
 
   (* Complex values. Per CSS Transforms 1 section 11 the printer drops
      whitespace between back-to-back transform functions under minify. *)
-  check_declaration ~expected:"background:linear-gradient(90deg,red,#00f)"
+  check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background:linear-gradient(to right,red,blue)";
+  check_decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right,red,blue)";
   check "transform:translateX(10px)rotate(45deg)";
   check "font-family:Arial,sans-serif";
 

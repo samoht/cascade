@@ -633,7 +633,10 @@ let test_length_percentage () =
   check_length_percentage "50%";
   check_length_percentage "0";
   check_length_percentage "0%";
-  check_length_percentage ~expected:"0" "0px";
+  (* pp holds the unit; stripping a zero length to unitless 0 is an optimize
+     transform (type change <length> -> <number>). *)
+  check_length_percentage "0px";
+  check_decl_optimizes ~prop:"width" ~into:"0" "0px";
   neg_cursor read_length_percentage "invalid";
   neg_cursor read_length_percentage "abc";
   neg_cursor read_length_percentage ""

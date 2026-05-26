@@ -1658,8 +1658,12 @@ let test_background_box () =
 let test_background () =
   check_background "red";
   check_background "url(image.png)";
-  check_background ~expected:"linear-gradient(90deg,red,#00f)"
+  (* pp holds the authored side keyword and Named blue; the side->angle and
+     Named->hex folds are optimize transforms. *)
+  check_background ~expected:"linear-gradient(to right,red,blue)"
     "linear-gradient(to right, red, blue)";
+  check_decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png)50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
   check_background ~expected:"0 0" "none";
@@ -2317,13 +2321,28 @@ let test_background_image () =
   (* CSS Images 4 linear-gradient prelude: [ <angle> | to <side-or-corner> ]? ||
      <color-interpolation-method>. A direction, an interpolation method, or both
      in either order are valid. *)
-  check_background_image ~expected:"linear-gradient(in oklab,red,#00f)"
+  (* pp holds the authored side keyword and Named blue; side->angle and
+     Named->hex are optimize folds. The direction/interpolation pair is stored
+     order-independently, so pp emits the canonical direction-first order. *)
+  check_background_image ~expected:"linear-gradient(in oklab,red,blue)"
     "linear-gradient(in oklab, red, blue)";
-  check_background_image ~expected:"linear-gradient(90deg,red,#00f)"
+  check_background_image ~expected:"linear-gradient(to right,red,blue)"
     "linear-gradient(to right, red, blue)";
-  check_background_image ~expected:"linear-gradient(90deg in oklab,red,#00f)"
+  check_background_image ~expected:"linear-gradient(to right in oklab,red,blue)"
     "linear-gradient(to right in oklab, red, blue)";
-  check_background_image ~expected:"linear-gradient(90deg in oklab,red,#00f)"
+  check_background_image ~expected:"linear-gradient(to right in oklab,red,blue)"
+    "linear-gradient(in oklab to right, red, blue)";
+  (* optimize+minify folds the side keyword to its angle and Named blue to hex. *)
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(in oklab,red,#00f)"
+    "linear-gradient(in oklab, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(90deg in oklab,red,#00f)"
+    "linear-gradient(to right in oklab, red, blue)";
+  check_decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(90deg in oklab,red,#00f)"
     "linear-gradient(in oklab to right, red, blue)";
   check_background_image ~minify:false
     ~expected:"linear-gradient(in oklab, red, blue)"
