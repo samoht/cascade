@@ -167,10 +167,13 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-val normalize_length_percentage : length_percentage -> length_percentage
+val normalize_length_percentage :
+  ?strip:bool -> length_percentage -> length_percentage
 (** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
-    [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
+    [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. [strip]
+    (default [true]) also drops a wrapped zero length's unit; pass [strip:false]
+    for CSS function operands. *)
 
 val normalize_length : ?strip:bool -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
