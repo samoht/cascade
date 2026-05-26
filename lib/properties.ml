@@ -6811,18 +6811,17 @@ let canonicalise_transform : transform -> transform = function
    angle and number-percentage operands still fold through their own printers.
    Running this before [canonicalise_transform] lets the zero-checks see a folded
    [calc()]. *)
-let normalize_transform_leaves : transform -> transform = function
-  | Translate (x, y) ->
-      Translate (Values.normalize_length x, Option.map Values.normalize_length y)
-  | Translate_x x -> Translate_x (Values.normalize_length x)
-  | Translate_y y -> Translate_y (Values.normalize_length y)
-  | Translate_z z -> Translate_z (Values.normalize_length z)
-  | Translate_3d (x, y, z) ->
-      Translate_3d
-        ( Values.normalize_length x,
-          Values.normalize_length y,
-          Values.normalize_length z )
-  | Perspective l -> Perspective (Values.normalize_length l)
+let normalize_transform_leaves : transform -> transform =
+  (* The translate / perspective operands are inside a function, so they keep a
+     zero's unit ([translate(0px)] stays). *)
+  let nl = Values.normalize_length ~strip:false in
+  function
+  | Translate (x, y) -> Translate (nl x, Option.map nl y)
+  | Translate_x x -> Translate_x (nl x)
+  | Translate_y y -> Translate_y (nl y)
+  | Translate_z z -> Translate_z (nl z)
+  | Translate_3d (x, y, z) -> Translate_3d (nl x, nl y, nl z)
+  | Perspective l -> Perspective (nl l)
   | other -> other
 
 let rec normalize_transform (t : transform) : transform =

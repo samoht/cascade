@@ -683,32 +683,22 @@ let pp_calc_presolved : type a. a Pp.t -> a calc Pp.t =
 
 (* Small helpers *)
 
-let pp_unit ?(always = true) ctx f suffix =
-  (* Dropping the unit on a zero ([0px] -> [0]) is a minify-only
-     canonicalization per CSS Values 4 6.5; pretty mode preserves the source
-     spelling. Inside a [calc()] / function context the unit is a typed-boundary
-     and must be kept (CSS Values 4 10.x): [clamp(0px, 0em, 0vh)] is not the
-     foldable [clamp(0, 0, 0)], so stripping the units there would make a
-     non-foldable expression masquerade as a foldable one and break round-trip
-     idempotency. *)
-  let always =
-    always || (not (Pp.minified ctx)) || ctx.Pp.in_calc || ctx.Pp.in_function
+let pp_unit ?always:_ ctx f suffix =
+  (* Pure serialiser: the unit is always kept, even on a zero. Dropping it
+     ([0px] -> [0]) changes the node ([Px 0.] -> [Zero]) and is gated to
+     top-level (a calc / function operand keeps its unit), so it is an AST
+     rewrite in the optimize pass, not a printer choice. *)
+  (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on fractional
+     values ([.25rem], not [0.25rem]) in both modes; under minify round to 6
+     significant digits so a [calc()]-folded result emits [70.7107px] rather
+     than an 8-decimal float. *)
+  let rendered =
+    if Pp.minified ctx then
+      Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
+    else Pp.string_of_float ~drop_leading_zero:true f
   in
-  if f = 0. && not always then Pp.char ctx '0'
-  else
-    (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on
-       fractional values ([.25rem], not [0.25rem]); we follow that canonical
-       form in both minified and pretty output. Round to 6 significant digits
-       under minify so [calc()]-folded results like [sin(45deg) * 100px] emit
-       [70.7107px] instead of an 8-decimal float. Pretty mode keeps the
-       full-precision spelling. *)
-    let rendered =
-      if Pp.minified ctx then
-        Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
-      else Pp.string_of_float ~drop_leading_zero:true f
-    in
-    Pp.string ctx rendered;
-    Pp.string ctx suffix
+  Pp.string ctx rendered;
+  Pp.string ctx suffix
 
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
@@ -3302,64 +3292,75 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
    clamp reduce to one dimension when the operands share a unit; round / mod /
    rem / hypot / abs fold on [px] operands; calc folds through the generic
    simplifier. A non-static operand keeps the call. *)
-let rec normalize_length (l : length) : length =
-  match l with
-  | Calc cv -> (
-      match
-        cv |> eval_length_calc |> linear_length_calc |> eval_length_calc
-      with
-      | Val v -> v
-      | folded -> Calc folded)
-  | Clamp (mn, v, mx) ->
-      let mn = normalize_length mn
-      and v = normalize_length v
-      and mx = normalize_length mx in
-      if mn = v && v = mx then v else Clamp (mn, v, mx)
-  | Min xs -> (
-      let xs = List.map normalize_length xs in
-      match try_reduce_typed_min_max xs Float.min with
-      | Some r -> r
-      | None -> Min xs)
-  | Max xs -> (
-      let xs = List.map normalize_length xs in
-      match try_reduce_typed_min_max xs Float.max with
-      | Some r -> r
-      | None -> Max xs)
-  | Minmax (mn, mx) -> Minmax (normalize_length mn, normalize_length mx)
-  | Round (strategy, value, step) -> (
-      match (normalize_length value, normalize_length step) with
-      | Px v, Px s when s <> 0. -> Px (round_length_step strategy v s)
-      | value, step -> Round (strategy, value, step))
-  | Mod (a, b) -> (
-      match (normalize_length a, normalize_length b) with
-      | Px a, Px b when b <> 0. -> Px (a -. (Float.floor (a /. b) *. b))
-      | a, b -> Mod (a, b))
-  | Rem_fn (a, b) -> (
-      match (normalize_length a, normalize_length b) with
-      | Px a, Px b when b <> 0. -> Px (Float.rem a b)
-      | a, b -> Rem_fn (a, b))
-  | Hypot xs -> (
-      let xs = List.map normalize_length xs in
-      match xs with
-      | [ (Px _ as v) ] -> v
-      | _ -> (
-          match px_values xs with
-          | Some (_ :: _ as vs) ->
-              Px
-                (Float.sqrt
-                   (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs))
-          | _ -> Hypot xs))
-  | Abs v -> (
-      match normalize_length v with Px x -> Px (Float.abs x) | v -> Abs v)
-  | Sign v -> Sign (normalize_length v)
-  | Fit_content_arg arg -> Fit_content_arg (normalize_length arg)
-  | Calc_size (basis, calc) -> (
-      let basis = normalize_length basis in
-      match
-        calc |> eval_length_calc |> linear_length_calc |> eval_length_calc
-      with
-      | folded -> Calc_size (basis, folded))
-  | _ -> l
+(* CSS Values 4 sec. 6.5: a zero [<length>] drops its unit ([0px] -> [0]). That
+   leaves [<length>] for [<number>], so it is a type-changing rewrite, not a
+   shorter spelling - the printer keeps [0px] and the strip happens here. Only a
+   top-level [<length>] strips: a calc / function operand keeps its unit, and a
+   zero [<percentage>] never strips (unsound: [0%] is not [0] in every context). *)
+let strip_zero_length (l : length) : length =
+  match l with Pct _ | Zero -> l | _ -> if length_is_zero l then Zero else l
+
+(* [strip] is true for a top-level [<length>] (a direct property/shorthand
+   value) and false for a calc / math-function operand, which keeps its unit. *)
+let rec normalize_length ?(strip = true) (l : length) : length =
+  let nf = normalize_length ~strip:false in
+  let result =
+    match l with
+    | Calc cv -> (
+        match
+          cv |> eval_length_calc |> linear_length_calc |> eval_length_calc
+        with
+        | Val v -> v
+        | folded -> Calc folded)
+    | Clamp (mn, v, mx) ->
+        let mn = nf mn and v = nf v and mx = nf mx in
+        if mn = v && v = mx then v else Clamp (mn, v, mx)
+    | Min xs -> (
+        let xs = List.map nf xs in
+        match try_reduce_typed_min_max xs Float.min with
+        | Some r -> r
+        | None -> Min xs)
+    | Max xs -> (
+        let xs = List.map nf xs in
+        match try_reduce_typed_min_max xs Float.max with
+        | Some r -> r
+        | None -> Max xs)
+    | Minmax (mn, mx) -> Minmax (nf mn, nf mx)
+    | Round (strategy, value, step) -> (
+        match (nf value, nf step) with
+        | Px v, Px s when s <> 0. -> Px (round_length_step strategy v s)
+        | value, step -> Round (strategy, value, step))
+    | Mod (a, b) -> (
+        match (nf a, nf b) with
+        | Px a, Px b when b <> 0. -> Px (a -. (Float.floor (a /. b) *. b))
+        | a, b -> Mod (a, b))
+    | Rem_fn (a, b) -> (
+        match (nf a, nf b) with
+        | Px a, Px b when b <> 0. -> Px (Float.rem a b)
+        | a, b -> Rem_fn (a, b))
+    | Hypot xs -> (
+        let xs = List.map nf xs in
+        match xs with
+        | [ (Px _ as v) ] -> v
+        | _ -> (
+            match px_values xs with
+            | Some (_ :: _ as vs) ->
+                Px
+                  (Float.sqrt
+                     (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs))
+            | _ -> Hypot xs))
+    | Abs v -> ( match nf v with Px x -> Px (Float.abs x) | v -> Abs v)
+    | Sign v -> Sign (nf v)
+    | Fit_content_arg arg -> Fit_content_arg (nf arg)
+    | Calc_size (basis, calc) -> (
+        let basis = nf basis in
+        match
+          calc |> eval_length_calc |> linear_length_calc |> eval_length_calc
+        with
+        | folded -> Calc_size (basis, folded))
+    | _ -> l
+  in
+  if strip then strip_zero_length result else result
 
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
