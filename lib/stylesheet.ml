@@ -1839,7 +1839,7 @@ let read_unicode_range_descriptor r =
     (fun vs -> Unicode_range vs)
     r
 
-let font_variant_descriptor_value_of_ident = function
+let font_variant_desc_value = function
   | "common-ligatures" ->
       Some (Font_variant_ligature Properties.Common_ligatures)
   | "no-common-ligatures" ->
@@ -1937,9 +1937,7 @@ let validate_font_variant_descriptor_values r values =
 
 let read_font_variant_descriptor_value r =
   let ident = Cursor.ident ~keep_case:false r in
-  match
-    font_variant_descriptor_value_of_ident (String.lowercase_ascii ident)
-  with
+  match font_variant_desc_value (String.lowercase_ascii ident) with
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 

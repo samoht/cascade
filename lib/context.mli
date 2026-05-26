@@ -72,8 +72,8 @@ type query = {
 (** Explicit context for media/supports/container query transforms. *)
 
 type loader = { base_url : string option; imports : (string * string) list }
-(** Explicit context for URL and [@import] transforms. [imports] maps import
-    URLs to stylesheet source text. *)
+(** Explicit context for URL and [@import] transforms. {!field-imports} maps
+    import URLs to stylesheet source text. *)
 
 type animation = {
   timeline_time : string option;
@@ -146,8 +146,8 @@ val query :
   ?container_features:Container.t list ->
   unit ->
   query
-(** [query ()] constructs a media/supports/container context. Build [supports]
-    entries with {!Supports.property} and {!Supports.func}. *)
+(** [query ()] constructs a media/supports/container context. Build
+    {!field-supports} entries with {!Supports.property} and {!Supports.func}. *)
 
 val empty_loader : loader
 (** Empty URL/import-loader context. *)
@@ -267,8 +267,8 @@ val matches_container : query -> ?name:string -> Container.t -> bool
     query state in [q]. *)
 
 val resolve_url : loader -> string -> (string, string) result
-(** [resolve_url loader href] resolves [href] against [loader.base_url] using
-    simple relative-URL handling. *)
+(** [resolve_url loader href] resolves [href] against
+    {!type-loader.field-base_url} using simple relative-URL handling. *)
 
 val import_source : string -> loader -> string option
 (** [import_source url ctx] looks up imported stylesheet text. *)
@@ -283,9 +283,9 @@ val load_import :
   Stylesheet.import_rule ->
   (Stylesheet.t, string) result
 (** [load_import ?query ?layer_order loader rule] loads the stylesheet
-    referenced by [rule] from [loader.imports], applying any [@import]
-    media/supports/layer guards. Returns [Error] if the import path isn't in
-    [loader.imports] or a guard rejects it. *)
+    referenced by [rule] from {!type-loader.field-imports}, applying any
+    [@import] media/supports/layer guards. Returns [Error] if the import path
+    isn't in {!type-loader.field-imports} or a guard rejects it. *)
 
 val registered_property :
   string -> property_registry -> property_registration option

@@ -24,15 +24,15 @@ let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%.5f %.5f %.5f)" a b c
    in that interval must roundtrip to itself within float epsilon. *)
 let test_srgb_roundtrip buf =
   let v = float_of_buf buf 0 in
-  let back = Color_space.linear_to_srgb (Color_space.srgb_to_linear v) in
+  let back = Color_space.srgb_of_linear (Color_space.linear_of_srgb v) in
   if not (approx_eq v back) then failf "sRGB roundtrip %f -> %f" v back
 
 let test_rgb_oklab_roundtrip buf =
   let rgb = triple_of_buf buf in
-  let linear = Color_space.rgb_to_linear_rgb rgb in
+  let linear = Color_space.linear_rgb_of_rgb rgb in
   let back =
-    linear |> Color_space.linear_srgb_to_oklab
-    |> Color_space.oklab_to_linear_srgb
+    linear |> Color_space.oklab_of_linear_srgb
+    |> Color_space.linear_srgb_of_oklab
   in
   if not (approx_eq_triple linear back) then
     failf "linear sRGB <-> OKLab roundtrip %a -> %a" pp_triple linear pp_triple
@@ -42,23 +42,23 @@ let test_lab_lch_roundtrip buf =
   let l = float_of_buf buf 0 *. 100.0 in
   let a = (float_of_buf buf 1 *. 256.0) -. 128.0 in
   let b = (float_of_buf buf 2 *. 256.0) -. 128.0 in
-  let back = (l, a, b) |> Color_space.lab_to_lch |> Color_space.lch_to_lab in
+  let back = (l, a, b) |> Color_space.lch_of_lab |> Color_space.lab_of_lch in
   if not (approx_eq_triple (l, a, b) back) then
     failf "Lab <-> LCH roundtrip %a -> %a" pp_triple (l, a, b) pp_triple back
 
 let test_xyz_bradford_roundtrip buf =
   let xyz = triple_of_buf buf in
-  let back = Color_space.xyz_d50_to_d65 (Color_space.xyz_d65_to_d50 xyz) in
+  let back = Color_space.d65_of_xyz50 (Color_space.d50_of_xyz65 xyz) in
   if not (approx_eq_triple xyz back) then
     failf "XYZ D65 -> D50 -> D65 roundtrip %a -> %a" pp_triple xyz pp_triple
       back
 
 let test_display_p3_roundtrip buf =
   let rgb = triple_of_buf buf in
-  let linear = Color_space.rgb_to_linear_rgb rgb in
+  let linear = Color_space.linear_rgb_of_rgb rgb in
   let back =
-    linear |> Color_space.linear_display_p3_to_xyz_d65
-    |> Color_space.xyz_d65_to_linear_display_p3
+    linear |> Color_space.xyz65_of_linear_p3
+    |> Color_space.linear_p3_of_xyz65
   in
   if not (approx_eq_triple linear back) then
     failf "Display-P3 <-> XYZ roundtrip %a -> %a" pp_triple linear pp_triple

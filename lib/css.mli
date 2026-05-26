@@ -120,33 +120,33 @@ val rule :
 
 val statement_selector : statement -> Selector.t option
 (** [statement_selector stmt] returns [Some selector] if the statement is a
-    rule, [None] otherwise. *)
+    rule, {!constructor-None} otherwise. *)
 
 val statement_declarations : statement -> declaration list option
 (** [statement_declarations stmt] returns [Some declarations] if the statement
-    is a rule, [None] otherwise. *)
+    is a rule, {!constructor-None} otherwise. *)
 
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
-    statement is a rule, [None] otherwise. *)
+    statement is a rule, {!constructor-None} otherwise. *)
 
 val as_layer : statement -> (string option * statement list) option
 (** [as_layer stmt] returns [Some (name, statements)] if the statement is a
-    layer, [None] otherwise. *)
+    layer, {!constructor-None} otherwise. *)
 
 val as_media : statement -> (Media.t * statement list) option
 (** [as_media stmt] returns [Some (condition, statements)] if the statement is a
-    media query, [None] otherwise. *)
+    media query, {!constructor-None} otherwise. *)
 
 val as_container :
   statement -> (string option * Container.t option * statement list) option
 (** [as_container stmt] returns [Some (name, condition, statements)] if the
-    statement is a container query, [None] otherwise. *)
+    statement is a container query, {!constructor-None} otherwise. *)
 
 val as_supports : statement -> (Supports.t * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
-    is a supports query, [None] otherwise. *)
+    is a supports query, {!constructor-None} otherwise. *)
 
 val is_nested_media : statement -> bool
 (** [is_nested_media stmt] returns [true] if the statement is a media query
@@ -159,7 +159,7 @@ val is_nested_supports : statement -> bool
 
 val as_declarations : statement -> declaration list option
 (** [as_declarations stmt] returns [Some decls] if the statement is a bare
-    declarations block (used in CSS nesting), [None] otherwise. *)
+    declarations block (used in CSS nesting), {!constructor-None} otherwise. *)
 
 val with_origin : cascade_origin -> statement list -> statement
 (** [with_origin cascade_origin statements] records the cascade origin for a
@@ -167,7 +167,7 @@ val with_origin : cascade_origin -> statement list -> statement
 
 val as_origin : statement -> (cascade_origin * statement list) option
 (** [as_origin stmt] returns [Some (origin, statements)] if the statement is an
-    origin wrapper, [None] otherwise. *)
+    origin wrapper, {!constructor-None} otherwise. *)
 
 val origin_importance_rank : important:bool -> cascade_origin -> int
 (** [origin_importance_rank ~important origin] returns the cascade precedence
@@ -213,8 +213,8 @@ val eval_stylesheet :
 
 val import_layer_name : Stylesheet.import_rule -> string option
 (** [import_layer_name rule] returns the layer name declared by an [@import]
-    rule: [None] means no layer, [Some ""] means an anonymous layer, and
-    [Some name] is a named layer. *)
+    rule: {!constructor-None} means no layer, [Some ""] means an anonymous
+    layer, and [Some name] is a named layer. *)
 
 val layer_block_name : statement -> string option
 (** [layer_block_name stmt] returns the declared name of an [@layer] block rule.
@@ -281,7 +281,7 @@ val declared_values :
 
 val cascaded_value : Stylesheet.cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or
-    [None] when no candidate contributes a value. *)
+    {!constructor-None} when no candidate contributes a value. *)
 
 val compare_cascade_candidate :
   layer_order:string list ->
@@ -372,8 +372,9 @@ type property_info =
 
 val as_property : statement -> property_info option
 (** [as_property stmt] returns [Some (Property_info {...})] if the statement is
-    a [@property] declaration, [None] otherwise. The existential type preserves
-    the relationship between syntax type and initial value type. *)
+    a [@property] declaration, {!constructor-None} otherwise. The existential
+    type preserves the relationship between syntax type and initial value type.
+*)
 
 type keyframe = Stylesheet.keyframe
 (** Type for keyframe selectors and their declarations *)
@@ -402,15 +403,15 @@ val keyframes : string -> keyframe list -> statement
 
 val as_keyframes : statement -> (string * keyframe list) option
 (** [as_keyframes stmt] returns [Some (name, frames)] if the statement is a
-    [@keyframes] animation, [None] otherwise. *)
+    [@keyframes] animation, {!constructor-None} otherwise. *)
 
 val as_font_face : statement -> Stylesheet.font_face_descriptor list option
 (** [as_font_face stmt] returns [Some descriptors] if the statement is a
-    [@font-face] rule, [None] otherwise. *)
+    [@font-face] rule, {!constructor-None} otherwise. *)
 
 val as_import : statement -> Stylesheet.import_rule option
 (** [as_import stmt] returns [Some import_rule] if the statement is an [@import]
-    rule, [None] otherwise. *)
+    rule, {!constructor-None} otherwise. *)
 
 (** {2:at_rules At-Rules}
 
@@ -473,8 +474,8 @@ val layers : t -> string list
 
 val layer_block : string -> t -> statement list option
 (** [layer_block name sheet] extracts the statements from the named layer
-    [@layer name] in the stylesheet. Returns [None] if the layer is not found.
-*)
+    [@layer name] in the stylesheet. Returns {!constructor-None} if the layer is
+    not found. *)
 
 val rules_of_statements : statement list -> (Selector.t * declaration list) list
 (** [rules_of_statements stmts] extracts all CSS rules (selector + declarations)
@@ -491,7 +492,7 @@ val theme_guarded : var_name:string -> declaration -> declaration
 
 val as_theme_guarded : declaration -> (string * declaration) option
 (** [as_theme_guarded decl] returns [Some (var_name, inner_decl)] if [decl] is a
-    theme-guarded declaration, [None] otherwise. *)
+    theme-guarded declaration, {!constructor-None} otherwise. *)
 
 val custom_props_of_rules : (Selector.t * declaration list) list -> string list
 (** [custom_props_of_rules rules] extracts all custom property names from the
@@ -644,7 +645,8 @@ and math_fn = Values.math_fn =
   | Abs_n of math_arg
 
 (** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians).
-    [Angle_op] and [Angle_parens] support arithmetic over angles. *)
+    {!constructor-Angle_op} and {!constructor-Angle_parens} support arithmetic
+    over angles. *)
 and angle_arg = Values.angle_arg =
   | Angle_deg of float
   | Angle_rad of float
@@ -832,42 +834,42 @@ module Calc : sig
   (** [div left right] is [left / right]. *)
 
   val ( + ) : 'a calc -> 'a calc -> 'a calc
-  (** [(+)] is {!add}. *)
+  (** [x + y] is {!add} [x] [y]. *)
 
   val ( - ) : 'a calc -> 'a calc -> 'a calc
-  (** [(-)] is {!sub}. *)
+  (** [x - y] is {!sub} [x] [y]. *)
 
   val ( * ) : 'a calc -> 'a calc -> 'a calc
-  (** [( * )] is {!mul}. *)
+  (** [x * y] is {!mul} [x] [y]. *)
 
   val ( / ) : 'a calc -> 'a calc -> 'a calc
-  (** [(/)] is {!div}. *)
+  (** [x / y] is {!div} [x] [y]. *)
 
   val length : length -> length calc
-  (** [length len] is [len] lifted into [calc]. *)
+  (** [length len] is [len] lifted into {!type-calc}. *)
 
   val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
-  (** [var ?default ?fallback name] is a variable reference for [calc]
+  (** [var ?default ?fallback name] is a variable reference for {!type-calc}
       expressions. Example: [var "spacing"] or
       [var ~fallback:(Rem 1.2) "tw-leading"]. *)
 
   val float : float -> length calc
-  (** [float f] is a numeric value for [calc] expressions. *)
+  (** [float f] is a numeric value for {!type-calc} expressions. *)
 
   val infinity : length calc
-  (** [infinity] is the CSS infinity value for [calc] expressions. *)
+  (** [infinity] is the CSS infinity value for {!type-calc} expressions. *)
 
   val px : float -> length calc
-  (** [px n] is a pixel value for [calc] expressions. *)
+  (** [px n] is a pixel value for {!type-calc} expressions. *)
 
   val rem : float -> length calc
-  (** [rem f] is a rem value for [calc] expressions. *)
+  (** [rem f] is a rem value for {!type-calc} expressions. *)
 
   val em : float -> length calc
-  (** [em f] is an em value for [calc] expressions. *)
+  (** [em f] is an em value for {!type-calc} expressions. *)
 
   val pct : float -> length calc
-  (** [pct f] is a percentage value for [calc] expressions. *)
+  (** [pct f] is a percentage value for {!type-calc} expressions. *)
 
   val nested : 'a calc -> 'a calc
   (** [nested inner] wraps [inner] in an explicit nested [calc()] call. This
@@ -1232,8 +1234,8 @@ val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] is an OKLAB color with alpha in [0., 1.]. *)
 
 val oklaba_none_zeros : float -> float -> float -> float -> color
-(** [oklaba_none_zeros l a b alpha] is like [oklaba] but uses [none] for zero
-    a/b components. *)
+(** [oklaba_none_zeros l a b alpha] is like {!val-oklaba} but uses [none] for
+    zero a/b components. *)
 
 val lch : float -> float -> float -> color
 (** [lch l c h] is an LCH color. L in percentage (0-100), h in degrees. *)
@@ -1276,8 +1278,8 @@ val color_mix_var_percent :
   color ->
   color ->
   color
-(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
-    but uses a CSS var reference for the first percentage. *)
+(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like
+    {!val-color_mix} but uses a CSS var reference for the first percentage. *)
 
 val color_mix_var_pct_fallback :
   ?in_space:color_space ->
@@ -1288,8 +1290,8 @@ val color_mix_var_pct_fallback :
   color ->
   color
 (** [color_mix_var_pct_fallback ?in_space ?hue ~var_name ~fallback c1 c2] is
-    like [color_mix_var_percent] but with an explicit fallback on the percentage
-    variable. Used for named opacity modifiers. *)
+    like {!val-color_mix_var_percent} but with an explicit fallback on the
+    percentage variable. Used for named opacity modifiers. *)
 
 (** CSS angle values *)
 type angle = Values.angle =
@@ -1986,7 +1988,7 @@ val break_inside : break_inside_value -> declaration
 
 (** CSS Fragmentation 3 §6 deprecated [page-break-before / -after] alias
     vocabulary; the shorter value list makes these their own type rather than
-    overload [break_value]. *)
+    overload {!type-break_value}. *)
 type page_break_value = Properties.page_break_value =
   | Auto
   | Always
@@ -2054,15 +2056,15 @@ type columns_value = Properties.columns_value =
   | Var of columns_value var
 
 val columns_count : int -> columns_value
-(** [columns_count count] is a column-count value for the [columns] shorthand.
-*)
+(** [columns_count count] is a column-count value for the {!val-columns}
+    shorthand. *)
 
 val columns_width : length -> columns_value
-(** [columns_width width] is a column-width value for the [columns] shorthand.
-*)
+(** [columns_width width] is a column-width value for the {!val-columns}
+    shorthand. *)
 
 val columns_both : length -> int -> columns_value
-(** [columns_both width count] is a combined [columns] shorthand value. *)
+(** [columns_both width count] is a combined {!val-columns} shorthand value. *)
 
 type column_span = Properties.column_span =
   | None
@@ -2719,6 +2721,7 @@ type color_interpolation = Properties.color_interpolation =
   | Var of color_interpolation var  (** Gradient direction values *)
 
 type gradient_direction = Properties.gradient_direction =
+  | Default_direction
   | To_top
   | To_top_right
   | To_right
@@ -3072,10 +3075,10 @@ val mask_layer :
   unit ->
   mask_layer
 (** [mask_layer ?image ?position ?size ?repeat ?origin ?clip ?mode ?composite
-     ()] is one layer for the [mask] shorthand. *)
+     ()] is one layer for the {!val-mask} shorthand. *)
 
 val mask_layers : mask_layer list -> mask
-(** [mask_layers layers] is a comma-separated [mask] shorthand value. *)
+(** [mask_layers layers] is a comma-separated {!val-mask} shorthand value. *)
 
 type background_shorthand = Properties.background_shorthand = {
   color : color option;
@@ -3658,8 +3661,8 @@ type gap = Properties.gap =
   | Var of gap var  (** CSS gap shorthand type. *)
 
 val gaps : ?column:length -> length -> gap
-(** [gaps row] is a one-value [gap] shorthand value. [gaps ~column row] is a
-    two-value [gap] shorthand value with separate row and column gaps. *)
+(** [gaps row] is a one-value {!val-gap} shorthand value. [gaps ~column row] is
+    a two-value {!val-gap} shorthand value with separate row and column gaps. *)
 
 val gap : gap -> declaration
 (** [gap gap] is the
@@ -4276,9 +4279,9 @@ val font_size : length -> declaration
     property. *)
 
 val font_size_kw : font_size -> declaration
-(** [font_size_kw fs] is the font-size property accepting the full [font_size]
-    type including absolute/relative size keywords like [Larger] and [Xx_large].
-*)
+(** [font_size_kw fs] is the font-size property accepting the full
+    {!val-font_size} type including absolute/relative size keywords like
+    {!constructor-Larger} and {!constructor-Xx_large}. *)
 
 val font_weight : font_weight -> declaration
 (** [font_weight weight] is the
@@ -4310,8 +4313,9 @@ type line_height = Properties.line_height =
 val line_height : line_height -> declaration
 (** [line_height height] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/line-height}
-     line-height} property. Accepts [Normal], Length values (e.g., `Length (Rem
-    1.5)`), Number values (e.g., `Num 1.5`), or Percentage values. *)
+     line-height} property. Accepts {!constructor-Normal}, Length values (e.g.,
+    `Length (Rem 1.5)`), Number values (e.g., `Num 1.5`), or Percentage values.
+*)
 
 val letter_spacing : length -> declaration
 (** [letter_spacing spacing] is the
@@ -5159,7 +5163,7 @@ val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property; takes a typed value with 1-4 horizontal radii and
-    optional 1-4 vertical radii separated by [/]. *)
+    optional 1-4 vertical radii separated by {!val-/}. *)
 
 val border_top_left_radius : length -> declaration
 (** [border_top_left_radius radius] is the
@@ -6425,7 +6429,7 @@ type contain = Properties.contain =
   | Var of contain var
 
 val contain_list : contain list -> contain
-(** [contain_list items] is a combined [contain] value. *)
+(** [contain_list items] is a combined {!val-contain} value. *)
 
 val contain : contain -> declaration
 (** [contain contain] is the
@@ -6673,6 +6677,7 @@ type vertical_align = Properties.vertical_align =
   | Rem of float
   | Em of float
   | Pct of float
+  | Calc of vertical_align calc
   | Inherit
   | Initial
   | Unset
@@ -7237,9 +7242,9 @@ val var :
         [ def_radius; border_top_left_radius (Var radius_var) ]
     ]}
 
-    The returned [radius_var] must be wrapped with [Var] when used in CSS
-    properties. In variables mode, it emits "--radius-md: 0.5rem" and uses
-    "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
+    The returned [radius_var] must be wrapped with {!constructor-Var} when used
+    in CSS properties. In variables mode, it emits "--radius-md: 0.5rem" and
+    uses "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
     default equals the defined value. *)
 
 val meta_of_declaration : declaration -> meta option
@@ -7262,12 +7267,13 @@ val custom_property : ?layer:string -> string -> string -> declaration
 
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] is the variable name if [decl] is a custom
-    property declaration, [None] otherwise. *)
+    property declaration, {!constructor-None} otherwise. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer decl] is the declared layer for a custom property
-    declaration if present (e.g., "theme" or "utilities"). It is [None] for
-    non-custom declarations or when no layer metadata is attached. *)
+    declaration if present (e.g., "theme" or "utilities"). It is
+    {!constructor-None} for non-custom declarations or when no layer metadata is
+    attached. *)
 
 (** {1 Printing & Optimization}
 
@@ -7303,10 +7309,10 @@ val pp : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
 (** [pp] is {!to_string}. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }
-(** A partially-recovered parse: the [stylesheet] composed of every rule that
-    validated successfully, plus the [warnings] accumulated for rules that were
-    dropped or section 5.3-recovered. Each warning is an [Error.t] stamped with
-    the source [filename] when one was supplied. *)
+(** A partially-recovered parse: the {!field-stylesheet} composed of every rule
+    that validated successfully, plus the {!field-warnings} accumulated for
+    rules that were dropped or section 5.3-recovered. Each warning is an
+    [Error.t] stamped with the source [filename] when one was supplied. *)
 
 val of_string :
   ?strict:bool ->
@@ -7316,18 +7322,19 @@ val of_string :
   (parse, Error.t) result
 (** [of_string ?strict css] parses [css] with CSS Syntax 3 section 5.4 recovery.
     Returns [Ok { stylesheet; warnings }] when no fatal syntax error escapes
-    recovery; [warnings] carries every typed diagnostic the parser collected
-    (unknown at-rules, unknown properties, invalid values, ...). With
-    [~strict:true] a non-empty [warnings] list collapses to [Error] (first
-    warning) - useful in linters and CI gates that want to fail on any spec
-    deviation. [?meta] controls diagnostic richness; see {!Loc.meta_level}. *)
+    recovery; {!field-warnings} carries every typed diagnostic the parser
+    collected (unknown at-rules, unknown properties, invalid values, ...). With
+    [~strict:true] a non-empty {!field-warnings} list collapses to [Error]
+    (first warning) - useful in linters and CI gates that want to fail on any
+    spec deviation. [?meta] controls diagnostic richness; see {!Loc.meta_level}.
+*)
 
 val of_string_exn :
   ?strict:bool -> ?filename:string -> ?meta:Loc.meta_level -> string -> t
 (** [of_string_exn ?strict css] parses [css] like {!of_string}, raises
     {!Error.Parse_error} instead of returning [Error], and discards the
-    [warnings] list. In non-strict mode warnings are silently dropped; with
-    [~strict:true] any warning escalates to a raise. *)
+    {!field-warnings} list. In non-strict mode warnings are silently dropped;
+    with [~strict:true] any warning escalates to a raise. *)
 
 (** {2:optimization Optimization}
 
@@ -7391,10 +7398,10 @@ val inline_imports :
 (** [inline_imports ?query ?layer_order loader stylesheet] replaces every
     [@import] rule in [stylesheet] with the body of the imported stylesheet
     looked up through [loader]. Imports the loader cannot resolve, or that fail
-    their [media]/[supports]/[layer] guard, are left in place. The walk descends
-    into nested at-rules and rule bodies, so imports declared inside them are
-    inlined too; the caller is responsible for preloading [loader.imports] with
-    every transitively-referenced stylesheet body. *)
+    their {!val-media}/{!val-supports}/{!val-layer} guard, are left in place.
+    The walk descends into nested at-rules and rule bodies, so imports declared
+    inside them are inlined too; the caller is responsible for preloading
+    [loader.imports] with every transitively-referenced stylesheet body. *)
 
 (** CSS will-change property values for performance optimization hints. *)
 type will_change = Properties.will_change =
@@ -7525,8 +7532,8 @@ val pp_justify_content : justify_content Pp.t
 
 val media_min_width_length : length -> Media.t
 (** [media_min_width_length l] creates a [min-width] media condition from a CSS
-    length. Bridges the type gap between [Css.length] and [Media]'s internal
-    length type. *)
+    length. Bridges the type gap between [Css.length] and {!module-Media}'s
+    internal length type. *)
 
 val media_not_min_width_length : length -> Media.t
 (** [media_not_min_width_length l] creates a negated [min-width] media condition
@@ -7534,17 +7541,18 @@ val media_not_min_width_length : length -> Media.t
 
 val parse_length : string -> length option
 (** [parse_length s] parses a CSS length string (including [calc()] expressions)
-    using the CSS reader. Returns [None] if parsing fails. *)
+    using the CSS reader. Returns {!constructor-None} if parsing fails. *)
 
 val parse_color : string -> color option
 (** [parse_color s] parses a CSS color string (e.g., ["rgba(48,163,0,0.14)"],
-    ["oklch(0.5 0.2 240)"]) using the CSS reader. Returns [None] if parsing
-    fails. *)
+    ["oklch(0.5 0.2 240)"]) using the CSS reader. Returns {!constructor-None} if
+    parsing fails. *)
 
 val parse_shadow : string -> shadow option
 (** [parse_shadow s] parses a CSS shadow string, including comma-separated
-    multi-shadow values. Returns [None] if parsing fails. *)
+    multi-shadow values. Returns {!constructor-None} if parsing fails. *)
 
 val parse_background_image : string -> background_image list option
 (** [parse_background_image s] parses a CSS background-image value, including
-    comma-separated multiple images. Returns [None] if parsing fails. *)
+    comma-separated multiple images. Returns {!constructor-None} if parsing
+    fails. *)

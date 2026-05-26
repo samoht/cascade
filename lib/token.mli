@@ -87,3 +87,4 @@ val pp : t Pp.t
 (** [pp] renders a located token, e.g. [<ident foo>@[3-6]]. *)
 
 val to_string : t -> string
+(** [to_string token] renders a located token. *)

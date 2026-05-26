@@ -692,48 +692,49 @@ let try_compose_box_important_split ~extract ~build = function
       | _ -> None)
   | _ -> None
 
+let build_margin_box ~important ~top ~right ~bottom ~left =
+  Declaration
+    { property = Margin; value = [ top; right; bottom; left ]; important }
+
+let build_padding_box ~important ~top ~right ~bottom ~left =
+  Declaration
+    { property = Padding; value = [ top; right; bottom; left ]; important }
+
+let build_inset_box ~important ~top ~right ~bottom ~left =
+  Declaration
+    { property = Inset; value = [ top; right; bottom; left ]; important }
+
+let build_border_radius_box ~important ~top ~right ~bottom ~left =
+  let lp v : Values.length_percentage = Length v in
+  Declaration
+    {
+      property = Border_radius;
+      value =
+        Radius
+          {
+            horizontal = [ lp top; lp right; lp bottom; lp left ];
+            vertical = None;
+          };
+      important;
+    }
+
 let compose_box_shorthands ~ctx decls =
-  let build_margin ~important ~top ~right ~bottom ~left =
-    Declaration
-      { property = Margin; value = [ top; right; bottom; left ]; important }
-  in
-  let build_padding ~important ~top ~right ~bottom ~left =
-    Declaration
-      { property = Padding; value = [ top; right; bottom; left ]; important }
-  in
-  let build_border_radius ~important ~top ~right ~bottom ~left =
-    let lp v : Values.length_percentage = Length v in
-    Declaration
-      {
-        property = Border_radius;
-        value =
-          Radius
-            {
-              horizontal = [ lp top; lp right; lp bottom; lp left ];
-              vertical = None;
-            };
-        important;
-      }
-  in
-  let build_inset ~important ~top ~right ~bottom ~left =
-    Declaration
-      { property = Inset; value = [ top; right; bottom; left ]; important }
-  in
   let composers =
     [
-      try_compose_box ~ctx ~extract:extract_margin_side ~build:build_margin;
-      try_compose_box ~ctx ~extract:extract_padding_side ~build:build_padding;
-      try_compose_box ~ctx ~extract:extract_inset_side ~build:build_inset;
+      try_compose_box ~ctx ~extract:extract_margin_side ~build:build_margin_box;
+      try_compose_box ~ctx ~extract:extract_padding_side
+        ~build:build_padding_box;
+      try_compose_box ~ctx ~extract:extract_inset_side ~build:build_inset_box;
       try_compose_box ~ctx ~extract:extract_border_radius_corner
-        ~build:build_border_radius;
+        ~build:build_border_radius_box;
       try_compose_box_important_split ~extract:extract_margin_side
-        ~build:build_margin;
+        ~build:build_margin_box;
       try_compose_box_important_split ~extract:extract_padding_side
-        ~build:build_padding;
+        ~build:build_padding_box;
       try_compose_box_important_split ~extract:extract_inset_side
-        ~build:build_inset;
+        ~build:build_inset_box;
       try_compose_box_important_split ~extract:extract_border_radius_corner
-        ~build:build_border_radius;
+        ~build:build_border_radius_box;
     ]
   in
   let try_any decls = List.find_map (fun f -> f decls) composers in
@@ -1613,7 +1614,7 @@ let compose_border_whole_shorthand ~ctx decls =
    [border] shorthand of at least equal importance resets it and no later
    [border-image*] re-establishes it. Intra-block source order is fixed
    regardless of any surrounding CSS, so the drop is safe in every scope. *)
-let drop_border_image_shadowed_by_border kept =
+let drop_bimg_shadowed_by_border kept =
   let is_bimg (_, d) = is_border_image_decl d in
   let is_border (_, d) =
     match d with Declaration { property = Border; _ } -> true | _ -> false
@@ -1650,88 +1651,89 @@ let is_border_image_longhand_decl = function
       true
   | _ -> false
 
+let span_border_image_run =
+  let is_bi d = is_border_image_longhand_decl (snd d) in
+  let rec span acc = function
+    | d :: rest when is_bi d -> span (d :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  span []
+
+let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
+  let need_slice =
+    (Option.is_some width || Option.is_some outset) && Option.is_none slice
+  in
+  List.length run >= 2
+  && same_importance (List.map snd run)
+  && foldable && not need_slice
+
+let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
+  Declaration
+    {
+      property = Border_image;
+      value = { source; slice; width; outset; repeat; mode = None };
+      important = is_important (snd (List.hd run));
+    }
+
+let record_border_image_longhand
+    ~(source : Properties.background_image option ref)
+    ~(slice : Properties.border_image_slice option ref)
+    ~(width : Properties.border_image_width_item list option ref)
+    ~(outset : Properties.border_image_outset_item list option ref)
+    ~(repeat : Properties.border_image_repeat_keyword list option ref) ~foldable
+    ((_, d) : int * declaration) =
+  match d with
+  | Declaration { property = Border_image_source; value; _ } ->
+      source := Some value
+  | Declaration { property = Border_image_slice; value; _ } ->
+      slice := Some value
+  | Declaration { property = Border_image_width; value = Widths l; _ } ->
+      width := Some l
+  | Declaration { property = Border_image_width; _ } -> foldable := false
+  | Declaration { property = Border_image_outset; value = Outsets l; _ } ->
+      outset := Some l
+  | Declaration { property = Border_image_outset; _ } -> foldable := false
+  | Declaration { property = Border_image_repeat; value = Repeats l; _ } ->
+      repeat := Some l
+  | Declaration { property = Border_image_repeat; _ } -> foldable := false
+  | _ -> ()
+
+let compose_border_image_run run =
+  let source : Properties.background_image option ref = ref None in
+  let slice : Properties.border_image_slice option ref = ref None in
+  let width : Properties.border_image_width_item list option ref = ref None in
+  let outset : Properties.border_image_outset_item list option ref = ref None in
+  let repeat : Properties.border_image_repeat_keyword list option ref =
+    ref None
+  in
+  (* A CSS-wide keyword or [var()] in any longhand cannot be folded into the
+     [border_image] record, which holds plain component values. *)
+  let foldable = ref true in
+  List.iter
+    (record_border_image_longhand ~source ~slice ~width ~outset ~repeat
+       ~foldable)
+    run;
+  if
+    not
+      (border_image_run_can_compose run ~foldable:!foldable ~slice:!slice
+         ~width:!width ~outset:!outset)
+  then None
+  else
+    let merged =
+      border_image_shorthand run ~source:!source ~slice:!slice ~width:!width
+        ~outset:!outset ~repeat:!repeat
+    in
+    Some (fst (List.hd run), merged)
+
 let compose_border_image_shorthand ~ctx decls =
   if ctx.scope <> `Stylesheet then decls
   else
     let is_bi d = is_border_image_longhand_decl (snd d) in
-    let rec span acc = function
-      | d :: rest when is_bi d -> span (d :: acc) rest
-      | rest -> (List.rev acc, rest)
-    in
-    let compose_run run =
-      let source : Properties.background_image option ref = ref None in
-      let slice : Properties.border_image_slice option ref = ref None in
-      let width : Properties.border_image_width_item list option ref =
-        ref None
-      in
-      let outset : Properties.border_image_outset_item list option ref =
-        ref None
-      in
-      let repeat : Properties.border_image_repeat_keyword list option ref =
-        ref None
-      in
-      (* A CSS-wide keyword or [var()] in any longhand cannot be folded into the
-         [border_image] record, which holds plain component values. *)
-      let foldable = ref true in
-      List.iter
-        (fun (_, d) ->
-          match d with
-          | Declaration { property = Border_image_source; value; _ } ->
-              source := Some value
-          | Declaration { property = Border_image_slice; value; _ } ->
-              slice := Some value
-          | Declaration { property = Border_image_width; value = Widths l; _ }
-            ->
-              width := Some l
-          | Declaration { property = Border_image_width; _ } ->
-              foldable := false
-          | Declaration { property = Border_image_outset; value = Outsets l; _ }
-            ->
-              outset := Some l
-          | Declaration { property = Border_image_outset; _ } ->
-              foldable := false
-          | Declaration { property = Border_image_repeat; value = Repeats l; _ }
-            ->
-              repeat := Some l
-          | Declaration { property = Border_image_repeat; _ } ->
-              foldable := false
-          | _ -> ())
-        run;
-      (* The shorthand spells [/ width] only after a slice, so width/outset
-         without a slice cannot be expressed; leave the run alone. *)
-      let need_slice =
-        (Option.is_some !width || Option.is_some !outset)
-        && Option.is_none !slice
-      in
-      if
-        List.length run < 2
-        || (not (same_importance (List.map snd run)))
-        || (not !foldable) || need_slice
-      then None
-      else
-        let merged =
-          Declaration
-            {
-              property = Border_image;
-              value =
-                {
-                  source = !source;
-                  slice = !slice;
-                  width = !width;
-                  outset = !outset;
-                  repeat = !repeat;
-                  mode = None;
-                };
-              important = is_important (snd (List.hd run));
-            }
-        in
-        Some (fst (List.hd run), merged)
-    in
     let rec go acc = function
       | [] -> List.rev acc
       | d :: _ as l when is_bi d -> (
-          let run, rest = span [] l in
-          match compose_run run with
+          let run, rest = span_border_image_run l in
+          match compose_border_image_run run with
           | Some merged -> go (merged :: acc) rest
           | None -> go (List.rev_append run acc) rest)
       | d :: rest -> go (d :: acc) rest
@@ -2596,7 +2598,7 @@ let compose_shorthands ~ctx kept =
   |> compose_text_decoration_shorthand |> compose_border_shorthand
   |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
-  |> drop_border_image_shadowed_by_border
+  |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
   |> reorder_mask_border_before_mask
@@ -4950,63 +4952,64 @@ let promote_registered_custom_properties (stmts : statement list) =
    prune unknown [Name] arms. Keep the [Flip_*] tactics and any [Var]
    indirection untouched. When every arm gets pruned the whole declaration drops
    (the property becomes equivalent to its initial). *)
+let collect_position_try_names stylesheet =
+  let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let rec collect (stmt : statement) =
+    match stmt with
+    | Position_try (name, _) -> Hashtbl.replace known name ()
+    | Rule rule -> List.iter collect rule.nested
+    | Layer (_, b)
+    | Media (_, b)
+    | Container (_, _, b)
+    | Supports (_, b)
+    | Moz_document (_, b)
+    | When (_, b)
+    | Else (_, b)
+    | Starting_style b
+    | Origin (_, b)
+    | Scope (_, _, b) ->
+        List.iter collect b
+    | _ -> ()
+  in
+  List.iter collect stylesheet;
+  known
+
+let rec prune_position_try_decl known (decl : Declaration.declaration) :
+    Declaration.declaration option =
+  match decl with
+  | Declaration
+      {
+        property = Position_try_fallbacks;
+        value = (Fallbacks items : Properties.position_try_fallbacks);
+        important;
+      } -> (
+      let keep = function
+        | (Properties.Name s : Properties.position_try_fallback) ->
+            Hashtbl.mem known s
+        | _ -> true
+      in
+      match List.filter keep items with
+      | [] -> None
+      | kept ->
+          Some
+            (Declaration
+               {
+                 property = Position_try_fallbacks;
+                 value = Fallbacks kept;
+                 important;
+               }))
+  | Theme_guarded { var_name; decl } -> (
+      match prune_position_try_decl known decl with
+      | None -> None
+      | Some decl -> Some (Theme_guarded { var_name; decl }))
+  | other -> Some other
+
 let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
   match scope with
   | `Fragment -> stylesheet
   | `Stylesheet ->
-      let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-      let rec collect (stmt : statement) =
-        match stmt with
-        | Position_try (name, _) -> Hashtbl.replace known name ()
-        | Rule rule -> List.iter collect rule.nested
-        | Layer (_, b)
-        | Media (_, b)
-        | Container (_, _, b)
-        | Supports (_, b)
-        | Moz_document (_, b)
-        | When (_, b)
-        | Else (_, b)
-        | Starting_style b
-        | Origin (_, b)
-        | Scope (_, _, b) ->
-            List.iter collect b
-        | _ -> ()
-      in
-      List.iter collect stylesheet;
-      let rec prune_decl (decl : Declaration.declaration) :
-          Declaration.declaration option =
-        match decl with
-        | Declaration
-            {
-              property = Position_try_fallbacks;
-              value = (Fallbacks items : Properties.position_try_fallbacks);
-              important;
-            } -> (
-            let kept =
-              List.filter
-                (function
-                  | (Properties.Name s : Properties.position_try_fallback) ->
-                      Hashtbl.mem known s
-                  | _ -> true)
-                items
-            in
-            match kept with
-            | [] -> None
-            | _ ->
-                Some
-                  (Declaration
-                     {
-                       property = Position_try_fallbacks;
-                       value = Fallbacks kept;
-                       important;
-                     }))
-        | Theme_guarded { var_name; decl } -> (
-            match prune_decl decl with
-            | None -> None
-            | Some decl -> Some (Theme_guarded { var_name; decl }))
-        | other -> Some other
-      in
-      let prune_decls = List.filter_map prune_decl in
+      let known = collect_position_try_names stylesheet in
+      let prune_decls = List.filter_map (prune_position_try_decl known) in
       let rec walk (stmt : statement) : statement =
         match stmt with
         | Rule rule ->

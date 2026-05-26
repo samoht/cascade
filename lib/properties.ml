@@ -2801,6 +2801,7 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
+  | Default_direction -> Pp.string ctx "to bottom"
   | To_top -> Pp.string ctx "to top"
   | To_top_right -> Pp.string ctx "to top right"
   | To_right -> Pp.string ctx "to right"
@@ -2823,6 +2824,7 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
 
 let rec pp_webkit_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
+  | Default_direction -> Pp.string ctx "bottom"
   | To_top -> Pp.string ctx "top"
   | To_top_right -> Pp.string ctx "top right"
   | To_right -> Pp.string ctx "right"
@@ -3223,8 +3225,7 @@ let pp_linear_gradient_named name ctx (dir, stops) =
       (* CSS Images 4 §5.1: the default linear-gradient direction is [to
          bottom], equivalent to [180deg]; both spellings can be elided. *)
       let is_default_direction = function
-        | To_bottom -> true
-        | Angle (Deg 180.) when Pp.minified ctx -> true
+        | Default_direction -> true
         | _ -> false
       in
       let head : [ `Skip | `Direction | `Interp_only of color_interpolation ] =
@@ -3253,7 +3254,9 @@ let pp_linear_gradient_named name ctx (dir, stops) =
 let pp_webkit_linear_gradient_named name ctx (dir, stops) =
   Pp.call name
     (fun ctx (dir, stops) ->
-      let print_direction = match dir with To_bottom -> false | _ -> true in
+      let print_direction =
+        match dir with Default_direction -> false | _ -> true
+      in
       if print_direction then (
         pp_webkit_gradient_direction ctx dir;
         match stops with [] -> () | _ -> Pp.comma ctx ());
@@ -3712,14 +3715,20 @@ let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     =
  fun value ->
   match value with
+  | Default_direction -> value
   | To_top -> Angle (Values.Deg 0.)
   | To_right -> Angle (Values.Deg 90.)
   | To_bottom -> Angle (Values.Deg 180.)
   | To_left -> Angle (Values.Deg 270.)
   | Angle a -> preserve_if_equal value (Angle (Values.normalize_angle a))
   | With_interpolation (dir, interp) ->
+      let dir' =
+        match dir with
+        | Default_direction -> dir
+        | _ -> normalize_gradient_direction dir
+      in
       preserve_if_equal value
-        (With_interpolation (normalize_gradient_direction dir, interp))
+        (With_interpolation (dir', interp))
   | (To_top_right | To_bottom_right | To_bottom_left | To_top_left | Var _) as
     other ->
       other
@@ -4116,6 +4125,54 @@ let normalize_gap : gap -> gap =
              column_gap = option_map_preserve Values.normalize_length column_gap;
            })
   | other -> other
+
+let rec numeric_flex_factor_calc_leaves : flex_factor calc -> flex_factor calc =
+  function
+  | Val (Number n) -> Num n
+  | Nested inner -> Nested (numeric_flex_factor_calc_leaves inner)
+  | Parens inner -> Parens (numeric_flex_factor_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_flex_factor_calc_leaves left,
+          op,
+          numeric_flex_factor_calc_leaves right )
+  | other -> other
+
+let rec normalize_flex_factor (value : flex_factor) : flex_factor =
+  match value with
+  | Calc c -> (
+      match eval_calc (numeric_flex_factor_calc_leaves c) with
+      | Num f -> Number f
+      | Val v -> normalize_flex_factor v
+      | folded -> if folded == c then value else Calc folded)
+  | _ -> value
+
+let rec normalize_flex_basis (value : flex_basis) : flex_basis =
+  match value with
+  | Calc c -> (
+      match eval_calc c with
+      | Val v -> normalize_flex_basis v
+      | folded -> if folded == c then value else Calc folded)
+  | _ -> value
+
+let normalize_flex (value : flex) : flex =
+  match value with
+  | Grow f ->
+      let f' = normalize_flex_factor f in
+      if f' == f then value else Grow f'
+  | Basis b ->
+      let b' = normalize_flex_basis b in
+      if b' == b then value else Basis b'
+  | Grow_shrink (g, s) ->
+      let g' = normalize_flex_factor g in
+      let s' = normalize_flex_factor s in
+      if g' == g && s' == s then value else Grow_shrink (g', s')
+  | Full (g, s, b) ->
+      let g' = normalize_flex_factor g in
+      let s' = normalize_flex_factor s in
+      let b' = normalize_flex_basis b in
+      if g' == g && s' == s && b' == b then value else Full (g', s', b')
+  | _ -> value
 
 let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
  fun value ->
@@ -6132,6 +6189,7 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Rem f -> Pp.unit ctx f "rem"
   | Em f -> Pp.unit ctx f "em"
   | Pct p -> Pp.pct ctx p
+  | Calc c -> pp_calc pp_vertical_align ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -13946,6 +14004,45 @@ let read_page_break_inside_value t : page_break_inside_value =
     ]
     t
 
+let read_columns_count t =
+  let n = Cursor.int t in
+  if n <= 0 then Cursor.err_invalid t "column count must be positive";
+  n
+
+let read_columns_component t =
+  Cursor.one_of
+    [
+      (fun t ->
+        Cursor.expect_string "auto" t;
+        `Auto);
+      (fun t -> `Count (read_columns_count t));
+      (fun t -> `Width (read_length t));
+    ]
+    t
+
+let combine_columns_components t a b : columns_value =
+  match (a, b) with
+  | `Auto, `Auto -> (Auto : columns_value)
+  | `Auto, `Count n | `Count n, `Auto -> Auto_count n
+  | `Auto, `Width w | `Width w, `Auto -> Width w
+  | `Width w, `Count n | `Count n, `Width w -> Both (w, n)
+  | `Count _, `Count _ -> Cursor.err_invalid t "duplicate column-count"
+  | `Width _, `Width _ -> Cursor.err_invalid t "duplicate column-width"
+
+let columns_value_of_component :
+    [< `Auto | `Count of int | `Width of Values.length ] -> columns_value =
+  function
+  | `Auto -> Auto
+  | `Count n -> (Count n : columns_value)
+  | `Width w -> Width w
+
+let read_columns_components t : columns_value =
+  let first = read_columns_component t in
+  Cursor.ws t;
+  match Cursor.option read_columns_component t with
+  | Some second -> combine_columns_components t first second
+  | None -> columns_value_of_component first
+
 let rec read_columns_value t : columns_value =
   (* CSS Multicol 2 sec. 6.1: [<'column-width'> || <'column-count'>], where
      column-width is [auto | <length>] and column-count is [auto | <integer>].
@@ -13953,42 +14050,6 @@ let rec read_columns_value t : columns_value =
      length to the width slot and the integer to the count slot. An explicit
      [auto] keeps the width unset; [columns: auto 3] therefore differs from the
      bare [columns: 3] only in spelling, captured by [Auto_count]. *)
-  let read_count t =
-    let n = Cursor.int t in
-    if n <= 0 then Cursor.err_invalid t "column count must be positive";
-    n
-  in
-  let read_component t =
-    Cursor.one_of
-      [
-        (fun t ->
-          Cursor.expect_string "auto" t;
-          `Auto);
-        (fun t -> `Count (read_count t));
-        (fun t -> `Width (read_length t));
-      ]
-      t
-  in
-  let combine a b : columns_value =
-    match (a, b) with
-    | `Auto, `Auto -> Auto
-    | `Auto, `Count n | `Count n, `Auto -> Auto_count n
-    | `Auto, `Width w | `Width w, `Auto -> Width w
-    | `Width w, `Count n | `Count n, `Width w -> Both (w, n)
-    | `Count _, `Count _ -> Cursor.err_invalid t "duplicate column-count"
-    | `Width _, `Width _ -> Cursor.err_invalid t "duplicate column-width"
-  in
-  let read_components t : columns_value =
-    let first = read_component t in
-    Cursor.ws t;
-    match Cursor.option read_component t with
-    | Some second -> combine first second
-    | None -> (
-        match first with
-        | `Auto -> Auto
-        | `Count n -> Count n
-        | `Width w -> Width w)
-  in
   Cursor.enum_or_var "columns"
     [
       ("inherit", (Inherit : columns_value));
@@ -13998,7 +14059,7 @@ let rec read_columns_value t : columns_value =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_columns_value t))
-    ~default:read_components t
+    ~default:read_columns_components t
 
 let rec read_column_width t : column_width =
   Cursor.enum_or_var "column-width"
@@ -14924,6 +14985,7 @@ let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
 
 let rec read_vertical_align t : vertical_align =
   let read_var t : vertical_align = Var (read_var read_vertical_align t) in
+  let read_calc t : vertical_align = Calc (read_calc read_vertical_align t) in
   Cursor.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
@@ -14940,7 +15002,7 @@ let rec read_vertical_align t : vertical_align =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_vertical_align_length t
 
 let rec read_outline_style t : outline_style =
@@ -17531,8 +17593,8 @@ let read_linear_gradient_body_stops t =
     match (!direction, !interpolation) with
     | Some d, Some i -> With_interpolation (d, i)
     | Some d, None -> d
-    | None, Some i -> With_interpolation (To_bottom, i)
-    | None, None -> To_bottom
+    | None, Some i -> With_interpolation (Default_direction, i)
+    | None, None -> Default_direction
   in
   if prelude_consumed then (
     Cursor.ws t;
@@ -19964,6 +20026,10 @@ let normalize_property_value : type a. a property -> a -> a =
   | Ms_filter -> normalize_filter value
   | Backdrop_filter -> normalize_filter value
   | Webkit_backdrop_filter -> normalize_filter value
+  | Flex_grow -> normalize_flex_factor value
+  | Flex_shrink -> normalize_flex_factor value
+  | Flex_basis -> normalize_flex_basis value
+  | Flex -> normalize_flex value
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Padding_left -> Values.normalize_length value

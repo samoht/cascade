@@ -191,7 +191,7 @@ val kind : t -> kind
 (** [kind t] classifies [t] for grouping and ordering. *)
 
 val group_order : kind -> int * float
-(** [group_order k] is the sort key used to group queries by [kind]. *)
+(** [group_order k] is the sort key used to group queries by {!val-kind}. *)
 
 val preference_order : t -> int
 (** [preference_order t] orders preference queries within their group. *)

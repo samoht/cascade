@@ -2718,45 +2718,43 @@ let static_color_to_linear_srgb (c : color) :
           | Some alpha_f -> (
               match space with
               | Srgb ->
-                  let lin = Color_space.rgb_to_linear_rgb (c1, c2, c3) in
+                  let lin = Color_space.linear_rgb_of_rgb (c1, c2, c3) in
                   Some (lin, alpha_f)
               | Srgb_linear -> Some ((c1, c2, c3), alpha_f)
               | Display_p3 ->
-                  let lin = Color_space.rgb_to_linear_rgb (c1, c2, c3) in
-                  let xyz = Color_space.linear_display_p3_to_xyz_d65 lin in
-                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+                  let lin = Color_space.linear_rgb_of_rgb (c1, c2, c3) in
+                  let xyz = Color_space.xyz65_of_linear_p3 lin in
+                  Some (Color_space.linear_srgb_of_xyz65 xyz, alpha_f)
               | A98_rgb ->
                   let lin =
-                    ( Color_space.a98_rgb_to_linear c1,
-                      Color_space.a98_rgb_to_linear c2,
-                      Color_space.a98_rgb_to_linear c3 )
+                    ( Color_space.linear_of_a98_rgb c1,
+                      Color_space.linear_of_a98_rgb c2,
+                      Color_space.linear_of_a98_rgb c3 )
                   in
-                  let xyz = Color_space.linear_a98_rgb_to_xyz_d65 lin in
-                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+                  let xyz = Color_space.xyz65_of_linear_a98 lin in
+                  Some (Color_space.linear_srgb_of_xyz65 xyz, alpha_f)
               | Prophoto_rgb ->
                   let lin =
-                    ( Color_space.prophoto_rgb_to_linear c1,
-                      Color_space.prophoto_rgb_to_linear c2,
-                      Color_space.prophoto_rgb_to_linear c3 )
+                    ( Color_space.linear_of_prophoto_rgb c1,
+                      Color_space.linear_of_prophoto_rgb c2,
+                      Color_space.linear_of_prophoto_rgb c3 )
                   in
-                  let xyz_d50 =
-                    Color_space.linear_prophoto_rgb_to_xyz_d50 lin
-                  in
-                  let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
-                  Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+                  let xyz_d50 = Color_space.xyz50_of_linear_prophoto lin in
+                  let xyz_d65 = Color_space.d65_of_xyz50 xyz_d50 in
+                  Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
               | Rec2020 ->
                   let lin =
-                    ( Color_space.rec2020_to_linear c1,
-                      Color_space.rec2020_to_linear c2,
-                      Color_space.rec2020_to_linear c3 )
+                    ( Color_space.linear_of_rec2020 c1,
+                      Color_space.linear_of_rec2020 c2,
+                      Color_space.linear_of_rec2020 c3 )
                   in
-                  let xyz = Color_space.linear_rec2020_to_xyz_d65 lin in
-                  Some (Color_space.xyz_d65_to_linear_srgb xyz, alpha_f)
+                  let xyz = Color_space.xyz65_of_linear_rec2020 lin in
+                  Some (Color_space.linear_srgb_of_xyz65 xyz, alpha_f)
               | Xyz | Xyz_d65 ->
-                  Some (Color_space.xyz_d65_to_linear_srgb (c1, c2, c3), alpha_f)
+                  Some (Color_space.linear_srgb_of_xyz65 (c1, c2, c3), alpha_f)
               | Xyz_d50 ->
-                  let xyz_d65 = Color_space.xyz_d50_to_d65 (c1, c2, c3) in
-                  Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+                  let xyz_d65 = Color_space.d65_of_xyz50 (c1, c2, c3) in
+                  Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
               | _ -> None))
       | _ -> None)
   | Oklab { l = Some l; a = Some a; b = Some b; alpha } -> (
@@ -2775,7 +2773,7 @@ let static_color_to_linear_srgb (c : color) :
       in
       match (l, alpha_f) with
       | Some l, Some alpha_f ->
-          Some (Color_space.oklab_to_linear_srgb (l, a, b), alpha_f)
+          Some (Color_space.linear_srgb_of_oklab (l, a, b), alpha_f)
       | _ -> None)
   | Oklch { l = Some l; c = Some c; h; alpha } -> (
       let l =
@@ -2794,8 +2792,8 @@ let static_color_to_linear_srgb (c : color) :
       in
       match (l, h, alpha_f) with
       | Some l, Some h, Some alpha_f ->
-          let lab = Color_space.oklch_to_oklab (l, c, h) in
-          Some (Color_space.oklab_to_linear_srgb lab, alpha_f)
+          let lab = Color_space.oklab_of_oklch (l, c, h) in
+          Some (Color_space.linear_srgb_of_oklab lab, alpha_f)
       | _ -> None)
   | Lab { l = Some l; a = Some a; b = Some b; alpha } -> (
       let l =
@@ -2813,9 +2811,9 @@ let static_color_to_linear_srgb (c : color) :
       in
       match (l, alpha_f) with
       | Some l, Some alpha_f ->
-          let xyz_d50 = Color_space.lab_to_xyz_d50 (l, a, b) in
-          let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
-          Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+          let xyz_d50 = Color_space.xyz50_of_lab (l, a, b) in
+          let xyz_d65 = Color_space.d65_of_xyz50 xyz_d50 in
+          Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
       | _ -> None)
   | Lch { l = Some l; c = Some c; h; alpha } -> (
       let l =
@@ -2834,15 +2832,15 @@ let static_color_to_linear_srgb (c : color) :
       in
       match (l, h, alpha_f) with
       | Some l, Some h, Some alpha_f ->
-          let lab = Color_space.lch_to_lab (l, c, h) in
-          let xyz_d50 = Color_space.lab_to_xyz_d50 lab in
-          let xyz_d65 = Color_space.xyz_d50_to_d65 xyz_d50 in
-          Some (Color_space.xyz_d65_to_linear_srgb xyz_d65, alpha_f)
+          let lab = Color_space.lab_of_lch (l, c, h) in
+          let xyz_d50 = Color_space.xyz50_of_lab lab in
+          let xyz_d65 = Color_space.d65_of_xyz50 xyz_d50 in
+          Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
       | _ -> None)
   | _ -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) ->
-          let lin = Color_space.rgb_to_linear_rgb (f255 r, f255 g, f255 b) in
+          let lin = Color_space.linear_rgb_of_rgb (f255 r, f255 g, f255 b) in
           Some (lin, f255 a)
       | None -> None)
 
@@ -2858,7 +2856,7 @@ let resolve_static_srgb (c : color) : color =
   | None -> (
       match static_color_to_linear_srgb c with
       | Some (linear, alpha_f) -> (
-          match Color_space.fold_linear_srgb_to_bytes linear with
+          match Color_space.srgb_bytes_of_linear linear with
           | Some (r, g, b) ->
               let clamp01 v = Float.max 0. (Float.min 1. v) in
               let a_byte =
@@ -2889,8 +2887,8 @@ let mix_in_oklab_space c1 c2 ~p1 ~p2 : color option =
       match mix_weights p1 p2 with
       | None -> None
       | Some (w1, w2, alpha_mult) ->
-          let l1, a1, b1 = Color_space.linear_srgb_to_oklab lrgb1 in
-          let l2, a2, b2 = Color_space.linear_srgb_to_oklab lrgb2 in
+          let l1, a1, b1 = Color_space.oklab_of_linear_srgb lrgb1 in
+          let l2, a2, b2 = Color_space.oklab_of_linear_srgb lrgb2 in
           let l = (l1 *. w1) +. (l2 *. w2) in
           let a = (a1 *. w1) +. (a2 *. w2) in
           let b = (b1 *. w1) +. (b2 *. w2) in
@@ -2912,10 +2910,10 @@ let mix_in_oklch_space c1 c2 ~p1 ~p2 hue : color option =
       | None -> None
       | Some (w1, w2, alpha_mult) ->
           let l1, ca1, h1 =
-            Color_space.oklab_to_oklch (Color_space.linear_srgb_to_oklab lrgb1)
+            Color_space.oklch_of_oklab (Color_space.oklab_of_linear_srgb lrgb1)
           in
           let l2, ca2, h2 =
-            Color_space.oklab_to_oklch (Color_space.linear_srgb_to_oklab lrgb2)
+            Color_space.oklch_of_oklab (Color_space.oklab_of_linear_srgb lrgb2)
           in
           let l = (l1 *. w1) +. (l2 *. w2) in
           let c = (ca1 *. w1) +. (ca2 *. w2) in
@@ -2938,8 +2936,8 @@ let mix_in_lab_space c1 c2 ~p1 ~p2 : color option =
       | None -> None
       | Some (w1, w2, alpha_mult) ->
           let to_lab lrgb =
-            lrgb |> Color_space.linear_srgb_to_xyz_d65
-            |> Color_space.xyz_d65_to_d50 |> Color_space.xyz_d50_to_lab
+            lrgb |> Color_space.xyz65_of_linear_srgb |> Color_space.d50_of_xyz65
+            |> Color_space.lab_of_xyz50
           in
           let l1, a1, b1 = to_lab lrgb1 in
           let l2, a2, b2 = to_lab lrgb2 in
@@ -2964,9 +2962,8 @@ let mix_in_lch_space c1 c2 ~p1 ~p2 hue : color option =
       | None -> None
       | Some (w1, w2, alpha_mult) ->
           let to_lch lrgb =
-            lrgb |> Color_space.linear_srgb_to_xyz_d65
-            |> Color_space.xyz_d65_to_d50 |> Color_space.xyz_d50_to_lab
-            |> Color_space.lab_to_lch
+            lrgb |> Color_space.xyz65_of_linear_srgb |> Color_space.d50_of_xyz65
+            |> Color_space.lab_of_xyz50 |> Color_space.lch_of_lab
           in
           let l1, ca1, h1 = to_lch lrgb1 in
           let l2, ca2, h2 = to_lch lrgb2 in
@@ -3466,47 +3463,47 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
    spaces. *)
 let color_func_to_oklab (space : color_space) (c1, c2, c3) :
     Color_space.lab option =
-  let to_oklab = Color_space.linear_srgb_to_oklab in
-  let from_xyz_d65 xyz = to_oklab (Color_space.xyz_d65_to_linear_srgb xyz) in
+  let to_oklab = Color_space.oklab_of_linear_srgb in
+  let from_xyz_d65 xyz = to_oklab (Color_space.linear_srgb_of_xyz65 xyz) in
   match space with
   | Srgb ->
       Some
         (to_oklab
-           ( Color_space.srgb_to_linear c1,
-             Color_space.srgb_to_linear c2,
-             Color_space.srgb_to_linear c3 ))
+           ( Color_space.linear_of_srgb c1,
+             Color_space.linear_of_srgb c2,
+             Color_space.linear_of_srgb c3 ))
   | Srgb_linear -> Some (to_oklab (c1, c2, c3))
   | Display_p3 ->
       Some
         (from_xyz_d65
-           (Color_space.linear_display_p3_to_xyz_d65
-              ( Color_space.display_p3_to_linear c1,
-                Color_space.display_p3_to_linear c2,
-                Color_space.display_p3_to_linear c3 )))
+           (Color_space.xyz65_of_linear_p3
+              ( Color_space.linear_of_display_p3 c1,
+                Color_space.linear_of_display_p3 c2,
+                Color_space.linear_of_display_p3 c3 )))
   | A98_rgb ->
       Some
         (from_xyz_d65
-           (Color_space.linear_a98_rgb_to_xyz_d65
-              ( Color_space.a98_rgb_to_linear c1,
-                Color_space.a98_rgb_to_linear c2,
-                Color_space.a98_rgb_to_linear c3 )))
+           (Color_space.xyz65_of_linear_a98
+              ( Color_space.linear_of_a98_rgb c1,
+                Color_space.linear_of_a98_rgb c2,
+                Color_space.linear_of_a98_rgb c3 )))
   | Prophoto_rgb ->
       Some
         (from_xyz_d65
-           (Color_space.xyz_d50_to_d65
-              (Color_space.linear_prophoto_rgb_to_xyz_d50
-                 ( Color_space.prophoto_rgb_to_linear c1,
-                   Color_space.prophoto_rgb_to_linear c2,
-                   Color_space.prophoto_rgb_to_linear c3 ))))
+           (Color_space.d65_of_xyz50
+              (Color_space.xyz50_of_linear_prophoto
+                 ( Color_space.linear_of_prophoto_rgb c1,
+                   Color_space.linear_of_prophoto_rgb c2,
+                   Color_space.linear_of_prophoto_rgb c3 ))))
   | Rec2020 ->
       Some
         (from_xyz_d65
-           (Color_space.linear_rec2020_to_xyz_d65
-              ( Color_space.rec2020_to_linear c1,
-                Color_space.rec2020_to_linear c2,
-                Color_space.rec2020_to_linear c3 )))
+           (Color_space.xyz65_of_linear_rec2020
+              ( Color_space.linear_of_rec2020 c1,
+                Color_space.linear_of_rec2020 c2,
+                Color_space.linear_of_rec2020 c3 )))
   | Xyz | Xyz_d65 -> Some (from_xyz_d65 (c1, c2, c3))
-  | Xyz_d50 -> Some (from_xyz_d65 (Color_space.xyz_d50_to_d65 (c1, c2, c3)))
+  | Xyz_d50 -> Some (from_xyz_d65 (Color_space.d65_of_xyz50 (c1, c2, c3)))
   | Lab | Oklab | Lch | Oklch | Hsl | Hwb -> None
 
 (* The three numeric channels of a [color()] value, with percentages normalised
@@ -3663,7 +3660,7 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
        percentage is long ("-1.995%"), while the re-parsed -0.008 has a short
        percentage ("-2%") and flips on the next pass - making the spelling
        non-idempotent. *)
-    let n_value = try float_of_string n with _ -> f in
+    let n_value = try float_of_string n with Failure _ -> f in
     let pct =
       string_of_lab_float ~max_decimals ctx (n_value /. pct_scale) ^ "%"
     in
@@ -6042,6 +6039,46 @@ let read_color_keyword_of_string keyword : color option =
   (* CSS system colors - case-insensitive matching *)
   | _ -> read_system_color_of_string keyword
 
+let try_fold_color_function_static origin t : color option =
+  Cursor.ws t;
+  let read_keyword kw =
+    match Cursor.peek_ident t with
+    | Some id when String.lowercase_ascii id = kw ->
+        ignore (Cursor.ident t);
+        Cursor.ws t;
+        true
+    | _ -> false
+  in
+  if not (read_keyword "srgb") then Option.None
+  else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
+    Option.None
+  else
+    let alpha = read_optional_alpha t in
+    Cursor.ws t;
+    if not (Cursor.is_done t) then Option.None
+    else
+      match static_color_to_srgb_bytes origin with
+      | Some (r, g, b, origin_a_byte) ->
+          let final_alpha : alpha =
+            match alpha with
+            | None when origin_a_byte = 255 -> None
+            | None -> Num (Float.of_int origin_a_byte /. 255.)
+            | a -> a
+          in
+          Option.Some
+            (Rgba
+               {
+                 rgb = Channels { r = Int r; g = Int g; b = Int b };
+                 a = final_alpha;
+                 legacy = false;
+               })
+      | None -> Option.None
+
+let try_fold_relative_color_static name origin t : color option =
+  match name with
+  | "color" -> try_fold_color_function_static origin t
+  | _ -> Option.None
+
 let rec read_color_mix t : color =
   Cursor.ws t;
   (* CSS Color 5 sec. 3: an omitted [<color-interpolation-method>] defaults to
@@ -6194,46 +6231,6 @@ and read_relative_color name t : color =
    calc()-on-keyword arithmetic, swapped channels) need real per-space
    conversion machinery; absent that we fall through and keep the original
    [color(from ...)] string. *)
-and try_fold_relative_color_static name origin t =
-  match name with
-  | "color" -> try_fold_color_function_static origin t
-  | _ -> None
-
-and try_fold_color_function_static origin t =
-  Cursor.ws t;
-  let read_keyword kw =
-    match Cursor.peek_ident t with
-    | Some id when String.lowercase_ascii id = kw ->
-        ignore (Cursor.ident t);
-        Cursor.ws t;
-        true
-    | _ -> false
-  in
-  if not (read_keyword "srgb") then None
-  else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
-    None
-  else
-    let alpha = read_optional_alpha t in
-    Cursor.ws t;
-    if not (Cursor.is_done t) then None
-    else
-      match static_color_to_srgb_bytes origin with
-      | Some (r, g, b, origin_a_byte) ->
-          let final_alpha : alpha =
-            match alpha with
-            | None when origin_a_byte = 255 -> None
-            | None -> Num (Float.of_int origin_a_byte /. 255.)
-            | a -> a
-          in
-          Some
-            (Rgba
-               {
-                 rgb = Channels { r = Int r; g = Int g; b = Int b };
-                 a = final_alpha;
-                 legacy = false;
-               })
-      | None -> None
-
 and with_relative_fallback name fallback t =
   Cursor.ws t;
   if Cursor.looking_at t "from" then read_relative_color name t else fallback t
@@ -6771,58 +6768,65 @@ let drop_full_alpha (c : color) : color =
   | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
-(* AST-level color canonicalisation: the folds the printer used to do, producing
-   a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
-   gates the static colour-space fold (suppressed inside [@supports] tests). *)
-let rec normalize_color ~in_feature_query (c : color) : color =
+let normalize_static_modern_color ~in_feature_query c =
   let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
     | Some ab -> canonical_color_of_hex r g b ab
     | Option.None -> c
   in
+  if in_feature_query then c
+  else
+    match static_color_to_linear_srgb c with
+    | Some (linear, alpha_f) -> (
+        match Color_space.srgb_bytes_of_linear linear with
+        | Some (r, g, b) ->
+            let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+            let alpha_byte =
+              Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
+            in
+            let a : alpha =
+              if alpha_byte = 255 then None
+              else if alpha_byte = 0 then Num 0.0
+              else Num (Float.of_int alpha_byte /. 255.0)
+            in
+            hex_of_bytes r g b a
+        | None -> drop_full_alpha c)
+    | None -> drop_full_alpha c
+
+let normalize_hex_color c r g b a =
+  match canonical_color_of_hex r g b a with
+  | Hex { r = r'; g = g'; b = b'; a = a' }
+    when r' = r && g' = g && b' = b && a' = a ->
+      c
+  | color -> color
+
+let normalize_named_color c orig_name =
+  (* Pick the shortest spelling: a named colour collapses to hex only when the
+     SHORTENED hex is shorter than the name. [canonical_color_name] first folds
+     aliases (grey -> gray) so the choice is made on the canonical spelling. *)
+  let name = canonical_color_name orig_name in
+  let name_str, hex = color_name_hex name in
+  match rgba_of_hex hex with
+  | Some (r, g, b, a)
+    when String.length (hex_string_of_bytes r g b a) + 1
+         <= String.length name_str ->
+      canonical_color_of_hex r g b a
+  | _ -> if name == orig_name then c else Named name
+
+(* AST-level color canonicalisation: the folds the printer used to do, producing
+   a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
+   gates the static colour-space fold (suppressed inside [@supports] tests). *)
+let rec normalize_color ~in_feature_query (c : color) : color =
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   match c with
   | Oklab { l = Some _; a = Some _; b = Some _; _ }
   | Oklch { l = Some _; c = Some _; _ }
   | Lab { l = Some _; a = Some _; b = Some _; _ }
   | Lch { l = Some _; c = Some _; _ }
-  | Color _
-    when not in_feature_query -> (
-      match static_color_to_linear_srgb c with
-      | Some (linear, alpha_f) -> (
-          match Color_space.fold_linear_srgb_to_bytes linear with
-          | Some (r, g, b) ->
-              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-              let alpha_byte =
-                Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
-              in
-              let a : alpha =
-                if alpha_byte = 255 then None
-                else if alpha_byte = 0 then Num 0.0
-                else Num (Float.of_int alpha_byte /. 255.0)
-              in
-              hex_of_bytes r g b a
-          | None -> drop_full_alpha c)
-      | None -> drop_full_alpha c)
-  | Hex { r; g; b; a } -> (
-      match canonical_color_of_hex r g b a with
-      | Hex { r = r'; g = g'; b = b'; a = a' }
-        when r' = r && g' = g && b' = b && a' = a ->
-          c
-      | color -> color)
-  | Named orig_name -> (
-      (* Pick the shortest spelling: a named colour collapses to hex only when
-         the SHORTENED hex is shorter than the name. [canonical_color_name]
-         first folds aliases (grey -> gray) so the choice is made on the
-         canonical spelling. *)
-      let name = canonical_color_name orig_name in
-      let name_str, hex = color_name_hex name in
-      match rgba_of_hex hex with
-      | Some (r, g, b, a)
-        when String.length (hex_string_of_bytes r g b a) + 1
-             <= String.length name_str ->
-          canonical_color_of_hex r g b a
-      | _ -> if name == orig_name then c else Named name)
+  | Color _ ->
+      normalize_static_modern_color ~in_feature_query c
+  | Hex { r; g; b; a } -> normalize_hex_color c r g b a
+  | Named orig_name -> normalize_named_color c orig_name
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a

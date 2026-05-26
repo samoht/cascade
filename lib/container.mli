@@ -97,8 +97,8 @@ val style : ?value:string -> string -> t
     form. *)
 
 val scroll_state : string -> string -> t
-(** [scroll_state prop value] is the canonical lowercase [Scroll_state] query,
-    matching [scroll-state(prop: value)]. *)
+(** [scroll_state prop value] is the canonical lowercase
+    {!constructor-Scroll_state} query, matching [scroll-state(prop: value)]. *)
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)

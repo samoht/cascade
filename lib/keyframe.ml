@@ -31,6 +31,7 @@ let string_of_selector = function
       String.concat ", " (List.map string_of_position positions)
 
 let to_string = string_of_selector
+let pp ctx selector = Pp.string ctx (string_of_selector selector)
 
 let percent_of_position = function
   | From -> 0.

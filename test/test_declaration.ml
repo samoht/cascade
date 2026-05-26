@@ -63,7 +63,8 @@ let complex_values () =
   check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background: linear-gradient(to right, red, blue);";
   check_decl_optimizes ~prop:"background"
-    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
+    ~into:"linear-gradient(90deg,red,#00f)"
+    "linear-gradient(to right, red, blue)";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -814,7 +815,8 @@ let list_properties () =
     ~expected:"background-image:linear-gradient(to right,red,blue)"
     "background-image: linear-gradient(to right, red, blue)";
   check_decl_optimizes ~prop:"background-image"
-    ~into:"linear-gradient(90deg,red,#00f)" "linear-gradient(to right, red, blue)";
+    ~into:"linear-gradient(90deg,red,#00f)"
+    "linear-gradient(to right, red, blue)";
   check_declaration ~expected:"background-image:url(a.png),url(b.png)"
     "background-image: url(a.png), url(b.png)";
 
@@ -1536,8 +1538,8 @@ let spec_values_l45_edges () =
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
       (* pp holds the authored node: the Named blue, the rgb()/alpha, the turn
-         unit, the position keywords. The colour cross-fold, angle conversion and
-         position canonicalization are optimize transforms. *)
+         unit, the position keywords. The colour cross-fold, angle conversion
+         and position canonicalization are optimize transforms. *)
       ( "background: conic-gradient(from 45deg, red, blue)",
         "background:conic-gradient(from 45deg,red,blue)" );
       ( "background: cross-fade(url(a.png) 40%, url(b.png))",

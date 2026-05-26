@@ -18,6 +18,9 @@ type selector = Positions of position list
 type t = selector
 (** A keyframe selector. *)
 
+val pp : t Pp.t
+(** [pp] renders a keyframe selector. *)
+
 val string_of_selector : selector -> string
 (** [string_of_selector sel] renders a selector as CSS string. *)
 

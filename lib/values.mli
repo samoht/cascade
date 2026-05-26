@@ -56,8 +56,8 @@ val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] creates an OKLAB color with alpha. *)
 
 val oklaba_none_zeros : float -> float -> float -> float -> color
-(** [oklaba_none_zeros l a b alpha] is like [oklaba] but uses [none] for zero
-    a/b components. *)
+(** [oklaba_none_zeros l a b alpha] is like {!val-oklaba} but uses [none] for
+    zero a/b components. *)
 
 val lch : float -> float -> float -> color
 (** [lch l c h] creates an LCH color. *)
@@ -96,8 +96,8 @@ val color_mix_var_percent :
   color ->
   color ->
   color
-(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
-    but uses a CSS var reference for the first percentage. *)
+(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like
+    {!val-color_mix} but uses a CSS var reference for the first percentage. *)
 
 val color_mix_var_pct_fallback :
   ?in_space:color_space ->
@@ -108,10 +108,10 @@ val color_mix_var_pct_fallback :
   color ->
   color
 (** [color_mix_var_pct_fallback ?in_space ?hue ~var_name ~fallback c1 c2] is
-    like [color_mix_var_percent] but with an explicit fallback on the percentage
-    variable. Used for named opacity modifiers where the fallback is either a
-    concrete number ([Fallback (Num 0.5)]) or a theme variable reference
-    ([Var_fallback "custom-opacity"]). *)
+    like {!val-color_mix_var_percent} but with an explicit fallback on the
+    percentage variable. Used for named opacity modifiers where the fallback is
+    either a concrete number ([Fallback (Num 0.5)]) or a theme variable
+    reference ([Var_fallback "custom-opacity"]). *)
 
 (** {1 Pretty-printing Functions} *)
 
@@ -178,11 +178,11 @@ val normalize_length_percentage :
 val normalize_length : ?strip:bool -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
-    / mod / rem / hypot / abs fold on [px]; calc folds through the simplifier),
-    recursing into nested calls; a non-static operand keeps the call. [strip]
-    (default [true]) additionally drops the unit on a top-level zero ([0px] ->
-    [0]); pass [strip:false] for a calc / function operand, which keeps its
-    unit. *)
+    / mod / rem / hypot / abs fold on {!val-px}; calc folds through the
+    simplifier), recursing into nested calls; a non-static operand keeps the
+    call. [strip] (default [true]) additionally drops the unit on a top-level
+    zero ([0px] -> [0]); pass [strip:false] for a calc / function operand, which
+    keeps its unit. *)
 
 val normalize_angle : angle -> angle
 (** [normalize_angle a] folds the static angle math functions (round / mod / rem
@@ -401,9 +401,9 @@ val color_has_specified_hue : color -> bool
 
 val color_is_color_4 : color -> bool
 (** [color_is_color_4 c] is [true] when [c] uses a CSS Color 4 / 5 construct
-    ([lab], [lch], [oklab], [oklch], [hwb], [color()], [color-mix()],
-    [light-dark()], [contrast-color()], or [from <origin>] relative forms).
-    Recurses through [Mix], [Light_dark], [Contrast_color]. *)
+    ([lab], {!val-lch}, {!val-oklab}, {!val-oklch}, {!val-hwb}, [color()],
+    [color-mix()], [light-dark()], [contrast-color()], or [from <origin>]
+    relative forms). Recurses through [Mix], [Light_dark], [Contrast_color]. *)
 
 val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
