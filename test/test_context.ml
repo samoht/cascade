@@ -1367,10 +1367,10 @@ let computed_calc_contract () =
     "width: 2ex"
 
 let eval_calc_family_contract () =
-  (* Per shortest-wins, all-constant calc reduces at the parse layer before
-     reaching the eval contract; the eval-time tests therefore exercise either
-     var-substitution chains or partially-foldable expressions (mixed-unit calc
-     that needs a viewport / font / container context to fully reduce). *)
+  (* The reader holds calc unfolded; all-constant reduction is an optimize
+     transform, and eval reduces what the supplied context resolves. These
+     eval-time tests exercise var-substitution chains and mixed-unit calc that
+     needs a viewport / font / container context to fold. *)
   let ctx =
     Css.Context.v
       ~custom_properties:[ Css.Declaration.of_string "--lp: calc(50% + 1rem)" ]
@@ -1422,9 +1422,8 @@ let eval_ast_contract () =
   check_eval "eval resolves relative URL leaf" ~ctx
     ~expected:"background-image: url(https://example.test/img/logo.svg)"
     "background-image: url(../img/logo.svg)";
-  (* All-constant calc reduces at parse time under shortest-wins; the eval
-     contract here exercises only mixed-unit calc that needs the context to fold
-     (rem -> px via root font size). *)
+  (* The reader holds calc unfolded; the eval contract here exercises mixed-unit
+     calc that needs the context to fold (rem -> px via root font size). *)
   check_eval "eval folds known length calc subtree" ~ctx
     ~expected:"margin-left: 18px" "margin-left: calc(1rem + 2px)";
   check_eval "eval preserves unresolved viewport leaf in calc AST" ~ctx
@@ -2005,8 +2004,12 @@ let test_loader_import_condition_contract () =
   check_import_loaded "import loads when media and supports match" ~query
     ~loader ~expected:".grid{display:grid}"
     "@import url(grid.css) supports(display: grid) screen and (width >= 40em);";
-  check_import_loaded "import loads when supports color function matches" ~query
-    ~loader ~expected:".lab{color:#777}"
+  check_import_loaded "import loads when supports color function matches"
+    ~query
+      (* check_import_loaded is to_string ~minify with no optimize, so pp holds
+         the lab() unfolded; lab(50%0 0) is valid minified output (% is a token
+         boundary). Folding lab to #777 is an optimize transform. *)
+    ~loader ~expected:".lab{color:lab(50%0 0)}"
     "@import url(lab.css) supports(color: lab(50% 0 0));";
   check_import_error "import blocked by unmatched media" ~query ~loader
     "@import url(print.css) print;";
@@ -2387,7 +2390,7 @@ let cascade_rule_resolver_contract () =
     ~document:
       (Css.Context.document ~scope:".card" ~element:"h2"
          ~classes:[ "title"; "boundary" ] ())
-    ~query ~property:"color" ~expected:"color: #00f"
+    ~query ~property:"color" ~expected:"color: blue"
     {|
       @scope (.card) to (.boundary) { .title { color: green; } }
       .title { color: blue; }
@@ -2412,7 +2415,7 @@ let cascade_rule_resolver_contract () =
   check_ast_resolved_property
     "origin and animation/transition ranks are applied" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
-    ~expected:"color: #ff0" origin_sheet;
+    ~expected:"color: yellow" origin_sheet;
   let revert_origin_sheet =
     [
       Css.Stylesheet.with_origin Css.Stylesheet.User_agent
@@ -2426,7 +2429,7 @@ let cascade_rule_resolver_contract () =
   check_ast_resolved_property
     "revert rolls back to the next lower cascade origin" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
-    ~expected:"color: #00f" revert_origin_sheet;
+    ~expected:"color: blue" revert_origin_sheet;
   check_resolved_property "nested conditional declarations inherit parent rule"
     ~layer_order ~ctx:value_ctx ~document:primary ~query
     ~property:"outline-color" ~expected:"outline-color: oklch(40% 0.10 250)"
@@ -2443,7 +2446,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property
     "source order breaks ties after equal origin layer specificity and scope"
     ~layer_order ~ctx:value_ctx ~document:primary ~query
-    ~property:"background-color" ~expected:"background-color: #00f"
+    ~property:"background-color" ~expected:"background-color: blue"
     {|
       .btn { background-color: red; }
       .btn { background-color: blue; }
@@ -2451,7 +2454,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property
     "normal named layer order follows the declared layer statement" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"outline-color"
-    ~expected:"outline-color: #00f"
+    ~expected:"outline-color: blue"
     {|
       @layer reset, theme, components, utilities;
       @layer utilities { .btn { outline-color: blue; } }

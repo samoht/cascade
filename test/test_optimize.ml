@@ -7,7 +7,7 @@ open Css.Declaration
 open Css.Values
 open Css.Properties
 
-let hex_color s = Hex { hash = true; value = s }
+let hex_color s = Css.Values.hex s
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
 let media_min_width px : Css.Media.t =
@@ -726,8 +726,39 @@ let test_tw_conditionals_split () =
      utilities{@media(min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(min-width:48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
     spec_output
 
+(* Optimize must preserve physical identity when there is nothing left to do.
+   Optimizing once reaches a fixed point [canon]; a second pass changes nothing,
+   so it must return the very same value ([==]) rather than a structurally-equal
+   copy. This is the unit-level companion to the fuzzer's sharing invariant. *)
+let test_optimize_preserves_physical_identity () =
+  let fixpoint css =
+    match Css.of_string ~strict:false css with
+    | Ok p -> Css.optimize p.stylesheet
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let cases =
+    [
+      ".a{color:red}";
+      ".a{color:red}.b{display:block}";
+      "@media screen{.a{color:red}}";
+      "@layer base{.a{margin:0}}";
+      ".a{color:red;background:#fff}";
+    ]
+  in
+  List.iter
+    (fun css ->
+      let canon = fixpoint css in
+      let again = Css.optimize canon in
+      Alcotest.(check bool)
+        (css ^ ": optimize returns the same value when nothing changes")
+        true (again == canon))
+    cases
+
 let optimize_tests =
   [
+    ( "optimize preserves physical identity on a fixed point",
+      `Quick,
+      test_optimize_preserves_physical_identity );
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
     ("duplicate buggy properties", `Quick, test_duplicate_buggy_properties);
     ("optimize single rule", `Quick, single_rule);
@@ -924,12 +955,30 @@ let normalize_pairs =
     ("a{color:red}", "a{color:#f00}");
     ("a{color:black}", "a{color:#000}");
     ("a{color:rgb(255 255 255)}", "a{color:#fff}");
+    ("a{color:rgb(255 0 0)}", "a{color:red}");
+    ("a{color:hsl(0 100% 50%)}", "a{color:red}");
     ("a{color:color-mix(in srgb,red,red)}", "a{color:red}");
   ]
 
-let test_pp_keeps_distinct_nodes () =
-  (* pp must keep each pair textually distinct: collapsing them is a node
-     transform, which is optimize's job, not pp's. *)
+(* Same normalization story for gradients, basic shapes, and clip-path: each
+   pair is semantically equal (a side keyword vs the matching angle, an explicit
+   default direction vs its omission, an explicit-defaults shape vs the bare
+   functional form), so optimize must collapse it to one canonical node and pp
+   alone must stay a fixed point. (Whether pp keeps these textually distinct
+   depends on which forms the parser canonicalizes, so that side is asserted
+   only for the colour/calc pairs, where the node distinction is certain.) *)
+let gradient_shape_pairs =
+  [
+    ( "a{background:linear-gradient(to top,red,blue)}",
+      "a{background:linear-gradient(0deg,red,blue)}" );
+    ( "a{background:linear-gradient(to bottom,red,blue)}",
+      "a{background:linear-gradient(red,blue)}" );
+    ("a{clip-path:circle(closest-side at center)}", "a{clip-path:circle()}");
+    ( "a{shape-outside:ellipse(closest-side closest-side at center)}",
+      "a{shape-outside:ellipse()}" );
+  ]
+
+let assert_pp_keeps_distinct pairs =
   List.iter
     (fun (a, b) ->
       if String.equal (pp_min a) (pp_min b) then
@@ -937,17 +986,52 @@ let test_pp_keeps_distinct_nodes () =
           "pp collapsed distinct nodes %S and %S to %S (normalize in optimize, \
            not pp)"
           a b (pp_min a))
-    normalize_pairs
+    pairs
 
-let test_optimize_unifies_equivalent_nodes () =
-  (* The flip side: optimize is the AST->AST transform that collapses each pair
-     to one canonical node, so the optimized minified output matches. *)
+let assert_optimize_unifies pairs =
   List.iter
     (fun (a, b) ->
       Alcotest.(check string)
         (Printf.sprintf "optimize unifies %s / %s" a b)
         (minify_str a) (minify_str b))
-    normalize_pairs
+    pairs
+
+let assert_pp_idempotent pairs =
+  List.iter
+    (fun (a, b) ->
+      Alcotest.(check string)
+        (Printf.sprintf "pp idempotent on %s" a)
+        (pp_min a)
+        (pp_min (pp_min a));
+      Alcotest.(check string)
+        (Printf.sprintf "pp idempotent on %s" b)
+        (pp_min b)
+        (pp_min (pp_min b)))
+    pairs
+
+let test_pp_keeps_distinct_nodes () =
+  (* pp must keep each pair textually distinct: collapsing them is a node
+     transform, which is optimize's job, not pp's. *)
+  assert_pp_keeps_distinct normalize_pairs
+
+let test_optimize_unifies_equivalent_nodes () =
+  (* The flip side: optimize is the AST->AST transform that collapses each pair
+     to one canonical node, so the optimized minified output matches. *)
+  assert_optimize_unifies normalize_pairs
+
+let test_optimize_unifies_gradients_shapes () =
+  assert_optimize_unifies gradient_shape_pairs
+
+let test_optimize_folds_flex_calc () =
+  (* The reader holds a flex calc() unfolded and pp serializes it lexically; the
+     constant fold to a <number> literal is this optimize+minify transform
+     (matching lightningcss). pp alone keeps calc(1 + 2). *)
+  Alcotest.(check string)
+    "flex-grow constant calc folds under optimize" "a{flex-grow:3}"
+    (minify_str "a{flex-grow:calc(1 + 2)}");
+  Alcotest.(check string)
+    "flex shorthand grow constant calc folds under optimize" "a{flex:3 1 0}"
+    (minify_str "a{flex:calc(1 + 2) 1 0}")
 
 let test_pp_picks_shortest_same_node () =
   (* Spellings that parse to the SAME node are a pure serialization choice, so
@@ -966,17 +1050,8 @@ let test_pp_picks_shortest_same_node () =
 let test_pp_minify_is_idempotent () =
   (* pp alone (no optimize) is a fixed point: re-parsing minified output and
      re-printing changes nothing, because pp emits canonical bytes per node. *)
-  List.iter
-    (fun (a, b) ->
-      Alcotest.(check string)
-        (Printf.sprintf "pp idempotent on %s" a)
-        (pp_min a)
-        (pp_min (pp_min a));
-      Alcotest.(check string)
-        (Printf.sprintf "pp idempotent on %s" b)
-        (pp_min b)
-        (pp_min (pp_min b)))
-    normalize_pairs
+  assert_pp_idempotent normalize_pairs;
+  assert_pp_idempotent gradient_shape_pairs
 
 let test_no_merge_vendor_pseudo () =
   let input =
@@ -3310,6 +3385,10 @@ let selector_merging_tests =
     ( "optimize unifies equivalent nodes",
       `Quick,
       test_optimize_unifies_equivalent_nodes );
+    ( "optimize unifies gradient/shape/clip-path nodes",
+      `Quick,
+      test_optimize_unifies_gradients_shapes );
+    ("optimize folds flex calc", `Quick, test_optimize_folds_flex_calc);
     ( "pp picks shortest spelling of same node",
       `Quick,
       test_pp_picks_shortest_same_node );

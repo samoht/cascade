@@ -31,6 +31,22 @@ let check_declaration =
 let check_stylesheet =
   check_value_cursor "stylesheet" read_stylesheet pp_stylesheet
 
+(* Assert both serialization paths for one input. [minified] is pure pp: the
+   held value in its shortest same-node spelling. [optimized] is pp+optimize:
+   the canonical value after cross-node folds (colour names <-> hex, calc
+   folding, keyword folds). pp never changes a node; optimize does. *)
+let check_minify_and_optimize input ~minified ~optimized =
+  match Css.of_string ~strict:false input with
+  | Error _ -> Alcotest.failf "parse failed: %s" input
+  | Ok p ->
+      Alcotest.(check string)
+        (input ^ " [minify]") minified
+        (Css.to_string ~minify:true p.stylesheet |> String.trim);
+      Alcotest.(check string)
+        (input ^ " [minify+optimize]")
+        optimized
+        (minify p.stylesheet |> String.trim)
+
 (* Short alias for stylesheet serialization checks. *)
 let check = check_stylesheet
 
@@ -65,8 +81,11 @@ let test_rule () =
 let test_stylesheet () =
   (* Test basic stylesheet parsing *)
   check_stylesheet ".btn{color:red}";
-  check_stylesheet ~expected:"body{margin:0}.btn{color:#00f}"
-    "body{margin:0}.btn{color:blue}";
+  (* pp holds the authored Named node; cross-folding blue -> #00f (hex at most
+     as long as the name) is optimize. *)
+  check_minify_and_optimize "body{margin:0}.btn{color:blue}"
+    ~minified:"body{margin:0}.btn{color:blue}"
+    ~optimized:"body{margin:0}.btn{color:#00f}";
 
   (* Test stylesheet with at-rules *)
   check_stylesheet "@media screen{.btn{color:green}}";
@@ -83,8 +102,9 @@ let test_stylesheet () =
   check_stylesheet
     ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
-  check_stylesheet ~expected:"@media screen{.test{color:#00f}}"
-    "@media screen { .test { color: blue } }";
+  check_minify_and_optimize "@media screen { .test { color: blue } }"
+    ~minified:"@media screen{.test{color:blue}}"
+    ~optimized:"@media screen{.test{color:#00f}}";
   check_stylesheet ~expected:"@supports(display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
@@ -123,10 +143,7 @@ let check_stylesheet_helper name expected sheet =
 
 (* Not a roundtrip test *)
 let test_rule_creation () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let selector = selector rule in
   (* Just check we can get selector back *)
@@ -139,10 +156,7 @@ let test_rule_creation () =
 
 (* Not a roundtrip test *)
 let test_media_rule_creation () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
     media
@@ -155,10 +169,7 @@ let test_media_rule_creation () =
 
 (* Not a roundtrip test *)
 let test_container_rule_creation () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let container_stmt =
     container ~name:"sidebar"
@@ -206,7 +217,7 @@ let test_property_rule_creation () =
     {
       name = "--my-color";
       syntax = Css.Variables.Color;
-      initial_value = Some (Css.Values.Hex { hash = true; value = "ff0000" });
+      initial_value = Some (Css.Values.hex "ff0000");
       inherits = true;
     }
   in
@@ -216,30 +227,31 @@ let test_property_rule_creation () =
 
 (* Not a roundtrip test *)
 let test_layer_rule_creation () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  (* Both paths for the same node. minify (pp) does the shortest same-node
+     spelling: Hex ff0000 -> #f00. minify+optimize cross-folds to the shortest
+     node: Hex ff0000 -> red (Named, shorter). *)
   Alcotest.(check string)
-    "layer rule creation" "@layer utilities{.red{background-color:red}}" output
+    "layer rule creation (minify)"
+    "@layer utilities{.red{background-color:#f00}}"
+    (Css.Stylesheet.pp ~minify:true sheet);
+  Alcotest.(check string)
+    "layer rule creation (minify+optimize)"
+    "@layer utilities{.red{background-color:red}}" (minify sheet)
 
 (* Not a roundtrip test *)
 let test_construct_rule_helper () =
   (* Test rule construction and string representation *)
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule1 = rule ~selector:(Selector.class_ "red") [ decl ] in
-  check_construct_rule "simple rule" ".red{background-color:red}" rule1;
+  check_construct_rule "simple rule" ".red{background-color:#f00}" rule1;
 
   let decls =
     [
-      Css.Declaration.color (Css.Values.Hex { hash = true; value = "000000" });
+      Css.Declaration.color (Css.Values.hex "000000");
       Css.Declaration.margin [ Css.Values.Px 10. ];
     ]
   in
@@ -274,10 +286,7 @@ let test_empty_stylesheet () =
 
 (* Not a roundtrip test *)
 let construction () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
     media ~condition:(Css.Media.of_string "screen") [ statement_of_rule rule ]
@@ -296,10 +305,7 @@ let construction () =
   Alcotest.(check int) "sheet properties count" 1 props_count
 
 let items_conversion () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
     media ~condition:(Css.Media.of_string "screen") [ statement_of_rule rule ]
@@ -321,16 +327,11 @@ let items_conversion () =
 
 (* Not a roundtrip test *)
 let test_concat_stylesheets () =
-  let decl1 =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl1 = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule1 = rule ~selector:(Selector.class_ "red") [ decl1 ] in
   let _sheet1 = Css.Stylesheet.v [ statement_of_rule rule1 ] in
 
-  let decl2 =
-    Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
-  in
+  let decl2 = Css.Declaration.color (Css.Values.hex "0000ff") in
   let rule2 = rule ~selector:(Selector.class_ "blue") [ decl2 ] in
   let _sheet2 = Css.Stylesheet.v [ statement_of_rule rule2 ] in
 
@@ -504,9 +505,7 @@ let test_property_spec_syntax_vectors () =
 
 (* Not a roundtrip test *)
 let test_layer_pp () =
-  let decl =
-    Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
-  in
+  let decl = Css.Declaration.color (Css.Values.hex "0000ff") in
   let rule_obj = rule ~selector:(Selector.class_ "blue") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule_obj ] in
 
@@ -524,10 +523,7 @@ let test_layer_pp () =
 
 (** Test complete stylesheet pp *)
 let pp_case () =
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "ff0000" })
-  in
+  let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
     media ~condition:(Css.Media.of_string "screen") [ statement_of_rule r ]
@@ -542,9 +538,12 @@ let pp_case () =
   let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check string)
     "stylesheet pp"
-    ".red{background-color:red}@media \
-     screen{.red{background-color:red}}@property \
-     --primary{syntax:\"<color>\";inherits:false;initial-value:#00f}"
+    (* pp emits each node's shortest same-node spelling: Hex ff0000 -> #f00,
+       Named Blue -> blue. Cross-node folds (#f00->red, blue->#00f) are
+       optimize, not pp. *)
+    ".red{background-color:#f00}@media \
+     screen{.red{background-color:#f00}}@property \
+     --primary{syntax:\"<color>\";inherits:false;initial-value:blue}"
     output
 
 (** Test [@charset] rules *)
@@ -757,7 +756,7 @@ let property_rule_edges () =
   check_stylesheet
     ~expected:
       "@property \
-       --shadow-color{syntax:\"<color>\";inherits:true;initial-value:#0000}"
+       --shadow-color{syntax:\"<color>\";inherits:true;initial-value:transparent}"
     "@property --shadow-color { syntax: \"<color>\"; inherits: true; \
      initial-value: transparent; }";
   check_stylesheet
@@ -884,7 +883,7 @@ let sheet_item_case () =
       ("@import 'test.css';", "@import\"test.css\";");
       (".class { color: red; }", ".class{color:red}");
       ( "@media print { .class { color: black; } }",
-        "@media print{.class{color:#000}}" );
+        "@media print{.class{color:black}}" );
       ( "@layer base { .btn { padding: 10px; } }",
         "@layer base{.btn{padding:10px}}" );
       ( "@property --var { syntax: \"*\"; inherits: false; }",
@@ -1343,8 +1342,9 @@ let stylesheet_tests =
 let test_check () =
   (* Test basic stylesheet parsing using check function *)
   check ~expected:".test{color:red}" ".test { color: red }";
-  check ~expected:"@media screen{.test{color:#00f}}"
-    "@media screen { .test { color: blue } }"
+  check_minify_and_optimize "@media screen { .test { color: blue } }"
+    ~minified:"@media screen{.test{color:blue}}"
+    ~optimized:"@media screen{.test{color:#00f}}"
 
 let test_import_rule () =
   check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css';";
@@ -1365,14 +1365,15 @@ let test_import_rule () =
 
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
-  check_stylesheet ~expected:".btn:hover{color:#00f}"
-    ".btn:hover { color: blue; }";
+  check_minify_and_optimize ".btn:hover { color: blue; }"
+    ~minified:".btn:hover{color:blue}" ~optimized:".btn:hover{color:#00f}";
   check_stylesheet ~expected:".btn:before{content:\"icon\"}"
     ".btn::before { content: 'icon'; }";
   (* Attribute values that are valid identifiers get normalized to unquoted
      form *)
-  check_stylesheet ~expected:".btn[data-type=primary]{background:#00f}"
-    ".btn[data-type='primary'] { background: blue; }";
+  check_minify_and_optimize ".btn[data-type='primary'] { background: blue; }"
+    ~minified:".btn[data-type=primary]{background:blue}"
+    ~optimized:".btn[data-type=primary]{background:#00f}";
   check_stylesheet ~expected:".parent>.child{margin:0}"
     ".parent > .child { margin: 0; }";
   check_stylesheet ~expected:".sibling+.next{padding:10px}"
@@ -1388,11 +1389,19 @@ let test_advanced_properties () =
     ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
   check_stylesheet ~expected:".flex{display:flex;justify-content:space-between}"
     ".flex { display: flex; justify-content: space-between; }";
-  check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px #0003}"
-    ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
-  check_stylesheet
-    ~expected:".gradient{background:linear-gradient(90deg,red,#00f)}"
+  (* pp holds the legacy rgba() node (only the leading zero drops); optimize
+     cross-folds the opaque-able colour to the shorter 4-digit hex. *)
+  check_minify_and_optimize ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }"
+    ~minified:".shadow{box-shadow:0 4px 8px rgba(0,0,0,.2)}"
+    ~optimized:".shadow{box-shadow:0 4px 8px #0003}";
+  (* "to right" is a <side-or-corner>, a distinct node from the <angle> 90deg
+     (corners like "to top right" are not fixed angles), so pp holds the
+     authored keyword; optimize folds the side to 90deg and Named blue to
+     #00f. *)
+  check_minify_and_optimize
     ".gradient { background: linear-gradient(to right, red, blue); }"
+    ~minified:".gradient{background:linear-gradient(to right,red,blue)}"
+    ~optimized:".gradient{background:linear-gradient(90deg,red,#00f)}"
 
 (* Not a roundtrip test *)
 let test_complex_values () =
@@ -1400,7 +1409,7 @@ let test_complex_values () =
     ".calc { width: calc(100% - 20px); }";
   check_stylesheet ~expected:".multi{margin:10px 20px 30px 40px}"
     ".multi { margin: 10px 20px 30px 40px; }";
-  check_stylesheet ~expected:".var{color:var(--primary-color,#00f)}"
+  check_stylesheet ~expected:".var{color:var(--primary-color,blue)}"
     ".var { color: var(--primary-color, blue); }";
   check_stylesheet ~expected:".clamp{font-size:clamp(1rem,2vw,2rem)}"
     ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
@@ -1437,8 +1446,9 @@ let spec_s7_block_examples () =
      block contents, then validated by the rule grammar that owns the block. *)
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
-  check_stylesheet ~expected:"p>a{color:#00f;text-decoration:underline}"
-    "p > a { color: blue; text-decoration: underline; }";
+  check_minify_and_optimize "p > a { color: blue; text-decoration: underline; }"
+    ~minified:"p>a{color:blue;text-decoration:underline}"
+    ~optimized:"p>a{color:#00f;text-decoration:underline}";
   check_stylesheet
     ~expected:"@font-face{font-family:MyFont;src:url(font.woff2)}"
     "@font-face { font-family: MyFont; src: url(font.woff2); }";
@@ -1446,8 +1456,9 @@ let spec_s7_block_examples () =
     "@page :left { margin-left: 4cm; margin-right: 3cm; }";
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-  check_stylesheet ~expected:".card{color:red;& .title{color:#00f}}"
-    ".card { color: red; & .title { color: blue; } }";
+  check_minify_and_optimize ".card { color: red; & .title { color: blue; } }"
+    ~minified:".card{color:red;& .title{color:blue}}"
+    ~optimized:".card{color:red;.title{color:#00f}}";
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
   check_stylesheet ~expected:"@keyframes slide{50%{opacity:1}}"
     "@keyframes slide { color: red; 50% { opacity: 1 } }";
@@ -1458,7 +1469,8 @@ let spec_s8_rule_shapes () =
   (* CSS Syntax Level 3 sections 8.1 and 8.2: top-level qualified rules are
      style rules, and at-rules are either statement or block rules depending on
      whether they end with a semicolon or a {} block. *)
-  check_stylesheet ~expected:"p>a{color:#00f}" "p > a { color: blue }";
+  check_minify_and_optimize "p > a { color: blue }" ~minified:"p>a{color:blue}"
+    ~optimized:"p>a{color:#00f}";
   check_stylesheet ~expected:"@import\"theme.css\";" "@import \"theme.css\";";
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
@@ -2330,8 +2342,10 @@ let spec_current_at_rules () =
     "@scope (.card) to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
-  check_stylesheet ~expected:"@scope(:root)to (.end,.stop){.title{color:#00f}}"
-    "@scope (:root) to (.stop, .end) { .title { color: blue } }";
+  check_minify_and_optimize
+    "@scope (:root) to (.stop, .end) { .title { color: blue } }"
+    ~minified:"@scope(:root)to (.end,.stop){.title{color:blue}}"
+    ~optimized:"@scope(:root)to (.end,.stop){.title{color:#00f}}";
   check_stylesheet
     ~expected:
       "@font-palette-values \
@@ -2664,14 +2678,14 @@ let test_nesting_idempotent input =
 (* ignore-test *)
 let test_nesting_basic () =
   (* Basic nesting with & descendant combinator *)
-  test_nesting_roundtrip ~expected:".parent{color:red;& .child{color:#00f}}"
+  test_nesting_roundtrip ~expected:".parent{color:red;& .child{color:blue}}"
     ".parent { color: red; & .child { color: blue; } }";
   test_nesting_idempotent ".parent { color: red; & .child { color: blue; } }"
 
 (* ignore-test *)
 let test_nesting_ampersand_hover () =
   (* Ampersand with pseudo-class *)
-  test_nesting_roundtrip ~expected:".btn{color:red;&:hover{color:#00f}}"
+  test_nesting_roundtrip ~expected:".btn{color:red;&:hover{color:blue}}"
     ".btn { color: red; &:hover { color: blue; } }";
   test_nesting_idempotent ".btn { color: red; &:hover { color: blue; } }"
 
@@ -2691,9 +2705,9 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media(min-width:768px){color:#00f}}"
+    ~expected:".foo{color:red;@media(min-width:768px){color:blue}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
-  test_nesting_idempotent ".foo{color:red;@media(min-width:768px){color:#00f}}"
+  test_nesting_idempotent ".foo{color:red;@media(min-width:768px){color:blue}}"
 
 (* ignore-test *)
 let test_nesting_deep () =
@@ -2714,33 +2728,42 @@ let test_nesting_with_declarations () =
 (* ignore-test *)
 let test_nesting_check_stylesheet () =
   (* Also test via check_stylesheet for consistency *)
-  check_stylesheet ~expected:".parent{color:red;& .child{color:#00f}}"
-    ".parent { color: red; & .child { color: blue; } }";
-  check_stylesheet ~expected:".btn{color:red;&:hover{color:#00f}}"
-    ".btn { color: red; &:hover { color: blue; } }";
+  (* optimize folds blue -> #00f and drops the redundant leading "& " (a bare
+     nested selector already means descendant); pp holds both. *)
+  check_minify_and_optimize ".parent { color: red; & .child { color: blue; } }"
+    ~minified:".parent{color:red;& .child{color:blue}}"
+    ~optimized:".parent{color:red;.child{color:#00f}}";
+  check_minify_and_optimize ".btn { color: red; &:hover { color: blue; } }"
+    ~minified:".btn{color:red;&:hover{color:blue}}"
+    ~optimized:".btn{color:red;&:hover{color:#00f}}";
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
 let spec_nesting_selector_edges () =
-  check_stylesheet
-    ~expected:
-      ".card{color:red;&:is(:hover,:focus-visible){color:#00f}&:has(>img){display:grid}}"
+  check_minify_and_optimize
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
-     img) { display: grid } }";
+     img) { display: grid } }"
+    ~minified:
+      ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
+    ~optimized:
+      ".card{color:red;&:is(:hover,:focus-visible){color:#00f}&:has(>img){display:grid}}";
   check_stylesheet
     ~expected:
       ".card{@supports \
        selector(:has(img)){&:has(img){display:grid}}@container(inline-size>30em){&>.media{display:block}}}"
     ".card { @supports selector(:has(img)) { &:has(img) { display: grid } } \
      @container (inline-size > 30em) { & > .media { display: block } } }";
-  check_stylesheet
-    ~expected:
-      "@scope(.card)to (.boundary){.title{color:red;&:hover{color:#00f}}}"
+  check_minify_and_optimize
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
-     blue } } }";
-  check_stylesheet
-    ~expected:".card{@scope(&)to (.boundary){& .title{color:#00f}}}"
-    ".card { @scope (&) to (.boundary) { & .title { color: blue } } }";
+     blue } } }"
+    ~minified:
+      "@scope(.card)to (.boundary){.title{color:red;&:hover{color:blue}}}"
+    ~optimized:
+      "@scope(.card)to (.boundary){.title{color:red;&:hover{color:#00f}}}";
+  check_minify_and_optimize
+    ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
+    ~minified:".card{@scope(&)to (.boundary){& .title{color:blue}}}"
+    ~optimized:".card{@scope(&)to (.boundary){& .title{color:#00f}}}";
   check_stylesheet
     ~expected:
       ".card{color:red;@scope(.feature)to (.boundary){&>.title{display:grid}}}"
@@ -2768,7 +2791,7 @@ let nesting_module_l1_preserves_structure () =
   let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
   Alcotest.(check string)
     "parse + print keeps nested rules nested"
-    ".card{color:red;& .title{color:#00f}&:hover{color:green}}" printed;
+    ".card{color:red;& .title{color:blue}&:hover{color:green}}" printed;
   let optimized = Css.Optimize.stylesheet sheet in
   let opt_printed =
     String.trim (Css.Stylesheet.to_string ~minify:true optimized)
@@ -2833,7 +2856,7 @@ let s3432_sourcemap_comment () =
       ( "pragma between rules",
         ".a { color: red } /*# sourceMappingURL=app.css.map */ .b { color: \
          blue }",
-        ".a{color:red}.b{color:#00f}" );
+        ".a{color:red}.b{color:blue}" );
       ( "pragma at end of file",
         ".a { color: red } /*# sourceMappingURL=app.css.map */",
         ".a{color:red}" );
@@ -3043,16 +3066,17 @@ let c61_keeps_winner () =
    to the shortest equivalent form, so all of these resolve to the same
    serialized output. *)
 let color414_form_equiv () =
-  let parsed s =
-    match Css.parse_color s with
-    | Some c -> c
-    | None -> Alcotest.failf "failed to parse color: %s" s
-  in
+  (* These forms parse to distinct color nodes; collapsing them to the shortest
+     spelling is an optimize transform, not a pp same-node choice. Canonicalize
+     through optimize+minify. *)
   let canonical s =
-    let c = parsed s in
-    Css.Pp.to_string ~minify:true Css.pp_color c
+    match
+      Css.of_string ~strict:false (String.concat "" [ ".x{color:"; s; "}" ])
+    with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse color: %s" s
   in
-  (* These hex forms all denote the same sRGB color (255, 0, 0) and the printer
+  (* These hex forms all denote the same sRGB color (255, 0, 0) and optimize
      canonicalizes each to the named color [red]. The rgb() function forms are
      also spec-equivalent and could canonicalize the same way; that is an
      additional optimizer freedom not asserted here. *)
@@ -3153,10 +3177,13 @@ let cssom662_decl_serialization () =
    spec-equivalent form; the test asserts the parsed colors denote the same
    value via the canonical printer. *)
 let color4_6_4_transparent_equivalence () =
+  (* These four forms parse to distinct color nodes, so collapsing them to one
+     canonical spelling is an optimize transform, not a pp one: canonicalize
+     through optimize, not bare pp. *)
   let canonical s =
-    match Css.parse_color s with
-    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
-    | None -> Alcotest.failf "failed to parse color: %s" s
+    match Css.of_string ~strict:false (".x{color:" ^ s ^ "}") with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse color: %s" s
   in
   let forms =
     [ "transparent"; "rgba(0, 0, 0, 0)"; "rgb(0 0 0 / 0)"; "#0000" ]
@@ -3253,10 +3280,14 @@ let s435_universal_redundant () =
    and the fully-saturated red hue must canonicalize to the named color under
    industry-standard minification. *)
 let color4_3_hue_modulo_canonicalization () =
+  (* Hue-modulo reduction and hsl -> named are optimize transforms, not pp
+     same-node spellings; route each form through optimize+minify. *)
   let canonical s =
-    match Css.parse_color s with
-    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
-    | None -> Alcotest.failf "failed to parse color: %s" s
+    match
+      Css.of_string ~strict:false (String.concat "" [ ".x{color:"; s; "}" ])
+    with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse color: %s" s
   in
   let red = canonical "red" in
   Alcotest.(check string)
@@ -5533,7 +5564,8 @@ let customprops12_calc_fallback () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "var(--x, calc(1px + 2px)) reduces inner calc" ".x{width:var(--x,3px)}"
+    "var(--x, calc(1px + 2px)) holds the calc (typed boundary)"
+    ".x{width:var(--x,calc(1px + 2px))}"
     (normalize ".x { width: var(--x, calc(1px + 2px)) }")
 
 let customprops12_multi_comma () =
@@ -6098,7 +6130,8 @@ let custom_props1_fallback_resolution_mode () =
     ".x{color:var(--undef,red)}"
     (inlined ".x { color: var(--undef, #ff0000) }");
   Alcotest.(check string)
-    "calc fallback reduces locally inside var()" ".x{width:var(--undef,3px)}"
+    "calc fallback is held inside var() (typed boundary)"
+    ".x{width:var(--undef,calc(1px + 2px))}"
     (inlined ".x { width: var(--undef, calc(1px + 2px)) }");
   Alcotest.(check string)
     "nested var() chain remains runtime fallback"

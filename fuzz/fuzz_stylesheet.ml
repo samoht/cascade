@@ -764,16 +764,10 @@ let test_shorthand_wide_keyword buf =
   match parse_declaration input with
   | None -> failf "CSS-wide shorthand did not parse: %S" input
   | Some serialized ->
-      (* margin and padding are not inherited and have initial value 0, so
-         [initial] resolves to exactly 0 in every cascade context and the
-         minifier substitutes the shorter spelling. The other shorthands here
-         have no all-initial spelling shorter than the keyword, so it stays. *)
-      let expected =
-        match (property, keyword) with
-        | ("margin" | "padding"), "initial" -> property ^ ":0"
-        | _ -> property ^ ":" ^ keyword
-      in
-      if serialized <> expected then
+      (* pp serializes a CSS-wide keyword verbatim. Resolving [initial] to a
+         property's initial value (margin/padding:initial -> 0) needs the
+         initial-value table, so it is a normalize fold in optimize, not pp. *)
+      if serialized <> property ^ ":" ^ keyword then
         failf "CSS-wide shorthand changed: %S -> %S" input serialized
 
 (** CSS Cascade section 3: CSS-wide keywords cannot be combined with other

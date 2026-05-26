@@ -18,9 +18,7 @@ let decl_t : Css.Declaration.declaration Alcotest.testable =
 (* These tests are for CSS Variables module *)
 let test_any_var () =
   (* Test CSS custom property declaration creation using Variables.var *)
-  let decl, _var =
-    var "primary-color" Color (Hex { hash = true; value = "ff0000" })
-  in
+  let decl, _var = var "primary-color" Color (Css.Values.hex "ff0000") in
 
   (* Check declaration is created properly *)
   let name_opt = custom_declaration_name decl in
@@ -31,9 +29,7 @@ let test_any_var () =
   | None -> Alcotest.fail "Expected custom declaration");
 
   (* Test var with fallback *)
-  let decl2, _var2 =
-    var "theme-color" Color (Hex { hash = true; value = "ff0000" })
-  in
+  let decl2, _var2 = var "theme-color" Color (Css.Values.hex "ff0000") in
 
   let name_opt2 = custom_declaration_name decl2 in
   (match name_opt2 with
@@ -132,7 +128,7 @@ let spec_vars_of_property_matrix () =
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
-    var "text-color" Color (Hex { hash = true; value = "333333" })
+    var "text-color" Color (Css.Values.hex "333333")
   in
   let custom_size_decl, size_var = var "font-size" Length (Rem 1.0) in
 
@@ -160,7 +156,7 @@ let test_any_var_name () =
 let test_extract_custom_declarations () =
   let regular = v Width (Length (Px 100.)) in
 
-  let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
+  let custom1, _ = var "color1" Color (Css.Values.hex "ff0000") in
   let custom2, _ = var "size1" Length (Px 16.) in
 
   let decls = [ custom1; regular; custom2 ] in
@@ -196,7 +192,7 @@ let test_compare_vars_by_name () =
 (* Not a roundtrip test *)
 let test_custom_property_roundtrip () =
   (* Create a custom property using Variables.var *)
-  let custom, _ = var "primary" Color (Hex { hash = true; value = "0080ff" }) in
+  let custom, _ = var "primary" Color (Css.Values.hex "0080ff") in
 
   (* Check it follows CSS custom property syntax *)
   match custom_declaration_name custom with

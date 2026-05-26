@@ -61,6 +61,14 @@ val check_value_cursor :
     applies [parse], pretty-prints with [pp_func], and asserts the result equals
     spec-derived [input] or [expected]. *)
 
+val check_decl_optimizes : prop:string -> into:string -> string -> unit
+(** [check_decl_optimizes ~prop ~into input] asserts the declaration
+    [prop:input] optimizes and minifies to [prop:into]. pp holds a value's
+    authored spelling; cross-node folds (unit conversion, zero-strip, calc
+    folding) are optimize transforms. Pair it with a pp-only [check_*] held form
+    to cover both paths. [into] is the spec-canonical shortest spelling, not a
+    snapshot of current output. *)
+
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
 (** [check_parse_error_fields name expected actual] compares message and got

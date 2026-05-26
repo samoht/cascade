@@ -1540,9 +1540,12 @@ let test_transform () =
   check_transform "rotate(3.14rad)";
   check_transform "rotateX(45deg)";
   check_transform "rotateY(90deg)";
-  check_transform "rotateZ(180deg)" ~expected:"rotate(180deg)";
-  check_transform "rotate3d(1, 0, 0, 45deg)" ~expected:"rotateX(45deg)";
-  check_transform "rotate3d(0, 1, 0, 90deg)" ~expected:"rotateY(90deg)";
+  (* pp holds the authored transform function and only minifies whitespace;
+     folding rotateZ/rotate3d to the shorter equivalent function is an optimize
+     transform, not a pp serialization. *)
+  check_transform "rotateZ(180deg)";
+  check_transform "rotate3d(1, 0, 0, 45deg)" ~expected:"rotate3d(1,0,0,45deg)";
+  check_transform "rotate3d(0, 1, 0, 90deg)" ~expected:"rotate3d(0,1,0,90deg)";
   check_transform "rotate3d(1, 1, 1, 60deg)" ~expected:"rotate3d(1,1,1,60deg)";
   check_transform "scale(2)";
   check_transform "scale(0.5)" ~expected:"scale(.5)";
@@ -1996,6 +1999,11 @@ let test_vertical_align () =
   check_vertical_align "sub";
   check_vertical_align "super";
   check_vertical_align "inherit";
+  (* vertical-align also takes <length-percentage> (CSS2 section 10.8), so a
+     length, var(), and a held (non-reducible) calc() are all valid. *)
+  check_vertical_align "10px";
+  check_vertical_align "var(--v)";
+  check_vertical_align "calc(50% + 10px)";
   neg_cursor read_vertical_align "invalid-align"
 
 let test_font_family () =
@@ -2209,13 +2217,34 @@ let test_background_size () =
   check_background_size "50px";
   check_background_size "50%";
   check_background_size "inherit";
+  (* <bg-size> components are <length-percentage> (CSS Backgrounds 3), so var()
+     and calc() are valid; a non-reducible calc() is preserved, including in the
+     two-value form. *)
+  check_background_size "var(--s)";
+  check_background_size "calc(50% + 10px)";
+  check_background_size "calc(50% + 10px) auto";
   neg_cursor read_background_size "invalid-size"
 
 let test_gradient_direction () =
-  check_gradient_direction ~expected:"0deg" "to top";
-  check_gradient_direction ~expected:"90deg" "to right";
-  check_gradient_direction ~expected:"180deg" "to bottom";
-  check_gradient_direction ~expected:"270deg" "to left";
+  (* "to <side>" is a <side-or-corner>, a distinct node from the <angle> it
+     equals (corners like "to top right" are not fixed angles), so pp holds the
+     authored keyword; converting a side to its angle is an optimize
+     transform. *)
+  check_gradient_direction "to top";
+  check_gradient_direction "to right";
+  check_gradient_direction "to bottom";
+  check_gradient_direction "to left";
+  (* optimize+minify converts the side keyword to its angle. Stops are
+     already-canonical colours so only the direction changes. *)
+  let optimizes ~into dir =
+    check_decl_optimizes ~prop:"background"
+      ~into:("linear-gradient(" ^ into ^ ",red,#123456)")
+      ("linear-gradient(" ^ dir ^ ",red,#123456)")
+  in
+  optimizes ~into:"0deg" "to top";
+  optimizes ~into:"90deg" "to right";
+  optimizes ~into:"180deg" "to bottom";
+  optimizes ~into:"270deg" "to left";
   neg_cursor read_gradient_direction "invalid-direction"
 
 let test_gradient_stop () =
@@ -2765,10 +2794,11 @@ let test_flex () =
   check_flex "none";
   check_flex "auto";
   check_flex "inherit";
-  (* In the shorthand var() stays opaque, and a constant calc() in the grow
-     position (a <number>) reduces to the shortest form like a literal would. *)
+  (* var() is opaque, and a calc() in the grow position is held unfolded by the
+     reader and serialized lexically by pp - no evaluation at parse. Folding the
+     constant calc to 3 is an optimize+minify transform, asserted there. *)
   check_flex "var(--f)";
-  check_flex ~expected:"3 1 0" "calc(1 + 2) 1 0";
+  check_flex "calc(1 + 2) 1 0";
   neg_cursor read_flex "invalid-flex"
 
 let test_font_variant_css21 () =
@@ -2900,6 +2930,8 @@ let test_text_indent_value () =
     "each-line 2em hanging";
   check_text_indent_value "inherit";
   check_text_indent_value "var(--indent,1em)";
+  (* the <length-percentage> part takes a held (non-reducible) calc(). *)
+  check_text_indent_value "calc(50% + 10px)";
   neg_cursor read_text_indent_value "hanging";
   neg_cursor read_text_indent_value "1em hanging hanging";
   neg_cursor read_text_indent_value "1em each-line each-line"
@@ -3267,6 +3299,8 @@ let spec_generated_animation_font_edges () =
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range "entry";
+  (* the <length-percentage> offset takes a held (non-reducible) calc(). *)
+  check_animation_range_item "entry calc(50% + 10px)";
   check_animation_range_item "cover 20%";
   check_animation_range_item "entry";
   check_animation_range_name "entry-crossing";
@@ -3345,11 +3379,11 @@ let spec_generated_box_layout_edges () =
   check_dominant_baseline "text-bottom";
   check_flex_factor "2";
   (* flex-grow/flex-shrink are <number> (CSS Flexbox 1), so var() and calc() are
-     valid. Ideal minified output: var() stays opaque, a constant calc() reduces
-     to the shortest <number> (calc(1 + 2) -> 3), and a calc() that cannot
-     reduce keeps its form. *)
+     valid. parse + lexical pp (no optimize) holds every calc() unfolded - a
+     constant calc(1 + 2) and a calc(var(--g) + 1) alike. The constant fold to 3
+     is an optimize+minify transform, asserted in test_optimize. *)
   check_flex_factor "var(--g)";
-  check_flex_factor ~expected:"3" "calc(1 + 2)";
+  check_flex_factor "calc(1 + 2)";
   check_flex_factor "calc(var(--g) + 1)";
   check_flex_flow "row wrap";
   check_grid_line_pair ~expected:"1/span 2" "1 / span 2";
@@ -3521,6 +3555,9 @@ let spec_generated_text_timeline_edges () =
   check_text_wrap_style "stable";
   check_timeline_inset "auto 100%";
   check_timeline_inset_item "100%";
+  (* timeline-inset takes [ auto | <length-percentage> ], so a held calc()
+     too. *)
+  check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
   check_timeline_shorthand_item "--main block";
   check_view_transition_class "card active";

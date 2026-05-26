@@ -616,10 +616,32 @@ let test_name_defining_atrules_preserved buf =
       | None ->
           failf "optimized name-defining at-rule did not reparse: %S" optimized)
 
+(* When optimize has nothing left to change it must return its input unchanged -
+   the very same physical value, not a structurally-equal reallocation.
+   Optimizing once reaches a fixed point [canon]; a second pass is then a
+   genuine no-op, so [optimize canon] must be physically equal to [canon]. A
+   reallocation is wasted work and a sign the optimizer rebuilds subtrees it
+   never touched. *)
+let test_optimize_preserves_physical_identity buf =
+  let canon = Css.Optimize.stylesheet (generated_stylesheet buf) in
+  let again = Css.Optimize.stylesheet canon in
+  if again == canon then ()
+  else if again = canon then
+    fail
+      "optimize reallocated an already-optimized stylesheet instead of \
+       returning it unchanged (x = optimize x but not x == optimize x)"
+  else
+    failf
+      "optimize is not idempotent, so the sharing invariant cannot apply: %S \
+       -> %S"
+      (minified canon) (minified again)
+
 let suite =
   ( "optimize",
     [
       test_case "optimize idempotent" [ bytes ] test_optimize_idempotent;
+      test_case "optimize preserves physical identity on a fixed point"
+        [ bytes ] test_optimize_preserves_physical_identity;
       test_case "optimized stylesheet reparses" [ bytes ]
         test_optimized_stylesheet_reparses;
       test_case "optimize monotonicity: optimized <= minified-alone" [ bytes ]

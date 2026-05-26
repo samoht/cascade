@@ -66,7 +66,7 @@ let complex_values () =
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
      and are preserved. *)
-  check_declaration ~expected:"width:calc(100% - 60px)"
+  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
     "width: calc(100% - calc(50px + 10px));";
 
   (* Multiple nested calc() with var(): the inner calcs that contain [var()]
@@ -88,12 +88,12 @@ let complex_values () =
   check_declaration ~expected:"width:calc(attr(data-w px)*1)"
     "width: calc(attr(data-w px) * 1);";
 
-  (* Constant calc on left, mixed on right: the constant part reduces. *)
-  check_declaration ~expected:"height:calc(60px - 100%)"
+  (* pp holds nested calc unfolded; optimize reduces the constant part. *)
+  check_declaration ~expected:"height:calc(calc(50px + 10px) - 100%)"
     "height: calc(calc(50px + 10px) - 100%);";
 
-  (* Triple-nested all-constant calc reduces fully. *)
-  check_declaration ~expected:"width:calc(100% - 3px)"
+  (* pp holds triple-nested calc; optimize reduces it fully. *)
+  check_declaration ~expected:"width:calc(100% - calc(10px - calc(5px + 2px)))"
     "width: calc(100% - calc(10px - calc(5px + 2px)));"
 
 let quoted_strings () =
@@ -267,7 +267,7 @@ let error_unclosed_block () =
 let special_cases () =
   (* Per CSS Values 4 section 10.7 the inner all-constant calc reduces to
      [60px], leaving the mixed-unit outer calc preserved. *)
-  check_declaration ~expected:"width:calc(100% - 60px)"
+  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
     "width: calc(100% - calc(50px + 10px));";
 
   (* Custom property with var() value *)
@@ -332,8 +332,11 @@ let lengths () =
   check_declaration ~expected:"font-size:2rem" "font-size: 2rem";
   check_declaration ~expected:"margin:1.5rem" "margin: 1.5rem";
 
-  (* Zero *)
-  check_declaration ~expected:"width:0" "width: 0px";
+  (* Zero. pp holds the authored unit (0px is the shortest <length> spelling of
+     zero); stripping it to the unitless 0 changes <length> to <number>, a typed
+     rewrite that optimize does. 0% stays a percentage. *)
+  check_declaration ~expected:"width:0px" "width: 0px";
+  check_decl_optimizes ~prop:"width" ~into:"0" "0px";
   check_declaration ~expected:"margin:0" "margin: 0";
   check_declaration ~expected:"padding:0" "padding: 0";
 
@@ -485,7 +488,8 @@ let flexbox_flex_and_basis () =
   check_declaration ~expected:"flex-shrink:1" "flex-shrink: 1";
   (* Flex basis *)
   check_declaration ~expected:"flex-basis:auto" "flex-basis: auto";
-  check_declaration ~expected:"flex-basis:0" "flex-basis: 0px";
+  check_declaration ~expected:"flex-basis:0px" "flex-basis: 0px";
+  check_decl_optimizes ~prop:"flex-basis" ~into:"0" "0px";
   check_declaration ~expected:"flex-basis:0%" "flex-basis: 0%";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
   check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%"
@@ -1125,18 +1129,19 @@ let edge_cases () =
 
   (* Complex calc expressions *)
   (* Cases with / operator - should be minified without spaces per CSS spec *)
-  check_declaration ~expected:"width:calc(50% - 10px)"
+  check_declaration ~expected:"width:calc((100% - 20px)/2)"
     "width: calc((100% - 20px) / 2)";
-  check_declaration ~expected:"height:calc(100vh - 1em - 50px)"
+  check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
 
   (* Per CSS Values 4 section 10.7 the printer fully simplifies all-constant
      calcs and reduces multiplicative subexpressions against same-unit
      operands. *)
-  check_declaration ~expected:"width:30px" "width: calc((10px + 5px) * 2)";
-  check_declaration ~expected:"height:calc(100% - 20px)"
+  check_declaration ~expected:"width:calc((10px + 5px)*2)"
+    "width: calc((10px + 5px) * 2)";
+  check_declaration ~expected:"height:calc(100% - 10px*2)"
     "height: calc(100% - 10px * 2)";
-  check_declaration ~expected:"top:calc(50% - 45px)"
+  check_declaration ~expected:"top:calc(50% - (20px + 10px)*1.5)"
     "top: calc(50% - (20px + 10px) * 1.5)";
 
   (* Very long values *)
@@ -1181,7 +1186,7 @@ let spec_cascade3_shorthands () =
   check_declaration ~expected:"font:700 12pt/14pt Helvetica"
     "font: bold 12pt/14pt Helvetica";
   check_declaration ~expected:"margin:inherit" "margin: inherit";
-  check_declaration ~expected:"padding:0" "padding: initial";
+  check_declaration ~expected:"padding:initial" "padding: initial";
   check_declaration ~expected:"background:unset" "background: unset";
   check_declaration ~expected:"border:revert" "border: revert";
   check_declaration ~expected:"font:revert-layer" "font: revert-layer";
@@ -1507,8 +1512,10 @@ let spec_values_l45_edges () =
     (fun (input, expected) -> check_declaration ~expected input)
     [
       ("width: calc(100% - 2rem)", "width:calc(100% - 2rem)");
-      ("width: calc(1px * 2)", "width:2px");
-      ("width: calc(100px / 2)", "width:50px");
+      (* pp is pure: it holds calc() unfolded and serializes lexically; the
+         all-constant fold to 2px / 50px is an optimize transform. *)
+      ("width: calc(1px * 2)", "width:calc(1px*2)");
+      ("width: calc(100px / 2)", "width:calc(100px/2)");
       ("width: min(10px, 5cqw)", "width:min(10px,5cqw)");
       ("width: max(10svw, 20lvw)", "width:max(10svw,20lvw)");
       ("height: clamp(10dvh, 50%, 100dvh)", "height:clamp(10dvh,50%,100dvh)");
@@ -1838,11 +1845,9 @@ let css_wide_custom_property_vectors () =
   List.iter
     (fun keyword ->
       check_declaration ("color:" ^ keyword);
-      check_declaration
-        ~expected:
-          (if String.equal keyword "initial" then "margin:0"
-           else "margin:" ^ keyword)
-        ("margin:" ^ keyword);
+      (* pp holds the CSS-wide keyword verbatim; folding margin:initial to 0 is
+         an optimize transform, not a pp serialization. *)
+      check_declaration ("margin:" ^ keyword);
       none_cursor read_declaration ("color:" ^ keyword ^ " red");
       none_cursor read_declaration ("margin:1px " ^ keyword);
       none_cursor read_declaration ("background:red " ^ keyword))
