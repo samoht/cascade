@@ -3282,7 +3282,6 @@ let rec pp_alpha : alpha Pp.t =
 (* Helper to print optional alpha with the correct leading separator *)
 let pp_opt_alpha ctx = function
   | None -> ()
-  | a when Pp.minified ctx && alpha_is_full a -> ()
   | (Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
@@ -6728,6 +6727,25 @@ let canonical_color_of_hex (value : string) : color =
       Named (read_color_name (Cursor.of_string name))
   | _ -> Hex { hash = true; value = shortened }
 
+(* CSS Color 4 sec. 4.1: a fully-opaque alpha ([/ 1] or [/ 100%]) is redundant
+   and drops. The static colours fold to hex (which carries no alpha), so this
+   only matters for a colour the static fold leaves alone (e.g. a [var()]
+   channel). *)
+let drop_full_alpha (c : color) : color =
+  let is_full (a : alpha) =
+    match a with Num 1.0 | Pct 100.0 -> true | _ -> false
+  in
+  match c with
+  | Rgba { rgb; a; legacy } when is_full a -> Rgba { rgb; a = None; legacy }
+  | Hsl r when is_full r.a -> Hsl { r with a = None }
+  | Hwb r when is_full r.a -> Hwb { r with a = None }
+  | Color r when is_full r.alpha -> Color { r with alpha = None }
+  | Oklab r when is_full r.alpha -> Oklab { r with alpha = None }
+  | Oklch r when is_full r.alpha -> Oklch { r with alpha = None }
+  | Lab r when is_full r.alpha -> Lab { r with alpha = None }
+  | Lch r when is_full r.alpha -> Lch { r with alpha = None }
+  | _ -> c
+
 (* AST-level color canonicalisation: the folds the printer used to do, producing
    a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
    gates the static colour-space fold (suppressed inside [@supports] tests). *)
@@ -6772,8 +6790,8 @@ let rec normalize_color ~in_feature_query (c : color) : color =
                 else Num (Float.of_int alpha_byte /. 255.0)
               in
               hex_of_bytes r g b a
-          | None -> c)
-      | None -> c)
+          | None -> drop_full_alpha c)
+      | None -> drop_full_alpha c)
   | Hex { value; _ } -> canonical_color_of_hex value
   | Named name ->
       (* Pick the shortest spelling: a named colour collapses to hex only when
@@ -6791,7 +6809,7 @@ let rec normalize_color ~in_feature_query (c : color) : color =
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
-      | Option.None -> c)
+      | Option.None -> drop_full_alpha c)
   | Mix { in_space; hue; color1; percent1; color2; percent2 } -> (
       let keep () =
         (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and the
