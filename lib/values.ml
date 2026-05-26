@@ -3321,13 +3321,16 @@ let rec normalize_length ?(strip = true) (l : length) : length =
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. A wrapped [<length>] folds its own math functions. *)
-let normalize_length_percentage (lp : length_percentage) : length_percentage =
+let normalize_length_percentage ?(strip = true) (lp : length_percentage) :
+    length_percentage =
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc with
       | Val v -> v
       | folded -> Calc folded)
-  | Length l -> Length (normalize_length l)
+  | Length l ->
+      let l' = normalize_length ~strip l in
+      if l' == l then lp else Length l'
   | _ -> lp
 
 (* Evaluate the static CSS math functions on [<number>] (the folds the printer

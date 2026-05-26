@@ -3653,323 +3653,572 @@ let rec pp_border_radius : border_radius Pp.t =
    live in the unwalked [Supports] condition), so the static colour-space fold
    is never suppressed here. *)
 let normalize_color = Values.normalize_color ~in_feature_query:false
+let preserve_if_equal before after = if after = before then before else after
 
-let normalize_border_radius : border_radius -> border_radius = function
+let map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        let y = preserve_if_equal x (f x) in
+        loop (changed || not (y == x)) (y :: acc) rest
+  in
+  loop false [] xs
+
+let option_map_preserve f opt =
+  match opt with
+  | Option.None -> opt
+  | Option.Some x ->
+      let y = preserve_if_equal x (f x) in
+      if y == x then opt else Option.Some y
+
+let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
+ fun value ->
+  match value with
   | Radius { horizontal; vertical } ->
-      Radius
-        {
-          horizontal = List.map Values.normalize_length_percentage horizontal;
-          vertical =
-            Option.map (List.map Values.normalize_length_percentage) vertical;
-        }
+      preserve_if_equal value
+        (Radius
+           {
+             horizontal =
+               map_preserve
+                 (Values.normalize_length_percentage ~strip)
+                 horizontal;
+             vertical =
+               option_map_preserve
+                 (map_preserve (Values.normalize_length_percentage ~strip))
+                 vertical;
+           })
   | other -> other
 
-let normalize_radial_size : radial_size -> radial_size = function
+let normalize_radial_size : radial_size -> radial_size =
+ fun value ->
+  match value with
   | Ellipse_radii (a, b) ->
-      Ellipse_radii
-        ( Values.normalize_length_percentage a,
-          Values.normalize_length_percentage b )
+      preserve_if_equal value
+        (Ellipse_radii
+           ( Values.normalize_length_percentage ~strip:false a,
+             Values.normalize_length_percentage ~strip:false b ))
+  | Circle_radius r ->
+      preserve_if_equal value
+        (Circle_radius (Values.normalize_length ~strip:false r))
   | other -> other
-
-let rec normalize_gradient_stop : gradient_stop -> gradient_stop = function
-  | Color_percentage (c, p1, p2) ->
-      Color_percentage
-        ( normalize_color c,
-          Option.map Values.normalize_length_percentage p1,
-          Option.map Values.normalize_length_percentage p2 )
-  | Color_length (c, l1, l2) -> Color_length (normalize_color c, l1, l2)
-  | List stops -> List (List.map normalize_gradient_stop stops)
-  | other -> other
-
-let normalize_webkit_gradient_stop :
-    Webkit_gradient.stop -> Webkit_gradient.stop = function
-  | From c -> From (normalize_color c)
-  | To c -> To (normalize_color c)
-  | Color_stop (p, c) -> Color_stop (p, normalize_color c)
-
-let normalize_webkit_gradient : Webkit_gradient.t -> Webkit_gradient.t =
-  function
-  | Linear r ->
-      Linear { r with stops = List.map normalize_webkit_gradient_stop r.stops }
-  | Radial r ->
-      Radial { r with stops = List.map normalize_webkit_gradient_stop r.stops }
 
 let rec normalize_gradient_direction : gradient_direction -> gradient_direction
-    = function
+    =
+ fun value ->
+  match value with
   | To_top -> Angle (Values.Deg 0.)
   | To_right -> Angle (Values.Deg 90.)
   | To_bottom -> Angle (Values.Deg 180.)
   | To_left -> Angle (Values.Deg 270.)
-  | Angle a -> Angle (Values.normalize_angle a)
+  | Angle a -> preserve_if_equal value (Angle (Values.normalize_angle a))
   | With_interpolation (dir, interp) ->
-      With_interpolation (normalize_gradient_direction dir, interp)
+      preserve_if_equal value
+        (With_interpolation (normalize_gradient_direction dir, interp))
   | (To_top_right | To_bottom_right | To_bottom_left | To_top_left | Var _) as
     other ->
       other
 
-let normalize_radial_config (c : radial_gradient_config) =
-  { c with size = Option.map normalize_radial_size c.size }
-
-let rec normalize_background_image : background_image -> background_image =
-  let stops = List.map normalize_gradient_stop in
-  function
-  | Linear_gradient (d, s) ->
-      Linear_gradient (normalize_gradient_direction d, stops s)
-  | Radial_gradient (c, s) ->
-      Radial_gradient (normalize_radial_config c, stops s)
-  | Conic_gradient (c, s) -> Conic_gradient (c, stops s)
-  | Repeating_linear_gradient (d, s) ->
-      Repeating_linear_gradient (normalize_gradient_direction d, stops s)
-  | Repeating_radial_gradient (c, s) ->
-      Repeating_radial_gradient (normalize_radial_config c, stops s)
-  | Repeating_conic_gradient (c, s) -> Repeating_conic_gradient (c, stops s)
-  | Webkit_linear_gradient (d, s) ->
-      Webkit_linear_gradient (normalize_gradient_direction d, stops s)
-  | Webkit_repeating_linear_gradient (d, s) ->
-      Webkit_repeating_linear_gradient (normalize_gradient_direction d, stops s)
-  | Webkit_radial_gradient (c, s) ->
-      Webkit_radial_gradient (normalize_radial_config c, stops s)
-  | Webkit_repeating_radial_gradient (c, s) ->
-      Webkit_repeating_radial_gradient (normalize_radial_config c, stops s)
-  | Moz_linear_gradient (d, s) ->
-      Moz_linear_gradient (normalize_gradient_direction d, stops s)
-  | Moz_repeating_linear_gradient (d, s) ->
-      Moz_repeating_linear_gradient (normalize_gradient_direction d, stops s)
-  | Moz_radial_gradient (c, s) ->
-      Moz_radial_gradient (normalize_radial_config c, stops s)
-  | Moz_repeating_radial_gradient (c, s) ->
-      Moz_repeating_radial_gradient (normalize_radial_config c, stops s)
-  | O_linear_gradient (d, s) ->
-      O_linear_gradient (normalize_gradient_direction d, stops s)
-  | O_repeating_linear_gradient (d, s) ->
-      O_repeating_linear_gradient (normalize_gradient_direction d, stops s)
-  | O_radial_gradient (c, s) ->
-      O_radial_gradient (normalize_radial_config c, stops s)
-  | O_repeating_radial_gradient (c, s) ->
-      O_repeating_radial_gradient (normalize_radial_config c, stops s)
-  | Webkit_gradient g -> Webkit_gradient (normalize_webkit_gradient g)
-  | Cross_fade opts ->
-      Cross_fade
-        (List.map
-           (fun (o : cross_fade_option) ->
-             { o with image = normalize_background_image o.image })
-           opts)
-  | List imgs -> List (List.map normalize_background_image imgs)
+let rec normalize_gradient_stop : gradient_stop -> gradient_stop =
+ fun value ->
+  match value with
+  | Color_percentage (c, p1, p2) ->
+      preserve_if_equal value
+        (Color_percentage
+           ( normalize_color c,
+             option_map_preserve
+               (Values.normalize_length_percentage ~strip:false)
+               p1,
+             option_map_preserve
+               (Values.normalize_length_percentage ~strip:false)
+               p2 ))
+  | Color_length (c, l1, l2) ->
+      preserve_if_equal value
+        (Color_length
+           ( normalize_color c,
+             option_map_preserve (Values.normalize_length ~strip:false) l1,
+             option_map_preserve (Values.normalize_length ~strip:false) l2 ))
+  | Length l ->
+      preserve_if_equal value (Length (Values.normalize_length ~strip:false l))
+  | Direction dir ->
+      preserve_if_equal value (Direction (normalize_gradient_direction dir))
+  | List stops ->
+      preserve_if_equal value
+        (List (map_preserve normalize_gradient_stop stops))
   | other -> other
 
-let normalize_position_value : position_value -> position_value = function
+let normalize_webkit_gradient_stop :
+    Webkit_gradient.stop -> Webkit_gradient.stop =
+ fun value ->
+  match value with
+  | From c -> preserve_if_equal value (From (normalize_color c))
+  | To c -> preserve_if_equal value (To (normalize_color c))
+  | Color_stop (p, c) ->
+      preserve_if_equal value (Color_stop (p, normalize_color c))
+
+let normalize_webkit_gradient : Webkit_gradient.t -> Webkit_gradient.t =
+ fun value ->
+  match value with
+  | Linear r ->
+      let stops = map_preserve normalize_webkit_gradient_stop r.stops in
+      if stops == r.stops then value else Linear { r with stops }
+  | Radial r ->
+      let stops = map_preserve normalize_webkit_gradient_stop r.stops in
+      if stops == r.stops then value else Radial { r with stops }
+
+let normalize_position_value ?(strip = true) : position_value -> position_value
+    =
+ fun value ->
+  match value with
+  | XY (x, y) ->
+      preserve_if_equal value
+        (XY (Values.normalize_length ~strip x, Values.normalize_length ~strip y))
+  | Single l ->
+      preserve_if_equal value (Single (Values.normalize_length ~strip l))
   | Edge_offset_axis (e, lp, a) ->
-      Edge_offset_axis (e, Values.normalize_length_percentage lp, a)
+      preserve_if_equal value
+        (Edge_offset_axis (e, Values.normalize_length_percentage ~strip lp, a))
+  | Axis_edge_offset (a, e, l) ->
+      preserve_if_equal value
+        (Axis_edge_offset (a, e, Values.normalize_length ~strip l))
   | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
-      Edge_offset_edge_offset
-        ( e1,
-          Values.normalize_length_percentage lp1,
-          e2,
-          Values.normalize_length_percentage lp2 )
+      preserve_if_equal value
+        (Edge_offset_edge_offset
+           ( e1,
+             Values.normalize_length_percentage ~strip lp1,
+             e2,
+             Values.normalize_length_percentage ~strip lp2 ))
+  | other -> other
+
+let normalize_radial_config (c : radial_gradient_config) =
+  let size = option_map_preserve normalize_radial_size c.size in
+  let position =
+    option_map_preserve (normalize_position_value ~strip:false) c.position
+  in
+  if size == c.size && position == c.position then c
+  else { c with size; position }
+
+let normalize_conic_config (c : conic_gradient_config) =
+  let angle = option_map_preserve Values.normalize_angle c.angle in
+  let position =
+    option_map_preserve (normalize_position_value ~strip:false) c.position
+  in
+  if angle == c.angle && position == c.position then c
+  else { c with angle; position }
+
+let rec normalize_background_image : background_image -> background_image =
+ fun value ->
+  let stops = map_preserve normalize_gradient_stop in
+  match value with
+  | Linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Linear_gradient (normalize_gradient_direction d, stops s))
+  | Radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Radial_gradient (normalize_radial_config c, stops s))
+  | Conic_gradient (c, s) ->
+      preserve_if_equal value
+        (Conic_gradient (normalize_conic_config c, stops s))
+  | Repeating_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Repeating_linear_gradient (normalize_gradient_direction d, stops s))
+  | Repeating_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Repeating_radial_gradient (normalize_radial_config c, stops s))
+  | Repeating_conic_gradient (c, s) ->
+      preserve_if_equal value
+        (Repeating_conic_gradient (normalize_conic_config c, stops s))
+  | Webkit_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Webkit_linear_gradient (normalize_gradient_direction d, stops s))
+  | Webkit_repeating_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Webkit_repeating_linear_gradient
+           (normalize_gradient_direction d, stops s))
+  | Webkit_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Webkit_radial_gradient (normalize_radial_config c, stops s))
+  | Webkit_repeating_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Webkit_repeating_radial_gradient (normalize_radial_config c, stops s))
+  | Moz_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Moz_linear_gradient (normalize_gradient_direction d, stops s))
+  | Moz_repeating_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (Moz_repeating_linear_gradient (normalize_gradient_direction d, stops s))
+  | Moz_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Moz_radial_gradient (normalize_radial_config c, stops s))
+  | Moz_repeating_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (Moz_repeating_radial_gradient (normalize_radial_config c, stops s))
+  | O_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (O_linear_gradient (normalize_gradient_direction d, stops s))
+  | O_repeating_linear_gradient (d, s) ->
+      preserve_if_equal value
+        (O_repeating_linear_gradient (normalize_gradient_direction d, stops s))
+  | O_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (O_radial_gradient (normalize_radial_config c, stops s))
+  | O_repeating_radial_gradient (c, s) ->
+      preserve_if_equal value
+        (O_repeating_radial_gradient (normalize_radial_config c, stops s))
+  | Webkit_gradient g ->
+      preserve_if_equal value (Webkit_gradient (normalize_webkit_gradient g))
+  | Cross_fade opts ->
+      let normalize_opt (o : cross_fade_option) =
+        let image = normalize_background_image o.image in
+        if image == o.image then o else { o with image }
+      in
+      preserve_if_equal value (Cross_fade (map_preserve normalize_opt opts))
+  | List imgs ->
+      preserve_if_equal value
+        (List (map_preserve normalize_background_image imgs))
   | other -> other
 
 let rec normalize_clip_path : clip_path -> clip_path =
-  let lp = Values.normalize_length_percentage in
-  let nr = Option.map normalize_border_radius in
-  let np = Option.map normalize_position_value in
-  function
+ fun value ->
+  let lp = Values.normalize_length_percentage ~strip:false in
+  let len = Values.normalize_length ~strip:false in
+  let nr = option_map_preserve (normalize_border_radius ~strip:false) in
+  let np = option_map_preserve (normalize_position_value ~strip:false) in
+  let extent v =
+    match v with
+    | Extent_length l -> preserve_if_equal v (Extent_length (len l))
+    | other -> other
+  in
+  match value with
   | Clip_path_inset r ->
-      Clip_path_inset
-        {
-          top = lp r.top;
-          right = Option.map lp r.right;
-          bottom = Option.map lp r.bottom;
-          left = Option.map lp r.left;
-          rounded = nr r.rounded;
-        }
+      preserve_if_equal value
+        (Clip_path_inset
+           {
+             top = lp r.top;
+             right = option_map_preserve lp r.right;
+             bottom = option_map_preserve lp r.bottom;
+             left = option_map_preserve lp r.left;
+             rounded = nr r.rounded;
+           })
   | Clip_path_xywh r ->
-      Clip_path_xywh
-        {
-          x = lp r.x;
-          y = lp r.y;
-          width = lp r.width;
-          height = lp r.height;
-          rounded = nr r.rounded;
-        }
+      preserve_if_equal value
+        (Clip_path_xywh
+           {
+             x = lp r.x;
+             y = lp r.y;
+             width = lp r.width;
+             height = lp r.height;
+             rounded = nr r.rounded;
+           })
   | Clip_path_rect r ->
-      Clip_path_rect
-        {
-          top = lp r.top;
-          right = lp r.right;
-          bottom = lp r.bottom;
-          left = lp r.left;
-          rounded = nr r.rounded;
-        }
-  | Clip_path_circle r -> Clip_path_circle { r with position = np r.position }
-  | Clip_path_ellipse r -> Clip_path_ellipse { r with position = np r.position }
+      preserve_if_equal value
+        (Clip_path_rect
+           {
+             top = lp r.top;
+             right = lp r.right;
+             bottom = lp r.bottom;
+             left = lp r.left;
+             rounded = nr r.rounded;
+           })
+  | Clip_path_circle r ->
+      preserve_if_equal value
+        (Clip_path_circle
+           {
+             radius = option_map_preserve extent r.radius;
+             position = np r.position;
+           })
+  | Clip_path_ellipse r ->
+      preserve_if_equal value
+        (Clip_path_ellipse
+           {
+             rx = option_map_preserve extent r.rx;
+             ry = option_map_preserve extent r.ry;
+             position = np r.position;
+           })
+  | Clip_path_polygon r ->
+      let normalize_point (x, y) =
+        let x' = len x in
+        let y' = len y in
+        if x' == x && y' == y then (x, y) else (x', y')
+      in
+      preserve_if_equal value
+        (Clip_path_polygon
+           { r with points = map_preserve normalize_point r.points })
   | Clip_path_with_box r ->
-      Clip_path_with_box { r with shape = normalize_clip_path r.shape }
+      let shape = normalize_clip_path r.shape in
+      if shape == r.shape then value else Clip_path_with_box { r with shape }
   | other -> other
 
 let normalize_background_shorthand (b : background_shorthand) =
-  {
-    b with
-    color = Option.map normalize_color b.color;
-    image = Option.map normalize_background_image b.image;
-    position = Option.map normalize_position_value b.position;
-  }
+  let color = option_map_preserve normalize_color b.color in
+  let image = option_map_preserve normalize_background_image b.image in
+  let position = option_map_preserve normalize_position_value b.position in
+  if color == b.color && image == b.image && position == b.position then b
+  else { b with color; image; position }
 
-let normalize_background : background -> background = function
-  | Shorthand s -> Shorthand (normalize_background_shorthand s)
+let normalize_background : background -> background =
+ fun value ->
+  match value with
+  | Shorthand s ->
+      preserve_if_equal value (Shorthand (normalize_background_shorthand s))
   | other -> other
 
 let normalize_mask_layer (l : mask_layer) =
-  {
-    l with
-    image = Option.map normalize_background_image l.image;
-    position = Option.map normalize_position_value l.position;
-  }
+  let image = option_map_preserve normalize_background_image l.image in
+  let position = option_map_preserve normalize_position_value l.position in
+  if image == l.image && position == l.position then l
+  else { l with image; position }
 
-let normalize_mask : mask -> mask = function
-  | Layer l -> Layer (normalize_mask_layer l)
-  | Layers ls -> Layers (List.map normalize_mask_layer ls)
+let normalize_mask : mask -> mask =
+ fun value ->
+  match value with
+  | Layer l -> preserve_if_equal value (Layer (normalize_mask_layer l))
+  | Layers ls ->
+      preserve_if_equal value (Layers (map_preserve normalize_mask_layer ls))
   | other -> other
 
-let normalize_text_indent : text_indent_value -> text_indent_value = function
+let normalize_text_indent : text_indent_value -> text_indent_value =
+ fun value ->
+  match value with
   | Indent r ->
-      Indent { r with length = Values.normalize_length_percentage r.length }
+      let length = Values.normalize_length_percentage r.length in
+      if length == r.length then value else Indent { r with length }
   | other -> other
 
 let normalize_animation_range_item :
-    animation_range_item -> animation_range_item = function
-  | Offset lp -> Offset (Values.normalize_length_percentage lp)
-  | Named (n, lp) -> Named (n, Option.map Values.normalize_length_percentage lp)
+    animation_range_item -> animation_range_item =
+ fun value ->
+  match value with
+  | Offset lp ->
+      preserve_if_equal value (Offset (Values.normalize_length_percentage lp))
+  | Named (n, lp) ->
+      preserve_if_equal value
+        (Named (n, option_map_preserve Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_animation_range : animation_range -> animation_range = function
+let normalize_animation_range : animation_range -> animation_range =
+ fun value ->
+  match value with
   | Range (a, b) ->
-      Range
-        ( normalize_animation_range_item a,
-          Option.map normalize_animation_range_item b )
+      preserve_if_equal value
+        (Range
+           ( normalize_animation_range_item a,
+             option_map_preserve normalize_animation_range_item b ))
   | other -> other
 
 let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
-  function
-  | Length lp -> Length (Values.normalize_length_percentage lp)
+ fun value ->
+  match value with
+  | Length lp ->
+      preserve_if_equal value (Length (Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_timeline_inset : timeline_inset -> timeline_inset = function
+let normalize_timeline_inset : timeline_inset -> timeline_inset =
+ fun value ->
+  match value with
   | Inset (a, b) ->
-      Inset
-        ( normalize_timeline_inset_item a,
-          Option.map normalize_timeline_inset_item b )
+      preserve_if_equal value
+        (Inset
+           ( normalize_timeline_inset_item a,
+             option_map_preserve normalize_timeline_inset_item b ))
   | other -> other
 
-let normalize_baseline_shift : baseline_shift -> baseline_shift = function
-  | Shift lp -> Shift (Values.normalize_length_percentage lp)
+let normalize_baseline_shift : baseline_shift -> baseline_shift =
+ fun value ->
+  match value with
+  | Shift lp ->
+      preserve_if_equal value (Shift (Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_gap : gap -> gap = function
+let normalize_gap : gap -> gap =
+ fun value ->
+  match value with
   | Lengths { row_gap; column_gap } ->
-      Lengths
-        {
-          row_gap = Option.map Values.normalize_length row_gap;
-          column_gap = Option.map Values.normalize_length column_gap;
-        }
+      preserve_if_equal value
+        (Lengths
+           {
+             row_gap = option_map_preserve Values.normalize_length row_gap;
+             column_gap = option_map_preserve Values.normalize_length column_gap;
+           })
   | other -> other
 
-let normalize_aspect_ratio : aspect_ratio -> aspect_ratio = function
+let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
+ fun value ->
+  match value with
   | Auto_ratio_calc (a, b) ->
-      Auto_ratio_calc (Values.normalize_number a, Values.normalize_number b)
+      preserve_if_equal value
+        (Auto_ratio_calc (Values.normalize_number a, Values.normalize_number b))
   | Ratio_calc (a, b) ->
-      Ratio_calc (Values.normalize_number a, Values.normalize_number b)
+      preserve_if_equal value
+        (Ratio_calc (Values.normalize_number a, Values.normalize_number b))
   | other -> other
 
-let normalize_border : border -> border = function
+let normalize_border : border -> border =
+ fun value ->
+  match value with
   | Shorthand s ->
-      Shorthand { s with color = Option.map normalize_color s.color }
+      let color = option_map_preserve normalize_color s.color in
+      if color == s.color then value else Shorthand { s with color }
   | other -> other
 
-let normalize_outline : outline -> outline = function
+let normalize_outline : outline -> outline =
+ fun value ->
+  match value with
   | Shorthand s ->
-      Shorthand
-        {
-          s with
-          width = Option.map Values.normalize_length s.width;
-          color = Option.map normalize_color s.color;
-        }
+      let width = option_map_preserve Values.normalize_length s.width in
+      let color = option_map_preserve normalize_color s.color in
+      if width == s.width && color == s.color then value
+      else Shorthand { s with width; color }
   | other -> other
 
 let normalize_logical_border_color :
-    logical_border_color -> logical_border_color = function
-  | Single c -> Single (normalize_color c)
-  | Pair (a, b) -> Pair (normalize_color a, normalize_color b)
+    logical_border_color -> logical_border_color =
+ fun value ->
+  match value with
+  | Single c -> preserve_if_equal value (Single (normalize_color c))
+  | Pair (a, b) ->
+      preserve_if_equal value (Pair (normalize_color a, normalize_color b))
   | other -> other
 
-let normalize_text_decoration : text_decoration -> text_decoration = function
+let normalize_text_decoration : text_decoration -> text_decoration =
+ fun value ->
+  match value with
   | Shorthand s ->
-      Shorthand { s with color = Option.map normalize_color s.color }
+      let color = option_map_preserve normalize_color s.color in
+      if color == s.color then value else Shorthand { s with color }
   | other -> other
 
-let normalize_text_emphasis : text_emphasis -> text_emphasis = function
-  | Emphasis (style, color) -> Emphasis (style, Option.map normalize_color color)
+let normalize_text_emphasis : text_emphasis -> text_emphasis =
+ fun value ->
+  match value with
+  | Emphasis (style, color) ->
+      preserve_if_equal value
+        (Emphasis (style, option_map_preserve normalize_color color))
   | other -> other
 
-let rec normalize_shadow : shadow -> shadow = function
+let rec normalize_shadow : shadow -> shadow =
+ fun value ->
+  match value with
   | Shadow s ->
-      Shadow
-        {
-          s with
-          h_offset = Values.normalize_length s.h_offset;
-          v_offset = Values.normalize_length s.v_offset;
-          blur = Option.map Values.normalize_length s.blur;
-          spread = Option.map Values.normalize_length s.spread;
-          color = Option.map normalize_color s.color;
-        }
-  | List shadows -> List (List.map normalize_shadow shadows)
+      preserve_if_equal value
+        (Shadow
+           {
+             s with
+             h_offset = Values.normalize_length s.h_offset;
+             v_offset = Values.normalize_length s.v_offset;
+             blur = option_map_preserve Values.normalize_length s.blur;
+             spread = option_map_preserve Values.normalize_length s.spread;
+             color = option_map_preserve normalize_color s.color;
+           })
+  | List shadows ->
+      preserve_if_equal value (List (map_preserve normalize_shadow shadows))
   | other -> other
 
-let normalize_text_shadow : text_shadow -> text_shadow = function
+let normalize_text_shadow : text_shadow -> text_shadow =
+ fun value ->
+  match value with
   | Text_shadow s ->
-      Text_shadow
-        {
-          h_offset = Values.normalize_length s.h_offset;
-          v_offset = Values.normalize_length s.v_offset;
-          blur = Option.map Values.normalize_length s.blur;
-          color = Option.map normalize_color s.color;
-        }
+      preserve_if_equal value
+        (Text_shadow
+           {
+             h_offset = Values.normalize_length s.h_offset;
+             v_offset = Values.normalize_length s.v_offset;
+             blur = option_map_preserve Values.normalize_length s.blur;
+             color = option_map_preserve normalize_color s.color;
+           })
   | other -> other
 
-let rec normalize_filter : filter -> filter = function
-  | Drop_shadow s -> Drop_shadow (normalize_shadow s)
-  | Hue_rotate a -> Hue_rotate (Values.normalize_angle a)
-  | List filters -> List (List.map normalize_filter filters)
+let rec normalize_filter : filter -> filter =
+ fun value ->
+  match value with
+  | Drop_shadow s -> preserve_if_equal value (Drop_shadow (normalize_shadow s))
+  | Hue_rotate a ->
+      preserve_if_equal value (Hue_rotate (Values.normalize_angle a))
+  | List filters ->
+      preserve_if_equal value (List (map_preserve normalize_filter filters))
   | other -> other
 
 let normalize_rotate : rotate_value -> rotate_value =
   let na = Values.normalize_angle in
-  function
-  | Angle a -> Angle (na a)
-  | X a -> X (na a)
-  | Y a -> Y (na a)
-  | Z a -> Z (na a)
-  | Axis (x, y, z, a) -> Axis (x, y, z, na a)
+  fun value ->
+    match value with
+    | Angle a -> preserve_if_equal value (Angle (na a))
+    | X a -> preserve_if_equal value (X (na a))
+    | Y a -> preserve_if_equal value (Y (na a))
+    | Z a -> preserve_if_equal value (Z (na a))
+    | Axis (x, y, z, a) -> preserve_if_equal value (Axis (x, y, z, na a))
+    | other -> other
+
+let normalize_translate_value : translate_value -> translate_value =
+  let nl = Values.normalize_length in
+  fun value ->
+    match value with
+    | X x -> preserve_if_equal value (X (nl x))
+    | XY (x, y) -> preserve_if_equal value (XY (nl x, nl y))
+    | XYZ (x, y, z) -> preserve_if_equal value (XYZ (nl x, nl y, nl z))
+    | other -> other
+
+let normalize_ray_size : ray_size -> ray_size =
+ fun value ->
+  match value with
+  | Radial size -> preserve_if_equal value (Radial (normalize_radial_size size))
+  | Sides -> Sides
+
+let normalize_offset_path : offset_path -> offset_path =
+ fun value ->
+  match value with
+  | Ray ray ->
+      preserve_if_equal value
+        (Ray
+           {
+             ray with
+             angle = Values.normalize_angle ray.angle;
+             size = option_map_preserve normalize_ray_size ray.size;
+             position =
+               option_map_preserve
+                 (normalize_position_value ~strip:false)
+                 ray.position;
+           })
   | other -> other
+
+let normalize_offset_rotate : offset_rotate -> offset_rotate =
+  let na = Values.normalize_angle in
+  fun value ->
+    match value with
+    | Angle a -> preserve_if_equal value (Angle (na a))
+    | With_angle (mode, a) -> preserve_if_equal value (With_angle (mode, na a))
+    | other -> other
 
 let normalize_font_style : font_style -> font_style =
   let na = Values.normalize_angle in
-  function
-  | Oblique_angle a -> Oblique_angle (na a)
-  | Oblique_range (a, b) -> Oblique_range (na a, na b)
-  | other -> other
+  fun value ->
+    match value with
+    | Oblique_angle a -> preserve_if_equal value (Oblique_angle (na a))
+    | Oblique_range (a, b) ->
+        preserve_if_equal value (Oblique_range (na a, na b))
+    | other -> other
 
-let normalize_caret : caret -> caret = function
+let normalize_caret : caret -> caret =
+ fun value ->
+  match value with
   | Caret (color, anim, shape) ->
-      Caret (Option.map normalize_color color, anim, shape)
+      preserve_if_equal value
+        (Caret (option_map_preserve normalize_color color, anim, shape))
   | other -> other
 
-let normalize_scrollbar_color : scrollbar_color -> scrollbar_color = function
-  | Colors (a, b) -> Colors (normalize_color a, normalize_color b)
+let normalize_scrollbar_color : scrollbar_color -> scrollbar_color =
+ fun value ->
+  match value with
+  | Colors (a, b) ->
+      preserve_if_equal value (Colors (normalize_color a, normalize_color b))
   | other -> other
 
-let rec normalize_svg_paint : svg_paint -> svg_paint = function
-  | Color c -> Color (normalize_color c)
-  | Url (u, fallback) -> Url (u, Option.map normalize_svg_paint fallback)
+let rec normalize_svg_paint : svg_paint -> svg_paint =
+ fun value ->
+  match value with
+  | Color c -> preserve_if_equal value (Color (normalize_color c))
+  | Url (u, fallback) ->
+      preserve_if_equal value
+        (Url (u, option_map_preserve normalize_svg_paint fallback))
   | other -> other
 
 let length_of_border_width : border_width -> length option = function
@@ -19566,9 +19815,12 @@ let normalize_property_value : type a. a property -> a -> a =
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
   match property with
-  | Transform -> List.map normalize_transform value
-  | Webkit_transform -> List.map normalize_transform value
+  | Transform -> map_preserve normalize_transform value
+  | Webkit_transform -> map_preserve normalize_transform value
   | Rotate -> normalize_rotate value
+  | Translate -> normalize_translate_value value
+  | Offset_path -> normalize_offset_path value
+  | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
   | Width -> Values.normalize_length_percentage value
   | Height -> Values.normalize_length_percentage value
@@ -19585,10 +19837,10 @@ let normalize_property_value : type a. a property -> a -> a =
   | Shape_margin -> Values.normalize_length_percentage value
   | Offset_distance -> Values.normalize_length_percentage value
   | Border_radius -> normalize_border_radius value
-  | Background_image -> List.map normalize_background_image value
+  | Background_image -> map_preserve normalize_background_image value
   | Mask_image -> normalize_background_image value
   | Border_image_source -> normalize_background_image value
-  | Background -> List.map normalize_background value
+  | Background -> map_preserve normalize_background value
   | Mask -> normalize_mask value
   | Clip_path -> normalize_clip_path value
   | Object_position -> normalize_position_value value
@@ -19599,7 +19851,7 @@ let normalize_property_value : type a. a property -> a -> a =
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
   | Color -> normalize_color value
-  | Border_color -> List.map normalize_color value
+  | Border_color -> map_preserve normalize_color value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -19623,7 +19875,7 @@ let normalize_property_value : type a. a property -> a -> a =
   | Column_rule -> normalize_border value
   | Outline -> normalize_outline value
   | Box_shadow -> normalize_shadow value
-  | Text_shadow -> List.map normalize_text_shadow value
+  | Text_shadow -> map_preserve normalize_text_shadow value
   | Text_decoration -> normalize_text_decoration value
   | Webkit_text_decoration -> normalize_text_decoration value
   | Text_emphasis -> normalize_text_emphasis value
@@ -19689,39 +19941,56 @@ let normalize_property_value : type a. a property -> a -> a =
   | Scroll_padding_inline_end -> Values.normalize_length value
   | Scroll_padding_block_start -> Values.normalize_length value
   | Scroll_padding_block_end -> Values.normalize_length value
-  | Padding -> List.map Values.normalize_length value
-  | Padding_inline -> List.map Values.normalize_length value
-  | Padding_block -> List.map Values.normalize_length value
-  | Margin -> List.map Values.normalize_length value
-  | Margin_inline -> List.map Values.normalize_length value
-  | Margin_block -> List.map Values.normalize_length value
-  | Inset -> List.map Values.normalize_length value
-  | Inset_inline -> List.map Values.normalize_length value
-  | Inset_inline_start -> List.map Values.normalize_length value
-  | Inset_inline_end -> List.map Values.normalize_length value
-  | Inset_block -> List.map Values.normalize_length value
-  | Inset_block_start -> List.map Values.normalize_length value
-  | Inset_block_end -> List.map Values.normalize_length value
-  | Top -> List.map Values.normalize_length value
-  | Right -> List.map Values.normalize_length value
-  | Bottom -> List.map Values.normalize_length value
-  | Left -> List.map Values.normalize_length value
-  | Scroll_margin -> List.map Values.normalize_length value
-  | Scroll_margin_inline -> List.map Values.normalize_length value
-  | Scroll_margin_block -> List.map Values.normalize_length value
-  | Scroll_padding -> List.map Values.normalize_length value
-  | Scroll_padding_inline -> List.map Values.normalize_length value
-  | Scroll_padding_block -> List.map Values.normalize_length value
+  | Padding -> map_preserve Values.normalize_length value
+  | Padding_inline -> map_preserve Values.normalize_length value
+  | Padding_block -> map_preserve Values.normalize_length value
+  | Margin -> map_preserve Values.normalize_length value
+  | Margin_inline -> map_preserve Values.normalize_length value
+  | Margin_block -> map_preserve Values.normalize_length value
+  | Inset -> map_preserve Values.normalize_length value
+  | Inset_inline -> map_preserve Values.normalize_length value
+  | Inset_inline_start -> map_preserve Values.normalize_length value
+  | Inset_inline_end -> map_preserve Values.normalize_length value
+  | Inset_block -> map_preserve Values.normalize_length value
+  | Inset_block_start -> map_preserve Values.normalize_length value
+  | Inset_block_end -> map_preserve Values.normalize_length value
+  | Top -> map_preserve Values.normalize_length value
+  | Right -> map_preserve Values.normalize_length value
+  | Bottom -> map_preserve Values.normalize_length value
+  | Left -> map_preserve Values.normalize_length value
+  | Scroll_margin -> map_preserve Values.normalize_length value
+  | Scroll_margin_inline -> map_preserve Values.normalize_length value
+  | Scroll_margin_block -> map_preserve Values.normalize_length value
+  | Scroll_padding -> map_preserve Values.normalize_length value
+  | Scroll_padding_inline -> map_preserve Values.normalize_length value
+  | Scroll_padding_block -> map_preserve Values.normalize_length value
   | _ -> value
 
 (* A registered [<color>] custom property carries a typed colour once promoted,
    so canonicalise it the same way a real colour property would. *)
 let normalize_custom_property_value :
     custom_property_value -> custom_property_value = function
+  | Typed { kind = Length; value } ->
+      Typed { kind = Length; value = Values.normalize_length value }
   | Typed { kind = Color; value } ->
       Typed { kind = Color; value = normalize_color value }
   | Typed { kind = Number; value } ->
       Typed { kind = Number; value = Values.normalize_number value }
+  | Typed { kind = Percentage; value } -> Typed { kind = Percentage; value }
+  | Typed { kind = Length_percentage; value } ->
+      Typed
+        {
+          kind = Length_percentage;
+          value = Values.normalize_length_percentage value;
+        }
+  | Typed { kind = Angle; value } ->
+      Typed { kind = Angle; value = Values.normalize_angle value }
+  | Typed { kind = Gradient_direction; value } ->
+      Typed
+        {
+          kind = Gradient_direction;
+          value = normalize_gradient_direction value;
+        }
   | (Typed _ | Tokens _) as other -> other
 
 let pp_property_value : type a. (a property * a) Pp.t =
