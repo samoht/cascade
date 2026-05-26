@@ -16,6 +16,12 @@ val normalize_property_value : 'a property -> 'a -> 'a
     pretty-printer stays a pure serialiser. Identity for properties whose folds
     have not yet migrated out of [pp]. *)
 
+val normalize_custom_property_value :
+  custom_property_value -> custom_property_value
+(** [normalize_custom_property_value v] canonicalises the typed value of a
+    registered custom property (currently the [<color>] syntax) so a promoted
+    custom-property value folds the same way a typed colour property would. *)
+
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
     arm cascade detected at parse time (CSS spec violations preserved verbatim

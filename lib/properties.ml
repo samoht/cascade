@@ -19543,6 +19543,14 @@ let normalize_property_value : type a. a property -> a -> a =
   | Webkit_backdrop_filter -> normalize_filter value
   | _ -> value
 
+(* A registered [<color>] custom property carries a typed colour once promoted,
+   so canonicalise it the same way a real colour property would. *)
+let normalize_custom_property_value :
+    custom_property_value -> custom_property_value = function
+  | Typed { kind = Color; value } ->
+      Typed { kind = Color; value = normalize_color value }
+  | (Typed _ | Tokens _) as other -> other
+
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
   let pp pp_a = pp_a ctx value in

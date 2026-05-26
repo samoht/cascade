@@ -6844,6 +6844,24 @@ let rec normalize_color ~in_feature_query (c : color) : color =
           normalize_color ~in_feature_query d )
   | Contrast_color inner ->
       Contrast_color (normalize_color ~in_feature_query inner)
+  | Var v ->
+      (* A typed [var()] fallback / default is a colour, so canonicalise it the
+         same way it would be if it stood alone. The opaque [Syntax_fallback] /
+         [Var_fallback] forms are token streams, not typed colours, and stay
+         untouched. *)
+      let fallback =
+        match v.fallback with
+        | Fallback c -> Fallback (normalize_color ~in_feature_query c)
+        | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as other
+          ->
+            other
+      in
+      Var
+        {
+          v with
+          fallback;
+          default = Option.map (normalize_color ~in_feature_query) v.default;
+        }
   | _ -> c
 
 (** Read hue_interpolation *)

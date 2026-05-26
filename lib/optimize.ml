@@ -4712,7 +4712,14 @@ let promote_registered_custom_properties (stmts : statement list) :
                 Declaration
                   {
                     property = Custom_property name;
-                    value = Custom_value { value = typed; layer; meta };
+                    value =
+                      Custom_value
+                        {
+                          value =
+                            Properties.normalize_custom_property_value typed;
+                          layer;
+                          meta;
+                        };
                     important;
                   }))
     | _ -> decl
