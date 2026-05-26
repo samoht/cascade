@@ -345,17 +345,17 @@ let test_color () =
   check_color ~expected:"rgb(128 128 128)" ~optimized:"gray"
     "rgb(128, 128, 128)";
 
-  (* RGBA with alpha. The fully-opaque case (alpha 1) collapses to the same
-     named/hex form as the rgb() above; alpha < 1 keeps the rgb(...) form. *)
-  check_color ~expected:"rgba(255,0,0,.5)" ~optimized:"#ff000080"
+  (* RGBA: pp serializes the modern rgb() form (rgba unifies into rgb,
+     commas -> spaces, alpha via slash); the fully-opaque case (alpha 1) drops
+     the alpha. optimize then folds to the shortest hex/named form. *)
+  check_color ~expected:"rgb(255 0 0/.5)" ~optimized:"#ff000080"
     "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"rgba(255,0,0,0)" ~optimized:"#f000"
+  check_color ~expected:"rgb(255 0 0/0)" ~optimized:"#f000"
     "rgba(255, 0, 0, 0)";
-  check_color ~expected:"rgba(255,0,0,1)" ~optimized:"red"
-    "rgba(255, 0, 0, 1)";
-  check_color ~expected:"rgba(0,0,0,.25)" ~optimized:"#00000040"
+  check_color ~expected:"rgb(255 0 0)" ~optimized:"red" "rgba(255, 0, 0, 1)";
+  check_color ~expected:"rgb(0 0 0/.25)" ~optimized:"#00000040"
     "rgba(0, 0, 0, 0.25)";
-  check_color ~expected:"rgba(128,128,128,.75)" ~optimized:"#808080bf"
+  check_color ~expected:"rgb(128 128 128/.75)" ~optimized:"#808080bf"
     "rgba(128, 128, 128, 0.75)";
   neg_cursor read_color "invalid";
   neg_cursor read_color "abc";
