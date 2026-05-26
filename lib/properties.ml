@@ -3854,6 +3854,15 @@ let normalize_baseline_shift : baseline_shift -> baseline_shift = function
   | Shift lp -> Shift (Values.normalize_length_percentage lp)
   | other -> other
 
+let normalize_gap : gap -> gap = function
+  | Lengths { row_gap; column_gap } ->
+      Lengths
+        {
+          row_gap = Option.map Values.normalize_length row_gap;
+          column_gap = Option.map Values.normalize_length column_gap;
+        }
+  | other -> other
+
 let normalize_aspect_ratio : aspect_ratio -> aspect_ratio = function
   | Auto_ratio_calc (a, b) ->
       Auto_ratio_calc (Values.normalize_number a, Values.normalize_number b)
@@ -3868,7 +3877,12 @@ let normalize_border : border -> border = function
 
 let normalize_outline : outline -> outline = function
   | Shorthand s ->
-      Shorthand { s with color = Option.map normalize_color s.color }
+      Shorthand
+        {
+          s with
+          width = Option.map Values.normalize_length s.width;
+          color = Option.map normalize_color s.color;
+        }
   | other -> other
 
 let normalize_logical_border_color :
@@ -3887,13 +3901,28 @@ let normalize_text_emphasis : text_emphasis -> text_emphasis = function
   | other -> other
 
 let rec normalize_shadow : shadow -> shadow = function
-  | Shadow s -> Shadow { s with color = Option.map normalize_color s.color }
+  | Shadow s ->
+      Shadow
+        {
+          s with
+          h_offset = Values.normalize_length s.h_offset;
+          v_offset = Values.normalize_length s.v_offset;
+          blur = Option.map Values.normalize_length s.blur;
+          spread = Option.map Values.normalize_length s.spread;
+          color = Option.map normalize_color s.color;
+        }
   | List shadows -> List (List.map normalize_shadow shadows)
   | other -> other
 
 let normalize_text_shadow : text_shadow -> text_shadow = function
   | Text_shadow s ->
-      Text_shadow { s with color = Option.map normalize_color s.color }
+      Text_shadow
+        {
+          h_offset = Values.normalize_length s.h_offset;
+          v_offset = Values.normalize_length s.v_offset;
+          blur = Option.map Values.normalize_length s.blur;
+          color = Option.map normalize_color s.color;
+        }
   | other -> other
 
 let rec normalize_filter : filter -> filter = function
@@ -4210,7 +4239,7 @@ let rec pp_border_width : border_width Pp.t =
   | From_font -> Pp.string ctx "from-font"
   | Calc cv -> (
       match (Pp.minified ctx, length_of_border_width_calc cv) with
-      | true, Some cv -> pp_length ctx (Calc cv)
+      | true, Some cv -> pp_length ctx (Values.normalize_length (Calc cv))
       | _ -> pp_calc pp_border_width ctx cv)
   | Min args -> pp_border_width_minmax "min" `Min ctx args
   | Max args -> pp_border_width_minmax "max" `Max ctx args
@@ -6778,10 +6807,29 @@ let canonicalise_transform : transform -> transform = function
    -> [scale(a)]), so a single application is not idempotent. This is the
    AST-level normaliser; [pp_transform] stays a pure serialiser of its
    result. *)
+(* Fold the [<length>] operands of the translate / perspective functions; the
+   angle and number-percentage operands still fold through their own printers.
+   Running this before [canonicalise_transform] lets the zero-checks see a folded
+   [calc()]. *)
+let normalize_transform_leaves : transform -> transform = function
+  | Translate (x, y) ->
+      Translate (Values.normalize_length x, Option.map Values.normalize_length y)
+  | Translate_x x -> Translate_x (Values.normalize_length x)
+  | Translate_y y -> Translate_y (Values.normalize_length y)
+  | Translate_z z -> Translate_z (Values.normalize_length z)
+  | Translate_3d (x, y, z) ->
+      Translate_3d
+        ( Values.normalize_length x,
+          Values.normalize_length y,
+          Values.normalize_length z )
+  | Perspective l -> Perspective (Values.normalize_length l)
+  | other -> other
+
 let rec normalize_transform (t : transform) : transform =
   match t with
   | List ts -> List (List.map normalize_transform ts)
   | _ ->
+      let t = normalize_transform_leaves t in
       let t' = canonicalise_transform t in
       if t' = t then t else normalize_transform t'
 
@@ -19549,6 +19597,81 @@ let normalize_property_value : type a. a property -> a -> a =
   | Backdrop_filter -> normalize_filter value
   | Webkit_backdrop_filter -> normalize_filter value
   | Aspect_ratio -> normalize_aspect_ratio value
+  | Gap -> normalize_gap value
+  | Padding_left -> Values.normalize_length value
+  | Padding_right -> Values.normalize_length value
+  | Padding_bottom -> Values.normalize_length value
+  | Padding_top -> Values.normalize_length value
+  | Padding_inline_start -> Values.normalize_length value
+  | Padding_inline_end -> Values.normalize_length value
+  | Padding_block_start -> Values.normalize_length value
+  | Padding_block_end -> Values.normalize_length value
+  | Margin_inline_end -> Values.normalize_length value
+  | Margin_inline_start -> Values.normalize_length value
+  | Margin_left -> Values.normalize_length value
+  | Margin_right -> Values.normalize_length value
+  | Margin_top -> Values.normalize_length value
+  | Margin_bottom -> Values.normalize_length value
+  | Margin_block_start -> Values.normalize_length value
+  | Margin_block_end -> Values.normalize_length value
+  | Column_gap -> Values.normalize_length value
+  | Row_gap -> Values.normalize_length value
+  | Text_underline_offset -> Values.normalize_length value
+  | Letter_spacing -> Values.normalize_length value
+  | Border_top_left_radius -> Values.normalize_length value
+  | Border_top_right_radius -> Values.normalize_length value
+  | Border_bottom_left_radius -> Values.normalize_length value
+  | Border_bottom_right_radius -> Values.normalize_length value
+  | Border_start_start_radius -> Values.normalize_length value
+  | Border_start_end_radius -> Values.normalize_length value
+  | Border_end_start_radius -> Values.normalize_length value
+  | Border_end_end_radius -> Values.normalize_length value
+  | Outline_width -> Values.normalize_length value
+  | Outline_offset -> Values.normalize_length value
+  | Line_height_step -> Values.normalize_length value
+  | Perspective -> Values.normalize_length value
+  | Word_spacing -> Values.normalize_length value
+  | Text_decoration_thickness -> Values.normalize_length value
+  | Stroke_width -> Values.normalize_length value
+  | Scroll_margin_top -> Values.normalize_length value
+  | Scroll_margin_right -> Values.normalize_length value
+  | Scroll_margin_bottom -> Values.normalize_length value
+  | Scroll_margin_left -> Values.normalize_length value
+  | Scroll_margin_inline_start -> Values.normalize_length value
+  | Scroll_margin_inline_end -> Values.normalize_length value
+  | Scroll_margin_block_start -> Values.normalize_length value
+  | Scroll_margin_block_end -> Values.normalize_length value
+  | Scroll_padding_top -> Values.normalize_length value
+  | Scroll_padding_right -> Values.normalize_length value
+  | Scroll_padding_bottom -> Values.normalize_length value
+  | Scroll_padding_left -> Values.normalize_length value
+  | Scroll_padding_inline_start -> Values.normalize_length value
+  | Scroll_padding_inline_end -> Values.normalize_length value
+  | Scroll_padding_block_start -> Values.normalize_length value
+  | Scroll_padding_block_end -> Values.normalize_length value
+  | Padding -> List.map Values.normalize_length value
+  | Padding_inline -> List.map Values.normalize_length value
+  | Padding_block -> List.map Values.normalize_length value
+  | Margin -> List.map Values.normalize_length value
+  | Margin_inline -> List.map Values.normalize_length value
+  | Margin_block -> List.map Values.normalize_length value
+  | Inset -> List.map Values.normalize_length value
+  | Inset_inline -> List.map Values.normalize_length value
+  | Inset_inline_start -> List.map Values.normalize_length value
+  | Inset_inline_end -> List.map Values.normalize_length value
+  | Inset_block -> List.map Values.normalize_length value
+  | Inset_block_start -> List.map Values.normalize_length value
+  | Inset_block_end -> List.map Values.normalize_length value
+  | Top -> List.map Values.normalize_length value
+  | Right -> List.map Values.normalize_length value
+  | Bottom -> List.map Values.normalize_length value
+  | Left -> List.map Values.normalize_length value
+  | Scroll_margin -> List.map Values.normalize_length value
+  | Scroll_margin_inline -> List.map Values.normalize_length value
+  | Scroll_margin_block -> List.map Values.normalize_length value
+  | Scroll_padding -> List.map Values.normalize_length value
+  | Scroll_padding_inline -> List.map Values.normalize_length value
+  | Scroll_padding_block -> List.map Values.normalize_length value
   | _ -> value
 
 (* A registered [<color>] custom property carries a typed colour once promoted,

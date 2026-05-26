@@ -172,6 +172,12 @@ val normalize_length_percentage : length_percentage -> length_percentage
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
 
+val normalize_length : length -> length
+(** [normalize_length l] evaluates the static CSS math functions on a [<length>]
+    (min / max / clamp reduce to one dimension on shared units; round / mod /
+    rem / hypot / abs fold on [px]; calc folds through the simplifier),
+    recursing into nested calls; a non-static operand keeps the call. *)
+
 val normalize_number : number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into

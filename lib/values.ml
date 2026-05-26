@@ -1539,10 +1539,6 @@ let round_length_step strategy value step =
   | "to-zero" -> Float.trunc (value /. step) *. step
   | _ -> Float.round (value /. step) *. step
 
-let math_length = function
-  | Min _ | Max _ | Clamp _ | Minmax _ -> true
-  | _ -> false
-
 (* Typed math-call printer: emit [name(arg1,arg2,...)] from a typed list of
    length values, deferring to [pp_length] for each component (so nested
    [calc()] / [var()] / [min()] / [clamp()] argument shapes Just Work). *)
@@ -1732,18 +1728,8 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Medium -> Pp.string ctx "medium"
   | Thick -> Pp.string ctx "thick"
   | Stretch -> Pp.string ctx "stretch"
-  | Clamp (mn, v, mx) when Pp.minified ctx && mn = v && v = mx ->
-      pp_length ~always ctx v
   | Clamp (mn, v, mx) ->
       pp_typed_math_call ctx "clamp" (pp_length_math_arg ~always) [ mn; v; mx ]
-  | Min xs when Pp.minified ctx -> (
-      match try_reduce_typed_min_max xs Float.min with
-      | Some reduced -> pp_length ~always ctx reduced
-      | None -> pp_typed_math_call ctx "min" (pp_length_math_arg ~always) xs)
-  | Max xs when Pp.minified ctx -> (
-      match try_reduce_typed_min_max xs Float.max with
-      | Some reduced -> pp_length ~always ctx reduced
-      | None -> pp_typed_math_call ctx "max" (pp_length_math_arg ~always) xs)
   | Min xs -> pp_typed_math_call ctx "min" (pp_length_math_arg ~always) xs
   | Max xs -> pp_typed_math_call ctx "max" (pp_length_math_arg ~always) xs
   | Minmax (mn, mx) ->
@@ -1753,7 +1739,6 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Mod (a, b) -> pp_mod_length ~always ctx a b
   | Rem_fn (a, b) -> pp_rem_length ~always ctx a b
   | Hypot values -> pp_hypot_length ~always ctx values
-  | Abs (Px x) when Pp.minified ctx -> pp_unit_fn (Float.abs x) "px"
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
   | Sign v ->
       (* CSS Values 4 10.7: [sign(<length>)] returns a [<number>], not a
@@ -1814,103 +1799,49 @@ and pp_anchor_length ~always ctx name side fallback =
     ctx (name, side, fallback)
 
 and pp_round_length ~always ctx strategy value step =
-  match (value, step) with
-  | Px v, Px step when Pp.minified ctx && step <> 0. ->
-      pp_unit ~always ctx (round_length_step strategy v step) "px"
-  | _ ->
-      Pp.call "round"
-        (fun ctx (strategy, value, step) ->
-          (* [round()] is a math function (CSS Values 4 10.x): its value/step
-             operands are a typed calc context, so keep their units. The
-             [strategy] keyword is not a math operand and is emitted as-is. *)
-          if strategy <> "nearest" then (
-            Pp.string ctx strategy;
-            Pp.comma ctx ());
-          let ctx = { ctx with in_calc = true } in
-          pp_length ~always ctx value;
-          Pp.comma ctx ();
-          pp_length ~always ctx step)
-        ctx (strategy, value, step)
+  Pp.call "round"
+    (fun ctx (strategy, value, step) ->
+      (* [round()] is a math function (CSS Values 4 10.x): its value/step
+         operands are a typed calc context, so keep their units. The [strategy]
+         keyword is not a math operand and is emitted as-is. *)
+      if strategy <> "nearest" then (
+        Pp.string ctx strategy;
+        Pp.comma ctx ());
+      let ctx = { ctx with in_calc = true } in
+      pp_length ~always ctx value;
+      Pp.comma ctx ();
+      pp_length ~always ctx step)
+    ctx (strategy, value, step)
 
 and pp_mod_length ~always ctx a b =
-  match (a, b) with
-  | Px a, Px b when Pp.minified ctx && b <> 0. ->
-      (* CSS Values 4 10.7: [mod()] returns the remainder using floored division
-         (sign of divisor). *)
-      let q = Float.floor (a /. b) in
-      pp_unit ~always ctx (a -. (q *. b)) "px"
-  | _ ->
-      Pp.call "mod"
-        (fun ctx (a, b) ->
-          let ctx = { ctx with in_calc = true } in
-          pp_length ~always ctx a;
-          Pp.comma ctx ();
-          pp_length ~always ctx b)
-        ctx (a, b)
+  Pp.call "mod"
+    (fun ctx (a, b) ->
+      let ctx = { ctx with in_calc = true } in
+      pp_length ~always ctx a;
+      Pp.comma ctx ();
+      pp_length ~always ctx b)
+    ctx (a, b)
 
 and pp_rem_length ~always ctx a b =
-  match (a, b) with
-  | Px a, Px b when Pp.minified ctx && b <> 0. ->
-      (* CSS Values 4 10.7: [rem()] returns the remainder using truncated
-         division (sign of dividend). *)
-      pp_unit ~always ctx (Float.rem a b) "px"
-  | _ ->
-      Pp.call "rem"
-        (fun ctx (a, b) ->
-          let ctx = { ctx with in_calc = true } in
-          pp_length ~always ctx a;
-          Pp.comma ctx ();
-          pp_length ~always ctx b)
-        ctx (a, b)
+  Pp.call "rem"
+    (fun ctx (a, b) ->
+      let ctx = { ctx with in_calc = true } in
+      pp_length ~always ctx a;
+      Pp.comma ctx ();
+      pp_length ~always ctx b)
+    ctx (a, b)
 
 and pp_hypot_length ~always ctx values =
-  if Pp.minified ctx then pp_minified_hypot_length ~always ctx values
-  else
-    Pp.call_list "hypot" (pp_length ~always) { ctx with in_calc = true } values
-
-and pp_minified_hypot_length ~always ctx = function
-  | [ (Px _ as value) ] -> pp_length ~always ctx value
-  | values -> (
-      match px_values values with
-      | Some (_ :: _ as values) ->
-          let sum_sq =
-            List.fold_left (fun acc f -> acc +. (f *. f)) 0. values
-          in
-          pp_unit ~always ctx (Float.sqrt sum_sq) "px"
-      | _ ->
-          Pp.call_list "hypot" (pp_length ~always)
-            { ctx with in_calc = true }
-            values)
+  Pp.call_list "hypot" (pp_length ~always) { ctx with in_calc = true } values
 
 and pp_length_calc ~always ctx cv =
   match cv with
   | Expr (Num f, Mul, Val _) when f = infinity -> Pp.string ctx "3.40282e38px"
   | Expr (Val _, Mul, Num f) when f = infinity -> Pp.string ctx "3.40282e38px"
-  | Expr (Val length, Mul, Num -1.) when Pp.minified ctx && math_length length
-    ->
-      Pp.string ctx "calc(-1*";
-      pp_length ~always ctx length;
-      Pp.char ctx ')'
-  | Expr (Num 0.5, Mul, Val length) when Pp.minified ctx && math_length length
-    ->
-      Pp.string ctx "calc(";
-      pp_length ~always ctx length;
-      Pp.string ctx "/2)"
-  | Expr (Num 1., Mul, Val length) when Pp.minified ctx && math_length length ->
-      pp_calc_wrapped_length ~always ctx length
-  | Expr (Expr (Num 2., Mul, Val length), Div, Num 2.)
-    when Pp.minified ctx && math_length length ->
-      pp_calc_wrapped_length ~always ctx length
   | _ -> pp_generic_length_calc ~always ctx cv
 
 and pp_generic_length_calc ~always ctx cv =
-  let cv =
-    if Pp.minified ctx then
-      cv
-      |> resolve_length_calc_vars ctx
-      |> eval_length_calc |> linear_length_calc |> eval_length_calc
-    else cv
-  in
+  let cv = if Pp.minified ctx then resolve_length_calc_vars ctx cv else cv in
   match cv with
   | Val (Var _ as length) when Pp.minified ctx ->
       pp_calc_wrapped_length ~always ctx length
@@ -3364,15 +3295,80 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
+(* Evaluate the static CSS math functions on a [<length>] (the folds the printer
+   used to do under minify), so the printer stays a pure serialiser. min / max /
+   clamp reduce to one dimension when the operands share a unit; round / mod /
+   rem / hypot / abs fold on [px] operands; calc folds through the generic
+   simplifier. A non-static operand keeps the call. *)
+let rec normalize_length (l : length) : length =
+  match l with
+  | Calc cv -> (
+      match
+        cv |> eval_length_calc |> linear_length_calc |> eval_length_calc
+      with
+      | Val v -> v
+      | folded -> Calc folded)
+  | Clamp (mn, v, mx) ->
+      let mn = normalize_length mn
+      and v = normalize_length v
+      and mx = normalize_length mx in
+      if mn = v && v = mx then v else Clamp (mn, v, mx)
+  | Min xs -> (
+      let xs = List.map normalize_length xs in
+      match try_reduce_typed_min_max xs Float.min with
+      | Some r -> r
+      | None -> Min xs)
+  | Max xs -> (
+      let xs = List.map normalize_length xs in
+      match try_reduce_typed_min_max xs Float.max with
+      | Some r -> r
+      | None -> Max xs)
+  | Minmax (mn, mx) -> Minmax (normalize_length mn, normalize_length mx)
+  | Round (strategy, value, step) -> (
+      match (normalize_length value, normalize_length step) with
+      | Px v, Px s when s <> 0. -> Px (round_length_step strategy v s)
+      | value, step -> Round (strategy, value, step))
+  | Mod (a, b) -> (
+      match (normalize_length a, normalize_length b) with
+      | Px a, Px b when b <> 0. -> Px (a -. (Float.floor (a /. b) *. b))
+      | a, b -> Mod (a, b))
+  | Rem_fn (a, b) -> (
+      match (normalize_length a, normalize_length b) with
+      | Px a, Px b when b <> 0. -> Px (Float.rem a b)
+      | a, b -> Rem_fn (a, b))
+  | Hypot xs -> (
+      let xs = List.map normalize_length xs in
+      match xs with
+      | [ (Px _ as v) ] -> v
+      | _ -> (
+          match px_values xs with
+          | Some (_ :: _ as vs) ->
+              Px
+                (Float.sqrt
+                   (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs))
+          | _ -> Hypot xs))
+  | Abs v -> (
+      match normalize_length v with Px x -> Px (Float.abs x) | v -> Abs v)
+  | Sign v -> Sign (normalize_length v)
+  | Fit_content_arg arg -> Fit_content_arg (normalize_length arg)
+  | Calc_size (basis, calc) -> (
+      let basis = normalize_length basis in
+      match
+        calc |> eval_length_calc |> linear_length_calc |> eval_length_calc
+      with
+      | folded -> Calc_size (basis, folded))
+  | _ -> l
+
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
-   [3px]. *)
+   [3px]. A wrapped [<length>] folds its own math functions. *)
 let normalize_length_percentage (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc with
       | Val v -> v
       | folded -> Calc folded)
+  | Length l -> Length (normalize_length l)
   | _ -> lp
 
 (* Evaluate the static CSS math functions on [<number>] (the folds the printer
