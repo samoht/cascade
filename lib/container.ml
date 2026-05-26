@@ -202,15 +202,26 @@ let width_ge l : t =
     (Media.Cond
        (Media.Feature (Media.Range (Media.Width, Media.Ge, Media.Length l))))
 
-let rec lower_for_minify = function
-  | Feature_query q -> Feature_query (Media.lower_for_minify q)
+let rec lower_for_minify c =
+  match c with
+  | Feature_query q ->
+      let q' = Media.lower_for_minify q in
+      if q' == q then c else Feature_query q'
   | Min_width_rem rem -> width_ge (Values.Rem rem)
   | Min_width_px px -> width_ge (Values.Px (float_of_int px))
-  | Named (name, cond) -> Named (name, lower_for_minify cond)
-  | And (a, b) -> And (lower_for_minify a, lower_for_minify b)
-  | Or (a, b) -> Or (lower_for_minify a, lower_for_minify b)
-  | Not c -> Not (lower_for_minify c)
-  | (Style _ | Scroll_state _) as c -> c
+  | Named (name, cond) ->
+      let cond' = lower_for_minify cond in
+      if cond' == cond then c else Named (name, cond')
+  | And (a, b) ->
+      let a' = lower_for_minify a and b' = lower_for_minify b in
+      if a' == a && b' == b then c else And (a', b')
+  | Or (a, b) ->
+      let a' = lower_for_minify a and b' = lower_for_minify b in
+      if a' == a && b' == b then c else Or (a', b')
+  | Not c' ->
+      let c'' = lower_for_minify c' in
+      if c'' == c' then c else Not c''
+  | Style _ | Scroll_state _ -> c
 
 let contains_var_function s =
   let len = String.length s in
