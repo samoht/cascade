@@ -2801,14 +2801,6 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
-  (* CSS Images 4 §5.1: the cardinal [to <side>] keywords compute to fixed
-     angles. The angle spelling is shorter than the keyword for [to right] / [to
-     left]; the diagonal [to <corner>] forms depend on box aspect ratio and have
-     no fixed angle, so they stay as keywords. *)
-  | To_top when Pp.minified ctx -> Pp.string ctx "0deg"
-  | To_right when Pp.minified ctx -> Pp.string ctx "90deg"
-  | To_bottom when Pp.minified ctx -> Pp.string ctx "180deg"
-  | To_left when Pp.minified ctx -> Pp.string ctx "270deg"
   | To_top -> Pp.string ctx "to top"
   | To_top_right -> Pp.string ctx "to top right"
   | To_right -> Pp.string ctx "to right"
@@ -3702,37 +3694,55 @@ let normalize_webkit_gradient : Webkit_gradient.t -> Webkit_gradient.t =
   | Radial r ->
       Radial { r with stops = List.map normalize_webkit_gradient_stop r.stops }
 
+let rec normalize_gradient_direction : gradient_direction -> gradient_direction
+    = function
+  | To_top -> Angle (Values.Deg 0.)
+  | To_right -> Angle (Values.Deg 90.)
+  | To_bottom -> Angle (Values.Deg 180.)
+  | To_left -> Angle (Values.Deg 270.)
+  | Angle a -> Angle (Values.normalize_angle a)
+  | With_interpolation (dir, interp) ->
+      With_interpolation (normalize_gradient_direction dir, interp)
+  | (To_top_right | To_bottom_right | To_bottom_left | To_top_left | Var _) as
+    other ->
+      other
+
 let normalize_radial_config (c : radial_gradient_config) =
   { c with size = Option.map normalize_radial_size c.size }
 
 let rec normalize_background_image : background_image -> background_image =
   let stops = List.map normalize_gradient_stop in
   function
-  | Linear_gradient (d, s) -> Linear_gradient (d, stops s)
+  | Linear_gradient (d, s) ->
+      Linear_gradient (normalize_gradient_direction d, stops s)
   | Radial_gradient (c, s) ->
       Radial_gradient (normalize_radial_config c, stops s)
   | Conic_gradient (c, s) -> Conic_gradient (c, stops s)
-  | Repeating_linear_gradient (d, s) -> Repeating_linear_gradient (d, stops s)
+  | Repeating_linear_gradient (d, s) ->
+      Repeating_linear_gradient (normalize_gradient_direction d, stops s)
   | Repeating_radial_gradient (c, s) ->
       Repeating_radial_gradient (normalize_radial_config c, stops s)
   | Repeating_conic_gradient (c, s) -> Repeating_conic_gradient (c, stops s)
-  | Webkit_linear_gradient (d, s) -> Webkit_linear_gradient (d, stops s)
+  | Webkit_linear_gradient (d, s) ->
+      Webkit_linear_gradient (normalize_gradient_direction d, stops s)
   | Webkit_repeating_linear_gradient (d, s) ->
-      Webkit_repeating_linear_gradient (d, stops s)
+      Webkit_repeating_linear_gradient (normalize_gradient_direction d, stops s)
   | Webkit_radial_gradient (c, s) ->
       Webkit_radial_gradient (normalize_radial_config c, stops s)
   | Webkit_repeating_radial_gradient (c, s) ->
       Webkit_repeating_radial_gradient (normalize_radial_config c, stops s)
-  | Moz_linear_gradient (d, s) -> Moz_linear_gradient (d, stops s)
+  | Moz_linear_gradient (d, s) ->
+      Moz_linear_gradient (normalize_gradient_direction d, stops s)
   | Moz_repeating_linear_gradient (d, s) ->
-      Moz_repeating_linear_gradient (d, stops s)
+      Moz_repeating_linear_gradient (normalize_gradient_direction d, stops s)
   | Moz_radial_gradient (c, s) ->
       Moz_radial_gradient (normalize_radial_config c, stops s)
   | Moz_repeating_radial_gradient (c, s) ->
       Moz_repeating_radial_gradient (normalize_radial_config c, stops s)
-  | O_linear_gradient (d, s) -> O_linear_gradient (d, stops s)
+  | O_linear_gradient (d, s) ->
+      O_linear_gradient (normalize_gradient_direction d, stops s)
   | O_repeating_linear_gradient (d, s) ->
-      O_repeating_linear_gradient (d, stops s)
+      O_repeating_linear_gradient (normalize_gradient_direction d, stops s)
   | O_radial_gradient (c, s) ->
       O_radial_gradient (normalize_radial_config c, stops s)
   | O_repeating_radial_gradient (c, s) ->
