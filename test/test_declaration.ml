@@ -286,42 +286,40 @@ let special_cases () =
     "background: url(x.png), linear-gradient(red, blue);"
 
 let colors () =
-  (* Named colors *)
+  (* Same-node spellings the printer keeps (case-fold, hex shorten). The
+     cross-node folds - named<->hex, rgb()/hsl()->hex, transparent->#0000 - are
+     optimize rewrites (checked via [check_decl_optimizes_to]). *)
   check_declaration ~expected:"color:red" "color: red";
-  check_declaration ~expected:"color:#00f" "color: blue";
   check_declaration ~expected:"color:green" "color: green";
-  check_declaration ~expected:"color:#000" "color: black";
-  check_declaration ~expected:"color:#fff" "color: white";
-  (* Per CSS Color 4 section 6.4 [transparent] canonicalizes to [#0000] under
-     minify. *)
-  check_declaration ~expected:"color:#0000" "color: transparent";
-
-  (* Hex colors. Per CSS Color 4 section 12.1 the printer canonicalizes
-     paired-pair hex to its 3-digit shorthand under [~minify:true]. *)
-  check_declaration ~expected:"color:red" "color: #ff0000";
   check_declaration ~expected:"color:#0f0" "color: #00ff00";
   check_declaration ~expected:"color:#00f" "color: #0000ff";
   check_declaration ~expected:"color:#fff" "color: #fff";
   check_declaration ~expected:"color:#000" "color: #000";
 
-  (* RGB colors - modern space-separated syntax. Per CSS Color 4 section 1.4 the
-     printer canonicalizes a fully-opaque rgb() to the equivalent named color
-     when shorter. *)
-  check_declaration ~expected:"color:red" "color: rgb(255, 0, 0)";
-  check_declaration ~expected:"color:#0f0" "color: rgb(0, 255, 0)";
-  check_declaration ~expected:"color:#ff000080" "color: rgba(255, 0, 0, 0.5)";
+  (* Cross-node colour folds (named<->hex, rgb/hsl->hex/named, transparent,
+     opaque rgb()->named) happen in optimize; pp holds the authored node. *)
+  check_decl_optimizes_to ~held:"color:blue" ~into:"color:#00f" "color: blue";
+  check_decl_optimizes_to ~held:"color:black" ~into:"color:#000" "color: black";
+  check_decl_optimizes_to ~held:"color:white" ~into:"color:#fff" "color: white";
+  check_decl_optimizes_to ~held:"color:transparent" ~into:"color:#0000"
+    "color: transparent";
+  check_decl_optimizes_to ~held:"color:#f00" ~into:"color:red" "color: #ff0000";
+  check_decl_optimizes_to ~held:"color:rgb(255,0,0)" ~into:"color:red"
+    "color: rgb(255, 0, 0)";
+  check_decl_optimizes_to ~held:"color:rgb(0,255,0)" ~into:"color:#0f0"
+    "color: rgb(0, 255, 0)";
+  check_decl_optimizes_to ~held:"color:rgba(255,0,0,.5)" ~into:"color:#ff000080"
+    "color: rgba(255, 0, 0, 0.5)";
+  check_decl_optimizes_to ~held:"color:hsl(0,100%,50%)" ~into:"color:red"
+    "color: hsl(0, 100%, 50%)";
+  check_decl_optimizes_to ~held:"color:hsla(120,100%,50%,.5)"
+    ~into:"color:#00ff0080" "color: hsla(120, 100%, 50%, 0.5)";
 
-  (* HSL colors - modern space-separated syntax. Per CSS Color 4 section 1.4 the
-     printer canonicalizes a fully-opaque hsl() to the equivalent named color
-     when applicable. *)
-  check_declaration ~expected:"color:red" "color: hsl(0, 100%, 50%)";
-  check_declaration ~expected:"color:#00ff0080"
-    "color: hsla(120, 100%, 50%, 0.5)";
-
-  (* Various color properties *)
   check_declaration ~expected:"background-color:red" "background-color: red";
-  check_declaration ~expected:"border-color:#00f" "border-color: blue";
-  check_declaration ~expected:"outline-color:red" "outline-color: #ff0000"
+  check_decl_optimizes_to ~held:"border-color:blue" ~into:"border-color:#00f"
+    "border-color: blue";
+  check_decl_optimizes_to ~held:"outline-color:#f00" ~into:"outline-color:red"
+    "outline-color: #ff0000"
 
 let lengths () =
   (* Pixels *)
@@ -1324,9 +1322,10 @@ let angle_units () =
     "transform: rotate(0.5turn)";
   check_declaration ~expected:"transform:rotate(1.5708rad)"
     "transform: rotate(1.5708rad)";
-  (* deg/turn/grad conversion is an optimize rewrite, not a pp spelling. *)
-  check_decl_optimizes_to ~into:"transform:skew(90deg,90deg)"
-    "transform: skew(0.25turn, 100grad)"
+  (* deg/turn/grad conversion is an optimize rewrite, not a pp spelling: pp holds
+     the authored units, optimize converts to the shortest. *)
+  check_decl_optimizes_to ~held:"transform:skew(.25turn,100grad)"
+    ~into:"transform:skew(90deg,90deg)" "transform: skew(0.25turn, 100grad)"
 
 let property_case () =
   (* Property names are ASCII case-insensitive *)

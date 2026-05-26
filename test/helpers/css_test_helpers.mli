@@ -61,17 +61,20 @@ val check_value_cursor :
     applies [parse], pretty-prints with [pp_func], and asserts the result equals
     spec-derived [input] or [expected]. *)
 
-val check_decl_optimizes : prop:string -> into:string -> string -> unit
-(** [check_decl_optimizes ~prop ~into input] asserts the declaration
-    [prop:input] optimizes and minifies to [prop:into]. pp holds a value's
-    authored spelling; cross-node folds (unit conversion, zero-strip, calc
-    folding) are optimize transforms. Pair it with a pp-only [check_*] held form
-    to cover both paths. [into] is the spec-canonical shortest spelling, not a
-    snapshot of current output. *)
+val check_decl_optimizes :
+  prop:string -> ?held:string -> into:string -> string -> unit
+(** [check_decl_optimizes ~prop ?held ~into input] checks that normalization is
+    done in optimize, not pp. With [held], the just-minify (pp only) form of
+    [prop:input] must equal [prop:held] - pp does not normalize. The
+    minify+optimize form must equal [prop:into] - the optimizer does the
+    cross-node fold (unit conversion, zero-strip, named<->hex, calc folding).
+    [into] is the spec-canonical shortest spelling, not a snapshot of current
+    output. *)
 
-val check_decl_optimizes_to : into:string -> string -> unit
-(** [check_decl_optimizes_to ~into input] is the full-declaration variant of
-    {!check_decl_optimizes}: [input] and [into] both include the property name. *)
+val check_decl_optimizes_to : ?held:string -> into:string -> string -> unit
+(** [check_decl_optimizes_to ?held ~into input] is the full-declaration variant
+    of {!check_decl_optimizes}: [input], [held] and [into] include the property
+    name. *)
 
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
