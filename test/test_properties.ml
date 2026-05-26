@@ -1206,7 +1206,8 @@ let test_border () =
   (* Test with zero width *)
   check_border "0 solid";
   check_border ~expected:"0 solid black" "0 solid black";
-  check_decl_optimizes ~prop:"border" ~into:"0 solid#000" "0 solid black";
+  check_decl_optimizes ~prop:"border" ~held:"0 solid black" ~into:"0 solid#000"
+    "0 solid black";
   (* Test with inherit/initial *)
   check_border "inherit";
   check_border "initial";
@@ -1610,7 +1611,7 @@ let test_gap () =
   check_gap "10px";
   check_gap "1rem 2rem";
   check_gap "0px";
-  check_decl_optimizes ~prop:"gap" ~into:"0" "0px";
+  check_decl_optimizes ~prop:"gap" ~held:"0px" ~into:"0" "0px";
   neg_cursor read_gap "invalid-gap";
   neg_cursor read_gap "-10px";
   (* negative gap *)
@@ -1795,7 +1796,7 @@ let test_text_decoration_shorthand () =
     "red solid underline";
   check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
     "3px wavy blue underline";
-  check_decl_optimizes ~prop:"text-decoration"
+  check_decl_optimizes ~prop:"text-decoration" ~held:"underline wavy blue 3px"
     ~into:"underline wavy #00f 3px" "3px wavy blue underline";
   neg_cursor read_text_decoration_shorthand "invalid-decoration";
   neg_cursor read_text_decoration_shorthand "underline underline";
@@ -1854,7 +1855,7 @@ let test_border_shorthand () =
   check_border_shorthand "1px solid red";
   check_border_shorthand ~expected:"solid red" "red solid";
   check_border_shorthand ~expected:"2px dashed blue" "blue 2px dashed";
-  check_decl_optimizes ~prop:"border" ~into:"2px dashed#00f"
+  check_decl_optimizes ~prop:"border" ~held:"2px dashed blue" ~into:"2px dashed#00f"
     "blue 2px dashed";
   neg_cursor read_border_shorthand "1px 2px"
 
@@ -2813,8 +2814,8 @@ let test_shadow () =
      compactly. Cross-form colour canonicalization is an optimize transform. *)
   check_shadow "0 0 #0000" ~expected:"0 0 #0000";
   check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgba(0,0,0,0)";
-  check_decl_optimizes ~prop:"box-shadow" ~into:"0 0 #0000"
-    "0 0 rgba(0,0,0,0)";
+  check_decl_optimizes ~prop:"box-shadow" ~held:"0 0 rgba(0,0,0,0)"
+    ~into:"0 0 #0000" "0 0 rgba(0,0,0,0)";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
   neg_cursor read_shadow "10px"
@@ -3449,7 +3450,8 @@ let spec_generated_box_layout_edges () =
   check_line_fit_edge "text alphabetic";
   check_line_fit_edge_keyword "ideographic-ink";
   check_logical_border_color "red blue";
-  check_decl_optimizes ~prop:"border-inline-color" ~into:"red #00f" "red blue";
+  check_decl_optimizes ~prop:"border-inline-color" ~held:"red blue"
+    ~into:"red #00f" "red blue";
   check_min_intrinsic_sizing "legacy zero-if-scroll";
   check_min_intrinsic_sizing_keyword "zero-if-extrinsic";
   check_overflow_clip_box "content-box";
@@ -3535,7 +3537,8 @@ let spec_generated_position_interaction_edges () =
   check_ruby_position "alternate over";
   check_ruby_position_keyword "inter-character";
   check_scrollbar_color "red blue";
-  check_decl_optimizes ~prop:"scrollbar-color" ~into:"red #00f" "red blue";
+  check_decl_optimizes ~prop:"scrollbar-color" ~held:"red blue" ~into:"red #00f"
+    "red blue";
   check_scrollbar_gutter "stable both-edges";
   check_scrollbar_width "thin";
   neg_cursor read_anchor_name "none --x";
@@ -3753,8 +3756,8 @@ let test_will_change () =
 let test_clip () =
   check_clip "auto";
   check_clip "rect(0px,10px,20px,30px)";
-  check_decl_optimizes ~prop:"clip" ~into:"rect(0px,10px,20px,30px)"
-    "rect(0px,10px,20px,30px)";
+  check_decl_optimizes ~prop:"clip" ~held:"rect(0px,10px,20px,30px)"
+    ~into:"rect(0px,10px,20px,30px)" "rect(0px,10px,20px,30px)";
   neg_cursor read_clip "invalid-clip"
 
 let test_clip_path () =
@@ -3769,13 +3772,14 @@ let test_clip_path () =
   check_clip_path "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
   check_clip_path "inset(0px 10px 20px 30px)";
-  check_decl_optimizes ~prop:"clip-path"
+  check_decl_optimizes ~prop:"clip-path" ~held:"inset(0px 10px 20px 30px)"
     ~into:"inset(0px 10px 20px 30px)" "inset(0px 10px 20px 30px)";
   (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
   check_clip_path "polygon(0px 0px,100px 0px,50px 100px)";
   check_decl_optimizes ~prop:"clip-path"
+    ~held:"polygon(0px 0px,100px 0px,50px 100px)"
     ~into:"polygon(0px 0px,100px 0px,50px 100px)"
     "polygon(0px 0px,100px 0px,50px 100px)";
   neg_cursor read_clip_path "";

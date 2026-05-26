@@ -12,7 +12,11 @@ let check_declaration ?minify ?roundtrip ?expected ?optimized input =
     ?minify ?roundtrip ?expected input;
   match optimized with
   | None -> ()
-  | Some into -> check_decl_optimizes_to ~into input
+  | Some into ->
+      (* held = the pp-minified declaration (the [expected] held form, or the
+         already-minified [input]); just-minify must hold it, optimize folds. *)
+      check_decl_optimizes_to ~held:(Option.value ~default:input expected) ~into
+        input
 
 let check = check_declaration
 
@@ -304,15 +308,15 @@ let colors () =
   check_decl_optimizes_to ~held:"color:transparent" ~into:"color:#0000"
     "color: transparent";
   check_decl_optimizes_to ~held:"color:#f00" ~into:"color:red" "color: #ff0000";
-  check_decl_optimizes_to ~held:"color:rgb(255,0,0)" ~into:"color:red"
+  check_decl_optimizes_to ~held:"color:rgb(255 0 0)" ~into:"color:red"
     "color: rgb(255, 0, 0)";
-  check_decl_optimizes_to ~held:"color:rgb(0,255,0)" ~into:"color:#0f0"
+  check_decl_optimizes_to ~held:"color:rgb(0 255 0)" ~into:"color:#0f0"
     "color: rgb(0, 255, 0)";
   check_decl_optimizes_to ~held:"color:rgba(255,0,0,.5)" ~into:"color:#ff000080"
     "color: rgba(255, 0, 0, 0.5)";
-  check_decl_optimizes_to ~held:"color:hsl(0,100%,50%)" ~into:"color:red"
+  check_decl_optimizes_to ~held:"color:hsl(0 100% 50%)" ~into:"color:red"
     "color: hsl(0, 100%, 50%)";
-  check_decl_optimizes_to ~held:"color:hsla(120,100%,50%,.5)"
+  check_decl_optimizes_to ~held:"color:hsl(120 100% 50%/.5)"
     ~into:"color:#00ff0080" "color: hsla(120, 100%, 50%, 0.5)";
 
   check_declaration ~expected:"background-color:red" "background-color: red";
