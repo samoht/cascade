@@ -3656,6 +3656,12 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
+(* Canonicalise a colour to its shortest spelling. The normalize pass only ever
+   visits real declarations, never an [@supports] feature-test condition (those
+   live in the unwalked [Supports] condition), so the static colour-space fold
+   is never suppressed here. *)
+let normalize_color = Values.normalize_color ~in_feature_query:false
+
 let normalize_border_radius : border_radius -> border_radius = function
   | Radius { horizontal; vertical } ->
       Radius
@@ -3676,11 +3682,25 @@ let normalize_radial_size : radial_size -> radial_size = function
 let rec normalize_gradient_stop : gradient_stop -> gradient_stop = function
   | Color_percentage (c, p1, p2) ->
       Color_percentage
-        ( c,
+        ( normalize_color c,
           Option.map Values.normalize_length_percentage p1,
           Option.map Values.normalize_length_percentage p2 )
+  | Color_length (c, l1, l2) -> Color_length (normalize_color c, l1, l2)
   | List stops -> List (List.map normalize_gradient_stop stops)
   | other -> other
+
+let normalize_webkit_gradient_stop :
+    Webkit_gradient.stop -> Webkit_gradient.stop = function
+  | From c -> From (normalize_color c)
+  | To c -> To (normalize_color c)
+  | Color_stop (p, c) -> Color_stop (p, normalize_color c)
+
+let normalize_webkit_gradient : Webkit_gradient.t -> Webkit_gradient.t =
+  function
+  | Linear r ->
+      Linear { r with stops = List.map normalize_webkit_gradient_stop r.stops }
+  | Radial r ->
+      Radial { r with stops = List.map normalize_webkit_gradient_stop r.stops }
 
 let normalize_radial_config (c : radial_gradient_config) =
   { c with size = Option.map normalize_radial_size c.size }
@@ -3717,6 +3737,13 @@ let rec normalize_background_image : background_image -> background_image =
       O_radial_gradient (normalize_radial_config c, stops s)
   | O_repeating_radial_gradient (c, s) ->
       O_repeating_radial_gradient (normalize_radial_config c, stops s)
+  | Webkit_gradient g -> Webkit_gradient (normalize_webkit_gradient g)
+  | Cross_fade opts ->
+      Cross_fade
+        (List.map
+           (fun (o : cross_fade_option) ->
+             { o with image = normalize_background_image o.image })
+           opts)
   | List imgs -> List (List.map normalize_background_image imgs)
   | other -> other
 
@@ -3772,6 +3799,7 @@ let rec normalize_clip_path : clip_path -> clip_path =
 let normalize_background_shorthand (b : background_shorthand) =
   {
     b with
+    color = Option.map normalize_color b.color;
     image = Option.map normalize_background_image b.image;
     position = Option.map normalize_position_value b.position;
   }
@@ -3824,6 +3852,60 @@ let normalize_timeline_inset : timeline_inset -> timeline_inset = function
 
 let normalize_baseline_shift : baseline_shift -> baseline_shift = function
   | Shift lp -> Shift (Values.normalize_length_percentage lp)
+  | other -> other
+
+let normalize_border : border -> border = function
+  | Shorthand s ->
+      Shorthand { s with color = Option.map normalize_color s.color }
+  | other -> other
+
+let normalize_outline : outline -> outline = function
+  | Shorthand s ->
+      Shorthand { s with color = Option.map normalize_color s.color }
+  | other -> other
+
+let normalize_logical_border_color :
+    logical_border_color -> logical_border_color = function
+  | Single c -> Single (normalize_color c)
+  | Pair (a, b) -> Pair (normalize_color a, normalize_color b)
+  | other -> other
+
+let normalize_text_decoration : text_decoration -> text_decoration = function
+  | Shorthand s ->
+      Shorthand { s with color = Option.map normalize_color s.color }
+  | other -> other
+
+let normalize_text_emphasis : text_emphasis -> text_emphasis = function
+  | Emphasis (style, color) -> Emphasis (style, Option.map normalize_color color)
+  | other -> other
+
+let rec normalize_shadow : shadow -> shadow = function
+  | Shadow s -> Shadow { s with color = Option.map normalize_color s.color }
+  | List shadows -> List (List.map normalize_shadow shadows)
+  | other -> other
+
+let normalize_text_shadow : text_shadow -> text_shadow = function
+  | Text_shadow s ->
+      Text_shadow { s with color = Option.map normalize_color s.color }
+  | other -> other
+
+let rec normalize_filter : filter -> filter = function
+  | Drop_shadow s -> Drop_shadow (normalize_shadow s)
+  | List filters -> List (List.map normalize_filter filters)
+  | other -> other
+
+let normalize_caret : caret -> caret = function
+  | Caret (color, anim, shape) ->
+      Caret (Option.map normalize_color color, anim, shape)
+  | other -> other
+
+let normalize_scrollbar_color : scrollbar_color -> scrollbar_color = function
+  | Colors (a, b) -> Colors (normalize_color a, normalize_color b)
+  | other -> other
+
+let rec normalize_svg_paint : svg_paint -> svg_paint = function
+  | Color c -> Color (normalize_color c)
+  | Url (u, fallback) -> Url (u, Option.map normalize_svg_paint fallback)
   | other -> other
 
 let length_of_border_width : border_width -> length option = function
@@ -4692,6 +4774,7 @@ let rec pp_flex_factor : flex_factor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex_factor ctx v
   | Number value -> Pp.float ctx value
+  | Calc c -> pp_calc pp_flex_factor ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -10947,7 +11030,11 @@ let rec read_flex_factor t : flex_factor =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_flex_factor t)) ]
+    ~calls:
+      [
+        ("var", fun t -> Var (Values.read_var read_flex_factor t));
+        ("calc", fun t -> Calc (read_calc read_flex_factor t));
+      ]
     ~default:read_number t
 
 let flex_basis_of_length t (length : length) : flex_basis =
@@ -11036,11 +11123,12 @@ module Flex = struct
   let read_basis_only t = Basis (read_flex_basis t)
 
   let read_factor t : flex_factor =
-    (* A flex factor is a [<number>]: a [var()], or a literal / CSS-math value
-       resolved to a number by [read_non_negative_flex_number]. (Not
-       [read_flex_factor], whose enum_or_calls only recognises [var], so it
-       would reject a [calc()] factor.) *)
+    (* A flex factor is a [<number>]: a [var()], a [calc()] (held unfolded; the
+       optimize+minify pass folds a constant calc to a literal), or a literal
+       number. *)
     if Cursor.looking_at_func "var" t then Var (read_var read_flex_factor t)
+    else if Cursor.looking_at_func "calc" t then
+      Calc (read_calc read_flex_factor t)
     else Number (read_non_negative_flex_number t)
 
   let read_grow_shrink_basis t =
@@ -19414,6 +19502,45 @@ let normalize_property_value : type a. a property -> a -> a =
   | Animation_range -> normalize_animation_range value
   | View_timeline_inset -> normalize_timeline_inset value
   | Baseline_shift -> normalize_baseline_shift value
+  | Background_color -> normalize_color value
+  | Color -> normalize_color value
+  | Border_color -> List.map normalize_color value
+  | Border_top_color -> normalize_color value
+  | Border_right_color -> normalize_color value
+  | Border_bottom_color -> normalize_color value
+  | Border_left_color -> normalize_color value
+  | Border_inline_start_color -> normalize_color value
+  | Border_inline_end_color -> normalize_color value
+  | Border_inline_color -> normalize_logical_border_color value
+  | Text_decoration_color -> normalize_color value
+  | Webkit_text_decoration_color -> normalize_color value
+  | Webkit_tap_highlight_color -> normalize_color value
+  | Text_emphasis_color -> normalize_color value
+  | Outline_color -> normalize_color value
+  | Accent_color -> normalize_color value
+  | Caret_color -> normalize_color value
+  | Border -> normalize_border value
+  | Border_block -> normalize_border value
+  | Border_top -> normalize_border value
+  | Border_right -> normalize_border value
+  | Border_bottom -> normalize_border value
+  | Border_left -> normalize_border value
+  | Column_rule -> normalize_border value
+  | Outline -> normalize_outline value
+  | Box_shadow -> normalize_shadow value
+  | Text_shadow -> List.map normalize_text_shadow value
+  | Text_decoration -> normalize_text_decoration value
+  | Webkit_text_decoration -> normalize_text_decoration value
+  | Text_emphasis -> normalize_text_emphasis value
+  | Caret -> normalize_caret value
+  | Fill -> normalize_svg_paint value
+  | Stroke -> normalize_svg_paint value
+  | Scrollbar_color -> normalize_scrollbar_color value
+  | Filter -> normalize_filter value
+  | Webkit_filter -> normalize_filter value
+  | Ms_filter -> normalize_filter value
+  | Backdrop_filter -> normalize_filter value
+  | Webkit_backdrop_filter -> normalize_filter value
   | _ -> value
 
 let pp_property_value : type a. (a property * a) Pp.t =
