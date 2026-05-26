@@ -3854,6 +3854,13 @@ let normalize_baseline_shift : baseline_shift -> baseline_shift = function
   | Shift lp -> Shift (Values.normalize_length_percentage lp)
   | other -> other
 
+let normalize_aspect_ratio : aspect_ratio -> aspect_ratio = function
+  | Auto_ratio_calc (a, b) ->
+      Auto_ratio_calc (Values.normalize_number a, Values.normalize_number b)
+  | Ratio_calc (a, b) ->
+      Ratio_calc (Values.normalize_number a, Values.normalize_number b)
+  | other -> other
+
 let normalize_border : border -> border = function
   | Shorthand s ->
       Shorthand { s with color = Option.map normalize_color s.color }
@@ -19541,6 +19548,7 @@ let normalize_property_value : type a. a property -> a -> a =
   | Ms_filter -> normalize_filter value
   | Backdrop_filter -> normalize_filter value
   | Webkit_backdrop_filter -> normalize_filter value
+  | Aspect_ratio -> normalize_aspect_ratio value
   | _ -> value
 
 (* A registered [<color>] custom property carries a typed colour once promoted,
@@ -19549,6 +19557,8 @@ let normalize_custom_property_value :
     custom_property_value -> custom_property_value = function
   | Typed { kind = Color; value } ->
       Typed { kind = Color; value = normalize_color value }
+  | Typed { kind = Number; value } ->
+      Typed { kind = Number; value = Values.normalize_number value }
   | (Typed _ | Tokens _) as other -> other
 
 let pp_property_value : type a. (a property * a) Pp.t =

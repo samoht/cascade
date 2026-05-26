@@ -172,6 +172,11 @@ val normalize_length_percentage : length_percentage -> length_percentage
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
 
+val normalize_number : number -> number
+(** [normalize_number n] evaluates the static CSS math functions on a [<number>]
+    ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
+    nested calls; an operand with a [var()] keeps the call. *)
+
 val normalize_color : in_feature_query:bool -> color -> color
 (** [normalize_color ~in_feature_query c] canonicalises a color to its shortest
     spelling: a static colour in any space folds through sRGB to hex/named, hex

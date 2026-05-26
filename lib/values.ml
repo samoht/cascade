@@ -3375,6 +3375,47 @@ let normalize_length_percentage (lp : length_percentage) : length_percentage =
       | folded -> Calc folded)
   | _ -> lp
 
+(* Evaluate the static CSS math functions on [<number>] (the folds the printer
+   used to do under minify), so the printer stays a pure serialiser. Recurses so
+   nested calls fold ([abs(hypot(3, 4))] -> [5]); a non-static operand keeps the
+   call. *)
+let rec normalize_number (n : number) : number =
+  match n with
+  | Calc c -> (
+      match eval_calc c with
+      | Num f -> Num f
+      | Val v -> normalize_number v
+      | folded -> Calc folded)
+  | Round (strategy, a, b) -> (
+      match (normalize_number a, normalize_number b) with
+      | Num value, Num step when step <> 0. ->
+          Num (round_to_step strategy value step)
+      | a, b -> Round (strategy, a, b))
+  | Mod (a, b) -> (
+      match (normalize_number a, normalize_number b) with
+      | Num a, Num b when b <> 0. -> Num (mod_value a b)
+      | a, b -> Mod (a, b))
+  | Rem (a, b) -> (
+      match (normalize_number a, normalize_number b) with
+      | Num a, Num b when b <> 0. -> Num (Float.rem a b)
+      | a, b -> Rem (a, b))
+  | Hypot (a, b) -> (
+      match (normalize_number a, normalize_number b) with
+      | Num a, Num b -> Num (Float.sqrt ((a *. a) +. (b *. b)))
+      | a, b -> Hypot (a, b))
+  | Pow (a, b) -> (
+      match (normalize_number a, normalize_number b) with
+      | Num a, Num b -> Num (Float.pow a b)
+      | a, b -> Pow (a, b))
+  | Sqrt v -> (
+      match normalize_number v with
+      | Num a when a >= 0. -> Num (Float.sqrt a)
+      | v -> Sqrt v)
+  | Abs v -> (
+      match normalize_number v with Num a -> Num (Float.abs a) | v -> Abs v)
+  | Sign v -> Sign (normalize_number v)
+  | Sin _ | Num _ | Var _ -> n
+
 let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
@@ -4168,9 +4209,7 @@ let rec pp_number : number Pp.t =
   | Num f ->
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
   | Var v -> pp_var pp_number ctx v
-  | Calc c -> pp_calc pp_number ctx c
-  | Round (strategy, Num value, Num step) when Pp.minified ctx && step <> 0. ->
-      pp_number ctx (Num (round_to_step strategy value step))
+  | Calc c -> pp_calc_presolved pp_number ctx c
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -4181,8 +4220,6 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx step)
         ctx (strategy, value, step)
-  | Mod (Num a, Num b) when Pp.minified ctx && b <> 0. ->
-      pp_number ctx (Num (mod_value a b))
   | Mod (a, b) ->
       Pp.call "mod"
         (fun ctx (a, b) ->
@@ -4190,8 +4227,6 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
-  | Rem (Num a, Num b) when Pp.minified ctx && b <> 0. ->
-      pp_number ctx (Num (Float.rem a b))
   | Rem (a, b) ->
       Pp.call "rem"
         (fun ctx (a, b) ->
@@ -4199,8 +4234,6 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
-  | Hypot (Num a, Num b) when Pp.minified ctx ->
-      pp_number ctx (Num (Float.sqrt ((a *. a) +. (b *. b))))
   | Hypot (a, b) ->
       Pp.call "hypot"
         (fun ctx (a, b) ->
@@ -4208,8 +4241,6 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
-  | Pow (Num a, Num b) when Pp.minified ctx ->
-      pp_number ctx (Num (Float.pow a b))
   | Pow (a, b) ->
       Pp.call "pow"
         (fun ctx (a, b) ->
@@ -4217,10 +4248,7 @@ let rec pp_number : number Pp.t =
           Pp.comma ctx ();
           pp_number ctx b)
         ctx (a, b)
-  | Sqrt (Num a) when Pp.minified ctx && a >= 0. ->
-      pp_number ctx (Num (Float.sqrt a))
   | Sqrt v -> Pp.call "sqrt" pp_number ctx v
-  | Abs (Num a) when Pp.minified ctx -> pp_number ctx (Num (Float.abs a))
   | Abs v -> Pp.call "abs" pp_number ctx v
   | Sign v -> Pp.call "sign" pp_number ctx v
   | Sin a -> Pp.call "sin" pp_angle ctx a
