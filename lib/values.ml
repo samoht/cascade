@@ -6971,6 +6971,14 @@ let rec normalize_color ~in_feature_query (c : color) : color =
         canonical_color_of_hex (String.concat "" [ rgb; byte_to_hex_byte ab ])
     | Option.None -> c
   in
+  let hex_of_byte_quad r g b ab =
+    let rgb =
+      String.concat ""
+        [ byte_to_hex_byte r; byte_to_hex_byte g; byte_to_hex_byte b ]
+    in
+    if ab = 255 then canonical_color_of_hex rgb
+    else canonical_color_of_hex (String.concat "" [ rgb; byte_to_hex_byte ab ])
+  in
   match c with
   | Oklab { l = Some _; a = Some _; b = Some _; _ }
   | Oklch { l = Some _; c = Some _; _ }
@@ -6999,6 +7007,55 @@ let rec normalize_color ~in_feature_query (c : color) : color =
       match minify_color c with
       | Hex { value; _ } -> canonical_color_of_hex value
       | other -> other)
+  | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
+      match static_color_to_srgb_bytes c with
+      | Some (r, g, b, a) -> hex_of_byte_quad r g b a
+      | Option.None -> c)
+  | Mix { in_space; hue; color1; percent1; color2; percent2 } -> (
+      let keep () =
+        Mix
+          {
+            in_space;
+            hue;
+            color1 = normalize_color ~in_feature_query color1;
+            percent1;
+            color2 = normalize_color ~in_feature_query color2;
+            percent2;
+          }
+      in
+      match (in_space, hue, color_mix_percentages percent1 percent2) with
+      | Some Srgb, Default, Some (p1, p2) -> (
+          match
+            mix_srgb_bytes
+              (resolve_static_srgb color1)
+              (resolve_static_srgb color2)
+              ~p1 ~p2
+          with
+          | Some (r, g, b, a) -> hex_of_byte_quad r g b a
+          | Option.None -> keep ())
+      | ((Some (Lab | Oklab | Lch | Oklch) | None) as sp), Default, Some (p1, p2)
+        -> (
+          (* CSS Color 5 sec. 3: [in oklab] is the default interpolation space,
+             so an absent space folds the same as [Some Oklab]. *)
+          let effective =
+            match sp with Some _ -> sp | None -> Some (Oklab : color_space)
+          in
+          let folded =
+            match mix_lab_family effective color1 color2 ~p1 ~p2 with
+            | Some color -> Some color
+            | None -> (
+                match effective with
+                | Some (Lab : color_space) ->
+                    mix_in_lab_space color1 color2 ~p1 ~p2
+                | Some Oklab -> mix_in_oklab_space color1 color2 ~p1 ~p2
+                | Some Lch -> mix_in_lch_space color1 color2 ~p1 ~p2 Default
+                | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
+                | _ -> None)
+          in
+          match folded with
+          | Some color -> normalize_color ~in_feature_query color
+          | None -> keep ())
+      | _ -> keep ())
   | Light_dark (l, d) ->
       Light_dark
         ( normalize_color ~in_feature_query l,
