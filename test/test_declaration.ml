@@ -312,7 +312,7 @@ let colors () =
     "color: rgb(255, 0, 0)";
   check_decl_optimizes_to ~held:"color:rgb(0 255 0)" ~into:"color:#0f0"
     "color: rgb(0, 255, 0)";
-  check_decl_optimizes_to ~held:"color:rgba(255,0,0,.5)" ~into:"color:#ff000080"
+  check_decl_optimizes_to ~held:"color:rgb(255 0 0/.5)" ~into:"color:#ff000080"
     "color: rgba(255, 0, 0, 0.5)";
   check_decl_optimizes_to ~held:"color:hsl(0 100% 50%)" ~into:"color:red"
     "color: hsl(0, 100%, 50%)";

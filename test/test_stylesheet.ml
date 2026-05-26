@@ -1388,10 +1388,10 @@ let test_advanced_properties () =
     ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
   check_stylesheet ~expected:".flex{display:flex;justify-content:space-between}"
     ".flex { display: flex; justify-content: space-between; }";
-  (* pp holds the legacy rgba() node (only the leading zero drops); optimize
-     cross-folds the opaque-able colour to the shorter 4-digit hex. *)
+  (* pp serializes the modern rgb() form (rgba unifies into rgb, commas ->
+     spaces, alpha via slash); optimize cross-folds to the shorter 4-digit hex. *)
   check_minify_and_optimize ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }"
-    ~minified:".shadow{box-shadow:0 4px 8px rgba(0,0,0,.2)}"
+    ~minified:".shadow{box-shadow:0 4px 8px rgb(0 0 0/.2)}"
     ~optimized:".shadow{box-shadow:0 4px 8px #0003}";
   (* "to right" is a <side-or-corner>, a distinct node from the <angle> 90deg
      (corners like "to top right" are not fixed angles), so pp holds the

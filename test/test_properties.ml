@@ -2813,8 +2813,8 @@ let test_shadow () =
   (* Test compact printing - when blur and spread are not provided, should print
      compactly. Cross-form colour canonicalization is an optimize transform. *)
   check_shadow "0 0 #0000" ~expected:"0 0 #0000";
-  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgba(0,0,0,0)";
-  check_decl_optimizes ~prop:"box-shadow" ~held:"0 0 rgba(0,0,0,0)"
+  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgb(0 0 0/0)";
+  check_decl_optimizes ~prop:"box-shadow" ~held:"0 0 rgb(0 0 0/0)"
     ~into:"0 0 #0000" "0 0 rgba(0,0,0,0)";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
