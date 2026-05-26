@@ -15,12 +15,9 @@ let check_length = check_value_cursor "length" read_length pp_length
 let check_color ?minify ?roundtrip ?expected ?optimized input =
   check_value_cursor "color" read_color pp_color ?minify ?roundtrip ?expected
     input;
-  let into =
-    match optimized with
-    | Some into -> into
-    | None -> Option.value ~default:input expected
-  in
-  check_decl_optimizes ~prop:"color" ~into input
+  let held = Option.value ~default:input expected in
+  let into = Option.value ~default:held optimized in
+  check_decl_optimizes ~prop:"color" ~held ~into input
 let check_angle = check_value_cursor "angle" read_angle pp_angle
 let check_duration = check_value_cursor "duration" read_duration pp_duration
 
@@ -194,14 +191,17 @@ let test_length () =
 
   (* optimize+minify strips the unit from a zero length and folds calc; 0% stays
      a percentage. *)
-  check_decl_optimizes ~prop:"width" ~into:"0" "0px";
-  check_decl_optimizes ~prop:"width" ~into:"0" "0cm";
-  check_decl_optimizes ~prop:"width" ~into:"0" "0vi";
-  check_decl_optimizes ~prop:"width" ~into:"0" "0svh";
-  check_decl_optimizes ~prop:"width" ~into:"0%" "0%";
-  check_decl_optimizes ~prop:"width" ~into:"100%" "calc(100% - 0)";
-  check_decl_optimizes ~prop:"width" ~into:"10px" "calc(10px + 0)";
-  check_decl_optimizes ~prop:"width" ~into:"10px" "calc(0 + 10px)";
+  check_decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
+  check_decl_optimizes ~prop:"width" ~held:"0cm" ~into:"0" "0cm";
+  check_decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
+  check_decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
+  check_decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
+  check_decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"100%"
+    "calc(100% - 0)";
+  check_decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"10px"
+    "calc(10px + 0)";
+  check_decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"10px"
+    "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
@@ -411,13 +411,13 @@ let test_angle () =
   check_angle "-.5turn";
 
   (* optimize+minify converts to the shortest spelling (ties prefer deg). *)
-  check_decl_optimizes ~prop:"rotate" ~into:"1turn" "360deg";
-  check_decl_optimizes ~prop:"rotate" ~into:"90deg" "0.25turn";
-  check_decl_optimizes ~prop:"rotate" ~into:"900deg" "2.5turn";
-  check_decl_optimizes ~prop:"rotate" ~into:"90deg" "100grad";
-  check_decl_optimizes ~prop:"rotate" ~into:"1turn" "400grad";
-  check_decl_optimizes ~prop:"rotate" ~into:"-180deg" "-200grad";
-  check_decl_optimizes ~prop:"rotate" ~into:"-1turn" "-360deg";
+  check_decl_optimizes ~prop:"rotate" ~held:"360deg" ~into:"1turn" "360deg";
+  check_decl_optimizes ~prop:"rotate" ~held:".25turn" ~into:"90deg" "0.25turn";
+  check_decl_optimizes ~prop:"rotate" ~held:"2.5turn" ~into:"900deg" "2.5turn";
+  check_decl_optimizes ~prop:"rotate" ~held:"100grad" ~into:"90deg" "100grad";
+  check_decl_optimizes ~prop:"rotate" ~held:"400grad" ~into:"1turn" "400grad";
+  check_decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
+  check_decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
 
   (* Var with angle fallback *)
   check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
@@ -671,7 +671,7 @@ let test_length_percentage () =
   (* pp holds the unit; stripping a zero length to unitless 0 is an optimize
      transform (type change <length> -> <number>). *)
   check_length_percentage "0px";
-  check_decl_optimizes ~prop:"width" ~into:"0" "0px";
+  check_decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
   neg_cursor read_length_percentage "invalid";
   neg_cursor read_length_percentage "abc";
   neg_cursor read_length_percentage ""
