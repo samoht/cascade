@@ -39,7 +39,11 @@ let generation () =
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
     "exact css generation"
-    ".btn{color:red;padding:10px}.card{margin:5px;background-color:#fff}" css
+    ".btn{color:#f00;padding:10px}.card{margin:5px;background-color:#fff}" css;
+  Alcotest.(check string)
+    "generation optimize+minify"
+    ".btn{color:red;padding:10px}.card{margin:5px;background-color:#fff}"
+    (minify stylesheet)
 
 (* Test optimization flag works *)
 let optimization_flag () =
@@ -96,7 +100,9 @@ let minify_flag () =
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
-  Alcotest.(check string) "minified exact" ".btn{color:red}" css_minified
+  Alcotest.(check string) "minified exact" ".btn{color:#f00}" css_minified;
+  Alcotest.(check string)
+    "minified optimize+minify" ".btn{color:red}" (minify stylesheet)
 
 let explicit_phase_pipeline () =
   let stylesheet =
@@ -126,12 +132,16 @@ let explicit_phase_pipeline () =
   in
   Alcotest.(check string)
     "to_string does not resolve theme guards"
-    ".card{color:red;background-color:#fff}"
+    ".card{color:#f00;background-color:#fff}"
     (Css.to_string ~minify:true guarded);
   Alcotest.(check string)
     "resolve_theme is the explicit theme phase"
-    ".card{color:red;background-color:#fff}"
+    ".card{color:#f00;background-color:#fff}"
     (guarded |> Css.resolve_theme ~theme |> Css.to_string ~minify:true);
+  Alcotest.(check string)
+    "resolve_theme output can still optimize"
+    ".card{color:red;background-color:#fff}"
+    (guarded |> Css.resolve_theme ~theme |> minify);
   Alcotest.(check string)
     "resolve_theme can drop inactive theme guards"
     ".card{background-color:#fff}"
@@ -167,7 +177,10 @@ let important_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "important exact" ".btn{color:red!important;padding:10px}" css
+    "important exact" ".btn{color:#f00!important;padding:10px}" css;
+  Alcotest.(check string)
+    "important optimize+minify" ".btn{color:red!important;padding:10px}"
+    (minify stylesheet)
 
 (* Test custom properties integration *)
 let custom_properties_integration () =
@@ -181,7 +194,10 @@ let custom_properties_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "custom properties exact" ".btn{--primary-color:blue;color:#00f}" css
+    "custom properties exact" ".btn{--primary-color:blue;color:blue}" css;
+  Alcotest.(check string)
+    "custom properties optimize+minify" ".btn{--primary-color:blue;color:#00f}"
+    (minify stylesheet)
 
 (* Regression: a custom property name starting with a digit after the -- is a
    valid dashed-ident per CSS Syntax §4.3.11. Tailwind emits these for
@@ -646,16 +662,27 @@ let public_theme_edges () =
     "guarded declaration hidden" ".card{background-color:#fff}"
     (sheet |> Css.resolve_theme ~theme:empty_theme |> to_string ~minify:true);
   Alcotest.(check string)
-    "guarded declaration shown" ".card{color:red;background-color:#fff}"
-    (sheet |> Css.resolve_theme ~theme:brand_theme |> to_string ~minify:true)
+    "guarded declaration shown" ".card{color:#f00;background-color:#fff}"
+    (sheet |> Css.resolve_theme ~theme:brand_theme |> to_string ~minify:true);
+  Alcotest.(check string)
+    "guarded declaration shown optimize+minify"
+    ".card{color:red;background-color:#fff}"
+    (sheet |> Css.resolve_theme ~theme:brand_theme |> Css.optimize
+    |> to_string ~minify:true)
 
 let public_value_combinator_edges () =
   let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
-  let check_padding_calc label expected calc =
+  let check_padding_calc ?optimized label expected calc =
     let sheet =
       v [ rule ~selector:(Selector.class_ "p-1") [ padding [ Calc calc ] ] ]
     in
-    Alcotest.(check string) label expected (to_string ~minify:true sheet)
+    Alcotest.(check string) label expected (to_string ~minify:true sheet);
+    match optimized with
+    | None -> ()
+    | Some expected ->
+        Alcotest.(check string)
+          (label ^ " optimize+minify")
+          expected (minify sheet)
   in
   let calc_var_sheet =
     v
@@ -702,18 +729,24 @@ let public_value_combinator_edges () =
     (Calc.add
        (Calc.mul (Calc.length (Var spacing)) (Calc.float 1.0))
        (Calc.length (Px 0.)));
-  check_padding_calc "padding var-free left subtree may fold before var"
-    ".p-1{padding:calc(3px + var(--spacing))}"
+  check_padding_calc
+    ~optimized:".p-1{padding:calc(3px + var(--spacing))}"
+    "padding var-free left subtree may fold before var"
+    ".p-1{padding:calc(1px + 2px + var(--spacing))}"
     (Calc.add
        (Calc.add (Calc.length (Px 1.)) (Calc.length (Px 2.)))
        (Calc.length (Var spacing)));
-  check_padding_calc "padding var-free right subtree may fold after var"
-    ".p-1{padding:calc(var(--spacing)*6)}"
+  check_padding_calc
+    ~optimized:".p-1{padding:calc(var(--spacing)*6)}"
+    "padding var-free right subtree may fold after var"
+    ".p-1{padding:calc(var(--spacing)*2*3)}"
     (Calc.mul
        (Calc.length (Var spacing))
        (Calc.mul (Calc.float 2.0) (Calc.float 3.0)));
-  check_padding_calc "padding var-free percentage subtree may fold before var"
-    ".p-1{padding:calc(50% - var(--spacing))}"
+  check_padding_calc
+    ~optimized:".p-1{padding:calc(50% - var(--spacing))}"
+    "padding var-free percentage subtree may fold before var"
+    ".p-1{padding:calc(100%/2 - var(--spacing))}"
     (Calc.sub
        (Calc.div (Calc.length (Pct 100.)) (Calc.float 2.0))
        (Calc.length (Var spacing)));
@@ -794,13 +827,28 @@ let public_value_combinator_edges () =
      1;mask:url(mask.svg);outline:2px solid #00f}.helpers{object-position:10px \
      20px;text-overflow:clip \"...\";content:\"Section \" \
      counter(section);background-image:conic-gradient(from 45deg at \
-     50%,red,#00f);background-size:20px 30px;object-view-box:inset(0 \
+     50%,#f00,#00f);background-size:20px 30px;object-view-box:inset(0px \
+     1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
+     2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
+     1 2,pointer;contain:layout paint;border-spacing:1px \
+     2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \
+     url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)#f00}"
+    (to_string ~minify:true sheet);
+  Alcotest.(check string)
+    "simple value helpers optimize+minify"
+    ".card{border-radius:.375rem;gap:.5rem \
+     .75rem;font-family:ui-sans-serif,system-ui,sans-serif;text-shadow:1px 2px \
+     4px #000;aspect-ratio:16/9;columns:12rem 3;counter-reset:section \
+     1;mask:url(mask.svg);outline:2px solid #00f}.helpers{object-position:10px \
+     20px;text-overflow:clip \"...\";content:\"Section \" \
+     counter(section);background-image:conic-gradient(from 45deg at \
+     50%,red,#00f);background-size:20px 30px;object-view-box:inset(0px \
      1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
      2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
      1 2,pointer;contain:layout paint;border-spacing:1px \
      2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \
      url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)red}"
-    (to_string ~minify:true sheet)
+    (minify sheet)
 
 let public_theme_var_rendering_edges () =
   let sans_stack : font_family =

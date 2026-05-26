@@ -5,10 +5,14 @@ open Cascade
 open Css.Declaration
 open Css_test_helpers
 
-(* One-liyesner check functions for each type *)
-let check_declaration =
+(* One-liner check functions for each type *)
+let check_declaration ?minify ?roundtrip ?expected ?optimized input =
   check_value_cursor "declaration" read_declaration
     (Css.Pp.option pp_declaration)
+    ?minify ?roundtrip ?expected input;
+  match optimized with
+  | None -> ()
+  | Some into -> check_decl_optimizes_to ~into input
 
 let check = check_declaration
 
@@ -1320,7 +1324,8 @@ let angle_units () =
     "transform: rotate(0.5turn)";
   check_declaration ~expected:"transform:rotate(1.5708rad)"
     "transform: rotate(1.5708rad)";
-  check_declaration ~expected:"transform:skew(90deg,90deg)"
+  (* deg/turn/grad conversion is an optimize rewrite, not a pp spelling. *)
+  check_decl_optimizes_to ~into:"transform:skew(90deg,90deg)"
     "transform: skew(0.25turn, 100grad)"
 
 let property_case () =

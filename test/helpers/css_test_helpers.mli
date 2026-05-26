@@ -69,6 +69,10 @@ val check_decl_optimizes : prop:string -> into:string -> string -> unit
     to cover both paths. [into] is the spec-canonical shortest spelling, not a
     snapshot of current output. *)
 
+val check_decl_optimizes_to : into:string -> string -> unit
+(** [check_decl_optimizes_to ~into input] is the full-declaration variant of
+    {!check_decl_optimizes}: [input] and [into] both include the property name. *)
+
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
 (** [check_parse_error_fields name expected actual] compares message and got
