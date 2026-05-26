@@ -3267,12 +3267,6 @@ let rec pp_alpha : alpha Pp.t =
          round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB). *)
       let max_decimals = if Pp.minified ctx then 3 else 8 in
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
-  | Pct f when Pp.minified ctx ->
-      (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
-         [<number>] form divided by 100. Under minification, emit the shorter
-         number form so [50%] and [0.5] round-trip identically. *)
-      Pp.string ctx
-        (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 (f /. 100.))
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -6727,23 +6721,26 @@ let canonical_color_of_hex (value : string) : color =
       Named (read_color_name (Cursor.of_string name))
   | _ -> Hex { hash = true; value = shortened }
 
-(* CSS Color 4 sec. 4.1: a fully-opaque alpha ([/ 1] or [/ 100%]) is redundant
-   and drops. The static colours fold to hex (which carries no alpha), so this
-   only matters for a colour the static fold leaves alone (e.g. a [var()]
-   channel). *)
+(* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
+   a [var()] channel). CSS Color 4 sec. 4.1: a fully-opaque [/ 1] / [/ 100%] is
+   redundant and drops; an alpha [<percentage>] is the [<number>] divided by 100
+   and serialises as the number. *)
+let normalize_alpha (a : alpha) : alpha =
+  match a with
+  | Num 1.0 | Pct 100.0 -> None
+  | Pct f -> Num (f /. 100.)
+  | other -> other
+
 let drop_full_alpha (c : color) : color =
-  let is_full (a : alpha) =
-    match a with Num 1.0 | Pct 100.0 -> true | _ -> false
-  in
   match c with
-  | Rgba { rgb; a; legacy } when is_full a -> Rgba { rgb; a = None; legacy }
-  | Hsl r when is_full r.a -> Hsl { r with a = None }
-  | Hwb r when is_full r.a -> Hwb { r with a = None }
-  | Color r when is_full r.alpha -> Color { r with alpha = None }
-  | Oklab r when is_full r.alpha -> Oklab { r with alpha = None }
-  | Oklch r when is_full r.alpha -> Oklch { r with alpha = None }
-  | Lab r when is_full r.alpha -> Lab { r with alpha = None }
-  | Lch r when is_full r.alpha -> Lch { r with alpha = None }
+  | Rgba { rgb; a; legacy } -> Rgba { rgb; a = normalize_alpha a; legacy }
+  | Hsl r -> Hsl { r with a = normalize_alpha r.a }
+  | Hwb r -> Hwb { r with a = normalize_alpha r.a }
+  | Color r -> Color { r with alpha = normalize_alpha r.alpha }
+  | Oklab r -> Oklab { r with alpha = normalize_alpha r.alpha }
+  | Oklch r -> Oklch { r with alpha = normalize_alpha r.alpha }
+  | Lab r -> Lab { r with alpha = normalize_alpha r.alpha }
+  | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
 (* AST-level color canonicalisation: the folds the printer used to do, producing
