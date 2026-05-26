@@ -1,7 +1,0 @@
-rules:
-  - files: lib/**
-    exclude: [E320]
-  - files: test/**
-    exclude: [E320]
-  - files: fuzz/**
-    exclude: [E320]
