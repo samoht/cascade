@@ -3911,62 +3911,37 @@ let rec pp_color_in_mix : color Pp.t =
   | c -> pp_color ctx c
 
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
+  (* Pure serialiser: the interpolation method, hue strategy, and percentages
+     print exactly as held. Dropping the default [in oklab] header, the default
+     [shorter] hue, and the redundant percentages are AST rewrites done by
+     [normalize_color]. *)
   Pp.call "color-mix"
     (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
-      (* CSS Color 5 §3: an omitted [<color-interpolation-method>] defaults to
-         [in oklab], so a default [in oklab] header (with the default hue) and
-         its trailing comma are dropped under minify. Per §13 [shorter] is the
-         default hue strategy and also drops under minify. *)
-      let hue_is_default = hue = Default || hue = Shorter in
-      let is_default_method =
-        hue_is_default
-        &&
-        match (in_space : color_space option) with
-        | Some Oklab | None -> true
-        | _ -> false
-      in
-      if not (Pp.minified ctx && is_default_method) then (
-        (match in_space with
-        | Some space ->
-            Pp.string ctx "in ";
-            pp_color_space ctx space
-        | None -> Pp.string ctx "in oklab");
-        (if (not hue_is_default) || not (Pp.minified ctx) then
-           match hue with
-           | Default -> ()
-           | _ ->
-               Pp.space ctx ();
-               pp_hue_interpolation ctx hue;
-               Pp.string ctx " hue");
-        Pp.comma ctx ());
-      (* CSS Color 5 §3: percentages default per the rule "if only one is given,
-         the second is [100% - first]". Drop both when both are 50% (both at
-         default), or drop just the second when [p1 + p2 = 100%]. *)
-      let pct_value (p : percentage option) =
-        match p with Some (Pct f) -> Some f | _ -> None
-      in
-      let pcts_sum_100 =
-        match (pct_value percent1, pct_value percent2) with
-        | Some a, Some b -> Float.abs (a +. b -. 100.) < 0.0001
-        | _ -> false
-      in
-      let omit_first =
-        Pp.minified ctx && pcts_sum_100 && pct_value percent1 = Some 50.
-      in
-      let omit_second = Pp.minified ctx && pcts_sum_100 in
+      (match in_space with
+      | Some space ->
+          Pp.string ctx "in ";
+          pp_color_space ctx space;
+          (match hue with
+          | Default -> ()
+          | _ ->
+              Pp.space ctx ();
+              pp_hue_interpolation ctx hue;
+              Pp.string ctx " hue");
+          Pp.comma ctx ()
+      | None -> ());
       pp_color_in_mix ctx color1;
       (match percent1 with
-      | Some p when not omit_first ->
+      | Some p ->
           Pp.space ctx ();
           pp_percentage ctx p
-      | _ -> ());
+      | None -> ());
       Pp.comma ctx ();
       pp_color_in_mix ctx color2;
       match percent2 with
-      | Some p when not omit_second ->
+      | Some p ->
           Pp.space ctx ();
           pp_percentage ctx p
-      | _ -> ())
+      | None -> ())
     ctx
     (in_space, hue, color1, percent1, color2, percent2)
 
@@ -6823,6 +6798,28 @@ let rec normalize_color ~in_feature_query (c : color) : color =
       | Option.None -> c)
   | Mix { in_space; hue; color1; percent1; color2; percent2 } -> (
       let keep () =
+        (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and the
+           [in oklab] method is the default, so both drop when the mix is left
+           as a colour-mix; percentages that restate the [100% - other] default
+           drop too. *)
+        let hue = match hue with Shorter -> Default | h -> h in
+        let in_space : color_space option =
+          match (in_space : color_space option) with
+          | Some Oklab when hue = Default -> None
+          | None -> None
+          | _ -> in_space
+        in
+        let pct (p : percentage option) =
+          match p with Some (Pct f) -> Some f | _ -> None
+        in
+        let percent1, percent2 =
+          match (pct percent1, pct percent2) with
+          | Some a, Some b when Float.abs (a +. b -. 100.) < 0.0001 ->
+              let none : percentage option = None in
+              if Float.abs (a -. 50.) < 0.0001 then (none, none)
+              else (percent1, none)
+          | _ -> (percent1, percent2)
+        in
         Mix
           {
             in_space;
