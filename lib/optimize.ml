@@ -32,6 +32,22 @@ let list_map_preserve f xs =
   in
   loop false [] xs
 
+(* [List.concat_map] that returns the input list itself when every element maps
+   to a singleton holding that same element (a per-element no-op). *)
+let concat_map_preserve f xs =
+  let changed = ref false in
+  let ys =
+    List.concat_map
+      (fun x ->
+        match f x with
+        | [ y ] when y == x -> [ x ]
+        | r ->
+            changed := true;
+            r)
+      xs
+  in
+  if !changed then ys else xs
+
 let list_filter_preserve f xs =
   let rec loop changed acc = function
     | [] -> if changed then List.rev acc else xs
@@ -2658,7 +2674,17 @@ let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
     let kept = drop_vendor_aliases kept in
     List.map (fun (_, decl) -> decl) kept
   in
-  duplicate_buggy_properties kept
+  let result = duplicate_buggy_properties kept in
+  (* The compose pipeline can rebuild a declaration even when it changes
+     nothing, so physical equality alone misses no-ops; fall back to a per-rule
+     structural check (bounded by one rule's declarations) and return the input
+     list itself when unchanged, so callers detect a no-op by identity (the
+     factoring fixpoint relies on it). *)
+  if
+    List.length result = List.length props
+    && List.for_all2 (fun a b -> a == b || a = b) result props
+  then props
+  else result
 
 let deduplicate_declarations ?scope props =
   deduplicate_declarations_with ~ctx:(ctx_of_scope scope) props
@@ -4241,42 +4267,54 @@ let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
   in
   preserve_list rules (walk [] rules)
 
+module Prop_set = Set.Make (struct
+  type t = Declaration.prop_key
+
+  let compare = Stdlib.compare
+end)
+
+(* [r] shares a property with the whole current group iff some property it
+   declares is declared by every group member - i.e. [r]'s property set meets
+   the running intersection of the group's property sets. Tracking that
+   intersection avoids the per-pair [decl_property] rescans of the group. *)
 let factor_common_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
-  let rec group acc current = function
+  let rule_props (r : Stylesheet.rule) =
+    List.fold_left
+      (fun s d -> Prop_set.add (decl_property d) s)
+      Prop_set.empty r.declarations
+  in
+  let rec group acc current current_props = function
     | [] -> List.rev_append (factorise_group (List.rev current)) acc
     | (r : Stylesheet.rule) :: rest -> (
         if not (rule_factor_eligible r) then
           let acc = List.rev_append (factorise_group (List.rev current)) acc in
-          group (r :: acc) [] rest
+          group (r :: acc) [] Prop_set.empty rest
         else
-          let shares_a_property () =
+          let r_props = rule_props r in
+          let shares =
             match current with
-            | [] -> r.declarations <> []
-            | _ ->
-                List.exists
-                  (fun d ->
-                    let prop = decl_property d in
-                    List.for_all
-                      (fun r' ->
-                        List.exists
-                          (fun d' -> decl_property d' = prop)
-                          r'.Stylesheet_intf.declarations)
-                      current)
-                  r.declarations
+            | [] -> not (Prop_set.is_empty r_props)
+            | _ -> not (Prop_set.disjoint r_props current_props)
           in
-          if shares_a_property () then group acc (r :: current) rest
+          if shares then
+            let current_props =
+              match current with
+              | [] -> r_props
+              | _ -> Prop_set.inter current_props r_props
+            in
+            group acc (r :: current) current_props rest
           else
             match try_factor_group_with_lookahead current (r :: rest) with
             | Some (replacement, tail) ->
-                group (List.rev_append replacement acc) [] tail
+                group (List.rev_append replacement acc) [] Prop_set.empty tail
             | None ->
                 let acc =
                   List.rev_append (factorise_group (List.rev current)) acc
                 in
-                group acc [ r ] rest)
+                group acc [ r ] r_props rest)
   in
-  preserve_list rules (List.rev (group [] [] rules))
+  preserve_list rules (List.rev (group [] [] Prop_set.empty rules))
 
 let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let rec walk acc = function
@@ -5456,48 +5494,63 @@ and flatten_in_rule_context (parent : Selector.t) : statement -> statement list
       ]
   | other -> [ other ]
 
-let rec flatten_top_statement : statement -> statement list = function
+let rec flatten_top_statement (stmt : statement) : statement list =
+  (* A flat rule with declarations is already in final form; a wrapper whose
+     block does not change keeps its node. Both let an already-flat sheet stay
+     physically shared. *)
+  let wrap block rebuild =
+    let block' = flatten_block block in
+    if block' == block then [ stmt ] else [ rebuild block' ]
+  in
+  match stmt with
+  | Rule { nested = []; declarations = _ :: _; _ } -> [ stmt ]
   | Rule rule -> flatten_rule rule
-  | Media (cond, block) -> [ Media (cond, flatten_block block) ]
+  | Media (cond, block) -> wrap block (fun b -> Media (cond, b))
   | Container (name, cond, block) ->
-      [ Container (name, cond, flatten_block block) ]
-  | Supports (cond, block) -> [ Supports (cond, flatten_block block) ]
-  | Layer (name, block) -> [ Layer (name, flatten_block block) ]
-  | Origin (origin, block) -> [ Origin (origin, flatten_block block) ]
-  | Starting_style block -> [ Starting_style (flatten_block block) ]
-  | When (cond, block) -> [ When (cond, flatten_block block) ]
-  | Else (cond, block) -> [ Else (cond, flatten_block block) ]
-  | Scope (s, e, block) -> [ Scope (s, e, flatten_block block) ]
+      wrap block (fun b -> Container (name, cond, b))
+  | Supports (cond, block) -> wrap block (fun b -> Supports (cond, b))
+  | Layer (name, block) -> wrap block (fun b -> Layer (name, b))
+  | Origin (origin, block) -> wrap block (fun b -> Origin (origin, b))
+  | Starting_style block -> wrap block (fun b -> Starting_style b)
+  | When (cond, block) -> wrap block (fun b -> When (cond, b))
+  | Else (cond, block) -> wrap block (fun b -> Else (cond, b))
+  | Scope (s, e, block) -> wrap block (fun b -> Scope (s, e, b))
   | other -> [ other ]
 
 and flatten_block (block : statement list) : statement list =
-  List.concat_map flatten_top_statement block
+  concat_map_preserve flatten_top_statement block
 
 let flatten_nesting (stylesheet : t) : t = flatten_block stylesheet
 
 (** {1 Stylesheet Optimization} *)
 
 let apply_property_duplication (stylesheet : t) : t =
-  (* Apply only property duplication without other optimizations *)
+  (* Apply only property duplication without other optimizations. Each level
+     keeps its node when nothing below changed, so an untouched subtree stays
+     physically shared (no whole-tree rebuild on a no-op). *)
   let rec apply_to_statements stmts =
-    List.map
-      (function
+    list_map_preserve
+      (fun stmt ->
+        match stmt with
         | Rule rule ->
-            Rule
-              {
-                rule with
-                declarations = duplicate_buggy_properties rule.declarations;
-              }
-        | Media (cond, inner_stmts) ->
-            Media (cond, apply_to_statements inner_stmts)
-        | Layer (name, inner_stmts) ->
-            Layer (name, apply_to_statements inner_stmts)
-        | Container (name, cond, inner_stmts) ->
-            Container (name, cond, apply_to_statements inner_stmts)
-        | Supports (cond, inner_stmts) ->
-            Supports (cond, apply_to_statements inner_stmts)
-        | Origin (origin, inner_stmts) ->
-            Origin (origin, apply_to_statements inner_stmts)
+            let declarations = duplicate_buggy_properties rule.declarations in
+            if declarations == rule.declarations then stmt
+            else Rule { rule with declarations }
+        | Media (cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Media (cond, inner')
+        | Layer (name, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Layer (name, inner')
+        | Container (name, cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Container (name, cond, inner')
+        | Supports (cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Supports (cond, inner')
+        | Origin (origin, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Origin (origin, inner')
         | other -> other)
       stmts
   in
