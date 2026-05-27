@@ -160,6 +160,42 @@ let test_selector_list_serialization_idempotent buf =
        %S"
       once twice thrice
 
+(* canonicalize reaches a fixed point in one pass: it de-duplicates and sorts
+   selector-list branches and drops redundant universals, all idempotent. A
+   second pass is therefore a genuine no-op and must return the very same
+   physical value. A structurally-equal reallocation means canonicalize rebuilds
+   branches it never changed - wasted work that also breaks the sharing the
+   optimizer relies on when it keeps an unchanged rule's selector by
+   identity. *)
+let test_canonicalize_preserves_physical_identity buf =
+  parse_or_skip Css.Selector.of_string buf @@ fun sel ->
+  let canon = Css.Selector.canonicalize sel in
+  let again = Css.Selector.canonicalize canon in
+  if again == canon then ()
+  else if again = canon then
+    fail
+      "canonicalize reallocated an already-canonical selector instead of \
+       returning it unchanged (x = canonicalize x but not x == canonicalize x)"
+  else
+    failf "canonicalize is not idempotent: %S -> %S" (minified canon)
+      (minified again)
+
+(* Same fixed-point identity contract on a selector list, the construct
+   canonicalize sorts and de-duplicates. *)
+let test_selector_list_canonicalize_preserves_physical_identity buf =
+  let parse s = Css.Selector.read_selector_list (Cursor.of_string s) in
+  parse_or_skip parse buf @@ fun selectors ->
+  let canon = Css.Selector.canonicalize selectors in
+  let again = Css.Selector.canonicalize canon in
+  if again == canon then ()
+  else if again = canon then
+    fail
+      "canonicalize reallocated an already-canonical selector list instead of \
+       returning it unchanged (x = canonicalize x but not x == canonicalize x)"
+  else
+    failf "canonicalize is not idempotent on a selector list: %S -> %S"
+      (minified canon) (minified again)
+
 let test_noisy_forgiving buf =
   let wrapper = pick [ ":is"; ":where" ] buf 0 in
   let first = pick [ ".ok"; "#main"; "section"; "[data-state=--open]" ] buf 1 in
@@ -454,6 +490,10 @@ let suite =
       test_case "specificity roundtrip" [ bytes ] test_specificity_roundtrip;
       test_case "serialization idempotent" [ bytes ]
         test_serialization_idempotent;
+      test_case "canonicalize preserves physical identity on a fixed point"
+        [ bytes ] test_canonicalize_preserves_physical_identity;
+      test_case "selector-list canonicalize preserves physical identity"
+        [ bytes ] test_selector_list_canonicalize_preserves_physical_identity;
       test_case "selector list serialization idempotent" [ bytes ]
         test_selector_list_serialization_idempotent;
       test_case "forgiving noisy branches" [ bytes ] test_noisy_forgiving;
