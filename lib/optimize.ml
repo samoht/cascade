@@ -2863,6 +2863,13 @@ let finalize_rule_without_nested ~ctx (rule : rule) : rule =
     |> sort_commuting_declarations
     |> preserve_list rule.declarations
   in
+  (* Selectors merged during factoring are fresh comma lists, so re-canonicalise
+     before emission; unchanged selectors keep their identity for the
+     fixpoint. *)
+  let canon = Selector.canonicalize rule.selector in
+  let rule =
+    if canon == rule.selector then rule else { rule with selector = canon }
+  in
   rule_with_declarations rule declarations
 
 (* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]
