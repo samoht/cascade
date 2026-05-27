@@ -55,3 +55,9 @@ val to_list : 'a t -> 'a list
 
 val nodes : 'a t -> 'a node list
 (** [nodes t] are the live handles in order. *)
+
+val next : 'a node -> 'a node option
+(** [next n] is the handle immediately after [n], or [None] at the end. *)
+
+val prev : 'a node -> 'a node option
+(** [prev n] is the handle immediately before [n], or [None] at the start. *)

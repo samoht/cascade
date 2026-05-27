@@ -19,6 +19,8 @@ let set n r = UF.set (UF.find (elem n)) r
 let length t = Order_maintenance.length t
 let nodes t = Order_maintenance.nodes t
 let before a b = Order_maintenance.compare a b < 0
+let next n = Order_maintenance.next n
+let prev n = Order_maintenance.prev n
 let to_rules t = List.map rule (nodes t)
 
 let combine t a b f =

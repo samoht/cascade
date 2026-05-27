@@ -100,3 +100,6 @@ let nodes t =
     | Some n -> loop (n :: acc) n.next
   in
   loop [] t.head
+
+let next n = n.next
+let prev n = n.prev

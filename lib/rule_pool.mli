@@ -37,6 +37,12 @@ val length : t -> int
 val before : node -> node -> bool
 (** [before a b] is [true] when [a] precedes [b] in cascade order. O(1). *)
 
+val next : node -> node option
+(** [next n] is the rule immediately after [n] in cascade order. *)
+
+val prev : node -> node option
+(** [prev n] is the rule immediately before [n] in cascade order. *)
+
 val set : node -> Stylesheet.rule -> unit
 (** [set n r] replaces [n]'s rule in place (e.g. a rule whose declarations
     shrank after factoring). *)
