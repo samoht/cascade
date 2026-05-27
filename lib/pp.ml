@@ -361,10 +361,8 @@ let hex ctx i =
   string ctx (to_hex i)
 
 let unit ctx f suffix =
-  if f = 0. then char ctx '0'
-  else (
-    float ctx f;
-    string ctx suffix)
+  float ctx f;
+  string ctx suffix
 
 let pct ctx f =
   (* CSS Values 4 §6.5 only allows the unit to drop on a zero [<length>]; a zero

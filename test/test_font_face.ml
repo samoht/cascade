@@ -60,7 +60,11 @@ let expect_size_adjust_rejected input =
 let accepted_invalid_cases label parse render inputs =
   List.filter_map
     (fun input ->
-      try Fmt.kstr (fun s -> Some s) "%s: %S -> %S" label input (parse input |> render)
+      try
+        Fmt.kstr
+          (fun s -> Some s)
+          "%s: %S -> %S" label input
+          (parse input |> render)
       with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None)
     inputs
 

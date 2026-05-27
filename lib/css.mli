@@ -1148,6 +1148,9 @@ type system_color = Values.system_color =
 type color = Values.color =
   | Hex of { r : int; g : int; b : int; a : int }
       (** Hex colour decoded to sRGB byte components ([a = 255] when opaque). *)
+  | Authored_hex of { value : string; r : int; g : int; b : int; a : int }
+      (** Parsed hex colour preserving the source spelling without the leading
+          [#]. Optimisation folds this to the canonical semantic colour. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }

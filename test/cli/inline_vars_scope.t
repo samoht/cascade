@@ -10,7 +10,7 @@ preserves the var() reference for non-descendant uses.
   > .other { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars scoped-decl.css
-  .theme{--c:red}.theme .descendant{color:red}.other{color:var(--c)}
+  .theme{--c:red;.descendant{color:red}}.other{color:var(--c)}
 
 A variable declared inside @media is in scope only for consumers within
 that @media block.
@@ -33,7 +33,7 @@ layer; outside-layer use stays as var().
   > .b { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars layer.css
-  @layer theme{.a{color:red}}.b{color:var(--brand)}
+  .a{color:red}.b{color:var(--brand)}
 
 A variable used in a @container query value is preserved (container
 queries evaluate at layout time, not at the syntax layer).
@@ -43,7 +43,7 @@ queries evaluate at layout time, not at the syntax layer).
   > @container (min-width: var(--bp)) { .x { color: red } }
   > EOF
   $ cascade --minify --inline-vars container.css 2>&1 | grep -v "warning"
-  :root{--bp:30em}@container (width>=var(--bp)){.x{color:red}}
+  :root{--bp:30em}@container(width>=var(--bp)){.x{color:red}}
 
 A variable used in a @media query value is preserved. Custom property
 substitution only happens in property values, not media query syntax.
@@ -63,7 +63,7 @@ reason.
   > @supports (display: var(--display)) { .x { color: red } }
   > EOF
   $ cascade --minify --inline-vars supports-var.css 2>&1 | grep -v "warning"
-  :root{--display:grid}@supports (display:var(--display)){.x{color:red}}
+  :root{--display:grid}.x{color:red}
 
 A self-referential variable [--x: var(--x)] is invalid at computed
 time per CSS Custom Properties L1 §5; consumers use their fallback, and

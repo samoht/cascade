@@ -30,6 +30,10 @@ val read_syntax : Cursor.t -> any_syntax
 val read_value : Cursor.t -> 'a syntax -> 'a
 (** [read_value r syntax] reads a value according to the given [syntax]. *)
 
+val normalize_value : 'a syntax -> 'a -> 'a
+(** [normalize_value syntax value] applies optimizer canonicalisation for typed
+    registered custom-property values. *)
+
 (** {1 Meta handling} *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)

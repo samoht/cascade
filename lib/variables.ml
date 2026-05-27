@@ -244,6 +244,37 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
           (String.concat ""
              [ "expected keyword '"; name; "', got '"; got; "'" ])
 
+let list_map_preserve f xs =
+  let changed = ref false in
+  let ys =
+    List.map
+      (fun x ->
+        let y = f x in
+        if y != x then changed := true;
+        y)
+      xs
+  in
+  if !changed then ys else xs
+
+let rec normalize_value : type a. a syntax -> a -> a =
+ fun syntax value ->
+  match syntax with
+  | Color -> Values.normalize_color ~in_feature_query:false value
+  | Or (left, right) -> (
+      match value with
+      | Either.Left v ->
+          let v' = normalize_value left v in
+          if v' == v then value else Either.Left v'
+      | Either.Right v ->
+          let v' = normalize_value right v in
+          if v' == v then value else Either.Right v')
+  | Plus syntax -> list_map_preserve (normalize_value syntax) value
+  | Hash syntax -> list_map_preserve (normalize_value syntax) value
+  | Length | Number | Integer | Percentage | Length_percentage | Angle | Time
+  | Resolution | Custom_ident | String | Url | Image | Transform_function
+  | Transform_list | Universal | Ident_keyword _ ->
+      value
+
 (** {1 Meta handling} *)
 
 let meta (type t) () =

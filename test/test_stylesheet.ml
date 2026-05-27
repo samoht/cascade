@@ -35,7 +35,7 @@ let check_stylesheet =
    held value in its shortest same-node spelling. [optimized] is pp+optimize:
    the canonical value after cross-node folds (colour names <-> hex, calc
    folding, keyword folds). pp never changes a node; optimize does. *)
-let check_minify_and_optimize input ~minified ~optimized =
+let assert_minify_and_optimize input ~minified ~optimized =
   match Css.of_string ~strict:false input with
   | Error _ -> Alcotest.failf "parse failed: %s" input
   | Ok p ->
@@ -83,7 +83,7 @@ let test_stylesheet () =
   check_stylesheet ".btn{color:red}";
   (* pp holds the authored Named node; cross-folding blue -> #00f (hex at most
      as long as the name) is optimize. *)
-  check_minify_and_optimize "body{margin:0}.btn{color:blue}"
+  assert_minify_and_optimize "body{margin:0}.btn{color:blue}"
     ~minified:"body{margin:0}.btn{color:blue}"
     ~optimized:"body{margin:0}.btn{color:#00f}";
 
@@ -102,7 +102,7 @@ let test_stylesheet () =
   check_stylesheet
     ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
-  check_minify_and_optimize "@media screen { .test { color: blue } }"
+  assert_minify_and_optimize "@media screen { .test { color: blue } }"
     ~minified:"@media screen{.test{color:blue}}"
     ~optimized:"@media screen{.test{color:#00f}}";
   check_stylesheet ~expected:"@supports(display:grid){.grid{display:grid}}"
@@ -644,7 +644,9 @@ let spec_fontface_descriptors () =
           | exception Error.Parse_error _ -> None
           | sheet ->
               if Cursor.is_done c then
-                Fmt.kstr (fun s -> Some s) "%S -> %S" input
+                Fmt.kstr
+                  (fun s -> Some s)
+                  "%S -> %S" input
                   (Css.Pp.to_string ~minify:true pp_stylesheet sheet)
               else None)
         inputs
@@ -1341,7 +1343,7 @@ let stylesheet_tests =
 let test_check () =
   (* Test basic stylesheet parsing using check function *)
   check ~expected:".test{color:red}" ".test { color: red }";
-  check_minify_and_optimize "@media screen { .test { color: blue } }"
+  assert_minify_and_optimize "@media screen { .test { color: blue } }"
     ~minified:"@media screen{.test{color:blue}}"
     ~optimized:"@media screen{.test{color:#00f}}"
 
@@ -1364,13 +1366,13 @@ let test_import_rule () =
 
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
-  check_minify_and_optimize ".btn:hover { color: blue; }"
+  assert_minify_and_optimize ".btn:hover { color: blue; }"
     ~minified:".btn:hover{color:blue}" ~optimized:".btn:hover{color:#00f}";
   check_stylesheet ~expected:".btn:before{content:\"icon\"}"
     ".btn::before { content: 'icon'; }";
   (* Attribute values that are valid identifiers get normalized to unquoted
      form *)
-  check_minify_and_optimize ".btn[data-type='primary'] { background: blue; }"
+  assert_minify_and_optimize ".btn[data-type='primary'] { background: blue; }"
     ~minified:".btn[data-type=primary]{background:blue}"
     ~optimized:".btn[data-type=primary]{background:#00f}";
   check_stylesheet ~expected:".parent>.child{margin:0}"
@@ -1389,15 +1391,17 @@ let test_advanced_properties () =
   check_stylesheet ~expected:".flex{display:flex;justify-content:space-between}"
     ".flex { display: flex; justify-content: space-between; }";
   (* pp serializes the modern rgb() form (rgba unifies into rgb, commas ->
-     spaces, alpha via slash); optimize cross-folds to the shorter 4-digit hex. *)
-  check_minify_and_optimize ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }"
+     spaces, alpha via slash); optimize cross-folds to the shorter 4-digit
+     hex. *)
+  assert_minify_and_optimize
+    ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }"
     ~minified:".shadow{box-shadow:0 4px 8px rgb(0 0 0/.2)}"
     ~optimized:".shadow{box-shadow:0 4px 8px #0003}";
   (* "to right" is a <side-or-corner>, a distinct node from the <angle> 90deg
      (corners like "to top right" are not fixed angles), so pp holds the
      authored keyword; optimize folds the side to 90deg and Named blue to
      #00f. *)
-  check_minify_and_optimize
+  assert_minify_and_optimize
     ".gradient { background: linear-gradient(to right, red, blue); }"
     ~minified:".gradient{background:linear-gradient(to right,red,blue)}"
     ~optimized:".gradient{background:linear-gradient(90deg,red,#00f)}"
@@ -1445,7 +1449,8 @@ let spec_s7_block_examples () =
      block contents, then validated by the rule grammar that owns the block. *)
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
-  check_minify_and_optimize "p > a { color: blue; text-decoration: underline; }"
+  assert_minify_and_optimize
+    "p > a { color: blue; text-decoration: underline; }"
     ~minified:"p>a{color:blue;text-decoration:underline}"
     ~optimized:"p>a{color:#00f;text-decoration:underline}";
   check_stylesheet
@@ -1455,7 +1460,7 @@ let spec_s7_block_examples () =
     "@page :left { margin-left: 4cm; margin-right: 3cm; }";
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-  check_minify_and_optimize ".card { color: red; & .title { color: blue; } }"
+  assert_minify_and_optimize ".card { color: red; & .title { color: blue; } }"
     ~minified:".card{color:red;& .title{color:blue}}"
     ~optimized:".card{color:red;.title{color:#00f}}";
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
@@ -1468,7 +1473,7 @@ let spec_s8_rule_shapes () =
   (* CSS Syntax Level 3 sections 8.1 and 8.2: top-level qualified rules are
      style rules, and at-rules are either statement or block rules depending on
      whether they end with a semicolon or a {} block. *)
-  check_minify_and_optimize "p > a { color: blue }" ~minified:"p>a{color:blue}"
+  assert_minify_and_optimize "p > a { color: blue }" ~minified:"p>a{color:blue}"
     ~optimized:"p>a{color:#00f}";
   check_stylesheet ~expected:"@import\"theme.css\";" "@import \"theme.css\";";
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
@@ -1677,7 +1682,7 @@ let c64_layer_nesting_examples () =
        base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
        framework.theme{blockquote{color:rebeccapurple}}"
     nested_layers;
-  check_minify_and_optimize nested_layers
+  assert_minify_and_optimize nested_layers
     ~minified:
       "@layer base{p{max-width:70ch}}@layer framework{@layer \
        base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
@@ -2353,7 +2358,7 @@ let spec_current_at_rules () =
     "@scope (.card) to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
-  check_minify_and_optimize
+  assert_minify_and_optimize
     "@scope (:root) to (.stop, .end) { .title { color: blue } }"
     ~minified:"@scope(:root)to (.end,.stop){.title{color:blue}}"
     ~optimized:"@scope(:root)to (.end,.stop){.title{color:#00f}}";
@@ -2583,12 +2588,10 @@ let test_spec_snapshot_tracking_vectors () =
      } }"
   in
   check_stylesheet
-    ~expected:
-      "@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
     oklch_support;
-  check_minify_and_optimize oklch_support
-    ~minified:
-      "@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+  assert_minify_and_optimize oklch_support
+    ~minified:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
     ~optimized:".accent{color:#944a4b}";
   let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
@@ -2598,7 +2601,7 @@ let test_spec_snapshot_tracking_vectors () =
     ~expected:
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
     nested_media;
-  check_minify_and_optimize nested_media
+  assert_minify_and_optimize nested_media
     ~minified:
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
     ~optimized:
@@ -2757,17 +2760,17 @@ let test_nesting_check_stylesheet () =
   (* Also test via check_stylesheet for consistency *)
   (* optimize folds blue -> #00f and drops the redundant leading "& " (a bare
      nested selector already means descendant); pp holds both. *)
-  check_minify_and_optimize ".parent { color: red; & .child { color: blue; } }"
+  assert_minify_and_optimize ".parent { color: red; & .child { color: blue; } }"
     ~minified:".parent{color:red;& .child{color:blue}}"
     ~optimized:".parent{color:red;.child{color:#00f}}";
-  check_minify_and_optimize ".btn { color: red; &:hover { color: blue; } }"
+  assert_minify_and_optimize ".btn { color: red; &:hover { color: blue; } }"
     ~minified:".btn{color:red;&:hover{color:blue}}"
     ~optimized:".btn{color:red;&:hover{color:#00f}}";
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
 let spec_nesting_selector_edges () =
-  check_minify_and_optimize
+  assert_minify_and_optimize
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
      img) { display: grid } }"
     ~minified:
@@ -2780,14 +2783,14 @@ let spec_nesting_selector_edges () =
        selector(:has(img)){&:has(img){display:grid}}@container(inline-size>30em){&>.media{display:block}}}"
     ".card { @supports selector(:has(img)) { &:has(img) { display: grid } } \
      @container (inline-size > 30em) { & > .media { display: block } } }";
-  check_minify_and_optimize
+  assert_minify_and_optimize
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
      blue } } }"
     ~minified:
       "@scope(.card)to (.boundary){.title{color:red;&:hover{color:blue}}}"
     ~optimized:
       "@scope(.card)to (.boundary){.title{color:red;&:hover{color:#00f}}}";
-  check_minify_and_optimize
+  assert_minify_and_optimize
     ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
     ~minified:".card{@scope(&)to (.boundary){& .title{color:blue}}}"
     ~optimized:".card{@scope(&)to (.boundary){& .title{color:#00f}}}";
@@ -3612,26 +3615,30 @@ let pretty_preserves css fragments =
             (Astring.String.is_infix ~affix:fragment printed))
         fragments
 
-(* CSS Color 4 section 12.1 + cascade convention: hex colours decode to sRGB
-   bytes; the pretty printer keeps the full byte form, while minify+optimize
-   emits the shorter equivalent spelling. *)
+(* CSS Color 4 section 12.1 + cascade convention: authored hex colours decode to
+   sRGB bytes but keep their source spelling for pretty-printing, while
+   minify+optimize emits the shorter equivalent spelling. *)
 let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
-  pretty_preserves ".x { color: #f00 }" [ "#ff0000" ];
-  pretty_preserves ".x { color: #FF0000 }" [ "#ff0000" ];
-  pretty_preserves ".x { color: #ABCDEF }" [ "#abcdef" ];
-  check_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
+  pretty_preserves ".x { color: #f00 }" [ "#f00" ];
+  pretty_preserves ".x { color: #FF0000 }" [ "#FF0000" ];
+  pretty_preserves ".x { color: #ABCDEF }" [ "#ABCDEF" ];
+  assert_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
     ~optimized:".x{color:red}"
 
 (* CSS Color 4 section 1.4 + cascade convention: under non-minified output, the
    named-color and rgb() forms are preserved as written - no cross-form
    canonicalization. *)
 let fidelity_color_form_preserved () =
+  (* Pretty preserves the colour value and the named/hex spelling, but a colour
+     function decodes to one node (no legacy flag), so its syntax canonicalizes
+     to modern in pretty too - commas -> spaces, rgba/hsla -> rgb/hsl - exactly
+     as a hex colour case-folds (#FF0000 -> #ffffff). *)
   pretty_preserves ".x { color: red }" [ "red" ];
-  pretty_preserves ".x { color: rgb(255, 0, 0) }" [ "rgb(255" ];
-  pretty_preserves ".x { color: hsl(0, 100%, 50%) }" [ "hsl(0" ];
+  pretty_preserves ".x { color: rgb(255, 0, 0) }" [ "rgb(255 0 0)" ];
+  pretty_preserves ".x { color: hsl(0, 100%, 50%) }" [ "hsl(0 100% 50%)" ];
   pretty_preserves ".x { color: transparent }" [ "transparent" ];
-  pretty_preserves ".x { color: rgba(0, 0, 0, 0) }" [ "rgba" ];
+  pretty_preserves ".x { color: rgba(0, 0, 0, 0) }" [ "rgb(0 0 0 / 0)" ];
   pretty_preserves ".x { color: #0000 }" [ "#0000" ]
 
 (* CSS Animations 1 section 7.1 + cascade convention: [from] / [to] are
@@ -5712,7 +5719,7 @@ let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
     "@property \
-     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:black}.x{--color-zinc-500:#71717b}"
+     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:#71717b}"
     (normalize_minified
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
@@ -5772,7 +5779,7 @@ let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "registered OKLab custom property uses typed color minification"
     "@property \
-     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:black}.prose{--tw-prose-kbd-shadows:#1118281a}"
+     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:#1118281a}"
     (normalize_minified
        "@property --tw-prose-kbd-shadows { syntax: \"<color>\"; inherits: \
         true; initial-value: black } .prose { --tw-prose-kbd-shadows: \

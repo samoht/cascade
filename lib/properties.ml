@@ -3714,21 +3714,25 @@ let normalize_radial_size : radial_size -> radial_size =
 let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     =
  fun value ->
+  let normalize_angle_direction angle =
+    match Values.angle_degrees_opt angle with
+    | Some deg when Float.rem (deg -. 180.) 360. = 0. -> Default_direction
+    | _ -> Angle (Values.normalize_angle angle)
+  in
   match value with
   | Default_direction -> value
   | To_top -> Angle (Values.Deg 0.)
   | To_right -> Angle (Values.Deg 90.)
-  | To_bottom -> Angle (Values.Deg 180.)
+  | To_bottom -> Default_direction
   | To_left -> Angle (Values.Deg 270.)
-  | Angle a -> preserve_if_equal value (Angle (Values.normalize_angle a))
+  | Angle a -> preserve_if_equal value (normalize_angle_direction a)
   | With_interpolation (dir, interp) ->
       let dir' =
         match dir with
         | Default_direction -> dir
         | _ -> normalize_gradient_direction dir
       in
-      preserve_if_equal value
-        (With_interpolation (dir', interp))
+      preserve_if_equal value (With_interpolation (dir', interp))
   | (To_top_right | To_bottom_right | To_bottom_left | To_top_left | Var _) as
     other ->
       other
@@ -4149,6 +4153,41 @@ let rec normalize_flex_factor (value : flex_factor) : flex_factor =
 
 let rec normalize_flex_basis (value : flex_basis) : flex_basis =
   match value with
+  | Px 0.
+  | Cm 0.
+  | Mm 0.
+  | Q 0.
+  | In 0.
+  | Pt 0.
+  | Pc 0.
+  | Rem 0.
+  | Em 0.
+  | Ex 0.
+  | Cap 0.
+  | Ic 0.
+  | Ric 0.
+  | Rlh 0.
+  | Vw 0.
+  | Vh 0.
+  | Vmin 0.
+  | Vmax 0.
+  | Vi 0.
+  | Vb 0.
+  | Dvh 0.
+  | Dvw 0.
+  | Dvmin 0.
+  | Dvmax 0.
+  | Lvh 0.
+  | Lvw 0.
+  | Lvmin 0.
+  | Lvmax 0.
+  | Svh 0.
+  | Svw 0.
+  | Svmin 0.
+  | Svmax 0.
+  | Ch 0.
+  | Lh 0. ->
+      Zero
   | Calc c -> (
       match eval_calc c with
       | Val v -> normalize_flex_basis v
@@ -7252,7 +7291,7 @@ let rec normalize_transform (t : transform) : transform =
   | _ ->
       let t = normalize_transform_leaves t in
       let t' = canonicalise_transform t in
-      if t' = t then t else normalize_transform t'
+      if t' == t then t else normalize_transform t'
 
 let rec pp_transform : transform Pp.t =
  fun ctx t ->
@@ -9838,6 +9877,48 @@ and pp_grid_track_list ctx tracks =
   in
   loop tracks
 
+let rec normalize_grid_template (value : grid_template) : grid_template =
+  match value with
+  | Px 0. | Rem 0. | Em 0. | Vw 0. | Vh 0. | Vmin 0. | Vmax 0. -> Zero
+  | Min_max (min, max) ->
+      let min' = normalize_grid_template min in
+      let max' = normalize_grid_template max in
+      if min' == min && max' == max then value else Min_max (min', max')
+  | Fit_content length ->
+      let length' = Values.normalize_length length in
+      if length' == length then value else Fit_content length'
+  | Repeat (count, sizes) ->
+      let sizes' = map_preserve normalize_grid_template sizes in
+      if sizes' == sizes then value else Repeat (count, sizes')
+  | Tracks sizes ->
+      let sizes' = map_preserve normalize_grid_template sizes in
+      if sizes' == sizes then value else Tracks sizes'
+  | Split (rows, columns) ->
+      let rows' = normalize_grid_template rows in
+      let columns' = normalize_grid_template columns in
+      if rows' == rows && columns' == columns then value
+      else Split (rows', columns')
+  | Auto_flow_columns (rows, flow, columns) ->
+      let rows' = normalize_grid_template rows in
+      let columns' = option_map_preserve normalize_grid_template columns in
+      if rows' == rows && columns' == columns then value
+      else Auto_flow_columns (rows', flow, columns')
+  | Auto_flow_rows (flow, rows, columns) ->
+      let rows' = option_map_preserve normalize_grid_template rows in
+      let columns' = normalize_grid_template columns in
+      if rows' == rows && columns' == columns then value
+      else Auto_flow_rows (flow, rows', columns')
+  | Named_tracks tracks ->
+      let tracks' =
+        map_preserve
+          (fun ((name, track) as item) ->
+            let track' = normalize_grid_template track in
+            if track' == track then item else (name, track'))
+          tracks
+      in
+      if tracks' == tracks then value else Named_tracks tracks'
+  | _ -> value
+
 let grid_area_row_ws = function
   | ' ' | '\t' | '\n' | '\r' | '\012' -> true
   | _ -> false
@@ -11565,7 +11646,40 @@ let flex_basis_of_length t (length : length) : flex_basis =
      [flex-basis: 0px] / [flex-basis: 0%] type-check. CSS Flexbox 1 sec. 7.2:
      [flex-basis] accepts [<'width'>] which accepts [<length-percentage>]. *)
   | Dimension { value = 0.; unit = "%"; _ } -> Pct 0.
-  | Dimension { value = 0.; _ } -> Zero
+  | Dimension { value = 0.; unit = "px"; _ } -> Px 0.
+  | Dimension { value = 0.; unit = "cm"; _ } -> Cm 0.
+  | Dimension { value = 0.; unit = "mm"; _ } -> Mm 0.
+  | Dimension { value = 0.; unit = "q"; _ } -> Q 0.
+  | Dimension { value = 0.; unit = "in"; _ } -> In 0.
+  | Dimension { value = 0.; unit = "pt"; _ } -> Pt 0.
+  | Dimension { value = 0.; unit = "pc"; _ } -> Pc 0.
+  | Dimension { value = 0.; unit = "rem"; _ } -> Rem 0.
+  | Dimension { value = 0.; unit = "em"; _ } -> Em 0.
+  | Dimension { value = 0.; unit = "ex"; _ } -> Ex 0.
+  | Dimension { value = 0.; unit = "cap"; _ } -> Cap 0.
+  | Dimension { value = 0.; unit = "ic"; _ } -> Ic 0.
+  | Dimension { value = 0.; unit = "ric"; _ } -> Ric 0.
+  | Dimension { value = 0.; unit = "rlh"; _ } -> Rlh 0.
+  | Dimension { value = 0.; unit = "vw"; _ } -> Vw 0.
+  | Dimension { value = 0.; unit = "vh"; _ } -> Vh 0.
+  | Dimension { value = 0.; unit = "vmin"; _ } -> Vmin 0.
+  | Dimension { value = 0.; unit = "vmax"; _ } -> Vmax 0.
+  | Dimension { value = 0.; unit = "vi"; _ } -> Vi 0.
+  | Dimension { value = 0.; unit = "vb"; _ } -> Vb 0.
+  | Dimension { value = 0.; unit = "dvh"; _ } -> Dvh 0.
+  | Dimension { value = 0.; unit = "dvw"; _ } -> Dvw 0.
+  | Dimension { value = 0.; unit = "dvmin"; _ } -> Dvmin 0.
+  | Dimension { value = 0.; unit = "dvmax"; _ } -> Dvmax 0.
+  | Dimension { value = 0.; unit = "lvh"; _ } -> Lvh 0.
+  | Dimension { value = 0.; unit = "lvw"; _ } -> Lvw 0.
+  | Dimension { value = 0.; unit = "lvmin"; _ } -> Lvmin 0.
+  | Dimension { value = 0.; unit = "lvmax"; _ } -> Lvmax 0.
+  | Dimension { value = 0.; unit = "svh"; _ } -> Svh 0.
+  | Dimension { value = 0.; unit = "svw"; _ } -> Svw 0.
+  | Dimension { value = 0.; unit = "svmin"; _ } -> Svmin 0.
+  | Dimension { value = 0.; unit = "svmax"; _ } -> Svmax 0.
+  | Dimension { value = 0.; unit = "ch"; _ } -> Ch 0.
+  | Dimension { value = 0.; unit = "lh"; _ } -> Lh 0.
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
 let rec read_flex_basis t : flex_basis =
@@ -20030,6 +20144,12 @@ let normalize_property_value : type a. a property -> a -> a =
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis value
   | Flex -> normalize_flex value
+  | Grid_template_columns -> normalize_grid_template value
+  | Grid_template_rows -> normalize_grid_template value
+  | Grid_template -> normalize_grid_template value
+  | Grid -> normalize_grid_template value
+  | Grid_auto_columns -> normalize_grid_template value
+  | Grid_auto_rows -> normalize_grid_template value
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Padding_left -> Values.normalize_length value

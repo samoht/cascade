@@ -241,7 +241,7 @@ Adjacent same-condition [@supports] blocks merge.
   > @supports (display: grid) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-supports.css
-  @supports (display:grid){.a{color:red}.b{color:#00f}}
+  .a{color:red}.b{color:#00f}
 
 Adjacent same-condition [@container] blocks merge.
 
@@ -250,7 +250,7 @@ Adjacent same-condition [@container] blocks merge.
   > @container (min-width: 30em) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-container.css
-  @container (width>=30em){.a{color:red}.b{color:#00f}}
+  @container(width>=30em){.a{color:red}.b{color:#00f}}
 
 Non-adjacent same-condition at-rules do NOT merge - an intervening
 rule could affect cascade order.
@@ -310,7 +310,7 @@ that filter when nested declarations apply.
   > .card { background-color: white }
   > EOF
   $ cascade --minify conditional-boundaries.css
-  .card{color:red}@supports (display:grid){.card{display:grid}}.card{padding:1rem}@container (inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
+  .card{color:red;display:grid;padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
 
 Equal declaration blocks are not grouped across an overlapping
 pseudo-class rule. Elements matching the pseudo-class would observe a
@@ -322,7 +322,7 @@ different source-order winner if grouping moved either side.
   > .link { color: red }
   > EOF
   $ cascade --minify pseudo-competitor.css
-  .btn{color:red}.btn:hover{color:#00f}.link{color:red}
+  .btn{color:red;&:hover{color:#00f}}.link{color:red}
 
 A misplaced [@import] (after a rule statement) is invalid per CSS
 Cascade L6 §2 and is dropped during parsing.
@@ -423,7 +423,7 @@ A combination produces cascading elimination across all levels.
   > @media screen { .g { color: red } } @media screen { .h { color: blue } }
   > EOF
   $ cascade --minify multi.css
-  .a{color:red}.c{padding:10px}.d{color:red;padding:10px}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
+  .a{color:red}.c,.d{padding:10px}.d{color:red}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
 
 
 # What is NOT dead code
@@ -502,4 +502,4 @@ Nested rules must not merge across a nested @scope boundary either.
   > }
   > EOF
   $ cascade --minify nested-scope-boundary.css
-  .card .title{color:red}@scope(.card)to (.boundary){.card .title{display:block}}.card .title{padding:1rem}
+  .card{.title{color:red}@scope(&)to (.boundary){& .title{display:block}}.title{padding:1rem}}

@@ -7,6 +7,7 @@ open Css_test_helpers
 
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value_cursor "length" read_length pp_length
+
 (* Always assert both paths. pp serializes the parsed colour ([expected], held);
    optimize+minify canonicalizes it ([optimized]). When [optimized] is omitted
    the colour has no shorter spec-equivalent spelling (already canonical, or a
@@ -17,7 +18,8 @@ let check_color ?minify ?roundtrip ?expected ?optimized input =
     input;
   let held = Option.value ~default:input expected in
   let into = Option.value ~default:held optimized in
-  check_decl_optimizes ~prop:"color" ~held ~into input
+  decl_optimizes ~prop:"color" ~held ~into input
+
 let check_angle = check_value_cursor "angle" read_angle pp_angle
 let check_duration = check_value_cursor "duration" read_duration pp_duration
 
@@ -191,16 +193,16 @@ let test_length () =
 
   (* optimize+minify strips the unit from a zero length and folds calc; 0% stays
      a percentage. *)
-  check_decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
-  check_decl_optimizes ~prop:"width" ~held:"0cm" ~into:"0" "0cm";
-  check_decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
-  check_decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
-  check_decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
-  check_decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"100%"
+  decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
+  decl_optimizes ~prop:"width" ~held:"0cm" ~into:"0" "0cm";
+  decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
+  decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
+  decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
+  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"100%"
     "calc(100% - 0)";
-  check_decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"10px"
     "calc(10px + 0)";
-  check_decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"10px"
     "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
@@ -243,8 +245,7 @@ let test_color () =
     "hwb(90deg 10% 20%)";
   check_color ~expected:"hsl(180 50% 25%/.5)" ~optimized:"#20606080"
     "hsl(180 50% 25% / 0.5)";
-  check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a"
-    "hwb(90 10% 20%)";
+  check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a" "hwb(90 10% 20%)";
   check_color ~expected:"hwb(90 10% 20%/.25)" ~optimized:"#73cc1a40"
     "hwb(90 10% 20% / 0.25)";
   (* CSS Color 4 section 1.3: alpha [<percentage>] is spec-equivalent to the
@@ -264,12 +265,10 @@ let test_color () =
     "oklch(50% 0.2 30)";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
-  check_color ~expected:"rgb(100% 0% 0%)" ~optimized:"red"
-    "rgb(100% 0% 0%)";
+  check_color ~expected:"rgb(100% 0% 0%)" ~optimized:"red" "rgb(100% 0% 0%)";
   check_color ~expected:"oklab(50%.1-.05)" ~optimized:"#88497e"
     "oklab(50% 0.1 -0.05)";
-  check_color ~expected:"lch(50%40 120)" ~optimized:"#638038"
-    "lch(50% 40 120)";
+  check_color ~expected:"lch(50%40 120)" ~optimized:"#638038" "lch(50% 40 120)";
   check_color ~expected:"rgb(255 0 0/50%)" ~optimized:"#ff000080"
     "rgb(255 0 0 / 50%)";
 
@@ -332,8 +331,7 @@ let test_color () =
     ~optimized:"var(--theme-primary,#2080df)"
     "var(--theme-primary, hsl(210deg 75% 50%))";
   check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
-    ~optimized:"var(--accent,#ff0080cc)"
-    "var(--accent, rgb(255 0 128 / 80%))";
+    ~optimized:"var(--accent,#ff0080cc)" "var(--accent, rgb(255 0 128 / 80%))";
 
   (* RGB functions - various formats. Per CSS Color 4 section 1.4 the printer
      canonicalizes a fully-opaque rgb() to the named-or-hex equivalent when
@@ -345,14 +343,12 @@ let test_color () =
   check_color ~expected:"rgb(128 128 128)" ~optimized:"gray"
     "rgb(128, 128, 128)";
 
-  (* RGBA: pp serializes the modern rgb() form (rgba unifies into rgb,
-     commas -> spaces, alpha via slash); the fully-opaque case (alpha 1) drops
-     the alpha. optimize then folds to the shortest hex/named form. *)
+  (* RGBA decodes to the modern rgb(... / alpha) node; optimize then folds to
+     the shortest hex/named form. *)
   check_color ~expected:"rgb(255 0 0/.5)" ~optimized:"#ff000080"
     "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"rgb(255 0 0/0)" ~optimized:"#f000"
-    "rgba(255, 0, 0, 0)";
-  check_color ~expected:"rgb(255 0 0)" ~optimized:"red" "rgba(255, 0, 0, 1)";
+  check_color ~expected:"rgb(255 0 0/0)" ~optimized:"#f000" "rgba(255, 0, 0, 0)";
+  check_color ~expected:"rgb(255 0 0/1)" ~optimized:"red" "rgba(255, 0, 0, 1)";
   check_color ~expected:"rgb(0 0 0/.25)" ~optimized:"#00000040"
     "rgba(0, 0, 0, 0.25)";
   check_color ~expected:"rgb(128 128 128/.75)" ~optimized:"#808080bf"
@@ -411,13 +407,13 @@ let test_angle () =
   check_angle "-.5turn";
 
   (* optimize+minify converts to the shortest spelling (ties prefer deg). *)
-  check_decl_optimizes ~prop:"rotate" ~held:"360deg" ~into:"1turn" "360deg";
-  check_decl_optimizes ~prop:"rotate" ~held:".25turn" ~into:"90deg" "0.25turn";
-  check_decl_optimizes ~prop:"rotate" ~held:"2.5turn" ~into:"900deg" "2.5turn";
-  check_decl_optimizes ~prop:"rotate" ~held:"100grad" ~into:"90deg" "100grad";
-  check_decl_optimizes ~prop:"rotate" ~held:"400grad" ~into:"1turn" "400grad";
-  check_decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
-  check_decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
+  decl_optimizes ~prop:"rotate" ~held:"360deg" ~into:"1turn" "360deg";
+  decl_optimizes ~prop:"rotate" ~held:".25turn" ~into:"90deg" "0.25turn";
+  decl_optimizes ~prop:"rotate" ~held:"2.5turn" ~into:"900deg" "2.5turn";
+  decl_optimizes ~prop:"rotate" ~held:"100grad" ~into:"90deg" "100grad";
+  decl_optimizes ~prop:"rotate" ~held:"400grad" ~into:"1turn" "400grad";
+  decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
+  decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
 
   (* Var with angle fallback *)
   check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
@@ -671,7 +667,7 @@ let test_length_percentage () =
   (* pp holds the unit; stripping a zero length to unitless 0 is an optimize
      transform (type change <length> -> <number>). *)
   check_length_percentage "0px";
-  check_decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
+  decl_optimizes ~prop:"width" ~held:"0px" ~into:"0" "0px";
   neg_cursor read_length_percentage "invalid";
   neg_cursor read_length_percentage "abc";
   neg_cursor read_length_percentage ""
@@ -726,7 +722,7 @@ let test_alpha () =
      conversion in colour contexts. *)
   check_alpha ~expected:".5" "0.5";
   check_alpha "50%";
-  check_decl_optimizes ~prop:"color" ~into:"#00000080" "rgb(0 0 0 / 50%)";
+  decl_optimizes ~prop:"color" ~into:"#00000080" "rgb(0 0 0 / 50%)";
   check_alpha "1";
   check_alpha "0";
   neg_cursor read_alpha "invalid";
@@ -734,7 +730,7 @@ let test_alpha () =
   check_alpha ~expected:"1" "1.5";
   check_alpha ~expected:"0" "-0.5";
   check_alpha ~expected:"100%" "150%";
-  check_decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
+  decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
   neg_cursor read_alpha "1px"
 
 let test_hue_interpolation () =
@@ -829,10 +825,10 @@ let spec_values_color_current () =
   check_color ~expected:"oklch(50%.2 none)" "oklch(50% 0.2 none)";
   check_color ~optimized:"rgb(from rebeccapurple r g b)"
     "rgb(from rebeccapurple r g b)";
-  check_color ~expected:"contrast-color(white)" ~optimized:"contrast-color(#fff)"
-    "contrast-color(white)";
-  check_color ~expected:"light-dark(black,white)" ~optimized:"light-dark(#000,#fff)"
-    "light-dark(black, white)";
+  check_color ~expected:"contrast-color(white)"
+    ~optimized:"contrast-color(#fff)" "contrast-color(white)";
+  check_color ~expected:"light-dark(black,white)"
+    ~optimized:"light-dark(#000,#fff)" "light-dark(black, white)";
   check_duration ~expected:"calc(sibling-index()*100ms)"
     "calc(sibling-index() * 100ms)";
   neg_cursor read_color "rgb(from r g b)";
@@ -976,18 +972,27 @@ let spec_color_invalid_mutation_matrix () =
     ]
 
 let spec_math_function_edges () =
-  (* All-constant math-function calls reduce under shortest-wins. *)
-  check_length ~expected:"9px" "round(nearest, 10px, 3px)";
-  check_length ~expected:"1px" "mod(10px, 3px)";
-  check_length ~expected:"1px" "rem(10px, 3px)";
-  check_length ~expected:"5px" "hypot(3px, 4px)";
-  check_length ~expected:"10px" "abs(-10px)";
+  (* pp holds typed math-function nodes; optimize owns the all-constant fold. *)
+  check_length ~expected:"round(10px,3px)" "round(nearest, 10px, 3px)";
+  decl_optimizes ~prop:"width" ~held:"round(10px,3px)" ~into:"9px"
+    "round(nearest, 10px, 3px)";
+  check_length ~expected:"mod(10px,3px)" "mod(10px, 3px)";
+  decl_optimizes ~prop:"margin" ~held:"mod(10px,3px)" ~into:"1px"
+    "mod(10px, 3px)";
+  check_length ~expected:"rem(10px,3px)" "rem(10px, 3px)";
+  decl_optimizes ~prop:"margin" ~held:"rem(10px,3px)" ~into:"1px"
+    "rem(10px, 3px)";
+  check_length ~expected:"hypot(3px,4px)" "hypot(3px, 4px)";
+  decl_optimizes ~prop:"width" ~held:"hypot(3px,4px)" ~into:"5px"
+    "hypot(3px, 4px)";
+  check_length ~expected:"abs(-10px)" "abs(-10px)";
+  decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
   check_length ~expected:"sign(10px)" "sign(10px)";
-  check_number ~expected:"2" "round(up, 1.2, 1)";
-  check_number ~expected:"1" "mod(10, 3)";
-  check_number ~expected:"5" "hypot(3, 4)";
-  check_number ~expected:"8" "pow(2, 3)";
-  check_number ~expected:"2" "sqrt(4)";
+  check_number ~expected:"round(up,1.2,1)" "round(up, 1.2, 1)";
+  check_number ~expected:"mod(10,3)" "mod(10, 3)";
+  check_number ~expected:"hypot(3,4)" "hypot(3, 4)";
+  check_number ~expected:"pow(2,3)" "pow(2, 3)";
+  check_number ~expected:"sqrt(4)" "sqrt(4)";
   check_number ~expected:"sin(30deg)" "sin(30deg)";
   neg_cursor read_length "round(nearest, 10px)";
   neg_cursor read_length "mod(10px)";

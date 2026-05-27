@@ -4541,8 +4541,9 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
     list_map_preserve
       (fun rule ->
         let nested =
-          statements ~ctx ~enforce_spec rule.nested
-          |> list_map_preserve drop_nesting_prefix
+          let nested = statements ~ctx ~enforce_spec rule.nested in
+          if enforce_spec then nested
+          else list_map_preserve drop_nesting_prefix nested
         in
         let rule = rule_with_nested rule nested in
         merge_lone_nested_rule rule)
@@ -5171,6 +5172,16 @@ and normalize_statement (s : statement) : statement =
   | Scope (s1, s2, b) ->
       let b' = normalize_block b in
       if b' == b then s else Scope (s1, s2, b')
+  | Property r ->
+      let initial_value =
+        match r.initial_value with
+        | None -> r.initial_value
+        | Some value ->
+            let value' = Variables.normalize_value r.syntax value in
+            if value' == value then r.initial_value else Some value'
+      in
+      if initial_value == r.initial_value then s
+      else Property { r with initial_value }
   | other -> other
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(enforce_spec = false)

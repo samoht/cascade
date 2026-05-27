@@ -85,13 +85,14 @@ let check_value_cursor type_name parse pp_func ?(minify = true)
     let s2 = Css.Pp.to_string ~minify pp_func v2 in
     Alcotest.(check string) (Fmt.str "roundtrip %s %s" type_name input) s s2
 
-(** [check_decl_optimizes ~prop ?held ~into input] asserts that normalization
-    happens in optimize, not pp. When [held] is given it asserts the just-minify
-    (pp only) form of [prop:input] equals [prop:held] - pp must NOT normalize.
-    It always asserts the minify+optimize form equals [prop:into] - the optimizer
+(** [decl_optimizes ~prop ?held ~into input] asserts that normalization happens
+    in optimize, not pp. When [held] is given it asserts the just-minify (pp
+    only) form of [prop:input] equals [prop:held] - pp must NOT normalize. It
+    always asserts the minify+optimize form equals [prop:into] - the optimizer
     does the cross-node fold (360deg->1turn, 0px->0, named<->hex, calc). [into]
-    is the spec-canonical shortest spelling, not a snapshot of current output. *)
-let check_decl_optimizes ~prop ?held ~into input =
+    is the spec-canonical shortest spelling, not a snapshot of current output.
+*)
+let decl_optimizes ~prop ?held ~into input =
   let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
   match Css.of_string ~strict:false (wrap input) with
   | Ok p ->
@@ -108,7 +109,7 @@ let check_decl_optimizes ~prop ?held ~into input =
         (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
-let check_decl_optimizes_to ?held ~into input =
+let decl_optimizes_to ?held ~into input =
   let wrap decl = String.concat "" [ ".x{"; decl; "}" ] in
   match Css.of_string ~strict:false (wrap input) with
   | Ok p ->

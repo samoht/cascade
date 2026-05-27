@@ -57,8 +57,7 @@ let test_display_p3_roundtrip buf =
   let rgb = triple_of_buf buf in
   let linear = Color_space.linear_rgb_of_rgb rgb in
   let back =
-    linear |> Color_space.xyz65_of_linear_p3
-    |> Color_space.linear_p3_of_xyz65
+    linear |> Color_space.xyz65_of_linear_p3 |> Color_space.linear_p3_of_xyz65
   in
   if not (approx_eq_triple linear back) then
     failf "Display-P3 <-> XYZ roundtrip %a -> %a" pp_triple linear pp_triple

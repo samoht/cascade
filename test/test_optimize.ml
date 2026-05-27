@@ -2091,9 +2091,10 @@ let c61_nesting_synthesis_source_order () =
     in
     if String.equal output expected then None
     else
-      Fmt.kstr (fun s -> Some s)
-        "%s\n  input:    %S\n  expected: %S\n  actual:   %S" label css
-        expected output
+      Fmt.kstr
+        (fun s -> Some s)
+        "%s\n  input:    %S\n  expected: %S\n  actual:   %S" label css expected
+        output
   in
   let mismatches =
     List.filter_map run_case

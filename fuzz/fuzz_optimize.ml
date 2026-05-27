@@ -285,8 +285,8 @@ let fold_prone_decls =
    point - the emergent non-idempotence that the uniform generator does not hit
    and that only surfaced at scale in the SatCSS benchmark. *)
 let generated_cluster_css buf =
-  let len = max 1 (String.length buf) in
-  let at i = Char.code buf.[i mod len] in
+  let len = String.length buf in
+  let at i = if len = 0 then i else Char.code buf.[i mod len] in
   let sel i = "c" ^ string_of_int (at i mod 8) in
   let decl i = fold_prone_decls.(at i mod Array.length fold_prone_decls) in
   let rule ri =

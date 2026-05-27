@@ -51,7 +51,7 @@ minification.
   > .b { color: var(--undef, red, blue) }
   > EOF
   $ cascade --minify --inline-vars list.css
-  .a{font-family:"Helvetica Neue",sans-serif}
+  .a{font-family:Helvetica Neue,sans-serif}
 
 An empty fallback collapses to an empty value when the wrapper drops;
 for a property that does not accept an empty value, minification drops
