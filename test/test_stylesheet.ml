@@ -2358,9 +2358,11 @@ let spec_current_at_rules () =
     "@scope (.card) to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
+  (* The scope-end selector list is held in authored order by pp; only optimize
+     sorts it into canonical order (and folds the color). *)
   assert_minify_and_optimize
     "@scope (:root) to (.stop, .end) { .title { color: blue } }"
-    ~minified:"@scope(:root)to (.end,.stop){.title{color:blue}}"
+    ~minified:"@scope(:root)to (.stop,.end){.title{color:blue}}"
     ~optimized:"@scope(:root)to (.end,.stop){.title{color:#00f}}";
   check_stylesheet
     ~expected:
@@ -3301,7 +3303,33 @@ let s435_universal_redundant () =
       Alcotest.(check string)
         (with_star ^ " is spec-equivalent to " ^ without_star)
         (normalize without_star) (normalize with_star))
-    pairs
+    pairs;
+  (* Dropping the redundant universal is a node change, so pp must HOLD it in
+     both pretty and minify; only optimize drops it. A minify-only drop is a
+     pp-purity bug - these assert the held minify form so it is detected. *)
+  assert_minify_and_optimize "*.foo { color: red }" ~minified:"*.foo{color:red}"
+    ~optimized:".foo{color:red}";
+  assert_minify_and_optimize "*#main { color: red }"
+    ~minified:"*#main{color:red}" ~optimized:"#main{color:red}";
+  assert_minify_and_optimize "*[data-x] { color: red }"
+    ~minified:"*[data-x]{color:red}" ~optimized:"[data-x]{color:red}";
+  assert_minify_and_optimize "*:hover { color: red }"
+    ~minified:"*:hover{color:red}" ~optimized:":hover{color:red}"
+
+(* A comma-separated selector list is a union of its branches: reordering the
+   branches and removing duplicate branches leaves both matching and the cascade
+   unchanged, so each is a safe rewrite. But each is also a node change, so pp
+   must HOLD the authored branch order (duplicates included) in BOTH pretty and
+   minify; sorting into Cascade's canonical selector order and deduping branches
+   are optimize transforms. Selector.pp doing the sort+dedup on every print is a
+   pp-purity bug (and a per-print cost: a Pp.to_string key per branch on every
+   to_string and every size) - these assert the held minify form so it is
+   detected, alongside the canonical optimize form. *)
+let selector_list_canonical_order () =
+  assert_minify_and_optimize "div, .class, #id { color: red }"
+    ~minified:"div,.class,#id{color:red}" ~optimized:"#id,.class,div{color:red}";
+  assert_minify_and_optimize ".a, .a, .b { color: red }"
+    ~minified:".a,.a,.b{color:red}" ~optimized:".a,.b{color:red}"
 
 (* CSS Color Module Level 4, section 3 (Color Syntax): the [<hue>] component
    accepts angles or numbers and is normalised modulo 360deg. So [hsl(360 100%
@@ -6372,6 +6400,9 @@ let additional_tests =
     ( "spec selectors 4 3.5 universal in compound redundant",
       `Quick,
       s435_universal_redundant );
+    ( "spec selectors 4 selector list canonical order is optimize only",
+      `Quick,
+      selector_list_canonical_order );
     ( "spec color 4 3 hue modulo canonicalization",
       `Quick,
       color4_3_hue_modulo_canonicalization );

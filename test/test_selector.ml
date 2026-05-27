@@ -407,30 +407,34 @@ let compound_cases () =
 
 (* Not a roundtrip test *)
 let list_cases () =
-  (* Test selector lists. Minified output uses Cascade's canonical selector-list
-     order; pretty output preserves authored branch order. *)
+  (* Test selector lists. pp holds the authored branch order in BOTH pretty and
+     minify; sorting branches into canonical order (and deduping them) is a node
+     change, so it is an optimize transform, not a pp/minify one (see the
+     selector-list both-paths oracles in test_stylesheet). *)
   check_construct ".a,.b,.c" (list [ class_ "a"; class_ "b"; class_ "c" ]);
   check_construct "h1,h2,h3" (list [ element "h1"; element "h2"; element "h3" ]);
-  check_construct "#id,.class,div"
+  check_construct "div,.class,#id"
     (list [ element "div"; class_ "class"; id "id" ]);
-  check ~expected:"#id,.class,div" "div, .class, #id";
+  check ~expected:"div,.class,#id" "div, .class, #id";
   check_pretty_to "div, .class, #id" "div, .class, #id";
 
-  (* Complex grouped selectors *)
-  check ~expected:".other-parent .descendant,.parent>.child"
+  (* Complex grouped selectors. pp holds the authored branch order (whitespace
+     normalized, legacy pseudo-elements lowercased to a single colon); only
+     optimize sorts branches into canonical order (see test_stylesheet). *)
+  check ~expected:".parent>.child,.other-parent .descendant"
     ".parent > .child, .other-parent .descendant";
   check ~expected:"h1:hover,h2:focus,h3:active" "h1:hover, h2:focus, h3:active";
-  check ~expected:"[aria-label],[data-attr],[role=button]"
+  check ~expected:"[data-attr],[aria-label],[role=button]"
     "[data-attr], [aria-label], [role=button]";
-  check ~expected:":after,:before,:first-letter"
+  check ~expected:":before,:after,:first-letter"
     "::before, ::after, ::first-letter";
 
   (* Mixed complexity grouped selectors *)
   check ~expected:"div.container>p:first-child,section#main .highlight"
     "div.container > p:first-child, section#main .highlight";
-  check ~expected:"input[type=text]:focus,select:focus,textarea:focus"
+  check ~expected:"input[type=text]:focus,textarea:focus,select:focus"
     "input[type=text]:focus, textarea:focus, select:focus";
-  check ~expected:".nav li.active,.nav li:focus-within,.nav li:hover"
+  check ~expected:".nav li:hover,.nav li.active,.nav li:focus-within"
     ".nav li:hover, .nav li.active, .nav li:focus-within";
 
   (* Whitespace variations in grouped selectors *)
@@ -440,19 +444,19 @@ let list_cases () =
   check ~expected:".class1,.class2" ".class1 , .class2";
 
   (* Many grouped selectors *)
-  check ~expected:"article,aside,div,footer,header,main,nav,p,section,span"
+  check ~expected:"p,div,span,section,article,aside,nav,header,footer,main"
     "p, div, span, section, article, aside, nav, header, footer, main";
 
   (* Grouped selectors with pseudo-elements and classes *)
-  check ~expected:"a:hover,button:hover,input[type=submit]:hover"
+  check ~expected:"button:hover,a:hover,input[type=submit]:hover"
     "button:hover, a:hover, input[type=submit]:hover";
   check ~expected:"h1:before,h2:before,h3:before,h4:before"
     "h1::before, h2::before, h3::before, h4::before";
 
   (* Deeply nested grouped selectors *)
-  check ~expected:"#id1>#id2>#id3,.level1 .level2 .level3"
+  check ~expected:".level1 .level2 .level3,#id1>#id2>#id3"
     ".level1 .level2 .level3, #id1 > #id2 > #id3";
-  check ~expected:".main .article .header,.sidebar .widget .title"
+  check ~expected:".sidebar .widget .title,.main .article .header"
     ".sidebar .widget .title, .main .article .header";
 
   (* Edge cases *)
@@ -1203,9 +1207,10 @@ let test_nesting_selector () =
   check_construct "&[data-active]"
     (compound [ Nesting; attribute "data-active" Presence ]);
 
-  (* & in selector list: &:hover, &:focus *)
-  check ~expected:"&:focus,&:hover" "&:hover,&:focus";
-  check ~expected:"&:focus,&:hover" "&:hover, &:focus";
+  (* & in selector list: pp holds the authored branch order in both modes; only
+     optimize sorts into canonical order (see test_stylesheet). *)
+  check ~expected:"&:hover,&:focus" "&:hover,&:focus";
+  check ~expected:"&:hover,&:focus" "&:hover, &:focus";
   check_pretty_to "&:hover, &:focus" "&:hover, &:focus"
 
 (* ignore-test *)
