@@ -3561,14 +3561,12 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
 
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
-  factor_summary : Selector_summary.t;
   factor_props : string list;
 }
 
 let summarize_factor_rule factor_rule =
   {
     factor_rule;
-    factor_summary = Selector_summary.of_selector factor_rule.selector;
     factor_props = List.map decl_property factor_rule.declarations;
   }
 
@@ -3590,15 +3588,23 @@ let declarations_overlap common decls =
         decls)
     common
 
-let rule_selector_may_overlap_summary rule target_summary =
-  selectors_of_rule_selector rule.Stylesheet_intf.selector
-  |> List.exists (fun selector ->
-      Selector_summary.may_overlap
-        (Selector_summary.of_selector selector)
-        target_summary)
+let same_specificity a b =
+  let a = Selector.specificity a in
+  let b = Selector.specificity b in
+  a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
 
-let skipped_rule_blocks_factor common target_summary skipped =
-  rule_selector_may_overlap_summary skipped.factor_rule target_summary
+let rules_may_overlap_at_tie a b =
+  selectors_of_rule_selector a.Stylesheet_intf.selector
+  |> List.exists (fun a_sel ->
+      selectors_of_rule_selector b.Stylesheet_intf.selector
+      |> List.exists (fun b_sel ->
+          same_specificity a_sel b_sel
+          && Selector_summary.may_overlap
+               (Selector_summary.of_selector a_sel)
+               (Selector_summary.of_selector b_sel)))
+
+let skipped_rule_blocks_factor common target skipped =
+  rules_may_overlap_at_tie skipped.factor_rule target.factor_rule
   && declarations_overlap common skipped.factor_rule.declarations
 
 let filter_some xs = List.filter_map (fun x -> x) xs
@@ -3645,31 +3651,95 @@ let factor_rules_with_skips factor_rules skipped =
         let before = factor_rules @ skipped in
         if rules_pp_size after < rules_pp_size before then Some after else None
 
+type gap_entry = Gap_factor of Stylesheet.rule | Gap_skip of Stylesheet.rule
+
+let rule_of_gap_entry = function Gap_factor r | Gap_skip r -> r
+
+let factor_rules_of_gap first entries =
+  first
+  :: List.filter_map
+       (function Gap_factor r -> Some r | Gap_skip _ -> None)
+       entries
+
+let factor_gap_rewrite first entries =
+  let factor_rules = factor_rules_of_gap first entries in
+  match factor_rules with
+  | [] | [ _ ] -> None
+  | _ ->
+      let rules_arr = Array.of_list factor_rules in
+      let summaries =
+        Array.map
+          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
+          rules_arr
+      in
+      let decls =
+        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      in
+      let common = common_factorable_decls factor_rules first in
+      if common = [] then None
+      else
+        let grouped = grouped_factor_rule first rules_arr common in
+        let leftovers =
+          factor_leftover_options ~common ~summaries ~decls rules_arr
+          |> Array.of_list
+        in
+        let next_factor = ref 1 in
+        let entry_after = function
+          | Gap_skip r -> Some r
+          | Gap_factor _ ->
+              let leftover = leftovers.(!next_factor) in
+              incr next_factor;
+              leftover
+        in
+        let after =
+          grouped
+          :: (filter_some [ leftovers.(0) ]
+             @ List.filter_map entry_after entries)
+        in
+        let before = first :: List.map rule_of_gap_entry entries in
+        if rules_pp_size after < rules_pp_size before then Some after else None
+
 let try_factor_single_anchor prefix first rest =
-  let rec scan skipped_rev fuel = function
+  let candidate_common candidate common =
+    match common with
+    | None -> common_factorable_decls [ first; candidate.factor_rule ] first
+    | Some common ->
+        if factor_rule_declares_all candidate (List.map decl_property common)
+        then common
+        else []
+  in
+  let rec scan entries_rev common fuel = function
     | [] -> None
     | _ when fuel <= 0 -> None
-    | candidate :: tail ->
+    | candidate :: tail -> (
         if not (rule_factor_eligible candidate) then None
         else
           let candidate_summary = summarize_factor_rule candidate in
-          let factor_rules = [ first; candidate ] in
-          let common = common_factorable_decls factor_rules first in
-          if
-            common <> []
-            && not
-                 (List.exists
-                    (skipped_rule_blocks_factor common
-                       candidate_summary.factor_summary)
-                    skipped_rev)
-          then
-            let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
-            match factor_rules_with_skips factor_rules skipped with
-            | None -> scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+          let candidate_common = candidate_common candidate_summary common in
+          let blocks =
+            candidate_common = []
+            || List.exists
+                 (fun entry ->
+                   match entry with
+                   | Gap_factor _ -> false
+                   | Gap_skip skipped ->
+                       skipped_rule_blocks_factor candidate_common
+                         candidate_summary
+                         (summarize_factor_rule skipped))
+                 entries_rev
+          in
+          if blocks then
+            scan (Gap_skip candidate :: entries_rev) common (fuel - 1) tail
+          else
+            let entries = List.rev (Gap_factor candidate :: entries_rev) in
+            match factor_gap_rewrite first entries with
             | Some replacement -> Some (prefix @ replacement, tail)
-          else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+            | None ->
+                scan
+                  (Gap_factor candidate :: entries_rev)
+                  (Some candidate_common) (fuel - 1) tail)
   in
-  scan [] 128 rest
+  scan [] None 128 rest
 
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in
@@ -3692,7 +3762,7 @@ let try_factor_group_with_lookahead current rest =
                   && not
                        (List.exists
                           (skipped_rule_blocks_factor current_common
-                             candidate_summary.factor_summary)
+                             candidate_summary)
                           skipped_rev)
                 then
                   let skipped =
@@ -3725,8 +3795,7 @@ let try_extend_factored_rule anchor rest =
             factor_rule_declares_all candidate_summary common_props
             && not
                  (List.exists
-                    (skipped_rule_blocks_factor common
-                       candidate_summary.factor_summary)
+                    (skipped_rule_blocks_factor common candidate_summary)
                     skipped_rev)
           then
             let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
@@ -3737,7 +3806,7 @@ let try_extend_factored_rule anchor rest =
             | None -> None
             | Some replacement -> Some (replacement, tail)
           else if
-            skipped_rule_blocks_factor common candidate_summary.factor_summary
+            skipped_rule_blocks_factor common candidate_summary
               candidate_summary
           then None
           else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
@@ -3783,8 +3852,7 @@ let try_extend_identical_rule anchor rest =
             can_extend_identical_rule anchor candidate
             && not
                  (List.exists
-                    (skipped_rule_blocks_factor common
-                       candidate_summary.factor_summary)
+                    (skipped_rule_blocks_factor common candidate_summary)
                     skipped_rev)
           then
             let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
