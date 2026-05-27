@@ -13,7 +13,13 @@
 # algorithm, so those browser byte-sniffing vectors are outside this harness.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; then
+  SCRIPT_DIR="$repo_root/${script_dir#"$repo_root/_build/default/"}"
+else
+  SCRIPT_DIR="$script_dir"
+fi
 TRACE_DIR="$(cd "$SCRIPT_DIR/../traces" && pwd)"
 
 WPT_REPO="https://github.com/web-platform-tests/wpt.git"

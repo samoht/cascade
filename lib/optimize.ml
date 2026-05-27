@@ -345,9 +345,10 @@ let value_is_vendor_prefixed decl =
   starts_with "-webkit-" || starts_with "-moz-" || starts_with "-ms-"
   || starts_with "-o-"
 
-(* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides;
-   recompose by emitting all four and letting the printer's
-   [collapse_box_shorthand] pick the shortest spelling. *)
+(* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides.
+   Authored shorthands stay as authored when optimise has no longhand to absorb;
+   generated shorthands store the shortest arity so pretty optimise output does
+   not expand [padding:0] into four sides. *)
 let expand_box vs =
   match vs with
   | [ a ] -> Some (a, a, a, a)
@@ -355,6 +356,22 @@ let expand_box vs =
   | [ a; b; c ] -> Some (a, b, c, b)
   | [ a; b; c; d ] -> Some (a, b, c, d)
   | _ -> None
+
+let collapse_box_by same = function
+  | [ a; b; c; d ] when same a b && same b c && same c d -> [ a ]
+  | [ a; b; c; d ] when same a c && same b d -> [ a; b ]
+  | [ a; b; c; d ] when same b d -> [ a; b; c ]
+  | [ a; b; c ] when same a b && same b c -> [ a ]
+  | [ a; b; c ] when same a c -> [ a; b ]
+  | [ a; b ] when same a b -> [ a ]
+  | vs -> vs
+
+let same_minified_length a b =
+  String.equal
+    (Pp.to_string ~minify:true Values.pp_length a)
+    (Pp.to_string ~minify:true Values.pp_length b)
+
+let collapse_box_lengths vs = collapse_box_by same_minified_length vs
 
 type sides = Values.length * Values.length * Values.length * Values.length
 
@@ -466,9 +483,13 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
       match sides_have_runtime_subst absorbed with
       | true -> (original, rest)
       | false ->
-          let value = preserve_list vs [ top; right; bottom; left ] in
-          if rest' == rest && value == vs then (original, rest)
-          else (Declaration { property; value; important }, rest'))
+          if rest' == rest then (original, rest)
+          else
+            let value =
+              preserve_list vs
+                (collapse_box_lengths [ top; right; bottom; left ])
+            in
+            (Declaration { property; value; important }, rest'))
 
 (* CSS Overflow 3 §3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
@@ -701,27 +722,37 @@ let try_compose_box_important_split ~extract ~build = function
 
 let build_margin_box ~important ~top ~right ~bottom ~left =
   Declaration
-    { property = Margin; value = [ top; right; bottom; left ]; important }
+    {
+      property = Margin;
+      value = collapse_box_lengths [ top; right; bottom; left ];
+      important;
+    }
 
 let build_padding_box ~important ~top ~right ~bottom ~left =
   Declaration
-    { property = Padding; value = [ top; right; bottom; left ]; important }
+    {
+      property = Padding;
+      value = collapse_box_lengths [ top; right; bottom; left ];
+      important;
+    }
 
 let build_inset_box ~important ~top ~right ~bottom ~left =
   Declaration
-    { property = Inset; value = [ top; right; bottom; left ]; important }
+    {
+      property = Inset;
+      value = collapse_box_lengths [ top; right; bottom; left ];
+      important;
+    }
 
 let build_border_radius_box ~important ~top ~right ~bottom ~left =
   let lp v : Values.length_percentage = Length v in
+  let horizontal =
+    List.map lp (collapse_box_lengths [ top; right; bottom; left ])
+  in
   Declaration
     {
       property = Border_radius;
-      value =
-        Radius
-          {
-            horizontal = [ lp top; lp right; lp bottom; lp left ];
-            vertical = None;
-          };
+      value = Radius { horizontal; vertical = None };
       important;
     }
 
@@ -3936,6 +3967,8 @@ let finish_factor_gap prefix = function
   | None -> None
   | Some (replacement, tail, _) -> Some (prefix @ replacement, tail)
 
+let equal_factor_lookahead = 128
+
 let try_factor_single_anchor prefix first rest =
   let rec scan entries_rev common best fuel = function
     | [] -> finish_factor_gap prefix best
@@ -4028,7 +4061,7 @@ let try_factor_equal_anchor first rest =
               (Gap_factor candidate :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
-  scan [] None None 128 rest
+  scan [] None None equal_factor_lookahead rest
 
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in

@@ -423,7 +423,7 @@ A combination produces cascading elimination across all levels.
   > @media screen { .g { color: red } } @media screen { .h { color: blue } }
   > EOF
   $ cascade --minify multi.css
-  .a{color:red}.c,.d{padding:10px}.d{color:red}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
+  .a,.d{color:red}.c,.d{padding:10px}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
 
 
 # What is NOT dead code

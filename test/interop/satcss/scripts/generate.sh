@@ -18,7 +18,13 @@
 # committed. Single trigger: dune build @regen-traces
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; then
+  SCRIPT_DIR="$repo_root/${script_dir#"$repo_root/_build/default/"}"
+else
+  SCRIPT_DIR="$script_dir"
+fi
 TRACE_DIR="$(cd "$SCRIPT_DIR/../traces" && pwd)"
 
 command -v git >/dev/null || { echo "git not on PATH" >&2; exit 1; }

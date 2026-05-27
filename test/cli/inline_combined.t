@@ -53,7 +53,7 @@ into the entry's rules.
   > .extra { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-imports --inline-vars app-ds.css
-  .btn{color:red;border-radius:4px}.card{background:red;padding:4px}.extra{color:red}
+  .btn,.extra{color:red}.btn{border-radius:4px}.card{background:red;padding:4px}
 
 A conditional import combined with --inline-vars: the variables are
 resolved within the condition's wrapped scope.
