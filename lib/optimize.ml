@@ -3606,12 +3606,15 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
   factor_props : Declaration.prop_key list;
+  selector_summary : Selector_summary.t Lazy.t;
 }
 
 let summarize_factor_rule factor_rule =
   {
     factor_rule;
     factor_props = List.map decl_property factor_rule.declarations;
+    selector_summary =
+      lazy (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
   }
 
 let factor_rule_declares_all summary props =
@@ -3755,7 +3758,7 @@ let rule_specificity_ties_on_overlap target skipped =
 
 let skipped_rule_blocks_factor common target skipped =
   rule_selector_may_overlap_summary skipped.factor_rule
-    (Selector_summary.of_selector target.factor_rule.selector)
+    (Lazy.force target.selector_summary)
   && declarations_overlap common skipped.factor_rule.declarations
   && not
        (rule_specificity_beats_on_overlap target.factor_rule skipped.factor_rule)
@@ -3853,14 +3856,16 @@ let factor_rules_with_skips factor_rules skipped =
         let before = factor_rules @ skipped in
         if rules_pp_size after < rules_pp_size before then Some after else None
 
-type gap_entry = Gap_factor of Stylesheet.rule | Gap_skip of Stylesheet.rule
+type gap_entry =
+  | Gap_factor of factor_rule_summary
+  | Gap_skip of factor_rule_summary
 
-let rule_of_gap_entry = function Gap_factor r | Gap_skip r -> r
+let rule_of_gap_entry = function Gap_factor s | Gap_skip s -> s.factor_rule
 
 let factor_rules_of_gap first entries =
   first
   :: List.filter_map
-       (function Gap_factor r -> Some r | Gap_skip _ -> None)
+       (function Gap_factor s -> Some s.factor_rule | Gap_skip _ -> None)
        entries
 
 let factor_gap_rewrite first entries =
@@ -3887,7 +3892,7 @@ let factor_gap_rewrite first entries =
         in
         let next_factor = ref 1 in
         let entry_after = function
-          | Gap_skip r -> Some r
+          | Gap_skip s -> Some s.factor_rule
           | Gap_factor _ ->
               let leftover = leftovers.(!next_factor) in
               incr next_factor;
@@ -3939,7 +3944,7 @@ let factor_gap_equal_rewrite first entries =
         in
         let next_factor = ref 1 in
         let entry_after = function
-          | Gap_skip r -> Some r
+          | Gap_skip s -> Some s.factor_rule
           | Gap_factor _ ->
               let leftover = leftovers.(!next_factor) in
               incr next_factor;
@@ -3984,7 +3989,9 @@ let try_factor_single_anchor prefix first rest =
     | candidate :: tail ->
         if rule_factor_boundary candidate then finish_factor_gap prefix best
         else if not (rule_factor_eligible candidate) then
-          scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+          scan
+            (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+            common best (fuel - 1) tail
         else
           let candidate_summary = summarize_factor_rule candidate in
           let candidate_common =
@@ -3998,14 +4005,17 @@ let try_factor_single_anchor prefix first rest =
                    | Gap_factor _ -> false
                    | Gap_skip skipped ->
                        skipped_rule_blocks_factor candidate_common
-                         candidate_summary
-                         (summarize_factor_rule skipped))
+                         candidate_summary skipped)
                  entries_rev
           in
           if blocks then
-            scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+            scan
+              (Gap_skip candidate_summary :: entries_rev)
+              common best (fuel - 1) tail
           else
-            let entries = List.rev (Gap_factor candidate :: entries_rev) in
+            let entries =
+              List.rev (Gap_factor candidate_summary :: entries_rev)
+            in
             let best =
               match factor_gap_rewrite first entries with
               | Some (replacement, savings) ->
@@ -4013,7 +4023,7 @@ let try_factor_single_anchor prefix first rest =
               | None -> best
             in
             scan
-              (Gap_factor candidate :: entries_rev)
+              (Gap_factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
   scan [] None None 128 rest
@@ -4037,7 +4047,9 @@ let try_factor_equal_anchor first rest =
     | candidate :: tail ->
         if rule_factor_boundary candidate then finish_factor_gap [] best
         else if not (rule_factor_eligible candidate) then
-          scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+          scan
+            (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+            common best (fuel - 1) tail
         else
           let candidate_summary = summarize_factor_rule candidate in
           let candidate_common =
@@ -4051,14 +4063,17 @@ let try_factor_equal_anchor first rest =
                    | Gap_factor _ -> false
                    | Gap_skip skipped ->
                        skipped_rule_blocks_factor candidate_common
-                         candidate_summary
-                         (summarize_factor_rule skipped))
+                         candidate_summary skipped)
                  entries_rev
           in
           if blocks then
-            scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+            scan
+              (Gap_skip candidate_summary :: entries_rev)
+              common best (fuel - 1) tail
           else
-            let entries = List.rev (Gap_factor candidate :: entries_rev) in
+            let entries =
+              List.rev (Gap_factor candidate_summary :: entries_rev)
+            in
             let best =
               match factor_gap_equal_rewrite first entries with
               | Some (replacement, savings) ->
@@ -4066,7 +4081,7 @@ let try_factor_equal_anchor first rest =
               | None -> best
             in
             scan
-              (Gap_factor candidate :: entries_rev)
+              (Gap_factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
   scan [] None None equal_factor_lookahead rest
