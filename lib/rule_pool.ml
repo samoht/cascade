@@ -29,4 +29,5 @@ let combine t a b f =
   a
 
 let insert_after t n r = Order_maintenance.insert_after t n (UF.make r)
+let insert_before t n r = Order_maintenance.insert_before t n (UF.make r)
 let remove t n = Order_maintenance.remove t n

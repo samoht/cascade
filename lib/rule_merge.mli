@@ -15,3 +15,10 @@ val combine_identical : Stylesheet.rule list -> Stylesheet.rule list
     theirs, in a single left-to-right sweep. Adjacent rules with the same block
     are always cascade-safe to merge (an element matching several gets the same
     declarations either way). *)
+
+val factor_common : Stylesheet.rule list -> Stylesheet.rule list
+(** [factor_common rs] greedily hoists a declaration shared by a maximal run of
+    consecutive rules into one shared rule placed ahead of the run, keeping the
+    per-rule leftovers, whenever doing so shrinks the output. Restricted to the
+    provably-safe case: the hoisted declaration's property must be unique within
+    each rule of the run, so hoisting cannot reorder any property. *)
