@@ -20,3 +20,13 @@ let assert_invalid_declaration_contract label input =
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
         failf "%s recovered without a lenient warning: %S" label input
+
+let shapes_with_rule_runs ~boundary_shape ss =
+  let rec loop acc seen_rule = function
+    | [] -> if seen_rule then List.rev ("rules" :: acc) else List.rev acc
+    | Css.Stylesheet.Rule _ :: rest -> loop acc true rest
+    | other :: rest ->
+        let acc = if seen_rule then "rules" :: acc else acc in
+        loop (List.rev_append (boundary_shape other) acc) false rest
+  in
+  loop [] false ss

@@ -156,25 +156,25 @@ let rec boundary_shape = function
   | Layer_decl names -> [ "layer-decl:" ^ String.concat "," names ]
   | Layer (name, block) ->
       let name = Option.value ~default:"<anonymous>" name in
-      (("layer:" ^ name) :: shapes_with_rule_runs block) @ [ "/layer" ]
-  | Media (_, block) -> ("media" :: shapes_with_rule_runs block) @ [ "/media" ]
+      (("layer:" ^ name) :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/layer" ]
+  | Media (_, block) -> ("media" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/media" ]
   | Supports (condition, block) when baseline_true_supports condition ->
-      shapes_with_rule_runs block
+      Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
   | Supports (_, block) ->
-      ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
+      ("supports" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/supports" ]
   | Container (_, _, block) ->
-      ("container" :: shapes_with_rule_runs block) @ [ "/container" ]
-  | When (_, block) -> ("when" :: shapes_with_rule_runs block) @ [ "/when" ]
-  | Else (_, block) -> ("else" :: shapes_with_rule_runs block) @ [ "/else" ]
+      ("container" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/container" ]
+  | When (_, block) -> ("when" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/when" ]
+  | Else (_, block) -> ("else" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/else" ]
   | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
-      ("scope" :: shapes_with_rule_runs block) @ [ "/scope" ]
+      ("scope" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/scope" ]
   | Starting_style block ->
-      ("starting-style" :: shapes_with_rule_runs block) @ [ "/starting-style" ]
+      ("starting-style" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/starting-style" ]
   | Origin (_, block) ->
-      ("origin" :: shapes_with_rule_runs block) @ [ "/origin" ]
+      ("origin" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/origin" ]
   | Moz_document (_, block) ->
-      ("moz-document" :: shapes_with_rule_runs block) @ [ "/moz-document" ]
+      ("moz-document" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/moz-document" ]
   (* CSS Syntax 3 section 8.3: @charset is an encoding declaration byte
      sequence, not an actual at-rule. Parsed occurrences are invalid and may be
      dropped, so it is not a cascade boundary shape invariant. *)
@@ -193,21 +193,8 @@ let rec boundary_shape = function
   | Property _ -> [ "property" ]
   | Bang_comment _ -> [ "bang-comment" ]
 
-(* The optimizer is allowed to merge a contiguous run of [Rule]s into fewer
-   rules (e.g. [combine_identical_rules]). Collapse consecutive [Rule] entries
-   into a single [rules] token so the boundary check tracks the at-rule skeleton
-   without forcing the optimizer to leave every individual rule intact. *)
-and shapes_with_rule_runs ss =
-  let rec loop acc seen_rule = function
-    | [] -> if seen_rule then List.rev ("rules" :: acc) else List.rev acc
-    | Css.Stylesheet.Rule _ :: rest -> loop acc true rest
-    | other :: rest ->
-        let acc = if seen_rule then "rules" :: acc else acc in
-        loop (List.rev_append (boundary_shape other) acc) false rest
-  in
-  loop [] false ss
 
-let boundary_shapes ss = shapes_with_rule_runs ss
+let boundary_shapes ss = Fuzz_helpers.shapes_with_rule_runs ~boundary_shape ss
 
 let test_optimize_idempotent buf =
   let ss = generated_stylesheet buf in
