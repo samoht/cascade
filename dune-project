@@ -28,5 +28,8 @@
   fmt
   base-unix
   uutf
+  fix
+  psq
+  unionFind
   cmdliner
   nox-memtrace))
