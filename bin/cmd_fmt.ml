@@ -2,7 +2,9 @@ open Cascade
 open Cmdliner
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars =
+    ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
+    ~memtrace_path =
+  Cli_io.start_memtrace memtrace_path;
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -128,6 +130,13 @@ let keep_vars_arg =
   in
   Arg.(value & opt string "" & info [ "keep-vars" ] ~docv:"NAMES" ~doc)
 
+let memtrace_arg =
+  let doc =
+    "Write a memtrace allocation trace to $(docv). Open it with \
+     [memtrace_hotspots] to see allocation hotspots."
+  in
+  Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
+
 let term =
   Term.(
     const
@@ -141,6 +150,7 @@ let term =
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
+        memtrace_path
       ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
         if List.mem "*" keep_vars then begin
@@ -159,9 +169,11 @@ let term =
         if enforce_spec && not minify then
           Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars)
+          ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
+          ~memtrace_path)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
-    $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
+    $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg
+    $ memtrace_arg)
 
 let man =
   [

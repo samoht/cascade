@@ -38,27 +38,8 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-(* Memtrace fails on OCaml 5 (Gc.Memprof.stop is not implemented in multicore).
-   [--memtrace] writes a header-only [.ctf] and prints a notice instead of
-   taking the program down. *)
-let start_memtrace = function
-  | None -> ()
-  | Some path -> (
-      try
-        let tracer =
-          Memtrace.start_tracing ~context:None ~sampling_rate:1e-4
-            ~filename:path
-        in
-        at_exit (fun () ->
-            try Memtrace.stop_tracing tracer
-            with Failure msg ->
-              Fmt.epr "warning: memtrace stop failed (%s); skipping@." msg)
-      with Failure msg ->
-        Fmt.epr "warning: memtrace unavailable on this runtime (%s); skipping@."
-          msg)
-
 let compare_files file1 file2 style_renderer mode memtrace_path =
-  start_memtrace memtrace_path;
+  Cli_io.start_memtrace memtrace_path;
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
