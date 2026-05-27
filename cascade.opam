@@ -23,6 +23,9 @@ depends: [
   "fmt"
   "base-unix"
   "uutf"
+  "fix"
+  "psq"
+  "unionFind"
   "cmdliner"
   "nox-memtrace"
   "odoc" {with-doc}
