@@ -48,3 +48,22 @@ let print_output output =
 let split_comma s =
   String.split_on_char ',' s |> List.map String.trim
   |> List.filter (fun s -> s <> "")
+
+(* [--memtrace FILE] streams a sampled allocation trace to FILE. If the runtime
+   cannot trace (start or stop raising Failure), warn and carry on rather than
+   taking the program down. *)
+let start_memtrace = function
+  | None -> ()
+  | Some path -> (
+      try
+        let tracer =
+          Memtrace.start_tracing ~context:None ~sampling_rate:1e-4
+            ~filename:path
+        in
+        at_exit (fun () ->
+            try Memtrace.stop_tracing tracer
+            with Failure msg ->
+              Fmt.epr "warning: memtrace stop failed (%s); skipping@." msg)
+      with Failure msg ->
+        Fmt.epr "warning: memtrace unavailable on this runtime (%s); skipping@."
+          msg)
