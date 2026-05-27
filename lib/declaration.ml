@@ -419,6 +419,13 @@ let rec property_name decl =
       Pp.to_string ~minify:true pp_property property
   | Theme_guarded { decl; _ } -> property_name decl
 
+(* Byte length of [property_name] with no string/Buffer allocation: a necessary
+   condition for two property names to be equal, used as a fast reject. *)
+let rec property_name_size decl =
+  match decl with
+  | Declaration { property; _ } -> Pp.size ~minify:true pp_property property
+  | Theme_guarded { decl; _ } -> property_name_size decl
+
 let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
@@ -426,6 +433,14 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   | Declaration { property; value; _ } ->
       Pp.to_string ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
+
+(* Byte length of [string_of_value] with no allocation; see
+   [property_name_size]. *)
+let rec value_size ?(minify = true) ?(inline = false) decl =
+  match decl with
+  | Declaration { property; value; _ } ->
+      Pp.size ~minify ~inline pp_property_value (property, value)
+  | Theme_guarded { decl; _ } -> value_size ~minify ~inline decl
 
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =

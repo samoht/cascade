@@ -91,8 +91,16 @@ val value_uses_runtime_subst : declaration -> bool
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
+val property_name_size : declaration -> int
+(** [property_name_size decl] is the byte length of [property_name decl],
+    computed without allocating the string. *)
+
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
+
+val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
+(** [value_size ?minify decl] is the byte length of
+    [string_of_value ?minify decl], computed without allocating the string. *)
 
 (* Single-to-list property helpers. These construct typed declarations for
    properties that accept comma-separated lists, while keeping a simple

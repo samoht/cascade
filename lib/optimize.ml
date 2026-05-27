@@ -325,7 +325,9 @@ let declaration_covers covering covered =
       logical_shorthand_covers_name (property_name covering) b
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
-      String.equal (property_name covering) (property_name covered)
+      Declaration.property_name_size covering
+      = Declaration.property_name_size covered
+      && String.equal (property_name covering) (property_name covered)
       || shorthand_covers_longhand covering_p covered_p
   | _ -> false
 
@@ -367,9 +369,11 @@ let collapse_box_by same = function
   | vs -> vs
 
 let same_minified_length a b =
-  String.equal
-    (Pp.to_string ~minify:true Values.pp_length a)
-    (Pp.to_string ~minify:true Values.pp_length b)
+  Pp.size ~minify:true Values.pp_length a
+  = Pp.size ~minify:true Values.pp_length b
+  && String.equal
+       (Pp.to_string ~minify:true Values.pp_length a)
+       (Pp.to_string ~minify:true Values.pp_length b)
 
 let collapse_box_lengths vs = collapse_box_by same_minified_length vs
 
@@ -2507,10 +2511,18 @@ let property_covered_by_important kept decl =
       && declaration_covers existing decl)
     kept
 
-let same_property d1 d2 = String.equal (property_name d1) (property_name d2)
+(* Equal printed property names. [property_name_size] rejects the common
+   different-name case with no allocation; only equal-length names fall through
+   to the allocating string compare. *)
+let same_property d1 d2 =
+  Declaration.property_name_size d1 = Declaration.property_name_size d2
+  && String.equal (property_name d1) (property_name d2)
 
 let same_minified_value new_decl existing =
-  string_of_value ~minify:true new_decl = string_of_value ~minify:true existing
+  Declaration.value_size ~minify:true new_decl
+  = Declaration.value_size ~minify:true existing
+  && string_of_value ~minify:true new_decl
+     = string_of_value ~minify:true existing
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
@@ -3259,12 +3271,13 @@ let has_oklab_none s =
   find_oklab 0
 
 let declarations_css_equal d1 d2 =
-  (d1 = d2
-  ||
   let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
-  let s1 = Pp.to_string ~minify:true pp_decls d1 in
-  let s2 = Pp.to_string ~minify:true pp_decls d2 in
-  s1 = s2)
+  (d1 = d2
+  || Pp.size ~minify:true pp_decls d1 = Pp.size ~minify:true pp_decls d2
+     &&
+     let s1 = Pp.to_string ~minify:true pp_decls d1 in
+     let s2 = Pp.to_string ~minify:true pp_decls d2 in
+     s1 = s2)
   &&
   let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
   let s = Pp.to_string ~minify:true pp_decls d1 in
