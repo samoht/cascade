@@ -471,24 +471,24 @@ let rec boundary_shape = function
       [ "layer-decl:" ^ String.concat "," (dedup [] names) ]
   | Layer (name, block) ->
       let name = Option.value ~default:"<anonymous>" name in
-      (("layer:" ^ name) :: shapes_with_rule_runs block) @ [ "/layer" ]
-  | Media (_, block) -> ("media" :: shapes_with_rule_runs block) @ [ "/media" ]
+      (("layer:" ^ name) :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/layer" ]
+  | Media (_, block) -> ("media" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/media" ]
   | Supports (condition, block) when supports_is_baseline_true condition ->
       (* The wrapper is unconditionally true on the target and the default
          optimizer drops it, so the surviving shape is the block contents with
          no supports markers. *)
-      shapes_with_rule_runs block
+      Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
   | Supports (_, block) ->
-      ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
+      ("supports" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/supports" ]
   | Container (_, _, block) ->
-      ("container" :: shapes_with_rule_runs block) @ [ "/container" ]
-  | When (_, block) -> ("when" :: shapes_with_rule_runs block) @ [ "/when" ]
-  | Else (_, block) -> ("else" :: shapes_with_rule_runs block) @ [ "/else" ]
+      ("container" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/container" ]
+  | When (_, block) -> ("when" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/when" ]
+  | Else (_, block) -> ("else" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/else" ]
   | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
-      ("scope" :: shapes_with_rule_runs block) @ [ "/scope" ]
+      ("scope" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/scope" ]
   | Starting_style block ->
-      ("starting-style" :: shapes_with_rule_runs block) @ [ "/starting-style" ]
+      ("starting-style" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/starting-style" ]
   | Origin (origin, block) ->
       let origin =
         match origin with
@@ -499,9 +499,9 @@ let rec boundary_shape = function
         | Animation -> "animation"
         | Transition -> "transition"
       in
-      (("origin:" ^ origin) :: shapes_with_rule_runs block) @ [ "/origin" ]
+      (("origin:" ^ origin) :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/origin" ]
   | Moz_document (_, block) ->
-      ("moz-document" :: shapes_with_rule_runs block) @ [ "/moz-document" ]
+      ("moz-document" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/moz-document" ]
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
@@ -517,20 +517,6 @@ let rec boundary_shape = function
   | Property _ -> [ "property" ]
   | Bang_comment _ -> [ "bang-comment" ]
 
-(* The optimizer is free to merge a contiguous run of plain rules into fewer
-   rules and to drop empty rules, neither of which moves a cascade boundary.
-   Collapse a run of consecutive [Rule]s into a single [rules] token so the
-   invariant tracks the at-rule and layer skeleton without pinning the exact
-   rule count. *)
-and shapes_with_rule_runs ss =
-  let rec loop acc seen_rule = function
-    | [] -> if seen_rule then List.rev ("rules" :: acc) else List.rev acc
-    | Css.Stylesheet.Rule _ :: rest -> loop acc true rest
-    | other :: rest ->
-        let acc = if seen_rule then "rules" :: acc else acc in
-        loop (List.rev_append (boundary_shape other) acc) false rest
-  in
-  loop [] false ss
 
 (* CSS Cascade 5 section 6.4.1: a layer's contents are the concatenation, in
    source order, of every block naming it, and layer order is fixed by first
@@ -563,7 +549,8 @@ and normalize_blocks = function
   | Moz_document (m, block) -> Moz_document (m, merge_adjacent_layers block)
   | other -> other
 
-let boundary_shapes ss = shapes_with_rule_runs (merge_adjacent_layers ss)
+let boundary_shapes ss =
+  Fuzz_helpers.shapes_with_rule_runs ~boundary_shape (merge_adjacent_layers ss)
 
 let anonymous_layer_count ss =
   let rec statement = function
