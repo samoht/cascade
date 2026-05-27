@@ -3590,8 +3590,15 @@ let declarations_overlap common decls =
         decls)
     common
 
+let rule_selector_may_overlap_summary rule target_summary =
+  selectors_of_rule_selector rule.Stylesheet_intf.selector
+  |> List.exists (fun selector ->
+      Selector_summary.may_overlap
+        (Selector_summary.of_selector selector)
+        target_summary)
+
 let skipped_rule_blocks_factor common target_summary skipped =
-  Selector_summary.may_overlap skipped.factor_summary target_summary
+  rule_selector_may_overlap_summary skipped.factor_rule target_summary
   && declarations_overlap common skipped.factor_rule.declarations
 
 let filter_some xs = List.filter_map (fun x -> x) xs
@@ -3638,11 +3645,38 @@ let factor_rules_with_skips factor_rules skipped =
         let before = factor_rules @ skipped in
         if rules_pp_size after < rules_pp_size before then Some after else None
 
+let try_factor_single_anchor prefix first rest =
+  let rec scan skipped_rev fuel = function
+    | [] -> None
+    | _ when fuel <= 0 -> None
+    | candidate :: tail ->
+        if not (rule_factor_eligible candidate) then None
+        else
+          let candidate_summary = summarize_factor_rule candidate in
+          let factor_rules = [ first; candidate ] in
+          let common = common_factorable_decls factor_rules first in
+          if
+            common <> []
+            && not
+                 (List.exists
+                    (skipped_rule_blocks_factor common
+                       candidate_summary.factor_summary)
+                    skipped_rev)
+          then
+            let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+            match factor_rules_with_skips factor_rules skipped with
+            | None -> scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+            | Some replacement -> Some (prefix @ replacement, tail)
+          else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+  in
+  scan [] 128 rest
+
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in
   let rec try_suffix prefix current =
     match current with
-    | [] | [ _ ] -> None
+    | [] -> None
+    | [ first ] -> try_factor_single_anchor prefix first rest
     | first :: tail_current -> (
         let current_common = common_factorable_decls current first in
         let common_props = List.map decl_property current_common in
@@ -3670,7 +3704,7 @@ let try_factor_group_with_lookahead current rest =
                   | Some replacement -> Some (prefix @ replacement, tail)
                 else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
         in
-        match if current_common = [] then None else scan [] 12 rest with
+        match if current_common = [] then None else scan [] 128 rest with
         | Some _ as result -> result
         | None -> try_suffix (prefix @ [ first ]) tail_current)
   in
@@ -3708,7 +3742,7 @@ let try_extend_factored_rule anchor rest =
           then None
           else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
-  if common = [] then None else scan [] 12 rest
+  if common = [] then None else scan [] 128 rest
 
 let extend_factored_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -3770,7 +3804,7 @@ let try_extend_identical_rule anchor rest =
             else None
           else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
-  if common = [] then None else scan [] 40 rest
+  if common = [] then None else scan [] 128 rest
 
 let extend_identical_declaration_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
