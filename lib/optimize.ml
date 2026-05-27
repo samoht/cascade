@@ -452,16 +452,20 @@ let is_padding_shorthand = function
    merged result anyway). Returns the updated 4-tuple and [rest] with absorbed
    declarations removed. *)
 let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
-  let rec loop sides acc = function
-    | [] -> (sides, List.rev acc)
-    | (i, d) :: rest when is_same_shorthand d ->
-        (sides, List.rev_append acc ((i, d) :: rest))
-    | (i, d) :: rest -> (
+  (* Keep [rest] physically when nothing is absorbed: the caller treats an
+     unchanged [rest] as "no merge" via [==], so a rebuilt-but-equal spine would
+     force a needless rebuild of the shorthand. *)
+  let rec loop sides acc absorbed = function
+    | [] -> if absorbed then (sides, List.rev acc) else (sides, rest)
+    | (i, d) :: tail when is_same_shorthand d ->
+        if absorbed then (sides, List.rev_append acc ((i, d) :: tail))
+        else (sides, rest)
+    | (i, d) :: tail -> (
         match absorb sides d with
-        | Some sides' -> loop sides' acc rest
-        | None -> loop sides ((i, d) :: acc) rest)
+        | Some sides' -> loop sides' acc true tail
+        | None -> loop sides ((i, d) :: acc) absorbed tail)
   in
-  loop sides [] rest
+  loop sides [] false rest
 
 (* [source] carries the deduplicated declarations with their original indices;
    the prior-longhand check fires only on a longhand that survived dedup as a
@@ -551,16 +555,11 @@ let try_take_overflow_x ~important rest =
 let merge_overflow_longhands decls =
   let rec go acc = function
     | [] -> List.rev acc
-    | (idx, Declaration { property = Overflow_x; value = v_x; important })
+    | ((idx, Declaration { property = Overflow_x; value = v_x; important }) as
+       item)
       :: rest -> (
         match try_take_overflow_y ~important rest with
-        | None ->
-            go
-              (( idx,
-                 Declaration { property = Overflow_x; value = v_x; important }
-               )
-              :: acc)
-              rest
+        | None -> go (item :: acc) rest
         | Some (v_y, rest') ->
             let merged =
               Declaration
@@ -571,16 +570,11 @@ let merge_overflow_longhands decls =
                 }
             in
             go ((idx, merged) :: acc) rest')
-    | (idx, Declaration { property = Overflow_y; value = v_y; important })
+    | ((idx, Declaration { property = Overflow_y; value = v_y; important }) as
+       item)
       :: rest -> (
         match try_take_overflow_x ~important rest with
-        | None ->
-            go
-              (( idx,
-                 Declaration { property = Overflow_y; value = v_y; important }
-               )
-              :: acc)
-              rest
+        | None -> go (item :: acc) rest
         | Some (v_x, rest') ->
             let merged =
               Declaration
@@ -593,7 +587,7 @@ let merge_overflow_longhands decls =
             go ((idx, merged) :: acc) rest')
     | d :: rest -> go (d :: acc) rest
   in
-  go [] decls
+  preserve_list decls (go [] decls)
 
 (* Compose 4 contiguous box-side longhands ([margin-top / -right / -bottom /
    -left], or the [padding-] equivalents) into a single shorthand. Runs before
@@ -2493,9 +2487,13 @@ let compose_animation_shorthand decls =
   go [] decls
 
 let merge_box_shorthand_longhands source decls =
+  (* [try_merge_box_shorthand] returns the original declaration when it absorbs
+     nothing, so keep the original tuple then ([==]) rather than re-pairing it
+     with its index - the head stays physically shared on a no-op. *)
   let rec go acc = function
     | [] -> List.rev acc
-    | (idx, (Declaration { property = Margin; value = vs; important } as d))
+    | ((idx, (Declaration { property = Margin; value = vs; important } as d)) as
+       item)
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
@@ -2503,8 +2501,10 @@ let merge_box_shorthand_longhands source decls =
             ~absorb:(absorb_margin_corner ~important)
             ~is_same_shorthand:is_margin_shorthand rest
         in
-        go ((idx, merged) :: acc) rest
-    | (idx, (Declaration { property = Padding; value = vs; important } as d))
+        let head = if merged == d then item else (idx, merged) in
+        go (head :: acc) rest
+    | ((idx, (Declaration { property = Padding; value = vs; important } as d))
+       as item)
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
@@ -2512,10 +2512,11 @@ let merge_box_shorthand_longhands source decls =
             ~absorb:(absorb_padding_corner ~important)
             ~is_same_shorthand:is_padding_shorthand rest
         in
-        go ((idx, merged) :: acc) rest
+        let head = if merged == d then item else (idx, merged) in
+        go (head :: acc) rest
     | d :: rest -> go (d :: acc) rest
   in
-  go [] decls
+  preserve_list decls (go [] decls)
 
 let property_covered_by_important kept decl =
   List.exists
@@ -2675,16 +2676,11 @@ let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
     List.map (fun (_, decl) -> decl) kept
   in
   let result = duplicate_buggy_properties kept in
-  (* The compose pipeline can rebuild a declaration even when it changes
-     nothing, so physical equality alone misses no-ops; fall back to a per-rule
-     structural check (bounded by one rule's declarations) and return the input
-     list itself when unchanged, so callers detect a no-op by identity (the
-     factoring fixpoint relies on it). *)
-  if
-    List.length result = List.length props
-    && List.for_all2 (fun a b -> a == b || a = b) result props
-  then props
-  else result
+  (* Each pipeline step keeps untouched declarations, so [preserve_list]
+     restores the input list when every declaration is physically unchanged -
+     callers detect a no-op by identity (the factoring fixpoint relies on
+     it). *)
+  preserve_list props result
 
 let deduplicate_declarations ?scope props =
   deduplicate_declarations_with ~ctx:(ctx_of_scope scope) props
