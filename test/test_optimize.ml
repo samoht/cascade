@@ -117,6 +117,26 @@ let test_deduplicate_declarations () =
   let deduped_custom = deduplicate_declarations custom_decls in
   check int "two custom properties remain" 2 (List.length deduped_custom)
 
+(* When deduplicate_declarations has nothing to remove, compose, or drop, its
+   result equals the input and must be the very same physical list - the sharing
+   finalize_rule relies on to keep an unchanged rule's declarations by identity.
+   Two distinct custom properties are a genuine no-op; and one pass over a list
+   with a real override reaches a fixed point whose re-deduplication must also
+   preserve identity. *)
+let test_deduplicate_declarations_physical_identity () =
+  let no_op = [ custom_property "--a" "red"; custom_property "--b" "blue" ] in
+  let result = deduplicate_declarations no_op in
+  check bool "no-op deduplicate is structurally unchanged" true (result = no_op);
+  check bool "no-op deduplicate preserves physical identity" true
+    (result == no_op);
+  let overriding =
+    [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ]
+  in
+  let canon = deduplicate_declarations overriding in
+  let again = deduplicate_declarations canon in
+  check bool "re-deduplicating a fixed point preserves physical identity" true
+    (again == canon)
+
 (** Test buggy property duplication *)
 let test_duplicate_buggy_properties () =
   (* Test -webkit-text-decoration:inherit compatibility. Note: Transform is NOT
@@ -760,6 +780,9 @@ let optimize_tests =
       `Quick,
       test_optimize_preserves_physical_identity );
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
+    ( "deduplicate declarations preserves physical identity",
+      `Quick,
+      test_deduplicate_declarations_physical_identity );
     ("duplicate buggy properties", `Quick, test_duplicate_buggy_properties);
     ("optimize single rule", `Quick, single_rule);
     ("merge rules", `Quick, test_merge_rules);
