@@ -489,6 +489,9 @@ type color =
       (** A hex colour decoded to its sRGB byte components ([a = 255] when
           opaque). Every spelling ([#fff] / [#ffffff] / [#FFFFFF]) decodes to
           one node, so the printer picking the shortest spelling round-trips. *)
+  | Authored_hex of { value : string; r : int; g : int; b : int; a : int }
+      (** A parsed hex colour preserving the source spelling without the leading
+          [#]. Optimisation folds this to the canonical semantic colour. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }

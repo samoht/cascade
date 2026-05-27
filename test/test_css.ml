@@ -667,8 +667,9 @@ let public_theme_edges () =
   Alcotest.(check string)
     "guarded declaration shown optimize+minify"
     ".card{color:red;background-color:#fff}"
-    (sheet |> Css.resolve_theme ~theme:brand_theme |> Css.optimize
-    |> to_string ~minify:true)
+    (sheet
+    |> Css.resolve_theme ~theme:brand_theme
+    |> Css.optimize |> to_string ~minify:true)
 
 let public_value_combinator_edges () =
   let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
@@ -729,22 +730,19 @@ let public_value_combinator_edges () =
     (Calc.add
        (Calc.mul (Calc.length (Var spacing)) (Calc.float 1.0))
        (Calc.length (Px 0.)));
-  check_padding_calc
-    ~optimized:".p-1{padding:calc(3px + var(--spacing))}"
+  check_padding_calc ~optimized:".p-1{padding:calc(3px + var(--spacing))}"
     "padding var-free left subtree may fold before var"
     ".p-1{padding:calc(1px + 2px + var(--spacing))}"
     (Calc.add
        (Calc.add (Calc.length (Px 1.)) (Calc.length (Px 2.)))
        (Calc.length (Var spacing)));
-  check_padding_calc
-    ~optimized:".p-1{padding:calc(var(--spacing)*6)}"
+  check_padding_calc ~optimized:".p-1{padding:calc(var(--spacing)*6)}"
     "padding var-free right subtree may fold after var"
     ".p-1{padding:calc(var(--spacing)*2*3)}"
     (Calc.mul
        (Calc.length (Var spacing))
        (Calc.mul (Calc.float 2.0) (Calc.float 3.0)));
-  check_padding_calc
-    ~optimized:".p-1{padding:calc(50% - var(--spacing))}"
+  check_padding_calc ~optimized:".p-1{padding:calc(50% - var(--spacing))}"
     "padding var-free percentage subtree may fold before var"
     ".p-1{padding:calc(100%/2 - var(--spacing))}"
     (Calc.sub
@@ -828,7 +826,7 @@ let public_value_combinator_edges () =
      20px;text-overflow:clip \"...\";content:\"Section \" \
      counter(section);background-image:conic-gradient(from 45deg at \
      50%,#f00,#00f);background-size:20px 30px;object-view-box:inset(0px \
-     1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
+     1px);grid-template-columns:1fr repeat(2,minmax(0px,1fr));grid-row:span \
      2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
      1 2,pointer;contain:layout paint;border-spacing:1px \
      2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \

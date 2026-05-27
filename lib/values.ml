@@ -2170,10 +2170,13 @@ let body_is_number_boundary body i =
     | ' ' | '/' | ',' | '(' | '+' | '*' -> true
     | _ -> false
 
-let body_starts_number body i =
+let rec body_starts_number body i =
   let len = String.length body in
   body_is_digit body i
   || (i < len && body.[i] = '.' && body_is_digit body (i + 1))
+  || i + 1 < len
+     && (body.[i] = '+' || body.[i] = '-')
+     && body_starts_number body (i + 1)
 
 let rec body_scan_digits body j =
   if body_is_digit body j then body_scan_digits body (j + 1) else j
@@ -2231,6 +2234,31 @@ let minify_relative_color_numbers body =
       | Option.None ->
           Buffer.add_char buf body.[i];
           loop (i + 1))
+    else (
+      Buffer.add_char buf body.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
+let relative_color_space_elidable body i =
+  let len = String.length body in
+  if i <= 0 || i + 1 >= len || body.[i] <> ' ' then false
+  else
+    match (body.[i - 1], body.[i + 1]) with
+    | ')', next -> body_starts_number body (i + 1) || next = '.'
+    | '%', next ->
+        body_starts_number body (i + 1)
+        || (next >= 'A' && next <= 'Z')
+        || (next >= 'a' && next <= 'z')
+    | _ -> false
+
+let minify_relative_color_spaces body =
+  let len = String.length body in
+  let buf = Buffer.create len in
+  let rec loop i =
+    if i >= len then ()
+    else if relative_color_space_elidable body i then loop (i + 1)
     else (
       Buffer.add_char buf body.[i];
       loop (i + 1))
@@ -2463,7 +2491,8 @@ let hex s : color =
 let static_color_to_srgb_channels :
     color -> (int option * int option * int option * int option) option =
   function
-  | Hex { r; g; b; a } -> Some (Some r, Some g, Some b, Some a)
+  | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
+      Some (Some r, Some g, Some b, Some a)
   | Rgb (Channels { r; g; b }) ->
       Some
         ( channel_byte_value r,
@@ -2505,7 +2534,9 @@ let static_color_to_srgb_channels :
    component or that can't be folded statically. *)
 let static_color_to_srgb_bytes c : (int * int * int * int) option =
   match static_color_to_srgb_channels c with
-  | Some (Some r, Some g, Some b, Some a) -> Some (r, g, b, a)
+  | Some (r, g, b, Some a) ->
+      let component = function Some v -> v | None -> 0 in
+      Some (component r, component g, component b, a)
   | _ -> Option.None
 
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
@@ -3848,6 +3879,7 @@ let pp_relative_color_call ctx name body =
   let body =
     if Pp.minified ctx then
       body |> minify_relative_color_alpha |> minify_relative_color_numbers
+      |> minify_relative_color_spaces
     else body
   in
   Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
@@ -3996,6 +4028,11 @@ and pp_color : color Pp.t = fun ctx color -> pp_color_default ctx color
 and pp_color_default : color Pp.t =
  fun ctx -> function
   | Hex { r; g; b; a } -> pp_hex_color ctx r g b a
+  | Authored_hex { value; r; g; b; a } ->
+      if Pp.minified ctx then pp_hex_color ctx r g b a
+      else (
+        Pp.char ctx '#';
+        Pp.string ctx value)
   | Rgb rgb -> pp_rgb_color ctx rgb
   | Rgba { rgb; a } -> pp_rgba_color ctx rgb a
   | Hsl { h; s; l; a } -> pp_hsl_color ctx h s l a
@@ -6262,7 +6299,7 @@ and read_color t : color =
           Cursor.err_invalid t ("hex color digits: " ^ value)
         else
           match rgba_of_hex value with
-          | Some (r, g, b, a) -> Hex { r; g; b; a }
+          | Some (r, g, b, a) -> Authored_hex { value; r; g; b; a }
           | None -> Cursor.err_invalid t ("hex color digits: " ^ value))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
         match List.assoc_opt name color_parsers with
@@ -6302,8 +6339,9 @@ let rec color_is_color_4 = function
   | Light_dark (a, b) -> color_is_color_4 a || color_is_color_4 b
   | Contrast_color c -> color_is_color_4 c
   | Attribute (_, Some c) -> color_is_color_4 c
-  | Hex _ | Rgb _ | Rgba _ | Hsl _ | Named _ | System _ | Current | Transparent
-  | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Var _
+  | Hex _ | Authored_hex _ | Rgb _ | Rgba _ | Hsl _ | Named _ | System _
+  | Current | Transparent | Auto | Inherit | Initial | Unset | Revert
+  | Revert_layer | Var _
   | Attribute (_, None) ->
       false
 
@@ -6806,7 +6844,8 @@ let rec normalize_color ~in_feature_query (c : color) : color =
   | Lch { l = Some _; c = Some _; _ }
   | Color _ ->
       normalize_static_modern_color ~in_feature_query c
-  | Hex { r; g; b; a } -> normalize_hex_color c r g b a
+  | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
+      normalize_hex_color c r g b a
   | Named orig_name -> normalize_named_color c orig_name
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       match static_color_to_srgb_bytes c with

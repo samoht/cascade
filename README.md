@@ -250,7 +250,7 @@ the `cascade` opam package.
       ]
   in to_string (v [ button ]);;
 - : string =
-"\n.btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #ffffff;\n  padding: .5rem;\n  border-radius: .375rem;\n}\n"
+".btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #ffffff;\n  padding: .5rem;\n  border-radius: .375rem;\n}"
 ```
 
 Output:

@@ -13,7 +13,11 @@ open Css
 let roundtrip css expected =
   match of_string ~strict:true css with
   | Ok parsed ->
-      let output = to_string ~minify:true parsed.stylesheet in
+      let output =
+        parsed.stylesheet
+        |> optimize ~scope:`Stylesheet ~enforce_spec:true
+        |> to_string ~minify:true
+      in
       Alcotest.(check string) css expected output
   | Error e -> Alcotest.fail (Cascade.Error.to_string e)
 
@@ -121,7 +125,11 @@ let recover css expected min_warnings =
     | Ok parsed -> parsed
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)
   in
-  let output = to_string ~minify:true stylesheet in
+  let output =
+    stylesheet
+    |> optimize ~scope:`Stylesheet ~enforce_spec:true
+    |> to_string ~minify:true
+  in
   Alcotest.(check string) css expected output;
   Alcotest.(check bool)
     (css ^ " warnings") true
@@ -923,7 +931,11 @@ let comment_preservation_policy () =
        ".a { color: red } /*! license */ .b { color: blue }"
    with
   | Ok parsed ->
-      let output = to_string ~minify:true parsed.stylesheet in
+      let output =
+        parsed.stylesheet
+        |> optimize ~scope:`Stylesheet ~enforce_spec:true
+        |> to_string ~minify:true
+      in
       let find fragment = Astring.String.find_sub ~sub:fragment output in
       Alcotest.(check bool)
         "minified output keeps first rule" true

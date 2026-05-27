@@ -22,13 +22,12 @@ let check_inline_case ?optimized name input expected =
   | Some expected ->
       Alcotest.(check string)
         (name ^ " optimize+minify")
-        expected (optimized_minified inlined)
+        expected
+        (optimized_minified inlined)
 
 let test_inline_substitutes_vars () =
-  check_inline
-    ~optimized:".button{color:#00f}"
-    ":root{--brand:blue}.button{color:var(--brand)}"
-    ".button{color:blue}"
+  check_inline ~optimized:".button{color:#00f}"
+    ":root{--brand:blue}.button{color:var(--brand)}" ".button{color:blue}"
 
 let test_inline_keep_vars () =
   let inlined =
@@ -41,7 +40,7 @@ let test_inline_keep_vars () =
     (minified inlined);
   Alcotest.(check string)
     "kept custom property optimize+minify"
-    ":root{--brand:#00f}.button{color:var(--brand);border-color:#00f}"
+    ":root{--brand:blue}.button{color:var(--brand);border-color:#00f}"
     (optimized_minified inlined)
 
 let test_decode_import_url () =
@@ -139,7 +138,7 @@ let test_inline_shorthand_functions () =
     ".a{background:linear-gradient(red,blue,green)}";
   check_inline_case "rgb channel variables canonicalize after substitution"
     ":root{--r:255;--g:0;--b:0}.a{color:rgb(var(--r) var(--g) var(--b))}"
-    ".a{color:red}"
+    ~optimized:".a{color:red}" ".a{color:rgb(255 0 0)}"
 
 let test_inline_vars_runtime_boundaries () =
   check_inline_case "var inside string token is not substituted"

@@ -34,7 +34,7 @@ listed names retain their var() reference; everything else inlines.
   > .btn { color: var(--brand); padding: var(--gap) }
   > EOF
   $ cascade --minify --inline-imports --inline-vars --keep-vars=brand app-keep.css
-  :root{--brand:red}.btn{color:var(--brand);padding:8px}
+  :root{--brand:#f00}.btn{color:var(--brand);padding:8px}
 
 A multi-file design system: tokens in one file, components in another,
 entry pulls both. Variables defined in either imported file resolve
@@ -81,7 +81,7 @@ inside the layer scope to layer consumers.
   > .e { color: blue }
   > EOF
   $ cascade --minify --inline-imports --inline-vars app-layer.css
-  @layer theme{.x{color:red}}.e{color:#00f}
+  .x{color:red}.e{color:#00f}
 
 Imported kept variables retain imported runtime dependencies.
 
