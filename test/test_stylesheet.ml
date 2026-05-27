@@ -3331,6 +3331,31 @@ let selector_list_canonical_order () =
   assert_minify_and_optimize ".a, .a, .b { color: red }"
     ~minified:".a,.a,.b{color:red}" ~optimized:".a,.b{color:red}"
 
+(* CSS Cascading and Inheritance / Scoping: the @scope prelude carries two
+   selector lists - the scope-start [(<scope-start>)] and the scope-end
+   [to (<scope-end>)], each a forgiving selector list whose branches are an
+   unordered set. The selector-list policy applies to both: pp holds the
+   authored branch order and duplicates in both pretty and minify ([minify]
+   sides), and optimize sorts and de-duplicates both preludes ([minify+optimize]
+   sides). *)
+let scope_selector_list_canonical () =
+  (* scope-start list: sorted by optimize, held by pp *)
+  assert_minify_and_optimize "@scope (.b, .a) { .x { color: red } }"
+    ~minified:"@scope(.b,.a){.x{color:red}}"
+    ~optimized:"@scope(.a,.b){.x{color:red}}";
+  (* scope-start list: duplicate branch dropped by optimize *)
+  assert_minify_and_optimize "@scope (.a, .a) { .x { color: red } }"
+    ~minified:"@scope(.a,.a){.x{color:red}}"
+    ~optimized:"@scope(.a){.x{color:red}}";
+  (* scope-end list: duplicate branch dropped by optimize *)
+  assert_minify_and_optimize "@scope (:root) to (.b, .b) { .x { color: red } }"
+    ~minified:"@scope(:root)to (.b,.b){.x{color:red}}"
+    ~optimized:"@scope(:root)to (.b){.x{color:red}}";
+  (* both scope-start and scope-end lists canonicalised at once *)
+  assert_minify_and_optimize "@scope (.b, .a) to (.d, .c) { .x { color: red } }"
+    ~minified:"@scope(.b,.a)to (.d,.c){.x{color:red}}"
+    ~optimized:"@scope(.a,.b)to (.c,.d){.x{color:red}}"
+
 (* CSS Color Module Level 4, section 3 (Color Syntax): the [<hue>] component
    accepts angles or numbers and is normalised modulo 360deg. So [hsl(360 100%
    50%)] denotes the same color as [hsl(0 100% 50%)] and as the named color
@@ -6403,6 +6428,9 @@ let additional_tests =
     ( "spec selectors 4 selector list canonical order is optimize only",
       `Quick,
       selector_list_canonical_order );
+    ( "spec scope start/end selector lists canonicalize in optimize",
+      `Quick,
+      scope_selector_list_canonical );
     ( "spec color 4 3 hue modulo canonicalization",
       `Quick,
       color4_3_hue_modulo_canonicalization );
