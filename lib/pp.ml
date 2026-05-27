@@ -342,13 +342,32 @@ let round_sig n f =
     let factor = 10.0 ** (Float.of_int n -. d) in
     Float.round (f *. factor) /. factor
 
-let float ctx f = string ctx (string_of_float ~drop_leading_zero:true f)
-let float_compact ctx f = string ctx (string_of_float ~drop_leading_zero:true f)
+(* Emit the decimal digits of [i] straight into the sink. [string_of_int] routes
+   through C [snprintf] (slow) and allocates a string even when the sink only
+   counts bytes; the optimizer measures declarations O(n^2) times, so this is
+   hot. Recurse in the non-positive domain so [min_int] cannot overflow. *)
+let int ctx i =
+  if i < 0 then char ctx '-';
+  let rec go n =
+    if n <= -10 then go (n / 10);
+    char ctx (Char.unsafe_chr (Char.code '0' - (n mod 10)))
+  in
+  go (if i > 0 then -i else i)
+
+(* An integer-valued float prints as that integer (see [format_integer]); take
+   the allocation-free [int] path instead of building a string via
+   [string_of_float]. The bound mirrors [format_integer]'s own guard. *)
+let float ctx f =
+  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+    int ctx (int_of_float f)
+  else string ctx (string_of_float ~drop_leading_zero:true f)
+
+let float_compact = float
 
 let float_n n ctx f =
-  string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
-
-let int ctx i = string ctx (string_of_int i)
+  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+    int ctx (int_of_float f)
+  else string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
 let hex ctx i =
   let hex_digit n =
