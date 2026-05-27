@@ -3332,8 +3332,8 @@ let selector_list_canonical_order () =
     ~minified:".a,.a,.b{color:red}" ~optimized:".a,.b{color:red}"
 
 (* CSS Cascading and Inheritance / Scoping: the @scope prelude carries two
-   selector lists - the scope-start [(<scope-start>)] and the scope-end
-   [to (<scope-end>)], each a forgiving selector list whose branches are an
+   selector lists - the scope-start [(<scope-start>)] and the scope-end [to
+   (<scope-end>)], each a forgiving selector list whose branches are an
    unordered set. The selector-list policy applies to both: pp holds the
    authored branch order and duplicates in both pretty and minify ([minify]
    sides), and optimize sorts and de-duplicates both preludes ([minify+optimize]
