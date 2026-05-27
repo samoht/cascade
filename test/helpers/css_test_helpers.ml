@@ -126,6 +126,22 @@ let decl_optimizes_to ?held ~into input =
         (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
+(** [decl_lossless ~prop ~into input] asserts the lossless minify+optimize
+    oracle for one declaration. The expected value is still a minified canonical
+    spelling, but color approximation and channel rounding are disabled on both
+    optimize and pp. *)
+let decl_lossless ~prop ~into input =
+  let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
+  match Css.of_string ~strict:false (wrap input) with
+  | Ok p ->
+      Alcotest.(check string)
+        (wrap input ^ " lossless minify+optimize")
+        (wrap into)
+        (Css.to_string ~minify:true ~lossless:true
+           (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim)
+  | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
+
 (** Generic check function for CSS value types. [expected] is a spec oracle, not
     a snapshot of current implementation behavior. *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)

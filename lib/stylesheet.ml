@@ -817,10 +817,12 @@ let rec pp_conditional : conditional Pp.t =
  fun ctx -> function
   | Media_condition condition ->
       pp_condition_function ctx "media"
-        (Pp.to_string ~minify:ctx.Pp.minify Media.pp condition)
+        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
+           condition)
   | Supports_condition_test condition ->
       pp_condition_function ctx "supports"
-        (Pp.to_string ~minify:ctx.Pp.minify Supports.pp condition)
+        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
+           Supports.pp condition)
   | And (a, b) ->
       pp_conditional ctx a;
       Pp.string ctx " and ";
@@ -1029,7 +1031,8 @@ let pp_font_palette_descriptor : font_palette_descriptor Pp.t =
         (fun ctx (index, color) ->
           Pp.string ctx (Int.to_string index);
           let rendered =
-            Pp.to_string ~minify:(Pp.minified ctx) Values.pp_color color
+            Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
+              Values.pp_color color
           in
           if (not (Pp.minified ctx)) || rendered = "" || rendered.[0] <> '#'
           then Pp.space ctx ();
@@ -1118,7 +1121,10 @@ and pp_media_statement ctx condition content =
       (* Per cascade's minify policy (README sec. "Minify policy"), elide
          whitespace at safe token boundaries: a leading [(] needs no space.
          Idents like [screen] still need it. *)
-      let rendered = Pp.to_string ~minify:ctx.Pp.minify Media.pp condition in
+      let rendered =
+        Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
+          condition
+      in
       if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '('
       then ()
       else Pp.string ctx " ";
@@ -1157,7 +1163,8 @@ and pp_supports_statement ctx condition content =
      [selector(...)], etc.) needs the space to keep token shape. *)
   Pp.string ctx "@supports";
   let rendered =
-    Pp.to_string ~minify:ctx.Pp.minify pp_supports_condition_value condition
+    Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
+      pp_supports_condition_value condition
   in
   if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '(' then ()
   else Pp.string ctx " ";
@@ -1352,8 +1359,9 @@ let pp_stylesheet : stylesheet Pp.t =
 (** {1 Rendering} *)
 
 (* Pure serialiser. *)
-let to_string ?(minify = false) ?indent ?enforce_spec (statements : t) =
-  Pp.to_string ~minify ?indent ?enforce_spec
+let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
+    =
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec
     (fun ctx () -> pp_stylesheet ctx statements)
     ()
 

@@ -7294,7 +7294,13 @@ type mode = Stylesheet.mode =
           - [Inline]: For inline styles (no at-rules, variables expanded with
             their values) *)
 
-val to_string : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
+val to_string :
+  ?minify:bool ->
+  ?indent:int ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  string
 (** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
     formatter - no optimisation, no theme resolution, no [var()] substitution.
     Run {!optimize}, {!resolve_theme}, and {!inline_vars} explicitly when those
@@ -7305,10 +7311,17 @@ val to_string : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
+    - [lossless] suppresses colour-channel rounding in minified output.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
-val pp : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
+val pp :
+  ?minify:bool ->
+  ?indent:int ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  string
 (** [pp] is {!to_string}. *)
 
 type parse = { stylesheet : t; warnings : Error.t list }
@@ -7344,11 +7357,16 @@ val of_string_exn :
     Tools for optimizing CSS output for performance and file size. *)
 
 val optimize :
-  ?scope:Optimize.scope -> ?flatten_nesting:bool -> ?enforce_spec:bool -> t -> t
-(** [optimize ?scope ?flatten_nesting ?enforce_spec stylesheet] applies CSS
-    optimizations to the stylesheet, including merging consecutive identical
-    selectors and combining rules with identical properties. Preserves CSS
-    cascade semantics.
+  ?scope:Optimize.scope ->
+  ?flatten_nesting:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  t
+(** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec stylesheet]
+    applies CSS optimizations to the stylesheet, including merging consecutive
+    identical selectors and combining rules with identical properties. Preserves
+    CSS cascade semantics.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
     Pass [`Stylesheet] when the caller controls the whole author stylesheet
@@ -7356,6 +7374,9 @@ val optimize :
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
+
+    When [lossless] is [true] (default [false]), colour approximation is
+    disabled while exact colour canonicalisation still runs.
 
     When [enforce_spec] is [false] (default) the optimizer may treat baseline
     feature queries as known facts and elide [@supports] guards satisfied in

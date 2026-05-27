@@ -2366,6 +2366,16 @@ let alpha_value_byte = function
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
   | _ -> Option.None
 
+let exact_alpha_value_byte = function
+  | (None : alpha) -> Some 255
+  | Num f when f >= 0. && f <= 1. ->
+      let byte = f *. 255. in
+      if Float.is_integer byte then Some (Float.to_int byte) else None
+  | Pct f when f >= 0. && f <= 100. ->
+      let byte = f *. 255. /. 100. in
+      if Float.is_integer byte then Some (Float.to_int byte) else None
+  | _ -> None
+
 (* CSS Color 4 3: the hue is interpreted modulo 360 degrees. *)
 let normalize_hue f =
   let m = Float.rem f 360. in
@@ -2463,6 +2473,16 @@ let channel_byte_value (c : channel) =
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
   | _ -> None
 
+let exact_channel_byte_value (c : channel) =
+  match c with
+  | Int i when i >= 0 && i <= 255 -> Some i
+  | Num f when Float.is_integer f && f >= 0. && f <= 255. ->
+      Some (Float.to_int f)
+  | Pct f when f >= 0. && f <= 100. ->
+      let byte = f *. 255. /. 100. in
+      if Float.is_integer byte then Some (Float.to_int byte) else None
+  | _ -> None
+
 let hex_of_byte i =
   let hex_digits = "0123456789abcdef" in
   let s = Bytes.create 2 in
@@ -2538,6 +2558,28 @@ let static_color_to_srgb_bytes c : (int * int * int * int) option =
       let component = function Some v -> v | None -> 0 in
       Some (component r, component g, component b, a)
   | _ -> Option.None
+
+let exact_rgb_to_srgb_bytes c : (int * int * int * int) option =
+  match c with
+  | Rgb (Channels { r; g; b }) -> (
+      match
+        ( exact_channel_byte_value r,
+          exact_channel_byte_value g,
+          exact_channel_byte_value b )
+      with
+      | Some r, Some g, Some b -> Some (r, g, b, 255)
+      | _ -> None)
+  | Rgba { rgb = Channels { r; g; b }; a } -> (
+      match
+        ( exact_channel_byte_value r,
+          exact_channel_byte_value g,
+          exact_channel_byte_value b,
+          exact_alpha_value_byte a )
+      with
+      | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
+      | _ -> None)
+  | Transparent -> Some (0, 0, 0, 0)
+  | _ -> None
 
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
    per-component weights and an [alpha] multiplier. [p1] / [p2] are in [0..100];
@@ -3219,7 +3261,8 @@ let rec pp_angle : angle Pp.t =
    and matches the shipping-minifier convention. *)
 let pp_hue_float ctx f =
   if Pp.minified ctx then
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:1 f)
+    let max_decimals = if ctx.Pp.lossless then 8 else 1 in
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
   else Pp.float ctx f
 
 let rec pp_hue : hue Pp.t =
@@ -3578,6 +3621,7 @@ let color_channel_decimals (space : color_space)
           find 3)
 
 let pp_component_float ~decimals ctx f =
+  let decimals = if ctx.Pp.lossless then 8 else decimals in
   if Pp.minified ctx then
     Pp.string ctx
       (Pp.string_of_float ~drop_leading_zero:true ~max_decimals:decimals f)
@@ -3656,8 +3700,9 @@ let rec pp_rgb : rgb Pp.t =
     and minified output; minified output additionally rounds to 6 sig digits for
     compactness. *)
 let string_of_lab_float ~max_decimals ctx f =
+  let max_decimals = if ctx.Pp.lossless then 8 else max_decimals in
   Pp.string_of_float ~drop_leading_zero:true ~max_decimals
-    (if ctx.Pp.minify then Pp.round_sig 6 f else f)
+    (if ctx.Pp.minify && not ctx.Pp.lossless then Pp.round_sig 6 f else f)
 
 let pp_lab_float ~max_decimals ctx f =
   Pp.string ctx (string_of_lab_float ~max_decimals ctx f)
@@ -3667,7 +3712,7 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
   (* The number -> percentage axis swap (e.g. oklch chroma [.304] -> [76%]) is a
      shortest-spelling minify win, but [%] on these axes is an evergreen-target
      fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
-  if ctx.Pp.minify && not ctx.Pp.enforce_spec then
+  if ctx.Pp.minify && (not ctx.Pp.lossless) && not ctx.Pp.enforce_spec then
     (* Derive the percentage form from the value the number string [n] actually
        re-parses to, not from the raw float [f]. Otherwise an [f] that rounds to
        [n] (e.g. -0.00798 -> "-.008") can keep the number because its raw
@@ -3709,30 +3754,56 @@ let starts_unsigned_number s =
   String.length s > 0
   && match s.[0] with '0' .. '9' | '.' -> true | _ -> false
 
-let pp_pct_chroma_hue_alpha ~chroma_pct_scale ~axis_max_decimals :
-    (percentage option * float option * hue * alpha) Pp.t =
+let pp_color_lightness ~pct_scale ~axis_max_decimals ctx (l : percentage option)
+    : percentage option =
+  match l with
+  | Some (Pct f) when ctx.Pp.minify && ctx.Pp.lossless ->
+      let pct =
+        string_of_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f ^ "%"
+      in
+      let num =
+        string_of_lab_float ~max_decimals:axis_max_decimals ctx (f *. pct_scale)
+      in
+      if String.length num < String.length pct then (
+        Pp.string ctx num;
+        Some (Num (f *. pct_scale)))
+      else (
+        Pp.string ctx pct;
+        l)
+  | Some (Pct f) ->
+      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
+      Pp.char ctx '%';
+      l
+  | Some (Num f) ->
+      pp_lab_float ~max_decimals:axis_max_decimals ctx f;
+      l
+  | Some l ->
+      pp_percentage ctx l;
+      Some l
+  | None ->
+      Pp.string ctx "none";
+      None
+
+let pp_pct_chroma_hue_alpha ~lightness_pct_scale ~chroma_pct_scale
+    ~axis_max_decimals : (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   (* CSS Color 4 lch / oklch L precision under minify. [axis_max_decimals] is
      calibrated per-space so the absolute precision is comparable: oklch L is
      [0, 1] (3 decimals = ~0.001) while lch L is [0, 100] (1 decimal = ~0.1 =
      same relative precision). *)
-  (match l with
-  | Some (Pct f) ->
-      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
-      Pp.char ctx '%'
-  | Some (Num f) -> pp_lab_float ~max_decimals:axis_max_decimals ctx f
-  | Some l -> pp_percentage ctx l
-  | None -> Pp.string ctx "none");
+  let printed_l =
+    pp_color_lightness ~pct_scale:lightness_pct_scale ~axis_max_decimals ctx l
+  in
   (match c with
   | Some c ->
       let c =
         string_of_scaled_color_axis ~max_decimals:axis_max_decimals
           ~pct_scale:chroma_pct_scale ctx c
       in
-      space_after_color_percentage ctx l ~next:(Some c);
+      space_after_color_percentage ctx printed_l ~next:(Some c);
       Pp.string ctx c
   | None ->
-      space_after_color_percentage ctx l ~next:(Some "none");
+      space_after_color_percentage ctx printed_l ~next:(Some "none");
       Pp.string ctx "none");
   Pp.space ctx ();
   pp_hue ctx h;
@@ -3740,7 +3811,8 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale ~axis_max_decimals :
 
 let pp_oklch =
   Pp.call "oklch"
-    (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004 ~axis_max_decimals:3)
+    (pp_pct_chroma_hue_alpha ~lightness_pct_scale:0.01 ~chroma_pct_scale:0.004
+       ~axis_max_decimals:3)
 
 let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
@@ -3758,7 +3830,7 @@ let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
     minify the float rounds to 3 decimals - CSS Color 4 alpha precision is 1/255
     ~ 0.004 so 3 decimals is more than display-accurate. *)
 let pp_float_drop_zero ctx f =
-  let max_decimals = if Pp.minified ctx then 3 else 8 in
+  let max_decimals = if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8 in
   Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
 
 let pp_alpha_drop_zero : alpha Pp.t =
@@ -3772,20 +3844,16 @@ let pp_alpha_drop_zero : alpha Pp.t =
 let string_of_lab_axis ~max_decimals ~pct_scale ctx f =
   string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f
 
-let pp_lab_like_args ~axis_pct_scale ~axis_max_decimals :
+let pp_lab_like_args ~lightness_pct_scale ~axis_pct_scale ~axis_max_decimals :
     (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   (* CSS Color 4 oklab / lab L / a / b precision under minify. The decimals are
      calibrated per-space so the absolute precision is comparable: oklab L is
      [0, 1] (3 decimals = ~0.001) while lab L is [0, 100] (1 decimal = ~0.1 =
      same relative precision). *)
-  (match l with
-  | Some (Pct f) ->
-      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
-      Pp.char ctx '%'
-  | Some (Num f) -> pp_lab_float ~max_decimals:axis_max_decimals ctx f
-  | Some l -> pp_percentage ctx l
-  | None -> Pp.string ctx "none");
+  let printed_l =
+    pp_color_lightness ~pct_scale:lightness_pct_scale ~axis_max_decimals ctx l
+  in
   let string_of_axis = function
     | Some f ->
         string_of_lab_axis ~max_decimals:axis_max_decimals
@@ -3794,7 +3862,7 @@ let pp_lab_like_args ~axis_pct_scale ~axis_max_decimals :
   in
   let a = string_of_axis a in
   let b = string_of_axis b in
-  space_after_color_percentage ctx l ~next:(Some a);
+  space_after_color_percentage ctx printed_l ~next:(Some a);
   Pp.string ctx a;
   (* CSS Color 4 lab / oklab tokens parse the same with or without whitespace
      between an unsigned-number [a] and a sign-prefixed [b] ([.285] then [-.149]
@@ -3815,14 +3883,19 @@ let pp_lab_like_args ~axis_pct_scale ~axis_max_decimals :
       pp_alpha_drop_zero ctx a
 
 let pp_lab =
-  Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25 ~axis_max_decimals:1)
+  Pp.call "lab"
+    (pp_lab_like_args ~lightness_pct_scale:1.0 ~axis_pct_scale:1.25
+       ~axis_max_decimals:1)
 
 let pp_oklab =
-  Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004 ~axis_max_decimals:3)
+  Pp.call "oklab"
+    (pp_lab_like_args ~lightness_pct_scale:0.01 ~axis_pct_scale:0.004
+       ~axis_max_decimals:3)
 
 let pp_lch =
   Pp.call "lch"
-    (pp_pct_chroma_hue_alpha ~chroma_pct_scale:1.5 ~axis_max_decimals:1)
+    (pp_pct_chroma_hue_alpha ~lightness_pct_scale:1.0 ~chroma_pct_scale:1.5
+       ~axis_max_decimals:1)
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -6787,13 +6860,13 @@ let drop_full_alpha (c : color) : color =
   | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
-let normalize_static_modern_color ~in_feature_query c =
+let normalize_static_modern_color ~in_feature_query ~lossless c =
   let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
     | Some ab -> canonical_color_of_hex r g b ab
     | Option.None -> c
   in
-  if in_feature_query then c
+  if in_feature_query || lossless then drop_full_alpha c
   else
     match static_color_to_linear_srgb c with
     | Some (linear, alpha_f) -> (
@@ -6832,10 +6905,32 @@ let normalize_named_color c orig_name =
       canonical_color_of_hex r g b a
   | _ -> if name == orig_name then c else Named name
 
+let normalize_srgb_mix color1 color2 ~p1 ~p2 =
+  match
+    mix_srgb_bytes
+      (resolve_static_srgb color1)
+      (resolve_static_srgb color2)
+      ~p1 ~p2
+  with
+  | Some (r, g, b, a) -> Some (canonical_color_of_hex r g b a)
+  | Option.None -> None
+
+let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
+  match mix_lab_family effective color1 color2 ~p1 ~p2 with
+  | Some color -> Some color
+  | None -> (
+      match effective with
+      | Some (Lab : color_space) -> mix_in_lab_space color1 color2 ~p1 ~p2
+      | Some Oklab -> mix_in_oklab_space color1 color2 ~p1 ~p2
+      | Some Lch -> mix_in_lch_space color1 color2 ~p1 ~p2 Default
+      | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
+      | _ -> None)
+
 (* AST-level color canonicalisation: the folds the printer used to do, producing
    a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
    gates the static colour-space fold (suppressed inside [@supports] tests). *)
-let rec normalize_color ~in_feature_query (c : color) : color =
+let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
+    color =
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   match c with
   | Oklab { l = Some _; a = Some _; b = Some _; _ }
@@ -6843,87 +6938,27 @@ let rec normalize_color ~in_feature_query (c : color) : color =
   | Lab { l = Some _; a = Some _; b = Some _; _ }
   | Lch { l = Some _; c = Some _; _ }
   | Color _ ->
-      normalize_static_modern_color ~in_feature_query c
+      normalize_static_modern_color ~in_feature_query ~lossless c
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       normalize_hex_color c r g b a
   | Named orig_name -> normalize_named_color c orig_name
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
-      match static_color_to_srgb_bytes c with
+      let bytes =
+        if lossless then exact_rgb_to_srgb_bytes c
+        else static_color_to_srgb_bytes c
+      in
+      match bytes with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
       | Option.None -> drop_full_alpha c)
-  | Mix { in_space; hue; color1; percent1; color2; percent2 } -> (
-      let keep () =
-        (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and the
-           [in oklab] method is the default, so both drop when the mix is left
-           as a colour-mix; percentages that restate the [100% - other] default
-           drop too. *)
-        let hue = match hue with Shorter -> Default | h -> h in
-        let in_space : color_space option =
-          match (in_space : color_space option) with
-          | Some Oklab when hue = Default -> None
-          | None -> None
-          | _ -> in_space
-        in
-        let pct (p : percentage option) =
-          match p with Some (Pct f) -> Some f | _ -> None
-        in
-        let percent1, percent2 =
-          match (pct percent1, pct percent2) with
-          | Some a, Some b when Float.abs (a +. b -. 100.) < 0.0001 ->
-              let none : percentage option = None in
-              if Float.abs (a -. 50.) < 0.0001 then (none, none)
-              else (percent1, none)
-          | _ -> (percent1, percent2)
-        in
-        Mix
-          {
-            in_space;
-            hue;
-            color1 = normalize_color ~in_feature_query color1;
-            percent1;
-            color2 = normalize_color ~in_feature_query color2;
-            percent2;
-          }
-      in
-      match (in_space, hue, color_mix_percentages percent1 percent2) with
-      | Some Srgb, Default, Some (p1, p2) -> (
-          match
-            mix_srgb_bytes
-              (resolve_static_srgb color1)
-              (resolve_static_srgb color2)
-              ~p1 ~p2
-          with
-          | Some (r, g, b, a) -> hex_of_byte_quad r g b a
-          | Option.None -> keep ())
-      | ((Some (Lab | Oklab | Lch | Oklch) | None) as sp), Default, Some (p1, p2)
-        -> (
-          (* CSS Color 5 sec. 3: [in oklab] is the default interpolation space,
-             so an absent space folds the same as [Some Oklab]. *)
-          let effective =
-            match sp with Some _ -> sp | None -> Some (Oklab : color_space)
-          in
-          let folded =
-            match mix_lab_family effective color1 color2 ~p1 ~p2 with
-            | Some color -> Some color
-            | None -> (
-                match effective with
-                | Some (Lab : color_space) ->
-                    mix_in_lab_space color1 color2 ~p1 ~p2
-                | Some Oklab -> mix_in_oklab_space color1 color2 ~p1 ~p2
-                | Some Lch -> mix_in_lch_space color1 color2 ~p1 ~p2 Default
-                | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
-                | _ -> None)
-          in
-          match folded with
-          | Some color -> normalize_color ~in_feature_query color
-          | None -> keep ())
-      | _ -> keep ())
+  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
+      normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
+        ~percent1 ~color2 ~percent2
   | Light_dark (l, d) ->
       Light_dark
-        ( normalize_color ~in_feature_query l,
-          normalize_color ~in_feature_query d )
+        ( normalize_color ~lossless ~in_feature_query l,
+          normalize_color ~lossless ~in_feature_query d )
   | Contrast_color inner ->
-      Contrast_color (normalize_color ~in_feature_query inner)
+      Contrast_color (normalize_color ~lossless ~in_feature_query inner)
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
@@ -6931,7 +6966,7 @@ let rec normalize_color ~in_feature_query (c : color) : color =
          untouched. *)
       let fallback =
         match v.fallback with
-        | Fallback c -> Fallback (normalize_color ~in_feature_query c)
+        | Fallback c -> Fallback (normalize_color ~lossless ~in_feature_query c)
         | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as other
           ->
             other
@@ -6940,9 +6975,65 @@ let rec normalize_color ~in_feature_query (c : color) : color =
         {
           v with
           fallback;
-          default = Option.map (normalize_color ~in_feature_query) v.default;
+          default =
+            Option.map (normalize_color ~lossless ~in_feature_query) v.default;
         }
   | _ -> c
+
+and normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
+    ~percent1 ~color2 ~percent2 =
+  let keep () =
+    (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and the [in
+       oklab] method is the default, so both drop when the mix is left as a
+       colour-mix; percentages that restate the [100% - other] default drop
+       too. *)
+    let hue = match hue with Shorter -> Default | h -> h in
+    let in_space : color_space option =
+      match (in_space : color_space option) with
+      | Some Oklab when hue = Default -> None
+      | None -> None
+      | _ -> in_space
+    in
+    let pct (p : percentage option) =
+      match p with Some (Pct f) -> Some f | _ -> None
+    in
+    let percent1, percent2 =
+      match (pct percent1, pct percent2) with
+      | Some a, Some b when Float.abs (a +. b -. 100.) < 0.0001 ->
+          let none : percentage option = None in
+          if Float.abs (a -. 50.) < 0.0001 then (none, none)
+          else (percent1, none)
+      | _ -> (percent1, percent2)
+    in
+    Mix
+      {
+        in_space;
+        hue;
+        color1 = normalize_color ~lossless ~in_feature_query color1;
+        percent1;
+        color2 = normalize_color ~lossless ~in_feature_query color2;
+        percent2;
+      }
+  in
+  let folded : color option =
+    if lossless then None
+    else
+      match (in_space, hue, color_mix_percentages percent1 percent2) with
+      | Some Srgb, Default, Some (p1, p2) ->
+          normalize_srgb_mix color1 color2 ~p1 ~p2
+      | ((Some (Lab | Oklab | Lch | Oklch) | None) as sp), Default, Some (p1, p2)
+        ->
+          (* CSS Color 5 sec. 3: [in oklab] is the default interpolation space,
+             so an absent space folds the same as [Some Oklab]. *)
+          let effective =
+            match sp with Some _ -> sp | None -> Some (Oklab : color_space)
+          in
+          normalize_lab_family_mix effective color1 color2 ~p1 ~p2
+      | _ -> None
+  in
+  match folded with
+  | Some color -> normalize_color ~lossless ~in_feature_query color
+  | None -> keep ()
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =

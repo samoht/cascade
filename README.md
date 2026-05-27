@@ -38,7 +38,7 @@ cascade --help
 
 <!-- $MDX skip -->
 ```bash
-cascade [--minify] [--enforce-spec] [--inline-imports] [--inline-vars] [--keep-vars=NAMES] [FILE]
+cascade [--minify] [--lossless] [--enforce-spec] [--inline-imports] [--inline-vars] [--keep-vars=NAMES] [FILE]
 cat style.css | cascade -                    # read stdin explicitly
 ```
 
@@ -98,6 +98,25 @@ fold is coarser (`1/255`, up to ~`0.002` error) and is the canonical hex
 spelling, so hex folds such as `color(srgb 1 0 0 / .5)` -> `#ff000080` are not
 gated by that tolerance.
 
+Pass `--lossless` with `--minify` to disable color approximation entirely. In
+that mode Cascade rewrites a color only when the rewrite is exact: named/hex
+canonicalization (`black` -> `#000`, `rgb(255 0 0)` -> `red`), modern function
+syntax (`rgba(0,0,0,.5)` -> `rgb(0 0 0/.5)`), and hex folds whose 8-bit form
+loses nothing (`rgb(0 0 0/.2)` -> `#0003`). It disables channel rounding,
+within-budget `oklab()`/`lch()`/`oklch()`/`color()` -> sRGB folds, and static
+`color-mix()` resolution. Every value-preserving rewrite outside the
+color-approximation class still applies (whitespace, leading and trailing zeros,
+dedup, dead-code elimination, unit conversion, exact `calc()` folding).
+`--lossless` only suppresses value approximation; it is a `--minify` modifier,
+so with `--minify` the shortest exact spelling is still chosen
+(`oklch(55.2% .016 285.938)` prints `oklch(.552 .016 285.938)`), while without
+`--minify` pretty mode keeps the authored spelling. Use it when the exact color
+value matters: keeping colors value-identical to an upstream source (Tailwind,
+for example) rather than approximating them, CSS diffing without
+color-approximation noise, or a round-trip that preserves every channel. It is
+orthogonal to `--enforce-spec`, which drops browser-target facts rather than
+color precision; combine the two for maximally faithful output.
+
 `--minify` is closed over the CSS text it is given, but open over runtime
 layout state. Cascade may use the whole parsed stylesheet for source-order,
 cascade, dependency, and dead-code reasoning, but it does not assume inherited
@@ -123,7 +142,7 @@ evergreen browsers support them, and it does not rely on the HTML-specific
 binary direction model.
 
 - Colors: hex form when it's at most as long as the name (`black` -> `#000`, `blue` -> `#00f`; `red` stays a name).
-- Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling, or round numeric channels, only within the color-difference budget above; unresolved, out-of-gamut, or missing-channel forms stay functional.
+- Modern color functions: static in-gamut `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` values may fold to a shorter sRGB spelling, or round numeric channels, only within the color-difference budget above (`--lossless` keeps the exact functional form); unresolved, out-of-gamut, or missing-channel forms stay functional.
 - Numbers: drop leading zero (`0.5` -> `.5`) and trailing zero (`10.0` -> `10`).
 - Lengths: convert compatible units only when the result is shorter; otherwise
   preserve the authored unit (`12pt` stays `12pt`, not same-length `16px`).
@@ -357,10 +376,11 @@ The SatCSS benchmark interop lives under
 from Hague, Lin, and Hong's CSS minification corpus and is intentionally not
 vendored because the upstream repository has no license for redistributing the
 website CSS snapshots. When present, it is replayed by the shared interop runner
-with the same complete-stylesheet scope: cached minifier outputs are first
-filtered to those that canonicalize to the same stylesheet-scoped Cascade output
-as the source, and Cascade is compared against the shortest remaining valid
-oracle.
+with the same complete-stylesheet scope. SatCSS is a size-arbitrage benchmark:
+Cascade is compared directly against the shortest cached OK minifier output
+recorded in the trace. Those oracle bytes are not revalidated through Cascade's
+own canonicalizer, so a divergent Cascade output cannot make competing oracles
+disappear from the comparison.
 
 A second, stricter oracle is vendored from
 [keithamus/css-minify-tests](https://github.com/keithamus/css-minify-tests):

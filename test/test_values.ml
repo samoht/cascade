@@ -363,6 +363,20 @@ let test_color () =
   (* Unknown color keyword *)
   neg_cursor read_color "notacolor"
 
+let lossless_color () =
+  decl_lossless ~prop:"color" ~into:"oklch(.552 .016 285.938)"
+    "oklch(55.2% .016 285.938)";
+  decl_lossless ~prop:"color" ~into:"color-mix(red,#00f)"
+    "color-mix(in oklab, red 50%, blue 50%)";
+  decl_lossless ~prop:"color" ~into:"red" "rgb(255 0 0)";
+  decl_lossless ~prop:"color" ~into:"#0003" "rgb(0 0 0 / .2)";
+  (* The README claim's other half: --lossless is a --minify modifier, so
+     without --minify pretty keeps the authored percentage spelling and the
+     exact hue (only same-node leading zeros drop); default minify would round
+     to 285.9. *)
+  check_value_cursor "color" read_color pp_color ~minify:false
+    ~expected:"oklch(55.2% .016 285.938)" "oklch(55.2% 0.016 285.938)"
+
 let test_angle () =
   (* pp holds the authored angle unit verbatim: the unit is part of the value
      node and cross-unit conversion is lossy (1rad has no exact degree
@@ -1049,6 +1063,7 @@ let value_tests =
     test_case "system_color" `Quick test_system_color;
     test_case "length" `Quick test_length;
     test_case "color" `Quick test_color;
+    test_case "lossless color" `Quick lossless_color;
     test_case "angle" `Quick test_angle;
     test_case "duration" `Quick test_duration;
     test_case "percentage" `Quick test_percentage;

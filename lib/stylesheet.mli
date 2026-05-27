@@ -268,11 +268,23 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
 
 (** {1 Rendering} *)
 
-val to_string : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
+val to_string :
+  ?minify:bool ->
+  ?indent:int ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  string
 (** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
     formatter - no optimisation, no theme resolution. *)
 
-val pp : ?minify:bool -> ?indent:int -> ?enforce_spec:bool -> t -> string
+val pp :
+  ?minify:bool ->
+  ?indent:int ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  string
 (** [pp] is {!to_string}. *)
 
 val inline_style_of_declarations :
