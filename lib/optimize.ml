@@ -3420,9 +3420,12 @@ let decls_pp_size ds =
   let pp ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
   Pp.size ~minify:true pp ds
 
+let rule_factor_boundary (r : Stylesheet.rule) =
+  r.nested <> [] || r.merge_key <> None
+  || contains_vendor_pseudo_element r.selector
+
 let rule_factor_eligible (r : Stylesheet.rule) =
-  r.nested = [] && r.merge_key = None
-  && (not (should_not_combine r.selector))
+  (not (rule_factor_boundary r))
   && not (List.exists is_all_declaration r.declarations)
 
 let decl_property d = Declaration.property_name d
@@ -3573,9 +3576,68 @@ let summarize_factor_rule factor_rule =
 let factor_rule_declares_all summary props =
   List.for_all (fun prop -> List.mem prop summary.factor_props) props
 
-let same_effective_declaration a b =
+let same_minified_declaration a b =
   same_property a b && same_minified_value a b
   && Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+
+let zero_non_percentage_length (value : Values.length) =
+  match value with
+  | Values.Pct _ | Values.Dimension { unit = "%"; _ } -> false
+  | value -> Values.length_is_zero value
+
+let zero_box_shorthand = function
+  | Declaration { property = Margin; value = _ :: _ as value; important }
+    when List.for_all zero_non_percentage_length value ->
+      Some (`Margin, important)
+  | Declaration { property = Padding; value = _ :: _ as value; important }
+    when List.for_all zero_non_percentage_length value ->
+      Some (`Padding, important)
+  | _ -> None
+
+let zero_box_side = function
+  | Declaration { property = Margin_top; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Margin, important)
+  | Declaration { property = Margin_right; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Margin, important)
+  | Declaration { property = Margin_bottom; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Margin, important)
+  | Declaration { property = Margin_left; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Margin, important)
+  | Declaration { property = Padding_top; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Padding, important)
+  | Declaration { property = Padding_right; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Padding, important)
+  | Declaration { property = Padding_bottom; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Padding, important)
+  | Declaration { property = Padding_left; value; important }
+    when zero_non_percentage_length value ->
+      Some (`Padding, important)
+  | _ -> None
+
+let same_box_kind a b =
+  match (a, b) with
+  | `Margin, `Margin | `Padding, `Padding -> true
+  | (`Margin | `Padding), _ -> false
+
+let same_effective_box_zero a b =
+  match (zero_box_shorthand a, zero_box_side b) with
+  | Some (box_a, important_a), Some (box_b, important_b) ->
+      same_box_kind box_a box_b && Bool.equal important_a important_b
+  | _ -> (
+      match (zero_box_shorthand b, zero_box_side a) with
+      | Some (box_b, important_b), Some (box_a, important_a) ->
+          same_box_kind box_a box_b && Bool.equal important_a important_b
+      | _ -> false)
+
+let same_effective_declaration a b =
+  same_minified_declaration a b || same_effective_box_zero a b
 
 let declarations_overlap common decls =
   List.exists
@@ -3583,29 +3645,130 @@ let declarations_overlap common decls =
       List.exists
         (fun decl ->
           (not (same_effective_declaration common_decl decl))
+          && Bool.equal
+               (Declaration.is_important common_decl)
+               (Declaration.is_important decl)
           && (declaration_covers common_decl decl
              || declaration_covers decl common_decl))
         decls)
     common
 
-let same_specificity a b =
+let rule_selector_may_overlap_summary rule target_summary =
+  selectors_of_rule_selector rule.Stylesheet_intf.selector
+  |> List.exists (fun selector ->
+      Selector_summary.may_overlap
+        (Selector_summary.of_selector selector)
+        target_summary)
+
+let specificity_strictly_greater a b =
+  let a = Selector.specificity a in
+  let b = Selector.specificity b in
+  a.ids > b.ids
+  || a.ids = b.ids
+     && (a.classes > b.classes
+        || (a.classes = b.classes && a.elements > b.elements))
+
+let specificity_equal a b =
   let a = Selector.specificity a in
   let b = Selector.specificity b in
   a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
 
-let rules_may_overlap_at_tie a b =
-  selectors_of_rule_selector a.Stylesheet_intf.selector
-  |> List.exists (fun a_sel ->
-      selectors_of_rule_selector b.Stylesheet_intf.selector
-      |> List.exists (fun b_sel ->
-          same_specificity a_sel b_sel
-          && Selector_summary.may_overlap
-               (Selector_summary.of_selector a_sel)
-               (Selector_summary.of_selector b_sel)))
+let rule_specificity_beats_on_overlap target skipped =
+  let target_selectors =
+    selectors_of_rule_selector target.Stylesheet_intf.selector
+  in
+  let skipped_selectors =
+    selectors_of_rule_selector skipped.Stylesheet_intf.selector
+  in
+  List.for_all
+    (fun skipped_selector ->
+      let skipped_summary = Selector_summary.of_selector skipped_selector in
+      List.for_all
+        (fun target_selector ->
+          (not
+             (Selector_summary.may_overlap
+                (Selector_summary.of_selector target_selector)
+                skipped_summary))
+          || specificity_strictly_greater target_selector skipped_selector)
+        target_selectors)
+    skipped_selectors
+
+let rule_specificity_ties_on_overlap target skipped =
+  let target_selectors =
+    selectors_of_rule_selector target.Stylesheet_intf.selector
+  in
+  let skipped_selectors =
+    selectors_of_rule_selector skipped.Stylesheet_intf.selector
+  in
+  List.exists
+    (fun skipped_selector ->
+      let skipped_summary = Selector_summary.of_selector skipped_selector in
+      List.exists
+        (fun target_selector ->
+          Selector_summary.may_overlap
+            (Selector_summary.of_selector target_selector)
+            skipped_summary
+          && specificity_equal target_selector skipped_selector)
+        target_selectors)
+    skipped_selectors
 
 let skipped_rule_blocks_factor common target skipped =
-  rules_may_overlap_at_tie skipped.factor_rule target.factor_rule
+  rule_selector_may_overlap_summary skipped.factor_rule
+    (Selector_summary.of_selector target.factor_rule.selector)
   && declarations_overlap common skipped.factor_rule.declarations
+  && not
+       (rule_specificity_beats_on_overlap target.factor_rule skipped.factor_rule)
+
+let skipped_blocks_factor_tie common target skipped =
+  rule_specificity_ties_on_overlap target.factor_rule skipped.factor_rule
+  && declarations_overlap common skipped.factor_rule.declarations
+
+let rule_gap_merge_eligible (rule : Stylesheet.rule) =
+  rule.nested = [] && rule.merge_key = None
+  && not (contains_vendor_pseudo_element rule.selector)
+
+let skipped_blocks_same_selector_merge target skipped =
+  rule_selector_may_overlap_summary skipped
+    (Selector_summary.of_selector target.Stylesheet_intf.selector)
+  && declarations_overlap target.declarations skipped.declarations
+  && not (rule_specificity_beats_on_overlap target skipped)
+
+let merge_same_selector_gaps (rules : Stylesheet.rule list) :
+    Stylesheet.rule list =
+  let same_selector a b =
+    String.equal
+      (canonical_selector_key a.selector)
+      (canonical_selector_key b.selector)
+  in
+  let rec scan_for_match anchor skipped_rev fuel = function
+    | [] -> None
+    | _ when fuel <= 0 -> None
+    | candidate :: tail ->
+        if not (rule_gap_merge_eligible candidate) then None
+        else if same_selector anchor candidate then
+          let skipped = List.rev skipped_rev in
+          if List.exists (skipped_blocks_same_selector_merge candidate) skipped
+          then None
+          else
+            let merged = merge_two_adjacent_rules anchor candidate in
+            let before = anchor :: (skipped @ [ candidate ]) in
+            let after = merged :: skipped in
+            if rules_pp_size after < rules_pp_size before then
+              Some (merged :: skipped, tail)
+            else None
+        else scan_for_match anchor (candidate :: skipped_rev) (fuel - 1) tail
+  in
+  let rec walk acc = function
+    | [] -> List.rev acc
+    | rule :: rest -> (
+        if not (rule_gap_merge_eligible rule) then walk (rule :: acc) rest
+        else
+          match scan_for_match rule [] 128 rest with
+          | None -> walk (rule :: acc) rest
+          | Some (replacement, tail) ->
+              walk (List.rev_append replacement acc) tail)
+  in
+  preserve_list rules (walk [] rules)
 
 let filter_some xs = List.filter_map (fun x -> x) xs
 
@@ -3697,25 +3860,95 @@ let factor_gap_rewrite first entries =
              @ List.filter_map entry_after entries)
         in
         let before = first :: List.map rule_of_gap_entry entries in
-        if rules_pp_size after < rules_pp_size before then Some after else None
+        let before_size = rules_pp_size before in
+        let after_size = rules_pp_size after in
+        if after_size < before_size then Some (after, before_size - after_size)
+        else None
+
+let common_equal_decls rules first =
+  List.filter
+    (fun decl ->
+      List.for_all
+        (fun r ->
+          List.exists
+            (fun candidate -> same_minified_declaration decl candidate)
+            r.Stylesheet_intf.declarations)
+        rules)
+    first.Stylesheet_intf.declarations
+
+let factor_gap_equal_rewrite first entries =
+  let factor_rules = factor_rules_of_gap first entries in
+  match factor_rules with
+  | [] | [ _ ] -> None
+  | _ ->
+      let rules_arr = Array.of_list factor_rules in
+      let summaries =
+        Array.map
+          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
+          rules_arr
+      in
+      let decls =
+        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      in
+      let common = common_equal_decls factor_rules first in
+      if common = [] then None
+      else
+        let grouped = grouped_factor_rule first rules_arr common in
+        let leftovers =
+          factor_leftover_options ~common ~summaries ~decls rules_arr
+          |> Array.of_list
+        in
+        let next_factor = ref 1 in
+        let entry_after = function
+          | Gap_skip r -> Some r
+          | Gap_factor _ ->
+              let leftover = leftovers.(!next_factor) in
+              incr next_factor;
+              leftover
+        in
+        let after =
+          grouped
+          :: (filter_some [ leftovers.(0) ]
+             @ List.filter_map entry_after entries)
+        in
+        let before = first :: List.map rule_of_gap_entry entries in
+        let before_size = rules_pp_size before in
+        let after_size = rules_pp_size after in
+        if after_size < before_size then Some (after, before_size - after_size)
+        else None
+
+let factor_anchor_common first candidate common =
+  match common with
+  | None -> common_factorable_decls [ first; candidate.factor_rule ] first
+  | Some common ->
+      if factor_rule_declares_all candidate (List.map decl_property common) then
+        common
+      else []
+
+let better_factor_gap best replacement tail savings =
+  match best with
+  | None -> Some (replacement, tail, savings)
+  | Some (_, _, best_savings) when savings > best_savings ->
+      Some (replacement, tail, savings)
+  | Some _ -> best
+
+let finish_factor_gap prefix = function
+  | None -> None
+  | Some (replacement, tail, _) -> Some (prefix @ replacement, tail)
 
 let try_factor_single_anchor prefix first rest =
-  let candidate_common candidate common =
-    match common with
-    | None -> common_factorable_decls [ first; candidate.factor_rule ] first
-    | Some common ->
-        if factor_rule_declares_all candidate (List.map decl_property common)
-        then common
-        else []
-  in
-  let rec scan entries_rev common fuel = function
-    | [] -> None
-    | _ when fuel <= 0 -> None
-    | candidate :: tail -> (
-        if not (rule_factor_eligible candidate) then None
+  let rec scan entries_rev common best fuel = function
+    | [] -> finish_factor_gap prefix best
+    | _ when fuel <= 0 -> finish_factor_gap prefix best
+    | candidate :: tail ->
+        if rule_factor_boundary candidate then finish_factor_gap prefix best
+        else if not (rule_factor_eligible candidate) then
+          scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
         else
           let candidate_summary = summarize_factor_rule candidate in
-          let candidate_common = candidate_common candidate_summary common in
+          let candidate_common =
+            factor_anchor_common first candidate_summary common
+          in
           let blocks =
             candidate_common = []
             || List.exists
@@ -3729,17 +3962,73 @@ let try_factor_single_anchor prefix first rest =
                  entries_rev
           in
           if blocks then
-            scan (Gap_skip candidate :: entries_rev) common (fuel - 1) tail
+            scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
           else
             let entries = List.rev (Gap_factor candidate :: entries_rev) in
-            match factor_gap_rewrite first entries with
-            | Some replacement -> Some (prefix @ replacement, tail)
-            | None ->
-                scan
-                  (Gap_factor candidate :: entries_rev)
-                  (Some candidate_common) (fuel - 1) tail)
+            let best =
+              match factor_gap_rewrite first entries with
+              | Some (replacement, savings) ->
+                  better_factor_gap best replacement tail savings
+              | None -> best
+            in
+            scan
+              (Gap_factor candidate :: entries_rev)
+              (Some candidate_common) best (fuel - 1) tail
   in
-  scan [] None 128 rest
+  scan [] None None 128 rest
+
+let equal_anchor_common first candidate common =
+  match common with
+  | None -> common_equal_decls [ first; candidate.factor_rule ] first
+  | Some common ->
+      List.filter
+        (fun decl ->
+          List.exists
+            (fun candidate_decl ->
+              same_minified_declaration decl candidate_decl)
+            candidate.factor_rule.declarations)
+        common
+
+let try_factor_equal_anchor first rest =
+  let rec scan entries_rev common best fuel = function
+    | [] -> finish_factor_gap [] best
+    | _ when fuel <= 0 -> finish_factor_gap [] best
+    | candidate :: tail ->
+        if rule_factor_boundary candidate then finish_factor_gap [] best
+        else if not (rule_factor_eligible candidate) then
+          scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+        else
+          let candidate_summary = summarize_factor_rule candidate in
+          let candidate_common =
+            equal_anchor_common first candidate_summary common
+          in
+          let blocks =
+            candidate_common = []
+            || List.exists
+                 (fun entry ->
+                   match entry with
+                   | Gap_factor _ -> false
+                   | Gap_skip skipped ->
+                       skipped_rule_blocks_factor candidate_common
+                         candidate_summary
+                         (summarize_factor_rule skipped))
+                 entries_rev
+          in
+          if blocks then
+            scan (Gap_skip candidate :: entries_rev) common best (fuel - 1) tail
+          else
+            let entries = List.rev (Gap_factor candidate :: entries_rev) in
+            let best =
+              match factor_gap_equal_rewrite first entries with
+              | Some (replacement, savings) ->
+                  better_factor_gap best replacement tail savings
+              | None -> best
+            in
+            scan
+              (Gap_factor candidate :: entries_rev)
+              (Some candidate_common) best (fuel - 1) tail
+  in
+  scan [] None None 128 rest
 
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in
@@ -3754,7 +4043,11 @@ let try_factor_group_with_lookahead current rest =
           | [] -> None
           | _ when fuel <= 0 -> None
           | candidate :: tail ->
-              if not (rule_factor_eligible candidate) then None
+              if rule_factor_boundary candidate then None
+              else if not (rule_factor_eligible candidate) then
+                scan
+                  (summarize_factor_rule candidate :: skipped_rev)
+                  (fuel - 1) tail
               else
                 let candidate_summary = summarize_factor_rule candidate in
                 if
@@ -3788,7 +4081,9 @@ let try_extend_factored_rule anchor rest =
     | [] -> None
     | _ when fuel <= 0 -> None
     | candidate :: tail ->
-        if not (rule_factor_eligible candidate) then None
+        if rule_factor_boundary candidate then None
+        else if not (rule_factor_eligible candidate) then
+          scan (summarize_factor_rule candidate :: skipped_rev) (fuel - 1) tail
         else
           let candidate_summary = summarize_factor_rule candidate in
           if
@@ -3828,10 +4123,7 @@ let extend_factored_declarations (rules : Stylesheet.rule list) :
   preserve_list rules (walk [] rules)
 
 let rule_identical_extend_eligible (r : Stylesheet.rule) =
-  r.nested = [] && r.merge_key = None
-  && (not (contains_vendor_pseudo_element r.selector))
-  && (not (has_descendant_pseudo_element r.selector))
-  && not (List.exists is_all_declaration r.declarations)
+  rule_factor_eligible r
 
 let can_extend_identical_rule anchor candidate =
   declarations_css_equal anchor.declarations candidate.declarations
@@ -3839,8 +4131,13 @@ let can_extend_identical_rule anchor candidate =
      = extract_pseudo_element candidate.selector
   && newer_pseudo_class_compatible anchor.selector candidate.selector
 
-let try_extend_identical_rule anchor rest =
+let try_extend_identical_rule ~ctx anchor rest =
   let common = anchor.declarations in
+  let skipped_rule_blocks =
+    match ctx.scope with
+    | `Stylesheet -> skipped_blocks_factor_tie
+    | `Fragment -> skipped_rule_blocks_factor
+  in
   let rec scan skipped_rev fuel = function
     | [] -> None
     | _ when fuel <= 0 -> None
@@ -3852,7 +4149,7 @@ let try_extend_identical_rule anchor rest =
             can_extend_identical_rule anchor candidate
             && not
                  (List.exists
-                    (skipped_rule_blocks_factor common candidate_summary)
+                    (skipped_rule_blocks common candidate_summary)
                     skipped_rev)
           then
             let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
@@ -3874,14 +4171,14 @@ let try_extend_identical_rule anchor rest =
   in
   if common = [] then None else scan [] 128 rest
 
-let extend_identical_declaration_rules (rules : Stylesheet.rule list) :
+let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
   let rec walk acc = function
     | [] -> List.rev acc
     | r :: rest -> (
         if not (rule_identical_extend_eligible r) then walk (r :: acc) rest
         else
-          match try_extend_identical_rule r rest with
+          match try_extend_identical_rule ~ctx r rest with
           | None -> walk (r :: acc) rest
           | Some (replacement, tail) ->
               walk (List.rev_append replacement acc) tail)
@@ -3924,6 +4221,19 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
                 group acc [ r ] rest)
   in
   preserve_list rules (List.rev (group [] [] rules))
+
+let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
+  let rec walk acc = function
+    | [] -> List.rev acc
+    | r :: rest -> (
+        if not (rule_factor_eligible r) then walk (r :: acc) rest
+        else
+          match try_factor_equal_anchor r rest with
+          | None -> walk (r :: acc) rest
+          | Some (replacement, tail) ->
+              walk (List.rev_append replacement acc) tail)
+  in
+  preserve_list rules (walk [] rules)
 
 (** {1 Statement Optimization} *)
 
@@ -4721,9 +5031,19 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
 let rec factor_rules_to_fixpoint ~ctx fuel rules =
   if fuel <= 0 then rules
   else
+    let rules =
+      match ctx.scope with
+      | `Stylesheet -> merge_same_selector_gaps rules
+      | `Fragment -> rules
+    in
     let rules' =
-      combine_identical_rules rules
-      |> extend_identical_declaration_rules |> factor_common_declarations
+      rules |> combine_identical_rules
+      |> extend_identical_declaration_rules ~ctx
+      |> factor_common_declarations
+      |> (fun rules ->
+      match ctx.scope with
+      | `Stylesheet -> factor_anchor_gaps rules
+      | `Fragment -> rules)
       |> extend_factored_declarations |> merge_rules
       |> list_map_preserve (finalize_rule_without_nested ~ctx)
     in

@@ -4245,10 +4245,6 @@ let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
 let normalize_border ?(lossless = false) : border -> border =
  fun value ->
   match value with
-  | None ->
-      Shorthand { width = Some Zero; style = Option.None; color = Option.None }
-  | Shorthand { width = Option.None; style = Some None; color = Option.None } ->
-      Shorthand { width = Some Zero; style = Option.None; color = Option.None }
   | Shorthand s ->
       let color = option_map_preserve (normalize_color ~lossless) s.color in
       if color == s.color then value else Shorthand { s with color }

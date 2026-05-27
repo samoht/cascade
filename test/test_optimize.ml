@@ -870,6 +870,12 @@ let pp_min css =
       Css.to_string ~minify:true stylesheet |> String.trim
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
+let assert_pp_and_optimize input ~minified ~optimized =
+  Alcotest.(check string) (input ^ " [minify]") minified (pp_min input);
+  Alcotest.(check string)
+    (input ^ " [minify+optimize]")
+    optimized (minify_str input)
+
 let test_factor_shared_declarations () =
   (* Two sibling rules sharing a declaration subset factor that subset into a
      combined selector, leaving each rule its unique declarations. Safe here -
@@ -908,6 +914,22 @@ let test_no_factor_across_conflict () =
     "no grouping across a conflicting same-selector override"
     ".x{color:#00f}.y{color:red}"
     (minify_str ".x{color:red}.x{color:blue}.y{color:red}")
+
+let test_zero_box_side_covered_by_shorthand () =
+  (* Margin and padding have only the four side longhands, so a zero shorthand
+     and same-side zero longhand are equivalent on that side. Border is not:
+     border shorthands also carry style and color state. *)
+  assert_pp_and_optimize ".x{margin:0;margin-top:0}"
+    ~minified:".x{margin:0;margin-top:0}" ~optimized:".x{margin:0}";
+  assert_pp_and_optimize ".x{margin-top:0}.x{margin:0}"
+    ~minified:".x{margin-top:0}.x{margin:0}" ~optimized:".x{margin:0}";
+  assert_pp_and_optimize ".x{padding:0}.x{padding-left:0}"
+    ~minified:".x{padding:0}.x{padding-left:0}" ~optimized:".x{padding:0}";
+  assert_pp_and_optimize ".x{margin:5px}.x{margin-top:0}"
+    ~minified:".x{margin:5px}.x{margin-top:0}" ~optimized:".x{margin:0 5px 5px}";
+  assert_pp_and_optimize ".x{border:0}.x{border-top-width:0}"
+    ~minified:".x{border:0}.x{border-top-width:0}"
+    ~optimized:".x{border:0;border-top-width:0}"
 
 let test_keep_zero_duration_transition () =
   (* transition:color has 0s duration, so nothing animates now - but it still
@@ -3373,6 +3395,9 @@ let selector_merging_tests =
       `Quick,
       test_factoring_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
+    ( "zero box side covered by shorthand",
+      `Quick,
+      test_zero_box_side_covered_by_shorthand );
     ( "0s transition keeps its property",
       `Quick,
       test_keep_zero_duration_transition );
