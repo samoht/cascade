@@ -52,3 +52,6 @@ val compare : 'a node -> 'a node -> int
 
 val to_list : 'a t -> 'a list
 (** [to_list t] is the live elements in order. *)
+
+val nodes : 'a t -> 'a node list
+(** [nodes t] are the live handles in order. *)
