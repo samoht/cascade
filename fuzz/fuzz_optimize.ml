@@ -156,25 +156,41 @@ let rec boundary_shape = function
   | Layer_decl names -> [ "layer-decl:" ^ String.concat "," names ]
   | Layer (name, block) ->
       let name = Option.value ~default:"<anonymous>" name in
-      (("layer:" ^ name) :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/layer" ]
-  | Media (_, block) -> ("media" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/media" ]
+      ("layer:" ^ name)
+      :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
+      @ [ "/layer" ]
+  | Media (_, block) ->
+      ("media" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/media" ]
   | Supports (condition, block) when baseline_true_supports condition ->
       Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
   | Supports (_, block) ->
-      ("supports" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/supports" ]
+      ("supports" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/supports" ]
   | Container (_, _, block) ->
-      ("container" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/container" ]
-  | When (_, block) -> ("when" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/when" ]
-  | Else (_, block) -> ("else" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/else" ]
+      ("container" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/container" ]
+  | When (_, block) ->
+      ("when" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/when" ]
+  | Else (_, block) ->
+      ("else" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/else" ]
   | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
-      ("scope" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/scope" ]
+      ("scope" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/scope" ]
   | Starting_style block ->
-      ("starting-style" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/starting-style" ]
+      "starting-style"
+      :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
+      @ [ "/starting-style" ]
   | Origin (_, block) ->
-      ("origin" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/origin" ]
+      ("origin" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block)
+      @ [ "/origin" ]
   | Moz_document (_, block) ->
-      ("moz-document" :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block) @ [ "/moz-document" ]
+      "moz-document"
+      :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
+      @ [ "/moz-document" ]
   (* CSS Syntax 3 section 8.3: @charset is an encoding declaration byte
      sequence, not an actual at-rule. Parsed occurrences are invalid and may be
      dropped, so it is not a cascade boundary shape invariant. *)
@@ -192,7 +208,6 @@ let rec boundary_shape = function
   | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
   | Property _ -> [ "property" ]
   | Bang_comment _ -> [ "bang-comment" ]
-
 
 let boundary_shapes ss = Fuzz_helpers.shapes_with_rule_runs ~boundary_shape ss
 

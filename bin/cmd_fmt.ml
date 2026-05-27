@@ -1,8 +1,8 @@
 open Cascade
 open Cmdliner
 
-let process_css ~input_path ~minify ~scope ~flatten_nesting ~enforce_spec
-    ~inline_imports_flag ~inline_vars_flag ~keep_vars =
+let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
+    ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -23,10 +23,10 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~enforce_spec
     (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
       if minify then
-        Css.optimize ~scope ~flatten_nesting ~enforce_spec stylesheet
+        Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec stylesheet
       else stylesheet
     in
-    let output = Css.to_string ~minify ~enforce_spec stylesheet in
+    let output = Css.to_string ~minify ~lossless ~enforce_spec stylesheet in
     Cli_io.print_output output
   with
   | Sys_error msg ->
@@ -85,6 +85,15 @@ let enforce_spec_arg =
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~doc)
 
+let lossless_arg =
+  let doc =
+    "Disable colour approximation under $(b,--minify). Exact colour \
+     canonicalisation still runs, but static modern colour-space and \
+     color-mix() values stay functional and colour channels keep their normal \
+     serialisation precision. Has no effect without $(b,--minify)."
+  in
+  Arg.(value & flag & info [ "lossless" ] ~doc)
+
 let flatten_nesting_arg =
   let doc =
     "Compatibility transform: flatten nested style rules into top-level rules \
@@ -127,6 +136,7 @@ let term =
         minify
         scope
         flatten_nesting
+        lossless
         enforce_spec
         inline_imports_flag
         inline_vars_flag
@@ -144,11 +154,13 @@ let term =
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
         if scope = `Stylesheet && not minify then
           Fmt.epr "Warning: --scope=stylesheet has no effect without --minify@.";
+        if lossless && not minify then
+          Fmt.epr "Warning: --lossless has no effect without --minify@.";
         if enforce_spec && not minify then
           Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
-        process_css ~input_path:input ~minify ~scope ~flatten_nesting
+        process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
           ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars)
-    $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg
+    $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg)
 
 let man =

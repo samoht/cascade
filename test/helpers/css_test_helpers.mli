@@ -75,6 +75,10 @@ val decl_optimizes_to : ?held:string -> into:string -> string -> unit
 (** [decl_optimizes_to ?held ~into input] is the full-declaration variant of
     {!decl_optimizes}: [input], [held] and [into] include the property name. *)
 
+val decl_lossless : prop:string -> into:string -> string -> unit
+(** [decl_lossless ~prop ~into input] checks the minify+optimize path with
+    [~lossless:true] on both optimization and printing. *)
+
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
 (** [check_parse_error_fields name expected actual] compares message and got

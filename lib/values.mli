@@ -195,12 +195,14 @@ val normalize_number : number -> number
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. *)
 
-val normalize_color : in_feature_query:bool -> color -> color
-(** [normalize_color ~in_feature_query c] canonicalises a color to its shortest
-    spelling: a static colour in any space folds through sRGB to hex/named, hex
-    shortens, and named↔hex picks the shorter. [in_feature_query] keeps a colour
-    untouched inside an [@supports] test, where the exact spelling is the
-    capability being probed. *)
+val normalize_color : ?lossless:bool -> in_feature_query:bool -> color -> color
+(** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
+    shortest spelling: a static colour in any space folds through sRGB to
+    hex/named, hex shortens, and named↔hex picks the shorter. [in_feature_query]
+    keeps a colour untouched inside an [@supports] test, where the exact
+    spelling is the capability being probed. [lossless] disables lossy static
+    colour-space and color-mix folds while preserving exact named/hex and
+    byte-exact rgb folds. *)
 
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.

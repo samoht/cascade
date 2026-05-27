@@ -784,12 +784,12 @@ let rec statements_for_inline statement =
    observationally equivalent to what a fresh parse would produce. Compose
    {!optimize}, {!resolve_theme}, {!inline_vars} upstream when those rewrites
    are needed. *)
-let to_string ?(minify = false) ?indent ?enforce_spec stylesheet =
+let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
     |> Optimize.drop_empty_rules
   in
-  Stylesheet.to_string ~minify ?indent ?enforce_spec stylesheet
+  Stylesheet.to_string ~minify ?indent ?lossless ?enforce_spec stylesheet
 
 let pp = to_string
 
@@ -801,8 +801,8 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   in
   inline_style_of_declarations ?minify ?mode declarations
 
-let optimize ?scope ?flatten_nesting ?enforce_spec stylesheet =
-  Optimize.stylesheet ?scope ?flatten_nesting ?enforce_spec stylesheet
+let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec stylesheet =
+  Optimize.stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec stylesheet
 
 let flatten_nesting = Optimize.flatten_nesting
 

@@ -256,20 +256,20 @@ let list_map_preserve f xs =
   in
   if !changed then ys else xs
 
-let rec normalize_value : type a. a syntax -> a -> a =
- fun syntax value ->
+let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
+ fun ?(lossless = false) syntax value ->
   match syntax with
-  | Color -> Values.normalize_color ~in_feature_query:false value
+  | Color -> Values.normalize_color ~lossless ~in_feature_query:false value
   | Or (left, right) -> (
       match value with
       | Either.Left v ->
-          let v' = normalize_value left v in
+          let v' = normalize_value ~lossless left v in
           if v' == v then value else Either.Left v'
       | Either.Right v ->
-          let v' = normalize_value right v in
+          let v' = normalize_value ~lossless right v in
           if v' == v then value else Either.Right v')
-  | Plus syntax -> list_map_preserve (normalize_value syntax) value
-  | Hash syntax -> list_map_preserve (normalize_value syntax) value
+  | Plus syntax -> list_map_preserve (normalize_value ~lossless syntax) value
+  | Hash syntax -> list_map_preserve (normalize_value ~lossless syntax) value
   | Length | Number | Integer | Percentage | Length_percentage | Angle | Time
   | Resolution | Custom_ident | String | Url | Image | Transform_function
   | Transform_list | Universal | Ident_keyword _ ->

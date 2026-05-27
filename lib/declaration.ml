@@ -32,13 +32,15 @@ let rec important = function
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
-let rec normalize = function
+let rec normalize ?(lossless = false) = function
   | Declaration { property; value; important } as decl ->
-      let value' = Properties.normalize_property_value property value in
+      let value' =
+        Properties.normalize_property_value ~lossless property value
+      in
       if value' == value then decl
       else Declaration { property; value = value'; important }
   | Theme_guarded g as themed ->
-      let decl = normalize g.decl in
+      let decl = normalize ~lossless g.decl in
       if decl == g.decl then themed else Theme_guarded { g with decl }
 
 (* Helper for raw custom properties - primarily for internal use *)

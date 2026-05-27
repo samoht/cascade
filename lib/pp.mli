@@ -43,6 +43,10 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) are suppressed
           there. *)
+  lossless : bool;
+      (** Set under [--minify --lossless]: suppress colour-channel rounding and
+          other colour approximations while keeping exact serialisation
+          shortenings. *)
   enforce_spec : bool;
       (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
           serialisation without evergreen-target facts, so target-dependent
@@ -60,6 +64,7 @@ val ctx :
   ?minify:bool ->
   ?indent:int ->
   ?inline:bool ->
+  ?lossless:bool ->
   ?enforce_spec:bool ->
   Buffer.t ->
   ctx
@@ -70,6 +75,7 @@ val to_buffer :
   ?minify:bool ->
   ?indent:int ->
   ?inline:bool ->
+  ?lossless:bool ->
   ?enforce_spec:bool ->
   Buffer.t ->
   'a t ->
@@ -83,6 +89,7 @@ val size :
   ?minify:bool ->
   ?indent:int ->
   ?inline:bool ->
+  ?lossless:bool ->
   ?enforce_spec:bool ->
   'a t ->
   'a ->
@@ -95,6 +102,7 @@ val to_string :
   ?minify:bool ->
   ?indent:int ->
   ?inline:bool ->
+  ?lossless:bool ->
   ?enforce_spec:bool ->
   'a t ->
   'a ->

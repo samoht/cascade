@@ -23,6 +23,10 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) must be
           suppressed there. *)
+  lossless : bool;
+      (** Set under [--minify --lossless]: suppress colour-channel rounding and
+          other colour approximations while keeping exact serialisation
+          shortenings. *)
   enforce_spec : bool;
       (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
           serialisation but without evergreen-target facts, so target-dependent
@@ -67,7 +71,8 @@ let resolve_indent ~minify = function
   | Some _ as i -> i
   | None -> if minify then None else Some 2
 
-let v ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out =
+let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
+    ?(enforce_spec = false) out =
   {
     minify;
     level = 0;
@@ -77,27 +82,30 @@ let v ?(minify = false) ?indent ?(inline = false) ?(enforce_spec = false) out =
     in_function = false;
     in_calc = false;
     in_feature_query = false;
+    lossless;
     enforce_spec;
   }
 
-let ctx ?minify ?indent ?inline ?enforce_spec buf =
-  v ?minify ?indent ?inline ?enforce_spec (Out_buffer buf)
+let ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf =
+  v ?minify ?indent ?inline ?lossless ?enforce_spec (Out_buffer buf)
 
-let to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a =
-  let ctx = ctx ?minify ?indent ?inline ?enforce_spec buf in
+let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
+  let ctx = ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf in
   pp ctx a
 
-let to_string ?minify ?indent ?inline ?enforce_spec pp a =
+let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
   let buf = Buffer.create 1024 in
-  to_buffer ?minify ?indent ?inline ?enforce_spec buf pp a;
+  to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a;
   Buffer.contents buf
 
 (* Byte length of [pp a] with no allocation: the counter sink records only the
    running length and last byte, so there is no [Buffer] and no result
    string. *)
-let size ?minify ?indent ?inline ?enforce_spec pp a =
+let size ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
   let counter = { count = 0; last = '\000' } in
-  let ctx = v ?minify ?indent ?inline ?enforce_spec (Out_counter counter) in
+  let ctx =
+    v ?minify ?indent ?inline ?lossless ?enforce_spec (Out_counter counter)
+  in
   pp ctx a;
   counter.count
 
@@ -369,7 +377,7 @@ let pct ctx f =
      [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%] are no
      longer equivalent, and dimension/percentage-typed grammars reject a bare
      [0]). *)
-  float ctx (round_sig 6 f);
+  float ctx (if ctx.lossless then f else round_sig 6 f);
   string ctx "%"
 
 let sep ctx s =

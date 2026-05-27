@@ -105,12 +105,17 @@ val apply_property_duplication : t -> t
     browser compatibility without other optimizations. *)
 
 val stylesheet :
-  ?scope:scope -> ?flatten_nesting:bool -> ?enforce_spec:bool -> t -> t
-(** [stylesheet ?scope ?flatten_nesting ?enforce_spec ss] optimizes an entire
-    stylesheet while preserving cascade semantics. When [@supports] blocks are
-    present alongside top-level rules, optimization is limited because the
-    stylesheet structure separates rules from [@supports] blocks, losing their
-    relative ordering.
+  ?scope:scope ->
+  ?flatten_nesting:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  t
+(** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ss] optimizes an
+    entire stylesheet while preserving cascade semantics. When [@supports]
+    blocks are present alongside top-level rules, optimization is limited
+    because the stylesheet structure separates rules from [@supports] blocks,
+    losing their relative ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
     desugared into flat rules: child selectors with [&] have the parent selector
@@ -120,6 +125,9 @@ val stylesheet :
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.
+
+    [lossless] disables colour approximation while keeping exact colour
+    canonicalisation.
 
     When [enforce_spec] is [false] (default) the optimizer may treat baseline
     feature queries as known facts and elide [@supports] guards whose condition
