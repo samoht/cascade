@@ -5092,6 +5092,17 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
     if rules' == rules then rules
     else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
 
+(* [@scope] bounds are stored as selector text. Parse, canonicalize, and
+   re-serialise so a list bound is de-duplicated and ordered like any other
+   selector; keep the original text when the selector is unchanged or
+   unparsable. *)
+let canonicalize_scope_selector s =
+  match Selector.of_string s with
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> s
+  | sel ->
+      let canon = Selector.canonicalize sel in
+      if canon == sel then s else Selector.to_string ~minify:false canon
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -5127,10 +5138,13 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
   | Supports (cond, block) :: rest ->
       process_supports_statement ~ctx ~enforce_spec acc cond block rest
   | (Scope (start, end_, block) as stmt) :: rest ->
+      let start' = option_map_preserve canonicalize_scope_selector start in
+      let end_' = option_map_preserve canonicalize_scope_selector end_ in
       let optimized_block = statements ~ctx ~enforce_spec block in
       let optimized =
-        if optimized_block == block then stmt
-        else Scope (start, end_, optimized_block)
+        if start' == start && end_' == end_ && optimized_block == block then
+          stmt
+        else Scope (start', end_', optimized_block)
       in
       process_statements ~ctx ~enforce_spec (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
