@@ -6,9 +6,10 @@
     compound determines which DOM elements it matches, and two summaries are
     {b definitely disjoint} when no element can match both. The summary records
     the cheap-to-extract facts about the subject (rightmost compound) and a
-    [complex] bit that flags anything the summary can't characterize. Functions
-    that ask "do these two selectors overlap?" use the summary instead of
-    walking the selector tree on every pairwise call. *)
+    [complex] bit that flags anything the summary can't fully characterize. Even
+    complex summaries retain cheap facts that are still sound for proving
+    disjointness. Functions that ask "do these two selectors overlap?" use the
+    summary instead of walking the selector tree on every pairwise call. *)
 
 type t
 (** Structural summary of a selector's subject compound. *)
@@ -23,15 +24,19 @@ val may_overlap : t -> t -> bool
     selectors. [false] is a hard guarantee that no element matches both, modulo
     invalid HTML with duplicate IDs.
 
-    The predicate is conservative: it returns [true] whenever either summary is
-    [complex], or whenever the cheap structural checks can't rule overlap out.
-    Disjointness fires on:
+    The predicate is conservative: it returns [true] whenever the cheap
+    structural checks can't rule overlap out. Disjointness fires on:
 
     - different pseudo-elements ([::before] vs [::after], or one with and one
       without);
     - different element names in the subject ([div] vs [p]);
     - both subjects carry non-empty, disjoint ID sets (an element has at most
-      one ID, so two selectors with distinct mandatory IDs can't match it). *)
+      one ID, so two selectors with distinct mandatory IDs can't match it);
+    - conflicting exact attribute requirements on the same subject attribute;
+    - simple required-token conflicts with [:not(...)] on the subject;
+    - simple child-position conflicts such as [:first-child] vs
+      [:nth-child(even)];
+    - conflicting immediate-parent summaries for child-combinator selectors. *)
 
 val ids : t -> string list
 (** [ids s] returns the IDs that appear in the summary's subject, in sorted
@@ -45,6 +50,7 @@ val element : t -> string option
     universal / unspecified. *)
 
 val is_complex : t -> bool
-(** [is_complex s] is [true] when the summary fell back to "treat as overlapping
-    with everything". Useful for tests that want to flag selectors the cheap
-    check doesn't model. *)
+(** [is_complex s] is [true] when the summary contains selector structure the
+    cheap check doesn't fully model. Useful for tests that want to flag
+    selectors whose overlap result is conservative unless one of the retained
+    facts proves disjointness. *)

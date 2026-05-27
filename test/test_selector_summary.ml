@@ -60,7 +60,9 @@ let disjointness () =
     "button.secondary";
   check_overlap "different elements are disjoint" false "button" "a";
   check_overlap "element disjoint wins with shared class" false "button.x" "a.x";
-  check_overlap "complex summary is conservative" true ".a:hover" "button";
+  check_overlap "complex summary keeps subject facts" false "a:hover" "button";
+  check_overlap "complex summary is conservative without conflict" true
+    ".a:hover" "button";
   check_overlap "selector list is conservative" true ".a,.b" ".c"
 
 let pseudo_elements () =
@@ -76,6 +78,61 @@ let pseudo_elements () =
   check_overlap "legacy and modern after spelling may overlap" true ".x:after"
     ".x::after"
 
+let attributes () =
+  check_overlap "different exact attribute values are disjoint" false
+    "[type=button]" "[type=text]";
+  check_overlap "same exact attribute value may overlap" true "[type=button]"
+    "[type=button]";
+  check_overlap "presence and exact attribute may overlap" true "[type]"
+    "[type=button]";
+  check_overlap "case-insensitive exact attributes may overlap by case" true
+    "[type=\"BUTTON\" i]" "[type=button]";
+  check_overlap "default attribute case stays conservative" true
+    "[type=\"BUTTON\"]" "[type=button]";
+  check_overlap "case-insensitive exact attributes can prove disjoint" false
+    "[type=\"button\" i]" "[type=text]";
+  check_overlap "different attributes stay conservative" true "[type=button]"
+    "[role=textbox]"
+
+let child_context () =
+  check_overlap "different immediate parent ids are disjoint" false "#a > .item"
+    "#b > .item";
+  check_overlap "same immediate parent id may overlap" true "#a > .item"
+    "#a > .item";
+  check_overlap "different descendant ancestors stay conservative" true
+    "#a .item" "#b .item";
+  check_overlap "child parent disjointness combines with complex subjects" false
+    "#a > .item:hover" "#b > .item:focus"
+
+let negation () =
+  check_overlap "required class conflicts with not class" false ".item.active"
+    ".item:not(.active)";
+  check_overlap "required id conflicts with not id" false "#save" ":not(#save)";
+  check_overlap "required element conflicts with not element" false "button"
+    ":not(button)";
+  check_overlap "compound not stays conservative" true ".active"
+    ":not(.active.disabled)";
+  check_overlap "required exact attr conflicts with not exact attr" false
+    "[data-state=open]" ":not([data-state=open])";
+  check_overlap "different exact attr does not conflict with not exact attr"
+    true "[data-state=closed]" ":not([data-state=open])"
+
+let child_positions () =
+  check_overlap "first child and even nth child are disjoint" false
+    ":first-child" ":nth-child(even)";
+  check_overlap "first child and odd nth child may overlap" true ":first-child"
+    ":nth-child(odd)";
+  check_overlap "different nth indexes are disjoint" false ":nth-child(2)"
+    ":nth-child(3)";
+  check_overlap "odd and even nth child are disjoint" false ":nth-child(odd)"
+    ":nth-child(even)";
+  check_overlap "first-child can overlap last-child on an only child" true
+    ":first-child" ":last-child";
+  check_overlap "nth fact conflicts with matching not nth" false ":nth-child(2)"
+    ":not(:nth-child(even))";
+  check_overlap "broad nth overlap with narrow not nth stays conservative" true
+    ":nth-child(even)" ":not(:nth-child(2))"
+
 let optimizer_dependency_examples () =
   (* These are the real shapes the optimizer cares about when approximating the
      CSS graph from Hague/Lin/Hong. A [false] result lets a rewrite cross a
@@ -86,6 +143,16 @@ let optimizer_dependency_examples () =
     ".theme .item" ".dialog .item";
   check_overlap "rightmost ids still prove descendant selectors disjoint" false
     ".theme #save" ".dialog #cancel";
+  check_overlap "complex selectors keep id disjointness" false "#a:hover"
+    "#b:focus";
+  check_overlap "exact subject attributes prove disjoint" false
+    "[data-state=open]" "[data-state=closed]";
+  check_overlap "simple :not required token proves disjoint" false
+    ".item.active" ".item:not(.active)";
+  check_overlap "nth-child parity proves disjoint" false ".row:nth-child(odd)"
+    ".row:nth-child(even)";
+  check_overlap "child combinator parent conflicts prove disjoint" false
+    "#toolbar > .item" "#dialog > .item";
   check_overlap "Tailwind prose selector stays conservative" true
     ".prose \
      :where(kbd):not(:where([class~=\"not-prose\"],[class~=\"not-prose\"] *))"
@@ -100,6 +167,10 @@ let suite =
       Alcotest.test_case "subject compound" `Quick subject_compound;
       Alcotest.test_case "disjointness" `Quick disjointness;
       Alcotest.test_case "pseudo-elements" `Quick pseudo_elements;
+      Alcotest.test_case "attributes" `Quick attributes;
+      Alcotest.test_case "child context" `Quick child_context;
+      Alcotest.test_case "negation" `Quick negation;
+      Alcotest.test_case "child positions" `Quick child_positions;
       Alcotest.test_case "optimizer dependency examples" `Quick
         optimizer_dependency_examples;
     ] )
