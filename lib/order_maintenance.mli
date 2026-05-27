@@ -38,6 +38,10 @@ val insert_after : 'a t -> 'a node -> 'a -> 'a node
 (** [insert_after t n x] inserts [x] immediately after [n] and returns its
     handle. [n] must be live. *)
 
+val insert_before : 'a t -> 'a node -> 'a -> 'a node
+(** [insert_before t n x] inserts [x] immediately before [n] and returns its
+    handle. [n] must be live. *)
+
 val remove : 'a t -> 'a node -> unit
 (** [remove t n] deletes [n] from the order. [n] must be live; it must not be
     used afterwards. *)

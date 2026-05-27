@@ -64,6 +64,31 @@ let rec insert_after t n x =
     t.count <- t.count + 1;
     node
 
+let rec insert_before t n x =
+  if not n.live then invalid_arg "Order_maintenance.insert_before: stale node";
+  match n.prev with
+  | Some p -> insert_after t p x
+  | None ->
+      (* [n] is the head: pick a tag between 0 and [n]'s tag. *)
+      let lo = 0 and hi = n.tag in
+      if hi - lo <= 1 then (
+        relabel t;
+        insert_before t n x)
+      else
+        let node =
+          {
+            data = x;
+            tag = lo + ((hi - lo) / 2);
+            prev = None;
+            next = Some n;
+            live = true;
+          }
+        in
+        n.prev <- Some node;
+        t.head <- Some node;
+        t.count <- t.count + 1;
+        node
+
 let add_last t x =
   match t.tail with
   | Some tail -> insert_after t tail x

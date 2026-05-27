@@ -62,5 +62,9 @@ val insert_after : t -> node -> Stylesheet.rule -> node
 (** [insert_after t n r] inserts a fresh rule [r] just after [n] (e.g. a shared
     factored rule) and returns its handle. *)
 
+val insert_before : t -> node -> Stylesheet.rule -> node
+(** [insert_before t n r] inserts a fresh rule [r] just before [n] (e.g. a
+    shared factored rule placed ahead of the run it was hoisted from). *)
+
 val remove : t -> node -> unit
 (** [remove t n] deletes [n] from the pool. *)
