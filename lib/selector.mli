@@ -106,6 +106,12 @@ val map : (t -> t) -> t -> t
     node. This is useful for transforming class names throughout a complex
     selector structure. *)
 
+val canonicalize : t -> t
+(** [canonicalize selector] removes lexical-only redundancy so that distinct
+    ASTs denoting the same selector become structurally equal: the implied
+    universal in a compound is dropped ([*::before] -> [::before]) and a
+    one-part compound collapses to that part. Idempotent. *)
+
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)
 

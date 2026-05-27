@@ -2866,20 +2866,17 @@ let finalize_rule_without_nested ~ctx (rule : rule) : rule =
   rule_with_declarations rule declarations
 
 (* Compare selectors as sets when both are comma lists: [h1, h2] and [h2, h1]
-   target the same elements and should merge. Normalise by sorting the list
-   entries via their minified spelling. *)
-let canonical_selector_key (sel : Selector.t) : string =
+   target the same elements and should merge. Sort the list entries by stdlib
+   structural order so the key is order-insensitive without serialising to a
+   string. Selectors are canonicalised on entry (see [Selector.canonicalize]),
+   so structural equality of the AST matches equality of the minified text. *)
+let canonical_selector_key (sel : Selector.t) : Selector.t list =
   match Selector.as_list sel with
-  | Some xs ->
-      xs
-      |> List.map (Selector.to_string ~minify:true)
-      |> List.sort String.compare |> String.concat ","
-  | None -> Selector.to_string ~minify:true sel
+  | Some xs -> List.sort compare xs
+  | None -> [ sel ]
 
 let rules_have_same_selector (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
-  String.equal
-    (canonical_selector_key prev.selector)
-    (canonical_selector_key rule.selector)
+  canonical_selector_key prev.selector = canonical_selector_key rule.selector
   && not (contains_vendor_pseudo_element rule.selector)
 
 let merge_two_adjacent_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) :
@@ -3773,9 +3770,7 @@ let skipped_blocks_same_selector_merge target skipped =
 let merge_same_selector_gaps (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
   let same_selector a b =
-    String.equal
-      (canonical_selector_key a.selector)
-      (canonical_selector_key b.selector)
+    canonical_selector_key a.selector = canonical_selector_key b.selector
   in
   let rec scan_for_match anchor skipped_rev fuel = function
     | [] -> None
@@ -4782,7 +4777,8 @@ let single_selector_keys r =
   | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
 
 let later_declarations_by_selector_key indexed =
-  let later_by_key : (string, (int * Declaration.t list) list) Hashtbl.t =
+  let later_by_key :
+      (Selector.t list, (int * Declaration.t list) list) Hashtbl.t =
     Hashtbl.create 16
   in
   List.iter
@@ -5253,6 +5249,10 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
           else list_map_preserve drop_nesting_prefix nested
         in
         let rule = rule_with_nested rule nested in
+        let rule =
+          let selector = Selector.canonicalize rule.selector in
+          if selector == rule.selector then rule else { rule with selector }
+        in
         merge_lone_nested_rule rule)
       rules
   in
