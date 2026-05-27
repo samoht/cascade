@@ -2237,11 +2237,7 @@ and pp : t Pp.t =
             (if Pp.minified ctx then Parser.to_string_minified args
              else Parser.string_of_components args))
         args
-  | Compound selectors ->
-      (* pp is lexical-only: hold the redundant universal in both pretty and
-         minify. Dropping it is a node change, done by [canonicalize] in the
-         optimizer, never here. *)
-      List.iter (pp ctx) selectors
+  | Compound selectors -> List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
       (match left with
@@ -2251,110 +2247,102 @@ and pp : t Pp.t =
   | Relative (comb, right) ->
       pp_relative_combinator ctx comb;
       pp ctx right
-  | List selectors ->
-      (* CSS Selectors 4 sec. 4.2: a selector list is an unordered set; order is
-         irrelevant for matching, specificity, and invalidation. Under minify we
-         sort the alternatives by their printed form so cascade emits a
-         canonical order (e.g. [.b, .a] -> [.a, .b]). The set is also
-         de-duplicated because duplicate entries match the same elements. *)
-      let seen = Hashtbl.create 4 in
-      let with_key =
-        List.filter_map
-          (fun s ->
-            let key = Pp.to_string ~minify:true pp s in
-            if Hashtbl.mem seen key then None
-            else (
-              Hashtbl.add seen key ();
-              Some (key, s)))
-          selectors
-      in
-      let final =
-        if Pp.minified ctx then
-          List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) with_key
-        else with_key
-      in
-      Pp.list ~sep:Pp.comma pp ctx (List.map snd final)
+  | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
   | Nesting -> Pp.char ctx '&'
 
-(** Recursively map over all selectors in the tree *)
-let rec map f = function
-  | Combined (left, combinator, right) ->
-      let left' = map f left in
-      let right' = map f right in
-      f (Combined (left', combinator, right'))
-  | Relative (combinator, right) ->
-      let right' = map f right in
-      f (Relative (combinator, right'))
-  | Compound selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Compound selectors')
-  | Where selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Where selectors')
-  | Is selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Is selectors')
-  | Not selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Not selectors')
-  | Has selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Has selectors')
-  | Moz_any_call selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Moz_any_call selectors')
-  | Webkit_any_call selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Webkit_any_call selectors')
-  | List selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (List selectors')
-  | Nth_child (nth, Some selectors) ->
-      let selectors' = List.map (map f) selectors in
-      f (Nth_child (nth, Some selectors'))
-  | Nth_last_child (nth, Some selectors) ->
-      let selectors' = List.map (map f) selectors in
-      f (Nth_last_child (nth, Some selectors'))
-  | Nth_of_type (nth, Some selectors) ->
-      let selectors' = List.map (map f) selectors in
-      f (Nth_of_type (nth, Some selectors'))
-  | Nth_last_of_type (nth, Some selectors) ->
-      let selectors' = List.map (map f) selectors in
-      f (Nth_last_of_type (nth, Some selectors'))
-  | Host (Some selectors) ->
-      let selectors' = List.map (map f) selectors in
-      f (Host (Some selectors'))
-  | Current_of selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Current_of selectors')
-  | Host_context selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Host_context selectors')
-  | Slotted selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Slotted selectors')
-  | Cue selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Cue selectors')
-  | Cue_region selectors ->
-      let selectors' = List.map (map f) selectors in
-      f (Cue_region selectors')
-  | other -> f other
+(* [List.map] that returns the input list itself when [f] changes no element, so
+   an unchanged subtree keeps its physical identity. *)
+let list_map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        let y = f x in
+        loop (changed || not (y == x)) (y :: acc) rest
+  in
+  loop false [] xs
 
-(* Canonicalise lexical-only variations so structurally distinct ASTs that
-   denote the same selector share one representation. [drop_redundant_universal]
-   removes the implied [*] from a multi-part compound ([*::before] ->
-   [::before], [*.foo] -> [.foo]); a compound left with one part collapses to
-   that part so it equals the bare form. Mirrors the minified pretty-printer,
-   but in the AST - so equality (and any printer) sees the canonical form, not a
-   minify-only choice. *)
+let rec list_same xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> x == y && list_same xs ys
+  | _ -> false
+
+(** Recursively map over all selectors in the tree. [f] is applied bottom-up; a
+    node whose children are unchanged and for which [f] returns its argument
+    keeps its physical identity. *)
+let rec map f node =
+  let lst ctor xs =
+    let xs' = list_map_preserve (map f) xs in
+    if xs' == xs then node else ctor xs'
+  in
+  let node' =
+    match node with
+    | Combined (left, combinator, right) ->
+        let left' = map f left and right' = map f right in
+        if left' == left && right' == right then node
+        else Combined (left', combinator, right')
+    | Relative (combinator, right) ->
+        let right' = map f right in
+        if right' == right then node else Relative (combinator, right')
+    | Compound xs -> lst (fun xs -> Compound xs) xs
+    | Where xs -> lst (fun xs -> Where xs) xs
+    | Is xs -> lst (fun xs -> Is xs) xs
+    | Not xs -> lst (fun xs -> Not xs) xs
+    | Has xs -> lst (fun xs -> Has xs) xs
+    | Moz_any_call xs -> lst (fun xs -> Moz_any_call xs) xs
+    | Webkit_any_call xs -> lst (fun xs -> Webkit_any_call xs) xs
+    | List xs -> lst (fun xs -> List xs) xs
+    | Nth_child (nth, Some xs) -> lst (fun xs -> Nth_child (nth, Some xs)) xs
+    | Nth_last_child (nth, Some xs) ->
+        lst (fun xs -> Nth_last_child (nth, Some xs)) xs
+    | Nth_of_type (nth, Some xs) ->
+        lst (fun xs -> Nth_of_type (nth, Some xs)) xs
+    | Nth_last_of_type (nth, Some xs) ->
+        lst (fun xs -> Nth_last_of_type (nth, Some xs)) xs
+    | Host (Some xs) -> lst (fun xs -> Host (Some xs)) xs
+    | Current_of xs -> lst (fun xs -> Current_of xs) xs
+    | Host_context xs -> lst (fun xs -> Host_context xs) xs
+    | Slotted xs -> lst (fun xs -> Slotted xs) xs
+    | Cue xs -> lst (fun xs -> Cue xs) xs
+    | Cue_region xs -> lst (fun xs -> Cue_region xs) xs
+    | other -> other
+  in
+  f node'
+
+(* Rewrite a selector to its canonical representation so that selectors denoting
+   the same thing are structurally equal. Drops the implied [*] from a
+   multi-part compound ([*::before] -> [::before], [*.foo] -> [.foo]), collapses
+   a one-part compound to that part, and de-duplicates and sorts selector-list
+   alternatives by printed form. *)
 let canonicalize sel =
   map
-    (function
+    (fun node ->
+      match node with
       | Compound components -> (
           match drop_redundant_universal components with
           | [ single ] -> single
-          | components -> Compound components)
+          | components' ->
+              if list_same components' components then node
+              else Compound components')
+      | List selectors ->
+          (* A selector list is an unordered set (Selectors 4 sec. 4.2): drop
+             duplicate alternatives and sort the rest by printed form. *)
+          let seen = Hashtbl.create (List.length selectors) in
+          let uniq =
+            List.filter_map
+              (fun s ->
+                let key = Pp.to_string ~minify:true pp s in
+                if Hashtbl.mem seen key then None
+                else (
+                  Hashtbl.add seen key ();
+                  Some (key, s)))
+              selectors
+          in
+          let sorted =
+            List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq
+            |> List.map snd
+          in
+          if list_same sorted selectors then node else List sorted
       | other -> other)
     sel
 
