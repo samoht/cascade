@@ -2238,11 +2238,10 @@ and pp : t Pp.t =
              else Parser.string_of_components args))
         args
   | Compound selectors ->
-      let to_print =
-        if Pp.minified ctx then drop_redundant_universal selectors
-        else selectors
-      in
-      List.iter (pp ctx) to_print
+      (* pp is lexical-only: hold the redundant universal in both pretty and
+         minify. Dropping it is a node change, done by [canonicalize] in the
+         optimizer, never here. *)
+      List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
       (match left with

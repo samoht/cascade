@@ -1358,9 +1358,9 @@ let spec_selector_scope_pseudo_edges () =
   check_minified_to "a:before" "a::before";
   check_minified_to ".a:before:hover" ".a::before:hover";
   (* CSS Selectors 4 section 3.5: [*] in a non-solitary compound is redundant,
-     so [*:not([hidden])] inside [::slotted(...)] serializes as
-     [:not([hidden])]. *)
-  check_minified_to "::slotted(:not([hidden]))" "::slotted(*:not([hidden]))";
+     but dropping it is a node change reserved for the optimizer's
+     [Selector.canonicalize]; pp is lexical-only and holds it. *)
+  check_minified_to "::slotted(*:not([hidden]))" "::slotted(*:not([hidden]))";
   check "::selection";
   check "input::file-selector-button";
   neg_cursor read "> .item";
