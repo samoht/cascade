@@ -638,12 +638,151 @@ let test_optimize_preserves_physical_identity buf =
        -> %S"
       (minified canon) (minified again)
 
+(* deduplicate_declarations removes overridden declarations, composes
+   shorthands, and drops vendor aliases. When the input has nothing to remove,
+   compose, or drop, the result equals the input - and must then be the very
+   same physical list, not a structurally-equal rebuild, so finalize_rule keeps
+   an unchanged rule's declarations by identity and the optimize fixed point
+   converges. One pass reaches that fixed point; a second pass is a genuine
+   no-op, so dedup of an already-deduplicated list must be physically equal. *)
+let test_deduplicate_declarations_preserves_physical_identity buf =
+  let n = 1 + (byte_at buf 0 mod 6) in
+  let props = List.init n (fun i -> declaration buf (i + 1)) in
+  let canon = Css.Optimize.deduplicate_declarations props in
+  let again = Css.Optimize.deduplicate_declarations canon in
+  if again == canon then ()
+  else if again = canon then
+    fail
+      "deduplicate_declarations reallocated an already-deduplicated list \
+       instead of returning it unchanged (x = dedup x but not x == dedup x)"
+  else fail "deduplicate_declarations is not idempotent"
+
+(* Every AST-to-AST pass shares the deduplicate_declarations contract: when it
+   changes nothing the result must be the very same physical value, so the
+   optimize fixed point converges and unchanged subtrees stay shared. This
+   checks exactly that - a structurally-unchanged result must be physically
+   identical - without assuming the pass is a no-op on the generated input (a
+   genuine change just skips the assertion). *)
+let check_noop_identity name input result =
+  if result = input && not (result == input) then
+    failf "%s reallocated a value it did not change (x = f x but not x == f x)"
+      name
+
+let mk_rule buf i : Css.Stylesheet.rule =
+  {
+    selector = selector buf i;
+    declarations = [ declaration buf (i + 1) ];
+    nested = [];
+    merge_key = None;
+  }
+
+let test_drop_invalid_preserves_physical_identity buf =
+  let ss = generated_stylesheet buf in
+  check_noop_identity "drop_invalid" ss (Css.Optimize.drop_invalid ss)
+
+let test_drop_empty_rules_preserves_physical_identity buf =
+  let ss = generated_stylesheet buf in
+  check_noop_identity "drop_empty_rules" ss (Css.Optimize.drop_empty_rules ss)
+
+let test_drop_unknown_at_rules_preserves_physical_identity buf =
+  let ss = generated_stylesheet buf in
+  check_noop_identity "drop_unknown_at_rules" ss
+    (Css.Optimize.drop_unknown_at_rules ss)
+
+let test_apply_property_duplication_preserves_physical_identity buf =
+  let ss = generated_stylesheet buf in
+  check_noop_identity "apply_property_duplication" ss
+    (Css.Optimize.apply_property_duplication ss)
+
+let test_flatten_nesting_preserves_physical_identity buf =
+  let ss = generated_stylesheet buf in
+  check_noop_identity "flatten_nesting" ss (Css.Optimize.flatten_nesting ss)
+
+let test_duplicate_buggy_properties_preserves_physical_identity buf =
+  let n = 1 + (byte_at buf 0 mod 6) in
+  let props = List.init n (fun i -> declaration buf (i + 1)) in
+  check_noop_identity "duplicate_buggy_properties" props
+    (Css.Optimize.duplicate_buggy_properties props)
+
+let test_merge_rules_preserves_physical_identity buf =
+  let n = 1 + (byte_at buf 0 mod 5) in
+  let rules = List.init n (fun i -> mk_rule buf (i * 2)) in
+  check_noop_identity "merge_rules" rules (Css.Optimize.merge_rules rules)
+
+let test_combine_identical_rules_preserves_physical_identity buf =
+  let n = 1 + (byte_at buf 0 mod 5) in
+  let rules = List.init n (fun i -> mk_rule buf (i * 2)) in
+  check_noop_identity "combine_identical_rules" rules
+    (Css.Optimize.combine_identical_rules rules)
+
+(* The shorthand composers run on index-tagged declarations and always rebuild
+   the list spine (the [go]/[List.rev] fold), so the contract is per-element,
+   not whole-list: a declaration the pass leaves unchanged must keep its
+   physical identity. This mirrors the spine-agnostic, element-wise check the
+   composers are written against. *)
+let indexed_decls buf =
+  let n = 1 + (byte_at buf 0 mod 6) in
+  List.mapi (fun i d -> (i, d)) (List.init n (fun i -> declaration buf (i + 1)))
+
+let check_indexed_noop_identity name input result =
+  if
+    List.length result = List.length input
+    && List.for_all2 (fun (_, a) (_, b) -> a = b) result input
+    && not (List.for_all2 (fun (_, a) (_, b) -> a == b) result input)
+  then
+    failf
+      "%s rebuilt a declaration it left unchanged on a no-op (element x = f x \
+       but not x == f x)"
+      name
+
+let test_compose_shorthands_preserves_element_identity buf =
+  let decls = indexed_decls buf in
+  let ctx = Css.Optimize.ctx_of_scope (Some `Fragment) in
+  check_indexed_noop_identity "compose_shorthands" decls
+    (Css.Optimize.compose_shorthands ~ctx decls)
+
+let test_merge_box_shorthand_longhands_preserves_element_identity buf =
+  let decls = indexed_decls buf in
+  check_indexed_noop_identity "merge_box_shorthand_longhands" decls
+    (Css.Optimize.merge_box_shorthand_longhands decls decls)
+
+let test_merge_overflow_longhands_preserves_element_identity buf =
+  let decls = indexed_decls buf in
+  check_indexed_noop_identity "merge_overflow_longhands" decls
+    (Css.Optimize.merge_overflow_longhands decls)
+
 let suite =
   ( "optimize",
     [
       test_case "optimize idempotent" [ bytes ] test_optimize_idempotent;
       test_case "optimize preserves physical identity on a fixed point"
         [ bytes ] test_optimize_preserves_physical_identity;
+      test_case
+        "deduplicate_declarations preserves physical identity on a fixed point"
+        [ bytes ] test_deduplicate_declarations_preserves_physical_identity;
+      test_case "drop_invalid preserves physical identity" [ bytes ]
+        test_drop_invalid_preserves_physical_identity;
+      test_case "drop_empty_rules preserves physical identity" [ bytes ]
+        test_drop_empty_rules_preserves_physical_identity;
+      test_case "drop_unknown_at_rules preserves physical identity" [ bytes ]
+        test_drop_unknown_at_rules_preserves_physical_identity;
+      test_case "apply_property_duplication preserves physical identity"
+        [ bytes ] test_apply_property_duplication_preserves_physical_identity;
+      test_case "flatten_nesting preserves physical identity" [ bytes ]
+        test_flatten_nesting_preserves_physical_identity;
+      test_case "duplicate_buggy_properties preserves physical identity"
+        [ bytes ] test_duplicate_buggy_properties_preserves_physical_identity;
+      test_case "merge_rules preserves physical identity" [ bytes ]
+        test_merge_rules_preserves_physical_identity;
+      test_case "combine_identical_rules preserves physical identity" [ bytes ]
+        test_combine_identical_rules_preserves_physical_identity;
+      test_case "compose_shorthands preserves element identity" [ bytes ]
+        test_compose_shorthands_preserves_element_identity;
+      test_case "merge_box_shorthand_longhands preserves element identity"
+        [ bytes ]
+        test_merge_box_shorthand_longhands_preserves_element_identity;
+      test_case "merge_overflow_longhands preserves element identity" [ bytes ]
+        test_merge_overflow_longhands_preserves_element_identity;
       test_case "optimized stylesheet reparses" [ bytes ]
         test_optimized_stylesheet_reparses;
       test_case "optimize monotonicity: optimized <= minified-alone" [ bytes ]

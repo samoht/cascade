@@ -38,6 +38,37 @@ val deduplicate_declarations :
     importance the last one wins. [scope] (default [`Fragment]) gates
     partial-coverage shorthand synthesis; see the {!scope} doc. *)
 
+type ctx
+(** Optimization context: the {!scope} together with the registered-custom-
+    property predicate and the lossless knob. The shorthand composers take it;
+    build one with {!ctx_of_scope}. *)
+
+val ctx_of_scope : ?lossless:bool -> scope option -> ctx
+(** [ctx_of_scope ?lossless scope] builds the context the composers take; [None]
+    is [`Fragment]. *)
+
+val compose_shorthands :
+  ctx:ctx -> (int * declaration) list -> (int * declaration) list
+(** [compose_shorthands ~ctx decls] runs the shorthand-composition pipeline over
+    index-tagged declarations: longhands fold into shorthands, resets reorder,
+    and shadowed longhands drop. Each declaration it leaves unchanged is
+    returned with its physical identity preserved, so a no-op shares every
+    element with the input. *)
+
+val merge_box_shorthand_longhands :
+  (int * declaration) list ->
+  (int * declaration) list ->
+  (int * declaration) list
+(** [merge_box_shorthand_longhands source decls] folds box-shorthand longhands
+    that follow a matching box shorthand back into it. A declaration that
+    absorbs nothing is returned unchanged by physical identity. *)
+
+val merge_overflow_longhands :
+  (int * declaration) list -> (int * declaration) list
+(** [merge_overflow_longhands decls] folds [overflow-x] and [overflow-y] into
+    the [overflow] shorthand when both appear with matching importance. A
+    declaration left unmerged keeps its physical identity. *)
+
 val drop_invalid : t -> t
 (** [drop_invalid ss] removes every declaration whose typed value contains an
     [Invalid] arm cascade detected at parse time (CSS spec violations that
