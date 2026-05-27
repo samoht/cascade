@@ -2534,6 +2534,10 @@ let same_minified_value new_decl existing =
   && string_of_value ~minify:true new_decl
      = string_of_value ~minify:true existing
 
+let same_minified_declaration a b =
+  same_property a b && same_minified_value a b
+  && Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
      cascade may pick whichever the browser understands. *)
@@ -3547,7 +3551,7 @@ let earlier_overrides_overlap ~summaries ~default decls i =
       in
       match d_j with
       | Some d
-        when d <> default
+        when (not (same_minified_declaration d default))
              && Selector_summary.may_overlap (Array.get summaries j) r_i_summary
         ->
           true
@@ -3561,7 +3565,7 @@ let common_factorable_decls rules first =
     first.Stylesheet_intf.declarations
 
 let keep_factor_leftover ~summaries ~decls ~default_decl ~i decl =
-  decl <> default_decl
+  (not (same_minified_declaration decl default_decl))
   || earlier_overrides_overlap ~summaries ~default:default_decl decls i
 
 let leftover_for_factor_rule ~common ~summaries ~decls i (r : Stylesheet.rule) =
@@ -3641,10 +3645,6 @@ let summarize_factor_rule factor_rule =
 
 let factor_rule_declares_all summary props =
   List.for_all (fun prop -> List.mem prop summary.factor_props) props
-
-let same_minified_declaration a b =
-  same_property a b && same_minified_value a b
-  && Bool.equal (Declaration.is_important a) (Declaration.is_important b)
 
 let zero_non_percentage_length (value : Values.length) =
   match value with
