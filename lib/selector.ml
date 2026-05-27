@@ -2342,6 +2342,23 @@ let rec map f = function
       f (Cue_region selectors')
   | other -> f other
 
+(* Canonicalise lexical-only variations so structurally distinct ASTs that
+   denote the same selector share one representation. [drop_redundant_universal]
+   removes the implied [*] from a multi-part compound ([*::before] ->
+   [::before], [*.foo] -> [.foo]); a compound left with one part collapses to
+   that part so it equals the bare form. Mirrors the minified pretty-printer,
+   but in the AST - so equality (and any printer) sees the canonical form, not a
+   minify-only choice. *)
+let canonicalize sel =
+  map
+    (function
+      | Compound components -> (
+          match drop_redundant_universal components with
+          | [ single ] -> single
+          | components -> Compound components)
+      | other -> other)
+    sel
+
 let is_ sels = Is sels
 let has sels = Has sels
 let not selectors = Not selectors
