@@ -93,3 +93,10 @@ let to_list t =
     | Some n -> loop (n.data :: acc) n.next
   in
   loop [] t.head
+
+let nodes t =
+  let rec loop acc = function
+    | None -> List.rev acc
+    | Some n -> loop (n :: acc) n.next
+  in
+  loop [] t.head
