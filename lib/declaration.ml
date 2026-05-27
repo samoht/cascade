@@ -419,13 +419,19 @@ let rec property_name decl =
       Pp.to_string ~minify:true pp_property property
   | Theme_guarded { decl; _ } -> property_name decl
 
-(* Byte length of [property_name] with no string/Buffer allocation: a necessary
-   condition for two property names to be equal, used as a fast reject. *)
-let rec property_name_size decl =
-  match decl with
-  | Declaration { property; _ } -> Pp.size ~minify:true pp_property property
-  | Theme_guarded { decl; _ } -> property_name_size decl
+(* A property identity that compares without serialising to a string. The
+   [property] GADT has only two payload-carrying constructors (Custom_property /
+   Unknown_property, both string); the rest are nullary. Packing into [prop_key]
+   unifies their existential types so stdlib structural equality answers "same
+   property name" directly - no [Pp], no [Obj.repr]. *)
+type prop_key = Key : 'a Properties.property -> prop_key
 
+let rec property_key decl =
+  match decl with
+  | Declaration { property; _ } -> Key property
+  | Theme_guarded { decl; _ } -> property_key decl
+
+let same_property d1 d2 = property_key d1 = property_key d2
 let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
