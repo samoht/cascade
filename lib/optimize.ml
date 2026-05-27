@@ -325,9 +325,7 @@ let declaration_covers covering covered =
       logical_shorthand_covers_name (property_name covering) b
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
-      Declaration.property_name_size covering
-      = Declaration.property_name_size covered
-      && String.equal (property_name covering) (property_name covered)
+      Declaration.same_property covering covered
       || shorthand_covers_longhand covering_p covered_p
   | _ -> false
 
@@ -2511,12 +2509,7 @@ let property_covered_by_important kept decl =
       && declaration_covers existing decl)
     kept
 
-(* Equal printed property names. [property_name_size] rejects the common
-   different-name case with no allocation; only equal-length names fall through
-   to the allocating string compare. *)
-let same_property d1 d2 =
-  Declaration.property_name_size d1 = Declaration.property_name_size d2
-  && String.equal (property_name d1) (property_name d2)
+let same_property = Declaration.same_property
 
 let same_minified_value new_decl existing =
   Declaration.value_size ~minify:true new_decl
@@ -3472,7 +3465,7 @@ let rule_factor_eligible (r : Stylesheet.rule) =
   (not (rule_factor_boundary r))
   && not (List.exists is_all_declaration r.declarations)
 
-let decl_property d = Declaration.property_name d
+let decl_property d = Declaration.property_key d
 
 let merge_selector_list = function
   | [ s ] -> s
@@ -3608,7 +3601,7 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
 
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
-  factor_props : string list;
+  factor_props : Declaration.prop_key list;
 }
 
 let summarize_factor_rule factor_rule =

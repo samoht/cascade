@@ -91,9 +91,17 @@ val value_uses_runtime_subst : declaration -> bool
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
-val property_name_size : declaration -> int
-(** [property_name_size decl] is the byte length of [property_name decl],
-    computed without allocating the string. *)
+type prop_key
+(** A property identity comparable with stdlib structural equality, without
+    serialising the name to a string. *)
+
+val property_key : declaration -> prop_key
+(** [property_key decl] is the identity of [decl]'s property. Two declarations
+    have the same property name iff their keys are structurally equal. *)
+
+val same_property : declaration -> declaration -> bool
+(** [same_property d1 d2] is [property_key d1 = property_key d2]: the two
+    declarations target the same property name. *)
 
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
