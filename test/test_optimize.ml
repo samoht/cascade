@@ -818,9 +818,9 @@ let optimize_tests =
 
 (** {1 Selector merging tests (cascade semantics)} *)
 
-let optimized_string ?(enforce_spec = false) css =
+let optimized_string ?scope ?(enforce_spec = false) css =
   css |> Cursor.of_string |> Css.Stylesheet.read
-  |> Css.Optimize.stylesheet ~enforce_spec
+  |> Css.Optimize.stylesheet ?scope ~enforce_spec
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
@@ -1384,10 +1384,11 @@ let c61_adjacent_later_dedup () =
     ".box{display:flex;color:#00f}" output
 
 let c61_no_merge_intervening () =
-  (* CSS Cascade section 6.1: if rules tie on origin, importance, layer,
-     specificity, and scope proximity, the later declaration wins. Merging equal
-     selectors across an intervening rule would move the first rule's
-     declaration after that intervening rule. *)
+  (* CSS Cascade 6.1: [.a] and the intervening [.b] tie on specificity (0,1,0),
+     so source order is observable for any element matching both. A
+     same-selector merge would put the combined [.a] rule on one side of [.b],
+     changing that order, so it is blocked even though the moved property does
+     not itself conflict. *)
   let input =
     [
       Css.rule ~selector:(Css.Selector.class_ "a")
@@ -1401,7 +1402,7 @@ let c61_no_merge_intervening () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "same selector is not merged across an intervening rule"
+    "same selector is not merged across a tied intervening rule"
     ".a{color:red}.b{color:#0f0}.a{background-color:#00f}" output
 
 let c61_no_group_nonadjacent () =
@@ -1434,6 +1435,45 @@ let aba_forbidden_intersection_dependency () =
     "overlapping selectors keep intervening same-property dependency"
     ".a.x{color:red}.b.x{color:#00f}.a.y{color:red}"
     (optimized_string ".a.x{color:red}.b.x{color:blue}.a.y{color:red}")
+
+let c63_group_across_higher_specificity () =
+  (* CSS Cascade 5 sec. 6.3: among the same origin, layer, and importance higher
+     specificity wins regardless of source order; only a specificity tie defers
+     to source order. [#m] (1,0,0) outranks [.a.x]/[.c.x] (0,2,0), so for any
+     element matching all three (class="a c x" id="m") #m's blue wins whatever
+     the order. The two equal [.a.x]/[.c.x] rules may therefore group across #m.
+     Blocking the group because the class-pairs do not *beat* #m is
+     over-conservative: differing specificity already makes the order
+     unobservable. Contrast [aba_forbidden_intersection_dependency], where the
+     intervening rule ties on specificity and the block is required. *)
+  (* Pure cascade-safety reasoning, so it holds in both scopes. *)
+  List.iter
+    (fun scope ->
+      let output =
+        optimized_string ?scope ".a.x{color:red}#m{color:blue}.c.x{color:red}"
+      in
+      Alcotest.(check bool)
+        "equal rules group across a higher-specificity intervening rule" true
+        (Astring.String.is_infix ~affix:".a.x,.c.x{color:red}" output))
+    [ None; Some `Stylesheet ]
+
+let c63_merge_same_selector_across_higher_specificity () =
+  (* Same reasoning for merging two equal-selector rules across a gap: [#footer]
+     (1,0,0) outranks [body]/[html] (0,0,1), so font-size on a <body id=footer>
+     resolves to #footer's 10pt whatever the order. The two body,html rules
+     therefore merge across #footer - the case that motivates relaxing the
+     intervening-overlap guard from "the merge selector beats the intervening
+     one" to "their specificities differ". *)
+  List.iter
+    (fun scope ->
+      let output =
+        optimized_string ?scope
+          "body,html{font-size:small}#footer{font-size:10pt}body,html{line-height:1.5}"
+      in
+      Alcotest.(check bool)
+        "body,html merges across higher-specificity #footer" true
+        (Astring.String.is_infix ~affix:"font-size:small;line-height:1.5" output))
+    [ None; Some `Stylesheet ]
 
 let aba_allowed_same_selector_dead () =
   (* Exact same selector and same property is not an A?B?A dependency: the final
@@ -1849,11 +1889,14 @@ let c61_adjacent_specificity_grouping () =
     "adjacent grouping keeps selector-specific specificity"
     ".item,.item.active{color:red}" output
 
-let c61_specificity_blocks_grouping () =
-  (* CSS Cascade section 6.1: specificity is evaluated before source order, but
-     source order still matters among declarations that tie. A grouping pass
-     must not move lower-specificity selectors across an overlapping
-     higher-specificity rule and change the neighboring tie behavior. *)
+let c61_group_across_higher_specificity_competitor () =
+  (* CSS Cascade 6.1: specificity is evaluated before source order. The
+     intervening [.item.active] (0,2,0) strictly outranks [.item]/[.active]
+     (0,1,0), and every element matching both [.item] and [.active] also matches
+     [.item.active] - which wins regardless of order. So grouping the two equal
+     red rules across it is unobservable. Contrast the tie cases
+     ([c61_no_group_nonadjacent]), where the competitor ties and blocking is
+     required. *)
   let input =
     [
       Css.rule
@@ -1872,8 +1915,8 @@ let c61_specificity_blocks_grouping () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "specificity competitor remains between lower-specificity rules"
-    ".item{color:red}.item.active{color:#00f}.active{color:red}" output
+    "equal rules group across a strictly-higher-specificity competitor"
+    ".active,.item{color:red}.item.active{color:#00f}" output
 
 let c61_no_merge_scope () =
   (* CSS Cascade level 6 adds scope proximity to the cascade sorting order.
@@ -1987,9 +2030,10 @@ let c61_distinct_scope_limits_preserved () =
     output
 
 let c61_no_merge_supports () =
-  (* CSS Cascade section 6.1 order of appearance applies after filtering.
-     Conditional groups are not optimizer reordering points for surrounding
-     rules, even when the surrounding selectors match. *)
+  (* Default minify elides a baseline-true [@supports], exposing [.feature] to
+     the surrounding cascade. [.feature] ties [.card] on specificity (0,1,0), so
+     source order stays observable and the two [.card] rules are not merged
+     across it. With [--enforce-spec] the [@supports] is kept as a boundary. *)
   let input =
     [
       Css.rule
@@ -2199,10 +2243,11 @@ let c61_nesting_synthesis_source_order () =
       Alcotest.failf "nesting synthesis source-order oracle mismatches:\n%s"
         (String.concat "\n" mismatches)
 
-let c61_no_pseudo_group () =
-  (* CSS Cascade section 6.1: adjacent selector extension may be serialized as
-     nesting when it preserves source order, but equal declarations must not be
-     grouped across the overlapping pseudo-class competitor. *)
+let c61_group_across_pseudo_competitor () =
+  (* CSS Cascade 6.1: [.btn:hover] (0,2,0) strictly outranks [.btn]/[.link]
+     (0,1,0), so on any element matching the group it wins regardless of order.
+     The two equal red rules group, and [.btn:hover] stays a separate rule (it
+     is not nested under the group, so it never applies to [.link]). *)
   let input =
     Css.Stylesheet.read
       (Cursor.of_string ".btn{color:red}.btn:hover{color:blue}.link{color:red}")
@@ -2210,8 +2255,8 @@ let c61_no_pseudo_group () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "adjacent pseudo-class extension may nest without grouping later peer"
-    ".btn{color:red;&:hover{color:#00f}}.link{color:red}" output
+    "equal rules group across a higher-specificity pseudo competitor"
+    ".btn,.link{color:red}.btn:hover{color:#00f}" output
 
 let c61_no_conditional_cli_merge () =
   (* Default minify may elide baseline @supports, making its inner rule part of
@@ -3503,6 +3548,12 @@ let selector_merging_tests =
     ( "A?B?A forbidden selector-intersection dependency",
       `Quick,
       aba_forbidden_intersection_dependency );
+    ( "group equal rules across higher-specificity intervening rule",
+      `Quick,
+      c63_group_across_higher_specificity );
+    ( "merge same selector across higher-specificity intervening rule",
+      `Quick,
+      c63_merge_same_selector_across_higher_specificity );
     ( "A?B?A allowed same-selector dead A elimination",
       `Quick,
       aba_allowed_same_selector_dead );
@@ -3546,9 +3597,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 adjacent different specificity grouping",
       `Quick,
       c61_adjacent_specificity_grouping );
-    ( "spec cascade 6.1 specificity competitor blocks grouping",
+    ( "spec cascade 6.1 group across higher-specificity competitor",
       `Quick,
-      c61_specificity_blocks_grouping );
+      c61_group_across_higher_specificity_competitor );
     ( "spec cascade 6.1 no merge across scope boundary",
       `Quick,
       c61_no_merge_scope );
@@ -3579,9 +3630,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 nesting synthesis preserves source order",
       `Quick,
       c61_nesting_synthesis_source_order );
-    ( "spec cascade 6.1 no group across pseudo competitor",
+    ( "spec cascade 6.1 group across higher-specificity pseudo competitor",
       `Quick,
-      c61_no_pseudo_group );
+      c61_group_across_pseudo_competitor );
     ( "spec cascade 6.1 conditional boundaries are opaque",
       `Quick,
       c61_no_conditional_cli_merge );

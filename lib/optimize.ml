@@ -3803,11 +3803,16 @@ let rule_gap_merge_eligible (rule : Stylesheet.rule) =
   rule.nested = [] && rule.merge_key = None
   && not (contains_vendor_pseudo_element rule.selector)
 
+(* A same-selector merge folds the candidate into the anchor's slot. An
+   intervening rule that overlaps the merged selector at an equal specificity
+   makes source order observable, so block on any such tie - regardless of which
+   properties overlap, since the merged rule's position governs all of them. A
+   strictly higher- or lower-specificity competitor is decided by specificity,
+   not order, so it never blocks. *)
 let skipped_blocks_same_selector_merge target skipped =
   rule_selector_may_overlap_summary skipped
     (Selector_summary.of_selector target.Stylesheet_intf.selector)
-  && declarations_overlap target.declarations skipped.declarations
-  && not (rule_specificity_beats_on_overlap target skipped)
+  && rule_specificity_ties_on_overlap target skipped
 
 let merge_same_selector_gaps (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -4103,7 +4108,7 @@ let try_factor_equal_anchor first rest =
                    match entry with
                    | Gap_factor _ -> false
                    | Gap_skip skipped ->
-                       skipped_rule_blocks_factor candidate_common
+                       skipped_blocks_factor_tie candidate_common
                          candidate_summary skipped)
                  entries_rev
           in
@@ -5236,11 +5241,6 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
     Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
     rules)
   else
-    let rules =
-      match ctx.scope with
-      | `Stylesheet -> merge_same_selector_gaps rules
-      | `Fragment -> rules
-    in
     (* Log each pass that changes the rule list so the per-iteration progress is
        visible under [-vv] without hand-added tracing. *)
     let pass name f r =
@@ -5251,13 +5251,16 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
     in
     let rules' =
       rules
+      (* Gap merging/factoring is pure cascade-safety reasoning (specificity is
+         world-independent), so it runs in every scope - neither pass takes a
+         [ctx]. It is part of the pipeline (not a one-shot before the loop) so a
+         merge it can only make after another pass reorders rules is reached
+         within a single fixpoint, not on a second [optimize] call. *)
+      |> pass "merge_same_selector" merge_same_selector_gaps
       |> pass "combine_identical" combine_identical_rules
       |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
       |> pass "factor_common" factor_common_declarations
-      |> pass "factor_anchor" (fun rules ->
-          match ctx.scope with
-          | `Stylesheet -> factor_anchor_gaps rules
-          | `Fragment -> rules)
+      |> pass "factor_anchor" factor_anchor_gaps
       |> pass "extend_factored" extend_factored_declarations
       |> pass "merge_rules" merge_rules
       |> pass "finalize" (list_map_preserve (finalize_rule_without_nested ~ctx))
