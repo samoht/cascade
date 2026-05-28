@@ -386,13 +386,10 @@ let collapse_box_by same = function
   | [ a; b ] when same a b -> [ a ]
   | vs -> vs
 
-let same_minified_length a b =
-  Pp.size ~minify:true Values.pp_length a
-  = Pp.size ~minify:true Values.pp_length b
-  && String.equal
-       (Pp.to_string ~minify:true Values.pp_length a)
-       (Pp.to_string ~minify:true Values.pp_length b)
-
+(* Both sides are the same [length] type, so structural equality is the
+   minified-equality test once lengths are canonical - no need to render and
+   compare text. *)
+let same_minified_length (a : Values.length) (b : Values.length) = a = b
 let collapse_box_lengths vs = collapse_box_by same_minified_length vs
 
 type sides = Values.length * Values.length * Values.length * Values.length
@@ -3302,13 +3299,7 @@ let has_oklab_none s =
   find_oklab 0
 
 let declarations_css_equal d1 d2 =
-  let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
-  (d1 = d2
-  || Pp.size ~minify:true pp_decls d1 = Pp.size ~minify:true pp_decls d2
-     &&
-     let s1 = Pp.to_string ~minify:true pp_decls d1 in
-     let s2 = Pp.to_string ~minify:true pp_decls d2 in
-     s1 = s2)
+  d1 = d2
   &&
   let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
   let s = Pp.to_string ~minify:true pp_decls d1 in
