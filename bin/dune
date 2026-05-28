@@ -9,4 +9,6 @@
   fmt
   fmt.cli
   fmt.tty
+  logs
+  logs.fmt
   nox-memtrace))

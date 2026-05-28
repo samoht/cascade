@@ -68,3 +68,9 @@ val next : 'a node -> 'a node option
 
 val prev : 'a node -> 'a node option
 (** [prev n] is the handle immediately before [n], or [None] at the start. *)
+
+val id : 'a node -> int
+(** [id n] is a stable integer identity unique within the node's collection,
+    assigned at creation and never reused. Unlike the precedence answered by
+    {!compare}, [id] is invariant under insertions and deletions elsewhere, so
+    it can key a map or priority queue of handles. *)

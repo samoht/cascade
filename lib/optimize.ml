@@ -4,6 +4,10 @@ open Declaration
 open Stylesheet
 module String_set = Set.Make (String)
 
+let src = Logs.Src.create "cascade.optimize" ~doc:"Cascade CSS optimizer"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (** {1 Edge Model} *)
 
 type scope = [ `Fragment | `Stylesheet ]
@@ -4062,12 +4066,15 @@ let equal_anchor_common first candidate common =
             candidate.factor_rule.declarations)
         common
 
+(* Returns [Some (replacement, tail, savings)] - the [savings] is the strict
+   output-size reduction [factor_gap_equal_rewrite] already computed, surfaced
+   so the best-first scheduler can prioritise without re-rendering. *)
 let try_factor_equal_anchor first rest =
   let rec scan entries_rev common best fuel = function
-    | [] -> finish_factor_gap [] best
-    | _ when fuel <= 0 -> finish_factor_gap [] best
+    | [] -> best
+    | _ when fuel <= 0 -> best
     | candidate :: tail ->
-        if rule_factor_boundary candidate then finish_factor_gap [] best
+        if rule_factor_boundary candidate then best
         else if not (rule_factor_eligible candidate) then
           scan
             (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
@@ -4312,30 +4319,37 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
   in
   preserve_list rules (List.rev (group [] [] Prop_set.empty rules))
 
-let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
-  let rec walk acc = function
-    | [] -> List.rev acc
-    | r :: rest -> (
-        if not (rule_factor_eligible r) then walk (r :: acc) rest
-        else
-          match try_factor_equal_anchor r rest with
-          | None -> walk (r :: acc) rest
-          | Some (replacement, tail) ->
-              walk (List.rev_append replacement acc) tail)
-  in
-  preserve_list rules (walk [] rules)
+(* Priority search queue keyed by pool node (stable id), ordered so the
+   highest-savings factoring is the minimum and thus pops first; ties break by
+   earlier id to keep the left-to-right preference of the original list pass. *)
+module Factor_queue =
+  Psq.Make
+    (struct
+      type t = Rule_pool.node
 
-(* Worklist-scheduled [factor_anchor_gaps] on a [Rule_pool]. Reuses the proven
-   [try_factor_equal_anchor] predicate, but instead of re-walking the whole list
-   to a fixed point it re-examines only the nodes a factoring touched. The pool
-   keeps stable positions, so the worklist stays local: O(n * lookahead) rather
-   than O(passes * n). Each successful factor strictly shrinks output, so the
-   worklist terminates. *)
-let factor_anchor_gaps_pool (rules : Stylesheet.rule list) :
-    Stylesheet.rule list =
+      let compare a b = Int.compare (Rule_pool.id a) (Rule_pool.id b)
+    end)
+    (struct
+      type t = int * int
+
+      let compare (s1, i1) (s2, i2) =
+        let c = Int.compare s2 s1 in
+        if c <> 0 then c else Int.compare i1 i2
+    end)
+
+(* One pass of gap-factoring: hoist a declaration shared across rules with
+   non-conflicting selectors, even across intervening rules, when cascade-safe
+   and smaller. Scheduling is best-first (the greedy weight order of SatCSS,
+   Hague, Lin & Hong, TOPLAS 2019) over a [Rule_pool]: the frontier is a
+   priority search queue keyed by anchor node and prioritised by the output size
+   that anchor's factoring would save. We pop the highest-savings factoring,
+   apply it, then re-score only the anchors whose lookahead window overlapped
+   the rewritten region (the inserted shared rules and up to
+   [equal_factor_lookahead] predecessors). [try_factor_equal_anchor] returns
+   only a strictly size-reducing rewrite, so every apply shrinks the output and
+   the frontier drains to the factoring fixed point in a single call. *)
+let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let pool = Rule_pool.of_rules rules in
-  let q = Queue.create () in
-  List.iter (fun n -> Queue.add n q) (Rule_pool.nodes pool);
   let rec window node k acc =
     if k <= 0 then List.rev acc
     else
@@ -4347,25 +4361,65 @@ let factor_anchor_gaps_pool (rules : Stylesheet.rule list) :
     | x :: xs when n > 0 -> x :: take (n - 1) xs
     | _ -> []
   in
-  while not (Queue.is_empty q) do
-    let n = Queue.pop q in
-    if Rule_pool.is_live n && rule_factor_eligible (Rule_pool.rule n) then
+  let score n =
+    if not (rule_factor_eligible (Rule_pool.rule n)) then None
+    else
       let win_nodes = window n equal_factor_lookahead [] in
       let win_rules = List.map Rule_pool.rule win_nodes in
       match try_factor_equal_anchor (Rule_pool.rule n) win_rules with
-      | None -> ()
-      | Some (replacement, tail) ->
+      | None -> None
+      | Some (replacement, tail, savings) ->
           let consumed =
             take (List.length win_rules - List.length tail) win_nodes
           in
-          let added =
-            List.map (fun r -> Rule_pool.insert_before pool n r) replacement
-          in
-          Rule_pool.remove pool n;
-          List.iter (Rule_pool.remove pool) consumed;
-          List.iter (fun m -> Queue.add m q) added
-  done;
-  Rule_pool.to_rules pool
+          Some (replacement, consumed, savings)
+  in
+  let frontier = ref Factor_queue.empty in
+  let applied = ref 0 in
+  let enqueue n =
+    if Rule_pool.is_live n then
+      match score n with
+      | Some (_, _, savings) when savings > 0 ->
+          frontier := Factor_queue.add n (savings, Rule_pool.id n) !frontier
+      | _ -> frontier := Factor_queue.remove n !frontier
+  in
+  List.iter enqueue (Rule_pool.nodes pool);
+  (* A factoring at [n] can unblock an earlier anchor whose window reached the
+     rewritten region, but re-scoring those eagerly costs O(lookahead) per
+     apply. Instead we enqueue only the freshly inserted shared rules and let
+     the enclosing [factor_rules_to_fixpoint] re-run this pass - which re-scores
+     every anchor - to pick up any predecessor unblocked here. A pop whose
+     stored gain no longer holds is simply re-priced. *)
+  let rec loop () =
+    match Factor_queue.pop !frontier with
+    | None -> ()
+    | Some ((n, (stored, _)), rest) -> (
+        frontier := rest;
+        if not (Rule_pool.is_live n) then loop ()
+        else
+          match score n with
+          | Some (replacement, consumed, savings) when savings > 0 ->
+              if savings <> stored then (
+                frontier :=
+                  Factor_queue.add n (savings, Rule_pool.id n) !frontier;
+                loop ())
+              else (
+                incr applied;
+                let added =
+                  List.map
+                    (fun r -> Rule_pool.insert_before pool n r)
+                    replacement
+                in
+                Rule_pool.remove pool n;
+                List.iter (Rule_pool.remove pool) consumed;
+                List.iter enqueue added;
+                loop ())
+          | _ -> loop ())
+  in
+  loop ();
+  if !applied > 0 then
+    Log.debug (fun m -> m "factor_anchor_gaps: applied %d factorings" !applied);
+  preserve_list rules (Rule_pool.to_rules pool)
 
 (** {1 Statement Optimization} *)
 
@@ -5162,25 +5216,40 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
 let rec factor_rules_to_fixpoint ~ctx fuel rules =
-  if fuel <= 0 then rules
+  if fuel <= 0 then (
+    Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
+    rules)
   else
     let rules =
       match ctx.scope with
       | `Stylesheet -> merge_same_selector_gaps rules
       | `Fragment -> rules
     in
-    let rules' =
-      rules |> combine_identical_rules
-      |> extend_identical_declaration_rules ~ctx
-      |> factor_common_declarations
-      |> (fun rules ->
-      match ctx.scope with
-      | `Stylesheet -> factor_anchor_gaps rules
-      | `Fragment -> rules)
-      |> extend_factored_declarations |> merge_rules
-      |> list_map_preserve (finalize_rule_without_nested ~ctx)
+    (* Log each pass that changes the rule list so the per-iteration progress is
+       visible under [-vv] without hand-added tracing. *)
+    let pass name f r =
+      let r' = f r in
+      if not (r' == r) then
+        Log.debug (fun m -> m "factor iter %d: %s changed" fuel name);
+      r'
     in
-    if rules' == rules then rules
+    let rules' =
+      rules
+      |> pass "combine_identical" combine_identical_rules
+      |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
+      |> pass "factor_common" factor_common_declarations
+      |> pass "factor_anchor" (fun rules ->
+          match ctx.scope with
+          | `Stylesheet -> factor_anchor_gaps rules
+          | `Fragment -> rules)
+      |> pass "extend_factored" extend_factored_declarations
+      |> pass "merge_rules" merge_rules
+      |> pass "finalize" (list_map_preserve (finalize_rule_without_nested ~ctx))
+    in
+    if rules' == rules then (
+      Log.debug (fun m ->
+          m "factor fixpoint: converged after %d iterations" (16 - fuel));
+      rules)
     else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
 
 (* [@scope] bounds are stored as selector text. Parse, canonicalize, and

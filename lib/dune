@@ -1,7 +1,7 @@
 (library
  (public_name cascade)
  (name cascade)
- (libraries uutf unionFind))
+ (libraries uutf unionFind psq logs))
 
 (mdx
  (files

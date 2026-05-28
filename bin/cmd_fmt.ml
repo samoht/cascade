@@ -151,6 +151,7 @@ let term =
         inline_vars_flag
         keep_vars_str
         memtrace_path
+        ()
       ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
         if List.mem "*" keep_vars then begin
@@ -173,7 +174,7 @@ let term =
           ~memtrace_path)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg
-    $ memtrace_arg)
+    $ memtrace_arg $ Cli_log.term)
 
 let man =
   [

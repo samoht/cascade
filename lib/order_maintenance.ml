@@ -12,6 +12,7 @@ let universe = 1 lsl 60
 
 type 'a node = {
   data : 'a;
+  id : int;  (** stable identity, unlike [tag] which a relabel reassigns *)
   mutable tag : int;
   mutable prev : 'a node option;
   mutable next : 'a node option;
@@ -22,9 +23,16 @@ type 'a t = {
   mutable head : 'a node option;
   mutable tail : 'a node option;
   mutable count : int;
+  mutable next_id : int;
 }
 
-let create () = { head = None; tail = None; count = 0 }
+let create () = { head = None; tail = None; count = 0; next_id = 0 }
+
+let fresh_id t =
+  let id = t.next_id in
+  t.next_id <- id + 1;
+  id
+
 let is_empty t = t.count = 0
 let length t = t.count
 let data n = n.data
@@ -52,6 +60,7 @@ let rec insert_after t n x =
     let node =
       {
         data = x;
+        id = fresh_id t;
         tag = lo + ((hi - lo) / 2);
         prev = Some n;
         next = succ;
@@ -79,6 +88,7 @@ let rec insert_before t n x =
         let node =
           {
             data = x;
+            id = fresh_id t;
             tag = lo + ((hi - lo) / 2);
             prev = None;
             next = Some n;
@@ -95,7 +105,14 @@ let add_last t x =
   | Some tail -> insert_after t tail x
   | None ->
       let node =
-        { data = x; tag = universe / 2; prev = None; next = None; live = true }
+        {
+          data = x;
+          id = fresh_id t;
+          tag = universe / 2;
+          prev = None;
+          next = None;
+          live = true;
+        }
       in
       t.head <- Some node;
       t.tail <- Some node;
@@ -129,3 +146,4 @@ let nodes t =
 
 let next n = n.next
 let prev n = n.prev
+let id n = n.id
