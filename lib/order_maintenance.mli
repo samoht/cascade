@@ -21,8 +21,8 @@ type 'a node
 (** A stable handle to one element, returned by {!add_last} / {!insert_after}.
 *)
 
-val create : unit -> 'a t
-(** [create ()] is an empty order. *)
+val v : unit -> 'a t
+(** [v ()] is an empty order. *)
 
 val is_empty : 'a t -> bool
 (** [is_empty t] is [true] when [t] holds no live element. *)

@@ -6,13 +6,13 @@ module O = Order_maintenance
 let before a b = O.compare a b < 0
 
 let empty () =
-  let t = O.create () in
+  let t = O.v () in
   Alcotest.(check bool) "is_empty" true (O.is_empty t);
   Alcotest.(check int) "length" 0 (O.length t);
   Alcotest.(check (list int)) "to_list" [] (O.to_list t)
 
 let add_last_order () =
-  let t = O.create () in
+  let t = O.v () in
   let _ = O.add_last t 1 in
   let _ = O.add_last t 2 in
   let _ = O.add_last t 3 in
@@ -21,7 +21,7 @@ let add_last_order () =
   Alcotest.(check bool) "not empty" false (O.is_empty t)
 
 let compare_reflects_order () =
-  let t = O.create () in
+  let t = O.v () in
   let a = O.add_last t 'a' in
   let b = O.add_last t 'b' in
   Alcotest.(check bool) "a before b" true (before a b);
@@ -32,7 +32,7 @@ let compare_reflects_order () =
     (O.compare a b = -O.compare b a |> fun x -> x || O.compare a b <> 0)
 
 let insert_after_places () =
-  let t = O.create () in
+  let t = O.v () in
   let a = O.add_last t 1 in
   let c = O.add_last t 3 in
   let b = O.insert_after t a 2 in
@@ -42,7 +42,7 @@ let insert_after_places () =
   Alcotest.(check bool) "a<c" true (before a c)
 
 let remove_middle () =
-  let t = O.create () in
+  let t = O.v () in
   let _ = O.add_last t 1 in
   let b = O.add_last t 2 in
   let _ = O.add_last t 3 in
@@ -51,7 +51,7 @@ let remove_middle () =
   Alcotest.(check int) "length" 2 (O.length t)
 
 let remove_ends () =
-  let t = O.create () in
+  let t = O.v () in
   let a = O.add_last t 1 in
   let _ = O.add_last t 2 in
   let c = O.add_last t 3 in
@@ -62,7 +62,7 @@ let remove_ends () =
 (* Repeatedly inserting right after the same node shrinks the available tag gap
    until a relabel is forced; the order must stay correct throughout. *)
 let relabel_stress () =
-  let t = O.create () in
+  let t = O.v () in
   let head = O.add_last t 0 in
   let _tail = O.add_last t (-1) in
   (* insert 1..200 each right after head: they end up in reverse just after
@@ -77,7 +77,7 @@ let relabel_stress () =
 
 (* compare must agree with the live left-to-right order for every pair. *)
 let compare_total_order () =
-  let t = O.create () in
+  let t = O.v () in
   let n0 = O.add_last t 0 in
   let nodes = ref [ n0 ] in
   (* build a jumbled set of inserts *)
@@ -101,13 +101,13 @@ let compare_total_order () =
           let by_cmp = O.compare a b in
           let sign x = compare x 0 in
           Alcotest.(check int)
-            (Printf.sprintf "compare %d/%d matches order" (O.data a) (O.data b))
+            (Fmt.str "compare %d/%d matches order" (O.data a) (O.data b))
             (sign by_index) (sign by_cmp))
         all)
     all
 
 let stale_node () =
-  let t = O.create () in
+  let t = O.v () in
   let a = O.add_last t 1 in
   let _ = O.add_last t 2 in
   O.remove t a;
