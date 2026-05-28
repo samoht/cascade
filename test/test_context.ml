@@ -44,7 +44,7 @@ let test_empty_property_value () =
 let test_empty_side_contexts () =
   let document = Css.Context.empty_document in
   Alcotest.(check (option string)) "document root" None document.root;
-  Alcotest.(check (option string)) "document scope" None document.scope;
+  Alcotest.(check bool) "document scope" true (Option.is_none document.scope);
   Alcotest.(check (option string)) "document element" None document.element;
   Alcotest.(check (list string)) "document classes" [] document.classes;
   Alcotest.(check (list string)) "document ids" [] document.ids;
@@ -142,8 +142,9 @@ let test_property_value_lookup_boundaries () =
 
 let test_document_context () =
   let ctx =
-    Css.Context.document ~root:"html" ~scope:".card" ~element:"button"
-      ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
+    Css.Context.document ~root:"html"
+      ~scope:(Css.Selector.of_string ".card")
+      ~element:"button" ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
       ~attributes:[ ("type", Some "submit"); ("disabled", None) ]
       ~pseudo_classes:[ "focus-visible" ] ~pseudo_elements:[ "before" ] ()
   in
@@ -161,8 +162,9 @@ let test_document_context () =
 
 let test_document_context_boundaries () =
   let ctx =
-    Css.Context.document ~root:":root" ~scope:".dialog" ~element:"input"
-      ~classes:[ "field"; "is-invalid" ] ~ids:[ "email" ]
+    Css.Context.document ~root:":root"
+      ~scope:(Css.Selector.of_string ".dialog")
+      ~element:"input" ~classes:[ "field"; "is-invalid" ] ~ids:[ "email" ]
       ~attributes:
         [
           ("type", Some "email");
@@ -173,7 +175,9 @@ let test_document_context_boundaries () =
       ~pseudo_elements:[ "placeholder" ] ()
   in
   Alcotest.(check (option string)) "root preserved" (Some ":root") ctx.root;
-  Alcotest.(check (option string)) "scope preserved" (Some ".dialog") ctx.scope;
+  Alcotest.(check (option string))
+    "scope preserved" (Some ".dialog")
+    (Option.map (Css.Selector.to_string ~minify:true) ctx.scope);
   Alcotest.(check (option string))
     "element preserved" (Some "input") ctx.element;
   Alcotest.(check (list string))
@@ -339,8 +343,9 @@ let test_context_debug_printers () =
   check_matches "value dump has dimensions" "container_height=Some 480px"
     value_dump;
   let document_dump =
-    Css.Context.document ~root:"html" ~scope:".card" ~element:"button"
-      ~classes:[ "btn" ] ~ids:[ "submit" ]
+    Css.Context.document ~root:"html"
+      ~scope:(Css.Selector.of_string ".card")
+      ~element:"button" ~classes:[ "btn" ] ~ids:[ "submit" ]
       ~attributes:[ ("disabled", None); ("type", Some "submit") ]
       ~pseudo_classes:[ "focus-visible" ] ~pseudo_elements:[ "before" ] ()
     |> Css.Pp.to_string Css.Context.pp_document
@@ -631,7 +636,7 @@ let declaration_value_source decl =
 let scope_selector_matches (document : Css.Context.document) = function
   | None -> true
   | Some selector ->
-      document.scope = Some (Css.Selector.to_string ~minify:true selector)
+      document.scope = Some selector
       || Css.Context.matches_selector document selector
 
 let scope_boundary_allows document start boundary =
@@ -1129,8 +1134,9 @@ let computed_edge_contract () =
 
 let test_document_selector_context_contract () =
   let ctx =
-    Css.Context.document ~root:"html" ~scope:".card" ~element:"button"
-      ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
+    Css.Context.document ~root:"html"
+      ~scope:(Css.Selector.of_string ".card")
+      ~element:"button" ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
       ~attributes:
         [
           ("type", Some "submit");
@@ -2239,7 +2245,9 @@ let tw_vars_contract () =
 
 let selector_scope_contract () =
   let scoped =
-    Css.Context.document ~root:"html" ~scope:".card" ~element:"section"
+    Css.Context.document ~root:"html"
+      ~scope:(Css.Selector.of_string ".card")
+      ~element:"section"
       ~classes:[ "card"; "group"; "is-open" ]
       ~ids:[ "billing" ]
       ~attributes:[ ("data-theme", Some "dark"); ("dir", Some "ltr") ]
@@ -2374,7 +2382,9 @@ let cascade_rule_resolver_contract () =
       @layer utilities { .btn { color: revert-layer; } }
     |};
   let scoped =
-    Css.Context.document ~scope:".card" ~element:"h2" ~classes:[ "title" ] ()
+    Css.Context.document
+      ~scope:(Css.Selector.of_string ".card")
+      ~element:"h2" ~classes:[ "title" ] ()
   in
   check_resolved_property
     "scope proximity beats later source order at equal specificity" ~layer_order
@@ -2388,8 +2398,9 @@ let cascade_rule_resolver_contract () =
     "scope boundary suppresses declarations outside the active scope"
     ~layer_order ~ctx:value_ctx
     ~document:
-      (Css.Context.document ~scope:".card" ~element:"h2"
-         ~classes:[ "title"; "boundary" ] ())
+      (Css.Context.document
+         ~scope:(Css.Selector.of_string ".card")
+         ~element:"h2" ~classes:[ "title"; "boundary" ] ())
     ~query ~property:"color" ~expected:"color: blue"
     {|
       @scope (.card) to (.boundary) { .title { color: green; } }

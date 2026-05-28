@@ -40,7 +40,7 @@ type t = {
 
 type document = {
   root : string option;
-  scope : string option;
+  scope : Selector.t option;
   element : string option;
   classes : string list;
   ids : string list;
@@ -124,7 +124,7 @@ val empty_document : document
 
 val document :
   ?root:string ->
-  ?scope:string ->
+  ?scope:Selector.t ->
   ?element:string ->
   ?classes:string list ->
   ?ids:string list ->
