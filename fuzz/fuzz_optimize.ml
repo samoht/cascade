@@ -112,7 +112,8 @@ let generated_stylesheet buf =
       Css.Stylesheet.with_origin Css.Stylesheet.Author
         [ rule buf 32; rule buf 32 ];
       Css.Stylesheet.Page
-        (Some ":first", [ Css.Declaration.margin [ Css.Values.Px 10. ] ]);
+        ( [ { Css.Stylesheet.page_name = None; page_pseudos = [ Page_first ] } ],
+          [ Css.Declaration.margin [ Css.Values.Px 10. ] ] );
       generated_keyframes;
     ]
 

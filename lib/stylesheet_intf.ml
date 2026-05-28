@@ -167,10 +167,10 @@ and statement =
   | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
   | Counter_style of string * counter_style_descriptor list
       (** [@counter-style name { ... }] *)
-  | Page of string option * Declaration.declaration list
-      (** [@page :first { ... }] *)
+  | Page of page_selector list * Declaration.declaration list
+      (** [@page :first { ... }]; empty list is a bare [@page] *)
   | Page_with_margins of
-      string option * page_descriptor list * page_margin_rule list
+      page_selector list * page_descriptor list * page_margin_rule list
       (** [@page :first { margin: 1cm; @top-left { content: ... } }] *)
   | Font_palette_values of string * font_palette_descriptor list
       (** [@font-palette-values --name { ... }] *)
@@ -217,6 +217,15 @@ and keyframe = {
   keyframe_declarations : Declaration.declaration list;
 }
 (** A single keyframe within [\@keyframes] *)
+
+and page_pseudo = Page_first | Page_left | Page_right | Page_blank
+
+and page_selector = {
+  page_name : string option;
+  page_pseudos : page_pseudo list;
+}
+(** [@page] selector: an optional page name and zero or more pseudo-pages, e.g.
+    [invoice:blank:first] *)
 
 and page_descriptor = Declaration.declaration
 and font_palette_base = Light | Dark | Index of int | Palette_ident of string
