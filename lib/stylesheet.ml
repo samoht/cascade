@@ -359,35 +359,28 @@ let pp_keyframes_block_statement ctx header name frames =
   Pp.sp ctx ();
   Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
 
-let rec page_selector_skip_blanks s len i =
-  if i < len && (s.[i] = ' ' || s.[i] = '\t') then
-    page_selector_skip_blanks s len (i + 1)
-  else i
+let pp_page_pseudo ctx p =
+  Pp.char ctx ':';
+  Pp.string ctx
+    (match p with
+    | Page_first -> "first"
+    | Page_left -> "left"
+    | Page_right -> "right"
+    | Page_blank -> "blank")
 
-let minify_page_selector s =
-  let len = String.length s in
-  let buf = Buffer.create len in
-  let rec loop i =
-    if i >= len then ()
-    else
-      let c = s.[i] in
-      Buffer.add_char buf c;
-      let next =
-        if c = ',' then page_selector_skip_blanks s len (i + 1) else i + 1
-      in
-      loop next
-  in
-  loop 0;
-  Buffer.contents buf
+let pp_page_selector_one ctx { page_name; page_pseudos } =
+  Option.iter (Pp.string ctx) page_name;
+  List.iter (pp_page_pseudo ctx) page_pseudos
 
-let pp_page_selector ctx selector =
-  match selector with
-  | Some s ->
-      if String.length s > 0 && s.[0] = ':' then Pp.sp ctx ()
-      else Pp.space ctx ();
-      let s = if Pp.minified ctx then minify_page_selector s else s in
-      Pp.string ctx s
-  | None -> ()
+let pp_page_selector ctx = function
+  | [] -> ()
+  | first :: _ as selectors ->
+      (* A named selector needs a hard space after [@page]; a pseudo-only one
+         takes a collapsible space ([@page:first] minifies cleanly). *)
+      (match first.page_name with
+      | Some _ -> Pp.space ctx ()
+      | None -> Pp.sp ctx ());
+      Pp.list ~sep:Pp.comma pp_page_selector_one ctx selectors
 
 let pp_page_margin_rule : page_margin_rule Pp.t =
  fun ctx rule ->
@@ -2213,46 +2206,54 @@ let rec page_selector_skip_ws s len i =
     page_selector_skip_ws s len (i + 1)
   else i
 
-let validate_pseudo_page r s name =
-  match name with
-  | "first" | "left" | "right" | "blank" -> ()
-  | _ -> page_selector_error r s
-
-let validate_page_selector r selector =
-  (* CSS Paged Media 3 section 3.1: [<page-selector> = <ident-token>?
-     <pseudo-page>*]. Zero or more [<pseudo-page>] entries from the closed set
-     [first | left | right | blank] are allowed, so [@page invoice:blank:first]
-     is well-formed. *)
+(* CSS Paged Media 3 section 3.1: [<page-selector-list> = <page-selector>#],
+   [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
+   the closed set [first | left | right | blank], so [@page invoice:blank:first]
+   is well-formed. *)
+let parse_page_selectors r selector =
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
+  let pseudo_of_name name =
+    match name with
+    | "first" -> Page_first
+    | "left" -> Page_left
+    | "right" -> Page_right
+    | "blank" -> Page_blank
+    | _ -> page_selector_error r s
+  in
   let consume_pseudo_page i =
-    if i >= len || s.[i] <> ':' then i
+    if i >= len || s.[i] <> ':' then None
     else
       let start = i + 1 in
       let stop = consume_ident start in
       if stop = start then page_selector_error r s;
-      let name = String.sub s start (stop - start) in
-      validate_pseudo_page r s name;
-      stop
+      Some (pseudo_of_name (String.sub s start (stop - start)), stop)
   in
-  let rec consume_pseudo_pages i =
-    let stop = consume_pseudo_page i in
-    if stop = i then i else consume_pseudo_pages stop
+  let rec consume_pseudo_pages acc i =
+    match consume_pseudo_page i with
+    | None -> (List.rev acc, i)
+    | Some (p, stop) -> consume_pseudo_pages (p :: acc) stop
   in
-  let rec consume_selectors i =
+  let rec consume_selectors acc i =
     let i = skip_ws i in
-    if i >= len then ()
+    if i >= len then List.rev acc
     else
       let after_ident = consume_ident i in
-      let after_pseudo = consume_pseudo_pages after_ident in
+      let page_name =
+        if after_ident = i then None
+        else Some (String.sub s i (after_ident - i))
+      in
+      let page_pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
+      let sel = { page_name; page_pseudos } in
       let after_pseudo = skip_ws after_pseudo in
-      if after_pseudo >= len then ()
-      else if s.[after_pseudo] = ',' then consume_selectors (after_pseudo + 1)
+      if after_pseudo >= len then List.rev (sel :: acc)
+      else if s.[after_pseudo] = ',' then
+        consume_selectors (sel :: acc) (after_pseudo + 1)
       else page_selector_error r s
   in
-  consume_selectors 0
+  consume_selectors [] 0
 
 let page_descriptor_order =
   [
@@ -2347,10 +2348,7 @@ let read_page (r : Cursor.t) : statement =
   Cursor.ws r;
   let selector =
     let s = Cursor.drain_until_block_as_string ~trim:true r in
-    if s = "" then None
-    else (
-      validate_page_selector r s;
-      Some s)
+    if s = "" then [] else parse_page_selectors r s
   in
   let descriptors, margins = Cursor.braces read_page_body r in
   Page_with_margins (selector, descriptors, margins)

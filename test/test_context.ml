@@ -464,6 +464,19 @@ let declaration_shape decl =
 let raw_descriptor_shape (descriptor : Css.Stylesheet.page_descriptor) =
   Css.Declaration.property_name descriptor
 
+let page_selectors_string selectors =
+  let pseudo = function
+    | Css.Stylesheet.Page_first -> ":first"
+    | Page_left -> ":left"
+    | Page_right -> ":right"
+    | Page_blank -> ":blank"
+  in
+  let one { Css.Stylesheet.page_name; page_pseudos } =
+    Option.value ~default:"" page_name
+    ^ String.concat "" (List.map pseudo page_pseudos)
+  in
+  String.concat "," (List.map one selectors)
+
 let rec conditional_shape = function
   | Css.Stylesheet.Media_condition condition ->
       "media(" ^ Css.Pp.to_string ~minify:true Css.Media.pp condition ^ ")"
@@ -560,13 +573,15 @@ let rec statement_shape stmt =
   | Font_face descriptors ->
       "font-face" :: List.map (fun _ -> "descriptor") descriptors
   | Page (selector, declarations) ->
-      ("page:" ^ Option.value ~default:"" selector)
+      ("page:" ^ page_selectors_string selector)
       :: declaration_lines declarations
   | Page_with_margins (selector, descriptors, margins) ->
-      ("page-margins:"
-      ^ Option.value ~default:"" selector
-      ^ ":"
-      ^ String.concat "," (List.map raw_descriptor_shape descriptors))
+      String.concat ":"
+        [
+          "page-margins";
+          page_selectors_string selector;
+          String.concat "," (List.map raw_descriptor_shape descriptors);
+        ]
       :: List.map
            (fun (margin : Css.Stylesheet.page_margin_rule) ->
              "  margin:" ^ margin.margin_name ^ ":"
