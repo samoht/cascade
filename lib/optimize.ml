@@ -3803,16 +3803,17 @@ let rule_gap_merge_eligible (rule : Stylesheet.rule) =
   rule.nested = [] && rule.merge_key = None
   && not (contains_vendor_pseudo_element rule.selector)
 
-(* A same-selector merge folds the candidate into the anchor's slot. An
-   intervening rule that overlaps the merged selector at an equal specificity
-   makes source order observable, so block on any such tie - regardless of which
-   properties overlap, since the merged rule's position governs all of them. A
-   strictly higher- or lower-specificity competitor is decided by specificity,
-   not order, so it never blocks. *)
-let skipped_blocks_same_selector_merge target skipped =
+(* [merged] is the combined rule a same-selector merge would produce. An
+   intervening rule blocks it when it overlaps the selector, writes one of the
+   merged rule's properties, and ties on specificity - then source order decides
+   that property and the merge would change it. A strictly higher- or lower-
+   specificity competitor is decided by specificity (not order), and one writing
+   only other properties does not conflict; both are safe to cross. *)
+let skipped_blocks_same_selector_merge merged skipped =
   rule_selector_may_overlap_summary skipped
-    (Selector_summary.of_selector target.Stylesheet_intf.selector)
-  && rule_specificity_ties_on_overlap target skipped
+    (Selector_summary.of_selector merged.Stylesheet_intf.selector)
+  && declarations_overlap merged.declarations skipped.declarations
+  && rule_specificity_ties_on_overlap merged skipped
 
 let merge_same_selector_gaps (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -3826,10 +3827,13 @@ let merge_same_selector_gaps (rules : Stylesheet.rule list) :
         if not (rule_gap_merge_eligible candidate) then None
         else if same_selector anchor candidate then
           let skipped = List.rev skipped_rev in
-          if List.exists (skipped_blocks_same_selector_merge candidate) skipped
+          let merged = merge_two_adjacent_rules anchor candidate in
+          (* Check the merged rule (anchor + candidate declarations) against the
+             intervening rules: a tie on any property the merged rule writes
+             makes the merge observable. *)
+          if List.exists (skipped_blocks_same_selector_merge merged) skipped
           then None
           else
-            let merged = merge_two_adjacent_rules anchor candidate in
             let before = anchor :: (skipped @ [ candidate ]) in
             let after = merged :: skipped in
             if rules_pp_size after < rules_pp_size before then

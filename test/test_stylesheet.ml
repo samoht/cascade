@@ -3881,10 +3881,12 @@ let c61_same_condition_merge () =
        "@layer base { .a { color: red } } @layer base { .b { color: blue } }")
 
 (* CSS Cascade 6.1 (Cascade Sorting Order): [.a] and the intervening [.b] tie on
-   specificity (0,1,0), so source order is observable for [.a.b] elements. A
-   same-selector merge would move the combined [.a] rule to one side of [.b],
-   changing that order, so the two [.a] rules are not merged across it. *)
-let c61_no_intervening_merge () =
+   specificity (0,1,0), but the merge folds the later [.a] up into the earlier
+   slot, moving only [margin]. [.b] writes [color], which neither [.a] property
+   conflicts with, so the move is unobservable and the two [.a] rules combine
+   across it. A conflicting, same-specificity intervening rule would block
+   it. *)
+let c61_merge_across_nonconflicting () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> minify parsed.stylesheet
@@ -3893,18 +3895,9 @@ let c61_no_intervening_merge () =
   let output =
     normalize ".a { padding: 10px } .b { color: red } .a { margin: 5px }"
   in
-  Alcotest.(check bool)
-    "first .a rule preserved with padding" true
-    (Astring.String.is_infix ~affix:"padding:10px" output);
-  Alcotest.(check bool)
-    "second .a rule preserved with margin" true
-    (Astring.String.is_infix ~affix:"margin:5px" output);
-  Alcotest.(check bool)
-    ".b rule remains between the two .a rules" true
-    (let find_pos sub = Astring.String.find_sub ~sub output in
-     match (find_pos "padding:10px", find_pos ".b", find_pos "margin:5px") with
-     | Some p, Some b, Some m -> p < b && b < m
-     | _ -> false)
+  Alcotest.(check string)
+    "non-conflicting intervening rule does not block the merge"
+    ".a{padding:10px;margin:5px}.b{color:red}" output
 
 (* {2 More fidelity tests for the new edges}
 
@@ -6792,9 +6785,9 @@ let additional_tests =
     ( "spec cascade 6.1 consecutive same-condition merge",
       `Quick,
       c61_same_condition_merge );
-    ( "spec cascade 6.1 no merge across intervening rule pair",
+    ( "spec cascade 6.1 merge across non-conflicting intervening rule pair",
       `Quick,
-      c61_no_intervening_merge );
+      c61_merge_across_nonconflicting );
     ( "fidelity nth-child form preserved",
       `Quick,
       fidelity_nth_child_form_preserved );
