@@ -520,10 +520,10 @@ let rec statement_shape stmt =
       :: block_lines block
   | Moz_document (_, block) -> "moz-document" :: block_lines block
   | Scope (start, boundary, block) ->
-      ("scope:"
-      ^ Option.value ~default:"" start
-      ^ ":"
-      ^ Option.value ~default:"" boundary)
+      let bound =
+        Option.fold ~none:"" ~some:(Css.Selector.to_string ~minify:true)
+      in
+      String.concat ":" [ "scope"; bound start; bound boundary ]
       :: block_lines block
   | Keyframes (name, keyframes) ->
       ("keyframes:" ^ name)
@@ -631,8 +631,8 @@ let declaration_value_source decl =
 let scope_selector_matches (document : Css.Context.document) = function
   | None -> true
   | Some selector ->
-      document.scope = Some selector
-      || Css.Context.matches_selector document (Css.Selector.of_string selector)
+      document.scope = Some (Css.Selector.to_string ~minify:true selector)
+      || Css.Context.matches_selector document selector
 
 let scope_boundary_allows document start boundary =
   scope_selector_matches document start

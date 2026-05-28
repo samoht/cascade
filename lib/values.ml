@@ -6427,14 +6427,6 @@ let color_is_color_4 =
         true
     | _ -> false)
 
-(* An [oklab()] whose [l], [a], or [b] channel is the [none] keyword (stored as
-   [None]; a real zero channel is [Some 0.]). Lightning CSS refuses to merge
-   rules whose declarations contain this, so cascade matches that. *)
-let color_uses_oklab_none =
-  color_exists (function
-    | Oklab { l; a; b; _ } -> l = None || a = None || b = None
-    | _ -> false)
-
 let read_system_color t : system_color =
   Cursor.ws t;
   let keyword = Cursor.ident t in

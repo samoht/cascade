@@ -104,7 +104,10 @@ let generated_stylesheet buf =
       Css.Stylesheet.Layer
         ( Some (pick [ "base"; "theme"; "components" ] buf 12),
           [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
-      Css.Stylesheet.Scope (Some ".card", Some ".limit", [ rule buf 24 ]);
+      Css.Stylesheet.Scope
+        ( Some (Css.Selector.of_string ".card"),
+          Some (Css.Selector.of_string ".limit"),
+          [ rule buf 24 ] );
       Css.Stylesheet.Starting_style [ rule buf 28 ];
       Css.Stylesheet.with_origin Css.Stylesheet.Author
         [ rule buf 32; rule buf 32 ];

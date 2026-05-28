@@ -841,6 +841,23 @@ let test_merge_consecutive_identical () =
     "merges consecutive identical rules" true
     (String.contains output_str ',')
 
+let test_combine_identical_oklab_none () =
+  (* A [none] channel in oklab() is a missing component that matters only for
+     color interpolation (CSS Color 4 sec. 4.2.3): color-mix, gradients, and
+     transitions carry it forward. It does not affect rule grouping, which is
+     set union (Selectors 4 sec. 4.2) and never interpolates. So two rules with
+     byte-identical oklab-none declarations combine into one comma-selector rule
+     exactly like any other identical pair - no minifier-specific exception.
+     oklab() serialises space-separated, so a comma in the output is the
+     combined selector list. *)
+  let output =
+    optimized_string
+      ".a { color: oklab(40% none .1) } .b { color: oklab(40% none .1) }"
+  in
+  Alcotest.(check bool)
+    "identical oklab(none) rules combine into a comma selector" true
+    (String.contains output ',')
+
 let test_no_merge_different_declarations () =
   let input =
     [
@@ -1868,7 +1885,7 @@ let c61_no_merge_scope () =
     [
       item_rule (Css.Declaration.color (hex_color "ff0000"));
       Css.Stylesheet.Scope
-        ( Some ".component",
+        ( Some (Css.Selector.of_string ".component"),
           None,
           [
             Css.rule
@@ -1882,9 +1899,10 @@ let c61_no_merge_scope () =
   match optimized with
   | [
    before_stmt;
-   Css.Stylesheet.Scope (Some ".component", None, [ scoped_stmt ]);
+   Css.Stylesheet.Scope (Some start, None, [ scoped_stmt ]);
    after_stmt;
-  ] ->
+  ]
+    when Css.Selector.to_string ~minify:true start = ".component" ->
       let before = rule_of_statement before_stmt in
       let scoped = rule_of_statement scoped_stmt in
       let after = rule_of_statement after_stmt in
@@ -1913,16 +1931,20 @@ let c61_distinct_scopes_preserved () =
   in
   let input =
     [
-      Css.Stylesheet.Scope (Some ".outer", None, [ scoped_rule ]);
-      Css.Stylesheet.Scope (Some ".inner", None, [ scoped_rule ]);
+      Css.Stylesheet.Scope
+        (Some (Css.Selector.of_string ".outer"), None, [ scoped_rule ]);
+      Css.Stylesheet.Scope
+        (Some (Css.Selector.of_string ".inner"), None, [ scoped_rule ]);
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Scope (Some ".outer", None, [ outer_stmt ]);
-   Css.Stylesheet.Scope (Some ".inner", None, [ inner_stmt ]);
-  ] ->
+   Css.Stylesheet.Scope (Some outer_sel, None, [ outer_stmt ]);
+   Css.Stylesheet.Scope (Some inner_sel, None, [ inner_stmt ]);
+  ]
+    when Css.Selector.to_string ~minify:true outer_sel = ".outer"
+         && Css.Selector.to_string ~minify:true inner_sel = ".inner" ->
       let outer = rule_of_statement outer_stmt in
       let inner = rule_of_statement inner_stmt in
       Alcotest.(check string)
@@ -1946,8 +1968,14 @@ let c61_distinct_scope_limits_preserved () =
   in
   let input =
     [
-      Css.Stylesheet.Scope (Some ".card", Some ".footer", [ scoped_rule ]);
-      Css.Stylesheet.Scope (Some ".card", Some ".aside", [ scoped_rule ]);
+      Css.Stylesheet.Scope
+        ( Some (Css.Selector.of_string ".card"),
+          Some (Css.Selector.of_string ".footer"),
+          [ scoped_rule ] );
+      Css.Stylesheet.Scope
+        ( Some (Css.Selector.of_string ".card"),
+          Some (Css.Selector.of_string ".aside"),
+          [ scoped_rule ] );
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -3407,6 +3435,9 @@ let c734_revert_origin_candidates () =
 let selector_merging_tests =
   [
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
+    ( "combine identical oklab(none) rules",
+      `Quick,
+      test_combine_identical_oklab_none );
     ( "no merge different declarations",
       `Quick,
       test_no_merge_different_declarations );
