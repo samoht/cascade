@@ -349,21 +349,44 @@ let declaration_covers covering covered =
       || shorthand_covers_longhand covering_p covered_p
   | _ -> false
 
-(* Detect a value that begins with a CSS vendor-prefix (-webkit-, -moz-, -ms-,
-   -o-). Used to preserve legacy fallback patterns like
+let display_value_is_vendor : Properties.display -> bool = function
+  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
+  | Moz_inline_box ->
+      true
+  | _ -> false
+
+let background_image_is_vendor : Properties.background_image -> bool = function
+  | Webkit_linear_gradient _ | Webkit_repeating_linear_gradient _
+  | Webkit_radial_gradient _ | Webkit_repeating_radial_gradient _
+  | Moz_linear_gradient _ | Moz_repeating_linear_gradient _
+  | Moz_radial_gradient _ | Moz_repeating_radial_gradient _
+  | O_linear_gradient _ | O_repeating_linear_gradient _ | O_radial_gradient _
+  | O_repeating_radial_gradient _ | Webkit_image_set _ | Webkit_gradient _ ->
+      true
+  | _ -> false
+
+(* A value whose rendering begins with a CSS vendor prefix (-webkit-, -moz-,
+   -ms-, -o-). Only [display] keywords and [background-image] gradients render
+   that way, so a structural match on those value types is exhaustive - no
+   rendering needed. Used to preserve legacy fallbacks like
    [display:-webkit-box;display:flex]: the spec value cascades over the prefixed
    value in modern browsers, but old browsers only understand the prefixed
    spelling, so dropping the earlier declaration removes a real browser-compat
    fallback. *)
-let value_is_vendor_prefixed decl =
-  let s = string_of_value ~minify:true decl in
-  let len = String.length s in
-  let starts_with prefix =
-    String.length prefix <= len
-    && String.sub s 0 (String.length prefix) = prefix
-  in
-  starts_with "-webkit-" || starts_with "-moz-" || starts_with "-ms-"
-  || starts_with "-o-"
+let rec value_is_vendor_prefixed decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> value_is_vendor_prefixed decl
+  | Declaration { property = Display; value; _ } ->
+      display_value_is_vendor value
+  | Declaration { property = Background_image; value; _ } ->
+      List.exists background_image_is_vendor value
+  | Declaration { property = Webkit_mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Border_image_source; value; _ } ->
+      background_image_is_vendor value
+  | Declaration _ -> false
 
 (* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides.
    Authored shorthands stay as authored when optimise has no longhand to absorb;
@@ -2529,11 +2552,15 @@ let property_covered_by_important kept decl =
 
 let same_property = Declaration.same_property
 
-let same_minified_value new_decl existing =
-  Declaration.value_size ~minify:true new_decl
-  = Declaration.value_size ~minify:true existing
-  && string_of_value ~minify:true new_decl
-     = string_of_value ~minify:true existing
+let rec without_importance = function
+  | Declaration r -> Declaration { r with important = false }
+  | Theme_guarded t -> Theme_guarded { t with decl = without_importance t.decl }
+
+(* Value equality ignoring importance. Every caller establishes [same_property]
+   first, so the two declarations share a value type and this is a structural
+   value comparison: on canonical ASTs it matches minified-text equality without
+   rendering. *)
+let same_value a b = without_importance a = without_importance b
 
 (* Two declarations minify to the same text exactly when their canonical ASTs
    are equal (property, value, and importance). After the optimizer's
@@ -2547,14 +2574,14 @@ let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
      cascade may pick whichever the browser understands. *)
   same_property new_decl existing
-  && (not (same_minified_value new_decl existing))
+  && (not (same_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
 (* The earlier declaration is a real cascade fallback when the later one uses
    CSS Color 4 / 5 syntax that older browsers drop. *)
 let legacy_color_fallback new_decl existing =
   same_property new_decl existing
-  && (not (same_minified_value new_decl existing))
+  && (not (same_value new_decl existing))
   && Declaration.value_uses_color_4 new_decl
   && not (Declaration.value_uses_color_4 existing)
 
@@ -2563,13 +2590,13 @@ let legacy_color_fallback new_decl existing =
    browsers that can't resolve the substitution at parse time. *)
 let legacy_runtime_subst_fallback new_decl existing =
   same_property new_decl existing
-  && (not (same_minified_value new_decl existing))
+  && (not (same_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
   && not (Declaration.value_uses_runtime_subst existing)
 
 let same_property_value_declaration new_decl existing =
   same_property new_decl existing
-  && same_minified_value new_decl existing
+  && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
 let covered_by_new_declaration new_decl existing =
@@ -2615,46 +2642,58 @@ let deduplicate_step kept (idx, decl) =
     if is_all_declaration decl then append_all_declaration idx decl kept
     else kept @ [ (idx, decl) ]
 
-(* For each typed vendor-prefixed property, the typed unprefixed sibling. [None]
-   for vendor-only properties ([-webkit-line-clamp],
-   [-webkit-tap-highlight-color], ...). Drop-vendor-when-standard-present only
-   fires when this returns [Some _] - keeps [text-decoration] off the list
-   because dropping the WebKit copy regresses documented inheritance quirks. *)
-let unprefixed_property_name : type a. a Properties.property -> string option =
-  function
-  | Webkit_transform -> Some "transform"
-  | Webkit_transition -> Some "transition"
-  | Webkit_filter -> Some "filter"
-  | Webkit_backdrop_filter -> Some "backdrop-filter"
-  | Webkit_user_select -> Some "user-select"
-  | Webkit_appearance -> Some "appearance"
-  | Webkit_text_size_adjust -> Some "text-size-adjust"
-  | Webkit_hyphens -> Some "hyphens"
-  | Moz_user_select -> Some "user-select"
-  | O_transition -> Some "transition"
-  | _ -> None
-
-let unprefixed_property_of_decl decl =
-  match unwrap_theme_guard decl with
-  | Declaration { property; _ } -> unprefixed_property_name property
-  | _ -> None
+(* [vendor_alias_redundant vendor twin] is [true] when [vendor] is a
+   vendor-prefixed declaration made redundant by its unprefixed [twin] carrying
+   the same value and importance. Each pair is matched on both property
+   constructors so the two values share a type and compare with a typed (=) - no
+   rendering. [-webkit-appearance] is intentionally absent: its value type
+   [webkit_appearance] is a superset of [appearance] (extra non-standard values
+   like [listbox]/[checkbox]/[radio]), so there is no typed equality between the
+   two. [text-decoration] is also absent because dropping the WebKit copy
+   regresses documented inheritance quirks. *)
+let vendor_alias_redundant vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
+      Declaration { property = Transform; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_transition; value = v1; important = i1 },
+      Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = O_transition; value = v1; important = i1 },
+      Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_filter; value = v1; important = i1 },
+      Declaration { property = Filter; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_backdrop_filter; value = v1; important = i1 },
+      Declaration { property = Backdrop_filter; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_user_select; value = v1; important = i1 },
+      Declaration { property = User_select; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_user_select; value = v1; important = i1 },
+      Declaration { property = User_select; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_hyphens; value = v1; important = i1 },
+      Declaration { property = Hyphens; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_text_size_adjust; value = v1; important = i1 },
+      Declaration { property = Text_size_adjust; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
-   same rule with the same minified value and importance. The unprefixed form
-   supersedes in modern browsers, so the vendor copy is dead under the
-   recent-browser policy. *)
+   same rule with the same value and importance. The unprefixed form supersedes
+   in modern browsers, so the vendor copy is dead under the recent-browser
+   policy. *)
 let drop_vendor_aliases (kept : (int * declaration) list) :
     (int * declaration) list =
   let has_unprefixed_twin (_, decl) =
-    match unprefixed_property_of_decl decl with
-    | None -> false
-    | Some unprefixed ->
-        List.exists
-          (fun (_, other) ->
-            String.equal (property_name other) unprefixed
-            && same_minified_value decl other
-            && is_important decl = is_important other)
-          kept
+    List.exists (fun (_, other) -> vendor_alias_redundant decl other) kept
   in
   List.filter (fun item -> not (has_unprefixed_twin item)) kept
 
