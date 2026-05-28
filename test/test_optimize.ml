@@ -2031,9 +2031,10 @@ let c61_distinct_scope_limits_preserved () =
 
 let c61_no_merge_supports () =
   (* Default minify elides a baseline-true [@supports], exposing [.feature] to
-     the surrounding cascade. [.feature] ties [.card] on specificity (0,1,0), so
-     source order stays observable and the two [.card] rules are not merged
-     across it. With [--enforce-spec] the [@supports] is kept as a boundary. *)
+     the surrounding cascade. [.feature] ties [.card] on specificity (0,1,0) but
+     writes only [display], which neither merged [.card] property conflicts
+     with, so the two [.card] rules merge across it. With [--enforce-spec] the
+     [@supports] is kept as a boundary and blocks the merge. *)
   let input =
     [
       Css.rule
@@ -2055,7 +2056,7 @@ let c61_no_merge_supports () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "default minify elides baseline supports boundary"
-    ".card{color:red}.feature{display:flex}.card{background-color:#00f}" output;
+    ".card{color:red;background-color:#00f}.feature{display:flex}" output;
   let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
   let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
   Alcotest.(check string)
