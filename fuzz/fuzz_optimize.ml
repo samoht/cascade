@@ -755,37 +755,44 @@ let test_merge_overflow_identity buf =
   check_indexed_noop_identity "merge_overflow_longhands" decls
     (Css.Optimize.merge_overflow_longhands decls)
 
+(* Physical-identity invariants for the optimize passes (see the per-pass tests
+   above): every AST-to-AST pass returns its input unchanged by identity when it
+   changes nothing. Grouped into their own list so [suite] stays short. *)
+let identity_cases =
+  [
+    test_case "optimize preserves physical identity on a fixed point" [ bytes ]
+      test_optimize_preserves_physical_identity;
+    test_case
+      "deduplicate_declarations preserves physical identity on a fixed point"
+      [ bytes ] test_dedup_decls_identity;
+    test_case "drop_invalid preserves physical identity" [ bytes ]
+      test_drop_invalid_identity;
+    test_case "drop_empty_rules preserves physical identity" [ bytes ]
+      test_drop_empty_identity;
+    test_case "drop_unknown_at_rules preserves physical identity" [ bytes ]
+      test_drop_unknown_identity;
+    test_case "apply_property_duplication preserves physical identity" [ bytes ]
+      test_apply_dup_identity;
+    test_case "flatten_nesting preserves physical identity" [ bytes ]
+      test_flatten_identity;
+    test_case "duplicate_buggy_properties preserves physical identity" [ bytes ]
+      test_dup_buggy_identity;
+    test_case "merge_rules preserves physical identity" [ bytes ]
+      test_merge_rules_identity;
+    test_case "combine_identical_rules preserves physical identity" [ bytes ]
+      test_combine_rules_identity;
+    test_case "compose_shorthands preserves element identity" [ bytes ]
+      test_compose_identity;
+    test_case "merge_box_shorthand_longhands preserves element identity"
+      [ bytes ] test_merge_box_identity;
+    test_case "merge_overflow_longhands preserves element identity" [ bytes ]
+      test_merge_overflow_identity;
+  ]
+
 let suite =
   ( "optimize",
     [
       test_case "optimize idempotent" [ bytes ] test_optimize_idempotent;
-      test_case "optimize preserves physical identity on a fixed point"
-        [ bytes ] test_optimize_preserves_physical_identity;
-      test_case
-        "deduplicate_declarations preserves physical identity on a fixed point"
-        [ bytes ] test_dedup_decls_identity;
-      test_case "drop_invalid preserves physical identity" [ bytes ]
-        test_drop_invalid_identity;
-      test_case "drop_empty_rules preserves physical identity" [ bytes ]
-        test_drop_empty_identity;
-      test_case "drop_unknown_at_rules preserves physical identity" [ bytes ]
-        test_drop_unknown_identity;
-      test_case "apply_property_duplication preserves physical identity"
-        [ bytes ] test_apply_dup_identity;
-      test_case "flatten_nesting preserves physical identity" [ bytes ]
-        test_flatten_identity;
-      test_case "duplicate_buggy_properties preserves physical identity"
-        [ bytes ] test_dup_buggy_identity;
-      test_case "merge_rules preserves physical identity" [ bytes ]
-        test_merge_rules_identity;
-      test_case "combine_identical_rules preserves physical identity" [ bytes ]
-        test_combine_rules_identity;
-      test_case "compose_shorthands preserves element identity" [ bytes ]
-        test_compose_identity;
-      test_case "merge_box_shorthand_longhands preserves element identity"
-        [ bytes ] test_merge_box_identity;
-      test_case "merge_overflow_longhands preserves element identity" [ bytes ]
-        test_merge_overflow_identity;
       test_case "optimized stylesheet reparses" [ bytes ]
         test_optimized_stylesheet_reparses;
       test_case "optimize monotonicity: optimized <= minified-alone" [ bytes ]
@@ -814,4 +821,5 @@ let suite =
         test_layer_before_specificity;
       test_case "name-defining at-rules preserved" [ bytes ]
         test_name_defining_atrules_preserved;
-    ] )
+    ]
+    @ identity_cases )
