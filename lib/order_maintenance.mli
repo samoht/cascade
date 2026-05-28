@@ -49,6 +49,9 @@ val remove : 'a t -> 'a node -> unit
 val data : 'a node -> 'a
 (** [data n] is the element [n] was created with. *)
 
+val is_live : 'a node -> bool
+(** [is_live n] is [false] once [n] has been removed. *)
+
 val compare : 'a node -> 'a node -> int
 (** [compare a b] is negative when [a] precedes [b], positive when [b] precedes
     [a], and [0] only when [a] and [b] are the same handle. O(1). Both handles

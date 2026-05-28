@@ -15,6 +15,7 @@ let of_rules rs =
 
 let elem n = Order_maintenance.data n
 let rule n = UF.get (UF.find (elem n))
+let is_live n = Order_maintenance.is_live n
 let set n r = UF.set (UF.find (elem n)) r
 let length t = Order_maintenance.length t
 let nodes t = Order_maintenance.nodes t
