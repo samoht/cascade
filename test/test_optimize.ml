@@ -1475,6 +1475,152 @@ let c63_merge_same_selector_across_higher_specificity () =
         (Astring.String.is_infix ~affix:"font-size:small;line-height:1.5" output))
     [ None; Some `Stylesheet ]
 
+let factor_diff_value_descendant_tie_unsafe () =
+  (* Collapsing the shared [float:left] of [.a .log] and [.b .hx] into one group
+     is unsound: the merged rule G sits at a single source position while the
+     intervening [.h .a] (float:right, a 0,2,0 tie with both branches) sits at
+     another, and two elements demand opposite placements: E1 = <h><a><a.log> :
+     matches [.a .log] (left) and [.h .a] (right). Source order is [.a .log]
+     then [.h .a], so right wins, requiring G before [.h .a]. E2 = <b><h><a.hx>
+     : matches [.b .hx] (left) and [.h .a] (right). Source order is [.h .a] then
+     [.b .hx], so left wins, requiring G after [.h .a]. No single position for G
+     satisfies both, so the two [float:left] branches must never share a group
+     across [.h .a]. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      ".a .log{color:red;float:left;width:10px}.h .a{float:right}.b \
+       .hx{color:red;float:left;width:20px}"
+  in
+  let unsafe_float_group =
+    String.split_on_char '}' output
+    |> List.exists (fun rule ->
+        match Astring.String.cut ~sep:"{" rule with
+        | Some (selector, decls) ->
+            Astring.String.is_infix ~affix:".a .log" selector
+            && Astring.String.is_infix ~affix:".b .hx" selector
+            && Astring.String.is_infix ~affix:"float:left" decls
+        | None -> false)
+  in
+  Alcotest.(check bool)
+    "the two float:left branches never share a group across the float:right tie"
+    false unsafe_float_group
+
+let factor_same_value_descendant_tie_groups () =
+  (* Here [.h .a] writes the same [float:left]. Reordering identical-value
+     declarations is unobservable, so the shared block factors across the
+     tie. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      ".a .log{color:red;float:left;width:10px}.h .a{float:left}.b \
+       .hx{color:red;float:left;width:20px}"
+  in
+  Alcotest.(check bool)
+    "same-value descendant-combinator tie allows factoring" true
+    (Astring.String.is_infix ~affix:".a .log,.b .hx" output)
+
+let factor_prefers_size_minimal_subset () =
+  (* Hoisting a shared declaration is profitable for a member only when its
+     selector entry (len+1) is cheaper than the bytes it would otherwise
+     duplicate ("position:absolute;" = 18). [.very-long-closebtn-selector] (28)
+     is a net loss, so it keeps [position:absolute] inline while the three short
+     selectors form the shared group. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      "#f{top:0;position:absolute;width:100%}.b{padding:16px;position:absolute;z-index:1}.b-arrow{position:absolute}.very-long-closebtn-selector{height:21px;position:absolute;width:21px}"
+  in
+  Alcotest.(check bool)
+    "short selectors group; long selector keeps position:absolute inline" true
+    (Astring.String.is_infix ~affix:"#f,.b,.b-arrow{position:absolute}" output
+    && Astring.String.is_infix
+         ~affix:
+           ".very-long-closebtn-selector{height:21px;position:absolute;width:21px}"
+         output)
+
+let factor_steps_over_same_value_nesting_boundary () =
+  (* A rule carrying a nested rule is a factor boundary, but the
+     [position:absolute] scan steps over [.jfk-bubble-closebtn] (which nests
+     [&:focus]) to reach [.jfk-bubble-arrow]. Stepping over it is sound:
+     closebtn carries the same [position:absolute] and its nested [&:focus] sets
+     only opacity, so reordering position across it is unobservable. The three
+     same-value members group while closebtn stays inline with its nested
+     rule. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      "#footer{position:absolute;width:100%}.jfk-bubble{padding:16px;position:absolute}.jfk-bubble-closebtn{position:absolute;right:2px;&:focus{opacity:.8}}.jfk-bubble-arrow{position:absolute}"
+  in
+  Alcotest.(check bool)
+    "cluster groups across the same-value nesting boundary" true
+    (Astring.String.is_infix
+       ~affix:"#footer,.jfk-bubble,.jfk-bubble-arrow{position:absolute}" output)
+
+let factor_conflicting_nesting_boundary_unsafe () =
+  (* The boundary [.bnd] nests a rule and also sets [position:relative], a 0,1,0
+     tie with [.m1]/[.m2]'s [position:absolute]. For an element matching [.m2]
+     and [.bnd], source order ([.bnd] before [.m2]) makes absolute win; hoisting
+     [.m1] and [.m2] into a group before [.bnd] flips it to relative. So the
+     scan steps over a nesting boundary only when it shares the factored value,
+     never when it conflicts. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      ".m1{position:absolute}.bnd{position:relative;&:hover{color:red}}.m2{position:absolute}"
+  in
+  let unsafe_group =
+    String.split_on_char '}' output
+    |> List.exists (fun rule ->
+        match Astring.String.cut ~sep:"{" rule with
+        | Some (selector, decls) ->
+            Astring.String.is_infix ~affix:".m1" selector
+            && Astring.String.is_infix ~affix:".m2" selector
+            && Astring.String.is_infix ~affix:"position:absolute" decls
+        | None -> false)
+  in
+  Alcotest.(check bool)
+    "no position:absolute group spans .m1 and .m2 across the conflicting \
+     boundary"
+    false unsafe_group
+
+let factor_inlines_rather_than_grouping_long_selector () =
+  (* outlook-3 gap: when a declaration is already shared in source between a
+     long selector and a sibling, keeping it grouped repeats the long selector
+     in the group list. Inlining it into the sibling rules costs only one extra
+     copy of the declaration per rule, which is cheaper once the selector
+     exceeds the declaration. Here [.really-long-block-name .primary] (>>15
+     chars) should keep [padding-top:1px] inline alongside its [font-size], not
+     share a [padding-top] group with [.really-long-block-name .secondary]. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      ".really-long-block-name .primary{font-size:14px}.really-long-block-name \
+       .primary,.really-long-block-name .secondary{padding-top:1px}"
+  in
+  let costly_padding_group =
+    String.split_on_char '}' output
+    |> List.exists (fun rule ->
+        match Astring.String.cut ~sep:"{" rule with
+        | Some (selector, decls) ->
+            Astring.String.is_infix ~affix:".primary" selector
+            && Astring.String.is_infix ~affix:".secondary" selector
+            && Astring.String.is_infix ~affix:"padding-top" decls
+        | None -> false)
+  in
+  Alcotest.(check bool)
+    "padding-top is inlined, not grouped across the long selector" false
+    costly_padding_group
+
+let factor_groups_single_property_past_other_shared_decl () =
+  (* The anchor [#footer] shares [width] with [.fll] and [position] with the
+     [.jfk-bubble] cluster. A scan that commits to the first shared declaration
+     it meets would lock onto [width] at [.fll] and never group [position] with
+     the cluster. Seeding the scan per anchor declaration recovers the
+     [position] group across the intervening [.fll]. *)
+  let output =
+    optimized_string ~scope:`Stylesheet
+      "#footer{bottom:0;position:absolute;width:100%}.fll{float:right;width:100%}.jfk-bubble{padding:16px;position:absolute}.jfk-bubble-arrow{position:absolute}"
+  in
+  Alcotest.(check bool)
+    "position groups across .fll which shares only width" true
+    (Astring.String.is_infix
+       ~affix:"#footer,.jfk-bubble,.jfk-bubble-arrow{position:absolute}" output)
+
 let aba_allowed_same_selector_dead () =
   (* Exact same selector and same property is not an A?B?A dependency: the final
      A shadows the first A for every matched element. The first declaration may
@@ -3555,6 +3701,27 @@ let selector_merging_tests =
     ( "merge same selector across higher-specificity intervening rule",
       `Quick,
       c63_merge_same_selector_across_higher_specificity );
+    ( "factor across different-value descendant tie is unsafe",
+      `Quick,
+      factor_diff_value_descendant_tie_unsafe );
+    ( "factor allowed across same-value descendant-combinator tie",
+      `Quick,
+      factor_same_value_descendant_tie_groups );
+    ( "factor prefers size-minimal subset",
+      `Quick,
+      factor_prefers_size_minimal_subset );
+    ( "factor steps over a same-value nesting boundary",
+      `Quick,
+      factor_steps_over_same_value_nesting_boundary );
+    ( "factor does not step over a conflicting nesting boundary",
+      `Quick,
+      factor_conflicting_nesting_boundary_unsafe );
+    ( "factor inlines rather than grouping across a long selector (known gap)",
+      `Quick,
+      factor_inlines_rather_than_grouping_long_selector );
+    ( "factor groups a single property past a differently-shared decl",
+      `Quick,
+      factor_groups_single_property_past_other_shared_decl );
     ( "A?B?A allowed same-selector dead A elimination",
       `Quick,
       aba_allowed_same_selector_dead );
