@@ -38,7 +38,7 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-let compare_files file1 file2 style_renderer mode memtrace_path =
+let compare_files file1 file2 style_renderer mode memtrace_path () =
   Cli_io.start_memtrace memtrace_path;
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
@@ -100,7 +100,7 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ memtrace_arg)
+   $ mode_arg $ memtrace_arg $ Cli_log.term)
 
 let man =
   [

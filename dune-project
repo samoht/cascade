@@ -29,5 +29,7 @@
   base-unix
   uutf
   unionFind
+  psq
+  logs
   cmdliner
   nox-memtrace))

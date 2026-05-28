@@ -24,19 +24,6 @@ let factor css = render (Rule_merge.factor_common (rules_of css))
 let check_factor name css expected =
   Alcotest.(check string) name expected (factor css)
 
-(* The worklist-scheduled [factor_anchor_gaps_pool] must produce the same result
-   as iterating the list-based [factor_anchor_gaps] to a fixed point. *)
-let rec anchor_fixpoint rs =
-  let rs' = Optimize.factor_anchor_gaps rs in
-  if render rs' = render rs then rs else anchor_fixpoint rs'
-
-let check_pool_agrees css =
-  let rs = rules_of css in
-  Alcotest.(check string)
-    ("pool == list fixpoint: " ^ css)
-    (render (anchor_fixpoint rs))
-    (render (Optimize.factor_anchor_gaps_pool rs))
-
 let pair () =
   check "two identical merge" ".a{color:red}.b{color:red}" ".a,.b{color:red}"
 
@@ -79,20 +66,9 @@ let factor_not_beneficial () =
     ".longclassname1{color:red;width:0}.longclassname2{color:red;height:0}"
     ".longclassname1{color:red;width:0}.longclassname2{color:red;height:0}"
 
-let pool_agrees () =
-  check_pool_agrees ".a{color:red}.b{color:blue}";
-  check_pool_agrees ".a{color:red;margin:0}.b{margin:0;color:blue}";
-  check_pool_agrees
-    ".x{color:red;padding:1px}.y{color:red;padding:1px}.z{color:red;padding:1px}";
-  check_pool_agrees
-    ".a{border:1px solid red}.b{border:1px solid red}.c{border:1px solid \
-     red}.d{margin:0}";
-  check_pool_agrees ".a{color:red}.b{color:red}.c{color:blue}.d{color:blue}"
-
 let suite =
   ( "rule_merge",
     [
-      Alcotest.test_case "pool agrees with list fixpoint" `Quick pool_agrees;
       Alcotest.test_case "pair" `Quick pair;
       Alcotest.test_case "different" `Quick different;
       Alcotest.test_case "run of three" `Quick run3;

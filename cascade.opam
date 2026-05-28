@@ -24,6 +24,8 @@ depends: [
   "base-unix"
   "uutf"
   "unionFind"
+  "psq"
+  "logs"
   "cmdliner"
   "nox-memtrace"
   "odoc" {with-doc}

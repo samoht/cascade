@@ -125,16 +125,13 @@ val combine_identical_rules : rule list -> rule list
     declarations into comma-separated selectors. *)
 
 val factor_anchor_gaps : rule list -> rule list
-(** [factor_anchor_gaps rules] one pass of gap-factoring: hoist a declaration
-    shared across rules with non-conflicting selectors, even across intervening
-    rules, when cascade-safe and smaller. Exposed for validating the
-    worklist-scheduled variant. *)
-
-val factor_anchor_gaps_pool : rule list -> rule list
-(** [factor_anchor_gaps_pool rules] is the worklist-scheduled equivalent of
-    iterating {!factor_anchor_gaps} to a fixed point, on a [Rule_pool]: it
-    reuses the same factoring predicate but re-examines only the nodes each
-    factoring touched, so it is O(n * lookahead) rather than O(passes * n). *)
+(** [factor_anchor_gaps rules] factors out a declaration shared across rules
+    with non-conflicting selectors, even across intervening rules, when
+    cascade-safe and smaller. Anchors are scheduled best-first from a priority
+    search queue keyed by the output size each factoring saves (the greedy
+    weight order of the SatCSS heuristic) over a [Rule_pool]; only anchors whose
+    window overlapped a rewritten region are re-scored, so it drains to the
+    factoring fixed point without re-walking the whole list. *)
 
 val rules : ?scope:scope -> rule list -> rule list
 (** [rules ?scope rs] optimizes a list of flat rules. *)

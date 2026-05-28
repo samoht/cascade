@@ -34,6 +34,10 @@ val rule : node -> Stylesheet.rule
 val is_live : node -> bool
 (** [is_live n] is [false] once [n] has been removed (e.g. merged away). *)
 
+val id : node -> int
+(** [id n] is a stable integer identity, unique in the pool and invariant under
+    edits elsewhere, suitable for keying a priority queue of nodes. *)
+
 val length : t -> int
 (** [length t] is the number of live rules. *)
 

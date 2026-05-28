@@ -779,8 +779,7 @@ let suite =
       test_case "compose_shorthands preserves element identity" [ bytes ]
         test_compose_shorthands_preserves_element_identity;
       test_case "merge_box_shorthand_longhands preserves element identity"
-        [ bytes ]
-        test_merge_box_shorthand_longhands_preserves_element_identity;
+        [ bytes ] test_merge_box_shorthand_longhands_preserves_element_identity;
       test_case "merge_overflow_longhands preserves element identity" [ bytes ]
         test_merge_overflow_longhands_preserves_element_identity;
       test_case "optimized stylesheet reparses" [ bytes ]
