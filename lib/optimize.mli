@@ -124,6 +124,18 @@ val combine_identical_rules : rule list -> rule list
 (** [combine_identical_rules rules] combines consecutive rules with identical
     declarations into comma-separated selectors. *)
 
+val factor_anchor_gaps : rule list -> rule list
+(** [factor_anchor_gaps rules] one pass of gap-factoring: hoist a declaration
+    shared across rules with non-conflicting selectors, even across intervening
+    rules, when cascade-safe and smaller. Exposed for validating the
+    worklist-scheduled variant. *)
+
+val factor_anchor_gaps_pool : rule list -> rule list
+(** [factor_anchor_gaps_pool rules] is the worklist-scheduled equivalent of
+    iterating {!factor_anchor_gaps} to a fixed point, on a [Rule_pool]: it
+    reuses the same factoring predicate but re-examines only the nodes each
+    factoring touched, so it is O(n * lookahead) rather than O(passes * n). *)
+
 val rules : ?scope:scope -> rule list -> rule list
 (** [rules ?scope rs] optimizes a list of flat rules. *)
 

@@ -28,6 +28,7 @@ let create () = { head = None; tail = None; count = 0 }
 let is_empty t = t.count = 0
 let length t = t.count
 let data n = n.data
+let is_live n = n.live
 
 let relabel t =
   let step = universe / (t.count + 1) in

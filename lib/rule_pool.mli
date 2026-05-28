@@ -31,6 +31,9 @@ val nodes : t -> node list
 val rule : node -> Stylesheet.rule
 (** [rule n] is [n]'s current rule (resolving through any merges). *)
 
+val is_live : node -> bool
+(** [is_live n] is [false] once [n] has been removed (e.g. merged away). *)
+
 val length : t -> int
 (** [length t] is the number of live rules. *)
 

@@ -4325,6 +4325,48 @@ let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   in
   preserve_list rules (walk [] rules)
 
+(* Worklist-scheduled [factor_anchor_gaps] on a [Rule_pool]. Reuses the proven
+   [try_factor_equal_anchor] predicate, but instead of re-walking the whole list
+   to a fixed point it re-examines only the nodes a factoring touched. The pool
+   keeps stable positions, so the worklist stays local: O(n * lookahead) rather
+   than O(passes * n). Each successful factor strictly shrinks output, so the
+   worklist terminates. *)
+let factor_anchor_gaps_pool (rules : Stylesheet.rule list) :
+    Stylesheet.rule list =
+  let pool = Rule_pool.of_rules rules in
+  let q = Queue.create () in
+  List.iter (fun n -> Queue.add n q) (Rule_pool.nodes pool);
+  let rec window node k acc =
+    if k <= 0 then List.rev acc
+    else
+      match Rule_pool.next node with
+      | None -> List.rev acc
+      | Some m -> window m (k - 1) (m :: acc)
+  in
+  let rec take n = function
+    | x :: xs when n > 0 -> x :: take (n - 1) xs
+    | _ -> []
+  in
+  while not (Queue.is_empty q) do
+    let n = Queue.pop q in
+    if Rule_pool.is_live n && rule_factor_eligible (Rule_pool.rule n) then
+      let win_nodes = window n equal_factor_lookahead [] in
+      let win_rules = List.map Rule_pool.rule win_nodes in
+      match try_factor_equal_anchor (Rule_pool.rule n) win_rules with
+      | None -> ()
+      | Some (replacement, tail) ->
+          let consumed =
+            take (List.length win_rules - List.length tail) win_nodes
+          in
+          let added =
+            List.map (fun r -> Rule_pool.insert_before pool n r) replacement
+          in
+          Rule_pool.remove pool n;
+          List.iter (Rule_pool.remove pool) consumed;
+          List.iter (fun m -> Queue.add m q) added
+  done;
+  Rule_pool.to_rules pool
+
 (** {1 Statement Optimization} *)
 
 (* Merge consecutive media queries with the same condition. This only merges
