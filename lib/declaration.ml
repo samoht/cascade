@@ -276,40 +276,39 @@ let rec is_invalid = function
       Properties.is_invalid_value property value
   | Theme_guarded { decl; _ } -> is_invalid decl
 
-let color_opt_is_color_4 = function
-  | Some c -> Values.color_is_color_4 c
-  | None -> false
+(* Generic colour traversal: extract the colours a declaration's value can carry
+   and test them with a [color -> bool] predicate. [value_uses_color_4] and
+   [value_uses_oklab_none] share this coverage so they cannot drift. *)
+let color_opt_uses p = function Some c -> p c | None -> false
 
-let rec shadow_uses_color_4 : Properties.shadow -> bool = function
-  | Shadow { color; _ } -> color_opt_is_color_4 color
-  | List shs -> List.exists shadow_uses_color_4 shs
+let rec shadow_uses_color p : Properties.shadow -> bool = function
+  | Shadow { color; _ } -> color_opt_uses p color
+  | List shs -> List.exists (shadow_uses_color p) shs
   | _ -> false
 
-let text_shadow_uses_color_4 : Properties.text_shadow -> bool = function
-  | Text_shadow { color; _ } -> color_opt_is_color_4 color
+let text_shadow_uses_color p : Properties.text_shadow -> bool = function
+  | Text_shadow { color; _ } -> color_opt_uses p color
   | _ -> false
 
-let border_uses_color_4 : Properties.border -> bool = function
-  | Shorthand { color; _ } -> color_opt_is_color_4 color
+let border_uses_color p : Properties.border -> bool = function
+  | Shorthand { color; _ } -> color_opt_uses p color
   | _ -> false
 
-let outline_uses_color_4 : Properties.outline -> bool = function
-  | Shorthand { color; _ } -> color_opt_is_color_4 color
+let outline_uses_color p : Properties.outline -> bool = function
+  | Shorthand { color; _ } -> color_opt_uses p color
   | _ -> false
 
-let logical_color_uses_color_4 : Properties.logical_border_color -> bool =
-  function
-  | Single c -> Values.color_is_color_4 c
-  | Pair (a, b) -> Values.color_is_color_4 a || Values.color_is_color_4 b
+let logical_color_uses p : Properties.logical_border_color -> bool = function
+  | Single c -> p c
+  | Pair (a, b) -> p a || p b
   | _ -> false
 
-let rec gradient_stop_uses_color_4 : Properties.gradient_stop -> bool = function
-  | Color_percentage (c, _, _) | Color_length (c, _, _) ->
-      Values.color_is_color_4 c
-  | List stops -> List.exists gradient_stop_uses_color_4 stops
+let rec gradient_stop_uses_color p : Properties.gradient_stop -> bool = function
+  | Color_percentage (c, _, _) | Color_length (c, _, _) -> p c
+  | List stops -> List.exists (gradient_stop_uses_color p) stops
   | _ -> false
 
-let rec background_image_uses_color_4 : Properties.background_image -> bool =
+let rec background_image_uses_color p : Properties.background_image -> bool =
   function
   | Linear_gradient (_, stops)
   | Repeating_linear_gradient (_, stops)
@@ -329,59 +328,64 @@ let rec background_image_uses_color_4 : Properties.background_image -> bool =
   | O_repeating_radial_gradient (_, stops)
   | Conic_gradient (_, stops)
   | Repeating_conic_gradient (_, stops) ->
-      List.exists gradient_stop_uses_color_4 stops
-  | List imgs -> List.exists background_image_uses_color_4 imgs
+      List.exists (gradient_stop_uses_color p) stops
+  | List imgs -> List.exists (background_image_uses_color p) imgs
   | _ -> false
 
-let rec filter_uses_color_4 : Properties.filter -> bool = function
-  | Drop_shadow sh -> shadow_uses_color_4 sh
-  | List fs -> List.exists filter_uses_color_4 fs
+let rec filter_uses_color p : Properties.filter -> bool = function
+  | Drop_shadow sh -> shadow_uses_color p sh
+  | List fs -> List.exists (filter_uses_color p) fs
   | _ -> false
 
-let property_value_uses_color_4 (type a) (property : a Properties.property)
-    (value : a) : bool =
+let property_value_uses_color (type a) (p : Values.color -> bool)
+    (property : a Properties.property) (value : a) : bool =
   match property with
-  | Color -> Values.color_is_color_4 value
-  | Background_color -> Values.color_is_color_4 value
-  | Border_color -> List.exists Values.color_is_color_4 value
-  | Border_top_color -> Values.color_is_color_4 value
-  | Border_right_color -> Values.color_is_color_4 value
-  | Border_bottom_color -> Values.color_is_color_4 value
-  | Border_left_color -> Values.color_is_color_4 value
-  | Border_inline_start_color -> Values.color_is_color_4 value
-  | Border_inline_end_color -> Values.color_is_color_4 value
-  | Outline_color -> Values.color_is_color_4 value
-  | Text_decoration_color -> Values.color_is_color_4 value
-  | Text_emphasis_color -> Values.color_is_color_4 value
-  | Accent_color -> Values.color_is_color_4 value
-  | Caret_color -> Values.color_is_color_4 value
-  | Webkit_tap_highlight_color -> Values.color_is_color_4 value
-  | Webkit_text_decoration_color -> Values.color_is_color_4 value
-  | Border_inline_color -> logical_color_uses_color_4 value
-  | Box_shadow -> shadow_uses_color_4 value
-  | Text_shadow -> List.exists text_shadow_uses_color_4 value
-  | Border -> border_uses_color_4 value
-  | Border_top -> border_uses_color_4 value
-  | Border_right -> border_uses_color_4 value
-  | Border_bottom -> border_uses_color_4 value
-  | Border_left -> border_uses_color_4 value
-  | Border_block -> border_uses_color_4 value
-  | Column_rule -> border_uses_color_4 value
-  | Outline -> outline_uses_color_4 value
-  | Background_image -> List.exists background_image_uses_color_4 value
-  | Webkit_mask_image -> background_image_uses_color_4 value
-  | Mask_image -> background_image_uses_color_4 value
-  | Filter -> filter_uses_color_4 value
-  | Webkit_filter -> filter_uses_color_4 value
-  | Ms_filter -> filter_uses_color_4 value
-  | Backdrop_filter -> filter_uses_color_4 value
-  | Webkit_backdrop_filter -> filter_uses_color_4 value
+  | Color -> p value
+  | Background_color -> p value
+  | Border_color -> List.exists p value
+  | Border_top_color -> p value
+  | Border_right_color -> p value
+  | Border_bottom_color -> p value
+  | Border_left_color -> p value
+  | Border_inline_start_color -> p value
+  | Border_inline_end_color -> p value
+  | Outline_color -> p value
+  | Text_decoration_color -> p value
+  | Text_emphasis_color -> p value
+  | Accent_color -> p value
+  | Caret_color -> p value
+  | Webkit_tap_highlight_color -> p value
+  | Webkit_text_decoration_color -> p value
+  | Border_inline_color -> logical_color_uses p value
+  | Box_shadow -> shadow_uses_color p value
+  | Text_shadow -> List.exists (text_shadow_uses_color p) value
+  | Border -> border_uses_color p value
+  | Border_top -> border_uses_color p value
+  | Border_right -> border_uses_color p value
+  | Border_bottom -> border_uses_color p value
+  | Border_left -> border_uses_color p value
+  | Border_block -> border_uses_color p value
+  | Column_rule -> border_uses_color p value
+  | Outline -> outline_uses_color p value
+  | Background_image -> List.exists (background_image_uses_color p) value
+  | Webkit_mask_image -> background_image_uses_color p value
+  | Mask_image -> background_image_uses_color p value
+  | Filter -> filter_uses_color p value
+  | Webkit_filter -> filter_uses_color p value
+  | Ms_filter -> filter_uses_color p value
+  | Backdrop_filter -> filter_uses_color p value
+  | Webkit_backdrop_filter -> filter_uses_color p value
   | _ -> false
 
-let rec value_uses_color_4 = function
-  | Theme_guarded { decl; _ } -> value_uses_color_4 decl
+let rec value_uses_color p = function
+  | Theme_guarded { decl; _ } -> value_uses_color p decl
   | Declaration { property; value; _ } ->
-      property_value_uses_color_4 property value
+      property_value_uses_color p property value
+
+let value_uses_color_4 decl = value_uses_color Values.color_is_color_4 decl
+
+let value_uses_oklab_none decl =
+  value_uses_color Values.color_uses_oklab_none decl
 
 let length_list_has_runtime_subst lengths =
   List.exists Values.length_has_runtime_subst lengths
