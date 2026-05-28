@@ -67,7 +67,7 @@ type at_node =
   | When of conditional
   | Else of conditional option
   | Origin of cascade_origin
-  | Scope of string option * string option
+  | Scope of Selector.t option * Selector.t option
 
 (* Visibility through at-rule wrappers: a custom property defined outside
    (shorter path) is visible to consumers further inside (longer path). *)

@@ -82,11 +82,6 @@ val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
     CSS Color 4 / 5 construct. [var()] returns [false]. *)
 
-val value_uses_oklab_none : declaration -> bool
-(** [value_uses_oklab_none decl] is [true] when [decl]'s typed value contains an
-    [oklab()] colour with a [none] channel, nested anywhere a colour can appear.
-*)
-
 val value_uses_runtime_subst : declaration -> bool
 (** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value
     contains a [var()] / [env()] / [attr()] / anchor query, possibly through

@@ -277,8 +277,7 @@ let rec is_invalid = function
   | Theme_guarded { decl; _ } -> is_invalid decl
 
 (* Generic colour traversal: extract the colours a declaration's value can carry
-   and test them with a [color -> bool] predicate. [value_uses_color_4] and
-   [value_uses_oklab_none] share this coverage so they cannot drift. *)
+   and test them with a [color -> bool] predicate. *)
 let color_opt_uses p = function Some c -> p c | None -> false
 
 let rec shadow_uses_color p : Properties.shadow -> bool = function
@@ -383,9 +382,6 @@ let rec value_uses_color p = function
       property_value_uses_color p property value
 
 let value_uses_color_4 decl = value_uses_color Values.color_is_color_4 decl
-
-let value_uses_oklab_none decl =
-  value_uses_color Values.color_uses_oklab_none decl
 
 let length_list_has_runtime_subst lengths =
   List.exists Values.length_has_runtime_subst lengths

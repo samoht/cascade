@@ -157,7 +157,7 @@ and statement =
       (** API-level wrapper recording the cascade origin of a stylesheet block.
           It has no CSS surface syntax, but lets optimizers and tests preserve
           origin boundaries. *)
-  | Scope of string option * string option * block
+  | Scope of Selector.t option * Selector.t option * block
       (** [@scope (start)? to (end)? { ... }] *)
   | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)
   | Webkit_keyframes of string * keyframe list

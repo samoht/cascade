@@ -3307,10 +3307,12 @@ let newer_pseudo_class_compatible sel1 sel2 =
     not (Selector.has_newer_pseudo_class plain_sel)
   else true
 
-(* Lightning CSS does not merge rules when a value contains an oklab() with a
-   [none] channel, so cascade leaves such rules unmerged too. *)
-let declarations_css_equal d1 d2 =
-  d1 = d2 && not (List.exists Declaration.value_uses_oklab_none d1)
+(* Two rules can be combined when their declaration blocks are structurally
+   identical. Merging adjacent identical blocks into a selector list is always
+   spec-equivalent, so - unlike Lightning CSS - cascade does so even when a
+   value contains an oklab() with a [none] channel (a smaller, valid merge
+   Lightning leaves on the table). *)
+let declarations_css_equal d1 d2 = d1 = d2
 
 let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   declarations_css_equal prev.declarations rule.declarations
@@ -5255,16 +5257,9 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
       rules)
     else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
 
-(* [@scope] bounds are stored as selector text. Parse, canonicalize, and
-   re-serialise so a list bound is de-duplicated and ordered like any other
-   selector; keep the original text when the selector is unchanged or
-   unparsable. *)
-let canonicalize_scope_selector s =
-  match Selector.of_string s with
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> s
-  | sel ->
-      let canon = Selector.canonicalize sel in
-      if canon == sel then s else Selector.to_string ~minify:false canon
+(* [@scope] bounds are parsed selectors; canonicalize them like any other
+   selector so a list bound is de-duplicated and ordered consistently. *)
+let canonicalize_scope_selector sel = Selector.canonicalize sel
 
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
@@ -5522,15 +5517,9 @@ let rules ?scope (rules : rule list) : rule list =
 
 (** {1 Nesting Flattening} *)
 
-let scope_selector_in_context (parent : Selector.t) s =
-  try
-    let selector = Selector.of_string s in
-    let selector =
-      if contains_nesting selector then substitute_nesting ~parent selector
-      else selector
-    in
-    Selector.to_string ~minify:true selector
-  with Cursor.Parse_error _ | Invalid_argument _ -> s
+let scope_selector_in_context (parent : Selector.t) selector =
+  if contains_nesting selector then substitute_nesting ~parent selector
+  else selector
 
 let rec flatten_rule ?(parent : Selector.t option) (rule : rule) :
     statement list =

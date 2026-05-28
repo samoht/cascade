@@ -294,8 +294,8 @@ let nested_condition_block buf media supports container =
     Css.Stylesheet.Supports_condition
       ("--generated-condition", [ declaration buf 15 ]);
     Css.Stylesheet.Scope
-      ( Some ".card",
-        Some ".boundary",
+      ( Some (Css.Selector.of_string ".card"),
+        Some (Css.Selector.of_string ".boundary"),
         [ Css.Stylesheet.Starting_style [ rule buf 16 ] ] );
   ]
 

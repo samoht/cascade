@@ -413,37 +413,7 @@ let pp_page_with_margins_body ctx descriptors margins =
       Pp.cut ctx ())
     ctx ()
 
-let scope_replace_all pattern replacement s =
-  let plen = String.length pattern in
-  let slen = String.length s in
-  let buf = Buffer.create slen in
-  let rec loop i =
-    if i >= slen then ()
-    else if i + plen <= slen && String.sub s i plen = pattern then (
-      Buffer.add_string buf replacement;
-      loop (i + plen))
-    else (
-      Buffer.add_char buf s.[i];
-      loop (i + 1))
-  in
-  loop 0;
-  Buffer.contents buf
-
-let compact_scope_combinators s =
-  s
-  |> scope_replace_all " > " ">"
-  |> scope_replace_all " + " "+"
-  |> scope_replace_all " ~ " "~"
-  |> scope_replace_all " || " "||"
-
-let pp_scope_selector ctx s =
-  let s =
-    try Selector.(to_string ~minify:(Pp.minified ctx) (of_string s))
-    with Cursor.Parse_error _ | Invalid_argument _ -> s
-  in
-  let s = String.trim s in
-  let s = compact_scope_combinators s in
-  Pp.string ctx (String.trim s)
+let pp_scope_selector ctx s = Selector.pp ctx s
 
 let pp_viewport_prefix_keyword = function
   | Standard -> "@viewport"
@@ -2887,7 +2857,16 @@ let scope_prelude r prelude_components =
       Cursor.err_invalid r "@scope start selector cannot be empty";
     if end_cvs <> [] && end_parens && end_ = "" then
       Cursor.err_invalid r "@scope end selector cannot be empty";
-    let opt s = if s = "" then None else Some s in
+    (* Parse each bound into a selector; an unparseable bound is
+       [Selector.Invalid]. *)
+    let opt s =
+      if s = "" then None
+      else
+        match Selector.of_string s with
+        | sel -> Some sel
+        | exception (Cursor.Parse_error _ | Invalid_argument _) ->
+            Some Selector.Invalid
+    in
     (opt start, opt end_)
 
 let read_supports_condition (r : Cursor.t) : statement =
