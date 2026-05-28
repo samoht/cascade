@@ -27,7 +27,7 @@ type t = {
 
 type document = {
   root : string option;
-  scope : string option;
+  scope : Selector.t option;
   element : string option;
   classes : string list;
   ids : string list;
@@ -537,7 +537,8 @@ let pp_document : document Pp.t =
   let first = ref true in
   Pp.char ctx '{';
   pp_field ctx ~first "root" pp_string_option d.root;
-  pp_field ctx ~first "scope" pp_string_option d.scope;
+  pp_field ctx ~first "scope" pp_string_option
+    (Option.map (Selector.to_string ~minify:true) d.scope);
   pp_field ctx ~first "element" pp_string_option d.element;
   pp_field ctx ~first "classes" pp_string_list d.classes;
   pp_field ctx ~first "ids" pp_string_list d.ids;
