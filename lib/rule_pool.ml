@@ -9,7 +9,7 @@ type node = Stylesheet.rule UF.elem Order_maintenance.node
 type t = Stylesheet.rule UF.elem Order_maintenance.t
 
 let of_rules rs =
-  let t = Order_maintenance.create () in
+  let t = Order_maintenance.v () in
   List.iter (fun r -> ignore (Order_maintenance.add_last t (UF.make r))) rs;
   t
 

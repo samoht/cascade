@@ -26,7 +26,7 @@ type 'a t = {
   mutable next_id : int;
 }
 
-let create () = { head = None; tail = None; count = 0; next_id = 0 }
+let v () = { head = None; tail = None; count = 0; next_id = 0 }
 
 let fresh_id t =
   let id = t.next_id in

@@ -182,7 +182,7 @@ let test_canonicalize_preserves_physical_identity buf =
 
 (* Same fixed-point identity contract on a selector list, the construct
    canonicalize sorts and de-duplicates. *)
-let test_selector_list_canonicalize_preserves_physical_identity buf =
+let test_list_canon_identity buf =
   let parse s = Css.Selector.read_selector_list (Cursor.of_string s) in
   parse_or_skip parse buf @@ fun selectors ->
   let canon = Css.Selector.canonicalize selectors in
@@ -493,7 +493,7 @@ let suite =
       test_case "canonicalize preserves physical identity on a fixed point"
         [ bytes ] test_canonicalize_preserves_physical_identity;
       test_case "selector-list canonicalize preserves physical identity"
-        [ bytes ] test_selector_list_canonicalize_preserves_physical_identity;
+        [ bytes ] test_list_canon_identity;
       test_case "selector list serialization idempotent" [ bytes ]
         test_selector_list_serialization_idempotent;
       test_case "forgiving noisy branches" [ bytes ] test_noisy_forgiving;
