@@ -2185,17 +2185,21 @@ let dom_selector_boundary () =
      surface. *)
   let selector_cases =
     [
-      ".card";
-      "article.card > h2:first-child";
-      ":scope > .item";
-      ".card:has(> img[alt])";
-      "a:visited";
-      "::part(label)";
-      ":host(.active) .title";
+      (".card", ".card");
+      ("article.card > h2:first-child", "article.card>h2:first-child");
+      (":scope > .item", ":scope>.item");
+      (".card:has(> img[alt])", ".card:has(>img[alt])");
+      ("a:visited", "a:visited");
+      ("::part(label)", "::part(label)");
+      (":host(.active) .title", ":host(.active) .title");
     ]
   in
   List.iter
-    (fun selector -> ignore (Css.Selector.of_string selector))
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        ("minify selector " ^ input)
+        expected
+        (Css.Selector.to_string ~minify:true (Css.Selector.of_string input)))
     selector_cases;
   neg_cursor read_stylesheet ".card:has(> ) { color: red }";
   neg_cursor read_stylesheet "::before::after { color: red }";

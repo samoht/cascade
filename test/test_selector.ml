@@ -1346,12 +1346,12 @@ let spec_selector_current_pseudos () =
 let spec_selector_scope_pseudo_edges () =
   (* Mixed parser/minifier coverage. *)
   check ":scope";
-  check ":scope > .item";
-  check ":scope + .item";
+  check_minified_to ":scope>.item" ":scope > .item";
+  check_minified_to ":scope+.item" ":scope + .item";
   check_minified_to ".card:has(>img)" ".card:has(> img)";
   check_minified_to ".card:has(+.summary)" ".card:has(+ .summary)";
   check_minified_to ".card:has(~.summary)" ".card:has(~ .summary)";
-  check "section:has(:scope > h2)";
+  check_minified_to "section:has(:scope>h2)" "section:has(:scope > h2)";
   check "article :is(h1,h2,h3):not(.muted)";
   check ":where(nav,main,aside) a:any-link";
   check ~expected:"li:nth-child(odd of.visible:not([hidden]))"

@@ -1769,15 +1769,6 @@ let pp_combinator ctx = function
   | Shadow_piercing -> pp_token ctx ">>>"
   | Shadow_deep -> pp_token ctx "/deep/"
 
-let pp_spaced_combinator ctx = function
-  | Descendant -> Pp.space ctx ()
-  | Child -> Pp.string ctx " > "
-  | Next_sibling -> Pp.string ctx " + "
-  | Subsequent_sibling -> Pp.string ctx " ~ "
-  | Column -> Pp.string ctx " || "
-  | Shadow_piercing -> Pp.string ctx " >>> "
-  | Shadow_deep -> Pp.string ctx " /deep/ "
-
 let pp_relative_combinator ctx = function
   | Descendant -> Pp.space ctx ()
   | Child ->
@@ -1992,9 +1983,7 @@ and pp_nested_function_lists ctx = function
   | Compound selectors -> List.iter (pp_nested_function_lists ctx) selectors
   | Combined (left, comb, right) ->
       pp_nested_function_lists ctx left;
-      (match left with
-      | Scope -> pp_spaced_combinator ctx comb
-      | _ -> pp_combinator ctx comb);
+      pp_combinator ctx comb;
       pp_nested_function_lists ctx right
   | Relative (comb, right) ->
       pp_relative_combinator ctx comb;
@@ -2240,9 +2229,7 @@ and pp : t Pp.t =
   | Compound selectors -> List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
-      (match left with
-      | Scope -> pp_spaced_combinator ctx comb
-      | _ -> pp_combinator ctx comb);
+      pp_combinator ctx comb;
       pp ctx right
   | Relative (comb, right) ->
       pp_relative_combinator ctx comb;
