@@ -6404,19 +6404,36 @@ let rec color_has_specified_hue = function
   | Attribute (_, Some color) -> color_has_specified_hue color
   | _ -> false
 
-let rec color_is_color_4 = function
-  | Lab _ | Lch _ | Oklab _ | Oklch _ | Hwb _ | Color _ -> true
-  | Relative_rgb _ | Relative_color _ -> true
-  | Mix { color1; color2; _ } ->
-      color_is_color_4 color1 || color_is_color_4 color2
-  | Light_dark (a, b) -> color_is_color_4 a || color_is_color_4 b
-  | Contrast_color c -> color_is_color_4 c
-  | Attribute (_, Some c) -> color_is_color_4 c
-  | Hex _ | Authored_hex _ | Rgb _ | Rgba _ | Hsl _ | Named _ | System _
-  | Current | Transparent | Auto | Inherit | Initial | Unset | Revert
-  | Revert_layer | Var _
-  | Attribute (_, None) ->
-      false
+(* [color_exists p c] is [true] when [p] holds for [c] or for any color nested
+   inside it (color-mix operands, light-dark arms, contrast-color, attr()
+   fallback). Those composites are the only colors that carry sub-colors. *)
+let color_exists p =
+  let rec go c =
+    p c
+    ||
+    match c with
+    | Mix { color1; color2; _ } -> go color1 || go color2
+    | Light_dark (a, b) -> go a || go b
+    | Contrast_color c -> go c
+    | Attribute (_, Some c) -> go c
+    | _ -> false
+  in
+  go
+
+let color_is_color_4 =
+  color_exists (function
+    | Lab _ | Lch _ | Oklab _ | Oklch _ | Hwb _ | Color _ | Relative_rgb _
+    | Relative_color _ ->
+        true
+    | _ -> false)
+
+(* An [oklab()] whose [l], [a], or [b] channel is the [none] keyword (stored as
+   [None]; a real zero channel is [Some 0.]). Lightning CSS refuses to merge
+   rules whose declarations contain this, so cascade matches that. *)
+let color_uses_oklab_none =
+  color_exists (function
+    | Oklab { l; a; b; _ } -> l = None || a = None || b = None
+    | _ -> false)
 
 let read_system_color t : system_color =
   Cursor.ws t;
