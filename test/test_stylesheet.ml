@@ -3880,11 +3880,10 @@ let c61_same_condition_merge () =
     (normalize
        "@layer base { .a { color: red } } @layer base { .b { color: blue } }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
-   Order): the optimizer must preserve source order. When [.a] and [.b]
-   alternate ([.a; .b; .a]), the second [.a] cannot be merged with the first
-   because [.b] is between them and depending on cascade rules might affect the
-   same property at the same specificity. *)
+(* CSS Cascade 6.1 (Cascade Sorting Order): [.a] and the intervening [.b] tie on
+   specificity (0,1,0), so source order is observable for [.a.b] elements. A
+   same-selector merge would move the combined [.a] rule to one side of [.b],
+   changing that order, so the two [.a] rules are not merged across it. *)
 let c61_no_intervening_merge () =
   let normalize css =
     match Css.of_string ~strict:false css with

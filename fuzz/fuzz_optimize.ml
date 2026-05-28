@@ -480,6 +480,39 @@ let test_smt_intersection_dependency_vectors buf =
         failf "optimization violated selector-intersection edge order: %S -> %S"
           input optimized
 
+let test_higher_specificity_gap_groups buf =
+  (* Complement of the tie case above. CSS Cascade 5 sec. 6.3: higher
+     specificity wins regardless of source order; only a tie defers to order.
+     The intervening id selector (1,0,0) outranks the two class-pair selectors
+     (0,2,0), so for any element matching all three it wins whatever the order -
+     reordering the equal class-pair declarations past it is unobservable, and
+     they may group. Blocking the group because the class-pairs do not *beat*
+     the id is over-conservative; differing specificity suffices. *)
+  let a = class_name "a" buf 0 in
+  let c = class_name "c" buf 1 in
+  let x = class_name "x" buf 2 in
+  let m = class_name "m" buf 3 in
+  let input =
+    Fmt.str ".%s.%s{color:red}#%s{color:blue}.%s.%s{color:red}" a x m c x
+  in
+  match parse_stylesheet input with
+  | None -> failf "specificity-gap vector did not parse: %S" input
+  | Some ss ->
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      (* the two equal class-pair rules group; accept either selector-list order
+         since canonical order depends on the generated class names *)
+      let grouped_ac = Fmt.str ".%s.%s,.%s.%s{color:red}" a x c x in
+      let grouped_ca = Fmt.str ".%s.%s,.%s.%s{color:red}" c x a x in
+      if
+        not
+          (Astring.String.is_infix ~affix:grouped_ac optimized
+          || Astring.String.is_infix ~affix:grouped_ca optimized)
+      then
+        failf
+          "optimization failed to group equal rules across a \
+           higher-specificity intervening rule (over-conservative): %S -> %S"
+          input optimized
+
 let test_biclique_no_new_edges buf =
   (* Section 7's Max-SAT encoding constrains candidate bicliques so a merged
      rule cannot introduce selector/property edges that were absent from the
@@ -811,6 +844,8 @@ let suite =
         test_cascade_shorthand_importance_vectors;
       test_case "SMT selector-intersection dependency vectors" [ bytes ]
         test_smt_intersection_dependency_vectors;
+      test_case "group equal rules across higher-specificity gap" [ bytes ]
+        test_higher_specificity_gap_groups;
       test_case "SMT biclique no-new-edges vectors" [ bytes ]
         test_biclique_no_new_edges;
       test_case "SMT ordered declaration vectors" [ bytes ]
