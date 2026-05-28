@@ -3586,11 +3586,65 @@ let leftover_for_factor_rule ~common ~summaries ~decls i (r : Stylesheet.rule) =
           keep_factor_leftover ~summaries ~decls ~default_decl:default ~i d)
     r.declarations
 
-let grouped_factor_rule first rules_arr common =
-  let sels =
-    Array.to_list (Array.map (fun r -> r.Stylesheet_intf.selector) rules_arr)
+(* Hoisting [common] into a shared rule pays off for a member only when its
+   selector entry ([|selector| + 1]) is cheaper than the bytes it would
+   otherwise duplicate ([decls_pp_size common] plus one separator per
+   declaration). A member fully consumed by [common] (empty leftover) always
+   joins, since dropping it would spawn a whole separate rule. [leftovers] is
+   aligned with [rules_arr] ([None] = empty leftover). Returns [None] when fewer
+   than two members survive; otherwise the grouped rule (members only) and a
+   leftover array where each pruned member keeps its full declarations inline.
+   Pruning is cascade-safe: a pruned member's declarations stay in place, so the
+   group is a subset of the run already proven safe to factor. *)
+let cost_aware_factor_group first rules_arr common leftovers =
+  let common_inline_cost = decls_pp_size common + List.length common in
+  let member i =
+    match leftovers.(i) with
+    | None -> true
+    | Some _ ->
+        (* Pruning only saves bytes when the member carries [common] verbatim:
+           dropping it then removes exactly [common] from its rule. A member
+           that overrides a [common] property (default-value factoring) keeps a
+           differing value inline whether grouped or not, so the cost model does
+           not apply - leave it in the group as the scan selected it. *)
+        let exact =
+          List.for_all
+            (fun cd ->
+              List.exists
+                (same_minified_declaration cd)
+                rules_arr.(i).Stylesheet_intf.declarations)
+            common
+        in
+        (not exact)
+        ||
+        let sel_size =
+          Pp.size ~minify:true Selector.pp
+            rules_arr.(i).Stylesheet_intf.selector
+        in
+        sel_size + 1 <= common_inline_cost
   in
-  { first with selector = merge_selector_list sels; declarations = common }
+  let member_count =
+    Array.to_seq rules_arr
+    |> Seq.mapi (fun i _ -> i)
+    |> Seq.filter member |> Seq.length
+  in
+  if member_count < 2 then None
+  else
+    let sels =
+      Array.to_list rules_arr
+      |> List.mapi (fun i r -> (i, r))
+      |> List.filter (fun (i, _) -> member i)
+      |> List.map (fun (_, r) -> r.Stylesheet_intf.selector)
+    in
+    let grouped =
+      { first with selector = merge_selector_list sels; declarations = common }
+    in
+    let leftovers =
+      Array.mapi
+        (fun i lo -> if member i then lo else Some rules_arr.(i))
+        leftovers
+    in
+    Some (grouped, leftovers)
 
 let rules_pp_size rules =
   List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
@@ -3598,16 +3652,6 @@ let rules_pp_size rules =
 let factor_leftover_option ~common ~summaries ~decls i r =
   let l = leftover_for_factor_rule ~common ~summaries ~decls i r in
   if l = [] then None else Some { r with declarations = l }
-
-let factor_leftovers ~common ~summaries ~decls rules_arr =
-  let acc = ref [] in
-  for i = Array.length rules_arr - 1 downto 0 do
-    let r = rules_arr.(i) in
-    match factor_leftover_option ~common ~summaries ~decls i r with
-    | None -> ()
-    | Some r -> acc := r :: !acc
-  done;
-  !acc
 
 let factor_leftover_options ~common ~summaries ~decls rules_arr =
   Array.mapi
@@ -3618,7 +3662,7 @@ let factor_leftover_options ~common ~summaries ~decls rules_arr =
 let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
   match rules with
   | [] | [ _ ] -> rules
-  | first :: _ ->
+  | first :: _ -> (
       let rules_arr = Array.of_list rules in
       let summaries =
         Array.map
@@ -3631,11 +3675,22 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
       let common = common_factorable_decls rules first in
       if common = [] then rules
       else
-        let grouped = grouped_factor_rule first rules_arr common in
-        let leftovers = factor_leftovers ~common ~summaries ~decls rules_arr in
-        let before_size = rules_pp_size rules in
-        let after_size = rule_pp_size grouped + rules_pp_size leftovers in
-        if after_size <= before_size then grouped :: leftovers else rules
+        let leftovers =
+          factor_leftover_options ~common ~summaries ~decls rules_arr
+          |> Array.of_list
+        in
+        match cost_aware_factor_group first rules_arr common leftovers with
+        | None -> rules
+        | Some (grouped, leftovers) ->
+            let leftover_rules =
+              Array.to_list leftovers |> List.filter_map (fun x -> x)
+            in
+            let before_size = rules_pp_size rules in
+            let after_size =
+              rule_pp_size grouped + rules_pp_size leftover_rules
+            in
+            if after_size <= before_size then grouped :: leftover_rules
+            else rules)
 
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
@@ -3799,6 +3854,45 @@ let skipped_blocks_factor_tie common target skipped =
   rule_specificity_ties_on_overlap target.factor_rule skipped.factor_rule
   && declarations_overlap common skipped.factor_rule.declarations
 
+(* Properties declared anywhere inside [stmts] (nested rules and bare nested
+   declaration blocks). Any other nested at-rule is treated conservatively as
+   touching every property, so a rule carrying one is never skipped. *)
+let rec nested_statements_touch_props props stmts =
+  List.exists
+    (fun stmt ->
+      match stmt with
+      | Stylesheet.Rule r ->
+          List.exists (fun d -> List.mem (decl_property d) props) r.declarations
+          || nested_statements_touch_props props r.nested
+      | Stylesheet.Declarations ds ->
+          List.exists (fun d -> List.mem (decl_property d) props) ds
+      | Stylesheet.Bang_comment _ -> false
+      | _ -> true)
+    stmts
+
+(* A factor-boundary rule (one that cannot itself be factored) may still be
+   stepped over by the scan when hoisting [common] across it is unobservable.
+   Its top-level declarations are still checked by the ordinary skip blockers;
+   an extra guard is needed only for its nested content, which those blockers do
+   not see. Skipping is unsafe for [merge_key] and vendor-pseudo-element
+   boundaries (their cascade interaction is not modelled here), so only nesting
+   boundaries whose nested rules leave every [common] property untouched are
+   skippable. *)
+let boundary_safe_to_skip common (rule : Stylesheet.rule) =
+  rule.Stylesheet_intf.merge_key = None
+  && (not (contains_vendor_pseudo_element rule.selector))
+  && not
+       (nested_statements_touch_props
+          (List.map decl_property common)
+          rule.nested)
+
+let boundary_stops_scan common_opt candidate =
+  rule_factor_boundary candidate
+  &&
+  match common_opt with
+  | Some common -> not (boundary_safe_to_skip common candidate)
+  | None -> true
+
 let rule_gap_merge_eligible (rule : Stylesheet.rule) =
   rule.nested = [] && rule.merge_key = None
   && not (contains_vendor_pseudo_element rule.selector)
@@ -3868,7 +3962,7 @@ let split_at n xs =
 let factor_rules_with_skips factor_rules skipped =
   match factor_rules with
   | [] | [ _ ] -> None
-  | first :: _ ->
+  | first :: _ -> (
       let rules_arr = Array.of_list factor_rules in
       let summaries =
         Array.map
@@ -3881,21 +3975,26 @@ let factor_rules_with_skips factor_rules skipped =
       let common = common_factorable_decls factor_rules first in
       if common = [] then None
       else
-        let grouped = grouped_factor_rule first rules_arr common in
-        let leftover_options =
+        let leftovers =
           factor_leftover_options ~common ~summaries ~decls rules_arr
+          |> Array.of_list
         in
-        let current_count = List.length factor_rules - 1 in
-        let current_leftovers, target_leftovers =
-          split_at current_count leftover_options
-        in
-        let after =
-          (grouped :: filter_some current_leftovers)
-          @ skipped
-          @ filter_some target_leftovers
-        in
-        let before = factor_rules @ skipped in
-        if rules_pp_size after < rules_pp_size before then Some after else None
+        match cost_aware_factor_group first rules_arr common leftovers with
+        | None -> None
+        | Some (grouped, leftovers) ->
+            let leftover_options = Array.to_list leftovers in
+            let current_count = List.length factor_rules - 1 in
+            let current_leftovers, target_leftovers =
+              split_at current_count leftover_options
+            in
+            let after =
+              (grouped :: filter_some current_leftovers)
+              @ skipped
+              @ filter_some target_leftovers
+            in
+            let before = factor_rules @ skipped in
+            if rules_pp_size after < rules_pp_size before then Some after
+            else None)
 
 type gap_entry =
   | Gap_factor of factor_rule_summary
@@ -3921,7 +4020,7 @@ let factor_gap_rewrite first entries =
   let factor_rules = factor_rules_of_gap first entries in
   match factor_rules with
   | [] | [ _ ] -> None
-  | _ ->
+  | _ -> (
       let rules_arr = Array.of_list factor_rules in
       let summaries =
         Array.map
@@ -3934,28 +4033,31 @@ let factor_gap_rewrite first entries =
       let common = common_factorable_decls factor_rules first in
       if common = [] then None
       else
-        let grouped = grouped_factor_rule first rules_arr common in
         let leftovers =
           factor_leftover_options ~common ~summaries ~decls rules_arr
           |> Array.of_list
         in
-        let next_factor = ref 1 in
-        let entry_after = function
-          | Gap_skip s -> Some s.factor_rule
-          | Gap_factor _ ->
-              let leftover = leftovers.(!next_factor) in
-              incr next_factor;
-              leftover
-        in
-        let after =
-          grouped
-          :: (filter_some [ leftovers.(0) ]
-             @ List.filter_map entry_after entries)
-        in
-        let before_size = gap_before_size first entries in
-        let after_size = rules_pp_size after in
-        if after_size < before_size then Some (after, before_size - after_size)
-        else None
+        match cost_aware_factor_group first rules_arr common leftovers with
+        | None -> None
+        | Some (grouped, leftovers) ->
+            let next_factor = ref 1 in
+            let entry_after = function
+              | Gap_skip s -> Some s.factor_rule
+              | Gap_factor _ ->
+                  let leftover = leftovers.(!next_factor) in
+                  incr next_factor;
+                  leftover
+            in
+            let after =
+              grouped
+              :: (filter_some [ leftovers.(0) ]
+                 @ List.filter_map entry_after entries)
+            in
+            let before_size = gap_before_size first entries in
+            let after_size = rules_pp_size after in
+            if after_size < before_size then
+              Some (after, before_size - after_size)
+            else None)
 
 let common_equal_decls rules first =
   List.filter
@@ -3968,11 +4070,16 @@ let common_equal_decls rules first =
         rules)
     first.Stylesheet_intf.declarations
 
-let factor_gap_equal_rewrite first entries =
+(* [restrict] is the set of declarations the scan validated as safe to factor
+   across the skipped rules. The full common of the factor rules may be larger,
+   but hoisting a declaration the scan did not check (one a tie-conflicting
+   skipped rule writes with a different value) would change the cascade, so the
+   factored common is intersected with [restrict]. *)
+let factor_gap_equal_rewrite ~restrict first entries =
   let factor_rules = factor_rules_of_gap first entries in
   match factor_rules with
   | [] | [ _ ] -> None
-  | _ ->
+  | _ -> (
       let rules_arr = Array.of_list factor_rules in
       let summaries =
         Array.map
@@ -3982,31 +4089,38 @@ let factor_gap_equal_rewrite first entries =
       let decls =
         Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
       in
-      let common = common_equal_decls factor_rules first in
+      let common =
+        common_equal_decls factor_rules first
+        |> List.filter (fun d ->
+            List.exists (same_minified_declaration d) restrict)
+      in
       if common = [] then None
       else
-        let grouped = grouped_factor_rule first rules_arr common in
         let leftovers =
           factor_leftover_options ~common ~summaries ~decls rules_arr
           |> Array.of_list
         in
-        let next_factor = ref 1 in
-        let entry_after = function
-          | Gap_skip s -> Some s.factor_rule
-          | Gap_factor _ ->
-              let leftover = leftovers.(!next_factor) in
-              incr next_factor;
-              leftover
-        in
-        let after =
-          grouped
-          :: (filter_some [ leftovers.(0) ]
-             @ List.filter_map entry_after entries)
-        in
-        let before_size = gap_before_size first entries in
-        let after_size = rules_pp_size after in
-        if after_size < before_size then Some (after, before_size - after_size)
-        else None
+        match cost_aware_factor_group first rules_arr common leftovers with
+        | None -> None
+        | Some (grouped, leftovers) ->
+            let next_factor = ref 1 in
+            let entry_after = function
+              | Gap_skip s -> Some s.factor_rule
+              | Gap_factor _ ->
+                  let leftover = leftovers.(!next_factor) in
+                  incr next_factor;
+                  leftover
+            in
+            let after =
+              grouped
+              :: (filter_some [ leftovers.(0) ]
+                 @ List.filter_map entry_after entries)
+            in
+            let before_size = gap_before_size first entries in
+            let after_size = rules_pp_size after in
+            if after_size < before_size then
+              Some (after, before_size - after_size)
+            else None)
 
 let factor_anchor_common first candidate common =
   match common with
@@ -4095,7 +4209,7 @@ let try_factor_equal_anchor first rest =
     | [] -> best
     | _ when fuel <= 0 -> best
     | candidate :: tail ->
-        if rule_factor_boundary candidate then best
+        if boundary_stops_scan common candidate then best
         else if not (rule_factor_eligible candidate) then
           scan
             (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
@@ -4125,7 +4239,10 @@ let try_factor_equal_anchor first rest =
               List.rev (Gap_factor candidate_summary :: entries_rev)
             in
             let best =
-              match factor_gap_equal_rewrite first entries with
+              match
+                factor_gap_equal_rewrite ~restrict:candidate_common first
+                  entries
+              with
               | Some (replacement, savings) ->
                   better_factor_gap best replacement tail savings
               | None -> best
@@ -4134,7 +4251,20 @@ let try_factor_equal_anchor first rest =
               (Gap_factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
-  scan [] None None equal_factor_lookahead rest
+  (* The auto-narrowing chain ([None]) commits to the first sharer's common and
+     handles multi-property blocks, but it loses a single-property group when an
+     earlier rule shares a different anchor declaration (the running common
+     narrows away from the property the later cluster shares). Seeding the scan
+     with each individual anchor declaration recovers those groups; the best
+     factoring across all seeds wins. *)
+  let seeds = None :: List.map (fun d -> Some [ d ]) first.declarations in
+  List.fold_left
+    (fun best seed ->
+      match scan [] seed None equal_factor_lookahead rest with
+      | None -> best
+      | Some (replacement, tail, savings) ->
+          better_factor_gap best replacement tail savings)
+    None seeds
 
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in
@@ -5240,6 +5370,59 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
       collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
+(* When a selector-list rule sits immediately next to a rule whose selector is
+   one of its branches, and that branch costs more than the shared block, split
+   the branch out next to its neighbour so the same-selector merge folds the
+   block in rather than repeating the long selector in the group. Only adjacent
+   pairs are touched, so a group with no cheaper neighbour is left intact (a
+   blanket decompose instead lets default-value factoring regroup differently
+   and land in a worse local optimum). The split is cascade-neutral: the
+   branch's declarations move at most across its immediate neighbour, with no
+   rule in between. *)
+let extract_group_branch_into_adjacent rules =
+  let plain (r : Stylesheet.rule) =
+    r.nested = [] && r.merge_key = None
+    && not (contains_vendor_pseudo_element r.selector)
+  in
+  let beneficial branch_sel decls =
+    let sel_size = Pp.size ~minify:true Selector.pp branch_sel in
+    sel_size + 1 > decls_pp_size decls + List.length decls
+  in
+  (* Split from group [b] the single branch equal to [neighbour_sel]. *)
+  let extract neighbour_sel (b : Stylesheet.rule) =
+    match selectors_of_rule_selector b.selector with
+    | [] | [ _ ] -> None
+    | branches -> (
+        let key = canonical_selector_key in
+        let matched, others =
+          List.partition (fun s -> key s = key neighbour_sel) branches
+        in
+        match matched with
+        | [ si ] when others <> [] && beneficial si b.declarations ->
+            Some
+              ( { b with selector = si },
+                { b with selector = merge_selector_list others } )
+        | _ -> None)
+  in
+  let changed = ref false in
+  let rec go acc = function
+    | a :: b :: rest when plain a && plain b -> (
+        match extract a.Stylesheet_intf.selector b with
+        | Some (branch, remainder) ->
+            changed := true;
+            go (branch :: a :: acc) (remainder :: rest)
+        | None -> (
+            match extract b.Stylesheet_intf.selector a with
+            | Some (branch, remainder) ->
+                changed := true;
+                go (branch :: remainder :: acc) (b :: rest)
+            | None -> go (a :: acc) (b :: rest)))
+    | x :: rest -> go (x :: acc) rest
+    | [] -> List.rev acc
+  in
+  let result = go [] rules in
+  if !changed then result else rules
+
 let rec factor_rules_to_fixpoint ~ctx fuel rules =
   if fuel <= 0 then (
     Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
@@ -5260,6 +5443,7 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
          [ctx]. It is part of the pipeline (not a one-shot before the loop) so a
          merge it can only make after another pass reorders rules is reached
          within a single fixpoint, not on a second [optimize] call. *)
+      |> pass "extract_branch" extract_group_branch_into_adjacent
       |> pass "merge_same_selector" merge_same_selector_gaps
       |> pass "combine_identical" combine_identical_rules
       |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
