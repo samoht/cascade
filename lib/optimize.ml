@@ -2538,9 +2538,13 @@ let same_minified_value new_decl existing =
   && string_of_value ~minify:true new_decl
      = string_of_value ~minify:true existing
 
-let same_minified_declaration a b =
-  same_property a b && same_minified_value a b
-  && Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+(* Two declarations minify to the same text exactly when their canonical ASTs
+   are equal (property, value, and importance). After the optimizer's
+   canonicalisation passes the AST is canonical, so structural equality is the
+   minified-equality test - and far cheaper than rendering both to strings. A
+   pp-equal-but-structurally-different pair would be a canonicalisation bug, not
+   something to paper over by comparing rendered text. *)
+let same_minified_declaration (a : declaration) (b : declaration) = a = b
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
