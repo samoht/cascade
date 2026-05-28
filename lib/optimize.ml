@@ -3639,6 +3639,7 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
 
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
+  factor_size : int;  (** cached [rule_pp_size factor_rule] *)
   factor_props : Declaration.prop_key list;
   selector_summary : Selector_summary.t Lazy.t;
 }
@@ -3646,6 +3647,7 @@ type factor_rule_summary = {
 let summarize_factor_rule factor_rule =
   {
     factor_rule;
+    factor_size = rule_pp_size factor_rule;
     factor_props = List.map decl_property factor_rule.declarations;
     selector_summary =
       lazy (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
@@ -3890,7 +3892,15 @@ type gap_entry =
   | Gap_factor of factor_rule_summary
   | Gap_skip of factor_rule_summary
 
-let rule_of_gap_entry = function Gap_factor s | Gap_skip s -> s.factor_rule
+let size_of_gap_entry = function Gap_factor s | Gap_skip s -> s.factor_size
+
+(* Size of [first :: entry rules] from the cached per-summary sizes, so a scan
+   that re-evaluates a growing prefix does not re-render each rule every
+   step. *)
+let gap_before_size first entries =
+  List.fold_left
+    (fun acc e -> acc + size_of_gap_entry e)
+    (rule_pp_size first) entries
 
 let factor_rules_of_gap first entries =
   first
@@ -3933,8 +3943,7 @@ let factor_gap_rewrite first entries =
           :: (filter_some [ leftovers.(0) ]
              @ List.filter_map entry_after entries)
         in
-        let before = first :: List.map rule_of_gap_entry entries in
-        let before_size = rules_pp_size before in
+        let before_size = gap_before_size first entries in
         let after_size = rules_pp_size after in
         if after_size < before_size then Some (after, before_size - after_size)
         else None
@@ -3985,8 +3994,7 @@ let factor_gap_equal_rewrite first entries =
           :: (filter_some [ leftovers.(0) ]
              @ List.filter_map entry_after entries)
         in
-        let before = first :: List.map rule_of_gap_entry entries in
-        let before_size = rules_pp_size before in
+        let before_size = gap_before_size first entries in
         let after_size = rules_pp_size after in
         if after_size < before_size then Some (after, before_size - after_size)
         else None
@@ -4352,37 +4360,40 @@ module Factor_queue =
    [equal_factor_lookahead] predecessors). [try_factor_equal_anchor] returns
    only a strictly size-reducing rewrite, so every apply shrinks the output and
    the frontier drains to the factoring fixed point in a single call. *)
+(* The next [k] live nodes after [node], in pool order. *)
+let rec factor_window node k acc =
+  if k <= 0 then List.rev acc
+  else
+    match Rule_pool.next node with
+    | None -> List.rev acc
+    | Some m -> factor_window m (k - 1) (m :: acc)
+
+let rec factor_take n = function
+  | x :: xs when n > 0 -> x :: factor_take (n - 1) xs
+  | _ -> []
+
+(* Score an anchor node: [None] when it cannot factor, else the replacement
+   rules, the nodes the factoring consumes, and the bytes it saves. *)
+let factor_anchor_score n =
+  if not (rule_factor_eligible (Rule_pool.rule n)) then None
+  else
+    let win_nodes = factor_window n equal_factor_lookahead [] in
+    let win_rules = List.map Rule_pool.rule win_nodes in
+    match try_factor_equal_anchor (Rule_pool.rule n) win_rules with
+    | None -> None
+    | Some (replacement, tail, savings) ->
+        let consumed =
+          factor_take (List.length win_rules - List.length tail) win_nodes
+        in
+        Some (replacement, consumed, savings)
+
 let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let pool = Rule_pool.of_rules rules in
-  let rec window node k acc =
-    if k <= 0 then List.rev acc
-    else
-      match Rule_pool.next node with
-      | None -> List.rev acc
-      | Some m -> window m (k - 1) (m :: acc)
-  in
-  let rec take n = function
-    | x :: xs when n > 0 -> x :: take (n - 1) xs
-    | _ -> []
-  in
-  let score n =
-    if not (rule_factor_eligible (Rule_pool.rule n)) then None
-    else
-      let win_nodes = window n equal_factor_lookahead [] in
-      let win_rules = List.map Rule_pool.rule win_nodes in
-      match try_factor_equal_anchor (Rule_pool.rule n) win_rules with
-      | None -> None
-      | Some (replacement, tail, savings) ->
-          let consumed =
-            take (List.length win_rules - List.length tail) win_nodes
-          in
-          Some (replacement, consumed, savings)
-  in
   let frontier = ref Factor_queue.empty in
   let applied = ref 0 in
   let enqueue n =
     if Rule_pool.is_live n then
-      match score n with
+      match factor_anchor_score n with
       | Some (_, _, savings) when savings > 0 ->
           frontier := Factor_queue.add n (savings, Rule_pool.id n) !frontier
       | _ -> frontier := Factor_queue.remove n !frontier
@@ -4401,7 +4412,7 @@ let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
         frontier := rest;
         if not (Rule_pool.is_live n) then loop ()
         else
-          match score n with
+          match factor_anchor_score n with
           | Some (replacement, consumed, savings) when savings > 0 ->
               if savings <> stored then (
                 frontier :=
@@ -5261,6 +5272,18 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
    selector so a list bound is de-duplicated and ordered consistently. *)
 let canonicalize_scope_selector sel = Selector.canonicalize sel
 
+(* Nested rule selectors are implicitly relative to the parent [&], so drop a
+   redundant leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
+let drop_nesting_prefix (stmt : statement) : statement =
+  match stmt with
+  | Rule nr ->
+      Rule
+        {
+          nr with
+          selector = Selector.drop_redundant_nesting_prefix nr.selector;
+        }
+  | other -> other
+
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
   let optimize_merged_block = statements ~ctx ~enforce_spec in
@@ -5406,19 +5429,8 @@ and process_import_statement ~ctx ~enforce_spec acc stmt import rest =
   process_statements ~ctx ~enforce_spec (stmt :: acc) rest
 
 and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
-  (* First optimize each rule's nested statements recursively. Nested rule
-     selectors are implicitly relative to the parent [&], so drop a redundant
-     leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
-  let drop_nesting_prefix (stmt : statement) : statement =
-    match stmt with
-    | Rule nr ->
-        Rule
-          {
-            nr with
-            selector = Selector.drop_redundant_nesting_prefix nr.selector;
-          }
-    | other -> other
-  in
+  (* First optimize each rule's nested statements recursively, then drop the
+     redundant nesting prefix (see [drop_nesting_prefix]). *)
   let with_optimized_nested =
     list_map_preserve
       (fun rule ->
