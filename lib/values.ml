@@ -3754,22 +3754,13 @@ let starts_unsigned_number s =
   String.length s > 0
   && match s.[0] with '0' .. '9' | '.' -> true | _ -> false
 
-let pp_color_lightness ~pct_scale ~axis_max_decimals ctx (l : percentage option)
-    : percentage option =
+(* Pure serialiser: the percentage<->number choice for L is made in the AST
+   normalize pass ([canonical_color_lightness]), so this faithfully prints
+   whichever node it is given ([Pct] -> [%], [Num] -> bare number). The
+   [~pct_scale] argument is unused now but kept for call-site symmetry. *)
+let pp_color_lightness ~pct_scale:_ ~axis_max_decimals ctx
+    (l : percentage option) : percentage option =
   match l with
-  | Some (Pct f) when ctx.Pp.minify && ctx.Pp.lossless ->
-      let pct =
-        string_of_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f ^ "%"
-      in
-      let num =
-        string_of_lab_float ~max_decimals:axis_max_decimals ctx (f *. pct_scale)
-      in
-      if String.length num < String.length pct then (
-        Pp.string ctx num;
-        Some (Num (f *. pct_scale)))
-      else (
-        Pp.string ctx pct;
-        l)
   | Some (Pct f) ->
       pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
       Pp.char ctx '%';
@@ -6869,6 +6860,31 @@ let drop_full_alpha (c : color) : color =
   | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
+(* oklch/oklab/lch/lab lightness: [<percentage>] and [<number>] are
+   spec-equivalent at this leaf ([num = pct *. pct_scale]: ok* L 100% = 1,
+   lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
+   normalize pass, so [pp_color_lightness] serialises the node faithfully rather
+   than swapping percentage for number at print time. *)
+let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
+    (l : percentage option) : percentage option =
+  let fmt ~max_decimals f =
+    let max_decimals = if lossless then 8 else max_decimals in
+    Pp.string_of_float ~drop_leading_zero:true ~max_decimals
+      (if lossless then f else Pp.round_sig 6 f)
+  in
+  let num_len f = String.length (fmt ~max_decimals:axis_max_decimals f) in
+  let pct_len f =
+    String.length (fmt ~max_decimals:(axis_max_decimals + 2) f) + 1
+  in
+  match l with
+  | Some (Pct f) ->
+      if num_len (f *. pct_scale) <= pct_len f then Some (Num (f *. pct_scale))
+      else l
+  | Some (Num f) ->
+      if pct_len (f /. pct_scale) < num_len f then Some (Pct (f /. pct_scale))
+      else l
+  | other -> other
+
 let normalize_static_modern_color ~in_feature_query ~lossless c =
   let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
@@ -6942,12 +6958,35 @@ let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
     color =
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   match c with
-  | Oklab { l = Some _; a = Some _; b = Some _; _ }
-  | Oklch { l = Some _; c = Some _; _ }
-  | Lab { l = Some _; a = Some _; b = Some _; _ }
-  | Lch { l = Some _; c = Some _; _ }
-  | Color _ ->
-      normalize_static_modern_color ~in_feature_query ~lossless c
+  | Oklch ({ l = Some _; c = Some _; _ } as r) ->
+      let l =
+        canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
+          r.l
+      in
+      normalize_static_modern_color ~in_feature_query ~lossless
+        (Oklch { r with l })
+  | Oklab ({ l = Some _; a = Some _; b = Some _; _ } as r) ->
+      let l =
+        canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
+          r.l
+      in
+      normalize_static_modern_color ~in_feature_query ~lossless
+        (Oklab { r with l })
+  | Lch ({ l = Some _; c = Some _; _ } as r) ->
+      let l =
+        canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
+          r.l
+      in
+      normalize_static_modern_color ~in_feature_query ~lossless
+        (Lch { r with l })
+  | Lab ({ l = Some _; a = Some _; b = Some _; _ } as r) ->
+      let l =
+        canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
+          r.l
+      in
+      normalize_static_modern_color ~in_feature_query ~lossless
+        (Lab { r with l })
+  | Color _ -> normalize_static_modern_color ~in_feature_query ~lossless c
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       normalize_hex_color c r g b a
   | Named orig_name -> normalize_named_color c orig_name
