@@ -27,7 +27,7 @@ depends: [
   "psq"
   "logs"
   "cmdliner"
-  "nox-memtrace"
+  "memtrace"
   "odoc" {with-doc}
 ]
 build: [
