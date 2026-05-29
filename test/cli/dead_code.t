@@ -114,9 +114,9 @@ Adjacent rules with the same selector merge.
   $ cascade --minify adjacent.css
   .x{color:red;padding:10px;margin:5px}
 
-Non-adjacent rules with the same selector do NOT merge - an
-intervening rule means cascade order matters and merging would change
-which declaration wins.
+Non-adjacent rules with the same selector merge across an intervening
+rule that shares no conflicting declaration. Here [.y] writes [color],
+which neither [.x] rule touches, so reordering is unobservable.
 
   $ cat > non-adjacent.css <<EOF
   > .x { padding: 10px }
@@ -124,7 +124,7 @@ which declaration wins.
   > .x { margin: 5px }
   > EOF
   $ cascade --minify non-adjacent.css
-  .x{padding:10px}.y{color:red}.x{margin:5px}
+  .x{padding:10px;margin:5px}.y{color:red}
 
 Different selectors with the same declaration block group into a
 single rule with a selector list.
@@ -312,9 +312,10 @@ that filter when nested declarations apply.
   $ cascade --minify conditional-boundaries.css
   .card{color:red;display:grid;padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
 
-Equal declaration blocks are not grouped across an overlapping
-pseudo-class rule. Elements matching the pseudo-class would observe a
-different source-order winner if grouping moved either side.
+Equal declaration blocks group across an overlapping pseudo-class rule
+of different specificity. [.btn:hover] (0,2,0) outranks [.btn] (0,1,0),
+so the winner is decided by specificity, not source order, and grouping
+[.btn, .link] does not change it.
 
   $ cat > pseudo-competitor.css <<EOF
   > .btn { color: red }
@@ -322,7 +323,7 @@ different source-order winner if grouping moved either side.
   > .link { color: red }
   > EOF
   $ cascade --minify pseudo-competitor.css
-  .btn{color:red;&:hover{color:#00f}}.link{color:red}
+  .btn,.link{color:red}.btn:hover{color:#00f}
 
 A misplaced [@import] (after a rule statement) is invalid per CSS
 Cascade L6 §2 and is dropped during parsing.
@@ -429,8 +430,10 @@ A combination produces cascading elimination across all levels.
 # What is NOT dead code
 
 
-Cross-rule shadowing is NOT removed - the cascade may apply each rule
-to a different element set.
+Cross-rule shadowing is NOT removed: every declaration survives. The
+two [.btn] rules merge and [.btn:hover] nests, but no value is dropped -
+[.btn:hover] (0,2,0) outranks [.btn] (0,1,0) by specificity, so the
+merge cannot change which value wins.
 
   $ cat > cross.css <<EOF
   > .btn { color: red }
@@ -438,7 +441,7 @@ to a different element set.
   > .btn { padding: 10px }
   > EOF
   $ cascade --minify cross.css
-  .btn{color:red}.btn:hover{color:#00f}.btn{padding:10px}
+  .btn{color:red;padding:10px;&:hover{color:#00f}}
 
 Different-value duplicates of the same property in the same rule are
 preserved when the earlier value is a different format the cascade
