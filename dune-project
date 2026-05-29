@@ -32,4 +32,4 @@
   psq
   logs
   cmdliner
-  nox-memtrace))
+  memtrace))

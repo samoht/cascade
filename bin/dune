@@ -11,4 +11,4 @@
   fmt.tty
   logs
   logs.fmt
-  nox-memtrace))
+  memtrace))
