@@ -4204,53 +4204,52 @@ let equal_anchor_common first candidate common =
 (* Returns [Some (replacement, tail, savings)] - the [savings] is the strict
    output-size reduction [factor_gap_equal_rewrite] already computed, surfaced
    so the best-first scheduler can prioritise without re-rendering. *)
-let try_factor_equal_anchor first rest =
-  let rec scan entries_rev common best fuel = function
-    | [] -> best
-    | _ when fuel <= 0 -> best
-    | candidate :: tail ->
-        if boundary_stops_scan common candidate then best
-        else if not (rule_factor_eligible candidate) then
-          scan
-            (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+let rec scan_equal_anchor first entries_rev common best fuel = function
+  | [] -> best
+  | _ when fuel <= 0 -> best
+  | candidate :: tail ->
+      if boundary_stops_scan common candidate then best
+      else if not (rule_factor_eligible candidate) then
+        scan_equal_anchor first
+          (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+          common best (fuel - 1) tail
+      else
+        let candidate_summary = summarize_factor_rule candidate in
+        let candidate_common =
+          equal_anchor_common first candidate_summary common
+        in
+        let blocks =
+          candidate_common = []
+          || List.exists
+               (fun entry ->
+                 match entry with
+                 | Gap_factor _ -> false
+                 | Gap_skip skipped ->
+                     skipped_blocks_factor_tie candidate_common
+                       candidate_summary skipped)
+               entries_rev
+        in
+        if blocks then
+          scan_equal_anchor first
+            (Gap_skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
-          let candidate_summary = summarize_factor_rule candidate in
-          let candidate_common =
-            equal_anchor_common first candidate_summary common
+          let entries =
+            List.rev (Gap_factor candidate_summary :: entries_rev)
           in
-          let blocks =
-            candidate_common = []
-            || List.exists
-                 (fun entry ->
-                   match entry with
-                   | Gap_factor _ -> false
-                   | Gap_skip skipped ->
-                       skipped_blocks_factor_tie candidate_common
-                         candidate_summary skipped)
-                 entries_rev
+          let best =
+            match
+              factor_gap_equal_rewrite ~restrict:candidate_common first entries
+            with
+            | Some (replacement, savings) ->
+                better_factor_gap best replacement tail savings
+            | None -> best
           in
-          if blocks then
-            scan
-              (Gap_skip candidate_summary :: entries_rev)
-              common best (fuel - 1) tail
-          else
-            let entries =
-              List.rev (Gap_factor candidate_summary :: entries_rev)
-            in
-            let best =
-              match
-                factor_gap_equal_rewrite ~restrict:candidate_common first
-                  entries
-              with
-              | Some (replacement, savings) ->
-                  better_factor_gap best replacement tail savings
-              | None -> best
-            in
-            scan
-              (Gap_factor candidate_summary :: entries_rev)
-              (Some candidate_common) best (fuel - 1) tail
-  in
+          scan_equal_anchor first
+            (Gap_factor candidate_summary :: entries_rev)
+            (Some candidate_common) best (fuel - 1) tail
+
+let try_factor_equal_anchor first rest =
   (* The auto-narrowing chain ([None]) commits to the first sharer's common and
      handles multi-property blocks, but it loses a single-property group when an
      earlier rule shares a different anchor declaration (the running common
@@ -4260,7 +4259,9 @@ let try_factor_equal_anchor first rest =
   let seeds = None :: List.map (fun d -> Some [ d ]) first.declarations in
   List.fold_left
     (fun best seed ->
-      match scan [] seed None equal_factor_lookahead rest with
+      match
+        scan_equal_anchor first [] seed None equal_factor_lookahead rest
+      with
       | None -> best
       | Some (replacement, tail, savings) ->
           better_factor_gap best replacement tail savings)
