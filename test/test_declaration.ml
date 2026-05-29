@@ -798,9 +798,18 @@ let list_properties () =
   check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
     ~optimized:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
-  check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/10%)"
+  (* Faithful minify keeps an author-explicit zero spread (pp serializes the
+     [Some Zero] node); optimize drops it as redundant since spread defaults to
+     0, and also folds the colour to hex. *)
+  check_declaration ~expected:"box-shadow:0 1px 3px 0 rgb(0 0 0/10%)"
     ~optimized:"box-shadow:0 1px 3px #0000001a"
     "box-shadow: 0 1px 3px 0 rgb(0 0 0 / 10%)";
+  check_declaration ~expected:"box-shadow:0 1px 3px 0"
+    ~optimized:"box-shadow:0 1px 3px" "box-shadow: 0 1px 3px 0";
+  (* A zero blur is positional - it cannot be dropped while a non-zero spread
+     follows, or the spread would rebind as the blur. Held and canonical
+     match. *)
+  check_declaration ~expected:"box-shadow:0 1px 0 5px" "box-shadow: 0 1px 0 5px";
   check_declaration
     ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12),0 1px 2px rgb(0 0 0/.24)"
     ~optimized:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
