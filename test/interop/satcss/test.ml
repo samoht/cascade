@@ -87,7 +87,7 @@ let check_case name () =
   match List.assoc_opt name known_larger with
   | Some reason ->
       Alcotest.(check bool)
-        (Printf.sprintf
+        (Fmt.str
            "%s is a known-larger case (if this fails, cascade closed the gap - \
             remove from known_larger): %s"
            name reason)
