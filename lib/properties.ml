@@ -2670,19 +2670,18 @@ let pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback =
         Pp.space ctx ());
       false
 
-let pp_shadow_spread ctx (spread : length option) : length option =
-  match spread with
-  | Some spread when Pp.minified ctx && is_zero_length spread ->
-      (None : length option)
-  | Some spread -> Some spread
-  | None -> (None : length option)
+(* Faithful: a default-zero spread is dropped in [normalize_shadow], not here.
+   [Some Zero] re-parses differently from [None] ([0 1px 3px 0] vs [0 1px 3px]),
+   so collapsing it is a node-changing fold that belongs in the AST normalize
+   pass, leaving pp a pure serialiser. *)
+let pp_shadow_spread _ctx (spread : length option) : length option = spread
 
 let pp_shadow_blur ctx ~has_var_color (blur : length option)
     (spread : length option) : length option =
   match (blur, spread) with
-  | Some blur, None
-    when Pp.minified ctx && is_zero_length blur && not has_var_color ->
-      (None : length option)
+  (* A [var()] colour with no blur or spread needs an explicit [0] blur so the
+     var is not re-parsed as the blur length. Dropping a redundant zero blur is,
+     by contrast, a node-changing fold and lives in [normalize_shadow]. *)
   | None, None when Pp.minified ctx && has_var_color -> Some Zero
   | blur, _ -> blur
 
@@ -4292,15 +4291,37 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
  fun value ->
   match value with
   | Shadow s ->
+      let blur = option_map_preserve Values.normalize_length s.blur in
+      let spread = option_map_preserve Values.normalize_length s.spread in
+      let color = option_map_preserve (normalize_color ~lossless) s.color in
+      (* Drop a trailing optional length equal to its [0] default, contiguously
+         from the end. [spread] is always the last token, so a zero spread drops
+         freely; a zero blur drops only when no spread follows - otherwise it is
+         positional and dropping it would re-bind the spread as the blur (e.g.
+         [0 1px 0 5px] must keep the [0] blur). A [var()] colour keeps an
+         explicit zero blur as a disambiguator (see [pp_shadow_blur]). *)
+      let spread : length option =
+        match spread with Some sp when is_zero_length sp -> None | _ -> spread
+      in
+      let has_var_color =
+        match color with Some (Var _) -> true | _ -> false
+      in
+      let blur : length option =
+        match blur with
+        | Some b
+          when is_zero_length b && Option.is_none spread && not has_var_color ->
+            None
+        | _ -> blur
+      in
       preserve_if_equal value
         (Shadow
            {
              s with
              h_offset = Values.normalize_length s.h_offset;
              v_offset = Values.normalize_length s.v_offset;
-             blur = option_map_preserve Values.normalize_length s.blur;
-             spread = option_map_preserve Values.normalize_length s.spread;
-             color = option_map_preserve (normalize_color ~lossless) s.color;
+             blur;
+             spread;
+             color;
            })
   | List shadows ->
       preserve_if_equal value
