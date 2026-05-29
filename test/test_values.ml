@@ -836,7 +836,8 @@ let test_system_color () =
   neg_cursor read_system_color "invalid-color"
 
 let spec_values_color_current () =
-  check_color ~expected:"oklch(50%.2 none)" "oklch(50% 0.2 none)";
+  check_color ~expected:"oklch(50%.2 none)" ~optimized:"oklch(.5 .2 none)"
+    "oklch(50% 0.2 none)";
   check_color ~optimized:"rgb(from rebeccapurple r g b)"
     "rgb(from rebeccapurple r g b)";
   check_color ~expected:"contrast-color(white)"
@@ -886,7 +887,8 @@ let spec_values_l45_math_color () =
 let spec_color5_function_edges () =
   check_color ~expected:"lab(50%10 20)" ~optimized:"#907055" "lab(50% 10 20)";
   check_color ~expected:"lch(50%20 30)" ~optimized:"#976c67" "lch(50% 20 30)";
-  check_color ~expected:"oklab(50%.1 .2)" "oklab(50% 0.1 0.2)";
+  check_color ~expected:"oklab(50%.1 .2)" ~optimized:"oklab(.5 .1 .2)"
+    "oklab(50% 0.1 0.2)";
   check_color ~expected:"oklch(50%.1 20/.5)" ~optimized:"#944a4b80"
     "oklch(50% 0.1 20 / 0.5)";
   check_color ~expected:"color(srgb 1 0 0/.5)" ~optimized:"#ff000080"
