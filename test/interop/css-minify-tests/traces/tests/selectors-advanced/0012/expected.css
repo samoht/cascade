@@ -1,1 +1,1 @@
-:is(textarea,input):optional{color:red}
+:is(input,textarea):optional{color:red}

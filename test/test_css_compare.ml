@@ -216,6 +216,66 @@ let canonical_overflow_trailing_ws () =
     "pretty and minified overflow compare canonically equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* Selectors L4 [:where()] and [:is()] take a forgiving-selector-list whose
+   semantics is a union (commutative); [:where()]'s specificity is always 0 and
+   [:is()]/[:not()]'s is the max of their arguments, so any permutation of the
+   comma-list body matches the same elements with the same specificity. The same
+   holds for [:has()]'s relative list and the [of <selector-list>] clause in
+   [:nth-child()]/[:nth-last-child()]. Canonical comparison must fold those
+   permutations. *)
+
+let canonical_where_permutation_equal () =
+  let expected = ".x :where(ul ul,ul ol,ol ul,ol ol){color:red}" in
+  let actual = ".x :where(ol ol,ol ul,ul ol,ul ul){color:red}" in
+  Alcotest.(check bool)
+    ":where(...) body permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_is_permutation_equal () =
+  let expected = ".x :is(.a,.b){color:red}" in
+  let actual = ".x :is(.b,.a){color:red}" in
+  Alcotest.(check bool)
+    ":is(...) body permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_not_permutation_equal () =
+  let expected = ".x :not(.a,.b){color:red}" in
+  let actual = ".x :not(.b,.a){color:red}" in
+  Alcotest.(check bool)
+    ":not(...) body permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_has_permutation_equal () =
+  let expected = ".x:has(>.a,>.b){color:red}" in
+  let actual = ".x:has(>.b,>.a){color:red}" in
+  Alcotest.(check bool)
+    ":has(...) body permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_nth_child_of_permutation_equal () =
+  let expected = ".x :nth-child(2 of .a,.b){color:red}" in
+  let actual = ".x :nth-child(2 of .b,.a){color:red}" in
+  Alcotest.(check bool)
+    ":nth-child(... of <list>) body permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_nested_where_is_permutation_equal () =
+  let expected = ".x :where(:is(.a,.b),.c){color:red}" in
+  let actual = ".x :where(.c,:is(.b,.a)){color:red}" in
+  Alcotest.(check bool)
+    "nested :where/:is bodies canonicalize recursively" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* Already canonical (regression pin): top-level selector lists. The rule
+   applies to the union of matched elements and per-element specificity is the
+   matching branch's, regardless of where it sits in the list. *)
+let canonical_top_level_selector_list_permutation_equal () =
+  let expected = ".a,.b{color:red}" in
+  let actual = ".b,.a{color:red}" in
+  Alcotest.(check bool)
+    "top-level selector list permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
     "@layer utilities{.prose :where(blockquote \
@@ -534,6 +594,20 @@ let suite =
         semantic_before_content_redundant_seed;
       Alcotest.test_case "canonical overflow before semicolon" `Quick
         canonical_overflow_trailing_ws;
+      Alcotest.test_case "canonical :where(...) permutation" `Quick
+        canonical_where_permutation_equal;
+      Alcotest.test_case "canonical :is(...) permutation" `Quick
+        canonical_is_permutation_equal;
+      Alcotest.test_case "canonical :not(...) permutation" `Quick
+        canonical_not_permutation_equal;
+      Alcotest.test_case "canonical :has(...) permutation" `Quick
+        canonical_has_permutation_equal;
+      Alcotest.test_case "canonical :nth-child(of ...) permutation" `Quick
+        canonical_nth_child_of_permutation_equal;
+      Alcotest.test_case "canonical nested :where/:is permutation" `Quick
+        canonical_nested_where_is_permutation_equal;
+      Alcotest.test_case "canonical top-level selector list permutation" `Quick
+        canonical_top_level_selector_list_permutation_equal;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick

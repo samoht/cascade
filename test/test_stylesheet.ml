@@ -2782,7 +2782,7 @@ let spec_nesting_selector_edges () =
     ~minified:
       ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
     ~optimized:
-      ".card{color:red;&:is(:hover,:focus-visible){color:#00f}&:has(>img){display:grid}}";
+      ".card{color:red;&:is(:focus-visible,:hover){color:#00f}&:has(>img){display:grid}}";
   check_stylesheet
     ~expected:
       ".card{@supports \

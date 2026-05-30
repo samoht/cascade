@@ -2296,14 +2296,38 @@ let rec map f node =
   in
   f node'
 
+(* Dedup and sort an unordered selector list by minified-printed form so that
+   permutations of the same alternatives collapse to a single canonical AST. *)
+let canonicalize_unordered_list selectors =
+  let seen = Hashtbl.create (List.length selectors) in
+  let uniq =
+    List.filter_map
+      (fun s ->
+        let key = Pp.to_string ~minify:true pp s in
+        if Hashtbl.mem seen key then None
+        else (
+          Hashtbl.add seen key ();
+          Some (key, s)))
+      selectors
+  in
+  List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
+
 (* Rewrite a selector to its canonical representation so that selectors denoting
    the same thing are structurally equal. Drops the implied [*] from a
    multi-part compound ([*::before] -> [::before], [*.foo] -> [.foo]), collapses
    a one-part compound to that part, and de-duplicates and sorts selector-list
-   alternatives by printed form. *)
+   alternatives by printed form - both the top-level [List] list and the
+   unordered-union pseudo-class lists ([:is], [:where], [:not], [:has], plus the
+   legacy [:-moz-any] / [:-webkit-any] aliases of [:is]). Per Selectors 4 the
+   matching of these lists is set-based, so their order has no effect on
+   matching or specificity. *)
 let canonicalize sel =
   map
     (fun node ->
+      let canon ctor selectors =
+        let sorted = canonicalize_unordered_list selectors in
+        if list_same sorted selectors then node else ctor sorted
+      in
       match node with
       | Compound components -> (
           match drop_redundant_universal components with
@@ -2311,25 +2335,22 @@ let canonicalize sel =
           | components' ->
               if list_same components' components then node
               else Compound components')
-      | List selectors ->
-          (* A selector list is an unordered set (Selectors 4 sec. 4.2): drop
-             duplicate alternatives and sort the rest by printed form. *)
-          let seen = Hashtbl.create (List.length selectors) in
-          let uniq =
-            List.filter_map
-              (fun s ->
-                let key = Pp.to_string ~minify:true pp s in
-                if Hashtbl.mem seen key then None
-                else (
-                  Hashtbl.add seen key ();
-                  Some (key, s)))
-              selectors
-          in
-          let sorted =
-            List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq
-            |> List.map snd
-          in
-          if list_same sorted selectors then node else List sorted
+      | List selectors -> canon (fun xs -> List xs) selectors
+      | Where selectors -> canon (fun xs -> Where xs) selectors
+      | Is selectors -> canon (fun xs -> Is xs) selectors
+      | Not selectors -> canon (fun xs -> Not xs) selectors
+      | Has selectors -> canon (fun xs -> Has xs) selectors
+      | Moz_any_call selectors -> canon (fun xs -> Moz_any_call xs) selectors
+      | Webkit_any_call selectors ->
+          canon (fun xs -> Webkit_any_call xs) selectors
+      | Nth_child (nth, Some selectors) ->
+          canon (fun xs -> Nth_child (nth, Some xs)) selectors
+      | Nth_last_child (nth, Some selectors) ->
+          canon (fun xs -> Nth_last_child (nth, Some xs)) selectors
+      | Nth_of_type (nth, Some selectors) ->
+          canon (fun xs -> Nth_of_type (nth, Some xs)) selectors
+      | Nth_last_of_type (nth, Some selectors) ->
+          canon (fun xs -> Nth_last_of_type (nth, Some xs)) selectors
       | other -> other)
     sel
 
