@@ -842,7 +842,7 @@ let public_value_combinator_edges () =
      counter(section);background-image:conic-gradient(from 45deg at \
      50%,red,#00f);background-size:20px 30px;object-view-box:inset(0px \
      1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
-     2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(50%);cursor:url(cursor.svg) \
+     2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(.5);cursor:url(cursor.svg) \
      1 2,pointer;contain:layout paint;border-spacing:1px \
      2px;border-inline-color:#fff #000;list-style-type:symbols(cyclic\"*\" \
      url(dot.svg));list-style-image:url(bullet.svg);fill:url(#paint)red}"

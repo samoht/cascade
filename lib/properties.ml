@@ -4344,11 +4344,19 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
 
 let rec normalize_filter ?(lossless = false) : filter -> filter =
  fun value ->
+  let np = Values.normalize_number_percentage in
   match value with
   | Drop_shadow s ->
       preserve_if_equal value (Drop_shadow (normalize_shadow ~lossless s))
   | Hue_rotate a ->
       preserve_if_equal value (Hue_rotate (Values.normalize_angle a))
+  | Brightness x -> preserve_if_equal value (Brightness (np x))
+  | Contrast x -> preserve_if_equal value (Contrast (np x))
+  | Grayscale x -> preserve_if_equal value (Grayscale (np x))
+  | Invert x -> preserve_if_equal value (Invert (np x))
+  | Opacity x -> preserve_if_equal value (Opacity (np x))
+  | Saturate x -> preserve_if_equal value (Saturate (np x))
+  | Sepia x -> preserve_if_equal value (Sepia (np x))
   | List filters ->
       preserve_if_equal value
         (List (map_preserve (normalize_filter ~lossless) filters))
@@ -4373,6 +4381,18 @@ let normalize_translate_value : translate_value -> translate_value =
     | XY (x, y) -> preserve_if_equal value (XY (nl x, nl y))
     | XYZ (x, y, z) -> preserve_if_equal value (XYZ (nl x, nl y, nl z))
     | other -> other
+
+(* The CSS [scale] property: pick the shorter [<number-percentage>] spelling so
+   pp serialises the canonical node. The X/XY/XYZ variants are distinct from the
+   transform [scale()] family - those live in [normalize_transform_leaves]. *)
+let normalize_scale : scale -> scale =
+ fun value ->
+  let np = Values.normalize_number_percentage in
+  match value with
+  | X x -> preserve_if_equal value (X (np x))
+  | XY (x, y) -> preserve_if_equal value (XY (np x, np y))
+  | XYZ (x, y, z) -> preserve_if_equal value (XYZ (np x, np y, np z))
+  | other -> other
 
 let normalize_ray_size : ray_size -> ray_size =
  fun value ->
@@ -7315,9 +7335,12 @@ let canonicalise_transform : transform -> transform = function
 let normalize_transform_leaves : transform -> transform =
   (* The translate / perspective operands are inside a function, so they keep a
      zero's unit ([translate(0px)] stays). The rotate / skew operands are
-     angles, converted to the shortest unit. *)
+     angles, converted to the shortest unit. The scale operands are
+     [<number-percentage>]: pick the shorter spelling so pp does not have to
+     fold the [Pct]/[Num] node distinction. *)
   let nl = Values.normalize_length ~strip:false in
   let na = Values.normalize_angle in
+  let np = Values.normalize_number_percentage in
   function
   | Translate (x, y) -> Translate (nl x, Option.map nl y)
   | Translate_x x -> Translate_x (nl x)
@@ -7334,6 +7357,12 @@ let normalize_transform_leaves : transform -> transform =
   | Skew (a, b) -> Skew (na a, Option.map na b)
   | Skew_x a -> Skew_x (na a)
   | Skew_y a -> Skew_y (na a)
+  | Scale (x, y) -> Scale (np x, Option.map np y)
+  | Scale_space (x, y) -> Scale_space (np x, np y)
+  | Scale_x x -> Scale_x (np x)
+  | Scale_y y -> Scale_y (np y)
+  | Scale_z z -> Scale_z (np z)
+  | Scale_3d (x, y, z) -> Scale_3d (np x, np y, np z)
   | other -> other
 
 let rec normalize_transform (t : transform) : transform =
@@ -20124,6 +20153,7 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Transform -> map_preserve normalize_transform value
   | Webkit_transform -> map_preserve normalize_transform value
   | Rotate -> normalize_rotate value
+  | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
   | Offset_path -> normalize_offset_path value
   | Offset_rotate -> normalize_offset_rotate value
