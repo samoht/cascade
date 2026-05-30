@@ -688,9 +688,9 @@ let test_length_percentage () =
 
 let test_number_percentage () =
   check_number_percentage "1.5";
-  check_number_percentage ~expected:".5" "50%";
+  check_number_percentage "50%";
   check_number_percentage "0";
-  check_number_percentage ~expected:"1" "100%";
+  check_number_percentage "100%";
   (* Variable references *)
   check_number_percentage "var(--my-number)";
   check_number_percentage ~expected:"var(--my-pct,75%)" "var(--my-pct, 75%)";

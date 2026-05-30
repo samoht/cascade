@@ -3507,24 +3507,36 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
+(* Pure serialiser: the [Pct] <-> [Num] shortest-spelling choice (including [Pct
+   0. -> 0]) is a node-changing fold that lives in [normalize_number_per-
+   centage], not here. pp now serialises whichever node it is given faithfully.
+   The [~always] flag is retained for caller signature parity; with the swap
+   gone it has no effect on top-level emission. *)
 let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
-  | Pct 0.
-    when Pp.minified ctx && (not always) && (not ctx.in_calc)
-         && not ctx.in_function ->
-      Pp.char ctx '0'
-  | Pct f
-    when Pp.minified ctx && (not always) && (not ctx.in_calc)
-         && not ctx.in_function ->
-      let pct_str = Pp.string_of_float ~drop_leading_zero:true f ^ "%" in
-      let num_str = Pp.string_of_float ~drop_leading_zero:true (f /. 100.) in
-      if String.length num_str <= String.length pct_str then
-        Pp.string ctx num_str
-      else Pp.string ctx pct_str
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
+
+(* AST-level [<number-percentage>] canonicalisation: at a typed leaf where
+   [<percentage>] and [<number>] are spec-equivalent (100% = 1), pick the
+   shorter spelling so [pp_number_percentage] serialises a canonical node
+   faithfully. [Var] and [Calc] sub-forms are left untouched - inside a calc(),
+   [%] and number are not interchangeable, and a [var()] reference is
+   context-free. *)
+let normalize_number_percentage (np : number_percentage) : number_percentage =
+  let len f = String.length (Pp.string_of_float ~drop_leading_zero:true f) in
+  match np with
+  | Pct f ->
+      let num_f = f /. 100. in
+      (* num spelling vs pct spelling (one extra '%' character); Num wins on tie
+         to match the original pp logic and keep the fold idempotent. *)
+      if len num_f <= len f + 1 then (Num num_f : number_percentage) else np
+  | Num f ->
+      let pct_f = f *. 100. in
+      if len pct_f + 1 < len f then (Pct pct_f : number_percentage) else np
+  | other -> other
 
 (* Convert the three channels of a [color(<space> ...)] value to Oklab so a
    candidate rounding can be measured against the color-difference budget.

@@ -190,6 +190,13 @@ val normalize_angle : angle -> angle
     losslessly-interconvertible units (deg / turn / grad); [rad] (irrational via
     pi) stays as-is. *)
 
+val normalize_number_percentage : number_percentage -> number_percentage
+(** [normalize_number_percentage np] picks the shorter spelling for a typed
+    [<number-percentage>] leaf where percentage and number are spec-equivalent
+    (100% = 1, e.g. transform [scale()], the [scale] property, and the [filter]
+    [brightness()]/[contrast()]/... functions). [Var] and [Calc] sub-forms stay
+    opaque - inside a [calc()], the two spellings are not interchangeable. *)
+
 val normalize_number : number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
