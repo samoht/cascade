@@ -358,6 +358,58 @@ let canonical_calc_plus_minus_whitespace_distinct () =
     "calc(...) + and - whitespace stays distinct (required for parse)" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* Fonts L4 sec. 15.3: a font family name is either a <string> or a sequence of
+   <custom-ident>s joined with single spaces; the two forms are equivalent for
+   matching whenever the unquoted form would be valid identifiers. The
+   equivalence is consumer-dependent (it only holds in font-family-typed
+   contexts), so cascade applies the fold at the typed leaf and at
+   font-family-registered custom properties, but never at unregistered custom
+   properties (consumer unknown). *)
+
+let canonical_font_family_quoted_unquoted_equal () =
+  let expected = ".x{font-family:\"Segoe UI Symbol\"}" in
+  let actual = ".x{font-family:Segoe UI Symbol}" in
+  Alcotest.(check bool)
+    "typed font-family: quoted string equals unquoted ident sequence" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* SAFETY: a quoted generic-family token is a literal font name of that
+   spelling, not the generic family - they must stay distinct. Same applies to
+   sans-serif/monospace/cursive/fantasy/system-ui/ui-*/math/emoji/fangsong, and
+   to CSS-wide keywords like "inherit"/"initial"/etc. *)
+let canonical_font_family_generic_keyword_distinct () =
+  let expected = ".x{font-family:\"serif\"}" in
+  let actual = ".x{font-family:serif}" in
+  Alcotest.(check bool)
+    "typed font-family: quoted \"serif\" literal stays distinct from generic"
+    false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* Unregistered custom property: the consumer is unknown (var(--font) could land
+   in content: where the quoted/unquoted distinction is observable), so the fold
+   must not apply - same call as the calc number_percentage handling for
+   unregistered custom props. *)
+let canonical_unregistered_custom_font_distinct () =
+  let expected = ".x{--font:\"Segoe UI Symbol\"}" in
+  let actual = ".x{--font:Segoe UI Symbol}" in
+  Alcotest.(check bool)
+    "unregistered --font custom property: quoted/unquoted stays distinct" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* Registered custom property whose syntax matches the font-family grammar gets
+   typed-promoted to the font-family AST, so normalize_font_family applies the
+   same fold as the typed leaf. *)
+let canonical_registered_font_family_quoted_unquoted_equal () =
+  let registration =
+    "@property \
+     --font{syntax:\"<custom-ident>+#\";inherits:true;initial-value:serif}"
+  in
+  let expected = registration ^ ".x{--font:\"Segoe UI Symbol\"}" in
+  let actual = registration ^ ".x{--font:Segoe UI Symbol}" in
+  Alcotest.(check bool)
+    "@property-registered font-family custom prop: quoted equals unquoted" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
     "@layer utilities{.prose :where(blockquote \
@@ -708,6 +760,14 @@ let suite =
         canonical_tailwind_translate_calc_equal;
       Alcotest.test_case "canonical calc +/- whitespace stays distinct" `Quick
         canonical_calc_plus_minus_whitespace_distinct;
+      Alcotest.test_case "canonical typed font-family quoted vs unquoted" `Quick
+        canonical_font_family_quoted_unquoted_equal;
+      Alcotest.test_case "canonical font-family generic keyword distinct" `Quick
+        canonical_font_family_generic_keyword_distinct;
+      Alcotest.test_case "canonical unregistered --font distinct" `Quick
+        canonical_unregistered_custom_font_distinct;
+      Alcotest.test_case "canonical registered --font quoted vs unquoted" `Quick
+        canonical_registered_font_family_quoted_unquoted_equal;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick

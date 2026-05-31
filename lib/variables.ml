@@ -163,21 +163,32 @@ let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
         (String.concat ""
            [ "Unsupported CSS syntax modifier: '"; String.make 1 c; "'" ])
 
-let split_syntax_modifier s : string * char option =
+(* CSS Properties and Values API 1 strictly allows one modifier per
+   syntax-component, but the [+#] chain is the natural shape for
+   font-family-like registrations (a comma-separated list of space-separated
+   ident sequences). Allow exactly that chain so [<custom-ident>+#] parses; keep
+   duplicate-same chains ([++], [##]) and the reverse order ([#+]) rejecting via
+   the unrecognised body. *)
+let split_syntax_modifiers s : string * char list =
   let n = String.length s in
-  if n = 0 then (s, None)
+  if n = 0 then (s, [])
   else
-    match s.[n - 1] with
-    | ('+' | '#') as m -> (String.sub s 0 (n - 1), Some m)
-    | _ -> (s, None)
+    let last = s.[n - 1] in
+    if last <> '+' && last <> '#' then (s, [])
+    else if n >= 2 && s.[n - 2] = '+' && last = '#' then
+      (String.sub s 0 (n - 2), [ '+'; '#' ])
+    else (String.sub s 0 (n - 1), [ last ])
 
 let read_syntax (r : Cursor.t) : any_syntax =
   (* CSS @property syntax values must be quoted strings per spec *)
   let s = Cursor.string r in
   let read_component part =
-    let body, modifier = split_syntax_modifier (String.trim part) in
+    let body, modifiers = split_syntax_modifiers (String.trim part) in
     if body = "" then Cursor.err_invalid r "empty CSS syntax component";
-    apply_syntax_modifier r (read_simple_syntax_component r body) modifier
+    let base = read_simple_syntax_component r body in
+    List.fold_left
+      (fun acc m -> apply_syntax_modifier r acc (Some m))
+      base modifiers
   in
   if String.contains s '|' then
     let parts = String.split_on_char '|' s in
