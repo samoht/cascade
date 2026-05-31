@@ -276,6 +276,88 @@ let canonical_top_level_selector_list_permutation_equal () =
     "top-level selector list permutations canonicalize equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* CSS Values L4 sec. 10.10: inside math functions (calc/min/max/clamp/mod/rem/
+   round/sin/cos/tan/asin/acos/atan/atan2/pow/sqrt/hypot/log/exp/abs/sign),
+   whitespace is OPTIONAL around *, /, (, ), and ,; it is REQUIRED around + and
+   - (sign disambiguation, var(--a)-var(--b)). Whitespace inside the math
+   grammar is purely lexical with no consumer-context dependence, so canonical
+   comparison normalizes it - including inside custom-property values, where the
+   calc body is otherwise round-tripped verbatim. *)
+
+let canonical_calc_mul_div_whitespace_equal () =
+  let expected = ".x{--v:calc(1 / 2 * 100%)}" in
+  let actual = ".x{--v:calc(1/2*100%)}" in
+  Alcotest.(check bool)
+    "calc(...) whitespace around * and / canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_calc_paren_whitespace_equal () =
+  let expected = ".x{--v:calc( ( 1 / 2 ) * 100% )}" in
+  let actual = ".x{--v:calc((1/2)*100%)}" in
+  Alcotest.(check bool)
+    "calc(...) whitespace around ( and ) canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_min_comma_whitespace_equal () =
+  let expected = ".x{--v:min(50px, 100% / 2)}" in
+  let actual = ".x{--v:min(50px,100%/2)}" in
+  Alcotest.(check bool)
+    "min(...) whitespace around , and / canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_clamp_commas_whitespace_equal () =
+  let expected = ".x{--v:clamp(1rem, 4vw, 2rem)}" in
+  let actual = ".x{--v:clamp(1rem,4vw,2rem)}" in
+  Alcotest.(check bool)
+    "clamp(...) comma whitespace canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_round_strategy_whitespace_equal () =
+  (* round(...) takes a rounding-strategy keyword (up/down/nearest/to-zero) as
+     its first argument; the , whitespace rule applies the same as elsewhere. *)
+  let expected = ".x{--v:round(up, 3.5, 1)}" in
+  let actual = ".x{--v:round(up,3.5,1)}" in
+  Alcotest.(check bool)
+    "round(<strategy>, ...) comma whitespace canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_trig_whitespace_equal () =
+  let expected = ".x{--v:sin( 45deg )}" in
+  let actual = ".x{--v:sin(45deg)}" in
+  Alcotest.(check bool)
+    "trig function ( and ) whitespace canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_nested_math_whitespace_equal () =
+  let expected = ".x{--v:min( 50px, calc( 100% / 2 ) )}" in
+  let actual = ".x{--v:min(50px,calc(100%/2))}" in
+  Alcotest.(check bool)
+    "nested math-function whitespace canonicalizes equal recursively" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_tailwind_translate_calc_equal () =
+  (* The original motivating case: Tailwind's translate-x-1/2 emits calc(1 / 2 *
+     100%) into --tw-translate-x, while cascade's pp_calc produces
+     calc(1/2*100%). Custom-property values don't go through pp_calc so the
+     divergence is purely whitespace inside the math body - canonical comparison
+     must fold it. *)
+  let expected = ".x{--tw-translate-x:calc(1 / 2 * 100%)}" in
+  let actual = ".x{--tw-translate-x:calc(1/2*100%)}" in
+  Alcotest.(check bool)
+    "Tailwind --tw-translate-x:calc(...) whitespace canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* SAFETY: + and - whitespace is REQUIRED by the spec and must NOT be normalized
+   away. The stripped form is illegal (parses as a different token sequence:
+   100% followed by -var ident, then (--a)), and treating it equal would
+   silently mask a real bug. *)
+let canonical_calc_plus_minus_whitespace_distinct () =
+  let expected = ".x{--v:calc(100% - var(--a))}" in
+  let actual = ".x{--v:calc(100%-var(--a))}" in
+  Alcotest.(check bool)
+    "calc(...) + and - whitespace stays distinct (required for parse)" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
     "@layer utilities{.prose :where(blockquote \
@@ -608,6 +690,24 @@ let suite =
         canonical_nested_where_is_permutation_equal;
       Alcotest.test_case "canonical top-level selector list permutation" `Quick
         canonical_top_level_selector_list_permutation_equal;
+      Alcotest.test_case "canonical calc *,/ whitespace" `Quick
+        canonical_calc_mul_div_whitespace_equal;
+      Alcotest.test_case "canonical calc paren whitespace" `Quick
+        canonical_calc_paren_whitespace_equal;
+      Alcotest.test_case "canonical min comma whitespace" `Quick
+        canonical_min_comma_whitespace_equal;
+      Alcotest.test_case "canonical clamp commas whitespace" `Quick
+        canonical_clamp_commas_whitespace_equal;
+      Alcotest.test_case "canonical round strategy whitespace" `Quick
+        canonical_round_strategy_whitespace_equal;
+      Alcotest.test_case "canonical trig whitespace" `Quick
+        canonical_trig_whitespace_equal;
+      Alcotest.test_case "canonical nested math whitespace" `Quick
+        canonical_nested_math_whitespace_equal;
+      Alcotest.test_case "canonical Tailwind translate calc whitespace" `Quick
+        canonical_tailwind_translate_calc_equal;
+      Alcotest.test_case "canonical calc +/- whitespace stays distinct" `Quick
+        canonical_calc_plus_minus_whitespace_distinct;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick

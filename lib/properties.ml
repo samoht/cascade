@@ -20147,6 +20147,97 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Min_height, Length Initial -> Length Auto
   | _ -> value
 
+(* CSS Values L4 sec. 10.10 ("Mathematical Expressions"): inside a math function
+   ([calc], [min], [max], [clamp], [round], [mod], [rem], the trig family,
+   [pow]/[sqrt]/[hypot]/[log]/[exp], [abs]/[sign]) whitespace is *required*
+   around binary [+] and [-] (sign-token disambiguation - stripping it changes
+   [100% - var(--a)] to [100%-var(--a)], where [-var] is one ident-like function
+   token) but *optional* around [*], [/], [(], [)], [,]. Strip the optional
+   whitespace from math-function arguments so two custom-property token streams
+   that differ only there have the same canonical AST. Typed math is already
+   minified by [pp_calc]; this matters for opaque [Tokens _] custom-property
+   values where cascade preserves the author's whitespace verbatim by design.
+   Nested non-math functions ([var()] etc.) get a recursive component walk but
+   no whitespace stripping; nested math functions get their own. *)
+let math_function_names =
+  [
+    "calc";
+    "min";
+    "max";
+    "clamp";
+    "round";
+    "mod";
+    "rem";
+    "sin";
+    "cos";
+    "tan";
+    "asin";
+    "acos";
+    "atan";
+    "atan2";
+    "pow";
+    "sqrt";
+    "hypot";
+    "log";
+    "exp";
+    "abs";
+    "sign";
+  ]
+
+let is_math_function_name name =
+  List.mem (String.lowercase_ascii name) math_function_names
+
+let is_plus_or_minus_delim = function
+  | Component.Preserved { kind = Token.Delim "+"; _ }
+  | Component.Preserved { kind = Token.Delim "-"; _ } ->
+      true
+  | _ -> false
+
+(* [in_math] tracks whether the current component list is inside a math
+   function's grammar. It enters at the args of a [calc()] / [min()] / ... call,
+   propagates through grouping parens ([Block]s) since those are math operands,
+   and turns off when entering a nested non-math function like [var()] which has
+   its own grammar. *)
+let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
+  let comps' =
+    List.map
+      (fun c ->
+        match c with
+        | Component.Func wrapped ->
+            let func = wrapped.Component.node in
+            let nested_in_math = is_math_function_name func.name in
+            let args =
+              canonicalize_math_whitespace_components ~in_math:nested_in_math
+                func.arguments
+            in
+            Component.Func
+              { wrapped with node = { func with arguments = args } }
+        | Component.Block wrapped ->
+            let block = wrapped.Component.node in
+            let value =
+              canonicalize_math_whitespace_components ~in_math block.value
+            in
+            Component.Block { wrapped with node = { block with value } }
+        | Component.Preserved _ -> c)
+      comps
+  in
+  if in_math then strip_math_whitespace comps' else comps'
+
+and strip_math_whitespace comps =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+        let prev_pm =
+          match acc with [] -> false | p :: _ -> is_plus_or_minus_delim p
+        in
+        let next_pm =
+          match rest with [] -> false | n :: _ -> is_plus_or_minus_delim n
+        in
+        if prev_pm || next_pm then aux (ws :: acc) rest else aux acc rest
+    | other :: rest -> aux (other :: acc) rest
+  in
+  aux [] comps
+
 (* AST-level value normaliser: applies semantic (equivalence) canonicalisation
    so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
    property cases here as their folds migrate out of [pp]; everything else is
@@ -20321,6 +20412,15 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Scroll_padding -> map_preserve Values.normalize_length value
   | Scroll_padding_inline -> map_preserve Values.normalize_length value
   | Scroll_padding_block -> map_preserve Values.normalize_length value
+  | Custom_property _ -> (
+      match value with
+      | Custom_value ({ value = Tokens components; _ } as r) ->
+          let components' =
+            canonicalize_math_whitespace_components components
+          in
+          if components' == components then value
+          else Custom_value { r with value = Tokens components' }
+      | Custom_value _ -> value)
   | _ -> value
 
 (* A registered [<color>] custom property carries a typed colour once promoted,
@@ -20352,7 +20452,9 @@ let normalize_custom_property_value ?(lossless = false) :
           kind = Gradient_direction;
           value = normalize_gradient_direction value;
         }
-  | (Typed _ | Tokens _) as other -> other
+  | Tokens components ->
+      Tokens (canonicalize_math_whitespace_components components)
+  | Typed _ as other -> other
 
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->

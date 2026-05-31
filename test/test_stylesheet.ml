@@ -5737,8 +5737,7 @@ let customprops13_unregistered_theme_tokens () =
      theme{:host,:root{--font-sans:ui-sans-serif,system-ui,sans-serif,\"Segoe \
      UI Symbol\",\"Noto Color \
      Emoji\";--font-mono:ui-monospace,SFMono-Regular,\"Roboto Mono\",\"Courier \
-     New\",monospace;--text-sm--line-height:calc(1.25 / \
-     .875);--text-lg--line-height:calc(1.75 / 1.125)}}"
+     New\",monospace;--text-sm--line-height:calc(1.25/.875);--text-lg--line-height:calc(1.75/1.125)}}"
     (normalize_minified
        "@layer theme { :host, :root { --font-sans: ui-sans-serif, system-ui, \
         sans-serif, \"Segoe UI Symbol\", \"Noto Color Emoji\"; --font-mono: \
@@ -5749,7 +5748,7 @@ let customprops13_unregistered_theme_tokens () =
 let customprops13_registered_numeric_calc () =
   Alcotest.(check string)
     "unregistered numeric custom property keeps token stream"
-    ".x{--text-sm--line-height:calc(1.25 / .875)}"
+    ".x{--text-sm--line-height:calc(1.25/.875)}"
     (normalize_minified ".x { --text-sm--line-height: calc(1.25 / .875) }");
   Alcotest.(check string)
     "registered numeric custom property reduces to typed number"
@@ -5777,7 +5776,7 @@ let customprops13_registered_oklch_chroma () =
 let customprops13_registered_percent_calc () =
   Alcotest.(check string)
     "unregistered percent calc custom property keeps token stream"
-    ".x{--tw-translate-x:calc(1 / 2 * 100%)}"
+    ".x{--tw-translate-x:calc(1/2*100%)}"
     (normalize_minified ".x { --tw-translate-x: calc(1 / 2 * 100%) }");
   Alcotest.(check string)
     "registered percent custom property uses typed calc minification"
@@ -5790,7 +5789,7 @@ let customprops13_registered_percent_calc () =
 let customprops13_registered_negative_dimension_calc () =
   Alcotest.(check string)
     "unregistered dimension calc custom property keeps token stream"
-    ".x{--tw-tracking:calc(.05em * -1)}"
+    ".x{--tw-tracking:calc(.05em*-1)}"
     (normalize_minified ".x { --tw-tracking: calc(.05em * -1) }");
   Alcotest.(check string)
     "registered length custom property reduces to dimension"
@@ -5803,7 +5802,7 @@ let customprops13_registered_negative_dimension_calc () =
 let customprops13_shortest_unresolved_calc_spacing () =
   Alcotest.(check string)
     "unregistered unresolved calc custom property keeps token stream"
-    ".x{--tw-border-spacing-x:calc(var(--spacing) * 4)}"
+    ".x{--tw-border-spacing-x:calc(var(--spacing)*4)}"
     (normalize_minified ".x { --tw-border-spacing-x: calc(var(--spacing) * 4) }")
 
 let customprops13_box_shadow_zero_spread () =
