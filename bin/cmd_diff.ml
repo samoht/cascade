@@ -50,7 +50,7 @@ let compare_files file1 file2 style_renderer mode memtrace_path () =
         Ok ())
       else
         match run_diff mode ~css1 ~css2 with
-        | No_diff ->
+        | No_diff _ ->
             Fmt.pr "CSS files are identical@.";
             Ok ()
         | String_diff _ as result ->

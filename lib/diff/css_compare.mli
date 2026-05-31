@@ -25,10 +25,16 @@ type t =
   | Tree_diff of Tree_diff.t  (** Structural AST differences. *)
   | String_diff of String_diff.t
       (** Strings differ but no structural change was detected. *)
-  | No_diff
-      (** No differences were reported under the selected {!mode}. Depending on
-          the mode this means byte-identical inputs (after tool-header
-          stripping), equal ASTs, or equal canonical minified forms. *)
+  | No_diff of { canonical_byte_diff : (string * string) option }
+      (** Structurally equivalent under the selected {!mode}.
+          [canonical_byte_diff = None] means the inputs were bytewise equal
+          (after header strip / canonical minify). [Some (expected, actual)]
+          appears under [`Canonical] when the structural comparator found no
+          difference but the canonical-minified bytes still differed - i.e.
+          cascade's canonical pass hasn't (yet) collapsed those textual
+          variants. The two strings let maintainers inspect which gap to chip
+          away at; callers matching [No_diff _] get the right equality answer
+          either way. *)
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
