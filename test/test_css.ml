@@ -840,7 +840,7 @@ let public_value_combinator_edges () =
      1;mask:url(mask.svg);outline:2px solid #00f}.helpers{object-position:10px \
      20px;text-overflow:clip \"...\";content:\"Section \" \
      counter(section);background-image:conic-gradient(from 45deg at \
-     50%,red,#00f);background-size:20px 30px;object-view-box:inset(0px \
+     50%,red,#00f);background-size:20px 30px;object-view-box:inset(0 \
      1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
      2/footer;transform:translate(1px,2px)rotate(45deg);filter:blur(4px)opacity(.5);cursor:url(cursor.svg) \
      1 2,pointer;contain:layout paint;border-spacing:1px \
