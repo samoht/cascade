@@ -410,6 +410,51 @@ let canonical_registered_font_family_quoted_unquoted_equal () =
     "@property-registered font-family custom prop: quoted equals unquoted" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* Custom-property declarations in :root/:host don't have cascade-relevant
+   source order (they all set the same theme variable for the matching element),
+   so canonical comparison sorts them alphabetically by name. This restores the
+   "all paths canonicalize the same" invariant for theme blocks regardless of
+   the source's emission order (Tailwind's (priority, suborder) convention, a
+   typed Var.binding constructor's order, or hand-written CSS all converge).
+   Sort only applies to :root/:host blocks; regular rules preserve declaration
+   order (cascade semantics). *)
+
+let canonical_root_custom_props_permutation_equal () =
+  let expected = ":root{--zebra:1;--apple:2;--mango:3}" in
+  let actual = ":root{--apple:2;--mango:3;--zebra:1}" in
+  Alcotest.(check bool)
+    ":root custom-property permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_host_custom_props_permutation_equal () =
+  let expected = ":host{--zebra:1;--apple:2;--mango:3}" in
+  let actual = ":host{--mango:3;--apple:2;--zebra:1}" in
+  Alcotest.(check bool)
+    ":host custom-property permutations canonicalize equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* SAFETY: outside :root/:host the alphabetical sort must not apply - in a
+   regular rule, custom-property declarations participate in the normal cascade
+   (later same-name wins), so reordering them is semantically load-bearing.
+   Permutations must stay distinct. *)
+let canonical_non_root_custom_props_distinct () =
+  let expected = ".x{--zebra:1;--apple:2}" in
+  let actual = ".x{--apple:2;--zebra:1}" in
+  Alcotest.(check bool)
+    "non-:root/:host custom-property permutations stay distinct" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* SAFETY: regular property declarations are never alphabetised - source order
+   is cascade-meaningful for any property (shorthand interactions, same-name
+   dedup, etc.). Permutations stay distinct even when the properties themselves
+   don't conflict. *)
+let canonical_regular_decls_permutation_distinct () =
+  let expected = ".x{color:red;background:blue;margin:1px}" in
+  let actual = ".x{background:blue;margin:1px;color:red}" in
+  Alcotest.(check bool)
+    "regular property declaration permutations stay distinct" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
     "@layer utilities{.prose :where(blockquote \
@@ -768,6 +813,14 @@ let suite =
         canonical_unregistered_custom_font_distinct;
       Alcotest.test_case "canonical registered --font quoted vs unquoted" `Quick
         canonical_registered_font_family_quoted_unquoted_equal;
+      Alcotest.test_case "canonical :root custom-props alphabetised" `Quick
+        canonical_root_custom_props_permutation_equal;
+      Alcotest.test_case "canonical :host custom-props alphabetised" `Quick
+        canonical_host_custom_props_permutation_equal;
+      Alcotest.test_case "canonical non-:root custom-props stay distinct" `Quick
+        canonical_non_root_custom_props_distinct;
+      Alcotest.test_case "canonical regular decls stay distinct" `Quick
+        canonical_regular_decls_permutation_distinct;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick
