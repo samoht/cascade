@@ -4055,6 +4055,52 @@ let rec normalize_clip_path : clip_path -> clip_path =
       if shape == r.shape then value else Clip_path_with_box { r with shape }
   | other -> other
 
+(* [object-view-box] has its own [Inset] / [Xywh] / [Rect] variants distinct
+   from [clip-path]'s. Same principle as the clip-path normalisers: the slot
+   values are plain [<length>] / [<length-percentage>] positions, not [calc()]
+   operands, so the zero-unit drop ([0px] -> [0]) applies (CSS Values L4 sec.
+   6.1.1). *)
+let normalize_object_view_box (value : object_view_box) : object_view_box =
+  match value with
+  | Inset (top, right, bottom, left) ->
+      let nl = Values.normalize_length ~strip:true in
+      let top' = nl top in
+      let right' = option_map_preserve nl right in
+      let bottom' = option_map_preserve nl bottom in
+      let left' = option_map_preserve nl left in
+      if top' == top && right' == right && bottom' == bottom && left' == left
+      then value
+      else Inset (top', right', bottom', left')
+  | Xywh r ->
+      let lp = Values.normalize_length_percentage ~strip:true in
+      let x = lp r.x in
+      let y = lp r.y in
+      let width = lp r.width in
+      let height = lp r.height in
+      let rounded =
+        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
+      in
+      if
+        x == r.x && y == r.y && width == r.width && height == r.height
+        && rounded == r.rounded
+      then value
+      else Xywh { x; y; width; height; rounded }
+  | Rect r ->
+      let lp = Values.normalize_length_percentage ~strip:true in
+      let top = lp r.top in
+      let right = lp r.right in
+      let bottom = lp r.bottom in
+      let left = lp r.left in
+      let rounded =
+        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
+      in
+      if
+        top == r.top && right == r.right && bottom == r.bottom && left == r.left
+        && rounded == r.rounded
+      then value
+      else Rect { top; right; bottom; left; rounded }
+  | other -> other
+
 let normalize_background_shorthand ?(lossless = false)
     (b : background_shorthand) =
   let color = option_map_preserve (normalize_color ~lossless) b.color in
@@ -20281,6 +20327,7 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Background -> map_preserve (normalize_background ~lossless) value
   | Mask -> normalize_mask ~lossless value
   | Clip_path -> normalize_clip_path value
+  | Object_view_box -> normalize_object_view_box value
   | Object_position -> normalize_position_value value
   | Perspective_origin -> normalize_position_value value
   | Text_indent -> normalize_text_indent value
