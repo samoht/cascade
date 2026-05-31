@@ -467,7 +467,7 @@ let semantic_legacy_pseudo_element_alias () =
      *))::before{content:\"\"}}"
   in
   match Cascade_diff.Css_compare.diff ~mode:`Canonical legacy modern with
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected :before and ::before to canonicalize equally"
 
 let semantic_vendor_recovered () =
@@ -506,13 +506,13 @@ let diff_no_diff () =
   let css = ".a { color: red }" in
   let result = Cascade_diff.Css_compare.diff css css in
   match result with
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff"
 
 let diff_no_diff_empty () =
   let result = Cascade_diff.Css_compare.diff "" "" in
   match result with
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for empty strings"
 
 (* ===== diff returning Tree_diff ===== *)
@@ -548,7 +548,7 @@ let diff_string_diff () =
   match result with
   | Cascade_diff.Css_compare.String_diff d ->
       Alcotest.(check bool) "string diff has position" true (d.position >= 0)
-  | Cascade_diff.Css_compare.No_diff ->
+  | Cascade_diff.Css_compare.No_diff _ ->
       (* Strings might be considered equal after strip_tool_header/trim *)
       ()
   | _ -> Alcotest.fail "expected String_diff or No_diff"
@@ -667,14 +667,14 @@ let diff_string () =
   let result = Cascade_diff.Css_compare.diff ~mode:`String expected actual in
   match result with
   | Cascade_diff.Css_compare.String_diff _ -> ()
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected String_diff or No_diff in string mode"
 
 let diff_string_identical () =
   let css = ".a { color: red }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`String css css in
   match result with
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for identical in string mode"
 
 let semantic_color_mix_mode () =
@@ -682,7 +682,7 @@ let semantic_color_mix_mode () =
   let actual = ".a { color: " ^ color_mix_transparent_hex ^ " }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
   match result with
-  | Cascade_diff.Css_compare.No_diff -> ()
+  | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for semantically equivalent CSS"
 
 let diff_canonical_uses_outputs () =

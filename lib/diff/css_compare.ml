@@ -265,7 +265,14 @@ let equivalent_value ~property a b = semantic_equal ~property a b
 type t =
   | Tree_diff of Tree_diff.t (* CSS AST differences found *)
   | String_diff of String_diff.t (* No structural diff but strings differ *)
-  | No_diff (* Strings are identical *)
+  | No_diff of { canonical_byte_diff : (string * string) option }
+      (** Structurally equivalent. [canonical_byte_diff = None] means the two
+          inputs were bytewise equal (after header strip / canonical minify).
+          [Some (expected, actual)] means the structural comparator (tree-diff
+          in [`Canonical] mode) found no difference but the canonical minified
+          forms still differed - i.e. a canonical-pass gap to chip away at in
+          future. The two strings let maintainers inspect what cascade hasn't
+          normalised yet. *)
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
@@ -300,7 +307,7 @@ let diff_auto ~expected ~actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   (* First check if original strings are identical *)
-  if expected = actual then No_diff
+  if expected = actual then No_diff { canonical_byte_diff = None }
   else
     match (Css.of_string expected, Css.of_string actual) with
     | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
@@ -312,20 +319,41 @@ let diff_auto ~expected ~actual =
 let diff_canonical ~expected ~actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
-  if expected = actual then No_diff
+  if expected = actual then No_diff { canonical_byte_diff = None }
   else
     match canonical_diff_inputs_with_fallback expected actual with
-    | Some (expected, actual) ->
-        if String.equal expected actual then No_diff
-        else diff_auto ~expected ~actual
     | None -> diff_auto ~expected ~actual
+    | Some (expected_canon, actual_canon) -> (
+        if String.equal expected_canon actual_canon then
+          No_diff { canonical_byte_diff = None }
+        else
+          (* Tree-diff is the authoritative semantic comparator in Canonical
+             mode; canonical-minified byte equality is a fast-path sufficient
+             condition, not a necessary one. When the structural diff is empty,
+             the inputs ARE equivalent - cascade's canonical pass just hasn't
+             (yet) collapsed those particular textual variants (tool headers,
+             [@layer a, b;] vs split-form, empty layer-order pins, whitespace
+             inside [url()], ...). Expose the canonical byte forms on [No_diff]
+             so maintainers can spot which canonical-pass gap to chip away at
+             next, without ever overriding the structural answer. *)
+          match (Css.of_string expected_canon, Css.of_string actual_canon) with
+          | ( Ok { stylesheet = expected_ast; _ },
+              Ok { stylesheet = actual_ast; _ } ) ->
+              let structural_diff =
+                tree_diff ~expected:expected_ast ~actual:actual_ast
+              in
+              if is_empty structural_diff then
+                No_diff
+                  { canonical_byte_diff = Some (expected_canon, actual_canon) }
+              else Tree_diff structural_diff
+          | _ -> diff_auto ~expected ~actual)
 
 let diff_string ~expected ~actual =
-  if expected = actual then No_diff
+  if expected = actual then No_diff { canonical_byte_diff = None }
   else
     match String_diff.diff ~expected actual with
     | Some sdiff -> String_diff sdiff
-    | None -> No_diff
+    | None -> No_diff { canonical_byte_diff = None }
 
 let diff_tree ~expected ~actual =
   match (Css.of_string expected, Css.of_string actual) with
@@ -333,7 +361,8 @@ let diff_tree ~expected ~actual =
       let structural_diff =
         tree_diff ~expected:expected_ast ~actual:actual_ast
       in
-      if is_empty structural_diff then No_diff else Tree_diff structural_diff
+      if is_empty structural_diff then No_diff { canonical_byte_diff = None }
+      else Tree_diff structural_diff
   | Error e1, Error e2 -> Both_errors (e1, e2)
   | Ok _, Error e -> Actual_error e
   | Error e, Ok _ -> Expected_error e
@@ -347,12 +376,12 @@ let diff ?(mode = `Auto) expected actual =
   | `String -> diff_string ~expected ~actual
   | `Tree -> diff_tree ~expected ~actual
 
-let equal ?mode a b = match diff ?mode a b with No_diff -> true | _ -> false
+let equal ?mode a b = match diff ?mode a b with No_diff _ -> true | _ -> false
 
 let as_tree_diff = function
   | Tree_diff d -> Some d
-  | String_diff _ | No_diff | Both_errors _ | Expected_error _ | Actual_error _
-    ->
+  | String_diff _ | No_diff _ | Both_errors _ | Expected_error _
+  | Actual_error _ ->
       None
 
 (* Compute statistics from diff results *)
@@ -404,8 +433,9 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
       (* Show structural differences *)
       D.pp ~expected ~actual buf d
   | String_diff sdiff -> String_diff.pp buf sdiff
-  | No_diff ->
-      (* No output for identical files *)
+  | No_diff _ ->
+      (* No output for structurally equivalent files (whether or not the
+         canonical-minified bytes also matched). *)
       ()
   | Both_errors (e1, e2) ->
       let err1 = Error.to_string e1 in
