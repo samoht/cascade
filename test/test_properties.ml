@@ -3779,14 +3779,21 @@ let test_clip_path () =
   check_clip_path "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
   check_clip_path "inset(0px 10px 20px 30px)";
+  (* CSS Values L4 sec. 6.1: a zero in <length>/<length-percentage> position
+     drops its unit under canonical minification; the fold is a node-changing
+     rewrite (Length{Px,0} -> Length{None,0}) and so lives in normalize, not pp.
+     The held (~held) form stays pp-faithful with the unit; only the canonical
+     (~into) form drops it. Same fold applies recursively inside basic shapes
+     (inset, polygon, rect, etc.) - all <length-percentage> arg positions, none
+     of them inside a math context. *)
   decl_optimizes ~prop:"clip-path" ~held:"inset(0px 10px 20px 30px)"
-    ~into:"inset(0px 10px 20px 30px)" "inset(0px 10px 20px 30px)";
+    ~into:"inset(0 10px 20px 30px)" "inset(0px 10px 20px 30px)";
   (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
   check_clip_path "polygon(0px 0px,100px 0px,50px 100px)";
   decl_optimizes ~prop:"clip-path" ~held:"polygon(0px 0px,100px 0px,50px 100px)"
-    ~into:"polygon(0px 0px,100px 0px,50px 100px)"
+    ~into:"polygon(0 0,100px 0,50px 100px)"
     "polygon(0px 0px,100px 0px,50px 100px)";
   neg_cursor read_clip_path "";
   neg_cursor read_clip_path "invalid"
