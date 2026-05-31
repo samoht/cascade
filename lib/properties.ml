@@ -3926,13 +3926,17 @@ let drop_default_clip_path_extent (opt : clip_path_extent option) =
 let normalize_clip_path_inset value =
   match value with
   | Clip_path_inset r ->
-      let lp = Values.normalize_length_percentage ~strip:false in
+      (* The four inset slots and the rounded clause are plain
+         [<length-percentage>] / [<border-radius>] positions, not [calc()]
+         operands, so a zero length can drop its unit per CSS Values L4 sec.
+         6.1.1. *)
+      let lp = Values.normalize_length_percentage ~strip:true in
       let top = lp r.top in
       let right = option_map_preserve lp r.right in
       let bottom = option_map_preserve lp r.bottom in
       let left = option_map_preserve lp r.left in
       let rounded =
-        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
       in
       if
         top == r.top && right == r.right && bottom == r.bottom && left == r.left
@@ -3944,13 +3948,15 @@ let normalize_clip_path_inset value =
 let normalize_clip_path_xywh value =
   match value with
   | Clip_path_xywh r ->
-      let lp = Values.normalize_length_percentage ~strip:false in
+      (* xywh slots are plain [<length-percentage>] / [<border-radius>], not
+         calc operands - zero lengths can drop the unit. *)
+      let lp = Values.normalize_length_percentage ~strip:true in
       let x = lp r.x in
       let y = lp r.y in
       let width = lp r.width in
       let height = lp r.height in
       let rounded =
-        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
       in
       if
         x == r.x && y == r.y && width == r.width && height == r.height
@@ -3962,13 +3968,15 @@ let normalize_clip_path_xywh value =
 let normalize_clip_path_rect value =
   match value with
   | Clip_path_rect r ->
-      let lp = Values.normalize_length_percentage ~strip:false in
+      (* rect() slots are plain [<length-percentage>] / [<border-radius>], not
+         calc operands - zero lengths can drop the unit. *)
+      let lp = Values.normalize_length_percentage ~strip:true in
       let top = lp r.top in
       let right = lp r.right in
       let bottom = lp r.bottom in
       let left = lp r.left in
       let rounded =
-        option_map_preserve (normalize_border_radius ~strip:false) r.rounded
+        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
       in
       if
         top == r.top && right == r.right && bottom == r.bottom && left == r.left
@@ -4021,7 +4029,9 @@ let normalize_clip_path_ellipse value =
 let normalize_clip_path_polygon value =
   match value with
   | Clip_path_polygon r ->
-      let len = Values.normalize_length ~strip:false in
+      (* polygon vertex coordinates are plain [<length-percentage>], not calc
+         operands - zero lengths can drop the unit. *)
+      let len = Values.normalize_length ~strip:true in
       let normalize_point (x, y) =
         let x' = len x in
         let y' = len y in
