@@ -2733,7 +2733,57 @@ let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
 let deduplicate_declarations ?scope props =
   deduplicate_declarations_with ~ctx:(ctx_of_scope scope) props
 
-let sort_commuting_declarations decls = decls
+(* A [:host] / [:root] block is the conventional design-token surface (Tailwind,
+   most design systems): each [--name] is declared at most once and the order of
+   distinct names has no cascade effect. Sorting them alphabetically gives a
+   single canonical AST regardless of source order or which downstream generator
+   emitted the rule (Tailwind's (p, s)-ordered source vs tw's
+   Var.binding-constructed declarations vs a hand-written stylesheet all map to
+   the same sequence). The sort is stable so two declarations with the same name
+   keep their relative order ("later wins" preserved), and non-custom
+   declarations stay in their original positions so any interleaving with
+   regular declarations is unchanged. *)
+let rec selector_targets_host_or_root : Selector.t -> bool = function
+  | Selector.Root | Selector.Host _ -> true
+  | Selector.List xs -> List.for_all selector_targets_host_or_root xs
+  | Selector.Where xs | Selector.Is xs ->
+      List.for_all selector_targets_host_or_root xs
+  | _ -> false
+
+let custom_property_name = function
+  | Declaration { property = Custom_property name; _ } -> Some name
+  | _ -> None
+
+let sort_custom_property_declarations_stable decls =
+  let customs = List.filter (fun d -> custom_property_name d <> None) decls in
+  let sorted =
+    List.stable_sort
+      (fun d1 d2 ->
+        match (custom_property_name d1, custom_property_name d2) with
+        | Some n1, Some n2 -> String.compare n1 n2
+        | _ -> 0)
+      customs
+  in
+  let next = ref sorted in
+  let result =
+    List.map
+      (fun d ->
+        if custom_property_name d <> None then
+          match !next with
+          | x :: rest ->
+              next := rest;
+              x
+          | [] -> d
+        else d)
+      decls
+  in
+  if List.equal ( == ) result decls then decls else result
+
+let sort_commuting_declarations ?selector decls =
+  match selector with
+  | Some sel when selector_targets_host_or_root sel ->
+      sort_custom_property_declarations_stable decls
+  | _ -> decls
 
 (** {1 Rule Optimization} *)
 
@@ -2797,7 +2847,7 @@ let single_rule_without_nested ~ctx (rule : rule) : rule =
       (Declaration.normalize ~lossless:ctx.lossless)
       rule.declarations
     |> deduplicate_declarations_with ~ctx ~merge_box:false
-    |> sort_commuting_declarations
+    |> sort_commuting_declarations ~selector:rule.selector
     |> preserve_list rule.declarations
   in
   rule_with_declarations rule declarations
@@ -2930,7 +2980,7 @@ let finalize_rule_without_nested ~ctx (rule : rule) : rule =
   let declarations =
     deduplicate_declarations_with ~ctx rule.declarations
     |> synthesize_columns |> synthesize_position_try
-    |> sort_commuting_declarations
+    |> sort_commuting_declarations ~selector:rule.selector
     |> preserve_list rule.declarations
   in
   (* Selectors merged during factoring are fresh comma lists, so re-canonicalise

@@ -5733,11 +5733,11 @@ let customprops13_unregistered_font_stack () =
 let customprops13_unregistered_theme_tokens () =
   Alcotest.(check string)
     "unregistered theme custom properties keep font strings and calc tokens"
-    "@layer \
-     theme{:host,:root{--font-sans:ui-sans-serif,system-ui,sans-serif,\"Segoe \
-     UI Symbol\",\"Noto Color \
-     Emoji\";--font-mono:ui-monospace,SFMono-Regular,\"Roboto Mono\",\"Courier \
-     New\",monospace;--text-sm--line-height:calc(1.25/.875);--text-lg--line-height:calc(1.75/1.125)}}"
+    "@layer theme{:host,:root{--font-mono:ui-monospace,SFMono-Regular,\"Roboto \
+     Mono\",\"Courier \
+     New\",monospace;--font-sans:ui-sans-serif,system-ui,sans-serif,\"Segoe UI \
+     Symbol\",\"Noto Color \
+     Emoji\";--text-lg--line-height:calc(1.75/1.125);--text-sm--line-height:calc(1.25/.875)}}"
     (normalize_minified
        "@layer theme { :host, :root { --font-sans: ui-sans-serif, system-ui, \
         sans-serif, \"Segoe UI Symbol\", \"Noto Color Emoji\"; --font-mono: \
