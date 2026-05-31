@@ -42,6 +42,15 @@ val read_custom_property_value :
     raw token stream. Typed promotion is deferred to the [@property] registry
     pass. *)
 
+val unquote_font_family_strings_in_components : custom_value -> custom_value
+(** [unquote_font_family_strings_in_components components] rewrites each
+    [<string>] token whose content is a multi-word identifier sequence as the
+    equivalent [<ident> <whitespace> <ident> ...] component sequence. Used by
+    the [@property]-registered custom-property promotion when the registered
+    syntax accepts [<custom-ident>+] (CSS Fonts 4 sec. 15.3 makes the two forms
+    equivalent in font-family-typed positions). Single-word strings and any
+    token that isn't a [<string>] pass through unchanged. *)
+
 val try_read_custom_color : custom_value -> custom_property_value option
 (** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning a
     typed payload when the stream matches. *)

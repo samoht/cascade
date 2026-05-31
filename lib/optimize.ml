@@ -6004,6 +6004,20 @@ let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
   | Variables.Percentage -> Properties.try_read_custom_percentage components
   | _ -> None
 
+(* Does the registered syntax somewhere accept a [<custom-ident>] (possibly
+   under [+] / [#] / [|] modifiers)? When yes, a [<string>] whose content is a
+   multi-word identifier sequence is spec-equivalent (CSS Fonts 4 sec. 15.3 for
+   font-family-shaped registrations), so the promotion pass rewrites it to the
+   equivalent ident sequence before parsing. *)
+let rec syntax_accepts_ident_sequence : type a. a Variables.syntax -> bool =
+  function
+  | Variables.Custom_ident -> true
+  | Variables.Plus s -> syntax_accepts_ident_sequence s
+  | Variables.Hash s -> syntax_accepts_ident_sequence s
+  | Variables.Or (s1, s2) ->
+      syntax_accepts_ident_sequence s1 || syntax_accepts_ident_sequence s2
+  | _ -> false
+
 let promote_registered_custom_decl ~lossless registry decl =
   match decl with
   | Declaration
@@ -6015,8 +6029,12 @@ let promote_registered_custom_decl ~lossless registry decl =
       match Hashtbl.find_opt registry name with
       | None -> decl
       | Some (Variables.Syntax syntax) -> (
-          match try_promote_custom_with syntax components with
-          | None -> decl
+          let components' =
+            if syntax_accepts_ident_sequence syntax then
+              Properties.unquote_font_family_strings_in_components components
+            else components
+          in
+          match try_promote_custom_with syntax components' with
           | Some typed ->
               Declaration
                 {
@@ -6030,6 +6048,18 @@ let promote_registered_custom_decl ~lossless registry decl =
                         layer;
                         meta;
                       };
+                  important;
+                }
+          | None when components' == components -> decl
+          | None ->
+              (* Promotion failed (e.g. [<custom-ident>+] has no typed promotion
+                 path yet) but the string-to-ident rewrite still produces the
+                 canonical opaque AST. *)
+              Declaration
+                {
+                  property = Custom_property name;
+                  value =
+                    Custom_value { value = Tokens components'; layer; meta };
                   important;
                 }))
   | _ -> decl

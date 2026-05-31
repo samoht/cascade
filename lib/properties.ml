@@ -3427,6 +3427,40 @@ let can_unquote_font_family_name s =
       List.for_all is_font_family_ident_word words
   | _ -> false
 
+(* Walk a component stream and rewrite each [<string>] token whose content is a
+   multi-word identifier sequence (the [can_unquote_font_family_name] guard) as
+   an explicit [<ident>] sequence. Used by the [@property]-registered custom
+   property promotion path when the registered syntax accepts [<custom-ident>+]
+   - the two forms ([custom-ident>+] vs [<string>]) are spec-equivalent there
+   (CSS Fonts 4 sec. 15.3), so the rewrite produces a single canonical AST. The
+   guard's "two or more words" rule avoids the CSS-wide-keyword trap (a quoted
+   ["inherit"] never collapses to the bare keyword). *)
+let unquote_font_family_strings_in_components components =
+  let changed = ref false in
+  let words_of s =
+    String.split_on_char ' ' s |> List.filter (fun w -> w <> "")
+  in
+  let rec interleave loc = function
+    | [] -> []
+    | [ w ] -> [ Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc) ]
+    | w :: rest ->
+        Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc)
+        :: Component.Preserved (Token.v ~kind:Token.Whitespace ~loc)
+        :: interleave loc rest
+  in
+  let result =
+    List.concat_map
+      (fun c ->
+        match c with
+        | Component.Preserved { kind = Token.String { value; _ }; loc }
+          when can_unquote_font_family_name value ->
+            changed := true;
+            interleave loc (words_of value)
+        | _ -> [ c ])
+      components
+  in
+  if !changed then result else components
+
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
   (* Generic CSS font families *)
