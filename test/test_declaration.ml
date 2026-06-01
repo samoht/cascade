@@ -144,7 +144,7 @@ let vendor_prefixes () =
      produce. *)
   check_declaration ~expected:"-webkit-print-color-adjust:exact"
     "-webkit-print-color-adjust: exact;";
-  check_declaration ~expected:"-webkit-mask-image:linear-gradient(red,#00f)"
+  check_declaration ~expected:"-webkit-mask-image:linear-gradient(red,blue)"
     "-webkit-mask-image: linear-gradient(red, blue);"
 
 let multiple () =
@@ -1451,6 +1451,10 @@ let spec_platform_property_vectors () =
       ("container-type: inline-size", "container-type:inline-size");
       ("container-name: card", "container-name:card");
       ("container: card / inline-size", "container:card/inline-size");
+      (* Name-only form (no slash, no type) - the spec allows [container:
+         <name>] alone; pins the canonical form for the typed shorthand emitter
+         ([container : ?type_:_ -> container_name -> declaration]). *)
+      ("container: card", "container:card");
       ("overscroll-behavior: contain", "overscroll-behavior:contain");
       ("overscroll-behavior-inline: none", "overscroll-behavior-inline:none");
       ("overscroll-behavior-block: contain", "overscroll-behavior-block:contain");

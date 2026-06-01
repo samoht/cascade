@@ -21,6 +21,41 @@ module Selector = Selector
 module Selector_summary = Selector_summary
 module Stylesheet = Stylesheet
 
+let parse_full ~property read s =
+  let c = Cursor.of_string s in
+  Cursor.ws c;
+  if Cursor.is_done c then
+    Error (Error.bad_value Loc.dummy ~property ~reason:"empty value")
+  else
+    try
+      let v = read c in
+      Cursor.ws c;
+      if not (Cursor.is_done c) then
+        Error
+          (Error.bad_value (Cursor.position c) ~property
+             ~reason:"trailing input after parse")
+      else Ok v
+    with Cursor.Parse_error e -> Error e
+
+module Transform = struct
+  let of_string s = parse_full ~property:"transform" Properties.read_transform s
+end
+
+module Transform_origin = struct
+  let of_string s =
+    parse_full ~property:"transform-origin" Properties.read_transform_origin s
+end
+
+module Perspective_origin = struct
+  let of_string s =
+    parse_full ~property:"perspective-origin" Properties.read_perspective_origin
+      s
+end
+
+module Animation = struct
+  let of_string s = parse_full ~property:"animation" Properties.read_animation s
+end
+
 let eval_declaration ?layer_order ?layer ctx decl =
   Context.eval ?layer_order ?layer ctx decl
 
