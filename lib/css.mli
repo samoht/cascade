@@ -87,6 +87,37 @@ module Font_face = Font_face
 (** Parser internals live at the library root ([Cascade.Cursor],
     [Cascade.Parser], [Cascade.Token], ...), not under [Css]. *)
 
+(** {2:value_parsers Per-type value parsers}
+
+    [of_string] wrappers around the [Properties.read_*] cursor-driven parsers
+    used internally by {!Declaration.of_string}. The argument is the
+    right-hand-side of a declaration, with no [property:] prefix or trailing
+    [;]. They are intended for callers (e.g. Tailwind bracket values) that have
+    already extracted a typed value substring and need to lift it into the typed
+    AST without round-tripping through a full declaration. *)
+
+module Transform : sig
+  val of_string : string -> (Properties.transform, Error.t) result
+  (** [of_string s] parses [s] as a single [transform] value. *)
+end
+
+module Transform_origin : sig
+  val of_string : string -> (Properties.transform_origin, Error.t) result
+  (** [of_string s] parses [s] as a [transform-origin] value. *)
+end
+
+module Perspective_origin : sig
+  val of_string : string -> (Properties.perspective_origin, Error.t) result
+  (** [of_string s] parses [s] as a [perspective-origin] value. *)
+end
+
+module Animation : sig
+  val of_string : string -> (Properties.animation, Error.t) result
+  (** [of_string s] parses [s] as a single [animation] shorthand entry (one
+      comma-separated entry; for the full list use {!Properties.read_animations}
+      with a cursor). *)
+end
+
 (** {2:css_rules CSS Rules and Stylesheets}
 
     Core building blocks for CSS rules and stylesheet construction.
