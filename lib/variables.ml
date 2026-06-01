@@ -2169,6 +2169,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value
   | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value
+  | Webkit_print_color_adjust, value -> vars_of_print_color_adjust value
   | Webkit_box_orient, value -> vars_of_webkit_box_orient value
   | Webkit_font_smoothing, value -> vars_of_webkit_font_smoothing value
   | Webkit_line_clamp, value -> vars_of_webkit_line_clamp value

@@ -1551,6 +1551,8 @@ let read_interaction_value : type a.
   | Table_layout -> Some (v Table_layout (read_table_layout t))
   | Print_color_adjust ->
       Some (v Print_color_adjust (read_print_color_adjust t))
+  | Webkit_print_color_adjust ->
+      Some (v Webkit_print_color_adjust (read_print_color_adjust t))
   | Box_decoration_break ->
       Some (v Box_decoration_break (read_box_decoration_break t))
   | Webkit_box_decoration_break ->
@@ -2327,6 +2329,7 @@ let field_sizing value = v Field_sizing value
 let caption_side value = v Caption_side value
 let font_family value = v Font_family value
 let print_color_adjust value = v Print_color_adjust value
+let webkit_print_color_adjust value = v Webkit_print_color_adjust value
 let box_decoration_break value = v Box_decoration_break value
 let webkit_box_decoration_break value = v Webkit_box_decoration_break value
 let background_origin value = v Background_origin value
