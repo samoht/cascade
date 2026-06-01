@@ -6086,7 +6086,7 @@ let promote_registered_custom_decl ~lossless registry decl =
       | Some (Variables.Syntax syntax) -> (
           let components' =
             if syntax_accepts_ident_sequence syntax then
-              Properties.unquote_font_family_strings_in_components components
+              Properties.unquote_font_family_strings components
             else components
           in
           match try_promote_custom_with syntax components' with
