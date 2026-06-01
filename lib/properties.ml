@@ -3435,7 +3435,7 @@ let can_unquote_font_family_name s =
    (CSS Fonts 4 sec. 15.3), so the rewrite produces a single canonical AST. The
    guard's "two or more words" rule avoids the CSS-wide-keyword trap (a quoted
    ["inherit"] never collapses to the bare keyword). *)
-let unquote_font_family_strings_in_components components =
+let unquote_font_family_strings components =
   let changed = ref false in
   let words_of s =
     String.split_on_char ' ' s |> List.filter (fun w -> w <> "")
