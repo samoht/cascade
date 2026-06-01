@@ -1549,6 +1549,13 @@ val container_type : container_type -> declaration
 val container_name : string -> declaration
 (** [container_name v] is the CSS [container-name] property. *)
 
+val container : ?type_:container_type -> string -> declaration
+(** [container ?type_ name] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container} container}
+    shorthand declaration. Emits [container: <name>] when [type_] is omitted, or
+    [container: <name> / <type>] when both are present. The name is mandatory
+    because [container:] with neither slot is invalid per spec. *)
+
 val transform : transform -> declaration
 (** [transform t] is the CSS [transform] property with a single transformation.
 *)
