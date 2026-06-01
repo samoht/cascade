@@ -134,7 +134,18 @@ let vendor_prefixes () =
     "-webkit-transform: rotate(45deg);";
   check_declaration ~expected:"-moz-appearance:none" "-moz-appearance: none;";
   check_declaration ~expected:"-ms-filter:blur(5px)" "-ms-filter: blur(5px);";
-  check_declaration ~expected:"-o-transition:all .3s" "-o-transition: all 0.3s;"
+  check_declaration ~expected:"-o-transition:all .3s" "-o-transition: all 0.3s;";
+  (* Canonical forms for the two webkit-prefixed properties whose typed emitters
+     are still missing from Css.Declaration. Cascade already has
+     webkit_box_decoration_break / webkit_background_clip / the entire
+     webkit_mask_{composite,source_type,size,position,repeat,clip,origin}
+     family; webkit_print_color_adjust and webkit_mask_image fill the holes.
+     These round-trip pins document the output the typed emitters must
+     produce. *)
+  check_declaration ~expected:"-webkit-print-color-adjust:exact"
+    "-webkit-print-color-adjust: exact;";
+  check_declaration ~expected:"-webkit-mask-image:linear-gradient(red,#00f)"
+    "-webkit-mask-image: linear-gradient(red, blue);"
 
 let multiple () =
   (* Basic multiple declarations *)
@@ -501,7 +512,14 @@ let flexbox_flex_and_basis () =
   decl_optimizes ~prop:"flex-basis" ~into:"0" "0px";
   check_declaration ~expected:"flex-basis:0%" "flex-basis: 0%";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
-  check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%"
+  check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%";
+  (* Canonical form for [flex-basis: calc(<var> * <number>)] - pins the output
+     that a typed-constructor path must produce. When [Calc.float : float -> 'a
+     calc] is generalised (CSS Values L4 sec. 10: a bare <number> is
+     dimensionally neutral and unifies with any typed calc context), this is
+     what the typed flex-basis Calc emitter has to round-trip to. *)
+  check_declaration ~expected:"flex-basis:calc(var(--spacing)*4)"
+    "flex-basis: calc(var(--spacing) * 4)"
 
 let flexbox_alignment () =
   (* Align items *)

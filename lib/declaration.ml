@@ -2443,6 +2443,9 @@ let container_name value =
   | [ "none" ] -> v Container_name (None : container_name)
   | _ -> v Container_name (Names names)
 
+let container ?type_ name =
+  v Container (Shorthand { name = Some name; ctype = type_ })
+
 let transform value = v Transform [ value ]
 let transforms value = v Transform value
 let rotate (value : Properties_intf.rotate_value) = v Rotate value
