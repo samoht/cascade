@@ -288,11 +288,15 @@ module Calc : sig
   val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
   (** [var ?default ?fallback name] is a CSS variable reference in calc. *)
 
-  val float : float -> length calc
-  (** [float f] is a numeric literal in calc. *)
+  val float : float -> 'a calc
+  (** [float f] is a dimensionless [<number>] literal in calc. Polymorphic per
+      CSS Values 4 sec. 10: a [<number>] multiplied by a [<length>] yields a
+      [<length>], by an [<angle>] yields an [<angle>], etc., so the same literal
+      flows into any dimension. *)
 
-  val infinity : length calc
-  (** [infinity] is the CSS infinity value in calc. *)
+  val infinity : 'a calc
+  (** [infinity] is the CSS [infinity] math constant in calc. Polymorphic for
+      the same reason as {!float}: a math constant is a [<number>]. *)
 
   val px : float -> length calc
   (** [px f] is a pixel length in calc. *)
