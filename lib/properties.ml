@@ -7236,6 +7236,7 @@ let pp_property : type a. a property Pp.t =
   | Appearance -> Pp.string ctx "appearance"
   | Color_scheme -> Pp.string ctx "color-scheme"
   | Print_color_adjust -> Pp.string ctx "print-color-adjust"
+  | Webkit_print_color_adjust -> Pp.string ctx "-webkit-print-color-adjust"
   | Box_decoration_break -> Pp.string ctx "box-decoration-break"
   | Webkit_box_decoration_break -> Pp.string ctx "-webkit-box-decoration-break"
   | Content -> Pp.string ctx "content"
@@ -18567,6 +18568,7 @@ let read_any_property t =
   | "appearance" -> Prop Appearance
   | "color-scheme" -> Prop Color_scheme
   | "print-color-adjust" -> Prop Print_color_adjust
+  | "-webkit-print-color-adjust" -> Prop Webkit_print_color_adjust
   | "box-decoration-break" -> Prop Box_decoration_break
   | "-webkit-box-decoration-break" -> Prop Webkit_box_decoration_break
   | "filter" -> Prop Filter
@@ -20698,6 +20700,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Appearance -> pp pp_appearance
   | Color_scheme -> pp pp_color_scheme
   | Print_color_adjust -> pp pp_print_color_adjust
+  | Webkit_print_color_adjust -> pp pp_print_color_adjust
   | Box_decoration_break -> pp pp_box_decoration_break
   | Webkit_box_decoration_break -> pp pp_box_decoration_break
   | Flex_grow -> pp pp_flex_factor

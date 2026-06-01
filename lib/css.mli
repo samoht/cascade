@@ -6335,6 +6335,10 @@ val print_color_adjust : print_color_adjust -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/print-color-adjust}
      print-color-adjust} property. *)
 
+val webkit_print_color_adjust : print_color_adjust -> declaration
+(** [webkit_print_color_adjust v] is the [-webkit-print-color-adjust] property,
+    the legacy WebKit-prefixed alias of [print-color-adjust]. *)
+
 type box_decoration_break = Properties.box_decoration_break =
   | Clone
   | Slice

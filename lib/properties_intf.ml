@@ -4633,6 +4633,7 @@ type 'a property =
   | Appearance : appearance property
   | Color_scheme : color_scheme property
   | Print_color_adjust : print_color_adjust property
+  | Webkit_print_color_adjust : print_color_adjust property
   | Box_decoration_break : box_decoration_break property
   | Webkit_box_decoration_break : box_decoration_break property
   | Content : content property

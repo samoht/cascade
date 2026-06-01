@@ -2684,6 +2684,11 @@ let vendor_alias_redundant vendor twin =
       Declaration { property = Text_size_adjust; value = v2; important = i2 } )
     ->
       v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_print_color_adjust; value = v1; important = i1 },
+      Declaration { property = Print_color_adjust; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
