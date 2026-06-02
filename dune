@@ -1,5 +1,3 @@
-(vendored_dirs mono)
-
 (env
  (dev
   (flags :standard %{dune-warnings})))
