@@ -359,6 +359,10 @@ val looking_at_func : string -> t -> bool
 (** [looking_at_func name t] is [true] if the next component is function [name].
 *)
 
+val looking_at_calc : t -> bool
+(** [looking_at_calc t] is [true] if the next component is [calc()] or the
+    legacy [-webkit-calc()] spelling. *)
+
 (** {1 Expectations} *)
 
 val expect : char -> t -> unit
