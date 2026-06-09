@@ -3282,7 +3282,14 @@ let newer_pseudo_class_compatible sel1 sel2 =
    spec-equivalent, so - unlike Lightning CSS - cascade does so even when a
    value contains an oklab() with a [none] channel (a smaller, valid merge
    Lightning leaves on the table). *)
-let declarations_css_equal d1 d2 = d1 == d2 || d1 = d2
+let rec declaration_lists_equal d1 d2 =
+  match (d1, d2) with
+  | [], [] -> true
+  | a :: rest_a, b :: rest_b ->
+      same_minified_declaration a b && declaration_lists_equal rest_a rest_b
+  | _ -> false
+
+let declarations_css_equal d1 d2 = d1 == d2 || declaration_lists_equal d1 d2
 
 let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   declarations_css_equal prev.declarations rule.declarations
@@ -3493,174 +3500,8 @@ let rule_pp_size (r : Stylesheet.rule) =
   in
   sel + 2 + decls + separators
 
-(* [factorable_default decl_for] returns the first rule's declaration for a
-   property iff every rule declares the same property. Default-pick is
-   considered separately because it may need a leftover override even when the
-   value matches (see [keep_default_at]). *)
-let factorable_default rules prop =
-  let decl_for r =
-    List.find_opt
-      (fun d -> decl_property d = prop)
-      r.Stylesheet_intf.declarations
-  in
-  match rules with
-  | [] -> None
-  | first :: _ -> (
-      match decl_for first with
-      | None -> None
-      | Some _ as fst ->
-          if List.for_all (fun r -> decl_for r <> None) rules then fst else None
-      )
-
-(* For a rule [R_i] whose value for [prop] equals the default, we must still
-   emit it in the leftover when an EARLIER rule [R_j] with overlapping selector
-   declares a different value - otherwise [R_j]'s leftover would override the
-   shared default for elements matching both. *)
-let earlier_overrides_overlap ~summaries ~default decls i =
-  let r_i_summary = Array.get summaries i in
-  let default_prop = decl_property default in
-  let rec loop j =
-    if j >= i then false
-    else
-      let d_j =
-        List.find_opt
-          (fun d -> decl_property d = default_prop)
-          (Array.get decls j)
-      in
-      match d_j with
-      | Some d
-        when (not (same_minified_declaration d default))
-             && Selector_summary.may_overlap (Array.get summaries j) r_i_summary
-        ->
-          true
-      | _ -> loop (j + 1)
-  in
-  loop 0
-
-let common_factorable_decls rules first =
-  List.filter_map
-    (fun d -> factorable_default rules (decl_property d))
-    first.Stylesheet_intf.declarations
-
-let keep_factor_leftover ~summaries ~decls ~default_decl ~i decl =
-  (not (same_minified_declaration decl default_decl))
-  || earlier_overrides_overlap ~summaries ~default:default_decl decls i
-
-let leftover_for_factor_rule ~common ~summaries ~decls i (r : Stylesheet.rule) =
-  List.filter
-    (fun d ->
-      let prop = decl_property d in
-      match List.find_opt (fun d' -> decl_property d' = prop) common with
-      | None -> true
-      | Some default ->
-          keep_factor_leftover ~summaries ~decls ~default_decl:default ~i d)
-    r.declarations
-
-(* Hoisting [common] into a shared rule pays off for a member only when its
-   selector entry ([|selector| + 1]) is cheaper than the bytes it would
-   otherwise duplicate ([decls_pp_size common] plus one separator per
-   declaration). A member fully consumed by [common] (empty leftover) always
-   joins, since dropping it would spawn a whole separate rule. [leftovers] is
-   aligned with [rules_arr] ([None] = empty leftover). Returns [None] when fewer
-   than two members survive; otherwise the grouped rule (members only) and a
-   leftover array where each pruned member keeps its full declarations inline.
-   Pruning is cascade-safe: a pruned member's declarations stay in place, so the
-   group is a subset of the run already proven safe to factor. *)
-let cost_aware_factor_group first rules_arr common leftovers =
-  let common_inline_cost = decls_pp_size common + List.length common in
-  let member i =
-    match leftovers.(i) with
-    | None -> true
-    | Some _ ->
-        (* Pruning only saves bytes when the member carries [common] verbatim:
-           dropping it then removes exactly [common] from its rule. A member
-           that overrides a [common] property (default-value factoring) keeps a
-           differing value inline whether grouped or not, so the cost model does
-           not apply - leave it in the group as the scan selected it. *)
-        let exact =
-          List.for_all
-            (fun cd ->
-              List.exists
-                (same_minified_declaration cd)
-                rules_arr.(i).Stylesheet_intf.declarations)
-            common
-        in
-        (not exact)
-        ||
-        let sel_size =
-          Pp.size ~minify:true Selector.pp
-            rules_arr.(i).Stylesheet_intf.selector
-        in
-        sel_size + 1 <= common_inline_cost
-  in
-  let member_count =
-    Array.to_seq rules_arr
-    |> Seq.mapi (fun i _ -> i)
-    |> Seq.filter member |> Seq.length
-  in
-  if member_count < 2 then None
-  else
-    let sels =
-      Array.to_list rules_arr
-      |> List.mapi (fun i r -> (i, r))
-      |> List.filter (fun (i, _) -> member i)
-      |> List.map (fun (_, r) -> r.Stylesheet_intf.selector)
-    in
-    let grouped =
-      { first with selector = merge_selector_list sels; declarations = common }
-    in
-    let leftovers =
-      Array.mapi
-        (fun i lo -> if member i then lo else Some rules_arr.(i))
-        leftovers
-    in
-    Some (grouped, leftovers)
-
 let rules_pp_size rules =
   List.fold_left (fun acc r -> acc + rule_pp_size r) 0 rules
-
-let factor_leftover_option ~common ~summaries ~decls i r =
-  let l = leftover_for_factor_rule ~common ~summaries ~decls i r in
-  if l = [] then None else Some { r with declarations = l }
-
-let factor_leftover_options ~common ~summaries ~decls rules_arr =
-  Array.mapi
-    (fun i r -> factor_leftover_option ~common ~summaries ~decls i r)
-    rules_arr
-  |> Array.to_list
-
-let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
-  match rules with
-  | [] | [ _ ] -> rules
-  | first :: _ -> (
-      let rules_arr = Array.of_list rules in
-      let summaries =
-        Array.map
-          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
-          rules_arr
-      in
-      let decls =
-        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
-      in
-      let common = common_factorable_decls rules first in
-      if common = [] then rules
-      else
-        let leftovers =
-          factor_leftover_options ~common ~summaries ~decls rules_arr
-          |> Array.of_list
-        in
-        match cost_aware_factor_group first rules_arr common leftovers with
-        | None -> rules
-        | Some (grouped, leftovers) ->
-            let leftover_rules =
-              Array.to_list leftovers |> List.filter_map (fun x -> x)
-            in
-            let before_size = rules_pp_size rules in
-            let after_size =
-              rule_pp_size grouped + rules_pp_size leftover_rules
-            in
-            if after_size <= before_size then grouped :: leftover_rules
-            else rules)
 
 (* 63-bit Bloom filter over [Declaration.hash] values, indexed by two
    independent hash projections (low and high bytes of the structural hash). For
@@ -3674,10 +3515,28 @@ let bloom_might_contain b h =
   let m = bloom_mask h in
   b land m = m
 
+module Prop_set = Set.Make (struct
+  type t = Declaration.prop_key
+
+  let compare = Stdlib.compare
+end)
+
+module Prop_map = Map.Make (struct
+  type t = Declaration.prop_key
+
+  let compare = Stdlib.compare
+end)
+
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
   factor_size : int;  (** cached [rule_pp_size factor_rule] *)
-  factor_props : Declaration.prop_key list;
+  factor_selector_size : int;
+  factor_decl_count : int;
+  factor_prop_set : Prop_set.t;
+  factor_decl_map : declaration Prop_map.t;
+      (** First declaration for each property, matching [List.find_opt] over
+          [factor_rule.declarations]. Duplicate-property fallback semantics are
+          preserved by keeping the earliest declaration in source order. *)
   decl_bloom : int;
       (** Bloom filter over [Declaration.hash] for every declaration in
           [factor_rule]. A definite-absence answer ([bloom_might_contain]
@@ -3774,15 +3633,30 @@ let summarize_factor_rule factor_rule =
       s
   | None ->
       counters.summary_misses <- counters.summary_misses + 1;
+      let decls = factor_rule.declarations in
+      let factor_prop_set, factor_decl_map =
+        List.fold_left
+          (fun (set, map) decl ->
+            let prop = decl_property decl in
+            let map =
+              if Prop_map.mem prop map then map else Prop_map.add prop decl map
+            in
+            (Prop_set.add prop set, map))
+          (Prop_set.empty, Prop_map.empty)
+          decls
+      in
       let s =
         {
           factor_rule;
           factor_size = rule_pp_size factor_rule;
-          factor_props = List.map decl_property factor_rule.declarations;
+          factor_selector_size =
+            Pp.size ~minify:true Selector.pp
+              factor_rule.Stylesheet_intf.selector;
+          factor_decl_count = List.length decls;
+          factor_prop_set;
+          factor_decl_map;
           decl_bloom =
-            List.fold_left
-              (fun b d -> bloom_add b (Declaration.hash d))
-              0 factor_rule.declarations;
+            List.fold_left (fun b d -> bloom_add b (Declaration.hash d)) 0 decls;
           selector_summary =
             lazy
               (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
@@ -3792,7 +3666,219 @@ let summarize_factor_rule factor_rule =
       s
 
 let factor_rule_declares_all summary props =
-  List.for_all (fun prop -> List.mem prop summary.factor_props) props
+  List.for_all (fun prop -> Prop_set.mem prop summary.factor_prop_set) props
+
+let factor_rule_declares_prop_set summary props =
+  Prop_set.subset props summary.factor_prop_set
+
+let summary_decl_for_prop summary prop =
+  Prop_map.find_opt prop summary.factor_decl_map
+
+let summary_contains_declaration summary decl =
+  bloom_might_contain summary.decl_bloom (Declaration.hash decl)
+  && List.exists
+       (fun candidate -> same_minified_declaration decl candidate)
+       summary.factor_rule.Stylesheet_intf.declarations
+
+(* Hoisting [common] into a shared rule pays off for a member only when its
+   selector entry ([|selector| + 1]) is cheaper than the bytes it would
+   otherwise duplicate ([decls_pp_size common] plus one separator per
+   declaration). A member fully consumed by [common] (empty leftover) always
+   joins, since dropping it would spawn a whole separate rule. [leftovers] is
+   aligned with [rules_arr] ([None] = empty leftover). Returns [None] when fewer
+   than two members survive; otherwise the grouped rule (members only) and a
+   leftover array where each pruned member keeps its full declarations inline.
+   Pruning is cascade-safe: a pruned member's declarations stay in place, so the
+   group is a subset of the run already proven safe to factor. *)
+let cost_aware_factor_group first rules_arr factor_summaries common leftovers =
+  let common_inline_cost = decls_pp_size common + List.length common in
+  let member =
+    Array.mapi
+      (fun i summary ->
+        match leftovers.(i) with
+        | None -> true
+        | Some _ ->
+            (* Pruning only saves bytes when the member carries [common]
+               verbatim: dropping it then removes exactly [common] from its
+               rule. A member that overrides a [common] property (default-value
+               factoring) keeps a differing value inline whether grouped or not,
+               so the cost model does not apply - leave it in the group as the
+               scan selected it. *)
+            let exact =
+              List.for_all
+                (fun cd -> summary_contains_declaration summary cd)
+                common
+            in
+            (not exact)
+            || summary.factor_selector_size + 1 <= common_inline_cost)
+      factor_summaries
+  in
+  let member_count =
+    Array.fold_left
+      (fun count keep -> if keep then count + 1 else count)
+      0 member
+  in
+  if member_count < 2 then None
+  else
+    let sels =
+      Array.to_list rules_arr
+      |> List.mapi (fun i r -> (i, r))
+      |> List.filter (fun (i, _) -> member.(i))
+      |> List.map (fun (_, r) -> r.Stylesheet_intf.selector)
+    in
+    let grouped =
+      { first with selector = merge_selector_list sels; declarations = common }
+    in
+    let leftovers =
+      Array.mapi
+        (fun i lo -> if member.(i) then lo else Some rules_arr.(i))
+        leftovers
+    in
+    Some (grouped, leftovers)
+
+let first_decl_map decls =
+  List.fold_left
+    (fun map decl ->
+      let prop = decl_property decl in
+      if Prop_map.mem prop map then map else Prop_map.add prop decl map)
+    Prop_map.empty decls
+
+let common_prop_set_of_summaries = function
+  | [] -> Prop_set.empty
+  | first :: rest ->
+      List.fold_left
+        (fun props summary -> Prop_set.inter props summary.factor_prop_set)
+        first.factor_prop_set rest
+
+let common_prop_set_of_summary_array summaries =
+  let len = Array.length summaries in
+  if len = 0 then Prop_set.empty
+  else
+    let props = ref summaries.(0).factor_prop_set in
+    for i = 1 to len - 1 do
+      props := Prop_set.inter !props summaries.(i).factor_prop_set
+    done;
+    !props
+
+let common_factorable_decls_from_prop_set common_props first_summary =
+  List.filter_map
+    (fun d ->
+      let prop = decl_property d in
+      if Prop_set.mem prop common_props then
+        summary_decl_for_prop first_summary prop
+      else None)
+    first_summary.factor_rule.Stylesheet_intf.declarations
+
+let common_factorable_decls_from_summaries summaries first =
+  let first_summary =
+    match summaries with
+    | first_summary :: _ -> first_summary
+    | [] -> summarize_factor_rule first
+  in
+  common_factorable_decls_from_prop_set
+    (common_prop_set_of_summaries summaries)
+    first_summary
+
+let common_factorable_decls rules first =
+  common_factorable_decls_from_summaries
+    (List.map summarize_factor_rule rules)
+    first
+
+(* For a rule [R_i] whose value for [prop] equals the default, we must still
+   emit it in the leftover when an EARLIER rule [R_j] with overlapping selector
+   declares a different value - otherwise [R_j]'s leftover would override the
+   shared default for elements matching both. *)
+let earlier_overrides_overlap ~selector_summaries ~factor_summaries ~default i =
+  let r_i_summary = Array.get selector_summaries i in
+  let default_prop = decl_property default in
+  let rec loop j =
+    if j >= i then false
+    else
+      match
+        summary_decl_for_prop (Array.get factor_summaries j) default_prop
+      with
+      | Some d
+        when (not (same_minified_declaration d default))
+             && Selector_summary.may_overlap
+                  (Array.get selector_summaries j)
+                  r_i_summary ->
+          true
+      | _ -> loop (j + 1)
+  in
+  loop 0
+
+let keep_factor_leftover ~selector_summaries ~factor_summaries ~default_decl ~i
+    decl =
+  (not (same_minified_declaration decl default_decl))
+  || earlier_overrides_overlap ~selector_summaries ~factor_summaries
+       ~default:default_decl i
+
+let leftover_for_factor_rule ~common_by_prop ~selector_summaries
+    ~factor_summaries i (r : Stylesheet.rule) =
+  List.filter
+    (fun d ->
+      let prop = decl_property d in
+      match Prop_map.find_opt prop common_by_prop with
+      | None -> true
+      | Some default ->
+          keep_factor_leftover ~selector_summaries ~factor_summaries
+            ~default_decl:default ~i d)
+    r.declarations
+
+let factor_leftover_option ~common_by_prop ~selector_summaries ~factor_summaries
+    i r =
+  let l =
+    leftover_for_factor_rule ~common_by_prop ~selector_summaries
+      ~factor_summaries i r
+  in
+  if l = [] then None else Some { r with declarations = l }
+
+let factor_leftover_options ~common ~selector_summaries ~factor_summaries
+    rules_arr =
+  let common_by_prop = first_decl_map common in
+  Array.mapi
+    (fun i r ->
+      factor_leftover_option ~common_by_prop ~selector_summaries
+        ~factor_summaries i r)
+    rules_arr
+  |> Array.to_list
+
+let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
+  match rules with
+  | [] | [ _ ] -> rules
+  | first :: _ -> (
+      let rules_arr = Array.of_list rules in
+      let factor_summaries = Array.map summarize_factor_rule rules_arr in
+      let selector_summaries =
+        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+      in
+      let common =
+        common_factorable_decls_from_prop_set
+          (common_prop_set_of_summary_array factor_summaries)
+          factor_summaries.(0)
+      in
+      if common = [] then rules
+      else
+        let leftovers =
+          factor_leftover_options ~common ~selector_summaries ~factor_summaries
+            rules_arr
+          |> Array.of_list
+        in
+        match
+          cost_aware_factor_group first rules_arr factor_summaries common
+            leftovers
+        with
+        | None -> rules
+        | Some (grouped, leftovers) ->
+            let leftover_rules =
+              Array.to_list leftovers |> List.filter_map (fun x -> x)
+            in
+            let before_size = rules_pp_size rules in
+            let after_size =
+              rule_pp_size grouped + rules_pp_size leftover_rules
+            in
+            if after_size <= before_size then grouped :: leftover_rules
+            else rules)
 
 let zero_non_percentage_length (value : Values.length) =
   match value with
@@ -4047,22 +4133,26 @@ let factor_rules_with_skips factor_rules skipped =
   | [] | [ _ ] -> None
   | first :: _ -> (
       let rules_arr = Array.of_list factor_rules in
-      let summaries =
-        Array.map
-          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
-          rules_arr
+      let factor_summaries = Array.map summarize_factor_rule rules_arr in
+      let selector_summaries =
+        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
       in
-      let decls =
-        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      let common =
+        common_factorable_decls_from_prop_set
+          (common_prop_set_of_summary_array factor_summaries)
+          factor_summaries.(0)
       in
-      let common = common_factorable_decls factor_rules first in
       if common = [] then None
       else
         let leftovers =
-          factor_leftover_options ~common ~summaries ~decls rules_arr
+          factor_leftover_options ~common ~selector_summaries ~factor_summaries
+            rules_arr
           |> Array.of_list
         in
-        match cost_aware_factor_group first rules_arr common leftovers with
+        match
+          cost_aware_factor_group first rules_arr factor_summaries common
+            leftovers
+        with
         | None -> None
         | Some (grouped, leftovers) ->
             let leftover_options = Array.to_list leftovers in
@@ -4105,22 +4195,26 @@ let factor_gap_rewrite first entries =
   | [] | [ _ ] -> None
   | _ -> (
       let rules_arr = Array.of_list factor_rules in
-      let summaries =
-        Array.map
-          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
-          rules_arr
+      let factor_summaries = Array.map summarize_factor_rule rules_arr in
+      let selector_summaries =
+        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
       in
-      let decls =
-        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      let common =
+        common_factorable_decls_from_prop_set
+          (common_prop_set_of_summary_array factor_summaries)
+          factor_summaries.(0)
       in
-      let common = common_factorable_decls factor_rules first in
       if common = [] then None
       else
         let leftovers =
-          factor_leftover_options ~common ~summaries ~decls rules_arr
+          factor_leftover_options ~common ~selector_summaries ~factor_summaries
+            rules_arr
           |> Array.of_list
         in
-        match cost_aware_factor_group first rules_arr common leftovers with
+        match
+          cost_aware_factor_group first rules_arr factor_summaries common
+            leftovers
+        with
         | None -> None
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
@@ -4146,14 +4240,7 @@ let common_equal_decls rules first =
   let summaries = List.map summarize_factor_rule rules in
   List.filter
     (fun decl ->
-      let h = Declaration.hash decl in
-      List.for_all
-        (fun s ->
-          bloom_might_contain s.decl_bloom h
-          && List.exists
-               (fun candidate -> same_minified_declaration decl candidate)
-               s.factor_rule.Stylesheet_intf.declarations)
-        summaries)
+      List.for_all (fun s -> summary_contains_declaration s decl) summaries)
     first.Stylesheet_intf.declarations
 
 (* [restrict] is the set of declarations the scan validated as safe to factor
@@ -4167,13 +4254,9 @@ let factor_gap_equal_rewrite ~restrict first entries =
   | [] | [ _ ] -> None
   | _ -> (
       let rules_arr = Array.of_list factor_rules in
-      let summaries =
-        Array.map
-          (fun r -> Selector_summary.of_selector r.Stylesheet_intf.selector)
-          rules_arr
-      in
-      let decls =
-        Array.map (fun r -> r.Stylesheet_intf.declarations) rules_arr
+      let factor_summaries = Array.map summarize_factor_rule rules_arr in
+      let selector_summaries =
+        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
       in
       let common =
         common_equal_decls factor_rules first
@@ -4183,10 +4266,14 @@ let factor_gap_equal_rewrite ~restrict first entries =
       if common = [] then None
       else
         let leftovers =
-          factor_leftover_options ~common ~summaries ~decls rules_arr
+          factor_leftover_options ~common ~selector_summaries ~factor_summaries
+            rules_arr
           |> Array.of_list
         in
-        match cost_aware_factor_group first rules_arr common leftovers with
+        match
+          cost_aware_factor_group first rules_arr factor_summaries common
+            leftovers
+        with
         | None -> None
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
@@ -4296,15 +4383,7 @@ let equal_anchor_common first candidate common =
          declarations whose hash hits the bloom still need the structural
          [same_minified_declaration] check to disambiguate filter collisions,
          which are correctness-preserving. *)
-      let bloom = candidate.decl_bloom in
-      List.filter
-        (fun decl ->
-          bloom_might_contain bloom (Declaration.hash decl)
-          && List.exists
-               (fun candidate_decl ->
-                 same_minified_declaration decl candidate_decl)
-               candidate.factor_rule.declarations)
-        common
+      List.filter (summary_contains_declaration candidate) common
 
 (* Returns [Some (replacement, tail, savings)] - the [savings] is the strict
    output-size reduction [factor_gap_equal_rewrite] already computed, surfaced
@@ -4386,48 +4465,72 @@ let try_factor_equal_anchor first rest =
           better_factor_gap best replacement tail savings)
     None seeds
 
+let suffix_prop_sets summaries =
+  let rec loop acc = function
+    | [] -> acc
+    | summary :: rest ->
+        let props =
+          match acc with
+          | [] -> summary.factor_prop_set
+          | next_props :: _ -> Prop_set.inter summary.factor_prop_set next_props
+        in
+        loop (props :: acc) rest
+  in
+  loop [] (List.rev summaries)
+
 let try_factor_group_with_lookahead current rest =
   let current = List.rev current in
-  let rec try_suffix prefix current =
+  let current_summaries = List.map summarize_factor_rule current in
+  let current_suffix_props = suffix_prop_sets current_summaries in
+  let rec try_suffix prefix_rev current summaries suffix_props =
     match current with
     | [] -> None
-    | [ first ] -> try_factor_single_anchor prefix first rest
+    | [ first ] -> try_factor_single_anchor (List.rev prefix_rev) first rest
     | first :: tail_current -> (
-        let current_common = common_factorable_decls current first in
-        let common_props = List.map decl_property current_common in
-        let rec scan skipped_rev fuel = function
-          | [] -> None
-          | _ when fuel <= 0 -> None
-          | candidate :: tail ->
-              if rule_factor_boundary candidate then None
-              else if not (rule_factor_eligible candidate) then
-                scan
-                  (summarize_factor_rule candidate :: skipped_rev)
-                  (fuel - 1) tail
-              else
-                let candidate_summary = summarize_factor_rule candidate in
-                if
-                  factor_rule_declares_all candidate_summary common_props
-                  && not
-                       (List.exists
-                          (skipped_rule_blocks_factor current_common
-                             candidate_summary)
-                          skipped_rev)
-                then
-                  let skipped =
-                    List.rev_map (fun s -> s.factor_rule) skipped_rev
-                  in
-                  let factor_rules = current @ [ candidate ] in
-                  match factor_rules_with_skips factor_rules skipped with
-                  | None -> None
-                  | Some replacement -> Some (prefix @ replacement, tail)
-                else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
-        in
-        match if current_common = [] then None else scan [] 128 rest with
-        | Some _ as result -> result
-        | None -> try_suffix (prefix @ [ first ]) tail_current)
+        match (summaries, suffix_props) with
+        | first_summary :: tail_summaries, common_props :: tail_suffix_props
+          -> (
+            let current_common =
+              common_factorable_decls_from_prop_set common_props first_summary
+            in
+            let rec scan skipped_rev fuel = function
+              | [] -> None
+              | _ when fuel <= 0 -> None
+              | candidate :: tail ->
+                  if rule_factor_boundary candidate then None
+                  else if not (rule_factor_eligible candidate) then
+                    scan
+                      (summarize_factor_rule candidate :: skipped_rev)
+                      (fuel - 1) tail
+                  else
+                    let candidate_summary = summarize_factor_rule candidate in
+                    if
+                      factor_rule_declares_prop_set candidate_summary
+                        common_props
+                      && not
+                           (List.exists
+                              (skipped_rule_blocks_factor current_common
+                                 candidate_summary)
+                              skipped_rev)
+                    then
+                      let skipped =
+                        List.rev_map (fun s -> s.factor_rule) skipped_rev
+                      in
+                      let factor_rules = current @ [ candidate ] in
+                      match factor_rules_with_skips factor_rules skipped with
+                      | None -> None
+                      | Some replacement ->
+                          Some (List.rev prefix_rev @ replacement, tail)
+                    else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+            in
+            match if current_common = [] then None else scan [] 128 rest with
+            | Some _ as result -> result
+            | None ->
+                try_suffix (first :: prefix_rev) tail_current tail_summaries
+                  tail_suffix_props)
+        | _ -> None)
   in
-  try_suffix [] current
+  try_suffix [] current current_summaries current_suffix_props
 
 let try_extend_factored_rule anchor rest =
   let anchor = summarize_factor_rule anchor in
@@ -4481,11 +4584,13 @@ let extend_factored_declarations (rules : Stylesheet.rule list) :
 let rule_identical_extend_eligible (r : Stylesheet.rule) =
   rule_factor_eligible r
 
-let can_extend_identical_rule ~anchor_bloom ~candidate_bloom anchor candidate =
+let can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
+    candidate =
   (* Bloom prefilter: two rules with different declaration-hash sets cannot have
      structurally equal declaration lists. Avoids the full
      [declarations_css_equal] walk on the common rejected case. *)
-  anchor_bloom = candidate_bloom
+  anchor_summary.factor_decl_count = candidate_summary.factor_decl_count
+  && anchor_summary.decl_bloom = candidate_summary.decl_bloom
   && declarations_css_equal anchor.declarations candidate.declarations
   && extract_pseudo_element anchor.selector
      = extract_pseudo_element candidate.selector
@@ -4493,7 +4598,7 @@ let can_extend_identical_rule ~anchor_bloom ~candidate_bloom anchor candidate =
 
 let try_extend_identical_rule ~ctx anchor rest =
   let common = anchor.declarations in
-  let anchor_bloom = (summarize_factor_rule anchor).decl_bloom in
+  let anchor_summary = summarize_factor_rule anchor in
   let skipped_rule_blocks =
     match ctx.scope with
     | `Stylesheet -> skipped_blocks_factor_tie
@@ -4507,8 +4612,8 @@ let try_extend_identical_rule ~ctx anchor rest =
         else
           let candidate_summary = summarize_factor_rule candidate in
           if
-            can_extend_identical_rule ~anchor_bloom
-              ~candidate_bloom:candidate_summary.decl_bloom anchor candidate
+            can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
+              candidate
             && not
                  (List.exists
                     (skipped_rule_blocks common candidate_summary)
@@ -4547,12 +4652,6 @@ let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
   in
   preserve_list rules (walk [] rules)
 
-module Prop_set = Set.Make (struct
-  type t = Declaration.prop_key
-
-  let compare = Stdlib.compare
-end)
-
 (* [r] shares a property with the whole current group iff some property it
    declares is declared by every group member - i.e. [r]'s property set meets
    the running intersection of the group's property sets. Tracking that
@@ -4560,9 +4659,7 @@ end)
 let factor_common_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
   let rule_props (r : Stylesheet.rule) =
-    List.fold_left
-      (fun s d -> Prop_set.add (decl_property d) s)
-      Prop_set.empty r.declarations
+    (summarize_factor_rule r).factor_prop_set
   in
   let rec group acc current current_props = function
     | [] -> List.rev_append (factorise_group (List.rev current)) acc
@@ -4650,12 +4747,15 @@ let build_shared_decl_predicate pool =
   List.iter
     (fun n ->
       let r = Rule_pool.rule n in
+      let seen = Hashtbl.create 8 in
       List.iter
-        (fun d ->
-          let h = Declaration.hash d in
+        (fun d -> Hashtbl.replace seen (Declaration.hash d) ())
+        r.Stylesheet_intf.declarations;
+      Hashtbl.iter
+        (fun h () ->
           let c = try Hashtbl.find counts h with Not_found -> 0 in
           Hashtbl.replace counts h (c + 1))
-        r.Stylesheet_intf.declarations)
+        seen)
     (Rule_pool.nodes pool);
   fun d ->
     match Hashtbl.find_opt counts (Declaration.hash d) with
