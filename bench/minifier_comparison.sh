@@ -119,6 +119,16 @@ printf '%-12s %-12s %8s %10s %10s %10s\n' \
 printf '%-12s %-12s %8s %10s %10s %10s\n' \
   '----' '----' '----' '---' '----' '------'
 
+print_input_row() {
+  # Reference baseline so the [raw] column makes the actual byte reduction
+  # obvious -- a fast tool that emits the input unchanged would have the
+  # same [raw] as this row.
+  local site="$1" in="$2"
+  printf '%-12s %-12s %8s %10s %10s %10s\n' \
+    "$site" '(input)' '-' "$(bytes "$in")" "$(gzip_bytes "$in")" \
+    "$(brotli_bytes "$in")"
+}
+
 for site in "${SITES[@]}"; do
   in="$CORPUS/${site}-stripmq.css"
   if [ ! -f "$in" ]; then
@@ -143,6 +153,7 @@ for site in "${SITES[@]}"; do
   t_esbuild=$(run_ms "esbuild --minify --loader=css" "$in")
   t_cssnano=$(run_cssnano_ms "$in")
 
+  print_input_row "$site" "$in"
   print_tool_row "$site" cascade "$t_cascade" "$out_cascade"
   print_tool_row "$site" csso "$t_csso" "$out_csso"
   print_tool_row "$site" lightningcss "$t_lightning" "$out_lightning"
@@ -152,4 +163,6 @@ done
 
 echo
 echo "Notes: median of ${RUNS} runs; wall clock; sizes are emitted bytes."
+echo "       Each fixture lists its (input) row first so the [raw] column"
+echo "       shows the actual byte reduction each minifier achieved."
 echo "       cascade binary: $(command -v "$CASCADE")"
