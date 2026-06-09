@@ -1,9 +1,22 @@
 open Cascade
 open Cmdliner
 
+let report_profile () =
+  let total = ref 0.0 in
+  let entries =
+    Hashtbl.fold
+      (fun name t acc ->
+        total := !total +. t;
+        (name, t) :: acc)
+      Cascade.Optimize.pass_times []
+  in
+  let entries = List.sort (fun (_, a) (_, b) -> compare b a) entries in
+  Fmt.epr "factor fixpoint pass times (total %.3fs):@." !total;
+  List.iter (fun (name, t) -> Fmt.epr "  %-24s %.3fs@." name t) entries
+
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
-    ~memtrace_path =
+    ~memtrace_path ~profile =
   Cli_io.start_memtrace memtrace_path;
   try
     let stylesheet = Cli_io.read_input input_path in
@@ -29,7 +42,8 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     let output = Css.to_string ~minify ~lossless ~enforce_spec stylesheet in
-    Cli_io.print_output output
+    Cli_io.print_output output;
+    if profile then report_profile ()
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
@@ -137,6 +151,14 @@ let memtrace_arg =
   in
   Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
 
+let profile_arg =
+  let doc =
+    "Print per-pass timings of the optimizer factoring fixpoint to stderr \
+     after the run. Use to triage which pass dominates on a slow input. Has no \
+     effect without $(b,--minify)."
+  in
+  Arg.(value & flag & info [ "profile" ] ~doc)
+
 let term =
   Term.(
     const
@@ -151,6 +173,7 @@ let term =
         inline_vars_flag
         keep_vars_str
         memtrace_path
+        profile
         ()
       ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
@@ -169,12 +192,14 @@ let term =
           Fmt.epr "Warning: --lossless has no effect without --minify@.";
         if enforce_spec && not minify then
           Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
+        if profile && not minify then
+          Fmt.epr "Warning: --profile has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
           ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
-          ~memtrace_path)
+          ~memtrace_path ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg
-    $ memtrace_arg $ Cli_log.term)
+    $ memtrace_arg $ profile_arg $ Cli_log.term)
 
 let man =
   [
