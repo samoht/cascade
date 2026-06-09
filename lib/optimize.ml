@@ -4728,14 +4728,27 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
             (Gap_factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
-let try_factor_equal_anchor first rest =
+let seed_bloom = function
+  | None -> None
+  | Some decls ->
+      Some
+        (List.fold_left
+           (fun bloom decl -> bloom_add bloom (Declaration.hash decl))
+           0 decls)
+
+let try_factor_equal_anchor ~shared_decl first rest =
   (* The auto-narrowing chain ([None]) commits to the first sharer's common and
      handles multi-property blocks, but it loses a single-property group when an
      earlier rule shares a different anchor declaration (the running common
      narrows away from the property the later cluster shares). Seeding the scan
-     with each individual anchor declaration recovers those groups; the best
-     factoring across all seeds wins. *)
-  let seeds = None :: List.map (fun d -> Some [ d ]) first.declarations in
+     with each shared individual anchor declaration recovers those groups; the
+     best factoring across all seeds wins. Non-shared declarations cannot be
+     factored, and a seed-specific Bloom avoids scanning candidates that cannot
+     contain the seeded declaration. *)
+  let seeds =
+    let shared_decls = List.filter shared_decl first.declarations in
+    None :: List.map (fun d -> Some [ d ]) shared_decls
+  in
   (* Pre-summarise [rest] once per anchor: every seed walks the same window, and
      re-running [summarize_factor_rule] in each scan iteration was the
      bottleneck (two [Pp.size] traversals per candidate). *)
@@ -4743,6 +4756,7 @@ let try_factor_equal_anchor first rest =
   let first_bloom = (summarize_factor_rule first).decl_bloom in
   List.fold_left
     (fun best seed ->
+      let first_bloom = Option.value (seed_bloom seed) ~default:first_bloom in
       match
         scan_equal_anchor ~first_bloom first [] seed None equal_factor_lookahead
           rest_summaries
@@ -4816,53 +4830,50 @@ let try_group_indexed_lookahead current rest =
   try_suffix [] current current_summaries current_suffix_props
 
 let try_extend_factored_rule anchor rest =
-  let anchor = summarize_factor_rule anchor in
   let common = anchor.factor_rule.declarations in
   let common_props = List.map decl_property common in
   let rec scan skipped_rev fuel = function
     | [] -> None
     | _ when fuel <= 0 -> None
-    | candidate :: tail ->
+    | (candidate, candidate_summary) :: tail ->
         if rule_factor_boundary candidate then None
         else if not (rule_factor_eligible candidate) then
-          scan (summarize_factor_rule candidate :: skipped_rev) (fuel - 1) tail
-        else
-          let candidate_summary = summarize_factor_rule candidate in
-          if
-            factor_rule_declares_all candidate_summary common_props
-            && not
-                 (List.exists
-                    (skipped_rule_blocks_factor common candidate_summary)
-                    skipped_rev)
-          then
-            let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
-            let factor_rules =
-              [ anchor.factor_rule; candidate_summary.factor_rule ]
-            in
-            match factor_rules_with_skips factor_rules skipped with
-            | None -> None
-            | Some replacement -> Some (replacement, tail)
-          else if
-            skipped_rule_blocks_factor common candidate_summary
-              candidate_summary
-          then None
-          else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+          scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+        else if
+          factor_rule_declares_all candidate_summary common_props
+          && not
+               (List.exists
+                  (skipped_rule_blocks_factor common candidate_summary)
+                  skipped_rev)
+        then
+          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let factor_rules =
+            [ anchor.factor_rule; candidate_summary.factor_rule ]
+          in
+          match factor_rules_with_skips factor_rules skipped with
+          | None -> None
+          | Some replacement -> Some (replacement, tail)
+        else if
+          skipped_rule_blocks_factor common candidate_summary candidate_summary
+        then None
+        else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
   if common = [] then None else scan [] 128 rest
 
 let extend_factored_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
+  let items = List.map (fun r -> (r, summarize_factor_rule r)) rules in
   let rec walk acc = function
     | [] -> List.rev acc
-    | r :: rest -> (
+    | (r, summary) :: rest -> (
         if not (rule_factor_eligible r) then walk (r :: acc) rest
         else
-          match try_extend_factored_rule r rest with
+          match try_extend_factored_rule summary rest with
           | None -> walk (r :: acc) rest
           | Some (replacement, tail) ->
               walk (List.rev_append replacement acc) tail)
   in
-  preserve_list rules (walk [] rules)
+  preserve_list rules (walk [] items)
 
 let rule_identical_extend_eligible (r : Stylesheet.rule) =
   rule_factor_eligible r
@@ -4879,9 +4890,9 @@ let can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
      = extract_pseudo_element candidate.selector
   && newer_pseudo_class_compatible anchor.selector candidate.selector
 
-let try_extend_identical_rule ~ctx anchor rest =
-  let common = anchor.declarations in
-  let anchor_summary = summarize_factor_rule anchor in
+let try_extend_identical_rule ~ctx anchor_summary rest =
+  let anchor = anchor_summary.factor_rule in
+  let common = anchor_summary.factor_rule.declarations in
   let skipped_rule_blocks =
     match ctx.scope with
     | `Stylesheet -> skipped_blocks_factor_tie
@@ -4890,50 +4901,49 @@ let try_extend_identical_rule ~ctx anchor rest =
   let rec scan skipped_rev fuel = function
     | [] -> None
     | _ when fuel <= 0 -> None
-    | candidate :: tail ->
+    | (candidate, candidate_summary) :: tail ->
         if not (rule_identical_extend_eligible candidate) then None
-        else
-          let candidate_summary = summarize_factor_rule candidate in
-          if
-            can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
-              candidate
-            && not
-                 (List.exists
-                    (skipped_rule_blocks common candidate_summary)
-                    skipped_rev)
-          then
-            let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
-            let grouped =
-              {
-                anchor with
-                selector =
-                  merge_selector_list
-                    [ anchor.selector; candidate_summary.factor_rule.selector ];
-              }
-            in
-            let before =
-              (anchor :: skipped) @ [ candidate_summary.factor_rule ]
-            in
-            let after = grouped :: skipped in
-            if rules_pp_size after < rules_pp_size before then Some (after, tail)
-            else None
-          else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+        else if
+          can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
+            candidate
+          && not
+               (List.exists
+                  (skipped_rule_blocks common candidate_summary)
+                  skipped_rev)
+        then
+          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let grouped =
+            {
+              anchor with
+              selector =
+                merge_selector_list
+                  [ anchor.selector; candidate_summary.factor_rule.selector ];
+            }
+          in
+          let before =
+            (anchor :: skipped) @ [ candidate_summary.factor_rule ]
+          in
+          let after = grouped :: skipped in
+          if rules_pp_size after < rules_pp_size before then Some (after, tail)
+          else None
+        else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
   if common = [] then None else scan [] 128 rest
 
 let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
+  let items = List.map (fun r -> (r, summarize_factor_rule r)) rules in
   let rec walk acc = function
     | [] -> List.rev acc
-    | r :: rest -> (
+    | (r, summary) :: rest -> (
         if not (rule_identical_extend_eligible r) then walk (r :: acc) rest
         else
-          match try_extend_identical_rule ~ctx r rest with
+          match try_extend_identical_rule ~ctx summary rest with
           | None -> walk (r :: acc) rest
           | Some (replacement, tail) ->
               walk (List.rev_append replacement acc) tail)
   in
-  preserve_list rules (walk [] rules)
+  preserve_list rules (walk [] items)
 
 (* [r] shares a property with the whole current group iff some property it
    declares is declared by every group member - i.e. [r]'s property set meets
@@ -5060,7 +5070,7 @@ let factor_anchor_score ~shared_decl n =
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
     let win_rules = List.map Rule_pool.rule win_nodes in
-    match try_factor_equal_anchor r win_rules with
+    match try_factor_equal_anchor ~shared_decl r win_rules with
     | None -> None
     | Some (replacement, tail, savings) ->
         let consumed =
