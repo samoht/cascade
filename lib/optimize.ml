@@ -4583,24 +4583,30 @@ let rec factor_take n = function
   | x :: xs when n > 0 -> x :: factor_take (n - 1) xs
   | _ -> []
 
-(* Pool-wide declaration counts: how many live rules contain each declaration. A
-   declaration appearing in exactly one rule cannot be shared, so an anchor with
-   no duplicated declaration need not be scored. The keyed object is the whole
-   [declaration] -- structurally equal copies hash and compare identical, which
-   is what the eventual scan requires too. *)
+(* Pool-wide declaration index keyed on [Declaration.hash] (precomputed at
+   construction, so the lookup is one int compare instead of walking the AST).
+   For each declaration hash, record how many distinct rules in the pool carry a
+   matching declaration -- an anchor whose every declaration appears in exactly
+   one rule cannot be factored at all and we skip the full [factor_window] /
+   [scan] cost. False positives from hash collisions are harmless: a
+   colliding-but-different declaration may let an unfactorable anchor through,
+   and the scan will reject it at the usual miss cost. *)
 let build_shared_decl_predicate pool =
-  let counts : (declaration, int) Hashtbl.t = Hashtbl.create 1024 in
+  let counts : (int, int) Hashtbl.t = Hashtbl.create 1024 in
   List.iter
     (fun n ->
       let r = Rule_pool.rule n in
       List.iter
         (fun d ->
-          let c = try Hashtbl.find counts d with Not_found -> 0 in
-          Hashtbl.replace counts d (c + 1))
+          let h = Declaration.hash d in
+          let c = try Hashtbl.find counts h with Not_found -> 0 in
+          Hashtbl.replace counts h (c + 1))
         r.Stylesheet_intf.declarations)
     (Rule_pool.nodes pool);
   fun d ->
-    match Hashtbl.find_opt counts d with Some c -> c > 1 | None -> false
+    match Hashtbl.find_opt counts (Declaration.hash d) with
+    | Some c -> c > 1
+    | None -> false
 
 (* Score an anchor node: [None] when it cannot factor, else the replacement
    rules, the nodes the factoring consumes, and the bytes it saves. *)
