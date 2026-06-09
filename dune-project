@@ -22,6 +22,8 @@
   (alcotest :with-test)
   (alcobar :with-test)
   (astring :with-test)
+  (eio :with-test)
+  (eio_main :with-test)
   (lambdasoup :with-test)
   (mdx :with-test)
   (re :with-test)
