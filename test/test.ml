@@ -27,6 +27,7 @@ let () =
       Test_sort.suite;
       Test_order_maintenance.suite;
       Test_rule_pool.suite;
+      Test_weighted_interval.suite;
       Test_rule_merge.suite;
       Test_pp.suite;
       Test_syntax.suite;

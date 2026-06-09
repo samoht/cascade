@@ -33,6 +33,7 @@
   supports.mli
   syntax.mli
   token.mli
+  weighted_interval.mli
   values.mli
   variables.mli)
  (libraries cascade))
