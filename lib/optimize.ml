@@ -3681,7 +3681,17 @@ module Rule_id_tbl = Hashtbl.Make (struct
   type t = Stylesheet.rule
 
   let equal = ( == )
-  let hash r = Hashtbl.seeded_hash_param 10 100 0 r
+
+  (* O(1) bucket hash combining the cached [Declaration.hash] of the first two
+     declarations -- both are field loads on the structural fingerprint stored
+     at declaration construction. With [equal = (==)], a bucket collision falls
+     through to a physical pointer scan, so we never walk the rule structure on
+     lookup. *)
+  let hash r =
+    match r.Stylesheet_intf.declarations with
+    | [] -> 0
+    | [ d ] -> Declaration.hash d
+    | d1 :: d2 :: _ -> Declaration.hash d1 lxor (Declaration.hash d2 lsl 1)
 end)
 
 (* Per-pass and global counters for the --profile CLI flag. Reset at each
@@ -4191,7 +4201,7 @@ let better_factor_gap best replacement tail savings =
       Some (replacement, tail, savings)
   | Some _ -> best
 
-let equal_factor_lookahead = 128
+let equal_factor_lookahead = 32
 
 let try_factor_single_anchor prefix first rest =
   (* Pre-summarise [rest] once: scan walks every entry on every call, so
@@ -4242,7 +4252,7 @@ let try_factor_single_anchor prefix first rest =
               (Gap_factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
-  match scan [] None None 128 rest_summaries with
+  match scan [] None None equal_factor_lookahead rest_summaries with
   | None -> None
   | Some (replacement, tail, _) -> Some (prefix @ replacement, List.map fst tail)
 
