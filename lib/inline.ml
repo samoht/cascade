@@ -482,8 +482,7 @@ let eval_page_declaration visible ctx decl =
         value = (Values.Var var : Values.length);
         important;
       } ->
-      Declaration.Declaration
-        { property; value = resolve_length_var var; important }
+      Declaration.v ~important property (resolve_length_var var)
   | _ -> Context.eval ctx decl
 
 let map_keyframe_decls f frames =

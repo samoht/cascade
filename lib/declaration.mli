@@ -69,6 +69,15 @@ val read_block : Cursor.t -> declaration list
 val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
 (** [v ?important property value] creates a typed declaration. *)
 
+val theme_guarded : var_name:string -> declaration -> declaration
+(** [theme_guarded ~var_name decl] wraps [decl] in a theme guard. *)
+
+val hash : declaration -> int
+(** [hash decl] returns the structural fingerprint cached at construction. Two
+    declarations that are equal under [=] always return the same value; the
+    converse may fail on hash collisions, so use it only as a cheap pre-filter
+    before falling back to structural equality. *)
+
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
 
