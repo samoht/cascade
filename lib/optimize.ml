@@ -3599,6 +3599,9 @@ let prop_ids_of_set props =
   Array.sort compare ids;
   ids
 
+let prop_ids_of_decls decls =
+  decls |> List.map (fun d -> prop_id (decl_property d)) |> Array.of_list
+
 let prop_ids_empty ids = Array.length ids = 0
 
 let prop_ids_mem id ids =
@@ -3808,10 +3811,7 @@ let summarize_factor_rule factor_rule =
           factor_decl_count = List.length decls;
           factor_prop_set;
           factor_prop_ids = prop_ids_of_set factor_prop_set;
-          factor_decl_prop_ids =
-            decls
-            |> List.map (fun d -> prop_id (decl_property d))
-            |> Array.of_list;
+          factor_decl_prop_ids = prop_ids_of_decls decls;
           factor_decl_map;
           factor_decl_size_map;
           decl_bloom =
@@ -4310,7 +4310,7 @@ module Factor_interval = struct
 
   type candidate = { score : score }
 
-  let factor_common_interval_lookahead = 32
+  let factor_common_interval_lookahead = 24
 
   let add_candidate schedule factor_summaries selector_summaries start stop
       common_props =
@@ -5281,17 +5281,6 @@ let rec factor_take n = function
   | x :: xs when n > 0 -> x :: factor_take (n - 1) xs
   | _ -> []
 
-let build_window_shared_decl_predicate nodes =
-  let bloom =
-    List.fold_left
-      (fun bloom n ->
-        List.fold_left
-          (fun bloom d -> bloom_add bloom (Declaration.hash d))
-          bloom (Rule_pool.rule n).Stylesheet_intf.declarations)
-      0 nodes
-  in
-  fun d -> bloom_might_contain bloom (Declaration.hash d)
-
 (* Pool-wide declaration index keyed on [Declaration.hash] (precomputed at
    construction, so the lookup is one int compare instead of walking the AST).
    For each declaration hash, record how many distinct rules in the pool carry a
@@ -5335,26 +5324,21 @@ let factor_anchor_score ~shared_decl n =
     (None : _ option))
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
-    let shared_decl = build_window_shared_decl_predicate win_nodes in
-    if not (List.exists shared_decl r.declarations) then (
-      counters.anchors_prefiltered <- counters.anchors_prefiltered + 1;
-      (None : _ option))
-    else
-      let win_summaries =
-        List.map
-          (fun n ->
-            let rule = Rule_pool.rule n in
-            (rule, summarize_factor_rule rule))
-          win_nodes
-      in
-      let summary = summarize_factor_rule r in
-      match try_factor_equal_anchor ~shared_decl r summary win_summaries with
-      | None -> (None : _ option)
-      | Some (replacement, tail, savings) ->
-          let consumed =
-            factor_take (List.length win_summaries - List.length tail) win_nodes
-          in
-          Some (replacement, consumed, savings)
+    let win_summaries =
+      List.map
+        (fun n ->
+          let rule = Rule_pool.rule n in
+          (rule, summarize_factor_rule rule))
+        win_nodes
+    in
+    let summary = summarize_factor_rule r in
+    match try_factor_equal_anchor ~shared_decl r summary win_summaries with
+    | None -> (None : _ option)
+    | Some (replacement, tail, savings) ->
+        let consumed =
+          factor_take (List.length win_summaries - List.length tail) win_nodes
+        in
+        Some (replacement, consumed, savings)
 
 let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let pool = Rule_pool.of_rules rules in
