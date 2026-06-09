@@ -2931,7 +2931,8 @@ let synthesize_position_try decls =
       | _ -> decls)
   | _ -> decls
 
-let finalize_rule_without_nested ~ctx (rule : rule) : rule =
+let finalize_rule_without_nested ?(canonicalize_selector = true) ~ctx
+    (rule : rule) : rule =
   let declarations =
     deduplicate_declarations_with ~ctx rule.declarations
     |> synthesize_columns |> synthesize_position_try
@@ -2941,9 +2942,11 @@ let finalize_rule_without_nested ~ctx (rule : rule) : rule =
   (* Selectors merged during factoring are fresh comma lists, so re-canonicalise
      before emission; unchanged selectors keep their identity for the
      fixpoint. *)
-  let canon = Selector.canonicalize rule.selector in
   let rule =
-    if canon == rule.selector then rule else { rule with selector = canon }
+    if canonicalize_selector then
+      let canon = Selector.canonicalize rule.selector in
+      if canon == rule.selector then rule else { rule with selector = canon }
+    else rule
   in
   rule_with_declarations rule declarations
 
@@ -3715,6 +3718,29 @@ type pass_stat = {
 }
 
 let pass_times : (string, pass_stat) Hashtbl.t = Hashtbl.create 16
+let collect_profile_stats = ref false
+let set_profile enabled = collect_profile_stats := enabled
+let current_factor_savings = ref 0
+
+let record_factor_saving saving =
+  if saving > 0 then current_factor_savings := !current_factor_savings + saving
+
+type iteration_stat = {
+  fixpoint : int;
+  iteration : int;
+  local_iteration : int;
+  before_rules : int;
+  after_rules : int;
+  before_bytes : int;
+  after_bytes : int;
+  bytes_saved : int;
+  active_passes : int;
+  changed_passes : int;
+  elapsed : float;
+}
+
+let iteration_stats_rev = ref []
+let iteration_stats () = !iteration_stats_rev
 
 let pass_stat name =
   match Hashtbl.find_opt pass_times name with
@@ -3728,8 +3754,13 @@ let pass_stat name =
 
 type counters = {
   mutable iterations : int;
+  mutable factor_fixpoints_run : int;
+  mutable marginal_stops : int;
   mutable summary_hits : int;
   mutable summary_misses : int;
+  mutable factor_fixpoints_skipped : int;
+  mutable factor_preflight_gain : int;
+  mutable factor_bytes_saved : int;
   mutable anchors_scored : int;
   mutable anchors_prefiltered : int;
   mutable factorings_applied : int;
@@ -3742,8 +3773,13 @@ type counters = {
 let counters =
   {
     iterations = 0;
+    factor_fixpoints_run = 0;
+    marginal_stops = 0;
     summary_hits = 0;
     summary_misses = 0;
+    factor_fixpoints_skipped = 0;
+    factor_preflight_gain = 0;
+    factor_bytes_saved = 0;
     anchors_scored = 0;
     anchors_prefiltered = 0;
     factorings_applied = 0;
@@ -3755,11 +3791,17 @@ let counters =
 
 let reset_counters () =
   Hashtbl.reset pass_times;
+  iteration_stats_rev := [];
   Prop_key_tbl.reset prop_ids;
   next_prop_id := 0;
   counters.iterations <- 0;
+  counters.factor_fixpoints_run <- 0;
+  counters.marginal_stops <- 0;
   counters.summary_hits <- 0;
   counters.summary_misses <- 0;
+  counters.factor_fixpoints_skipped <- 0;
+  counters.factor_preflight_gain <- 0;
+  counters.factor_bytes_saved <- 0;
   counters.anchors_scored <- 0;
   counters.anchors_prefiltered <- 0;
   counters.factorings_applied <- 0;
@@ -4379,8 +4421,12 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
         Factor_interval.greedy rules_arr factor_summaries
       in
       match Factor_interval.rewrite rules_arr factor_summaries with
-      | Some (dp_rules, dp_saving) when dp_saving > greedy_saving -> dp_rules
-      | _ -> greedy_rules)
+      | Some (dp_rules, dp_saving) when dp_saving > greedy_saving ->
+          record_factor_saving dp_saving;
+          dp_rules
+      | _ ->
+          record_factor_saving greedy_saving;
+          greedy_rules)
 
 let zero_non_percentage_length (value : Values.length) =
   match value with
@@ -4678,7 +4724,12 @@ let factor_rules_with_skips factor_rules skipped : Stylesheet.rule list option =
               @ filter_some target_leftovers
             in
             let before = factor_rules @ skipped in
-            if rules_pp_size after < rules_pp_size before then Some after
+            let before_size = rules_pp_size before in
+            let after_size = rules_pp_size after in
+            if after_size < before_size then begin
+              record_factor_saving (before_size - after_size);
+              Some after
+            end
             else Option.None)
 
 type gap_entry = Factor of factor_rule_summary | Skip of factor_rule_summary
@@ -5175,7 +5226,12 @@ let try_extend_identical_rule ~ctx anchor_summary rest =
             (anchor :: skipped) @ [ candidate_summary.factor_rule ]
           in
           let after = grouped :: skipped in
-          if rules_pp_size after < rules_pp_size before then Some (after, tail)
+          let before_size = rules_pp_size before in
+          let after_size = rules_pp_size after in
+          if after_size < before_size then begin
+            record_factor_saving (before_size - after_size);
+            Some (after, tail)
+          end
           else (None : _ option)
         else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
@@ -5391,6 +5447,7 @@ let enqueue_anchor_candidate scheduler n =
 let apply_anchor_candidate scheduler candidate =
   incr scheduler.applied;
   counters.factorings_applied <- counters.factorings_applied + 1;
+  record_factor_saving candidate.saving;
   let added =
     List.map
       (fun r -> Rule_pool.insert_before scheduler.pool candidate.anchor r)
@@ -5904,40 +5961,67 @@ let merge_named_layers_by_name (stmts : statement list) : statement list =
    and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
    rule's selector spelling, which is the form authors are more likely to want
    preserved. *)
-let rule_shadows ~(earlier : rule) ~(later : rule) =
-  earlier.Stylesheet_intf.selector = later.Stylesheet_intf.selector
-  && List.for_all
-       (fun ed ->
-         List.exists
-           (fun ld ->
-             same_property ed ld
-             && (Declaration.is_important ld
-                || not (Declaration.is_important ed)))
-           later.Stylesheet_intf.declarations)
-       earlier.Stylesheet_intf.declarations
+module Suffix_rule_cover = struct
+  module Selector_tbl = Hashtbl.Make (struct
+    type t = Selector.t
+
+    let equal = ( = )
+    let hash = Hashtbl.hash
+  end)
+
+  let v () = Selector_tbl.create 256
+  let empty = (Prop_set.empty, Prop_set.empty)
+
+  let find t selector =
+    Option.value ~default:empty (Selector_tbl.find_opt t selector)
+
+  let covered t selector decl =
+    let normal, important = find t selector in
+    let prop = decl_property decl in
+    if Declaration.is_important decl then Prop_set.mem prop important
+    else Prop_set.mem prop normal || Prop_set.mem prop important
+
+  let add t selector decl =
+    let normal, important = find t selector in
+    let prop = decl_property decl in
+    let cover =
+      if Declaration.is_important decl then (normal, Prop_set.add prop important)
+      else (Prop_set.add prop normal, important)
+    in
+    Selector_tbl.replace t selector cover
+end
 
 (* Drop an earlier rule when a later rule with the same canonical selector
    writes every one of its property names at the same or stronger importance.
    The later same-property write shadows the earlier value regardless of
    intervening rules. *)
 let drop_shadowed_rules (rules : rule list) : rule list =
-  let indexed : (int * rule) list = List.mapi (fun i r -> (i, r)) rules in
-  let dropped = ref false in
-  let kept =
-    List.filter_map
-      (fun (i, rule) ->
-        let shadowed =
-          List.exists
-            (fun (j, later) -> j > i && rule_shadows ~earlier:rule ~later)
-            indexed
-        in
-        if shadowed then (
-          dropped := true;
-          None)
-        else Some rule)
-      indexed
+  let later_by_selector = Suffix_rule_cover.v () in
+  let rules_arr = Array.of_list rules in
+  let len = Array.length rules_arr in
+  let dropped = Array.make len false in
+  let changed = ref false in
+  for i = len - 1 downto 0 do
+    let rule = rules_arr.(i) in
+    dropped.(i) <-
+      (rule.declarations = [] && rule.nested = [])
+      || rule.declarations <> []
+         && List.for_all
+              (Suffix_rule_cover.covered later_by_selector
+                 rule.Stylesheet_intf.selector)
+              rule.declarations;
+    if dropped.(i) then changed := true;
+    List.iter
+      (Suffix_rule_cover.add later_by_selector rule.Stylesheet_intf.selector)
+      rule.declarations
+  done;
+  let rec filter i = function
+    | [] -> []
+    | rule :: rest ->
+        let rest = filter (i + 1) rest in
+        if dropped.(i) then rest else rule :: rest
   in
-  if !dropped then kept else rules
+  if !changed then filter 0 rules else rules
 
 (* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
    individual declarations whose property is rewritten by a later rule for every
@@ -6199,24 +6283,33 @@ let synthesize_nesting_rules (rules : rule list) : rule list =
    siblings here: the chain isolation check then sees the duplicate-selector
    competitor and declines to synthesize across the former boundary. *)
 let synthesize_nesting_statements (stmts : statement list) : statement list =
-  let rec span_rules stmt_acc rule_acc = function
-    | (Rule r as stmt) :: rest ->
-        span_rules (stmt :: stmt_acc) (r :: rule_acc) rest
-    | rest -> (List.rev stmt_acc, List.rev rule_acc, rest)
+  let rec should_try_synthesis count = function
+    | [] -> count <= 128
+    | Rule r :: _ when r.Stylesheet_intf.nested <> [] -> true
+    | Rule _ :: rest when count < 128 -> should_try_synthesis (count + 1) rest
+    | Rule _ :: _ -> false
+    | _ :: rest -> should_try_synthesis count rest
   in
-  let rec go acc = function
-    | [] -> List.rev acc
-    | Rule _ :: _ as l ->
-        let stmts, rules, rest = span_rules [] [] l in
-        let synthesized_rules = synthesize_nesting_rules rules in
-        let synthesized =
-          if synthesized_rules == rules then stmts
-          else List.map (fun r -> Rule r) synthesized_rules
-        in
-        go (List.rev_append synthesized acc) rest
-    | s :: rest -> go (s :: acc) rest
-  in
-  preserve_list stmts (go [] stmts)
+  if not (should_try_synthesis 0 stmts) then stmts
+  else
+    let rec span_rules stmt_acc rule_acc = function
+      | (Rule r as stmt) :: rest ->
+          span_rules (stmt :: stmt_acc) (r :: rule_acc) rest
+      | rest -> (List.rev stmt_acc, List.rev rule_acc, rest)
+    in
+    let rec go acc = function
+      | [] -> List.rev acc
+      | Rule _ :: _ as l ->
+          let stmts, rules, rest = span_rules [] [] l in
+          let synthesized_rules = synthesize_nesting_rules rules in
+          let synthesized =
+            if synthesized_rules == rules then stmts
+            else List.map (fun r -> Rule r) synthesized_rules
+          in
+          go (List.rev_append synthesized acc) rest
+      | s :: rest -> go (s :: acc) rest
+    in
+    preserve_list stmts (go [] stmts)
 
 (* A block holds a conditional named layer when it directly contains a named
    [@layer] block with content. Unwrapping a known-true [@supports] around such
@@ -6301,13 +6394,25 @@ let extract_group_branch_into_adjacent rules =
   if !changed then result else rules
 
 let factor_pass_stable_threshold = 2
+let factor_min_adaptive_iterations = 2
+let factor_stalled_iteration_threshold = 2
+let factor_min_marginal_saving = 128
+let factor_min_marginal_ratio_ppm = 1_500
 
-let run_factor_pass quiet any_active_pass_changed fuel name f r =
+let factor_rules_units rules =
+  List.fold_left
+    (fun acc (rule : Stylesheet.rule) ->
+      acc + 8 + (16 * List.length rule.Stylesheet_intf.declarations))
+    0 rules
+
+let run_factor_pass quiet any_active_pass_changed active_passes changed_passes
+    fuel name f r =
   let q = try Hashtbl.find quiet name with Not_found -> 0 in
   if q >= factor_pass_stable_threshold then r
   else
     let s = pass_stat name in
     let t0 = Unix.gettimeofday () in
+    incr active_passes;
     let r' = f r in
     let t1 = Unix.gettimeofday () in
     s.time <- s.time +. (t1 -. t0);
@@ -6317,6 +6422,7 @@ let run_factor_pass quiet any_active_pass_changed fuel name f r =
     if r' == r then Hashtbl.replace quiet name (q + 1)
     else begin
       s.changes <- s.changes + 1;
+      incr changed_passes;
       Hashtbl.replace quiet name 0;
       any_active_pass_changed := true;
       Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
@@ -6340,7 +6446,82 @@ let factor_fixpoint_passes ~ctx pass rules =
   |> pass "merge_rules" merge_rules
   |> pass "finalize" (list_map_preserve (finalize_rule_without_nested ~ctx))
 
-let factor_rules_to_fixpoint ~ctx fuel rules =
+let low_marginal_gain before_units bytes_saved =
+  bytes_saved < factor_min_marginal_saving
+  || bytes_saved * 1_000_000 < before_units * factor_min_marginal_ratio_ppm
+
+let record_factor_iteration ~fixpoint ~local_iteration ~before_rules
+    ~before_bytes ~rules' ~after_bytes ~bytes_saved ~active_passes
+    ~changed_passes ~elapsed =
+  counters.factor_bytes_saved <- counters.factor_bytes_saved + bytes_saved;
+  iteration_stats_rev :=
+    {
+      fixpoint;
+      iteration = counters.iterations;
+      local_iteration;
+      before_rules;
+      after_rules = List.length rules';
+      before_bytes;
+      after_bytes;
+      bytes_saved;
+      active_passes = !active_passes;
+      changed_passes = !changed_passes;
+      elapsed;
+    }
+    :: !iteration_stats_rev
+
+let update_factor_stall ~local_iteration ~stalled ~before_units ~bytes_saved =
+  if local_iteration < factor_min_adaptive_iterations then 0
+  else if low_marginal_gain before_units bytes_saved then stalled + 1
+  else 0
+
+let factor_stalled stalled bytes_saved =
+  counters.marginal_stops <- counters.marginal_stops + 1;
+  Log.debug (fun m ->
+      m
+        "factor fixpoint: stopped after %d low-gain iterations (last saved %d \
+         bytes)"
+        stalled bytes_saved)
+
+type factor_iteration_result = {
+  result_rules : Stylesheet.rule list;
+  changed : bool;
+  before_units : int;
+  bytes_saved : int;
+}
+
+let run_factor_iteration ~ctx ~quiet ~fixpoint ~local_iteration ~fuel rules =
+  counters.iterations <- counters.iterations + 1;
+  let any_active_pass_changed = ref false in
+  let active_passes = ref 0 in
+  let changed_passes = ref 0 in
+  let before_rules = List.length rules in
+  let before_units = factor_rules_units rules in
+  let before_bytes =
+    if !collect_profile_stats then rules_pp_size rules else 0
+  in
+  current_factor_savings := 0;
+  let started_at = Unix.gettimeofday () in
+  let pass name f r =
+    run_factor_pass quiet any_active_pass_changed active_passes changed_passes
+      fuel name f r
+  in
+  let rules' = factor_fixpoint_passes ~ctx pass rules in
+  let after_bytes =
+    if !collect_profile_stats then rules_pp_size rules' else 0
+  in
+  let elapsed = Unix.gettimeofday () -. started_at in
+  let bytes_saved = !current_factor_savings in
+  record_factor_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
+    ~rules' ~after_bytes ~bytes_saved ~active_passes ~changed_passes ~elapsed;
+  {
+    result_rules = rules';
+    changed = !any_active_pass_changed;
+    before_units;
+    bytes_saved;
+  }
+
+let factor_rules_to_fixpoint ?(adaptive = true) ~ctx fuel rules =
   (* Per-pass quiet-streak counter. A pass that has returned its input unchanged
      [factor_pass_stable_threshold] times in a row gets skipped on subsequent
      iterations. The fixpoint usually needs 8 iterations because
@@ -6349,27 +6530,133 @@ let factor_rules_to_fixpoint ~ctx fuel rules =
      [factor_anchor] / [factor_common] sit out once they've confirmed
      convergence twice running, while the cheap passes keep iterating. *)
   let quiet : (string, int) Hashtbl.t = Hashtbl.create 16 in
-  let any_active_pass_changed = ref false in
-  let rec go fuel rules =
+  let initial_fuel = fuel in
+  counters.factor_fixpoints_run <- counters.factor_fixpoints_run + 1;
+  let fixpoint = counters.factor_fixpoints_run in
+  let rec go stalled fuel rules =
     if fuel <= 0 then (
       Log.debug (fun m ->
           m "factor fixpoint: fuel exhausted, not yet converged");
       rules)
     else begin
-      counters.iterations <- counters.iterations + 1;
-      any_active_pass_changed := false;
-      let pass name f r =
-        run_factor_pass quiet any_active_pass_changed fuel name f r
+      let local_iteration = initial_fuel - fuel + 1 in
+      let result =
+        run_factor_iteration ~ctx ~quiet ~fixpoint ~local_iteration ~fuel rules
       in
-      let rules' = factor_fixpoint_passes ~ctx pass rules in
-      if not !any_active_pass_changed then (
+      if not result.changed then (
         Log.debug (fun m ->
             m "factor fixpoint: converged after %d iterations" (16 - fuel));
-        rules')
-      else go (fuel - 1) rules'
+        result.result_rules)
+      else
+        let stalled =
+          if adaptive then
+            update_factor_stall ~local_iteration ~stalled
+              ~before_units:result.before_units ~bytes_saved:result.bytes_saved
+          else 0
+        in
+        if stalled >= factor_stalled_iteration_threshold then begin
+          factor_stalled stalled result.bytes_saved;
+          result.result_rules
+        end
+        else go stalled (fuel - 1) result.result_rules
     end
   in
-  go fuel rules
+  go 0 fuel rules
+
+module Global_factor_preflight = struct
+  let small_declaration_threshold = 4_000
+  let useful_gain_units = 2_048
+  let useful_gain_ratio_ppm = 140_000
+
+  type t = {
+    mutable source_units : int;
+    mutable rule_count : int;
+    mutable declaration_count : int;
+    mutable identical_body_gain : int;
+    mutable shared_declaration_gain : int;
+  }
+
+  type state = {
+    summary : t;
+    body_groups : (int list, int) Hashtbl.t;
+    declaration_counts : (int, int * int) Hashtbl.t;
+  }
+
+  let v () =
+    {
+      summary =
+        {
+          source_units = 0;
+          rule_count = 0;
+          declaration_count = 0;
+          identical_body_gain = 0;
+          shared_declaration_gain = 0;
+        };
+      body_groups = Hashtbl.create 256;
+      declaration_counts = Hashtbl.create 1024;
+    }
+
+  let record_declaration state decl =
+    let hash = Declaration.hash decl in
+    let count, _size_unit =
+      match Hashtbl.find_opt state.declaration_counts hash with
+      | Some entry -> entry
+      | None -> (0, 1)
+    in
+    if count > 0 then
+      state.summary.shared_declaration_gain <-
+        state.summary.shared_declaration_gain + 1;
+    Hashtbl.replace state.declaration_counts hash (count + 1, 1)
+
+  let record_identical_body state decls =
+    let key = List.map Declaration.hash decls in
+    match Hashtbl.find_opt state.body_groups key with
+    | Some count ->
+        state.summary.identical_body_gain <-
+          state.summary.identical_body_gain + max 0 (List.length decls);
+        Hashtbl.replace state.body_groups key (count + 1)
+    | None -> Hashtbl.add state.body_groups key 1
+
+  let record_rule state (rule : Stylesheet.rule) =
+    let decls = rule.Stylesheet_intf.declarations in
+    let decl_count = List.length decls in
+    state.summary.rule_count <- state.summary.rule_count + 1;
+    state.summary.source_units <-
+      state.summary.source_units + 8 + (16 * decl_count);
+    state.summary.declaration_count <-
+      state.summary.declaration_count + decl_count;
+    List.iter (record_declaration state) decls;
+    if decl_count > 0 then record_identical_body state decls
+
+  let summarize (rules : Stylesheet.rule list) =
+    let state = v () in
+    List.iter (record_rule state) rules;
+    state.summary
+
+  let estimated_gain summary =
+    summary.identical_body_gain + (summary.shared_declaration_gain / 32)
+
+  let useful summary =
+    if summary.declaration_count <= small_declaration_threshold then true
+    else
+      let gain = estimated_gain summary in
+      counters.factor_preflight_gain <- counters.factor_preflight_gain + gain;
+      gain >= useful_gain_units
+      && gain * 1_000_000 >= summary.source_units * useful_gain_ratio_ppm
+end
+
+let factor_rules_incremental ~ctx (rules : Stylesheet.rule list) =
+  let summary = Global_factor_preflight.summarize rules in
+  if Global_factor_preflight.useful summary then
+    let adaptive =
+      summary.declaration_count
+      > Global_factor_preflight.small_declaration_threshold
+    in
+    factor_rules_to_fixpoint ~adaptive ~ctx 16 rules
+  else begin
+    counters.factor_fixpoints_skipped <- counters.factor_fixpoints_skipped + 1;
+    rules
+  end
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
@@ -6389,24 +6676,31 @@ let drop_nesting_prefix (stmt : statement) : statement =
 
 let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
     =
-  let optimize_merged_block = statements ~ctx ~enforce_spec in
-  (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
-     invalid and ignored by every browser, so it is a no-op that must not act as
-     a cascade boundary. Stripping it up front lets the rules it falsely
-     separated merge in this same pass, which keeps [statements] idempotent -
-     stripping after the merge would leave two adjacent same-selector rules that
-     only a re-run would combine. *)
-  let stmts' =
-    drop_misplaced_imports stmts
-    |> merge_named_layers_by_name
-    |> process_statements ~ctx ~enforce_spec []
-    |> synthesize_nesting_statements
-    |> merge_consecutive_media ~optimize_merged_block
-    |> merge_consecutive_supports ~optimize_merged_block
-    |> merge_consecutive_containers ~optimize_merged_block
-    |> merge_layer_declarations |> drop_empty_rules
-  in
-  preserve_list stmts stmts'
+  match stmts with
+  | [] -> stmts
+  | _ ->
+      let optimize_merged_block = statements ~ctx ~enforce_spec in
+      (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
+         invalid and ignored by every browser, so it is a no-op that must not
+         act as a cascade boundary. Stripping it up front lets the rules it
+         falsely separated merge in this same pass, which keeps [statements]
+         idempotent - stripping after the merge would leave two adjacent
+         same-selector rules that only a re-run would combine. *)
+      let stmts' =
+        let stmts =
+          drop_misplaced_imports stmts |> merge_named_layers_by_name
+        in
+        let stmts = process_statements ~ctx ~enforce_spec [] stmts in
+        let stmts = synthesize_nesting_statements stmts in
+        let stmts =
+          stmts
+          |> merge_consecutive_media ~optimize_merged_block
+          |> merge_consecutive_supports ~optimize_merged_block
+          |> merge_consecutive_containers ~optimize_merged_block
+        in
+        stmts |> merge_layer_declarations |> drop_empty_rules
+      in
+      preserve_list stmts stmts'
 
 and process_statements ~ctx ~enforce_spec (acc : statement list)
     (remaining : statement list) : statement list =
@@ -6538,9 +6832,12 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
     list_map_preserve
       (fun rule ->
         let nested =
-          let nested = statements ~ctx ~enforce_spec rule.nested in
-          if enforce_spec then nested
-          else list_map_preserve drop_nesting_prefix nested
+          match rule.nested with
+          | [] -> []
+          | nested ->
+              let nested = statements ~ctx ~enforce_spec nested in
+              if enforce_spec then nested
+              else list_map_preserve drop_nesting_prefix nested
         in
         let rule = rule_with_nested rule nested in
         let rule =
@@ -6557,20 +6854,21 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      selector list ([.a, .b, .c{...}]). *)
   let prepared =
     list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
-    |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
-    |> list_map_preserve (finalize_rule_without_nested ~ctx)
   in
-  (* Factoring is greedy: extracting one shared declaration subset can leave
-     behind leftovers that are themselves factorable - a "triangle" where each
-     pair of rules shares a different declaration needs more than one round to
-     settle. Iterate the boundary-checked [combine_identical_rules] /
-     [factor_common_declarations] steps to a local fixed point so the pass is
-     exhaustive in a single top-level pass. Safe to iterate because both only
-     re-apply the same cascade-checked grouping; unlike a whole-pipeline
-     fixpoint it never re-runs boundary-sensitive passes such as import
-     stripping. [fuel] bounds the loop against a missed identity-preserving
-     no-op. *)
-  factor_rules_to_fixpoint ~ctx 16 prepared
+  let prepared =
+    prepared |> drop_shadowed_declarations |> drop_shadowed_rules |> merge_rules
+  in
+  let prepared =
+    list_map_preserve
+      (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
+      prepared
+  in
+  (* Factoring is greedy and global: extracting one shared declaration subset
+     can leave behind leftovers that are themselves factorable. The local linear
+     optimizations above always run; this incremental gate only decides whether
+     the expensive global factoring fixpoint is likely to buy enough bytes to
+     justify the full indexed scheduler walk. *)
+  factor_rules_incremental ~ctx prepared
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the

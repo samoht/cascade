@@ -10,17 +10,15 @@ size-arbitrage rewrites remain the default for focused stylesheets.
   $ cascade --minify small.css
   .a,.b{color:red}
 
-Large low-ROI inputs stay on the fast minifying serialiser unless an
-optimizer-dependent mode is requested. This keeps the binary fast by default
-while still emitting minified, valid CSS.
+Large low-ROI inputs still use the single optimizer path, but the global
+factoring fixpoint is skipped after local linear rewrites.
 
-  $ for i in $(seq 1 2001); do printf '.x%s{width:%spx}\n' "$i" "$i"; done > big.css
+  $ for i in $(seq 1 5001); do printf '.x%s{width:%spx}\n' "$i" "$i"; done > big.css
   $ cascade --minify big.css | grep -o "{width:" | wc -l | tr -d ' '
-  2001
+  5001
 
-Profiling is an optimizer-dependent mode, so it forces the aggressive
-pipeline and reports the factoring fixpoint.
+Profiling reports the incremental factoring decision without changing it.
 
   $ cascade --minify --profile big.css > /dev/null 2>profile.txt
-  $ grep "factor fixpoint" profile.txt | sed 's/(.*):/(...):/'
-  factor fixpoint (...):
+  $ grep "factor preflight" profile.txt
+  factor preflight: 1 skipped, estimated gain 0 bytes
