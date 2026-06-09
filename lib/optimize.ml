@@ -829,7 +829,7 @@ let try_compose_gap = function
    longhands. Both longhands carry exactly one length value (wrapped in a
    1-element list for [inset-*] grammar reasons). The result is a [length list]
    payload: [v] when both sides match, [v_start; v_end] otherwise. *)
-type axis_side = Side_start | Side_end
+type axis_side = Start | End
 
 let try_compose_axis_pair ~extract ~build = function
   | (idx, d1) :: (_, d2) :: rest -> (
@@ -839,8 +839,8 @@ let try_compose_axis_pair ~extract ~build = function
              && (not (Values.length_has_runtime_subst v1))
              && not (Values.length_has_runtime_subst v2) ->
           let pair = [ (s1, v1); (s2, v2) ] in
-          let v_start = List.assoc Side_start pair in
-          let v_end = List.assoc Side_end pair in
+          let v_start = List.assoc Start pair in
+          let v_end = List.assoc End pair in
           let value =
             if v_start = v_end then [ v_start ] else [ v_start; v_end ]
           in
@@ -851,49 +851,49 @@ let try_compose_axis_pair ~extract ~build = function
 let extract_margin_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Margin_inline_start; value; important } ->
-      Some (Side_start, value, important)
+      Some (Start, value, important)
   | Declaration { property = Margin_inline_end; value; important } ->
-      Some (Side_end, value, important)
+      Some (End, value, important)
   | _ -> None
 
 let extract_margin_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Margin_block_start; value; important } ->
-      Some (Side_start, value, important)
+      Some (Start, value, important)
   | Declaration { property = Margin_block_end; value; important } ->
-      Some (Side_end, value, important)
+      Some (End, value, important)
   | _ -> None
 
 let extract_padding_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Padding_inline_start; value; important } ->
-      Some (Side_start, value, important)
+      Some (Start, value, important)
   | Declaration { property = Padding_inline_end; value; important } ->
-      Some (Side_end, value, important)
+      Some (End, value, important)
   | _ -> None
 
 let extract_padding_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Padding_block_start; value; important } ->
-      Some (Side_start, value, important)
+      Some (Start, value, important)
   | Declaration { property = Padding_block_end; value; important } ->
-      Some (Side_end, value, important)
+      Some (End, value, important)
   | _ -> None
 
 let extract_inset_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Inset_inline_start; value = [ v ]; important } ->
-      Some (Side_start, v, important)
+      Some (Start, v, important)
   | Declaration { property = Inset_inline_end; value = [ v ]; important } ->
-      Some (Side_end, v, important)
+      Some (End, v, important)
   | _ -> None
 
 let extract_inset_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Inset_block_start; value = [ v ]; important } ->
-      Some (Side_start, v, important)
+      Some (Start, v, important)
   | Declaration { property = Inset_block_end; value = [ v ]; important } ->
-      Some (Side_end, v, important)
+      Some (End, v, important)
   | _ -> None
 
 (* CSS Align 3 §6.1: [place-items] / [place-content] / [place-self] are the
@@ -4368,15 +4368,15 @@ let skipped_blocks_same_selector_merge merged skipped =
 
 let merge_same_selector_gaps (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
-  let same_selector a b =
-    canonical_selector_key a.selector = canonical_selector_key b.selector
+  let items =
+    List.map (fun r -> (r, canonical_selector_key r.selector)) rules
   in
-  let rec scan_for_match anchor skipped_rev fuel = function
+  let rec scan_for_match anchor anchor_key skipped_rev fuel = function
     | [] -> None
     | _ when fuel <= 0 -> None
-    | candidate :: tail ->
+    | (candidate, candidate_key) :: tail ->
         if not (rule_gap_merge_eligible candidate) then None
-        else if same_selector anchor candidate then
+        else if anchor_key = candidate_key then
           let skipped = List.rev skipped_rev in
           let merged = merge_two_adjacent_rules anchor candidate in
           (* Check the merged rule (anchor + candidate declarations) against the
@@ -4390,19 +4390,21 @@ let merge_same_selector_gaps (rules : Stylesheet.rule list) :
             if rules_pp_size after < rules_pp_size before then
               Some (merged :: skipped, tail)
             else None
-        else scan_for_match anchor (candidate :: skipped_rev) (fuel - 1) tail
+        else
+          scan_for_match anchor anchor_key (candidate :: skipped_rev) (fuel - 1)
+            tail
   in
   let rec walk acc = function
     | [] -> List.rev acc
-    | rule :: rest -> (
+    | (rule, key) :: rest -> (
         if not (rule_gap_merge_eligible rule) then walk (rule :: acc) rest
         else
-          match scan_for_match rule [] 128 rest with
+          match scan_for_match rule key [] 128 rest with
           | None -> walk (rule :: acc) rest
           | Some (replacement, tail) ->
               walk (List.rev_append replacement acc) tail)
   in
-  preserve_list rules (walk [] rules)
+  preserve_list rules (walk [] items)
 
 let filter_some xs = List.filter_map (fun x -> x) xs
 
@@ -4457,11 +4459,9 @@ let factor_rules_with_skips factor_rules skipped =
             if rules_pp_size after < rules_pp_size before then Some after
             else None)
 
-type gap_entry =
-  | Gap_factor of factor_rule_summary
-  | Gap_skip of factor_rule_summary
+type gap_entry = Factor of factor_rule_summary | Skip of factor_rule_summary
 
-let size_of_gap_entry = function Gap_factor s | Gap_skip s -> s.factor_size
+let size_of_gap_entry = function Factor s | Skip s -> s.factor_size
 
 (* Size of [first :: entry rules] from the cached per-summary sizes, so a scan
    that re-evaluates a growing prefix does not re-render each rule every
@@ -4474,7 +4474,7 @@ let gap_before_size first entries =
 let factor_rules_of_gap first entries =
   first
   :: List.filter_map
-       (function Gap_factor s -> Some s.factor_rule | Gap_skip _ -> None)
+       (function Factor s -> Some s.factor_rule | Skip _ -> None)
        entries
 
 let factor_gap_rewrite first entries =
@@ -4507,8 +4507,8 @@ let factor_gap_rewrite first entries =
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
-              | Gap_skip s -> Some s.factor_rule
-              | Gap_factor _ ->
+              | Skip s -> Some s.factor_rule
+              | Factor _ ->
                   let leftover = leftovers.(!next_factor) in
                   incr next_factor;
                   leftover
@@ -4566,8 +4566,8 @@ let factor_gap_equal_rewrite ~restrict first entries =
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
-              | Gap_skip s -> Some s.factor_rule
-              | Gap_factor _ ->
+              | Skip s -> Some s.factor_rule
+              | Factor _ ->
                   let leftover = leftovers.(!next_factor) in
                   incr next_factor;
                   leftover
@@ -4605,13 +4605,13 @@ let single_anchor_blocked common candidate_summary entries_rev =
   || List.exists
        (fun entry ->
          match entry with
-         | Gap_factor _ -> false
-         | Gap_skip skipped ->
+         | Factor _ -> false
+         | Skip skipped ->
              skipped_rule_blocks_factor common candidate_summary skipped)
        entries_rev
 
 let update_single_anchor_best first entries_rev tail best candidate_summary =
-  let entries = List.rev (Gap_factor candidate_summary :: entries_rev) in
+  let entries = List.rev (Factor candidate_summary :: entries_rev) in
   match factor_gap_rewrite first entries with
   | Some (replacement, savings) ->
       better_factor_gap best replacement tail savings
@@ -4628,14 +4628,14 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
         if rule_factor_boundary candidate then best
         else if not (rule_factor_eligible candidate) then
           scan
-            (Gap_skip candidate_summary :: entries_rev)
+            (Skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else if candidate_summary.decl_bloom land first_bloom = 0 then
           (* Bloom prefilter: candidate's declarations share no hash with the
              anchor's, so [factor_anchor_common] would yield []. Skip the check
              entirely. *)
           scan
-            (Gap_skip candidate_summary :: entries_rev)
+            (Skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
           let candidate_common =
@@ -4645,7 +4645,7 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
             single_anchor_blocked candidate_common candidate_summary entries_rev
           then
             scan
-              (Gap_skip candidate_summary :: entries_rev)
+              (Skip candidate_summary :: entries_rev)
               common best (fuel - 1) tail
           else
             let best =
@@ -4653,7 +4653,7 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
                 candidate_summary
             in
             scan
-              (Gap_factor candidate_summary :: entries_rev)
+              (Factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
   match scan [] None None equal_factor_lookahead rest_summaries with
@@ -4683,7 +4683,7 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
       if boundary_stops_scan common candidate then best
       else if not (rule_factor_eligible candidate) then
         scan_equal_anchor ~first_bloom first
-          (Gap_skip candidate_summary :: entries_rev)
+          (Skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else if candidate_summary.decl_bloom land first_bloom = 0 then
         (* Bloom prefilter: no declaration of the candidate shares a
@@ -4691,7 +4691,7 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
            subset is necessarily empty. Skip the [equal_anchor_common] /
            [blocks] checks and treat the candidate as a skipped rule. *)
         scan_equal_anchor ~first_bloom first
-          (Gap_skip candidate_summary :: entries_rev)
+          (Skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else
         let candidate_common =
@@ -4702,20 +4702,18 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
           || List.exists
                (fun entry ->
                  match entry with
-                 | Gap_factor _ -> false
-                 | Gap_skip skipped ->
+                 | Factor _ -> false
+                 | Skip skipped ->
                      skipped_blocks_factor_tie candidate_common
                        candidate_summary skipped)
                entries_rev
         in
         if blocks then
           scan_equal_anchor ~first_bloom first
-            (Gap_skip candidate_summary :: entries_rev)
+            (Skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
-          let entries =
-            List.rev (Gap_factor candidate_summary :: entries_rev)
-          in
+          let entries = List.rev (Factor candidate_summary :: entries_rev) in
           let best =
             match
               factor_gap_equal_rewrite ~restrict:candidate_common first entries
@@ -4725,7 +4723,7 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
             | None -> best
           in
           scan_equal_anchor ~first_bloom first
-            (Gap_factor candidate_summary :: entries_rev)
+            (Factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
 let seed_bloom = function
@@ -4736,7 +4734,7 @@ let seed_bloom = function
            (fun bloom decl -> bloom_add bloom (Declaration.hash decl))
            0 decls)
 
-let try_factor_equal_anchor ~shared_decl first rest =
+let try_factor_equal_anchor ~shared_decl first first_summary rest_summaries =
   (* The auto-narrowing chain ([None]) commits to the first sharer's common and
      handles multi-property blocks, but it loses a single-property group when an
      earlier rule shares a different anchor declaration (the running common
@@ -4749,11 +4747,7 @@ let try_factor_equal_anchor ~shared_decl first rest =
     let shared_decls = List.filter shared_decl first.declarations in
     None :: List.map (fun d -> Some [ d ]) shared_decls
   in
-  (* Pre-summarise [rest] once per anchor: every seed walks the same window, and
-     re-running [summarize_factor_rule] in each scan iteration was the
-     bottleneck (two [Pp.size] traversals per candidate). *)
-  let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
-  let first_bloom = (summarize_factor_rule first).decl_bloom in
+  let first_bloom = first_summary.decl_bloom in
   List.fold_left
     (fun best seed ->
       let first_bloom = Option.value (seed_bloom seed) ~default:first_bloom in
@@ -5069,12 +5063,19 @@ let factor_anchor_score ~shared_decl n =
     None)
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
-    let win_rules = List.map Rule_pool.rule win_nodes in
-    match try_factor_equal_anchor ~shared_decl r win_rules with
+    let win_summaries =
+      List.map
+        (fun n ->
+          let rule = Rule_pool.rule n in
+          (rule, summarize_factor_rule rule))
+        win_nodes
+    in
+    let summary = summarize_factor_rule r in
+    match try_factor_equal_anchor ~shared_decl r summary win_summaries with
     | None -> None
     | Some (replacement, tail, savings) ->
         let consumed =
-          factor_take (List.length win_rules - List.length tail) win_nodes
+          factor_take (List.length win_summaries - List.length tail) win_nodes
         in
         Some (replacement, consumed, savings)
 
@@ -5977,15 +5978,54 @@ let extract_group_branch_into_adjacent rules =
   let result = go [] rules in
   if !changed then result else rules
 
+let factor_pass_stable_threshold = 2
+
+let run_factor_pass quiet any_active_pass_changed fuel name f r =
+  let q = try Hashtbl.find quiet name with Not_found -> 0 in
+  if q >= factor_pass_stable_threshold then r
+  else
+    let s = pass_stat name in
+    let t0 = Unix.gettimeofday () in
+    let r' = f r in
+    let t1 = Unix.gettimeofday () in
+    s.time <- s.time +. (t1 -. t0);
+    s.calls <- s.calls + 1;
+    s.rules_in <- s.rules_in + List.length r;
+    s.rules_out <- s.rules_out + List.length r';
+    if r' == r then Hashtbl.replace quiet name (q + 1)
+    else begin
+      s.changes <- s.changes + 1;
+      Hashtbl.replace quiet name 0;
+      any_active_pass_changed := true;
+      Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
+    end;
+    r'
+
+let factor_fixpoint_passes ~ctx pass rules =
+  rules
+  (* Gap merging/factoring is pure cascade-safety reasoning (specificity is
+     world-independent), so it runs in every scope - neither pass takes a [ctx].
+     It is part of the pipeline (not a one-shot before the loop) so a merge it
+     can only make after another pass reorders rules is reached within a single
+     fixpoint, not on a second [optimize] call. *)
+  |> pass "extract_branch" extract_group_branch_into_adjacent
+  |> pass "merge_same_selector" merge_same_selector_gaps
+  |> pass "combine_identical" combine_identical_rules
+  |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
+  |> pass "factor_common" factor_common_declarations
+  |> pass "factor_anchor" factor_anchor_gaps
+  |> pass "extend_factored" extend_factored_declarations
+  |> pass "merge_rules" merge_rules
+  |> pass "finalize" (list_map_preserve (finalize_rule_without_nested ~ctx))
+
 let factor_rules_to_fixpoint ~ctx fuel rules =
   (* Per-pass quiet-streak counter. A pass that has returned its input unchanged
-     [stable_threshold] times in a row gets skipped on subsequent iterations.
-     The fixpoint usually needs 8 iterations because [extend_identical] keeps
-     changing the list in ways that don't enable new factorings for the heavy
-     passes; this counter lets the heavy [factor_anchor] / [factor_common] sit
-     out once they've confirmed convergence twice running, while the cheap
-     passes keep iterating. *)
-  let stable_threshold = 2 in
+     [factor_pass_stable_threshold] times in a row gets skipped on subsequent
+     iterations. The fixpoint usually needs 8 iterations because
+     [extend_identical] keeps changing the list in ways that don't enable new
+     factorings for the heavy passes; this counter lets the heavy
+     [factor_anchor] / [factor_common] sit out once they've confirmed
+     convergence twice running, while the cheap passes keep iterating. *)
   let quiet : (string, int) Hashtbl.t = Hashtbl.create 16 in
   let any_active_pass_changed = ref false in
   let rec go fuel rules =
@@ -5997,44 +6037,9 @@ let factor_rules_to_fixpoint ~ctx fuel rules =
       counters.iterations <- counters.iterations + 1;
       any_active_pass_changed := false;
       let pass name f r =
-        let q = try Hashtbl.find quiet name with Not_found -> 0 in
-        if q >= stable_threshold then r
-        else
-          let s = pass_stat name in
-          let t0 = Unix.gettimeofday () in
-          let r' = f r in
-          let t1 = Unix.gettimeofday () in
-          s.time <- s.time +. (t1 -. t0);
-          s.calls <- s.calls + 1;
-          s.rules_in <- s.rules_in + List.length r;
-          s.rules_out <- s.rules_out + List.length r';
-          if r' == r then Hashtbl.replace quiet name (q + 1)
-          else begin
-            s.changes <- s.changes + 1;
-            Hashtbl.replace quiet name 0;
-            any_active_pass_changed := true;
-            Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
-          end;
-          r'
+        run_factor_pass quiet any_active_pass_changed fuel name f r
       in
-      let rules' =
-        rules
-        (* Gap merging/factoring is pure cascade-safety reasoning (specificity
-           is world-independent), so it runs in every scope - neither pass takes
-           a [ctx]. It is part of the pipeline (not a one-shot before the loop)
-           so a merge it can only make after another pass reorders rules is
-           reached within a single fixpoint, not on a second [optimize] call. *)
-        |> pass "extract_branch" extract_group_branch_into_adjacent
-        |> pass "merge_same_selector" merge_same_selector_gaps
-        |> pass "combine_identical" combine_identical_rules
-        |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
-        |> pass "factor_common" factor_common_declarations
-        |> pass "factor_anchor" factor_anchor_gaps
-        |> pass "extend_factored" extend_factored_declarations
-        |> pass "merge_rules" merge_rules
-        |> pass "finalize"
-             (list_map_preserve (finalize_rule_without_nested ~ctx))
-      in
+      let rules' = factor_fixpoint_passes ~ctx pass rules in
       if not !any_active_pass_changed then (
         Log.debug (fun m ->
             m "factor fixpoint: converged after %d iterations" (16 - fuel));
