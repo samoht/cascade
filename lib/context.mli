@@ -83,10 +83,10 @@ type animation = {
 (** Explicit context for animation/keyframe transforms. *)
 
 type property_registration = {
-  registered_name : string;
-  registered_syntax : Variables.any_syntax;
-  registered_inherits : bool;
-  registered_initial_value : string option;
+  name : string;
+  syntax : Variables.any_syntax;
+  inherits : bool;
+  initial_value : string option;
 }
 (** Explicit context entry for a registered custom property. This models the
     parser-visible data from an [@property] rule without creating live CSSOM

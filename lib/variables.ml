@@ -1614,8 +1614,7 @@ let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   | Var v -> [ V v ]
   | Timelines items ->
       List.concat_map
-        (fun { Properties.timeline_axis; _ } ->
-          vars_of_timeline_axis timeline_axis)
+        (fun { Properties.axis; _ } -> vars_of_timeline_axis axis)
         items
   | _ -> []
 
@@ -1860,12 +1859,12 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_synthesis_small_caps, value -> vars_of_synthesis_small_caps value
   | Font_synthesis_position, value -> vars_of_font_synthesis_position value
   | Font_variant_ligatures, value -> vars_of_font_variant_ligatures value
-  | Font_variant_caps, value -> vars_of_font_variant_caps value
+  | Caps, value -> vars_of_font_variant_caps value
   | Font_variant_emoji, value -> vars_of_font_variant_emoji value
   | Font_variation_settings, value -> vars_of_font_variation_settings value
-  | Font_variant_numeric, value -> vars_of_font_variant_numeric value
+  | Numeric, value -> vars_of_font_variant_numeric value
   | Font_variant_position, value -> vars_of_font_variant_position value
-  | Font_variant_east_asian, value -> vars_of_east_asian value
+  | East_asian, value -> vars_of_east_asian value
   (* Text properties *)
   | Text_decoration, value -> vars_of_text_decoration value
   | Text_emphasis, value -> vars_of_text_emphasis value

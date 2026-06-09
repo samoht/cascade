@@ -2544,7 +2544,7 @@ end
 
 type background_image =
   | Url of string
-  | Url_quoted of string * char
+  | Quoted of string * char
   | Linear_gradient of gradient_direction * gradient_stop list
   | Linear_gradient_var of gradient_stop var
       (** Linear gradient using a single variable for all stops including
@@ -2598,7 +2598,7 @@ and image_set_option = {
   mime_type : string option;  (** [type("image/avif")] *)
 }
 
-and image_set_source = Image_set_url of string | Image_set_string of string
+and image_set_source = Url of string | String of string
 
 and cross_fade_option = {
   image : background_image;
@@ -3720,10 +3720,7 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = {
-  timeline_name : string;
-  timeline_axis : timeline_axis;
-}
+type timeline_shorthand_item = { name : string; axis : timeline_axis }
 
 type timeline_shorthand =
   | None
@@ -4188,7 +4185,7 @@ type _ kind =
   | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
-  | Font_variant_numeric : font_variant_numeric kind
+  | Numeric : font_variant_numeric kind
   | Font_variant_numeric_token : font_variant_numeric_token kind
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
@@ -4598,10 +4595,10 @@ type 'a property =
   | Font_synthesis_small_caps : font_synthesis_small_caps property
   | Font_synthesis_position : font_synthesis_position property
   | Font_variant_ligatures : font_variant_ligatures property
-  | Font_variant_caps : font_variant_caps property
-  | Font_variant_numeric : font_variant_numeric property
+  | Caps : font_variant_caps property
+  | Numeric : font_variant_numeric property
   | Font_variant_position : font_variant_position property
-  | Font_variant_east_asian : font_variant_east_asian property
+  | East_asian : font_variant_east_asian property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property
   | Webkit_mask_image : background_image property

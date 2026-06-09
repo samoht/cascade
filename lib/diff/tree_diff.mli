@@ -11,9 +11,9 @@ type declaration = {
 
 (** Individual rule changes. *)
 type rule_diff =
-  | Rule_added of { selector : string; declarations : Css.declaration list }
-  | Rule_removed of { selector : string; declarations : Css.declaration list }
-  | Rule_content_changed of {
+  | Added of { selector : string; declarations : Css.declaration list }
+  | Removed of { selector : string; declarations : Css.declaration list }
+  | Content_changed of {
       selector : string;
       old_declarations : Css.declaration list;
       new_declarations : Css.declaration list;
@@ -21,12 +21,12 @@ type rule_diff =
       added_properties : string list;
       removed_properties : string list;
     }
-  | Rule_selector_changed of {
+  | Selector_changed of {
       old_selector : string;
       new_selector : string;
       declarations : Css.declaration list;
     }
-  | Rule_reordered of {
+  | Reordered of {
       selector : string;
       expected_pos : int;
       actual_pos : int;
@@ -49,20 +49,16 @@ type container_info = {
 
 (** Container changes. *)
 type container_diff =
-  | Container_added of container_info
-  | Container_removed of container_info
-  | Container_modified of {
+  | Added of container_info
+  | Removed of container_info
+  | Modified of {
       info : container_info; (* expected *)
       actual_rules : Css.statement list; (* actual *)
       rule_changes : rule_diff list;
       container_changes : container_diff list; (* Nested container changes *)
     }
-  | Container_reordered of {
-      info : container_info;
-      expected_pos : int;
-      actual_pos : int;
-    }
-  | Container_block_structure_changed of {
+  | Reordered of { info : container_info; expected_pos : int; actual_pos : int }
+  | Block_structure_changed of {
       container_type :
         [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
       condition : string;

@@ -364,10 +364,8 @@ let attribute_cases () =
   check ~expected:"[class=\"My Class\" s]" "[class=\"My Class\" S]";
 
   (* Case modifiers *)
-  check_construct "[attr=v i]"
-    (attribute ~flag:Case_insensitive "attr" (Exact "v"));
-  check_construct "[attr=v s]"
-    (attribute ~flag:Case_sensitive "attr" (Exact "v"));
+  check_construct "[attr=v i]" (attribute ~flag:Insensitive "attr" (Exact "v"));
+  check_construct "[attr=v s]" (attribute ~flag:Sensitive "attr" (Exact "v"));
 
   (* Namespaced attributes *)
   check_construct "[ns|attr]" (attribute ~ns:(Prefix "ns") "attr" Presence);
@@ -919,8 +917,8 @@ let test_attr_case_sensitivity_flags () =
       (Fmt.str "selector for type=%S with flag %s" value
          (match flag with
          | None -> "none"
-         | Some Case_insensitive -> "i"
-         | Some Case_sensitive -> "s"))
+         | Some Insensitive -> "i"
+         | Some Sensitive -> "s"))
       expected output
   in
 
@@ -931,26 +929,26 @@ let test_attr_case_sensitivity_flags () =
   check_selector_with_flag "i" None "[type=i]";
 
   (* Uppercase input minifies to lowercase flags. *)
-  check_selector_with_flag "A" (Some Case_insensitive) "[type=A i]";
-  check_selector_with_flag "a" (Some Case_insensitive) "[type=a i]";
-  check_selector_with_flag "foo" (Some Case_insensitive) "[type=foo i]";
+  check_selector_with_flag "A" (Some Insensitive) "[type=A i]";
+  check_selector_with_flag "a" (Some Insensitive) "[type=a i]";
+  check_selector_with_flag "foo" (Some Insensitive) "[type=foo i]";
   check ~expected:"[type=foo i]" "[type=foo I]";
 
   (* With case-sensitive flag (s) *)
-  check_selector_with_flag "A" (Some Case_sensitive) "[type=A s]";
-  check_selector_with_flag "a" (Some Case_sensitive) "[type=a s]";
-  check_selector_with_flag "I" (Some Case_sensitive) "[type=I s]";
-  check_selector_with_flag "i" (Some Case_sensitive) "[type=i s]";
-  check_selector_with_flag "foo" (Some Case_sensitive) "[type=foo s]";
+  check_selector_with_flag "A" (Some Sensitive) "[type=A s]";
+  check_selector_with_flag "a" (Some Sensitive) "[type=a s]";
+  check_selector_with_flag "I" (Some Sensitive) "[type=I s]";
+  check_selector_with_flag "i" (Some Sensitive) "[type=i s]";
+  check_selector_with_flag "foo" (Some Sensitive) "[type=foo s]";
   check ~expected:"[type=foo s]" "[type=foo S]";
 
   (* Values with spaces should be quoted regardless of flag *)
-  let sel = S.attribute ~flag:Case_sensitive "type" (Exact "A B") in
+  let sel = S.attribute ~flag:Sensitive "type" (Exact "A B") in
   let output = Css.Pp.to_string ~minify:true S.pp sel in
   Alcotest.(check string)
     "value with space and s flag" "[type=\"A B\" s]" output;
 
-  let sel = S.attribute ~flag:Case_insensitive "type" (Exact "foo bar") in
+  let sel = S.attribute ~flag:Insensitive "type" (Exact "foo bar") in
   let output = Css.Pp.to_string ~minify:true S.pp sel in
   Alcotest.(check string)
     "value with space and i flag" "[type=\"foo bar\" i]" output;

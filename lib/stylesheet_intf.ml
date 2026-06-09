@@ -67,7 +67,7 @@ type declared_value = {
 (** A declared value contributed by one property declaration before cascade
     sorting. The value is the declaration's minified CSS value string. *)
 
-type specified_value_source =
+type value_source =
   | Cascaded
   | Initial_default
   | Inherited_default
@@ -77,10 +77,7 @@ type specified_value_source =
   | Unset_inherited
       (** Why a specified value was selected during defaulting. *)
 
-type specified_value = {
-  specified_value : string;
-  specified_value_source : specified_value_source;
-}
+type value = { value : string; value_source : value_source }
 (** Result of applying the non-layout parts of specified-value defaulting. *)
 
 type value_processing_stage =
@@ -96,18 +93,18 @@ type value_processing_stage =
     whether the [url()] body itself quoted its argument so the pretty-printer
     can round-trip the source spelling. Under [--minify] the printer collapses
     every form to the bare quoted string (the shortest spelling). *)
-type url_form = Url_bare | Url_quoted of char
+type url_form = Bare | Quoted of char
 
 type namespace_url = Url of string * url_form | Quoted of string
 
 type cascade_candidate = {
-  candidate_origin : cascade_origin;
-  candidate_layer : string option;
-  candidate_important : bool;
-  candidate_specificity : int;
-  candidate_scope_hops : int option;
-  candidate_source_order : int;
-  candidate_value : string;
+  origin : cascade_origin;
+  layer : string option;
+  important : bool;
+  specificity : int;
+  scope_hops : int option;
+  source_order : int;
+  value : string;
 }
 (** A same-property cascade candidate covering the cascade ordering criteria
     this library can model without a DOM: origin/importance, layer, specificity,
@@ -212,18 +209,14 @@ and viewport_descriptor = { name : string; value : string }
     [device-height], so they aren't typed against the property reader. *)
 
 and keyframe = {
-  keyframe_selector : Keyframe.selector;
-      (** e.g., [From], [To], [Percent 50.] *)
-  keyframe_declarations : Declaration.declaration list;
+  selector : Keyframe.selector;  (** e.g., [From], [To], [Percent 50.] *)
+  declarations : Declaration.declaration list;
 }
 (** A single keyframe within [\@keyframes] *)
 
-and page_pseudo = Page_first | Page_left | Page_right | Page_blank
+and page_pseudo = First | Left | Right | Blank
 
-and page_selector = {
-  page_name : string option;
-  page_pseudos : page_pseudo list;
-}
+and page_selector = { name : string option; pseudos : page_pseudo list }
 (** [@page] selector: an optional page name and zero or more pseudo-pages, e.g.
     [invoice:blank:first] *)
 
@@ -247,35 +240,35 @@ and counter_style_system =
   | Extends of string
 
 and counter_style_descriptor =
-  | Counter_system of counter_style_system
-  | Counter_symbols of string list
-  | Counter_suffix of string
-  | Counter_prefix of string
-  | Counter_fallback of string
-  | Counter_range of string
-  | Counter_pad of string
-  | Counter_negative of string
-  | Counter_additive_symbols of string
-  | Counter_speak_as of string
+  | System of counter_style_system
+  | Symbols of string list
+  | Suffix of string
+  | Prefix of string
+  | Fallback of string
+  | Range of string
+  | Pad of string
+  | Negative of string
+  | Additive_symbols of string
+  | Speak_as of string
 
 and view_transition_descriptor =
   | Navigation of [ `Auto | `None ]
   | Types of string list option
 
 and font_variant_descriptor =
-  | Font_variant_normal
-  | Font_variant_none
-  | Font_variant_values of font_variant_descriptor_value list
+  | Normal
+  | None
+  | Values of font_variant_descriptor_value list
 
 and font_variant_descriptor_value =
-  | Font_variant_ligature of Properties.font_variant_ligature
-  | Font_variant_caps of Properties.font_variant_caps
-  | Font_variant_numeric of Properties.font_variant_numeric_token
-  | Font_variant_east_asian of Properties.east_asian_feature
+  | Ligature of Properties.font_variant_ligature
+  | Caps of Properties.font_variant_caps
+  | Numeric of Properties.font_variant_numeric_token
+  | East_asian of Properties.east_asian_feature
 
 and page_margin_rule = {
-  margin_name : string;
-  margin_descriptors : Declaration.declaration list;
+  name : string;
+  descriptors : Declaration.declaration list;
 }
 (** CSS page margin at-rule inside [@page]. *)
 

@@ -64,10 +64,10 @@ type animation = {
 }
 
 type property_registration = {
-  registered_name : string;
-  registered_syntax : Variables.any_syntax;
-  registered_inherits : bool;
-  registered_initial_value : string option;
+  name : string;
+  syntax : Variables.any_syntax;
+  inherits : bool;
+  initial_value : string option;
 }
 
 type property_registry = { property_registrations : property_registration list }
@@ -160,15 +160,10 @@ let animation ?timeline_time ?progress ?(animated_properties = []) () =
 
 let empty_property_registry = { property_registrations = [] }
 
-let property_registration ?initial_value ~inherits name registered_syntax =
+let property_registration ?initial_value ~inherits name syntax =
   if not (String.length name >= 2 && String.sub name 0 2 = "--") then
     invalid_arg "property_registration: name must start with --";
-  {
-    registered_name = name;
-    registered_syntax;
-    registered_inherits = inherits;
-    registered_initial_value = initial_value;
-  }
+  { name; syntax; inherits; initial_value }
 
 let property_registry ?(property_registrations = []) () =
   { property_registrations }
@@ -394,7 +389,7 @@ let animates_property property ctx =
 
 let registered_property name registry =
   List.find_opt
-    (fun registration -> String.equal name registration.registered_name)
+    (fun registration -> String.equal name registration.name)
     registry.property_registrations
 
 let validate_value_against_syntax (Variables.Syntax syntax) value =
@@ -427,7 +422,7 @@ let validate_registered_custom_property registry decl =
     | None -> Ok ()
     | Some registration ->
         let value = Declaration.string_of_value ~minify:false decl in
-        validate_value_against_syntax registration.registered_syntax value
+        validate_value_against_syntax registration.syntax value
 
 (* Pretty-printers emit a debug-style record for inspection, not CSS source. *)
 
@@ -598,13 +593,13 @@ let pp_animation : animation Pp.t =
 let pp_property_registration ctx registration =
   Pp.char ctx '{';
   Pp.string ctx "name=";
-  Pp.string ctx registration.registered_name;
+  Pp.string ctx registration.name;
   Pp.string ctx "; syntax=";
-  Variables.pp_any_syntax ctx registration.registered_syntax;
+  Variables.pp_any_syntax ctx registration.syntax;
   Pp.string ctx "; inherits=";
-  Pp.string ctx (Bool.to_string registration.registered_inherits);
+  Pp.string ctx (Bool.to_string registration.inherits);
   Pp.string ctx "; initial_value=";
-  pp_string_option ctx registration.registered_initial_value;
+  pp_string_option ctx registration.initial_value;
   Pp.char ctx '}'
 
 let pp_property_registry : property_registry Pp.t =
@@ -880,14 +875,12 @@ module Calc_residual = struct
     | Values.Parens_arg inner -> math_arg_contains_var inner
     | Values.Math_call fn -> math_fn_contains_var fn
 
-  and angle_arg_contains_var = function
-    | Values.Angle_deg _ | Values.Angle_rad _ | Values.Angle_turn _
-    | Values.Angle_grad _ ->
-        false
-    | Values.Angle_num arg -> math_arg_contains_var arg
-    | Values.Angle_op (l, _, r) ->
+  and angle_arg_contains_var : Values.angle_arg -> bool = function
+    | Values.Deg _ | Values.Rad _ | Values.Turn _ | Values.Grad _ -> false
+    | Values.Numeric_arg arg -> math_arg_contains_var arg
+    | Values.Operation (l, _, r) ->
         angle_arg_contains_var l || angle_arg_contains_var r
-    | Values.Angle_parens inner -> angle_arg_contains_var inner
+    | Values.Grouped inner -> angle_arg_contains_var inner
 
   and math_fn_contains_var = function
     | Values.Sin a | Values.Cos a | Values.Tan a -> angle_arg_contains_var a
@@ -1574,7 +1567,7 @@ module Match_selector = struct
   let value_match (matcher : Selector.attribute_match) ~flag actual =
     let normalize =
       match flag with
-      | Some Selector.Case_insensitive -> String.lowercase_ascii
+      | Some Selector.Insensitive -> String.lowercase_ascii
       | _ -> Fun.id
     in
     let actual = normalize actual in
@@ -3018,9 +3011,10 @@ let simplify_gradient_stop ?(layer_order = []) ?layer ctx
 let resolve_image_set_option ctx (option : Properties.image_set_option) =
   let source =
     match option.Properties.source with
-    | Properties.Image_set_url url ->
-        Properties.Image_set_url (resolve_url_leaf ctx url)
-    | Properties.Image_set_string _ as source -> source
+    | Properties.Url url ->
+        (Properties.Url (resolve_url_leaf ctx url)
+          : Properties.image_set_source)
+    | Properties.String _ as source -> source
   in
   { option with Properties.source }
 
@@ -3051,8 +3045,8 @@ let simplify_background_image_leaf ctx
   match value with
   | Properties.Url url ->
       (Properties.Url (resolve_url_leaf ctx url) : Properties.background_image)
-  | Properties.Url_quoted (url, quote) ->
-      Properties.Url_quoted (resolve_url_leaf ctx url, quote)
+  | Properties.Quoted (url, quote) ->
+      Properties.Quoted (resolve_url_leaf ctx url, quote)
   | Properties.Linear_gradient (direction, stops) ->
       Properties.Linear_gradient (direction, gradient_stops stops)
   | Properties.Radial_gradient (config, stops) ->

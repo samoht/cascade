@@ -466,14 +466,13 @@ let raw_descriptor_shape (descriptor : Css.Stylesheet.page_descriptor) =
 
 let page_selectors_string selectors =
   let pseudo = function
-    | Css.Stylesheet.Page_first -> ":first"
-    | Page_left -> ":left"
-    | Page_right -> ":right"
-    | Page_blank -> ":blank"
+    | Css.Stylesheet.First -> ":first"
+    | Left -> ":left"
+    | Right -> ":right"
+    | Blank -> ":blank"
   in
-  let one { Css.Stylesheet.page_name; page_pseudos } =
-    Option.value ~default:"" page_name
-    ^ String.concat "" (List.map pseudo page_pseudos)
+  let one { Css.Stylesheet.name; pseudos } =
+    Option.value ~default:"" name ^ String.concat "" (List.map pseudo pseudos)
   in
   String.concat "," (List.map one selectors)
 
@@ -547,28 +546,22 @@ let rec statement_shape stmt =
       ("keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:"
-             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
-             :: prefixed "    "
-                  (declaration_lines keyframe.keyframe_declarations))
+             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Webkit_keyframes (name, keyframes) ->
       ("webkit-keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:"
-             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
-             :: prefixed "    "
-                  (declaration_lines keyframe.keyframe_declarations))
+             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Moz_keyframes (name, keyframes) ->
       ("moz-keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:"
-             ^ Css.Keyframe.string_of_selector keyframe.keyframe_selector)
-             :: prefixed "    "
-                  (declaration_lines keyframe.keyframe_declarations))
+             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Font_face descriptors ->
       "font-face" :: List.map (fun _ -> "descriptor") descriptors
@@ -584,9 +577,9 @@ let rec statement_shape stmt =
         ]
       :: List.map
            (fun (margin : Css.Stylesheet.page_margin_rule) ->
-             "  margin:" ^ margin.margin_name ^ ":"
+             "  margin:" ^ margin.name ^ ":"
              ^ String.concat ","
-                 (List.map raw_descriptor_shape margin.margin_descriptors))
+                 (List.map raw_descriptor_shape margin.descriptors))
            margins
   | Font_palette_values (name, descriptors) ->
       [
@@ -681,13 +674,13 @@ let add_matching_declarations ~source_order ~property ~origin ~layer
       else
         let candidate : Css.Stylesheet.cascade_candidate =
           {
-            candidate_origin = origin;
-            candidate_important = Css.Declaration.is_important decl;
-            candidate_layer = layer;
-            candidate_specificity = specificity;
-            candidate_scope_hops = scope_hops;
-            candidate_source_order = order;
-            candidate_value = declaration_value_source decl;
+            origin;
+            important = Css.Declaration.is_important decl;
+            layer;
+            specificity;
+            scope_hops;
+            source_order = order;
+            value = declaration_value_source decl;
           }
         in
         candidate :: acc)
@@ -824,51 +817,47 @@ and collect_conditional_statement ~source_order ~property ~document ~query
 let cascade_layer_candidate_of (c : Css.Stylesheet.cascade_candidate) :
     Css.Stylesheet.cascade_layer_candidate =
   {
-    layer = c.candidate_layer;
-    important = c.candidate_important;
-    source_order = c.candidate_source_order;
-    value = c.candidate_value;
+    layer = c.layer;
+    important = c.important;
+    source_order = c.source_order;
+    value = c.value;
   }
 
 let cascade_origin_candidate_of (c : Css.Stylesheet.cascade_candidate) :
     Css.Stylesheet.cascade_origin_candidate =
   {
-    origin = c.candidate_origin;
-    important = c.candidate_important;
-    source_order = c.candidate_source_order;
-    value = c.candidate_value;
+    origin = c.origin;
+    important = c.important;
+    source_order = c.source_order;
+    value = c.value;
   }
 
 let same_layer_candidate (c : Css.Stylesheet.cascade_candidate)
     (l : Css.Stylesheet.cascade_layer_candidate) =
-  l.layer = c.candidate_layer
-  && l.important = c.candidate_important
-  && l.source_order = c.candidate_source_order
+  l.layer = c.layer && l.important = c.important
+  && l.source_order = c.source_order
 
 let same_origin_candidate (c : Css.Stylesheet.cascade_candidate)
     (l : Css.Stylesheet.cascade_origin_candidate) =
-  l.origin = c.candidate_origin
-  && l.important = c.candidate_important
-  && l.source_order = c.candidate_source_order
+  l.origin = c.origin && l.important = c.important
+  && l.source_order = c.source_order
 
 let lower_layer_candidates ~layer_order
     (candidate : Css.Stylesheet.cascade_candidate) candidates =
   Css.Stylesheet.cascade_revert_layer_candidates ~layer_order
-    ~important:candidate.candidate_important
-    ~current_layer:candidate.candidate_layer
+    ~important:candidate.important ~current_layer:candidate.layer
     (List.map cascade_layer_candidate_of candidates)
 
 let lower_origin_candidates (candidate : Css.Stylesheet.cascade_candidate)
     candidates =
-  Css.Stylesheet.cascade_revert_origin_candidates
-    ~important:candidate.candidate_important
-    ~current_origin:candidate.candidate_origin
+  Css.Stylesheet.cascade_revert_origin_candidates ~important:candidate.important
+    ~current_origin:candidate.origin
     (List.map cascade_origin_candidate_of candidates)
 
 let rec winning_resolved_candidate ~layer_order candidates =
   Option.bind (Css.Stylesheet.winning_cascade_candidate ~layer_order candidates)
     (fun (candidate : Css.Stylesheet.cascade_candidate) ->
-      match candidate.candidate_value with
+      match candidate.value with
       | "revert-layer" ->
           let lower =
             lower_layer_candidates ~layer_order candidate candidates
@@ -902,7 +891,7 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
   winning_resolved_candidate ~layer_order candidates
   |> Option.map (fun ((candidate : Css.Stylesheet.cascade_candidate), value) ->
       let decl = Css.Declaration.of_string (property ^ ": " ^ value) in
-      match candidate.candidate_layer with
+      match candidate.layer with
       | None -> Css.eval_declaration ctx ~layer_order decl
       | Some layer -> Css.eval_declaration ctx ~layer_order ~layer decl)
 
@@ -1316,16 +1305,16 @@ let test_property_registration_context_contract () =
   Alcotest.(check (option string))
     "registered property lookup" (Some "--gap")
     (Option.map
-       (fun (reg : Css.Context.property_registration) -> reg.registered_name)
+       (fun (reg : Css.Context.property_registration) -> reg.name)
        (Css.Context.registered_property "--gap" registry));
   Alcotest.(check bool)
     "registered inherits flag" false
     (let (reg : Css.Context.property_registration) = color_reg in
-     reg.registered_inherits);
+     reg.inherits);
   Alcotest.(check (option string))
     "registered initial value" (Some "0px")
     (let (reg : Css.Context.property_registration) = length_reg in
-     reg.registered_initial_value);
+     reg.initial_value);
   check_registered_property_valid "registered length accepts length" ~registry
     "--gap: 1rem";
   check_registered_property_valid "registered color accepts color" ~registry

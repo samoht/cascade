@@ -1,0 +1,9 @@
+(rule
+ (alias regen)
+ (mode promote)
+ (enabled_if
+  (= %{env:REGEN=0} 1))
+ (deps
+  (source_tree ../scripts))
+ (action
+  (run ../scripts/generate.sh .)))

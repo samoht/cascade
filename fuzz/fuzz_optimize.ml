@@ -33,8 +33,7 @@ let generated_import =
 let generated_namespace =
   Css.Stylesheet.Namespace
     ( Some "svg",
-      Css.Stylesheet.Url ("http://www.w3.org/2000/svg", Css.Stylesheet.Url_bare)
-    )
+      Css.Stylesheet.Url ("http://www.w3.org/2000/svg", Css.Stylesheet.Bare) )
 
 let generated_media buf =
   Css.Stylesheet.Media
@@ -70,14 +69,13 @@ let generated_keyframes =
     ( "fade",
       [
         {
-          keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.Percent 0. ];
-          keyframe_declarations =
+          selector = Css.Keyframe.Positions [ Css.Keyframe.Percent 0. ];
+          declarations =
             [ Css.Declaration.opacity (Css.Properties.Opacity_number 0.) ];
         };
         {
-          keyframe_selector =
-            Css.Keyframe.Positions [ Css.Keyframe.Percent 100. ];
-          keyframe_declarations =
+          selector = Css.Keyframe.Positions [ Css.Keyframe.Percent 100. ];
+          declarations =
             [ Css.Declaration.opacity (Css.Properties.Opacity_number 1.) ];
         };
       ] )
@@ -112,7 +110,7 @@ let generated_stylesheet buf =
       Css.Stylesheet.with_origin Css.Stylesheet.Author
         [ rule buf 32; rule buf 32 ];
       Css.Stylesheet.Page
-        ( [ { Css.Stylesheet.page_name = None; page_pseudos = [ Page_first ] } ],
+        ( [ { Css.Stylesheet.name = None; pseudos = [ First ] } ],
           [ Css.Declaration.margin [ Css.Values.Px 10. ] ] );
       generated_keyframes;
     ]

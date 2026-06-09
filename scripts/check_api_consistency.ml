@@ -48,8 +48,8 @@ let ignored_types =
     "cascade_layer_candidate";
     "cascade_candidate";
     "declared_value";
-    "specified_value";
-    "specified_value_source";
+    "value";
+    "value_source";
     "value_processing_stage";
     "namespace_url";
     (* Stylesheet analysis records/enums, not standalone CSS value parsers. *)

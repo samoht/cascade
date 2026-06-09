@@ -2008,40 +2008,40 @@ let specified_source_name = function
   | Unset_initial -> "unset-initial"
   | Unset_inherited -> "unset-inherited"
 
-let check_specified name expected_value expected_source actual =
-  Alcotest.(check string)
-    (name ^ " value") expected_value actual.specified_value;
+let check_specified name expected_value expected_source
+    (actual : Css.Stylesheet.value) =
+  Alcotest.(check string) (name ^ " value") expected_value actual.value;
   Alcotest.(check string)
     (name ^ " source") expected_source
-    (specified_source_name actual.specified_value_source)
+    (specified_source_name actual.value_source)
 
 (* Not a roundtrip test *)
 let c43_specified_values () =
   (* CSS Cascade section 4.3: defaulting guarantees a specified value exists for
      every property. CSS-wide keywords are handled before computed values. *)
   check_specified "normal cascaded value" "block" "cascaded"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"inline"
-       ~inherited:None ~cascaded:(Some "block"));
+    (Css.Stylesheet.value ~inherits:false ~initial:"inline" ~inherited:None
+       ~cascaded:(Some "block"));
   check_specified "missing non-inherited property" "auto" "initial-default"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
-       ~inherited:None ~cascaded:None);
+    (Css.Stylesheet.value ~inherits:false ~initial:"auto" ~inherited:None
+       ~cascaded:None);
   check_specified "missing inherited property" "blue" "inherited-default"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"black"
+    (Css.Stylesheet.value ~inherits:true ~initial:"black"
        ~inherited:(Some "blue") ~cascaded:None);
   check_specified "initial keyword" "medium" "initial-keyword"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"medium"
+    (Css.Stylesheet.value ~inherits:true ~initial:"medium"
        ~inherited:(Some "large") ~cascaded:(Some "initial"));
   check_specified "inherit keyword" "4.2px" "inherit-keyword"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+    (Css.Stylesheet.value ~inherits:false ~initial:"medium"
        ~inherited:(Some "4.2px") ~cascaded:(Some "inherit"));
   check_specified "inherit keyword on root" "medium" "inherit-keyword"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
-       ~inherited:None ~cascaded:(Some "inherit"));
+    (Css.Stylesheet.value ~inherits:false ~initial:"medium" ~inherited:None
+       ~cascaded:(Some "inherit"));
   check_specified "unset on inherited property" "inside" "unset-inherited"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+    (Css.Stylesheet.value ~inherits:true ~initial:"outside"
        ~inherited:(Some "inside") ~cascaded:(Some "unset"));
   check_specified "unset on non-inherited property" "auto" "unset-initial"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
+    (Css.Stylesheet.value ~inherits:false ~initial:"auto"
        ~inherited:(Some "80px") ~cascaded:(Some "unset"))
 
 (* Not a roundtrip test *)
@@ -2069,22 +2069,13 @@ let c42_integrated_order () =
      order. *)
   let candidate origin important layer specificity scope_hops source_order value
       : Css.Stylesheet.cascade_candidate =
-    {
-      candidate_origin = origin;
-      candidate_important = important;
-      candidate_layer = layer;
-      candidate_specificity = specificity;
-      candidate_scope_hops = scope_hops;
-      candidate_source_order = source_order;
-      candidate_value = value;
-    }
+    { origin; important; layer; specificity; scope_hops; source_order; value }
   in
   let winner_value candidates =
     Css.Stylesheet.winning_cascade_candidate
       ~layer_order:[ "reset"; "theme"; "utilities" ]
       candidates
-    |> Option.map (fun (c : Css.Stylesheet.cascade_candidate) ->
-        c.candidate_value)
+    |> Option.map (fun (c : Css.Stylesheet.cascade_candidate) -> c.value)
   in
   Alcotest.(check (option string))
     "important user origin beats important author origin"
@@ -2166,18 +2157,18 @@ let c43_revert_values () =
 let c47_examples () =
   (* CSS Cascade section 4.7 examples this library can model from CSS text. *)
   check_specified "border width inherit example" "4.2px" "inherit-keyword"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+    (Css.Stylesheet.value ~inherits:false ~initial:"medium"
        ~inherited:(Some "4.2px") ~cascaded:(Some "inherit"));
   check_specified "width missing declaration example" "auto" "initial-default"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
-       ~inherited:None ~cascaded:None);
+    (Css.Stylesheet.value ~inherits:false ~initial:"auto" ~inherited:None
+       ~cascaded:None);
   check_specified "list-style-position inherit example" "inside"
     "inherit-keyword"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+    (Css.Stylesheet.value ~inherits:true ~initial:"outside"
        ~inherited:(Some "inside") ~cascaded:(Some "inherit"));
   check_specified "list-style-position initial example" "outside"
     "initial-keyword"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+    (Css.Stylesheet.value ~inherits:true ~initial:"outside"
        ~inherited:(Some "inside") ~cascaded:(Some "initial"))
 
 let dom_selector_boundary () =
@@ -2285,11 +2276,11 @@ let value_resolution_boundary () =
     (Css.Context.initial_value "width" ctx);
   check_specified "inherit fallback before computed stage" "16px"
     "inherit-keyword"
-    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+    (Css.Stylesheet.value ~inherits:false ~initial:"medium"
        ~inherited:(Some "16px") ~cascaded:(Some "inherit"));
   check_specified "unset chooses inherited before computed stage" "canvastext"
     "unset-inherited"
-    (Css.Stylesheet.specified_value ~inherits:true ~initial:"black"
+    (Css.Stylesheet.value ~inherits:true ~initial:"black"
        ~inherited:(Some "canvastext") ~cascaded:(Some "unset"))
 
 let custom_property_boundary () =
@@ -5940,7 +5931,7 @@ let customprops1_unresolved_fallback () =
     | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  let no_resolve _ = None in
+  let no_resolve _ = (None : string option) in
   let render_theme ?theme ?theme_defaults sheet =
     sheet
     |> Css.resolve_theme ?theme ?theme_defaults
@@ -5987,7 +5978,7 @@ let customprops1_fallback_list () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let resolve_font = function "font" -> Some "Arial" | _ -> None in
-  let no_resolve _ = None in
+  let no_resolve _ = (None : string option) in
   let render_theme ?theme ?theme_defaults sheet =
     sheet
     |> Css.resolve_theme ?theme ?theme_defaults
@@ -6224,7 +6215,7 @@ let custom_props1_fallback_resolution_mode () =
     | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  let no_resolve _ = None in
+  let no_resolve _ = (None : string option) in
   let inlined css =
     parse css
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
@@ -6261,7 +6252,7 @@ let custom_props1_theme_protects_var () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let theme = Css.Pp.String_set.add "brand" Css.Pp.String_set.empty in
-  let no_resolve _ = None in
+  let no_resolve _ = (None : string option) in
   let inlined css =
     parse css
     |> Css.resolve_theme ~theme ~theme_defaults:no_resolve
@@ -6283,7 +6274,7 @@ let theme_set_not_undefined () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let theme = Css.Pp.String_set.empty |> Css.Pp.String_set.add "brand" in
-  let no_resolve _ = None in
+  let no_resolve _ = (None : string option) in
   let resolve_accent = function "accent" -> Some "#ff0000" | _ -> None in
   let render ?(resolve = no_resolve) css =
     parse css

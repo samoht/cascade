@@ -8,7 +8,7 @@ type attr_fact = {
   flag : Selector.attr_flag option;
 }
 
-type nth_fact = Nth_index of int | Nth_odd | Nth_even
+type nth_fact = Index of int | Odd | Even
 
 type t = {
   ids : String_set.t;
@@ -72,16 +72,15 @@ let is_pseudo_element = function
 let add_nth nth s = { s with nth = nth :: s.nth; complex = true }
 
 let nth_of_selector = function
-  | Selector_intf.First_child | Selector_intf.Only_child -> Some (Nth_index 1)
-  | Selector_intf.Nth_child (Selector_intf.Odd, None) -> Some Nth_odd
-  | Selector_intf.Nth_child (Selector_intf.Even, None) -> Some Nth_even
+  | Selector_intf.First_child | Selector_intf.Only_child -> Some (Index 1)
+  | Selector_intf.Nth_child (Selector_intf.Odd, None) -> Some Odd
+  | Selector_intf.Nth_child (Selector_intf.Even, None) -> Some Even
   | Selector_intf.Nth_child (Selector_intf.Index n, None) when n >= 1 ->
-      Some (Nth_index n)
-  | Selector_intf.Nth_child (Selector_intf.An_plus_b (2, 1), None) ->
-      Some Nth_odd
+      Some (Index n)
+  | Selector_intf.Nth_child (Selector_intf.An_plus_b (2, 1), None) -> Some Odd
   | Selector_intf.Nth_child (Selector_intf.An_plus_b (2, 0), None)
   | Selector_intf.Nth_child (Selector_intf.An_plus_b (2, 2), None) ->
-      Some Nth_even
+      Some Even
   | _ -> None
 
 let add_not_simple s (sel : Selector.t) =
@@ -168,15 +167,14 @@ let exact_value = function
 let same_attr_key a b = a.key = b.key
 
 let attr_flag_is_case_insensitive = function
-  | Some Selector_intf.Case_insensitive -> true
+  | Some Selector_intf.Insensitive -> true
   | _ -> false
 
 let exact_attr_disjoint a b =
   match (exact_value a.matcher, exact_value b.matcher) with
   | Some x, Some y -> (
       match (a.flag, b.flag) with
-      | Some Selector_intf.Case_sensitive, Some Selector_intf.Case_sensitive ->
-          x <> y
+      | Some Selector_intf.Sensitive, Some Selector_intf.Sensitive -> x <> y
       | _ -> String.lowercase_ascii x <> String.lowercase_ascii y)
   | _ -> false
 
@@ -206,23 +204,22 @@ let attr_negation_disjoint attrs not_attrs =
 
 let nth_disjoint a b =
   match (a, b) with
-  | Nth_index x, Nth_index y -> x <> y
-  | Nth_index x, Nth_odd | Nth_odd, Nth_index x -> x mod 2 = 0
-  | Nth_index x, Nth_even | Nth_even, Nth_index x -> x mod 2 <> 0
-  | Nth_odd, Nth_even | Nth_even, Nth_odd -> true
-  | Nth_odd, Nth_odd | Nth_even, Nth_even -> false
+  | Index x, Index y -> x <> y
+  | Index x, Odd | Odd, Index x -> x mod 2 = 0
+  | Index x, Even | Even, Index x -> x mod 2 <> 0
+  | Odd, Even | Even, Odd -> true
+  | Odd, Odd | Even, Even -> false
 
 let nths_disjoint a b =
   List.exists (fun nth_a -> List.exists (nth_disjoint nth_a) b.nth) a.nth
 
 let nth_implies a b =
   match (a, b) with
-  | Nth_index x, Nth_index y -> x = y
-  | Nth_index x, Nth_odd -> x mod 2 <> 0
-  | Nth_index x, Nth_even -> x mod 2 = 0
-  | Nth_odd, Nth_odd | Nth_even, Nth_even -> true
-  | Nth_odd, (Nth_index _ | Nth_even) | Nth_even, (Nth_index _ | Nth_odd) ->
-      false
+  | Index x, Index y -> x = y
+  | Index x, Odd -> x mod 2 <> 0
+  | Index x, Even -> x mod 2 = 0
+  | Odd, Odd | Even, Even -> true
+  | Odd, (Index _ | Even) | Even, (Index _ | Odd) -> false
 
 let nth_negation_disjoint nth not_nth =
   List.exists

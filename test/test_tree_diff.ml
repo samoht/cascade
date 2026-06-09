@@ -37,13 +37,14 @@ let diff_rule_added () =
     "addition is not empty" false
     (Cascade_diff.Tree_diff.is_empty d);
   Alcotest.(check bool) "has rule diffs" true (d.rules <> []);
-  (* Check that at least one Rule_added exists *)
+  (* Check that at least one Added exists *)
   let has_added =
     List.exists
-      (function Cascade_diff.Tree_diff.Rule_added _ -> true | _ -> false)
+      (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+        match diff with Cascade_diff.Tree_diff.Added _ -> true | _ -> false)
       d.rules
   in
-  Alcotest.(check bool) "has Rule_added" true has_added
+  Alcotest.(check bool) "has Added" true has_added
 
 (* ===== Rule removals ===== *)
 
@@ -56,10 +57,11 @@ let diff_rule_removed () =
     (Cascade_diff.Tree_diff.is_empty d);
   let has_removed =
     List.exists
-      (function Cascade_diff.Tree_diff.Rule_removed _ -> true | _ -> false)
+      (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+        match diff with Cascade_diff.Tree_diff.Removed _ -> true | _ -> false)
       d.rules
   in
-  Alcotest.(check bool) "has Rule_removed" true has_removed
+  Alcotest.(check bool) "has Removed" true has_removed
 
 (* ===== Property value changes ===== *)
 
@@ -91,10 +93,13 @@ let diff_rule_reordered () =
     (Cascade_diff.Tree_diff.is_empty d);
   let has_reordered =
     List.exists
-      (function Cascade_diff.Tree_diff.Rule_reordered _ -> true | _ -> false)
+      (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+        match diff with
+        | Cascade_diff.Tree_diff.Reordered _ -> true
+        | _ -> false)
       d.rules
   in
-  Alcotest.(check bool) "has Rule_reordered" true has_reordered
+  Alcotest.(check bool) "has Reordered" true has_reordered
 
 (* ===== Container (media) changes ===== *)
 

@@ -3292,9 +3292,7 @@ let pp_radial_gradient_named name ctx (config, stops) =
     ctx (config, stops)
 
 let pp_image_set_option ctx { source; resolution; mime_type } =
-  (match source with
-  | Image_set_url u -> Pp.url ctx u
-  | Image_set_string s -> Pp.quoted ctx s);
+  (match source with Url u -> Pp.url ctx u | String s -> Pp.quoted ctx s);
   Option.iter
     (fun mime ->
       Pp.space ctx ();
@@ -3309,9 +3307,10 @@ let pp_image_set_option ctx { source; resolution; mime_type } =
     resolution
 
 let rec pp_background_image : background_image Pp.t =
- fun ctx -> function
+ fun ctx (image : background_image) ->
+  match image with
   | Url url -> Pp.url ctx url
-  | Url_quoted (url, quote) ->
+  | Quoted (url, quote) ->
       if Pp.minified ctx then Pp.url ctx url else pp_quoted_url quote ctx url
   | Linear_gradient (dir, stops) ->
       pp_linear_gradient_named "linear-gradient" ctx (dir, stops)
@@ -7196,10 +7195,10 @@ let pp_property : type a. a property Pp.t =
   | Font_synthesis_small_caps -> Pp.string ctx "font-synthesis-small-caps"
   | Font_synthesis_position -> Pp.string ctx "font-synthesis-position"
   | Font_variant_ligatures -> Pp.string ctx "font-variant-ligatures"
-  | Font_variant_caps -> Pp.string ctx "font-variant-caps"
-  | Font_variant_numeric -> Pp.string ctx "font-variant-numeric"
+  | Caps -> Pp.string ctx "font-variant-caps"
+  | Numeric -> Pp.string ctx "font-variant-numeric"
   | Font_variant_position -> Pp.string ctx "font-variant-position"
-  | Font_variant_east_asian -> Pp.string ctx "font-variant-east-asian"
+  | East_asian -> Pp.string ctx "font-variant-east-asian"
   | Backdrop_filter -> Pp.string ctx "backdrop-filter"
   | Webkit_backdrop_filter -> Pp.string ctx "-webkit-backdrop-filter"
   | Webkit_mask_image -> Pp.string ctx "-webkit-mask-image"
@@ -9506,10 +9505,10 @@ let rec pp_timeline_name : timeline_name Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
- fun ctx { timeline_name; timeline_axis } ->
-  Pp.string ctx timeline_name;
+ fun ctx { name; axis } ->
+  Pp.string ctx name;
   Pp.space ctx ();
-  pp_timeline_axis ctx timeline_axis
+  pp_timeline_axis ctx axis
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
@@ -14471,12 +14470,12 @@ let rec read_timeline_name t : timeline_name =
 
 let read_timeline_shorthand_item t : timeline_shorthand_item =
   Cursor.ws t;
-  let timeline_name = Cursor.ident ~keep_case:true t in
-  if not (String.starts_with ~prefix:"--" timeline_name) then
+  let name = Cursor.ident ~keep_case:true t in
+  if not (String.starts_with ~prefix:"--" name) then
     Cursor.err_invalid t "timeline name";
   Cursor.ws t;
-  let timeline_axis = read_timeline_axis t in
-  { timeline_name; timeline_axis }
+  let axis = read_timeline_axis t in
+  { name; axis }
 
 let rec read_timeline_shorthand t : timeline_shorthand =
   Cursor.enum_or_var "timeline"
@@ -16273,10 +16272,10 @@ let rec read_overlay t : overlay =
     t
 
 type transition_parts = {
-  mutable transition_property : transition_property_value option;
-  mutable transition_times : duration list;
-  mutable transition_timing : timing_function option;
-  mutable transition_behavior : transition_behavior option;
+  mutable property : transition_property_value option;
+  mutable times : duration list;
+  mutable timing : timing_function option;
+  mutable behavior : transition_behavior option;
 }
 
 let read_transition_part t read set =
@@ -16296,41 +16295,37 @@ let transition_property_start t =
   | _ -> false
 
 let read_transition_property_part parts t =
-  if
-    Option.is_some parts.transition_property
-    || not (transition_property_start t)
-  then false
+  if Option.is_some parts.property || not (transition_property_start t) then
+    false
   else
     read_transition_part t read_transition_property_value (fun v ->
-        parts.transition_property <- Option.Some v)
+        parts.property <- Option.Some v)
 
 let read_transition_var_property_part parts t =
-  if
-    Option.is_some parts.transition_property
-    || not (Cursor.looking_at_func "var" t)
-  then false
+  if Option.is_some parts.property || not (Cursor.looking_at_func "var" t) then
+    false
   else read_transition_property_part parts t
 
 let read_transition_timing_part parts t =
-  if Option.is_some parts.transition_timing then false
+  if Option.is_some parts.timing then false
   else
     read_transition_part t read_timing_function (fun v ->
-        parts.transition_timing <- Option.Some v)
+        parts.timing <- Option.Some v)
 
 let read_transition_behavior_part parts t =
-  if Option.is_some parts.transition_behavior then false
+  if Option.is_some parts.behavior then false
   else
     read_transition_part t read_transition_behavior (fun v ->
-        parts.transition_behavior <- Option.Some v)
+        parts.behavior <- Option.Some v)
 
 let read_transition_time_part parts t =
-  if List.length parts.transition_times >= 2 then false
+  if List.length parts.times >= 2 then false
   else
     read_transition_part t read_duration (fun v ->
-        parts.transition_times <- v :: parts.transition_times)
+        parts.times <- v :: parts.times)
 
 let transition_duration_delay parts =
-  match List.rev parts.transition_times with
+  match List.rev parts.times with
   | [] -> (Option.None, Option.None)
   | [ d ] -> (Option.Some d, Option.None)
   | d :: l :: _ -> (Option.Some d, Option.Some l)
@@ -16349,10 +16344,10 @@ let transition_property_or_all = function
 let read_transition_shorthand t : transition_shorthand =
   let parts =
     {
-      transition_property = Option.None;
-      transition_times = [];
-      transition_timing = Option.None;
-      transition_behavior = Option.None;
+      property = Option.None;
+      times = [];
+      timing = Option.None;
+      behavior = Option.None;
     }
   in
   let consumed = ref true in
@@ -16360,14 +16355,14 @@ let read_transition_shorthand t : transition_shorthand =
     Cursor.ws t;
     consumed := read_transition_next_part parts t
   done;
-  let property = transition_property_or_all parts.transition_property in
+  let property = transition_property_or_all parts.property in
   let duration, delay = transition_duration_delay parts in
   {
     property;
     duration;
-    timing_function = parts.transition_timing;
+    timing_function = parts.timing;
     delay;
-    behavior = parts.transition_behavior;
+    behavior = parts.behavior;
   }
 
 let rec read_transition t : transition =
@@ -16633,7 +16628,7 @@ module Animation = struct
     | Paused -> Some "paused"
     | _ -> None
 
-  let timeline_name : animation_timeline -> string option = function
+  let name : animation_timeline -> string option = function
     | Auto -> Some "auto"
     | _ -> None
 
@@ -16754,8 +16749,7 @@ module Animation = struct
 
   let apply_timeline t state acc tl =
     if !(state.timeline_seen) then
-      set_string_name t "animation-timeline" state.name_seen acc
-        (timeline_name tl)
+      set_string_name t "animation-timeline" state.name_seen acc (name tl)
     else (
       state.timeline_seen := true;
       { acc with timeline = Some tl })
@@ -17982,7 +17976,7 @@ let read_bg_url_arg inner =
   | Some (url, quote) ->
       Cursor.ws inner;
       Cursor.expect_eof inner;
-      Url_quoted (url, quote)
+      (Quoted (url, quote) : background_image)
   | None ->
       let url = Cursor.consume_remaining_as_string ~trim:true inner in
       if url = "" then Cursor.err_expected inner "url argument" else Url url
@@ -18091,8 +18085,8 @@ let read_image_set_option t : image_set_option =
   let source : image_set_source =
     Cursor.one_of
       [
-        (fun t -> (Image_set_url (Cursor.url t) : image_set_source));
-        (fun t -> Image_set_string (Cursor.string t));
+        (fun t -> (Url (Cursor.url t) : image_set_source));
+        (fun t -> String (Cursor.string t));
       ]
       t
   in
@@ -18766,10 +18760,10 @@ let read_any_property t =
   | "font-synthesis-small-caps" -> Prop Font_synthesis_small_caps
   | "font-synthesis-position" -> Prop Font_synthesis_position
   | "font-variant-ligatures" -> Prop Font_variant_ligatures
-  | "font-variant-caps" -> Prop Font_variant_caps
-  | "font-variant-numeric" -> Prop Font_variant_numeric
+  | "font-variant-caps" -> Prop Caps
+  | "font-variant-numeric" -> Prop Numeric
   | "font-variant-position" -> Prop Font_variant_position
-  | "font-variant-east-asian" -> Prop Font_variant_east_asian
+  | "font-variant-east-asian" -> Prop East_asian
   | "forced-color-adjust" -> Prop Forced_color_adjust
   | "gap" -> Prop Gap
   | "grid-area" -> Prop Grid_area
@@ -20103,7 +20097,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Font_family -> pp pp_font_family
   | Font_feature_settings -> pp pp_font_feature_settings
   | Font_variation_settings -> pp pp_font_variation_settings
-  | Font_variant_numeric -> pp pp_font_variant_numeric
+  | Numeric -> pp pp_font_variant_numeric
   | Font_variant_numeric_token -> pp pp_font_variant_numeric_token
   | Blend_mode -> pp pp_blend_mode
   | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
@@ -20275,6 +20269,21 @@ let is_plus_or_minus_delim = function
       true
   | _ -> false
 
+let strip_math_whitespace comps =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+        let prev_pm =
+          match acc with [] -> false | p :: _ -> is_plus_or_minus_delim p
+        in
+        let next_pm =
+          match rest with [] -> false | n :: _ -> is_plus_or_minus_delim n
+        in
+        if prev_pm || next_pm then aux (ws :: acc) rest else aux acc rest
+    | other :: rest -> aux (other :: acc) rest
+  in
+  aux [] comps
+
 (* [in_math] tracks whether the current component list is inside a math
    function's grammar. It enters at the args of a [calc()] / [min()] / ... call,
    propagates through grouping parens ([Block]s) since those are math operands,
@@ -20304,21 +20313,6 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
       comps
   in
   if in_math then strip_math_whitespace comps' else comps'
-
-and strip_math_whitespace comps =
-  let rec aux acc = function
-    | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
-        let prev_pm =
-          match acc with [] -> false | p :: _ -> is_plus_or_minus_delim p
-        in
-        let next_pm =
-          match rest with [] -> false | n :: _ -> is_plus_or_minus_delim n
-        in
-        if prev_pm || next_pm then aux (ws :: acc) rest else aux acc rest
-    | other :: rest -> aux (other :: acc) rest
-  in
-  aux [] comps
 
 (* AST-level value normaliser: applies semantic (equivalence) canonicalisation
    so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
@@ -20751,10 +20745,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_synthesis_small_caps -> pp pp_font_synthesis_small_caps
   | Font_synthesis_position -> pp pp_font_synthesis_position
   | Font_variant_ligatures -> pp pp_font_variant_ligatures
-  | Font_variant_caps -> pp pp_font_variant_caps
-  | Font_variant_numeric -> pp pp_font_variant_numeric
+  | Caps -> pp pp_font_variant_caps
+  | Numeric -> pp pp_font_variant_numeric
   | Font_variant_position -> pp pp_font_variant_position
-  | Font_variant_east_asian -> pp pp_font_variant_east_asian
+  | East_asian -> pp pp_font_variant_east_asian
   | Webkit_font_smoothing -> pp pp_webkit_font_smoothing
   | Scroll_snap_type -> pp pp_scroll_snap_type
   | Container_type -> pp pp_container_type

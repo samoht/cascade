@@ -70,11 +70,12 @@ let list_filter_map_preserve f xs =
   in
   loop false [] xs
 
-let option_map_preserve f = function
-  | None -> None
-  | Some x as o ->
+let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
+  match value with
+  | None -> (None : 'a option)
+  | Some x ->
       let y = f x in
-      if y == x then o else Some y
+      if y == x then value else Some y
 
 let rec list_same xs ys =
   match (xs, ys) with
@@ -270,10 +271,10 @@ let shorthand_covers_longhand : type a b.
   | Font, Line_height -> true
   | Font, Font_family -> true
   | Font, Font_variant_ligatures -> true
-  | Font, Font_variant_caps -> true
-  | Font, Font_variant_numeric -> true
+  | Font, Caps -> true
+  | Font, Numeric -> true
   | Font, Font_variant_position -> true
-  | Font, Font_variant_east_asian -> true
+  | Font, East_asian -> true
   | Font, Font_variant_emoji -> true
   | Font, Font_variation_settings -> true
   | Font, Font_feature_settings -> true
@@ -1111,15 +1112,17 @@ let render_font_shorthand decls : Properties.font option =
            })
   | _ -> Option.None
 
-let try_compose_font indexed_decls =
+let try_compose_font (indexed_decls : (int * Declaration.declaration) list) :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   match take_first_n 5 indexed_decls with
-  | None -> None
+  | None -> Option.None
   | Some (five, rest) -> (
       let raw_decls = List.map snd five in
       if
         (not (List.for_all is_font_longhand raw_decls))
         || not (same_importance raw_decls)
-      then None
+      then Option.None
       else
         match render_font_shorthand raw_decls with
         | Some font_value ->
@@ -1130,7 +1133,7 @@ let try_compose_font indexed_decls =
                 Font font_value
             in
             Some ((idx, merged), rest)
-        | None -> None)
+        | None -> Option.None)
 
 let compose_font_shorthand decls =
   let rec go acc decls =
@@ -1434,17 +1437,19 @@ let declaration_of_border_parts ~important widths styles colors =
    exempt. *)
 let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
 
-let try_compose_border indexed_decls =
+let try_compose_border (indexed_decls : (int * Declaration.declaration) list) :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   match take_first_n 12 indexed_decls with
-  | None -> None
+  | None -> Option.None
   | Some twelve -> (
       let twelve, rest = twelve in
       let raw_decls = List.map snd twelve in
-      if not (same_importance raw_decls) then None
-      else if List.exists has_runtime_substitution raw_decls then None
+      if not (same_importance raw_decls) then Option.None
+      else if List.exists has_runtime_substitution raw_decls then Option.None
       else
         match border_parts_of raw_decls with
-        | None -> None
+        | None -> Option.None
         | Some (widths, styles, colors) ->
             let merged =
               declaration_of_border_parts
@@ -1471,14 +1476,14 @@ let compose_border_shorthand decls =
    [border] would clobber it (the reset/reorder case is handled separately). *)
 let try_compose_border_whole ~ctx indexed_decls =
   match take_first_n 3 indexed_decls with
-  | None -> None
+  | None -> Option.None
   | Some (three, rest) -> (
       let raw = List.map snd three in
-      if not (same_importance raw) then None
+      if not (same_importance raw) then Option.None
       else
-        let width : Properties.border_width option ref = ref None in
-        let style : Properties.border_style option ref = ref None in
-        let color : Values.color option ref = ref None in
+        let width : Properties.border_width option ref = ref Option.None in
+        let style : Properties.border_style option ref = ref Option.None in
+        let color : Values.color option ref = ref Option.None in
         List.iter
           (function
             | Declaration { property = Border_width; value = [ w ]; _ } ->
@@ -1688,13 +1693,18 @@ let record_border_image_longhand
   | Declaration { property = Border_image_repeat; _ } -> foldable := false
   | _ -> ()
 
-let compose_border_image_run run =
-  let source : Properties.background_image option ref = ref None in
-  let slice : Properties.border_image_slice option ref = ref None in
-  let width : Properties.border_image_width_item list option ref = ref None in
-  let outset : Properties.border_image_outset_item list option ref = ref None in
+let compose_border_image_run (run : (int * Declaration.declaration) list) :
+    (int * Declaration.declaration) option =
+  let source : Properties.background_image option ref = ref Option.None in
+  let slice : Properties.border_image_slice option ref = ref Option.None in
+  let width : Properties.border_image_width_item list option ref =
+    ref Option.None
+  in
+  let outset : Properties.border_image_outset_item list option ref =
+    ref Option.None
+  in
   let repeat : Properties.border_image_repeat_keyword list option ref =
-    ref None
+    ref Option.None
   in
   (* A CSS-wide keyword or [var()] in any longhand cannot be folded into the
      [border_image] record, which holds plain component values. *)
@@ -1707,7 +1717,7 @@ let compose_border_image_run run =
     not
       (border_image_run_can_compose run ~foldable:!foldable ~slice:!slice
          ~width:!width ~outset:!outset)
-  then None
+  then Option.None
   else
     let merged =
       border_image_shorthand run ~source:!source ~slice:!slice ~width:!width
@@ -1795,9 +1805,10 @@ let bg_clip_part : declaration -> Properties.background_box option = function
       match value with Inherit | Initial | Unset -> None | v -> Some v)
   | _ -> None
 
-type bg_updater =
-  declaration ->
-  (Properties.background_shorthand -> Properties.background_shorthand) option
+type bg_part =
+  Properties.background_shorthand -> Properties.background_shorthand
+
+type bg_updater = declaration -> bg_part option
 
 let lift_part :
     'a.
@@ -1822,7 +1833,10 @@ let bg_updaters : bg_updater list =
 let background_part_of (d : declaration) =
   List.find_map (fun f -> f d) bg_updaters
 
-let take_contiguous_background indexed_decls =
+let take_contiguous_background
+    (indexed_decls : (int * Declaration.declaration) list) :
+    (int * (Declaration.declaration * bg_part) list) option
+    * (int * Declaration.declaration) list =
   let rec aux acc = function
     | (i, d) :: rest -> (
         match background_part_of d with
@@ -1831,11 +1845,11 @@ let take_contiguous_background indexed_decls =
     | [] -> (List.rev acc, [])
   in
   match indexed_decls with
-  | [] -> (None, [])
+  | [] -> (Option.None, [])
   | (idx, _) :: _ -> (
       let parts, rest = aux [] indexed_decls in
       match parts with
-      | [] -> (None, indexed_decls)
+      | [] -> (Option.None, indexed_decls)
       | _ -> (Some (idx, parts), rest))
 
 let empty_bg_shorthand : Properties.background_shorthand =
@@ -1884,7 +1898,10 @@ let background_run_is_reset_closed layer =
       "clip";
     ]
 
-let try_compose_background ~ctx indexed_decls =
+let try_compose_background ~ctx
+    (indexed_decls : (int * Declaration.declaration) list) :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   let idx_opt, rest = take_contiguous_background indexed_decls in
   match idx_opt with
   | None -> None
@@ -1904,7 +1921,7 @@ let try_compose_background ~ctx indexed_decls =
           | `Stylesheet -> true
           | `Fragment -> background_run_is_reset_closed layer
         in
-        if not permit then None
+        if not permit then Option.None
         else
           let merged =
             Declaration.v
@@ -1977,8 +1994,8 @@ let mask_composite_part : declaration -> Properties.mask_composite option =
       match value with Inherit | Initial | Unset -> None | v -> Some v)
   | _ -> None
 
-type mask_updater =
-  declaration -> (Properties.mask_layer -> Properties.mask_layer) option
+type mask_part = Properties.mask_layer -> Properties.mask_layer
+type mask_updater = declaration -> mask_part option
 
 let lift_mask :
     'a.
@@ -2014,7 +2031,10 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
-let take_contiguous_mask indexed_decls =
+let take_contiguous_mask (indexed_decls : (int * Declaration.declaration) list)
+    :
+    (int * (Declaration.declaration * mask_part) list) option
+    * (int * Declaration.declaration) list =
   let rec aux acc = function
     | (i, d) :: rest -> (
         match mask_part_of d with
@@ -2023,27 +2043,30 @@ let take_contiguous_mask indexed_decls =
     | [] -> (List.rev acc, [])
   in
   match indexed_decls with
-  | [] -> (None, [])
+  | [] -> (Option.None, [])
   | (idx, _) :: _ -> (
       let parts, rest = aux [] indexed_decls in
       match parts with
-      | [] -> (None, indexed_decls)
+      | [] -> (Option.None, indexed_decls)
       | _ -> (Some (idx, parts), rest))
 
-let try_compose_mask ~ctx indexed_decls =
+let try_compose_mask ~ctx (indexed_decls : (int * Declaration.declaration) list)
+    :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   let idx_opt, rest = take_contiguous_mask indexed_decls in
   match idx_opt with
-  | None -> None
+  | None -> Option.None
   | Some (idx, parts) ->
       let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then None
-      else if not (same_importance raw_decls) then None
-      else if ctx.scope <> `Stylesheet then None
+      if List.length raw_decls < 2 then Option.None
+      else if not (same_importance raw_decls) then Option.None
+      else if ctx.scope <> `Stylesheet then Option.None
       else
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
         in
-        if layer.image = None then None
+        if layer.image = Option.None then Option.None
         else
           let merged =
             Declaration.v
@@ -2164,9 +2187,10 @@ let tr_delay_part : declaration -> Values.duration option = function
       duration_singleton value
   | _ -> None
 
-type tr_updater =
-  declaration ->
-  (Properties.transition_shorthand -> Properties.transition_shorthand) option
+type tr_part =
+  Properties.transition_shorthand -> Properties.transition_shorthand
+
+type tr_updater = declaration -> tr_part option
 
 let lift_tr_part :
     'a.
@@ -2196,7 +2220,10 @@ let empty_tr_shorthand : Properties.transition_shorthand =
     behavior = None;
   }
 
-let take_contiguous_transition indexed_decls =
+let take_contiguous_transition
+    (indexed_decls : (int * Declaration.declaration) list) :
+    (int * (Declaration.declaration * tr_part) list) option
+    * (int * Declaration.declaration) list =
   let rec aux acc = function
     | (i, d) :: rest -> (
         match transition_part_of d with
@@ -2205,11 +2232,11 @@ let take_contiguous_transition indexed_decls =
     | [] -> (List.rev acc, [])
   in
   match indexed_decls with
-  | [] -> (None, [])
+  | [] -> (Option.None, [])
   | (idx, _) :: _ -> (
       let parts, rest = aux [] indexed_decls in
       match parts with
-      | [] -> (None, indexed_decls)
+      | [] -> (Option.None, indexed_decls)
       | _ -> (Some (idx, parts), rest))
 
 let has_transition_property_decl raw_decls =
@@ -2220,15 +2247,18 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
-let try_compose_transition indexed_decls =
+let try_compose_transition
+    (indexed_decls : (int * Declaration.declaration) list) :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   let idx_opt, rest = take_contiguous_transition indexed_decls in
   match idx_opt with
-  | None -> None
+  | None -> Option.None
   | Some (idx, parts) ->
       let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then None
-      else if not (same_importance raw_decls) then None
-      else if not (has_transition_property_decl raw_decls) then None
+      if List.length raw_decls < 2 then Option.None
+      else if not (same_importance raw_decls) then Option.None
+      else if not (has_transition_property_decl raw_decls) then Option.None
       else
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
@@ -2332,9 +2362,8 @@ let an_play_state_part : declaration -> Properties.animation_play_state option =
       animation_play_state_singleton value
   | _ -> None
 
-type an_updater =
-  declaration ->
-  (Properties.animation_shorthand -> Properties.animation_shorthand) option
+type an_part = Properties.animation_shorthand -> Properties.animation_shorthand
+type an_updater = declaration -> an_part option
 
 let lift_an_part :
     'a.
@@ -2373,7 +2402,10 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let take_contiguous_animation indexed_decls =
+let take_contiguous_animation
+    (indexed_decls : (int * Declaration.declaration) list) :
+    (int * (Declaration.declaration * an_part) list) option
+    * (int * Declaration.declaration) list =
   let rec aux acc = function
     | (i, d) :: rest -> (
         match animation_part_of d with
@@ -2382,21 +2414,24 @@ let take_contiguous_animation indexed_decls =
     | [] -> (List.rev acc, [])
   in
   match indexed_decls with
-  | [] -> (None, [])
+  | [] -> (Option.None, [])
   | (idx, _) :: _ -> (
       let parts, rest = aux [] indexed_decls in
       match parts with
-      | [] -> (None, indexed_decls)
+      | [] -> (Option.None, indexed_decls)
       | _ -> (Some (idx, parts), rest))
 
-let try_compose_animation indexed_decls =
+let try_compose_animation (indexed_decls : (int * Declaration.declaration) list)
+    :
+    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
+    option =
   let idx_opt, rest = take_contiguous_animation indexed_decls in
   match idx_opt with
-  | None -> None
+  | None -> Option.None
   | Some (idx, parts) ->
       let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then None
-      else if not (same_importance raw_decls) then None
+      if List.length raw_decls < 2 then Option.None
+      else if not (same_importance raw_decls) then Option.None
       else
         let layer =
           List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
@@ -3139,7 +3174,7 @@ let variant_family cls =
   let colon_pos =
     (* Find first : outside brackets *)
     let len = String.length cls in
-    let rec find i depth =
+    let rec find i depth : int option =
       if i >= len then None
       else
         match cls.[i] with
@@ -3303,7 +3338,7 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
          different tiers cannot (e.g. ::backdrop + ::details-content). *)
       let pe1 = extract_pseudo_element prev.selector in
       let pe2 = extract_pseudo_element rule.selector in
-      let pseudo_tier = function
+      let pseudo_tier : Selector.t option -> int = function
         | None -> 0
         | Some (Selector.Before _) | Some (After _) -> 1
         | Some (First_letter _) | Some (First_line _) -> 2
@@ -3349,14 +3384,20 @@ let property_set decls = List.map (fun d -> Declaration.property_name d) decls
 let writes_any_of props decls =
   List.exists (fun d -> List.mem (Declaration.property_name d) props) decls
 
-let delayed_blocks_group ~group_props ~rule_summary delayed =
+let delayed_blocks_group ~group_props ~rule_summary
+    (delayed : (Stylesheet.rule * Selector_summary.t) list) =
   List.exists
-    (fun (dr, ds) ->
+    (fun ((dr : Stylesheet.rule), ds) ->
       Selector_summary.may_overlap ds rule_summary
       && writes_any_of group_props dr.Stylesheet_intf.declarations)
     delayed
 
-let rule_perturbs_group ~group_props ~rule_summary current_group rule =
+let rule_perturbs_group ~group_props ~rule_summary
+    (current_group :
+      (Stylesheet.rule
+      * (Selector.t * Declaration.declaration list * string option)
+      * Selector_summary.t)
+      list) (rule : Stylesheet.rule) =
   let overlaps_group =
     List.exists
       (fun (_, _, s) -> Selector_summary.may_overlap s rule_summary)
@@ -3377,7 +3418,8 @@ let flush_combined_group acc current_group delayed =
   in
   List.fold_left (fun acc (rule, _) -> rule :: acc) acc delayed
 
-let can_join_group ~group_props ~rule_summary delayed prev_rule rule =
+let can_join_group ~group_props ~rule_summary
+    (delayed : (Stylesheet.rule * Selector_summary.t) list) prev_rule rule =
   can_combine_rules prev_rule rule
   && not (delayed_blocks_group ~group_props ~rule_summary delayed)
 
@@ -3576,7 +3618,7 @@ module Rule_id_tbl = Hashtbl.Make (struct
      at declaration construction. With [equal = (==)], a bucket collision falls
      through to a physical pointer scan, so we never walk the rule structure on
      lookup. *)
-  let hash r =
+  let hash (r : t) =
     match r.Stylesheet_intf.declarations with
     | [] -> 0
     | [ d ] -> Declaration.hash d
@@ -3725,7 +3767,12 @@ let summary_contains_declaration summary decl =
    leftover array where each pruned member keeps its full declarations inline.
    Pruning is cascade-safe: a pruned member's declarations stay in place, so the
    group is a subset of the run already proven safe to factor. *)
-let cost_aware_factor_group first rules_arr factor_summaries common leftovers =
+let cost_aware_factor_group (first : Stylesheet.rule)
+    (rules_arr : Stylesheet.rule array)
+    (factor_summaries : factor_rule_summary array)
+    (common : Declaration.declaration list)
+    (leftovers : Stylesheet.rule option array) :
+    (Stylesheet.rule * Stylesheet.rule option array) option =
   let common_inline_cost = decls_pp_size common + List.length common in
   let member =
     Array.mapi
@@ -3753,13 +3800,13 @@ let cost_aware_factor_group first rules_arr factor_summaries common leftovers =
       (fun count keep -> if keep then count + 1 else count)
       0 member
   in
-  if member_count < 2 then None
+  if member_count < 2 then Option.None
   else
     let sels =
       Array.to_list rules_arr
       |> List.mapi (fun i r -> (i, r))
       |> List.filter (fun (i, _) -> member.(i))
-      |> List.map (fun (_, r) -> r.Stylesheet_intf.selector)
+      |> List.map (fun (_, (r : Stylesheet.rule)) -> r.Stylesheet_intf.selector)
     in
     let grouped =
       { first with selector = merge_selector_list sels; declarations = common }
@@ -3881,12 +3928,12 @@ let leftover_for_factor_rule ?(start = 0) ~common_by_prop ~selector_summaries
     r.declarations
 
 let factor_leftover_option ?(start = 0) ~common_by_prop ~selector_summaries
-    ~factor_summaries i r =
+    ~factor_summaries i (r : Stylesheet.rule) : Stylesheet.rule option =
   let l =
     leftover_for_factor_rule ~start ~common_by_prop ~selector_summaries
       ~factor_summaries i r
   in
-  if l = [] then None else Some { r with declarations = l }
+  if l = [] then Option.None else Some { r with declarations = l }
 
 let factor_leftover_options ~common ~selector_summaries ~factor_summaries
     rules_arr =
@@ -3899,7 +3946,7 @@ let factor_leftover_options ~common ~selector_summaries ~factor_summaries
   |> Array.to_list
 
 let factor_leftover_size ?(start = 0) ~common_by_prop ~selector_summaries
-    ~factor_summaries i summary =
+    ~factor_summaries i summary : int option =
   let rec loop kept_count kept_decl_size decls sizes =
     match (decls, sizes) with
     | [], [] -> (kept_count, kept_decl_size)
@@ -3919,7 +3966,7 @@ let factor_leftover_size ?(start = 0) ~common_by_prop ~selector_summaries
   let kept_count, kept_decl_size =
     loop 0 0 summary.factor_rule.declarations summary.factor_decl_sizes
   in
-  if kept_count = 0 then None
+  if kept_count = 0 then Option.None
   else
     Some
       (rule_size_from_parts summary.factor_selector_size kept_decl_size
@@ -3936,13 +3983,13 @@ module Factor_interval = struct
     inline_cost : int;
   }
 
-  let common factor_summaries start common_props =
-    if Prop_set.is_empty common_props then None
+  let common factor_summaries start common_props : payload option =
+    if Prop_set.is_empty common_props then Option.None
     else
       let common_decls, common_decl_size, common_decl_count =
         common_decls_size common_props factor_summaries.(start)
       in
-      if common_decls = [] then None
+      if common_decls = [] then Option.None
       else
         Some
           {
@@ -3953,7 +4000,7 @@ module Factor_interval = struct
             inline_cost = common_decl_size + common_decl_count;
           }
 
-  let keep_member payload summary leftover_size =
+  let keep_member payload summary (leftover_size : int option) =
     match leftover_size with
     | None -> true
     | Some _ ->
@@ -3966,7 +4013,7 @@ module Factor_interval = struct
 
   let score_members payload factor_summaries selector_summaries start len =
     let member = Array.make len false in
-    let leftover_sizes = Array.make len None in
+    let leftover_sizes : int option array = Array.make len Option.None in
     let member_count = ref 0 in
     for offset = 0 to len - 1 do
       let i = start + offset in
@@ -3998,7 +4045,8 @@ module Factor_interval = struct
       (!selector_size + max 0 (member_count - 1))
       payload.decl_size payload.decl_count
 
-  let size payload factor_summaries start member leftover_sizes member_count =
+  let size payload factor_summaries start member
+      (leftover_sizes : int option array) member_count =
     let before_size = ref 0 in
     let after_size =
       ref (grouped_size payload factor_summaries start member member_count)
@@ -4016,17 +4064,17 @@ module Factor_interval = struct
     !before_size - !after_size
 
   let score ?(allow_zero = false) factor_summaries selector_summaries start stop
-      common_props =
+      common_props : score option =
     counters.interval_scored <- counters.interval_scored + 1;
     let len = stop - start + 1 in
     match common factor_summaries start common_props with
-    | None -> None
-    | Some _ when len < 2 -> None
+    | None -> Option.None
+    | Some _ when len < 2 -> Option.None
     | Some payload ->
         let member, leftover_sizes, member_count =
           score_members payload factor_summaries selector_summaries start len
         in
-        if member_count < 2 then None
+        if member_count < 2 then Option.None
         else
           let saving =
             size payload factor_summaries start member leftover_sizes
@@ -4034,12 +4082,13 @@ module Factor_interval = struct
           in
           if saving > 0 || (allow_zero && saving = 0) then
             Some { common = payload.decls; member; saving }
-          else None
+          else Option.None
 
-  let build_scored rules_arr factor_summaries selector_summaries start score =
+  let build_scored (rules_arr : Stylesheet.rule array) factor_summaries
+      selector_summaries start score =
     let first = rules_arr.(start) in
     let sels =
-      let acc = ref [] in
+      let acc : Selector.t list ref = ref [] in
       for offset = Array.length score.member - 1 downto 0 do
         if score.member.(offset) then
           acc := rules_arr.(start + offset).Stylesheet_intf.selector :: !acc
@@ -4070,15 +4119,16 @@ module Factor_interval = struct
     (grouped :: !leftover_rev, score.saving)
 
   let build ?(allow_zero = false) rules_arr factor_summaries selector_summaries
-      start stop common_props =
+      start stop common_props : (Stylesheet.rule list * int) option =
     score ~allow_zero factor_summaries selector_summaries start stop
       common_props
     |> Option.map
          (build_scored rules_arr factor_summaries selector_summaries start)
 
-  let candidate ?(allow_zero = false) rules_arr factor_summaries common_props =
+  let candidate ?(allow_zero = false) rules_arr factor_summaries common_props :
+      (Stylesheet.rule list * int) option =
     let len = Array.length rules_arr in
-    if len < 2 || Prop_set.is_empty common_props then None
+    if len < 2 || Prop_set.is_empty common_props then Option.None
     else
       let selector_summaries =
         Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
@@ -4127,9 +4177,9 @@ module Factor_interval = struct
     done;
     schedule
 
-  let rewrite rules_arr factor_summaries =
+  let rewrite rules_arr factor_summaries : (Stylesheet.rule list * int) option =
     let len = Array.length rules_arr in
-    if len < 3 then None
+    if len < 3 then Option.None
     else
       let selector_summaries =
         Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
@@ -4138,9 +4188,9 @@ module Factor_interval = struct
       let saving, selected = Weighted_interval.select schedule in
       counters.interval_selected <-
         counters.interval_selected + List.length selected;
-      if saving <= 0 || selected = [] then None
+      if saving <= 0 || selected = [] then Option.None
       else
-        let rec emit i selected acc =
+        let rec emit i selected acc : (Stylesheet.rule list * int) option =
           if i >= len then Some (List.rev acc, saving)
           else
             match selected with
@@ -4241,7 +4291,7 @@ let declarations_overlap common decls =
         decls)
     common
 
-let rule_selector_may_overlap_summary rule target_summary =
+let rule_selector_may_overlap_summary (rule : Stylesheet.rule) target_summary =
   selectors_of_rule_selector rule.Stylesheet_intf.selector
   |> List.exists (fun selector ->
       Selector_summary.may_overlap
@@ -4261,7 +4311,8 @@ let specificity_equal a b =
   let b = Selector.specificity b in
   a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
 
-let rule_specificity_beats_on_overlap target skipped =
+let rule_specificity_beats_on_overlap (target : Stylesheet.rule)
+    (skipped : Stylesheet.rule) =
   let target_selectors =
     selectors_of_rule_selector target.Stylesheet_intf.selector
   in
@@ -4281,7 +4332,8 @@ let rule_specificity_beats_on_overlap target skipped =
         target_selectors)
     skipped_selectors
 
-let rule_specificity_ties_on_overlap target skipped =
+let rule_specificity_ties_on_overlap (target : Stylesheet.rule)
+    (skipped : Stylesheet.rule) =
   let target_selectors =
     selectors_of_rule_selector target.Stylesheet_intf.selector
   in
@@ -4360,7 +4412,8 @@ let rule_gap_merge_eligible (rule : Stylesheet.rule) =
    that property and the merge would change it. A strictly higher- or lower-
    specificity competitor is decided by specificity (not order), and one writing
    only other properties does not conflict; both are safe to cross. *)
-let skipped_blocks_same_selector_merge merged skipped =
+let skipped_blocks_same_selector_merge (merged : Stylesheet.rule)
+    (skipped : Stylesheet.rule) =
   rule_selector_may_overlap_summary skipped
     (Selector_summary.of_selector merged.Stylesheet_intf.selector)
   && declarations_overlap merged.declarations skipped.declarations
@@ -4369,13 +4422,18 @@ let skipped_blocks_same_selector_merge merged skipped =
 let merge_same_selector_gaps (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
   let items =
-    List.map (fun r -> (r, canonical_selector_key r.selector)) rules
+    List.map
+      (fun (r : Stylesheet.rule) -> (r, canonical_selector_key r.selector))
+      rules
   in
-  let rec scan_for_match anchor anchor_key skipped_rev fuel = function
-    | [] -> None
-    | _ when fuel <= 0 -> None
+  let rec scan_for_match anchor anchor_key skipped_rev fuel
+      (items : (Stylesheet.rule * Selector.t list) list) :
+      (Stylesheet.rule list * (Stylesheet.rule * Selector.t list) list) option =
+    match items with
+    | [] -> Option.None
+    | _ when fuel <= 0 -> Option.None
     | (candidate, candidate_key) :: tail ->
-        if not (rule_gap_merge_eligible candidate) then None
+        if not (rule_gap_merge_eligible candidate) then Option.None
         else if anchor_key = candidate_key then
           let skipped = List.rev skipped_rev in
           let merged = merge_two_adjacent_rules anchor candidate in
@@ -4383,13 +4441,13 @@ let merge_same_selector_gaps (rules : Stylesheet.rule list) :
              intervening rules: a tie on any property the merged rule writes
              makes the merge observable. *)
           if List.exists (skipped_blocks_same_selector_merge merged) skipped
-          then None
+          then Option.None
           else
             let before = anchor :: (skipped @ [ candidate ]) in
             let after = merged :: skipped in
             if rules_pp_size after < rules_pp_size before then
               Some (merged :: skipped, tail)
-            else None
+            else Option.None
         else
           scan_for_match anchor anchor_key (candidate :: skipped_rev) (fuel - 1)
             tail
@@ -4418,9 +4476,9 @@ let split_at n xs =
   in
   loop n [] xs
 
-let factor_rules_with_skips factor_rules skipped =
+let factor_rules_with_skips factor_rules skipped : Stylesheet.rule list option =
   match factor_rules with
-  | [] | [ _ ] -> None
+  | [] | [ _ ] -> Option.None
   | first :: _ -> (
       let rules_arr = Array.of_list factor_rules in
       let factor_summaries = Array.map summarize_factor_rule rules_arr in
@@ -4432,7 +4490,7 @@ let factor_rules_with_skips factor_rules skipped =
           (common_props_of_array factor_summaries)
           factor_summaries.(0)
       in
-      if common = [] then None
+      if common = [] then Option.None
       else
         let leftovers =
           factor_leftover_options ~common ~selector_summaries ~factor_summaries
@@ -4443,7 +4501,7 @@ let factor_rules_with_skips factor_rules skipped =
           cost_aware_factor_group first rules_arr factor_summaries common
             leftovers
         with
-        | None -> None
+        | None -> Option.None
         | Some (grouped, leftovers) ->
             let leftover_options = Array.to_list leftovers in
             let current_count = List.length factor_rules - 1 in
@@ -4457,7 +4515,7 @@ let factor_rules_with_skips factor_rules skipped =
             in
             let before = factor_rules @ skipped in
             if rules_pp_size after < rules_pp_size before then Some after
-            else None)
+            else Option.None)
 
 type gap_entry = Factor of factor_rule_summary | Skip of factor_rule_summary
 
@@ -4477,10 +4535,10 @@ let factor_rules_of_gap first entries =
        (function Factor s -> Some s.factor_rule | Skip _ -> None)
        entries
 
-let factor_gap_rewrite first entries =
+let factor_gap_rewrite first entries : (Stylesheet.rule list * int) option =
   let factor_rules = factor_rules_of_gap first entries in
   match factor_rules with
-  | [] | [ _ ] -> None
+  | [] | [ _ ] -> Option.None
   | _ -> (
       let rules_arr = Array.of_list factor_rules in
       let factor_summaries = Array.map summarize_factor_rule rules_arr in
@@ -4492,7 +4550,7 @@ let factor_gap_rewrite first entries =
           (common_props_of_array factor_summaries)
           factor_summaries.(0)
       in
-      if common = [] then None
+      if common = [] then Option.None
       else
         let leftovers =
           factor_leftover_options ~common ~selector_summaries ~factor_summaries
@@ -4503,7 +4561,7 @@ let factor_gap_rewrite first entries =
           cost_aware_factor_group first rules_arr factor_summaries common
             leftovers
         with
-        | None -> None
+        | None -> Option.None
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
@@ -4522,9 +4580,9 @@ let factor_gap_rewrite first entries =
             let after_size = rules_pp_size after in
             if after_size < before_size then
               Some (after, before_size - after_size)
-            else None)
+            else Option.None)
 
-let common_equal_decls rules first =
+let common_equal_decls rules (first : Stylesheet.rule) =
   let summaries = List.map summarize_factor_rule rules in
   List.filter
     (fun decl ->
@@ -4536,10 +4594,11 @@ let common_equal_decls rules first =
    but hoisting a declaration the scan did not check (one a tie-conflicting
    skipped rule writes with a different value) would change the cascade, so the
    factored common is intersected with [restrict]. *)
-let factor_gap_equal_rewrite ~restrict first entries =
+let factor_gap_equal_rewrite ~restrict first entries :
+    (Stylesheet.rule list * int) option =
   let factor_rules = factor_rules_of_gap first entries in
   match factor_rules with
-  | [] | [ _ ] -> None
+  | [] | [ _ ] -> Option.None
   | _ -> (
       let rules_arr = Array.of_list factor_rules in
       let factor_summaries = Array.map summarize_factor_rule rules_arr in
@@ -4551,7 +4610,7 @@ let factor_gap_equal_rewrite ~restrict first entries =
         |> List.filter (fun d ->
             List.exists (same_minified_declaration d) restrict)
       in
-      if common = [] then None
+      if common = [] then Option.None
       else
         let leftovers =
           factor_leftover_options ~common ~selector_summaries ~factor_summaries
@@ -4562,7 +4621,7 @@ let factor_gap_equal_rewrite ~restrict first entries =
           cost_aware_factor_group first rules_arr factor_summaries common
             leftovers
         with
-        | None -> None
+        | None -> Option.None
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
@@ -4581,9 +4640,10 @@ let factor_gap_equal_rewrite ~restrict first entries =
             let after_size = rules_pp_size after in
             if after_size < before_size then
               Some (after, before_size - after_size)
-            else None)
+            else Option.None)
 
-let factor_anchor_common first candidate common =
+let factor_anchor_common first candidate
+    (common : Declaration.declaration list option) =
   match common with
   | None -> common_factorable_decls [ first; candidate.factor_rule ] first
   | Some common ->
@@ -4591,7 +4651,12 @@ let factor_anchor_common first candidate common =
         common
       else []
 
-let better_factor_gap best replacement tail savings =
+let better_factor_gap
+    (best :
+      (Stylesheet.rule list
+      * (Stylesheet.rule * factor_rule_summary) list
+      * int)
+      option) replacement tail savings =
   match best with
   | None -> Some (replacement, tail, savings)
   | Some (_, _, best_savings) when savings > best_savings ->
@@ -4621,7 +4686,12 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
   (* [rest_summaries] is threaded as the tail in [better_factor_gap] so callers
      with a precomputed summary index can continue without rebuilding it. *)
   let first_bloom = first_summary.decl_bloom in
-  let rec scan entries_rev common best fuel = function
+  let rec scan entries_rev (common : Declaration.declaration list option)
+      (best :
+        (Stylesheet.rule list
+        * (Stylesheet.rule * factor_rule_summary) list
+        * int)
+        option) fuel = function
     | [] -> best
     | _ when fuel <= 0 -> best
     | (candidate, candidate_summary) :: tail ->
@@ -4656,11 +4726,14 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
               (Factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
-  match scan [] None None equal_factor_lookahead rest_summaries with
-  | None -> None
+  match
+    scan [] Option.None Option.None equal_factor_lookahead rest_summaries
+  with
+  | None -> Option.None
   | Some (replacement, tail, _) -> Some (prefix @ replacement, tail)
 
-let equal_anchor_common first candidate common =
+let equal_anchor_common first candidate
+    (common : Declaration.declaration list option) =
   match common with
   | None -> common_equal_decls [ first; candidate.factor_rule ] first
   | Some common ->
@@ -4726,15 +4799,16 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
             (Factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
-let seed_bloom = function
-  | None -> None
+let seed_bloom : Declaration.declaration list option -> int option = function
+  | None -> Option.None
   | Some decls ->
       Some
         (List.fold_left
            (fun bloom decl -> bloom_add bloom (Declaration.hash decl))
            0 decls)
 
-let try_factor_equal_anchor ~shared_decl first first_summary rest_summaries =
+let try_factor_equal_anchor ~shared_decl (first : Stylesheet.rule) first_summary
+    rest_summaries =
   (* The auto-narrowing chain ([None]) commits to the first sharer's common and
      handles multi-property blocks, but it loses a single-property group when an
      earlier rule shares a different anchor declaration (the running common
@@ -4743,22 +4817,22 @@ let try_factor_equal_anchor ~shared_decl first first_summary rest_summaries =
      best factoring across all seeds wins. Non-shared declarations cannot be
      factored, and a seed-specific Bloom avoids scanning candidates that cannot
      contain the seeded declaration. *)
-  let seeds =
+  let seeds : Declaration.declaration list option list =
     let shared_decls = List.filter shared_decl first.declarations in
-    None :: List.map (fun d -> Some [ d ]) shared_decls
+    Option.None :: List.map (fun d -> Some [ d ]) shared_decls
   in
   let first_bloom = first_summary.decl_bloom in
   List.fold_left
     (fun best seed ->
       let first_bloom = Option.value (seed_bloom seed) ~default:first_bloom in
       match
-        scan_equal_anchor ~first_bloom first [] seed None equal_factor_lookahead
-          rest_summaries
+        scan_equal_anchor ~first_bloom first [] seed Option.None
+          equal_factor_lookahead rest_summaries
       with
       | None -> best
       | Some (replacement, tail, savings) ->
           better_factor_gap best replacement tail savings)
-    None seeds
+    Option.None seeds
 
 let suffix_prop_sets summaries =
   let rec loop acc = function
@@ -4773,13 +4847,47 @@ let suffix_prop_sets summaries =
   in
   loop [] (List.rev summaries)
 
-let try_group_indexed_lookahead current rest =
+let try_group_suffix_against_rest ~prefix_rev ~current ~common_props
+    ~current_common rest :
+    (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list) option
+    =
+  let rec scan skipped_rev fuel :
+      (Stylesheet.rule * factor_rule_summary) list ->
+      (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list)
+      option = function
+    | _ when fuel <= 0 -> None
+    | (candidate, candidate_summary) :: tail ->
+        if rule_factor_boundary candidate then None
+        else if not (rule_factor_eligible candidate) then
+          scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+        else if
+          factor_rule_declares_prop_set candidate_summary common_props
+          && not
+               (List.exists
+                  (skipped_rule_blocks_factor current_common candidate_summary)
+                  skipped_rev)
+        then
+          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let factor_rules = List.map fst current @ [ candidate ] in
+          match factor_rules_with_skips factor_rules skipped with
+          | Some replacement -> Some (List.rev prefix_rev @ replacement, tail)
+          | None -> None
+        else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+    | [] -> None
+  in
+  if current_common = [] then None else scan [] 128 rest
+
+let try_group_indexed_lookahead current rest :
+    (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list) option
+    =
   let current = List.rev current in
   let current_summaries = List.map snd current in
   let current_suffix_props = suffix_prop_sets current_summaries in
-  let rec try_suffix prefix_rev current summaries suffix_props =
+  let rec try_suffix prefix_rev current summaries suffix_props :
+      (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list)
+      option =
     match current with
-    | [] -> None
+    | [] -> Option.None
     | [ (first, first_summary) ] ->
         try_single_anchor_indexed (List.rev prefix_rev) first first_summary rest
     | (first, _) :: tail_current -> (
@@ -4789,48 +4897,31 @@ let try_group_indexed_lookahead current rest =
             let current_common =
               common_decls_from_props common_props first_summary
             in
-            let rec scan skipped_rev fuel = function
-              | [] -> None
-              | _ when fuel <= 0 -> None
-              | (candidate, candidate_summary) :: tail ->
-                  if rule_factor_boundary candidate then None
-                  else if not (rule_factor_eligible candidate) then
-                    scan (candidate_summary :: skipped_rev) (fuel - 1) tail
-                  else if
-                    factor_rule_declares_prop_set candidate_summary common_props
-                    && not
-                         (List.exists
-                            (skipped_rule_blocks_factor current_common
-                               candidate_summary)
-                            skipped_rev)
-                  then
-                    let skipped =
-                      List.rev_map (fun s -> s.factor_rule) skipped_rev
-                    in
-                    let factor_rules = List.map fst current @ [ candidate ] in
-                    match factor_rules_with_skips factor_rules skipped with
-                    | None -> None
-                    | Some replacement ->
-                        Some (List.rev prefix_rev @ replacement, tail)
-                  else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
-            in
-            match if current_common = [] then None else scan [] 128 rest with
+            match
+              try_group_suffix_against_rest ~prefix_rev ~current ~common_props
+                ~current_common rest
+            with
             | Some _ as result -> result
             | None ->
                 try_suffix (first :: prefix_rev) tail_current tail_summaries
                   tail_suffix_props)
-        | _ -> None)
+        | _ -> Option.None)
   in
   try_suffix [] current current_summaries current_suffix_props
 
-let try_extend_factored_rule anchor rest =
+let try_extend_factored_rule anchor rest :
+    (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list) option
+    =
   let common = anchor.factor_rule.declarations in
   let common_props = List.map decl_property common in
-  let rec scan skipped_rev fuel = function
-    | [] -> None
-    | _ when fuel <= 0 -> None
+  let rec scan skipped_rev fuel :
+      (Stylesheet.rule * factor_rule_summary) list ->
+      (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list)
+      option = function
+    | [] -> Option.None
+    | _ when fuel <= 0 -> Option.None
     | (candidate, candidate_summary) :: tail ->
-        if rule_factor_boundary candidate then None
+        if rule_factor_boundary candidate then Option.None
         else if not (rule_factor_eligible candidate) then
           scan (candidate_summary :: skipped_rev) (fuel - 1) tail
         else if
@@ -4845,14 +4936,14 @@ let try_extend_factored_rule anchor rest =
             [ anchor.factor_rule; candidate_summary.factor_rule ]
           in
           match factor_rules_with_skips factor_rules skipped with
-          | None -> None
+          | None -> Option.None
           | Some replacement -> Some (replacement, tail)
         else if
           skipped_rule_blocks_factor common candidate_summary candidate_summary
-        then None
+        then Option.None
         else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
-  if common = [] then None else scan [] 128 rest
+  if common = [] then Option.None else scan [] 128 rest
 
 let extend_factored_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -4874,6 +4965,8 @@ let rule_identical_extend_eligible (r : Stylesheet.rule) =
 
 let can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
     candidate =
+  let anchor : Stylesheet.rule = anchor in
+  let candidate : Stylesheet.rule = candidate in
   (* Bloom prefilter: two rules with different declaration-hash sets cannot have
      structurally equal declaration lists. Avoids the full
      [declarations_css_equal] walk on the common rejected case. *)
@@ -4893,10 +4986,10 @@ let try_extend_identical_rule ~ctx anchor_summary rest =
     | `Fragment -> skipped_rule_blocks_factor
   in
   let rec scan skipped_rev fuel = function
-    | [] -> None
-    | _ when fuel <= 0 -> None
+    | [] -> (None : _ option)
+    | _ when fuel <= 0 -> (None : _ option)
     | (candidate, candidate_summary) :: tail ->
-        if not (rule_identical_extend_eligible candidate) then None
+        if not (rule_identical_extend_eligible candidate) then (None : _ option)
         else if
           can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
             candidate
@@ -4919,10 +5012,14 @@ let try_extend_identical_rule ~ctx anchor_summary rest =
           in
           let after = grouped :: skipped in
           if rules_pp_size after < rules_pp_size before then Some (after, tail)
-          else None
+          else (None : _ option)
         else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
   in
-  if common = [] then None else scan [] 128 rest
+  if common = [] then
+    (None
+      : (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list)
+        option)
+  else scan [] 128 rest
 
 let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -5053,14 +5150,14 @@ let build_shared_decl_predicate pool =
 let factor_anchor_score ~shared_decl n =
   counters.anchors_scored <- counters.anchors_scored + 1;
   let r = Rule_pool.rule n in
-  if not (rule_factor_eligible r) then None
+  if not (rule_factor_eligible r) then (None : _ option)
   else if
     (* Cheap pre-filter: factor_anchor needs at least one of this anchor's
        declarations to appear verbatim in some other live rule. *)
     not (List.exists shared_decl r.declarations)
   then (
     counters.anchors_prefiltered <- counters.anchors_prefiltered + 1;
-    None)
+    (None : _ option))
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
     let win_summaries =
@@ -5072,7 +5169,7 @@ let factor_anchor_score ~shared_decl n =
     in
     let summary = summarize_factor_rule r in
     match try_factor_equal_anchor ~shared_decl r summary win_summaries with
-    | None -> None
+    | None -> (None : _ option)
     | Some (replacement, tail, savings) ->
         let consumed =
           factor_take (List.length win_summaries - List.length tail) win_nodes
@@ -5325,10 +5422,10 @@ let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
     : statement list =
   let compare_condition a b =
     match (a, b) with
-    | None, None -> 0
-    | None, Some _ -> -1
-    | Some _, None -> 1
     | Some a, Some b -> Container.compare a b
+    | Some _, None -> 1
+    | None, Some _ -> -1
+    | None, None -> 0
   in
   let rec needs_merge = function
     | Container (prev_name, prev_cond, _) :: Container (name, cond, _) :: _
@@ -5582,7 +5679,7 @@ let merge_named_layers_by_name (stmts : statement list) : statement list =
    and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
    rule's selector spelling, which is the form authors are more likely to want
    preserved. *)
-let rule_shadows ~earlier ~later =
+let rule_shadows ~(earlier : rule) ~(later : rule) =
   earlier.Stylesheet_intf.selector = later.Stylesheet_intf.selector
   && List.for_all
        (fun ed ->
@@ -5599,7 +5696,7 @@ let rule_shadows ~earlier ~later =
    The later same-property write shadows the earlier value regardless of
    intervening rules. *)
 let drop_shadowed_rules (rules : rule list) : rule list =
-  let indexed = List.mapi (fun i r -> (i, r)) rules in
+  let indexed : (int * rule) list = List.mapi (fun i r -> (i, r)) rules in
   let dropped = ref false in
   let kept =
     List.filter_map
@@ -5632,18 +5729,18 @@ let drop_shadowed_rules (rules : rule list) : rule list =
 
    Empty rules left behind are pruned downstream by [drop_empty_rules] on the
    statement-list pass. *)
-let single_selector_keys r =
+let single_selector_keys (r : rule) =
   match Selector.as_list r.Stylesheet_intf.selector with
   | Some xs -> List.map canonical_selector_key xs
   | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
 
-let later_declarations_by_selector_key indexed =
+let later_declarations_by_selector_key (indexed : (int * rule) list) =
   let later_by_key :
       (Selector.t list, (int * Declaration.t list) list) Hashtbl.t =
     Hashtbl.create 16
   in
   List.iter
-    (fun (i, r) ->
+    (fun ((i, r) : int * rule) ->
       List.iter
         (fun key ->
           let prev =
@@ -5830,7 +5927,7 @@ let synthesize_shortens (before : rule list) (after : rule) : bool =
    competitor / no boundary-duplicate), and (3) the result is strictly shorter.
    Chains that fail any guard stay flat. *)
 let synthesize_nesting_rules (rules : rule list) : rule list =
-  let arr = Array.of_list rules in
+  let arr : rule array = Array.of_list rules in
   let n = Array.length arr in
   (* Maximal chains as [start, length] over consecutive-extends. *)
   let chains = ref [] in
@@ -5849,10 +5946,10 @@ let synthesize_nesting_rules (rules : rule list) : rule list =
     let related_outside =
       Array.to_list arr
       |> List.mapi (fun idx r -> (idx, r))
-      |> List.exists (fun (idx, r) ->
+      |> List.exists (fun (idx, (r : rule)) ->
           (idx < start || idx >= start + len)
           && Array.exists
-               (fun m -> selectors_compete m.selector r.selector)
+               (fun (m : rule) -> selectors_compete m.selector r.selector)
                members)
     in
     not related_outside
@@ -5946,8 +6043,7 @@ let extract_group_branch_into_adjacent rules =
   (* Split from group [b] the single branch equal to [neighbour_sel]. *)
   let extract neighbour_sel (b : Stylesheet.rule) =
     match selectors_of_rule_selector b.selector with
-    | [] | [ _ ] -> None
-    | branches -> (
+    | _ :: _ :: _ as branches -> (
         let key = canonical_selector_key in
         let matched, others =
           List.partition (fun s -> key s = key neighbour_sel) branches
@@ -5958,6 +6054,7 @@ let extract_group_branch_into_adjacent rules =
               ( { b with selector = si },
                 { b with selector = merge_selector_list others } )
         | _ -> None)
+    | _ -> None
   in
   let changed = ref false in
   let rec go acc = function
@@ -6514,9 +6611,8 @@ let drop_invalid (stylesheet : t) : t =
         let margins' =
           list_map_preserve
             (fun (m : page_margin_rule) ->
-              let margin_descriptors = filter_decls m.margin_descriptors in
-              if margin_descriptors == m.margin_descriptors then m
-              else { m with margin_descriptors })
+              let descriptors = filter_decls m.descriptors in
+              if descriptors == m.descriptors then m else { m with descriptors })
             margins
         in
         if descs' == descs && margins' == margins then stmt
@@ -6538,7 +6634,6 @@ let drop_invalid (stylesheet : t) : t =
 let drop_unknown_at_rules (stylesheet : t) : t =
   let rec statement stmt =
     match stmt with
-    | Unknown_at_rule _ -> None
     | Rule rule ->
         let nested = list_filter_map_preserve statement rule.nested in
         let rule' = rule_with_nested rule nested in
@@ -6573,6 +6668,7 @@ let drop_unknown_at_rules (stylesheet : t) : t =
     | Scope (a, b, block) ->
         let block' = list_filter_map_preserve statement block in
         Some (if block' == block then stmt else Scope (a, b, block'))
+    | Unknown_at_rule _ -> None
     | other -> Some other
   in
   list_filter_map_preserve statement stylesheet
@@ -6797,11 +6893,10 @@ let registered_foldable (stylesheet : t) : string -> bool =
    recurse through grouping blocks, so canonicalisation is uniform wherever a
    declaration sits. *)
 let normalize_keyframe ~lossless (k : keyframe) : keyframe =
-  let keyframe_declarations =
-    list_map_preserve (Declaration.normalize ~lossless) k.keyframe_declarations
+  let declarations =
+    list_map_preserve (Declaration.normalize ~lossless) k.declarations
   in
-  if keyframe_declarations == k.keyframe_declarations then k
-  else { k with keyframe_declarations }
+  if declarations == k.declarations then k else { k with declarations }
 
 let rec normalize_block ~lossless (b : statement list) : statement list =
   list_map_preserve (normalize_statement ~lossless) b
@@ -6825,9 +6920,8 @@ and normalize_statement ~lossless (s : statement) : statement =
       let margins' =
         list_map_preserve
           (fun m ->
-            let margin_descriptors = nd m.margin_descriptors in
-            if margin_descriptors == m.margin_descriptors then m
-            else { m with margin_descriptors })
+            let descriptors = nd m.descriptors in
+            if descriptors == m.descriptors then m else { m with descriptors })
           margins
       in
       if descs' == descs && margins' == margins then s
