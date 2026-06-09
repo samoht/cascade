@@ -4699,6 +4699,10 @@ let factor_rules_of_gap first entries =
        (function Factor s -> Some s.factor_rule | Skip _ -> None)
        entries
 
+let factor_summaries_of_gap first_summary entries =
+  first_summary
+  :: List.filter_map (function Factor s -> Some s | Skip _ -> None) entries
+
 let factor_gap_rewrite first entries : (Stylesheet.rule list * int) option =
   let factor_rules = factor_rules_of_gap first entries in
   match factor_rules with
@@ -4753,26 +4757,20 @@ let common_equal_decls rules (first : Stylesheet.rule) =
       List.for_all (fun s -> summary_contains_declaration s decl) summaries)
     first.Stylesheet_intf.declarations
 
-(* [restrict] is the set of declarations the scan validated as safe to factor
-   across the skipped rules. The full common of the factor rules may be larger,
-   but hoisting a declaration the scan did not check (one a tie-conflicting
-   skipped rule writes with a different value) would change the cascade, so the
-   factored common is intersected with [restrict]. *)
-let factor_gap_equal_rewrite ~restrict first entries :
+(* [common] is the declaration list the scan has already proven present in each
+   factored rule and safe across skipped rules. Reusing it avoids recomputing
+   the same intersection for every improving equal-anchor prefix. *)
+let factor_gap_equal_rewrite ~common first_summary entries :
     (Stylesheet.rule list * int) option =
-  let factor_rules = factor_rules_of_gap first entries in
-  match factor_rules with
+  let first = first_summary.factor_rule in
+  let factor_summaries = factor_summaries_of_gap first_summary entries in
+  match factor_summaries with
   | [] | [ _ ] -> Option.None
   | _ -> (
-      let rules_arr = Array.of_list factor_rules in
-      let factor_summaries = Array.map summarize_factor_rule rules_arr in
+      let factor_summaries = Array.of_list factor_summaries in
+      let rules_arr = Array.map (fun s -> s.factor_rule) factor_summaries in
       let selector_summaries =
         Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
-      in
-      let common =
-        common_equal_decls factor_rules first
-        |> List.filter (fun d ->
-            List.exists (same_minified_declaration d) restrict)
       in
       if common = [] then Option.None
       else
@@ -4912,14 +4910,15 @@ let equal_anchor_common first candidate
 (* Returns [Some (replacement, tail, savings)] - the [savings] is the strict
    output-size reduction [factor_gap_equal_rewrite] already computed, surfaced
    so the best-first scheduler can prioritise without re-rendering. *)
-let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
-  function
+let rec scan_equal_anchor ~first_bloom first_summary entries_rev common best
+    fuel = function
   | [] -> best
   | _ when fuel <= 0 -> best
   | (candidate, candidate_summary) :: tail ->
+      let first = first_summary.factor_rule in
       if boundary_stops_scan common candidate then best
       else if not (rule_factor_eligible candidate) then
-        scan_equal_anchor ~first_bloom first
+        scan_equal_anchor ~first_bloom first_summary
           (Skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else if candidate_summary.decl_bloom land first_bloom = 0 then
@@ -4927,7 +4926,7 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
            [Declaration.hash] with any declaration of the anchor, so the common
            subset is necessarily empty. Skip the [equal_anchor_common] /
            [blocks] checks and treat the candidate as a skipped rule. *)
-        scan_equal_anchor ~first_bloom first
+        scan_equal_anchor ~first_bloom first_summary
           (Skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else
@@ -4946,20 +4945,21 @@ let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
                entries_rev
         in
         if blocks then
-          scan_equal_anchor ~first_bloom first
+          scan_equal_anchor ~first_bloom first_summary
             (Skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
           let entries = List.rev (Factor candidate_summary :: entries_rev) in
           let best =
             match
-              factor_gap_equal_rewrite ~restrict:candidate_common first entries
+              factor_gap_equal_rewrite ~common:candidate_common first_summary
+                entries
             with
             | Some (replacement, savings) ->
                 better_factor_gap best replacement tail savings
             | None -> best
           in
-          scan_equal_anchor ~first_bloom first
+          scan_equal_anchor ~first_bloom first_summary
             (Factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
@@ -4990,7 +4990,7 @@ let try_factor_equal_anchor ~shared_decl (first : Stylesheet.rule) first_summary
     (fun best seed ->
       let first_bloom = Option.value (seed_bloom seed) ~default:first_bloom in
       match
-        scan_equal_anchor ~first_bloom first [] seed Option.None
+        scan_equal_anchor ~first_bloom first_summary [] seed Option.None
           equal_factor_lookahead rest_summaries
       with
       | None -> best
@@ -5261,14 +5261,11 @@ module Factor_queue =
 (* One pass of gap-factoring: hoist a declaration shared across rules with
    non-conflicting selectors, even across intervening rules, when cascade-safe
    and smaller. Scheduling is best-first (the greedy weight order of SatCSS,
-   Hague, Lin & Hong, TOPLAS 2019) over a [Rule_pool]: the frontier is a
-   priority search queue keyed by anchor node and prioritised by the output size
-   that anchor's factoring would save. We pop the highest-savings factoring,
-   apply it, then re-score only the anchors whose lookahead window overlapped
-   the rewritten region (the inserted shared rules and up to
-   [equal_factor_lookahead] predecessors). [try_factor_equal_anchor] returns
-   only a strictly size-reducing rewrite, so every apply shrinks the output and
-   the frontier drains to the factoring fixed point in a single call. *)
+   Hague, Lin & Hong, TOPLAS 2019) over globally indexed physical intervals:
+   each queued anchor stores the exact live-node interval it scored over. On
+   pop, a still-live interval can be applied directly; stale intervals fall back
+   to exact re-scoring. That keeps correctness tied to physical node identity
+   while avoiding the old score-on-enqueue, score-again-on-pop hot path. *)
 (* The next [k] live nodes after [node], in pool order. *)
 let rec factor_window node k acc =
   if k <= 0 then List.rev acc
@@ -5340,55 +5337,119 @@ let factor_anchor_score ~shared_decl n =
         in
         Some (replacement, consumed, savings)
 
-let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
-  let pool = Rule_pool.of_rules rules in
-  let shared_decl = build_shared_decl_predicate pool in
-  let frontier = ref Factor_queue.empty in
-  let applied = ref 0 in
-  let enqueue n =
-    if Rule_pool.is_live n then
-      match factor_anchor_score ~shared_decl n with
-      | Some (_, _, savings) when savings > 0 ->
-          frontier := Factor_queue.add n (savings, Rule_pool.id n) !frontier
-      | _ -> frontier := Factor_queue.remove n !frontier
+type anchor_candidate = {
+  anchor : Rule_pool.node;
+  replacement : Stylesheet.rule list;
+  consumed : Rule_pool.node list;
+  saving : int;
+}
+
+type anchor_scheduler = {
+  pool : Rule_pool.t;
+  shared_decl : declaration -> bool;
+  frontier : Factor_queue.t ref;
+  candidates : (int, anchor_candidate) Hashtbl.t;
+  applied : int ref;
+}
+
+let anchor_candidate_live candidate =
+  let rec loop previous = function
+    | [] -> true
+    | node :: rest -> (
+        match Rule_pool.next previous with
+        | Some next when Rule_pool.is_live node && next == node ->
+            loop node rest
+        | _ -> false)
   in
-  List.iter enqueue (Rule_pool.nodes pool);
-  (* A factoring at [n] can unblock an earlier anchor whose window reached the
-     rewritten region, but re-scoring those eagerly costs O(lookahead) per
-     apply. Instead we enqueue only the freshly inserted shared rules and let
-     the enclosing [factor_rules_to_fixpoint] re-run this pass - which re-scores
-     every anchor - to pick up any predecessor unblocked here. A pop whose
-     stored gain no longer holds is simply re-priced. *)
+  Rule_pool.is_live candidate.anchor && loop candidate.anchor candidate.consumed
+
+let anchor_candidate ~shared_decl anchor =
+  match factor_anchor_score ~shared_decl anchor with
+  | Some (replacement, consumed, savings) when savings > 0 ->
+      Some { anchor; replacement; consumed; saving = savings }
+  | _ -> None
+
+let forget_anchor_candidate candidates candidate =
+  Hashtbl.remove candidates (Rule_pool.id candidate.anchor);
+  List.iter
+    (fun node -> Hashtbl.remove candidates (Rule_pool.id node))
+    candidate.consumed
+
+let enqueue_anchor_candidate scheduler n =
+  if Rule_pool.is_live n then
+    match anchor_candidate ~shared_decl:scheduler.shared_decl n with
+    | Some candidate ->
+        Hashtbl.replace scheduler.candidates (Rule_pool.id n) candidate;
+        scheduler.frontier :=
+          Factor_queue.add n
+            (candidate.saving, Rule_pool.id n)
+            !(scheduler.frontier)
+    | None ->
+        Hashtbl.remove scheduler.candidates (Rule_pool.id n);
+        scheduler.frontier := Factor_queue.remove n !(scheduler.frontier)
+
+let apply_anchor_candidate scheduler candidate =
+  incr scheduler.applied;
+  counters.factorings_applied <- counters.factorings_applied + 1;
+  let added =
+    List.map
+      (fun r -> Rule_pool.insert_before scheduler.pool candidate.anchor r)
+      candidate.replacement
+  in
+  forget_anchor_candidate scheduler.candidates candidate;
+  Rule_pool.remove scheduler.pool candidate.anchor;
+  List.iter (Rule_pool.remove scheduler.pool) candidate.consumed;
+  added
+
+let rescore_anchor_candidate scheduler n =
+  match anchor_candidate ~shared_decl:scheduler.shared_decl n with
+  | Some candidate ->
+      Hashtbl.replace scheduler.candidates (Rule_pool.id n) candidate;
+      scheduler.frontier :=
+        Factor_queue.add n
+          (candidate.saving, Rule_pool.id n)
+          !(scheduler.frontier)
+  | None -> Hashtbl.remove scheduler.candidates (Rule_pool.id n)
+
+let drain_anchor_scheduler scheduler =
   let rec loop () =
-    match Factor_queue.pop !frontier with
+    match Factor_queue.pop !(scheduler.frontier) with
     | None -> ()
     | Some ((n, (stored, _)), rest) -> (
-        frontier := rest;
-        if not (Rule_pool.is_live n) then loop ()
+        scheduler.frontier := rest;
+        if not (Rule_pool.is_live n) then (
+          Hashtbl.remove scheduler.candidates (Rule_pool.id n);
+          loop ())
         else
-          match factor_anchor_score ~shared_decl n with
-          | Some (replacement, consumed, savings) when savings > 0 ->
-              if savings <> stored then (
-                frontier :=
-                  Factor_queue.add n (savings, Rule_pool.id n) !frontier;
-                loop ())
-              else (
-                incr applied;
-                counters.factorings_applied <- counters.factorings_applied + 1;
-                let added =
-                  List.map
-                    (fun r -> Rule_pool.insert_before pool n r)
-                    replacement
-                in
-                Rule_pool.remove pool n;
-                List.iter (Rule_pool.remove pool) consumed;
-                List.iter enqueue added;
-                loop ())
-          | _ -> loop ())
+          match Hashtbl.find_opt scheduler.candidates (Rule_pool.id n) with
+          | Some candidate
+            when candidate.saving = stored && anchor_candidate_live candidate ->
+              let added = apply_anchor_candidate scheduler candidate in
+              List.iter (enqueue_anchor_candidate scheduler) added;
+              loop ()
+          | _ ->
+              rescore_anchor_candidate scheduler n;
+              loop ())
   in
-  loop ();
-  if !applied > 0 then
-    Log.debug (fun m -> m "factor_anchor_gaps: applied %d factorings" !applied);
+  loop ()
+
+let anchor_scheduler pool shared_decl =
+  {
+    pool;
+    shared_decl;
+    frontier = ref Factor_queue.empty;
+    candidates = Hashtbl.create (Rule_pool.length pool);
+    applied = ref 0;
+  }
+
+let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
+  let pool = Rule_pool.of_rules rules in
+  let scheduler = anchor_scheduler pool (build_shared_decl_predicate pool) in
+  List.iter (enqueue_anchor_candidate scheduler) (Rule_pool.nodes pool);
+  drain_anchor_scheduler scheduler;
+  if !(scheduler.applied) > 0 then
+    Log.debug (fun m ->
+        m "factor_anchor_gaps: applied %d factorings" !(scheduler.applied));
   preserve_list rules (Rule_pool.to_rules pool)
 
 (** {1 Statement Optimization} *)
