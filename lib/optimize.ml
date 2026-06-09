@@ -5525,52 +5525,72 @@ let extract_group_branch_into_adjacent rules =
   let result = go [] rules in
   if !changed then result else rules
 
-let rec factor_rules_to_fixpoint ~ctx fuel rules =
-  if fuel <= 0 then (
-    Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
-    rules)
-  else begin
-    counters.iterations <- counters.iterations + 1;
-    (* Log each pass that changes the rule list so the per-iteration progress is
-       visible under [-vv] without hand-added tracing. *)
-    let pass name f r =
-      let s = pass_stat name in
-      let t0 = Unix.gettimeofday () in
-      let r' = f r in
-      let t1 = Unix.gettimeofday () in
-      s.time <- s.time +. (t1 -. t0);
-      s.calls <- s.calls + 1;
-      s.rules_in <- s.rules_in + List.length r;
-      s.rules_out <- s.rules_out + List.length r';
-      if not (r' == r) then begin
-        s.changes <- s.changes + 1;
-        Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
-      end;
-      r'
-    in
-    let rules' =
-      rules
-      (* Gap merging/factoring is pure cascade-safety reasoning (specificity is
-         world-independent), so it runs in every scope - neither pass takes a
-         [ctx]. It is part of the pipeline (not a one-shot before the loop) so a
-         merge it can only make after another pass reorders rules is reached
-         within a single fixpoint, not on a second [optimize] call. *)
-      |> pass "extract_branch" extract_group_branch_into_adjacent
-      |> pass "merge_same_selector" merge_same_selector_gaps
-      |> pass "combine_identical" combine_identical_rules
-      |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
-      |> pass "factor_common" factor_common_declarations
-      |> pass "factor_anchor" factor_anchor_gaps
-      |> pass "extend_factored" extend_factored_declarations
-      |> pass "merge_rules" merge_rules
-      |> pass "finalize" (list_map_preserve (finalize_rule_without_nested ~ctx))
-    in
-    if rules' == rules then (
+let factor_rules_to_fixpoint ~ctx fuel rules =
+  (* Per-pass quiet-streak counter. A pass that has returned its input unchanged
+     [stable_threshold] times in a row gets skipped on subsequent iterations.
+     The fixpoint usually needs 8 iterations because [extend_identical] keeps
+     changing the list in ways that don't enable new factorings for the heavy
+     passes; this counter lets the heavy [factor_anchor] / [factor_common] sit
+     out once they've confirmed convergence twice running, while the cheap
+     passes keep iterating. *)
+  let stable_threshold = 2 in
+  let quiet : (string, int) Hashtbl.t = Hashtbl.create 16 in
+  let any_active_pass_changed = ref false in
+  let rec go fuel rules =
+    if fuel <= 0 then (
       Log.debug (fun m ->
-          m "factor fixpoint: converged after %d iterations" (16 - fuel));
+          m "factor fixpoint: fuel exhausted, not yet converged");
       rules)
-    else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
-  end
+    else begin
+      counters.iterations <- counters.iterations + 1;
+      any_active_pass_changed := false;
+      let pass name f r =
+        let q = try Hashtbl.find quiet name with Not_found -> 0 in
+        if q >= stable_threshold then r
+        else
+          let s = pass_stat name in
+          let t0 = Unix.gettimeofday () in
+          let r' = f r in
+          let t1 = Unix.gettimeofday () in
+          s.time <- s.time +. (t1 -. t0);
+          s.calls <- s.calls + 1;
+          s.rules_in <- s.rules_in + List.length r;
+          s.rules_out <- s.rules_out + List.length r';
+          if r' == r then Hashtbl.replace quiet name (q + 1)
+          else begin
+            s.changes <- s.changes + 1;
+            Hashtbl.replace quiet name 0;
+            any_active_pass_changed := true;
+            Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
+          end;
+          r'
+      in
+      let rules' =
+        rules
+        (* Gap merging/factoring is pure cascade-safety reasoning (specificity
+           is world-independent), so it runs in every scope - neither pass takes
+           a [ctx]. It is part of the pipeline (not a one-shot before the loop)
+           so a merge it can only make after another pass reorders rules is
+           reached within a single fixpoint, not on a second [optimize] call. *)
+        |> pass "extract_branch" extract_group_branch_into_adjacent
+        |> pass "merge_same_selector" merge_same_selector_gaps
+        |> pass "combine_identical" combine_identical_rules
+        |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
+        |> pass "factor_common" factor_common_declarations
+        |> pass "factor_anchor" factor_anchor_gaps
+        |> pass "extend_factored" extend_factored_declarations
+        |> pass "merge_rules" merge_rules
+        |> pass "finalize"
+             (list_map_preserve (finalize_rule_without_nested ~ctx))
+      in
+      if not !any_active_pass_changed then (
+        Log.debug (fun m ->
+            m "factor fixpoint: converged after %d iterations" (16 - fuel));
+        rules')
+      else go (fuel - 1) rules'
+    end
+  in
+  go fuel rules
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
