@@ -907,13 +907,22 @@ let length_combine op v1 v2 =
    keeping [calc()] preserves no more precision than the browser computes - fold
    to the rounded value, matching multiplication by the same constant. *)
 let length_scale ?(exact = true) op v n =
-  match (op, calc_length_unit v) with
-  | Mul, Some (unit, value) -> Some (length_from_calc_unit unit (value *. n))
-  | Div, Some (unit, value) ->
-      if exact then Option.map (length_from_calc_unit unit) (exact_div value n)
-      else if n = 0. then None
-      else Some (length_from_calc_unit unit (value /. n))
-  | _ -> None
+  if not (Float.is_finite n) then Option.none
+  else
+    match (op, calc_length_unit v) with
+    | Mul, Some (unit, value) ->
+        let r = value *. n in
+        if Float.is_finite r then Option.some (length_from_calc_unit unit r)
+        else Option.none
+    | Div, Some (unit, value) ->
+        if exact then
+          Option.map (length_from_calc_unit unit) (exact_div value n)
+        else if n = 0. then Option.none
+        else
+          let r = value /. n in
+          if Float.is_finite r then Option.some (length_from_calc_unit unit r)
+          else Option.none
+    | _ -> Option.none
 
 (* CSS Values 4 §10.7: [abs()] preserves the input's type, so [abs(<length>)]
    returns a [<length>]. The generic [Math_fn -> Num] reduction strips the unit;
@@ -1813,11 +1822,7 @@ and pp_rem_length ~always ctx a b =
 and pp_hypot_length ~always ctx values =
   Pp.call_list "hypot" (pp_length ~always) { ctx with in_calc = true } values
 
-and pp_length_calc ~always ctx cv =
-  match cv with
-  | Expr (Num f, Mul, Val _) when f = infinity -> Pp.string ctx "3.40282e38px"
-  | Expr (Val _, Mul, Num f) when f = infinity -> Pp.string ctx "3.40282e38px"
-  | _ -> pp_generic_length_calc ~always ctx cv
+and pp_length_calc ~always ctx cv = pp_generic_length_calc ~always ctx cv
 
 and pp_generic_length_calc ~always ctx cv =
   let cv = if Pp.minified ctx then resolve_length_calc_vars ctx cv else cv in
