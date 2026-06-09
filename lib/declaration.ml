@@ -448,7 +448,21 @@ let rec property_key decl =
   | Declaration { property; _ } -> Key property
   | Theme_guarded { decl; _ } -> property_key decl
 
-let same_property d1 d2 = property_key d1 = property_key d2
+(* Fast-path equality of the typed property tag without allocating a
+   [Key]-wrapped [prop_key]. Nullary GADT constructors are interned by the
+   compiler, so [Obj.repr p1 == Obj.repr p2] short-circuits the common case
+   ([Width]/[Width], [Padding_top]/[Padding_top], ...). Parameterised
+   constructors ([Custom_property "foo"], [Unknown_property "bar"]) fall through
+   to the structural compare on the boxed [Obj.t] values, which matches the
+   string payload. *)
+let rec same_property d1 d2 =
+  match (d1, d2) with
+  | Declaration { property = p1; _ }, Declaration { property = p2; _ } ->
+      let r1 = Obj.repr p1 and r2 = Obj.repr p2 in
+      r1 == r2 || r1 = r2
+  | Theme_guarded { decl = d1; _ }, _ -> same_property d1 d2
+  | _, Theme_guarded { decl = d2; _ } -> same_property d1 d2
+
 let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
