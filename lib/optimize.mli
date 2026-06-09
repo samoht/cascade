@@ -200,6 +200,15 @@ type counters = {
   mutable anchors_prefiltered : int;
       (** scored anchors rejected by the no-shared-declaration pre-filter *)
   mutable factorings_applied : int;  (** anchor-gap factorings committed *)
+  mutable interval_candidates : int;
+      (** [factor_common] interval candidates considered by the indexed scorer
+      *)
+  mutable interval_pruned : int;
+      (** interval candidates rejected by cheap size upper bounds *)
+  mutable interval_scored : int;
+      (** interval candidates that reached exact cascade-aware scoring *)
+  mutable interval_selected : int;
+      (** interval candidates selected by weighted interval scheduling *)
 }
 (** Global counters across the last [Optimize.stylesheet] run. *)
 

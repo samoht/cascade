@@ -931,6 +931,33 @@ let test_factor_shared_declarations () =
     once;
   Alcotest.(check string) "factoring reached in one pass" once (minify_str once)
 
+let test_factor_interval_schedule () =
+  (* The whole run shares display:block, but the optimal rewrite is two
+     non-overlapping local intervals: .a/.b/.c additionally share color:red,
+     while .d/.e/.f additionally share background-color:blue. This pins the
+     weighted interval scheduler rather than a single broad greedy factoring. *)
+  let once =
+    minify_str
+      ".a{display:block;color:red;width:1px}.b{display:block;color:red;height:1px}.c{display:block;color:red;padding:1px}.d{display:block;background-color:blue;width:2px}.e{display:block;background-color:blue;height:2px}.f{display:block;background-color:blue;padding:2px}"
+  in
+  Alcotest.(check string)
+    "disjoint local common blocks factor independently"
+    ".a,.b,.c{display:block;color:red}.a{width:1px}.b{height:1px}.c{padding:1px}.d,.e,.f{display:block;background-color:#00f}.d{width:2px}.e{height:2px}.f{padding:2px}"
+    once;
+  Alcotest.(check string)
+    "interval factoring is idempotent" once (minify_str once)
+
+let test_factor_interval_keeps_overrides () =
+  (* A same-property different-value member can still join the common-property
+     group, but its value must be emitted after the shared rule. This catches
+     the score/build path for interval leftovers, including the offset-aware
+     earlier-overrides check. *)
+  Alcotest.(check string)
+    "interval factoring preserves later overrides"
+    ".a,.b,.c{display:block;color:#00f}.a,.c{color:red}"
+    (minify_str
+       ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
+
 let test_factoring_reaches_fixpoint () =
   (* Factoring one shared subset can expose another: grouping .a/.b on color:red
      leaves .b with padding:0, now groupable with .c. A correct optimizer
@@ -3637,6 +3664,8 @@ let selector_merging_tests =
       `Quick,
       test_merge_non_consecutive_non_conflicting );
     ("factor shared declarations", `Quick, test_factor_shared_declarations);
+    ("factor weighted intervals", `Quick, test_factor_interval_schedule);
+    ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
     ( "factoring reaches fixpoint in one pass",
       `Quick,
       test_factoring_reaches_fixpoint );

@@ -33,6 +33,10 @@ let report_profile () =
     "@.factor anchors scored: %d (prefiltered %d), factorings applied: %d@."
     O.counters.anchors_scored O.counters.anchors_prefiltered
     O.counters.factorings_applied;
+  Fmt.epr
+    "factor intervals: %d candidates, %d pruned, %d exact-scored, %d selected@."
+    O.counters.interval_candidates O.counters.interval_pruned
+    O.counters.interval_scored O.counters.interval_selected;
   Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
     hits misses hit_pct
 
