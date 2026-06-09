@@ -3614,7 +3614,6 @@ type counters = {
   mutable anchors_prefiltered : int;
   mutable factorings_applied : int;
   mutable interval_candidates : int;
-  mutable interval_pruned : int;
   mutable interval_scored : int;
   mutable interval_selected : int;
 }
@@ -3628,7 +3627,6 @@ let counters =
     anchors_prefiltered = 0;
     factorings_applied = 0;
     interval_candidates = 0;
-    interval_pruned = 0;
     interval_scored = 0;
     interval_selected = 0;
   }
@@ -3642,7 +3640,6 @@ let reset_counters () =
   counters.anchors_prefiltered <- 0;
   counters.factorings_applied <- 0;
   counters.interval_candidates <- 0;
-  counters.interval_pruned <- 0;
   counters.interval_scored <- 0;
   counters.interval_selected <- 0
 
@@ -4101,6 +4098,18 @@ module Factor_interval = struct
 
   let factor_common_interval_lookahead = 32
 
+  let add_candidate schedule factor_summaries selector_summaries start stop
+      common_props =
+    if not (Prop_set.is_empty common_props) then (
+      counters.interval_candidates <- counters.interval_candidates + 1;
+      match
+        score factor_summaries selector_summaries start stop common_props
+      with
+      | None -> ()
+      | Some score ->
+          Weighted_interval.add schedule ~start ~stop ~weight:score.saving
+            { score })
+
   let index factor_summaries selector_summaries =
     let len = Array.length factor_summaries in
     let schedule = Weighted_interval.v ~length:len in
@@ -4111,17 +4120,8 @@ module Factor_interval = struct
       while !stop <= last && not (Prop_set.is_empty !common_props) do
         common_props :=
           Prop_set.inter !common_props factor_summaries.(!stop).factor_prop_set;
-        (if not (Prop_set.is_empty !common_props) then
-           let () =
-             counters.interval_candidates <- counters.interval_candidates + 1
-           in
-           match
-             score factor_summaries selector_summaries start !stop !common_props
-           with
-           | None -> ()
-           | Some score ->
-               Weighted_interval.add schedule ~start ~stop:!stop
-                 ~weight:score.saving { score });
+        add_candidate schedule factor_summaries selector_summaries start !stop
+          !common_props;
         incr stop
       done
     done;
@@ -4600,14 +4600,27 @@ let better_factor_gap best replacement tail savings =
 
 let equal_factor_lookahead = 32
 
-let try_factor_single_anchor prefix first rest =
-  (* Pre-summarise [rest] once: scan walks every entry on every call, so
-     recomputing summaries in the recursion (each call to
-     [summarize_factor_rule] does two [Pp.size] traversals) made factoring
-     quadratic in the window size. The tail in [better_factor_gap] is threaded
-     as the summarised list so we unwrap exactly once at the return. *)
-  let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
-  let first_bloom = (summarize_factor_rule first).decl_bloom in
+let single_anchor_blocked common candidate_summary entries_rev =
+  common = []
+  || List.exists
+       (fun entry ->
+         match entry with
+         | Gap_factor _ -> false
+         | Gap_skip skipped ->
+             skipped_rule_blocks_factor common candidate_summary skipped)
+       entries_rev
+
+let update_single_anchor_best first entries_rev tail best candidate_summary =
+  let entries = List.rev (Gap_factor candidate_summary :: entries_rev) in
+  match factor_gap_rewrite first entries with
+  | Some (replacement, savings) ->
+      better_factor_gap best replacement tail savings
+  | None -> best
+
+let try_single_anchor_indexed prefix first first_summary rest_summaries =
+  (* [rest_summaries] is threaded as the tail in [better_factor_gap] so callers
+     with a precomputed summary index can continue without rebuilding it. *)
+  let first_bloom = first_summary.decl_bloom in
   let rec scan entries_rev common best fuel = function
     | [] -> best
     | _ when fuel <= 0 -> best
@@ -4628,30 +4641,16 @@ let try_factor_single_anchor prefix first rest =
           let candidate_common =
             factor_anchor_common first candidate_summary common
           in
-          let blocks =
-            candidate_common = []
-            || List.exists
-                 (fun entry ->
-                   match entry with
-                   | Gap_factor _ -> false
-                   | Gap_skip skipped ->
-                       skipped_rule_blocks_factor candidate_common
-                         candidate_summary skipped)
-                 entries_rev
-          in
-          if blocks then
+          if
+            single_anchor_blocked candidate_common candidate_summary entries_rev
+          then
             scan
               (Gap_skip candidate_summary :: entries_rev)
               common best (fuel - 1) tail
           else
-            let entries =
-              List.rev (Gap_factor candidate_summary :: entries_rev)
-            in
             let best =
-              match factor_gap_rewrite first entries with
-              | Some (replacement, savings) ->
-                  better_factor_gap best replacement tail savings
-              | None -> best
+              update_single_anchor_best first entries_rev tail best
+                candidate_summary
             in
             scan
               (Gap_factor candidate_summary :: entries_rev)
@@ -4659,7 +4658,7 @@ let try_factor_single_anchor prefix first rest =
   in
   match scan [] None None equal_factor_lookahead rest_summaries with
   | None -> None
-  | Some (replacement, tail, _) -> Some (prefix @ replacement, List.map fst tail)
+  | Some (replacement, tail, _) -> Some (prefix @ replacement, tail)
 
 let equal_anchor_common first candidate common =
   match common with
@@ -4766,15 +4765,16 @@ let suffix_prop_sets summaries =
   in
   loop [] (List.rev summaries)
 
-let try_factor_group_with_lookahead current rest =
+let try_group_indexed_lookahead current rest =
   let current = List.rev current in
-  let current_summaries = List.map summarize_factor_rule current in
+  let current_summaries = List.map snd current in
   let current_suffix_props = suffix_prop_sets current_summaries in
   let rec try_suffix prefix_rev current summaries suffix_props =
     match current with
     | [] -> None
-    | [ first ] -> try_factor_single_anchor (List.rev prefix_rev) first rest
-    | first :: tail_current -> (
+    | [ (first, first_summary) ] ->
+        try_single_anchor_indexed (List.rev prefix_rev) first first_summary rest
+    | (first, _) :: tail_current -> (
         match (summaries, suffix_props) with
         | first_summary :: tail_summaries, common_props :: tail_suffix_props
           -> (
@@ -4784,32 +4784,27 @@ let try_factor_group_with_lookahead current rest =
             let rec scan skipped_rev fuel = function
               | [] -> None
               | _ when fuel <= 0 -> None
-              | candidate :: tail ->
+              | (candidate, candidate_summary) :: tail ->
                   if rule_factor_boundary candidate then None
                   else if not (rule_factor_eligible candidate) then
-                    scan
-                      (summarize_factor_rule candidate :: skipped_rev)
-                      (fuel - 1) tail
-                  else
-                    let candidate_summary = summarize_factor_rule candidate in
-                    if
-                      factor_rule_declares_prop_set candidate_summary
-                        common_props
-                      && not
-                           (List.exists
-                              (skipped_rule_blocks_factor current_common
-                                 candidate_summary)
-                              skipped_rev)
-                    then
-                      let skipped =
-                        List.rev_map (fun s -> s.factor_rule) skipped_rev
-                      in
-                      let factor_rules = current @ [ candidate ] in
-                      match factor_rules_with_skips factor_rules skipped with
-                      | None -> None
-                      | Some replacement ->
-                          Some (List.rev prefix_rev @ replacement, tail)
-                    else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+                    scan (candidate_summary :: skipped_rev) (fuel - 1) tail
+                  else if
+                    factor_rule_declares_prop_set candidate_summary common_props
+                    && not
+                         (List.exists
+                            (skipped_rule_blocks_factor current_common
+                               candidate_summary)
+                            skipped_rev)
+                  then
+                    let skipped =
+                      List.rev_map (fun s -> s.factor_rule) skipped_rev
+                    in
+                    let factor_rules = List.map fst current @ [ candidate ] in
+                    match factor_rules_with_skips factor_rules skipped with
+                    | None -> None
+                    | Some replacement ->
+                        Some (List.rev prefix_rev @ replacement, tail)
+                  else scan (candidate_summary :: skipped_rev) (fuel - 1) tail
             in
             match if current_common = [] then None else scan [] 128 rest with
             | Some _ as result -> result
@@ -4946,17 +4941,16 @@ let extend_identical_declaration_rules ~ctx (rules : Stylesheet.rule list) :
    intersection avoids the per-pair [decl_property] rescans of the group. *)
 let factor_common_declarations (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
-  let rule_props (r : Stylesheet.rule) =
-    (summarize_factor_rule r).factor_prop_set
-  in
+  let items = List.map (fun r -> (r, summarize_factor_rule r)) rules in
+  let factorise_items items = factorise_group (List.rev_map fst items) in
   let rec group acc current current_props = function
-    | [] -> List.rev_append (factorise_group (List.rev current)) acc
-    | (r : Stylesheet.rule) :: rest -> (
+    | [] -> List.rev_append (factorise_items current) acc
+    | (r, summary) :: rest -> (
         if not (rule_factor_eligible r) then
-          let acc = List.rev_append (factorise_group (List.rev current)) acc in
+          let acc = List.rev_append (factorise_items current) acc in
           group (r :: acc) [] Prop_set.empty rest
         else
-          let r_props = rule_props r in
+          let r_props = summary.factor_prop_set in
           let shares =
             match current with
             | [] -> not (Prop_set.is_empty r_props)
@@ -4968,25 +4962,18 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
               | [] -> r_props
               | _ -> Prop_set.inter current_props r_props
             in
-            group acc (r :: current) current_props rest
+            group acc ((r, summary) :: current) current_props rest
           else
-            match current with
-            | [ only ] ->
-                let acc = List.rev_append (factorise_group [ only ]) acc in
-                group acc [ r ] r_props rest
-            | _ -> (
-                match try_factor_group_with_lookahead current (r :: rest) with
-                | Some (replacement, tail) ->
-                    group
-                      (List.rev_append replacement acc)
-                      [] Prop_set.empty tail
-                | None ->
-                    let acc =
-                      List.rev_append (factorise_group (List.rev current)) acc
-                    in
-                    group acc [ r ] r_props rest))
+            match
+              try_group_indexed_lookahead current ((r, summary) :: rest)
+            with
+            | Some (replacement, tail) ->
+                group (List.rev_append replacement acc) [] Prop_set.empty tail
+            | None ->
+                let acc = List.rev_append (factorise_items current) acc in
+                group acc [ (r, summary) ] r_props rest)
   in
-  preserve_list rules (List.rev (group [] [] Prop_set.empty rules))
+  preserve_list rules (List.rev (group [] [] Prop_set.empty items))
 
 (* Priority search queue keyed by pool node (stable id), ordered so the
    highest-savings factoring is the minimum and thus pops first; ties break by
