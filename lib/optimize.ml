@@ -3662,10 +3662,29 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
             if after_size <= before_size then grouped :: leftover_rules
             else rules)
 
+(* 63-bit Bloom filter over [Declaration.hash] values, indexed by two
+   independent hash projections (low and high bytes of the structural hash). For
+   K~5 declarations per rule the false-positive rate is well under 1%; a true
+   negative is constant-time and lets us skip the actual [List.exists /
+   same_minified_declaration] check entirely. *)
+let bloom_mask (h : int) = (1 lsl (h land 63)) lor (1 lsl ((h lsr 8) land 63))
+let bloom_add b h = b lor bloom_mask h
+
+let bloom_might_contain b h =
+  let m = bloom_mask h in
+  b land m = m
+
 type factor_rule_summary = {
   factor_rule : Stylesheet.rule;
   factor_size : int;  (** cached [rule_pp_size factor_rule] *)
   factor_props : Declaration.prop_key list;
+  decl_bloom : int;
+      (** Bloom filter over [Declaration.hash] for every declaration in
+          [factor_rule]. A definite-absence answer ([bloom_might_contain]
+          returns [false]) skips the full [List.exists] /
+          [same_minified_declaration] walk in cross-rule overlap checks; a
+          possible-presence answer falls through to the actual structural check,
+          so collisions are correctness-preserving. *)
   selector_summary : Selector_summary.t Lazy.t;
 }
 
@@ -3764,6 +3783,10 @@ let summarize_factor_rule factor_rule =
           factor_rule;
           factor_size = rule_pp_size factor_rule;
           factor_props = List.map decl_property factor_rule.declarations;
+          decl_bloom =
+            List.fold_left
+              (fun b d -> bloom_add b (Declaration.hash d))
+              0 factor_rule.declarations;
           selector_summary =
             lazy
               (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
@@ -4124,14 +4147,17 @@ let factor_gap_rewrite first entries =
             else None)
 
 let common_equal_decls rules first =
+  let summaries = List.map summarize_factor_rule rules in
   List.filter
     (fun decl ->
+      let h = Declaration.hash decl in
       List.for_all
-        (fun r ->
-          List.exists
-            (fun candidate -> same_minified_declaration decl candidate)
-            r.Stylesheet_intf.declarations)
-        rules)
+        (fun s ->
+          bloom_might_contain s.decl_bloom h
+          && List.exists
+               (fun candidate -> same_minified_declaration decl candidate)
+               s.factor_rule.Stylesheet_intf.declarations)
+        summaries)
     first.Stylesheet_intf.declarations
 
 (* [restrict] is the set of declarations the scan validated as safe to factor
@@ -4210,12 +4236,20 @@ let try_factor_single_anchor prefix first rest =
      quadratic in the window size. The tail in [better_factor_gap] is threaded
      as the summarised list so we unwrap exactly once at the return. *)
   let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
+  let first_bloom = (summarize_factor_rule first).decl_bloom in
   let rec scan entries_rev common best fuel = function
     | [] -> best
     | _ when fuel <= 0 -> best
     | (candidate, candidate_summary) :: tail ->
         if rule_factor_boundary candidate then best
         else if not (rule_factor_eligible candidate) then
+          scan
+            (Gap_skip candidate_summary :: entries_rev)
+            common best (fuel - 1) tail
+        else if candidate_summary.decl_bloom land first_bloom = 0 then
+          (* Bloom prefilter: candidate's declarations share no hash with the
+             anchor's, so [factor_anchor_common] would yield []. Skip the check
+             entirely. *)
           scan
             (Gap_skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
@@ -4260,24 +4294,41 @@ let equal_anchor_common first candidate common =
   match common with
   | None -> common_equal_decls [ first; candidate.factor_rule ] first
   | Some common ->
+      (* Cached Bloom filter on the candidate's summary lets us drop any [decl]
+         from [common] whose hash isn't a possible member in O(1) -- a single
+         bit-AND -- instead of walking the candidate's declarations;
+         declarations whose hash hits the bloom still need the structural
+         [same_minified_declaration] check to disambiguate filter collisions,
+         which are correctness-preserving. *)
+      let bloom = candidate.decl_bloom in
       List.filter
         (fun decl ->
-          List.exists
-            (fun candidate_decl ->
-              same_minified_declaration decl candidate_decl)
-            candidate.factor_rule.declarations)
+          bloom_might_contain bloom (Declaration.hash decl)
+          && List.exists
+               (fun candidate_decl ->
+                 same_minified_declaration decl candidate_decl)
+               candidate.factor_rule.declarations)
         common
 
 (* Returns [Some (replacement, tail, savings)] - the [savings] is the strict
    output-size reduction [factor_gap_equal_rewrite] already computed, surfaced
    so the best-first scheduler can prioritise without re-rendering. *)
-let rec scan_equal_anchor first entries_rev common best fuel = function
+let rec scan_equal_anchor ~first_bloom first entries_rev common best fuel =
+  function
   | [] -> best
   | _ when fuel <= 0 -> best
   | (candidate, candidate_summary) :: tail ->
       if boundary_stops_scan common candidate then best
       else if not (rule_factor_eligible candidate) then
-        scan_equal_anchor first
+        scan_equal_anchor ~first_bloom first
+          (Gap_skip candidate_summary :: entries_rev)
+          common best (fuel - 1) tail
+      else if candidate_summary.decl_bloom land first_bloom = 0 then
+        (* Bloom prefilter: no declaration of the candidate shares a
+           [Declaration.hash] with any declaration of the anchor, so the common
+           subset is necessarily empty. Skip the [equal_anchor_common] /
+           [blocks] checks and treat the candidate as a skipped rule. *)
+        scan_equal_anchor ~first_bloom first
           (Gap_skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else
@@ -4296,7 +4347,7 @@ let rec scan_equal_anchor first entries_rev common best fuel = function
                entries_rev
         in
         if blocks then
-          scan_equal_anchor first
+          scan_equal_anchor ~first_bloom first
             (Gap_skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
@@ -4311,7 +4362,7 @@ let rec scan_equal_anchor first entries_rev common best fuel = function
                 better_factor_gap best replacement tail savings
             | None -> best
           in
-          scan_equal_anchor first
+          scan_equal_anchor ~first_bloom first
             (Gap_factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
@@ -4327,10 +4378,11 @@ let try_factor_equal_anchor first rest =
      re-running [summarize_factor_rule] in each scan iteration was the
      bottleneck (two [Pp.size] traversals per candidate). *)
   let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
+  let first_bloom = (summarize_factor_rule first).decl_bloom in
   List.fold_left
     (fun best seed ->
       match
-        scan_equal_anchor first [] seed None equal_factor_lookahead
+        scan_equal_anchor ~first_bloom first [] seed None equal_factor_lookahead
           rest_summaries
       with
       | None -> best
