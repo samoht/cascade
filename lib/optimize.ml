@@ -2567,8 +2567,12 @@ let same_value a b = without_importance a = without_importance b
    canonicalisation passes the AST is canonical, so structural equality is the
    minified-equality test - and far cheaper than rendering both to strings. A
    pp-equal-but-structurally-different pair would be a canonicalisation bug, not
-   something to paper over by comparing rendered text. *)
-let same_minified_declaration (a : declaration) (b : declaration) = a = b
+   something to paper over by comparing rendered text. The [(==)] short-circuit
+   avoids walking the AST when both references point to the same heap object,
+   which is the common case in the factoring loops (same declaration appears in
+   many sibling rules and is compared millions of times). *)
+let same_minified_declaration (a : declaration) (b : declaration) =
+  a == b || a = b
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
@@ -3754,14 +3758,40 @@ type factor_rule_summary = {
   selector_summary : Selector_summary.t Lazy.t;
 }
 
+(* Memoise summaries by physical identity. Rules are persistent records, so the
+   same rule heap object is inspected by many overlapping factoring windows in a
+   single [factor_rules_to_fixpoint] iteration; [rule_pp_size] does two
+   [Pp.size] traversals each call, which made the inner factoring loops
+   quadratic in the window size. We key on the boxed [Obj.repr] of the rule:
+   [Hashtbl] uses our [equal = (==)], so misses on identity, never false hits.
+   The hash function is fixed-depth (stdlib default depth, capped) so it is
+   bounded regardless of the rule's structure. *)
+module Rule_id_tbl = Hashtbl.Make (struct
+  type t = Stylesheet.rule
+
+  let equal = ( == )
+  let hash r = Hashtbl.seeded_hash_param 10 100 0 r
+end)
+
+let summary_memo : factor_rule_summary Rule_id_tbl.t = Rule_id_tbl.create 4096
+let clear_summary_memo () = Rule_id_tbl.reset summary_memo
+
 let summarize_factor_rule factor_rule =
-  {
-    factor_rule;
-    factor_size = rule_pp_size factor_rule;
-    factor_props = List.map decl_property factor_rule.declarations;
-    selector_summary =
-      lazy (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
-  }
+  match Rule_id_tbl.find_opt summary_memo factor_rule with
+  | Some s -> s
+  | None ->
+      let s =
+        {
+          factor_rule;
+          factor_size = rule_pp_size factor_rule;
+          factor_props = List.map decl_property factor_rule.declarations;
+          selector_summary =
+            lazy
+              (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
+        }
+      in
+      Rule_id_tbl.add summary_memo factor_rule s;
+      s
 
 let factor_rule_declares_all summary props =
   List.for_all (fun prop -> List.mem prop summary.factor_props) props
@@ -4192,24 +4222,25 @@ let better_factor_gap best replacement tail savings =
       Some (replacement, tail, savings)
   | Some _ -> best
 
-let finish_factor_gap prefix = function
-  | None -> None
-  | Some (replacement, tail, _) -> Some (prefix @ replacement, tail)
-
 let equal_factor_lookahead = 128
 
 let try_factor_single_anchor prefix first rest =
+  (* Pre-summarise [rest] once: scan walks every entry on every call, so
+     recomputing summaries in the recursion (each call to
+     [summarize_factor_rule] does two [Pp.size] traversals) made factoring
+     quadratic in the window size. The tail in [better_factor_gap] is threaded
+     as the summarised list so we unwrap exactly once at the return. *)
+  let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
   let rec scan entries_rev common best fuel = function
-    | [] -> finish_factor_gap prefix best
-    | _ when fuel <= 0 -> finish_factor_gap prefix best
-    | candidate :: tail ->
-        if rule_factor_boundary candidate then finish_factor_gap prefix best
+    | [] -> best
+    | _ when fuel <= 0 -> best
+    | (candidate, candidate_summary) :: tail ->
+        if rule_factor_boundary candidate then best
         else if not (rule_factor_eligible candidate) then
           scan
-            (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+            (Gap_skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
         else
-          let candidate_summary = summarize_factor_rule candidate in
           let candidate_common =
             factor_anchor_common first candidate_summary common
           in
@@ -4242,7 +4273,9 @@ let try_factor_single_anchor prefix first rest =
               (Gap_factor candidate_summary :: entries_rev)
               (Some candidate_common) best (fuel - 1) tail
   in
-  scan [] None None 128 rest
+  match scan [] None None 128 rest_summaries with
+  | None -> None
+  | Some (replacement, tail, _) -> Some (prefix @ replacement, List.map fst tail)
 
 let equal_anchor_common first candidate common =
   match common with
@@ -4262,14 +4295,13 @@ let equal_anchor_common first candidate common =
 let rec scan_equal_anchor first entries_rev common best fuel = function
   | [] -> best
   | _ when fuel <= 0 -> best
-  | candidate :: tail ->
+  | (candidate, candidate_summary) :: tail ->
       if boundary_stops_scan common candidate then best
       else if not (rule_factor_eligible candidate) then
         scan_equal_anchor first
-          (Gap_skip (summarize_factor_rule candidate) :: entries_rev)
+          (Gap_skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
       else
-        let candidate_summary = summarize_factor_rule candidate in
         let candidate_common =
           equal_anchor_common first candidate_summary common
         in
@@ -4312,10 +4344,15 @@ let try_factor_equal_anchor first rest =
      with each individual anchor declaration recovers those groups; the best
      factoring across all seeds wins. *)
   let seeds = None :: List.map (fun d -> Some [ d ]) first.declarations in
+  (* Pre-summarise [rest] once per anchor: every seed walks the same window, and
+     re-running [summarize_factor_rule] in each scan iteration was the
+     bottleneck (two [Pp.size] traversals per candidate). *)
+  let rest_summaries = List.map (fun r -> (r, summarize_factor_rule r)) rest in
   List.fold_left
     (fun best seed ->
       match
-        scan_equal_anchor first [] seed None equal_factor_lookahead rest
+        scan_equal_anchor first [] seed None equal_factor_lookahead
+          rest_summaries
       with
       | None -> best
       | Some (replacement, tail, savings) ->
@@ -5479,6 +5516,8 @@ let extract_group_branch_into_adjacent rules =
   let result = go [] rules in
   if !changed then result else rules
 
+let pass_times : (string, float) Hashtbl.t = Hashtbl.create 16
+
 let rec factor_rules_to_fixpoint ~ctx fuel rules =
   if fuel <= 0 then (
     Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
@@ -5487,7 +5526,11 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
     (* Log each pass that changes the rule list so the per-iteration progress is
        visible under [-vv] without hand-added tracing. *)
     let pass name f r =
+      let t0 = Unix.gettimeofday () in
       let r' = f r in
+      let t1 = Unix.gettimeofday () in
+      let prev = try Hashtbl.find pass_times name with Not_found -> 0.0 in
+      Hashtbl.replace pass_times name (prev +. (t1 -. t0));
       if not (r' == r) then
         Log.debug (fun m -> m "factor iter %d: %s changed" fuel name);
       r'
@@ -6372,6 +6415,8 @@ and normalize_statement ~lossless (s : statement) : statement =
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) (stylesheet : t) : t =
+  clear_summary_memo ();
+  Selector_summary.clear_memo ();
   let scope = Option.value scope ~default:`Fragment in
   let stylesheet = normalize_block ~lossless stylesheet in
   let stylesheet =

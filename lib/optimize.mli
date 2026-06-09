@@ -178,3 +178,8 @@ val flatten_nesting : t -> t
 (** [flatten_nesting ss] returns [ss] with every nested rule flattened into a
     top-level rule. Equivalent to the [~flatten_nesting:true] mode of
     {!stylesheet} but without the deduplication / merge passes. *)
+
+val pass_times : (string, float) Hashtbl.t
+(** Per-pass timing accumulator for [factor_rules_to_fixpoint]. Populated as
+    side effect during [stylesheet] / [statements_top_level] runs; used by perf
+    diagnostics. Keys are pass names, values are accumulated seconds. *)
