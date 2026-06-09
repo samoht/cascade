@@ -4485,14 +4485,19 @@ let extend_factored_declarations (rules : Stylesheet.rule list) :
 let rule_identical_extend_eligible (r : Stylesheet.rule) =
   rule_factor_eligible r
 
-let can_extend_identical_rule anchor candidate =
-  declarations_css_equal anchor.declarations candidate.declarations
+let can_extend_identical_rule ~anchor_bloom ~candidate_bloom anchor candidate =
+  (* Bloom prefilter: two rules with different declaration-hash sets cannot have
+     structurally equal declaration lists. Avoids the full
+     [declarations_css_equal] walk on the common rejected case. *)
+  anchor_bloom = candidate_bloom
+  && declarations_css_equal anchor.declarations candidate.declarations
   && extract_pseudo_element anchor.selector
      = extract_pseudo_element candidate.selector
   && newer_pseudo_class_compatible anchor.selector candidate.selector
 
 let try_extend_identical_rule ~ctx anchor rest =
   let common = anchor.declarations in
+  let anchor_bloom = (summarize_factor_rule anchor).decl_bloom in
   let skipped_rule_blocks =
     match ctx.scope with
     | `Stylesheet -> skipped_blocks_factor_tie
@@ -4506,7 +4511,8 @@ let try_extend_identical_rule ~ctx anchor rest =
         else
           let candidate_summary = summarize_factor_rule candidate in
           if
-            can_extend_identical_rule anchor candidate
+            can_extend_identical_rule ~anchor_bloom
+              ~candidate_bloom:candidate_summary.decl_bloom anchor candidate
             && not
                  (List.exists
                     (skipped_rule_blocks common candidate_summary)
