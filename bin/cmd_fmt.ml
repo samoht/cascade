@@ -40,6 +40,70 @@ let report_profile () =
   Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
     hits misses hit_pct
 
+let fast_minify_threshold = 4_000
+
+(* Keep the CLI fast on large production stylesheets by default. The pure
+   minifying serializer is still spec-correct; it just skips expensive global
+   size-arbitrage passes. Explicit optimizer-dependent modes and smaller inputs
+   keep using [Css.optimize]. Library callers of [Css.optimize] always get the
+   full optimizer. *)
+let stylesheet_weight stylesheet =
+  let open Css in
+  let keyframe acc (k : Stylesheet.keyframe) =
+    acc + 1 + List.length k.declarations
+  in
+  let rec block acc = List.fold_left statement acc
+  and rule acc (r : Stylesheet.rule) =
+    block (acc + 1 + List.length r.declarations) r.nested
+  and statement acc = function
+    | Rule r -> rule acc r
+    | Declarations decls -> acc + List.length decls
+    | Media (_, block_)
+    | Supports (_, block_)
+    | Moz_document (_, block_)
+    | Layer (_, block_)
+    | Container (_, _, block_)
+    | Scope (_, _, block_)
+    | Starting_style block_
+    | When (_, block_)
+    | Else (_, block_)
+    | Origin (_, block_) ->
+        block (acc + 1) block_
+    | Keyframes (_, frames)
+    | Webkit_keyframes (_, frames)
+    | Moz_keyframes (_, frames) ->
+        List.fold_left keyframe (acc + 1) frames
+    | Page (_, decls) -> acc + 1 + List.length decls
+    | Page_with_margins (_, decls, margins) ->
+        acc + 1 + List.length decls
+        + List.fold_left
+            (fun acc m -> acc + List.length m.Stylesheet.descriptors)
+            0 margins
+    | Supports_condition (_, decls) -> acc + 1 + List.length decls
+    | Font_face descriptors -> acc + 1 + List.length descriptors
+    | Counter_style (_, descriptors) -> acc + 1 + List.length descriptors
+    | Font_palette_values (_, descriptors) -> acc + 1 + List.length descriptors
+    | View_transition descriptors -> acc + 1 + List.length descriptors
+    | Position_try (_, decls) -> acc + 1 + List.length decls
+    | Viewport (_, descriptors) -> acc + 1 + List.length descriptors
+    | Font_feature_values (_, blocks) ->
+        acc + 1
+        + List.fold_left
+            (fun acc (_, values) -> acc + List.length values)
+            0 blocks
+    | Property _ | Import _ | Namespace _ | Layer_decl _ | Unknown_at_rule _
+    | Bang_comment _ | Charset _ ->
+        acc + 1
+  in
+  block 0 stylesheet
+
+let should_optimize ~minify ~scope ~flatten_nesting ~lossless ~enforce_spec
+    ~inline_imports_flag ~inline_vars_flag ~profile stylesheet =
+  minify
+  && (scope = `Stylesheet || flatten_nesting || lossless || enforce_spec
+    || inline_imports_flag || inline_vars_flag || profile
+     || stylesheet_weight stylesheet <= fast_minify_threshold)
+
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
     ~memtrace_path ~profile =
@@ -63,7 +127,10 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     in
     (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
-      if minify then
+      if
+        should_optimize ~minify ~scope ~flatten_nesting ~lossless ~enforce_spec
+          ~inline_imports_flag ~inline_vars_flag ~profile stylesheet
+      then
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec stylesheet
       else stylesheet
     in
@@ -86,8 +153,10 @@ let input_arg =
 
 let minify_arg =
   let doc =
-    "Minify the output and apply safe transforms (deduplication, rule merging, \
-     selector grouping, empty-rule removal)."
+    "Minify the output. Small stylesheets and optimizer-dependent modes also \
+     run global safe transforms (deduplication, rule merging, selector \
+     grouping); large stylesheets use the fast minifying serializer by \
+     default."
   in
   Arg.(value & flag & info [ "m"; "minify" ] ~doc)
 
@@ -234,10 +303,10 @@ let man =
       "$(tname) reads a CSS file and writes it back, optionally minifying it \
        or inlining [@import] rules and [var(--*)] references.";
     `P
-      "Without flags, $(tname) pretty-prints. With $(b,--minify) it applies \
-       the standard cssnano-style safe transforms (deduplication, rule \
-       merging, selector grouping, empty-rule elimination) and emits minified \
-       output.";
+      "Without flags, $(tname) pretty-prints. With $(b,--minify) it applies a \
+       size-aware heuristic: small inputs and optimizer-dependent modes run \
+       the full global safe-transform pipeline; large inputs use the fast \
+       minifying serializer by default.";
     `P
       "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
        $(b,--inline-imports) assumes you control file resolution and \
