@@ -40,24 +40,135 @@ let report_profile () =
   Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
     hits misses hit_pct
 
-let fast_minify_threshold = 4_000
+module Minify_preflight = struct
+  let small_candidate_threshold = 4_000
+  let useful_gain_bytes = 2_048
+  let useful_gain_ratio_ppm = 120_000
 
-(* Keep the CLI fast on large production stylesheets by default. The pure
-   minifying serializer is still spec-correct; it just skips expensive global
-   size-arbitrage passes. Explicit optimizer-dependent modes and smaller inputs
-   keep using [Css.optimize]. Library callers of [Css.optimize] always get the
-   full optimizer. *)
-let stylesheet_weight stylesheet =
-  let open Css in
-  let keyframe acc (k : Stylesheet.keyframe) =
-    acc + 1 + List.length k.declarations
-  in
-  let rec block acc = List.fold_left statement acc
-  and rule acc (r : Stylesheet.rule) =
-    block (acc + 1 + List.length r.declarations) r.nested
-  and statement acc = function
-    | Rule r -> rule acc r
-    | Declarations decls -> acc + List.length decls
+  type summary = {
+    mutable source_size : int;
+    mutable rule_count : int;
+    mutable declaration_count : int;
+    mutable adjacent_selector_gain : int;
+    mutable identical_body_gain : int;
+    mutable shared_declaration_gain : int;
+  }
+
+  type state = {
+    summary : summary;
+    body_groups : (int list, int) Hashtbl.t;
+    declaration_counts : (int, int * int) Hashtbl.t;
+  }
+
+  let v () =
+    {
+      summary =
+        {
+          source_size = 0;
+          rule_count = 0;
+          declaration_count = 0;
+          adjacent_selector_gain = 0;
+          identical_body_gain = 0;
+          shared_declaration_gain = 0;
+        };
+      body_groups = Hashtbl.create 256;
+      declaration_counts = Hashtbl.create 1024;
+    }
+
+  let selector_text sel = Css.Selector.to_string ~minify:true sel
+
+  let declaration_size decl =
+    String.length (Css.Declaration.to_string ~minify:true decl)
+
+  let declaration_list_size decls =
+    List.fold_left (fun acc decl -> acc + declaration_size decl) 0 decls
+
+  let rule_size selector_size decl_size decl_count =
+    selector_size + 2 + decl_size + max 0 (decl_count - 1)
+
+  let add_declaration_count state n =
+    state.summary.declaration_count <- state.summary.declaration_count + n
+
+  let record_declaration state decl =
+    let hash = Css.Declaration.hash decl in
+    let size = declaration_size decl in
+    let count, _ =
+      match Hashtbl.find_opt state.declaration_counts hash with
+      | Some entry -> entry
+      | None -> (0, size)
+    in
+    if count > 0 then
+      state.summary.shared_declaration_gain <-
+        state.summary.shared_declaration_gain + max 0 (size - 1);
+    Hashtbl.replace state.declaration_counts hash (count + 1, size)
+
+  let record_declarations state decls =
+    add_declaration_count state (List.length decls);
+    List.iter (record_declaration state) decls
+
+  let record_identical_body state decls decl_size =
+    let key = List.map Css.Declaration.hash decls in
+    match Hashtbl.find_opt state.body_groups key with
+    | Some count ->
+        state.summary.identical_body_gain <-
+          state.summary.identical_body_gain + max 0 (decl_size + 1);
+        Hashtbl.replace state.body_groups key (count + 1)
+    | None -> Hashtbl.add state.body_groups key 1
+
+  let page_margin_size margins =
+    List.fold_left
+      (fun acc m -> acc + List.length m.Css.Stylesheet.descriptors)
+      0 margins
+
+  let font_feature_value_size blocks =
+    List.fold_left (fun acc (_, values) -> acc + List.length values) 0 blocks
+
+  let keyframe state acc (k : Css.Stylesheet.keyframe) =
+    record_declarations state k.declarations;
+    acc + 2 + declaration_list_size k.declarations
+
+  let descriptor_block_size acc descriptors = acc + 1 + List.length descriptors
+
+  let declaration_block_size state acc decls =
+    record_declarations state decls;
+    acc + 1 + declaration_list_size decls
+
+  let rec block state acc (stmts : Css.Stylesheet.statement list) =
+    match stmts with
+    | [] -> acc
+    | Rule r :: rest ->
+        let acc = rule state acc r in
+        block_rules state acc (selector_text r.selector) rest
+    | stmt :: rest -> block state (statement state acc stmt) rest
+
+  and block_rules state acc previous_selector
+      (stmts : Css.Stylesheet.statement list) =
+    match stmts with
+    | Rule r :: rest ->
+        let selector = selector_text r.selector in
+        let selector_size = String.length selector in
+        if selector = previous_selector then
+          state.summary.adjacent_selector_gain <-
+            state.summary.adjacent_selector_gain + selector_size + 1;
+        let acc = rule state acc r in
+        block_rules state acc selector rest
+    | rest -> block state acc rest
+
+  and rule state acc (r : Css.Stylesheet.rule) =
+    let selector_size = String.length (selector_text r.selector) in
+    let decl_size = declaration_list_size r.declarations in
+    let decl_count = List.length r.declarations in
+    state.summary.rule_count <- state.summary.rule_count + 1;
+    record_declarations state r.declarations;
+    if r.nested = [] && decl_count > 0 then
+      record_identical_body state r.declarations decl_size;
+    block state (acc + rule_size selector_size decl_size decl_count) r.nested
+
+  and statement state acc = function
+    | Rule r -> rule state acc r
+    | Declarations decls ->
+        record_declarations state decls;
+        acc + declaration_list_size decls
     | Media (_, block_)
     | Supports (_, block_)
     | Moz_document (_, block_)
@@ -68,41 +179,51 @@ let stylesheet_weight stylesheet =
     | When (_, block_)
     | Else (_, block_)
     | Origin (_, block_) ->
-        block (acc + 1) block_
+        block state (acc + 1) block_
     | Keyframes (_, frames)
     | Webkit_keyframes (_, frames)
     | Moz_keyframes (_, frames) ->
-        List.fold_left keyframe (acc + 1) frames
-    | Page (_, decls) -> acc + 1 + List.length decls
+        List.fold_left (keyframe state) (acc + 1) frames
+    | Page (_, decls) | Supports_condition (_, decls) | Position_try (_, decls)
+      ->
+        declaration_block_size state acc decls
     | Page_with_margins (_, decls, margins) ->
-        acc + 1 + List.length decls
-        + List.fold_left
-            (fun acc m -> acc + List.length m.Stylesheet.descriptors)
-            0 margins
-    | Supports_condition (_, decls) -> acc + 1 + List.length decls
-    | Font_face descriptors -> acc + 1 + List.length descriptors
-    | Counter_style (_, descriptors) -> acc + 1 + List.length descriptors
-    | Font_palette_values (_, descriptors) -> acc + 1 + List.length descriptors
-    | View_transition descriptors -> acc + 1 + List.length descriptors
-    | Position_try (_, decls) -> acc + 1 + List.length decls
-    | Viewport (_, descriptors) -> acc + 1 + List.length descriptors
+        declaration_block_size state acc decls + page_margin_size margins
+    | Font_face descriptors -> descriptor_block_size acc descriptors
+    | Counter_style (_, descriptors) -> descriptor_block_size acc descriptors
+    | Font_palette_values (_, descriptors) ->
+        descriptor_block_size acc descriptors
+    | View_transition descriptors -> descriptor_block_size acc descriptors
+    | Viewport (_, descriptors) -> descriptor_block_size acc descriptors
     | Font_feature_values (_, blocks) ->
-        acc + 1
-        + List.fold_left
-            (fun acc (_, values) -> acc + List.length values)
-            0 blocks
+        acc + 1 + font_feature_value_size blocks
     | Property _ | Import _ | Namespace _ | Layer_decl _ | Unknown_at_rule _
     | Bang_comment _ | Charset _ ->
         acc + 1
-  in
-  block 0 stylesheet
+
+  let summarize stylesheet =
+    let state = v () in
+    state.summary.source_size <- block state 0 stylesheet;
+    state.summary
+
+  let estimated_gain summary =
+    summary.adjacent_selector_gain + summary.identical_body_gain
+    + (summary.shared_declaration_gain / 32)
+
+  let useful summary =
+    if summary.declaration_count <= small_candidate_threshold then true
+    else
+      let gain = estimated_gain summary in
+      gain >= useful_gain_bytes
+      && gain * 1_000_000 >= summary.source_size * useful_gain_ratio_ppm
+end
 
 let should_optimize ~minify ~scope ~flatten_nesting ~lossless ~enforce_spec
     ~inline_imports_flag ~inline_vars_flag ~profile stylesheet =
   minify
   && (scope = `Stylesheet || flatten_nesting || lossless || enforce_spec
     || inline_imports_flag || inline_vars_flag || profile
-     || stylesheet_weight stylesheet <= fast_minify_threshold)
+     || stylesheet |> Minify_preflight.summarize |> Minify_preflight.useful)
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
@@ -153,10 +274,10 @@ let input_arg =
 
 let minify_arg =
   let doc =
-    "Minify the output. Small stylesheets and optimizer-dependent modes also \
-     run global safe transforms (deduplication, rule merging, selector \
-     grouping); large stylesheets use the fast minifying serializer by \
-     default."
+    "Minify the output. Inputs with useful global rewrite candidates and \
+     optimizer-dependent modes also run global safe transforms (deduplication, \
+     rule merging, selector grouping); low-ROI inputs use the fast minifying \
+     serializer by default."
   in
   Arg.(value & flag & info [ "m"; "minify" ] ~doc)
 
@@ -304,9 +425,9 @@ let man =
        or inlining [@import] rules and [var(--*)] references.";
     `P
       "Without flags, $(tname) pretty-prints. With $(b,--minify) it applies a \
-       size-aware heuristic: small inputs and optimizer-dependent modes run \
-       the full global safe-transform pipeline; large inputs use the fast \
-       minifying serializer by default.";
+       size-aware heuristic: inputs with useful global rewrite candidates and \
+       optimizer-dependent modes run the full global safe-transform pipeline; \
+       low-ROI inputs use the fast minifying serializer by default.";
     `P
       "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
        $(b,--inline-imports) assumes you control file resolution and \

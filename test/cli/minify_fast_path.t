@@ -1,7 +1,7 @@
-CLI: --minify uses a fast large-stylesheet path by default.
+CLI: --minify uses a fast low-ROI stylesheet path by default.
 
-Small inputs still run the global optimiser, so existing size-arbitrage
-rewrites remain the default for focused stylesheets.
+Small inputs with useful candidates still run the global optimiser, so existing
+size-arbitrage rewrites remain the default for focused stylesheets.
 
   $ cat > small.css <<EOF
   > .a { color: red }
@@ -10,13 +10,12 @@ rewrites remain the default for focused stylesheets.
   $ cascade --minify small.css
   .a,.b{color:red}
 
-Large inputs stay on the fast minifying serialiser unless an
-optimizer-dependent mode is requested. This keeps the binary fast by default:
-the output is minified and valid, but repeated equal declarations are not
-globally grouped.
+Large low-ROI inputs stay on the fast minifying serialiser unless an
+optimizer-dependent mode is requested. This keeps the binary fast by default
+while still emitting minified, valid CSS.
 
-  $ for i in $(seq 1 2001); do printf '.x%s{color:red}\n' "$i"; done > big.css
-  $ cascade --minify big.css | grep -o "{color:red}" | wc -l | tr -d ' '
+  $ for i in $(seq 1 2001); do printf '.x%s{width:%spx}\n' "$i" "$i"; done > big.css
+  $ cascade --minify big.css | grep -o "{width:" | wc -l | tr -d ' '
   2001
 
 Profiling is an optimizer-dependent mode, so it forces the aggressive
