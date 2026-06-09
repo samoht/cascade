@@ -3282,7 +3282,7 @@ let newer_pseudo_class_compatible sel1 sel2 =
    spec-equivalent, so - unlike Lightning CSS - cascade does so even when a
    value contains an oklab() with a [none] channel (a smaller, valid merge
    Lightning leaves on the table). *)
-let declarations_css_equal d1 d2 = d1 = d2
+let declarations_css_equal d1 d2 = d1 == d2 || d1 = d2
 
 let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   declarations_css_equal prev.declarations rule.declarations
