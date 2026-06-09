@@ -225,7 +225,9 @@ let custom_value_components = function
       Some (Properties.components_of_custom_property_value value)
   | _ -> None
 
-let better_custom_candidate ~important ~idx = function
+let better_custom_candidate ~important ~idx
+    (best : (bool * int * Component.t list) option) =
+  match best with
   | None -> true
   | Some (best_important, best_idx, _) ->
       (important && not best_important)
@@ -276,7 +278,7 @@ let rec components_contain preserved components =
           components_contain preserved value)
     components
 
-let parse_var_components args =
+let parse_var_components args : (string * Component.t list option) option =
   try
     let cursor = Cursor.of_components args in
     let raw_name = Cursor.ident ~keep_case:true cursor in
@@ -348,7 +350,8 @@ and substitute_var visible ~visited original name fallback =
     | None -> fallback_or_original ()
     | Some value -> resolved_or_fallback value
 
-let declaration_with_components decl components =
+let declaration_with_components decl components : Declaration.declaration option
+    =
   let property = Declaration.property_name decl in
   let value = Parser.to_string_custom_minified components in
   if String.trim value = "" then None
@@ -487,11 +490,7 @@ let eval_page_declaration visible ctx decl =
 
 let map_keyframe_decls f frames =
   List.map
-    (fun frame ->
-      {
-        frame with
-        keyframe_declarations = List.map f frame.keyframe_declarations;
-      })
+    (fun frame -> { frame with declarations = List.map f frame.declarations })
     frames
 
 let universal_selector = Selector.Universal None
@@ -524,7 +523,7 @@ let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
   let visible = universal_visible_customs ~scopes ~at_path in
   let eval_page = eval_page_declaration visible (context_for visible) in
   let update_margin (m : page_margin_rule) =
-    { m with margin_descriptors = List.map eval_page m.margin_descriptors }
+    { m with descriptors = List.map eval_page m.descriptors }
   in
   Page_with_margins
     (sel, List.map eval_page descriptors, List.map update_margin margins)
@@ -735,8 +734,7 @@ let record_at_node_refs consumers ~parents ~at_path node =
 
 let record_keyframe_decls ~record_decl ~at_path ~sel frames =
   List.iter
-    (fun fr ->
-      List.iter (record_decl ~at_path ~selector:sel) fr.keyframe_declarations)
+    (fun fr -> List.iter (record_decl ~at_path ~selector:sel) fr.declarations)
     frames
 
 let collect_scoped_refs stylesheet =
@@ -914,14 +912,15 @@ let property_is_live ~keep ~live_set ~at_path name =
   custom_is_live ~keep ~live_set ~at_path ~selector:universal_selector name
 
 let strip_dead_rule ~filter_decls ~map_stmts ~parents ~at_path
-    (rule : Stylesheet.rule) =
+    (rule : Stylesheet.rule) : Stylesheet.statement option =
   let eff = effective_selector ~parents rule.selector in
   let nested = map_stmts ~parents:(eff :: parents) ~at_path rule.nested in
   let decls = filter_decls ~at_path ~selector:eff rule.declarations in
   if decls = [] && nested = [] then None
   else Some (Rule { rule with declarations = decls; nested })
 
-let strip_dead_declarations ~filter_decls ~parents ~at_path decls =
+let strip_dead_declarations ~filter_decls ~parents ~at_path decls :
+    Stylesheet.statement option =
   let sel = selector_for_parents parents in
   match filter_decls ~at_path ~selector:sel decls with
   | [] -> None
@@ -1004,28 +1003,29 @@ let wrap_import_body (ir : import_rule) body =
    the runtime cascade). When [query] is [None], supports/media guards pass
    through and survive as wrapping at-rules in the inlined body; when a query is
    supplied the guard is evaluated and the import is dropped on rejection. *)
-let layer_guard_passes ~layer_order (rule : import_rule) =
-  match (rule.layer, layer_order) with
+let layer_guard_passes ~(layer_order : string list) (rule : import_rule) =
+  match ((rule.layer : string option), layer_order) with
   | None, _ | _, [] -> true
   | Some name, order -> List.mem name order
 
-let supports_guard_passes ~query (rule : import_rule) =
-  match (rule.supports, query) with
+let supports_guard_passes ~(query : Context.query option) (rule : import_rule) =
+  match ((rule.supports : Supports.t option), query) with
   | None, _ | Some _, None -> true
   | Some cond, Some q -> Context.matches_supports q cond
 
-let media_guard_passes ~query (rule : import_rule) =
-  match (rule.media, query) with
+let media_guard_passes ~(query : Context.query option) (rule : import_rule) =
+  match ((rule.media : Media.t option), query) with
   | None, _ | Some _, None -> true
   | Some m, Some q -> Context.matches_media q m
 
 (* When [query] is provided, the matching at-rule wrapper is no longer needed:
    we have already evaluated the guard and decided to load. Strip the matched
    wrapper from the rule so [wrap_import_body] doesn't re-emit it. *)
-let strip_evaluated_guards ~query (rule : import_rule) =
+let strip_evaluated_guards ~(query : Context.query option) (rule : import_rule)
+    : import_rule =
   match query with
   | None -> rule
-  | Some _ -> { rule with media = None; supports = None }
+  | Some _ -> { rule with media = Option.None; supports = Option.None }
 
 let parse_import_content content =
   let cursor = Cursor.of_string content in
@@ -1044,7 +1044,7 @@ let strip_import_charset =
 
 let imports ?query ?(layer_order = []) (loader : Context.loader) stylesheet =
   let imports = loader.imports in
-  let resolve ~base url =
+  let resolve ~base url : string option =
     let l = Context.loader ?base_url:base ~imports () in
     let url = strip_url_suffix url in
     match Context.resolve_url l url with

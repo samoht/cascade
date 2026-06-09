@@ -837,19 +837,19 @@ let test_unset_inheritance buf =
   let inherited = Some (pick [ "blue"; "inside"; "4.2px" ] buf 0) in
   let initial = pick [ "black"; "outside"; "medium" ] buf 1 in
   let inherited_property =
-    Css.Stylesheet.specified_value ~inherits:true ~initial ~inherited
+    Css.Stylesheet.value ~inherits:true ~initial ~inherited
       ~cascaded:(Some "unset")
   in
   let non_inherited_property =
-    Css.Stylesheet.specified_value ~inherits:false ~initial ~inherited
+    Css.Stylesheet.value ~inherits:false ~initial ~inherited
       ~cascaded:(Some "unset")
   in
-  if inherited_property.specified_value <> Option.get inherited then
+  if inherited_property.value <> Option.get inherited then
     failf "unset inherited property did not inherit: %S"
-      inherited_property.specified_value;
-  if non_inherited_property.specified_value <> initial then
+      inherited_property.value;
+  if non_inherited_property.value <> initial then
     failf "unset non-inherited property did not use initial: %S"
-      non_inherited_property.specified_value
+      non_inherited_property.value
 
 (** CSS Cascade sections 4.2 and 6.1: after all higher-priority criteria tie,
     later source order determines the cascaded value. *)
@@ -858,23 +858,22 @@ let test_cascade_source_order buf =
   let second = pick [ "cyan"; "magenta"; "yellow" ] buf 1 in
   let candidate source_order value : Css.Stylesheet.cascade_candidate =
     {
-      candidate_origin = Css.Stylesheet.Author;
-      candidate_layer = None;
-      candidate_important = false;
-      candidate_specificity = 10;
-      candidate_scope_hops = None;
-      candidate_source_order = source_order;
-      candidate_value = value;
+      origin = Css.Stylesheet.Author;
+      layer = None;
+      important = false;
+      specificity = 10;
+      scope_hops = None;
+      source_order;
+      value;
     }
   in
   match
     Css.Stylesheet.winning_cascade_candidate ~layer_order:[]
       [ candidate 0 first; candidate 1 second ]
   with
-  | Some winner when winner.candidate_value = second -> ()
+  | Some winner when winner.value = second -> ()
   | Some winner ->
-      failf "later source-order candidate lost: %S vs %S" second
-        winner.candidate_value
+      failf "later source-order candidate lost: %S vs %S" second winner.value
   | None -> fail "integrated cascade returned no winner"
 
 (** CSS Cascade section 7.3.5 as used by section 4.3: [revert-layer] falls back
@@ -893,9 +892,8 @@ let test_revert_layer_value buf =
         candidate (Some "theme") 1 "revert-layer";
       ]
   in
-  if specified.specified_value <> fallback then
-    failf "revert-layer did not expose lower layer: %S"
-      specified.specified_value
+  if specified.value <> fallback then
+    failf "revert-layer did not expose lower layer: %S" specified.value
 
 let test_platform_decl_name buf =
   let property, input = platform_declaration_vector buf 0 in

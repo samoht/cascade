@@ -15,7 +15,9 @@ if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; 
 else
   SCRIPT_DIR="$script_dir"
 fi
-TRACE_DIR="$(cd "$SCRIPT_DIR/../traces" && pwd)"
+TRACE_DIR_ARG="${1:-$SCRIPT_DIR/../traces}"
+mkdir -p "$TRACE_DIR_ARG"
+TRACE_DIR="$(cd "$TRACE_DIR_ARG" && pwd)"
 
 CMT_REPO=https://github.com/keithamus/css-minify-tests.git
 CMT_COMMIT=83f224fbf9db27a81f398c1425e6000f22b4b5c9

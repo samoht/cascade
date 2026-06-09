@@ -31,7 +31,7 @@ type combinator =
       (** Legacy [/deep/] alias for [>>>]; same scope and rationale. *)
 
 type ns = Any | None | Prefix of string
-type attr_flag = Case_insensitive | Case_sensitive
+type attr_flag = Insensitive | Sensitive
 type specificity = { ids : int; classes : int; elements : int }
 
 (** CSS Selectors 4 3.6.1 colon-prefix form for the legacy pseudo-elements

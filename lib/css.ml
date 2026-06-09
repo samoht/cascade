@@ -65,10 +65,10 @@ let eval_value ?layer_order ?layer ctx property value =
 let eval_page_margin_rule ~layer_order ?layer ctx rule =
   {
     rule with
-    Stylesheet.margin_descriptors =
+    Stylesheet.descriptors =
       List.map
         (eval_declaration ~layer_order ?layer ctx)
-        rule.Stylesheet.margin_descriptors;
+        rule.Stylesheet.descriptors;
   }
 
 let layer_known ~layer_order = function
@@ -132,8 +132,8 @@ let eval_keyframes ~layer_order ?layer ctx frames =
   let eval_frame (frame : Stylesheet.keyframe) =
     {
       frame with
-      Stylesheet.keyframe_declarations =
-        eval_declarations ~layer_order ?layer ctx frame.keyframe_declarations;
+      Stylesheet.declarations =
+        eval_declarations ~layer_order ?layer ctx frame.declarations;
     }
   in
   List.map eval_frame frames
@@ -398,10 +398,7 @@ let rule ~selector ?nested ?merge_key declarations =
   Rule (Stylesheet.rule ~selector ?nested ?merge_key declarations)
 
 let keyframe ~selector ~declarations =
-  {
-    Stylesheet.keyframe_selector = Keyframe.selector_of_string selector;
-    keyframe_declarations = declarations;
-  }
+  { Stylesheet.selector = Keyframe.selector_of_string selector; declarations }
 
 (* Re-export keyframes from Stylesheet *)
 let keyframes = Stylesheet.keyframes

@@ -98,7 +98,7 @@ module Font_face = Font_face
 
 module Transform : sig
   val of_string : string -> (Properties.transform, Error.t) result
-  (** [of_string s] parses [s] as a single [transform] value. *)
+  (** [of_string s] parses [s] as a single {!val-transform} value. *)
 end
 
 module Transform_origin : sig
@@ -113,7 +113,7 @@ end
 
 module Animation : sig
   val of_string : string -> (Properties.animation, Error.t) result
-  (** [of_string s] parses [s] as a single [animation] shorthand entry (one
+  (** [of_string s] parses [s] as a single {!val-animation} shorthand entry (one
       comma-separated entry; for the full list use {!Properties.read_animations}
       with a cursor). *)
 end
@@ -330,22 +330,22 @@ val winning_cascade_candidate :
 (** [winning_cascade_candidate ~layer_order candidates] returns the highest
     priority full cascade candidate. *)
 
-val specified_value :
+val value :
   inherits:bool ->
   initial:string ->
   inherited:string option ->
   cascaded:string option ->
-  Stylesheet.specified_value
-(** [specified_value ~inherits ~initial ~inherited ~cascaded] models the
-    defaulting step from cascaded value to specified value for the non-layout
-    cases represented by this library. *)
+  Stylesheet.value
+(** [value ~inherits ~initial ~inherited ~cascaded] models the defaulting step
+    from cascaded value to specified value for the non-layout cases represented
+    by this library. *)
 
 val specified_value_after_revert :
   inherits:bool ->
   initial:string ->
   inherited:string option ->
   Stylesheet.cascade_origin_candidate list ->
-  Stylesheet.specified_value
+  Stylesheet.value
 (** [specified_value_after_revert] chains [revert] rollbacks through the origin
     stack until a non-[revert] winner remains, then defaults. *)
 
@@ -355,7 +355,7 @@ val specified_value_after_revert_layer :
   inherited:string option ->
   layer_order:string list ->
   Stylesheet.cascade_layer_candidate list ->
-  Stylesheet.specified_value
+  Stylesheet.value
 (** [specified_value_after_revert_layer] is the [revert-layer] analogue, chained
     through the layer stack. *)
 
@@ -676,16 +676,16 @@ and math_fn = Values.math_fn =
   | Abs_n of math_arg
 
 (** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians).
-    {!constructor-Angle_op} and {!constructor-Angle_parens} support arithmetic
-    over angles. *)
+    {!constructor-Operation} and {!constructor-Grouped} support arithmetic over
+    angles. *)
 and angle_arg = Values.angle_arg =
-  | Angle_deg of float
-  | Angle_rad of float
-  | Angle_turn of float
-  | Angle_grad of float
-  | Angle_num of math_arg
-  | Angle_op of angle_arg * calc_op * angle_arg
-  | Angle_parens of angle_arg
+  | Deg of float
+  | Rad of float
+  | Turn of float
+  | Grad of float
+  | Numeric_arg of math_arg
+  | Operation of angle_arg * calc_op * angle_arg
+  | Grouped of angle_arg
 
 (** CSS calc values. *)
 type 'a calc = 'a Values.calc =
@@ -2927,7 +2927,7 @@ end
 
 type background_image = Properties.background_image =
   | Url of string
-  | Url_quoted of string * char
+  | Quoted of string * char
   | Linear_gradient of gradient_direction * gradient_stop list
   | Linear_gradient_var of gradient_stop var
       (** Linear gradient using a single variable for all stops including
@@ -2982,8 +2982,8 @@ and image_set_option = Properties.image_set_option = {
 }
 
 and image_set_source = Properties.image_set_source =
-  | Image_set_url of string
-  | Image_set_string of string
+  | Url of string
+  | String of string
 
 and cross_fade_option = Properties.cross_fade_option = {
   image : background_image;
@@ -6854,8 +6854,8 @@ type timeline_axis = Properties.timeline_axis =
   | Var of timeline_axis var
 
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
-  timeline_name : string;
-  timeline_axis : timeline_axis;
+  name : string;
+  axis : timeline_axis;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =
@@ -7161,7 +7161,7 @@ type 'a kind = 'a Properties.kind =
   | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
-  | Font_variant_numeric : font_variant_numeric kind
+  | Numeric : font_variant_numeric kind
   | Font_variant_numeric_token : font_variant_numeric_token kind
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind

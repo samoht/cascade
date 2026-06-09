@@ -146,7 +146,7 @@ let diff_same_key_pair key d1 d2 =
   let sig2 = sig_of_decls d2 in
   if sig1 = sig2 && d1 <> d2 then
     Some
-      (D.Rule_reordered
+      (D.Reordered
          {
            selector = key;
            expected_pos = -1;
@@ -154,10 +154,11 @@ let diff_same_key_pair key d1 d2 =
            swapped_with = None;
            old_declarations = Some d1;
            new_declarations = Some d2;
-         })
+         }
+        : D.rule_diff)
   else if sig1 <> sig2 then
     Some
-      (D.Rule_content_changed
+      (D.Content_changed
          {
            selector = key;
            old_declarations = d1;
@@ -178,11 +179,13 @@ let diff_count_mismatch key ds1 ds2 =
   let n1 = List.length ds1 in
   let n2 = List.length ds2 in
   if n2 > n1 then
-    D.Rule_added
-      { selector = key ^ " (duplicate)"; declarations = List.nth ds2 (n2 - 1) }
+    (D.Added
+       { selector = key ^ " (duplicate)"; declarations = List.nth ds2 (n2 - 1) }
+      : D.rule_diff)
   else
-    D.Rule_removed
-      { selector = key ^ " (missing)"; declarations = List.nth ds1 (n1 - 1) }
+    (D.Removed
+       { selector = key ^ " (missing)"; declarations = List.nth ds1 (n1 - 1) }
+      : D.rule_diff)
 
 (* Detect declaration-reordering-only differences throughout a stylesheet *)
 let collect_pairwise_diffs ~diffs key ds1 ds2 =
@@ -289,8 +292,8 @@ let fallback_to_string_diff ~expected ~actual =
 let diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm =
   (* Structural diff is empty but strings differ - attempt to classify
      declaration ordering-only differences throughout the stylesheet
-     (recursively inside containers) as structural Rule_reordered changes. If
-     none detected, fall back to string diff. *)
+     (recursively inside containers) as structural Reordered changes. If none
+     detected, fall back to string diff. *)
   match build_reorder_diff expected_norm actual_norm with
   | Some d -> Tree_diff d
   | None -> fallback_to_string_diff ~expected ~actual
@@ -316,6 +319,17 @@ let diff_auto ~expected ~actual =
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
+let diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon =
+  match (Css.of_string expected_canon, Css.of_string actual_canon) with
+  | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+      let structural_diff =
+        tree_diff ~expected:expected_ast ~actual:actual_ast
+      in
+      if is_empty structural_diff then
+        No_diff { canonical_byte_diff = Some (expected_canon, actual_canon) }
+      else Tree_diff structural_diff
+  | _ -> diff_auto ~expected ~actual
+
 let diff_canonical ~expected ~actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
@@ -323,7 +337,7 @@ let diff_canonical ~expected ~actual =
   else
     match canonical_diff_inputs_with_fallback expected actual with
     | None -> diff_auto ~expected ~actual
-    | Some (expected_canon, actual_canon) -> (
+    | Some (expected_canon, actual_canon) ->
         if String.equal expected_canon actual_canon then
           No_diff { canonical_byte_diff = None }
         else
@@ -336,17 +350,7 @@ let diff_canonical ~expected ~actual =
              inside [url()], ...). Expose the canonical byte forms on [No_diff]
              so maintainers can spot which canonical-pass gap to chip away at
              next, without ever overriding the structural answer. *)
-          match (Css.of_string expected_canon, Css.of_string actual_canon) with
-          | ( Ok { stylesheet = expected_ast; _ },
-              Ok { stylesheet = actual_ast; _ } ) ->
-              let structural_diff =
-                tree_diff ~expected:expected_ast ~actual:actual_ast
-              in
-              if is_empty structural_diff then
-                No_diff
-                  { canonical_byte_diff = Some (expected_canon, actual_canon) }
-              else Tree_diff structural_diff
-          | _ -> diff_auto ~expected ~actual)
+          diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon
 
 let diff_string ~expected ~actual =
   if expected = actual then No_diff { canonical_byte_diff = None }
@@ -398,15 +402,15 @@ let compute_stats ~expected_str ~actual_str diff_result =
         expected_chars;
         actual_chars;
         added_rules =
-          count_rule_type (function D.Rule_added _ -> true | _ -> false);
+          count_rule_type (function D.Added _ -> true | _ -> false);
         removed_rules =
-          count_rule_type (function D.Rule_removed _ -> true | _ -> false);
+          count_rule_type (function D.Removed _ -> true | _ -> false);
         modified_rules =
           count_rule_type (function
-            | D.Rule_content_changed _ | D.Rule_selector_changed _ -> true
+            | D.Content_changed _ | D.Selector_changed _ -> true
             | _ -> false);
         reordered_rules =
-          count_rule_type (function D.Rule_reordered _ -> true | _ -> false);
+          count_rule_type (function D.Reordered _ -> true | _ -> false);
         container_changes = List.length d.containers;
       }
   | _ ->

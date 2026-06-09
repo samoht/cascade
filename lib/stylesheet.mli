@@ -154,23 +154,23 @@ val winning_cascade_candidate :
 (** [winning_cascade_candidate ~layer_order candidates] returns the highest
     priority full cascade candidate. *)
 
-val specified_value :
+val value :
   inherits:bool ->
   initial:string ->
   inherited:string option ->
   cascaded:string option ->
-  specified_value
-(** [specified_value ~inherits ~initial ~inherited ~cascaded] models the
-    defaulting step that produces a specified value from a cascaded value for
-    [initial], [inherit], and [unset]. [inherited = None] means the element has
-    no parent value and falls back to [initial]. *)
+  value
+(** [value ~inherits ~initial ~inherited ~cascaded] models the defaulting step
+    that produces a specified value from a cascaded value for [initial],
+    [inherit], and [unset]. [inherited = None] means the element has no parent
+    value and falls back to [initial]. *)
 
 val specified_value_after_revert :
   inherits:bool ->
   initial:string ->
   inherited:string option ->
   cascade_origin_candidate list ->
-  specified_value
+  value
 (** [specified_value_after_revert] resolves a chain of [revert] winners by
     rolling back to the next-lower origin until a non-revert candidate (or none)
     survives, then defaults the result. The rollback context is taken from each
@@ -182,7 +182,7 @@ val specified_value_after_revert_layer :
   inherited:string option ->
   layer_order:string list ->
   cascade_layer_candidate list ->
-  specified_value
+  value
 (** [specified_value_after_revert_layer] is the [revert-layer] analogue of
     {!specified_value_after_revert}: chains rollback through the lower-priority
     layers until a non-[revert-layer] winner remains. *)

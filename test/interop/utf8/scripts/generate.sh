@@ -16,7 +16,9 @@ if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; 
 else
   SCRIPT_DIR="$script_dir"
 fi
-TRACE_DIR="$(cd "$SCRIPT_DIR/../traces" && pwd)"
+TRACE_DIR_ARG="${1:-$SCRIPT_DIR/../traces}"
+mkdir -p "$TRACE_DIR_ARG"
+TRACE_DIR="$(cd "$TRACE_DIR_ARG" && pwd)"
 
 KUHN_URL="https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt"
 

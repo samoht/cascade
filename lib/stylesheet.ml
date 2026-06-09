@@ -46,11 +46,12 @@ let layer_statement_name_list = function
   | Layer_decl names -> Some names
   | _ -> None
 
-let rec index_of x i = function
+let rec index_of x i : string list -> int option = function
   | [] -> None
   | y :: ys -> if x = y then Some i else index_of x (i + 1) ys
 
-let cascade_layer_precedence_rank ~layer_order ~important layer =
+let cascade_layer_precedence_rank ~layer_order ~important
+    (layer : string option) =
   let layer_count = List.length layer_order in
   match (important, layer) with
   | false, None -> layer_count
@@ -71,7 +72,8 @@ let compare_cascade_layer_candidate ~layer_order (a : cascade_layer_candidate)
   compare (key a) (key b)
 
 let winning_cascade_layer_candidate ~layer_order
-    (candidates : cascade_layer_candidate list) =
+    (candidates : cascade_layer_candidate list) : cascade_layer_candidate option
+    =
   match candidates with
   | [] -> None
   | first :: rest ->
@@ -104,7 +106,8 @@ let compare_cascade_origin_candidate (a : cascade_origin_candidate)
   compare (key a) (key b)
 
 let winning_cascade_origin_candidate
-    (candidates : cascade_origin_candidate list) =
+    (candidates : cascade_origin_candidate list) :
+    cascade_origin_candidate option =
   match candidates with
   | [] -> None
   | first :: rest ->
@@ -152,22 +155,23 @@ let cascaded_value candidates =
   winning_cascade_origin_candidate candidates
   |> Option.map (fun (c : cascade_origin_candidate) -> c.value)
 
-let scope_proximity_rank = function None -> min_int | Some hops -> -hops
+let scope_proximity_rank : int option -> int = function
+  | None -> min_int
+  | Some hops -> -hops
 
 let compare_cascade_candidate ~layer_order (a : cascade_candidate)
     (b : cascade_candidate) =
   let key (c : cascade_candidate) =
-    ( origin_importance_rank ~important:c.candidate_important c.candidate_origin,
-      cascade_layer_precedence_rank ~layer_order
-        ~important:c.candidate_important c.candidate_layer,
-      c.candidate_specificity,
-      scope_proximity_rank c.candidate_scope_hops,
-      c.candidate_source_order )
+    ( origin_importance_rank ~important:c.important c.origin,
+      cascade_layer_precedence_rank ~layer_order ~important:c.important c.layer,
+      c.specificity,
+      scope_proximity_rank c.scope_hops,
+      c.source_order )
   in
   compare (key a) (key b)
 
 let winning_cascade_candidate ~layer_order (candidates : cascade_candidate list)
-    =
+    : cascade_candidate option =
   match candidates with
   | [] -> None
   | first :: rest ->
@@ -179,31 +183,19 @@ let winning_cascade_candidate ~layer_order (candidates : cascade_candidate list)
              else winner)
            first rest)
 
-let specified_value ~inherits ~initial ~inherited ~cascaded =
+let value ~inherits ~initial ~inherited ~cascaded =
   let inherited_or_initial () = Option.value ~default:initial inherited in
   match cascaded with
-  | Some "initial" ->
-      { specified_value = initial; specified_value_source = Initial_keyword }
+  | Some "initial" -> { value = initial; value_source = Initial_keyword }
   | Some "inherit" ->
-      {
-        specified_value = inherited_or_initial ();
-        specified_value_source = Inherit_keyword;
-      }
+      { value = inherited_or_initial (); value_source = Inherit_keyword }
   | Some "unset" when inherits ->
-      {
-        specified_value = inherited_or_initial ();
-        specified_value_source = Unset_inherited;
-      }
-  | Some "unset" ->
-      { specified_value = initial; specified_value_source = Unset_initial }
-  | Some value -> { specified_value = value; specified_value_source = Cascaded }
+      { value = inherited_or_initial (); value_source = Unset_inherited }
+  | Some "unset" -> { value = initial; value_source = Unset_initial }
+  | Some value -> { value; value_source = Cascaded }
   | None when inherits ->
-      {
-        specified_value = inherited_or_initial ();
-        specified_value_source = Inherited_default;
-      }
-  | None ->
-      { specified_value = initial; specified_value_source = Initial_default }
+      { value = inherited_or_initial (); value_source = Inherited_default }
+  | None -> { value = initial; value_source = Initial_default }
 
 (* Resolve a chain of [revert] winners. Each revert exposes the next-lower
    origin's winning candidate; if THAT is also [revert], peel another origin
@@ -223,7 +215,7 @@ let specified_value_after_revert ~inherits ~initial ~inherited candidates =
     resolve_revert_chain candidates
     |> Option.map (fun (c : cascade_origin_candidate) -> c.value)
   in
-  specified_value ~inherits ~initial ~inherited ~cascaded
+  value ~inherits ~initial ~inherited ~cascaded
 
 let rec resolve_revert_layer_chain ~layer_order candidates =
   match winning_cascade_layer_candidate ~layer_order candidates with
@@ -237,9 +229,8 @@ let specified_value_after_revert_layer ~inherits ~initial ~inherited
     ~layer_order candidates =
   match resolve_revert_layer_chain ~layer_order candidates with
   | Some winner ->
-      specified_value ~inherits ~initial ~inherited
-        ~cascaded:(Some winner.value)
-  | None -> specified_value ~inherits ~initial ~inherited ~cascaded:None
+      value ~inherits ~initial ~inherited ~cascaded:(Some winner.value)
+  | None -> value ~inherits ~initial ~inherited ~cascaded:None
 
 let value_processing_requires_document_context = function
   | Declared_value | Cascaded_value | Specified_value -> false
@@ -348,10 +339,9 @@ let pp_keyframe_selector : Keyframe.selector Pp.t =
 
 let pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
-  pp_keyframe_selector ctx kf.keyframe_selector;
+  pp_keyframe_selector ctx kf.selector;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx
-    kf.keyframe_declarations
+  Pp.braced_semicolon_list Declaration.pp_declaration ctx kf.declarations
 
 let pp_keyframes_block_statement ctx header name frames =
   Pp.string ctx header;
@@ -363,21 +353,22 @@ let pp_page_pseudo ctx p =
   Pp.char ctx ':';
   Pp.string ctx
     (match p with
-    | Page_first -> "first"
-    | Page_left -> "left"
-    | Page_right -> "right"
-    | Page_blank -> "blank")
+    | First -> "first"
+    | Left -> "left"
+    | Right -> "right"
+    | Blank -> "blank")
 
-let pp_page_selector_one ctx { page_name; page_pseudos } =
-  Option.iter (Pp.string ctx) page_name;
-  List.iter (pp_page_pseudo ctx) page_pseudos
+let pp_page_selector_one ctx ({ name; pseudos } : page_selector) =
+  Option.iter (Pp.string ctx) name;
+  List.iter (pp_page_pseudo ctx) pseudos
 
-let pp_page_selector ctx = function
+let pp_page_selector ctx (selectors : page_selector list) =
+  match selectors with
   | [] -> ()
   | first :: _ as selectors ->
       (* A named selector needs a hard space after [@page]; a pseudo-only one
          takes a collapsible space ([@page:first] minifies cleanly). *)
-      (match first.page_name with
+      (match (first : page_selector).name with
       | Some _ -> Pp.space ctx ()
       | None -> Pp.sp ctx ());
       Pp.list ~sep:Pp.comma pp_page_selector_one ctx selectors
@@ -385,10 +376,9 @@ let pp_page_selector ctx = function
 let pp_page_margin_rule : page_margin_rule Pp.t =
  fun ctx rule ->
   Pp.string ctx "@";
-  Pp.string ctx rule.margin_name;
+  Pp.string ctx rule.name;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx
-    rule.margin_descriptors
+  Pp.braced_semicolon_list Declaration.pp_declaration ctx rule.descriptors
 
 let pp_page_with_margins_body ctx descriptors margins =
   Pp.braces
@@ -433,7 +423,7 @@ let trim_unknown_at_prelude prelude =
   let n = String.length prelude in
   String.sub prelude 0 (trim_end (n - 1))
 
-let pp_unknown_at_rule_statement ctx name prelude block =
+let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
   (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;], [}], or EOF. When
      the Parser captures an unterminated nested block ([(...], [[...], [{...])
      its source slice can include the at-rule terminator or the enclosing
@@ -534,7 +524,7 @@ let color_custom_property_names stylesheet =
     | Page_with_margins (_, descs, margins) ->
         let names = declarations names descs in
         List.fold_left
-          (fun names margin -> declarations names margin.margin_descriptors)
+          (fun names margin -> declarations names margin.descriptors)
           names margins
     | _ -> names
   in
@@ -652,10 +642,7 @@ let normalise_shadows stylesheet =
               declarations descs,
               List.map
                 (fun margin ->
-                  {
-                    margin with
-                    margin_descriptors = declarations margin.margin_descriptors;
-                  })
+                  { margin with descriptors = declarations margin.descriptors })
                 margins )
       | Position_try (name, decls) -> Position_try (name, declarations decls)
       | Supports_condition (name, decls) ->
@@ -674,7 +661,7 @@ let import_url_unwrap_quoted url len =
   then Some (String.sub url 1 (len - 2))
   else None
 
-let import_url_strip_inner_quotes inner =
+let import_url_strip_inner_quotes inner : string option =
   let inner_len = String.length inner in
   if inner_len = 0 then None
   else if
@@ -684,7 +671,7 @@ let import_url_strip_inner_quotes inner =
   then Some (String.sub inner 1 (inner_len - 2))
   else Some inner
 
-let import_url_inner_string url len =
+let import_url_inner_string url len : string option =
   (* Lift the inner string out of [url(...)] - either the quoted form
      [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
      unquoted body so the [@import] / [@namespace] minify path can re-emit it as
@@ -811,11 +798,11 @@ let pp_declarations_statement ctx raw_decls =
 
 let pp_namespace_uri ctx = function
   | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
-  | Url (value, Url_bare) ->
+  | Url (value, Bare) ->
       Pp.string ctx "url(";
       Pp.string ctx value;
       Pp.char ctx ')'
-  | Url (value, Url_quoted q) ->
+  | Url (value, Quoted q) ->
       Pp.string ctx "url(";
       Pp.char ctx q;
       Pp.string ctx value;
@@ -843,16 +830,15 @@ let pp_supports_condition_value ctx condition =
   | _ -> Supports.pp ctx condition
 
 let pp_font_variant_descriptor_value ctx = function
-  | Font_variant_ligature value -> Properties.pp_font_variant_ligature ctx value
-  | Font_variant_caps value -> Properties.pp_font_variant_caps ctx value
-  | Font_variant_numeric value ->
-      Properties.pp_font_variant_numeric_token ctx value
-  | Font_variant_east_asian value -> Properties.pp_east_asian_feature ctx value
+  | Ligature value -> Properties.pp_font_variant_ligature ctx value
+  | Caps value -> Properties.pp_font_variant_caps ctx value
+  | Numeric value -> Properties.pp_font_variant_numeric_token ctx value
+  | East_asian value -> Properties.pp_east_asian_feature ctx value
 
 let pp_font_variant_descriptor ctx = function
-  | Font_variant_normal -> Pp.string ctx "normal"
-  | Font_variant_none -> Pp.string ctx "none"
-  | Font_variant_values values ->
+  | Normal -> Pp.string ctx "normal"
+  | None -> Pp.string ctx "none"
+  | Values values ->
       Pp.list ~sep:Pp.space pp_font_variant_descriptor_value ctx values
 
 let pp_font_face_descriptor : font_face_descriptor Pp.t =
@@ -953,23 +939,21 @@ let pp_counter_style_descriptor ctx =
     pp_value ctx value
   in
   function
-  | Counter_system system ->
-      pp_descriptor "system" pp_counter_style_system system
-  | Counter_symbols symbols ->
+  | System system -> pp_descriptor "system" pp_counter_style_system system
+  | Symbols symbols ->
       (* Symbols are quoted strings; the [""] delimiter is unambiguous so the
          inter-symbol space is elidable in minified output. *)
       pp_descriptor "symbols"
         (Pp.list ~sep:Pp.space_if_pretty pp_counter_symbol)
         symbols
-  | Counter_suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
-  | Counter_prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
-  | Counter_fallback value -> pp_descriptor "fallback" Pp.string value
-  | Counter_range value -> pp_descriptor "range" Pp.string value
-  | Counter_pad value -> pp_descriptor "pad" Pp.string value
-  | Counter_negative value -> pp_descriptor "negative" Pp.string value
-  | Counter_additive_symbols value ->
-      pp_descriptor "additive-symbols" Pp.string value
-  | Counter_speak_as value -> pp_descriptor "speak-as" Pp.string value
+  | Suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
+  | Prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
+  | Fallback value -> pp_descriptor "fallback" Pp.string value
+  | Range value -> pp_descriptor "range" Pp.string value
+  | Pad value -> pp_descriptor "pad" Pp.string value
+  | Negative value -> pp_descriptor "negative" Pp.string value
+  | Additive_symbols value -> pp_descriptor "additive-symbols" Pp.string value
+  | Speak_as value -> pp_descriptor "speak-as" Pp.string value
 
 let pp_font_palette_base ctx = function
   | Light -> Pp.string ctx "light"
@@ -1135,7 +1119,7 @@ and pp_supports_statement ctx condition content =
   Pp.sp ctx ();
   Pp.braces pp_block ctx content
 
-and pp_else_statement ctx condition content =
+and pp_else_statement ctx (condition : conditional option) content =
   Pp.string ctx "@else";
   (match condition with
   | None -> ()
@@ -1368,7 +1352,7 @@ let container_queries t = extract_container_queries t
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
   let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
-  let keyframe_selector =
+  let selector =
     try Keyframe.selector_of_string selector_str
     with Invalid_argument msg -> Cursor.err_invalid r msg
   in
@@ -1379,7 +1363,7 @@ let read_keyframe (r : Cursor.t) : keyframe =
         |> List.filter (fun decl -> not (Declaration.is_important decl)))
       r
   in
-  { keyframe_selector; keyframe_declarations = declarations }
+  { selector; declarations }
 
 (* Helper functions for reading specific at-rules *)
 
@@ -1498,7 +1482,7 @@ let read_import_supports (r : Cursor.t) =
         Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
     r
 
-let read_import_media (r : Cursor.t) =
+let read_import_media (r : Cursor.t) : Media.t option =
   if Cursor.peek_semicolon r || Cursor.is_done r then None
   else
     let loc = Cursor.position r in
@@ -1554,10 +1538,10 @@ let read_namespace (r : Cursor.t) : statement =
                 String.sub source pos.start_pos
                   (end_pos.start_pos - pos.start_pos)
               in
-              if String.contains raw '\'' then Url_quoted '\''
-              else if String.contains raw '"' then Url_quoted '"'
-              else Url_bare
-          | _ -> Url_bare
+              if String.contains raw '\'' then (Quoted '\'' : url_form)
+              else if String.contains raw '"' then (Quoted '"' : url_form)
+              else (Bare : url_form)
+          | _ -> (Bare : url_form)
         in
         Url (value, form)
   in
@@ -1643,7 +1627,7 @@ let read_moz_keyframes r =
     (fun name frames -> Moz_keyframes (name, frames))
     r
 
-let read_moz_document_condition r =
+let read_moz_document_condition r : moz_document_condition =
   Cursor.ws r;
   match Cursor.next r with
   | Some (Component.Func { node = { name = "url-prefix"; arguments; _ }; _ }) ->
@@ -1651,11 +1635,11 @@ let read_moz_document_condition r =
       Cursor.ws arg_cursor;
       let prefix =
         match Cursor.string_opt arg_cursor with
-        | Some "" -> None
+        | Some "" -> Option.None
         | Some s -> Some s
         | None ->
             Cursor.ws arg_cursor;
-            if Cursor.is_done arg_cursor then None
+            if Cursor.is_done arg_cursor then Option.None
             else Cursor.err_expected arg_cursor "url-prefix string argument"
       in
       Cursor.ws arg_cursor;
@@ -1811,47 +1795,40 @@ let read_unicode_range_descriptor r =
     r
 
 let font_variant_desc_value = function
-  | "common-ligatures" ->
-      Some (Font_variant_ligature Properties.Common_ligatures)
-  | "no-common-ligatures" ->
-      Some (Font_variant_ligature Properties.No_common_ligatures)
+  | "common-ligatures" -> Some (Ligature Properties.Common_ligatures)
+  | "no-common-ligatures" -> Some (Ligature Properties.No_common_ligatures)
   | "discretionary-ligatures" ->
-      Some (Font_variant_ligature Properties.Discretionary_ligatures)
+      Some (Ligature Properties.Discretionary_ligatures)
   | "no-discretionary-ligatures" ->
-      Some (Font_variant_ligature Properties.No_discretionary_ligatures)
-  | "historical-ligatures" ->
-      Some (Font_variant_ligature Properties.Historical_ligatures)
+      Some (Ligature Properties.No_discretionary_ligatures)
+  | "historical-ligatures" -> Some (Ligature Properties.Historical_ligatures)
   | "no-historical-ligatures" ->
-      Some (Font_variant_ligature Properties.No_historical_ligatures)
-  | "contextual" -> Some (Font_variant_ligature Properties.Contextual)
-  | "no-contextual" -> Some (Font_variant_ligature Properties.No_contextual)
-  | "small-caps" -> Some (Font_variant_caps Properties.Small_caps)
-  | "all-small-caps" -> Some (Font_variant_caps Properties.All_small_caps)
-  | "petite-caps" -> Some (Font_variant_caps Properties.Petite_caps)
-  | "all-petite-caps" -> Some (Font_variant_caps Properties.All_petite_caps)
-  | "unicase" -> Some (Font_variant_caps Properties.Unicase)
-  | "titling-caps" -> Some (Font_variant_caps Properties.Titling_caps)
-  | "lining-nums" -> Some (Font_variant_numeric Properties.Lining_nums)
-  | "oldstyle-nums" -> Some (Font_variant_numeric Properties.Oldstyle_nums)
-  | "proportional-nums" ->
-      Some (Font_variant_numeric Properties.Proportional_nums)
-  | "tabular-nums" -> Some (Font_variant_numeric Properties.Tabular_nums)
-  | "diagonal-fractions" ->
-      Some (Font_variant_numeric Properties.Diagonal_fractions)
-  | "stacked-fractions" ->
-      Some (Font_variant_numeric Properties.Stacked_fractions)
-  | "ordinal" -> Some (Font_variant_numeric Properties.Ordinal)
-  | "slashed-zero" -> Some (Font_variant_numeric Properties.Slashed_zero)
-  | "jis78" -> Some (Font_variant_east_asian Properties.Jis78)
-  | "jis83" -> Some (Font_variant_east_asian Properties.Jis83)
-  | "jis90" -> Some (Font_variant_east_asian Properties.Jis90)
-  | "jis04" -> Some (Font_variant_east_asian Properties.Jis04)
-  | "simplified" -> Some (Font_variant_east_asian Properties.Simplified)
-  | "traditional" -> Some (Font_variant_east_asian Properties.Traditional)
-  | "full-width" -> Some (Font_variant_east_asian Properties.Full_width)
-  | "proportional-width" ->
-      Some (Font_variant_east_asian Properties.Proportional_width)
-  | "ruby" -> Some (Font_variant_east_asian Properties.Ruby)
+      Some (Ligature Properties.No_historical_ligatures)
+  | "contextual" -> Some (Ligature Properties.Contextual)
+  | "no-contextual" -> Some (Ligature Properties.No_contextual)
+  | "small-caps" -> Some (Caps Properties.Small_caps)
+  | "all-small-caps" -> Some (Caps Properties.All_small_caps)
+  | "petite-caps" -> Some (Caps Properties.Petite_caps)
+  | "all-petite-caps" -> Some (Caps Properties.All_petite_caps)
+  | "unicase" -> Some (Caps Properties.Unicase)
+  | "titling-caps" -> Some (Caps Properties.Titling_caps)
+  | "lining-nums" -> Some (Numeric Properties.Lining_nums)
+  | "oldstyle-nums" -> Some (Numeric Properties.Oldstyle_nums)
+  | "proportional-nums" -> Some (Numeric Properties.Proportional_nums)
+  | "tabular-nums" -> Some (Numeric Properties.Tabular_nums)
+  | "diagonal-fractions" -> Some (Numeric Properties.Diagonal_fractions)
+  | "stacked-fractions" -> Some (Numeric Properties.Stacked_fractions)
+  | "ordinal" -> Some (Numeric Properties.Ordinal)
+  | "slashed-zero" -> Some (Numeric Properties.Slashed_zero)
+  | "jis78" -> Some (East_asian Properties.Jis78)
+  | "jis83" -> Some (East_asian Properties.Jis83)
+  | "jis90" -> Some (East_asian Properties.Jis90)
+  | "jis04" -> Some (East_asian Properties.Jis04)
+  | "simplified" -> Some (East_asian Properties.Simplified)
+  | "traditional" -> Some (East_asian Properties.Traditional)
+  | "full-width" -> Some (East_asian Properties.Full_width)
+  | "proportional-width" -> Some (East_asian Properties.Proportional_width)
+  | "ruby" -> Some (East_asian Properties.Ruby)
   | _ -> None
 
 let font_variant_ligature_slot = function
@@ -1892,13 +1869,13 @@ let validate_font_variant_descriptor_values r values =
   let invalid =
     List.exists
       (function
-        | Font_variant_ligature value ->
+        | Ligature value ->
             duplicate (font_variant_ligature_slot value) seen_ligatures
-        | Font_variant_numeric value ->
+        | Numeric value ->
             duplicate (font_variant_numeric_slot value) seen_numeric
-        | Font_variant_east_asian value ->
+        | East_asian value ->
             duplicate (font_variant_east_asian_slot value) seen_east_asian
-        | Font_variant_caps _ ->
+        | Caps _ ->
             let duplicate = !seen_caps in
             seen_caps := true;
             duplicate)
@@ -1918,8 +1895,8 @@ let read_font_variant_descriptor r =
   let first = Cursor.ident ~keep_case:false r in
   Cursor.ws r;
   match (String.lowercase_ascii first, at_value_end ()) with
-  | "normal", true -> Font_variant_normal
-  | "none", true -> Font_variant_none
+  | "normal", true -> Normal
+  | "none", true -> None
   | _ ->
       Cursor.restore r snap;
       let rec loop acc =
@@ -1930,7 +1907,7 @@ let read_font_variant_descriptor r =
       let values = loop [] in
       if values = [] then Cursor.err_invalid r "font-variant descriptor";
       validate_font_variant_descriptor_values r values;
-      Font_variant_values values
+      Values values
 
 let read_font_face_desc name r =
   match name with
@@ -2031,7 +2008,7 @@ let read_counter_style_system_descriptor r =
       let system = read_counter_style_system_value c in
       Cursor.ws c;
       Cursor.expect_eof c;
-      Counter_system system)
+      System system)
     r
 
 let read_counter_symbol r =
@@ -2048,7 +2025,7 @@ let read_counter_symbols_descriptor r =
       in
       Cursor.ws c;
       Cursor.expect_eof c;
-      Counter_symbols symbols)
+      Symbols symbols)
     r
 
 let read_counter_symbol_descriptor constructor r =
@@ -2082,18 +2059,15 @@ let read_counter_style_descriptor (r : Cursor.t) :
       match name with
       | "system" -> read_counter_style_system_descriptor r
       | "symbols" -> read_counter_symbols_descriptor r
-      | "suffix" -> read_counter_symbol_descriptor (fun s -> Counter_suffix s) r
-      | "prefix" -> read_counter_symbol_descriptor (fun s -> Counter_prefix s) r
-      | "fallback" ->
-          read_counter_string_descriptor (fun s -> Counter_fallback s) r
-      | "range" -> read_counter_string_descriptor (fun s -> Counter_range s) r
-      | "pad" -> read_counter_string_descriptor (fun s -> Counter_pad s) r
-      | "negative" ->
-          read_counter_string_descriptor (fun s -> Counter_negative s) r
+      | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
+      | "prefix" -> read_counter_symbol_descriptor (fun s -> Prefix s) r
+      | "fallback" -> read_counter_string_descriptor (fun s -> Fallback s) r
+      | "range" -> read_counter_string_descriptor (fun s -> Range s) r
+      | "pad" -> read_counter_string_descriptor (fun s -> Pad s) r
+      | "negative" -> read_counter_string_descriptor (fun s -> Negative s) r
       | "additive-symbols" ->
-          read_counter_string_descriptor (fun s -> Counter_additive_symbols s) r
-      | "speak-as" ->
-          read_counter_string_descriptor (fun s -> Counter_speak_as s) r
+          read_counter_string_descriptor (fun s -> Additive_symbols s) r
+      | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
       | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
     in
     Cursor.ws r;
@@ -2101,16 +2075,16 @@ let read_counter_style_descriptor (r : Cursor.t) :
     Some descriptor
 
 let counter_style_descriptor_rank = function
-  | Counter_system _ -> 0
-  | Counter_symbols _ -> 1
-  | Counter_additive_symbols _ -> 2
-  | Counter_prefix _ -> 3
-  | Counter_suffix _ -> 4
-  | Counter_range _ -> 5
-  | Counter_pad _ -> 6
-  | Counter_negative _ -> 7
-  | Counter_fallback _ -> 8
-  | Counter_speak_as _ -> 9
+  | System _ -> 0
+  | Symbols _ -> 1
+  | Additive_symbols _ -> 2
+  | Prefix _ -> 3
+  | Suffix _ -> 4
+  | Range _ -> 5
+  | Pad _ -> 6
+  | Negative _ -> 7
+  | Fallback _ -> 8
+  | Speak_as _ -> 9
 
 let replace_counter_style_descriptor desc acc =
   desc
@@ -2137,16 +2111,14 @@ let read_counter_style_descriptors r =
 
 let counter_style_system descriptors =
   List.find_map
-    (function Counter_system system -> Some system | _ -> None)
+    (function System system -> Some system | _ -> None)
     descriptors
 
 let counter_style_has_symbols descriptors =
-  List.exists (function Counter_symbols _ -> true | _ -> false) descriptors
+  List.exists (function Symbols _ -> true | _ -> false) descriptors
 
 let counter_style_has_additive_symbols descriptors =
-  List.exists
-    (function Counter_additive_symbols _ -> true | _ -> false)
-    descriptors
+  List.exists (function Additive_symbols _ -> true | _ -> false) descriptors
 
 let counter_style_validate r descriptors =
   let system =
@@ -2217,13 +2189,13 @@ let parse_page_selectors r selector =
   let skip_ws = page_selector_skip_ws s len in
   let pseudo_of_name name =
     match name with
-    | "first" -> Page_first
-    | "left" -> Page_left
-    | "right" -> Page_right
-    | "blank" -> Page_blank
+    | "first" -> First
+    | "left" -> Left
+    | "right" -> Right
+    | "blank" -> Blank
     | _ -> page_selector_error r s
   in
-  let consume_pseudo_page i =
+  let consume_pseudo_page i : (page_pseudo * int) option =
     if i >= len || s.[i] <> ':' then None
     else
       let start = i + 1 in
@@ -2241,12 +2213,12 @@ let parse_page_selectors r selector =
     if i >= len then List.rev acc
     else
       let after_ident = consume_ident i in
-      let page_name =
-        if after_ident = i then None
+      let name =
+        if after_ident = i then Option.None
         else Some (String.sub s i (after_ident - i))
       in
-      let page_pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
-      let sel = { page_name; page_pseudos } in
+      let pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
+      let sel = { name; pseudos } in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then List.rev (sel :: acc)
       else if s.[after_pseudo] = ',' then
@@ -2312,15 +2284,15 @@ let read_page_margin_rule r =
       Cursor.ws r;
       (* CSS Paged Media §5: a page-margin box accepts every descriptor valid in
          [@page] plus [content]. *)
-      let margin_descriptors =
+      let descriptors =
         Cursor.braces
           (fun inner ->
             read_descriptor_block (replace_page_margin_descriptor inner) inner)
           r
       in
-      if margin_descriptors = [] then
+      if descriptors = [] then
         Cursor.err_invalid r "page margin rule requires descriptors";
-      { margin_name = name; margin_descriptors }
+      { name; descriptors }
   | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
       Cursor.err_invalid r ("unknown page margin rule: @" ^ name)
   | _ -> Cursor.err_expected r "page margin rule"
@@ -2392,7 +2364,7 @@ let read_override_color_entry c =
   Cursor.ws c;
   (Float.to_int index, color)
 
-let read_font_palette_descriptor outer inner =
+let read_font_palette_descriptor outer inner : font_palette_descriptor option =
   Cursor.ws inner;
   if Cursor.is_done inner then None
   else if Cursor.peek_semicolon inner then (
@@ -2460,7 +2432,7 @@ let valid_font_feature_values_block = function
       true
   | _ -> false
 
-let read_font_feature_value_entry outer inner =
+let read_font_feature_value_entry outer inner : (string * int list) option =
   Cursor.ws inner;
   if Cursor.is_done inner then None
   else if Cursor.peek_semicolon inner then (
@@ -2574,7 +2546,8 @@ let read_view_transition_types inner =
       in
       Types (Some (names [ first ]))
 
-let read_view_transition_descriptor outer inner =
+let read_view_transition_descriptor outer inner :
+    view_transition_descriptor option =
   Cursor.ws inner;
   if Cursor.is_done inner then None
   else if Cursor.peek_semicolon inner then (
@@ -2828,7 +2801,7 @@ let conditional_components components =
 
 let follows_conditional = function When _ | Else _ -> true | _ -> false
 
-let scope_prelude r prelude_components =
+let scope_prelude r prelude_components : Selector.t option * Selector.t option =
   let prelude = Cursor.string_of_components ~trim:true prelude_components in
   let rec split_at_to seen rest =
     match rest with
@@ -2846,7 +2819,7 @@ let scope_prelude r prelude_components =
         (true, String.sub s 1 (String.length s - 2) |> String.trim)
     | s -> (false, s)
   in
-  if prelude = "" then (None, None)
+  if prelude = "" then (Option.None, Option.None)
   else
     let start_cvs, end_cvs = split_at_to [] prelude_components in
     let start_parens, start = strip_parens start_cvs in
@@ -2857,7 +2830,7 @@ let scope_prelude r prelude_components =
       Cursor.err_invalid r "@scope end selector cannot be empty";
     (* Parse each bound into a selector; an unparseable bound is
        [Selector.Invalid]. *)
-    let opt s =
+    let opt s : Selector.t option =
       if s = "" then None
       else
         match Selector.of_string s with
@@ -2975,7 +2948,7 @@ let read_property_rule (r : Cursor.t) : statement =
         | None when not is_universal_syntax ->
             Cursor.err_invalid r
               "@property: initial-value is required for non-universal syntax"
-        | None -> None
+        | None -> Option.None
         | Some str -> Some (read_property_initial_value r syntax str)
       in
       Property { name; syntax; inherits; initial_value }
@@ -3061,7 +3034,7 @@ and read_when (r : Cursor.t) : statement =
   let prelude = Cursor.drain_until_block r in
   if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
   then Cursor.err_invalid r "@when: missing condition";
-  let condition =
+  let condition : conditional =
     try conditional_components prelude
     with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
   in
@@ -3080,7 +3053,7 @@ and read_else (r : Cursor.t) : statement =
           | _ -> true)
         prelude
     with
-    | [] -> None
+    | [] -> Option.None
     | _ -> (
         match conditional_components prelude with
         | condition -> Some condition
@@ -3145,21 +3118,21 @@ and read_container (r : Cursor.t) : statement =
      excludes the keywords [none], [and], [not], [or]. Without this filter,
      [@container not (width)] would parse [not] as the name and accept the
      malformed [(width)] as the query. *)
-  let container_name =
+  let container_name : string option =
     let snap = Cursor.save r in
     match Cursor.option Cursor.ident r with
     | Some name
       when List.mem (String.lowercase_ascii name) [ "none"; "and"; "not"; "or" ]
       ->
         Cursor.restore r snap;
-        None
+        Option.None
     | other -> other
   in
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  let condition =
-    if condition_str = "" then None
+  let condition : Container.t option =
+    if condition_str = "" then Option.None
     else
       match Container.of_string condition_str with
       | condition -> Some condition
@@ -3277,12 +3250,12 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_nested_container_rule r =
-  let container_name = Cursor.option Cursor.ident r in
+  let container_name : string option = Cursor.option Cursor.ident r in
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-  let condition =
-    if condition_str = "" then None
+  let condition : Container.t option =
+    if condition_str = "" then Option.None
     else Some (Container.of_string condition_str)
   in
   Container (container_name, condition, content)
@@ -3581,8 +3554,8 @@ let rec statement_has_invalid_declaration = function
   | Page_with_margins (_, descs, margins) ->
       List.exists descriptor_has_typed_invalid_value descs
       || List.exists
-           (fun { margin_descriptors; _ } ->
-             List.exists descriptor_has_typed_invalid_value margin_descriptors)
+           (fun { descriptors; _ } ->
+             List.exists descriptor_has_typed_invalid_value descriptors)
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       List.exists descriptor_has_typed_invalid_value decls
@@ -3621,8 +3594,8 @@ let rec statement_has_strict_warning = function
   | Page_with_margins (_, descs, margins) ->
       List.exists declaration_has_strict_warning descs
       || List.exists
-           (fun { margin_descriptors; _ } ->
-             List.exists declaration_has_strict_warning margin_descriptors)
+           (fun { descriptors; _ } ->
+             List.exists declaration_has_strict_warning descriptors)
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       List.exists declaration_has_strict_warning decls
@@ -3664,7 +3637,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
   (* CSS Conditional Rules 5 section 4.6: [@else] is a continuation rule and
      must follow [@when] or another [@else]. A bare top-level [@else] is a parse
      error. *)
-  let previous = ref None in
+  let previous : statement option ref = ref Option.None in
   let statements =
     List.filter_map
       (fun rule ->
@@ -3710,8 +3683,8 @@ let extract_bang_comments (source : string) : (int * string) list =
       let start_offset = !i in
       let body_start = !i + 2 in
       let j = ref (!i + 3) in
-      let stop = ref None in
-      while !stop = None && !j + 1 < len do
+      let stop : int option ref = ref Option.None in
+      while !stop = Option.None && !j + 1 < len do
         if
           String.unsafe_get source !j = '*'
           && String.unsafe_get source (!j + 1) = '/'

@@ -331,23 +331,23 @@ let calc_operand_value : type a. a calc -> a calc = function
   | Math_const c -> Num (math_const_value c)
   | other -> other
 
-let rec minify_angle_arg = function
-  | Angle_op (l, op, r) -> (
+let rec minify_angle_arg : angle_arg -> angle_arg = function
+  | Operation (l, op, r) -> (
       let l = minify_angle_arg l in
       let r = minify_angle_arg r in
       match (l, op, r) with
-      | Angle_deg a, Add, Angle_deg b -> Angle_deg (a +. b)
-      | Angle_deg a, Sub, Angle_deg b -> Angle_deg (a -. b)
-      | Angle_rad a, Add, Angle_rad b -> Angle_rad (a +. b)
-      | Angle_rad a, Sub, Angle_rad b -> Angle_rad (a -. b)
-      | Angle_turn a, Add, Angle_turn b -> Angle_turn (a +. b)
-      | Angle_turn a, Sub, Angle_turn b -> Angle_turn (a -. b)
-      | Angle_grad a, Add, Angle_grad b -> Angle_grad (a +. b)
-      | Angle_grad a, Sub, Angle_grad b -> Angle_grad (a -. b)
-      | _ -> Angle_op (l, op, r))
-  | Angle_parens inner -> (
+      | Deg a, Add, Deg b -> Deg (a +. b)
+      | Deg a, Sub, Deg b -> Deg (a -. b)
+      | Rad a, Add, Rad b -> Rad (a +. b)
+      | Rad a, Sub, Rad b -> Rad (a -. b)
+      | Turn a, Add, Turn b -> Turn (a +. b)
+      | Turn a, Sub, Turn b -> Turn (a -. b)
+      | Grad a, Add, Grad b -> Grad (a +. b)
+      | Grad a, Sub, Grad b -> Grad (a -. b)
+      | _ -> Operation (l, op, r))
+  | Grouped inner -> (
       match minify_angle_arg inner with
-      | Angle_op _ as inner -> Angle_parens inner
+      | Operation _ as inner -> Grouped inner
       | inner -> inner)
   | arg -> arg
 
@@ -403,24 +403,24 @@ and pp_math_fn ctx fn =
 
 and pp_angle_arg ctx arg =
   match if Pp.minified ctx then minify_angle_arg arg else arg with
-  | Angle_deg f ->
+  | Deg f ->
       Pp.float ctx f;
       Pp.string ctx "deg"
-  | Angle_rad f ->
+  | Rad f ->
       Pp.float ctx f;
       Pp.string ctx "rad"
-  | Angle_turn f ->
+  | Turn f ->
       Pp.float ctx f;
       Pp.string ctx "turn"
-  | Angle_grad f ->
+  | Grad f ->
       Pp.float ctx f;
       Pp.string ctx "grad"
-  | Angle_num arg -> pp_math_arg ctx arg
-  | Angle_op (l, op, r) ->
+  | Numeric_arg arg -> pp_math_arg ctx arg
+  | Operation (l, op, r) ->
       pp_angle_arg ctx l;
       pp_calc_op ctx op;
       pp_angle_arg ctx r
-  | Angle_parens inner ->
+  | Grouped inner ->
       Pp.char ctx '(';
       pp_angle_arg ctx inner;
       Pp.char ctx ')'
@@ -443,13 +443,13 @@ let rec eval_math_arg = function
   | Parens_arg inner -> eval_math_arg inner
   | Math_call fn -> eval_math_fn fn
 
-and eval_angle_arg = function
-  | Angle_deg f -> Some (f *. Float.pi /. 180.)
-  | Angle_rad f -> Some f
-  | Angle_turn f -> Some (f *. 2. *. Float.pi)
-  | Angle_grad f -> Some (f *. Float.pi /. 200.)
-  | Angle_num arg -> eval_math_arg arg
-  | Angle_op (l, op, r) -> (
+and eval_angle_arg : angle_arg -> float option = function
+  | Deg f -> Some (f *. Float.pi /. 180.)
+  | Rad f -> Some f
+  | Turn f -> Some (f *. 2. *. Float.pi)
+  | Grad f -> Some (f *. Float.pi /. 200.)
+  | Numeric_arg arg -> eval_math_arg arg
+  | Operation (l, op, r) -> (
       match (eval_angle_arg l, eval_angle_arg r) with
       | Some lv, Some rv -> (
           match op with
@@ -459,7 +459,7 @@ and eval_angle_arg = function
           | Div when rv <> 0. -> Some (lv /. rv)
           | Div -> None)
       | _ -> None)
-  | Angle_parens inner -> eval_angle_arg inner
+  | Grouped inner -> eval_angle_arg inner
 
 and eval_math_fn fn =
   let unary f arg = Option.map f (eval_math_arg arg) in
@@ -508,11 +508,11 @@ let rec math_arg_contains_var = function
   | Parens_arg inner -> math_arg_contains_var inner
   | Math_call fn -> math_fn_contains_var fn
 
-and angle_arg_contains_var = function
-  | Angle_deg _ | Angle_rad _ | Angle_turn _ | Angle_grad _ -> false
-  | Angle_num arg -> math_arg_contains_var arg
-  | Angle_op (l, _, r) -> angle_arg_contains_var l || angle_arg_contains_var r
-  | Angle_parens inner -> angle_arg_contains_var inner
+and angle_arg_contains_var : angle_arg -> bool = function
+  | Deg _ | Rad _ | Turn _ | Grad _ -> false
+  | Numeric_arg arg -> math_arg_contains_var arg
+  | Operation (l, _, r) -> angle_arg_contains_var l || angle_arg_contains_var r
+  | Grouped inner -> angle_arg_contains_var inner
 
 and math_fn_contains_var = function
   | Sin a | Cos a | Tan a -> angle_arg_contains_var a
@@ -1018,59 +1018,58 @@ let rec eval_length_calc : length calc -> length calc =
       | _ -> Expr (l, op, r))
 
 type length_unit =
-  | U_px
-  | U_cm
-  | U_mm
-  | U_q
-  | U_in
-  | U_pt
-  | U_pc
-  | U_rem
-  | U_em
-  | U_ex
-  | U_cap
-  | U_ic
-  | U_ric
-  | U_rlh
-  | U_ch
-  | U_lh
-  | U_pct
-  | U_vw
-  | U_vh
-  | U_vmin
-  | U_vmax
-  | U_vi
-  | U_vb
-  | U_dvh
-  | U_dvw
-  | U_dvmin
-  | U_dvmax
-  | U_lvh
-  | U_lvw
-  | U_lvmin
-  | U_lvmax
-  | U_svh
-  | U_svw
-  | U_svmin
-  | U_svmax
-  | U_cqw
-  | U_cqh
-  | U_cqi
-  | U_cqb
-  | U_cqmin
-  | U_cqmax
+  | Px
+  | Cm
+  | Mm
+  | Q
+  | In
+  | Pt
+  | Pc
+  | Rem
+  | Em
+  | Ex
+  | Cap
+  | Ic
+  | Ric
+  | Rlh
+  | Ch
+  | Lh
+  | Pct
+  | Vw
+  | Vh
+  | Vmin
+  | Vmax
+  | Vi
+  | Vb
+  | Dvh
+  | Dvw
+  | Dvmin
+  | Dvmax
+  | Lvh
+  | Lvw
+  | Lvmin
+  | Lvmax
+  | Svh
+  | Svw
+  | Svmin
+  | Svmax
+  | Cqw
+  | Cqh
+  | Cqi
+  | Cqb
+  | Cqmin
+  | Cqmax
 
-let length_unit_is_pct = function U_pct -> true | _ -> false
+let length_unit_is_pct = function Pct -> true | _ -> false
 
 let length_unit_is_viewport = function
-  | U_vw | U_vh | U_vmin | U_vmax | U_vi | U_vb | U_dvh | U_dvw | U_dvmin
-  | U_dvmax | U_lvh | U_lvw | U_lvmin | U_lvmax | U_svh | U_svw | U_svmin
-  | U_svmax ->
+  | Vw | Vh | Vmin | Vmax | Vi | Vb | Dvh | Dvw | Dvmin | Dvmax | Lvh | Lvw
+  | Lvmin | Lvmax | Svh | Svw | Svmin | Svmax ->
       true
   | _ -> false
 
 let length_unit_is_font_relative = function
-  | U_rem | U_em | U_ex | U_cap | U_ic | U_ric | U_rlh | U_ch | U_lh -> true
+  | Rem | Em | Ex | Cap | Ic | Ric | Rlh | Ch | Lh -> true
   | _ -> false
 
 let length_unit_negative_rank = function
@@ -1078,92 +1077,92 @@ let length_unit_negative_rank = function
   | _ -> 1
 
 let unit_of_string = function
-  | "px" -> Some U_px
-  | "cm" -> Some U_cm
-  | "mm" -> Some U_mm
-  | "q" -> Some U_q
-  | "in" -> Some U_in
-  | "pt" -> Some U_pt
-  | "pc" -> Some U_pc
-  | "rem" -> Some U_rem
-  | "em" -> Some U_em
-  | "ex" -> Some U_ex
-  | "cap" -> Some U_cap
-  | "ic" -> Some U_ic
-  | "ric" -> Some U_ric
-  | "rlh" -> Some U_rlh
-  | "ch" -> Some U_ch
-  | "lh" -> Some U_lh
-  | "%" -> Some U_pct
-  | "vw" -> Some U_vw
-  | "vh" -> Some U_vh
-  | "vmin" -> Some U_vmin
-  | "vmax" -> Some U_vmax
-  | "vi" -> Some U_vi
-  | "vb" -> Some U_vb
-  | "dvh" -> Some U_dvh
-  | "dvw" -> Some U_dvw
-  | "dvmin" -> Some U_dvmin
-  | "dvmax" -> Some U_dvmax
-  | "lvh" -> Some U_lvh
-  | "lvw" -> Some U_lvw
-  | "lvmin" -> Some U_lvmin
-  | "lvmax" -> Some U_lvmax
-  | "svh" -> Some U_svh
-  | "svw" -> Some U_svw
-  | "svmin" -> Some U_svmin
-  | "svmax" -> Some U_svmax
-  | "cqw" -> Some U_cqw
-  | "cqh" -> Some U_cqh
-  | "cqi" -> Some U_cqi
-  | "cqb" -> Some U_cqb
-  | "cqmin" -> Some U_cqmin
-  | "cqmax" -> Some U_cqmax
+  | "px" -> Some Px
+  | "cm" -> Some Cm
+  | "mm" -> Some Mm
+  | "q" -> Some Q
+  | "in" -> Some In
+  | "pt" -> Some Pt
+  | "pc" -> Some Pc
+  | "rem" -> Some Rem
+  | "em" -> Some Em
+  | "ex" -> Some Ex
+  | "cap" -> Some Cap
+  | "ic" -> Some Ic
+  | "ric" -> Some Ric
+  | "rlh" -> Some Rlh
+  | "ch" -> Some Ch
+  | "lh" -> Some Lh
+  | "%" -> Some Pct
+  | "vw" -> Some Vw
+  | "vh" -> Some Vh
+  | "vmin" -> Some Vmin
+  | "vmax" -> Some Vmax
+  | "vi" -> Some Vi
+  | "vb" -> Some Vb
+  | "dvh" -> Some Dvh
+  | "dvw" -> Some Dvw
+  | "dvmin" -> Some Dvmin
+  | "dvmax" -> Some Dvmax
+  | "lvh" -> Some Lvh
+  | "lvw" -> Some Lvw
+  | "lvmin" -> Some Lvmin
+  | "lvmax" -> Some Lvmax
+  | "svh" -> Some Svh
+  | "svw" -> Some Svw
+  | "svmin" -> Some Svmin
+  | "svmax" -> Some Svmax
+  | "cqw" -> Some Cqw
+  | "cqh" -> Some Cqh
+  | "cqi" -> Some Cqi
+  | "cqb" -> Some Cqb
+  | "cqmin" -> Some Cqmin
+  | "cqmax" -> Some Cqmax
   | _ -> None
 
 let unit_of_length = function
-  | Zero -> Some (U_px, 0.)
-  | Px n -> Some (U_px, n)
-  | Cm n -> Some (U_cm, n)
-  | Mm n -> Some (U_mm, n)
-  | Q n -> Some (U_q, n)
-  | In n -> Some (U_in, n)
-  | Pt n -> Some (U_pt, n)
-  | Pc n -> Some (U_pc, n)
-  | Rem n -> Some (U_rem, n)
-  | Em n -> Some (U_em, n)
-  | Ex n -> Some (U_ex, n)
-  | Cap n -> Some (U_cap, n)
-  | Ic n -> Some (U_ic, n)
-  | Ric n -> Some (U_ric, n)
-  | Rlh n -> Some (U_rlh, n)
-  | Ch n -> Some (U_ch, n)
-  | Lh n -> Some (U_lh, n)
-  | Pct n -> Some (U_pct, n)
-  | Vw n -> Some (U_vw, n)
-  | Vh n -> Some (U_vh, n)
-  | Vmin n -> Some (U_vmin, n)
-  | Vmax n -> Some (U_vmax, n)
-  | Vi n -> Some (U_vi, n)
-  | Vb n -> Some (U_vb, n)
-  | Dvh n -> Some (U_dvh, n)
-  | Dvw n -> Some (U_dvw, n)
-  | Dvmin n -> Some (U_dvmin, n)
-  | Dvmax n -> Some (U_dvmax, n)
-  | Lvh n -> Some (U_lvh, n)
-  | Lvw n -> Some (U_lvw, n)
-  | Lvmin n -> Some (U_lvmin, n)
-  | Lvmax n -> Some (U_lvmax, n)
-  | Svh n -> Some (U_svh, n)
-  | Svw n -> Some (U_svw, n)
-  | Svmin n -> Some (U_svmin, n)
-  | Svmax n -> Some (U_svmax, n)
-  | Cqw n -> Some (U_cqw, n)
-  | Cqh n -> Some (U_cqh, n)
-  | Cqi n -> Some (U_cqi, n)
-  | Cqb n -> Some (U_cqb, n)
-  | Cqmin n -> Some (U_cqmin, n)
-  | Cqmax n -> Some (U_cqmax, n)
+  | Zero -> Some (Px, 0.)
+  | Px n -> Some (Px, n)
+  | Cm n -> Some (Cm, n)
+  | Mm n -> Some (Mm, n)
+  | Q n -> Some (Q, n)
+  | In n -> Some (In, n)
+  | Pt n -> Some (Pt, n)
+  | Pc n -> Some (Pc, n)
+  | Rem n -> Some (Rem, n)
+  | Em n -> Some (Em, n)
+  | Ex n -> Some (Ex, n)
+  | Cap n -> Some (Cap, n)
+  | Ic n -> Some (Ic, n)
+  | Ric n -> Some (Ric, n)
+  | Rlh n -> Some (Rlh, n)
+  | Ch n -> Some (Ch, n)
+  | Lh n -> Some (Lh, n)
+  | Pct n -> Some (Pct, n)
+  | Vw n -> Some (Vw, n)
+  | Vh n -> Some (Vh, n)
+  | Vmin n -> Some (Vmin, n)
+  | Vmax n -> Some (Vmax, n)
+  | Vi n -> Some (Vi, n)
+  | Vb n -> Some (Vb, n)
+  | Dvh n -> Some (Dvh, n)
+  | Dvw n -> Some (Dvw, n)
+  | Dvmin n -> Some (Dvmin, n)
+  | Dvmax n -> Some (Dvmax, n)
+  | Lvh n -> Some (Lvh, n)
+  | Lvw n -> Some (Lvw, n)
+  | Lvmin n -> Some (Lvmin, n)
+  | Lvmax n -> Some (Lvmax, n)
+  | Svh n -> Some (Svh, n)
+  | Svw n -> Some (Svw, n)
+  | Svmin n -> Some (Svmin, n)
+  | Svmax n -> Some (Svmax, n)
+  | Cqw n -> Some (Cqw, n)
+  | Cqh n -> Some (Cqh, n)
+  | Cqi n -> Some (Cqi, n)
+  | Cqb n -> Some (Cqb, n)
+  | Cqmin n -> Some (Cqmin, n)
+  | Cqmax n -> Some (Cqmax, n)
   | Dimension { value; unit; _ } -> (
       match unit_of_string (String.lowercase_ascii unit) with
       | Some unit -> Some (unit, value)
@@ -1172,47 +1171,47 @@ let unit_of_length = function
 
 let length_of_unit unit n =
   match unit with
-  | U_px -> if n = 0. then Zero else Px n
-  | U_cm -> Cm n
-  | U_mm -> Mm n
-  | U_q -> Q n
-  | U_in -> In n
-  | U_pt -> Pt n
-  | U_pc -> Pc n
-  | U_rem -> Rem n
-  | U_em -> Em n
-  | U_ex -> Ex n
-  | U_cap -> Cap n
-  | U_ic -> Ic n
-  | U_ric -> Ric n
-  | U_rlh -> Rlh n
-  | U_ch -> Ch n
-  | U_lh -> Lh n
-  | U_pct -> Pct n
-  | U_vw -> Vw n
-  | U_vh -> Vh n
-  | U_vmin -> Vmin n
-  | U_vmax -> Vmax n
-  | U_vi -> Vi n
-  | U_vb -> Vb n
-  | U_dvh -> Dvh n
-  | U_dvw -> Dvw n
-  | U_dvmin -> Dvmin n
-  | U_dvmax -> Dvmax n
-  | U_lvh -> Lvh n
-  | U_lvw -> Lvw n
-  | U_lvmin -> Lvmin n
-  | U_lvmax -> Lvmax n
-  | U_svh -> Svh n
-  | U_svw -> Svw n
-  | U_svmin -> Svmin n
-  | U_svmax -> Svmax n
-  | U_cqw -> Cqw n
-  | U_cqh -> Cqh n
-  | U_cqi -> Cqi n
-  | U_cqb -> Cqb n
-  | U_cqmin -> Cqmin n
-  | U_cqmax -> Cqmax n
+  | Px -> if n = 0. then Zero else Px n
+  | Cm -> Cm n
+  | Mm -> Mm n
+  | Q -> Q n
+  | In -> In n
+  | Pt -> Pt n
+  | Pc -> Pc n
+  | Rem -> Rem n
+  | Em -> Em n
+  | Ex -> Ex n
+  | Cap -> Cap n
+  | Ic -> Ic n
+  | Ric -> Ric n
+  | Rlh -> Rlh n
+  | Ch -> Ch n
+  | Lh -> Lh n
+  | Pct -> Pct n
+  | Vw -> Vw n
+  | Vh -> Vh n
+  | Vmin -> Vmin n
+  | Vmax -> Vmax n
+  | Vi -> Vi n
+  | Vb -> Vb n
+  | Dvh -> Dvh n
+  | Dvw -> Dvw n
+  | Dvmin -> Dvmin n
+  | Dvmax -> Dvmax n
+  | Lvh -> Lvh n
+  | Lvw -> Lvw n
+  | Lvmin -> Lvmin n
+  | Lvmax -> Lvmax n
+  | Svh -> Svh n
+  | Svw -> Svw n
+  | Svmin -> Svmin n
+  | Svmax -> Svmax n
+  | Cqw -> Cqw n
+  | Cqh -> Cqh n
+  | Cqi -> Cqi n
+  | Cqb -> Cqb n
+  | Cqmin -> Cqmin n
+  | Cqmax -> Cqmax n
 
 type linear_term = {
   unit : length_unit;
@@ -1284,7 +1283,7 @@ let ordered_linear_terms terms =
 
 let linear_calc_op first_unit first_value unit n =
   if
-    n < 0. && first_value > 0. && first_unit = U_px
+    n < 0. && first_value > 0. && first_unit = Px
     && length_unit_is_font_relative unit
   then (Add, n)
   else if n < 0. then (Sub, -.n)
@@ -1494,12 +1493,12 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
       | _ -> Expr (l, op, r))
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
-  | Pct n -> Some (U_pct, n)
+  | Pct n -> Some (Pct, n)
   | Length l -> unit_of_length l
   | Env _ | Var _ | Calc _ | Invalid _ -> None
 
 let lp_of_unit unit n : length_percentage =
-  match unit with U_pct -> Pct n | unit -> Length (length_of_unit unit n)
+  match unit with Pct -> Pct n | unit -> Length (length_of_unit unit n)
 
 let linear_lp_terms calc = linear_terms_with unit_of_lp calc
 
@@ -1637,7 +1636,7 @@ let try_reduce_typed_min_max xs reduce =
 
 let px_values values =
   List.fold_right
-    (fun value acc ->
+    (fun (value : length) acc ->
       match (value, acc) with
       | Px f, Some values -> Some (f :: values)
       | _ -> None)
@@ -4369,10 +4368,10 @@ module Calc = struct
 
   let float f : 'a calc = Num f
   let infinity : 'a calc = Num infinity
-  let px n = Val (Px n)
+  let px n = Val (Px n : length)
   let rem f = Val (Rem f : length)
-  let em f = Val (Em f)
-  let pct f : length calc = Val (Pct f)
+  let em f = Val (Em f : length)
+  let pct f : length calc = Val (Pct f : length)
 
   (* Wrap an expression in an explicit nested calc() *)
   let nested inner = Nested inner
@@ -4818,7 +4817,7 @@ and read_angle_arg_term t =
       Cursor.skip t;
       Cursor.ws t;
       let op : calc_op = match c with '+' -> Add | _ -> Sub in
-      Angle_op (left, op, read_angle_arg_term t)
+      Operation (left, op, read_angle_arg_term t)
   | _ -> left
 
 and read_angle_arg_factor t =
@@ -4829,14 +4828,14 @@ and read_angle_arg_factor t =
       Cursor.skip t;
       Cursor.ws t;
       let op : calc_op = match c with '*' -> Mul | _ -> Div in
-      Angle_op (left, op, read_angle_arg_factor t)
+      Operation (left, op, read_angle_arg_factor t)
   | _ -> left
 
 and read_angle_arg_unary t =
   Cursor.ws t;
   match Cursor.peek_block t with
   | Some Token.Paren ->
-      Angle_parens (Cursor.parens (fun inner -> read_angle_arg inner) t)
+      Grouped (Cursor.parens (fun inner -> read_angle_arg inner) t)
   | _ -> read_angle_unit_or_math t
 
 and read_angle_unit_or_math t =
@@ -4848,15 +4847,15 @@ and read_angle_unit_or_math t =
 
 and angle_arg_of_unit t snap n unit =
   match String.lowercase_ascii unit with
-  | "deg" -> Angle_deg n
-  | "rad" -> Angle_rad n
-  | "turn" -> Angle_turn n
-  | "grad" -> Angle_grad n
+  | "deg" -> Deg n
+  | "rad" -> Rad n
+  | "turn" -> Turn n
+  | "grad" -> Grad n
   | _ -> restore_and_read_math_angle t snap
 
 and restore_and_read_math_angle t snap =
   Cursor.restore t snap;
-  Angle_num (read_math_arg t)
+  Numeric_arg (read_math_arg t)
 
 and read_angle_call_arg name t : angle_arg =
   Cursor.call name t (fun inner ->
@@ -5475,28 +5474,22 @@ let _read_hex_color t =
     for the result to be unit-free. The float is the value already reduced into
     the category's canonical base ([px] for length, [ms] for time, [Hz] for
     frequency, [deg] for angle, raw fraction for percent). *)
-type atan2_category =
-  | At_number
-  | At_percentage
-  | At_length
-  | At_angle
-  | At_time
-  | At_frequency
+type atan2_category = Number | Percentage | Length | Angle | Time | Frequency
 
 let read_atan2_scalar t : atan2_category * float =
   let n, unit_raw = Cursor.number_with_unit t in
   let unit = String.lowercase_ascii (Option.value ~default:"" unit_raw) in
   match unit with
-  | "" -> (At_number, n)
-  | "%" -> (At_percentage, n)
+  | "" -> (Number, n)
+  | "%" -> (Percentage, n)
   (* CSS Values 4 §6.2 absolute lengths converted to [px]. *)
-  | "px" -> (At_length, n)
-  | "cm" -> (At_length, n *. (96. /. 2.54))
-  | "mm" -> (At_length, n *. (96. /. 25.4))
-  | "q" -> (At_length, n *. (96. /. 101.6))
-  | "in" -> (At_length, n *. 96.)
-  | "pt" -> (At_length, n *. (96. /. 72.))
-  | "pc" -> (At_length, n *. 16.)
+  | "px" -> (Length, n)
+  | "cm" -> (Length, n *. (96. /. 2.54))
+  | "mm" -> (Length, n *. (96. /. 25.4))
+  | "q" -> (Length, n *. (96. /. 101.6))
+  | "in" -> (Length, n *. 96.)
+  | "pt" -> (Length, n *. (96. /. 72.))
+  | "pc" -> (Length, n *. 16.)
   (* Relative lengths share the [<length>] type but cannot reduce to a constant
      scalar at parse time; group them so [atan2(1vw, -1vw)] succeeds via
      raw-value ratio while [atan2(1vw, 1px)] is rejected. *)
@@ -5504,16 +5497,16 @@ let read_atan2_scalar t : atan2_category * float =
   | "vmin" | "vmax" | "vi" | "vb" | "dvh" | "dvw" | "dvmin" | "dvmax" | "lvh"
   | "lvw" | "lvmin" | "lvmax" | "svh" | "svw" | "svmin" | "svmax" | "cqw"
   | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" ->
-      (At_length, n)
+      (Length, n)
   (* Angles, times, frequencies in their canonical units. *)
-  | "deg" -> (At_angle, n)
-  | "rad" -> (At_angle, n *. 180. /. Float.pi)
-  | "turn" -> (At_angle, n *. 360.)
-  | "grad" -> (At_angle, n *. 0.9)
-  | "ms" -> (At_time, n)
-  | "s" -> (At_time, n *. 1000.)
-  | "hz" -> (At_frequency, n)
-  | "khz" -> (At_frequency, n *. 1000.)
+  | "deg" -> (Angle, n)
+  | "rad" -> (Angle, n *. 180. /. Float.pi)
+  | "turn" -> (Angle, n *. 360.)
+  | "grad" -> (Angle, n *. 0.9)
+  | "ms" -> (Time, n)
+  | "s" -> (Time, n *. 1000.)
+  | "hz" -> (Frequency, n)
+  | "khz" -> (Frequency, n *. 1000.)
   | _ -> Cursor.err_invalid t ("invalid atan2 argument unit: " ^ unit)
 
 (** Read an angle value *)
@@ -6793,7 +6786,7 @@ let rec read_number_percentage_dim_only t : number_percentage =
   Cursor.ws t;
   Cursor.one_of
     [
-      (fun t -> Pct (Cursor.pct t));
+      (fun t -> (Pct (Cursor.pct t) : number_percentage));
       (fun t ->
         (Var (read_var read_number_percentage_dim_only t) : number_percentage));
     ]
@@ -6812,7 +6805,10 @@ let rec read_number_percentage t : number_percentage =
   else
     (* Try to read as percentage or number *)
     Cursor.one_of
-      [ (fun t -> Pct (Cursor.pct t)); (fun t -> Num (Cursor.number t)) ]
+      [
+        (fun t -> (Pct (Cursor.pct t) : number_percentage));
+        (fun t -> (Num (Cursor.number t) : number_percentage));
+      ]
       t
 
 (** Read color_name value *)

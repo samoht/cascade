@@ -815,27 +815,25 @@ let list_consume_separator sep t =
           restore t snap;
           false)
 
-type 'a collect_step =
-  | Collect_done of 'a list
-  | Collect_continue of 'a list * int
+type 'a collect_step = Done of 'a list | Continue of 'a list * int
 
 let list_collect_step sep item t acc n max =
-  if n >= max then Collect_done (List.rev acc)
+  if n >= max then Done (List.rev acc)
   else
     let snap = save t in
     match option item t with
-    | None -> Collect_done (List.rev acc)
+    | None -> Done (List.rev acc)
     | Some v ->
         if t.cvs == snap then err t "list item consumed no input";
         let acc = v :: acc in
-        if n + 1 >= max then Collect_done (List.rev acc)
-        else if list_consume_separator sep t then Collect_continue (acc, n + 1)
-        else Collect_done (List.rev acc)
+        if n + 1 >= max then Done (List.rev acc)
+        else if list_consume_separator sep t then Continue (acc, n + 1)
+        else Done (List.rev acc)
 
 let rec list_collect sep item t acc n max =
   match list_collect_step sep item t acc n max with
-  | Collect_done items -> items
-  | Collect_continue (acc, n) -> list_collect sep item t acc n max
+  | Done items -> items
+  | Continue (acc, n) -> list_collect sep item t acc n max
 
 let list ?sep ?(at_least = 0) ?at_most item t =
   let max = Option.value at_most ~default:max_int in

@@ -21,10 +21,10 @@ let is_valid_nmstart c =
 let is_valid_nmchar c = is_valid_nmstart c || (c >= '0' && c <= '9') || c = '-'
 
 let pp_attr_flag ctx = function
-  | Some Case_insensitive ->
+  | Some Insensitive ->
       Pp.char ctx ' ';
       Pp.char ctx 'i'
-  | Some Case_sensitive ->
+  | Some Sensitive ->
       Pp.char ctx ' ';
       Pp.char ctx 's'
   | None -> ()
@@ -638,8 +638,8 @@ let read_attr_flag t : attr_flag option =
   Cursor.option
     (fun t ->
       match Cursor.ident_opt t with
-      | Some s when String.lowercase_ascii s = "i" -> Case_insensitive
-      | Some s when String.lowercase_ascii s = "s" -> Case_sensitive
+      | Some s when String.lowercase_ascii s = "i" -> Insensitive
+      | Some s when String.lowercase_ascii s = "s" -> Sensitive
       | Some s -> Cursor.err t ~got:s "'i' or 's'"
       | None -> Cursor.err_unexpected t)
     t

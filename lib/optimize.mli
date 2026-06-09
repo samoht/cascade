@@ -190,7 +190,7 @@ type pass_stat = {
 
 val pass_times : (string, pass_stat) Hashtbl.t
 (** Per-pass stats for [factor_rules_to_fixpoint]. Populated as a side effect
-    during [stylesheet] runs; reset at each entry. Keys are pass names. *)
+    during {!val-stylesheet} runs; reset at each entry. Keys are pass names. *)
 
 type counters = {
   mutable iterations : int;  (** [factor_rules_to_fixpoint] iterations *)
@@ -211,4 +211,5 @@ type counters = {
 (** Global counters across the last [Optimize.stylesheet] run. *)
 
 val counters : counters
-(** The counters; mutated by the optimizer, reset at each [stylesheet] entry. *)
+(** The counters; mutated by the optimizer, reset at each {!val-stylesheet}
+    entry. *)

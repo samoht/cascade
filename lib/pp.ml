@@ -6,7 +6,7 @@ type counter = { mutable count : int; mutable last : char }
     last byte is all the emission-time lookback under minify needs, and the
     backward newline scan in [column] only runs in pretty mode. *)
 
-type out = Out_buffer of Buffer.t | Out_counter of counter
+type out = Buffer of Buffer.t | Counter of counter
 
 type ctx = {
   minify : bool;
@@ -38,8 +38,8 @@ type 'a t = ctx -> 'a -> unit
 
 let emit_string out s =
   match out with
-  | Out_buffer b -> Buffer.add_string b s
-  | Out_counter c ->
+  | Buffer b -> Buffer.add_string b s
+  | Counter c ->
       let n = String.length s in
       if n > 0 then (
         c.count <- c.count + n;
@@ -47,23 +47,21 @@ let emit_string out s =
 
 let emit_char out ch =
   match out with
-  | Out_buffer b -> Buffer.add_char b ch
-  | Out_counter c ->
+  | Buffer b -> Buffer.add_char b ch
+  | Counter c ->
       c.count <- c.count + 1;
       c.last <- ch
 
-let out_length = function
-  | Out_buffer b -> Buffer.length b
-  | Out_counter c -> c.count
+let out_length = function Buffer b -> Buffer.length b | Counter c -> c.count
 
 (* Only the backward newline scan in [column] reads positions other than the
    last byte, and that runs in pretty mode; under minify (the only mode
-   [Out_counter] serves) there are no newlines, so the counter answers for the
-   last byte and yields [\000] elsewhere. *)
+   [Counter] serves) there are no newlines, so the counter answers for the last
+   byte and yields [\000] elsewhere. *)
 let out_nth out i =
   match out with
-  | Out_buffer b -> Buffer.nth b i
-  | Out_counter c -> if i = c.count - 1 then c.last else '\000'
+  | Buffer b -> Buffer.nth b i
+  | Counter c -> if i = c.count - 1 then c.last else '\000'
 
 (* [resolve_indent ~minify indent]: under [minify] there is no indentation;
    otherwise pick the explicit value or the default 2-space indent. *)
@@ -87,7 +85,7 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
   }
 
 let ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf =
-  v ?minify ?indent ?inline ?lossless ?enforce_spec (Out_buffer buf)
+  v ?minify ?indent ?inline ?lossless ?enforce_spec (Buffer buf)
 
 let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
   let ctx = ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf in
@@ -104,7 +102,7 @@ let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
 let size ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
   let counter = { count = 0; last = '\000' } in
   let ctx =
-    v ?minify ?indent ?inline ?lossless ?enforce_spec (Out_counter counter)
+    v ?minify ?indent ?inline ?lossless ?enforce_spec (Counter counter)
   in
   pp ctx a;
   counter.count
@@ -236,7 +234,7 @@ let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
   else
     let measure_item x =
       let tmp = Buffer.create 64 in
-      let tmp_ctx = { ctx with out = Out_buffer tmp } in
+      let tmp_ctx = { ctx with out = Buffer tmp } in
       pp tmp_ctx x;
       Buffer.contents tmp
     in

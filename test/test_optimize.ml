@@ -2877,12 +2877,12 @@ let c63_keyframes_ignore_important () =
      ( "fade",
        [
          {
-           keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.From ];
-           keyframe_declarations = from_decls;
+           selector = Css.Keyframe.Positions [ Css.Keyframe.From ];
+           declarations = from_decls;
          };
          {
-           keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.To ];
-           keyframe_declarations = to_decls;
+           selector = Css.Keyframe.Positions [ Css.Keyframe.To ];
+           declarations = to_decls;
          };
        ] );
   ] ->
@@ -3159,9 +3159,8 @@ let c64_keyframe_name_layers () =
      layers must not be deduplicated or hoisted out of their layers. *)
   let frame decl =
     {
-      Css.Stylesheet.keyframe_selector =
-        Css.Keyframe.Positions [ Css.Keyframe.From ];
-      keyframe_declarations = [ decl ];
+      Css.Stylesheet.selector = Css.Keyframe.Positions [ Css.Keyframe.From ];
+      declarations = [ decl ];
     }
   in
   let input =

@@ -1238,13 +1238,11 @@ let read_vendor_font_value : type a.
       Some (v Font_synthesis_position (read_font_synthesis_position t))
   | Font_variant_ligatures ->
       Some (v Font_variant_ligatures (read_font_variant_ligatures t))
-  | Font_variant_caps -> Some (v Font_variant_caps (read_font_variant_caps t))
-  | Font_variant_numeric ->
-      Some (v Font_variant_numeric (read_font_variant_numeric t))
+  | Caps -> Some (v Caps (read_font_variant_caps t))
+  | Numeric -> Some (v Numeric (read_font_variant_numeric t))
   | Font_variant_position ->
       Some (v Font_variant_position (read_font_variant_position t))
-  | Font_variant_east_asian ->
-      Some (v Font_variant_east_asian (read_font_variant_east_asian t))
+  | East_asian -> Some (v East_asian (read_font_variant_east_asian t))
   | _ -> None
 
 let read_text_flow_value : type a. a property -> Cursor.t -> declaration option
@@ -1977,35 +1975,35 @@ let skip_to_next_declaration t =
   loop ()
 
 type parse_step =
-  | Step_done of declaration list
-  | Step_continue of declaration list
-  | Step_recover of declaration list * Error.t
+  | Done of declaration list
+  | Continue of declaration list
+  | Recover of declaration list * Error.t
 
 let check_declaration_separator t acc =
   Cursor.ws t;
   match Cursor.peek t with
-  | None -> Step_done (List.rev acc)
+  | None -> Done (List.rev acc)
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip t;
-      Step_continue acc
+      Continue acc
   | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
       Cursor.err t "missing semicolon between declarations"
-  | _ -> Step_done (List.rev acc)
+  | _ -> Done (List.rev acc)
 
 let read_declaration_no_recovery t acc =
   match read_declaration t with
-  | None -> Step_done (List.rev acc)
+  | None -> Done (List.rev acc)
   | Some decl -> check_declaration_separator t (decl :: acc)
 
 let read_declaration_with_recovery t acc =
   match read_declaration t with
-  | None -> Step_done (List.rev acc)
+  | None -> Done (List.rev acc)
   | Some decl -> (
       let acc = decl :: acc in
       match check_declaration_separator t acc with
       | step -> step
-      | exception Error.Parse_error e -> Step_recover (acc, e))
-  | exception Error.Parse_error e -> Step_recover (acc, e)
+      | exception Error.Parse_error e -> Recover (acc, e))
+  | exception Error.Parse_error e -> Recover (acc, e)
 
 let read_declaration_step t acc =
   if Cursor.recover t then read_declaration_with_recovery t acc
@@ -2022,9 +2020,9 @@ let rec read_declarations_loop t acc =
   | None -> List.rev acc
   | _ -> (
       match read_declaration_step t acc with
-      | Step_done decls -> decls
-      | Step_continue acc -> read_declarations_loop t acc
-      | Step_recover (acc, e) ->
+      | Done decls -> decls
+      | Continue acc -> read_declarations_loop t acc
+      | Recover (acc, e) ->
           read_declarations_loop t (recover_declaration_step t acc e))
 
 let read_declarations t =
@@ -2429,10 +2427,10 @@ let font_synthesis_weight value = v Font_synthesis_weight value
 let font_synthesis_small_caps value = v Font_synthesis_small_caps value
 let font_synthesis_position value = v Font_synthesis_position value
 let font_variant_ligatures value = v Font_variant_ligatures value
-let font_variant_caps value = v Font_variant_caps value
-let font_variant_numeric value = v Font_variant_numeric value
+let font_variant_caps value = v Caps value
+let font_variant_numeric value = v Numeric value
 let font_variant_position value = v Font_variant_position value
-let font_variant_east_asian value = v Font_variant_east_asian value
+let font_variant_east_asian value = v East_asian value
 let backdrop_filter value = v Backdrop_filter value
 let webkit_backdrop_filter value = v Webkit_backdrop_filter value
 let background_position value = v Background_position value

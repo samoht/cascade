@@ -20,7 +20,9 @@ if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; 
 else
   SCRIPT_DIR="$script_dir"
 fi
-TRACE_DIR="$(cd "$SCRIPT_DIR/../traces" && pwd)"
+TRACE_DIR_ARG="${1:-$SCRIPT_DIR/../traces}"
+mkdir -p "$TRACE_DIR_ARG"
+TRACE_DIR="$(cd "$TRACE_DIR_ARG" && pwd)"
 
 WPT_REPO="https://github.com/web-platform-tests/wpt.git"
 WPT_COMMIT="f900489fca393464f3379d7952d227997318b851"

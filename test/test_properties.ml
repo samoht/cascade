@@ -566,7 +566,7 @@ let check_page_size_orientation =
     pp_page_size_orientation
 
 let check_timeline_axis =
-  check_value_cursor "timeline_axis" read_timeline_axis pp_timeline_axis
+  check_value_cursor "axis" read_timeline_axis pp_timeline_axis
 
 let check_timeline_shorthand =
   check_value_cursor "timeline_shorthand" read_timeline_shorthand
@@ -1085,7 +1085,7 @@ let check_timeline_inset_item =
     pp_timeline_inset_item
 
 let check_timeline_name =
-  check_value_cursor "timeline_name" read_timeline_name pp_timeline_name
+  check_value_cursor "name" read_timeline_name pp_timeline_name
 
 let check_timeline_shorthand_item =
   check_value_cursor "timeline_shorthand_item" read_timeline_shorthand_item
@@ -3956,7 +3956,7 @@ let additional_tests =
     test_case "page_size" `Quick test_page_size;
     test_case "page_size_name" `Quick test_page_size_name;
     test_case "page_size_orientation" `Quick test_page_size_orientation;
-    test_case "timeline_axis" `Quick test_timeline_axis;
+    test_case "axis" `Quick test_timeline_axis;
     test_case "timeline_shorthand" `Quick test_timeline_shorthand;
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;
