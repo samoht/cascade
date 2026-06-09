@@ -3766,18 +3766,14 @@ let reset_counters () =
 
 let summary_memo : factor_rule_summary Rule_id_tbl.t = Rule_id_tbl.create 4096
 let clear_summary_memo () = Rule_id_tbl.reset summary_memo
-let bump_summary_hit () = counters.summary_hits <- counters.summary_hits + 1
-
-let bump_summary_miss () =
-  counters.summary_misses <- counters.summary_misses + 1
 
 let summarize_factor_rule factor_rule =
   match Rule_id_tbl.find_opt summary_memo factor_rule with
   | Some s ->
-      bump_summary_hit ();
+      counters.summary_hits <- counters.summary_hits + 1;
       s
   | None ->
-      bump_summary_miss ();
+      counters.summary_misses <- counters.summary_misses + 1;
       let s =
         {
           factor_rule;
