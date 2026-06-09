@@ -3773,13 +3773,68 @@ module Rule_id_tbl = Hashtbl.Make (struct
   let hash r = Hashtbl.seeded_hash_param 10 100 0 r
 end)
 
+(* Per-pass and global counters for the --profile CLI flag. Reset at each
+   [Optimize.stylesheet] entry; bumped from the hot loops below. Kept up here so
+   [summarize_factor_rule] and [factor_anchor_score] can record into them. *)
+type pass_stat = {
+  mutable time : float;
+  mutable calls : int;
+  mutable changes : int;
+  mutable rules_in : int;
+  mutable rules_out : int;
+}
+
+let pass_times : (string, pass_stat) Hashtbl.t = Hashtbl.create 16
+
+let pass_stat name =
+  match Hashtbl.find_opt pass_times name with
+  | Some s -> s
+  | None ->
+      let s =
+        { time = 0.0; calls = 0; changes = 0; rules_in = 0; rules_out = 0 }
+      in
+      Hashtbl.add pass_times name s;
+      s
+
+type counters = {
+  mutable iterations : int;
+  mutable summary_hits : int;
+  mutable summary_misses : int;
+  mutable anchors_scored : int;
+  mutable factorings_applied : int;
+}
+
+let counters =
+  {
+    iterations = 0;
+    summary_hits = 0;
+    summary_misses = 0;
+    anchors_scored = 0;
+    factorings_applied = 0;
+  }
+
+let reset_counters () =
+  Hashtbl.reset pass_times;
+  counters.iterations <- 0;
+  counters.summary_hits <- 0;
+  counters.summary_misses <- 0;
+  counters.anchors_scored <- 0;
+  counters.factorings_applied <- 0
+
 let summary_memo : factor_rule_summary Rule_id_tbl.t = Rule_id_tbl.create 4096
 let clear_summary_memo () = Rule_id_tbl.reset summary_memo
+let bump_summary_hit () = counters.summary_hits <- counters.summary_hits + 1
+
+let bump_summary_miss () =
+  counters.summary_misses <- counters.summary_misses + 1
 
 let summarize_factor_rule factor_rule =
   match Rule_id_tbl.find_opt summary_memo factor_rule with
-  | Some s -> s
+  | Some s ->
+      bump_summary_hit ();
+      s
   | None ->
+      bump_summary_miss ();
       let s =
         {
           factor_rule;
@@ -4607,6 +4662,7 @@ let rec factor_take n = function
 (* Score an anchor node: [None] when it cannot factor, else the replacement
    rules, the nodes the factoring consumes, and the bytes it saves. *)
 let factor_anchor_score n =
+  counters.anchors_scored <- counters.anchors_scored + 1;
   if not (rule_factor_eligible (Rule_pool.rule n)) then None
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
@@ -4652,6 +4708,7 @@ let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
                 loop ())
               else (
                 incr applied;
+                counters.factorings_applied <- counters.factorings_applied + 1;
                 let added =
                   List.map
                     (fun r -> Rule_pool.insert_before pool n r)
@@ -5516,23 +5573,27 @@ let extract_group_branch_into_adjacent rules =
   let result = go [] rules in
   if !changed then result else rules
 
-let pass_times : (string, float) Hashtbl.t = Hashtbl.create 16
-
 let rec factor_rules_to_fixpoint ~ctx fuel rules =
   if fuel <= 0 then (
     Log.debug (fun m -> m "factor fixpoint: fuel exhausted, not yet converged");
     rules)
-  else
+  else begin
+    counters.iterations <- counters.iterations + 1;
     (* Log each pass that changes the rule list so the per-iteration progress is
        visible under [-vv] without hand-added tracing. *)
     let pass name f r =
+      let s = pass_stat name in
       let t0 = Unix.gettimeofday () in
       let r' = f r in
       let t1 = Unix.gettimeofday () in
-      let prev = try Hashtbl.find pass_times name with Not_found -> 0.0 in
-      Hashtbl.replace pass_times name (prev +. (t1 -. t0));
-      if not (r' == r) then
-        Log.debug (fun m -> m "factor iter %d: %s changed" fuel name);
+      s.time <- s.time +. (t1 -. t0);
+      s.calls <- s.calls + 1;
+      s.rules_in <- s.rules_in + List.length r;
+      s.rules_out <- s.rules_out + List.length r';
+      if not (r' == r) then begin
+        s.changes <- s.changes + 1;
+        Log.debug (fun m -> m "factor iter %d: %s changed" fuel name)
+      end;
       r'
     in
     let rules' =
@@ -5557,6 +5618,7 @@ let rec factor_rules_to_fixpoint ~ctx fuel rules =
           m "factor fixpoint: converged after %d iterations" (16 - fuel));
       rules)
     else factor_rules_to_fixpoint ~ctx (fuel - 1) rules'
+  end
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
@@ -6417,6 +6479,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) (stylesheet : t) : t =
   clear_summary_memo ();
   Selector_summary.clear_memo ();
+  reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
   let stylesheet = normalize_block ~lossless stylesheet in
   let stylesheet =

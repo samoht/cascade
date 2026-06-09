@@ -2,17 +2,37 @@ open Cascade
 open Cmdliner
 
 let report_profile () =
+  let module O = Cascade.Optimize in
   let total = ref 0.0 in
   let entries =
     Hashtbl.fold
-      (fun name t acc ->
-        total := !total +. t;
-        (name, t) :: acc)
-      Cascade.Optimize.pass_times []
+      (fun name s acc ->
+        total := !total +. s.O.time;
+        (name, s) :: acc)
+      O.pass_times []
   in
-  let entries = List.sort (fun (_, a) (_, b) -> compare b a) entries in
-  Fmt.epr "factor fixpoint pass times (total %.3fs):@." !total;
-  List.iter (fun (name, t) -> Fmt.epr "  %-24s %.3fs@." name t) entries
+  let entries =
+    List.sort (fun (_, a) (_, b) -> compare b.O.time a.O.time) entries
+  in
+  Fmt.epr "factor fixpoint (%d iterations, total %.3fs):@."
+    O.counters.iterations !total;
+  Fmt.epr "  %-22s %8s %6s %6s %9s %9s@." "pass" "time" "calls" "chg" "rules_in"
+    "rules_out";
+  List.iter
+    (fun (name, s) ->
+      Fmt.epr "  %-22s %7.3fs %6d %6d %9d %9d@." name s.O.time s.O.calls
+        s.O.changes s.O.rules_in s.O.rules_out)
+    entries;
+  let hits = O.counters.summary_hits in
+  let misses = O.counters.summary_misses in
+  let total_lookups = hits + misses in
+  let hit_pct =
+    if total_lookups = 0 then 0.0 else 100. *. float hits /. float total_lookups
+  in
+  Fmt.epr "@.factor anchors scored: %d, factorings applied: %d@."
+    O.counters.anchors_scored O.counters.factorings_applied;
+  Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
+    hits misses hit_pct
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars

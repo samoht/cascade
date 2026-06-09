@@ -179,7 +179,27 @@ val flatten_nesting : t -> t
     top-level rule. Equivalent to the [~flatten_nesting:true] mode of
     {!stylesheet} but without the deduplication / merge passes. *)
 
-val pass_times : (string, float) Hashtbl.t
-(** Per-pass timing accumulator for [factor_rules_to_fixpoint]. Populated as
-    side effect during [stylesheet] / [statements_top_level] runs; used by perf
-    diagnostics. Keys are pass names, values are accumulated seconds. *)
+type pass_stat = {
+  mutable time : float;  (** accumulated wall-clock, seconds *)
+  mutable calls : int;  (** times the pass ran across all fixpoint iterations *)
+  mutable changes : int;  (** times the pass returned a structurally new list *)
+  mutable rules_in : int;  (** total input rule count summed across calls *)
+  mutable rules_out : int;  (** total output rule count summed across calls *)
+}
+(** One pass's contribution to a single [Optimize.stylesheet] run. *)
+
+val pass_times : (string, pass_stat) Hashtbl.t
+(** Per-pass stats for [factor_rules_to_fixpoint]. Populated as a side effect
+    during [stylesheet] runs; reset at each entry. Keys are pass names. *)
+
+type counters = {
+  mutable iterations : int;  (** [factor_rules_to_fixpoint] iterations *)
+  mutable summary_hits : int;  (** [factor_rule_summary] memo hits *)
+  mutable summary_misses : int;  (** [factor_rule_summary] memo misses *)
+  mutable anchors_scored : int;  (** [factor_anchor_score] invocations *)
+  mutable factorings_applied : int;  (** anchor-gap factorings committed *)
+}
+(** Global counters across the last [Optimize.stylesheet] run. *)
+
+val counters : counters
+(** The counters; mutated by the optimizer, reset at each [stylesheet] entry. *)
