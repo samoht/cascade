@@ -29,8 +29,10 @@ let report_profile () =
   let hit_pct =
     if total_lookups = 0 then 0.0 else 100. *. float hits /. float total_lookups
   in
-  Fmt.epr "@.factor anchors scored: %d, factorings applied: %d@."
-    O.counters.anchors_scored O.counters.factorings_applied;
+  Fmt.epr
+    "@.factor anchors scored: %d (prefiltered %d), factorings applied: %d@."
+    O.counters.anchors_scored O.counters.anchors_prefiltered
+    O.counters.factorings_applied;
   Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
     hits misses hit_pct
 

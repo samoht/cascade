@@ -3801,6 +3801,7 @@ type counters = {
   mutable summary_hits : int;
   mutable summary_misses : int;
   mutable anchors_scored : int;
+  mutable anchors_prefiltered : int;
   mutable factorings_applied : int;
 }
 
@@ -3810,6 +3811,7 @@ let counters =
     summary_hits = 0;
     summary_misses = 0;
     anchors_scored = 0;
+    anchors_prefiltered = 0;
     factorings_applied = 0;
   }
 
@@ -3819,6 +3821,7 @@ let reset_counters () =
   counters.summary_hits <- 0;
   counters.summary_misses <- 0;
   counters.anchors_scored <- 0;
+  counters.anchors_prefiltered <- 0;
   counters.factorings_applied <- 0
 
 let summary_memo : factor_rule_summary Rule_id_tbl.t = Rule_id_tbl.create 4096
@@ -4659,15 +4662,42 @@ let rec factor_take n = function
   | x :: xs when n > 0 -> x :: factor_take (n - 1) xs
   | _ -> []
 
+(* Pool-wide declaration counts: how many live rules contain each declaration. A
+   declaration appearing in exactly one rule cannot be shared, so an anchor with
+   no duplicated declaration need not be scored. The keyed object is the whole
+   [declaration] -- structurally equal copies hash and compare identical, which
+   is what the eventual scan requires too. *)
+let build_shared_decl_predicate pool =
+  let counts : (declaration, int) Hashtbl.t = Hashtbl.create 1024 in
+  List.iter
+    (fun n ->
+      let r = Rule_pool.rule n in
+      List.iter
+        (fun d ->
+          let c = try Hashtbl.find counts d with Not_found -> 0 in
+          Hashtbl.replace counts d (c + 1))
+        r.Stylesheet_intf.declarations)
+    (Rule_pool.nodes pool);
+  fun d ->
+    match Hashtbl.find_opt counts d with Some c -> c > 1 | None -> false
+
 (* Score an anchor node: [None] when it cannot factor, else the replacement
    rules, the nodes the factoring consumes, and the bytes it saves. *)
-let factor_anchor_score n =
+let factor_anchor_score ~shared_decl n =
   counters.anchors_scored <- counters.anchors_scored + 1;
-  if not (rule_factor_eligible (Rule_pool.rule n)) then None
+  let r = Rule_pool.rule n in
+  if not (rule_factor_eligible r) then None
+  else if
+    (* Cheap pre-filter: factor_anchor needs at least one of this anchor's
+       declarations to appear verbatim in some other live rule. *)
+    not (List.exists shared_decl r.declarations)
+  then (
+    counters.anchors_prefiltered <- counters.anchors_prefiltered + 1;
+    None)
   else
     let win_nodes = factor_window n equal_factor_lookahead [] in
     let win_rules = List.map Rule_pool.rule win_nodes in
-    match try_factor_equal_anchor (Rule_pool.rule n) win_rules with
+    match try_factor_equal_anchor r win_rules with
     | None -> None
     | Some (replacement, tail, savings) ->
         let consumed =
@@ -4677,11 +4707,12 @@ let factor_anchor_score n =
 
 let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let pool = Rule_pool.of_rules rules in
+  let shared_decl = build_shared_decl_predicate pool in
   let frontier = ref Factor_queue.empty in
   let applied = ref 0 in
   let enqueue n =
     if Rule_pool.is_live n then
-      match factor_anchor_score n with
+      match factor_anchor_score ~shared_decl n with
       | Some (_, _, savings) when savings > 0 ->
           frontier := Factor_queue.add n (savings, Rule_pool.id n) !frontier
       | _ -> frontier := Factor_queue.remove n !frontier
@@ -4700,7 +4731,7 @@ let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
         frontier := rest;
         if not (Rule_pool.is_live n) then loop ()
         else
-          match factor_anchor_score n with
+          match factor_anchor_score ~shared_decl n with
           | Some (replacement, consumed, savings) when savings > 0 ->
               if savings <> stored then (
                 frontier :=
