@@ -3,7 +3,9 @@
 #
 # Runs:
 #   1. dune fmt -- if it rewrites a staged file, aborts so the change is staged.
-#   2. merlint   -- on the staged .ml / .mli files.
+#   2. merlint   -- across the whole project (not only the staged files), so a
+#                   change in one module that breaks a lint elsewhere is caught
+#                   before the commit lands.
 #
 # Enable from a fresh checkout with:
 #
@@ -39,7 +41,10 @@ elif command -v merlint >/dev/null 2>&1; then
 fi
 
 if [ -n "$MERLINT" ]; then
-    if ! "$MERLINT" --no-build $STAGED; then
+    # Scan the whole project. [--no-build] skips the [dune build @check] step
+    # so the commit stays fast; the typedtree-backed rules are silently
+    # skipped on any module whose .cmt is stale.
+    if ! "$MERLINT" --no-build; then
         echo "" >&2
         echo "merlint reported issues; fix them and commit again." >&2
         exit 1
