@@ -1744,6 +1744,7 @@ let test_border_width () =
   check_border_width "medium";
   check_border_width "thick";
   check_border_width "2px";
+  check_border_width ".0625rem";
   neg_cursor read_border_width "invalid-width";
   neg_cursor read_border_width "-2px";
   (* negative width *)
@@ -2440,6 +2441,8 @@ let test_conic_gradient_config () =
 let test_background_position () =
   check_background_position ~expected:"50%" "center";
   check_background_position ~expected:"0 0" "left top";
+  check_background_position ~expected:"100% 0" "right 0";
+  check_background_position ~expected:"100% -15.625rem" "right -15.625rem";
   check_background_position "right .5rem center";
   check_background_position "50% 25%";
   check_background_position "inherit";

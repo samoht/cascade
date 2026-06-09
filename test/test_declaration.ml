@@ -555,6 +555,7 @@ let borders () =
 
   (* Border width *)
   check_declaration ~expected:"border-width:1px" "border-width: 1px";
+  check_declaration ~expected:"border-width:.0625rem" "border-width: .0625rem";
   check_declaration ~expected:"border-width:2px" "border-width: 2px";
   check_declaration ~expected:"border-width:thin" "border-width: thin";
   check_declaration ~expected:"border-width:medium" "border-width: medium";
@@ -580,6 +581,8 @@ let borders () =
   check_declaration ~expected:"border-bottom-width:3px"
     "border-bottom-width: 3px";
   check_declaration ~expected:"border-left-width:4px" "border-left-width: 4px";
+  check_declaration ~expected:"border:.0625rem solid#333"
+    "border: .0625rem solid #333";
 
   check_declaration ~expected:"border-top-color:red" "border-top-color: red";
   check_declaration ~expected:"border-right-color:blue"
@@ -591,6 +594,8 @@ let borders () =
 
 let overflow () =
   check_declaration ~expected:"overflow:visible" "overflow: visible";
+  check_declaration ~expected:"overflow:visible!important"
+    "overflow: visible !important";
   check_declaration ~expected:"overflow:hidden" "overflow: hidden";
   check_declaration ~expected:"overflow:scroll" "overflow: scroll";
   check_declaration ~expected:"overflow:auto" "overflow: auto";
@@ -1181,6 +1186,10 @@ let edge_cases () =
 
   (* Complex calc expressions *)
   (* Cases with / operator - should be minified without spaces per CSS spec *)
+  check_declaration ~expected:"width:calc(100% + 10px)"
+    "width: -webkit-calc(100% + 10px)";
+  check_declaration ~expected:"margin-left:calc(-1*5px)"
+    ~optimized:"margin-left:-5px" "margin-left: -webkit-calc(-1 * 5px)";
   check_declaration ~expected:"width:calc((100% - 20px)/2)"
     "width: calc((100% - 20px) / 2)";
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"

@@ -4942,13 +4942,16 @@ and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   if Cursor.looking_at_func "calc" t then
     Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
+  else if Cursor.looking_at_func "-webkit-calc" t then
+    Nested
+      (Cursor.call "-webkit-calc" t (fun inner -> read_calc_expr read_a inner))
   else Cursor.err t "expected nested calc"
 
 let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  if Cursor.looking_at_func "calc" t then
-    Cursor.call "calc" t (fun inner ->
+  let read name =
+    Cursor.call name t (fun inner ->
         let result = read_calc_expr read_a inner in
         (* CSS Values 4 10: a [calc()] body must be a single expression --
            [calc(1px 2px)] (missing operator) leaves [2px] unconsumed and must
@@ -4956,6 +4959,9 @@ let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
         Cursor.ws inner;
         Cursor.expect_eof inner;
         result)
+  in
+  if Cursor.looking_at_func "calc" t then read "calc"
+  else if Cursor.looking_at_func "-webkit-calc" t then read "-webkit-calc"
   else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
   else Cursor.err t "calc() or var()"
 
@@ -5035,7 +5041,7 @@ and read_var_length ~allow_negative ~with_keywords t : length =
   else Cursor.err t "expected var"
 
 and read_calc_length ~with_keywords t : length =
-  if Cursor.looking_at t "calc(" then
+  if Cursor.looking_at_calc t then
     (* Same exception as [read_length_percentage]: inside [calc()] the
        non-negative constraint applies to the resolved value. *)
     Calc (read_calc (read_length ~with_keywords) t)
@@ -5431,8 +5437,7 @@ let rec read_color_component t : component =
     Cursor.expect_string "none" t;
     Component_none)
   else if Cursor.looking_at t "var(" then Var (read_var read_color_component t)
-  else if Cursor.looking_at t "calc(" then
-    Calc (read_calc read_color_component t)
+  else if Cursor.looking_at_calc t then Calc (read_calc read_color_component t)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -5607,7 +5612,7 @@ let rec read_angle_with ~unitless_zero t : angle =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
     Var (read_var (read_angle_with ~unitless_zero) t)
-  else if Cursor.looking_at t "calc(" then
+  else if Cursor.looking_at_calc t then
     Calc (read_calc (read_angle_with ~unitless_zero) t)
   else if Cursor.looking_at_func "round" t then
     read_angle_round (read_angle_with ~unitless_zero) t
@@ -6711,7 +6716,7 @@ let read_transition_behavior t : transition_behavior =
 let rec read_percentage t : percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_percentage t)
-  else if Cursor.looking_at t "calc(" then Calc (read_calc read_percentage t)
+  else if Cursor.looking_at_calc t then Calc (read_calc read_percentage t)
   else Pct (Cursor.pct t)
 
 (* CSS Values 5 §10: math functions that produce a non-length type ([asin] /
@@ -6769,7 +6774,7 @@ and read_length_percentage_env ~allow_negative ~with_keywords t :
   else Cursor.err t "expected env"
 
 and read_length_percentage_calc ~with_keywords t : length_percentage =
-  if Cursor.looking_at t "calc(" then
+  if Cursor.looking_at_calc t then
     (* CSS Values 4 10 (calc): inside [calc()] negative operands are always
        allowed even when the surrounding property is non-negative; the
        non-negative constraint applies to the resolved value, not to inner
@@ -6795,7 +6800,7 @@ let rec read_number_percentage_dim_only t : number_percentage =
 let rec read_number_percentage t : number_percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
-  else if Cursor.looking_at t "calc(" then
+  else if Cursor.looking_at_calc t then
     Calc (read_calc read_number_percentage_dim_only t)
   else if
     Cursor.looking_at_func "min" t
@@ -7140,7 +7145,7 @@ let read_calc_op t : calc_op =
 let rec read_component t : component =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_component t)
-  else if Cursor.looking_at t "calc(" then Calc (read_calc read_component t)
+  else if Cursor.looking_at_calc t then Calc (read_calc read_component t)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with

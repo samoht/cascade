@@ -588,6 +588,9 @@ let looking_at_func name t =
   | Some (Component.Func { node = { name = n; _ }; _ }) -> n = name
   | _ -> false
 
+let looking_at_calc t =
+  looking_at_func "calc" t || looking_at_func "-webkit-calc" t
+
 let looking_at t s =
   (* [s] can be an ident ("auto"), a function prefix ("var("), or a short string
      starting with a delim ("--", ")"). *)

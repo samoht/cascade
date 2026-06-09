@@ -1971,12 +1971,17 @@ let rec read_overflow_single (t : Cursor.t) : overflow =
 let read_overflow t : overflow =
   let first = read_overflow_single t in
   Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then first
+  if
+    Cursor.is_done t || Cursor.peek_semicolon t
+    || Cursor.peek_delim t = Some '!'
+  then first
   else
     let second = read_overflow_single t in
     Cursor.ws t;
-    if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
-      Cursor.expect_eof t;
+    if
+      (not (Cursor.is_done t))
+      && not (Cursor.peek_semicolon t || Cursor.peek_delim t = Some '!')
+    then Cursor.expect_eof t;
     Overflow_pair (first, second)
 
 module Cursor_prop = struct
@@ -11261,6 +11266,32 @@ let ensure_non_negative_border_width t value =
 (* Helper: convert length to border_width, ensuring non-negative values *)
 let length_to_border_width t (length : length) : border_width =
   let non_neg = ensure_non_negative_border_width t in
+  let typed_dimension value unit : border_width =
+    let value = non_neg value in
+    match String.lowercase_ascii unit with
+    | "%" -> Pct value
+    | "px" -> Px value
+    | "cm" -> Cm value
+    | "mm" -> Mm value
+    | "q" -> Q value
+    | "in" -> In value
+    | "pt" -> Pt value
+    | "pc" -> Pc value
+    | "rem" -> Rem value
+    | "em" -> Em value
+    | "ex" -> Ex value
+    | "cap" -> Cap value
+    | "ic" -> Ic value
+    | "ric" -> Ric value
+    | "rlh" -> Rlh value
+    | "ch" -> Ch value
+    | "lh" -> Lh value
+    | "vh" -> Vh value
+    | "vw" -> Vw value
+    | "vmin" -> Vmin value
+    | "vmax" -> Vmax value
+    | _ -> err_invalid_value t "border-width" "unsupported length type"
+  in
   match length with
   | Zero -> Zero
   | Px n -> Px (non_neg n)
@@ -11284,6 +11315,7 @@ let length_to_border_width t (length : length) : border_width =
   | Vmin n -> Vmin (non_neg n)
   | Vmax n -> Vmax (non_neg n)
   | Pct n -> Pct (non_neg n)
+  | Dimension { value; unit; _ } -> typed_dimension value unit
   | _ -> err_invalid_value t "border-width" "unsupported length type"
 
 let rec read_border_width t : border_width =
@@ -17664,13 +17696,15 @@ module Position_value = struct
     | "center", ("top" | "bottom") -> Axis_edge_offset (axis, edge, offset)
     | _ -> Cursor.err_invalid t "invalid position axis edge offset"
 
-  let read_keyword_length t : position_value =
+  let read_horizontal_keyword_length t : position_value =
     let keyword = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length t in
+    let y = read_length t in
     match keyword with
-    | "center" -> XY ((Pct 50. : length), offset)
-    | _ -> Cursor.err_invalid t "invalid position keyword length"
+    | "left" -> XY ((Pct 0. : length), y)
+    | "right" -> XY ((Pct 100. : length), y)
+    | "center" -> XY ((Pct 50. : length), y)
+    | _ -> Cursor.err_invalid t "invalid horizontal position keyword length"
 
   let read_length_keyword t : position_value =
     let offset = read_length t in
@@ -17698,7 +17732,7 @@ let rec read_position_value t : position_value =
       Position_value.read_4_value;
       Position_value.read_axis_edge_offset;
       Position_value.read_3_value;
-      Position_value.read_keyword_length;
+      Position_value.read_horizontal_keyword_length;
       Position_value.read_length_keyword;
       Position_value.read_xy;
       Position_value.read_2_value;
