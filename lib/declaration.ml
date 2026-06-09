@@ -15,9 +15,28 @@ let rec meta_of_declaration : declaration -> meta option = function
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> meta_of_declaration decl
 
-(* Smart constructor for declarations *)
-let v ?(important = false) property value =
-  Declaration { property; value; important }
+(* Smart constructor for declarations. The [hash] field is computed here from
+   the (property, value, important) triple via the stdlib bounded structural
+   hash so two structurally-equal declarations always carry the same hash --
+   which is the property [Optimize.same_minified_declaration] relies on for its
+   O(1) inequality short-circuit. Bounded depth keeps construction O(1) even for
+   large value subtrees. *)
+let v (type a) ?(important = false) (property : a Properties.property)
+    (value : a) =
+  let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
+  Declaration { property; value; important; hash }
+
+let theme_guarded ~var_name decl =
+  let hash = Hashtbl.seeded_hash_param 30 100 0 (var_name, decl) in
+  Theme_guarded { var_name; decl; hash }
+
+(* Read the cached structural hash. Two declarations that minify to the same
+   text always produce the same value here; the converse may fail on hash
+   collisions, so callers still confirm equality with [=] before treating two
+   declarations as equal. *)
+let hash = function
+  | Declaration { hash; _ } -> hash
+  | Theme_guarded { hash; _ } -> hash
 
 let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
@@ -25,23 +44,21 @@ let unknown_property ?(important = false) name value =
 
 (* Helper to mark a declaration as important *)
 let rec important = function
-  | Declaration { property; value; _ } ->
-      Declaration { property; value; important = true }
-  | Theme_guarded g -> Theme_guarded { g with decl = important g.decl }
+  | Declaration { property; value; _ } -> v ~important:true property value
+  | Theme_guarded g -> theme_guarded ~var_name:g.var_name (important g.decl)
 
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
 let rec normalize ?(lossless = false) = function
-  | Declaration { property; value; important } as decl ->
+  | Declaration { property; value; important; _ } as decl ->
       let value' =
         Properties.normalize_property_value ~lossless property value
       in
-      if value' == value then decl
-      else Declaration { property; value = value'; important }
+      if value' == value then decl else v ~important property value'
   | Theme_guarded g as themed ->
       let decl = normalize ~lossless g.decl in
-      if decl == g.decl then themed else Theme_guarded { g with decl }
+      if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
 (* Helper for raw custom properties - primarily for internal use *)
 

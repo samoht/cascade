@@ -2585,11 +2585,11 @@ let css_wide_of_transitions (value : Properties.transition list) =
   | _ -> None
 
 let rec declaration_with_importance important = function
-  | Declaration.Declaration { property; value; important = _ } ->
-      Declaration.Declaration { property; value; important }
-  | Declaration.Theme_guarded { var_name; decl } ->
-      Declaration.Theme_guarded
-        { var_name; decl = declaration_with_importance important decl }
+  | Declaration.Declaration { property; value; important = _; _ } ->
+      Declaration.v ~important property value
+  | Declaration.Theme_guarded { var_name; decl; _ } ->
+      Declaration.theme_guarded ~var_name
+        (declaration_with_importance important decl)
 
 let property_name (type a) (property : a Properties.property) =
   Pp.to_string ~minify:true Properties.pp_property property
@@ -3374,9 +3374,9 @@ let rec eval_typed ?layer_order ?layer ctx decl =
   let layer_order = ctx.layer_order in
   let layer = ctx.layer in
   match decl with
-  | Declaration.Theme_guarded { var_name; decl } ->
-      Declaration.Theme_guarded
-        { var_name; decl = eval_typed ~layer_order ?layer ctx decl }
+  | Declaration.Theme_guarded { var_name; decl; _ } ->
+      Declaration.theme_guarded ~var_name
+        (eval_typed ~layer_order ?layer ctx decl)
   | Declaration.Declaration { property; value; important } -> (
       match Properties.property_value_kind property with
       | Some kind ->
@@ -3398,7 +3398,7 @@ and resolve_typed : type b.
     (Option.bind (css_wide_of value) (fun keyword ->
          resolve_css_wide_keyword ~layer_order ctx ~important
            ~property_name:(property_name property) keyword))
-    ~default:(Declaration.Declaration { property; value; important })
+    ~default:(Declaration.v ~important property value)
 
 and eval_kind : type a.
     layer_order:string list ->
@@ -3516,7 +3516,7 @@ and eval_kind_misc : type a.
   match kind with
   | Properties.Number_percentage ->
       let value = simplify_number_percentage ~layer_order ?layer ctx value in
-      Declaration.Declaration { property; value; important }
+      Declaration.v ~important property value
   | Properties.Scale ->
       resolve (simplify_scale ~layer_order ?layer ctx) css_wide_of_scale
   | Properties.Animation ->

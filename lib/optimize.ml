@@ -535,7 +535,7 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
               preserve_list vs
                 (collapse_box_lengths [ top; right; bottom; left ])
             in
-            (Declaration { property; value; important }, rest'))
+            (Declaration.v ~important property value, rest'))
 
 (* CSS Overflow 3 §3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
@@ -586,12 +586,7 @@ let merge_overflow_longhands decls =
         | None -> go (item :: acc) rest
         | Some (v_y, rest') ->
             let merged =
-              Declaration
-                {
-                  property = Overflow;
-                  value = combined_overflow v_x v_y;
-                  important;
-                }
+              Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
             go ((idx, merged) :: acc) rest')
     | ((idx, Declaration { property = Overflow_y; value = v_y; important }) as
@@ -601,12 +596,7 @@ let merge_overflow_longhands decls =
         | None -> go (item :: acc) rest
         | Some (v_x, rest') ->
             let merged =
-              Declaration
-                {
-                  property = Overflow;
-                  value = combined_overflow v_x v_y;
-                  important;
-                }
+              Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
             go ((idx, merged) :: acc) rest')
     | d :: rest -> go (d :: acc) rest
@@ -757,40 +747,24 @@ let try_compose_box_important_split ~extract ~build = function
   | _ -> None
 
 let build_margin_box ~important ~top ~right ~bottom ~left =
-  Declaration
-    {
-      property = Margin;
-      value = collapse_box_lengths [ top; right; bottom; left ];
-      important;
-    }
+  Declaration.v ~important Margin
+    (collapse_box_lengths [ top; right; bottom; left ])
 
 let build_padding_box ~important ~top ~right ~bottom ~left =
-  Declaration
-    {
-      property = Padding;
-      value = collapse_box_lengths [ top; right; bottom; left ];
-      important;
-    }
+  Declaration.v ~important Padding
+    (collapse_box_lengths [ top; right; bottom; left ])
 
 let build_inset_box ~important ~top ~right ~bottom ~left =
-  Declaration
-    {
-      property = Inset;
-      value = collapse_box_lengths [ top; right; bottom; left ];
-      important;
-    }
+  Declaration.v ~important Inset
+    (collapse_box_lengths [ top; right; bottom; left ])
 
 let build_border_radius_box ~important ~top ~right ~bottom ~left =
   let lp v : Values.length_percentage = Length v in
   let horizontal =
     List.map lp (collapse_box_lengths [ top; right; bottom; left ])
   in
-  Declaration
-    {
-      property = Border_radius;
-      value = Radius { horizontal; vertical = None };
-      important;
-    }
+  Declaration.v ~important Border_radius
+    (Radius { horizontal; vertical = None })
 
 let compose_box_shorthands ~ctx decls =
   let composers =
@@ -843,17 +817,9 @@ let try_compose_gap = function
           let pair = [ (s1, v1); (s2, v2) ] in
           let find s = List.assoc s pair in
           let merged =
-            Declaration
-              {
-                property = Gap;
-                value =
-                  Lengths
-                    {
-                      row_gap = Some (find Row);
-                      column_gap = Some (find Column);
-                    };
-                important = imp1;
-              }
+            Declaration.v ~important:imp1 Gap
+              (Lengths
+                 { row_gap = Some (find Row); column_gap = Some (find Column) })
           in
           Some ((idx, merged), rest)
       | _ -> None)
@@ -940,12 +906,8 @@ let try_compose_place_items = function
     :: rest
     when i1 = i2 ->
       let merged =
-        Declaration
-          {
-            property = Place_items;
-            value = (Align_justify (a, j) : Properties.place_items);
-            important = i1;
-          }
+        Declaration.v ~important:i1 Place_items
+          (Align_justify (a, j) : Properties.place_items)
       in
       Some ((idx, merged), rest)
   | (idx, Declaration { property = Justify_items; value = j; important = i1 })
@@ -953,12 +915,8 @@ let try_compose_place_items = function
     :: rest
     when i1 = i2 ->
       let merged =
-        Declaration
-          {
-            property = Place_items;
-            value = (Align_justify (a, j) : Properties.place_items);
-            important = i1;
-          }
+        Declaration.v ~important:i1 Place_items
+          (Align_justify (a, j) : Properties.place_items)
       in
       Some ((idx, merged), rest)
   | _ -> None
@@ -969,12 +927,8 @@ let try_compose_place_content = function
     :: rest
     when i1 = i2 ->
       let merged =
-        Declaration
-          {
-            property = Place_content;
-            value = (Align_justify (a, j) : Properties.place_content);
-            important = i1;
-          }
+        Declaration.v ~important:i1 Place_content
+          (Align_justify (a, j) : Properties.place_content)
       in
       Some ((idx, merged), rest)
   | (idx, Declaration { property = Justify_content; value = j; important = i1 })
@@ -982,12 +936,8 @@ let try_compose_place_content = function
     :: rest
     when i1 = i2 ->
       let merged =
-        Declaration
-          {
-            property = Place_content;
-            value = (Align_justify (a, j) : Properties.place_content);
-            important = i1;
-          }
+        Declaration.v ~important:i1 Place_content
+          (Align_justify (a, j) : Properties.place_content)
       in
       Some ((idx, merged), rest)
   | _ -> None
@@ -997,23 +947,19 @@ let try_compose_place_self = function
     :: (_, Declaration { property = Justify_self; value = j; important = i2 })
     :: rest
     when i1 = i2 ->
-      let merged =
-        Declaration { property = Place_self; value = (a, j); important = i1 }
-      in
+      let merged = Declaration.v ~important:i1 Place_self (a, j) in
       Some ((idx, merged), rest)
   | (idx, Declaration { property = Justify_self; value = j; important = i1 })
     :: (_, Declaration { property = Align_self; value = a; important = i2 })
     :: rest
     when i1 = i2 ->
-      let merged =
-        Declaration { property = Place_self; value = (a, j); important = i1 }
-      in
+      let merged = Declaration.v ~important:i1 Place_self (a, j) in
       Some ((idx, merged), rest)
   | _ -> None
 
 let compose_pair_shorthands decls =
   let axis property extract decls =
-    let build ~important ~value = Declaration { property; value; important } in
+    let build ~important ~value = Declaration.v ~important property value in
     try_compose_axis_pair ~extract ~build decls
   in
   let composers =
@@ -1080,12 +1026,8 @@ let try_compose_outline = function
           in
           if no_runtime then
             let merged =
-              Declaration
-                {
-                  property = Outline;
-                  value = Shorthand { width; style; color };
-                  important = is_important d1;
-                }
+              Declaration.v ~important:(is_important d1) Outline
+                (Shorthand { width; style; color })
             in
             Some ((idx, merged), rest)
           else None
@@ -1183,12 +1125,9 @@ let try_compose_font indexed_decls =
         | Some font_value ->
             let idx = fst (List.hd five) in
             let merged =
-              Declaration
-                {
-                  property = Font;
-                  value = font_value;
-                  important = is_important (List.hd raw_decls);
-                }
+              Declaration.v
+                ~important:(is_important (List.hd raw_decls))
+                Font font_value
             in
             Some ((idx, merged), rest)
         | None -> None)
@@ -1288,12 +1227,8 @@ let try_compose_list_style = function
          && is_important d1 = is_important d2
          && is_important d2 = is_important d3 ->
       let merged =
-        Declaration
-          {
-            property = List_style;
-            value = render_list_style [ d1; d2; d3 ];
-            important = is_important d1;
-          }
+        Declaration.v ~important:(is_important d1) List_style
+          (render_list_style [ d1; d2; d3 ])
       in
       Some ((idx, merged), rest)
   | _ -> None
@@ -1347,12 +1282,7 @@ let try_compose_flex = function
           match (grow, shrink, basis) with
           | Some g, Some s, Some b ->
               let merged =
-                Declaration
-                  {
-                    property = Flex;
-                    value = Full (g, s, b);
-                    important = is_important d1;
-                  }
+                Declaration.v ~important:(is_important d1) Flex (Full (g, s, b))
               in
               Some ((idx, merged), rest)
           | _ -> None)
@@ -1408,12 +1338,8 @@ let try_compose_text_decoration = function
           match (lines, style, color) with
           | Some lines, Some _, Some _ ->
               let merged =
-                Declaration
-                  {
-                    property = Text_decoration;
-                    value = Shorthand { lines; style; color; thickness = None };
-                    important = is_important d1;
-                  }
+                Declaration.v ~important:(is_important d1) Text_decoration
+                  (Shorthand { lines; style; color; thickness = None })
               in
               Some ((idx, merged), rest)
           | _ -> None)
@@ -1497,13 +1423,8 @@ let declaration_of_border_parts ~important widths styles colors =
   let _, width, _ = List.hd widths in
   let _, style, _ = List.hd styles in
   let _, color, _ = List.hd colors in
-  Declaration
-    {
-      property = Border;
-      value =
-        Shorthand { width = Some width; style = Some style; color = Some color };
-      important;
-    }
+  Declaration.v ~important Border
+    (Shorthand { width = Some width; style = Some style; color = Some color })
 
 (* [border] / [border-<edge>] disambiguate width/style/color by type, so a
    [var()] (or other runtime substitution) in a longhand cannot be safely folded
@@ -1588,18 +1509,15 @@ let try_compose_border_whole ~ctx indexed_decls =
           when foldable_width width && foldable_style style
                && foldable_color color ->
             let merged =
-              Declaration
-                {
-                  property = Border;
-                  value =
-                    Shorthand
-                      {
-                        width = Some width;
-                        style = Some style;
-                        color = Some color;
-                      };
-                  important = is_important (List.hd raw);
-                }
+              Declaration.v
+                ~important:(is_important (List.hd raw))
+                Border
+                (Shorthand
+                   {
+                     width = Some width;
+                     style = Some style;
+                     color = Some color;
+                   })
             in
             Some ((fst (List.hd three), merged), rest)
         | _ -> None)
@@ -1742,12 +1660,10 @@ let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
   && foldable && not need_slice
 
 let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
-  Declaration
-    {
-      property = Border_image;
-      value = { source; slice; width; outset; repeat; mode = None };
-      important = is_important (snd (List.hd run));
-    }
+  Declaration.v
+    ~important:(is_important (snd (List.hd run)))
+    Border_image
+    { source; slice; width; outset; repeat; mode = None }
 
 let record_border_image_longhand
     ~(source : Properties.background_image option ref)
@@ -1991,12 +1907,10 @@ let try_compose_background ~ctx indexed_decls =
         if not permit then None
         else
           let merged =
-            Declaration
-              {
-                property = Background;
-                value = [ (Shorthand layer : Properties.background) ];
-                important = is_important (List.hd raw_decls);
-              }
+            Declaration.v
+              ~important:(is_important (List.hd raw_decls))
+              Background
+              [ (Shorthand layer : Properties.background) ]
           in
           Some ((idx, merged), rest)
 
@@ -2132,12 +2046,10 @@ let try_compose_mask ~ctx indexed_decls =
         if layer.image = None then None
         else
           let merged =
-            Declaration
-              {
-                property = Mask;
-                value = (Layer layer : Properties.mask);
-                important = is_important (List.hd raw_decls);
-              }
+            Declaration.v
+              ~important:(is_important (List.hd raw_decls))
+              Mask
+              (Layer layer : Properties.mask)
           in
           Some ((idx, merged), rest)
 
@@ -2322,12 +2234,10 @@ let try_compose_transition indexed_decls =
           List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
         in
         let merged =
-          Declaration
-            {
-              property = Transition;
-              value = [ (Shorthand layer : Properties.transition) ];
-              important = is_important (List.hd raw_decls);
-            }
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Transition
+            [ (Shorthand layer : Properties.transition) ]
         in
         Some ((idx, merged), rest)
 
@@ -2492,12 +2402,10 @@ let try_compose_animation indexed_decls =
           List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
         in
         let merged =
-          Declaration
-            {
-              property = Animation;
-              value = [ (Shorthand layer : Properties.animation) ];
-              important = is_important (List.hd raw_decls);
-            }
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Animation
+            [ (Shorthand layer : Properties.animation) ]
         in
         Some ((idx, merged), rest)
 
@@ -2567,12 +2475,15 @@ let same_value a b = without_importance a = without_importance b
    canonicalisation passes the AST is canonical, so structural equality is the
    minified-equality test - and far cheaper than rendering both to strings. A
    pp-equal-but-structurally-different pair would be a canonicalisation bug, not
-   something to paper over by comparing rendered text. The [(==)] short-circuit
-   avoids walking the AST when both references point to the same heap object,
-   which is the common case in the factoring loops (same declaration appears in
-   many sibling rules and is compared millions of times). *)
+   something to paper over by comparing rendered text.
+
+   [(==)] short-circuits the same-heap-object case. The cached
+   [Declaration.hash] (computed once at construction by [Declaration.v]) short-
+   circuits the (much more common) different-value case in one field-load + int
+   compare without walking the AST; we only fall through to structural equality
+   on a hash collision. *)
 let same_minified_declaration (a : declaration) (b : declaration) =
-  a == b || a = b
+  a == b || (Declaration.hash a = Declaration.hash b && a = b)
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
@@ -6227,32 +6138,22 @@ let promote_registered_custom_decl ~lossless registry decl =
           in
           match try_promote_custom_with syntax components' with
           | Some typed ->
-              Declaration
-                {
-                  property = Custom_property name;
-                  value =
-                    Custom_value
-                      {
-                        value =
-                          Properties.normalize_custom_property_value ~lossless
-                            typed;
-                        layer;
-                        meta;
-                      };
-                  important;
-                }
+              Declaration.v ~important (Custom_property name)
+                (Custom_value
+                   {
+                     value =
+                       Properties.normalize_custom_property_value ~lossless
+                         typed;
+                     layer;
+                     meta;
+                   })
           | None when components' == components -> decl
           | None ->
               (* Promotion failed (e.g. [<custom-ident>+] has no typed promotion
                  path yet) but the string-to-ident rewrite still produces the
                  canonical opaque AST. *)
-              Declaration
-                {
-                  property = Custom_property name;
-                  value =
-                    Custom_value { value = Tokens components'; layer; meta };
-                  important;
-                }))
+              Declaration.v ~important (Custom_property name)
+                (Custom_value { value = Tokens components'; layer; meta })))
   | _ -> decl
 
 let promote_registered_custom_properties ~lossless (stmts : statement list) =
@@ -6324,16 +6225,11 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
       | [] -> None
       | kept ->
           Some
-            (Declaration
-               {
-                 property = Position_try_fallbacks;
-                 value = Fallbacks kept;
-                 important;
-               }))
-  | Theme_guarded { var_name; decl } -> (
+            (Declaration.v ~important Position_try_fallbacks (Fallbacks kept)))
+  | Theme_guarded { var_name; decl; _ } -> (
       match prune_position_try_decl known decl with
       | None -> None
-      | Some decl -> Some (Theme_guarded { var_name; decl }))
+      | Some decl -> Some (Declaration.theme_guarded ~var_name decl))
   | other -> Some other
 
 let prune_position_try_fallbacks ~scope (stylesheet : t) : t =

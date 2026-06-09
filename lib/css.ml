@@ -596,7 +596,7 @@ let as_import = function Import import_rule -> Some import_rule | _ -> None
 let concat = List.concat
 let empty = []
 let v = Stylesheet.v
-let theme_guarded ~var_name decl = Theme_guarded { var_name; decl }
+let theme_guarded = Declaration.theme_guarded
 
 let as_theme_guarded = function
   | Theme_guarded { var_name; decl } -> Some (var_name, decl)
