@@ -192,10 +192,42 @@ val pass_times : (string, pass_stat) Hashtbl.t
 (** Per-pass stats for [factor_rules_to_fixpoint]. Populated as a side effect
     during {!val-stylesheet} runs; reset at each entry. Keys are pass names. *)
 
+val set_profile : bool -> unit
+(** Enable or disable exact diagnostic size collection for subsequent optimizer
+    runs. Default is [false]. *)
+
+type iteration_stat = {
+  fixpoint : int;
+  iteration : int;
+  local_iteration : int;
+  before_rules : int;
+  after_rules : int;
+  before_bytes : int;
+  after_bytes : int;
+  bytes_saved : int;
+  active_passes : int;
+  changed_passes : int;
+  elapsed : float;
+}
+(** One global factoring fixpoint iteration. *)
+
+val iteration_stats : unit -> iteration_stat list
+(** Per-iteration stats for [factor_rules_to_fixpoint], newest first. *)
+
 type counters = {
   mutable iterations : int;  (** [factor_rules_to_fixpoint] iterations *)
+  mutable factor_fixpoints_run : int;
+      (** global factoring fixpoints attempted after the preflight *)
+  mutable marginal_stops : int;
+      (** fixpoints stopped because consecutive iterations had low byte gain *)
   mutable summary_hits : int;  (** [factor_rule_summary] memo hits *)
   mutable summary_misses : int;  (** [factor_rule_summary] memo misses *)
+  mutable factor_fixpoints_skipped : int;
+      (** global factoring fixpoints skipped by the incremental preflight *)
+  mutable factor_preflight_gain : int;
+      (** total raw-byte gain estimated by the global factoring preflight *)
+  mutable factor_bytes_saved : int;
+      (** total committed byte savings reported by global factoring passes *)
   mutable anchors_scored : int;  (** [factor_anchor_score] invocations *)
   mutable anchors_prefiltered : int;
       (** scored anchors rejected by the no-shared-declaration pre-filter *)
