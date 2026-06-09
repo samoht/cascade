@@ -197,6 +197,8 @@ type counters = {
   mutable summary_hits : int;  (** [factor_rule_summary] memo hits *)
   mutable summary_misses : int;  (** [factor_rule_summary] memo misses *)
   mutable anchors_scored : int;  (** [factor_anchor_score] invocations *)
+  mutable anchors_prefiltered : int;
+      (** scored anchors rejected by the no-shared-declaration pre-filter *)
   mutable factorings_applied : int;  (** anchor-gap factorings committed *)
 }
 (** Global counters across the last [Optimize.stylesheet] run. *)
