@@ -441,7 +441,7 @@ let rec property_name decl =
    Unknown_property, both string); the rest are nullary. Packing into [prop_key]
    unifies their existential types so stdlib structural equality answers "same
    property name" directly - no [Pp], no [Obj.repr]. *)
-type prop_key = Key : 'a Properties.property -> prop_key
+type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
 let rec property_key decl =
   match decl with
