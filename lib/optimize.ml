@@ -2,6 +2,7 @@
 
 open Declaration
 open Stylesheet
+open Common
 module String_set = Set.Make (String)
 
 let src = Logs.Src.create "cascade.optimize" ~doc:"Cascade CSS optimizer"
@@ -21,33 +22,9 @@ type scope = Ctx.scope
 type ctx = Ctx.t
 
 let ctx_of_scope = Ctx.of_scope
-
-let list_map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
-
-let list_filter_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        if f x then loop changed (x :: acc) rest else loop true acc rest
-  in
-  loop false [] xs
-
-let list_filter_map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest -> (
-        match f x with
-        | Some y -> loop (changed || not (y == x)) (y :: acc) rest
-        | None -> loop true acc rest)
-  in
-  loop false [] xs
+let list_map_preserve = List.map_preserve
+let list_filter_preserve = List.filter_preserve
+let list_edit_preserve = List.edit_preserve
 
 let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
   match value with
@@ -56,14 +33,7 @@ let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
       let y = f x in
       if y == x then value else Some y
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
-
-let preserve_list before after =
-  if list_same before after then before else after
+let preserve_list = List.preserve
 
 let rule_with_nested (rule : rule) nested =
   if nested == rule.nested then rule else { rule with nested }
@@ -190,11 +160,16 @@ let pop_trailing_rules acc =
   in
   loop acc []
 
-let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
+(* Collect the contiguous run of [Rule] statements starting at the head. The
+   first component is the run in REVERSE cascade order: process_rule_run feeds
+   it straight into [List.rev_append as_statements_rev acc] in the unchanged
+   path, so the redundant [List.rev stmt_acc] at the end of the collector is
+   skipped. *)
+let rec collect_rules (stmt_acc_rev : statement list) (rules_acc : rule list) :
     statement list -> statement list * rule list * statement list = function
   | (Rule r as stmt) :: rest ->
-      collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
-  | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
+      collect_rules (stmt :: stmt_acc_rev) (r :: rules_acc) rest
+  | rest -> (stmt_acc_rev, List.rev rules_acc, rest)
 
 let factor_rules_incremental ~ctx rules =
   Factor.run ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
@@ -282,13 +257,13 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
       process_statements ~ctx ~enforce_spec (hd :: acc) rest
 
 and process_rule_run ~ctx ~enforce_spec acc stmt r rest =
-  let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
+  let plain_stmts_rev, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
   let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
-  let as_statements =
-    if optimized == plain_rules then plain_stmts
-    else List.map (fun r -> Rule r) optimized
+  let acc' =
+    if optimized == plain_rules then plain_stmts_rev @ acc
+    else List.rev_map (fun r -> Rule r) optimized @ acc
   in
-  process_statements ~ctx ~enforce_spec (List.rev_append as_statements acc) rest
+  process_statements ~ctx ~enforce_spec acc' rest
 
 and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
   let cond = if enforce_spec then cond else Media.lower_for_minify cond in
@@ -595,43 +570,49 @@ let drop_unknown_at_rules (stylesheet : t) : t =
   let rec statement stmt =
     match stmt with
     | Rule rule ->
-        let nested = list_filter_map_preserve statement rule.nested in
+        let nested = list_edit_preserve statement rule.nested in
         let rule' = rule_with_nested rule nested in
-        Some (if rule' == rule then stmt else Rule rule')
+        if rule' == rule then List.Keep else List.Replace (Rule rule')
     | Layer (name, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Layer (name, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Layer (name, block'))
     | Media (m, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Media (m, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep else List.Replace (Media (m, block'))
     | Container (n, c, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Container (n, c, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Container (n, c, block'))
     | Supports (s, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Supports (s, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Supports (s, block'))
     | Moz_document (c, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Moz_document (c, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Moz_document (c, block'))
     | When (c, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else When (c, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep else List.Replace (When (c, block'))
     | Else (c, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Else (c, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep else List.Replace (Else (c, block'))
     | Starting_style block ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Starting_style block')
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Starting_style block')
     | Origin (o, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Origin (o, block'))
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep else List.Replace (Origin (o, block'))
     | Scope (a, b, block) ->
-        let block' = list_filter_map_preserve statement block in
-        Some (if block' == block then stmt else Scope (a, b, block'))
-    | Unknown_at_rule _ -> None
-    | other -> Some other
+        let block' = list_edit_preserve statement block in
+        if block' == block then List.Keep
+        else List.Replace (Scope (a, b, block'))
+    | Unknown_at_rule _ -> List.Drop
+    | _ -> List.Keep
   in
-  list_filter_map_preserve statement stylesheet
+  list_edit_preserve statement stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
    declaration registers [name] with a typed CSS syntax, lifting later [--name:
@@ -764,15 +745,18 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
             Hashtbl.mem known s
         | _ -> true
       in
-      match List.filter keep items with
+      match list_filter_preserve keep items with
       | [] -> None
+      | kept when kept == items -> Some decl
       | kept ->
           Some
             (Declaration.v ~important Position_try_fallbacks (Fallbacks kept)))
   | Theme_guarded { var_name; decl; _ } -> (
       match prune_position_try_decl known decl with
       | None -> None
-      | Some decl -> Some (Declaration.theme_guarded ~var_name decl))
+      | Some decl' ->
+          if decl' == decl then Some decl
+          else Some (Declaration.theme_guarded ~var_name decl'))
   | other -> Some other
 
 let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
@@ -780,34 +764,42 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
   | `Fragment -> stylesheet
   | `Stylesheet ->
       let known = collect_position_try_names stylesheet in
-      let prune_decls = List.filter_map (prune_position_try_decl known) in
+      let prune_decls decls =
+        list_edit_preserve
+          (fun decl ->
+            match prune_position_try_decl known decl with
+            | Some decl' when decl' == decl -> List.Keep
+            | Some decl' -> List.Replace decl'
+            | None -> List.Drop)
+          decls
+      in
       let rec walk (stmt : statement) : statement =
         match stmt with
         | Rule rule ->
-            Rule
-              {
-                rule with
-                declarations = prune_decls rule.declarations;
-                nested = List.map walk rule.nested;
-              }
-        | Declarations decls -> Declarations (prune_decls decls)
-        | Layer (n, b) -> Layer (n, List.map walk b)
-        | Media (m, b) -> Media (m, List.map walk b)
-        | Container (n, c, b) -> Container (n, c, List.map walk b)
-        | Supports (c, b) -> Supports (c, List.map walk b)
-        | Moz_document (c, b) -> Moz_document (c, List.map walk b)
-        | When (c, b) -> When (c, List.map walk b)
-        | Else (c, b) -> Else (c, List.map walk b)
-        | Starting_style b -> Starting_style (List.map walk b)
-        | Origin (o, b) -> Origin (o, List.map walk b)
-        | Scope (s, e, b) -> Scope (s, e, List.map walk b)
-        | Page (sel, decls) -> Page (sel, prune_decls decls)
-        | Position_try (n, decls) -> Position_try (n, prune_decls decls)
+            let declarations = prune_decls rule.declarations in
+            let nested = list_map_preserve walk rule.nested in
+            let rule' =
+              rule_with_declarations_and_nested rule declarations nested
+            in
+            if rule' == rule then stmt else Rule rule'
+        | Declarations decls ->
+            let decls' = prune_decls decls in
+            if decls' == decls then stmt else Declarations decls'
+        | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
+        | Else _ | Starting_style _ | Origin _ | Scope _ ->
+            map_statement_block_preserve walk stmt
+        | Page (sel, decls) ->
+            let decls' = prune_decls decls in
+            if decls' == decls then stmt else Page (sel, decls')
+        | Position_try (n, decls) ->
+            let decls' = prune_decls decls in
+            if decls' == decls then stmt else Position_try (n, decls')
         | Supports_condition (n, decls) ->
-            Supports_condition (n, prune_decls decls)
+            let decls' = prune_decls decls in
+            if decls' == decls then stmt else Supports_condition (n, decls')
         | other -> other
       in
-      List.map walk stylesheet
+      list_map_preserve walk stylesheet
 
 (* Collect the custom properties registered with an [@property] initial-value.
    Such a property is never invalid at computed-value time, so folding its
@@ -846,35 +838,36 @@ let registered_foldable (stylesheet : t) : string -> bool =
   List.iter collect stylesheet;
   fun name -> Hashtbl.mem tbl name
 
-(* Canonicalise every declaration's value so the whole AST is canonical before
-   structural optimization. Cover all declaration-bearing contexts - style rules
-   and their nesting, [@keyframes] frames, [@page] and its margin rules,
-   [@position-try], [@supports-condition], bare nesting declarations - and
-   recurse through grouping blocks, so canonicalisation is uniform wherever a
-   declaration sits. *)
-let normalize_keyframe ~lossless (k : keyframe) : keyframe =
-  let declarations =
-    list_map_preserve (Declaration.normalize ~lossless) k.declarations
-  in
+let normalize_live_declarations ~lossless decls =
+  list_edit_preserve
+    (fun decl ->
+      let decl' = Declaration.normalize ~lossless decl in
+      if Declaration.is_invalid decl' then List.Drop
+      else if decl' == decl then List.Keep
+      else List.Replace decl')
+    decls
+
+let sanitize_keyframe ~lossless (k : keyframe) : keyframe =
+  let declarations = normalize_live_declarations ~lossless k.declarations in
   if declarations == k.declarations then k else { k with declarations }
 
-let rec normalize_block ~lossless (b : statement list) : statement list =
-  list_map_preserve (normalize_statement ~lossless) b
+let rec sanitize_block ~lossless (b : statement list) : statement list =
+  list_edit_preserve (sanitize_statement ~lossless) b
 
-and normalize_statement ~lossless (s : statement) : statement =
-  let nd = list_map_preserve (Declaration.normalize ~lossless) in
+and sanitize_statement ~lossless (s : statement) : statement List.edit =
+  let nd = normalize_live_declarations ~lossless in
   match s with
   | Rule r ->
       let declarations = nd r.declarations in
-      let nested = normalize_block ~lossless r.nested in
+      let nested = sanitize_block ~lossless r.nested in
       let r' = rule_with_declarations_and_nested r declarations nested in
-      if r' == r then s else Rule r'
+      if r' == r then List.Keep else List.Replace (Rule r')
   | Declarations d ->
       let d' = nd d in
-      if d' == d then s else Declarations d'
+      if d' == d then List.Keep else List.Replace (Declarations d')
   | Page (n, d) ->
       let d' = nd d in
-      if d' == d then s else Page (n, d')
+      if d' == d then List.Keep else List.Replace (Page (n, d'))
   | Page_with_margins (n, descs, margins) ->
       let descs' = nd descs in
       let margins' =
@@ -884,53 +877,53 @@ and normalize_statement ~lossless (s : statement) : statement =
             if descriptors == m.descriptors then m else { m with descriptors })
           margins
       in
-      if descs' == descs && margins' == margins then s
-      else Page_with_margins (n, descs', margins')
+      if descs' == descs && margins' == margins then List.Keep
+      else List.Replace (Page_with_margins (n, descs', margins'))
   | Position_try (n, d) ->
       let d' = nd d in
-      if d' == d then s else Position_try (n, d')
+      if d' == d then List.Keep else List.Replace (Position_try (n, d'))
   | Supports_condition (n, d) ->
       let d' = nd d in
-      if d' == d then s else Supports_condition (n, d')
+      if d' == d then List.Keep else List.Replace (Supports_condition (n, d'))
   | Keyframes (n, ks) ->
-      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
-      if ks' == ks then s else Keyframes (n, ks')
+      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      if ks' == ks then List.Keep else List.Replace (Keyframes (n, ks'))
   | Webkit_keyframes (n, ks) ->
-      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
-      if ks' == ks then s else Webkit_keyframes (n, ks')
+      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      if ks' == ks then List.Keep else List.Replace (Webkit_keyframes (n, ks'))
   | Moz_keyframes (n, ks) ->
-      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
-      if ks' == ks then s else Moz_keyframes (n, ks')
+      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      if ks' == ks then List.Keep else List.Replace (Moz_keyframes (n, ks'))
   | Layer (n, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Layer (n, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Layer (n, b'))
   | Media (c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Media (c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Media (c, b'))
   | Container (n, c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Container (n, c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Container (n, c, b'))
   | Supports (c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Supports (c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Supports (c, b'))
   | Moz_document (c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Moz_document (c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Moz_document (c, b'))
   | Starting_style b ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Starting_style b'
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Starting_style b')
   | When (c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else When (c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (When (c, b'))
   | Else (c, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Else (c, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Else (c, b'))
   | Origin (o, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Origin (o, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Origin (o, b'))
   | Scope (s1, s2, b) ->
-      let b' = normalize_block ~lossless b in
-      if b' == b then s else Scope (s1, s2, b')
+      let b' = sanitize_block ~lossless b in
+      if b' == b then List.Keep else List.Replace (Scope (s1, s2, b'))
   | Property r ->
       let initial_value =
         match r.initial_value with
@@ -939,9 +932,10 @@ and normalize_statement ~lossless (s : statement) : statement =
             let value' = Variables.normalize_value ~lossless r.syntax value in
             if value' == value then r.initial_value else Some value'
       in
-      if initial_value == r.initial_value then s
-      else Property { r with initial_value }
-  | other -> other
+      if initial_value == r.initial_value then List.Keep
+      else List.Replace (Property { r with initial_value })
+  | Unknown_at_rule _ -> List.Drop
+  | _ -> List.Keep
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) (stylesheet : t) : t =
@@ -949,7 +943,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   Selector_summary.clear_memo ();
   reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
-  let stylesheet = normalize_block ~lossless stylesheet in
+  let stylesheet = sanitize_block ~lossless stylesheet in
   let stylesheet =
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in
@@ -957,10 +951,6 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let ctx =
     Ctx.v ~lossless ~registered:(registered_foldable stylesheet) scope
   in
-  (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
-     passes so the empty rules they leave behind get picked up by
-     [drop_empty_rules]. *)
   stylesheet
   |> prune_position_try_fallbacks ~scope
-  |> drop_invalid |> drop_unknown_at_rules
   |> statements_top_level ~ctx ~enforce_spec
