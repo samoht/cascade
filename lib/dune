@@ -8,6 +8,7 @@
 (mdx
  (files
   aria.mli
+  block.mli
   color_space.mli
   component.mli
   container.mli
@@ -16,8 +17,11 @@
   css.mli
   css_graph.mli
   cursor.mli
+  ctx.mli
   declaration.mli
   error.mli
+  edge.mli
+  factor.mli
   font_face.mli
   inline.mli
   index.mli
@@ -26,16 +30,23 @@
   loc.mli
   loop.mli
   media.mli
+  merge.mli
+  nest.mli
   optimize.mli
   factor_safe.mli
+  flatten.mli
   parser.mli
   pool.mli
   preflight.mli
   pp.mli
   properties.mli
   reader.mli
+  rule.mli
   selector.mli
+  shorthand.mli
+  size.mli
   sort.mli
+  stats.mli
   stylesheet.mli
   summary.mli
   supports.mli

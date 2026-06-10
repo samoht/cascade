@@ -2,29 +2,29 @@ open Cascade
 open Cmdliner
 
 let profile_entries () =
-  let module O = Cascade.Optimize in
+  let module S = Cascade.Stats in
   let total = ref 0.0 in
   let entries =
     Hashtbl.fold
       (fun name s acc ->
-        total := !total +. s.O.time;
+        total := !total +. s.S.time;
         (name, s) :: acc)
-      O.pass_times []
+      S.pass_times []
   in
   let entries =
-    List.sort (fun (_, a) (_, b) -> compare b.O.time a.O.time) entries
+    List.sort (fun (_, a) (_, b) -> compare b.S.time a.S.time) entries
   in
   (!total, entries)
 
 let print_iteration_profile () =
-  let module O = Cascade.Optimize in
-  match O.iteration_stats () with
+  let module S = Cascade.Stats in
+  match S.iteration_stats () with
   | [] -> ()
   | iteration_stats ->
       Fmt.epr "  %-3s %-4s %-4s %9s %9s %9s %9s %7s %7s %8s@." "fp" "iter"
         "giter" "rules_in" "rules_out" "bytes_in" "saved" "passes" "chg" "time";
       List.iter
-        (fun (s : O.iteration_stat) ->
+        (fun (s : S.iteration_stat) ->
           Fmt.epr "  %-3d %-4d %-4d %9d %9d %9d %9d %7d %7d %7.3fs@." s.fixpoint
             s.local_iteration s.iteration s.before_rules s.after_rules
             s.before_bytes s.bytes_saved s.active_passes s.changed_passes
@@ -32,19 +32,19 @@ let print_iteration_profile () =
         (List.rev iteration_stats)
 
 let print_pass_profile entries =
-  let module O = Cascade.Optimize in
+  let module S = Cascade.Stats in
   Fmt.epr "  %-22s %8s %6s %6s %9s %9s@." "pass" "time" "calls" "chg" "rules_in"
     "rules_out";
   List.iter
     (fun (name, s) ->
-      Fmt.epr "  %-22s %7.3fs %6d %6d %9d %9d@." name s.O.time s.O.calls
-        s.O.changes s.O.rules_in s.O.rules_out)
+      Fmt.epr "  %-22s %7.3fs %6d %6d %9d %9d@." name s.S.time s.S.calls
+        s.S.changes s.S.rules_in s.S.rules_out)
     entries
 
 let print_factor_profile_footer () =
-  let module O = Cascade.Optimize in
-  let hits = O.counters.summary_hits in
-  let misses = O.counters.summary_misses in
+  let module S = Cascade.Stats in
+  let hits = S.counters.summary_hits in
+  let misses = S.counters.summary_misses in
   let total_lookups = hits + misses in
   let hit_pct =
     if total_lookups = 0 then 0.0 else 100. *. float hits /. float total_lookups
@@ -52,23 +52,23 @@ let print_factor_profile_footer () =
   Fmt.epr
     "@.factor stops: %d marginal, committed savings: %d bytes@.factor anchors \
      scored: %d (prefiltered %d), factorings applied: %d@."
-    O.counters.marginal_stops O.counters.factor_bytes_saved
-    O.counters.anchors_scored O.counters.anchors_prefiltered
-    O.counters.factorings_applied;
+    S.counters.marginal_stops S.counters.factor_bytes_saved
+    S.counters.anchors_scored S.counters.anchors_prefiltered
+    S.counters.factorings_applied;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
-    O.counters.factor_fixpoints_skipped O.counters.factor_preflight_gain;
+    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain;
   Fmt.epr
     "factor intervals: %d candidates, %d pruned, %d exact-scored, %d selected@."
-    O.counters.interval_candidates O.counters.interval_pruned
-    O.counters.interval_scored O.counters.interval_selected;
+    S.counters.interval_candidates S.counters.interval_pruned
+    S.counters.interval_scored S.counters.interval_selected;
   Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
     hits misses hit_pct
 
 let report_profile () =
-  let module O = Cascade.Optimize in
+  let module S = Cascade.Stats in
   let total, entries = profile_entries () in
   Fmt.epr "factor fixpoint (%d runs, %d iterations, total %.3fs):@."
-    O.counters.factor_fixpoints_run O.counters.iterations total;
+    S.counters.factor_fixpoints_run S.counters.iterations total;
   print_iteration_profile ();
   print_pass_profile entries;
   print_factor_profile_footer ()
@@ -97,7 +97,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
       if minify then
-        let () = Cascade.Optimize.set_profile profile in
+        let () = Cascade.Stats.set_profile profile in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec stylesheet
       else stylesheet
     in

@@ -18,6 +18,12 @@ let index_of_node node =
   let s = node_sel node in
   int_of_string (String.sub s 2 3)
 
+let index_of_original_node node =
+  let s = node_sel node in
+  if String.length s = 5 && s.[1] = 'r' then
+    Some (int_of_string (String.sub s 2 3))
+  else None
+
 let test_applies_replacement_and_reports_saving () =
   let pool = Pool.of_rules [ mk "a"; mk "b"; mk "c" ] in
   match Pool.nodes pool with
@@ -137,6 +143,65 @@ let test_large_non_overlapping_rewrite_queue () =
   Alcotest.(check (list string))
     "rewritten order is stable" expected (names pool)
 
+type oracle_slot = Original of int | Replaced of int | Removed
+
+let greedy_overlapping_oracle savings =
+  let count = Array.length savings + 1 in
+  let slots = Array.init count (fun i -> Original i) in
+  let candidates =
+    List.init (count - 1) Fun.id
+    |> List.sort (fun a b -> compare savings.(b) savings.(a))
+  in
+  let applied = ref 0 in
+  List.iter
+    (fun i ->
+      match (slots.(i), slots.(i + 1)) with
+      | Original a, Original b when a = i && b = i + 1 ->
+          incr applied;
+          slots.(i) <- Replaced i;
+          slots.(i + 1) <- Removed
+      | _ -> ())
+    candidates;
+  let final =
+    Array.to_list slots
+    |> List.filter_map (function
+      | Original i -> Some ("." ^ rule_name i)
+      | Replaced i -> Some ("." ^ merged_name i)
+      | Removed -> None)
+  in
+  (!applied, final)
+
+let test_fuzz_overlapping_rewrite_queue_matches_greedy_oracle () =
+  for seed = 0 to 119 do
+    let rng = Random.State.make [| 0x100; seed |] in
+    let count = 8 + Random.State.int rng 48 in
+    let savings =
+      Array.init (count - 1) (fun i ->
+          ((1 + Random.State.int rng 1_000) * count) + (count - i))
+    in
+    let pool = Pool.of_rules (List.init count (fun i -> mk (rule_name i))) in
+    let score node =
+      match index_of_original_node node with
+      | Some i when i + 1 < count -> (
+          match Pool.next node with
+          | Some next -> (
+              match index_of_original_node next with
+              | Some j when j = i + 1 ->
+                  Some
+                    (Loop.action
+                       ~replacement:[ mk (merged_name i) ]
+                       ~consumed:[ next ] ~saving:savings.(i))
+              | _ -> None)
+          | None -> None)
+      | _ -> None
+    in
+    let expected_applied, expected_names = greedy_overlapping_oracle savings in
+    let applied = Loop.run (Loop.v pool score) in
+    Alcotest.(check int) "applied rewrite count" expected_applied applied;
+    Alcotest.(check (list string))
+      "final rule order" expected_names (names pool)
+  done
+
 let suite =
   ( "loop",
     [
@@ -150,4 +215,6 @@ let suite =
         test_rescores_non_adjacent_consumed_nodes_away;
       Alcotest.test_case "large non-overlapping rewrite queue" `Quick
         test_large_non_overlapping_rewrite_queue;
+      Alcotest.test_case "fuzz overlapping rewrite queue matches greedy oracle"
+        `Quick test_fuzz_overlapping_rewrite_queue_matches_greedy_oracle;
     ] )

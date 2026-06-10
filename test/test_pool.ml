@@ -127,6 +127,106 @@ let large_pairwise_combines_keep_order_and_stale_rules () =
       (sel (P.rule stale))
   done
 
+let verify_pool p expected =
+  let nodes = P.nodes p in
+  Alcotest.(check int)
+    "length matches model" (List.length expected) (P.length p);
+  Alcotest.(check (list string)) "rules match model" expected (names p);
+  Alcotest.(check int)
+    "node count matches model" (List.length expected) (List.length nodes);
+  List.iteri
+    (fun i node ->
+      let prev = if i = 0 then None else Some (List.nth nodes (i - 1)) in
+      let next =
+        if i + 1 = List.length nodes then None
+        else Some (List.nth nodes (i + 1))
+      in
+      Alcotest.(check bool)
+        "prev link" true
+        (match (P.prev node, prev) with
+        | None, None -> true
+        | Some a, Some b -> a == b
+        | _ -> false);
+      Alcotest.(check bool)
+        "next link" true
+        (match (P.next node, next) with
+        | None, None -> true
+        | Some a, Some b -> a == b
+        | _ -> false);
+      for j = i + 1 to List.length nodes - 1 do
+        Alcotest.(check bool)
+          "before order" true
+          (P.before node (List.nth nodes j))
+      done)
+    nodes
+
+let replace_at i value xs = List.mapi (fun j x -> if i = j then value else x) xs
+
+let insert_at i value xs =
+  let rec aux j = function
+    | [] -> [ value ]
+    | x :: rest as all -> if i = j then value :: all else x :: aux (j + 1) rest
+  in
+  aux 0 xs
+
+let remove_at i xs =
+  xs
+  |> List.mapi (fun j x -> (j, x))
+  |> List.filter_map (fun (j, x) -> if i = j then None else Some x)
+
+let test_fuzz_mutation_stream_preserves_order_and_links () =
+  for seed = 0 to 59 do
+    let rng = Random.State.make [| 0x50; seed |] in
+    let p =
+      P.of_rules (List.init 12 (fun i -> Fmt.kstr mk "s%d_%03d" seed i))
+    in
+    let model = ref (List.init 12 (fun i -> Fmt.str ".s%d_%03d" seed i)) in
+    let next_name = ref 0 in
+    verify_pool p !model;
+    for _step = 0 to 119 do
+      let nodes = P.nodes p in
+      let len = List.length nodes in
+      let op = Random.State.int rng 5 in
+      (if len > 0 then
+         match op with
+         | 0 ->
+             let i = Random.State.int rng len in
+             let node = List.nth nodes i in
+             let name = Fmt.str "s%d_b_%03d" seed !next_name in
+             incr next_name;
+             ignore (P.insert_before p node (mk name));
+             model := insert_at i ("." ^ name) !model
+         | 1 ->
+             let i = Random.State.int rng len in
+             let node = List.nth nodes i in
+             let name = Fmt.str "s%d_a_%03d" seed !next_name in
+             incr next_name;
+             ignore (P.insert_after p node (mk name));
+             model := insert_at (i + 1) ("." ^ name) !model
+         | 2 when len > 1 ->
+             let i = Random.State.int rng len in
+             P.remove p (List.nth nodes i);
+             model := remove_at i !model
+         | 3 ->
+             let i = Random.State.int rng len in
+             let name = Fmt.str "s%d_set_%03d" seed !next_name in
+             incr next_name;
+             P.set (List.nth nodes i) (mk name);
+             model := replace_at i ("." ^ name) !model
+         | _ when len > 1 ->
+             let i = Random.State.int rng (len - 1) in
+             let survivor =
+               P.combine p (List.nth nodes i)
+                 (List.nth nodes (i + 1))
+                 union_selectors
+             in
+             let merged = sel (P.rule survivor) in
+             model := remove_at (i + 1) (replace_at i merged !model)
+         | _ -> ());
+      verify_pool p !model
+    done
+  done
+
 let suite =
   ( "pool",
     [
@@ -143,4 +243,6 @@ let suite =
         insert_before_places_and_links_neighbors;
       Alcotest.test_case "large pairwise combines keep order and stale rules"
         `Quick large_pairwise_combines_keep_order_and_stale_rules;
+      Alcotest.test_case "fuzz mutation stream preserves order and links" `Quick
+        test_fuzz_mutation_stream_preserves_order_and_links;
     ] )
