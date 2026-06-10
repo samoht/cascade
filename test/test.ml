@@ -28,6 +28,7 @@ let () =
       Test_order_maintenance.suite;
       Test_rule_pool.suite;
       Test_weighted_interval.suite;
+      Test_index.suite;
       Test_css_graph.suite;
       Test_factor_safe.suite;
       Test_rule_merge.suite;
