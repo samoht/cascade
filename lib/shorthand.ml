@@ -1044,37 +1044,40 @@ let render_font_shorthand decls : Properties.font option =
            })
   | _ -> Option.None
 
-let try_compose_font (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  match take_first_n 5 indexed_decls with
-  | None -> Option.None
-  | Some (five, rest) -> (
-      let raw_decls = List.map snd five in
+let try_compose_font_at idx i =
+  let n = Rule_index.length idx in
+  if i + 4 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2; i + 3; i + 4 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw_decls = List.map (Rule_index.decl_at idx) positions in
       if
         (not (List.for_all is_font_longhand raw_decls))
         || not (same_importance raw_decls)
-      then Option.None
+      then None
       else
         match render_font_shorthand raw_decls with
         | Some font_value ->
-            let idx = fst (List.hd five) in
-            let merged =
-              Declaration.v
-                ~important:(is_important (List.hd raw_decls))
-                Font font_value
-            in
-            Some ((idx, merged), rest)
-        | None -> Option.None)
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw_decls))
+                 Font font_value)
+        | None -> None
 
-let compose_font_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_font decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_font_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 4 < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_font_at idx !i with
+      | None -> incr i
+      | Some shorthand ->
+          let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 5
+  done
 
 (* The [font] shorthand resets the [font-variant-*] / [font-variation-settings]
    / [font-feature-settings] / [font-size-adjust] / [font-kerning] /
@@ -2645,11 +2648,11 @@ let compose_index_group_a ~ctx kept =
   compose_outline_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-(* Second index group runs after the font-reset reorder and the (still
-   list-based) font composer. List-style + flex + text-decoration + border all
-   share the same index. *)
+(* Second index group runs after the font-reset reorder. Font + list-style +
+   flex + text-decoration + border all share the same index. *)
 let compose_index_group_b kept =
   let idx = Rule_index.build (List.map snd kept) in
+  compose_font_via_index idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
   compose_text_decoration_via_index idx;
@@ -2666,8 +2669,7 @@ let compose_index_group_c kept =
 
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_font_shorthand |> compose_index_group_b
-  |> reorder_border_image_before_border
+  |> compose_index_group_b |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
