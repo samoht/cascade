@@ -2641,6 +2641,45 @@ let vendor_alias_redundant vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
+(* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
+   [-o-]) return the unprefixed remainder; otherwise [None]. *)
+let strip_vendor_prefix name =
+  let n = String.length name in
+  let try_prefix p =
+    let pn = String.length p in
+    if n > pn && String.sub name 0 pn = p then
+      Some (String.sub name pn (n - pn))
+    else None
+  in
+  match try_prefix "-webkit-" with
+  | Some _ as r -> r
+  | None -> (
+      match try_prefix "-moz-" with
+      | Some _ as r -> r
+      | None -> (
+          match try_prefix "-ms-" with
+          | Some _ as r -> r
+          | None -> try_prefix "-o-"))
+
+(* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
+   [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
+   its vendor prefix yields [twin]'s name and the component-value lists are
+   structurally equal under matching importance. The typed-twin case (e.g.
+   vendor [Unknown_property "-webkit-animation-delay"] + modern
+   [Animation_delay]) needs typed vendor longhand properties to compare
+   structurally; that remains a follow-up. *)
+let text_vendor_alias_redundant vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        { property = Unknown_property vname; value = vv; important = vi },
+      Declaration
+        { property = Unknown_property tname; value = tv; important = ti } )
+    when Bool.equal vi ti -> (
+      match strip_vendor_prefix vname with
+      | Some modern -> String.equal tname modern && vv = tv
+      | None -> false)
+  | _ -> false
+
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance. The unprefixed form supersedes
    in modern browsers, so the vendor copy is dead under the recent-browser
@@ -2648,7 +2687,11 @@ let vendor_alias_redundant vendor twin =
 let drop_vendor_aliases (kept : (int * declaration) list) :
     (int * declaration) list =
   let has_unprefixed_twin (_, decl) =
-    List.exists (fun (_, other) -> vendor_alias_redundant decl other) kept
+    List.exists
+      (fun (_, other) ->
+        vendor_alias_redundant decl other
+        || text_vendor_alias_redundant decl other)
+      kept
   in
   filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
