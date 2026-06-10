@@ -160,16 +160,11 @@ let pop_trailing_rules acc =
   in
   loop acc []
 
-(* Collect the contiguous run of [Rule] statements starting at the head. The
-   first component is the run in REVERSE cascade order: process_rule_run feeds
-   it straight into [List.rev_append as_statements_rev acc] in the unchanged
-   path, so the redundant [List.rev stmt_acc] at the end of the collector is
-   skipped. *)
-let rec collect_rules (stmt_acc_rev : statement list) (rules_acc : rule list) :
+let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
     statement list -> statement list * rule list * statement list = function
   | (Rule r as stmt) :: rest ->
-      collect_rules (stmt :: stmt_acc_rev) (r :: rules_acc) rest
-  | rest -> (stmt_acc_rev, List.rev rules_acc, rest)
+      collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
+  | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
 let factor_rules_incremental ~ctx rules =
   Factor.run ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
@@ -257,13 +252,13 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
       process_statements ~ctx ~enforce_spec (hd :: acc) rest
 
 and process_rule_run ~ctx ~enforce_spec acc stmt r rest =
-  let plain_stmts_rev, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
+  let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
   let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
-  let acc' =
-    if optimized == plain_rules then plain_stmts_rev @ acc
-    else List.rev_map (fun r -> Rule r) optimized @ acc
+  let as_statements =
+    if optimized == plain_rules then plain_stmts
+    else List.map (fun r -> Rule r) optimized
   in
-  process_statements ~ctx ~enforce_spec acc' rest
+  process_statements ~ctx ~enforce_spec (List.rev_append as_statements acc) rest
 
 and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
   let cond = if enforce_spec then cond else Media.lower_for_minify cond in
