@@ -255,17 +255,9 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
           (String.concat ""
              [ "expected keyword '"; name; "', got '"; got; "'" ])
 
-let list_map_preserve f xs =
-  let changed = ref false in
-  let ys =
-    List.map
-      (fun x ->
-        let y = f x in
-        if y != x then changed := true;
-        y)
-      xs
-  in
-  if !changed then ys else xs
+open Common
+
+let list_map_preserve = List.map_preserve
 
 let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
  fun ?(lossless = false) syntax value ->
@@ -2211,6 +2203,11 @@ let stable_dedup_vars vars =
 
 let vars_of_declarations properties =
   List.concat_map extract_vars_of_declaration properties |> stable_dedup_vars
+
+(* Cheaper than [vars_of_declarations [d] <> []]: skip the dedup hashtable and
+   short-circuit on the first matching var. *)
+let declaration_uses_var d =
+  match extract_vars_of_declaration d with [] -> false | _ -> true
 
 (* Extract only custom property declarations (variable definitions) *)
 let custom_declarations ?layer (decls : declaration list) : declaration list =

@@ -328,8 +328,9 @@ let peek_semicolon t =
   | _ -> false
 
 let peek_colon t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Colon; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
   | _ -> false
 
 let peek_ident t =
@@ -593,8 +594,9 @@ let looking_at_ident name t =
   | _ -> false
 
 let looking_at_func name t =
-  match peek t with
-  | Some (Component.Func { node = { name = n; _ }; _ }) -> n = name
+  drop_ws t;
+  match t.cvs with
+  | Component.Func { node = { name = n; _ }; _ } :: _ -> n = name
   | _ -> false
 
 let looking_at_calc t =
