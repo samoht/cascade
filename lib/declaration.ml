@@ -172,7 +172,7 @@ let rec components_have_invalid_var components =
 
 and component_has_invalid_var = function
   | Component.Func { node = { name; arguments; terminated; _ }; _ }
-    when String.lowercase_ascii name = "var" ->
+    when String.lowercase_ascii_preserve name = "var" ->
       (not terminated)
       || invalid_var_arguments arguments
       || components_have_invalid_var arguments
@@ -194,7 +194,7 @@ let raw_value_contains_var raw_value =
      relevant if it's a top-level component of the value. *)
   let is_top_level_var = function
     | Component.Func { node = { name; _ }; _ }
-      when String.lowercase_ascii name = "var" ->
+      when String.lowercase_ascii_preserve name = "var" ->
         true
     | _ -> false
   in
@@ -208,7 +208,7 @@ let read_importance t =
       Cursor.skip t;
       Cursor.ws t;
       let ident = Cursor.ident t in
-      if String.lowercase_ascii ident = "important" then true
+      if String.lowercase_ascii_preserve ident = "important" then true
       else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
   | _ -> false
 
@@ -1774,7 +1774,7 @@ let components_are_lone_css_wide cvs =
   | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
       Properties.is_css_wide_keyword ident
   | [ Component.Func { node = { name; _ }; _ } ] ->
-      let n = String.lowercase_ascii name in
+      let n = String.lowercase_ascii_preserve name in
       String.equal n "var" || String.equal n "env" || String.equal n "attr"
   | _ -> false
 
@@ -1796,7 +1796,7 @@ let color_fallback_function raw_value =
   in
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
-      let fn = String.lowercase_ascii name in
+      let fn = String.lowercase_ascii_preserve name in
       not
         (List.mem fn
            [
