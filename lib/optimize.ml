@@ -300,8 +300,11 @@ and process_supports_statement ~ctx ~enforce_spec acc cond block rest =
         rest
   | `True ->
       let trailing, acc = pop_trailing_rules acc in
+      (* [trailing] is the run of rules popped from acc; [optimized_block] is
+         the @supports body. Both can be long, so use tail-recursive
+         [List.concat] instead of nested (@). *)
       process_statements ~ctx ~enforce_spec acc
-        (trailing @ optimized_block @ rest)
+        (List.concat [ trailing; optimized_block; rest ])
   | `False -> process_statements ~ctx ~enforce_spec acc rest
   | `Cond cond' ->
       process_statements ~ctx ~enforce_spec

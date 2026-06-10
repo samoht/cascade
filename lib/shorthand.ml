@@ -1108,7 +1108,11 @@ let reorder_font_resets_before_font decls =
         let long_block, rest2 = span is_font_longhand [] rest1 in
         let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
         if has "font-size" && has "font-family" then
-          go (List.rev_append (long_block @ reset_block) acc) rest2
+          (* [long_block ++ reset_block] reversed onto acc, tail-recursively and
+             without (@) on a large LHS. *)
+          go
+            (List.rev_append reset_block (List.rev_append long_block acc))
+            rest2
         else go (List.rev_append reset_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
@@ -1564,7 +1568,8 @@ let reorder_border_image_before_border decls =
           List.exists is_border_width_decl long_block
           && List.exists is_border_style_decl long_block
           && List.exists is_border_color_decl long_block
-        then go (List.rev_append (long_block @ img_block) acc) rest2
+        then
+          go (List.rev_append img_block (List.rev_append long_block acc)) rest2
         else go (List.rev_append img_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
@@ -2115,7 +2120,9 @@ let reorder_mask_border_before_mask decls =
         let border_block, rest1 = span is_mask_border_decl [] l in
         let long_block, rest2 = span is_mask_layer_longhand [] rest1 in
         if List.exists is_mask_image_decl long_block then
-          go (List.rev_append (long_block @ border_block) acc) rest2
+          go
+            (List.rev_append border_block (List.rev_append long_block acc))
+            rest2
         else go (List.rev_append border_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
