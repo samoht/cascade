@@ -406,6 +406,9 @@ let consume_to_decl_end ?(trim = false) t =
   string_of_components ~trim
     (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
 
+let drain_to_decl_end t =
+  drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t
+
 let is_slash_cv = function
   | Component.Preserved { kind = Token.Delim "/"; _ } -> true
   | _ -> false

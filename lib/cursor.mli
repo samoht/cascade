@@ -312,6 +312,11 @@ val consume_to_decl_end : ?trim:bool -> t -> string
 (** [consume_to_decl_end t] consumes and serializes components up to, but not
     including, the next semicolon or top-level [!] delimiter. *)
 
+val drain_to_decl_end : t -> Component.t list
+(** [drain_to_decl_end t] consumes components up to (but not including) the next
+    semicolon or top-level [!] delimiter, returning the drained list without
+    serialising it. *)
+
 val consume_to_slash_or_semicolon : ?trim:bool -> t -> string
 (** [consume_to_slash_or_semicolon t] consumes and serializes components up to,
     but not including, the next top-level slash delimiter or semicolon. *)

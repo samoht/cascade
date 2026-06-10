@@ -85,41 +85,53 @@ let is_name_at r offset =
    first; check whether ('\\', next) forms a valid escape (i.e. first is '\\'
    and next is not a newline). *)
 let valid_escape_at r =
-  let s = Reader.peek_string r 2 in
-  String.length s >= 2 && s.[0] = '\\' && not (is_newline s.[1])
+  match (Reader.peek r, Reader.peek_at r 1) with
+  | Some '\\', Some c -> not (is_newline c)
+  | _ -> false
 
 (* 4.3.4 Check if three code points starting at [offset] would start an ident
    sequence. Multi-byte code points are consulted via [is_name_start_at] (which
    decodes at the given byte offset) rather than byte-level checks. *)
 let would_start_ident_sequence_at r offset =
-  let s = Reader.peek_string r (offset + 3) in
-  let len = String.length s in
-  if len <= offset then false
-  else
-    match s.[offset] with
-    | '-' ->
-        len > offset + 1
-        && (is_name_start_at r (offset + 1) || s.[offset + 1] = '-')
-        || len > offset + 2
-           && s.[offset + 1] = '\\'
-           && not (is_newline s.[offset + 2])
-    | '\\' -> len > offset + 1 && not (is_newline s.[offset + 1])
-    | _ -> is_name_start_at r offset
+  match Reader.peek_at r offset with
+  | None -> false
+  | Some c -> (
+      match c with
+      | '-' -> (
+          match Reader.peek_at r (offset + 1) with
+          | Some c1 when is_name_start_at r (offset + 1) || c1 = '-' -> true
+          | Some '\\' -> (
+              match Reader.peek_at r (offset + 2) with
+              | Some c2 -> not (is_newline c2)
+              | None -> false)
+          | _ -> false)
+      | '\\' -> (
+          match Reader.peek_at r (offset + 1) with
+          | Some c1 -> not (is_newline c1)
+          | None -> false)
+      | _ -> is_name_start_at r offset)
 
 let would_start_ident_sequence r = would_start_ident_sequence_at r 0
 
 (* 4.3.5 Check if three code points would start a number. *)
 let would_start_number_at r offset =
-  let s = Reader.peek_string r (offset + 3) in
-  let len = String.length s in
-  if len <= offset then false
-  else
-    match s.[offset] with
-    | '+' | '-' ->
-        (len > offset + 1 && is_digit s.[offset + 1])
-        || (len > offset + 2 && s.[offset + 1] = '.' && is_digit s.[offset + 2])
-    | '.' -> len > offset + 1 && is_digit s.[offset + 1]
-    | c -> is_digit c
+  match Reader.peek_at r offset with
+  | None -> false
+  | Some c -> (
+      match c with
+      | '+' | '-' -> (
+          match Reader.peek_at r (offset + 1) with
+          | Some c1 when is_digit c1 -> true
+          | Some '.' -> (
+              match Reader.peek_at r (offset + 2) with
+              | Some c2 -> is_digit c2
+              | None -> false)
+          | _ -> false)
+      | '.' -> (
+          match Reader.peek_at r (offset + 1) with
+          | Some c1 -> is_digit c1
+          | None -> false)
+      | c -> is_digit c)
 
 let would_start_number r = would_start_number_at r 0
 
@@ -148,8 +160,7 @@ let consume_escape_trailing_ws r =
   | Some c when is_ws c ->
       if
         c = '\r'
-        && String.length (Reader.peek_string r 2) = 2
-        && (Reader.peek_string r 2).[1] = '\n'
+        && match Reader.peek_at r 1 with Some '\n' -> true | _ -> false
       then (
         Reader.skip r;
         Reader.skip r)
@@ -186,50 +197,72 @@ let consume_escape r =
 
 (* 4.3.8 Consume an ident sequence. Iterates at the code-point level so
    multi-byte characters are accepted only when their code point is a valid
-   ident code point per section 4.2 (see [is_name_at]). The full UTF-8 byte
-   sequence of each accepted code point is copied into the ident buffer
-   verbatim. *)
+   ident code point per section 4.2 (see [is_name_at]).
+
+   Fast path: when the ident has no [\] escape, the result is exactly the
+   substring of the source between the start position and the position where we
+   stopped, so we return [String.sub src start len] without ever allocating a
+   Buffer. The slow path (escape encountered) seeds a Buffer with the prefix
+   already copied and continues with the original byte-by-byte build. *)
 let consume_ident_sequence r =
-  let buf = Buffer.create 16 in
   let src = Reader.source r in
-  let consume_hash_suffix () =
+  let start = Reader.position r in
+  let rec scan_fast () =
     match Reader.peek r with
-    | Some '#' ->
-        Buffer.add_char buf '#';
-        Reader.skip r
-    | _ -> ()
-  in
-  let rec loop () =
-    match Reader.peek r with
-    | Some '\\' when valid_escape_at r ->
-        let start = Reader.position r in
-        let hex_escape =
-          let s = Reader.peek_string r 2 in
-          String.length s = 2 && is_hex s.[1]
-        in
-        Reader.skip r;
-        Buffer.add_string buf (consume_escape r);
-        let consumed_hex_terminator =
-          let pos = Reader.position r in
-          hex_escape && pos > start + 2 && is_ws src.[pos - 1]
-        in
-        if not consumed_hex_terminator then consume_hash_suffix ();
-        loop ()
+    | Some '\\' when valid_escape_at r -> `Escape
     | Some _ -> (
         match Reader.peek_utf8 r with
-        | None -> () (* malformed UTF-8 stops the ident *)
+        | None -> `End
         | Some (_, nbytes) when is_name_at r 0 ->
-            let start = Reader.position r in
-            Buffer.add_substring buf src start nbytes;
             for _ = 1 to nbytes do
               Reader.skip r
             done;
-            loop ()
-        | Some _ -> ())
-    | None -> ()
+            scan_fast ()
+        | Some _ -> `End)
+    | None -> `End
   in
-  loop ();
-  Buffer.contents buf
+  match scan_fast () with
+  | `End -> String.sub src start (Reader.position r - start)
+  | `Escape ->
+      let buf = Buffer.create 16 in
+      Buffer.add_substring buf src start (Reader.position r - start);
+      let consume_hash_suffix () =
+        match Reader.peek r with
+        | Some '#' ->
+            Buffer.add_char buf '#';
+            Reader.skip r
+        | _ -> ()
+      in
+      let rec loop () =
+        match Reader.peek r with
+        | Some '\\' when valid_escape_at r ->
+            let esc_start = Reader.position r in
+            let hex_escape =
+              match Reader.peek_at r 1 with Some c -> is_hex c | None -> false
+            in
+            Reader.skip r;
+            Buffer.add_string buf (consume_escape r);
+            let consumed_hex_terminator =
+              let pos = Reader.position r in
+              hex_escape && pos > esc_start + 2 && is_ws src.[pos - 1]
+            in
+            if not consumed_hex_terminator then consume_hash_suffix ();
+            loop ()
+        | Some _ -> (
+            match Reader.peek_utf8 r with
+            | None -> ()
+            | Some (_, nbytes) when is_name_at r 0 ->
+                let p = Reader.position r in
+                Buffer.add_substring buf src p nbytes;
+                for _ = 1 to nbytes do
+                  Reader.skip r
+                done;
+                loop ()
+            | Some _ -> ())
+        | None -> ()
+      in
+      loop ();
+      Buffer.contents buf
 
 let consume_string_escape r buf =
   Reader.skip r;
@@ -280,24 +313,24 @@ let consume_number_sign r buf =
   | _ -> ()
 
 let consume_fraction r buf is_int =
-  match Reader.peek_string r 2 with
-  | s when String.length s = 2 && s.[0] = '.' && is_digit s.[1] ->
+  match (Reader.peek r, Reader.peek_at r 1) with
+  | Some '.', Some c when is_digit c ->
       Buffer.add_char buf '.';
       Reader.skip r;
       is_int := false;
       take_number_digits r buf
   | _ -> ()
 
-let exponent_continues_number s =
-  if String.length s < 2 || (s.[0] <> 'e' && s.[0] <> 'E') then false
-  else
-    is_digit s.[1]
-    || (String.length s >= 3 && (s.[1] = '+' || s.[1] = '-') && is_digit s.[2])
+let exponent_continues_number r =
+  match (Reader.peek r, Reader.peek_at r 1, Reader.peek_at r 2) with
+  | Some ('e' | 'E'), Some c, _ when is_digit c -> true
+  | Some ('e' | 'E'), Some ('+' | '-'), Some c when is_digit c -> true
+  | _ -> false
 
 let consume_exponent r buf is_int =
-  match Reader.peek_string r 3 with
-  | s when exponent_continues_number s ->
-      Buffer.add_char buf s.[0];
+  match Reader.peek r with
+  | Some c when exponent_continues_number r ->
+      Buffer.add_char buf c;
       Reader.skip r;
       is_int := false;
       consume_number_sign r buf;
@@ -401,10 +434,8 @@ let consume_url_token r =
 (* 4.3.4 Check if three code points would start a unicode-range token. The
    reader is positioned at the leading [U]/[u]; we look at offsets 0..2. *)
 let would_start_unicode_range r =
-  match (Reader.peek r, Reader.peek_string r 3) with
-  | Some ('U' | 'u'), s
-    when String.length s = 3 && s.[1] = '+' && (is_hex s.[2] || s.[2] = '?') ->
-      true
+  match (Reader.peek r, Reader.peek_at r 1, Reader.peek_at r 2) with
+  | Some ('U' | 'u'), Some '+', Some c when is_hex c || c = '?' -> true
   | _ -> false
 
 (* 4.3.14 Consume a unicode-range token. Assumes [would_start_unicode_range]
@@ -433,8 +464,8 @@ let consume_unicode_range_wildcards r n_hex =
   loop 0
 
 let unicode_range_has_tail r =
-  match Reader.peek_string r 2 with
-  | s when String.length s = 2 && s.[0] = '-' && is_hex s.[1] -> true
+  match (Reader.peek r, Reader.peek_at r 1) with
+  | Some '-', Some c when is_hex c -> true
   | _ -> false
 
 let unicode_range_value s = int_of_string ("0x" ^ s)
@@ -486,21 +517,19 @@ let consume_ident_like_token ?(force_url_function = false) r =
     Reader.skip r;
     (* While the next two code points are whitespace, consume one. *)
     let rec skip_ws_keep_one () =
-      let s = Reader.peek_string r 2 in
-      if String.length s = 2 && is_ws s.[0] && is_ws s.[1] then (
-        Reader.skip r;
-        skip_ws_keep_one ())
+      match (Reader.peek r, Reader.peek_at r 1) with
+      | Some c0, Some c1 when is_ws c0 && is_ws c1 ->
+          Reader.skip r;
+          skip_ws_keep_one ()
+      | _ -> ()
     in
     skip_ws_keep_one ();
     (* If the next one or two code points are a quote, or ws followed by a
        quote, emit <function-token>, not a url token. *)
     let is_function_url =
-      match Reader.peek_string r 2 with
-      | s when String.length s >= 1 && (s.[0] = '"' || s.[0] = '\'') -> true
-      | s
-        when String.length s = 2 && is_ws s.[0] && (s.[1] = '"' || s.[1] = '\'')
-        ->
-          true
+      match (Reader.peek r, Reader.peek_at r 1) with
+      | Some ('"' | '\''), _ -> true
+      | Some c0, Some ('"' | '\'') when is_ws c0 -> true
       | _ -> false
     in
     if force_url_function || is_function_url then Function name

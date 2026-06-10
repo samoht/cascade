@@ -14,7 +14,7 @@ let single_selector css =
       | None -> Alcotest.fail "no rule")
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
-let sel css = single_selector (Printf.sprintf "%s{x:1}" css)
+let sel css = single_selector (Fmt.str "%s{x:1}" css)
 
 let test_empty_table_covers_nothing () =
   let t = Cover.v () in
