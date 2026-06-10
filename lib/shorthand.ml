@@ -1155,27 +1155,39 @@ let render_list_style decls : Properties.list_style =
       image = pick list_style_image_of;
     }
 
-let try_compose_list_style = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest
-    when is_list_style_longhand d1 && is_list_style_longhand d2
-         && is_list_style_longhand d3
-         && is_important d1 = is_important d2
-         && is_important d2 = is_important d3 ->
-      let merged =
-        Declaration.v ~important:(is_important d1) List_style
-          (render_list_style [ d1; d2; d3 ])
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
+let try_compose_list_style_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    if
+      is_list_style_longhand d1 && is_list_style_longhand d2
+      && is_list_style_longhand d3
+      && is_important d1 = is_important d2
+      && is_important d2 = is_important d3
+    then
+      Some
+        (Declaration.v ~important:(is_important d1) List_style
+           (render_list_style [ d1; d2; d3 ]))
+    else None
 
-let compose_list_style_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_list_style decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_list_style_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_list_style_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Flexbox 1 sec. 7.2: [flex] shorthand is grow / shrink / basis. Cascade
    types [Flex] as [Full of grow * shrink * basis]; the composition extracts the
@@ -1203,35 +1215,44 @@ let flex_basis_of : declaration -> Properties.flex_basis option = function
   | Declaration { property = Flex_basis; value; _ } -> Some value
   | _ -> None
 
-let try_compose_flex = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (flex_kind_of d1, flex_kind_of d2, flex_kind_of d3) with
-      | Some k1, Some k2, Some k3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-          let triple = [ d1; d2; d3 ] in
-          let grow = List.find_map flex_grow_of triple in
-          let shrink = List.find_map flex_shrink_of triple in
-          let basis = List.find_map flex_basis_of triple in
-          match (grow, shrink, basis) with
-          | Some g, Some s, Some b ->
-              let merged =
-                Declaration.v ~important:(is_important d1) Flex (Full (g, s, b))
-              in
-              Some ((idx, merged), rest)
-          | _ -> None)
-      | _ -> None)
-  | _ -> None
+let try_compose_flex_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (flex_kind_of d1, flex_kind_of d2, flex_kind_of d3) with
+    | Some k1, Some k2, Some k3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+        let triple = [ d1; d2; d3 ] in
+        let grow = List.find_map flex_grow_of triple in
+        let shrink = List.find_map flex_shrink_of triple in
+        let basis = List.find_map flex_basis_of triple in
+        match (grow, shrink, basis) with
+        | Some g, Some s, Some b ->
+            Some
+              (Declaration.v ~important:(is_important d1) Flex (Full (g, s, b)))
+        | _ -> None)
+    | _ -> None
 
-let compose_flex_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_flex decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_flex_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_flex_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Text Decoration 4 sec. 2: [text-decoration] shorthand carries line list,
    style, color, and optional thickness. The composition extracts the three
@@ -1259,36 +1280,45 @@ let td_color_of : declaration -> Values.color option = function
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_text_decoration = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
-      | Some k1, Some k2, Some k3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-          let triple = [ d1; d2; d3 ] in
-          let lines = List.find_map td_line_of triple in
-          let style = List.find_map td_style_of triple in
-          let color = List.find_map td_color_of triple in
-          match (lines, style, color) with
-          | Some lines, Some _, Some _ ->
-              let merged =
-                Declaration.v ~important:(is_important d1) Text_decoration
-                  (Shorthand { lines; style; color; thickness = None })
-              in
-              Some ((idx, merged), rest)
-          | _ -> None)
-      | _ -> None)
-  | _ -> None
+let try_compose_text_decoration_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
+    | Some k1, Some k2, Some k3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+        let triple = [ d1; d2; d3 ] in
+        let lines = List.find_map td_line_of triple in
+        let style = List.find_map td_style_of triple in
+        let color = List.find_map td_color_of triple in
+        match (lines, style, color) with
+        | Some lines, Some _, Some _ ->
+            Some
+              (Declaration.v ~important:(is_important d1) Text_decoration
+                 (Shorthand { lines; style; color; thickness = None }))
+        | _ -> None)
+    | _ -> None
 
-let compose_text_decoration_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_text_decoration decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_text_decoration_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_text_decoration_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Backgrounds 3 sec. 4.1: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -2584,21 +2614,28 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   in
   filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
-(* Box, pair, and outline composers all run on Rule_index. Share one index
-   across the three: build once, mutate in place, linearise once. *)
-let compose_box_pair_outline ~ctx kept =
+(* Run every index-based composer against the same Rule_index so we pay one
+   [build] + [to_list] per rule for the whole group. *)
+let compose_index_group_a ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_box_via_index ~ctx idx;
   compose_pair_via_index idx;
   compose_outline_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
+(* Second index group runs after the font-reset reorder and the (still
+   list-based) font composer. List-style + flex + text-decoration all share the
+   same index. *)
+let compose_index_group_b kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_list_style_via_index idx;
+  compose_flex_via_index idx;
+  compose_text_decoration_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
 let compose_shorthands ~ctx kept =
-  kept
-  |> compose_box_pair_outline ~ctx
-  |> reorder_font_resets_before_font |> compose_font_shorthand
-  |> compose_list_style_shorthand |> compose_flex_shorthand
-  |> compose_text_decoration_shorthand |> compose_border_shorthand
+  kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
+  |> compose_font_shorthand |> compose_index_group_b |> compose_border_shorthand
   |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_bimg_shadowed_by_border
