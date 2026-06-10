@@ -1636,13 +1636,19 @@ let is_border_image_longhand_decl = function
       true
   | _ -> false
 
-let span_border_image_run =
-  let is_bi d = is_border_image_longhand_decl (snd d) in
-  let rec span acc = function
-    | d :: rest when is_bi d -> span (d :: acc) rest
-    | rest -> (List.rev acc, rest)
+(* Collect contiguous border-image longhands starting at [i], returning the run
+   and its length [k]. *)
+let span_border_image_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      if is_border_image_longhand_decl d then aux (j + 1) ((j, d) :: acc)
+      else (List.rev acc, j - i)
   in
-  span []
+  aux i []
 
 let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
   let need_slice =
@@ -1713,20 +1719,30 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     in
     Some (fst (List.hd run), merged)
 
-let compose_border_image_shorthand ~ctx decls =
-  if scope ctx <> `Stylesheet then decls
+let compose_border_image_via_index ~ctx idx =
+  if scope ctx <> `Stylesheet then ()
   else
-    let is_bi d = is_border_image_longhand_decl (snd d) in
-    let rec go acc = function
-      | [] -> List.rev acc
-      | d :: _ as l when is_bi d -> (
-          let run, rest = span_border_image_run l in
+    let n = Rule_index.length idx in
+    let i = ref 0 in
+    while !i < n do
+      if Rule_index.is_absorbed idx !i then incr i
+      else
+        let d = Rule_index.decl_at idx !i in
+        if is_border_image_longhand_decl d then
+          let run, len = span_border_image_run_at idx !i in
           match compose_border_image_run run with
-          | Some merged -> go (merged :: acc) rest
-          | None -> go (List.rev_append run acc) rest)
-      | d :: rest -> go (d :: acc) rest
-    in
-    go [] decls
+          | Some (_, shorthand) ->
+              let absorbed = List.init len (fun j -> !i + j) in
+              Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+              i := !i + len
+          | None -> i := !i + max 1 len
+        else incr i
+    done
+
+let compose_border_image_shorthand ~ctx decls =
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_border_image_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
