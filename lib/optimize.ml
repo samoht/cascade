@@ -213,19 +213,29 @@ let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
       in
       preserve_list stmts stmts'
 
-and process_statements ~ctx ~enforce_spec (acc : statement list)
-    (remaining : statement list) : statement list =
+(* Process a "cursor" of (reverse acc, current remaining list, pending segment
+   stack). When the current list is exhausted, pop the next segment from
+   pending; when both are empty, return the final reversed list. This shape lets
+   [process_supports_statement] splice three segments without first
+   materialising their concatenation. *)
+and process_statements ~ctx ~enforce_spec ?(pending : statement list list = [])
+    (acc : statement list) (remaining : statement list) : statement list =
   match remaining with
-  | [] -> List.rev acc
+  | [] -> (
+      match pending with
+      | [] -> List.rev acc
+      | next :: rest_pending ->
+          process_statements ~ctx ~enforce_spec ~pending:rest_pending acc next)
   | (Rule r as stmt) :: rest ->
-      process_rule_run ~ctx ~enforce_spec acc stmt r rest
+      process_rule_run ~ctx ~enforce_spec ~pending acc stmt r rest
   | (Media (cond, block) as stmt) :: rest ->
-      process_media_statement ~ctx ~enforce_spec acc stmt cond block rest
-  | (Container (name, cond, block) as stmt) :: rest ->
-      process_container_statement ~ctx ~enforce_spec acc stmt name cond block
+      process_media_statement ~ctx ~enforce_spec ~pending acc stmt cond block
         rest
+  | (Container (name, cond, block) as stmt) :: rest ->
+      process_container_statement ~ctx ~enforce_spec ~pending acc stmt name cond
+        block rest
   | Supports (cond, block) :: rest ->
-      process_supports_statement ~ctx ~enforce_spec acc cond block rest
+      process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest
   | (Scope (start, end_, block) as stmt) :: rest ->
       let start' = option_map_preserve canonicalize_scope_selector start in
       let end_' = option_map_preserve canonicalize_scope_selector end_ in
@@ -235,32 +245,36 @@ and process_statements ~ctx ~enforce_spec (acc : statement list)
           stmt
         else Scope (start', end_', optimized_block)
       in
-      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+      process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
       let optimized_block = statements ~ctx ~enforce_spec block in
       let optimized =
         if optimized_block == block then stmt
         else Origin (origin, optimized_block)
       in
-      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+      process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
   | (Layer (name, block) as stmt) :: rest ->
-      process_layer_statement ~ctx ~enforce_spec acc stmt name block rest
+      process_layer_statement ~ctx ~enforce_spec ~pending acc stmt name block
+        rest
   | (Import import as stmt) :: rest ->
-      process_import_statement ~ctx ~enforce_spec acc stmt import rest
+      process_import_statement ~ctx ~enforce_spec ~pending acc stmt import rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
-      process_statements ~ctx ~enforce_spec (hd :: acc) rest
+      process_statements ~ctx ~enforce_spec ~pending (hd :: acc) rest
 
-and process_rule_run ~ctx ~enforce_spec acc stmt r rest =
+and process_rule_run ~ctx ~enforce_spec ~pending acc stmt r rest =
   let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
   let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
   let as_statements =
     if optimized == plain_rules then plain_stmts
     else List.map (fun r -> Rule r) optimized
   in
-  process_statements ~ctx ~enforce_spec (List.rev_append as_statements acc) rest
+  process_statements ~ctx ~enforce_spec ~pending
+    (List.rev_append as_statements acc)
+    rest
 
-and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
+and process_media_statement ~ctx ~enforce_spec ~pending acc stmt cond block rest
+    =
   let cond = if enforce_spec then cond else Media.lower_for_minify cond in
   let optimized_block = statements ~ctx ~enforce_spec block in
   let optimized =
@@ -270,10 +284,10 @@ and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
     then stmt
     else Media (cond, optimized_block)
   in
-  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+  process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
 
-and process_container_statement ~ctx ~enforce_spec acc stmt name cond block rest
-    =
+and process_container_statement ~ctx ~enforce_spec ~pending acc stmt name cond
+    block rest =
   let cond =
     if enforce_spec then cond
     else option_map_preserve Container.lower_for_minify cond
@@ -286,32 +300,34 @@ and process_container_statement ~ctx ~enforce_spec acc stmt name cond block rest
     then stmt
     else Container (name, cond, optimized_block)
   in
-  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+  process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
 
-and process_supports_statement ~ctx ~enforce_spec acc cond block rest =
+and process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest =
   let optimized_block = statements ~ctx ~enforce_spec block in
   let baseline =
     if enforce_spec then `Cond cond else Supports.simplify_baseline cond
   in
   match baseline with
   | `True when block_introduces_layer_order optimized_block ->
-      process_statements ~ctx ~enforce_spec
+      process_statements ~ctx ~enforce_spec ~pending
         (Supports (cond, optimized_block) :: acc)
         rest
   | `True ->
       let trailing, acc = pop_trailing_rules acc in
-      (* [trailing] is the run of rules popped from acc; [optimized_block] is
-         the @supports body. Both can be long, so use tail-recursive
-         [List.concat] instead of nested (@). *)
-      process_statements ~ctx ~enforce_spec acc
-        (List.concat [ trailing; optimized_block; rest ])
-  | `False -> process_statements ~ctx ~enforce_spec acc rest
-  | `Cond cond' ->
+      (* Three segments to process back-to-back without first materialising
+         their concatenation: [trailing] (rules popped from acc),
+         [optimized_block] (the @supports body), and [rest]. *)
       process_statements ~ctx ~enforce_spec
+        ~pending:(optimized_block :: rest :: pending)
+        acc trailing
+  | `False -> process_statements ~ctx ~enforce_spec ~pending acc rest
+  | `Cond cond' ->
+      process_statements ~ctx ~enforce_spec ~pending
         (Supports (cond', optimized_block) :: acc)
         rest
 
-and process_layer_statement ~ctx ~enforce_spec acc stmt name block rest =
+and process_layer_statement ~ctx ~enforce_spec ~pending acc stmt name block rest
+    =
   let optimized_block = statements ~ctx ~enforce_spec block in
   if is_layer_empty optimized_block then
     match name with
@@ -319,17 +335,17 @@ and process_layer_statement ~ctx ~enforce_spec acc stmt name block rest =
         let all_names, remaining =
           collect_empty_layer_names [ layer_name ] rest
         in
-        process_statements ~ctx ~enforce_spec
+        process_statements ~ctx ~enforce_spec ~pending
           (Layer_decl all_names :: acc)
           remaining
-    | None -> process_statements ~ctx ~enforce_spec acc rest
+    | None -> process_statements ~ctx ~enforce_spec ~pending acc rest
   else
     let optimized =
       if optimized_block == block then stmt else Layer (name, optimized_block)
     in
-    process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+    process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
 
-and process_import_statement ~ctx ~enforce_spec acc stmt import rest =
+and process_import_statement ~ctx ~enforce_spec ~pending acc stmt import rest =
   let stmt =
     match import.supports with
     | Some cond
@@ -337,7 +353,7 @@ and process_import_statement ~ctx ~enforce_spec acc stmt import rest =
         Import { import with supports = None }
     | _ -> stmt
   in
-  process_statements ~ctx ~enforce_spec (stmt :: acc) rest
+  process_statements ~ctx ~enforce_spec ~pending (stmt :: acc) rest
 
 and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively, then drop the
