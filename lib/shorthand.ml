@@ -2214,25 +2214,6 @@ let empty_tr_shorthand : Properties.transition_shorthand =
     behavior = None;
   }
 
-let take_contiguous_transition
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * tr_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match transition_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
-  in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
-
 let has_transition_property_decl raw_decls =
   List.exists
     (fun d ->
@@ -2241,38 +2222,53 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
-let try_compose_transition
-    (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_transition indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else if not (has_transition_property_decl raw_decls) then Option.None
-      else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
-        in
-        let merged =
-          Declaration.v
-            ~important:(is_important (List.hd raw_decls))
-            Transition
-            [ (Shorthand layer : Properties.transition) ]
-        in
-        Some ((idx, merged), rest)
-
-let compose_transition_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_transition decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
+(* Collect the contiguous run of transition longhands starting at [i]. Returns
+   the list of (decl, part) pairs and its length. *)
+let take_transition_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match transition_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  go [] decls
+  aux i []
+
+let try_compose_transition_at idx i =
+  let parts, len = take_transition_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else if not (has_transition_property_decl raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
+      in
+      let shorthand =
+        Declaration.v
+          ~important:(is_important (List.hd raw_decls))
+          Transition
+          [ (Shorthand layer : Properties.transition) ]
+      in
+      Some (shorthand, len)
+
+let compose_transition_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_transition_at idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -2396,56 +2392,50 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let take_contiguous_animation
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * an_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match animation_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
+let take_animation_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match animation_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
+  aux i []
 
-let try_compose_animation (indexed_decls : (int * Declaration.declaration) list)
-    :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_animation indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
-        in
-        let merged =
-          Declaration.v
-            ~important:(is_important (List.hd raw_decls))
-            Animation
-            [ (Shorthand layer : Properties.animation) ]
-        in
-        Some ((idx, merged), rest)
+let try_compose_animation_at idx i =
+  let parts, len = take_animation_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
+      in
+      let shorthand =
+        Declaration.v
+          ~important:(is_important (List.hd raw_decls))
+          Animation
+          [ (Shorthand layer : Properties.animation) ]
+      in
+      Some (shorthand, len)
 
-let compose_animation_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_animation decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_animation_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_animation_at idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -2666,6 +2656,14 @@ let compose_index_group_b kept =
   compose_border_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
+(* Third index group runs at the very end: transition + animation contiguous-run
+   composers share one index. *)
+let compose_index_group_c kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_transition_via_index idx;
+  compose_animation_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_font_shorthand |> compose_index_group_b
@@ -2676,7 +2674,7 @@ let compose_shorthands ~ctx kept =
   |> compose_background_shorthand ~ctx
   |> reorder_mask_border_before_mask
   |> compose_mask_shorthand ~ctx
-  |> compose_transition_shorthand |> compose_animation_shorthand
+  |> compose_index_group_c
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
