@@ -1399,36 +1399,68 @@ let declaration_of_border_parts ~important widths styles colors =
    exempt. *)
 let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
 
-let try_compose_border (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  match take_first_n 12 indexed_decls with
-  | None -> Option.None
-  | Some twelve -> (
-      let twelve, rest = twelve in
-      let raw_decls = List.map snd twelve in
-      if not (same_importance raw_decls) then Option.None
-      else if List.exists has_runtime_substitution raw_decls then Option.None
+let try_compose_border_at idx i =
+  let n = Rule_index.length idx in
+  if i + 11 >= n then None
+  else
+    let absorbed =
+      [
+        i;
+        i + 1;
+        i + 2;
+        i + 3;
+        i + 4;
+        i + 5;
+        i + 6;
+        i + 7;
+        i + 8;
+        i + 9;
+        i + 10;
+        i + 11;
+      ]
+    in
+    if List.exists (Rule_index.is_absorbed idx) absorbed then None
+    else
+      let raw_decls = List.map (Rule_index.decl_at idx) absorbed in
+      if not (same_importance raw_decls) then None
+      else if List.exists has_runtime_substitution raw_decls then None
       else
         match border_parts_of raw_decls with
-        | None -> Option.None
+        | None -> None
         | Some (widths, styles, colors) ->
-            let merged =
-              declaration_of_border_parts
-                ~important:(is_important (List.hd raw_decls))
-                widths styles colors
-            in
-            let idx = fst (List.hd twelve) in
-            Some ((idx, merged), rest))
+            Some
+              (declaration_of_border_parts
+                 ~important:(is_important (List.hd raw_decls))
+                 widths styles colors)
 
-let compose_border_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_border decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_border_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 11 < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_border_at idx !i with
+      | None -> incr i
+      | Some shorthand ->
+          let absorbed =
+            [
+              !i;
+              !i + 1;
+              !i + 2;
+              !i + 3;
+              !i + 4;
+              !i + 5;
+              !i + 6;
+              !i + 7;
+              !i + 8;
+              !i + 9;
+              !i + 10;
+              !i + 11;
+            ]
+          in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 12
+  done
 
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
@@ -2624,18 +2656,19 @@ let compose_index_group_a ~ctx kept =
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Second index group runs after the font-reset reorder and the (still
-   list-based) font composer. List-style + flex + text-decoration all share the
-   same index. *)
+   list-based) font composer. List-style + flex + text-decoration + border all
+   share the same index. *)
 let compose_index_group_b kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
   compose_text_decoration_via_index idx;
+  compose_border_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_font_shorthand |> compose_index_group_b |> compose_border_shorthand
+  |> compose_font_shorthand |> compose_index_group_b
   |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_bimg_shadowed_by_border
