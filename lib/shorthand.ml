@@ -2665,10 +2665,11 @@ let compose_index_group_b kept =
   compose_border_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-(* Third index group runs at the very end: transition + animation contiguous-run
-   composers share one index. *)
-let compose_index_group_c kept =
+(* Third index group runs at the very end: mask + transition + animation share
+   one index. *)
+let compose_index_group_c ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
+  compose_mask_via_index ~ctx idx;
   compose_transition_via_index idx;
   compose_animation_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
@@ -2678,11 +2679,6 @@ let compose_border_whole_step ~ctx kept =
   compose_border_whole_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-let compose_mask_step ~ctx kept =
-  let idx = Rule_index.build (List.map snd kept) in
-  compose_mask_via_index ~ctx idx;
-  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
-
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_index_group_b |> reorder_border_image_before_border
@@ -2690,8 +2686,7 @@ let compose_shorthands ~ctx kept =
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
-  |> reorder_mask_border_before_mask |> compose_mask_step ~ctx
-  |> compose_index_group_c
+  |> reorder_mask_border_before_mask |> compose_index_group_c ~ctx
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
