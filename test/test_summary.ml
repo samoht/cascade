@@ -30,6 +30,13 @@ let custom_decl i = Fmt.str "--p%d:%d" i i
 let custom_rule ?(selector = ".a") decls =
   rule (selector ^ "{" ^ String.concat ";" decls ^ "}")
 
+let sorted_unique_ints values =
+  values |> List.sort_uniq Int.compare |> Array.of_list
+
+let array_for_all p xs =
+  let rec loop i = i = Array.length xs || (p xs.(i) && loop (i + 1)) in
+  loop 0
+
 let test_rule_identity_and_first_decl () =
   Summary.reset ();
   let rule = rule ".a{color:red;color:blue;width:1px}" in
@@ -171,6 +178,87 @@ let test_large_summary_with_many_duplicate_properties () =
     "first duplicate declaration retained" (Some "--p37:37")
     (Option.map decl_string (Summary.decl_for_prop t prop))
 
+let test_fuzz_id_set_operations () =
+  for seed = 0 to 119 do
+    let rng = Random.State.make [| 0x51; seed |] in
+    let gen () =
+      List.init (Random.State.int rng 80) (fun _ -> Random.State.int rng 160)
+      |> sorted_unique_ints
+    in
+    let a = gen () in
+    let b = gen () in
+    let expected_inter =
+      Array.to_list a
+      |> List.filter (fun id -> Array.exists (( = ) id) b)
+      |> sorted_unique_ints
+    in
+    let inter = Summary.ids_inter a b in
+    Alcotest.(check (array int)) "intersection" expected_inter inter;
+    Alcotest.(check bool)
+      "disjoint"
+      (Array.length expected_inter = 0)
+      (Summary.ids_disjoint a b);
+    Alcotest.(check bool)
+      "intersection subset left" true
+      (Summary.ids_subset inter a);
+    Alcotest.(check bool)
+      "intersection subset right" true
+      (Summary.ids_subset inter b);
+    for id = 0 to 159 do
+      Alcotest.(check bool)
+        "membership"
+        (Array.exists (( = ) id) a)
+        (Summary.ids_mem id a)
+    done
+  done
+
+let test_fuzz_summary_declaration_invariants () =
+  for seed = 0 to 79 do
+    Summary.reset ();
+    let rng = Random.State.make [| 0x52; seed |] in
+    let decl_count = 1 + Random.State.int rng 90 in
+    let prop_count = 1 + Random.State.int rng 24 in
+    let first_by_prop = Hashtbl.create prop_count in
+    let seen_props = Hashtbl.create prop_count in
+    let decls =
+      List.init decl_count (fun i ->
+          let prop = Random.State.int rng prop_count in
+          let declaration = Fmt.str "--p%d:%d" prop i in
+          Hashtbl.replace seen_props prop ();
+          if not (Hashtbl.mem first_by_prop prop) then
+            Hashtbl.add first_by_prop prop declaration;
+          declaration)
+    in
+    let t = summary (custom_rule ~selector:(Fmt.str ".fuzz%d" seed) decls) in
+    Alcotest.(check int) "declaration count" decl_count (Summary.decl_count t);
+    Alcotest.(check int)
+      "declaration property ids count" decl_count
+      (Array.length (Summary.decl_prop_ids t));
+    Alcotest.(check int)
+      "unique property id count"
+      (Hashtbl.length seen_props)
+      (Array.length (Summary.prop_ids t));
+    Hashtbl.iter
+      (fun prop first ->
+        let probe = Summary.prop (Fmt.kstr decl "--p%d:0" prop) in
+        Alcotest.(check (option string))
+          "first declaration for property" (Some first)
+          (Option.map decl_string (Summary.decl_for_prop t probe));
+        Alcotest.(check (option int))
+          "first declaration size for property"
+          (Some (String.length first))
+          (Summary.decl_size_for_prop t probe);
+        Alcotest.(check bool)
+          "property declared" true
+          (Summary.declares_all t [ probe ]))
+      first_by_prop;
+    Alcotest.(check bool)
+      "declaration ids are declared" true
+      (array_for_all
+         (fun id -> Summary.ids_mem id (Summary.prop_ids t))
+         (Summary.decl_prop_ids t))
+  done
+
 let suite =
   ( "summary",
     [
@@ -189,4 +277,8 @@ let suite =
         test_large_id_set_operations;
       Alcotest.test_case "large summary with duplicate properties" `Quick
         test_large_summary_with_many_duplicate_properties;
+      Alcotest.test_case "fuzz id set operations" `Quick
+        test_fuzz_id_set_operations;
+      Alcotest.test_case "fuzz summary declaration invariants" `Quick
+        test_fuzz_summary_declaration_invariants;
     ] )
