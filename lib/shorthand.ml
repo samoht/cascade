@@ -1013,14 +1013,6 @@ let font_family_of : declaration -> Properties.font_family option = function
   | Declaration { property = Font_family; value; _ } -> Some value
   | _ -> Option.None
 
-let take_first_n n xs =
-  let rec aux acc n = function
-    | rest when n = 0 -> Some (List.rev acc, rest)
-    | [] -> None
-    | x :: rest -> aux (x :: acc) (n - 1) rest
-  in
-  aux [] n xs
-
 let same_importance = function
   | [] -> true
   | first :: rest ->
@@ -1471,16 +1463,19 @@ let compose_border_via_index idx =
    shorthand also resets [border-image] to its initial, so only compose when no
    [border-image] declaration is present in the rule - otherwise the synthesised
    [border] would clobber it (the reset/reorder case is handled separately). *)
-let try_compose_border_whole ~ctx indexed_decls =
-  match take_first_n 3 indexed_decls with
-  | None -> Option.None
-  | Some (three, rest) -> (
-      let raw = List.map snd three in
-      if not (same_importance raw) then Option.None
+let try_compose_border_whole_at ~ctx idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
       else
-        let width : Properties.border_width option ref = ref Option.None in
-        let style : Properties.border_style option ref = ref Option.None in
-        let color : Values.color option ref = ref Option.None in
+        let width : Properties.border_width option ref = ref None in
+        let style : Properties.border_style option ref = ref None in
+        let color : Values.color option ref = ref None in
         List.iter
           (function
             | Declaration { property = Border_width; value = [ w ]; _ } ->
@@ -1491,12 +1486,6 @@ let try_compose_border_whole ~ctx indexed_decls =
                 color := Some c
             | _ -> ())
           raw;
-        (* CSS Variables 1 sec. 3: a [var()] invalid at computed-value time
-           poisons its whole declaration. Folding [var()] longhands into the
-           shorthand widens that blast radius from one longhand to the whole
-           [border], so it is only safe when the referenced custom property is
-           registered ([@property] with an initial-value) and therefore never
-           invalid at computed-value time. *)
         let foldable_width (w : Properties.border_width) =
           match w with Var v -> registered ctx v.name | _ -> true
         in
@@ -1510,19 +1499,17 @@ let try_compose_border_whole ~ctx indexed_decls =
         | Some width, Some style, Some color
           when foldable_width width && foldable_style style
                && foldable_color color ->
-            let merged =
-              Declaration.v
-                ~important:(is_important (List.hd raw))
-                Border
-                (Shorthand
-                   {
-                     width = Some width;
-                     style = Some style;
-                     color = Some color;
-                   })
-            in
-            Some ((fst (List.hd three), merged), rest)
-        | _ -> None)
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw))
+                 Border
+                 (Shorthand
+                    {
+                      width = Some width;
+                      style = Some style;
+                      color = Some color;
+                    }))
+        | _ -> None
 
 (* [border-image*] and [border-width/style/color] are independent properties, so
    a border-image declaration (or longhand run) that immediately precedes the
@@ -1582,26 +1569,30 @@ let reorder_border_image_before_border decls =
   in
   go [] decls
 
-let compose_border_whole_shorthand ~ctx decls =
+let compose_border_whole_via_index ~ctx idx =
+  let n = Rule_index.length idx in
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
-     is only safe when it ends up before every [border-image] declaration.
-     Compose in place while no [border-image] has been seen earlier in the rule;
-     once one is, leave the longhands alone (the reorder-before-border-image
-     case is handled separately). *)
-  let rec go ~seen_border_image acc decls =
-    match try_compose_border_whole ~ctx decls with
-    | Some (merged, rest) when not seen_border_image ->
-        go ~seen_border_image (merged :: acc) rest
-    | _ -> (
-        match decls with
-        | [] -> List.rev acc
-        | ((_, d) as hd) :: rest ->
-            let seen_border_image =
-              seen_border_image || is_border_image_decl d
-            in
-            go ~seen_border_image (hd :: acc) rest)
-  in
-  go ~seen_border_image:false [] decls
+     is only safe when it ends up before every [border-image] declaration. Walk
+     positions; once we cross a border-image decl, stop trying to fold. *)
+  let i = ref 0 in
+  let seen_border_image = ref false in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else if !seen_border_image then (
+      let d = Rule_index.decl_at idx !i in
+      if is_border_image_decl d then ();
+      incr i)
+    else
+      match try_compose_border_whole_at ~ctx idx !i with
+      | Some shorthand ->
+          let absorbed = [ !i; !i + 1; !i + 2 ] in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 3
+      | None ->
+          let d = Rule_index.decl_at idx !i in
+          if is_border_image_decl d then seen_border_image := true;
+          incr i
+  done
 
 (* CSS Backgrounds 3: the [border] shorthand resets [border-image] to its
    initial. A [border-image*] declaration is therefore dead when a later
@@ -2667,10 +2658,15 @@ let compose_index_group_c kept =
   compose_animation_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
+let compose_border_whole_step ~ctx kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_border_whole_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_index_group_b |> reorder_border_image_before_border
-  |> compose_border_whole_shorthand ~ctx
+  |> compose_border_whole_step ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
