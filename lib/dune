@@ -12,6 +12,7 @@
   component.mli
   container.mli
   context.mli
+  cover.mli
   css.mli
   css_graph.mli
   cursor.mli
@@ -29,6 +30,7 @@
   factor_safe.mli
   parser.mli
   pool.mli
+  preflight.mli
   pp.mli
   properties.mli
   reader.mli

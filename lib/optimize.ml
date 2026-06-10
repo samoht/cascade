@@ -5674,46 +5674,12 @@ let merge_named_layers_by_name (stmts : statement list) : statement list =
         | _ -> Some stmt)
       stmts
 
-(* Require structural selector equality (not just set-equality) so that [h1, h2]
-   and [h2, h1] go through [merge_rules] instead - that pass keeps the earlier
-   rule's selector spelling, which is the form authors are more likely to want
-   preserved. *)
-module Suffix_rule_cover = struct
-  module Selector_tbl = Hashtbl.Make (struct
-    type t = Selector.t
-
-    let equal = ( = )
-    let hash = Hashtbl.hash
-  end)
-
-  let v () = Selector_tbl.create 256
-  let empty = (Prop_set.empty, Prop_set.empty)
-
-  let find t selector =
-    Option.value ~default:empty (Selector_tbl.find_opt t selector)
-
-  let covered t selector decl =
-    let normal, important = find t selector in
-    let prop = decl_property decl in
-    if Declaration.is_important decl then Prop_set.mem prop important
-    else Prop_set.mem prop normal || Prop_set.mem prop important
-
-  let add t selector decl =
-    let normal, important = find t selector in
-    let prop = decl_property decl in
-    let cover =
-      if Declaration.is_important decl then (normal, Prop_set.add prop important)
-      else (Prop_set.add prop normal, important)
-    in
-    Selector_tbl.replace t selector cover
-end
-
 (* Drop an earlier rule when a later rule with the same canonical selector
    writes every one of its property names at the same or stronger importance.
    The later same-property write shadows the earlier value regardless of
    intervening rules. *)
 let drop_shadowed_rules (rules : rule list) : rule list =
-  let later_by_selector = Suffix_rule_cover.v () in
+  let later_by_selector = Cover.v () in
   let rules_arr = Array.of_list rules in
   let len = Array.length rules_arr in
   let dropped = Array.make len false in
@@ -5724,12 +5690,11 @@ let drop_shadowed_rules (rules : rule list) : rule list =
       (rule.declarations = [] && rule.nested = [])
       || rule.declarations <> []
          && List.for_all
-              (Suffix_rule_cover.covered later_by_selector
-                 rule.Stylesheet_intf.selector)
+              (Cover.covered later_by_selector rule.Stylesheet_intf.selector)
               rule.declarations;
     if dropped.(i) then changed := true;
     List.iter
-      (Suffix_rule_cover.add later_by_selector rule.Stylesheet_intf.selector)
+      (Cover.add later_by_selector rule.Stylesheet_intf.selector)
       rule.declarations
   done;
   let rec filter i = function
@@ -6280,94 +6245,16 @@ let factor_rules_to_fixpoint ?(adaptive = true) ~ctx fuel rules =
   in
   go 0 fuel rules
 
-module Global_factor_preflight = struct
-  let small_declaration_threshold = 4_000
-  let useful_gain_units = 2_048
-  let useful_gain_ratio_ppm = 140_000
-
-  type t = {
-    mutable source_units : int;
-    mutable rule_count : int;
-    mutable declaration_count : int;
-    mutable identical_body_gain : int;
-    mutable shared_declaration_gain : int;
-  }
-
-  type state = {
-    summary : t;
-    body_groups : (int list, int) Hashtbl.t;
-    declaration_counts : (int, int * int) Hashtbl.t;
-  }
-
-  let v () =
-    {
-      summary =
-        {
-          source_units = 0;
-          rule_count = 0;
-          declaration_count = 0;
-          identical_body_gain = 0;
-          shared_declaration_gain = 0;
-        };
-      body_groups = Hashtbl.create 256;
-      declaration_counts = Hashtbl.create 1024;
-    }
-
-  let record_declaration state decl =
-    let hash = Declaration.hash decl in
-    let count, _size_unit =
-      match Hashtbl.find_opt state.declaration_counts hash with
-      | Some entry -> entry
-      | None -> (0, 1)
-    in
-    if count > 0 then
-      state.summary.shared_declaration_gain <-
-        state.summary.shared_declaration_gain + 1;
-    Hashtbl.replace state.declaration_counts hash (count + 1, 1)
-
-  let record_identical_body state decls =
-    let key = List.map Declaration.hash decls in
-    match Hashtbl.find_opt state.body_groups key with
-    | Some count ->
-        state.summary.identical_body_gain <-
-          state.summary.identical_body_gain + max 0 (List.length decls);
-        Hashtbl.replace state.body_groups key (count + 1)
-    | None -> Hashtbl.add state.body_groups key 1
-
-  let record_rule state (rule : Stylesheet.rule) =
-    let decls = rule.Stylesheet_intf.declarations in
-    let decl_count = List.length decls in
-    state.summary.rule_count <- state.summary.rule_count + 1;
-    state.summary.source_units <-
-      state.summary.source_units + 8 + (16 * decl_count);
-    state.summary.declaration_count <-
-      state.summary.declaration_count + decl_count;
-    List.iter (record_declaration state) decls;
-    if decl_count > 0 then record_identical_body state decls
-
-  let summarize (rules : Stylesheet.rule list) =
-    let state = v () in
-    List.iter (record_rule state) rules;
-    state.summary
-
-  let estimated_gain summary =
-    summary.identical_body_gain + (summary.shared_declaration_gain / 32)
-
-  let useful summary =
-    if summary.declaration_count <= small_declaration_threshold then true
-    else
-      let gain = estimated_gain summary in
-      counters.factor_preflight_gain <- counters.factor_preflight_gain + gain;
-      gain >= useful_gain_units
-      && gain * 1_000_000 >= summary.source_units * useful_gain_ratio_ppm
-end
-
 let factor_rules_incremental ~ctx (rules : Stylesheet.rule list) =
-  let summary = Global_factor_preflight.summarize rules in
-  if Global_factor_preflight.useful summary then
+  let summary = Preflight.summarize rules in
+  if Preflight.declaration_count summary > Preflight.small_declaration_threshold
+  then
+    counters.factor_preflight_gain <-
+      counters.factor_preflight_gain + Preflight.estimated_gain summary;
+  if Preflight.useful summary then
     let adaptive =
-      summary.declaration_count
-      > Global_factor_preflight.small_declaration_threshold
+      Preflight.declaration_count summary
+      > Preflight.small_declaration_threshold
     in
     factor_rules_to_fixpoint ~adaptive ~ctx 16 rules
   else begin
