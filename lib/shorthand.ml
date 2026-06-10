@@ -675,23 +675,28 @@ let extract_gap_side : declaration -> (pair_side * Values.length * bool) option
       Some (Column, value, important)
   | _ -> None
 
-let try_compose_gap = function
-  | (idx, d1) :: (_, d2) :: rest -> (
-      match (extract_gap_side d1, extract_gap_side d2) with
-      | Some (s1, v1, imp1), Some (s2, v2, imp2)
-        when imp1 = imp2 && s1 <> s2
-             && (not (Values.length_has_runtime_subst v1))
-             && not (Values.length_has_runtime_subst v2) ->
-          let pair = [ (s1, v1); (s2, v2) ] in
-          let find s = List.assoc s pair in
-          let merged =
-            Declaration.v ~important:imp1 Gap
-              (Lengths
-                 { row_gap = Some (find Row); column_gap = Some (find Column) })
-          in
-          Some ((idx, merged), rest)
-      | _ -> None)
-  | _ -> None
+let try_compose_gap_at idx i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (extract_gap_side d1, extract_gap_side d2) with
+    | Some (s1, v1, imp1), Some (s2, v2, imp2)
+      when imp1 = imp2 && s1 <> s2
+           && (not (Values.length_has_runtime_subst v1))
+           && not (Values.length_has_runtime_subst v2) ->
+        let pair = [ (s1, v1); (s2, v2) ] in
+        let find s = List.assoc s pair in
+        Some
+          (Declaration.v ~important:imp1 Gap
+             (Lengths
+                { row_gap = Some (find Row); column_gap = Some (find Column) }))
+    | _ -> None
 
 (* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
    longhands. Both longhands carry exactly one length value (wrapped in a
@@ -699,22 +704,29 @@ let try_compose_gap = function
    payload: [v] when both sides match, [v_start; v_end] otherwise. *)
 type axis_side = Start | End
 
-let try_compose_axis_pair ~extract ~build = function
-  | (idx, d1) :: (_, d2) :: rest -> (
-      match (extract d1, extract d2) with
-      | Some (s1, v1, imp1), Some (s2, v2, imp2)
-        when imp1 = imp2 && s1 <> s2
-             && (not (Values.length_has_runtime_subst v1))
-             && not (Values.length_has_runtime_subst v2) ->
-          let pair = [ (s1, v1); (s2, v2) ] in
-          let v_start = List.assoc Start pair in
-          let v_end = List.assoc End pair in
-          let value =
-            if v_start = v_end then [ v_start ] else [ v_start; v_end ]
-          in
-          Some ((idx, build ~important:imp1 ~value), rest)
-      | _ -> None)
-  | _ -> None
+let try_compose_axis_pair_at idx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (extract d1, extract d2) with
+    | Some (s1, v1, imp1), Some (s2, v2, imp2)
+      when imp1 = imp2 && s1 <> s2
+           && (not (Values.length_has_runtime_subst v1))
+           && not (Values.length_has_runtime_subst v2) ->
+        let pair = [ (s1, v1); (s2, v2) ] in
+        let v_start = List.assoc Start pair in
+        let v_end = List.assoc End pair in
+        let value =
+          if v_start = v_end then [ v_start ] else [ v_start; v_end ]
+        in
+        Some (build ~important:imp1 ~value)
+    | _ -> None
 
 let extract_margin_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
@@ -768,90 +780,95 @@ let extract_inset_block_side :
    [<align> <justify>] shorthands. When the two longhands appear contiguously
    with matching importance, fold them; the per-property printer then collapses
    matching pairs to a single value. *)
-let try_compose_place_items = function
-  | (idx, Declaration { property = Align_items; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_items; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_items
-          (Align_justify (a, j) : Properties.place_items)
-      in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_items; value = j; important = i1 })
-    :: (_, Declaration { property = Align_items; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_items
-          (Align_justify (a, j) : Properties.place_items)
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
+let try_compose_place_at idx i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (d1, d2) with
+    | ( Declaration { property = Align_items; value = a; important = i1 },
+        Declaration { property = Justify_items; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_items
+             (Align_justify (a, j) : Properties.place_items))
+    | ( Declaration { property = Justify_items; value = j; important = i1 },
+        Declaration { property = Align_items; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_items
+             (Align_justify (a, j) : Properties.place_items))
+    | ( Declaration { property = Align_content; value = a; important = i1 },
+        Declaration { property = Justify_content; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_content
+             (Align_justify (a, j) : Properties.place_content))
+    | ( Declaration { property = Justify_content; value = j; important = i1 },
+        Declaration { property = Align_content; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_content
+             (Align_justify (a, j) : Properties.place_content))
+    | ( Declaration { property = Align_self; value = a; important = i1 },
+        Declaration { property = Justify_self; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some (Declaration.v ~important:i1 Place_self (a, j))
+    | ( Declaration { property = Justify_self; value = j; important = i1 },
+        Declaration { property = Align_self; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some (Declaration.v ~important:i1 Place_self (a, j))
+    | _ -> None
 
-let try_compose_place_content = function
-  | (idx, Declaration { property = Align_content; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_content; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_content
-          (Align_justify (a, j) : Properties.place_content)
-      in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_content; value = j; important = i1 })
-    :: (_, Declaration { property = Align_content; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_content
-          (Align_justify (a, j) : Properties.place_content)
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
-
-let try_compose_place_self = function
-  | (idx, Declaration { property = Align_self; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_self; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged = Declaration.v ~important:i1 Place_self (a, j) in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_self; value = j; important = i1 })
-    :: (_, Declaration { property = Align_self; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged = Declaration.v ~important:i1 Place_self (a, j) in
-      Some ((idx, merged), rest)
-  | _ -> None
+let compose_pair_via_index idx =
+  let axis property extract i =
+    let build ~important ~value = Declaration.v ~important property value in
+    try_compose_axis_pair_at idx ~extract ~build i
+  in
+  let try_any i =
+    match try_compose_gap_at idx i with
+    | Some _ as r -> r
+    | None -> (
+        match axis Margin_inline extract_margin_inline_side i with
+        | Some _ as r -> r
+        | None -> (
+            match axis Margin_block extract_margin_block_side i with
+            | Some _ as r -> r
+            | None -> (
+                match axis Padding_inline extract_padding_inline_side i with
+                | Some _ as r -> r
+                | None -> (
+                    match axis Padding_block extract_padding_block_side i with
+                    | Some _ as r -> r
+                    | None -> (
+                        match axis Inset_inline extract_inset_inline_side i with
+                        | Some _ as r -> r
+                        | None -> (
+                            match
+                              axis Inset_block extract_inset_block_side i
+                            with
+                            | Some _ as r -> r
+                            | None -> try_compose_place_at idx i))))))
+  in
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    match try_any !i with
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand;
+        i := !i + 2
+    | None -> incr i
+  done
 
 let compose_pair_shorthands decls =
-  let axis property extract decls =
-    let build ~important ~value = Declaration.v ~important property value in
-    try_compose_axis_pair ~extract ~build decls
-  in
-  let composers =
-    [
-      try_compose_gap;
-      axis Margin_inline extract_margin_inline_side;
-      axis Margin_block extract_margin_block_side;
-      axis Padding_inline extract_padding_inline_side;
-      axis Padding_block extract_padding_block_side;
-      axis Inset_inline extract_inset_inline_side;
-      axis Inset_block extract_inset_block_side;
-      try_compose_place_items;
-      try_compose_place_content;
-      try_compose_place_self;
-    ]
-  in
-  let try_any decls = List.find_map (fun f -> f decls) composers in
-  let rec go acc decls =
-    match (decls, try_any decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_pair_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
@@ -876,40 +893,57 @@ let outline_color_value : declaration -> Values.color option = function
   | Declaration { property = Outline_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_outline = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (outline_part_of d1, outline_part_of d2, outline_part_of d3) with
-      | Some p1, Some p2, Some p3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
-          let triple = [ d1; d2; d3 ] in
-          let width = List.find_map outline_width_value triple in
-          let style = List.find_map outline_style_value triple in
-          let color = List.find_map outline_color_value triple in
-          let no_runtime =
-            match width with
-            | Some w -> not (Values.length_has_runtime_subst w)
-            | None -> true
-          in
-          if no_runtime then
-            let merged =
-              Declaration.v ~important:(is_important d1) Outline
-                (Shorthand { width; style; color })
-            in
-            Some ((idx, merged), rest)
-          else None
-      | _ -> None)
-  | _ -> None
+(* Index-based composer: locate Outline_width / Outline_style / Outline_color in
+   the rule, check that they form a contiguous run with matching importance,
+   then absorb them into a single Outline shorthand. *)
+let try_compose_outline_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (outline_part_of d1, outline_part_of d2, outline_part_of d3) with
+    | Some p1, Some p2, Some p3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
+        let triple = [ d1; d2; d3 ] in
+        let width = List.find_map outline_width_value triple in
+        let style = List.find_map outline_style_value triple in
+        let color = List.find_map outline_color_value triple in
+        let no_runtime =
+          match width with
+          | Some w -> not (Values.length_has_runtime_subst w)
+          | None -> true
+        in
+        if no_runtime then
+          Some
+            (Declaration.v ~important:(is_important d1) Outline
+               (Shorthand { width; style; color }))
+        else None
+    | _ -> None
+
+let compose_outline_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_outline_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 let compose_outline_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_outline decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_outline_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so

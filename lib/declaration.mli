@@ -100,9 +100,9 @@ val value_uses_runtime_subst : declaration -> bool
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
-type prop_key
 (** A property identity comparable with stdlib structural equality, without
     serialising the name to a string. *)
+type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations
