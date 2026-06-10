@@ -753,8 +753,7 @@ let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
     match meta with
     | `Full ->
         let source = Lexer.source lexer in
-        let snippet = Loc.snippet source e.loc in
-        Error.v ~snippet ~loc:e.loc ~sort:e.sort e.kind
+        Error.v ~source ~loc:e.loc ~sort:e.sort e.kind
     | `None | `Locs -> e
   in
   warnings := e :: !warnings

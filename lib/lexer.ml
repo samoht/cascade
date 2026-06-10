@@ -744,9 +744,17 @@ let tokenize_with_loc ?(force_url_function = false) reader =
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
+(* [history] only needs to retain tokens consumed since the last active [save]:
+   [force_url_function] and [reconsume] both look at the head, and [save]
+   snapshots [t.history] for [restore]. With no saves active, the head is all we
+   need, so write a single-element list instead of growing one; when saves are
+   active we keep the full list so restore can rewind. *)
 let record_consume t tok =
-  t.history <- tok :: t.history;
-  List.iter (fun save -> save.trace := tok :: !(save.trace)) t.saves
+  match t.saves with
+  | [] -> t.history <- [ tok ]
+  | saves ->
+      t.history <- tok :: t.history;
+      List.iter (fun save -> save.trace := tok :: !(save.trace)) saves
 
 (* True iff the previous emitted token was a [Url(...)] AND no separator
    (whitespace or comment) follows. The next [url(...)] in that case would
