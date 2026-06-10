@@ -19,6 +19,7 @@
   error.mli
   font_face.mli
   inline.mli
+  index.mli
   keyframe.mli
   lexer.mli
   loc.mli

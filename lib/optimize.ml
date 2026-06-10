@@ -4368,6 +4368,7 @@ module Factor_interval = struct
   let factor_common_interval_lookahead = 24
   let factor_common_indexed_occurrence_window = 24
   let factor_common_indexed_max_span = 128
+  let factor_common_indexed_max_candidates = 1024
 
   let add_candidate schedule factor_summaries selector_summaries start stop
       common_props =
@@ -4437,56 +4438,6 @@ module Factor_interval = struct
           Weighted_interval.add schedule ~start ~stop ~weight:score.saving
             { score })
 
-  type decl_bucket = { decl : declaration; mutable rows_rev : int list }
-
-  let add_decl_occurrence buckets row decl =
-    let hash = Declaration.hash decl in
-    let bucket_list =
-      Hashtbl.find_opt buckets hash |> Option.value ~default:[]
-    in
-    let rec add acc = function
-      | [] ->
-          Hashtbl.replace buckets hash
-            (List.rev ({ decl; rows_rev = [ row ] } :: acc))
-      | bucket :: rest ->
-          if same_minified_declaration bucket.decl decl then begin
-            bucket.rows_rev <- row :: bucket.rows_rev;
-            Hashtbl.replace buckets hash (List.rev_append acc (bucket :: rest))
-          end
-          else add (bucket :: acc) rest
-    in
-    add [] bucket_list
-
-  let exact_decl_index factor_summaries =
-    let buckets = Hashtbl.create 1024 in
-    Array.iteri
-      (fun row summary ->
-        if rule_factor_eligible summary.factor_rule then begin
-          let seen = Hashtbl.create 8 in
-          List.iter
-            (fun decl ->
-              let hash = Declaration.hash decl in
-              if not (Hashtbl.mem seen hash) then begin
-                Hashtbl.add seen hash ();
-                add_decl_occurrence buckets row decl
-              end)
-            summary.factor_rule.declarations
-        end)
-      factor_summaries;
-    buckets
-
-  let sorted_unique_rows rows =
-    let rows = Array.of_list rows in
-    Array.sort compare rows;
-    let len = Array.length rows in
-    if len <= 1 then rows
-    else
-      let acc = ref [ rows.(0) ] in
-      for i = 1 to len - 1 do
-        if rows.(i) <> rows.(i - 1) then acc := rows.(i) :: !acc
-      done;
-      Array.of_list (List.rev !acc)
-
   let add_indexed_occurrence_slice schedule factor_summaries selector_summaries
       rows first last =
     let start = rows.(first) in
@@ -4507,33 +4458,58 @@ module Factor_interval = struct
         ~stop ~seed !common_props
     end
 
+  let indexed_candidate_count rows =
+    let count = ref 0 in
+    let row_count = Array.length rows in
+    if row_count >= 2 then
+      for first = 0 to row_count - 2 do
+        let last_limit =
+          min (row_count - 1)
+            (first + factor_common_indexed_occurrence_window - 1)
+        in
+        let last = ref (first + 1) in
+        while
+          !last <= last_limit
+          && rows.(!last) - rows.(first) <= factor_common_indexed_max_span
+        do
+          if rows.(!last) - rows.(first) > !last - first then incr count;
+          incr last
+        done
+      done;
+    !count
+
+  let indexed_candidate_surface index =
+    let count = ref 0 in
+    Index.iter index (fun _ rows ->
+        if !count <= factor_common_indexed_max_candidates then
+          count := !count + indexed_candidate_count rows);
+    !count
+
   let add_indexed_candidates schedule factor_summaries selector_summaries =
-    let buckets = exact_decl_index factor_summaries in
-    Hashtbl.iter
-      (fun _ bucket_list ->
-        List.iter
-          (fun bucket ->
-            let rows = sorted_unique_rows bucket.rows_rev in
-            let row_count = Array.length rows in
-            if row_count >= 2 then
-              for first = 0 to row_count - 2 do
-                let last_limit =
-                  min (row_count - 1)
-                    (first + factor_common_indexed_occurrence_window - 1)
-                in
-                let last = ref (first + 1) in
-                while
-                  !last <= last_limit
-                  && rows.(!last) - rows.(first)
-                     <= factor_common_indexed_max_span
-                do
-                  add_indexed_occurrence_slice schedule factor_summaries
-                    selector_summaries rows first !last;
-                  incr last
-                done
-              done)
-          bucket_list)
-      buckets
+    let rules = Array.map (fun s -> s.factor_rule) factor_summaries in
+    let index =
+      Index.v ~same:same_minified_declaration ~keep:rule_factor_eligible rules
+    in
+    if indexed_candidate_surface index <= factor_common_indexed_max_candidates
+    then
+      Index.iter index (fun _ rows ->
+          let row_count = Array.length rows in
+          if row_count >= 2 then
+            for first = 0 to row_count - 2 do
+              let last_limit =
+                min (row_count - 1)
+                  (first + factor_common_indexed_occurrence_window - 1)
+              in
+              let last = ref (first + 1) in
+              while
+                !last <= last_limit
+                && rows.(!last) - rows.(first) <= factor_common_indexed_max_span
+              do
+                add_indexed_occurrence_slice schedule factor_summaries
+                  selector_summaries rows first !last;
+                incr last
+              done
+            done)
 
   let index factor_summaries selector_summaries =
     let len = Array.length factor_summaries in
