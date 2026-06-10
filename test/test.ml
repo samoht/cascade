@@ -26,7 +26,7 @@ let () =
       Test_error.suite;
       Test_sort.suite;
       Test_order_maintenance.suite;
-      Test_rule_pool.suite;
+      Test_pool.suite;
       Test_weighted_interval.suite;
       Test_index.suite;
       Test_css_graph.suite;

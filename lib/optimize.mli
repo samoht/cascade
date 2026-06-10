@@ -129,7 +129,7 @@ val factor_anchor_gaps : rule list -> rule list
     with non-conflicting selectors, even across intervening rules, when
     cascade-safe and smaller. Anchors are scheduled best-first from a priority
     search queue keyed by the output size each factoring saves (the greedy
-    weight order of the SatCSS heuristic) over a [Rule_pool]; only anchors whose
+    weight order of the SatCSS heuristic) over a [Pool]; only anchors whose
     window overlapped a rewritten region are re-scored, so it drains to the
     factoring fixed point without re-walking the whole list. *)
 
