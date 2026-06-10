@@ -23,16 +23,19 @@
   keyframe.mli
   lexer.mli
   loc.mli
+  loop.mli
   media.mli
   optimize.mli
   factor_safe.mli
   parser.mli
+  pool.mli
   pp.mli
   properties.mli
   reader.mli
   selector.mli
   sort.mli
   stylesheet.mli
+  summary.mli
   supports.mli
   syntax.mli
   token.mli

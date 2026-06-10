@@ -3525,7 +3525,7 @@ let rule_factor_eligible (r : Stylesheet.rule) =
   (not (rule_factor_boundary r))
   && not (List.exists is_all_declaration r.declarations)
 
-let decl_property d = Declaration.property_key d
+let decl_property = Summary.prop
 
 let merge_selector_list = function
   | [ s ] -> s
@@ -3554,132 +3554,15 @@ let decl_list_size decl_pp_size decl_count =
 let rule_size_from_parts selector_size decl_pp_size decl_count =
   selector_size + 2 + decl_list_size decl_pp_size decl_count
 
-(* 63-bit Bloom filter over [Declaration.hash] values, indexed by two
-   independent hash projections (low and high bytes of the structural hash). For
-   K~5 declarations per rule the false-positive rate is well under 1%; a true
-   negative is constant-time and lets us skip the actual [List.exists /
-   same_minified_declaration] check entirely. *)
-let bloom_mask (h : int) = (1 lsl (h land 63)) lor (1 lsl ((h lsr 8) land 63))
-let bloom_add b h = b lor bloom_mask h
+module Prop_set = Summary.Props
+module Prop_map = Summary.Map
 
-let bloom_might_contain b h =
-  let m = bloom_mask h in
-  b land m = m
+type factor_rule_summary = Summary.t
 
-module Prop_set = Set.Make (struct
-  type t = Declaration.prop_key
-
-  let compare = Stdlib.compare
-end)
-
-module Prop_map = Map.Make (struct
-  type t = Declaration.prop_key
-
-  let compare = Stdlib.compare
-end)
-
-module Prop_key_tbl = Hashtbl.Make (struct
-  type t = Declaration.prop_key
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end)
-
-let prop_ids : int Prop_key_tbl.t = Prop_key_tbl.create 512
-let next_prop_id = ref 0
-
-let prop_id prop =
-  match Prop_key_tbl.find_opt prop_ids prop with
-  | Some id -> id
-  | None ->
-      let id = !next_prop_id in
-      incr next_prop_id;
-      Prop_key_tbl.add prop_ids prop id;
-      id
-
-let prop_ids_of_set props =
-  let ids = Prop_set.to_seq props |> Array.of_seq |> Array.map prop_id in
-  Array.sort compare ids;
-  ids
-
-let prop_ids_of_decls decls =
-  decls |> List.map (fun d -> prop_id (decl_property d)) |> Array.of_list
-
-let prop_ids_empty ids = Array.length ids = 0
-
-let prop_ids_mem id ids =
-  let rec search lo hi =
-    if lo > hi then false
-    else
-      let mid = (lo + hi) lsr 1 in
-      let value = ids.(mid) in
-      if id = value then true
-      else if id < value then search lo (mid - 1)
-      else search (mid + 1) hi
-  in
-  search 0 (Array.length ids - 1)
-
-let prop_ids_disjoint a b =
-  let rec loop i j =
-    if i >= Array.length a || j >= Array.length b then true
-    else
-      let x = a.(i) and y = b.(j) in
-      if x = y then false else if x < y then loop (i + 1) j else loop i (j + 1)
-  in
-  loop 0 0
-
-let prop_ids_subset a b =
-  let rec loop i j =
-    if i >= Array.length a then true
-    else if j >= Array.length b then false
-    else
-      let x = a.(i) and y = b.(j) in
-      if x = y then loop (i + 1) (j + 1)
-      else if x < y then false
-      else loop i (j + 1)
-  in
-  loop 0 0
-
-let prop_ids_inter a b =
-  let acc = ref [] in
-  let rec loop i j =
-    if i < Array.length a && j < Array.length b then
-      let x = a.(i) and y = b.(j) in
-      if x = y then (
-        acc := x :: !acc;
-        loop (i + 1) (j + 1))
-      else if x < y then loop (i + 1) j
-      else loop i (j + 1)
-  in
-  loop 0 0;
-  Array.of_list (List.rev !acc)
-
-type factor_rule_summary = {
-  factor_rule : Stylesheet.rule;
-  factor_size : int;  (** cached [rule_pp_size factor_rule] *)
-  factor_selector_size : int;
-  factor_decl_sizes : int list;
-  factor_decl_pp_size : int;
-  factor_decl_count : int;
-  factor_prop_set : Prop_set.t;
-  factor_prop_ids : int array;
-  factor_decl_prop_ids : int array;
-  factor_decl_map : declaration Prop_map.t;
-      (** First declaration for each property, matching [List.find_opt] over
-          [factor_rule.declarations]. Duplicate-property fallback semantics are
-          preserved by keeping the earliest declaration in source order. *)
-  factor_decl_size_map : int Prop_map.t;
-      (** Minified byte size of the declaration stored in [factor_decl_map],
-          indexed separately so interval scoring can stay on cached integers. *)
-  decl_bloom : int;
-      (** Bloom filter over [Declaration.hash] for every declaration in
-          [factor_rule]. A definite-absence answer ([bloom_might_contain]
-          returns [false]) skips the full [List.exists] /
-          [same_minified_declaration] walk in cross-rule overlap checks; a
-          possible-presence answer falls through to the actual structural check,
-          so collisions are correctness-preserving. *)
-  selector_summary : Selector_summary.t Lazy.t;
-}
+let prop_ids_empty = Summary.ids_empty
+let prop_ids_mem = Summary.ids_mem
+let prop_ids_disjoint = Summary.ids_disjoint
+let prop_ids_inter = Summary.ids_inter
 
 (* Memoise summaries by physical identity. Rules are persistent records, so the
    same rule heap object is inspected by many overlapping factoring windows in a
@@ -3792,8 +3675,7 @@ let counters =
 let reset_counters () =
   Hashtbl.reset pass_times;
   iteration_stats_rev := [];
-  Prop_key_tbl.reset prop_ids;
-  next_prop_id := 0;
+  Summary.reset ();
   counters.iterations <- 0;
   counters.factor_fixpoints_run <- 0;
   counters.marginal_stops <- 0;
@@ -3820,69 +3702,27 @@ let summarize_factor_rule factor_rule =
       s
   | None ->
       counters.summary_misses <- counters.summary_misses + 1;
-      let decls = factor_rule.declarations in
-      let decl_sizes =
-        List.map (Pp.size ~minify:true Declaration.pp_declaration) decls
-      in
-      let factor_prop_set, factor_decl_map, factor_decl_size_map =
-        let rec loop set decl_map size_map decls sizes =
-          match (decls, sizes) with
-          | [], [] -> (set, decl_map, size_map)
-          | decl :: decls, size :: sizes ->
-              let prop = decl_property decl in
-              let decl_map, size_map =
-                if Prop_map.mem prop decl_map then (decl_map, size_map)
-                else
-                  ( Prop_map.add prop decl decl_map,
-                    Prop_map.add prop size size_map )
-              in
-              loop (Prop_set.add prop set) decl_map size_map decls sizes
-          | _ -> assert false
-        in
-        loop Prop_set.empty Prop_map.empty Prop_map.empty decls decl_sizes
-      in
       let s =
-        {
-          factor_rule;
-          factor_size = rule_pp_size factor_rule;
-          factor_selector_size =
-            Pp.size ~minify:true Selector.pp
-              factor_rule.Stylesheet_intf.selector;
-          factor_decl_sizes = decl_sizes;
-          factor_decl_pp_size = List.fold_left ( + ) 0 decl_sizes;
-          factor_decl_count = List.length decls;
-          factor_prop_set;
-          factor_prop_ids = prop_ids_of_set factor_prop_set;
-          factor_decl_prop_ids = prop_ids_of_decls decls;
-          factor_decl_map;
-          factor_decl_size_map;
-          decl_bloom =
-            List.fold_left (fun b d -> bloom_add b (Declaration.hash d)) 0 decls;
-          selector_summary =
-            lazy
-              (Selector_summary.of_selector factor_rule.Stylesheet_intf.selector);
-        }
+        Summary.v ~rule_size:rule_pp_size
+          ~decl_size:(Pp.size ~minify:true Declaration.pp_declaration)
+          ~selector_size:(Pp.size ~minify:true Selector.pp)
+          factor_rule
       in
       Rule_id_tbl.add summary_memo factor_rule s;
       s
 
-let factor_rule_declares_all summary props =
-  List.for_all (fun prop -> Prop_set.mem prop summary.factor_prop_set) props
+let factor_rule_declares_all summary props = Summary.declares_all summary props
 
 let factor_rule_declares_prop_ids summary props =
-  prop_ids_subset props summary.factor_prop_ids
+  Summary.declares_ids summary props
 
-let summary_decl_for_prop summary prop =
-  Prop_map.find_opt prop summary.factor_decl_map
+let summary_decl_for_prop summary prop = Summary.decl_for_prop summary prop
 
 let summary_decl_size_for_prop summary prop =
-  Prop_map.find_opt prop summary.factor_decl_size_map
+  Summary.decl_size_for_prop summary prop
 
 let summary_contains_declaration summary decl =
-  bloom_might_contain summary.decl_bloom (Declaration.hash decl)
-  && List.exists
-       (fun candidate -> same_minified_declaration decl candidate)
-       summary.factor_rule.Stylesheet_intf.declarations
+  Summary.contains ~same:same_minified_declaration summary decl
 
 (* Hoisting [common] into a shared rule pays off for a member only when its
    selector entry ([|selector| + 1]) is cheaper than the bytes it would
@@ -3919,7 +3759,7 @@ let cost_aware_factor_group (first : Stylesheet.rule)
                 common
             in
             (not exact)
-            || summary.factor_selector_size + 1 <= common_inline_cost)
+            || Summary.selector_size summary + 1 <= common_inline_cost)
       factor_summaries
   in
   let member_count =
@@ -3956,16 +3796,16 @@ let common_prop_set_of_summaries = function
   | [] -> Prop_set.empty
   | first :: rest ->
       List.fold_left
-        (fun props summary -> Prop_set.inter props summary.factor_prop_set)
-        first.factor_prop_set rest
+        (fun props summary -> Prop_set.inter props (Summary.prop_set summary))
+        (Summary.prop_set first) rest
 
 let common_props_of_array summaries =
   let len = Array.length summaries in
   if len = 0 then Prop_set.empty
   else
-    let props = ref summaries.(0).factor_prop_set in
+    let props = ref (Summary.prop_set summaries.(0)) in
     for i = 1 to len - 1 do
-      props := Prop_set.inter !props summaries.(i).factor_prop_set
+      props := Prop_set.inter !props (Summary.prop_set summaries.(i))
     done;
     !props
 
@@ -3973,9 +3813,9 @@ let common_prop_ids_of_array summaries =
   let len = Array.length summaries in
   if len = 0 then [||]
   else
-    let props = ref summaries.(0).factor_prop_ids in
+    let props = ref (Summary.prop_ids summaries.(0)) in
     for i = 1 to len - 1 do
-      props := prop_ids_inter !props summaries.(i).factor_prop_ids
+      props := prop_ids_inter !props (Summary.prop_ids summaries.(i))
     done;
     !props
 
@@ -3986,7 +3826,7 @@ let common_decls_from_props common_props first_summary =
       if Prop_set.mem prop common_props then
         summary_decl_for_prop first_summary prop
       else None)
-    first_summary.factor_rule.Stylesheet_intf.declarations
+    (Summary.rule first_summary).Stylesheet_intf.declarations
 
 let common_decls_from_ids common_ids first_summary =
   let rec loop i acc = function
@@ -3994,7 +3834,8 @@ let common_decls_from_ids common_ids first_summary =
     | d :: rest ->
         let prop = decl_property d in
         let acc =
-          if prop_ids_mem first_summary.factor_decl_prop_ids.(i) common_ids then
+          if prop_ids_mem (Summary.decl_prop_ids first_summary).(i) common_ids
+          then
             match summary_decl_for_prop first_summary prop with
             | Some decl -> decl :: acc
             | None -> acc
@@ -4002,7 +3843,7 @@ let common_decls_from_ids common_ids first_summary =
         in
         loop (i + 1) acc rest
   in
-  loop 0 [] first_summary.factor_rule.Stylesheet_intf.declarations
+  loop 0 [] (Summary.rule first_summary).Stylesheet_intf.declarations
 
 let common_decls_from_summaries summaries first =
   let first_summary =
@@ -4018,7 +3859,8 @@ let common_decl_entries_by_ids common_ids first_summary =
     | d :: rest ->
         let prop = decl_property d in
         let acc =
-          if prop_ids_mem first_summary.factor_decl_prop_ids.(i) common_ids then
+          if prop_ids_mem (Summary.decl_prop_ids first_summary).(i) common_ids
+          then
             match
               ( summary_decl_for_prop first_summary prop,
                 summary_decl_size_for_prop first_summary prop )
@@ -4029,7 +3871,7 @@ let common_decl_entries_by_ids common_ids first_summary =
         in
         loop (i + 1) acc rest
   in
-  loop 0 [] first_summary.factor_rule.Stylesheet_intf.declarations
+  loop 0 [] (Summary.rule first_summary).Stylesheet_intf.declarations
 
 let common_decls_size_by_ids common_ids first_summary =
   let entries = common_decl_entries_by_ids common_ids first_summary in
@@ -4044,13 +3886,13 @@ let minimum_leftover_size_by_ids common_ids summary =
   let rec loop i kept_count kept_size = function
     | [] -> (kept_count, kept_size)
     | size :: sizes ->
-        if prop_ids_mem summary.factor_decl_prop_ids.(i) common_ids then
+        if prop_ids_mem (Summary.decl_prop_ids summary).(i) common_ids then
           loop (i + 1) kept_count kept_size sizes
         else loop (i + 1) (kept_count + 1) (kept_size + size) sizes
   in
-  let kept_count, kept_size = loop 0 0 0 summary.factor_decl_sizes in
+  let kept_count, kept_size = loop 0 0 0 (Summary.decl_sizes summary) in
   if kept_count = 0 then 0
-  else rule_size_from_parts summary.factor_selector_size kept_size kept_count
+  else rule_size_from_parts (Summary.selector_size summary) kept_size kept_count
 
 let common_factorable_decls rules first =
   common_decls_from_summaries (List.map summarize_factor_rule rules) first
@@ -4134,20 +3976,22 @@ let factor_leftover_size ?(start = 0) ~common_by_prop ~selector_summaries
     | _ -> assert false
   in
   let kept_count, kept_decl_size =
-    loop 0 0 summary.factor_rule.declarations summary.factor_decl_sizes
+    loop 0 0 (Summary.rule summary).declarations (Summary.decl_sizes summary)
   in
   if kept_count = 0 then Option.None
   else
     Some
-      (rule_size_from_parts summary.factor_selector_size kept_decl_size
-         kept_count)
+      (rule_size_from_parts
+         (Summary.selector_size summary)
+         kept_decl_size kept_count)
 
 let factor_safe =
   Factor_safe.v ~same_minified_declaration ~declaration_covers
     ~contains_vendor_pseudo_element ~rule_factor_boundary ~decl_property
 
 let safe_summary summary =
-  Factor_safe.summary summary.factor_rule ~selectors:summary.selector_summary
+  Factor_safe.summary (Summary.rule summary)
+    ~selectors:(Summary.selector_summary summary)
 
 module Factor_interval = struct
   type score = { common : declaration list; member : bool array; saving : int }
@@ -4188,7 +4032,7 @@ module Factor_interval = struct
             (fun cd -> summary_contains_declaration summary cd)
             payload.decls
         in
-        (not exact) || summary.factor_selector_size + 1 <= payload.inline_cost
+        (not exact) || Summary.selector_size summary + 1 <= payload.inline_cost
 
   let seed_contains seed offset =
     match seed with Option.None -> true | Option.Some seed -> seed.(offset)
@@ -4215,8 +4059,10 @@ module Factor_interval = struct
     (member, leftover_sizes, !member_count)
 
   let summary_rule_size summary =
-    rule_size_from_parts summary.factor_selector_size
-      summary.factor_decl_pp_size summary.factor_decl_count
+    rule_size_from_parts
+      (Summary.selector_size summary)
+      (Summary.decl_pp_size summary)
+      (Summary.decl_count summary)
 
   let grouped_size payload factor_summaries start member member_count =
     let selector_size = ref 0 in
@@ -4224,7 +4070,7 @@ module Factor_interval = struct
       if member.(offset) then
         selector_size :=
           !selector_size
-          + factor_summaries.(start + offset).factor_selector_size
+          + Summary.selector_size factor_summaries.(start + offset)
     done;
     rule_size_from_parts
       (!selector_size + max 0 (member_count - 1))
@@ -4258,7 +4104,7 @@ module Factor_interval = struct
         minimum_leftover_size_by_ids payload.prop_ids summary
       in
       let adjusted =
-        summary.factor_size - min_leftover - summary.factor_selector_size - 1
+        Summary.size summary - min_leftover - Summary.selector_size summary - 1
       in
       if adjusted > !top1 then (
         top2 := !top1;
@@ -4350,7 +4196,9 @@ module Factor_interval = struct
     if len < 2 || prop_ids_empty common_props then Option.None
     else
       let selector_summaries =
-        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+        Array.map
+          (fun s -> Lazy.force (Summary.selector_summary s))
+          factor_summaries
       in
       build ~allow_zero rules_arr factor_summaries selector_summaries 0
         (len - 1) common_props
@@ -4400,7 +4248,8 @@ module Factor_interval = struct
         else ()
       else if
         not
-          (Factor_safe.can_cross factor_safe (Some common) summary.factor_rule)
+          (Factor_safe.can_cross factor_safe (Some common)
+             (Summary.rule summary))
       then safe := false
       else skipped_rev := summary :: !skipped_rev;
       incr offset
@@ -4446,13 +4295,14 @@ module Factor_interval = struct
     let count = last - first + 1 in
     if len > count then begin
       let seed = Array.make len false in
-      let common_props = ref factor_summaries.(start).factor_prop_ids in
+      let common_props = ref (Summary.prop_ids factor_summaries.(start)) in
       for i = first to last do
         let row = rows.(i) in
         seed.(row - start) <- true;
         if i <> first then
           common_props :=
-            prop_ids_inter !common_props factor_summaries.(row).factor_prop_ids
+            prop_ids_inter !common_props
+              (Summary.prop_ids factor_summaries.(row))
       done;
       add_seeded_candidate schedule factor_summaries selector_summaries ~start
         ~stop ~seed !common_props
@@ -4486,7 +4336,7 @@ module Factor_interval = struct
     !count
 
   let add_indexed_candidates schedule factor_summaries selector_summaries =
-    let rules = Array.map (fun s -> s.factor_rule) factor_summaries in
+    let rules = Array.map (fun s -> Summary.rule s) factor_summaries in
     let index =
       Index.v ~same:same_minified_declaration ~keep:rule_factor_eligible rules
     in
@@ -4515,12 +4365,13 @@ module Factor_interval = struct
     let len = Array.length factor_summaries in
     let schedule = Weighted_interval.v ~length:len in
     for start = 0 to len - 2 do
-      let common_props = ref factor_summaries.(start).factor_prop_ids in
+      let common_props = ref (Summary.prop_ids factor_summaries.(start)) in
       let stop = ref (start + 1) in
       let last = min (len - 1) (start + factor_common_interval_lookahead - 1) in
       while !stop <= last && not (prop_ids_empty !common_props) do
         common_props :=
-          prop_ids_inter !common_props factor_summaries.(!stop).factor_prop_ids;
+          prop_ids_inter !common_props
+            (Summary.prop_ids factor_summaries.(!stop));
         add_candidate schedule factor_summaries selector_summaries start !stop
           !common_props;
         incr stop
@@ -4534,7 +4385,9 @@ module Factor_interval = struct
     if len < 3 then Option.None
     else
       let selector_summaries =
-        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+        Array.map
+          (fun s -> Lazy.force (Summary.selector_summary s))
+          factor_summaries
       in
       let schedule = index factor_summaries selector_summaries in
       let saving, selected = Weighted_interval.select schedule in
@@ -4673,7 +4526,9 @@ let factor_rules_with_skips factor_rules skipped : Stylesheet.rule list option =
       let rules_arr = Array.of_list factor_rules in
       let factor_summaries = Array.map summarize_factor_rule rules_arr in
       let selector_summaries =
-        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+        Array.map
+          (fun s -> Lazy.force (Summary.selector_summary s))
+          factor_summaries
       in
       let common =
         common_decls_from_props
@@ -4714,7 +4569,7 @@ let factor_rules_with_skips factor_rules skipped : Stylesheet.rule list option =
 
 type gap_entry = Factor of factor_rule_summary | Skip of factor_rule_summary
 
-let size_of_gap_entry = function Factor s | Skip s -> s.factor_size
+let size_of_gap_entry = function Factor s | Skip s -> Summary.size s
 
 (* Size of [first :: entry rules] from the cached per-summary sizes, so a scan
    that re-evaluates a growing prefix does not re-render each rule every
@@ -4727,7 +4582,7 @@ let gap_before_size first entries =
 let factor_rules_of_gap first entries =
   first
   :: List.filter_map
-       (function Factor s -> Some s.factor_rule | Skip _ -> None)
+       (function Factor s -> Some (Summary.rule s) | Skip _ -> None)
        entries
 
 let factor_summaries_of_gap first_summary entries =
@@ -4742,7 +4597,9 @@ let factor_gap_rewrite first entries : (Stylesheet.rule list * int) option =
       let rules_arr = Array.of_list factor_rules in
       let factor_summaries = Array.map summarize_factor_rule rules_arr in
       let selector_summaries =
-        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+        Array.map
+          (fun s -> Lazy.force (Summary.selector_summary s))
+          factor_summaries
       in
       let common =
         common_decls_from_props
@@ -4764,7 +4621,7 @@ let factor_gap_rewrite first entries : (Stylesheet.rule list * int) option =
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
-              | Skip s -> Some s.factor_rule
+              | Skip s -> Some (Summary.rule s)
               | Factor _ ->
                   let leftover = leftovers.(!next_factor) in
                   incr next_factor;
@@ -4793,15 +4650,17 @@ let common_equal_decls rules (first : Stylesheet.rule) =
    the same intersection for every improving equal-anchor prefix. *)
 let factor_gap_equal_rewrite ~common first_summary entries :
     (Stylesheet.rule list * int) option =
-  let first = first_summary.factor_rule in
+  let first = Summary.rule first_summary in
   let factor_summaries = factor_summaries_of_gap first_summary entries in
   match factor_summaries with
   | [] | [ _ ] -> Option.None
   | _ -> (
       let factor_summaries = Array.of_list factor_summaries in
-      let rules_arr = Array.map (fun s -> s.factor_rule) factor_summaries in
+      let rules_arr = Array.map (fun s -> Summary.rule s) factor_summaries in
       let selector_summaries =
-        Array.map (fun s -> Lazy.force s.selector_summary) factor_summaries
+        Array.map
+          (fun s -> Lazy.force (Summary.selector_summary s))
+          factor_summaries
       in
       if common = [] then Option.None
       else
@@ -4818,7 +4677,7 @@ let factor_gap_equal_rewrite ~common first_summary entries :
         | Some (grouped, leftovers) ->
             let next_factor = ref 1 in
             let entry_after = function
-              | Skip s -> Some s.factor_rule
+              | Skip s -> Some (Summary.rule s)
               | Factor _ ->
                   let leftover = leftovers.(!next_factor) in
                   incr next_factor;
@@ -4838,7 +4697,7 @@ let factor_gap_equal_rewrite ~common first_summary entries :
 let factor_anchor_common first candidate
     (common : Declaration.declaration list option) =
   match common with
-  | None -> common_factorable_decls [ first; candidate.factor_rule ] first
+  | None -> common_factorable_decls [ first; Summary.rule candidate ] first
   | Some common ->
       if factor_rule_declares_all candidate (List.map decl_property common) then
         common
@@ -4878,7 +4737,7 @@ let update_single_anchor_best first entries_rev tail best candidate_summary =
 let try_single_anchor_indexed prefix first first_summary rest_summaries =
   (* [rest_summaries] is threaded as the tail in [better_factor_gap] so callers
      with a precomputed summary index can continue without rebuilding it. *)
-  let first_bloom = first_summary.decl_bloom in
+  let first_bloom = Summary.bloom first_summary in
   let rec scan entries_rev (common : Declaration.declaration list option)
       (best :
         (Stylesheet.rule list
@@ -4893,7 +4752,7 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
           scan
             (Skip candidate_summary :: entries_rev)
             common best (fuel - 1) tail
-        else if candidate_summary.decl_bloom land first_bloom = 0 then
+        else if not (Summary.may_share_bloom candidate_summary first_bloom) then
           (* Bloom prefilter: candidate's declarations share no hash with the
              anchor's, so [factor_anchor_common] would yield []. Skip the check
              entirely. *)
@@ -4928,7 +4787,7 @@ let try_single_anchor_indexed prefix first first_summary rest_summaries =
 let equal_anchor_common first candidate
     (common : Declaration.declaration list option) =
   match common with
-  | None -> common_equal_decls [ first; candidate.factor_rule ] first
+  | None -> common_equal_decls [ first; Summary.rule candidate ] first
   | Some common ->
       (* Cached Bloom filter on the candidate's summary lets us drop any [decl]
          from [common] whose hash isn't a possible member in O(1) -- a single
@@ -4946,13 +4805,13 @@ let rec scan_equal_anchor ~first_bloom first_summary entries_rev common best
   | [] -> best
   | _ when fuel <= 0 -> best
   | (candidate, candidate_summary) :: tail ->
-      let first = first_summary.factor_rule in
+      let first = Summary.rule first_summary in
       if boundary_stops_scan common candidate then best
       else if not (rule_factor_eligible candidate) then
         scan_equal_anchor ~first_bloom first_summary
           (Skip candidate_summary :: entries_rev)
           common best (fuel - 1) tail
-      else if candidate_summary.decl_bloom land first_bloom = 0 then
+      else if not (Summary.may_share_bloom candidate_summary first_bloom) then
         (* Bloom prefilter: no declaration of the candidate shares a
            [Declaration.hash] with any declaration of the anchor, so the common
            subset is necessarily empty. Skip the [equal_anchor_common] /
@@ -4994,13 +4853,10 @@ let rec scan_equal_anchor ~first_bloom first_summary entries_rev common best
             (Factor candidate_summary :: entries_rev)
             (Some candidate_common) best (fuel - 1) tail
 
-let seed_bloom : Declaration.declaration list option -> int option = function
+let seed_bloom : Declaration.declaration list option -> Summary.bloom option =
+  function
   | None -> Option.None
-  | Some decls ->
-      Some
-        (List.fold_left
-           (fun bloom decl -> bloom_add bloom (Declaration.hash decl))
-           0 decls)
+  | Some decls -> Some (Summary.bloom_of_decls decls)
 
 let try_factor_equal_anchor ~shared_decl (first : Stylesheet.rule) first_summary
     rest_summaries =
@@ -5016,7 +4872,7 @@ let try_factor_equal_anchor ~shared_decl (first : Stylesheet.rule) first_summary
     let shared_decls = List.filter shared_decl first.declarations in
     Option.None :: List.map (fun d -> Some [ d ]) shared_decls
   in
-  let first_bloom = first_summary.decl_bloom in
+  let first_bloom = Summary.bloom first_summary in
   List.fold_left
     (fun best seed ->
       let first_bloom = Option.value (seed_bloom seed) ~default:first_bloom in
@@ -5035,8 +4891,9 @@ let suffix_prop_ids summaries =
     | summary :: rest ->
         let props =
           match acc with
-          | [] -> summary.factor_prop_ids
-          | next_props :: _ -> prop_ids_inter summary.factor_prop_ids next_props
+          | [] -> Summary.prop_ids summary
+          | next_props :: _ ->
+              prop_ids_inter (Summary.prop_ids summary) next_props
         in
         loop (props :: acc) rest
   in
@@ -5062,7 +4919,7 @@ let try_group_suffix_against_rest ~prefix_rev ~current ~common_props
                   (skipped_rule_blocks_factor current_common candidate_summary)
                   skipped_rev)
         then
-          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let skipped = List.rev_map (fun s -> Summary.rule s) skipped_rev in
           let factor_rules = List.map fst current @ [ candidate ] in
           match factor_rules_with_skips factor_rules skipped with
           | Some replacement -> Some (List.rev prefix_rev @ replacement, tail)
@@ -5107,7 +4964,7 @@ let try_group_indexed_lookahead current rest :
 let try_extend_factored_rule anchor rest :
     (Stylesheet.rule list * (Stylesheet.rule * factor_rule_summary) list) option
     =
-  let common = anchor.factor_rule.declarations in
+  let common = (Summary.rule anchor).declarations in
   let common_props = List.map decl_property common in
   let rec scan skipped_rev fuel :
       (Stylesheet.rule * factor_rule_summary) list ->
@@ -5126,9 +4983,9 @@ let try_extend_factored_rule anchor rest :
                   (skipped_rule_blocks_factor common candidate_summary)
                   skipped_rev)
         then
-          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let skipped = List.rev_map (fun s -> Summary.rule s) skipped_rev in
           let factor_rules =
-            [ anchor.factor_rule; candidate_summary.factor_rule ]
+            [ Summary.rule anchor; Summary.rule candidate_summary ]
           in
           match factor_rules_with_skips factor_rules skipped with
           | None -> Option.None
@@ -5165,16 +5022,16 @@ let can_extend_identical_rule ~anchor_summary ~candidate_summary anchor
   (* Bloom prefilter: two rules with different declaration-hash sets cannot have
      structurally equal declaration lists. Avoids the full
      [declarations_css_equal] walk on the common rejected case. *)
-  anchor_summary.factor_decl_count = candidate_summary.factor_decl_count
-  && anchor_summary.decl_bloom = candidate_summary.decl_bloom
+  Summary.decl_count anchor_summary = Summary.decl_count candidate_summary
+  && Summary.same_bloom anchor_summary candidate_summary
   && declarations_css_equal anchor.declarations candidate.declarations
   && extract_pseudo_element anchor.selector
      = extract_pseudo_element candidate.selector
   && newer_pseudo_class_compatible anchor.selector candidate.selector
 
 let try_extend_identical_rule ~ctx anchor_summary rest =
-  let anchor = anchor_summary.factor_rule in
-  let common = anchor_summary.factor_rule.declarations in
+  let anchor = Summary.rule anchor_summary in
+  let common = (Summary.rule anchor_summary).declarations in
   let skipped_rule_blocks =
     match ctx.scope with
     | `Stylesheet -> skipped_blocks_factor_tie
@@ -5193,17 +5050,17 @@ let try_extend_identical_rule ~ctx anchor_summary rest =
                   (skipped_rule_blocks common candidate_summary)
                   skipped_rev)
         then
-          let skipped = List.rev_map (fun s -> s.factor_rule) skipped_rev in
+          let skipped = List.rev_map (fun s -> Summary.rule s) skipped_rev in
           let grouped =
             {
               anchor with
               selector =
                 merge_selector_list
-                  [ anchor.selector; candidate_summary.factor_rule.selector ];
+                  [ anchor.selector; (Summary.rule candidate_summary).selector ];
             }
           in
           let before =
-            (anchor :: skipped) @ [ candidate_summary.factor_rule ]
+            (anchor :: skipped) @ [ Summary.rule candidate_summary ]
           in
           let after = grouped :: skipped in
           let before_size = rules_pp_size before in
@@ -5251,7 +5108,7 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
           let acc = List.rev_append (factorise_items current) acc in
           group (r :: acc) [] [||] rest
         else
-          let r_props = summary.factor_prop_ids in
+          let r_props = Summary.prop_ids summary in
           let shares =
             match current with
             | [] -> not (prop_ids_empty r_props)
@@ -5276,24 +5133,6 @@ let factor_common_declarations (rules : Stylesheet.rule list) :
   in
   preserve_list rules (List.rev (group [] [] [||] items))
 
-(* Priority search queue keyed by pool node (stable id), ordered so the
-   highest-savings factoring is the minimum and thus pops first; ties break by
-   earlier id to keep the left-to-right preference of the original list pass. *)
-module Factor_queue =
-  Psq.Make
-    (struct
-      type t = Rule_pool.node
-
-      let compare a b = Int.compare (Rule_pool.id a) (Rule_pool.id b)
-    end)
-    (struct
-      type t = int * int
-
-      let compare (s1, i1) (s2, i2) =
-        let c = Int.compare s2 s1 in
-        if c <> 0 then c else Int.compare i1 i2
-    end)
-
 (* One pass of gap-factoring: hoist a declaration shared across rules with
    non-conflicting selectors, even across intervening rules, when cascade-safe
    and smaller. Scheduling is best-first (the greedy weight order of SatCSS,
@@ -5306,7 +5145,7 @@ module Factor_queue =
 let rec factor_window node k acc =
   if k <= 0 then List.rev acc
   else
-    match Rule_pool.next node with
+    match Pool.next node with
     | None -> List.rev acc
     | Some m -> factor_window m (k - 1) (m :: acc)
 
@@ -5326,7 +5165,7 @@ let build_shared_decl_predicate pool =
   let counts : (int, int) Hashtbl.t = Hashtbl.create 1024 in
   List.iter
     (fun n ->
-      let r = Rule_pool.rule n in
+      let r = Pool.rule n in
       let seen = Hashtbl.create 8 in
       List.iter
         (fun d -> Hashtbl.replace seen (Declaration.hash d) ())
@@ -5336,7 +5175,7 @@ let build_shared_decl_predicate pool =
           let c = try Hashtbl.find counts h with Not_found -> 0 in
           Hashtbl.replace counts h (c + 1))
         seen)
-    (Rule_pool.nodes pool);
+    (Pool.nodes pool);
   fun d ->
     match Hashtbl.find_opt counts (Declaration.hash d) with
     | Some c -> c > 1
@@ -5346,7 +5185,7 @@ let build_shared_decl_predicate pool =
    rules, the nodes the factoring consumes, and the bytes it saves. *)
 let factor_anchor_score ~shared_decl n =
   counters.anchors_scored <- counters.anchors_scored + 1;
-  let r = Rule_pool.rule n in
+  let r = Pool.rule n in
   if not (rule_factor_eligible r) then (None : _ option)
   else if
     (* Cheap pre-filter: factor_anchor needs at least one of this anchor's
@@ -5360,7 +5199,7 @@ let factor_anchor_score ~shared_decl n =
     let win_summaries =
       List.map
         (fun n ->
-          let rule = Rule_pool.rule n in
+          let rule = Pool.rule n in
           (rule, summarize_factor_rule rule))
         win_nodes
     in
@@ -5371,123 +5210,21 @@ let factor_anchor_score ~shared_decl n =
         let consumed =
           factor_take (List.length win_summaries - List.length tail) win_nodes
         in
-        Some (replacement, consumed, savings)
-
-type anchor_candidate = {
-  anchor : Rule_pool.node;
-  replacement : Stylesheet.rule list;
-  consumed : Rule_pool.node list;
-  saving : int;
-}
-
-type anchor_scheduler = {
-  pool : Rule_pool.t;
-  shared_decl : declaration -> bool;
-  frontier : Factor_queue.t ref;
-  candidates : (int, anchor_candidate) Hashtbl.t;
-  applied : int ref;
-}
-
-let anchor_candidate_live candidate =
-  let rec loop previous = function
-    | [] -> true
-    | node :: rest -> (
-        match Rule_pool.next previous with
-        | Some next when Rule_pool.is_live node && next == node ->
-            loop node rest
-        | _ -> false)
-  in
-  Rule_pool.is_live candidate.anchor && loop candidate.anchor candidate.consumed
-
-let anchor_candidate ~shared_decl anchor =
-  match factor_anchor_score ~shared_decl anchor with
-  | Some (replacement, consumed, savings) when savings > 0 ->
-      Some { anchor; replacement; consumed; saving = savings }
-  | _ -> None
-
-let forget_anchor_candidate candidates candidate =
-  Hashtbl.remove candidates (Rule_pool.id candidate.anchor);
-  List.iter
-    (fun node -> Hashtbl.remove candidates (Rule_pool.id node))
-    candidate.consumed
-
-let enqueue_anchor_candidate scheduler n =
-  if Rule_pool.is_live n then
-    match anchor_candidate ~shared_decl:scheduler.shared_decl n with
-    | Some candidate ->
-        Hashtbl.replace scheduler.candidates (Rule_pool.id n) candidate;
-        scheduler.frontier :=
-          Factor_queue.add n
-            (candidate.saving, Rule_pool.id n)
-            !(scheduler.frontier)
-    | None ->
-        Hashtbl.remove scheduler.candidates (Rule_pool.id n);
-        scheduler.frontier := Factor_queue.remove n !(scheduler.frontier)
-
-let apply_anchor_candidate scheduler candidate =
-  incr scheduler.applied;
-  counters.factorings_applied <- counters.factorings_applied + 1;
-  record_factor_saving candidate.saving;
-  let added =
-    List.map
-      (fun r -> Rule_pool.insert_before scheduler.pool candidate.anchor r)
-      candidate.replacement
-  in
-  forget_anchor_candidate scheduler.candidates candidate;
-  Rule_pool.remove scheduler.pool candidate.anchor;
-  List.iter (Rule_pool.remove scheduler.pool) candidate.consumed;
-  added
-
-let rescore_anchor_candidate scheduler n =
-  match anchor_candidate ~shared_decl:scheduler.shared_decl n with
-  | Some candidate ->
-      Hashtbl.replace scheduler.candidates (Rule_pool.id n) candidate;
-      scheduler.frontier :=
-        Factor_queue.add n
-          (candidate.saving, Rule_pool.id n)
-          !(scheduler.frontier)
-  | None -> Hashtbl.remove scheduler.candidates (Rule_pool.id n)
-
-let drain_anchor_scheduler scheduler =
-  let rec loop () =
-    match Factor_queue.pop !(scheduler.frontier) with
-    | None -> ()
-    | Some ((n, (stored, _)), rest) -> (
-        scheduler.frontier := rest;
-        if not (Rule_pool.is_live n) then (
-          Hashtbl.remove scheduler.candidates (Rule_pool.id n);
-          loop ())
-        else
-          match Hashtbl.find_opt scheduler.candidates (Rule_pool.id n) with
-          | Some candidate
-            when candidate.saving = stored && anchor_candidate_live candidate ->
-              let added = apply_anchor_candidate scheduler candidate in
-              List.iter (enqueue_anchor_candidate scheduler) added;
-              loop ()
-          | _ ->
-              rescore_anchor_candidate scheduler n;
-              loop ())
-  in
-  loop ()
-
-let anchor_scheduler pool shared_decl =
-  {
-    pool;
-    shared_decl;
-    frontier = ref Factor_queue.empty;
-    candidates = Hashtbl.create (Rule_pool.length pool);
-    applied = ref 0;
-  }
+        Some (Loop.action ~replacement ~consumed ~saving:savings)
 
 let factor_anchor_gaps (rules : Stylesheet.rule list) : Stylesheet.rule list =
-  let pool = Rule_pool.of_rules rules in
-  let scheduler = anchor_scheduler pool (build_shared_decl_predicate pool) in
-  List.iter (enqueue_anchor_candidate scheduler) (Rule_pool.nodes pool);
-  drain_anchor_scheduler scheduler;
-  if !(scheduler.applied) > 0 then
-    Log.debug (fun m ->
-        m "factor_anchor_gaps: applied %d factorings" !(scheduler.applied));
-  preserve_list rules (Rule_pool.to_rules pool)
+  let pool = Pool.of_rules rules in
+  let shared_decl = build_shared_decl_predicate pool in
+  let applied =
+    Loop.run
+      ~on_apply:(fun saving ->
+        counters.factorings_applied <- counters.factorings_applied + 1;
+        record_factor_saving saving)
+      (Loop.v pool (factor_anchor_score ~shared_decl))
+  in
+  if applied > 0 then
+    Log.debug (fun m -> m "factor_anchor_gaps: applied %d factorings" applied);
+  preserve_list rules (Pool.to_rules pool)
 
 (** {1 Statement Optimization} *)
 

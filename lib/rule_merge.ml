@@ -1,4 +1,4 @@
-module P = Rule_pool
+module P = Pool
 
 let same_declarations (a : Stylesheet.rule) (b : Stylesheet.rule) =
   a.declarations = b.declarations

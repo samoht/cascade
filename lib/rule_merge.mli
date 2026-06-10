@@ -1,4 +1,4 @@
-(** Incremental, semantics-preserving rule merging on a {!Rule_pool}.
+(** Incremental, semantics-preserving rule merging on a {!Pool}.
 
     The eventual replacement for the optimizer's iterate-to-fixpoint factoring,
     following the greedy strategy of Hague, Lin & Hong ("CSS Minification via

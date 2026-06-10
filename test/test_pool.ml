@@ -1,7 +1,7 @@
-(** Rule_pool module tests. *)
+(** Pool module tests. *)
 
 open Cascade
-module P = Rule_pool
+module P = Pool
 
 let mk name : Stylesheet.rule =
   {
@@ -70,7 +70,7 @@ let set_rule () =
   | _ -> Alcotest.fail "expected 1 node"
 
 let suite =
-  ( "rule_pool",
+  ( "pool",
     [
       Alcotest.test_case "roundtrip" `Quick roundtrip;
       Alcotest.test_case "nodes in order" `Quick nodes_in_order;
