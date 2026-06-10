@@ -58,24 +58,30 @@ let is_non_ascii_ident_cp cp =
 let is_name_start_ascii c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
 
-(* [is_name_start r] checks whether the code point at the reader's current
-   position is a valid ident-start. For bytes [< 0x80] we answer ASCII directly;
-   otherwise decode the UTF-8 sequence and check the spec range list. Returns
-   [false] on malformed UTF-8. *)
+(* [is_name_start_at r offset] checks whether the code point at offset is a
+   valid ident-start. ASCII bytes answer directly without UTF-8 decoding; only
+   bytes [>= 0x80] fall back to [peek_utf8_at]. [peek_byte_at] returns [-1] at
+   end of input. *)
 let is_name_start_at r offset =
-  match Reader.peek_utf8_at r offset with
-  | None -> false
-  | Some (cp, _) when cp < 0x80 -> is_name_start_ascii (Char.chr cp)
-  | Some (cp, _) -> is_non_ascii_ident_cp cp
+  let b = Reader.peek_byte_at r offset in
+  if b < 0 then false
+  else if b < 0x80 then is_name_start_ascii (Char.unsafe_chr b)
+  else
+    match Reader.peek_utf8_at r offset with
+    | None -> false
+    | Some (cp, _) -> is_non_ascii_ident_cp cp
 
 (* [is_name_at r offset] is ident-start or digit or [-]. *)
 let is_name_at r offset =
-  match Reader.peek_utf8_at r offset with
-  | None -> false
-  | Some (cp, _) when cp < 0x80 ->
-      let c = Char.chr cp in
-      is_name_start_ascii c || is_digit c || c = '-'
-  | Some (cp, _) -> is_non_ascii_ident_cp cp
+  let b = Reader.peek_byte_at r offset in
+  if b < 0 then false
+  else if b < 0x80 then
+    let c = Char.unsafe_chr b in
+    is_name_start_ascii c || is_digit c || c = '-'
+  else
+    match Reader.peek_utf8_at r offset with
+    | None -> false
+    | Some (cp, _) -> is_non_ascii_ident_cp cp
 
 (* Legacy byte-level helpers kept for the hot paths where the caller has already
    materialised the byte. For anything ASCII they match spec; for bytes [>=
