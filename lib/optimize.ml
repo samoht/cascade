@@ -314,12 +314,14 @@ and process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest =
         rest
   | `True ->
       let trailing, acc = pop_trailing_rules acc in
-      (* Three segments to process back-to-back without first materialising
-         their concatenation: [trailing] (rules popped from acc),
-         [optimized_block] (the @supports body), and [rest]. *)
-      process_statements ~ctx ~enforce_spec
-        ~pending:(optimized_block :: rest :: pending)
-        acc trailing
+      (* [trailing], [optimized_block], and [rest] must be visible to
+         [process_statements] as a SINGLE list so [collect_rules] can pull
+         adjacent rules across the segment boundary into one rule run - that
+         adjacency-aware merge is exactly the point of unwrapping a
+         baseline-true @supports. Use tail-recursive [List.concat] so a long
+         [optimized_block] doesn't stack-overflow. *)
+      process_statements ~ctx ~enforce_spec ~pending acc
+        (List.concat [ trailing; optimized_block; rest ])
   | `False -> process_statements ~ctx ~enforce_spec ~pending acc rest
   | `Cond cond' ->
       process_statements ~ctx ~enforce_spec ~pending

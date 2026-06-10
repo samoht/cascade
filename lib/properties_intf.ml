@@ -4447,9 +4447,47 @@ type 'a property =
   | Webkit_appearance : webkit_appearance property
   | Webkit_transform : transform list property
   | Webkit_transition : transition list property
+  | Webkit_transition_delay : duration property
+  | Webkit_transition_duration : duration property
+  | Webkit_transition_property : transition_property property
+  | Webkit_transition_timing_function : timing_function property
   | Webkit_animation : animation list property
+  | Webkit_animation_delay : duration property
+  | Webkit_animation_duration : duration property
+  | Webkit_animation_direction : animation_direction property
+  | Webkit_animation_iteration_count : animation_iteration_count property
+  | Webkit_animation_name : animation_name property
+  | Webkit_animation_timing_function : timing_function property
+  | Webkit_animation_fill_mode : animation_fill_mode property
+  | Webkit_animation_play_state : animation_play_state property
+  | Webkit_flex_direction : flex_direction property
+  | Webkit_flex_wrap : flex_wrap property
+  | Webkit_flex_flow : flex_flow property
+  | Webkit_justify_content : justify_content property
+  | Webkit_align_items : align_items property
+  | Webkit_align_content : align_content property
+  | Webkit_align_self : align_self property
+  | Webkit_border_radius : border_radius property
+  | Webkit_box_shadow : shadow property
+  | Webkit_background_size : background_size property
   | Webkit_filter : filter property
   | Moz_appearance : appearance property
+  | Moz_animation : animation list property
+  | Moz_animation_delay : duration property
+  | Moz_animation_duration : duration property
+  | Moz_animation_direction : animation_direction property
+  | Moz_animation_iteration_count : animation_iteration_count property
+  | Moz_animation_name : animation_name property
+  | Moz_animation_timing_function : timing_function property
+  | Moz_animation_fill_mode : animation_fill_mode property
+  | Moz_animation_play_state : animation_play_state property
+  | Moz_transition : transition list property
+  | Moz_transition_delay : duration property
+  | Moz_transition_duration : duration property
+  | Moz_transition_property : transition_property property
+  | Moz_transition_timing_function : timing_function property
+  | Moz_border_radius : border_radius property
+  | Moz_box_shadow : shadow property
   | Ms_filter : filter property
   | O_transition : transition list property
   | Container_type : container_type property

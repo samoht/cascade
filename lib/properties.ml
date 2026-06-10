@@ -7325,9 +7325,53 @@ let pp_property : type a. a property Pp.t =
   | Caret_color -> Pp.string ctx "caret-color"
   | Webkit_transform -> Pp.string ctx "-webkit-transform"
   | Webkit_transition -> Pp.string ctx "-webkit-transition"
+  | Webkit_transition_delay -> Pp.string ctx "-webkit-transition-delay"
+  | Webkit_transition_duration -> Pp.string ctx "-webkit-transition-duration"
+  | Webkit_transition_property -> Pp.string ctx "-webkit-transition-property"
+  | Webkit_transition_timing_function ->
+      Pp.string ctx "-webkit-transition-timing-function"
   | Webkit_animation -> Pp.string ctx "-webkit-animation"
+  | Webkit_animation_delay -> Pp.string ctx "-webkit-animation-delay"
+  | Webkit_animation_duration -> Pp.string ctx "-webkit-animation-duration"
+  | Webkit_animation_direction -> Pp.string ctx "-webkit-animation-direction"
+  | Webkit_animation_iteration_count ->
+      Pp.string ctx "-webkit-animation-iteration-count"
+  | Webkit_animation_name -> Pp.string ctx "-webkit-animation-name"
+  | Webkit_animation_timing_function ->
+      Pp.string ctx "-webkit-animation-timing-function"
+  | Webkit_animation_fill_mode -> Pp.string ctx "-webkit-animation-fill-mode"
+  | Webkit_animation_play_state -> Pp.string ctx "-webkit-animation-play-state"
+  | Webkit_flex_direction -> Pp.string ctx "-webkit-flex-direction"
+  | Webkit_flex_wrap -> Pp.string ctx "-webkit-flex-wrap"
+  | Webkit_flex_flow -> Pp.string ctx "-webkit-flex-flow"
+  | Webkit_justify_content -> Pp.string ctx "-webkit-justify-content"
+  | Webkit_align_items -> Pp.string ctx "-webkit-align-items"
+  | Webkit_align_content -> Pp.string ctx "-webkit-align-content"
+  | Webkit_align_self -> Pp.string ctx "-webkit-align-self"
+  | Webkit_border_radius -> Pp.string ctx "-webkit-border-radius"
+  | Webkit_box_shadow -> Pp.string ctx "-webkit-box-shadow"
+  | Webkit_background_size -> Pp.string ctx "-webkit-background-size"
   | Webkit_filter -> Pp.string ctx "-webkit-filter"
   | Moz_appearance -> Pp.string ctx "-moz-appearance"
+  | Moz_animation -> Pp.string ctx "-moz-animation"
+  | Moz_animation_delay -> Pp.string ctx "-moz-animation-delay"
+  | Moz_animation_duration -> Pp.string ctx "-moz-animation-duration"
+  | Moz_animation_direction -> Pp.string ctx "-moz-animation-direction"
+  | Moz_animation_iteration_count ->
+      Pp.string ctx "-moz-animation-iteration-count"
+  | Moz_animation_name -> Pp.string ctx "-moz-animation-name"
+  | Moz_animation_timing_function ->
+      Pp.string ctx "-moz-animation-timing-function"
+  | Moz_animation_fill_mode -> Pp.string ctx "-moz-animation-fill-mode"
+  | Moz_animation_play_state -> Pp.string ctx "-moz-animation-play-state"
+  | Moz_transition -> Pp.string ctx "-moz-transition"
+  | Moz_transition_delay -> Pp.string ctx "-moz-transition-delay"
+  | Moz_transition_duration -> Pp.string ctx "-moz-transition-duration"
+  | Moz_transition_property -> Pp.string ctx "-moz-transition-property"
+  | Moz_transition_timing_function ->
+      Pp.string ctx "-moz-transition-timing-function"
+  | Moz_border_radius -> Pp.string ctx "-moz-border-radius"
+  | Moz_box_shadow -> Pp.string ctx "-moz-box-shadow"
   | Ms_filter -> Pp.string ctx "-ms-filter"
   | O_transition -> Pp.string ctx "-o-transition"
 
@@ -18932,8 +18976,47 @@ let read_any_property t =
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
   | "-webkit-transition" -> Prop Webkit_transition
+  | "-webkit-transition-delay" -> Prop Webkit_transition_delay
+  | "-webkit-transition-duration" -> Prop Webkit_transition_duration
+  | "-webkit-transition-property" -> Prop Webkit_transition_property
+  | "-webkit-transition-timing-function" ->
+      Prop Webkit_transition_timing_function
   | "-webkit-animation" -> Prop Webkit_animation
+  | "-webkit-animation-delay" -> Prop Webkit_animation_delay
+  | "-webkit-animation-duration" -> Prop Webkit_animation_duration
+  | "-webkit-animation-direction" -> Prop Webkit_animation_direction
+  | "-webkit-animation-iteration-count" -> Prop Webkit_animation_iteration_count
+  | "-webkit-animation-name" -> Prop Webkit_animation_name
+  | "-webkit-animation-timing-function" -> Prop Webkit_animation_timing_function
+  | "-webkit-animation-fill-mode" -> Prop Webkit_animation_fill_mode
+  | "-webkit-animation-play-state" -> Prop Webkit_animation_play_state
+  | "-webkit-flex-direction" -> Prop Webkit_flex_direction
+  | "-webkit-flex-wrap" -> Prop Webkit_flex_wrap
+  | "-webkit-flex-flow" -> Prop Webkit_flex_flow
+  | "-webkit-justify-content" -> Prop Webkit_justify_content
+  | "-webkit-align-items" -> Prop Webkit_align_items
+  | "-webkit-align-content" -> Prop Webkit_align_content
+  | "-webkit-align-self" -> Prop Webkit_align_self
+  | "-webkit-border-radius" -> Prop Webkit_border_radius
+  | "-webkit-box-shadow" -> Prop Webkit_box_shadow
+  | "-webkit-background-size" -> Prop Webkit_background_size
   | "-webkit-filter" -> Prop Webkit_filter
+  | "-moz-animation" -> Prop Moz_animation
+  | "-moz-animation-delay" -> Prop Moz_animation_delay
+  | "-moz-animation-duration" -> Prop Moz_animation_duration
+  | "-moz-animation-direction" -> Prop Moz_animation_direction
+  | "-moz-animation-iteration-count" -> Prop Moz_animation_iteration_count
+  | "-moz-animation-name" -> Prop Moz_animation_name
+  | "-moz-animation-timing-function" -> Prop Moz_animation_timing_function
+  | "-moz-animation-fill-mode" -> Prop Moz_animation_fill_mode
+  | "-moz-animation-play-state" -> Prop Moz_animation_play_state
+  | "-moz-transition" -> Prop Moz_transition
+  | "-moz-transition-delay" -> Prop Moz_transition_delay
+  | "-moz-transition-duration" -> Prop Moz_transition_duration
+  | "-moz-transition-property" -> Prop Moz_transition_property
+  | "-moz-transition-timing-function" -> Prop Moz_transition_timing_function
+  | "-moz-border-radius" -> Prop Moz_border_radius
+  | "-moz-box-shadow" -> Prop Moz_box_shadow
   | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
   | "-webkit-user-select" -> Prop Webkit_user_select
@@ -20398,6 +20481,10 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   match property with
   | Transform -> map_preserve normalize_transform value
   | Webkit_transform -> map_preserve normalize_transform value
+  | Webkit_border_radius -> normalize_border_radius value
+  | Moz_border_radius -> normalize_border_radius value
+  | Webkit_box_shadow -> normalize_shadow ~lossless value
+  | Moz_box_shadow -> normalize_shadow ~lossless value
   | Rotate -> normalize_rotate value
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
@@ -21114,9 +21201,47 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_size_adjust -> pp pp_text_size_adjust
   | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
   | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Webkit_transition_delay -> pp pp_duration
+  | Webkit_transition_duration -> pp pp_duration
+  | Webkit_transition_property -> pp pp_transition_property
+  | Webkit_transition_timing_function -> pp pp_timing_function
   | Webkit_animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
+  | Webkit_animation_delay -> pp pp_duration
+  | Webkit_animation_duration -> pp pp_duration
+  | Webkit_animation_direction -> pp pp_animation_direction
+  | Webkit_animation_iteration_count -> pp pp_animation_iteration_count
+  | Webkit_animation_name -> pp pp_animation_name
+  | Webkit_animation_timing_function -> pp pp_timing_function
+  | Webkit_animation_fill_mode -> pp pp_animation_fill_mode
+  | Webkit_animation_play_state -> pp pp_animation_play_state
+  | Webkit_flex_direction -> pp pp_flex_direction
+  | Webkit_flex_wrap -> pp pp_flex_wrap
+  | Webkit_flex_flow -> pp pp_flex_flow
+  | Webkit_justify_content -> pp pp_justify_content
+  | Webkit_align_items -> pp pp_align_items
+  | Webkit_align_content -> pp pp_align_content
+  | Webkit_align_self -> pp pp_align_self
+  | Webkit_border_radius -> pp pp_border_radius
+  | Webkit_box_shadow -> pp pp_shadow
+  | Webkit_background_size -> pp pp_background_size
   | Webkit_filter -> pp pp_filter
   | Moz_appearance -> pp pp_appearance
+  | Moz_animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
+  | Moz_animation_delay -> pp pp_duration
+  | Moz_animation_duration -> pp pp_duration
+  | Moz_animation_direction -> pp pp_animation_direction
+  | Moz_animation_iteration_count -> pp pp_animation_iteration_count
+  | Moz_animation_name -> pp pp_animation_name
+  | Moz_animation_timing_function -> pp pp_timing_function
+  | Moz_animation_fill_mode -> pp pp_animation_fill_mode
+  | Moz_animation_play_state -> pp pp_animation_play_state
+  | Moz_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Moz_transition_delay -> pp pp_duration
+  | Moz_transition_duration -> pp pp_duration
+  | Moz_transition_property -> pp pp_transition_property
+  | Moz_transition_timing_function -> pp pp_timing_function
+  | Moz_border_radius -> pp pp_border_radius
+  | Moz_box_shadow -> pp pp_shadow
   | Moz_orient -> pp pp_moz_orient
   | Ms_filter -> pp pp_filter
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
@@ -21267,8 +21392,16 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Rotate -> Some Rotate
   | Animation_duration -> Some Duration
   | Animation_delay -> Some Duration
+  | Webkit_animation_duration -> Some Duration
+  | Webkit_animation_delay -> Some Duration
+  | Moz_animation_duration -> Some Duration
+  | Moz_animation_delay -> Some Duration
   | Transition_duration -> Some Duration
   | Transition_delay -> Some Duration
+  | Webkit_transition_duration -> Some Duration
+  | Webkit_transition_delay -> Some Duration
+  | Moz_transition_duration -> Some Duration
+  | Moz_transition_delay -> Some Duration
   | Display -> Some Display
   | Position -> Some Position
   | Visibility -> Some Visibility
@@ -21280,8 +21413,10 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_transform -> Some Transform
   | Animation -> Some (Animation : animation list property_value_kind)
   | Webkit_animation -> Some (Animation : animation list property_value_kind)
+  | Moz_animation -> Some (Animation : animation list property_value_kind)
   | Transition -> Some (Transition : transition list property_value_kind)
   | Webkit_transition -> Some (Transition : transition list property_value_kind)
+  | Moz_transition -> Some (Transition : transition list property_value_kind)
   | O_transition -> Some (Transition : transition list property_value_kind)
   | Filter -> Some Filter
   | Backdrop_filter -> Some Filter
@@ -21289,10 +21424,16 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_filter -> Some Filter
   | Ms_filter -> Some Filter
   | Box_shadow -> Some Shadow
+  | Webkit_box_shadow -> Some Shadow
+  | Moz_box_shadow -> Some Shadow
   | Border_radius -> Some Border_radius
+  | Webkit_border_radius -> Some Border_radius
+  | Moz_border_radius -> Some Border_radius
   | Offset_distance -> Some Length_percentage
   | Background_color -> Some Color
   | Animation_name -> Some Animation_name
+  | Webkit_animation_name -> Some Animation_name
+  | Moz_animation_name -> Some Animation_name
   | Color -> Some Color
   | Border_color -> Some Colors
   | Text_decoration_color -> Some Color
