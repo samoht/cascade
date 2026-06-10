@@ -353,14 +353,13 @@ let exponent_continues_number r =
   | _ -> false
 
 let consume_exponent r buf is_int =
-  match Reader.peek r with
-  | Some c when exponent_continues_number r ->
-      Buffer.add_char buf c;
-      Reader.skip r;
-      is_int := false;
-      consume_number_sign r buf;
-      take_number_digits r buf
-  | _ -> ()
+  let b = Reader.peek_byte r in
+  if b >= 0 && exponent_continues_number r then (
+    Buffer.add_char buf (Char.unsafe_chr b);
+    Reader.skip r;
+    is_int := false;
+    consume_number_sign r buf;
+    take_number_digits r buf)
 
 (* 4.3.14 Consume a number. *)
 let consume_number r =
@@ -381,12 +380,10 @@ let consume_numeric_token r =
   if would_start_ident_sequence r then
     let unit_ = consume_ident_sequence r in
     Dimension { number = n; unit_ }
-  else
-    match Reader.peek r with
-    | Some '%' ->
-        Reader.skip r;
-        Percentage n
-    | _ -> Number_tok n
+  else if Reader.peek_byte r = Char.code '%' then (
+    Reader.skip r;
+    Percentage n)
+  else Number_tok n
 
 (* 4.3.6 Consume the remnants of a bad url. *)
 let consume_remnants_of_bad_url r =
@@ -538,7 +535,7 @@ let consume_unicode_range_token r =
 let consume_ident_like_token ?(force_url_function = false) r =
   let name = consume_ident_sequence r in
   let lower = String.lowercase_ascii name in
-  if lower = "url" && Reader.peek r = Some '(' then (
+  if lower = "url" && Reader.peek_byte r = Char.code '(' then (
     Reader.skip r;
     (* While the next two code points are whitespace, consume one. *)
     let rec skip_ws_keep_one () =
@@ -559,7 +556,7 @@ let consume_ident_like_token ?(force_url_function = false) r =
     in
     if force_url_function || is_function_url then Function name
     else consume_url_token r)
-  else if Reader.peek r = Some '(' then (
+  else if Reader.peek_byte r = Char.code '(' then (
     Reader.skip r;
     Function name)
   else Ident name
