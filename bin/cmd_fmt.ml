@@ -73,6 +73,22 @@ let report_profile () =
   print_pass_profile entries;
   print_factor_profile_footer ()
 
+let resolve_inline_imports ~input_path stylesheet =
+  if input_path = "-" then begin
+    Fmt.epr
+      "Error: --inline-imports requires a file path (cannot resolve relative \
+       URLs from stdin)@.";
+    exit 1
+  end
+  else Cli_inline_imports.run ~base_url:input_path stylesheet
+
+let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
+  let buf = Buffer.create 4096 in
+  Css.to_buffer buf ~minify ~lossless ~enforce_spec stylesheet;
+  let len = Buffer.length buf in
+  if len > 0 && Buffer.nth buf (len - 1) <> '\n' then Buffer.add_char buf '\n';
+  Buffer.output_buffer stdout buf
+
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
     ~memtrace_path ~profile =
@@ -80,29 +96,20 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
-      if inline_imports_flag then
-        if input_path = "-" then begin
-          Fmt.epr
-            "Error: --inline-imports requires a file path (cannot resolve \
-             relative URLs from stdin)@.";
-          exit 1
-        end
-        else Cli_inline_imports.run ~base_url:input_path stylesheet
+      if inline_imports_flag then resolve_inline_imports ~input_path stylesheet
       else stylesheet
     in
     let stylesheet =
       if inline_vars_flag then Cli_inline_vars.run ~keep_vars stylesheet
       else stylesheet
     in
-    (* Parse -> optional inline/resolve -> optimize with scope -> serialise. *)
     let stylesheet =
       if minify then
         let () = Cascade.Stats.set_profile profile in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec stylesheet
       else stylesheet
     in
-    let output = Css.to_string ~minify ~lossless ~enforce_spec stylesheet in
-    Cli_io.print_output output;
+    emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
     if profile then report_profile ()
   with
   | Sys_error msg ->

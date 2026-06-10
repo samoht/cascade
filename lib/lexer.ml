@@ -642,6 +642,27 @@ let consume_at_start r =
   else Delim "@"
 
 (* 4.3.1 Consume a token. *)
+(* Multi-byte lead or ASCII name-start: either consume a full ident-like token
+   when the code point really starts an ident, or emit a single-code-point
+   [Delim] (CSS Syntax section 4.3.1) - the UTF-8 byte sequence is consumed
+   atomically so the delim token carries the whole code point. *)
+let consume_name_start_or_delim ~force_url_function r c =
+  if is_name_start_at r 0 then consume_ident_like_token ~force_url_function r
+  else if c >= '\x80' then (
+    match Reader.peek_utf8 r with
+    | Some (_, n) ->
+        let bytes = Reader.peek_string r n in
+        for _ = 1 to n do
+          Reader.skip r
+        done;
+        Delim bytes
+    | None ->
+        Reader.skip r;
+        Delim (String.make 1 c))
+  else (
+    Reader.skip r;
+    Delim (String.make 1 c))
+
 let next_token ?(force_url_function = false) r =
   skip_comment_run r;
   let b = Reader.peek_byte r in
@@ -710,27 +731,7 @@ let next_token ?(force_url_function = false) r =
       | ('U' | 'u') when would_start_unicode_range r ->
           consume_unicode_range_token r
       | c when is_name_start_ascii c || c >= '\x80' ->
-          (* ASCII fast path or a multi-byte lead -- consult [is_name_start_at]
-             which decodes the full UTF-8 code point and checks the spec range
-             list. Non-ident code points fall through to [Delim], where a
-             multi-byte lead consumes the whole UTF-8 sequence so the delim
-             token holds the full code point (CSS Syntax section 4.3.1). *)
-          if is_name_start_at r 0 then
-            consume_ident_like_token ~force_url_function r
-          else if c >= '\x80' then (
-            match Reader.peek_utf8 r with
-            | Some (_, n) ->
-                let bytes = Reader.peek_string r n in
-                for _ = 1 to n do
-                  Reader.skip r
-                done;
-                Delim bytes
-            | None ->
-                Reader.skip r;
-                Delim (String.make 1 c))
-          else (
-            Reader.skip r;
-            Delim (String.make 1 c))
+          consume_name_start_or_delim ~force_url_function r c
       | c ->
           Reader.skip r;
           Delim (String.make 1 c)

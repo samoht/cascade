@@ -26,6 +26,7 @@ let () =
       Test_error.suite;
       Test_sort.suite;
       Test_order_maintenance.suite;
+      Test_common.suite;
       Test_ctx.suite;
       Test_pool.suite;
       Test_loop.suite;
@@ -36,6 +37,7 @@ let () =
       Test_nest.suite;
       Test_size.suite;
       Test_rule.suite;
+      Test_rule_index.suite;
       Test_factor.suite;
       Test_block.suite;
       Test_cover.suite;
