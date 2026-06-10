@@ -216,9 +216,13 @@ let try_typed_call (typed : t -> 'a) (t : t) : ('a, Component.t) result =
 
 (** {1 Token-shape helpers - option variants} *)
 
+(* Inspect the head [Component.Preserved] directly to avoid the [Some hd] option
+   allocation [peek] would do on each call - this is the workhorse for
+   ident/number/percentage/delim_opt etc. *)
 let take_token_if (f : Token.kind -> 'a option) t : 'a option =
-  match peek t with
-  | Some (Component.Preserved tok) -> (
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved tok :: _ -> (
       match f tok.kind with
       | Some _ as r ->
           let _ = next t in
@@ -307,19 +311,24 @@ let ascii_delim = function
 let delim_opt t =
   take_token_if (function Token.Delim s -> ascii_delim s | _ -> None) t
 
+(* Predicate helpers that inspect the head component directly without going
+   through [peek], so they do not allocate a [Some hd] option per call. *)
 let peek_delim t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Delim s; _ }) -> ascii_delim s
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Delim s; _ } :: _ -> ascii_delim s
   | _ -> None
 
 let peek_comma t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Comma; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Comma; _ } :: _ -> true
   | _ -> false
 
 let peek_semicolon t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> true
   | _ -> false
 
 let peek_colon t =
@@ -533,8 +542,9 @@ let bool t =
 (** {1 Delim helpers} *)
 
 let bool_token (k : Token.kind) t =
-  match peek t with
-  | Some (Component.Preserved tok) when tok.kind = k ->
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved tok :: _ when tok.kind = k ->
       let _ = next t in
       true
   | _ -> false

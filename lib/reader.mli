@@ -108,6 +108,19 @@ val with_filename : parse_error -> string -> parse_error
 val peek : t -> char option
 (** [peek t] returns the current character without consuming it. *)
 
+val peek_at : t -> int -> char option
+(** [peek_at t off] returns the character at [position t + off] without
+    consuming it. *)
+
+val peek_byte : t -> int
+(** [peek_byte t] returns the current byte as an [int 0..255], or [-1] at end of
+    input. Non-allocating variant of {!peek}. *)
+
+val peek_byte_at : t -> int -> int
+(** [peek_byte_at t off] returns the byte at [position t + off] as an
+    [int 0..255], or [-1] at end of input. Non-allocating variant of {!peek_at}.
+*)
+
 val peek2 : t -> string
 (** [peek2 t] returns the next two characters without consuming them, or a
     shorter string if at end. *)

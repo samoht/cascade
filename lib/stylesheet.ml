@@ -1305,12 +1305,17 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-(* Pure serialiser. *)
+(* Pure serialiser. A full stylesheet rendering is typically 10-1000 kB, so
+   measure the size with [Pp.size] (no allocation) and presize the buffer to the
+   exact byte count - this skips the geometric resize trail [Pp.to_string] would
+   otherwise pay on its small initial seed. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
-  Pp.to_string ~minify ?indent ?lossless ?enforce_spec
-    (fun ctx () -> pp_stylesheet ctx statements)
-    ()
+  let pp ctx () = pp_stylesheet ctx statements in
+  let size = Pp.size ~minify ?indent ?lossless ?enforce_spec pp () in
+  let buf = Buffer.create size in
+  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ();
+  Buffer.contents buf
 
 let pp = to_string
 
