@@ -614,6 +614,12 @@ val value_has_css_wide_mix : string -> bool
     CSS-wide keyword but contains one mixed with other tokens (CSS Cascade 5
     sec. 7.3 forbids this in a multi-value shorthand). *)
 
+val components_have_css_wide_mix : Component.t list -> bool
+(** [components_have_css_wide_mix cvs] is the same check as
+    {!value_has_css_wide_mix}, but operates on a component list directly so
+    callers that already hold one avoid the round-trip through a string buffer.
+*)
+
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)
 

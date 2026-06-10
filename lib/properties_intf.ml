@@ -4425,6 +4425,11 @@ type 'a property =
   | White_space : white_space property
   | Border : border property
   | Border_block : border property
+  | Border_block_start : border property
+  | Border_block_end : border property
+  | Border_inline : border property
+  | Border_inline_start : border property
+  | Border_inline_end : border property
   | Background : background list property
   | Tab_size : tab_size property
   | Webkit_text_size_adjust : text_size_adjust property

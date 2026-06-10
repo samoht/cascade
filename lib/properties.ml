@@ -231,6 +231,30 @@ let value_has_css_wide_mix value =
       | _ -> false)
     components
 
+(* Components-form equivalent: skip the round-trip through a string buffer used
+   by [value_has_css_wide_mix] when callers already hold the component list. *)
+let components_have_css_wide_mix components =
+  let non_ws =
+    List.filter
+      (function
+        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | _ -> true)
+      components
+  in
+  let lone_css_wide =
+    match non_ws with
+    | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
+        is_css_wide_keyword ident
+    | _ -> false
+  in
+  (not lone_css_wide)
+  && List.exists
+       (function
+         | Component.Preserved { kind = Token.Ident ident; _ } ->
+             is_css_wide_keyword ident
+         | _ -> false)
+       non_ws
+
 let rec read_flex_direction t : flex_direction =
   Cursor.enum_or_var "flex-direction"
     [
@@ -7156,6 +7180,11 @@ let pp_property : type a. a property Pp.t =
   | Border_bottom -> Pp.string ctx "border-bottom"
   | Border_left -> Pp.string ctx "border-left"
   | Border_block -> Pp.string ctx "border-block"
+  | Border_block_start -> Pp.string ctx "border-block-start"
+  | Border_block_end -> Pp.string ctx "border-block-end"
+  | Border_inline -> Pp.string ctx "border-inline"
+  | Border_inline_start -> Pp.string ctx "border-inline-start"
+  | Border_inline_end -> Pp.string ctx "border-inline-end"
   | Transform_origin -> Pp.string ctx "transform-origin"
   | Transform_box -> Pp.string ctx "transform-box"
   | Text_shadow -> Pp.string ctx "text-shadow"
@@ -18675,6 +18704,11 @@ let read_any_property t =
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
   | "border-block" -> Prop Border_block
+  | "border-block-start" -> Prop Border_block_start
+  | "border-block-end" -> Prop Border_block_end
+  | "border-inline" -> Prop Border_inline
+  | "border-inline-start" -> Prop Border_inline_start
+  | "border-inline-end" -> Prop Border_inline_end
   | "border-end-end-radius" -> Prop Border_end_end_radius
   | "border-end-start-radius" -> Prop Border_end_start_radius
   | "border-inline-end-color" -> Prop Border_inline_end_color
@@ -20417,6 +20451,11 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Caret_color -> normalize_color value
   | Border -> normalize_border ~lossless value
   | Border_block -> normalize_border ~lossless value
+  | Border_block_start -> normalize_border ~lossless value
+  | Border_block_end -> normalize_border ~lossless value
+  | Border_inline -> normalize_border ~lossless value
+  | Border_inline_start -> normalize_border ~lossless value
+  | Border_inline_end -> normalize_border ~lossless value
   | Border_top -> normalize_border ~lossless value
   | Border_right -> normalize_border ~lossless value
   | Border_bottom -> normalize_border ~lossless value
@@ -20994,6 +21033,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Float -> pp pp_float_side
   | Border -> pp pp_border
   | Border_block -> pp pp_border
+  | Border_block_start -> pp pp_border
+  | Border_block_end -> pp pp_border
+  | Border_inline -> pp pp_border
+  | Border_inline_start -> pp pp_border
+  | Border_inline_end -> pp pp_border
   | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
   | Text_decoration_thickness -> pp pp_length
   | Text_size_adjust -> pp pp_text_size_adjust

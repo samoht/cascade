@@ -1,16 +1,9 @@
 (** Declaration deduplication and shorthand composition. *)
 
 open Declaration
+open Common
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
-
-let preserve_list before after =
-  if list_same before after then before else after
-
+let preserve_list = List.preserve
 let scope = Ctx.scope
 let registered = Ctx.registered
 let duplicate_buggy_properties decls = decls
@@ -133,6 +126,12 @@ let covers_longhand : type a b.
   | Border_left, Border_left_style -> true
   | Border_left, Border_left_color -> true
   | Border, Border_image -> true
+  (* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
+     flow-relative middle-tier longhands. *)
+  | Border_block, Border_block_start -> true
+  | Border_block, Border_block_end -> true
+  | Border_inline, Border_inline_start -> true
+  | Border_inline, Border_inline_end -> true
   (* CSS Masking 1 sec. 6.1: [mask] resets every mask layer longhand and
      [mask-border]. *)
   | Mask, Mask_image -> true
@@ -194,24 +193,9 @@ let all_preserved_reorder_declaration decl =
   | Declaration { property; _ } -> is_all_preserved_reorder property
   | _ -> false
 
-(* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
-   flow-relative longhands. Cascade does not model those longhands as typed
-   properties (they parse as [Unknown_property]), so the coverage is matched by
-   name. *)
-let logical_shorthand_covers_name covering covered =
-  match covering with
-  | "border-block" ->
-      String.equal covered "border-block-start"
-      || String.equal covered "border-block-end"
-  | "border-inline" ->
-      String.equal covered "border-inline-start"
-      || String.equal covered "border-inline-end"
-  | _ -> false
-
 (* Coverage relation between two declarations. Custom and unknown properties
-   have only generic behavior: cover themselves by exact name and no typed
-   shorthand coverage (logical border shorthands match their longhands by name),
-   and (for custom) exempt from the [all] reset. *)
+   cover themselves by exact name and have no typed shorthand coverage; custom
+   properties are exempt from the [all] reset. *)
 let declaration_covers covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
@@ -224,11 +208,9 @@ let declaration_covers covering covered =
   | _, Declaration { property = Custom_property _; _ } -> false
   | ( Declaration { property = Unknown_property a; _ },
       Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b || logical_shorthand_covers_name a b
-  | Declaration { property = Unknown_property a; _ }, _ ->
-      logical_shorthand_covers_name a (property_name covered)
-  | _, Declaration { property = Unknown_property b; _ } ->
-      logical_shorthand_covers_name (property_name covering) b
+      String.equal a b
+  | Declaration { property = Unknown_property _; _ }, _ -> false
+  | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
       Declaration.same_property covering covered
@@ -2442,13 +2424,13 @@ let covered_by_new_declaration new_decl existing =
   && (not (legacy_color_fallback new_decl existing))
   && not (legacy_runtime_subst_fallback new_decl existing)
 
-let append_all_declaration idx decl kept =
-  let before, after =
-    List.partition
-      (fun (_, old) -> not (all_preserved_reorder_declaration old))
-      kept
+let filter_preserve = List.filter_preserve
+
+let add_all_declaration_rev idx decl kept =
+  let after, before =
+    List.partition (fun (_, old) -> all_preserved_reorder_declaration old) kept
   in
-  before @ [ (idx, decl) ] @ after
+  after @ ((idx, decl) :: before)
 
 let is_all_declaration = function
   | Declaration { property = All; _ } -> true
@@ -2461,21 +2443,21 @@ let is_all_declaration = function
 let deduplicate_step kept (idx, decl) =
   if is_intentionally_duplicated decl then
     let kept =
-      List.filter
+      filter_preserve
         (fun (_, old) -> not (same_property_value_declaration decl old))
         kept
     in
-    kept @ [ (idx, decl) ]
+    (idx, decl) :: kept
   else if (not (is_important decl)) && property_covered_by_important kept decl
   then kept
   else
     let kept =
-      List.filter
+      filter_preserve
         (fun (_, old) -> not (covered_by_new_declaration decl old))
         kept
     in
-    if is_all_declaration decl then append_all_declaration idx decl kept
-    else kept @ [ (idx, decl) ]
+    if is_all_declaration decl then add_all_declaration_rev idx decl kept
+    else (idx, decl) :: kept
 
 (* [vendor_alias_redundant vendor twin] is [true] when [vendor] is a
    vendor-prefixed declaration made redundant by its unprefixed [twin] carrying
@@ -2535,7 +2517,7 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   let has_unprefixed_twin (_, decl) =
     List.exists (fun (_, other) -> vendor_alias_redundant decl other) kept
   in
-  List.filter (fun item -> not (has_unprefixed_twin item)) kept
+  filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
 let compose_shorthands ~ctx kept =
   kept
@@ -2557,7 +2539,7 @@ let compose_shorthands ~ctx kept =
 
 let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
-  let kept = List.fold_left deduplicate_step [] indexed_props in
+  let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =
     let kept = if merge_box then compose_shorthands ~ctx kept else kept in
     let kept = drop_vendor_aliases kept in
