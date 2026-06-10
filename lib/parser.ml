@@ -147,9 +147,25 @@ let escape_ident_emit_item buf starts () i = function
          same ident. Hex-escape each byte so the serialized form round-trips. *)
       String.iter (fun c -> add_hex_escape buf c) bs
 
+(* True when every byte of [s] is in the ASCII ident-continue set and the
+   leading byte is in the ASCII ident-start set. Such idents serialise to
+   themselves byte-for-byte; the buffer + Uutf walk inside [escape_ident] then
+   allocates nothing useful. *)
+let escape_ident_needs_no_escape s n =
+  if n = 0 then true
+  else if not (Syntax.is_ascii_ident_start s.[0]) then false
+  else
+    let rec loop i =
+      if i >= n then true
+      else if Syntax.is_ascii_ident_continue s.[i] then loop (i + 1)
+      else false
+    in
+    loop 1
+
 let escape_ident s =
   let n = String.length s in
   if n = 1 && s.[0] = '-' then "\\-"
+  else if escape_ident_needs_no_escape s n then s
   else
     let buf = Buffer.create n in
     let starts = escape_ident_starts s n in
