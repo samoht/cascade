@@ -13,6 +13,7 @@
   container.mli
   context.mli
   css.mli
+  css_graph.mli
   cursor.mli
   declaration.mli
   error.mli
