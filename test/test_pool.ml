@@ -18,6 +18,9 @@ let union_selectors (a : Stylesheet.rule) (b : Stylesheet.rule) :
     Stylesheet.rule =
   { a with selector = Selector.list [ a.selector; b.selector ] }
 
+let rule_name i = Fmt.str "r%03d" i
+let pair_selector i = Fmt.str ".%s,.%s" (rule_name i) (rule_name (i + 1))
+
 let roundtrip () =
   let p = P.of_rules [ mk "a"; mk "b"; mk "c" ] in
   Alcotest.(check (list string)) "order" [ ".a"; ".b"; ".c" ] (names p);
@@ -69,6 +72,61 @@ let set_rule () =
       Alcotest.(check (list string)) "in place" [ ".z" ] (names p)
   | _ -> Alcotest.fail "expected 1 node"
 
+let combine_stale_handles_resolve_to_survivor () =
+  let p = P.of_rules [ mk "a"; mk "b"; mk "c" ] in
+  match P.nodes p with
+  | [ na; nb; nc ] ->
+      let id = P.id na in
+      let survivor = P.combine p na nb union_selectors in
+      Alcotest.(check int) "survivor keeps identity" id (P.id survivor);
+      Alcotest.(check bool) "survivor live" true (P.is_live survivor);
+      Alcotest.(check bool) "merged-away node dead" false (P.is_live nb);
+      Alcotest.(check string)
+        "stale handle resolves merged rule" ".a,.b"
+        (sel (P.rule nb));
+      Alcotest.(check bool)
+        "survivor still before next live rule" true (P.before survivor nc);
+      Alcotest.(check (list string))
+        "only live nodes emitted" [ ".a,.b"; ".c" ] (names p)
+  | _ -> Alcotest.fail "expected 3 nodes"
+
+let insert_before_places_and_links_neighbors () =
+  let p = P.of_rules [ mk "b"; mk "c" ] in
+  match P.nodes p with
+  | [ nb; _ ] ->
+      let na = P.insert_before p nb (mk "a") in
+      Alcotest.(check (list string))
+        "inserted before" [ ".a"; ".b"; ".c" ] (names p);
+      Alcotest.(check bool) "new node before old head" true (P.before na nb);
+      Alcotest.(check (option string))
+        "old head prev" (Some ".a")
+        (Option.map (fun n -> sel (P.rule n)) (P.prev nb));
+      Alcotest.(check (option string))
+        "new node next" (Some ".b")
+        (Option.map (fun n -> sel (P.rule n)) (P.next na))
+  | _ -> Alcotest.fail "expected 2 nodes"
+
+let large_pairwise_combines_keep_order_and_stale_rules () =
+  let count = 300 in
+  let p = P.of_rules (List.init count (fun i -> mk (rule_name i))) in
+  let nodes = Array.of_list (P.nodes p) in
+  for i = 0 to (count / 2) - 1 do
+    ignore (P.combine p nodes.(i * 2) nodes.((i * 2) + 1) union_selectors)
+  done;
+  let expected = List.init (count / 2) (fun i -> pair_selector (i * 2)) in
+  Alcotest.(check int) "pool shrinks to merged pairs" (count / 2) (P.length p);
+  Alcotest.(check (list string)) "merged pair order" expected (names p);
+  for i = 0 to (count / 2) - 1 do
+    let survivor = nodes.(i * 2) in
+    let stale = nodes.((i * 2) + 1) in
+    let expected_rule = pair_selector (i * 2) in
+    Alcotest.(check bool) "survivor remains live" true (P.is_live survivor);
+    Alcotest.(check bool) "stale pair node removed" false (P.is_live stale);
+    Alcotest.(check string)
+      "stale pair rule resolves" expected_rule
+      (sel (P.rule stale))
+  done
+
 let suite =
   ( "pool",
     [
@@ -79,4 +137,10 @@ let suite =
       Alcotest.test_case "insert_after places" `Quick insert_after_places;
       Alcotest.test_case "remove node" `Quick remove_node;
       Alcotest.test_case "set rule" `Quick set_rule;
+      Alcotest.test_case "combine stale handles resolve to survivor" `Quick
+        combine_stale_handles_resolve_to_survivor;
+      Alcotest.test_case "insert_before places and links neighbors" `Quick
+        insert_before_places_and_links_neighbors;
+      Alcotest.test_case "large pairwise combines keep order and stale rules"
+        `Quick large_pairwise_combines_keep_order_and_stale_rules;
     ] )

@@ -27,9 +27,11 @@ let () =
       Test_sort.suite;
       Test_order_maintenance.suite;
       Test_pool.suite;
+      Test_loop.suite;
       Test_weighted_interval.suite;
       Test_index.suite;
       Test_css_graph.suite;
+      Test_summary.suite;
       Test_factor_safe.suite;
       Test_rule_merge.suite;
       Test_pp.suite;
