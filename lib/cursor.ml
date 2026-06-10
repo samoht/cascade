@@ -1,3 +1,5 @@
+open Common
+
 type t = {
   mutable cvs : Component.t list;
   source : string option;
@@ -729,7 +731,8 @@ let any_function_call f t =
 let call name t f =
   match peek t with
   | Some (Component.Func fn)
-    when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
+    when String.lowercase_ascii_preserve fn.node.name
+         = String.lowercase_ascii_preserve name ->
       let _ = next t in
       f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
@@ -750,7 +753,7 @@ let enum ?default label table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
-      match List.assoc_opt (String.lowercase_ascii s) table with
+      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
       | Some v ->
           let _ = next t in
           v
@@ -763,7 +766,7 @@ let enum ?default label table t =
 let enum_calls ?default table t =
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii name) table with
+      match List.assoc_opt (String.lowercase_ascii_preserve name) table with
       | Some f -> f t
       | None -> (
           match default with
@@ -777,7 +780,7 @@ let enum_calls ?default table t =
 let enum_or_var ?default label idents ~var t =
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii name = "var" ->
+    when String.lowercase_ascii_preserve name = "var" ->
       var t
   | _ -> enum ?default label idents t
 
@@ -785,7 +788,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
-      match List.assoc_opt (String.lowercase_ascii s) idents with
+      match List.assoc_opt (String.lowercase_ascii_preserve s) idents with
       | Some v ->
           let _ = next t in
           v
@@ -794,7 +797,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
           | Some f -> f t
           | None -> err t ("unknown " ^ label ^ ": " ^ s)))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii name) calls with
+      match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
       | Some f -> f t
       | None -> (
           match default with
