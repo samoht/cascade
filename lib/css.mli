@@ -7359,6 +7359,17 @@ val pp :
   string
 (** [pp] is {!to_string}. *)
 
+val to_buffer :
+  Buffer.t ->
+  ?minify:bool ->
+  ?indent:int ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  unit
+(** [to_buffer buf stylesheet] appends the serialised stylesheet to [buf]. Same
+    options as {!to_string}. *)
+
 type parse = { stylesheet : t; warnings : Error.t list }
 (** A partially-recovered parse: the {!field-stylesheet} composed of every rule
     that validated successfully, plus the {!field-warnings} accumulated for
@@ -7396,12 +7407,13 @@ val optimize :
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?aggressive:bool ->
   t ->
   t
-(** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec stylesheet]
-    applies CSS optimizations to the stylesheet, including merging consecutive
-    identical selectors and combining rules with identical properties. Preserves
-    CSS cascade semantics.
+(** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
+     stylesheet] applies CSS optimizations to the stylesheet, including merging
+    consecutive identical selectors and combining rules with identical
+    properties. Preserves CSS cascade semantics.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
     Pass [`Stylesheet] when the caller controls the whole author stylesheet
@@ -7415,7 +7427,12 @@ val optimize :
 
     When [enforce_spec] is [false] (default) the optimizer may treat baseline
     feature queries as known facts and elide [@supports] guards satisfied in
-    maintained evergreen browsers; [true] keeps every feature query. *)
+    maintained evergreen browsers; [true] keeps every feature query.
+
+    When [aggressive] is [true] (default [false]) the global factoring fixpoint
+    runs even when the preflight predicts low gain, and the top-level
+    [statements] pipeline iterates until the AST reaches a structural fixpoint
+    (capped at a small bound). *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

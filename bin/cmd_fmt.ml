@@ -90,7 +90,7 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
+    ~enforce_spec ~aggressive ~inline_imports_flag ~inline_vars_flag ~keep_vars
     ~memtrace_path ~profile =
   Cli_io.start_memtrace memtrace_path;
   try
@@ -106,7 +106,8 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     let stylesheet =
       if minify then
         let () = Cascade.Stats.set_profile profile in
-        Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec stylesheet
+        Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
+          stylesheet
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
@@ -178,6 +179,17 @@ let lossless_arg =
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
+let aggressive_arg =
+  let doc =
+    "Force the expensive global-factoring fixpoint to run regardless of the \
+     preflight's byte-gain estimate, and re-run the top-level optimisation \
+     pipeline until the AST reaches a structural fixpoint (capped at a small \
+     iteration bound). Use when output size matters more than wall clock; on \
+     small or already-well-factored inputs the gain is usually negligible. Has \
+     no effect without $(b,--minify)."
+  in
+  Arg.(value & flag & info [ "aggressive" ] ~doc)
+
 let flatten_nesting_arg =
   let doc =
     "Compatibility transform: flatten nested style rules into top-level rules \
@@ -237,6 +249,7 @@ let term =
         flatten_nesting
         lossless
         enforce_spec
+        aggressive
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
@@ -260,14 +273,16 @@ let term =
           Fmt.epr "Warning: --lossless has no effect without --minify@.";
         if enforce_spec && not minify then
           Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
+        if aggressive && not minify then
+          Fmt.epr "Warning: --aggressive has no effect without --minify@.";
         if profile && not minify then
           Fmt.epr "Warning: --profile has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~inline_imports_flag ~inline_vars_flag ~keep_vars
-          ~memtrace_path ~profile)
+          ~enforce_spec ~aggressive ~inline_imports_flag ~inline_vars_flag
+          ~keep_vars ~memtrace_path ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
-    $ enforce_spec_arg $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg
-    $ memtrace_arg $ profile_arg $ Cli_log.term)
+    $ enforce_spec_arg $ aggressive_arg $ inline_imports_arg $ inline_vars_arg
+    $ keep_vars_arg $ memtrace_arg $ profile_arg $ Cli_log.term)
 
 let man =
   [

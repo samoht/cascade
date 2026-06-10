@@ -954,7 +954,7 @@ and sanitize_statement ~lossless (s : statement) : statement List.edit =
   | _ -> List.Keep
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
-    ?(enforce_spec = false) (stylesheet : t) : t =
+    ?(enforce_spec = false) ?(aggressive = false) (stylesheet : t) : t =
   clear_summary_memo ();
   Selector_summary.clear_memo ();
   reset_counters ();
@@ -965,8 +965,22 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   in
   let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
   let ctx =
-    Ctx.v ~lossless ~registered:(registered_foldable stylesheet) scope
+    Ctx.v ~lossless ~aggressive
+      ~registered:(registered_foldable stylesheet)
+      scope
   in
-  stylesheet
-  |> prune_position_try_fallbacks ~scope
-  |> statements_top_level ~ctx ~enforce_spec
+  let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
+  if not aggressive then statements_top_level ~ctx ~enforce_spec stylesheet
+  else
+    (* Re-run the top-level pipeline until the AST stops changing or a small
+       iteration cap fires. Each subsequent pass may shrink the input again
+       because earlier passes (vendor-alias drop, shorthand composition) may
+       have exposed new merge / factoring opportunities the previous pass didn't
+       see. *)
+    let rec loop n stmts =
+      if n <= 0 then stmts
+      else
+        let next = statements_top_level ~ctx ~enforce_spec stmts in
+        if next == stmts then stmts else loop (n - 1) next
+    in
+    loop 5 stylesheet
