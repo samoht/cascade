@@ -2040,50 +2040,39 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
-let take_contiguous_mask (indexed_decls : (int * Declaration.declaration) list)
-    :
-    (int * (Declaration.declaration * mask_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match mask_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
+let take_mask_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match mask_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
+  aux i []
 
-let try_compose_mask ~ctx (indexed_decls : (int * Declaration.declaration) list)
-    :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_mask indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else if scope ctx <> `Stylesheet then Option.None
+let try_compose_mask_at ~ctx idx i =
+  let parts, len = take_mask_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else if scope ctx <> `Stylesheet then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
+      in
+      if layer.image = None then None
       else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
+        let shorthand =
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Mask
+            (Layer layer : Properties.mask)
         in
-        if layer.image = Option.None then Option.None
-        else
-          let merged =
-            Declaration.v
-              ~important:(is_important (List.hd raw_decls))
-              Mask
-              (Layer layer : Properties.mask)
-          in
-          Some ((idx, merged), rest)
+        Some (shorthand, len)
 
 let is_mask_border_decl d =
   match snd d with
@@ -2132,25 +2121,30 @@ let reorder_mask_border_before_mask decls =
   in
   go [] decls
 
-let compose_mask_shorthand ~ctx decls =
-  let rec go ~seen_mask_border acc decls =
-    match try_compose_mask ~ctx decls with
-    | Some (merged, rest) when not seen_mask_border ->
-        go ~seen_mask_border (merged :: acc) rest
-    | _ -> (
-        match decls with
-        | [] -> List.rev acc
-        | ((_, d) as hd) :: rest ->
-            let seen_mask_border =
-              seen_mask_border
-              ||
-              match d with
-              | Declaration { property = Mask_border; _ } -> true
-              | _ -> false
-            in
-            go ~seen_mask_border (hd :: acc) rest)
-  in
-  go ~seen_mask_border:false [] decls
+let is_mask_border_decl_raw d =
+  match d with Declaration { property = Mask_border; _ } -> true | _ -> false
+
+let compose_mask_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  let seen_mask_border = ref false in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else if !seen_mask_border then (
+      let d = Rule_index.decl_at idx !i in
+      if is_mask_border_decl_raw d then ();
+      incr i)
+    else
+      match try_compose_mask_at ~ctx idx !i with
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+      | None ->
+          let d = Rule_index.decl_at idx !i in
+          if is_mask_border_decl_raw d then seen_mask_border := true;
+          incr i
+  done
 
 (* CSS Transitions 1 sec. 2.1: [transition] composes from
    [transition-{property,duration,timing-function,delay}]. Compose when a
@@ -2684,6 +2678,11 @@ let compose_border_whole_step ~ctx kept =
   compose_border_whole_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
+let compose_mask_step ~ctx kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_mask_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
 let compose_shorthands ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_index_group_b |> reorder_border_image_before_border
@@ -2691,8 +2690,7 @@ let compose_shorthands ~ctx kept =
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
-  |> reorder_mask_border_before_mask
-  |> compose_mask_shorthand ~ctx
+  |> reorder_mask_border_before_mask |> compose_mask_step ~ctx
   |> compose_index_group_c
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
