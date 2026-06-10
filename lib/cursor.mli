@@ -116,6 +116,25 @@ val ws : t -> unit
 val peek_raw : t -> Component.t option
 (** [peek_raw t] is the next component without skipping whitespace. *)
 
+type head_shape =
+  [ `Eof
+  | `Semicolon
+  | `Colon
+  | `Comma
+  | `Bang
+  | `Curly_block
+  | `Paren_block
+  | `Square_block
+  | `Ident
+  | `Func
+  | `Other ]
+(** Head-shape classification of the next non-whitespace component, returned as
+    a polymorphic variant constant so it carries no allocation. *)
+
+val peek_head_shape : t -> head_shape
+(** [peek_head_shape t] classifies the next non-whitespace component, without
+    boxing the component in [Some _]. *)
+
 val next_raw : t -> Component.t option
 (** [next_raw t] consumes the next component without skipping whitespace. *)
 

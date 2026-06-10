@@ -134,6 +134,38 @@ let consume_remaining_as_string ?(trim = false) t =
 
 let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
 
+type head_shape =
+  [ `Eof
+  | `Semicolon
+  | `Colon
+  | `Comma
+  | `Bang
+  | `Curly_block
+  | `Paren_block
+  | `Square_block
+  | `Ident
+  | `Func
+  | `Other ]
+
+let peek_head_shape t : head_shape =
+  drop_ws t;
+  match t.cvs with
+  | [] -> `Eof
+  | Component.Preserved { kind; _ } :: _ -> (
+      match kind with
+      | Token.Semicolon -> `Semicolon
+      | Token.Colon -> `Colon
+      | Token.Comma -> `Comma
+      | Token.Delim "!" -> `Bang
+      | Token.Ident _ -> `Ident
+      | _ -> `Other)
+  | Component.Block { node = { opening; _ }; _ } :: _ -> (
+      match opening with
+      | Token.Curly -> `Curly_block
+      | Token.Paren -> `Paren_block
+      | Token.Square -> `Square_block)
+  | Component.Func _ :: _ -> `Func
+
 let next_raw t =
   match t.cvs with
   | [] -> None

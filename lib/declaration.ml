@@ -474,11 +474,9 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
   Cursor.ws t;
-  match Cursor.peek t with
-  | None -> ()
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-  | Some (Component.Preserved { kind = Token.Delim "!"; _ }) -> ()
-  | Some _ ->
+  match Cursor.peek_head_shape t with
+  | `Eof | `Semicolon | `Bang -> ()
+  | _ ->
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
         Cursor.err_invalid t
@@ -1914,19 +1912,17 @@ let read_regular_property_declaration t : declaration =
    non-ident component: if it's [:] this is a declaration, otherwise walk the
    lookahead window for a [{ ... }] block before the next [;]. *)
 let rec scan_for_curly_block t =
-  match Cursor.peek t with
-  | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> false
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> true
-  | Some _ ->
+  match Cursor.peek_head_shape t with
+  | `Eof | `Semicolon -> false
+  | `Curly_block -> true
+  | _ ->
       Cursor.skip t;
       scan_for_curly_block t
 
 let is_nested_rule_inner t =
-  (match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> Cursor.skip t
-  | _ -> ());
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Colon; _ }) -> false
+  (match Cursor.peek_head_shape t with `Ident -> Cursor.skip t | _ -> ());
+  match Cursor.peek_head_shape t with
+  | `Colon -> false
   | _ -> scan_for_curly_block t
 
 let is_nested_rule t = Cursor.lookahead is_nested_rule_inner t
