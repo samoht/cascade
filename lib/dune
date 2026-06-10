@@ -24,6 +24,7 @@
   loc.mli
   media.mli
   optimize.mli
+  factor_safe.mli
   parser.mli
   pp.mli
   properties.mli
