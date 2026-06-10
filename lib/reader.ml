@@ -68,17 +68,20 @@ let pp (ctx : Pp.ctx) (t : t) =
    don't occur in valid UTF-8 so the NUL byte is the practical concern.) -
    Replace U+000D CARRIAGE RETURN, U+000C FORM FEED, and U+000D U+000A CRLF
    pairs with a single U+000A LINE FEED. *)
-let preprocess input =
+let has_bom input =
   let len = String.length input in
+  len >= 3 && input.[0] = '\xEF' && input.[1] = '\xBB' && input.[2] = '\xBF'
+
+let rec needs_preprocess input len i =
+  i < len
+  &&
+  match input.[i] with
+  | '\x00' | '\r' | '\x0C' -> true
+  | _ -> needs_preprocess input len (i + 1)
+
+let copy_preprocessed input len start =
   let buf = Buffer.create len in
   let fffd = "\xEF\xBF\xBD" in
-  (* Skip leading UTF-8 BOM (EF BB BF) if present. *)
-  let start =
-    if
-      len >= 3 && input.[0] = '\xEF' && input.[1] = '\xBB' && input.[2] = '\xBF'
-    then 3
-    else 0
-  in
   let i = ref start in
   while !i < len do
     let c = input.[!i] in
@@ -92,6 +95,13 @@ let preprocess input =
     incr i
   done;
   Buffer.contents buf
+
+let preprocess input =
+  let len = String.length input in
+  let bom = has_bom input in
+  let start = if bom then 3 else 0 in
+  if (not bom) && not (needs_preprocess input len 0) then input
+  else copy_preprocessed input len start
 
 let of_string input =
   let input = preprocess input in
@@ -232,6 +242,17 @@ let with_filename error filename = { error with filename }
 
 let peek t = if t.pos >= t.len then None else Some t.input.[t.pos]
 
+let peek_at t offset =
+  let p = t.pos + offset in
+  if p < 0 || p >= t.len then None else Some (String.unsafe_get t.input p)
+
+let peek_byte t =
+  if t.pos >= t.len then -1 else Char.code (String.unsafe_get t.input t.pos)
+
+let peek_byte_at t offset =
+  let p = t.pos + offset in
+  if p < 0 || p >= t.len then -1 else Char.code (String.unsafe_get t.input p)
+
 let peek2 t =
   let n = min 2 (t.len - t.pos) in
   String.sub t.input t.pos n
@@ -242,7 +263,19 @@ let peek_string t n =
 
 let looking_at t s =
   let slen = String.length s in
-  t.pos + slen <= t.len && String.sub t.input t.pos slen = s
+  if t.pos + slen > t.len then false
+  else
+    (* Iterative byte compare so [looking_at] (called once per [next_token]
+       through [skip_comment_run]) does not allocate a closure for the inner
+       loop. *)
+    let i = ref 0 in
+    let ok = ref true in
+    while !ok && !i < slen do
+      if String.unsafe_get t.input (t.pos + !i) <> String.unsafe_get s !i then
+        ok := false
+      else incr i
+    done;
+    !ok
 
 (** {1 Reading Characters} *)
 
