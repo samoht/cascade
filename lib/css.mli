@@ -7431,8 +7431,8 @@ val optimize :
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
     runs even when the preflight predicts low gain, and the top-level
-    [statements] pipeline iterates until the AST reaches a structural fixpoint
-    (capped at a small bound). *)
+    statement-optimisation pipeline iterates until the AST reaches a structural
+    fixpoint (capped at a small bound). *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

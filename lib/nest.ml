@@ -85,13 +85,9 @@ let shortens before after =
   in
   len [ after ] < len before
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
+open Common
 
-let preserve before after = if list_same before after then before else after
+let preserve = List.preserve
 
 let rules (rules : rule list) =
   let arr : rule array = Array.of_list rules in
