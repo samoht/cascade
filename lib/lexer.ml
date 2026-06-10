@@ -302,31 +302,34 @@ let consume_string_escape r buf =
 (* 4.3.11 Consume a string token. Assumes opening quote already consumed. *)
 let consume_string_token ~quote r =
   let buf = Buffer.create 32 in
+  let quote_byte = Char.code quote in
   let rec loop () =
-    match Reader.peek r with
-    | None -> String { value = Buffer.contents buf; quote; terminated = false }
-    | Some c when c = quote ->
-        Reader.skip r;
-        String { value = Buffer.contents buf; quote; terminated = true }
-    | Some c when is_newline c -> Bad_string (* do not consume the newline *)
-    | Some '\\' ->
+    let b = Reader.peek_byte r in
+    if b = -1 then
+      String { value = Buffer.contents buf; quote; terminated = false }
+    else if b = quote_byte then (
+      Reader.skip r;
+      String { value = Buffer.contents buf; quote; terminated = true })
+    else
+      let c = Char.unsafe_chr b in
+      if is_newline c then Bad_string
+      else if c = '\\' then (
         consume_string_escape r buf;
-        loop ()
-    | Some c ->
+        loop ())
+      else (
         Buffer.add_char buf c;
         Reader.skip r;
-        loop ()
+        loop ())
   in
   loop ()
 
 let take_number_digits r buf =
   let rec loop () =
-    match Reader.peek r with
-    | Some c when is_digit c ->
-        Buffer.add_char buf c;
-        Reader.skip r;
-        loop ()
-    | _ -> ()
+    let b = Reader.peek_byte r in
+    if b >= Char.code '0' && b <= Char.code '9' then (
+      Buffer.add_char buf (Char.unsafe_chr b);
+      Reader.skip r;
+      loop ())
   in
   loop ()
 
