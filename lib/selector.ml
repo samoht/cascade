@@ -1110,10 +1110,21 @@ let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element_selector sel)
 
-let pseudo_class_all_idents () =
-  pseudo_class_base_idents
-  @ pseudo_element_legacy_idents Single
-  @ pseudo_element_modern_idents @ pseudo_vendor_idents
+(* The merged lists are static across the lifetime of the program (every
+   constituent is a [let] binding above); memoise them so the [@] cons-chain
+   only happens once instead of per [:foo] / [::foo] pseudo read. *)
+let pseudo_class_all_idents_lazy =
+  lazy
+    (pseudo_class_base_idents
+    @ pseudo_element_legacy_idents Single
+    @ pseudo_element_modern_idents @ pseudo_vendor_idents)
+
+let pseudo_class_all_idents () = Lazy.force pseudo_class_all_idents_lazy
+
+let pseudo_element_unknown_idents =
+  lazy
+    (pseudo_element_modern_idents @ pseudo_vendor_idents
+    @ pseudo_element_legacy_idents Double)
 
 let read_unknown_pseudo_class_call ~all_idents t =
   match Cursor.peek t with
@@ -1410,31 +1421,34 @@ and read_slotted t = Cursor.call "slotted" t read_slotted_content
 and read_cue t = Cursor.call "cue" t read_cue_content
 and read_cue_region t = Cursor.call "cue-region" t read_cue_region_content
 
-and pseudo_class_calls () =
-  [
-    ("is", read_is);
-    ("-moz-any", read_moz_any);
-    ("-webkit-any", read_webkit_any);
-    ("has", read_has);
-    ("not", read_not);
-    ("where", read_where);
-    ("local", read_local);
-    ("global", read_global);
-    ("nth-child", read_nth_child);
-    ("nth-last-child", read_nth_last_child);
-    ("nth-of-type", read_nth_of_type);
-    ("nth-last-of-type", read_nth_last_of_type);
-    ("nth-col", read_nth_col);
-    ("nth-last-col", read_nth_last_col);
-    ("lang", read_lang);
-    ("dir", read_dir);
-    ("state", read_state);
-    ("host", read_host);
-    ("host-context", read_host_context);
-    ("current", read_current);
-    ("heading", read_heading);
-    ("active-view-transition-type", read_active_view_transition_type);
-  ]
+and pseudo_class_calls_lazy =
+  lazy
+    [
+      ("is", read_is);
+      ("-moz-any", read_moz_any);
+      ("-webkit-any", read_webkit_any);
+      ("has", read_has);
+      ("not", read_not);
+      ("where", read_where);
+      ("local", read_local);
+      ("global", read_global);
+      ("nth-child", read_nth_child);
+      ("nth-last-child", read_nth_last_child);
+      ("nth-of-type", read_nth_of_type);
+      ("nth-last-of-type", read_nth_last_of_type);
+      ("nth-col", read_nth_col);
+      ("nth-last-col", read_nth_last_col);
+      ("lang", read_lang);
+      ("dir", read_dir);
+      ("state", read_state);
+      ("host", read_host);
+      ("host-context", read_host_context);
+      ("current", read_current);
+      ("heading", read_heading);
+      ("active-view-transition-type", read_active_view_transition_type);
+    ]
+
+and pseudo_class_calls () = Lazy.force pseudo_class_calls_lazy
 
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class ?(allow_unknown = false) t =
@@ -1491,8 +1505,7 @@ and read_pseudo_element t =
         | None -> Cursor.err_expected t "pseudo-element"
       in
       Cursor.enum "pseudo-element"
-        (pseudo_element_modern_idents @ pseudo_vendor_idents
-        @ pseudo_element_legacy_idents Double)
+        (Lazy.force pseudo_element_unknown_idents)
         ~default:(fun t ->
           Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
         t)
@@ -2237,22 +2250,10 @@ and pp : t Pp.t =
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
   | Nesting -> Pp.char ctx '&'
 
-(* [List.map] that returns the input list itself when [f] changes no element, so
-   an unchanged subtree keeps its physical identity. *)
-let list_map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
+open Common
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
+let list_map_preserve = List.map_preserve
+let list_same = List.same
 
 (** Recursively map over all selectors in the tree. [f] is applied bottom-up; a
     node whose children are unchanged and for which [f] returns its argument
