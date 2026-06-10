@@ -865,11 +865,6 @@ let compose_pair_via_index idx =
     | None -> incr i
   done
 
-let compose_pair_shorthands decls =
-  let idx = Rule_index.build (List.map snd decls) in
-  compose_pair_via_index idx;
-  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
-
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
 type outline_part = Width | Style | Color
@@ -939,11 +934,6 @@ let compose_outline_via_index idx =
         Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
         i := !i + 3
   done
-
-let compose_outline_shorthand decls =
-  let idx = Rule_index.build (List.map snd decls) in
-  compose_outline_via_index idx;
-  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
@@ -2553,14 +2543,22 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   in
   filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
+(* compose_pair_shorthands and compose_outline_shorthand both build a
+   Rule_index, mutate it, and linearise. When they run back-to-back we can share
+   one index, saving a build + to_list per rule. *)
+let compose_pair_and_outline kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_pair_via_index idx;
+  compose_outline_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
 let compose_shorthands ~ctx kept =
   kept
   |> compose_box_shorthands ~ctx
-  |> compose_pair_shorthands |> compose_outline_shorthand
-  |> reorder_font_resets_before_font |> compose_font_shorthand
-  |> compose_list_style_shorthand |> compose_flex_shorthand
-  |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> reorder_border_image_before_border
+  |> compose_pair_and_outline |> reorder_font_resets_before_font
+  |> compose_font_shorthand |> compose_list_style_shorthand
+  |> compose_flex_shorthand |> compose_text_decoration_shorthand
+  |> compose_border_shorthand |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
