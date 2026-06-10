@@ -1,6 +1,12 @@
 open Declaration
 
-type slot = Live | Absorbed | Shorthand of declaration
+(* A slot is one of: - [Live]: original declaration kept as is. - [Absorbed]:
+   declaration consumed by a composer, emit nothing. - [Shorthand ds]: emit the
+   [ds] sequence in place of the original. The list form supports composers that
+   need to splice multiple declarations at the same slot (e.g. the box-shorthand
+   important-split that prepends a non-important shorthand and re-states an
+   important side). *)
+type slot = Live | Absorbed | Shorthand of declaration list
 
 type t = {
   decls : declaration array;
@@ -38,7 +44,7 @@ let positions (type a) t (p : a Properties.property) =
 let is_absorbed t i =
   match t.slots.(i) with Live | Shorthand _ -> false | Absorbed -> true
 
-let absorb t ~at ~absorbed ~shorthand =
+let splice t ~at ~absorbed ~new_decls =
   List.iter
     (fun i ->
       match t.slots.(i) with
@@ -49,10 +55,13 @@ let absorb t ~at ~absorbed ~shorthand =
   match t.slots.(at) with
   | Absorbed ->
       (* [at] is typically the earliest absorbed position, which was just marked
-         Absorbed above; promote it to carry the synthesized shorthand. *)
-      t.slots.(at) <- Shorthand shorthand
-  | Live -> t.slots.(at) <- Shorthand shorthand
+         Absorbed above; promote it to carry the synthesized shorthand list. *)
+      t.slots.(at) <- Shorthand new_decls
+  | Live -> t.slots.(at) <- Shorthand new_decls
   | Shorthand _ -> failwith "Rule_index.absorb: shorthand slot already taken"
+
+let absorb t ~at ~absorbed ~shorthand =
+  splice t ~at ~absorbed ~new_decls:[ shorthand ]
 
 let to_list t =
   let n = Array.length t.decls in
@@ -63,7 +72,7 @@ let to_list t =
         match t.slots.(i) with
         | Live -> t.decls.(i) :: acc
         | Absorbed -> acc
-        | Shorthand d -> d :: acc
+        | Shorthand ds -> List.fold_right (fun d acc -> d :: acc) ds acc
       in
       loop (i - 1) acc
   in

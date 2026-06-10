@@ -530,90 +530,6 @@ let extract_border_radius_corner :
       Some (Left, value, important)
   | _ -> None
 
-let try_compose_box ~ctx ~extract ~build = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: rest -> (
-      match (extract d1, extract d2, extract d3, extract d4) with
-      | ( Some (s1, v1, imp1),
-          Some (s2, v2, imp2),
-          Some (s3, v3, imp3),
-          Some (s4, v4, imp4) )
-        when imp1 = imp2 && imp2 = imp3 && imp3 = imp4 ->
-          let sides = [ (s1, v1); (s2, v2); (s3, v3); (s4, v4) ] in
-          let distinct =
-            List.length (List.sort_uniq compare (List.map fst sides)) = 4
-          in
-          (* A side with runtime substitution can only fold into the box
-             shorthand when it is a registered ([@property]) [var()]: the
-             shorthand makes the four sides share fate, so an unregistered var
-             that goes invalid at computed-value time would poison all four
-             rather than just its own side. *)
-          let subst_safe (_, v) =
-            match (v : Values.length) with
-            | Var vr -> registered ctx vr.name
-            | _ -> not (Values.length_has_runtime_subst v)
-          in
-          let no_runtime = List.for_all subst_safe sides in
-          if distinct && no_runtime then
-            let find s = List.assoc s sides in
-            let merged =
-              build ~important:imp1 ~top:(find Top) ~right:(find Right)
-                ~bottom:(find Bottom) ~left:(find Left)
-            in
-            Some ((idx, merged), rest)
-          else None
-      | _ -> None)
-  | _ -> None
-
-(* When the four box longhands are all present but importance is mixed, emit a
-   non-important shorthand carrying every side's value and re-state the
-   [!important] side(s) after it. An [!important] longhand wins over the
-   shorthand for its side regardless of order, while the non-important sides
-   take the shorthand's value, so the cascade is preserved. Worthwhile only when
-   at most two sides are important (otherwise the longhand count is not
-   reduced). *)
-let try_compose_box_important_split ~extract ~build = function
-  | (idx1, d1) :: (idx2, d2) :: (idx3, d3) :: (idx4, d4) :: rest -> (
-      match (extract d1, extract d2, extract d3, extract d4) with
-      | ( Some (s1, v1, i1),
-          Some (s2, v2, i2),
-          Some (s3, v3, i3),
-          Some (s4, v4, i4) ) ->
-          let sides =
-            [
-              (s1, v1, i1, (idx1, d1));
-              (s2, v2, i2, (idx2, d2));
-              (s3, v3, i3, (idx3, d3));
-              (s4, v4, i4, (idx4, d4));
-            ]
-          in
-          let distinct =
-            List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
-          in
-          let no_runtime =
-            List.for_all
-              (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
-              sides
-          in
-          let important_pairs =
-            List.filter_map
-              (fun (_, _, i, p) -> if i then Some p else None)
-              sides
-          in
-          let n_imp = List.length important_pairs in
-          if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
-            let find s =
-              let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) sides in
-              v
-            in
-            let shorthand =
-              build ~important:false ~top:(find Top) ~right:(find Right)
-                ~bottom:(find Bottom) ~left:(find Left)
-            in
-            Some ((idx1, shorthand), important_pairs @ rest)
-          else None
-      | _ -> None)
-  | _ -> None
-
 let build_margin_box ~important ~top ~right ~bottom ~left =
   Declaration.v ~important Margin
     (collapse_box_lengths [ top; right; bottom; left ])
@@ -634,33 +550,158 @@ let build_border_radius_box ~important ~top ~right ~bottom ~left =
   Declaration.v ~important Border_radius
     (Radius { horizontal; vertical = None })
 
-let compose_box_shorthands ~ctx decls =
-  let composers =
-    [
-      try_compose_box ~ctx ~extract:extract_margin_side ~build:build_margin_box;
-      try_compose_box ~ctx ~extract:extract_padding_side
-        ~build:build_padding_box;
-      try_compose_box ~ctx ~extract:extract_inset_side ~build:build_inset_box;
-      try_compose_box ~ctx ~extract:extract_border_radius_corner
-        ~build:build_border_radius_box;
-      try_compose_box_important_split ~extract:extract_margin_side
-        ~build:build_margin_box;
-      try_compose_box_important_split ~extract:extract_padding_side
-        ~build:build_padding_box;
-      try_compose_box_important_split ~extract:extract_inset_side
-        ~build:build_inset_box;
-      try_compose_box_important_split ~extract:extract_border_radius_corner
-        ~build:build_border_radius_box;
-    ]
+(* Index-based: positions i..i+3 form a same-importance 4-side box. *)
+let try_compose_box_at idx ~ctx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+    || Rule_index.is_absorbed idx (i + 3)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    let d4 = Rule_index.decl_at idx (i + 3) in
+    match (extract d1, extract d2, extract d3, extract d4) with
+    | ( Some (s1, v1, imp1),
+        Some (s2, v2, imp2),
+        Some (s3, v3, imp3),
+        Some (s4, v4, imp4) )
+      when imp1 = imp2 && imp2 = imp3 && imp3 = imp4 ->
+        let sides = [ (s1, v1); (s2, v2); (s3, v3); (s4, v4) ] in
+        let distinct =
+          List.length (List.sort_uniq compare (List.map fst sides)) = 4
+        in
+        let subst_safe (_, v) =
+          match (v : Values.length) with
+          | Var vr -> registered ctx vr.name
+          | _ -> not (Values.length_has_runtime_subst v)
+        in
+        let no_runtime = List.for_all subst_safe sides in
+        if distinct && no_runtime then
+          let find s = List.assoc s sides in
+          Some
+            (build ~important:imp1 ~top:(find Top) ~right:(find Right)
+               ~bottom:(find Bottom) ~left:(find Left))
+        else None
+    | _ -> None
+
+(* Mixed-importance 4-side absorption: emit a non-important shorthand and then
+   re-state each important side immediately after. The cascade picks the
+   !important longhand over the shorthand regardless of order. *)
+let try_compose_box_important_split_at idx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+    || Rule_index.is_absorbed idx (i + 3)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    let d4 = Rule_index.decl_at idx (i + 3) in
+    match (extract d1, extract d2, extract d3, extract d4) with
+    | ( Some (s1, v1, imp1),
+        Some (s2, v2, imp2),
+        Some (s3, v3, imp3),
+        Some (s4, v4, imp4) ) ->
+        let entries =
+          [
+            (s1, v1, imp1, d1);
+            (s2, v2, imp2, d2);
+            (s3, v3, imp3, d3);
+            (s4, v4, imp4, d4);
+          ]
+        in
+        let distinct =
+          List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
+        in
+        let no_runtime =
+          List.for_all
+            (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
+            entries
+        in
+        let n_imp =
+          List.length (List.filter (fun (_, _, imp, _) -> imp) entries)
+        in
+        if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
+          let find s =
+            let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) entries in
+            v
+          in
+          let shorthand =
+            build ~important:false ~top:(find Top) ~right:(find Right)
+              ~bottom:(find Bottom) ~left:(find Left)
+          in
+          let important_decls =
+            List.filter_map
+              (fun (_, _, imp, d) -> if imp then Some d else None)
+              entries
+          in
+          Some (shorthand :: important_decls)
+        else None
+    | _ -> None
+
+type box_outcome =
+  | Single of declaration (* All 4 sides same importance: one shorthand. *)
+  | Split of declaration list
+(* Mixed: shorthand + re-stated important sides. *)
+
+let compose_box_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let try_same extract build i =
+    Option.map
+      (fun sh -> Single sh)
+      (try_compose_box_at idx ~ctx ~extract ~build i)
   in
-  let try_any decls = List.find_map (fun f -> f decls) composers in
-  let rec go acc decls =
-    match (decls, try_any decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
+  let try_split extract build i =
+    Option.map
+      (fun ds -> Split ds)
+      (try_compose_box_important_split_at idx ~extract ~build i)
   in
-  go [] decls
+  let try_one i =
+    let chain fs =
+      let rec loop = function
+        | [] -> None
+        | f :: rest -> ( match f i with Some _ as r -> r | None -> loop rest)
+      in
+      loop fs
+    in
+    chain
+      [
+        try_same extract_margin_side build_margin_box;
+        try_same extract_padding_side build_padding_box;
+        try_same extract_inset_side build_inset_box;
+        try_same extract_border_radius_corner build_border_radius_box;
+        try_split extract_margin_side build_margin_box;
+        try_split extract_padding_side build_padding_box;
+        try_split extract_inset_side build_inset_box;
+        try_split extract_border_radius_corner build_border_radius_box;
+      ]
+  in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_one !i with
+      | Some (Single shorthand) ->
+          Rule_index.absorb idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+            ~shorthand;
+          i := !i + 4
+      | Some (Split decls) ->
+          Rule_index.splice idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+            ~new_decls:decls;
+          i := !i + 4
+      | None -> incr i
+  done
 
 (* Compose 2-longhand shorthands ([gap] from [row-gap] / [column-gap],
    [place-items] from [align-items] / [justify-items], etc) when both longhands
@@ -2543,22 +2584,22 @@ let drop_vendor_aliases (kept : (int * declaration) list) :
   in
   filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
-(* compose_pair_shorthands and compose_outline_shorthand both build a
-   Rule_index, mutate it, and linearise. When they run back-to-back we can share
-   one index, saving a build + to_list per rule. *)
-let compose_pair_and_outline kept =
+(* Box, pair, and outline composers all run on Rule_index. Share one index
+   across the three: build once, mutate in place, linearise once. *)
+let compose_box_pair_outline ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
+  compose_box_via_index ~ctx idx;
   compose_pair_via_index idx;
   compose_outline_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_shorthands ~ctx kept =
   kept
-  |> compose_box_shorthands ~ctx
-  |> compose_pair_and_outline |> reorder_font_resets_before_font
-  |> compose_font_shorthand |> compose_list_style_shorthand
-  |> compose_flex_shorthand |> compose_text_decoration_shorthand
-  |> compose_border_shorthand |> reorder_border_image_before_border
+  |> compose_box_pair_outline ~ctx
+  |> reorder_font_resets_before_font |> compose_font_shorthand
+  |> compose_list_style_shorthand |> compose_flex_shorthand
+  |> compose_text_decoration_shorthand |> compose_border_shorthand
+  |> reorder_border_image_before_border
   |> compose_border_whole_shorthand ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx

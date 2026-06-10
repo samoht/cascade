@@ -35,6 +35,18 @@ val absorb :
     position in [absorbed] is consumed by the shorthand. Repeated absorptions of
     the same position are a programming error. *)
 
+val splice :
+  t ->
+  at:int ->
+  absorbed:int list ->
+  new_decls:Declaration.declaration list ->
+  unit
+(** [splice t ~at ~absorbed ~new_decls] generalises {!absorb}: emit each
+    declaration of [new_decls] in order at position [at] and mark every position
+    in [absorbed] as consumed. Suits composers that need to replace a contiguous
+    run with multiple declarations (e.g. a non-important shorthand followed by a
+    re-stated important longhand). *)
+
 val is_absorbed : t -> int -> bool
 (** [is_absorbed t i] is [true] when position [i] has been absorbed by a
     composer. *)
