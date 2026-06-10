@@ -158,12 +158,8 @@ exception Parse_error = Error.Parse_error
 let sort = Sort.Component
 
 let raise_ t kind loc =
-  let snippet =
-    match (t.meta, t.source) with
-    | `Full, Some source -> Some (Loc.snippet source loc)
-    | _ -> None
-  in
-  Error.fail (Error.v ?snippet ~loc ~sort kind)
+  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
+  Error.fail (Error.v ?source ~loc ~sort kind)
 
 let err ?got t msg =
   let loc = position t in

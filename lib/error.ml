@@ -8,23 +8,30 @@ type kind =
   | Unknown_at_rule of string
   | Unterminated of Sort.t
 
+(* [source] carries the raw input string so [snippet] can be materialised lazily
+   by the user-facing pretty-printer. Most raised errors are caught and
+   discarded inside speculative parsers ([Cursor.option] / [Cursor.one_of]), so
+   building the snippet eagerly was pure waste in the hot path. *)
 type t = {
   loc : Loc.t;
   sort : Sort.t;
   path : string list;
   kind : kind;
-  snippet : Loc.Context.snippet option;
+  source : string option;
   filename : string option;
 }
 
-let snippet t = t.snippet
+let snippet t =
+  match t.source with
+  | None -> None
+  | Some source -> Some (Loc.snippet source t.loc)
 
 let context t =
   {
     Loc.Context.path = Loc.Path.of_labels t.path;
     loc = t.loc;
     sort = t.sort;
-    snippet = t.snippet;
+    snippet = snippet t;
   }
 
 let pp_kind : kind Pp.t =
@@ -61,7 +68,7 @@ let pp_kind : kind Pp.t =
       Sort.pp ctx s
 
 let pp : t Pp.t =
- fun ctx { loc; sort; path; kind; snippet; filename } ->
+ fun ctx ({ loc; sort; path; kind; source = _; filename } as t) ->
   (match filename with
   | Some f when f <> "" ->
       Pp.string ctx f;
@@ -78,7 +85,7 @@ let pp : t Pp.t =
   Pp.string ctx " (in ";
   Sort.pp ctx sort;
   Pp.char ctx ')';
-  match snippet with
+  match snippet t with
   | None -> ()
   | Some { text; marker_pos; marker_len } ->
       Pp.cut ctx ();
@@ -91,8 +98,8 @@ let to_string t = Pp.to_string pp t
 
 exception Parse_error of t
 
-let v ?(path = Loc.Path.empty) ?snippet ?filename ~loc ~sort kind =
-  { loc; sort; path = Loc.Path.to_labels path; kind; snippet; filename }
+let v ?(path = Loc.Path.empty) ?source ?filename ~loc ~sort kind =
+  { loc; sort; path = Loc.Path.to_labels path; kind; source; filename }
 
 let with_filename ?filename t =
   match (filename, t.filename) with
