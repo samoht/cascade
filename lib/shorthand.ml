@@ -592,7 +592,21 @@ let try_compose_box_at idx ~ctx ~extract ~build i =
 (* Mixed-importance 4-side absorption: emit a non-important shorthand and then
    re-state each important side immediately after. The cascade picks the
    !important longhand over the shorthand regardless of order. *)
-let try_compose_box_important_split_at idx ~extract ~build i =
+let box_split_emit ~build entries =
+  let find s =
+    let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) entries in
+    v
+  in
+  let shorthand =
+    build ~important:false ~top:(find Top) ~right:(find Right)
+      ~bottom:(find Bottom) ~left:(find Left)
+  in
+  let important_decls =
+    List.filter_map (fun (_, _, imp, d) -> if imp then Some d else None) entries
+  in
+  shorthand :: important_decls
+
+let try_compose_box_split_at idx ~extract ~build i =
   let n = Rule_index.length idx in
   if i + 3 >= n then None
   else if
@@ -631,20 +645,7 @@ let try_compose_box_important_split_at idx ~extract ~build i =
           List.length (List.filter (fun (_, _, imp, _) -> imp) entries)
         in
         if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
-          let find s =
-            let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) entries in
-            v
-          in
-          let shorthand =
-            build ~important:false ~top:(find Top) ~right:(find Right)
-              ~bottom:(find Bottom) ~left:(find Left)
-          in
-          let important_decls =
-            List.filter_map
-              (fun (_, _, imp, d) -> if imp then Some d else None)
-              entries
-          in
-          Some (shorthand :: important_decls)
+          Some (box_split_emit ~build entries)
         else None
     | _ -> None
 
@@ -663,7 +664,7 @@ let compose_box_via_index ~ctx idx =
   let try_split extract build i =
     Option.map
       (fun ds -> Split ds)
-      (try_compose_box_important_split_at idx ~extract ~build i)
+      (try_compose_box_split_at idx ~extract ~build i)
   in
   let try_one i =
     let chain fs =
@@ -1719,6 +1720,15 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     in
     Some (fst (List.hd run), merged)
 
+let try_compose_border_image_at idx i =
+  let d = Rule_index.decl_at idx i in
+  if not (is_border_image_longhand_decl d) then None
+  else
+    let run, len = span_border_image_run_at idx i in
+    match compose_border_image_run run with
+    | Some (_, shorthand) -> Some (shorthand, len)
+    | None -> None
+
 let compose_border_image_via_index ~ctx idx =
   if scope ctx <> `Stylesheet then ()
   else
@@ -1727,16 +1737,12 @@ let compose_border_image_via_index ~ctx idx =
     while !i < n do
       if Rule_index.is_absorbed idx !i then incr i
       else
-        let d = Rule_index.decl_at idx !i in
-        if is_border_image_longhand_decl d then
-          let run, len = span_border_image_run_at idx !i in
-          match compose_border_image_run run with
-          | Some (_, shorthand) ->
-              let absorbed = List.init len (fun j -> !i + j) in
-              Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-              i := !i + len
-          | None -> i := !i + max 1 len
-        else incr i
+        match try_compose_border_image_at idx !i with
+        | None -> incr i
+        | Some (shorthand, k) ->
+            let absorbed = List.init k (fun j -> !i + j) in
+            Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+            i := !i + k
     done
 
 let compose_border_image_shorthand ~ctx decls =
@@ -1837,25 +1843,6 @@ let bg_updaters : bg_updater list =
 let background_part_of (d : declaration) =
   List.find_map (fun f -> f d) bg_updaters
 
-let take_contiguous_background
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * bg_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match background_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
-  in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
-
 let empty_bg_shorthand : Properties.background_shorthand =
   {
     color = None;
@@ -1902,47 +1889,65 @@ let background_run_is_reset_closed layer =
       "clip";
     ]
 
-let try_compose_background ~ctx
-    (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_background indexed_decls in
-  match idx_opt with
-  | None -> None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then None
-      else if not (same_importance raw_decls) then None
+let take_background_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match background_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
+  in
+  aux i []
+
+let try_compose_background_at ~ctx idx i =
+  let parts, len = take_background_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
+      in
+      (* [`Fragment] requires the run to cover every reset field; in
+         [`Stylesheet] the caller asserts no prior author CSS exists that the
+         shorthand could shadow. *)
+      let permit =
+        match scope ctx with
+        | `Stylesheet -> true
+        | `Fragment -> background_run_is_reset_closed layer
+      in
+      if not permit then None
       else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
+        let shorthand =
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Background
+            [ (Shorthand layer : Properties.background) ]
         in
-        (* [`Fragment] requires the run to cover every reset field; in
-           [`Stylesheet] the caller asserts no prior author CSS exists that the
-           shorthand could shadow. *)
-        let permit =
-          match scope ctx with
-          | `Stylesheet -> true
-          | `Fragment -> background_run_is_reset_closed layer
-        in
-        if not permit then Option.None
-        else
-          let merged =
-            Declaration.v
-              ~important:(is_important (List.hd raw_decls))
-              Background
-              [ (Shorthand layer : Properties.background) ]
-          in
-          Some ((idx, merged), rest)
+        Some (shorthand, len)
+
+let compose_background_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_background_at ~ctx idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 let compose_background_shorthand ~ctx decls =
-  let rec go acc decls =
-    match (decls, try_compose_background ~ctx decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_background_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Masking 1 sec. 6.1: [mask] is the layer shorthand for [mask-image] /
    [mask-position] / [mask-size] / [mask-repeat] / [mask-origin] / [mask-clip] /
