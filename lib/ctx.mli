@@ -9,10 +9,15 @@ type t
 val fragment : t
 (** Default fragment context. *)
 
-val of_scope : ?lossless:bool -> scope option -> t
+val of_scope : ?lossless:bool -> ?aggressive:bool -> scope option -> t
 (** Build a context from an optional scope. *)
 
-val v : ?lossless:bool -> ?registered:(string -> bool) -> scope -> t
+val v :
+  ?lossless:bool ->
+  ?aggressive:bool ->
+  ?registered:(string -> bool) ->
+  scope ->
+  t
 (** Build a context explicitly. *)
 
 val scope : t -> scope
@@ -23,6 +28,10 @@ val registered : t -> string -> bool
 
 val lossless : t -> bool
 (** Whether lossless value optimization is enabled. *)
+
+val aggressive : t -> bool
+(** Whether expensive optimization passes (notably the global factoring
+    fixpoint) run regardless of the preflight's byte-gain estimate. *)
 
 val pp : t Pp.t
 (** Pretty-printer for debugging. *)
