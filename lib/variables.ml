@@ -562,6 +562,14 @@ let vars_of_quotes (value : Properties.quotes) : any_var list =
 let vars_of_animation (value : Properties.animation) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_transition_property_value
+    (value : Properties.transition_property_value) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transition_property_list (value : Properties.transition_property) :
+    any_var list =
+  List.concat_map vars_of_transition_property_value value
+
 let vars_of_transition (value : Properties.transition) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2181,6 +2189,54 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Grid_area, value -> vars_of_grid_area value
   | List_style, value -> vars_of_list_style value
   | Webkit_animation, value -> List.concat_map vars_of_animation value
+  (* Modern vendor-prefixed longhands: same value type as the unprefixed modern
+     property, so reuse the same [vars_of_*] extractor. *)
+  | Webkit_animation_delay, value -> vars_of_duration value
+  | Webkit_animation_duration, value -> vars_of_duration value
+  | Webkit_animation_direction, value -> vars_of_animation_direction value
+  | Webkit_animation_iteration_count, value ->
+      vars_of_animation_iteration_count value
+  | Webkit_animation_name, value -> vars_of_animation_name value
+  | Webkit_animation_timing_function, value -> vars_of_timing_function value
+  | Webkit_animation_fill_mode, value -> vars_of_animation_fill_mode value
+  | Webkit_animation_play_state, value -> vars_of_animation_play_state value
+  | Moz_animation, value -> List.concat_map vars_of_animation value
+  | Moz_animation_delay, value -> vars_of_duration value
+  | Moz_animation_duration, value -> vars_of_duration value
+  | Moz_animation_direction, value -> vars_of_animation_direction value
+  | Moz_animation_iteration_count, value ->
+      vars_of_animation_iteration_count value
+  | Moz_animation_name, value -> vars_of_animation_name value
+  | Moz_animation_timing_function, value -> vars_of_timing_function value
+  | Moz_animation_fill_mode, value -> vars_of_animation_fill_mode value
+  | Moz_animation_play_state, value -> vars_of_animation_play_state value
+  | Webkit_transition_delay, value -> vars_of_duration value
+  | Webkit_transition_duration, value -> vars_of_duration value
+  | Webkit_transition_property, value -> vars_of_transition_property_list value
+  | Webkit_transition_timing_function, value -> vars_of_timing_function value
+  | Moz_transition, value -> List.concat_map vars_of_transition value
+  | Moz_transition_delay, value -> vars_of_duration value
+  | Moz_transition_duration, value -> vars_of_duration value
+  | Moz_transition_property, value -> vars_of_transition_property_list value
+  | Moz_transition_timing_function, value -> vars_of_timing_function value
+  | Webkit_flex_direction, value -> vars_of_flex_direction value
+  | Webkit_flex_wrap, value -> vars_of_flex_wrap value
+  | Webkit_flex_flow, value -> vars_of_flex_flow value
+  | Webkit_justify_content, value -> vars_of_justify_content value
+  | Webkit_align_items, value -> vars_of_align_items value
+  | Webkit_align_content, value -> vars_of_align_content value
+  | Webkit_align_self, value -> vars_of_align_self value
+  | Webkit_border_radius, value -> vars_of_border_radius value
+  | Webkit_box_shadow, value -> vars_of_shadow value
+  | Webkit_background_size, value -> vars_of_background_size value
+  | Moz_border_radius, value -> vars_of_border_radius value
+  | Moz_box_shadow, value -> vars_of_shadow value
+  (* Logical-border shorthand middle tier. *)
+  | Border_block_start, value -> vars_of_border value
+  | Border_block_end, value -> vars_of_border value
+  | Border_inline, value -> vars_of_border value
+  | Border_inline_start, value -> vars_of_border value
+  | Border_inline_end, value -> vars_of_border value
   (* Default case for all other properties *)
   | _ -> []
 

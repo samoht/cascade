@@ -2601,16 +2601,226 @@ let deduplicate_step kept (idx, decl) =
    like [listbox]/[checkbox]/[radio]), so there is no typed equality between the
    two. [text-decoration] is also absent because dropping the WebKit copy
    regresses documented inheritance quirks. *)
-let vendor_alias_redundant vendor twin =
+(* WebKit animation longhand vendor-alias pairs ([-webkit-] vs unprefixed). *)
+let vendor_alias_redundant_webkit_animation vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
-      Declaration { property = Transform; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_animation; value = v1; important = i1 },
+      Declaration { property = Animation; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_delay; value = v1; important = i1 },
+      Declaration { property = Animation_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_duration; value = v1; important = i1 },
+      Declaration { property = Animation_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_direction; value = v1; important = i1 },
+      Declaration { property = Animation_direction; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_animation_iteration_count;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Animation_iteration_count; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_name; value = v1; important = i1 },
+      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_animation_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Animation_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_fill_mode; value = v1; important = i1 },
+      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_play_state; value = v1; important = i1 },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Mozilla animation longhand vendor-alias pairs ([-moz-] vs unprefixed). *)
+let vendor_alias_redundant_moz_animation vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Moz_animation; value = v1; important = i1 },
+      Declaration { property = Animation; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_animation_delay; value = v1; important = i1 },
+      Declaration { property = Animation_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_duration; value = v1; important = i1 },
+      Declaration { property = Animation_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_direction; value = v1; important = i1 },
+      Declaration { property = Animation_direction; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_iteration_count; value = v1; important = i1 },
+      Declaration
+        { property = Animation_iteration_count; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_animation_name; value = v1; important = i1 },
+      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_timing_function; value = v1; important = i1 },
+      Declaration
+        { property = Animation_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_fill_mode; value = v1; important = i1 },
+      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_play_state; value = v1; important = i1 },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+let vendor_alias_redundant_animation vendor twin =
+  vendor_alias_redundant_webkit_animation vendor twin
+  || vendor_alias_redundant_moz_animation vendor twin
+
+(* Transition longhand vendor-alias pairs ([-webkit-]/[-moz-]/[-o-] vs
+   unprefixed). *)
+let vendor_alias_redundant_transition vendor twin =
+  match (vendor, twin) with
   | ( Declaration { property = Webkit_transition; value = v1; important = i1 },
       Declaration { property = Transition; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_delay; value = v1; important = i1 },
+      Declaration { property = Transition_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_duration; value = v1; important = i1 },
+      Declaration { property = Transition_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_property; value = v1; important = i1 },
+      Declaration { property = Transition_property; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_transition_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Transition_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_transition; value = v1; important = i1 },
+      Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_transition_delay; value = v1; important = i1 },
+      Declaration { property = Transition_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_transition_duration; value = v1; important = i1 },
+      Declaration { property = Transition_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_transition_property; value = v1; important = i1 },
+      Declaration { property = Transition_property; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Moz_transition_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Transition_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = O_transition; value = v1; important = i1 },
       Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Modern flexbox alignment vendor-alias pairs (-webkit- vs unprefixed). *)
+let vendor_alias_redundant_flex vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        { property = Webkit_flex_direction; value = v1; important = i1 },
+      Declaration { property = Flex_direction; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_flex_wrap; value = v1; important = i1 },
+      Declaration { property = Flex_wrap; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_flex_flow; value = v1; important = i1 },
+      Declaration { property = Flex_flow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_justify_content; value = v1; important = i1 },
+      Declaration { property = Justify_content; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_items; value = v1; important = i1 },
+      Declaration { property = Align_items; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_content; value = v1; important = i1 },
+      Declaration { property = Align_content; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_self; value = v1; important = i1 },
+      Declaration { property = Align_self; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Border-radius / box-shadow / background-size / filter vendor-alias pairs. *)
+let vendor_alias_redundant_visual vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_border_radius; value = v1; important = i1 },
+      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_border_radius; value = v1; important = i1 },
+      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_box_shadow; value = v1; important = i1 },
+      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_shadow; value = v1; important = i1 },
+      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_background_size; value = v1; important = i1 },
+      Declaration { property = Background_size; value = v2; important = i2 } )
+    ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = Webkit_filter; value = v1; important = i1 },
       Declaration { property = Filter; value = v2; important = i2 } ) ->
@@ -2619,6 +2829,13 @@ let vendor_alias_redundant vendor twin =
         { property = Webkit_backdrop_filter; value = v1; important = i1 },
       Declaration { property = Backdrop_filter; value = v2; important = i2 } )
     ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+let vendor_alias_redundant vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
+      Declaration { property = Transform; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = Webkit_user_select; value = v1; important = i1 },
       Declaration { property = User_select; value = v2; important = i2 } ) ->
@@ -2639,7 +2856,11 @@ let vendor_alias_redundant vendor twin =
       Declaration { property = Print_color_adjust; value = v2; important = i2 }
     ) ->
       v1 = v2 && Bool.equal i1 i2
-  | _ -> false
+  | _ ->
+      vendor_alias_redundant_animation vendor twin
+      || vendor_alias_redundant_transition vendor twin
+      || vendor_alias_redundant_flex vendor twin
+      || vendor_alias_redundant_visual vendor twin
 
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
    [-o-]) return the unprefixed remainder; otherwise [None]. *)
