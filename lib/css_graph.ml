@@ -22,45 +22,66 @@ let n_decls g = g.n_decls
 let n_edges g =
   Array.fold_left (fun acc cols -> acc + Array.length cols) 0 g.rule_decls
 
-let build (rules : Stylesheet.rule list) : t =
-  let rules_arr = Array.of_list rules in
-  let n_rules = Array.length rules_arr in
-  (* Intern each distinct declaration to a small integer id via its cached
-     structural hash. Hash collisions are rare; we tolerate them as
-     conservatively-wrong column merges (a graph with two structurally different
-     decls in the same column lets greedy_cover propose an unsound factoring, so
-     we re-check decl equality during cover construction). *)
-  let decl_id : (int, int) Hashtbl.t = Hashtbl.create 1024 in
+let uniq arr =
+  Array.sort compare arr;
+  let len = Array.length arr in
+  if len < 2 then arr
+  else
+    let next = ref 1 in
+    for i = 1 to len - 1 do
+      if arr.(i) <> arr.(!next - 1) then begin
+        arr.(!next) <- arr.(i);
+        incr next
+      end
+    done;
+    Array.sub arr 0 !next
+
+type decl_index = {
+  cols : int array array;
+  values : Declaration.declaration array;
+}
+
+let index_decls rules =
+  (* Intern exact declarations to small integer ids. The cached structural hash
+     selects a bucket, then structural equality disambiguates collisions. *)
+  let decl_id : (int, (Declaration.declaration * int) list) Hashtbl.t =
+    Hashtbl.create 1024
+  in
   let decl_value : (int, Declaration.declaration) Hashtbl.t =
     Hashtbl.create 1024
   in
   let next_id = ref 0 in
   let intern d =
     let h = Declaration.hash d in
-    match Hashtbl.find_opt decl_id h with
-    | Some id -> id
+    let bucket = Hashtbl.find_opt decl_id h |> Option.value ~default:[] in
+    match List.find_opt (fun (decl, _) -> decl = d) bucket with
+    | Some (_, id) -> id
     | None ->
         let id = !next_id in
-        Hashtbl.add decl_id h id;
+        Hashtbl.replace decl_id h ((d, id) :: bucket);
         Hashtbl.add decl_value id d;
         incr next_id;
         id
   in
-  let rule_decls =
+  let cols =
     Array.map
       (fun (r : Stylesheet.rule) ->
         let ids = List.map intern r.Stylesheet_intf.declarations in
-        let arr = Array.of_list ids in
-        Array.sort compare arr;
-        arr)
-      rules_arr
+        uniq (Array.of_list ids))
+      rules
   in
-  let n_decls = !next_id in
-  let decl_byte_cost = Array.make n_decls 0 in
-  for c = 0 to n_decls - 1 do
-    let d = Hashtbl.find decl_value c in
-    decl_byte_cost.(c) <- Pp.size ~minify:true Declaration.pp_declaration d
-  done;
+  let values = Array.init !next_id (Hashtbl.find decl_value) in
+  { cols; values }
+
+let build (rules : Stylesheet.rule list) : t =
+  let rules_arr = Array.of_list rules in
+  let n_rules = Array.length rules_arr in
+  let decls = index_decls rules_arr in
+  let rule_decls = decls.cols in
+  let n_decls = Array.length decls.values in
+  let decl_byte_cost =
+    Array.map (Pp.size ~minify:true Declaration.pp_declaration) decls.values
+  in
   (* Build the inverted index. *)
   let decl_rows = Array.make n_decls [] in
   Array.iteri

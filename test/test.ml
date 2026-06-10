@@ -29,6 +29,7 @@ let () =
       Test_rule_pool.suite;
       Test_weighted_interval.suite;
       Test_css_graph.suite;
+      Test_factor_safe.suite;
       Test_rule_merge.suite;
       Test_pp.suite;
       Test_syntax.suite;

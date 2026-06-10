@@ -4142,6 +4142,13 @@ let factor_leftover_size ?(start = 0) ~common_by_prop ~selector_summaries
       (rule_size_from_parts summary.factor_selector_size kept_decl_size
          kept_count)
 
+let factor_safe =
+  Factor_safe.v ~same_minified_declaration ~declaration_covers
+    ~contains_vendor_pseudo_element ~rule_factor_boundary ~decl_property
+
+let safe_summary summary =
+  Factor_safe.summary summary.factor_rule ~selectors:summary.selector_summary
+
 module Factor_interval = struct
   type score = { common : declaration list; member : bool array; saving : int }
 
@@ -4183,21 +4190,27 @@ module Factor_interval = struct
         in
         (not exact) || summary.factor_selector_size + 1 <= payload.inline_cost
 
-  let score_members payload factor_summaries selector_summaries start len =
+  let seed_contains seed offset =
+    match seed with Option.None -> true | Option.Some seed -> seed.(offset)
+
+  let score_members ?seed payload factor_summaries selector_summaries start len
+      =
     let member = Array.make len false in
     let leftover_sizes : int option array = Array.make len Option.None in
     let member_count = ref 0 in
     for offset = 0 to len - 1 do
-      let i = start + offset in
-      let summary = factor_summaries.(i) in
-      let leftover_size =
-        factor_leftover_size ~start ~common_by_prop:payload.by_prop
-          ~selector_summaries ~factor_summaries i summary
-      in
-      leftover_sizes.(offset) <- leftover_size;
-      if keep_member payload summary leftover_size then (
-        member.(offset) <- true;
-        incr member_count)
+      if seed_contains seed offset then begin
+        let i = start + offset in
+        let summary = factor_summaries.(i) in
+        let leftover_size =
+          factor_leftover_size ~start ~common_by_prop:payload.by_prop
+            ~selector_summaries ~factor_summaries i summary
+        in
+        leftover_sizes.(offset) <- leftover_size;
+        if keep_member payload summary leftover_size then (
+          member.(offset) <- true;
+          incr member_count)
+      end
     done;
     (member, leftover_sizes, !member_count)
 
@@ -4258,11 +4271,11 @@ module Factor_interval = struct
     let best = if !positive_count >= 2 then !positive_sum else !top1 + !top2 in
     best - fixed
 
-  let exact_score ?(allow_zero = false) payload factor_summaries
+  let exact_score ?(allow_zero = false) ?seed payload factor_summaries
       selector_summaries start len : score option =
     counters.interval_scored <- counters.interval_scored + 1;
     let member, leftover_sizes, member_count =
-      score_members payload factor_summaries selector_summaries start len
+      score_members ?seed payload factor_summaries selector_summaries start len
     in
     if member_count < 2 then None
     else
@@ -4353,6 +4366,8 @@ module Factor_interval = struct
   type candidate = { score : score }
 
   let factor_common_interval_lookahead = 24
+  let factor_common_indexed_occurrence_window = 24
+  let factor_common_indexed_max_span = 128
 
   let add_candidate schedule factor_summaries selector_summaries start stop
       common_props =
@@ -4365,6 +4380,160 @@ module Factor_interval = struct
       | Some score ->
           Weighted_interval.add schedule ~start ~stop ~weight:score.saving
             { score })
+
+  let seeded_cascade_safe factor_summaries start seed common =
+    let len = Array.length seed in
+    let skipped_rev = ref [] in
+    let safe = ref true in
+    let offset = ref 0 in
+    while !safe && !offset < len do
+      let summary = factor_summaries.(start + !offset) in
+      if seed.(!offset) then
+        if
+          List.exists
+            (fun skipped ->
+              Factor_safe.blocks_factor factor_safe common
+                (safe_summary summary) (safe_summary skipped))
+            !skipped_rev
+        then safe := false
+        else ()
+      else if
+        not
+          (Factor_safe.can_cross factor_safe (Some common) summary.factor_rule)
+      then safe := false
+      else skipped_rev := summary :: !skipped_rev;
+      incr offset
+    done;
+    !safe
+
+  let seeded_score factor_summaries selector_summaries start stop seed
+      common_props =
+    let len = stop - start + 1 in
+    if
+      len < 2
+      || Array.length seed <> len
+      || (not seed.(0))
+      || not seed.(len - 1)
+    then Option.None
+    else
+      match common factor_summaries start common_props with
+      | None -> None
+      | Some payload ->
+          if seeded_cascade_safe factor_summaries start seed payload.decls then
+            exact_score ~seed payload factor_summaries selector_summaries start
+              len
+          else None
+
+  let add_seeded_candidate schedule factor_summaries selector_summaries ~start
+      ~stop ~seed common_props =
+    if not (prop_ids_empty common_props) then (
+      counters.interval_candidates <- counters.interval_candidates + 1;
+      match
+        seeded_score factor_summaries selector_summaries start stop seed
+          common_props
+      with
+      | None -> ()
+      | Some score ->
+          Weighted_interval.add schedule ~start ~stop ~weight:score.saving
+            { score })
+
+  type decl_bucket = { decl : declaration; mutable rows_rev : int list }
+
+  let add_decl_occurrence buckets row decl =
+    let hash = Declaration.hash decl in
+    let bucket_list =
+      Hashtbl.find_opt buckets hash |> Option.value ~default:[]
+    in
+    let rec add acc = function
+      | [] ->
+          Hashtbl.replace buckets hash
+            (List.rev ({ decl; rows_rev = [ row ] } :: acc))
+      | bucket :: rest ->
+          if same_minified_declaration bucket.decl decl then begin
+            bucket.rows_rev <- row :: bucket.rows_rev;
+            Hashtbl.replace buckets hash (List.rev_append acc (bucket :: rest))
+          end
+          else add (bucket :: acc) rest
+    in
+    add [] bucket_list
+
+  let exact_decl_index factor_summaries =
+    let buckets = Hashtbl.create 1024 in
+    Array.iteri
+      (fun row summary ->
+        if rule_factor_eligible summary.factor_rule then begin
+          let seen = Hashtbl.create 8 in
+          List.iter
+            (fun decl ->
+              let hash = Declaration.hash decl in
+              if not (Hashtbl.mem seen hash) then begin
+                Hashtbl.add seen hash ();
+                add_decl_occurrence buckets row decl
+              end)
+            summary.factor_rule.declarations
+        end)
+      factor_summaries;
+    buckets
+
+  let sorted_unique_rows rows =
+    let rows = Array.of_list rows in
+    Array.sort compare rows;
+    let len = Array.length rows in
+    if len <= 1 then rows
+    else
+      let acc = ref [ rows.(0) ] in
+      for i = 1 to len - 1 do
+        if rows.(i) <> rows.(i - 1) then acc := rows.(i) :: !acc
+      done;
+      Array.of_list (List.rev !acc)
+
+  let add_indexed_occurrence_slice schedule factor_summaries selector_summaries
+      rows first last =
+    let start = rows.(first) in
+    let stop = rows.(last) in
+    let len = stop - start + 1 in
+    let count = last - first + 1 in
+    if len > count then begin
+      let seed = Array.make len false in
+      let common_props = ref factor_summaries.(start).factor_prop_ids in
+      for i = first to last do
+        let row = rows.(i) in
+        seed.(row - start) <- true;
+        if i <> first then
+          common_props :=
+            prop_ids_inter !common_props factor_summaries.(row).factor_prop_ids
+      done;
+      add_seeded_candidate schedule factor_summaries selector_summaries ~start
+        ~stop ~seed !common_props
+    end
+
+  let add_indexed_candidates schedule factor_summaries selector_summaries =
+    let buckets = exact_decl_index factor_summaries in
+    Hashtbl.iter
+      (fun _ bucket_list ->
+        List.iter
+          (fun bucket ->
+            let rows = sorted_unique_rows bucket.rows_rev in
+            let row_count = Array.length rows in
+            if row_count >= 2 then
+              for first = 0 to row_count - 2 do
+                let last_limit =
+                  min (row_count - 1)
+                    (first + factor_common_indexed_occurrence_window - 1)
+                in
+                let last = ref (first + 1) in
+                while
+                  !last <= last_limit
+                  && rows.(!last) - rows.(first)
+                     <= factor_common_indexed_max_span
+                do
+                  add_indexed_occurrence_slice schedule factor_summaries
+                    selector_summaries rows first !last;
+                  incr last
+                done
+              done)
+          bucket_list)
+      buckets
 
   let index factor_summaries selector_summaries =
     let len = Array.length factor_summaries in
@@ -4381,6 +4550,7 @@ module Factor_interval = struct
         incr stop
       done
     done;
+    add_indexed_candidates schedule factor_summaries selector_summaries;
     schedule
 
   let rewrite rules_arr factor_summaries : (Stylesheet.rule list * int) option =
@@ -4428,189 +4598,23 @@ let factorise_group (rules : Stylesheet.rule list) : Stylesheet.rule list =
           record_factor_saving greedy_saving;
           greedy_rules)
 
-let zero_non_percentage_length (value : Values.length) =
-  match value with
-  | Values.Pct _ | Values.Dimension { unit = "%"; _ } -> false
-  | value -> Values.length_is_zero value
-
-let zero_box_shorthand = function
-  | Declaration { property = Margin; value = _ :: _ as value; important }
-    when List.for_all zero_non_percentage_length value ->
-      Some (`Margin, important)
-  | Declaration { property = Padding; value = _ :: _ as value; important }
-    when List.for_all zero_non_percentage_length value ->
-      Some (`Padding, important)
-  | _ -> None
-
-let zero_box_side = function
-  | Declaration { property = Margin_top; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Margin, important)
-  | Declaration { property = Margin_right; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Margin, important)
-  | Declaration { property = Margin_bottom; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Margin, important)
-  | Declaration { property = Margin_left; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Margin, important)
-  | Declaration { property = Padding_top; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Padding, important)
-  | Declaration { property = Padding_right; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Padding, important)
-  | Declaration { property = Padding_bottom; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Padding, important)
-  | Declaration { property = Padding_left; value; important }
-    when zero_non_percentage_length value ->
-      Some (`Padding, important)
-  | _ -> None
-
-let same_box_kind a b =
-  match (a, b) with
-  | `Margin, `Margin | `Padding, `Padding -> true
-  | (`Margin | `Padding), _ -> false
-
-let same_effective_box_zero a b =
-  match (zero_box_shorthand a, zero_box_side b) with
-  | Some (box_a, important_a), Some (box_b, important_b) ->
-      same_box_kind box_a box_b && Bool.equal important_a important_b
-  | _ -> (
-      match (zero_box_shorthand b, zero_box_side a) with
-      | Some (box_b, important_b), Some (box_a, important_a) ->
-          same_box_kind box_a box_b && Bool.equal important_a important_b
-      | _ -> false)
-
-let same_effective_declaration a b =
-  same_minified_declaration a b || same_effective_box_zero a b
-
 let declarations_overlap common decls =
-  List.exists
-    (fun common_decl ->
-      List.exists
-        (fun decl ->
-          (not (same_effective_declaration common_decl decl))
-          && Bool.equal
-               (Declaration.is_important common_decl)
-               (Declaration.is_important decl)
-          && (declaration_covers common_decl decl
-             || declaration_covers decl common_decl))
-        decls)
-    common
+  Factor_safe.overlap factor_safe common decls
 
-let rule_selector_may_overlap_summary (rule : Stylesheet.rule) target_summary =
-  selectors_of_rule_selector rule.Stylesheet_intf.selector
-  |> List.exists (fun selector ->
-      Selector_summary.may_overlap
-        (Selector_summary.of_selector selector)
-        target_summary)
+let rule_selector_may_overlap_summary = Factor_safe.selector_overlap
+let rule_specificity_ties_on_overlap = Factor_safe.specificity_ties
 
-let specificity_strictly_greater a b =
-  let a = Selector.specificity a in
-  let b = Selector.specificity b in
-  a.ids > b.ids
-  || a.ids = b.ids
-     && (a.classes > b.classes
-        || (a.classes = b.classes && a.elements > b.elements))
-
-let specificity_equal a b =
-  let a = Selector.specificity a in
-  let b = Selector.specificity b in
-  a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
-
-let rule_specificity_beats_on_overlap (target : Stylesheet.rule)
-    (skipped : Stylesheet.rule) =
-  let target_selectors =
-    selectors_of_rule_selector target.Stylesheet_intf.selector
-  in
-  let skipped_selectors =
-    selectors_of_rule_selector skipped.Stylesheet_intf.selector
-  in
-  List.for_all
-    (fun skipped_selector ->
-      let skipped_summary = Selector_summary.of_selector skipped_selector in
-      List.for_all
-        (fun target_selector ->
-          (not
-             (Selector_summary.may_overlap
-                (Selector_summary.of_selector target_selector)
-                skipped_summary))
-          || specificity_strictly_greater target_selector skipped_selector)
-        target_selectors)
-    skipped_selectors
-
-let rule_specificity_ties_on_overlap (target : Stylesheet.rule)
-    (skipped : Stylesheet.rule) =
-  let target_selectors =
-    selectors_of_rule_selector target.Stylesheet_intf.selector
-  in
-  let skipped_selectors =
-    selectors_of_rule_selector skipped.Stylesheet_intf.selector
-  in
-  List.exists
-    (fun skipped_selector ->
-      let skipped_summary = Selector_summary.of_selector skipped_selector in
-      List.exists
-        (fun target_selector ->
-          Selector_summary.may_overlap
-            (Selector_summary.of_selector target_selector)
-            skipped_summary
-          && specificity_equal target_selector skipped_selector)
-        target_selectors)
-    skipped_selectors
-
-let skipped_rule_blocks_factor common target skipped =
-  rule_selector_may_overlap_summary skipped.factor_rule
-    (Lazy.force target.selector_summary)
-  && declarations_overlap common skipped.factor_rule.declarations
-  && not
-       (rule_specificity_beats_on_overlap target.factor_rule skipped.factor_rule)
+let skipped_rule_blocks_factor =
+ fun common target skipped ->
+  Factor_safe.blocks_factor factor_safe common (safe_summary target)
+    (safe_summary skipped)
 
 let skipped_blocks_factor_tie common target skipped =
-  rule_specificity_ties_on_overlap target.factor_rule skipped.factor_rule
-  && declarations_overlap common skipped.factor_rule.declarations
-
-(* Properties declared anywhere inside [stmts] (nested rules and bare nested
-   declaration blocks). Any other nested at-rule is treated conservatively as
-   touching every property, so a rule carrying one is never skipped. *)
-let rec nested_statements_touch_props props stmts =
-  List.exists
-    (fun stmt ->
-      match stmt with
-      | Stylesheet.Rule r ->
-          List.exists (fun d -> List.mem (decl_property d) props) r.declarations
-          || nested_statements_touch_props props r.nested
-      | Stylesheet.Declarations ds ->
-          List.exists (fun d -> List.mem (decl_property d) props) ds
-      | Stylesheet.Bang_comment _ -> false
-      | _ -> true)
-    stmts
-
-(* A factor-boundary rule (one that cannot itself be factored) may still be
-   stepped over by the scan when hoisting [common] across it is unobservable.
-   Its top-level declarations are still checked by the ordinary skip blockers;
-   an extra guard is needed only for its nested content, which those blockers do
-   not see. Skipping is unsafe for [merge_key] and vendor-pseudo-element
-   boundaries (their cascade interaction is not modelled here), so only nesting
-   boundaries whose nested rules leave every [common] property untouched are
-   skippable. *)
-let boundary_safe_to_skip common (rule : Stylesheet.rule) =
-  rule.Stylesheet_intf.merge_key = None
-  && (not (contains_vendor_pseudo_element rule.selector))
-  && not
-       (nested_statements_touch_props
-          (List.map decl_property common)
-          rule.nested)
+  Factor_safe.blocks_tie factor_safe common (safe_summary target)
+    (safe_summary skipped)
 
 let boundary_stops_scan common_opt candidate =
-  rule_factor_boundary candidate
-  &&
-  match common_opt with
-  | Some common -> not (boundary_safe_to_skip common candidate)
-  | None -> true
+  not (Factor_safe.can_cross factor_safe common_opt candidate)
 
 let rule_gap_merge_eligible (rule : Stylesheet.rule) =
   rule.nested = [] && rule.merge_key = None

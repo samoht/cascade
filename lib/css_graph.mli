@@ -12,10 +12,11 @@
     The greedy heuristic here picks biclique candidates by exact declaration
     match, scores each by
     [(|R| - 1) * sum(weight(d) for d in D) - selector overhead], and applies the
-    strictly-positive-saving ones non-overlappingly. It is intentionally
-    conservative on cascade dependencies -- selector overlaps, specificity,
-    importance, layer/origin/scope -- and skips any biclique whose factoring
-    would change a property's resolved value for some matching element. *)
+    strictly-positive-saving ones non-overlappingly. This graph does not encode
+    cascade dependencies such as selector overlap, specificity, importance,
+    layer/origin/scope, or intervening writes. It is an indexed upper-bound
+    model and candidate source; production rewrites must be validated by the
+    optimizer's cascade legality oracle before being emitted. *)
 
 type t
 (** Bipartite graph backed by sorted integer adjacency arrays. *)
