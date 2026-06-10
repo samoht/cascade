@@ -2190,16 +2190,22 @@ let rec extract_vars_of_declaration : declaration -> any_var list = function
   | Theme_guarded { decl; _ } -> extract_vars_of_declaration decl
 
 (* Stable dedup: preserves first occurrence of each var, removes later
-   duplicates *)
-let stable_dedup_vars vars =
-  let seen = Hashtbl.create 16 in
-  List.filter
-    (fun (V v) ->
-      if Hashtbl.mem seen v.name then false
-      else (
-        Hashtbl.add seen v.name ();
-        true))
-    vars
+   duplicates. For the (very common) zero / one / two element cases skip the
+   hashtable entirely - the work is cheaper than the allocation. *)
+let stable_dedup_vars = function
+  | [] -> []
+  | [ _ ] as xs -> xs
+  | [ (V v1 as a); (V v2 as b) ] ->
+      if v1.name = v2.name then [ a ] else [ a; b ]
+  | vars ->
+      let seen = Hashtbl.create (List.length vars) in
+      List.filter
+        (fun (V v) ->
+          if Hashtbl.mem seen v.name then false
+          else (
+            Hashtbl.add seen v.name ();
+            true))
+        vars
 
 let vars_of_declarations properties =
   List.concat_map extract_vars_of_declaration properties |> stable_dedup_vars
