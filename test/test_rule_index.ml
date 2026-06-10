@@ -9,7 +9,7 @@ let solid_outline_width =
 let solid_outline_style =
   Declaration.v Properties.Outline_style (Solid : Properties.outline_style)
 
-let solid_outline_color =
+let _solid_outline_color =
   Declaration.v Properties.Outline_color (Current : Values.color)
 
 let stub_shorthand = red

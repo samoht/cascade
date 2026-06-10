@@ -1,14 +1,9 @@
 (** Statement-block cleanup passes. *)
 
 open Stylesheet
+open Common
 
-let list_filter_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        if f x then loop changed (x :: acc) rest else loop true acc rest
-  in
-  loop false [] xs
+let list_filter_preserve = List.filter_preserve
 
 let media_feature_is name (f : Media.feature) =
   match f with

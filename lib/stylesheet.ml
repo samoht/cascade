@@ -1305,10 +1305,7 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-(* Pure serialiser. A full stylesheet rendering is typically 10-1000 kB, so
-   measure the size with [Pp.size] (no allocation) and presize the buffer to the
-   exact byte count - this skips the geometric resize trail [Pp.to_string] would
-   otherwise pay on its small initial seed. *)
+(* Measure the output size with [Pp.size] and presize the buffer exactly. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
   let pp ctx () = pp_stylesheet ctx statements in

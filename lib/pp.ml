@@ -92,9 +92,6 @@ let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
   pp ctx a
 
 let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
-  (* Most [pp] calls render short values (a length, a colour, a property value);
-     the initial 64 byte buffer covers them without resizing, and the few large
-     renderings (full stylesheets) absorb a handful of doublings. *)
   let buf = Buffer.create 64 in
   to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a;
   Buffer.contents buf
