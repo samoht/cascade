@@ -1,3 +1,4 @@
+open Common
 open Values
 open Syntax
 include Properties_intf
@@ -18481,7 +18482,7 @@ let minify_background_image : background_image -> background_image = function
 
 let read_any_property t =
   (* CSS property names are case-insensitive per Syntax §3.3. *)
-  let prop_name = String.lowercase_ascii (Cursor.ident t) in
+  let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "all" -> Prop All

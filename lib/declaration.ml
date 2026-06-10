@@ -1,6 +1,7 @@
 (** CSS declaration types and parser. *)
 
 include Declaration_intf
+open Common
 open Properties
 open Values
 
@@ -1885,7 +1886,7 @@ let read_typed_property_declaration t start =
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
   let start = Cursor.save t in
-  let name = String.lowercase_ascii (read_property_name t) in
+  let name = String.lowercase_ascii_preserve (read_property_name t) in
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
@@ -1900,7 +1901,7 @@ let read_regular_property_declaration t : declaration =
       let raw_value = String.trim (Parser.string_of_components components) in
       if not (allows_unknown_fallback name raw_value) then raise exn;
       Cursor.restore t start;
-      let name = String.lowercase_ascii (read_property_name t) in
+      let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
