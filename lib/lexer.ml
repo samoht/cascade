@@ -195,6 +195,74 @@ let consume_escape r =
       Reader.skip r;
       String.make 1 c
 
+(* Hot loop: walk bytes directly from the source string. ASCII name bytes (the
+   overwhelming majority of CSS identifiers) advance by one without allocating;
+   a backslash bails to the escape-handling slow path; bytes >= 0x80 fall back
+   to the UTF-8 decode for spec-conformant rejection of non-ident code
+   points. *)
+let rec scan_ident_fast r src src_len =
+  let pos = Reader.position r in
+  if pos >= src_len then `End
+  else
+    let b = Char.code (String.unsafe_get src pos) in
+    if b = Char.code '\\' && valid_escape_at r then `Escape
+    else if b < 0x80 then
+      let c = Char.unsafe_chr b in
+      if is_name_start_ascii c || is_digit c || c = '-' then (
+        Reader.skip r;
+        scan_ident_fast r src src_len)
+      else `End
+    else
+      match Reader.peek_utf8_at r 0 with
+      | None -> `End
+      | Some (cp, nbytes) when is_non_ascii_ident_cp cp ->
+          for _ = 1 to nbytes do
+            Reader.skip r
+          done;
+          scan_ident_fast r src src_len
+      | Some _ -> `End
+
+(* Slow path: an escape has been encountered. Seeded with the already-consumed
+   no-escape prefix in [buf], extend [buf] byte-by-byte from here on. *)
+let scan_ident_slow r src buf =
+  let consume_hash_suffix () =
+    match Reader.peek r with
+    | Some '#' ->
+        Buffer.add_char buf '#';
+        Reader.skip r
+    | _ -> ()
+  in
+  let rec loop () =
+    match Reader.peek r with
+    | Some '\\' when valid_escape_at r ->
+        let esc_start = Reader.position r in
+        let hex_escape =
+          match Reader.peek_at r 1 with Some c -> is_hex c | None -> false
+        in
+        Reader.skip r;
+        Buffer.add_string buf (consume_escape r);
+        let consumed_hex_terminator =
+          let pos = Reader.position r in
+          hex_escape && pos > esc_start + 2 && is_ws src.[pos - 1]
+        in
+        if not consumed_hex_terminator then consume_hash_suffix ();
+        loop ()
+    | Some _ -> (
+        match Reader.peek_utf8 r with
+        | None -> ()
+        | Some (_, nbytes) when is_name_at r 0 ->
+            let p = Reader.position r in
+            Buffer.add_substring buf src p nbytes;
+            for _ = 1 to nbytes do
+              Reader.skip r
+            done;
+            loop ()
+        | Some _ -> ())
+    | None -> ()
+  in
+  loop ();
+  Buffer.contents buf
+
 (* 4.3.8 Consume an ident sequence. Iterates at the code-point level so
    multi-byte characters are accepted only when their code point is a valid
    ident code point per section 4.2 (see [is_name_at]).
@@ -206,63 +274,14 @@ let consume_escape r =
    already copied and continues with the original byte-by-byte build. *)
 let consume_ident_sequence r =
   let src = Reader.source r in
+  let src_len = String.length src in
   let start = Reader.position r in
-  let rec scan_fast () =
-    match Reader.peek r with
-    | Some '\\' when valid_escape_at r -> `Escape
-    | Some _ -> (
-        match Reader.peek_utf8 r with
-        | None -> `End
-        | Some (_, nbytes) when is_name_at r 0 ->
-            for _ = 1 to nbytes do
-              Reader.skip r
-            done;
-            scan_fast ()
-        | Some _ -> `End)
-    | None -> `End
-  in
-  match scan_fast () with
+  match scan_ident_fast r src src_len with
   | `End -> String.sub src start (Reader.position r - start)
   | `Escape ->
       let buf = Buffer.create 16 in
       Buffer.add_substring buf src start (Reader.position r - start);
-      let consume_hash_suffix () =
-        match Reader.peek r with
-        | Some '#' ->
-            Buffer.add_char buf '#';
-            Reader.skip r
-        | _ -> ()
-      in
-      let rec loop () =
-        match Reader.peek r with
-        | Some '\\' when valid_escape_at r ->
-            let esc_start = Reader.position r in
-            let hex_escape =
-              match Reader.peek_at r 1 with Some c -> is_hex c | None -> false
-            in
-            Reader.skip r;
-            Buffer.add_string buf (consume_escape r);
-            let consumed_hex_terminator =
-              let pos = Reader.position r in
-              hex_escape && pos > esc_start + 2 && is_ws src.[pos - 1]
-            in
-            if not consumed_hex_terminator then consume_hash_suffix ();
-            loop ()
-        | Some _ -> (
-            match Reader.peek_utf8 r with
-            | None -> ()
-            | Some (_, nbytes) when is_name_at r 0 ->
-                let p = Reader.position r in
-                Buffer.add_substring buf src p nbytes;
-                for _ = 1 to nbytes do
-                  Reader.skip r
-                done;
-                loop ()
-            | Some _ -> ())
-        | None -> ()
-      in
-      loop ();
-      Buffer.contents buf
+      scan_ident_slow r src buf
 
 let consume_string_escape r buf =
   Reader.skip r;
