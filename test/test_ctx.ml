@@ -27,10 +27,12 @@ let test_of_scope_preserves_defaults () =
 
 let test_pp () =
   Alcotest.(check string)
-    "fragment pp" "{scope=fragment;lossless=false}"
+    "fragment pp"
+    "{scope=fragment;lossless=false;aggressive=false;extend_lists=false}"
     (Pp.to_string ~minify:true Ctx.pp Ctx.fragment);
   Alcotest.(check string)
-    "stylesheet lossless pp" "{scope=stylesheet;lossless=true}"
+    "stylesheet lossless pp"
+    "{scope=stylesheet;lossless=true;aggressive=false;extend_lists=false}"
     (Pp.to_string ~minify:true Ctx.pp
        (Ctx.of_scope ~lossless:true (Some `Stylesheet)))
 

@@ -76,11 +76,14 @@ let extract_handled_properties content =
   in
 
   let region_lines = List.rev (find_region lines false []) in
-  let region = String.concat "\n" region_lines in
+  (* Joining with a single space rather than a newline lets the regex match [|
+     "foo" -> Prop X] whether or not [dune fmt] wrapped it across two lines for
+     length. *)
+  let region = String.concat " " region_lines in
 
   (* Extract property names from pattern matches *)
   let pattern =
-    Re.Perl.compile_pat "\\| \"[^\"]+\" -> Prop ([A-Z][A-Za-z0-9_]*)"
+    Re.Perl.compile_pat "\\| \"[^\"]+\" +-> +Prop +([A-Z][A-Za-z0-9_]*)"
   in
   let extract_from_string str =
     Re.all pattern str |> List.map (fun g -> Re.Group.get g 1)

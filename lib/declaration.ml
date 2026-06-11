@@ -1,6 +1,7 @@
 (** CSS declaration types and parser. *)
 
 include Declaration_intf
+open Common
 open Properties
 open Values
 
@@ -153,14 +154,6 @@ let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
 
-let is_css_wide_value value =
-  let reader = Cursor.of_string value in
-  match Properties.read_css_wide reader with
-  | _ ->
-      Cursor.ws reader;
-      Cursor.is_done reader
-  | exception Cursor.Parse_error _ -> false
-
 let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
@@ -179,7 +172,7 @@ let rec components_have_invalid_var components =
 
 and component_has_invalid_var = function
   | Component.Func { node = { name; arguments; terminated; _ }; _ }
-    when String.lowercase_ascii name = "var" ->
+    when String.lowercase_ascii_preserve name = "var" ->
       (not terminated)
       || invalid_var_arguments arguments
       || components_have_invalid_var arguments
@@ -201,7 +194,7 @@ let raw_value_contains_var raw_value =
      relevant if it's a top-level component of the value. *)
   let is_top_level_var = function
     | Component.Func { node = { name; _ }; _ }
-      when String.lowercase_ascii name = "var" ->
+      when String.lowercase_ascii_preserve name = "var" ->
         true
     | _ -> false
   in
@@ -215,7 +208,7 @@ let read_importance t =
       Cursor.skip t;
       Cursor.ws t;
       let ident = Cursor.ident t in
-      if String.lowercase_ascii ident = "important" then true
+      if String.lowercase_ascii_preserve ident = "important" then true
       else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
   | _ -> false
 
@@ -482,11 +475,9 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
   Cursor.ws t;
-  match Cursor.peek t with
-  | None -> ()
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-  | Some (Component.Preserved { kind = Token.Delim "!"; _ }) -> ()
-  | Some _ ->
+  match Cursor.peek_head_shape t with
+  | `Eof | `Semicolon | `Bang -> ()
+  | _ ->
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
         Cursor.err_invalid t
@@ -1755,18 +1746,6 @@ let read_custom_property_declaration t : declaration =
     if is_important then important decl else decl
   with Failure msg -> Cursor.err_invalid t msg
 
-let validate_legacy_page_break t name raw_value =
-  if not (Properties.is_css_wide_keyword raw_value) then
-    match name with
-    | ("page-break-before" | "page-break-after")
-      when not
-             (List.mem raw_value [ "auto"; "always"; "avoid"; "left"; "right" ])
-      ->
-        Cursor.err_invalid t "invalid legacy page-break value"
-    | "page-break-inside" when not (List.mem raw_value [ "auto"; "avoid" ]) ->
-        Cursor.err_invalid t "invalid legacy page-break-inside value"
-    | _ -> ()
-
 (* Properties whose grammar allows multi-token values where a CSS-wide keyword
    can legitimately appear as a non-special ident. [animation-name] /
    [grid-area] / [will-change] / etc. accept arbitrary ident lists.
@@ -1780,14 +1759,32 @@ let property_allows_keyword_as_ident = function
       true
   | _ -> false
 
-let validate_regular_property_raw t name raw_value =
+(* [all] is the only property whose value must be a lone CSS-wide keyword (or a
+   [var()] that may resolve to one); detect that directly on the component list,
+   ignoring leading and trailing whitespace, without rebuilding a string. *)
+let components_are_lone_css_wide cvs =
+  let non_ws =
+    List.filter
+      (function
+        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | _ -> true)
+      cvs
+  in
+  match non_ws with
+  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
+      Properties.is_css_wide_keyword ident
+  | [ Component.Func { node = { name; _ }; _ } ] ->
+      let n = String.lowercase_ascii_preserve name in
+      String.equal n "var" || String.equal n "env" || String.equal n "attr"
+  | _ -> false
+
+let validate_regular_property_components t name components =
   if
     (not (property_allows_keyword_as_ident name))
-    && Properties.value_has_css_wide_mix raw_value
+    && Properties.components_have_css_wide_mix components
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
-  if name = "all" && not (is_css_wide_value raw_value) then
-    Cursor.err_invalid t "all accepts only CSS-wide keywords";
-  validate_legacy_page_break t name raw_value
+  if name = "all" && not (components_are_lone_css_wide components) then
+    Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
 (* Color functions cascade types directly; anything else (e.g. a vendor color
    function or a typed value cascade hasn't grown yet) is treated as a [color]
@@ -1799,7 +1796,7 @@ let color_fallback_function raw_value =
   in
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
-      let fn = String.lowercase_ascii name in
+      let fn = String.lowercase_ascii_preserve name in
       not
         (List.mem fn
            [
@@ -1889,19 +1886,22 @@ let read_typed_property_declaration t start =
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
   let start = Cursor.save t in
-  let name = String.lowercase_ascii (read_property_name t) in
+  let name = String.lowercase_ascii_preserve (read_property_name t) in
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  validate_regular_property_raw t name raw_value;
-  if String.equal name "src" then read_font_src_declaration t raw_value
+  let components = Cursor.lookahead Cursor.drain_to_decl_end t in
+  validate_regular_property_components t name components;
+  if String.equal name "src" then
+    read_font_src_declaration t
+      (String.trim (Parser.string_of_components components))
   else
     try read_typed_property_declaration t start
     with Cursor.Parse_error _ as exn ->
+      let raw_value = String.trim (Parser.string_of_components components) in
       if not (allows_unknown_fallback name raw_value) then raise exn;
       Cursor.restore t start;
-      let name = String.lowercase_ascii (read_property_name t) in
+      let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
@@ -1913,19 +1913,17 @@ let read_regular_property_declaration t : declaration =
    non-ident component: if it's [:] this is a declaration, otherwise walk the
    lookahead window for a [{ ... }] block before the next [;]. *)
 let rec scan_for_curly_block t =
-  match Cursor.peek t with
-  | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> false
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> true
-  | Some _ ->
+  match Cursor.peek_head_shape t with
+  | `Eof | `Semicolon -> false
+  | `Curly_block -> true
+  | _ ->
       Cursor.skip t;
       scan_for_curly_block t
 
 let is_nested_rule_inner t =
-  (match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> Cursor.skip t
-  | _ -> ());
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Colon; _ }) -> false
+  (match Cursor.peek_head_shape t with `Ident -> Cursor.skip t | _ -> ());
+  match Cursor.peek_head_shape t with
+  | `Colon -> false
   | _ -> scan_for_curly_block t
 
 let is_nested_rule t = Cursor.lookahead is_nested_rule_inner t

@@ -2,32 +2,11 @@
 
 open Declaration
 open Stylesheet
+open Common
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
-
-let preserve_list before after =
-  if list_same before after then before else after
-
-let list_map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
-
-let list_filter_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        if f x then loop changed (x :: acc) rest else loop true acc rest
-  in
-  loop false [] xs
+let preserve_list = List.preserve
+let list_map_preserve = List.map_preserve
+let list_filter_preserve = List.filter_preserve
 
 let with_declarations (rule : rule) declarations =
   if declarations == rule.declarations then rule else { rule with declarations }
