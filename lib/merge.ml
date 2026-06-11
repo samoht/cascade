@@ -128,7 +128,7 @@ let can_combine_selectors sel1 sel2 =
           let d1 = modifier_depth c1 in
           let d2 = modifier_depth c2 in
           (d1 > 0 && d2 > 0) || d1 = d2
-    | _ -> false
+    | _ -> true
 
 let rec has_not_pseudo = function
   | Selector.Not _ -> true
