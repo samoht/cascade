@@ -21,6 +21,9 @@ let merge_two_adjacent_rules = Merge.pair
 let merge_rules = Merge.adjacent
 let combine_identical_rules = Merge.identical ~same:same_minified_declaration
 
+let combine_identical_rules_global =
+  Merge.identical_global ~same:same_minified_declaration
+
 let declarations_css_equal =
   Merge.declarations_equal ~same:same_minified_declaration
 
@@ -1700,6 +1703,7 @@ let passes ~ctx ~finalize pass rules =
   |> pass "extract_branch" extract_group_branch_into_adjacent
   |> pass "merge_same_selector" merge_same_selector_gaps
   |> pass "combine_identical" combine_identical_rules
+  |> pass "combine_identical_global" combine_identical_rules_global
   |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
   |> pass "factor_common" common
   |> pass "factor_anchor" anchor
