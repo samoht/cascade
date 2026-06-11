@@ -428,32 +428,44 @@ let combine_adjacent_identical_decls ~same rules =
    later candidate at all). This pass buckets every eligible rule by its body
    fingerprint, sorts each bucket by source position, then greedily absorbs the
    later occurrences into the earliest as long as the gap is cascade-safe
-   against the actual candidate's selector, not the head's. Each absorption is
-   sound iff every intermediate rule (not in the merge group) that writes one of
-   the group's properties has a selector that does not overlap the union of
-   already-accepted member selectors and the candidate's selector - moving the
-   candidate up to the anchor cannot then change any element's cascade. *)
+   against the actual candidate's selector.
+
+   Absorbing candidate [T_j] (at source position [p_j]) into the anchor at
+   [p_anchor] effectively moves [T_j]'s body up the cascade. The only elements
+   whose cascade is affected are those matching [T_j] and also matching some
+   intermediate [S_k] at [p_anchor < p_k < p_j] that writes one of the body's
+   properties. For those, soundness requires the cascade winner be the same
+   before and after the move. With same-tier importance this needs strictly
+   different specificity on every overlapping subselector pair (so the winner
+   is determined by specificity alone, not source order); with different
+   importance the [!important] half wins regardless of position. Previously
+   absorbed group members keep their existing cascade because their bodies are
+   already at the anchor's position; the combined rule writes the same value to
+   every member's elements anyway, so cross-member overlaps within the group are
+   never a hazard. *)
 let identical_global ~same (rules : Stylesheet.rule list) : Stylesheet.rule list
     =
   let arr = Array.of_list rules in
   let n = Array.length arr in
   if n < 2 then rules
   else
-    let summary = Array.make n None in
+    let subselectors = Array.make n [] in
     let props = Array.make n [] in
-    let writes_set = Array.make n [] in
+    let importance_of = Array.make n [] in
     let eligible = Array.make n false in
     for i = 0 to n - 1 do
       let r = arr.(i) in
-      summary.(i) <- Some (summary_of_rule r);
+      subselectors.(i) <-
+        Selector.as_list r.Stylesheet_intf.selector
+        |> Option.value ~default:[ r.Stylesheet_intf.selector ];
       props.(i) <- property_set r.Stylesheet_intf.declarations;
-      writes_set.(i) <-
-        List.map Declaration.property_name r.Stylesheet_intf.declarations;
+      importance_of.(i) <-
+        List.map
+          (fun d ->
+            (Declaration.property_name d, Declaration.is_important d))
+          r.Stylesheet_intf.declarations;
       if not (cannot_combine r) then eligible.(i) <- true
     done;
-    let get_summary i =
-      match summary.(i) with Some s -> s | None -> assert false
-    in
     let buckets : (string list, int list ref) Hashtbl.t = Hashtbl.create 64 in
     for i = 0 to n - 1 do
       if eligible.(i) then begin
@@ -463,39 +475,54 @@ let identical_global ~same (rules : Stylesheet.rule list) : Stylesheet.rule list
         | None -> Hashtbl.add buckets key (ref [ i ])
       end
     done;
+    let specificity_equal a b =
+      let sa = Selector.specificity a in
+      let sb = Selector.specificity b in
+      sa.ids = sb.ids && sa.classes = sb.classes && sa.elements = sb.elements
+    in
+    let specificity_ties subs_a subs_b =
+      List.exists
+        (fun a ->
+          let sa = Selector_summary.of_selector a in
+          List.exists
+            (fun b ->
+              let sb = Selector_summary.of_selector b in
+              Selector_summary.may_overlap sa sb && specificity_equal a b)
+            subs_b)
+        subs_a
+    in
     let merge_into = Array.make n None in
-    let attempt_absorb ~anchor ~group_indices ~group_summaries ~group_props j =
+    let attempt_absorb ~anchor ~group_indices ~anchor_importance j =
       let anchor_r = arr.(anchor) in
       let rj = arr.(j) in
       if not (can_combine_rules ~same anchor_r rj) then false
       else
         let lo = List.fold_left min j !group_indices in
         let hi = List.fold_left max j !group_indices in
-        let sj = get_summary j in
+        let candidate_subs = subselectors.(j) in
         let safe = ref true in
         let k = ref (lo + 1) in
         while !safe && !k < hi do
           let kk = !k in
           if kk <> j && not (List.mem kk !group_indices) then begin
-            let writes_relevant =
-              List.exists (fun p -> List.mem p group_props) writes_set.(kk)
+            let intersects_with_same_importance =
+              List.exists
+                (fun (p, imp_k) ->
+                  match List.assoc_opt p anchor_importance with
+                  | Some imp_body -> imp_k = imp_body
+                  | None -> false)
+                importance_of.(kk)
             in
-            if writes_relevant then begin
-              let sk = get_summary kk in
-              let overlaps_member =
-                Selector_summary.may_overlap sk sj
-                || List.exists
-                     (fun s -> Selector_summary.may_overlap sk s)
-                     !group_summaries
-              in
-              if overlaps_member then safe := false
+            if intersects_with_same_importance then begin
+              let inter_subs = subselectors.(kk) in
+              if specificity_ties inter_subs candidate_subs then
+                safe := false
             end
           end;
           incr k
         done;
         if !safe then begin
           merge_into.(j) <- Some anchor;
-          group_summaries := sj :: !group_summaries;
           group_indices := j :: !group_indices;
           true
         end
@@ -506,14 +533,11 @@ let identical_global ~same (rules : Stylesheet.rule list) : Stylesheet.rule list
         match List.sort compare !entries_ref with
         | [] | [ _ ] -> ()
         | anchor :: rest ->
-            let group_props = props.(anchor) in
-            let group_summaries = ref [ get_summary anchor ] in
             let group_indices = ref [ anchor ] in
+            let anchor_importance = importance_of.(anchor) in
             List.iter
               (fun j ->
-                ignore
-                  (attempt_absorb ~anchor ~group_indices ~group_summaries
-                     ~group_props j))
+                ignore (attempt_absorb ~anchor ~group_indices ~anchor_importance j))
               rest)
       buckets;
     let any_change = ref false in
