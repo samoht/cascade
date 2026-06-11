@@ -2,29 +2,14 @@
 
 open Declaration
 open Stylesheet
+open Common
 
 let src = Logs.Src.create "cascade.factor" ~doc:"Cascade CSS factor optimizer"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
-
-let preserve_list before after =
-  if list_same before after then before else after
-
-let list_map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
-
+let preserve_list = List.preserve
+let list_map_preserve = List.map_preserve
 let same_minified_declaration = Shorthand.same_minified_declaration
 let declaration_covers = Shorthand.declaration_covers
 let is_all_declaration = Shorthand.is_all_declaration
@@ -35,6 +20,9 @@ let merge_selector_list = Merge.selector_list
 let merge_two_adjacent_rules = Merge.pair
 let merge_rules = Merge.adjacent
 let combine_identical_rules = Merge.identical ~same:same_minified_declaration
+
+let combine_identical_rules_global ?extend_lists =
+  Merge.identical_global ?extend_lists ~same:same_minified_declaration
 
 let declarations_css_equal =
   Merge.declarations_equal ~same:same_minified_declaration
@@ -1715,6 +1703,8 @@ let passes ~ctx ~finalize pass rules =
   |> pass "extract_branch" extract_group_branch_into_adjacent
   |> pass "merge_same_selector" merge_same_selector_gaps
   |> pass "combine_identical" combine_identical_rules
+  |> pass "combine_identical_global"
+       (combine_identical_rules_global ~extend_lists:(Ctx.extend_lists ctx))
   |> pass "extend_identical" (extend_identical_declaration_rules ~ctx)
   |> pass "factor_common" common
   |> pass "factor_anchor" anchor
@@ -1830,7 +1820,8 @@ let run ~ctx ~finalize (rules : Stylesheet.rule list) =
   then
     counters.factor_preflight_gain <-
       counters.factor_preflight_gain + Preflight.estimated_gain summary;
-  if Preflight.useful summary then
+  (* [--aggressive] forces the fixpoint regardless of the preflight estimate. *)
+  if Preflight.useful summary || Ctx.aggressive ctx then
     let adaptive =
       Preflight.declaration_count summary
       > Preflight.small_declaration_threshold

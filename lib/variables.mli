@@ -69,6 +69,12 @@ val vars_of_declarations : declaration list -> any_var list
 (** [vars_of_declarations decls] extracts all unique variables from declarations
     . *)
 
+val declaration_uses_var : declaration -> bool
+(** [declaration_uses_var d] is [true] when [d]'s value references at least one
+    [var()]. Cheaper than checking [vars_of_declarations [d] <> []] because it
+    short-circuits on the first match and never builds a deduplication
+    hashtable. *)
+
 val compare_vars_by_name : any_var -> any_var -> int
 (** [compare_vars_by_name v1 v2] compares variables by name. *)
 

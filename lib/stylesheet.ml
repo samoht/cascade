@@ -1305,12 +1305,14 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-(* Pure serialiser. *)
+(* Measure the output size with [Pp.size] and presize the buffer exactly. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
-  Pp.to_string ~minify ?indent ?lossless ?enforce_spec
-    (fun ctx () -> pp_stylesheet ctx statements)
-    ()
+  let pp ctx () = pp_stylesheet ctx statements in
+  let size = Pp.size ~minify ?indent ?lossless ?enforce_spec pp () in
+  let buf = Buffer.create size in
+  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ();
+  Buffer.contents buf
 
 let pp = to_string
 

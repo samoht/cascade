@@ -1,16 +1,9 @@
 (** Declaration deduplication and shorthand composition. *)
 
 open Declaration
+open Common
 
-let rec list_same xs ys =
-  match (xs, ys) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && list_same xs ys
-  | _ -> false
-
-let preserve_list before after =
-  if list_same before after then before else after
-
+let preserve_list = List.preserve
 let scope = Ctx.scope
 let registered = Ctx.registered
 let duplicate_buggy_properties decls = decls
@@ -133,6 +126,12 @@ let covers_longhand : type a b.
   | Border_left, Border_left_style -> true
   | Border_left, Border_left_color -> true
   | Border, Border_image -> true
+  (* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
+     flow-relative middle-tier longhands. *)
+  | Border_block, Border_block_start -> true
+  | Border_block, Border_block_end -> true
+  | Border_inline, Border_inline_start -> true
+  | Border_inline, Border_inline_end -> true
   (* CSS Masking 1 sec. 6.1: [mask] resets every mask layer longhand and
      [mask-border]. *)
   | Mask, Mask_image -> true
@@ -194,24 +193,9 @@ let all_preserved_reorder_declaration decl =
   | Declaration { property; _ } -> is_all_preserved_reorder property
   | _ -> false
 
-(* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
-   flow-relative longhands. Cascade does not model those longhands as typed
-   properties (they parse as [Unknown_property]), so the coverage is matched by
-   name. *)
-let logical_shorthand_covers_name covering covered =
-  match covering with
-  | "border-block" ->
-      String.equal covered "border-block-start"
-      || String.equal covered "border-block-end"
-  | "border-inline" ->
-      String.equal covered "border-inline-start"
-      || String.equal covered "border-inline-end"
-  | _ -> false
-
 (* Coverage relation between two declarations. Custom and unknown properties
-   have only generic behavior: cover themselves by exact name and no typed
-   shorthand coverage (logical border shorthands match their longhands by name),
-   and (for custom) exempt from the [all] reset. *)
+   cover themselves by exact name and have no typed shorthand coverage; custom
+   properties are exempt from the [all] reset. *)
 let declaration_covers covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
@@ -224,11 +208,9 @@ let declaration_covers covering covered =
   | _, Declaration { property = Custom_property _; _ } -> false
   | ( Declaration { property = Unknown_property a; _ },
       Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b || logical_shorthand_covers_name a b
-  | Declaration { property = Unknown_property a; _ }, _ ->
-      logical_shorthand_covers_name a (property_name covered)
-  | _, Declaration { property = Unknown_property b; _ } ->
-      logical_shorthand_covers_name (property_name covering) b
+      String.equal a b
+  | Declaration { property = Unknown_property _; _ }, _ -> false
+  | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
       Declaration.same_property covering covered
@@ -548,90 +530,6 @@ let extract_border_radius_corner :
       Some (Left, value, important)
   | _ -> None
 
-let try_compose_box ~ctx ~extract ~build = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: (_, d4) :: rest -> (
-      match (extract d1, extract d2, extract d3, extract d4) with
-      | ( Some (s1, v1, imp1),
-          Some (s2, v2, imp2),
-          Some (s3, v3, imp3),
-          Some (s4, v4, imp4) )
-        when imp1 = imp2 && imp2 = imp3 && imp3 = imp4 ->
-          let sides = [ (s1, v1); (s2, v2); (s3, v3); (s4, v4) ] in
-          let distinct =
-            List.length (List.sort_uniq compare (List.map fst sides)) = 4
-          in
-          (* A side with runtime substitution can only fold into the box
-             shorthand when it is a registered ([@property]) [var()]: the
-             shorthand makes the four sides share fate, so an unregistered var
-             that goes invalid at computed-value time would poison all four
-             rather than just its own side. *)
-          let subst_safe (_, v) =
-            match (v : Values.length) with
-            | Var vr -> registered ctx vr.name
-            | _ -> not (Values.length_has_runtime_subst v)
-          in
-          let no_runtime = List.for_all subst_safe sides in
-          if distinct && no_runtime then
-            let find s = List.assoc s sides in
-            let merged =
-              build ~important:imp1 ~top:(find Top) ~right:(find Right)
-                ~bottom:(find Bottom) ~left:(find Left)
-            in
-            Some ((idx, merged), rest)
-          else None
-      | _ -> None)
-  | _ -> None
-
-(* When the four box longhands are all present but importance is mixed, emit a
-   non-important shorthand carrying every side's value and re-state the
-   [!important] side(s) after it. An [!important] longhand wins over the
-   shorthand for its side regardless of order, while the non-important sides
-   take the shorthand's value, so the cascade is preserved. Worthwhile only when
-   at most two sides are important (otherwise the longhand count is not
-   reduced). *)
-let try_compose_box_important_split ~extract ~build = function
-  | (idx1, d1) :: (idx2, d2) :: (idx3, d3) :: (idx4, d4) :: rest -> (
-      match (extract d1, extract d2, extract d3, extract d4) with
-      | ( Some (s1, v1, i1),
-          Some (s2, v2, i2),
-          Some (s3, v3, i3),
-          Some (s4, v4, i4) ) ->
-          let sides =
-            [
-              (s1, v1, i1, (idx1, d1));
-              (s2, v2, i2, (idx2, d2));
-              (s3, v3, i3, (idx3, d3));
-              (s4, v4, i4, (idx4, d4));
-            ]
-          in
-          let distinct =
-            List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
-          in
-          let no_runtime =
-            List.for_all
-              (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
-              sides
-          in
-          let important_pairs =
-            List.filter_map
-              (fun (_, _, i, p) -> if i then Some p else None)
-              sides
-          in
-          let n_imp = List.length important_pairs in
-          if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
-            let find s =
-              let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) sides in
-              v
-            in
-            let shorthand =
-              build ~important:false ~top:(find Top) ~right:(find Right)
-                ~bottom:(find Bottom) ~left:(find Left)
-            in
-            Some ((idx1, shorthand), important_pairs @ rest)
-          else None
-      | _ -> None)
-  | _ -> None
-
 let build_margin_box ~important ~top ~right ~bottom ~left =
   Declaration.v ~important Margin
     (collapse_box_lengths [ top; right; bottom; left ])
@@ -652,33 +550,159 @@ let build_border_radius_box ~important ~top ~right ~bottom ~left =
   Declaration.v ~important Border_radius
     (Radius { horizontal; vertical = None })
 
-let compose_box_shorthands ~ctx decls =
-  let composers =
-    [
-      try_compose_box ~ctx ~extract:extract_margin_side ~build:build_margin_box;
-      try_compose_box ~ctx ~extract:extract_padding_side
-        ~build:build_padding_box;
-      try_compose_box ~ctx ~extract:extract_inset_side ~build:build_inset_box;
-      try_compose_box ~ctx ~extract:extract_border_radius_corner
-        ~build:build_border_radius_box;
-      try_compose_box_important_split ~extract:extract_margin_side
-        ~build:build_margin_box;
-      try_compose_box_important_split ~extract:extract_padding_side
-        ~build:build_padding_box;
-      try_compose_box_important_split ~extract:extract_inset_side
-        ~build:build_inset_box;
-      try_compose_box_important_split ~extract:extract_border_radius_corner
-        ~build:build_border_radius_box;
-    ]
+(* Index-based: positions i..i+3 form a same-importance 4-side box. *)
+let try_compose_box_at idx ~ctx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+    || Rule_index.is_absorbed idx (i + 3)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    let d4 = Rule_index.decl_at idx (i + 3) in
+    match (extract d1, extract d2, extract d3, extract d4) with
+    | ( Some (s1, v1, imp1),
+        Some (s2, v2, imp2),
+        Some (s3, v3, imp3),
+        Some (s4, v4, imp4) )
+      when imp1 = imp2 && imp2 = imp3 && imp3 = imp4 ->
+        let sides = [ (s1, v1); (s2, v2); (s3, v3); (s4, v4) ] in
+        let distinct =
+          List.length (List.sort_uniq compare (List.map fst sides)) = 4
+        in
+        let subst_safe (_, v) =
+          match (v : Values.length) with
+          | Var vr -> registered ctx vr.name
+          | _ -> not (Values.length_has_runtime_subst v)
+        in
+        let no_runtime = List.for_all subst_safe sides in
+        if distinct && no_runtime then
+          let find s = List.assoc s sides in
+          Some
+            (build ~important:imp1 ~top:(find Top) ~right:(find Right)
+               ~bottom:(find Bottom) ~left:(find Left))
+        else None
+    | _ -> None
+
+(* Mixed-importance 4-side absorption: emit a non-important shorthand and then
+   re-state each important side immediately after. The cascade picks the
+   !important longhand over the shorthand regardless of order. *)
+let box_split_emit ~build entries =
+  let find s =
+    let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) entries in
+    v
   in
-  let try_any decls = List.find_map (fun f -> f decls) composers in
-  let rec go acc decls =
-    match (decls, try_any decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
+  let shorthand =
+    build ~important:false ~top:(find Top) ~right:(find Right)
+      ~bottom:(find Bottom) ~left:(find Left)
   in
-  go [] decls
+  let important_decls =
+    List.filter_map (fun (_, _, imp, d) -> if imp then Some d else None) entries
+  in
+  shorthand :: important_decls
+
+let try_compose_box_split_at idx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+    || Rule_index.is_absorbed idx (i + 3)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    let d4 = Rule_index.decl_at idx (i + 3) in
+    match (extract d1, extract d2, extract d3, extract d4) with
+    | ( Some (s1, v1, imp1),
+        Some (s2, v2, imp2),
+        Some (s3, v3, imp3),
+        Some (s4, v4, imp4) ) ->
+        let entries =
+          [
+            (s1, v1, imp1, d1);
+            (s2, v2, imp2, d2);
+            (s3, v3, imp3, d3);
+            (s4, v4, imp4, d4);
+          ]
+        in
+        let distinct =
+          List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
+        in
+        let no_runtime =
+          List.for_all
+            (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
+            entries
+        in
+        let n_imp =
+          List.length (List.filter (fun (_, _, imp, _) -> imp) entries)
+        in
+        if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
+          Some (box_split_emit ~build entries)
+        else None
+    | _ -> None
+
+type box_outcome =
+  | Single of declaration (* All 4 sides same importance: one shorthand. *)
+  | Split of declaration list
+(* Mixed: shorthand + re-stated important sides. *)
+
+let compose_box_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let try_same extract build i =
+    Option.map
+      (fun sh -> Single sh)
+      (try_compose_box_at idx ~ctx ~extract ~build i)
+  in
+  let try_split extract build i =
+    Option.map
+      (fun ds -> Split ds)
+      (try_compose_box_split_at idx ~extract ~build i)
+  in
+  let try_one i =
+    let chain fs =
+      let rec loop = function
+        | [] -> None
+        | f :: rest -> ( match f i with Some _ as r -> r | None -> loop rest)
+      in
+      loop fs
+    in
+    chain
+      [
+        try_same extract_margin_side build_margin_box;
+        try_same extract_padding_side build_padding_box;
+        try_same extract_inset_side build_inset_box;
+        try_same extract_border_radius_corner build_border_radius_box;
+        try_split extract_margin_side build_margin_box;
+        try_split extract_padding_side build_padding_box;
+        try_split extract_inset_side build_inset_box;
+        try_split extract_border_radius_corner build_border_radius_box;
+      ]
+  in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_one !i with
+      | Some (Single shorthand) ->
+          Rule_index.absorb idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+            ~shorthand;
+          i := !i + 4
+      | Some (Split decls) ->
+          Rule_index.splice idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+            ~new_decls:decls;
+          i := !i + 4
+      | None -> incr i
+  done
 
 (* Compose 2-longhand shorthands ([gap] from [row-gap] / [column-gap],
    [place-items] from [align-items] / [justify-items], etc) when both longhands
@@ -693,23 +717,28 @@ let extract_gap_side : declaration -> (pair_side * Values.length * bool) option
       Some (Column, value, important)
   | _ -> None
 
-let try_compose_gap = function
-  | (idx, d1) :: (_, d2) :: rest -> (
-      match (extract_gap_side d1, extract_gap_side d2) with
-      | Some (s1, v1, imp1), Some (s2, v2, imp2)
-        when imp1 = imp2 && s1 <> s2
-             && (not (Values.length_has_runtime_subst v1))
-             && not (Values.length_has_runtime_subst v2) ->
-          let pair = [ (s1, v1); (s2, v2) ] in
-          let find s = List.assoc s pair in
-          let merged =
-            Declaration.v ~important:imp1 Gap
-              (Lengths
-                 { row_gap = Some (find Row); column_gap = Some (find Column) })
-          in
-          Some ((idx, merged), rest)
-      | _ -> None)
-  | _ -> None
+let try_compose_gap_at idx i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (extract_gap_side d1, extract_gap_side d2) with
+    | Some (s1, v1, imp1), Some (s2, v2, imp2)
+      when imp1 = imp2 && s1 <> s2
+           && (not (Values.length_has_runtime_subst v1))
+           && not (Values.length_has_runtime_subst v2) ->
+        let pair = [ (s1, v1); (s2, v2) ] in
+        let find s = List.assoc s pair in
+        Some
+          (Declaration.v ~important:imp1 Gap
+             (Lengths
+                { row_gap = Some (find Row); column_gap = Some (find Column) }))
+    | _ -> None
 
 (* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
    longhands. Both longhands carry exactly one length value (wrapped in a
@@ -717,22 +746,29 @@ let try_compose_gap = function
    payload: [v] when both sides match, [v_start; v_end] otherwise. *)
 type axis_side = Start | End
 
-let try_compose_axis_pair ~extract ~build = function
-  | (idx, d1) :: (_, d2) :: rest -> (
-      match (extract d1, extract d2) with
-      | Some (s1, v1, imp1), Some (s2, v2, imp2)
-        when imp1 = imp2 && s1 <> s2
-             && (not (Values.length_has_runtime_subst v1))
-             && not (Values.length_has_runtime_subst v2) ->
-          let pair = [ (s1, v1); (s2, v2) ] in
-          let v_start = List.assoc Start pair in
-          let v_end = List.assoc End pair in
-          let value =
-            if v_start = v_end then [ v_start ] else [ v_start; v_end ]
-          in
-          Some ((idx, build ~important:imp1 ~value), rest)
-      | _ -> None)
-  | _ -> None
+let try_compose_axis_pair_at idx ~extract ~build i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (extract d1, extract d2) with
+    | Some (s1, v1, imp1), Some (s2, v2, imp2)
+      when imp1 = imp2 && s1 <> s2
+           && (not (Values.length_has_runtime_subst v1))
+           && not (Values.length_has_runtime_subst v2) ->
+        let pair = [ (s1, v1); (s2, v2) ] in
+        let v_start = List.assoc Start pair in
+        let v_end = List.assoc End pair in
+        let value =
+          if v_start = v_end then [ v_start ] else [ v_start; v_end ]
+        in
+        Some (build ~important:imp1 ~value)
+    | _ -> None
 
 let extract_margin_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
@@ -786,90 +822,90 @@ let extract_inset_block_side :
    [<align> <justify>] shorthands. When the two longhands appear contiguously
    with matching importance, fold them; the per-property printer then collapses
    matching pairs to a single value. *)
-let try_compose_place_items = function
-  | (idx, Declaration { property = Align_items; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_items; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_items
-          (Align_justify (a, j) : Properties.place_items)
-      in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_items; value = j; important = i1 })
-    :: (_, Declaration { property = Align_items; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_items
-          (Align_justify (a, j) : Properties.place_items)
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
+let try_compose_place_at idx i =
+  let n = Rule_index.length idx in
+  if
+    i + 1 >= n
+    || Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    match (d1, d2) with
+    | ( Declaration { property = Align_items; value = a; important = i1 },
+        Declaration { property = Justify_items; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_items
+             (Align_justify (a, j) : Properties.place_items))
+    | ( Declaration { property = Justify_items; value = j; important = i1 },
+        Declaration { property = Align_items; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_items
+             (Align_justify (a, j) : Properties.place_items))
+    | ( Declaration { property = Align_content; value = a; important = i1 },
+        Declaration { property = Justify_content; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_content
+             (Align_justify (a, j) : Properties.place_content))
+    | ( Declaration { property = Justify_content; value = j; important = i1 },
+        Declaration { property = Align_content; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some
+          (Declaration.v ~important:i1 Place_content
+             (Align_justify (a, j) : Properties.place_content))
+    | ( Declaration { property = Align_self; value = a; important = i1 },
+        Declaration { property = Justify_self; value = j; important = i2 } )
+      when i1 = i2 ->
+        Some (Declaration.v ~important:i1 Place_self (a, j))
+    | ( Declaration { property = Justify_self; value = j; important = i1 },
+        Declaration { property = Align_self; value = a; important = i2 } )
+      when i1 = i2 ->
+        Some (Declaration.v ~important:i1 Place_self (a, j))
+    | _ -> None
 
-let try_compose_place_content = function
-  | (idx, Declaration { property = Align_content; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_content; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_content
-          (Align_justify (a, j) : Properties.place_content)
-      in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_content; value = j; important = i1 })
-    :: (_, Declaration { property = Align_content; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged =
-        Declaration.v ~important:i1 Place_content
-          (Align_justify (a, j) : Properties.place_content)
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
-
-let try_compose_place_self = function
-  | (idx, Declaration { property = Align_self; value = a; important = i1 })
-    :: (_, Declaration { property = Justify_self; value = j; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged = Declaration.v ~important:i1 Place_self (a, j) in
-      Some ((idx, merged), rest)
-  | (idx, Declaration { property = Justify_self; value = j; important = i1 })
-    :: (_, Declaration { property = Align_self; value = a; important = i2 })
-    :: rest
-    when i1 = i2 ->
-      let merged = Declaration.v ~important:i1 Place_self (a, j) in
-      Some ((idx, merged), rest)
-  | _ -> None
-
-let compose_pair_shorthands decls =
-  let axis property extract decls =
+let compose_pair_via_index idx =
+  let axis property extract i =
     let build ~important ~value = Declaration.v ~important property value in
-    try_compose_axis_pair ~extract ~build decls
+    try_compose_axis_pair_at idx ~extract ~build i
   in
-  let composers =
-    [
-      try_compose_gap;
-      axis Margin_inline extract_margin_inline_side;
-      axis Margin_block extract_margin_block_side;
-      axis Padding_inline extract_padding_inline_side;
-      axis Padding_block extract_padding_block_side;
-      axis Inset_inline extract_inset_inline_side;
-      axis Inset_block extract_inset_block_side;
-      try_compose_place_items;
-      try_compose_place_content;
-      try_compose_place_self;
-    ]
+  let try_any i =
+    match try_compose_gap_at idx i with
+    | Some _ as r -> r
+    | None -> (
+        match axis Margin_inline extract_margin_inline_side i with
+        | Some _ as r -> r
+        | None -> (
+            match axis Margin_block extract_margin_block_side i with
+            | Some _ as r -> r
+            | None -> (
+                match axis Padding_inline extract_padding_inline_side i with
+                | Some _ as r -> r
+                | None -> (
+                    match axis Padding_block extract_padding_block_side i with
+                    | Some _ as r -> r
+                    | None -> (
+                        match axis Inset_inline extract_inset_inline_side i with
+                        | Some _ as r -> r
+                        | None -> (
+                            match
+                              axis Inset_block extract_inset_block_side i
+                            with
+                            | Some _ as r -> r
+                            | None -> try_compose_place_at idx i))))))
   in
-  let try_any decls = List.find_map (fun f -> f decls) composers in
-  let rec go acc decls =
-    match (decls, try_any decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    match try_any !i with
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand;
+        i := !i + 2
+    | None -> incr i
+  done
 
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
@@ -894,40 +930,52 @@ let outline_color_value : declaration -> Values.color option = function
   | Declaration { property = Outline_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_outline = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (outline_part_of d1, outline_part_of d2, outline_part_of d3) with
-      | Some p1, Some p2, Some p3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
-          let triple = [ d1; d2; d3 ] in
-          let width = List.find_map outline_width_value triple in
-          let style = List.find_map outline_style_value triple in
-          let color = List.find_map outline_color_value triple in
-          let no_runtime =
-            match width with
-            | Some w -> not (Values.length_has_runtime_subst w)
-            | None -> true
-          in
-          if no_runtime then
-            let merged =
-              Declaration.v ~important:(is_important d1) Outline
-                (Shorthand { width; style; color })
-            in
-            Some ((idx, merged), rest)
-          else None
-      | _ -> None)
-  | _ -> None
+(* Index-based composer: locate Outline_width / Outline_style / Outline_color in
+   the rule, check that they form a contiguous run with matching importance,
+   then absorb them into a single Outline shorthand. *)
+let try_compose_outline_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (outline_part_of d1, outline_part_of d2, outline_part_of d3) with
+    | Some p1, Some p2, Some p3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
+        let triple = [ d1; d2; d3 ] in
+        let width = List.find_map outline_width_value triple in
+        let style = List.find_map outline_style_value triple in
+        let color = List.find_map outline_color_value triple in
+        let no_runtime =
+          match width with
+          | Some w -> not (Values.length_has_runtime_subst w)
+          | None -> true
+        in
+        if no_runtime then
+          Some
+            (Declaration.v ~important:(is_important d1) Outline
+               (Shorthand { width; style; color }))
+        else None
+    | _ -> None
 
-let compose_outline_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_outline decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_outline_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_outline_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
@@ -966,14 +1014,6 @@ let font_family_of : declaration -> Properties.font_family option = function
   | Declaration { property = Font_family; value; _ } -> Some value
   | _ -> Option.None
 
-let take_first_n n xs =
-  let rec aux acc n = function
-    | rest when n = 0 -> Some (List.rev acc, rest)
-    | [] -> None
-    | x :: rest -> aux (x :: acc) (n - 1) rest
-  in
-  aux [] n xs
-
 let same_importance = function
   | [] -> true
   | first :: rest ->
@@ -997,37 +1037,40 @@ let render_font_shorthand decls : Properties.font option =
            })
   | _ -> Option.None
 
-let try_compose_font (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  match take_first_n 5 indexed_decls with
-  | None -> Option.None
-  | Some (five, rest) -> (
-      let raw_decls = List.map snd five in
+let try_compose_font_at idx i =
+  let n = Rule_index.length idx in
+  if i + 4 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2; i + 3; i + 4 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw_decls = List.map (Rule_index.decl_at idx) positions in
       if
         (not (List.for_all is_font_longhand raw_decls))
         || not (same_importance raw_decls)
-      then Option.None
+      then None
       else
         match render_font_shorthand raw_decls with
         | Some font_value ->
-            let idx = fst (List.hd five) in
-            let merged =
-              Declaration.v
-                ~important:(is_important (List.hd raw_decls))
-                Font font_value
-            in
-            Some ((idx, merged), rest)
-        | None -> Option.None)
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw_decls))
+                 Font font_value)
+        | None -> None
 
-let compose_font_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_font decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_font_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 4 < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_font_at idx !i with
+      | None -> incr i
+      | Some shorthand ->
+          let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 5
+  done
 
 (* The [font] shorthand resets the [font-variant-*] / [font-variation-settings]
    / [font-feature-settings] / [font-size-adjust] / [font-kerning] /
@@ -1065,7 +1108,11 @@ let reorder_font_resets_before_font decls =
         let long_block, rest2 = span is_font_longhand [] rest1 in
         let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
         if has "font-size" && has "font-family" then
-          go (List.rev_append (long_block @ reset_block) acc) rest2
+          (* [long_block ++ reset_block] reversed onto acc, tail-recursively and
+             without (@) on a large LHS. *)
+          go
+            (List.rev_append reset_block (List.rev_append long_block acc))
+            rest2
         else go (List.rev_append reset_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
@@ -1108,27 +1155,39 @@ let render_list_style decls : Properties.list_style =
       image = pick list_style_image_of;
     }
 
-let try_compose_list_style = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest
-    when is_list_style_longhand d1 && is_list_style_longhand d2
-         && is_list_style_longhand d3
-         && is_important d1 = is_important d2
-         && is_important d2 = is_important d3 ->
-      let merged =
-        Declaration.v ~important:(is_important d1) List_style
-          (render_list_style [ d1; d2; d3 ])
-      in
-      Some ((idx, merged), rest)
-  | _ -> None
+let try_compose_list_style_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    if
+      is_list_style_longhand d1 && is_list_style_longhand d2
+      && is_list_style_longhand d3
+      && is_important d1 = is_important d2
+      && is_important d2 = is_important d3
+    then
+      Some
+        (Declaration.v ~important:(is_important d1) List_style
+           (render_list_style [ d1; d2; d3 ]))
+    else None
 
-let compose_list_style_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_list_style decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_list_style_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_list_style_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Flexbox 1 sec. 7.2: [flex] shorthand is grow / shrink / basis. Cascade
    types [Flex] as [Full of grow * shrink * basis]; the composition extracts the
@@ -1156,35 +1215,44 @@ let flex_basis_of : declaration -> Properties.flex_basis option = function
   | Declaration { property = Flex_basis; value; _ } -> Some value
   | _ -> None
 
-let try_compose_flex = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (flex_kind_of d1, flex_kind_of d2, flex_kind_of d3) with
-      | Some k1, Some k2, Some k3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-          let triple = [ d1; d2; d3 ] in
-          let grow = List.find_map flex_grow_of triple in
-          let shrink = List.find_map flex_shrink_of triple in
-          let basis = List.find_map flex_basis_of triple in
-          match (grow, shrink, basis) with
-          | Some g, Some s, Some b ->
-              let merged =
-                Declaration.v ~important:(is_important d1) Flex (Full (g, s, b))
-              in
-              Some ((idx, merged), rest)
-          | _ -> None)
-      | _ -> None)
-  | _ -> None
+let try_compose_flex_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (flex_kind_of d1, flex_kind_of d2, flex_kind_of d3) with
+    | Some k1, Some k2, Some k3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+        let triple = [ d1; d2; d3 ] in
+        let grow = List.find_map flex_grow_of triple in
+        let shrink = List.find_map flex_shrink_of triple in
+        let basis = List.find_map flex_basis_of triple in
+        match (grow, shrink, basis) with
+        | Some g, Some s, Some b ->
+            Some
+              (Declaration.v ~important:(is_important d1) Flex (Full (g, s, b)))
+        | _ -> None)
+    | _ -> None
 
-let compose_flex_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_flex decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_flex_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_flex_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Text Decoration 4 sec. 2: [text-decoration] shorthand carries line list,
    style, color, and optional thickness. The composition extracts the three
@@ -1212,36 +1280,45 @@ let td_color_of : declaration -> Values.color option = function
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_text_decoration = function
-  | (idx, d1) :: (_, d2) :: (_, d3) :: rest -> (
-      match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
-      | Some k1, Some k2, Some k3
-        when is_important d1 = is_important d2
-             && is_important d2 = is_important d3
-             && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-          let triple = [ d1; d2; d3 ] in
-          let lines = List.find_map td_line_of triple in
-          let style = List.find_map td_style_of triple in
-          let color = List.find_map td_color_of triple in
-          match (lines, style, color) with
-          | Some lines, Some _, Some _ ->
-              let merged =
-                Declaration.v ~important:(is_important d1) Text_decoration
-                  (Shorthand { lines; style; color; thickness = None })
-              in
-              Some ((idx, merged), rest)
-          | _ -> None)
-      | _ -> None)
-  | _ -> None
+let try_compose_text_decoration_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else if
+    Rule_index.is_absorbed idx i
+    || Rule_index.is_absorbed idx (i + 1)
+    || Rule_index.is_absorbed idx (i + 2)
+  then None
+  else
+    let d1 = Rule_index.decl_at idx i in
+    let d2 = Rule_index.decl_at idx (i + 1) in
+    let d3 = Rule_index.decl_at idx (i + 2) in
+    match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
+    | Some k1, Some k2, Some k3
+      when is_important d1 = is_important d2
+           && is_important d2 = is_important d3
+           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
+        let triple = [ d1; d2; d3 ] in
+        let lines = List.find_map td_line_of triple in
+        let style = List.find_map td_style_of triple in
+        let color = List.find_map td_color_of triple in
+        match (lines, style, color) with
+        | Some lines, Some _, Some _ ->
+            Some
+              (Declaration.v ~important:(is_important d1) Text_decoration
+                 (Shorthand { lines; style; color; thickness = None }))
+        | _ -> None)
+    | _ -> None
 
-let compose_text_decoration_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_text_decoration decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_text_decoration_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose_text_decoration_at idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
 
 (* CSS Backgrounds 3 sec. 4.1: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -1322,36 +1399,68 @@ let declaration_of_border_parts ~important widths styles colors =
    exempt. *)
 let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
 
-let try_compose_border (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  match take_first_n 12 indexed_decls with
-  | None -> Option.None
-  | Some twelve -> (
-      let twelve, rest = twelve in
-      let raw_decls = List.map snd twelve in
-      if not (same_importance raw_decls) then Option.None
-      else if List.exists has_runtime_substitution raw_decls then Option.None
+let try_compose_border_at idx i =
+  let n = Rule_index.length idx in
+  if i + 11 >= n then None
+  else
+    let absorbed =
+      [
+        i;
+        i + 1;
+        i + 2;
+        i + 3;
+        i + 4;
+        i + 5;
+        i + 6;
+        i + 7;
+        i + 8;
+        i + 9;
+        i + 10;
+        i + 11;
+      ]
+    in
+    if List.exists (Rule_index.is_absorbed idx) absorbed then None
+    else
+      let raw_decls = List.map (Rule_index.decl_at idx) absorbed in
+      if not (same_importance raw_decls) then None
+      else if List.exists has_runtime_substitution raw_decls then None
       else
         match border_parts_of raw_decls with
-        | None -> Option.None
+        | None -> None
         | Some (widths, styles, colors) ->
-            let merged =
-              declaration_of_border_parts
-                ~important:(is_important (List.hd raw_decls))
-                widths styles colors
-            in
-            let idx = fst (List.hd twelve) in
-            Some ((idx, merged), rest))
+            Some
+              (declaration_of_border_parts
+                 ~important:(is_important (List.hd raw_decls))
+                 widths styles colors)
 
-let compose_border_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_border decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_border_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 11 < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_border_at idx !i with
+      | None -> incr i
+      | Some shorthand ->
+          let absorbed =
+            [
+              !i;
+              !i + 1;
+              !i + 2;
+              !i + 3;
+              !i + 4;
+              !i + 5;
+              !i + 6;
+              !i + 7;
+              !i + 8;
+              !i + 9;
+              !i + 10;
+              !i + 11;
+            ]
+          in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 12
+  done
 
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
@@ -1359,16 +1468,19 @@ let compose_border_shorthand decls =
    shorthand also resets [border-image] to its initial, so only compose when no
    [border-image] declaration is present in the rule - otherwise the synthesised
    [border] would clobber it (the reset/reorder case is handled separately). *)
-let try_compose_border_whole ~ctx indexed_decls =
-  match take_first_n 3 indexed_decls with
-  | None -> Option.None
-  | Some (three, rest) -> (
-      let raw = List.map snd three in
-      if not (same_importance raw) then Option.None
+let try_compose_border_whole_at ~ctx idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
       else
-        let width : Properties.border_width option ref = ref Option.None in
-        let style : Properties.border_style option ref = ref Option.None in
-        let color : Values.color option ref = ref Option.None in
+        let width : Properties.border_width option ref = ref None in
+        let style : Properties.border_style option ref = ref None in
+        let color : Values.color option ref = ref None in
         List.iter
           (function
             | Declaration { property = Border_width; value = [ w ]; _ } ->
@@ -1379,12 +1491,6 @@ let try_compose_border_whole ~ctx indexed_decls =
                 color := Some c
             | _ -> ())
           raw;
-        (* CSS Variables 1 sec. 3: a [var()] invalid at computed-value time
-           poisons its whole declaration. Folding [var()] longhands into the
-           shorthand widens that blast radius from one longhand to the whole
-           [border], so it is only safe when the referenced custom property is
-           registered ([@property] with an initial-value) and therefore never
-           invalid at computed-value time. *)
         let foldable_width (w : Properties.border_width) =
           match w with Var v -> registered ctx v.name | _ -> true
         in
@@ -1398,19 +1504,17 @@ let try_compose_border_whole ~ctx indexed_decls =
         | Some width, Some style, Some color
           when foldable_width width && foldable_style style
                && foldable_color color ->
-            let merged =
-              Declaration.v
-                ~important:(is_important (List.hd raw))
-                Border
-                (Shorthand
-                   {
-                     width = Some width;
-                     style = Some style;
-                     color = Some color;
-                   })
-            in
-            Some ((fst (List.hd three), merged), rest)
-        | _ -> None)
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw))
+                 Border
+                 (Shorthand
+                    {
+                      width = Some width;
+                      style = Some style;
+                      color = Some color;
+                    }))
+        | _ -> None
 
 (* [border-image*] and [border-width/style/color] are independent properties, so
    a border-image declaration (or longhand run) that immediately precedes the
@@ -1464,32 +1568,37 @@ let reorder_border_image_before_border decls =
           List.exists is_border_width_decl long_block
           && List.exists is_border_style_decl long_block
           && List.exists is_border_color_decl long_block
-        then go (List.rev_append (long_block @ img_block) acc) rest2
+        then
+          go (List.rev_append img_block (List.rev_append long_block acc)) rest2
         else go (List.rev_append img_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
   go [] decls
 
-let compose_border_whole_shorthand ~ctx decls =
+let compose_border_whole_via_index ~ctx idx =
+  let n = Rule_index.length idx in
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
-     is only safe when it ends up before every [border-image] declaration.
-     Compose in place while no [border-image] has been seen earlier in the rule;
-     once one is, leave the longhands alone (the reorder-before-border-image
-     case is handled separately). *)
-  let rec go ~seen_border_image acc decls =
-    match try_compose_border_whole ~ctx decls with
-    | Some (merged, rest) when not seen_border_image ->
-        go ~seen_border_image (merged :: acc) rest
-    | _ -> (
-        match decls with
-        | [] -> List.rev acc
-        | ((_, d) as hd) :: rest ->
-            let seen_border_image =
-              seen_border_image || is_border_image_decl d
-            in
-            go ~seen_border_image (hd :: acc) rest)
-  in
-  go ~seen_border_image:false [] decls
+     is only safe when it ends up before every [border-image] declaration. Walk
+     positions; once we cross a border-image decl, stop trying to fold. *)
+  let i = ref 0 in
+  let seen_border_image = ref false in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else if !seen_border_image then (
+      let d = Rule_index.decl_at idx !i in
+      if is_border_image_decl d then ();
+      incr i)
+    else
+      match try_compose_border_whole_at ~ctx idx !i with
+      | Some shorthand ->
+          let absorbed = [ !i; !i + 1; !i + 2 ] in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + 3
+      | None ->
+          let d = Rule_index.decl_at idx !i in
+          if is_border_image_decl d then seen_border_image := true;
+          incr i
+  done
 
 (* CSS Backgrounds 3: the [border] shorthand resets [border-image] to its
    initial. A [border-image*] declaration is therefore dead when a later
@@ -1533,13 +1642,19 @@ let is_border_image_longhand_decl = function
       true
   | _ -> false
 
-let span_border_image_run =
-  let is_bi d = is_border_image_longhand_decl (snd d) in
-  let rec span acc = function
-    | d :: rest when is_bi d -> span (d :: acc) rest
-    | rest -> (List.rev acc, rest)
+(* Collect contiguous border-image longhands starting at [i], returning the run
+   and its length [k]. *)
+let span_border_image_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      if is_border_image_longhand_decl d then aux (j + 1) ((j, d) :: acc)
+      else (List.rev acc, j - i)
   in
-  span []
+  aux i []
 
 let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
   let need_slice =
@@ -1610,20 +1725,35 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     in
     Some (fst (List.hd run), merged)
 
-let compose_border_image_shorthand ~ctx decls =
-  if scope ctx <> `Stylesheet then decls
+let try_compose_border_image_at idx i =
+  let d = Rule_index.decl_at idx i in
+  if not (is_border_image_longhand_decl d) then None
   else
-    let is_bi d = is_border_image_longhand_decl (snd d) in
-    let rec go acc = function
-      | [] -> List.rev acc
-      | d :: _ as l when is_bi d -> (
-          let run, rest = span_border_image_run l in
-          match compose_border_image_run run with
-          | Some merged -> go (merged :: acc) rest
-          | None -> go (List.rev_append run acc) rest)
-      | d :: rest -> go (d :: acc) rest
-    in
-    go [] decls
+    let run, len = span_border_image_run_at idx i in
+    match compose_border_image_run run with
+    | Some (_, shorthand) -> Some (shorthand, len)
+    | None -> None
+
+let compose_border_image_via_index ~ctx idx =
+  if scope ctx <> `Stylesheet then ()
+  else
+    let n = Rule_index.length idx in
+    let i = ref 0 in
+    while !i < n do
+      if Rule_index.is_absorbed idx !i then incr i
+      else
+        match try_compose_border_image_at idx !i with
+        | None -> incr i
+        | Some (shorthand, k) ->
+            let absorbed = List.init k (fun j -> !i + j) in
+            Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+            i := !i + k
+    done
+
+let compose_border_image_shorthand ~ctx decls =
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_border_image_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
@@ -1718,25 +1848,6 @@ let bg_updaters : bg_updater list =
 let background_part_of (d : declaration) =
   List.find_map (fun f -> f d) bg_updaters
 
-let take_contiguous_background
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * bg_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match background_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
-  in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
-
 let empty_bg_shorthand : Properties.background_shorthand =
   {
     color = None;
@@ -1783,47 +1894,65 @@ let background_run_is_reset_closed layer =
       "clip";
     ]
 
-let try_compose_background ~ctx
-    (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_background indexed_decls in
-  match idx_opt with
-  | None -> None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then None
-      else if not (same_importance raw_decls) then None
+let take_background_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match background_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
+  in
+  aux i []
+
+let try_compose_background_at ~ctx idx i =
+  let parts, len = take_background_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
+      in
+      (* [`Fragment] requires the run to cover every reset field; in
+         [`Stylesheet] the caller asserts no prior author CSS exists that the
+         shorthand could shadow. *)
+      let permit =
+        match scope ctx with
+        | `Stylesheet -> true
+        | `Fragment -> background_run_is_reset_closed layer
+      in
+      if not permit then None
       else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
+        let shorthand =
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Background
+            [ (Shorthand layer : Properties.background) ]
         in
-        (* [`Fragment] requires the run to cover every reset field; in
-           [`Stylesheet] the caller asserts no prior author CSS exists that the
-           shorthand could shadow. *)
-        let permit =
-          match scope ctx with
-          | `Stylesheet -> true
-          | `Fragment -> background_run_is_reset_closed layer
-        in
-        if not permit then Option.None
-        else
-          let merged =
-            Declaration.v
-              ~important:(is_important (List.hd raw_decls))
-              Background
-              [ (Shorthand layer : Properties.background) ]
-          in
-          Some ((idx, merged), rest)
+        Some (shorthand, len)
+
+let compose_background_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_background_at ~ctx idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 let compose_background_shorthand ~ctx decls =
-  let rec go acc decls =
-    match (decls, try_compose_background ~ctx decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+  let idx = Rule_index.build (List.map snd decls) in
+  compose_background_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* CSS Masking 1 sec. 6.1: [mask] is the layer shorthand for [mask-image] /
    [mask-position] / [mask-size] / [mask-repeat] / [mask-origin] / [mask-clip] /
@@ -1916,50 +2045,39 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
-let take_contiguous_mask (indexed_decls : (int * Declaration.declaration) list)
-    :
-    (int * (Declaration.declaration * mask_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match mask_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
+let take_mask_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match mask_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
+  aux i []
 
-let try_compose_mask ~ctx (indexed_decls : (int * Declaration.declaration) list)
-    :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_mask indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else if scope ctx <> `Stylesheet then Option.None
+let try_compose_mask_at ~ctx idx i =
+  let parts, len = take_mask_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else if scope ctx <> `Stylesheet then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
+      in
+      if layer.image = None then None
       else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
+        let shorthand =
+          Declaration.v
+            ~important:(is_important (List.hd raw_decls))
+            Mask
+            (Layer layer : Properties.mask)
         in
-        if layer.image = Option.None then Option.None
-        else
-          let merged =
-            Declaration.v
-              ~important:(is_important (List.hd raw_decls))
-              Mask
-              (Layer layer : Properties.mask)
-          in
-          Some ((idx, merged), rest)
+        Some (shorthand, len)
 
 let is_mask_border_decl d =
   match snd d with
@@ -2002,31 +2120,38 @@ let reorder_mask_border_before_mask decls =
         let border_block, rest1 = span is_mask_border_decl [] l in
         let long_block, rest2 = span is_mask_layer_longhand [] rest1 in
         if List.exists is_mask_image_decl long_block then
-          go (List.rev_append (long_block @ border_block) acc) rest2
+          go
+            (List.rev_append border_block (List.rev_append long_block acc))
+            rest2
         else go (List.rev_append border_block acc) rest1
     | d :: rest -> go (d :: acc) rest
   in
   go [] decls
 
-let compose_mask_shorthand ~ctx decls =
-  let rec go ~seen_mask_border acc decls =
-    match try_compose_mask ~ctx decls with
-    | Some (merged, rest) when not seen_mask_border ->
-        go ~seen_mask_border (merged :: acc) rest
-    | _ -> (
-        match decls with
-        | [] -> List.rev acc
-        | ((_, d) as hd) :: rest ->
-            let seen_mask_border =
-              seen_mask_border
-              ||
-              match d with
-              | Declaration { property = Mask_border; _ } -> true
-              | _ -> false
-            in
-            go ~seen_mask_border (hd :: acc) rest)
-  in
-  go ~seen_mask_border:false [] decls
+let is_mask_border_decl_raw d =
+  match d with Declaration { property = Mask_border; _ } -> true | _ -> false
+
+let compose_mask_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  let seen_mask_border = ref false in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else if !seen_mask_border then (
+      let d = Rule_index.decl_at idx !i in
+      if is_mask_border_decl_raw d then ();
+      incr i)
+    else
+      match try_compose_mask_at ~ctx idx !i with
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+      | None ->
+          let d = Rule_index.decl_at idx !i in
+          if is_mask_border_decl_raw d then seen_mask_border := true;
+          incr i
+  done
 
 (* CSS Transitions 1 sec. 2.1: [transition] composes from
    [transition-{property,duration,timing-function,delay}]. Compose when a
@@ -2105,25 +2230,6 @@ let empty_tr_shorthand : Properties.transition_shorthand =
     behavior = None;
   }
 
-let take_contiguous_transition
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * tr_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match transition_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
-  in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
-
 let has_transition_property_decl raw_decls =
   List.exists
     (fun d ->
@@ -2132,38 +2238,53 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
-let try_compose_transition
-    (indexed_decls : (int * Declaration.declaration) list) :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_transition indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else if not (has_transition_property_decl raw_decls) then Option.None
-      else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
-        in
-        let merged =
-          Declaration.v
-            ~important:(is_important (List.hd raw_decls))
-            Transition
-            [ (Shorthand layer : Properties.transition) ]
-        in
-        Some ((idx, merged), rest)
-
-let compose_transition_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_transition decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
+(* Collect the contiguous run of transition longhands starting at [i]. Returns
+   the list of (decl, part) pairs and its length. *)
+let take_transition_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match transition_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  go [] decls
+  aux i []
+
+let try_compose_transition_at idx i =
+  let parts, len = take_transition_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else if not (has_transition_property_decl raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
+      in
+      let shorthand =
+        Declaration.v
+          ~important:(is_important (List.hd raw_decls))
+          Transition
+          [ (Shorthand layer : Properties.transition) ]
+      in
+      Some (shorthand, len)
+
+let compose_transition_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_transition_at idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -2287,56 +2408,50 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let take_contiguous_animation
-    (indexed_decls : (int * Declaration.declaration) list) :
-    (int * (Declaration.declaration * an_part) list) option
-    * (int * Declaration.declaration) list =
-  let rec aux acc = function
-    | (i, d) :: rest -> (
-        match animation_part_of d with
-        | Some f -> aux ((d, f) :: acc) rest
-        | None -> (List.rev acc, (i, d) :: rest))
-    | [] -> (List.rev acc, [])
+let take_animation_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match animation_part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
   in
-  match indexed_decls with
-  | [] -> (Option.None, [])
-  | (idx, _) :: _ -> (
-      let parts, rest = aux [] indexed_decls in
-      match parts with
-      | [] -> (Option.None, indexed_decls)
-      | _ -> (Some (idx, parts), rest))
+  aux i []
 
-let try_compose_animation (indexed_decls : (int * Declaration.declaration) list)
-    :
-    ((int * Declaration.declaration) * (int * Declaration.declaration) list)
-    option =
-  let idx_opt, rest = take_contiguous_animation indexed_decls in
-  match idx_opt with
-  | None -> Option.None
-  | Some (idx, parts) ->
-      let raw_decls = List.map fst parts in
-      if List.length raw_decls < 2 then Option.None
-      else if not (same_importance raw_decls) then Option.None
-      else
-        let layer =
-          List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
-        in
-        let merged =
-          Declaration.v
-            ~important:(is_important (List.hd raw_decls))
-            Animation
-            [ (Shorthand layer : Properties.animation) ]
-        in
-        Some ((idx, merged), rest)
+let try_compose_animation_at idx i =
+  let parts, len = take_animation_run_at idx i in
+  if List.length parts < 2 then None
+  else
+    let raw_decls = List.map fst parts in
+    if not (same_importance raw_decls) then None
+    else
+      let layer =
+        List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
+      in
+      let shorthand =
+        Declaration.v
+          ~important:(is_important (List.hd raw_decls))
+          Animation
+          [ (Shorthand layer : Properties.animation) ]
+      in
+      Some (shorthand, len)
 
-let compose_animation_shorthand decls =
-  let rec go acc decls =
-    match (decls, try_compose_animation decls) with
-    | [], _ -> List.rev acc
-    | _, Some (merged, rest) -> go (merged :: acc) rest
-    | hd :: rest, None -> go (hd :: acc) rest
-  in
-  go [] decls
+let compose_animation_via_index idx =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose_animation_at idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -2442,13 +2557,13 @@ let covered_by_new_declaration new_decl existing =
   && (not (legacy_color_fallback new_decl existing))
   && not (legacy_runtime_subst_fallback new_decl existing)
 
-let append_all_declaration idx decl kept =
-  let before, after =
-    List.partition
-      (fun (_, old) -> not (all_preserved_reorder_declaration old))
-      kept
+let filter_preserve = List.filter_preserve
+
+let add_all_declaration_rev idx decl kept =
+  let after, before =
+    List.partition (fun (_, old) -> all_preserved_reorder_declaration old) kept
   in
-  before @ [ (idx, decl) ] @ after
+  after @ ((idx, decl) :: before)
 
 let is_all_declaration = function
   | Declaration { property = All; _ } -> true
@@ -2461,21 +2576,21 @@ let is_all_declaration = function
 let deduplicate_step kept (idx, decl) =
   if is_intentionally_duplicated decl then
     let kept =
-      List.filter
+      filter_preserve
         (fun (_, old) -> not (same_property_value_declaration decl old))
         kept
     in
-    kept @ [ (idx, decl) ]
+    (idx, decl) :: kept
   else if (not (is_important decl)) && property_covered_by_important kept decl
   then kept
   else
     let kept =
-      List.filter
+      filter_preserve
         (fun (_, old) -> not (covered_by_new_declaration decl old))
         kept
     in
-    if is_all_declaration decl then append_all_declaration idx decl kept
-    else kept @ [ (idx, decl) ]
+    if is_all_declaration decl then add_all_declaration_rev idx decl kept
+    else (idx, decl) :: kept
 
 (* [vendor_alias_redundant vendor twin] is [true] when [vendor] is a
    vendor-prefixed declaration made redundant by its unprefixed [twin] carrying
@@ -2486,16 +2601,226 @@ let deduplicate_step kept (idx, decl) =
    like [listbox]/[checkbox]/[radio]), so there is no typed equality between the
    two. [text-decoration] is also absent because dropping the WebKit copy
    regresses documented inheritance quirks. *)
-let vendor_alias_redundant vendor twin =
+(* WebKit animation longhand vendor-alias pairs ([-webkit-] vs unprefixed). *)
+let vendor_alias_redundant_webkit_animation vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
-      Declaration { property = Transform; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_animation; value = v1; important = i1 },
+      Declaration { property = Animation; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_delay; value = v1; important = i1 },
+      Declaration { property = Animation_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_duration; value = v1; important = i1 },
+      Declaration { property = Animation_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_direction; value = v1; important = i1 },
+      Declaration { property = Animation_direction; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_animation_iteration_count;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Animation_iteration_count; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_name; value = v1; important = i1 },
+      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_animation_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Animation_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_fill_mode; value = v1; important = i1 },
+      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_play_state; value = v1; important = i1 },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Mozilla animation longhand vendor-alias pairs ([-moz-] vs unprefixed). *)
+let vendor_alias_redundant_moz_animation vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Moz_animation; value = v1; important = i1 },
+      Declaration { property = Animation; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_animation_delay; value = v1; important = i1 },
+      Declaration { property = Animation_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_duration; value = v1; important = i1 },
+      Declaration { property = Animation_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_direction; value = v1; important = i1 },
+      Declaration { property = Animation_direction; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_iteration_count; value = v1; important = i1 },
+      Declaration
+        { property = Animation_iteration_count; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_animation_name; value = v1; important = i1 },
+      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_timing_function; value = v1; important = i1 },
+      Declaration
+        { property = Animation_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_fill_mode; value = v1; important = i1 },
+      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_play_state; value = v1; important = i1 },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+let vendor_alias_redundant_animation vendor twin =
+  vendor_alias_redundant_webkit_animation vendor twin
+  || vendor_alias_redundant_moz_animation vendor twin
+
+(* Transition longhand vendor-alias pairs ([-webkit-]/[-moz-]/[-o-] vs
+   unprefixed). *)
+let vendor_alias_redundant_transition vendor twin =
+  match (vendor, twin) with
   | ( Declaration { property = Webkit_transition; value = v1; important = i1 },
       Declaration { property = Transition; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_delay; value = v1; important = i1 },
+      Declaration { property = Transition_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_duration; value = v1; important = i1 },
+      Declaration { property = Transition_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_property; value = v1; important = i1 },
+      Declaration { property = Transition_property; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_transition_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Transition_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_transition; value = v1; important = i1 },
+      Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_transition_delay; value = v1; important = i1 },
+      Declaration { property = Transition_delay; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_transition_duration; value = v1; important = i1 },
+      Declaration { property = Transition_duration; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_transition_property; value = v1; important = i1 },
+      Declaration { property = Transition_property; value = v2; important = i2 }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Moz_transition_timing_function;
+          value = v1;
+          important = i1;
+        },
+      Declaration
+        { property = Transition_timing_function; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = O_transition; value = v1; important = i1 },
       Declaration { property = Transition; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Modern flexbox alignment vendor-alias pairs (-webkit- vs unprefixed). *)
+let vendor_alias_redundant_flex vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        { property = Webkit_flex_direction; value = v1; important = i1 },
+      Declaration { property = Flex_direction; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_flex_wrap; value = v1; important = i1 },
+      Declaration { property = Flex_wrap; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_flex_flow; value = v1; important = i1 },
+      Declaration { property = Flex_flow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_justify_content; value = v1; important = i1 },
+      Declaration { property = Justify_content; value = v2; important = i2 } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_items; value = v1; important = i1 },
+      Declaration { property = Align_items; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_content; value = v1; important = i1 },
+      Declaration { property = Align_content; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_self; value = v1; important = i1 },
+      Declaration { property = Align_self; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+(* Border-radius / box-shadow / background-size / filter vendor-alias pairs. *)
+let vendor_alias_redundant_visual vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_border_radius; value = v1; important = i1 },
+      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_border_radius; value = v1; important = i1 },
+      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_box_shadow; value = v1; important = i1 },
+      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_shadow; value = v1; important = i1 },
+      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_background_size; value = v1; important = i1 },
+      Declaration { property = Background_size; value = v2; important = i2 } )
+    ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = Webkit_filter; value = v1; important = i1 },
       Declaration { property = Filter; value = v2; important = i2 } ) ->
@@ -2504,6 +2829,13 @@ let vendor_alias_redundant vendor twin =
         { property = Webkit_backdrop_filter; value = v1; important = i1 },
       Declaration { property = Backdrop_filter; value = v2; important = i2 } )
     ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
+let vendor_alias_redundant vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
+      Declaration { property = Transform; value = v2; important = i2 } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration { property = Webkit_user_select; value = v1; important = i1 },
       Declaration { property = User_select; value = v2; important = i2 } ) ->
@@ -2524,6 +2856,49 @@ let vendor_alias_redundant vendor twin =
       Declaration { property = Print_color_adjust; value = v2; important = i2 }
     ) ->
       v1 = v2 && Bool.equal i1 i2
+  | _ ->
+      vendor_alias_redundant_animation vendor twin
+      || vendor_alias_redundant_transition vendor twin
+      || vendor_alias_redundant_flex vendor twin
+      || vendor_alias_redundant_visual vendor twin
+
+(* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
+   [-o-]) return the unprefixed remainder; otherwise [None]. *)
+let strip_vendor_prefix name =
+  let n = String.length name in
+  let try_prefix p =
+    let pn = String.length p in
+    if n > pn && String.sub name 0 pn = p then
+      Some (String.sub name pn (n - pn))
+    else None
+  in
+  match try_prefix "-webkit-" with
+  | Some _ as r -> r
+  | None -> (
+      match try_prefix "-moz-" with
+      | Some _ as r -> r
+      | None -> (
+          match try_prefix "-ms-" with
+          | Some _ as r -> r
+          | None -> try_prefix "-o-"))
+
+(* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
+   [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
+   its vendor prefix yields [twin]'s name and the component-value lists are
+   structurally equal under matching importance. The typed-twin case (e.g.
+   vendor [Unknown_property "-webkit-animation-delay"] + modern
+   [Animation_delay]) needs typed vendor longhand properties to compare
+   structurally; that remains a follow-up. *)
+let text_vendor_alias_redundant vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        { property = Unknown_property vname; value = vv; important = vi },
+      Declaration
+        { property = Unknown_property tname; value = tv; important = ti } )
+    when Bool.equal vi ti -> (
+      match strip_vendor_prefix vname with
+      | Some modern -> String.equal tname modern && vv = tv
+      | None -> false)
   | _ -> false
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
@@ -2533,31 +2908,62 @@ let vendor_alias_redundant vendor twin =
 let drop_vendor_aliases (kept : (int * declaration) list) :
     (int * declaration) list =
   let has_unprefixed_twin (_, decl) =
-    List.exists (fun (_, other) -> vendor_alias_redundant decl other) kept
+    List.exists
+      (fun (_, other) ->
+        vendor_alias_redundant decl other
+        || text_vendor_alias_redundant decl other)
+      kept
   in
-  List.filter (fun item -> not (has_unprefixed_twin item)) kept
+  filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
+
+(* Run every index-based composer against the same Rule_index so we pay one
+   [build] + [to_list] per rule for the whole group. *)
+let compose_index_group_a ~ctx kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_box_via_index ~ctx idx;
+  compose_pair_via_index idx;
+  compose_outline_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
+(* Second index group runs after the font-reset reorder. Font + list-style +
+   flex + text-decoration + border all share the same index. *)
+let compose_index_group_b kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_font_via_index idx;
+  compose_list_style_via_index idx;
+  compose_flex_via_index idx;
+  compose_text_decoration_via_index idx;
+  compose_border_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
+(* Third index group runs at the very end: mask + transition + animation share
+   one index. *)
+let compose_index_group_c ~ctx kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_mask_via_index ~ctx idx;
+  compose_transition_via_index idx;
+  compose_animation_via_index idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
+
+let compose_border_whole_step ~ctx kept =
+  let idx = Rule_index.build (List.map snd kept) in
+  compose_border_whole_via_index ~ctx idx;
+  List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_shorthands ~ctx kept =
-  kept
-  |> compose_box_shorthands ~ctx
-  |> compose_pair_shorthands |> compose_outline_shorthand
-  |> reorder_font_resets_before_font |> compose_font_shorthand
-  |> compose_list_style_shorthand |> compose_flex_shorthand
-  |> compose_text_decoration_shorthand |> compose_border_shorthand
-  |> reorder_border_image_before_border
-  |> compose_border_whole_shorthand ~ctx
+  kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
+  |> compose_index_group_b |> reorder_border_image_before_border
+  |> compose_border_whole_step ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
-  |> reorder_mask_border_before_mask
-  |> compose_mask_shorthand ~ctx
-  |> compose_transition_shorthand |> compose_animation_shorthand
+  |> reorder_mask_border_before_mask |> compose_index_group_c ~ctx
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
 let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
-  let kept = List.fold_left deduplicate_step [] indexed_props in
+  let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =
     let kept = if merge_box then compose_shorthands ~ctx kept else kept in
     let kept = drop_vendor_aliases kept in

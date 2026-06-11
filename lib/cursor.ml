@@ -1,3 +1,5 @@
+open Common
+
 type t = {
   mutable cvs : Component.t list;
   source : string option;
@@ -134,6 +136,38 @@ let consume_remaining_as_string ?(trim = false) t =
 
 let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
 
+type head_shape =
+  [ `Eof
+  | `Semicolon
+  | `Colon
+  | `Comma
+  | `Bang
+  | `Curly_block
+  | `Paren_block
+  | `Square_block
+  | `Ident
+  | `Func
+  | `Other ]
+
+let peek_head_shape t : head_shape =
+  drop_ws t;
+  match t.cvs with
+  | [] -> `Eof
+  | Component.Preserved { kind; _ } :: _ -> (
+      match kind with
+      | Token.Semicolon -> `Semicolon
+      | Token.Colon -> `Colon
+      | Token.Comma -> `Comma
+      | Token.Delim "!" -> `Bang
+      | Token.Ident _ -> `Ident
+      | _ -> `Other)
+  | Component.Block { node = { opening; _ }; _ } :: _ -> (
+      match opening with
+      | Token.Curly -> `Curly_block
+      | Token.Paren -> `Paren_block
+      | Token.Square -> `Square_block)
+  | Component.Func _ :: _ -> `Func
+
 let next_raw t =
   match t.cvs with
   | [] -> None
@@ -158,12 +192,8 @@ exception Parse_error = Error.Parse_error
 let sort = Sort.Component
 
 let raise_ t kind loc =
-  let snippet =
-    match (t.meta, t.source) with
-    | `Full, Some source -> Some (Loc.snippet source loc)
-    | _ -> None
-  in
-  Error.fail (Error.v ?snippet ~loc ~sort kind)
+  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
+  Error.fail (Error.v ?source ~loc ~sort kind)
 
 let err ?got t msg =
   let loc = position t in
@@ -216,9 +246,13 @@ let try_typed_call (typed : t -> 'a) (t : t) : ('a, Component.t) result =
 
 (** {1 Token-shape helpers - option variants} *)
 
+(* Inspect the head [Component.Preserved] directly to avoid the [Some hd] option
+   allocation [peek] would do on each call - this is the workhorse for
+   ident/number/percentage/delim_opt etc. *)
 let take_token_if (f : Token.kind -> 'a option) t : 'a option =
-  match peek t with
-  | Some (Component.Preserved tok) -> (
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved tok :: _ -> (
       match f tok.kind with
       | Some _ as r ->
           let _ = next t in
@@ -307,24 +341,30 @@ let ascii_delim = function
 let delim_opt t =
   take_token_if (function Token.Delim s -> ascii_delim s | _ -> None) t
 
+(* Predicate helpers that inspect the head component directly without going
+   through [peek], so they do not allocate a [Some hd] option per call. *)
 let peek_delim t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Delim s; _ }) -> ascii_delim s
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Delim s; _ } :: _ -> ascii_delim s
   | _ -> None
 
 let peek_comma t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Comma; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Comma; _ } :: _ -> true
   | _ -> false
 
 let peek_semicolon t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> true
   | _ -> false
 
 let peek_colon t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Colon; _ }) -> true
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
   | _ -> false
 
 let peek_ident t =
@@ -405,6 +445,9 @@ let consume_until_semicolon ?(trim = false) t =
 let consume_to_decl_end ?(trim = false) t =
   string_of_components ~trim
     (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
+
+let drain_to_decl_end t =
+  drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t
 
 let is_slash_cv = function
   | Component.Preserved { kind = Token.Delim "/"; _ } -> true
@@ -530,8 +573,9 @@ let bool t =
 (** {1 Delim helpers} *)
 
 let bool_token (k : Token.kind) t =
-  match peek t with
-  | Some (Component.Preserved tok) when tok.kind = k ->
+  drop_ws t;
+  match t.cvs with
+  | Component.Preserved tok :: _ when tok.kind = k ->
       let _ = next t in
       true
   | _ -> false
@@ -584,8 +628,9 @@ let looking_at_ident name t =
   | _ -> false
 
 let looking_at_func name t =
-  match peek t with
-  | Some (Component.Func { node = { name = n; _ }; _ }) -> n = name
+  drop_ws t;
+  match t.cvs with
+  | Component.Func { node = { name = n; _ }; _ } :: _ -> n = name
   | _ -> false
 
 let looking_at_calc t =
@@ -686,7 +731,8 @@ let any_function_call f t =
 let call name t f =
   match peek t with
   | Some (Component.Func fn)
-    when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
+    when String.lowercase_ascii_preserve fn.node.name
+         = String.lowercase_ascii_preserve name ->
       let _ = next t in
       f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
@@ -707,7 +753,7 @@ let enum ?default label table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
-      match List.assoc_opt (String.lowercase_ascii s) table with
+      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
       | Some v ->
           let _ = next t in
           v
@@ -720,7 +766,7 @@ let enum ?default label table t =
 let enum_calls ?default table t =
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii name) table with
+      match List.assoc_opt (String.lowercase_ascii_preserve name) table with
       | Some f -> f t
       | None -> (
           match default with
@@ -734,7 +780,7 @@ let enum_calls ?default table t =
 let enum_or_var ?default label idents ~var t =
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii name = "var" ->
+    when String.lowercase_ascii_preserve name = "var" ->
       var t
   | _ -> enum ?default label idents t
 
@@ -742,7 +788,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
-      match List.assoc_opt (String.lowercase_ascii s) idents with
+      match List.assoc_opt (String.lowercase_ascii_preserve s) idents with
       | Some v ->
           let _ = next t in
           v
@@ -751,7 +797,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
           | Some f -> f t
           | None -> err t ("unknown " ^ label ^ ": " ^ s)))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii name) calls with
+      match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
       | Some f -> f t
       | None -> (
           match default with

@@ -92,7 +92,7 @@ let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
   pp ctx a
 
 let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
-  let buf = Buffer.create 1024 in
+  let buf = Buffer.create 64 in
   to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a;
   Buffer.contents buf
 

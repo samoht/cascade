@@ -22,7 +22,29 @@ val identical :
   same:(Declaration.declaration -> Declaration.declaration -> bool) ->
   Stylesheet.rule list ->
   Stylesheet.rule list
-(** Combine cascade-safe rules with identical declaration blocks. *)
+(** Combine cascade-safe rules with identical declaration blocks. The walker
+    closes its current group as soon as one intermediate rule writes a group
+    property on a selector overlapping the group's head. *)
+
+val identical_global :
+  ?extend_lists:bool ->
+  same:(Declaration.declaration -> Declaration.declaration -> bool) ->
+  Stylesheet.rule list ->
+  Stylesheet.rule list
+(** [identical_global ?extend_lists ~same rules] is the body-keyed global
+    analogue of {!identical}: it buckets every eligible rule by its body, then
+    greedily absorbs every later occurrence into the earliest as long as the gap
+    is cascade-safe against the actual candidate's selector (not the head's).
+    Each absorption is sound iff every intermediate rule outside the merge group
+    that writes one of the body's properties has a selector that does not
+    overlap the union of already-accepted member selectors and the candidate's
+    selector.
+
+    When [extend_lists] is [true] (default [false]), {!Selector.List} rules
+    become eligible too, so the pass can extend an existing [.a,.b\{body\}] rule
+    with later [.c\{body\}] rules. Each commit is locally sound but interacts
+    greedily with downstream factoring; the optimizer runs both settings A/B and
+    emits whichever serializes shorter. *)
 
 val declarations_equal :
   same:(Declaration.declaration -> Declaration.declaration -> bool) ->

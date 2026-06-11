@@ -10,6 +10,7 @@
   aria.mli
   block.mli
   color_space.mli
+  common.mli
   component.mli
   container.mli
   context.mli
@@ -42,6 +43,7 @@
   properties.mli
   reader.mli
   rule.mli
+  rule_index.mli
   selector.mli
   shorthand.mli
   size.mli
