@@ -13,10 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        ocaml-compiler: ['5.2', '4.14']
+        ocaml-compiler: ['5.4', '5.3']
         include:
           - os: macos-latest
-            ocaml-compiler: '5.2'
+            ocaml-compiler: '5.4'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +37,6 @@ jobs:
 
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: '5.2'
+          ocaml-compiler: '5.4'
 
       - uses: ocaml/setup-ocaml/lint-fmt@v3

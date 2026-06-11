@@ -1,0 +1,17 @@
+@layer base {
+  a {
+    color: blue;
+  }
+}
+
+@layer utilities {
+  a {
+    color: red;
+  }
+}
+
+@layer base {
+  a {
+    font-weight: bold;
+  }
+}

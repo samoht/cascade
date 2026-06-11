@@ -1,0 +1,8 @@
+a {
+  font-variation-settings: "wght" 600, "wdth" 75;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.6;
+  font-family: Inter, sans-serif;
+}

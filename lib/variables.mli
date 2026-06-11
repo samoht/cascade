@@ -7,23 +7,39 @@ include module type of Variables_intf
 
 (** {1 Custom Property Support} *)
 
+val custom_value_ident : string -> custom_value
+(** [custom_value_ident name] is a custom-property value made from one CSS
+    ident. *)
+
+val custom_value_var_empty_fallback : string -> custom_value
+(** [custom_value_var_empty_fallback name] is [var(--name,)] as structured CSS
+    components, used for empty-fallback custom-property channels. *)
+
+val string_of_custom_value : custom_value -> string
+(** [string_of_custom_value value] serializes a custom-property token stream. *)
+
 val pp_syntax : 'a syntax Pp.t
 (** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)
 
 val pp_value : 'a syntax -> 'a Pp.t
 (** [pp_value syntax] pretty-prints a value according to its syntax type. *)
 
-val read_syntax : Reader.t -> any_syntax
+val read_syntax : Cursor.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
 
-val read_value : Reader.t -> 'a syntax -> 'a
+val read_value : Cursor.t -> 'a syntax -> 'a
 (** [read_value r syntax] reads a value according to the given [syntax]. *)
+
+val normalize_value : ?lossless:bool -> 'a syntax -> 'a -> 'a
+(** [normalize_value ?lossless syntax value] applies optimizer canonicalisation
+    for typed registered custom-property values. [lossless] disables colour
+    approximation. *)
 
 (** {1 Meta handling} *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** [meta ()] returns a fresh injection/projection pair for storing values of
-    type ['a] inside {!type-meta}. *)
+    type ['a] inside {!Cascade.Values.type-meta}. *)
 
 (** {1 Variable creation} *)
 
@@ -75,10 +91,10 @@ val custom_declaration_name : declaration -> string option
 val pp_any_syntax : any_syntax Pp.t
 (** [pp_any_syntax] pretty-prints any CSS syntax descriptor. *)
 
-val read_any_syntax : Reader.t -> any_syntax
+val read_any_syntax : Cursor.t -> any_syntax
 (** [read_any_syntax t] parses a CSS syntax descriptor. *)
 
-val parse_var_reference : Reader.t -> string * string option
-(** [parse_var_reference t] parses a CSS var() function and returns the variable
-    name (without -- prefix) and optional fallback string. This is a lower-level
+val read_reference : Cursor.t -> string * string option
+(** [read_reference t] parses a CSS var() function and returns the variable name
+    (without -- prefix) and optional fallback string. This is a lower-level
     function that doesn't create a variable handle. *)

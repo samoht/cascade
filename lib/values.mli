@@ -15,6 +15,14 @@ val var_ref :
 (** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
     reference to [--name]. *)
 
+val syntax_fallback : string -> 'a fallback
+(** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
+    [var()] reference. *)
+
+val string_of_number_percentage : number_percentage -> string
+(** [string_of_number_percentage value] serializes a number/percentage value for
+    CSS custom-property initial values. *)
+
 (** {1 Constructor Functions} *)
 
 val hex : string -> color
@@ -48,8 +56,8 @@ val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] creates an OKLAB color with alpha. *)
 
 val oklaba_none_zeros : float -> float -> float -> float -> color
-(** [oklaba_none_zeros l a b alpha] is like [oklaba] but uses [none] for zero
-    a/b components. *)
+(** [oklaba_none_zeros l a b alpha] is like {!val-oklaba} but uses [none] for
+    zero a/b components. *)
 
 val lch : float -> float -> float -> color
 (** [lch l c h] creates an LCH color. *)
@@ -88,8 +96,8 @@ val color_mix_var_percent :
   color ->
   color ->
   color
-(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
-    but uses a CSS var reference for the first percentage. *)
+(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like
+    {!val-color_mix} but uses a CSS var reference for the first percentage. *)
 
 val color_mix_var_pct_fallback :
   ?in_space:color_space ->
@@ -100,10 +108,10 @@ val color_mix_var_pct_fallback :
   color ->
   color
 (** [color_mix_var_pct_fallback ?in_space ?hue ~var_name ~fallback c1 c2] is
-    like [color_mix_var_percent] but with an explicit fallback on the percentage
-    variable. Used for named opacity modifiers where the fallback is either a
-    concrete number ([Fallback (Num 0.5)]) or a theme variable reference
-    ([Var_fallback "custom-opacity"]). *)
+    like {!val-color_mix_var_percent} but with an explicit fallback on the
+    percentage variable. Used for named opacity modifiers where the fallback is
+    either a concrete number ([Fallback (Num 0.5)]) or a theme variable
+    reference ([Var_fallback "custom-opacity"]). *)
 
 (** {1 Pretty-printing Functions} *)
 
@@ -112,8 +120,20 @@ val pp_length : ?always:bool -> length Pp.t
     units are always included even for zero values (required for CSS [@property]
     initial-value). *)
 
+val length_has_runtime_subst : length -> bool
+(** [length_has_runtime_subst l] is [true] when [l] is [var()] / [env()] /
+    [attr()] / an anchor query, or a [calc()] containing one. *)
+
+val length_is_zero : length -> bool
+(** [length_is_zero l] is [true] when [l] is a literal zero in any length unit
+    ([0], [0px], [0%], etc.). *)
+
 val pp_color : color Pp.t
 (** [pp_color] pretty-prints {!color} values. *)
+
+val pp_specified_color : color Pp.t
+(** [pp_specified_color] pretty-prints {!color} values without crossing the
+    computed-value color-space boundary. *)
 
 val pp_color_in_mix : color Pp.t
 (** [pp_color_in_mix] pretty-prints color values for use inside color-mix
@@ -122,8 +142,16 @@ val pp_color_in_mix : color Pp.t
 val pp_angle : angle Pp.t
 (** [pp_angle] pretty-prints {!angle} values. *)
 
+val angle_degrees_opt : angle -> float option
+(** [angle_degrees_opt a] converts concrete angle units to degrees. Dynamic
+    angles such as [calc()] and [var()] return [None]. *)
+
 val pp_duration : duration Pp.t
 (** [pp_duration] pretty-prints {!duration} values. *)
+
+val pp_duration_preserve_ms : duration Pp.t
+(** [pp_duration_preserve_ms] pretty-prints {!duration} values without
+    shortening milliseconds to seconds. *)
 
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
@@ -139,6 +167,51 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
+val normalize_length_percentage :
+  ?strip:bool -> length_percentage -> length_percentage
+(** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
+    keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
+    [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. [strip]
+    (default [true]) also drops a wrapped zero length's unit; pass [strip:false]
+    for CSS function operands. *)
+
+val normalize_length : ?strip:bool -> length -> length
+(** [normalize_length ?strip l] evaluates the static CSS math functions on a
+    [<length>] (min / max / clamp reduce to one dimension on shared units; round
+    / mod / rem / hypot / abs fold on {!val-px}; calc folds through the
+    simplifier), recursing into nested calls; a non-static operand keeps the
+    call. [strip] (default [true]) additionally drops the unit on a top-level
+    zero ([0px] -> [0]); pass [strip:false] for a calc / function operand, which
+    keeps its unit. *)
+
+val normalize_angle : angle -> angle
+(** [normalize_angle a] folds the static angle math functions (round / mod / rem
+    on [deg] operands) and converts to the shortest of the
+    losslessly-interconvertible units (deg / turn / grad); [rad] (irrational via
+    pi) stays as-is. *)
+
+val normalize_number_percentage : number_percentage -> number_percentage
+(** [normalize_number_percentage np] picks the shorter spelling for a typed
+    [<number-percentage>] leaf where percentage and number are spec-equivalent
+    (100% = 1, e.g. transform [scale()], the [scale] property, and the [filter]
+    [brightness()]/[contrast()]/... functions). [Var] and {!module-Calc}
+    sub-forms stay opaque - inside a [calc()], the two spellings are not
+    interchangeable. *)
+
+val normalize_number : number -> number
+(** [normalize_number n] evaluates the static CSS math functions on a [<number>]
+    ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
+    nested calls; an operand with a [var()] keeps the call. *)
+
+val normalize_color : ?lossless:bool -> in_feature_query:bool -> color -> color
+(** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
+    shortest spelling: a static colour in any space folds through sRGB to
+    hex/named, hex shortens, and named↔hex picks the shorter. [in_feature_query]
+    keeps a colour untouched inside an [@supports] test, where the exact
+    spelling is the capability being probed. [lossless] disables lossy static
+    colour-space and color-mix folds while preserving exact named/hex and
+    byte-exact rgb folds. *)
+
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
     When [always] is true, always includes units even for 0. *)
@@ -147,30 +220,42 @@ val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
 
 val pp_color_name : color_name Pp.t
-(** [pp_color_name] pretty-prints {!color_name} values. *)
+(** [pp_color_name] pretty-prints {!type-color_name} values. *)
 
-val read_color_name : Reader.t -> color_name
-(** [read_color_name] reads a {!color_name} value. *)
+val read_color_name : Cursor.t -> color_name
+(** [read_color_name] reads a {!type-color_name} value. *)
 
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)
 
-val read_color_space : Reader.t -> color_space
+val read_color_space : Cursor.t -> color_space
 (** [read_color_space] reads a {!color_space} value. *)
+
+val pp_attr_syntax : attr_syntax Pp.t
+(** [pp_attr_syntax] pretty-prints an [attr()] type() syntax keyword. *)
+
+val read_attr_syntax : Cursor.t -> attr_syntax
+(** [read_attr_syntax] reads an [attr()] type() syntax keyword. *)
+
+val pp_attr_type : attr_type Pp.t
+(** [pp_attr_type] pretty-prints an [attr()] type hint. *)
+
+val read_attr_type : Cursor.t -> attr_type
+(** [read_attr_type] reads an [attr()] type hint. *)
+
+val pp_attr_call : 'a Pp.t -> 'a attr_call Pp.t
+(** [pp_attr_call pp] pretty-prints an [attr()] call using [pp] for typed
+    fallback values. *)
 
 (** {2 Helper Functions} *)
 
 val pp_var : 'a Pp.t -> 'a var Pp.t
 (** [pp_var pp] pretty-prints CSS variables using [pp] for the payload. *)
 
-val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
+val read_var : (Cursor.t -> 'a) -> Cursor.t -> 'a var
 (** [read_var read t] parses a CSS variable with [var(...)] syntax using [read]
     for the payload. Expects to be positioned at [var(] and parses the full
     expression. *)
-
-val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
-(** [read_var_after_ident read t] parses after "var" has been consumed. Expects
-    to be positioned at [(] after "var". *)
 
 (** {1 Calc Module} *)
 module Calc : sig
@@ -198,17 +283,21 @@ module Calc : sig
   val ( / ) : 'a calc -> 'a calc -> 'a calc
   (** [a / b] is the calc division. *)
 
-  val length : 'a -> 'a calc
+  val length : length -> length calc
   (** [length v] wraps a value as a calc leaf. *)
 
   val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
   (** [var ?default ?fallback name] is a CSS variable reference in calc. *)
 
-  val float : float -> length calc
-  (** [float f] is a numeric literal in calc. *)
+  val float : float -> 'a calc
+  (** [float f] is a dimensionless [<number>] literal in calc. Polymorphic per
+      CSS Values 4 sec. 10: a [<number>] multiplied by a [<length>] yields a
+      [<length>], by an [<angle>] yields an [<angle>], etc., so the same literal
+      flows into any dimension. *)
 
-  val infinity : length calc
-  (** [infinity] is the CSS infinity value in calc. *)
+  val infinity : 'a calc
+  (** [infinity] is the CSS [infinity] math constant in calc. Polymorphic for
+      the same reason as {!float}: a math constant is a [<number>]. *)
 
   val px : float -> length calc
   (** [px f] is a pixel length in calc. *)
@@ -232,99 +321,169 @@ end
 (** {1 Parsing Functions} *)
 
 val read_length :
-  ?allow_negative:bool -> ?with_keywords:bool -> Reader.t -> length
+  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length
 (** [read_length t] parses a CSS length. *)
 
-val read_non_negative_length : ?with_keywords:bool -> Reader.t -> length
+val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties which cannot have negative values
     per CSS specification. *)
 
-val read_padding_shorthand : Reader.t -> length list
+val read_padding_shorthand : Cursor.t -> length list
 (** [read_padding_shorthand reader] parses a padding shorthand property
     accepting 1-4 space-separated non-negative length values according to CSS
     specification. *)
 
-val read_margin_shorthand : Reader.t -> length list
+val read_margin_shorthand : Cursor.t -> length list
 (** [read_margin_shorthand reader] parses a margin shorthand property accepting
     1-4 space-separated length values according to CSS specification. *)
 
-val read_color : Reader.t -> color
+val read_color : Cursor.t -> color
 (** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
 
 val pp_hue : hue Pp.t
 (** [pp_hue] pretty-prints {!hue} values. *)
 
-val read_hue : Reader.t -> hue
+val read_hue : Cursor.t -> hue
 (** [read_hue t] parses a CSS hue value. *)
 
 val pp_alpha : alpha Pp.t
 (** [pp_alpha] pretty-prints {!alpha} values. *)
 
-val read_alpha : Reader.t -> alpha
+val read_alpha : Cursor.t -> alpha
 (** [read_alpha t] parses a CSS alpha value. *)
 
 val pp_hue_interpolation : hue_interpolation Pp.t
 (** [pp_hue_interpolation] pretty-prints {!hue_interpolation} values. *)
 
-val read_hue_interpolation : Reader.t -> hue_interpolation
+val read_hue_interpolation : Cursor.t -> hue_interpolation
 (** [read_hue_interpolation t] parses a hue interpolation method. *)
 
 val pp_calc_op : calc_op Pp.t
 (** [pp_calc_op] pretty-prints {!calc_op} values. *)
 
-val read_calc_op : Reader.t -> calc_op
+val read_calc_op : Cursor.t -> calc_op
 (** [read_calc_op t] parses a calc operation. *)
+
+val pp_component_values : component_values Pp.t
+(** [pp_component_values] pretty-prints preserved component values. *)
+
+val read_component_values : Cursor.t -> component_values
+(** [read_component_values t] returns the remaining component values from [t].
+*)
+
+val pp_invalid_value : invalid_value Pp.t
+(** [pp_invalid_value] pretty-prints a preserved invalid value. *)
+
+val read_invalid_value : Cursor.t -> invalid_value
+(** [read_invalid_value t] reads a preserved invalid value. *)
+
+val pp_math_const : math_const Pp.t
+(** [pp_math_const] pretty-prints a math constant. *)
+
+val read_math_const : Cursor.t -> math_const
+(** [read_math_const t] parses a math constant. *)
+
+val pp_math_arg : math_arg Pp.t
+(** [pp_math_arg] pretty-prints a numeric math argument. *)
+
+val read_math_arg : Cursor.t -> math_arg
+(** [read_math_arg t] parses a numeric math argument. *)
 
 val pp_component : component Pp.t
 (** [pp_component] pretty-prints {!component} values. *)
 
-val read_component : Reader.t -> component
+val read_component : Cursor.t -> component
 (** [read_component t] parses a component value. *)
 
 val pp_channel : channel Pp.t
 (** [pp_channel] pretty-prints {!channel} values. *)
 
-val read_channel : Reader.t -> channel
+val read_channel : Cursor.t -> channel
 (** [read_channel t] parses a channel value. *)
 
 val pp_rgb : rgb Pp.t
-(** [pp_rgb] pretty-prints {!rgb} values. *)
+(** [pp_rgb] pretty-prints {!type-rgb} values. *)
 
-val read_rgb : Reader.t -> rgb
+val read_rgb : Cursor.t -> rgb
 (** [read_rgb t] parses an RGB value. *)
 
-val read_angle : Reader.t -> angle
+val color_has_specified_hue : color -> bool
+(** [color_has_specified_hue color] is [true] when [color] contains the obsolete
+    [specified hue] interpolation keyword. Stylesheet recovery keeps the
+    declaration for compatibility, while strict parsing reports it. *)
+
+val color_is_color_4 : color -> bool
+(** [color_is_color_4 c] is [true] when [c] uses a CSS Color 4 / 5 construct
+    ([lab], {!val-lch}, {!val-oklab}, {!val-oklch}, {!val-hwb}, [color()],
+    [color-mix()], [light-dark()], [contrast-color()], or [from <origin>]
+    relative forms). Recurses through [Mix], [Light_dark], [Contrast_color]. *)
+
+val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
 
-val read_duration : Reader.t -> duration
+val read_angle_unit_required : Cursor.t -> angle
+(** [read_angle_unit_required t] parses a generic CSS [<angle>] value, where
+    bare zero is invalid. Legacy property contexts that allow unitless zero use
+    {!read_angle}. *)
+
+val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 
-val read_time : Reader.t -> duration
+val read_duration_preserve_ms : Cursor.t -> duration
+(** [read_duration_preserve_ms t] parses a CSS duration without canonicalizing
+    milliseconds to seconds. *)
+
+val read_time : Cursor.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)
 
-val read_number : Reader.t -> number
+val read_number : Cursor.t -> number
 (** [read_number t] parses a CSS number (int/float). *)
 
-val read_transition_behavior : Reader.t -> transition_behavior
+val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 
-val read_percentage : Reader.t -> percentage
+val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
-val read_length_percentage : Reader.t -> length_percentage
+val read_length_percentage :
+  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length_percentage
 (** [read_length_percentage t] parses a CSS length or percentage. *)
 
-val read_number_percentage : Reader.t -> number_percentage
+val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
-val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
+val read_calc : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
+
+val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
+(** [read_calc_expr read t] parses a calc expression body — the contents of a
+    [calc(...)] form without the surrounding [calc(] and [)]. *)
 
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
     numbers to a float. Returns [None] if the expression contains variables or
     non-numeric values. *)
+
+val eval_math_fn : math_fn -> float option
+(** [eval_math_fn fn] evaluates a CSS Values 4 §10.7 numeric math function call
+    to a float. Returns [None] when an arg references an unresolved variable. *)
+
+val read_numeric_expression : Cursor.t -> float
+(** [read_numeric_expression t] parses and evaluates a numeric math expression,
+    including top-level math functions such as [min()], [max()], and [clamp()].
+*)
+
+val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
+(** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc
+    structure (operators, [Nested], [Parens], [Var] fallbacks). *)
+
+val eval_calc : 'a calc -> 'a calc
+(** [eval_calc calc] applies CSS Values 4 §10.7 structural simplification: folds
+    [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps trivial
+    [Nested] / [Parens] around leaves. [Val] / [Var] leaves and mixed-type
+    operands survive — type-specific simplification (e.g., length arithmetic) is
+    the caller's job. *)
 
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
@@ -344,5 +503,5 @@ val var_meta : 'a var -> meta option
 val pp_system_color : system_color Pp.t
 (** [pp_system_color] is the pretty-printer for [system_color]. *)
 
-val read_system_color : Reader.t -> system_color
+val read_system_color : Cursor.t -> system_color
 (** [read_system_color t] is the [system_color] parsed from [t]. *)

@@ -1,69 +1,278 @@
 (** Font-face descriptor types for type-safe [\@font-face] construction. *)
 
+open Syntax
+
 (** {1 Metric Override Types} *)
 
 (** Metric override value - either "normal" or a percentage. Used for
     ascent-override, descent-override, line-gap-override. *)
 type metric_override = Normal | Percent of float
 
-let metric_override_to_string = function
+let string_of_metric_override = function
   | Normal -> "normal"
-  | Percent p -> Pp.float_to_string p ^ "%"
+  | Percent p -> Pp.string_of_float p ^ "%"
 
 (** {1 Size Adjust} *)
 
 type size_adjust = float
 (** Size adjustment percentage. *)
 
-let size_adjust_to_string p = Pp.float_to_string p ^ "%"
+let string_of_size_adjust p = Pp.string_of_float p ^ "%"
 
 (** {1 Font Source} *)
 
 (** A single font source entry. *)
 type src_entry =
   | Url of { url : string; format : string option; tech : string option }
+  | Quoted_url of {
+      url : string;
+      quote : char;
+      format : string option;
+      tech : string option;
+    }
   | Local of string
-  | Raw of string  (** Escape hatch for unparsed sources *)
+  | Var of src Values.var
 
-type src = src_entry list
+and src = src_entry list
 (** Font source list. *)
 
-let src_entry_to_string = function
-  | Url { url; format; tech } -> (
-      let base = "url(\"" ^ url ^ "\")" in
-      let with_format =
-        match format with
-        | Some f -> base ^ " format(\"" ^ f ^ "\")"
-        | None -> base
-      in
-      match tech with
-      | Some t -> with_format ^ " tech(" ^ t ^ ")"
-      | None -> with_format)
-  | Local name -> "local(\"" ^ name ^ "\")"
-  | Raw s -> s
+type t = src
 
-let src_to_string entries =
-  String.concat ", " (List.map src_entry_to_string entries)
+(* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
+   Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
+   doesn't require whitespace between the function calls. *)
+let known_format_keywords =
+  [
+    "woff2";
+    "woff";
+    "truetype";
+    "opentype";
+    "embedded-opentype";
+    "svg";
+    "collection";
+  ]
+
+let pp_src_modifiers ctx ~format ~tech =
+  (match format with
+  | Some f ->
+      Pp.sp ctx ();
+      Pp.string ctx "format(";
+      (* CSS Fonts 4 sec. 4.3: [format()] accepts a [<font-format>] keyword or a
+         [<string>]; under minify the unquoted keyword form is shorter for the
+         known formats ([woff2], [woff], [truetype], [opentype], ...). *)
+      if
+        Pp.minified ctx
+        && List.mem (String.lowercase_ascii f) known_format_keywords
+      then Pp.string ctx (String.lowercase_ascii f)
+      else (
+        Pp.char ctx '"';
+        Pp.string ctx f;
+        Pp.char ctx '"');
+      Pp.char ctx ')'
+  | None -> ());
+  match tech with
+  | Some t ->
+      Pp.sp ctx ();
+      Pp.string ctx "tech(";
+      Pp.string ctx t;
+      Pp.char ctx ')'
+  | None -> ()
+
+(* Emit a [url()] argument: quote when the body contains characters that the
+   bare form can't hold, drop quotes otherwise. CSS Values 4 3.4 makes the two
+   notations equivalent and the bare form is shorter under minify. *)
+let pp_url_arg ctx s =
+  if url_needs_quotes s then (
+    Pp.char ctx '"';
+    Pp.string ctx s;
+    Pp.char ctx '"')
+  else Pp.string ctx s
+
+let css_wide_keyword s =
+  match String.lowercase_ascii s with
+  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+  | _ -> false
+
+let local_name_can_unquote name =
+  String.length name > 0
+  && (not (css_wide_keyword name))
+  && String.for_all
+       (function
+         | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true | _ -> false)
+       name
+  && match name.[0] with 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false
+
+let rec pp_src ctx entries = Pp.list ~sep:Pp.comma pp_src_entry ctx entries
+
+and pp_src_entry ctx = function
+  | Var var -> Values.pp_var pp_src ctx var
+  | Url { url; format; tech } ->
+      Pp.string ctx "url(";
+      pp_url_arg ctx url;
+      Pp.char ctx ')';
+      pp_src_modifiers ctx ~format ~tech
+  | Quoted_url { url; quote; format; tech } ->
+      Pp.string ctx "url(";
+      if Pp.minified ctx && not (url_needs_quotes url) then Pp.string ctx url
+      else (
+        Pp.char ctx quote;
+        Pp.string ctx url;
+        Pp.char ctx quote);
+      Pp.char ctx ')';
+      pp_src_modifiers ctx ~format ~tech
+  | Local name ->
+      Pp.string ctx "local(";
+      (* CSS Fonts 4 sec. 4.3: [local(<family-name>)] accepts a [<custom-ident>]
+         sequence or a [<string>]; under minify the unquoted ident form is
+         shorter when the family name parses as a valid [<custom-ident>]
+         (alphanumeric + dashes, no leading digit, not a CSS-wide keyword). *)
+      if Pp.minified ctx && local_name_can_unquote name then Pp.string ctx name
+      else (
+        Pp.char ctx '"';
+        Pp.string ctx name;
+        Pp.char ctx '"');
+      Pp.char ctx ')'
+
+let string_of_src_entry entry =
+  Pp.to_string ~minify:false (fun ctx e -> pp_src_entry ctx e) entry
+
+let string_of_src ?(minify = false) entries =
+  Pp.to_string ~minify pp_src entries
+
+let pp = pp_src
+let to_string = string_of_src
 
 (** {1 Parsing} *)
+
+let valid_percentage p = Float.is_finite p && p >= 0.
 
 (** Parse a metric override string like "normal" or "90%". *)
 let metric_override_of_string s =
   let s = String.trim s in
   if String.equal s "normal" then Normal
-  else if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try Percent (float_of_string (String.sub s 0 (String.length s - 1)))
-    with Failure _ -> Normal (* fallback on invalid float *)
-  else Normal (* fallback *)
+  else if String.length s > 0 && s.[String.length s - 1] = '%' then (
+    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
+    if not (valid_percentage p) then failwith "invalid metric override";
+    Percent p)
+  else failwith "invalid metric override"
 
 (** Parse a size-adjust percentage like "90%". *)
 let size_adjust_of_string s =
   let s = String.trim s in
-  if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try float_of_string (String.sub s 0 (String.length s - 1))
-    with Failure _ -> 100. (* fallback to 100% on invalid float *)
-  else 100. (* fallback *)
+  if String.length s > 0 && s.[String.length s - 1] = '%' then (
+    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
+    if not (valid_percentage p) then failwith "invalid size-adjust";
+    p)
+  else failwith "invalid size-adjust"
 
-(** Parse a src string into a list of entries. Falls back to Raw for complex
-    values. *)
-let src_of_string s = [ Raw s ]
+let read_function_arg name t =
+  Cursor.call name t @@ fun inner ->
+  Cursor.ws inner;
+  let value =
+    match Cursor.string_opt inner with
+    | Some s -> s
+    | None -> Cursor.consume_remaining_as_string ~trim:true inner
+  in
+  Cursor.expect_eof inner;
+  (* CSS Fonts 4 §11.1: [local(<family-name>)], [format(<font-format> |
+     <string>)] and [tech(<font-tech>)] all take exactly one argument; an empty
+     body like [format()] is invalid. *)
+  if value = "" then Cursor.err_invalid inner ("empty " ^ name ^ "()");
+  value
+
+let read_url t =
+  match Cursor.url_opt t with
+  | Some "" -> Cursor.err_invalid t "url() argument"
+  | Some url -> `Bare url
+  | None -> (
+      Cursor.call "url" t @@ fun inner ->
+      Cursor.ws inner;
+      let value =
+        match Cursor.string_with_quote_opt inner with
+        | Some (url, quote) -> `Quoted (url, quote)
+        | None -> `Bare (Cursor.consume_remaining_as_string ~trim:true inner)
+      in
+      Cursor.expect_eof inner;
+      match value with
+      | `Bare "" | `Quoted ("", _) -> Cursor.err_invalid inner "url() argument"
+      | _ -> value)
+
+let read_src_modifier t =
+  Cursor.ws t;
+  match Cursor.peek_raw t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "format" ->
+      `Format (read_function_arg "format" t)
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "tech" ->
+      `Tech (read_function_arg "tech" t)
+  | _ -> Cursor.err_expected t "font source modifier"
+
+let finalise_src_url url format tech =
+  match url with
+  | `Bare url -> Url { url; format; tech }
+  | `Quoted (url, quote) -> Quoted_url { url; quote; format; tech }
+
+let read_src_url_modifiers t url =
+  let rec loop format tech =
+    Cursor.ws t;
+    match Cursor.option read_src_modifier t with
+    | None -> finalise_src_url url format tech
+    | Some (`Format value) ->
+        if Option.is_some format then
+          Cursor.err_invalid t "duplicate font source format()";
+        loop (Some value) tech
+    | Some (`Tech value) ->
+        if Option.is_some tech then
+          Cursor.err_invalid t "duplicate font source tech()";
+        loop format (Some value)
+  in
+  loop None None
+
+let rec read_src_entry t =
+  Cursor.ws t;
+  match Cursor.peek_raw t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "local" ->
+      Local (read_function_arg "local" t)
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_src t)
+  | _ ->
+      let url = read_url t in
+      read_src_url_modifiers t url
+
+(** Parse a src string into a list of typed entries. CSS Fonts 4 §4.3 spells
+    [src] as a comma-separated list, but real-world input occasionally drops the
+    comma between entries ([src: local("") url(test.woff)]). Match cleancss /
+    lightningcss / esbuild and accept the whitespace-only form too, treating it
+    as if a comma were present. *)
+and read_src t =
+  let sep t =
+    Cursor.ws t;
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_semicolon t then
+        Cursor.err_invalid t "trailing comma in font src")
+    else
+      (* No comma - whitespace alone separates entries; succeed silently so
+         [Cursor.list]'s peeker calls back into [read_src_entry]. *)
+      ()
+  in
+  let entries = Cursor.list ~at_least:1 ~sep read_src_entry t in
+  Cursor.ws t;
+  if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
+    Cursor.err t "unexpected tokens after font src";
+  entries
+
+let src_of_string s =
+  let normalize_entry = function
+    | Quoted_url { url; format; tech; _ } -> Url { url; format; tech }
+    | entry -> entry
+  in
+  try
+    let t = Cursor.of_string s in
+    let entries = read_src t in
+    Cursor.expect_eof t;
+    List.map normalize_entry entries
+  with Cursor.Parse_error _ -> failwith "invalid font src"

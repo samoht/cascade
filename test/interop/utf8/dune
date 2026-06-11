@@ -1,0 +1,16 @@
+(test
+ (name test)
+ (libraries cascade alcotest fmt)
+ (deps
+  (source_tree traces)))
+
+; Refresh traces/UTF-8-test.txt from Markus Kuhn's UCS examples corpus.
+
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))

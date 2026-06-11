@@ -1,0 +1,5 @@
+@container sidebar (min-width: 700px) {
+  a {
+    color: red;
+  }
+}

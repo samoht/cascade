@@ -1,4 +1,4 @@
-(** Fuzz tests for [@font-face] rule parsing. *)
+(** Fuzz tests for CSS font-face descriptor parsing and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for [@font-face] rules. *)
+(** [suite] declares the font-face fuzz cases. *)

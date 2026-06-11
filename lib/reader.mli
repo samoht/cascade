@@ -1,4 +1,9 @@
-(** Simple CSS parser API — direct and readable. *)
+(** Simple CSS parser API — direct and readable.
+
+    Cascade parses already-decoded UTF-8 text. It does not implement the CSS
+    Syntax section 3.2 byte-stream decoding layer: BOM handling, HTTP or
+    environment charset fallback, and exact [@charset "...";] byte sniffing are
+    caller responsibilities before constructing a {!Reader.t}. *)
 
 type t
 (** [t] is the parser context. *)
@@ -29,19 +34,35 @@ val pp_parse_error : parse_error -> string
 (** {1 Core} *)
 
 val of_string : string -> t
-(** [of_string s] creates a parser from a string. *)
+(** [of_string s] creates a parser from an already-decoded UTF-8 string. *)
+
+val source : t -> string
+(** [source t] is the full input string the reader was built from. *)
 
 val is_done : t -> bool
 (** [is_done t] is [true] when at end of input. *)
+
+val peek_utf8 : t -> (int * int) option
+(** [peek_utf8 t] decodes the UTF-8 code point starting at the current position.
+    Returns [Some (code_point, byte_length)] or [None] at EOF or on a malformed
+    sequence. Byte length is in [[1..4]]. *)
+
+val peek_utf8_at : t -> int -> (int * int) option
+(** [peek_utf8_at t off] decodes the UTF-8 code point at [position t + off],
+    without advancing. *)
+
+val skip_utf8 : t -> unit
+(** [skip_utf8 t] advances past the next UTF-8 code point. If the lead byte is
+    malformed, advances by one byte. *)
 
 val position : t -> int
 (** [position t] returns the current position in the input. *)
 
 val context_window : ?before:int -> ?after:int -> t -> string * int
 (** [context_window ~before ~after t] returns [(context, marker_pos)] where
-    [context] is text around the current position and [marker_pos] indicates
-    where in the context the current position is. Used for better error
-    messages. *)
+    [context] is text around the current position and {!field-marker_pos}
+    indicates where in the context the current position is. Used for better
+    error messages. *)
 
 (** {1 Call Stack Management} *)
 
@@ -101,10 +122,10 @@ val skip : t -> unit
 (** [skip t] consumes one character. *)
 
 val expect : char -> t -> unit
-(** [expect c t] consumes [c] or raises [Parse_error]. *)
+(** [expect c t] consumes [c] or raises {!exception-Parse_error}. *)
 
 val expect_string : string -> t -> unit
-(** [expect_string s t] consumes [s] or raises [Parse_error]. *)
+(** [expect_string s t] consumes [s] or raises {!exception-Parse_error}. *)
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] if input starts with [s]. *)
@@ -251,15 +272,16 @@ val enum_or_calls :
   t ->
   'a
 (** [enum_or_calls ?default label idents ~calls t] handles values that can be
-    either a keyword ([enum]) or a function call ([enum_calls]). It peeks after
-    the identifier: if a '(' follows, dispatches to [enum_calls]; otherwise
-    matches against [idents]. If no match is found and [~default] is provided,
-    the input position is restored before trying [default t]. *)
+    either a keyword ({!val-enum}) or a function call ({!val-enum_calls}). It
+    peeks after the identifier: if a '(' follows, dispatches to
+    {!val-enum_calls}; otherwise matches against [idents]. If no match is found
+    and [~default] is provided, the input position is restored before trying
+    [default t]. *)
 
 val fold_many :
   (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option
-(** [fold_many parser ~init ~f t] like [many] but folds into an accumulator as
-    it parses. Returns the final accumulator and the last error (if any). *)
+(** [fold_many parser ~init ~f t] like {!val-many} but folds into an accumulator
+    as it parses. Returns the final accumulator and the last error (if any). *)
 
 val number_with_unit : t -> float * string option
 (** [number_with_unit t] parses a number followed by a unit identifier (e.g.,

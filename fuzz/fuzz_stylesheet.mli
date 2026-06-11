@@ -1,4 +1,4 @@
-(** Fuzz tests for the CSS Stylesheet module. *)
+(** Fuzz tests for stylesheet parsing, recovery, and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for CSS stylesheets. *)
+(** [suite] declares the stylesheet fuzz cases. *)

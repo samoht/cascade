@@ -11,14 +11,25 @@ license: "ISC"
 homepage: "https://github.com/samoht/cascade"
 bug-reports: "https://github.com/samoht/cascade/issues"
 depends: [
-  "ocaml" {>= "4.14"}
-  "dune" {>= "3.0"}
+  "ocaml" {>= "5.2"}
+  "dune" {>= "3.21"}
   "dune-build-info"
   "alcotest" {with-test}
   "alcobar" {with-test}
   "astring" {with-test}
+  "eio" {with-test}
+  "eio_main" {with-test}
+  "lambdasoup" {with-test}
+  "mdx" {with-test}
+  "re" {with-test}
   "fmt"
+  "base-unix"
+  "uutf"
+  "unionFind"
+  "psq"
+  "logs"
   "cmdliner"
+  "memtrace"
   "odoc" {with-doc}
 ]
 build: [
@@ -36,3 +47,4 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/samoht/cascade.git"
+x-maintenance-intent: ["(latest)"]

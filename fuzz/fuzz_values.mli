@@ -1,4 +1,4 @@
-(** Fuzz tests for CSS value parsers. *)
+(** Fuzz tests for CSS value parsing and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for CSS values. *)
+(** [suite] declares the value fuzz cases. *)

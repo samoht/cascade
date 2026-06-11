@@ -17,26 +17,41 @@
 module String_set : Set.S with type elt = string
 (** Set of strings, used for theme variable names. *)
 
+type out
+(** The output sink a formatter writes to: a [Buffer] for serialisation, or a
+    counter that records only length and last byte for {!size} (no allocation).
+    Abstract - emit through {!string} / {!char} and inspect with {!last_char}.
+*)
+
 type ctx = {
   minify : bool;  (** Whether to produce minified output *)
-  indent : int;  (** Current indentation level *)
-  buf : Buffer.t;  (** Output buffer *)
+  level : int;  (** Current nesting depth *)
+  indent : int option;
+      (** Indent width per nesting level. [None] disables per-level indentation
+          even when not minifying. *)
+  out : out;  (** Output sink *)
   inline : bool;  (** Whether to inline variables or not *)
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
           keyword casing: [currentColor] becomes [currentcolor]. *)
-  theme : String_set.t option;
-      (** Optional set of theme-defined variable names. When [None] (default),
-          no theme-based resolution is performed — all vars emit as
-          [var(--name)]. When [Some set], bare theme var refs check the set:
-          names in the set emit [var(--name)], names not in the set resolve to
-          their typed defaults. For [Var_fallback], the fallback name is checked
-          similarly. *)
-  theme_defaults : string -> string option;
-      (** Lookup function for concrete CSS defaults of theme variable names.
-          Used when a [Var_fallback] name is not in the theme set: the fallback
-          name is looked up to get its concrete CSS string value. Defaults to
-          [fun _ -> None]. *)
+  in_calc : bool;
+      (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
+          boundary ([calc] is type-aware so [<percentage>] and [<number>] are
+          not interchangeable). *)
+  in_feature_query : bool;
+      (** Set while serialising the value of an [@supports (property: value)]
+          feature test. The value is a capability predicate for that exact
+          syntax, so lossy rewrites (e.g. static colour folding) are suppressed
+          there. *)
+  lossless : bool;
+      (** Set under [--minify --lossless]: suppress colour-channel rounding and
+          other colour approximations while keeping exact serialisation
+          shortenings. *)
+  enforce_spec : bool;
+      (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
+          serialisation without evergreen-target facts, so target-dependent
+          shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
+          suppressed. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -45,38 +60,57 @@ type 'a t = ctx -> 'a -> unit
 
 (** {2 Running Formatters} *)
 
-val no_theme_defaults : string -> string option
-(** [no_theme_defaults s] is the default [theme_defaults] function that always
-    returns [None]. *)
-
-val in_theme : ctx -> string -> bool
-(** [in_theme ctx name] checks if [name] is in the theme set. When [theme] is
-    [None] (no theme resolution), returns [true] — all vars are treated as if
-    they're in the theme. When [theme] is [Some set], returns
-    [String_set.mem name set]. *)
+val ctx :
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  Buffer.t ->
+  ctx
+(** [ctx buf] builds a formatter context writing to [buf], for the
+    serialise-to-string / measuring helpers. *)
 
 val to_buffer :
   ?minify:bool ->
+  ?indent:int ->
   ?inline:bool ->
-  ?theme:String_set.t ->
-  ?theme_defaults:(string -> string option) ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
   Buffer.t ->
   'a t ->
   'a ->
   unit
-(** [to_buffer buf formatter value] runs the formatter writing into [buf].
-    Avoids allocating a fresh buffer. *)
+(** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
+    optional {!val-indent} sets the per-level indent width (default: [None]
+    under {!field-minify}, [Some 2] otherwise). *)
+
+val size :
+  ?minify:bool ->
+  ?indent:int ->
+  ?inline:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  'a t ->
+  'a ->
+  int
+(** [size formatter value] is the byte length of [to_string formatter value]
+    without allocating the result string. Use it for size-based decisions
+    instead of measuring [String.length (to_string ...)]. *)
 
 val to_string :
   ?minify:bool ->
+  ?indent:int ->
   ?inline:bool ->
-  ?theme:String_set.t ->
-  ?theme_defaults:(string -> string option) ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
   'a t ->
   'a ->
   string
-(** [to_string formatter value] runs the formatter and returns a string. Creates
-    a fresh buffer internally. *)
+(** [to_string formatter value] runs the formatter and returns a string. The
+    optional {!val-indent} sets the per-level indent width (default: [None]
+    under {!field-minify}, [Some 2] otherwise). {!field-enforce_spec} suppresses
+    target-dependent shortenings. *)
 
 (** {2 Primitive Formatters} *)
 
@@ -92,6 +126,11 @@ val quoted : string t
 val char : char t
 (** [char] writes a single character to the buffer. *)
 
+val last_char : ctx -> char option
+(** [last_char ctx] is the most recently emitted byte, or [None] if nothing has
+    been written yet. Use it for token-boundary spacing decisions instead of
+    reaching into the output sink directly. *)
+
 val quoted_string : string t
 (** [quoted_string] writes a double-quoted string with proper escaping of quotes
     and backslashes. *)
@@ -104,6 +143,12 @@ val quoted_string : string t
 
 val sp : unit t
 (** [sp] writes a space character when not minifying (layout whitespace). *)
+
+val token_sp : unit t
+(** [token_sp] writes a token-boundary space: a regular space in pretty mode,
+    and a space under minify only when the previous output character would
+    otherwise re-tokenise with the next one. Drops the space after [)] or [%]
+    since both cleanly close their token (CSS Syntax 3 sec. 4). *)
 
 val cut : unit t
 (** [cut] writes a newline when not minifying. *)
@@ -139,8 +184,9 @@ val column : ctx -> int
 val list_wrap :
   ?threshold:int -> sep:unit t -> wrap_indent:int -> 'a t -> 'a list t
 (** [list_wrap ?threshold ~sep ~wrap_indent formatter] formats a list like
-    [list] but wraps to a new line (indented by [wrap_indent] spaces) when the
-    current column exceeds [threshold] (default 80). No-op when minifying. *)
+    {!val-list} but wraps to a new line (indented by [wrap_indent] spaces) when
+    the current column exceeds [threshold] (default 80). No-op when minifying.
+*)
 
 val option : ?none:unit t -> 'a t -> 'a option t
 (** [option ~none formatter] formats an option, using none formatter for None.
@@ -151,9 +197,9 @@ val option : ?none:unit t -> 'a t -> 'a option t
     CSS number formatters that handle minification rules like dropping leading
     zeros and avoiding scientific notation *)
 
-val float_to_string :
+val string_of_float :
   ?drop_leading_zero:bool -> ?max_decimals:int -> float -> string
-(** [float_to_string ?drop_leading_zero ?max_decimals f] converts a float to a
+(** [string_of_float ?drop_leading_zero ?max_decimals f] converts a float to a
     string.
     - [drop_leading_zero]: if true, omits leading zero for 0 < |n| < 1 (.5
       instead of 0.5)
@@ -166,9 +212,9 @@ val float : float t
     - Trims trailing zeros. *)
 
 val float_compact : float t
-(** [float_compact] like [float] but always drops leading zeros regardless of
-    minification mode. Used for oklch chroma values where Tailwind always uses
-    compact format (e.g. [.034] not [0.034]). *)
+(** [float_compact] like {!val-float} but always drops leading zeros regardless
+    of minification mode. Used for oklch chroma values where Tailwind always
+    uses compact format (e.g. [.034] not [0.034]). *)
 
 val float_n : int -> float t
 (** [float_n n] formats float to exactly n decimal places using round-half-up.
@@ -187,10 +233,11 @@ val unit : ctx -> float -> string -> unit
 (** [unit ctx f suffix] formats a number with a unit suffix, e.g. "3.5px" or "0"
     for zero. *)
 
-val pct : ?always:bool -> ctx -> float -> unit
-(** [pct ?always ctx f] formats a percentage value with the % suffix. The value
-    is expected to be in the range 0-100. When [always] is true, always includes
-    the unit even for zero values (required for CSS property initial-value). *)
+val pct : ctx -> float -> unit
+(** [pct ctx f] formats a percentage value with the [%] suffix. The value is
+    expected to be in the range 0-100. The unit is always emitted: CSS Values 4
+    §6.5 only allows the unit to drop on a zero [<length>], not a zero
+    [<percentage>]. *)
 
 val comma : unit t
 (** [comma] outputs "," when minifying, ", " when formatting. *)
@@ -215,13 +262,21 @@ val block_close : unit t
 val minified : ctx -> bool
 (** [minified ctx] queries whether context is in minification mode. *)
 
+val in_feature_query : ctx -> bool
+(** [in_feature_query ctx] is true while serialising an [@supports] feature-test
+    value, where lossy rewrites must be suppressed. *)
+
+val enter_feature_query : ctx -> ctx
+(** [enter_feature_query ctx] marks [ctx] as inside an [@supports] feature-test
+    value. *)
+
 val cond : (ctx -> bool) -> 'a t -> 'a t -> 'a t
 (** [cond predicate then_fmt else_fmt] conditionally chooses formatter based on
     context predicate. *)
 
 val space_if_pretty : unit t
-(** [space_if_pretty] is an alias for [sp] - outputs space when not minifying.
-*)
+(** [space_if_pretty] is an alias for {!val-sp} - outputs space when not
+    minifying. *)
 
 val op_char : char t
 (** [op_char] outputs a character with spaces around it when not minifying.
@@ -233,6 +288,17 @@ val braces : 'a t -> 'a t
     minifying. *)
 
 (** {2 Generic Helpers} *)
+
+val semicolon_cut : unit t
+(** [semicolon_cut] outputs a semicolon followed by a layout cut. *)
+
+val braced_list : ?sep:unit t -> 'a t -> 'a list t
+(** [braced_list formatter] wraps a list in braces using the same multiline
+    layout as CSS at-rule bodies. *)
+
+val braced_semicolon_list : 'a t -> 'a list t
+(** [braced_semicolon_list formatter] wraps a list in braces and separates items
+    with {!val-semicolon_cut}. *)
 
 val call : string -> 'a t -> 'a t
 (** [call name args] formats a function call: [name( args )]. *)

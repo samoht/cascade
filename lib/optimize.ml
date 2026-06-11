@@ -2,1062 +2,965 @@
 
 open Declaration
 open Stylesheet
+module String_set = Set.Make (String)
+
+let src = Logs.Src.create "cascade.optimize" ~doc:"Cascade CSS optimizer"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
+(** {1 Edge Model} *)
+
+type scope = Ctx.scope
+
+(* Optimisation context threaded by the entry points ([stylesheet], [rules],
+   [single_rule], [deduplicate_declarations]) down to the shorthand composers.
+   [scope] drives the fragment-vs-stylesheet decisions; [registered] reports
+   whether a custom property is registered with an [@property] initial-value, so
+   folding its [var()] into a shorthand cannot widen an invalid-at-
+   computed-value failure. Default: fragment, nothing registered. *)
+type ctx = Ctx.t
+
+let ctx_of_scope = Ctx.of_scope
+
+let list_map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        let y = f x in
+        loop (changed || not (y == x)) (y :: acc) rest
+  in
+  loop false [] xs
+
+let list_filter_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest ->
+        if f x then loop changed (x :: acc) rest else loop true acc rest
+  in
+  loop false [] xs
+
+let list_filter_map_preserve f xs =
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else xs
+    | x :: rest -> (
+        match f x with
+        | Some y -> loop (changed || not (y == x)) (y :: acc) rest
+        | None -> loop true acc rest)
+  in
+  loop false [] xs
+
+let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
+  match value with
+  | None -> (None : 'a option)
+  | Some x ->
+      let y = f x in
+      if y == x then value else Some y
+
+let rec list_same xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> x == y && list_same xs ys
+  | _ -> false
+
+let preserve_list before after =
+  if list_same before after then before else after
+
+let rule_with_nested (rule : rule) nested =
+  if nested == rule.nested then rule else { rule with nested }
+
+let rule_with_declarations_and_nested (rule : rule) declarations nested =
+  if declarations == rule.declarations && nested == rule.nested then rule
+  else { rule with declarations; nested }
+
+type packed_property = Edge.packed_property =
+  | Packed : 'a Properties.property -> packed_property
+
+type edge = Edge.t = {
+  summary : Selector_summary.t;
+  property : packed_property;
+  important : bool;
+}
+
+let edges_of_rule = Edge.of_rule
 
 (** {1 Declaration Optimization} *)
 
-let duplicate_buggy_properties decls =
-  (* Check if webkit-text-decoration:inherit is already duplicated *)
-  let webkit_text_decoration_inherit_count =
-    List.fold_left
-      (fun count decl ->
-        match decl with
-        | Declaration { property = Webkit_text_decoration; value = Inherit; _ }
-          ->
-            count + 1
-        | _ -> count)
-      0 decls
-  in
+let duplicate_buggy_properties = Shorthand.duplicate_buggy_properties
+let merge_overflow_longhands = Shorthand.merge_overflow_longhands
+let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
+let compose_shorthands = Shorthand.compose_shorthands
+let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
+let deduplicate_declarations = Shorthand.deduplicate_declarations
+let single_rule_without_nested = Rule.single
+let finalize_rule_without_nested = Rule.finalize
+let merge_rules = Rule.merge
+let combine_identical_rules = Rule.identical
+let factor_anchor_gaps = Factor.anchor
+let clear_summary_memo = Factor.clear
 
-  (* Check if webkit-text-decoration-color is already duplicated *)
-  let webkit_text_decoration_color_count =
-    List.fold_left
-      (fun count decl ->
-        match decl with
-        | Declaration { property = Webkit_text_decoration_color; _ } ->
-            count + 1
-        | _ -> count)
-      0 decls
-  in
+(* Per-pass and global counters for the --profile CLI flag. Reset at each
+   [Optimize.stylesheet] entry; bumped from the hot loops below. *)
+type pass_stat = Stats.pass_stat = {
+  mutable time : float;
+  mutable calls : int;
+  mutable changes : int;
+  mutable rules_in : int;
+  mutable rules_out : int;
+}
 
-  List.concat_map
-    (fun decl ->
-      match decl with
-      | Declaration { property = Webkit_text_decoration; value = Inherit; _ } ->
-          if webkit_text_decoration_inherit_count >= 3 then [ decl ]
-            (* Already tripled *)
-          else [ decl; decl; decl ] (* Triplicate only when inherit *)
-      | Declaration { property = Webkit_text_decoration_color; _ } ->
-          if webkit_text_decoration_color_count >= 2 then [ decl ]
-            (* Already duplicated *)
-          else [ decl; decl ]
-            (* Always duplicate webkit-text-decoration-color *)
-      | Declaration { property = Transform; _ } ->
-          (* Do not duplicate transform to -webkit-transform. Tailwind v4 does
-             not emit vendor-prefixed transform here, and tests expect a single
-             canonical property. *)
-          [ decl ]
-      | _ -> [ decl ])
-    decls
+let pass_times = Stats.pass_times
+let set_profile = Stats.set_profile
 
-let is_intentionally_duplicated prop_name =
-  prop_name = "content" || prop_name = "outline"
-  || (String.length prop_name > 12 && String.sub prop_name 0 12 = "-webkit-mask")
+type iteration_stat = Stats.iteration_stat = {
+  fixpoint : int;
+  iteration : int;
+  local_iteration : int;
+  before_rules : int;
+  after_rules : int;
+  before_bytes : int;
+  after_bytes : int;
+  bytes_saved : int;
+  active_passes : int;
+  changed_passes : int;
+  elapsed : float;
+}
 
-let track_last_occurrence normal_seen important_seen decl =
-  let prop_name = property_name decl in
-  (* Skip tracking for properties that use intentional duplication: - content:
-     counter fallbacks - outline: webkit fallbacks - -webkit-mask-*: vendor
-     prefix fallback patterns *)
-  if is_intentionally_duplicated prop_name then ()
-  else if is_important decl then Hashtbl.replace important_seen prop_name decl
-  else Hashtbl.replace normal_seen prop_name decl
+let iteration_stats = Stats.iteration_stats
 
-let choose_final_decl important_seen normal_seen prop_name decl =
-  if Hashtbl.mem important_seen prop_name then
-    Hashtbl.find important_seen prop_name
-  else if Hashtbl.mem normal_seen prop_name then
-    Hashtbl.find normal_seen prop_name
-  else decl
+type counters = Stats.counters = {
+  mutable iterations : int;
+  mutable factor_fixpoints_run : int;
+  mutable marginal_stops : int;
+  mutable summary_hits : int;
+  mutable summary_misses : int;
+  mutable factor_fixpoints_skipped : int;
+  mutable factor_preflight_gain : int;
+  mutable factor_bytes_saved : int;
+  mutable anchors_scored : int;
+  mutable anchors_prefiltered : int;
+  mutable factorings_applied : int;
+  mutable interval_candidates : int;
+  mutable interval_pruned : int;
+  mutable interval_scored : int;
+  mutable interval_selected : int;
+}
 
-let deduplicate_declarations props =
-  (* CSS cascade rules: 1. !important declarations always win over normal
-     declarations 2. Among declarations of same importance, last one wins We
-     need to track normal and important separately
+let counters = Stats.counters
 
-     Special case: Don't deduplicate content properties as they may be
-     intentionally duplicated for fallback patterns *)
-  let normal_seen = Hashtbl.create 16 in
-  let important_seen = Hashtbl.create 16 in
-
-  (* First pass: collect last occurrence of each property by importance *)
-  List.iter (track_last_occurrence normal_seen important_seen) props;
-
-  (* Second pass: build result, important wins over normal for same property *)
-  let deduped = ref [] in
-  let processed = Hashtbl.create 16 in
-
-  (* Process in reverse order to maintain first occurrence position *)
-  List.iter
-    (fun decl ->
-      let prop_name = property_name decl in
-      (* Always keep intentionally duplicated properties (no deduplication) *)
-      if is_intentionally_duplicated prop_name then deduped := decl :: !deduped
-      else if not (Hashtbl.mem processed prop_name) then (
-        Hashtbl.add processed prop_name ();
-        let final_decl =
-          choose_final_decl important_seen normal_seen prop_name decl
-        in
-        deduped := final_decl :: !deduped))
-    props;
-
-  (* Apply buggy property duplication after deduplication *)
-  duplicate_buggy_properties (List.rev !deduped)
-
-(** {1 Rule Optimization} *)
-
-(* Extract the pseudo-element from a selector (::before, ::after, etc.). Returns
-   None if no pseudo-element is present. Used to prevent combining selectors
-   with different pseudo-elements which would change semantics. *)
-let rec extract_pseudo_element : Selector.t -> Selector.t option = function
-  | Before -> Some Before
-  | After -> Some After
-  | First_letter -> Some First_letter
-  | First_line -> Some First_line
-  | Marker -> Some Marker
-  | Placeholder -> Some Placeholder
-  | Selection -> Some Selection
-  | File_selector_button -> Some File_selector_button
-  | Backdrop -> Some Backdrop
-  | Details_content -> Some Details_content
-  | Compound sels ->
-      (* For compound selectors, look for pseudo-element at the end *)
-      List.fold_left
-        (fun acc sel ->
-          match extract_pseudo_element sel with
-          | Some _ as pe -> pe
-          | None -> acc)
-        None sels
-  | Combined (_, _, right) | Relative (_, right) ->
-      (* Pseudo-element is always at the end of a combined selector *)
-      extract_pseudo_element right
-  | _ -> None
-
-(* Check if a selector contains vendor-specific pseudo-elements. These should
-   not be grouped because if one selector in a group is invalid in a browser,
-   the entire rule fails. Keeping them separate ensures maximum
-   compatibility. *)
-let rec contains_vendor_pseudo_element : Selector.t -> bool = function
-  | File_selector_button -> true
-  | Webkit_scrollbar | Webkit_search_cancel_button | Webkit_search_decoration
-  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
-  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
-  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
-  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
-  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
-  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
-  | Webkit_outer_spin_button | Webkit_details_marker ->
-      true
-  | Compound sels -> List.exists contains_vendor_pseudo_element sels
-  | Combined (left, _, right) ->
-      contains_vendor_pseudo_element left
-      || contains_vendor_pseudo_element right
-  | Relative (_, right) -> contains_vendor_pseudo_element right
-  | List sels -> List.exists contains_vendor_pseudo_element sels
-  | Not sels -> List.exists contains_vendor_pseudo_element sels
-  | Is sels -> List.exists contains_vendor_pseudo_element sels
-  | Where sels -> List.exists contains_vendor_pseudo_element sels
-  | Has sels -> List.exists contains_vendor_pseudo_element sels
-  | _ -> false
-
-let single_rule_without_nested (rule : rule) : rule =
-  { rule with declarations = deduplicate_declarations rule.declarations }
-
-let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
-  (* Only merge truly adjacent rules with the same selector to preserve cascade
-     order. This is safe because we don't reorder rules - we only combine
-     immediately adjacent rules with identical selectors, which maintains
-     cascade semantics.
-
-     However, we don't merge vendor-specific pseudo-elements to match Tailwind's
-     behavior and ensure browser compatibility. *)
-  let rec merge_adjacent (acc : Stylesheet.rule list)
-      (prev_rule : Stylesheet.rule option) :
-      Stylesheet.rule list -> Stylesheet.rule list = function
-    | [] -> List.rev (match prev_rule with Some r -> r :: acc | None -> acc)
-    | (rule : Stylesheet.rule) :: rest -> (
-        match prev_rule with
-        | None ->
-            (* First rule - just store it *)
-            merge_adjacent acc (Some rule) rest
-        | Some prev ->
-            if
-              prev.selector = rule.selector
-              && not (contains_vendor_pseudo_element rule.selector)
-            then
-              (* Same selector immediately following and not vendor-specific -
-                 safe to merge *)
-              let merged : Stylesheet.rule =
-                {
-                  selector = prev.selector;
-                  declarations =
-                    deduplicate_declarations
-                      (prev.declarations @ rule.declarations);
-                  nested = prev.nested @ rule.nested;
-                  merge_key = prev.merge_key;
-                }
-              in
-              merge_adjacent acc (Some merged) rest
-            else
-              (* Different selector or vendor-specific - emit previous rule and
-                 continue *)
-              merge_adjacent (prev :: acc) (Some rule) rest)
-  in
-  merge_adjacent [] None rules
-
-(** Check if a selector uses a descendant combinator with a pseudo-element (e.g.
-    [.marker:flex ::marker]). These must not be combined with direct
-    pseudo-element selectors (e.g. [.marker:flex::marker]) because they target
-    different elements. *)
-let rec has_descendant_pseudo_element : Selector.t -> bool = function
-  | Combined (_, Descendant, right) -> extract_pseudo_element right <> None
-  | Compound sels -> List.exists has_descendant_pseudo_element sels
-  | List sels -> List.exists has_descendant_pseudo_element sels
-  | _ -> false
-
-(* Check if a selector has a descendant combinator that would make combining
-   unsafe. Descendant combinators where the ancestor is :where() are safe
-   because :where() has zero specificity and is always valid in selector lists
-   (e.g., :where(.group) .in-[.group]:flex). *)
-let rec has_descendant_combinator : Selector.t -> bool = function
-  | Combined (Where _, Descendant, _) -> false
-  | Combined (_, Descendant, _) -> true
-  | Compound sels -> List.exists has_descendant_combinator sels
-  | List sels -> List.exists has_descendant_combinator sels
-  | _ -> false
-
-let should_not_combine selector =
-  (* Already a list selector - don't combine *)
-  Selector.is_compound_list selector
-  (* Check if selector contains vendor-specific pseudo-elements These should not
-     be grouped because: - If one selector in a group is invalid in a browser,
-     the entire rule fails - Keeping them separate ensures maximum browser
-     compatibility *)
-  || contains_vendor_pseudo_element selector
-  (* Descendant pseudo-element selectors (.x ::marker) must not be combined with
-     direct ones (.x::marker) — they target different elements *)
-  || has_descendant_pseudo_element selector
-  ||
-  (* Descendant combinator selectors (e.g., .prose :where(ol[type=i
-     s]):not(...)) should not be combined — Tailwind keeps them separate even
-     with identical declarations, to match tailwindcss output exactly. *)
-  has_descendant_combinator selector
-
-(* Count the modifier depth (number of ':' separators) in a class name. E.g.,
-   "group-focus:flex" has depth 1, "group-focus:group-hover:flex" has depth 2.
-   Only selectors with the same modifier depth should be combined. *)
-
-(** Check if two selectors can be combined. This is only called when the
-    declarations are already verified to be identical. Following Tailwind v4's
-    behavior:
-    - Don't combine if the selectors have different pseudo-elements (::before vs
-      ::after) since they target different generated content
-    - Don't combine if one has modifiers and one doesn't (e.g., .bg-blue-500 and
-      .aria-selected:bg-blue-500) to preserve ordering semantics
-    - Otherwise, can combine since both rules set the same values *)
-let modifier_depth class_name =
-  let len = String.length class_name in
-  let rec loop i depth bracket_depth =
-    if i >= len then depth
-    else
-      match class_name.[i] with
-      | '[' -> loop (i + 1) depth (bracket_depth + 1)
-      | ']' -> loop (i + 1) depth (max 0 (bracket_depth - 1))
-      | '\\' when i + 1 < len && class_name.[i + 1] = ':' ->
-          (* Skip escaped colon \: — not a modifier separator *)
-          loop (i + 2) depth bracket_depth
-      | ':' when bracket_depth = 0 -> loop (i + 1) (depth + 1) bracket_depth
-      | _ -> loop (i + 1) depth bracket_depth
-  in
-  loop 0 0 0
-
-let has_escaped_colon class_name =
-  let len = String.length class_name in
-  let rec check i =
-    if i >= len - 1 then false
-    else if class_name.[i] = '\\' && class_name.[i + 1] = ':' then true
-    else check (i + 1)
-  in
-  check 0
-
-let can_combine_selectors sel1 sel2 =
-  (* Check if pseudo-elements match (both None, or both the same) *)
-  let pe1 = extract_pseudo_element sel1 in
-  let pe2 = extract_pseudo_element sel2 in
-  if pe1 <> pe2 then false
-  else
-    (* Tailwind v4 combines consecutive rules with identical declarations. For
-       variant-prefixed classes (e.g., group-X:flex, peer-X:flex), we require
-       the same modifier depth to avoid combining different nesting levels.
-       Simple class selectors always combine. *)
-    match (Selector.first_class sel1, Selector.first_class sel2) with
-    | Some c1, Some c2 ->
-        (* Don't combine if one has escaped colon (variant-prefixed like
-           peer-checked\:font-semibold) and the other doesn't *)
-        if has_escaped_colon c1 <> has_escaped_colon c2 then false
-        else
-          let d1 = modifier_depth c1 in
-          let d2 = modifier_depth c2 in
-          (d1 > 0 && d2 > 0) || d1 = d2
-    | _ -> false
-
-(* Check if a selector contains a :not() pseudo-class at the top level *)
-let rec has_not_pseudo = function
-  | Selector.Not _ -> true
-  | Selector.Compound sels -> List.exists has_not_pseudo sels
-  | _ -> false
-
-(* Check if a selector contains a :has() pseudo-class at the top level *)
-let rec has_has_pseudo = function
-  | Selector.Has _ -> true
-  | Selector.Compound sels -> List.exists has_has_pseudo sels
-  | _ -> false
-
-(* Sort selectors for merging: not-* first (sub-sorted by group/peer/plain),
-   group-* second, peer-* third, ancestor-context fourth, has-* last. Uses
-   structured selector analysis. *)
-let base_sort_key sel =
-  if has_not_pseudo sel then
-    (* Sub-classify not-* selectors by group/peer/plain *)
-    if Selector.has_group_marker sel then -3
-    else if Selector.has_peer_marker sel then -2
-    else -1
-  else if has_has_pseudo sel then
-    (* Only give :has() a distinct sort key when combined with group/peer
-       markers, so group-has-* sorts after group-* and peer-has-* after peer-*.
-       Plain has-* selectors sort among regular selectors. *)
-    if Selector.has_group_marker sel || Selector.has_peer_marker sel then 3
-    else 2
-  else if Selector.has_group_marker sel then 0
-  else if Selector.has_peer_marker sel then 1
-  else 2
-
-let is_ancestor_context = function
-  | Selector.Combined (Selector.Where _, Selector.Descendant, _) -> true
-  | _ -> false
-
-let selector_sort_key sel =
-  let base = if is_ancestor_context sel then 2 else base_sort_key sel in
-  let depth =
-    match Selector.first_class sel with
-    | Some cls -> modifier_depth cls
-    | None -> 0
-  in
-  (* Sort nth variants by selector AST type: nth-child < nth-last-child <
-     nth-of-type < nth-last-of-type, matching Tailwind v4 ordering where "last"
-     follows its non-last counterpart *)
-  let nth_order =
-    let rec find_nth = function
-      | Selector.Nth_last_of_type _ -> 3
-      | Selector.Nth_of_type _ -> 2
-      | Selector.Nth_last_child _ -> 1
-      | Selector.Compound sels ->
-          List.fold_left (fun acc s -> max acc (find_nth s)) 0 sels
-      | _ -> 0
-    in
-    find_nth sel
-  in
-  (base, nth_order, depth)
-
-let class_has_bracket cls =
-  (* Check if the class name contains a bracket [, indicating an arbitrary
-     variant like group-has-[:checked] vs a named variant like
-     group-has-checked. Named variants sort before bracket variants. Note: class
-     names are stored unescaped in the AST. *)
-  String.contains cls '['
-
-let class_base_and_slash cls =
-  (* Extract the base variant name and whether there's a /name suffix. E.g.,
-     "group-has-checked/parent-name:flex" -> ("group-has-checked", true)
-     "group-has-checked:flex" -> ("group-has-checked", false)
-     "group-has-[:checked]:flex" -> ("group-has-[:checked]", false) This allows
-     grouping variants by their base name, with plain before /name variants
-     within each group. *)
-  let len = String.length cls in
-  (* Find / or trailing :utility, whichever comes first (outside brackets) *)
-  let rec find_end i depth =
-    if i >= len then (cls, false)
-    else
-      match cls.[i] with
-      | '[' -> find_end (i + 1) (depth + 1)
-      | ']' -> find_end (i + 1) (max 0 (depth - 1))
-      | '/' when depth = 0 -> (String.sub cls 0 i, true)
-      | ':' when depth = 0 -> (String.sub cls 0 i, false)
-      | _ -> find_end (i + 1) depth
-  in
-  find_end 0 0
-
-(** Extract variant family prefix (e.g., "group-has-" from
-    "group-has-[:checked]:flex" or "group-has-checked:flex"). Used to group
-    named and bracket variants of the same family. *)
-let variant_family cls =
-  let bracket_pos = String.index_opt cls '[' in
-  let colon_pos =
-    (* Find first : outside brackets *)
-    let len = String.length cls in
-    let rec find i depth =
-      if i >= len then None
-      else
-        match cls.[i] with
-        | '[' -> find (i + 1) (depth + 1)
-        | ']' -> find (i + 1) (max 0 (depth - 1))
-        | ':' when depth = 0 -> Some i
-        | _ -> find (i + 1) depth
-    in
-    find 0 0
-  in
-  match (bracket_pos, colon_pos) with
-  | Some bi, _ -> String.sub cls 0 bi (* prefix before bracket *)
-  | _, Some ci -> String.sub cls 0 ci (* prefix before colon *)
-  | _ -> cls
-
-let bracket_content_type cls =
-  match String.index_opt cls '[' with
-  | Some i when i + 1 < String.length cls && cls.[i + 1] = ':' -> 0
-  | _ -> 1
-
-let normalize_attr_base b =
-  let starts_with s p =
-    String.length s >= String.length p && String.sub s 0 (String.length p) = p
-  in
-  if
-    starts_with b "aria-[" || starts_with b "data-["
-    || starts_with b "group-aria-["
-    || starts_with b "group-data-["
-    || starts_with b "peer-aria-["
-    || starts_with b "peer-data-["
-  then String.map (fun c -> if c = '_' then ' ' else c) b
-  else b
-
-(** Compare two bracket selectors within the same variant family. Sorts by
-    bracket content type (pseudo-class before combinator), then by normalized
-    base name, then by slash presence, then by index. *)
-let compare_bracket_selectors c1 c2 i1 i2 =
-  let bt_cmp =
-    Int.compare (bracket_content_type c1) (bracket_content_type c2)
-  in
-  if bt_cmp <> 0 then bt_cmp
-  else
-    let base1, slash1 = class_base_and_slash c1 in
-    let base2, slash2 = class_base_and_slash c2 in
-    let base_cmp =
-      String.compare (normalize_attr_base base1) (normalize_attr_base base2)
-    in
-    if base_cmp <> 0 then base_cmp
-    else
-      let slash_cmp = Bool.compare slash1 slash2 in
-      if slash_cmp <> 0 then slash_cmp else Int.compare i1 i2
-
-type selector_kind = Named | Bracket
-
-(** Compare two selectors within the same variant family. Named variants sort
-    before bracket variants; within each group, bracket variants use
-    [compare_bracket_selectors] and non-bracket variants preserve original
-    insertion order. *)
-let compare_same_family_selectors kind1 kind2 c1 c2 i1 i2 =
-  match (kind1, kind2) with
-  | Named, Bracket -> -1
-  | Bracket, Named -> 1
-  | Bracket, Bracket -> compare_bracket_selectors c1 c2 i1 i2
-  | Named, Named -> Int.compare i1 i2
-
-let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
-  let k1 = selector_sort_key sel1 and k2 = selector_sort_key sel2 in
-  let c = compare k1 k2 in
-  if c <> 0 then c
-  else
-    let cls1 = Selector.first_class sel1 in
-    let cls2 = Selector.first_class sel2 in
-    let c1 = match cls1 with Some c -> c | None -> "" in
-    let c2 = match cls2 with Some c -> c | None -> "" in
-    let kind_of b = if b then Bracket else Named in
-    let k1 = kind_of (class_has_bracket c1) in
-    let k2 = kind_of (class_has_bracket c2) in
-    let fam1 = variant_family c1 in
-    let fam2 = variant_family c2 in
-    if fam1 = fam2 then compare_same_family_selectors k1 k2 c1 c2 i1 i2
-    else if k1 = Bracket && k2 = Bracket then
-      (* Different families, both bracket: compare by class name so that e.g.
-         hover:peer-[&_p] sorts before peer-[&_p]:hover *)
-      let cls_cmp = String.compare c1 c2 in
-      if cls_cmp <> 0 then cls_cmp else Int.compare i1 i2
-    else
-      (* Different families, at least one non-bracket: preserve original
-         insertion order to respect variant cascade ordering *)
-      Int.compare i1 i2
-
-(* Convert group of selectors to a rule *)
-let group_to_rule :
-    (Selector.t * declaration list * string option) list ->
-    Stylesheet.rule option = function
-  | [ (sel, decls, _) ] ->
-      Some
-        { selector = sel; declarations = decls; nested = []; merge_key = None }
-  | [] -> None
-  | group ->
-      let selector_list = List.rev group |> List.map (fun (s, _, _) -> s) in
-      (* Always sort: group-* first, peer-* second, base last with stable index
-         tiebreaker. This matches Tailwind's selector list ordering. *)
-      let sorted_selectors =
-        let indexed = List.mapi (fun i s -> (s, i)) selector_list in
-        List.sort compare_selectors_for_merge indexed |> List.map fst
-      in
-      let _, decls, _ = List.hd group in
-      (* Create a List selector from all the selectors *)
-      let combined_selector =
-        if List.length sorted_selectors = 1 then List.hd sorted_selectors
-        else Selector.list sorted_selectors
-      in
-      Some
-        {
-          selector = combined_selector;
-          declarations = decls;
-          nested = [];
-          merge_key = None;
-        }
-
-(* Flush current group to accumulator *)
-let flush_group acc group =
-  match group_to_rule group with Some rule -> rule :: acc | None -> acc
-
-(* Don't combine selectors when one uses :is(:where()) (group/peer) and the
-   other uses a newer pseudo-class directly. In a selector list, if the newer
-   pseudo-class is unsupported, the entire rule is dropped — but the
-   :is(:where()) variant would have survived on its own due to forgiving
-   selector parsing. *)
-let newer_pseudo_class_compatible sel1 sel2 =
-  let sel1_complex = Selector.has_is_where_pattern sel1 in
-  let sel2_complex = Selector.has_is_where_pattern sel2 in
-  if sel1_complex <> sel2_complex then
-    let plain_sel = if sel1_complex then sel2 else sel1 in
-    not (Selector.has_newer_pseudo_class plain_sel)
-  else true
-
-(* Lightning CSS does not merge rules when values contain the 'none' keyword in
-   color functions like oklab(). Check if a CSS string contains this pattern. *)
-let has_oklab_none s =
-  (* Search for "oklab(" then check if "none" appears before the closing ")" *)
-  let len = String.length s in
-  let rec find_oklab i =
-    if i > len - 6 then false
-    else if
-      s.[i] = 'o'
-      && s.[i + 1] = 'k'
-      && s.[i + 2] = 'l'
-      && s.[i + 3] = 'a'
-      && s.[i + 4] = 'b'
-      && s.[i + 5] = '('
-    then check_none (i + 6)
-    else find_oklab (i + 1)
-  and check_none i =
-    if i > len - 4 then false
-    else if s.[i] = ')' then find_oklab (i + 1)
-    else if
-      s.[i] = 'n'
-      && s.[i + 1] = 'o'
-      && s.[i + 2] = 'n'
-      && s.[i + 3] = 'e'
-      && (i + 4 >= len || s.[i + 4] = ' ' || s.[i + 4] = ')' || s.[i + 4] = '/')
-    then true
-    else check_none (i + 1)
-  in
-  find_oklab 0
-
-let declarations_css_equal d1 d2 =
-  (d1 = d2
-  ||
-  let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
-  let s1 = Pp.to_string ~minify:true pp_decls d1 in
-  let s2 = Pp.to_string ~minify:true pp_decls d2 in
-  s1 = s2)
-  &&
-  let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
-  let s = Pp.to_string ~minify:true pp_decls d1 in
-  not (has_oklab_none s)
-
-let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
-  declarations_css_equal prev.declarations rule.declarations
-  && newer_pseudo_class_compatible prev.selector rule.selector
-  &&
-  match (prev.merge_key, rule.merge_key) with
-  | Some k1, Some k2 when k1 = k2 ->
-      (* When both have the same merge_key, allow combining unless they have
-         incompatible pseudo-elements. Pseudo-elements in the same "tier" can
-         combine (e.g. ::placeholder + ::backdrop), but pseudo-elements from
-         different tiers cannot (e.g. ::backdrop + ::details-content). *)
-      let pe1 = extract_pseudo_element prev.selector in
-      let pe2 = extract_pseudo_element rule.selector in
-      let pseudo_tier = function
-        | None -> 0
-        | Some Selector.Before | Some After -> 1
-        | Some First_letter | Some First_line -> 2
-        | Some Placeholder | Some Backdrop -> 3
-        | Some Details_content -> 4
-        | Some Marker -> 5
-        | Some Selection -> 6
-        | Some File_selector_button -> 7
-        | Some _ -> 8
-      in
-      pseudo_tier pe1 = pseudo_tier pe2
-  | _ ->
-      (* Different or missing merge_keys: fall through to selector compatibility
-         check. Declarations are already verified identical at call site, so two
-         utilities with the same CSS content (e.g. shadow and shadow-sm in v4)
-         can combine when their selectors are compatible. *)
-      can_combine_selectors prev.selector rule.selector
-
-let combine_identical_rules (rules : Stylesheet.rule list) :
-    Stylesheet.rule list =
-  (* Only combine consecutive rules to preserve cascade semantics *)
-  let rec combine_consecutive acc current_group = function
-    | [] -> List.rev (flush_group acc current_group)
-    | (rule : Stylesheet.rule) :: rest -> (
-        if
-          (* Don't combine rules with nested statements or rules whose selectors
-             are structurally incompatible with combining (e.g., vendor
-             pseudo-elements, descendant pseudo-elements). Always check
-             should_not_combine regardless of merge_key — merge_key controls
-             whether identical-declaration rules CAN combine, but structural
-             selector constraints still apply. *)
-          rule.nested <> [] || should_not_combine rule.selector
-        then
-          (* Don't combine this selector, flush current group and start fresh *)
-          let acc' = rule :: flush_group acc current_group in
-          combine_consecutive acc' [] rest
-        else
-          match current_group with
-          | [] ->
-              (* Start a new group *)
-              combine_consecutive acc
-                [ (rule.selector, rule.declarations, rule.merge_key) ]
-                rest
-          | (prev_sel, prev_decls, prev_merge_key) :: _ ->
-              let prev_rule =
-                {
-                  Stylesheet_intf.selector = prev_sel;
-                  declarations = prev_decls;
-                  nested = [];
-                  merge_key = prev_merge_key;
-                }
-              in
-              if can_combine_rules prev_rule rule then
-                (* Same declarations and compatible selectors, add to current
-                   group *)
-                combine_consecutive acc
-                  ((rule.selector, rule.declarations, rule.merge_key)
-                  :: current_group)
-                  rest
-              else
-                (* Different declarations or incompatible selectors, flush
-                   current group and start new one *)
-                let acc' = flush_group acc current_group in
-                combine_consecutive acc'
-                  [ (rule.selector, rule.declarations, rule.merge_key) ]
-                  rest)
-  in
-  combine_consecutive [] [] rules
+let reset_counters () =
+  Stats.reset ();
+  Summary.reset ()
 
 (** {1 Statement Optimization} *)
 
-(* Merge consecutive media queries with the same condition. This only merges
-   immediately adjacent media queries to preserve cascade order. When blocks are
-   merged, we recursively call merge_consecutive_media on the combined content
-   to merge any inner consecutive media queries. *)
-(* Forward declaration to allow merge_consecutive_media to call statements *)
-let statements_ref : (statement list -> statement list) ref =
-  ref (fun stmts -> stmts)
+let merge_consecutive_layers = Block.merge_consecutive_layers
+let merge_consecutive_media = Block.merge_consecutive_media
+let merge_consecutive_supports = Block.merge_consecutive_supports
+let merge_consecutive_containers = Block.merge_consecutive_containers
+let is_layer_empty = Block.is_layer_empty
+let collect_empty_layer_names = Block.collect_empty_layer_names
+let merge_layer_declarations = Block.merge_layer_declarations
+let drop_redundant_layer_decls = Block.drop_redundant_layer_decls
+let drop_empty_rules = Block.drop_empty_rules
+let drop_misplaced_imports = Block.drop_misplaced_imports
+let merge_named_layers_by_name = Block.merge_named_layers_by_name
+let merge_lone_nested_rule = Nest.merge_lone
+let synthesize_nesting_statements = Nest.statements
 
-(* Shared predicates for media block optimization *)
-let rec should_consolidate cond =
-  match cond with
-  | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-  | Media.Min_width_length _ | Media.Not_min_width_length _
-  | Media.Prefers_reduced_motion _ | Media.Prefers_color_scheme _ ->
-      true
-  | Media.Negated inner -> should_consolidate inner
-  | _ -> false
+(* A block holds a conditional named layer when it directly contains a named
+   [@layer] block with content. Unwrapping a known-true [@supports] around such
+   a block would move that layer's rules - and its place in the layer order (CSS
+   Cascade 6.4) - from conditional to unconditional, so the wrapper must stay
+   even when the condition is baseline-true. A bare [@layer name;] declaration
+   carries no rules, and self-guarding declarations carry no side effect, so
+   both unwrap freely. *)
+let block_introduces_layer_order stmts =
+  List.exists (function Layer (Some _, _ :: _) -> true | _ -> false) stmts
 
-let is_responsive_media = function
-  | Media (cond, _) -> (
-      match cond with
-      | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-      | Media.Min_width_length _ | Media.Not_min_width_length _ ->
-          true
-      | Media.Negated inner -> (
-          match inner with
-          | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
-          | Media.Min_width_length _ | Media.Not_min_width_length _ ->
-              true
-          | _ -> false)
-      | _ -> false)
-  | _ -> false
-
-let has_nested_preference_media block =
-  List.exists
-    (function
-      | Media (cond, _) -> (
-          match cond with
-          | Prefers_contrast _ | Prefers_reduced_motion _
-          | Prefers_color_scheme _ ->
-              true
-          | _ -> false)
-      | _ -> false)
-    block
-
-let is_container_block block =
-  List.exists
-    (function
-      | Rule { selector; _ } -> Selector.to_string selector = ".container"
-      | _ -> false)
-    block
-
-let collect_media_data stmts =
-  let media_map = Hashtbl.create 16 in
-  let last_pos = Hashtbl.create 16 in
-  let first_responsive_pos = ref None in
-  let has_responsive = ref false in
-  let has_preference_media = ref false in
-  List.iteri
-    (fun i stmt ->
-      match stmt with
-      | Media (cond, block)
-        when should_consolidate cond
-             && (not (has_nested_preference_media block))
-             && not (is_container_block block) ->
-          let key = Media.to_string cond in
-          Hashtbl.replace last_pos key i;
-          let existing =
-            try Hashtbl.find media_map key with Not_found -> (cond, [])
-          in
-          let _, blocks = existing in
-          Hashtbl.replace media_map key (cond, blocks @ [ block ]);
-          if is_responsive_media stmt then (
-            has_responsive := true;
-            if !first_responsive_pos = None then first_responsive_pos := Some i)
-      | Media (cond, _) -> (
-          match cond with
-          | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
-          | Media.Prefers_contrast _ ->
-              has_preference_media := true
-          | _ -> ())
-      | _ when is_responsive_media stmt ->
-          has_responsive := true;
-          if !first_responsive_pos = None then first_responsive_pos := Some i
-      | _ -> ())
-    stmts;
-  ( media_map,
-    last_pos,
-    !first_responsive_pos,
-    !has_responsive,
-    !has_preference_media )
-
-let compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
-    ~has_preference_media =
-  let regular_stmt_count =
-    List.fold_left
-      (fun acc stmt -> match stmt with Rule _ -> acc + 1 | _ -> acc)
-      0 stmts
+(* Pop the run of [Rule]s most recently pushed onto a reversed accumulator,
+   returning them in forward order alongside the remaining accumulator. Used
+   when unwrapping a known-true [@supports] exposes its inner rules to rules
+   already emitted: those preceding rules must rejoin the merge pass so an
+   adjacency the wrapper had hidden can collapse. *)
+let pop_trailing_rules acc =
+  let rec loop acc rules =
+    match acc with
+    | (Rule _ as r) :: rest -> loop rest (r :: rules)
+    | _ -> (rules, acc)
   in
-  let is_top_level =
-    has_responsive || has_preference_media || regular_stmt_count > 10
-  in
-  let hover_insert_pos =
-    match (first_responsive_pos, is_top_level) with
-    | Some pos, _ -> pos
-    | None, true -> List.length stmts
-    | None, false -> -1
-  in
-  (hover_insert_pos, is_top_level)
+  loop acc []
 
-(* Group all media blocks with the same condition together, for specific media
-   types (Hover, Min_width, Max_width, Prefers_reduced_motion). This allows
-   @media (hover:hover) blocks to be consolidated into a single block matching
-   Tailwind's behavior.
+let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
+    statement list -> statement list * rule list * statement list = function
+  | (Rule r as stmt) :: rest ->
+      collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
+  | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
-   For @media (hover:hover), the consolidated block is placed after all Regular
-   utilities but before responsive media queries (@media (min-width:...)). For
-   responsive media, the consolidated block is placed at the last occurrence. *)
-(* Flush pending hover/motion blocks at the insertion point. Returns the
-   updated accumulator with pending blocks prepended (in reverse order). *)
-let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
-    ~pending_motion_blocks i acc =
-  if i = hover_insert_pos && List.length !pending_hover_blocks > 0 then (
-    let all_pending = !pending_hover_blocks @ !pending_motion_blocks in
-    let hover_acc = List.rev_append all_pending acc in
-    pending_hover_blocks := [];
-    pending_motion_blocks := [];
-    hover_acc)
-  else acc
+let factor_rules_incremental ~ctx rules =
+  Factor.run ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
 
-(* Route a consolidated media block: either defer it to a pending list for later
-   repositioning, or emit it directly at the current position. *)
-let route_consolidated ~should_reposition_hover ~is_top_level
-    ~pending_hover_blocks ~pending_motion_blocks:_ consolidated cond acc =
-  match cond with
-  | Media.Hover when should_reposition_hover ->
-      (* For hover at top-level, add to pending list for repositioning. Append
-         to maintain order (first occurrence stays first). *)
-      pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
-      acc
-  | Media.Prefers_reduced_motion _ when is_top_level ->
-      (* Motion blocks are positioned correctly by variant_order sorting. Emit
-         directly at their sorted position. *)
-      consolidated :: acc
-  | _ ->
-      (* For responsive media, or hover in nested context, emit at last
-         position *)
-      consolidated :: acc
+(* [@scope] bounds are parsed selectors; canonicalize them like any other
+   selector so a list bound is de-duplicated and ordered consistently. *)
+let canonicalize_scope_selector sel = Selector.canonicalize sel
 
-let try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
-    ~emitted_media ~should_reposition_hover ~is_top_level ~pending_hover_blocks
-    ~pending_motion_blocks i stmt acc =
+(* Nested rule selectors are implicitly relative to the parent [&], so drop a
+   redundant leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
+let drop_nesting_prefix (stmt : statement) : statement =
   match stmt with
-  | Media (cond, block)
-    when should_consolidate cond
-         && (not (has_nested_preference_media block))
-         && not (is_container_block block) ->
-      let key = Media.to_string cond in
-      if Hashtbl.mem last_pos key then
-        let is_last_pos = Hashtbl.find last_pos key = i in
-        if is_last_pos && not (Hashtbl.mem emitted_media key) then (
-          Hashtbl.add emitted_media key true;
-          let _, all_blocks = Hashtbl.find media_map key in
-          let merged = List.concat all_blocks in
-          let consolidated = Media (cond, optimize_merged_block merged) in
-          route_consolidated ~should_reposition_hover ~is_top_level
-            ~pending_hover_blocks ~pending_motion_blocks consolidated cond acc)
-        else acc
-      else stmt :: acc
-  | _ -> stmt :: acc
+  | Rule nr ->
+      Rule
+        {
+          nr with
+          selector = Selector.drop_redundant_nesting_prefix nr.selector;
+        }
+  | other -> other
 
-let consolidate_media_blocks (stmts : statement list) : statement list =
-  let optimize_merged_block block = !statements_ref block in
-  let ( media_map,
-        last_pos,
-        first_responsive_pos,
-        has_responsive,
-        has_preference_media ) =
-    collect_media_data stmts
-  in
-  let hover_insert_pos, is_top_level =
-    compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
-      ~has_preference_media
-  in
-  let emitted_media = Hashtbl.create 16 in
-  let pending_hover_blocks = ref [] in
-  let pending_motion_blocks = ref [] in
-  let should_reposition_hover = hover_insert_pos >= 0 in
-
-  let rec filter_with_index i acc = function
-    | [] -> List.rev_append acc (!pending_hover_blocks @ !pending_motion_blocks)
-    | stmt :: rest ->
-        let acc_with_hover =
-          emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
-            ~pending_motion_blocks i acc
+let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
+    =
+  match stmts with
+  | [] -> stmts
+  | _ ->
+      let optimize_merged_block = statements ~ctx ~enforce_spec in
+      (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
+         invalid and ignored by every browser, so it is a no-op that must not
+         act as a cascade boundary. Stripping it up front lets the rules it
+         falsely separated merge in this same pass, which keeps [statements]
+         idempotent - stripping after the merge would leave two adjacent
+         same-selector rules that only a re-run would combine. *)
+      let stmts' =
+        let stmts =
+          drop_misplaced_imports stmts |> merge_named_layers_by_name
         in
-        let new_acc =
-          try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
-            ~emitted_media ~should_reposition_hover ~is_top_level
-            ~pending_hover_blocks ~pending_motion_blocks i stmt acc_with_hover
+        let stmts = process_statements ~ctx ~enforce_spec [] stmts in
+        let stmts = synthesize_nesting_statements stmts in
+        let stmts =
+          stmts
+          |> merge_consecutive_media ~optimize_merged_block
+          |> merge_consecutive_supports ~optimize_merged_block
+          |> merge_consecutive_containers ~optimize_merged_block
         in
-        filter_with_index (i + 1) new_acc rest
-  in
-  filter_with_index 0 [] stmts
+        stmts |> merge_layer_declarations |> drop_empty_rules
+      in
+      preserve_list stmts stmts'
 
-let merge_consecutive_media (stmts : statement list) : statement list =
-  let optimize_merged_block block =
-    (* When we merge media blocks, the resulting block may have consecutive
-       rules with identical declarations that should be combined. We need to
-       re-run the full optimization pipeline on the merged content. *)
-    !statements_ref block
-  in
-  let rec merge result prev_media = function
-    | [] -> (
-        match prev_media with
-        | Some (cond, block) ->
-            (* Emit pending media block with re-optimized content *)
-            result @ [ Media (cond, optimize_merged_block block) ]
-        | None -> result)
-    | Media (cond, block) :: rest -> (
-        match prev_media with
-        | Some (prev_cond, prev_block)
-          when Media.equal prev_cond cond
-               (* Don't merge if either block contains nested preference media.
-                  This keeps stacked preference modifiers separate while
-                  allowing other nested media (like hover inside dark) to be
-                  merged. *)
-               && not
-                    (has_nested_preference_media prev_block
-                    || has_nested_preference_media block) ->
-            (* Same condition and compatible structure - merge the blocks *)
-            let merged_block = prev_block @ block in
-            merge result (Some (cond, merged_block)) rest
-        | Some (prev_cond, prev_block) ->
-            (* Different condition - emit previous (with optimized content),
-               store new one *)
-            merge
-              (result @ [ Media (prev_cond, optimize_merged_block prev_block) ])
-              (Some (cond, block))
-              rest
-        | None ->
-            (* First media query - store it *)
-            merge result (Some (cond, block)) rest)
-    | stmt :: rest -> (
-        (* Non-media statement - flush any pending media query *)
-        match prev_media with
-        | Some (cond, block) ->
-            (* Emit media query (with optimized content) then the statement *)
-            merge
-              (result @ [ Media (cond, optimize_merged_block block); stmt ])
-              None rest
-        | None -> merge (result @ [ stmt ]) None rest)
-  in
-  merge [] None stmts
-
-(* Check if a layer block contains only empty rules or no statements *)
-let is_layer_empty (block : statement list) : bool =
-  List.for_all
-    (function Rule { declarations = []; _ } -> true | _ -> false)
-    block
-  || block = []
-
-(* Collect consecutive empty named layers and merge them into a Layer_decl *)
-let rec collect_empty_layer_names names remaining =
-  match remaining with
-  | Layer (Some layer_name, layer_block) :: rest when is_layer_empty layer_block
-    ->
-      collect_empty_layer_names (layer_name :: names) rest
-  | Layer_decl existing_names :: rest ->
-      (* Merge with existing layer declaration *)
-      (List.rev names @ existing_names, rest)
-  | _ -> (List.rev names, remaining)
-
-(* Merge consecutive Layer_decl statements *)
-let merge_layer_declarations (stmts : statement list) : statement list =
-  let rec merge acc = function
-    | [] -> List.rev acc
-    | Layer_decl names1 :: Layer_decl names2 :: rest ->
-        (* Merge consecutive layer declarations *)
-        merge acc (Layer_decl (names1 @ names2) :: rest)
-    | stmt :: rest -> merge (stmt :: acc) rest
-  in
-  merge [] stmts
-
-(* Main statement processing function with layer optimization *)
-let rec statements (stmts : statement list) : statement list =
-  process_statements [] stmts
-  |> consolidate_media_blocks |> merge_consecutive_media
-  |> merge_layer_declarations
-
-and process_statements (acc : statement list) (remaining : statement list) :
-    statement list =
+and process_statements ~ctx ~enforce_spec (acc : statement list)
+    (remaining : statement list) : statement list =
   match remaining with
   | [] -> List.rev acc
-  | Rule r :: rest ->
-      (* Collect consecutive Rule items *)
-      let rec collect_rules (rules_acc : rule list) :
-          statement list -> rule list * statement list = function
-        | Rule r :: rest -> collect_rules (r :: rules_acc) rest
-        | rest -> (List.rev rules_acc, rest)
-      in
-      let plain_rules, rest = collect_rules [ r ] rest in
-      (* Optimize this batch of consecutive rules, including their nested
-         statements *)
-      let optimized = rules_aux plain_rules in
-      let as_statements = List.map (fun r -> Rule r) optimized in
-      process_statements (List.rev_append as_statements acc) rest
-  | Media (cond, block) :: rest ->
-      (* Just optimize the block and pass through - grouping happens later *)
-      let optimized_block = statements block in
-      let optimized = Media (cond, optimized_block) in
-      process_statements (optimized :: acc) rest
-  | Container (name, cond, block) :: rest ->
-      (* Recursively optimize container query content *)
-      let optimized = Container (name, cond, statements block) in
-      process_statements (optimized :: acc) rest
+  | (Rule r as stmt) :: rest ->
+      process_rule_run ~ctx ~enforce_spec acc stmt r rest
+  | (Media (cond, block) as stmt) :: rest ->
+      process_media_statement ~ctx ~enforce_spec acc stmt cond block rest
+  | (Container (name, cond, block) as stmt) :: rest ->
+      process_container_statement ~ctx ~enforce_spec acc stmt name cond block
+        rest
   | Supports (cond, block) :: rest ->
-      (* Recursively optimize supports block content *)
-      let optimized = Supports (cond, statements block) in
-      process_statements (optimized :: acc) rest
-  | Layer (name, block) :: rest ->
-      let optimized_block = statements block in
-      if is_layer_empty optimized_block then
-        (* Handle empty layer optimization *)
-        match name with
-        | Some layer_name ->
-            let all_names, remaining =
-              collect_empty_layer_names [ layer_name ] rest
-            in
-            let layer_decl = Layer_decl all_names in
-            process_statements (layer_decl :: acc) remaining
-        | None ->
-            (* Anonymous empty layer - just remove it *)
-            process_statements acc rest
-      else
-        let optimized = Layer (name, optimized_block) in
-        process_statements (optimized :: acc) rest
+      process_supports_statement ~ctx ~enforce_spec acc cond block rest
+  | (Scope (start, end_, block) as stmt) :: rest ->
+      let start' = option_map_preserve canonicalize_scope_selector start in
+      let end_' = option_map_preserve canonicalize_scope_selector end_ in
+      let optimized_block = statements ~ctx ~enforce_spec block in
+      let optimized =
+        if start' == start && end_' == end_ && optimized_block == block then
+          stmt
+        else Scope (start', end_', optimized_block)
+      in
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+  | (Origin (origin, block) as stmt) :: rest ->
+      let optimized_block = statements ~ctx ~enforce_spec block in
+      let optimized =
+        if optimized_block == block then stmt
+        else Origin (origin, optimized_block)
+      in
+      process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+  | (Layer (name, block) as stmt) :: rest ->
+      process_layer_statement ~ctx ~enforce_spec acc stmt name block rest
+  | (Import import as stmt) :: rest ->
+      process_import_statement ~ctx ~enforce_spec acc stmt import rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
-      process_statements (hd :: acc) rest
+      process_statements ~ctx ~enforce_spec (hd :: acc) rest
 
-and rules_aux (rules : rule list) : rule list =
-  (* First optimize each rule's nested statements recursively *)
-  let with_optimized_nested =
-    List.map (fun rule -> { rule with nested = statements rule.nested }) rules
+and process_rule_run ~ctx ~enforce_spec acc stmt r rest =
+  let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
+  let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
+  let as_statements =
+    if optimized == plain_rules then plain_stmts
+    else List.map (fun r -> Rule r) optimized
   in
-  (* Then apply standard rule optimizations *)
-  let deduped = List.map single_rule_without_nested with_optimized_nested in
-  let merged = merge_rules deduped in
-  (* Combine consecutive rules with identical declarations into selector
-     lists *)
-  combine_identical_rules merged
+  process_statements ~ctx ~enforce_spec (List.rev_append as_statements acc) rest
 
-let single_rule (rule : rule) : rule =
+and process_media_statement ~ctx ~enforce_spec acc stmt cond block rest =
+  let cond = if enforce_spec then cond else Media.lower_for_minify cond in
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized =
+    if
+      (cond == match stmt with Media (c, _) -> c | _ -> assert false)
+      && optimized_block == block
+    then stmt
+    else Media (cond, optimized_block)
+  in
+  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_container_statement ~ctx ~enforce_spec acc stmt name cond block rest
+    =
+  let cond =
+    if enforce_spec then cond
+    else option_map_preserve Container.lower_for_minify cond
+  in
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized =
+    if
+      (cond == match stmt with Container (_, c, _) -> c | _ -> assert false)
+      && optimized_block == block
+    then stmt
+    else Container (name, cond, optimized_block)
+  in
+  process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_supports_statement ~ctx ~enforce_spec acc cond block rest =
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  let baseline =
+    if enforce_spec then `Cond cond else Supports.simplify_baseline cond
+  in
+  match baseline with
+  | `True when block_introduces_layer_order optimized_block ->
+      process_statements ~ctx ~enforce_spec
+        (Supports (cond, optimized_block) :: acc)
+        rest
+  | `True ->
+      let trailing, acc = pop_trailing_rules acc in
+      process_statements ~ctx ~enforce_spec acc
+        (trailing @ optimized_block @ rest)
+  | `False -> process_statements ~ctx ~enforce_spec acc rest
+  | `Cond cond' ->
+      process_statements ~ctx ~enforce_spec
+        (Supports (cond', optimized_block) :: acc)
+        rest
+
+and process_layer_statement ~ctx ~enforce_spec acc stmt name block rest =
+  let optimized_block = statements ~ctx ~enforce_spec block in
+  if is_layer_empty optimized_block then
+    match name with
+    | Some layer_name ->
+        let all_names, remaining =
+          collect_empty_layer_names [ layer_name ] rest
+        in
+        process_statements ~ctx ~enforce_spec
+          (Layer_decl all_names :: acc)
+          remaining
+    | None -> process_statements ~ctx ~enforce_spec acc rest
+  else
+    let optimized =
+      if optimized_block == block then stmt else Layer (name, optimized_block)
+    in
+    process_statements ~ctx ~enforce_spec (optimized :: acc) rest
+
+and process_import_statement ~ctx ~enforce_spec acc stmt import rest =
+  let stmt =
+    match import.supports with
+    | Some cond
+      when (not enforce_spec) && Supports.simplify_baseline cond = `True ->
+        Import { import with supports = None }
+    | _ -> stmt
+  in
+  process_statements ~ctx ~enforce_spec (stmt :: acc) rest
+
+and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
+  (* First optimize each rule's nested statements recursively, then drop the
+     redundant nesting prefix (see [drop_nesting_prefix]). *)
+  let with_optimized_nested =
+    list_map_preserve
+      (fun rule ->
+        let nested =
+          match rule.nested with
+          | [] -> []
+          | nested ->
+              let nested = statements ~ctx ~enforce_spec nested in
+              if enforce_spec then nested
+              else list_map_preserve drop_nesting_prefix nested
+        in
+        let rule = rule_with_nested rule nested in
+        let rule =
+          let selector = Selector.canonicalize rule.selector in
+          if selector == rule.selector then rule else { rule with selector }
+        in
+        merge_lone_nested_rule rule)
+      rules
+  in
+  (* Apply standard rule optimizations. Adjacent same-selector rules merge:
+     [.x{a}] [.x{b}] -> [.x{a;b}], which is safe because cascade order within
+     the merged block matches the source order of the originals.
+     [combine_identical_rules] then groups same-declaration rules under a
+     selector list ([.a, .b, .c{...}]). *)
+  let prepared =
+    list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
+  in
+  let prepared = prepared |> Rule.drop_shadowed |> merge_rules in
+  let prepared =
+    list_map_preserve
+      (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
+      prepared
+  in
+  (* Factoring is greedy and global: extracting one shared declaration subset
+     can leave behind leftovers that are themselves factorable. The local linear
+     optimizations above always run; this incremental gate only decides whether
+     the expensive global factoring fixpoint is likely to buy enough bytes to
+     justify the full indexed scheduler walk. *)
+  factor_rules_incremental ~ctx prepared
+
+(* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
+   earlier definition in source order. Drop earlier same-name keyframes; the
+   later one wins. Vendor-prefixed [-webkit-] / [-moz-] variants are separate
+   namespaces, so they are not dedup'd against the unprefixed form. *)
+let drop_shadowed_keyframes (stmts : statement list) : statement list =
+  let exists_later kind name tail =
+    List.exists
+      (fun stmt ->
+        match (kind, stmt) with
+        | `Plain, Keyframes (n, _) -> n = name
+        | `Webkit, Webkit_keyframes (n, _) -> n = name
+        | `Moz, Moz_keyframes (n, _) -> n = name
+        | _ -> false)
+      tail
+  in
+  let rec walk acc = function
+    | [] -> List.rev acc
+    | (Keyframes (name, _) as kf) :: rest ->
+        if exists_later `Plain name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | (Webkit_keyframes (name, _) as kf) :: rest ->
+        if exists_later `Webkit name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | (Moz_keyframes (name, _) as kf) :: rest ->
+        if exists_later `Moz name rest then walk acc rest
+        else walk (kf :: acc) rest
+    | stmt :: rest -> walk (stmt :: acc) rest
+  in
+  walk [] stmts
+
+(* CSS Cascade 5 sec. 6.4.2: when a named layer is declared multiple times the
+   rules from all occurrences accumulate into the layer. Merge same-name blocks
+   at the position of the FIRST NON-EMPTY occurrence so the merged content stays
+   where the author placed the layer's first real declaration. Leading empty
+   blocks ([@layer name {}]) stay in place so the [empty-named-layer ->
+   Layer_decl] normalisation in [process_statements] still folds them into the
+   order-only declaration. *)
+let statements_top_level ~ctx ~enforce_spec (stmts : statement list) :
+    statement list =
+  let optimize_merged_block = statements ~ctx ~enforce_spec in
+  let stmts' =
+    statements ~ctx ~enforce_spec stmts
+    |> merge_consecutive_layers ~optimize_merged_block
+    |> drop_redundant_layer_decls |> drop_shadowed_keyframes
+  in
+  preserve_list stmts stmts'
+
+let single_rule ?scope (rule : rule) : rule =
+  let ctx = ctx_of_scope scope in
   {
     rule with
-    declarations = deduplicate_declarations rule.declarations;
-    nested = statements rule.nested;
+    declarations = deduplicate_declarations_with ~ctx rule.declarations;
+    nested = statements ~ctx ~enforce_spec:false rule.nested;
   }
 
-let rules (rules : rule list) : rule list = rules_aux rules
+let rules ?scope (rules : rule list) : rule list =
+  rules_aux ~ctx:(ctx_of_scope scope) ~enforce_spec:false rules
 
-(* Initialize the forward reference for merge_consecutive_media *)
-let () = statements_ref := statements
+(** {1 Nesting Flattening} *)
+
+let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
 
 let apply_property_duplication (stylesheet : t) : t =
-  (* Apply only property duplication without other optimizations *)
+  (* Apply only property duplication without other optimizations. Each level
+     keeps its node when nothing below changed, so an untouched subtree stays
+     physically shared (no whole-tree rebuild on a no-op). *)
   let rec apply_to_statements stmts =
-    List.map
-      (function
+    list_map_preserve
+      (fun stmt ->
+        match stmt with
         | Rule rule ->
-            Rule
-              {
-                rule with
-                declarations = duplicate_buggy_properties rule.declarations;
-              }
-        | Media (cond, inner_stmts) ->
-            Media (cond, apply_to_statements inner_stmts)
-        | Layer (name, inner_stmts) ->
-            Layer (name, apply_to_statements inner_stmts)
-        | Container (name, cond, inner_stmts) ->
-            Container (name, cond, apply_to_statements inner_stmts)
-        | Supports (cond, inner_stmts) ->
-            Supports (cond, apply_to_statements inner_stmts)
+            let declarations = duplicate_buggy_properties rule.declarations in
+            if declarations == rule.declarations then stmt
+            else Rule { rule with declarations }
+        | Media (cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Media (cond, inner')
+        | Layer (name, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Layer (name, inner')
+        | Container (name, cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Container (name, cond, inner')
+        | Supports (cond, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Supports (cond, inner')
+        | Origin (origin, inner) ->
+            let inner' = apply_to_statements inner in
+            if inner' == inner then stmt else Origin (origin, inner')
         | other -> other)
       stmts
   in
   apply_to_statements stylesheet
 
-let stylesheet (stylesheet : t) : t =
-  (* Apply CSS optimizations while preserving cascade semantics *)
-  (* Also remove the initial layer declaration list (@layer theme,base,components,utilities;)
-     as Tailwind v4 doesn't include it in minified+optimized output *)
-  let remove_initial_layer_decl = function
-    | Layer_decl names :: rest
-      when List.mem "theme" names && List.mem "utilities" names ->
-        (* This is the full layer declaration list - remove it *)
-        rest
-    | stmts -> stmts
+let map_statement_block_preserve f stmt =
+  let map block = list_map_preserve f block in
+  match stmt with
+  | Layer (name, block) ->
+      let block' = map block in
+      if block' == block then stmt else Layer (name, block')
+  | Media (m, block) ->
+      let block' = map block in
+      if block' == block then stmt else Media (m, block')
+  | Container (n, c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Container (n, c, block')
+  | Supports (s, block) ->
+      let block' = map block in
+      if block' == block then stmt else Supports (s, block')
+  | Moz_document (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Moz_document (c, block')
+  | When (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else When (c, block')
+  | Else (c, block) ->
+      let block' = map block in
+      if block' == block then stmt else Else (c, block')
+  | Starting_style block ->
+      let block' = map block in
+      if block' == block then stmt else Starting_style block'
+  | Origin (o, block) ->
+      let block' = map block in
+      if block' == block then stmt else Origin (o, block')
+  | Scope (a, b, block) ->
+      let block' = map block in
+      if block' == block then stmt else Scope (a, b, block')
+  | _ -> stmt
+
+(** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
+    nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
+    [@position-try]) and removes declarations whose typed value contains an
+    [Invalid] arm. *)
+let drop_invalid (stylesheet : t) : t =
+  let filter_decls =
+    list_filter_preserve (fun d -> not (Declaration.is_invalid d))
   in
-  stylesheet |> remove_initial_layer_decl |> statements
+  let rec statement stmt =
+    match stmt with
+    | Rule rule ->
+        let declarations = filter_decls rule.declarations in
+        let nested = list_map_preserve statement rule.nested in
+        let rule' =
+          rule_with_declarations_and_nested rule declarations nested
+        in
+        if rule' == rule then stmt else Rule rule'
+    | Declarations decls ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Declarations decls'
+    | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
+    | Else _ | Starting_style _ | Origin _ | Scope _ ->
+        map_statement_block_preserve statement stmt
+    | Page (sel, decls) ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Page (sel, decls')
+    | Page_with_margins (sel, descs, margins) ->
+        let descs' = filter_decls descs in
+        let margins' =
+          list_map_preserve
+            (fun (m : page_margin_rule) ->
+              let descriptors = filter_decls m.descriptors in
+              if descriptors == m.descriptors then m else { m with descriptors })
+            margins
+        in
+        if descs' == descs && margins' == margins then stmt
+        else Page_with_margins (sel, descs', margins')
+    | Position_try (name, decls) ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Position_try (name, decls')
+    | Supports_condition (name, decls) ->
+        let decls' = filter_decls decls in
+        if decls' == decls then stmt else Supports_condition (name, decls')
+    | other -> other
+  in
+  list_map_preserve statement stylesheet
+
+(** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
+    depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
+    emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
+    §5.4.1 (unknown at-rules are discarded). *)
+let drop_unknown_at_rules (stylesheet : t) : t =
+  let rec statement stmt =
+    match stmt with
+    | Rule rule ->
+        let nested = list_filter_map_preserve statement rule.nested in
+        let rule' = rule_with_nested rule nested in
+        Some (if rule' == rule then stmt else Rule rule')
+    | Layer (name, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Layer (name, block'))
+    | Media (m, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Media (m, block'))
+    | Container (n, c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Container (n, c, block'))
+    | Supports (s, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Supports (s, block'))
+    | Moz_document (c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Moz_document (c, block'))
+    | When (c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else When (c, block'))
+    | Else (c, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Else (c, block'))
+    | Starting_style block ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Starting_style block')
+    | Origin (o, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Origin (o, block'))
+    | Scope (a, b, block) ->
+        let block' = list_filter_map_preserve statement block in
+        Some (if block' == block then stmt else Scope (a, b, block'))
+    | Unknown_at_rule _ -> None
+    | other -> Some other
+  in
+  list_filter_map_preserve statement stylesheet
+
+(* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
+   declaration registers [name] with a typed CSS syntax, lifting later [--name:
+   ...] uses out of the unregistered opaque-token-stream rule. Apply
+   registrations in source order so a [@property] only affects uses that follow
+   it; later registrations of the same name overwrite, matching how the browser
+   registry resolves duplicate declarations. *)
+let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
+  match syntax with
+  | Variables.Color -> Properties.try_read_custom_color components
+  | Variables.Length -> Properties.try_read_custom_length components
+  | Variables.Length_percentage ->
+      Properties.try_read_custom_length_percentage components
+  | Variables.Number -> Properties.try_read_custom_number components
+  | Variables.Percentage -> Properties.try_read_custom_percentage components
+  | _ -> None
+
+(* Does the registered syntax somewhere accept a [<custom-ident>] (possibly
+   under [+] / [#] / [|] modifiers)? When yes, a [<string>] whose content is a
+   multi-word identifier sequence is spec-equivalent (CSS Fonts 4 sec. 15.3 for
+   font-family-shaped registrations), so the promotion pass rewrites it to the
+   equivalent ident sequence before parsing. *)
+let rec syntax_accepts_ident_sequence : type a. a Variables.syntax -> bool =
+  function
+  | Variables.Custom_ident -> true
+  | Variables.Plus s -> syntax_accepts_ident_sequence s
+  | Variables.Hash s -> syntax_accepts_ident_sequence s
+  | Variables.Or (s1, s2) ->
+      syntax_accepts_ident_sequence s1 || syntax_accepts_ident_sequence s2
+  | _ -> false
+
+let promote_registered_custom_decl ~lossless registry decl =
+  match decl with
+  | Declaration
+      {
+        property = Custom_property name;
+        value = Custom_value { value = Tokens components; layer; meta };
+        important;
+      } -> (
+      match Hashtbl.find_opt registry name with
+      | None -> decl
+      | Some (Variables.Syntax syntax) -> (
+          let components' =
+            if syntax_accepts_ident_sequence syntax then
+              Properties.unquote_font_family_strings components
+            else components
+          in
+          match try_promote_custom_with syntax components' with
+          | Some typed ->
+              Declaration.v ~important (Custom_property name)
+                (Custom_value
+                   {
+                     value =
+                       Properties.normalize_custom_property_value ~lossless
+                         typed;
+                     layer;
+                     meta;
+                   })
+          | None when components' == components -> decl
+          | None ->
+              (* Promotion failed (e.g. [<custom-ident>+] has no typed promotion
+                 path yet) but the string-to-ident rewrite still produces the
+                 canonical opaque AST. *)
+              Declaration.v ~important (Custom_property name)
+                (Custom_value { value = Tokens components'; layer; meta })))
+  | _ -> decl
+
+let promote_registered_custom_properties ~lossless (stmts : statement list) =
+  let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
+  let promote_decl = promote_registered_custom_decl ~lossless registry in
+  let rec walk_stmt (stmt : statement) : statement =
+    match stmt with
+    | Property pr ->
+        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax);
+        stmt
+    | Rule r ->
+        let declarations = list_map_preserve promote_decl r.declarations in
+        let nested = list_map_preserve walk_stmt r.nested in
+        let r' = rule_with_declarations_and_nested r declarations nested in
+        if r' == r then stmt else Rule r'
+    | Declarations decls ->
+        let decls' = list_map_preserve promote_decl decls in
+        if decls' == decls then stmt else Declarations decls'
+    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
+    | Starting_style _ | Moz_document _ | When _ | Else _ ->
+        map_statement_block_preserve walk_stmt stmt
+    | _ -> stmt
+  in
+  list_map_preserve walk_stmt stmts
+
+(* Under closed-stylesheet scope the optimiser knows every [@position-try
+   --name] rule defined in the sheet. A [position-try-fallbacks: --x, --y] entry
+   whose name has no matching [@position-try] rule cannot match at runtime, so
+   prune unknown [Name] arms. Keep the [Flip_*] tactics and any [Var]
+   indirection untouched. When every arm gets pruned the whole declaration drops
+   (the property becomes equivalent to its initial). *)
+let collect_position_try_names stylesheet =
+  let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let rec collect (stmt : statement) =
+    match stmt with
+    | Position_try (name, _) -> Hashtbl.replace known name ()
+    | Rule rule -> List.iter collect rule.nested
+    | Layer (_, b)
+    | Media (_, b)
+    | Container (_, _, b)
+    | Supports (_, b)
+    | Moz_document (_, b)
+    | When (_, b)
+    | Else (_, b)
+    | Starting_style b
+    | Origin (_, b)
+    | Scope (_, _, b) ->
+        List.iter collect b
+    | _ -> ()
+  in
+  List.iter collect stylesheet;
+  known
+
+let rec prune_position_try_decl known (decl : Declaration.declaration) :
+    Declaration.declaration option =
+  match decl with
+  | Declaration
+      {
+        property = Position_try_fallbacks;
+        value = (Fallbacks items : Properties.position_try_fallbacks);
+        important;
+      } -> (
+      let keep = function
+        | (Properties.Name s : Properties.position_try_fallback) ->
+            Hashtbl.mem known s
+        | _ -> true
+      in
+      match List.filter keep items with
+      | [] -> None
+      | kept ->
+          Some
+            (Declaration.v ~important Position_try_fallbacks (Fallbacks kept)))
+  | Theme_guarded { var_name; decl; _ } -> (
+      match prune_position_try_decl known decl with
+      | None -> None
+      | Some decl -> Some (Declaration.theme_guarded ~var_name decl))
+  | other -> Some other
+
+let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
+  match scope with
+  | `Fragment -> stylesheet
+  | `Stylesheet ->
+      let known = collect_position_try_names stylesheet in
+      let prune_decls = List.filter_map (prune_position_try_decl known) in
+      let rec walk (stmt : statement) : statement =
+        match stmt with
+        | Rule rule ->
+            Rule
+              {
+                rule with
+                declarations = prune_decls rule.declarations;
+                nested = List.map walk rule.nested;
+              }
+        | Declarations decls -> Declarations (prune_decls decls)
+        | Layer (n, b) -> Layer (n, List.map walk b)
+        | Media (m, b) -> Media (m, List.map walk b)
+        | Container (n, c, b) -> Container (n, c, List.map walk b)
+        | Supports (c, b) -> Supports (c, List.map walk b)
+        | Moz_document (c, b) -> Moz_document (c, List.map walk b)
+        | When (c, b) -> When (c, List.map walk b)
+        | Else (c, b) -> Else (c, List.map walk b)
+        | Starting_style b -> Starting_style (List.map walk b)
+        | Origin (o, b) -> Origin (o, List.map walk b)
+        | Scope (s, e, b) -> Scope (s, e, List.map walk b)
+        | Page (sel, decls) -> Page (sel, prune_decls decls)
+        | Position_try (n, decls) -> Position_try (n, prune_decls decls)
+        | Supports_condition (n, decls) ->
+            Supports_condition (n, prune_decls decls)
+        | other -> other
+      in
+      List.map walk stylesheet
+
+(* Collect the custom properties registered with an [@property] initial-value.
+   Such a property is never invalid at computed-value time, so folding its
+   [var()] into a shorthand cannot widen a failure across the other
+   longhands. *)
+let registered_foldable (stylesheet : t) : string -> bool =
+  let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let rec collect (stmt : statement) =
+    match stmt with
+    | Property pr -> (
+        match pr.initial_value with
+        | Some _ ->
+            (* [@property] names carry the [--] prefix; [var()] references store
+               the bare name, so normalise to the bare form for lookup. *)
+            let key =
+              if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
+              then String.sub pr.name 2 (String.length pr.name - 2)
+              else pr.name
+            in
+            Hashtbl.replace tbl key ()
+        | None -> ())
+    | Rule rule -> List.iter collect rule.nested
+    | Layer (_, b)
+    | Media (_, b)
+    | Container (_, _, b)
+    | Supports (_, b)
+    | Moz_document (_, b)
+    | When (_, b)
+    | Else (_, b)
+    | Starting_style b
+    | Origin (_, b)
+    | Scope (_, _, b) ->
+        List.iter collect b
+    | _ -> ()
+  in
+  List.iter collect stylesheet;
+  fun name -> Hashtbl.mem tbl name
+
+(* Canonicalise every declaration's value so the whole AST is canonical before
+   structural optimization. Cover all declaration-bearing contexts - style rules
+   and their nesting, [@keyframes] frames, [@page] and its margin rules,
+   [@position-try], [@supports-condition], bare nesting declarations - and
+   recurse through grouping blocks, so canonicalisation is uniform wherever a
+   declaration sits. *)
+let normalize_keyframe ~lossless (k : keyframe) : keyframe =
+  let declarations =
+    list_map_preserve (Declaration.normalize ~lossless) k.declarations
+  in
+  if declarations == k.declarations then k else { k with declarations }
+
+let rec normalize_block ~lossless (b : statement list) : statement list =
+  list_map_preserve (normalize_statement ~lossless) b
+
+and normalize_statement ~lossless (s : statement) : statement =
+  let nd = list_map_preserve (Declaration.normalize ~lossless) in
+  match s with
+  | Rule r ->
+      let declarations = nd r.declarations in
+      let nested = normalize_block ~lossless r.nested in
+      let r' = rule_with_declarations_and_nested r declarations nested in
+      if r' == r then s else Rule r'
+  | Declarations d ->
+      let d' = nd d in
+      if d' == d then s else Declarations d'
+  | Page (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Page (n, d')
+  | Page_with_margins (n, descs, margins) ->
+      let descs' = nd descs in
+      let margins' =
+        list_map_preserve
+          (fun m ->
+            let descriptors = nd m.descriptors in
+            if descriptors == m.descriptors then m else { m with descriptors })
+          margins
+      in
+      if descs' == descs && margins' == margins then s
+      else Page_with_margins (n, descs', margins')
+  | Position_try (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Position_try (n, d')
+  | Supports_condition (n, d) ->
+      let d' = nd d in
+      if d' == d then s else Supports_condition (n, d')
+  | Keyframes (n, ks) ->
+      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
+      if ks' == ks then s else Keyframes (n, ks')
+  | Webkit_keyframes (n, ks) ->
+      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
+      if ks' == ks then s else Webkit_keyframes (n, ks')
+  | Moz_keyframes (n, ks) ->
+      let ks' = list_map_preserve (normalize_keyframe ~lossless) ks in
+      if ks' == ks then s else Moz_keyframes (n, ks')
+  | Layer (n, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Layer (n, b')
+  | Media (c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Media (c, b')
+  | Container (n, c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Container (n, c, b')
+  | Supports (c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Supports (c, b')
+  | Moz_document (c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Moz_document (c, b')
+  | Starting_style b ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Starting_style b'
+  | When (c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else When (c, b')
+  | Else (c, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Else (c, b')
+  | Origin (o, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Origin (o, b')
+  | Scope (s1, s2, b) ->
+      let b' = normalize_block ~lossless b in
+      if b' == b then s else Scope (s1, s2, b')
+  | Property r ->
+      let initial_value =
+        match r.initial_value with
+        | None -> r.initial_value
+        | Some value ->
+            let value' = Variables.normalize_value ~lossless r.syntax value in
+            if value' == value then r.initial_value else Some value'
+      in
+      if initial_value == r.initial_value then s
+      else Property { r with initial_value }
+  | other -> other
+
+let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
+    ?(enforce_spec = false) (stylesheet : t) : t =
+  clear_summary_memo ();
+  Selector_summary.clear_memo ();
+  reset_counters ();
+  let scope = Option.value scope ~default:`Fragment in
+  let stylesheet = normalize_block ~lossless stylesheet in
+  let stylesheet =
+    if flatten_nesting then Flatten.block stylesheet else stylesheet
+  in
+  let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
+  let ctx =
+    Ctx.v ~lossless ~registered:(registered_foldable stylesheet) scope
+  in
+  (* [drop_invalid] and [drop_unknown_at_rules] run before the main optimisation
+     passes so the empty rules they leave behind get picked up by
+     [drop_empty_rules]. *)
+  stylesheet
+  |> prune_position_try_fallbacks ~scope
+  |> drop_invalid |> drop_unknown_at_rules
+  |> statements_top_level ~ctx ~enforce_spec

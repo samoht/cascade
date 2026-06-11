@@ -5,54 +5,95 @@ type position =
   | From  (** [from] or [0%] *)
   | To  (** [to] or [100%] *)
   | Percent of float  (** Percentage like [50%] *)
+  | Timeline_range of string * float
+      (** Scroll-Driven Animations 1: a [<timeline-range-name> <percentage>]
+          selector such as [entry 0%]. The string is the range name keyword
+          ([cover], [contain], [entry], [exit], [entry-crossing],
+          [exit-crossing]). *)
 
-let position_to_string = function
+let string_of_pct p =
+  if Float.is_integer p then Int.to_string (Float.to_int p)
+  else Float.to_string p
+
+let string_of_position = function
   | From -> "from"
   | To -> "to"
-  | Percent p ->
-      let p_str =
-        if Float.is_integer p then Int.to_string (Float.to_int p)
-        else Float.to_string p
-      in
-      p_str ^ "%"
+  | Percent p -> string_of_pct p ^ "%"
+  | Timeline_range (name, p) -> name ^ " " ^ string_of_pct p ^ "%"
 
-(** A keyframe selector (one or more positions, or raw string). *)
-type selector = Positions of position list | Raw of string
+(** A keyframe selector (one or more positions). *)
+type selector = Positions of position list
 
-let selector_to_string = function
+type t = selector
+
+let string_of_selector = function
   | Positions positions ->
-      String.concat ", " (List.map position_to_string positions)
-  | Raw s -> s
+      String.concat ", " (List.map string_of_position positions)
 
+let to_string = string_of_selector
+let pp ctx selector = Pp.string ctx (string_of_selector selector)
+
+let percent_of_position = function
+  | From -> 0.
+  | To -> 100.
+  | Percent p -> p
+  | Timeline_range (_, p) -> p
+
+(* Range-named selectors live on different timeline progress axes than the
+   default 0..100% one, so they don't compare meaningfully against bare
+   percentages. We fall back to comparing the offsets within their own
+   namespace, then break ties by the (alphabetic) range-name order. *)
 let position_compare a b =
   match (a, b) with
-  | From, From -> 0
-  | To, To -> 0
-  | Percent p1, Percent p2 -> Float.compare p1 p2
-  | From, _ -> -1
-  | _, From -> 1
-  | To, Percent _ -> 1
-  | Percent _, To -> -1
+  | Timeline_range (n1, p1), Timeline_range (n2, p2) ->
+      let c = String.compare n1 n2 in
+      if c <> 0 then c else Float.compare p1 p2
+  | Timeline_range _, _ -> 1
+  | _, Timeline_range _ -> -1
+  | _ -> Float.compare (percent_of_position a) (percent_of_position b)
 
-(** Parse a position string like "from", "to", or "50%". *)
+let timeline_range_names =
+  [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+
+let parse_percent s =
+  if String.length s > 0 && s.[String.length s - 1] = '%' then
+    match float_of_string (String.sub s 0 (String.length s - 1)) with
+    | value -> Some value
+    | exception (Failure _ | Invalid_argument _) -> None
+  else None
+
+(** Parse a [<timeline-range-name> <percentage>] string (Scroll-Driven
+    Animations 1 §8.1). *)
+let parse_timeline_range_position s =
+  match String.index_opt s ' ' with
+  | None -> None
+  | Some i ->
+      let name = String.sub s 0 i in
+      let rest = String.sub s (i + 1) (String.length s - i - 1) in
+      let rest = String.trim rest in
+      if not (List.mem (String.lowercase_ascii name) timeline_range_names) then
+        None
+      else
+        Option.bind (parse_percent rest) (fun p ->
+            Some (Timeline_range (name, p)))
+
+(** Parse a position string like "from", "to", "50%", or "entry 0%". *)
 let position_of_string s =
   let s = String.trim s in
   if String.equal s "from" then Some From
   else if String.equal s "to" then Some To
-  else if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try
-      let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-      Some (Percent p)
-    with Failure _ | Invalid_argument _ -> None
-  else None
+  else
+    match parse_percent s with
+    | Some p when p >= 0. && p <= 100. -> Some (Percent p)
+    | Some _ -> None
+    | None -> parse_timeline_range_position s
 
-(** Parse a selector string like "from", "50%", or "from, 50%". Always succeeds
-    \- returns Raw if parsing fails. *)
+(** Parse a selector string like "from", "50%", or "from, 50%". *)
 let selector_of_string s =
   let parts = String.split_on_char ',' s in
   let positions = List.filter_map position_of_string parts in
   if List.length positions = List.length parts && positions <> [] then
     Positions positions
-  else Raw s
+  else invalid_arg ("invalid keyframe selector: " ^ s)
 
-let selector_equal a b = selector_to_string a = selector_to_string b
+let selector_equal a b = string_of_selector a = string_of_selector b

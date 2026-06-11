@@ -1,0 +1,8 @@
+.foo .bar {
+  color: red;
+}
+.foo {
+  .bar {
+    color: red;
+  }
+}

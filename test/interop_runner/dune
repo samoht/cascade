@@ -1,0 +1,3 @@
+(executable
+ (name test)
+ (libraries cascade alcotest fmt memtrace eio eio_main))

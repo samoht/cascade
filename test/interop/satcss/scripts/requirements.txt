@@ -1,0 +1,11 @@
+# Dependencies for running matthewhague/sat-css-tool under Python 3.
+# The tool's own pins (lxml 4.9.2, z3-solver 4.12.2.0, ...) predate Python
+# 3.14 and have no wheels there; these are the oldest set that builds on a
+# current interpreter. The oracle's determinism comes from the pinned tool
+# commit (see generate.sh), not from these host bindings.
+cssselect==1.4.0
+docopt==0.6.2
+lxml==6.1.1
+tinycss2==1.5.1
+toposort==1.10
+z3-solver==4.16.0.0

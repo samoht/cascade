@@ -1,4 +1,14 @@
-(executables
- (public_names cascade cssdiff)
- (names cascade_main cssdiff)
- (libraries cascade cascade.info css_tools cmdliner fmt fmt.cli fmt.tty))
+(executable
+ (public_name cascade)
+ (name main)
+ (libraries
+  cascade
+  cascade.info
+  cascade.diff
+  cmdliner
+  fmt
+  fmt.cli
+  fmt.tty
+  logs
+  logs.fmt
+  memtrace))
