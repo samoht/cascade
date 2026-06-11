@@ -953,6 +953,43 @@ and sanitize_statement ~lossless (s : statement) : statement List.edit =
   | Unknown_at_rule _ -> List.Drop
   | _ -> List.Keep
 
+let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
+  if not aggressive then statements_top_level ~ctx ~enforce_spec stylesheet
+  else
+    (* Re-run the top-level pipeline until the AST stops changing or a small
+       iteration cap fires. Each subsequent pass may shrink the input again
+       because earlier passes (vendor-alias drop, shorthand composition) may
+       have exposed new merge / factoring opportunities the previous pass didn't
+       see. *)
+    let rec loop n stmts =
+      if n <= 0 then stmts
+      else
+        let next = statements_top_level ~ctx ~enforce_spec stmts in
+        if next == stmts then stmts else loop (n - 1) next
+    in
+    loop 5 stylesheet
+
+let has_top_level_selector_list (stylesheet : t) =
+  List.exists
+    (function
+      | Stylesheet.Rule r -> Selector.is_compound_list r.selector | _ -> false)
+    stylesheet
+
+(* Compound-list extension in [combine_identical_global] reads more of the
+   factor pipeline's potential moves when each commit can land, but it can also
+   block better downstream [factor_anchor] decisions by locking in a greedy
+   local merge. The trade-off is input-specific and not predictable from the AST
+   shape alone, so we race the two settings and emit whichever stylesheet
+   serializes shorter. The race is skipped when no [Selector.List] rule exists
+   at the top level - the relaxation can only matter for those, so the second
+   pipeline run would just pay wall-clock for nothing. *)
+let race_extend_lists ~run ~strict stylesheet =
+  if not (has_top_level_selector_list stylesheet) then strict
+  else
+    let extended = run ~extend_lists:true in
+    let size s = Pp.size ~minify:true pp_stylesheet s in
+    if size extended < size strict then extended else strict
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) (stylesheet : t) : t =
   clear_summary_memo ();
@@ -968,42 +1005,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let run ~extend_lists =
     let ctx = Ctx.v ~lossless ~aggressive ~extend_lists ~registered scope in
-    if not aggressive then statements_top_level ~ctx ~enforce_spec stylesheet
-    else
-      (* Re-run the top-level pipeline until the AST stops changing or a small
-         iteration cap fires. Each subsequent pass may shrink the input again
-         because earlier passes (vendor-alias drop, shorthand composition) may
-         have exposed new merge / factoring opportunities the previous pass
-         didn't see. *)
-      let rec loop n stmts =
-        if n <= 0 then stmts
-        else
-          let next = statements_top_level ~ctx ~enforce_spec stmts in
-          if next == stmts then stmts else loop (n - 1) next
-      in
-      loop 5 stylesheet
+    run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet
   in
-  (* Compound-list extension in [combine_identical_global] reads more of the
-     factor pipeline's potential moves when each commit can land, but it can
-     also block better downstream [factor_anchor] decisions by locking in a
-     greedy local merge. The trade-off is input-specific and not predictable
-     from the AST shape alone, so we race the two settings and emit whichever
-     stylesheet serializes shorter. *)
   let strict = run ~extend_lists:false in
-  (* Skip the [extend_lists] race when nothing in the input can benefit:
-     [identical_global]'s relaxed mode only becomes more permissive on
-     [Selector.List] rules, so a stylesheet with none has nothing to gain
-     and the race would just pay the wall-clock cost of a second pipeline
-     run. *)
-  let has_selector_list =
-    List.exists
-      (function
-        | Stylesheet.Rule r -> Selector.is_compound_list r.selector
-        | _ -> false)
-      stylesheet
-  in
-  if not has_selector_list then strict
-  else
-    let extended = run ~extend_lists:true in
-    let size s = Pp.size ~minify:true pp_stylesheet s in
-    if size extended < size strict then extended else strict
+  race_extend_lists ~run ~strict stylesheet
