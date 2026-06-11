@@ -443,8 +443,8 @@ let combine_adjacent_identical_decls ~same rules =
    already at the anchor's position; the combined rule writes the same value to
    every member's elements anyway, so cross-member overlaps within the group are
    never a hazard. *)
-let identical_global ~same (rules : Stylesheet.rule list) : Stylesheet.rule list
-    =
+let identical_global ?(extend_lists = false) ~same
+    (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let arr = Array.of_list rules in
   let n = Array.length arr in
   if n < 2 then rules
@@ -464,7 +464,14 @@ let identical_global ~same (rules : Stylesheet.rule list) : Stylesheet.rule list
           (fun d ->
             (Declaration.property_name d, Declaration.is_important d))
           r.Stylesheet_intf.declarations;
-      if not (cannot_combine r) then eligible.(i) <- true
+      let blocked =
+        if extend_lists then
+          r.Stylesheet_intf.nested <> []
+          || vendor r.Stylesheet_intf.selector
+          || has_descendant_pseudo_element r.Stylesheet_intf.selector
+        else cannot_combine r
+      in
+      if not blocked then eligible.(i) <- true
     done;
     let buckets : (string list, int list ref) Hashtbl.t = Hashtbl.create 64 in
     for i = 0 to n - 1 do

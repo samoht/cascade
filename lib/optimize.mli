@@ -43,7 +43,12 @@ type ctx
     property predicate and the lossless knob. The shorthand composers take it;
     build one with {!ctx_of_scope}. *)
 
-val ctx_of_scope : ?lossless:bool -> ?aggressive:bool -> scope option -> ctx
+val ctx_of_scope :
+  ?lossless:bool ->
+  ?aggressive:bool ->
+  ?extend_lists:bool ->
+  scope option ->
+  ctx
 (** [ctx_of_scope ?lossless ?aggressive scope] builds the context the composers
     take; [None] is [`Fragment]. [aggressive] forces the expensive global
     factoring fixpoint to run even when its preflight predicts low gain. *)
