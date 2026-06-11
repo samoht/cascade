@@ -136,18 +136,21 @@ for site in "${SITES[@]}"; do
     continue
   fi
   out_cascade="$TMP/$site.cascade.css"
+  out_cascade_aggr="$TMP/$site.cascade_aggr.css"
   out_csso="$TMP/$site.csso.css"
   out_lightning="$TMP/$site.lightning.css"
   out_esbuild="$TMP/$site.esbuild.css"
   out_cssnano="$TMP/$site.cssnano.css"
 
   emit_stdout "$CASCADE fmt --minify -" "$in" "$out_cascade"
+  emit_stdout "$CASCADE fmt --minify --aggressive -" "$in" "$out_cascade_aggr"
   emit_stdout "csso" "$in" "$out_csso"
   emit_stdout "lightningcss --minify" "$in" "$out_lightning"
   emit_stdout "esbuild --minify --loader=css" "$in" "$out_esbuild"
   emit_cssnano "$in" "$out_cssnano"
 
   t_cascade=$(run_ms "$CASCADE fmt --minify -" "$in")
+  t_cascade_aggr=$(run_ms "$CASCADE fmt --minify --aggressive -" "$in")
   t_csso=$(run_ms "csso" "$in")
   t_lightning=$(run_ms "lightningcss --minify" "$in")
   t_esbuild=$(run_ms "esbuild --minify --loader=css" "$in")
@@ -155,6 +158,7 @@ for site in "${SITES[@]}"; do
 
   print_input_row "$site" "$in"
   print_tool_row "$site" cascade "$t_cascade" "$out_cascade"
+  print_tool_row "$site" cascade-aggr "$t_cascade_aggr" "$out_cascade_aggr"
   print_tool_row "$site" csso "$t_csso" "$out_csso"
   print_tool_row "$site" lightningcss "$t_lightning" "$out_lightning"
   print_tool_row "$site" esbuild "$t_esbuild" "$out_esbuild"
