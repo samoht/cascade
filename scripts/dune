@@ -1,6 +1,6 @@
 (executables
  (names check_properties check_api_consistency check_unknown_properties)
- (libraries re unix cascade))
+ (libraries re unix cascade fmt))
 
 (rule
  (alias runtest)

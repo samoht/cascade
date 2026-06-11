@@ -421,6 +421,161 @@ let combine_adjacent_identical_decls ~same rules =
   in
   preserve rules (walk [] rules)
 
+(* Per-rule facts cached up-front for {!identical_global}. *)
+type rule_facts = {
+  arr : Stylesheet.rule array;
+  subselectors : Selector.t list array;
+  props : string list array;
+  importance_of : (string * bool) list array;
+  eligible : bool array;
+}
+
+let collect_facts ~extend_lists (arr : Stylesheet.rule array) : rule_facts =
+  let n = Array.length arr in
+  let subselectors = Array.make n [] in
+  let props = Array.make n [] in
+  let importance_of = Array.make n [] in
+  let eligible = Array.make n false in
+  for i = 0 to n - 1 do
+    let r = arr.(i) in
+    subselectors.(i) <-
+      Selector.as_list r.Stylesheet_intf.selector
+      |> Option.value ~default:[ r.Stylesheet_intf.selector ];
+    props.(i) <- property_set r.Stylesheet_intf.declarations;
+    importance_of.(i) <-
+      List.map
+        (fun d -> (Declaration.property_name d, Declaration.is_important d))
+        r.Stylesheet_intf.declarations;
+    let blocked =
+      if extend_lists then
+        r.Stylesheet_intf.nested <> []
+        || vendor r.Stylesheet_intf.selector
+        || has_descendant_pseudo_element r.Stylesheet_intf.selector
+      else cannot_combine r
+    in
+    if not blocked then eligible.(i) <- true
+  done;
+  { arr; subselectors; props; importance_of; eligible }
+
+let bucket_eligible (facts : rule_facts) : (string list, int list ref) Hashtbl.t
+    =
+  let buckets = Hashtbl.create 64 in
+  let n = Array.length facts.arr in
+  for i = 0 to n - 1 do
+    if facts.eligible.(i) then begin
+      let key = facts.props.(i) in
+      match Hashtbl.find_opt buckets key with
+      | Some lst -> lst := i :: !lst
+      | None -> Hashtbl.add buckets key (ref [ i ])
+    end
+  done;
+  buckets
+
+let specificity_equal a b =
+  let sa = Selector.specificity a in
+  let sb = Selector.specificity b in
+  sa.ids = sb.ids && sa.classes = sb.classes && sa.elements = sb.elements
+
+let specificity_ties_subs subs_a subs_b =
+  List.exists
+    (fun a ->
+      let sa = Selector_summary.of_selector a in
+      List.exists
+        (fun b ->
+          let sb = Selector_summary.of_selector b in
+          Selector_summary.may_overlap sa sb && specificity_equal a b)
+        subs_b)
+    subs_a
+
+let intermediate_blocks (facts : rule_facts) ~anchor_importance ~candidate_subs
+    kk =
+  let intersects_with_same_importance =
+    List.exists
+      (fun (p, imp_k) ->
+        match List.assoc_opt p anchor_importance with
+        | Some imp_body -> imp_k = imp_body
+        | None -> false)
+      facts.importance_of.(kk)
+  in
+  if not intersects_with_same_importance then false
+  else specificity_ties_subs facts.subselectors.(kk) candidate_subs
+
+let gap_is_safe (facts : rule_facts) ~group_indices ~anchor_importance
+    ~candidate_subs ~lo ~hi j =
+  let safe = ref true in
+  let k = ref (lo + 1) in
+  while !safe && !k < hi do
+    let kk = !k in
+    if
+      kk <> j
+      && (not (List.mem kk group_indices))
+      && intermediate_blocks facts ~anchor_importance ~candidate_subs kk
+    then safe := false;
+    incr k
+  done;
+  !safe
+
+let attempt_absorb (facts : rule_facts) ~same ~anchor ~group_indices
+    ~anchor_importance j =
+  let anchor_r = facts.arr.(anchor) in
+  let rj = facts.arr.(j) in
+  if not (can_combine_rules ~same anchor_r rj) then false
+  else
+    let lo = List.fold_left min j !group_indices in
+    let hi = List.fold_left max j !group_indices in
+    let candidate_subs = facts.subselectors.(j) in
+    if
+      gap_is_safe facts ~group_indices:!group_indices ~anchor_importance
+        ~candidate_subs ~lo ~hi j
+    then begin
+      group_indices := j :: !group_indices;
+      true
+    end
+    else false
+
+let assign_merges (facts : rule_facts) ~same buckets : int option array =
+  let n = Array.length facts.arr in
+  let merge_into = Array.make n None in
+  Hashtbl.iter
+    (fun _ entries_ref ->
+      match List.sort compare !entries_ref with
+      | [] | [ _ ] -> ()
+      | anchor :: rest ->
+          let group_indices = ref [ anchor ] in
+          let anchor_importance = facts.importance_of.(anchor) in
+          List.iter
+            (fun j ->
+              if
+                attempt_absorb facts ~same ~anchor ~group_indices
+                  ~anchor_importance j
+              then merge_into.(j) <- Some anchor)
+            rest)
+    buckets;
+  merge_into
+
+let build_combined (arr : Stylesheet.rule array) ~absorbed_at i =
+  let indices = List.sort compare (i :: absorbed_at) in
+  let members = List.map (fun k -> group_member_of_rule arr.(k)) indices in
+  match rule_of_group (List.rev members) with Some r -> r | None -> arr.(i)
+
+let emit_with_merges (arr : Stylesheet.rule array) merge_into =
+  let n = Array.length arr in
+  let absorbed_by = Array.make n [] in
+  Array.iteri
+    (fun j m ->
+      match m with
+      | Some i -> absorbed_by.(i) <- j :: absorbed_by.(i)
+      | None -> ())
+    merge_into;
+  let out = ref [] in
+  for i = n - 1 downto 0 do
+    if merge_into.(i) = None then
+      match absorbed_by.(i) with
+      | [] -> out := arr.(i) :: !out
+      | js -> out := build_combined arr ~absorbed_at:js i :: !out
+  done;
+  !out
+
 (* Body-keyed global combine. The local sliding walker in {!identical} closes
    its current group the moment one intermediate rule writes a group property on
    a selector overlapping the group head, even when a same-body rule further
@@ -436,147 +591,25 @@ let combine_adjacent_identical_decls ~same rules =
    intermediate [S_k] at [p_anchor < p_k < p_j] that writes one of the body's
    properties. For those, soundness requires the cascade winner be the same
    before and after the move. With same-tier importance this needs strictly
-   different specificity on every overlapping subselector pair (so the winner
-   is determined by specificity alone, not source order); with different
-   importance the [!important] half wins regardless of position. Previously
-   absorbed group members keep their existing cascade because their bodies are
-   already at the anchor's position; the combined rule writes the same value to
-   every member's elements anyway, so cross-member overlaps within the group are
-   never a hazard. *)
+   different specificity on every overlapping subselector pair (so the winner is
+   determined by specificity alone, not source order); with different importance
+   the [!important] half wins regardless of position. Previously absorbed group
+   members keep their existing cascade because their bodies are already at the
+   anchor's position; the combined rule writes the same value to every member's
+   elements anyway, so cross-member overlaps within the group are never a
+   hazard. *)
 let identical_global ?(extend_lists = false) ~same
     (rules : Stylesheet.rule list) : Stylesheet.rule list =
   let arr = Array.of_list rules in
   let n = Array.length arr in
   if n < 2 then rules
   else
-    let subselectors = Array.make n [] in
-    let props = Array.make n [] in
-    let importance_of = Array.make n [] in
-    let eligible = Array.make n false in
-    for i = 0 to n - 1 do
-      let r = arr.(i) in
-      subselectors.(i) <-
-        Selector.as_list r.Stylesheet_intf.selector
-        |> Option.value ~default:[ r.Stylesheet_intf.selector ];
-      props.(i) <- property_set r.Stylesheet_intf.declarations;
-      importance_of.(i) <-
-        List.map
-          (fun d ->
-            (Declaration.property_name d, Declaration.is_important d))
-          r.Stylesheet_intf.declarations;
-      let blocked =
-        if extend_lists then
-          r.Stylesheet_intf.nested <> []
-          || vendor r.Stylesheet_intf.selector
-          || has_descendant_pseudo_element r.Stylesheet_intf.selector
-        else cannot_combine r
-      in
-      if not blocked then eligible.(i) <- true
-    done;
-    let buckets : (string list, int list ref) Hashtbl.t = Hashtbl.create 64 in
-    for i = 0 to n - 1 do
-      if eligible.(i) then begin
-        let key = props.(i) in
-        match Hashtbl.find_opt buckets key with
-        | Some lst -> lst := i :: !lst
-        | None -> Hashtbl.add buckets key (ref [ i ])
-      end
-    done;
-    let specificity_equal a b =
-      let sa = Selector.specificity a in
-      let sb = Selector.specificity b in
-      sa.ids = sb.ids && sa.classes = sb.classes && sa.elements = sb.elements
-    in
-    let specificity_ties subs_a subs_b =
-      List.exists
-        (fun a ->
-          let sa = Selector_summary.of_selector a in
-          List.exists
-            (fun b ->
-              let sb = Selector_summary.of_selector b in
-              Selector_summary.may_overlap sa sb && specificity_equal a b)
-            subs_b)
-        subs_a
-    in
-    let merge_into = Array.make n None in
-    let attempt_absorb ~anchor ~group_indices ~anchor_importance j =
-      let anchor_r = arr.(anchor) in
-      let rj = arr.(j) in
-      if not (can_combine_rules ~same anchor_r rj) then false
-      else
-        let lo = List.fold_left min j !group_indices in
-        let hi = List.fold_left max j !group_indices in
-        let candidate_subs = subselectors.(j) in
-        let safe = ref true in
-        let k = ref (lo + 1) in
-        while !safe && !k < hi do
-          let kk = !k in
-          if kk <> j && not (List.mem kk !group_indices) then begin
-            let intersects_with_same_importance =
-              List.exists
-                (fun (p, imp_k) ->
-                  match List.assoc_opt p anchor_importance with
-                  | Some imp_body -> imp_k = imp_body
-                  | None -> false)
-                importance_of.(kk)
-            in
-            if intersects_with_same_importance then begin
-              let inter_subs = subselectors.(kk) in
-              if specificity_ties inter_subs candidate_subs then
-                safe := false
-            end
-          end;
-          incr k
-        done;
-        if !safe then begin
-          merge_into.(j) <- Some anchor;
-          group_indices := j :: !group_indices;
-          true
-        end
-        else false
-    in
-    Hashtbl.iter
-      (fun _ entries_ref ->
-        match List.sort compare !entries_ref with
-        | [] | [ _ ] -> ()
-        | anchor :: rest ->
-            let group_indices = ref [ anchor ] in
-            let anchor_importance = importance_of.(anchor) in
-            List.iter
-              (fun j ->
-                ignore (attempt_absorb ~anchor ~group_indices ~anchor_importance j))
-              rest)
-      buckets;
+    let facts = collect_facts ~extend_lists arr in
+    let buckets = bucket_eligible facts in
+    let merge_into = assign_merges facts ~same buckets in
     let any_change = ref false in
     Array.iter (function Some _ -> any_change := true | None -> ()) merge_into;
-    if not !any_change then rules
-    else
-      let absorbed_by = Array.make n [] in
-      Array.iteri
-        (fun j m ->
-          match m with
-          | Some i -> absorbed_by.(i) <- j :: absorbed_by.(i)
-          | None -> ())
-        merge_into;
-      let out = ref [] in
-      for i = n - 1 downto 0 do
-        if merge_into.(i) = None then
-          begin match absorbed_by.(i) with
-          | [] -> out := arr.(i) :: !out
-          | js ->
-              let indices = List.sort compare (i :: js) in
-              let members =
-                List.map (fun k -> group_member_of_rule arr.(k)) indices
-              in
-              let combined =
-                match rule_of_group (List.rev members) with
-                | Some r -> r
-                | None -> arr.(i)
-              in
-              out := combined :: !out
-          end
-      done;
-      !out
+    if not !any_change then rules else emit_with_merges arr merge_into
 
 let identical ~same rules =
   let rec combine_consecutive acc current_group delayed = function

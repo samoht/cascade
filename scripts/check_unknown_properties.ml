@@ -112,10 +112,9 @@ let () =
         | `Type_me -> ("TYPE_ME", total_type)
       in
       bump := !bump + count;
-      Printf.printf "%-15s %5d  %s\n" tag count name)
+      Fmt.pr "%-15s %5d  %s@." tag count name)
     entries;
-  Printf.printf
-    "\nDROP_CANDIDATE total: %d occurrences (add to vendor_alias_redundant)\n"
+  Fmt.pr
+    "@.DROP_CANDIDATE total: %d occurrences (add to vendor_alias_redundant)@."
     !total_drop;
-  Printf.printf "TYPE_ME total:        %d occurrences (consider typing)\n"
-    !total_type
+  Fmt.pr "TYPE_ME total:        %d occurrences (consider typing)@." !total_type
