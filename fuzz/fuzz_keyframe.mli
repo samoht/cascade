@@ -1,4 +1,4 @@
-(** Fuzz tests for [@keyframes] rule parsing. *)
+(** Fuzz tests for CSS keyframe parsing and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for [@keyframes] rules. *)
+(** [suite] declares the keyframe fuzz cases. *)

@@ -56,17 +56,105 @@ let pp_parse_error (err : parse_error) =
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
-  let open Buffer in
-  add_string ctx.buf "<reader pos=";
-  add_string ctx.buf (string_of_int t.pos);
-  add_string ctx.buf ">"
+  Pp.string ctx "<reader pos=";
+  Pp.string ctx (string_of_int t.pos);
+  Pp.string ctx ">"
 
 (** {1 Creation} *)
 
+(* CSS Syntax Level 3 section 3.3 "Preprocessing the input stream": - Strip a
+   leading U+FEFF BYTE ORDER MARK. - Replace any U+0000 NULL or surrogate code
+   point with U+FFFD REPLACEMENT. (We operate post-UTF-8-decode; surrogates
+   don't occur in valid UTF-8 so the NUL byte is the practical concern.) -
+   Replace U+000D CARRIAGE RETURN, U+000C FORM FEED, and U+000D U+000A CRLF
+   pairs with a single U+000A LINE FEED. *)
+let preprocess input =
+  let len = String.length input in
+  let buf = Buffer.create len in
+  let fffd = "\xEF\xBF\xBD" in
+  (* Skip leading UTF-8 BOM (EF BB BF) if present. *)
+  let start =
+    if
+      len >= 3 && input.[0] = '\xEF' && input.[1] = '\xBB' && input.[2] = '\xBF'
+    then 3
+    else 0
+  in
+  let i = ref start in
+  while !i < len do
+    let c = input.[!i] in
+    (match c with
+    | '\x00' -> Buffer.add_string buf fffd
+    | '\r' ->
+        Buffer.add_char buf '\n';
+        if !i + 1 < len && input.[!i + 1] = '\n' then incr i
+    | '\x0C' -> Buffer.add_char buf '\n'
+    | _ -> Buffer.add_char buf c);
+    incr i
+  done;
+  Buffer.contents buf
+
 let of_string input =
+  let input = preprocess input in
   { input; len = String.length input; pos = 0; saved = []; call_stack = [] }
 
+let source t = t.input
 let is_done t = t.pos >= t.len
+
+let utf8_byte_length cp =
+  if cp < 0x80 then 1
+  else if cp < 0x800 then 2
+  else if cp < 0x10000 then 3
+  else 4
+
+(* Decode the UTF-8 code point starting at [t.pos + offset]. Returns [Some
+   (code_point, byte_length)] or [None] at EOF or on a malformed sequence. Uses
+   Uutf for the byte-level decode so overlong, surrogate, and out-of-range
+   sequences are rejected consistently with the Unicode spec.
+
+   Only returns [Some] when the *first* decoded element is a valid [Uchar].
+   [Uutf.String.fold_utf_8] resyncs after a [Malformed] start and yields the
+   next valid codepoint, which would let the caller pretend the malformed bytes
+   were part of the same code point - bad bytes in an ident-like context end up
+   in the unit token. *)
+(* ASCII fast path before falling back to Uutf: skips the ref/closure
+   allocation that a [Uutf.String.fold_utf_8] requires per peek. *)
+let first_utf8_chunk_at input p len =
+  if len <= 0 then None
+  else
+    let b = Char.code (String.unsafe_get input p) in
+    if b < 0x80 then Some (Uchar.unsafe_of_int b)
+    else
+      let result = ref None in
+      let seen = ref false in
+      let folder () _ chunk =
+        if !seen then ()
+        else (
+          seen := true;
+          match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
+      in
+      Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
+      !result
+
+let peek_utf8_at t offset =
+  let p = t.pos + offset in
+  if p >= t.len then None
+  else
+    let b = Char.code (String.unsafe_get t.input p) in
+    if b < 0x80 then Some (b, 1)
+    else
+      let len = min 4 (t.len - p) in
+      match first_utf8_chunk_at t.input p len with
+      | None -> None
+      | Some u ->
+          let cp = Uchar.to_int u in
+          Some (cp, utf8_byte_length cp)
+
+let peek_utf8 t = peek_utf8_at t 0
+
+let skip_utf8 t =
+  match peek_utf8 t with
+  | None -> if t.pos < t.len then t.pos <- t.pos + 1 (* advance past bad byte *)
+  | Some (_, n) -> t.pos <- t.pos + n
 
 (** {1 Call Stack Management} *)
 
@@ -247,62 +335,45 @@ let would_start_identifier t =
     | _ -> false
 
 let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9') || c = '-'
+let is_hex = Syntax.is_hex
 
-let is_hex c =
-  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-
-(* Encode a Unicode codepoint as UTF-8 *)
+(* Encode a Unicode codepoint as UTF-8. Out-of-range, surrogate, or negative
+   inputs fall back to U+FFFD, matching CSS Syntax section 3.3. *)
 let utf8_of_codepoint cp =
-  if cp < 0 then "?"
-  else if cp <= 0x7F then String.make 1 (Char.chr cp)
-  else if cp <= 0x7FF then
-    let b1 = 0xC0 lor (cp lsr 6) in
-    let b2 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 2 (function 0 -> Char.chr b1 | _ -> Char.chr b2)
-    |> Bytes.to_string
-  else if cp <= 0xFFFF then
-    let b1 = 0xE0 lor (cp lsr 12) in
-    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b3 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 3 (function
-      | 0 -> Char.chr b1
-      | 1 -> Char.chr b2
-      | _ -> Char.chr b3)
-    |> Bytes.to_string
-  else if cp <= 0x10FFFF then
-    let b1 = 0xF0 lor (cp lsr 18) in
-    let b2 = 0x80 lor ((cp lsr 12) land 0x3F) in
-    let b3 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b4 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 4 (function
-      | 0 -> Char.chr b1
-      | 1 -> Char.chr b2
-      | 2 -> Char.chr b3
-      | _ -> Char.chr b4)
-    |> Bytes.to_string
-  else "?"
+  let u =
+    if cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) then Uchar.rep
+    else Uchar.of_int cp
+  in
+  let buf = Buffer.create 4 in
+  Uutf.Buffer.add_utf_8 buf u;
+  Buffer.contents buf
+
+let read_escape_consume_hex_digits t =
+  let rec consume n =
+    if n = 6 then ()
+    else
+      match peek t with
+      | Some c when is_hex c ->
+          ignore (char t);
+          consume (n + 1)
+      | _ -> ()
+  in
+  consume 0
+
+let read_escape_hex t =
+  (* Consume up to 6 hex digits *)
+  let start = t.pos in
+  read_escape_consume_hex_digits t;
+  let hex = String.sub t.input start (t.pos - start) in
+  (* Optional whitespace after hex escape consumes one space *)
+  ignore (consume_if ' ' t);
+  let cp = int_of_string_opt ("0x" ^ hex) |> Option.value ~default:0x3F in
+  utf8_of_codepoint cp
 
 let read_escape t =
   (* Assumes the leading backslash has already been consumed. *)
   match peek t with
-  | Some c when is_hex c ->
-      (* Consume up to 6 hex digits *)
-      let start = t.pos in
-      let rec consume n =
-        if n = 6 then ()
-        else
-          match peek t with
-          | Some c when is_hex c ->
-              ignore (char t);
-              consume (n + 1)
-          | _ -> ()
-      in
-      consume 0;
-      let hex = String.sub t.input start (t.pos - start) in
-      (* Optional whitespace after hex escape consumes one space *)
-      ignore (consume_if ' ' t);
-      let cp = int_of_string_opt ("0x" ^ hex) |> Option.value ~default:0x3F in
-      utf8_of_codepoint cp
+  | Some c when is_hex c -> read_escape_hex t
   | Some c ->
       (* Simple escape of a single character within an identifier: return the
          unescaped character so escapes normalize to their intended
@@ -311,12 +382,8 @@ let read_escape t =
       String.make 1 c
   | None -> err_eof t
 
-let ident ?(keep_case = false) t =
-  if t.pos >= t.len then err_expected t "identifier";
-  let chars = ref [] in
-  (* Track escaped chars separately - they keep their case *)
-  (* First char: ident-start or escape *)
-  (match peek t with
+let ident_read_first_char t chars =
+  match peek t with
   | Some '\\' ->
       ignore (char t);
       let escaped = read_escape t in
@@ -330,7 +397,36 @@ let ident ?(keep_case = false) t =
   | Some c when is_ident_start c ->
       chars := (c, false) :: !chars;
       ignore (char t)
-  | _ -> err_expected t "identifier");
+  | _ -> err_expected t "identifier"
+
+let ident_track_bracket bracket_depth c =
+  if c = '[' then incr bracket_depth
+  else if c = ']' then bracket_depth := max 0 (!bracket_depth - 1)
+
+let ident_handle_escape t chars bracket_depth =
+  ignore (char t);
+  let escaped = read_escape t in
+  String.iter
+    (fun c ->
+      ident_track_bracket bracket_depth c;
+      chars := (c, true) :: !chars)
+    escaped
+
+let ident_build_result ~keep_case chars =
+  let buf = Buffer.create 16 in
+  List.iter
+    (fun (c, is_escaped) ->
+      let c' = if keep_case || is_escaped then c else Char.lowercase_ascii c in
+      Buffer.add_char buf c')
+    (List.rev chars);
+  Buffer.contents buf
+
+let ident ?(keep_case = false) t =
+  if t.pos >= t.len then err_expected t "identifier";
+  let chars = ref [] in
+  (* Track escaped chars separately - they keep their case *)
+  (* First char: ident-start or escape *)
+  ident_read_first_char t chars;
   (* Rest: ident-char or escape sequences. bracket_depth tracks escaped brackets
      \[...\] so we accept any character inside them (Tailwind bracket notation
      like \[&_p\] contains characters not valid in CSS identifiers). *)
@@ -338,14 +434,7 @@ let ident ?(keep_case = false) t =
   let rec loop () =
     match peek t with
     | Some '\\' ->
-        ignore (char t);
-        let escaped = read_escape t in
-        String.iter
-          (fun c ->
-            if c = '[' then incr bracket_depth
-            else if c = ']' then bracket_depth := max 0 (!bracket_depth - 1);
-            chars := (c, true) :: !chars)
-          escaped;
+        ident_handle_escape t chars bracket_depth;
         loop ()
     | Some c when is_ident_char c || !bracket_depth > 0 ->
         chars := (c, false) :: !chars;
@@ -355,19 +444,9 @@ let ident ?(keep_case = false) t =
   in
   loop ();
   (* Build result, only lowercasing non-escaped chars *)
-  let buf = Buffer.create 16 in
-  List.iter
-    (fun (c, is_escaped) ->
-      let c' = if keep_case || is_escaped then c else Char.lowercase_ascii c in
-      Buffer.add_char buf c')
-    (List.rev !chars);
-  let result = Buffer.contents buf in
+  let result = ident_build_result ~keep_case !chars in
   (* CSS spec: Invalid identifier patterns *)
-  if result = "--" then err_invalid t "CSS identifier cannot be '--' alone"
-  else if result = "-" then
-    err_invalid t "CSS identifier cannot be single dash '-'"
-  else if String.length result >= 3 && String.sub result 0 3 = "---" then
-    err_invalid t "CSS identifier cannot start with triple dash '---'"
+  if result = "-" then err_invalid t "CSS identifier cannot be single dash '-'"
   else result
 
 let is_digit c = c >= '0' && c <= '9'
@@ -439,59 +518,59 @@ let string ?(trim = false) t =
   in
   loop ()
 
+let number_read_decimal t whole =
+  if peek t = Some '.' then (
+    skip t;
+    let frac = while_ t is_digit in
+    if String.length whole = 0 && String.length frac = 0 then
+      err_invalid_number t;
+    "." ^ frac)
+  else ""
+
+let number_read_exp_sign t =
+  if peek t = Some '+' then (
+    skip t;
+    "+")
+  else if peek t = Some '-' then (
+    skip t;
+    "-")
+  else ""
+
+let number_consume_exponent t =
+  skip t;
+  let exp_sign = number_read_exp_sign t in
+  let exp_digits = while_ t is_digit in
+  if String.length exp_digits = 0 then err_invalid_number t;
+  "e" ^ exp_sign ^ exp_digits
+
+let number_read_exponent t =
+  (* Handle scientific notation: e or E followed by optional sign and digits.
+     Only treat as exponent if followed by digit or sign+digit. *)
+  match peek t with
+  | Some ('e' | 'E') -> (
+      let next_pos = t.pos + 1 in
+      if next_pos >= String.length t.input then ""
+      else
+        match t.input.[next_pos] with
+        | '0' .. '9' | '+' | '-' -> number_consume_exponent t
+        | _ -> "" (* Not scientific notation, could be a unit like 'em' *))
+  | _ -> ""
+
+let number_parse t num_str =
+  match float_of_string_opt num_str with
+  | Some v -> v
+  | None -> err_invalid t ("invalid number: " ^ num_str)
+
 let number ?(allow_negative = true) t =
   let negative = peek t = Some '-' in
   let sign = peek t = Some '-' || peek t = Some '+' in
   if sign then skip t;
-
   let whole = while_ t is_digit in
-  let decimal =
-    if peek t = Some '.' then (
-      skip t;
-      let frac = while_ t is_digit in
-      if String.length whole = 0 && String.length frac = 0 then
-        err_invalid_number t;
-      "." ^ frac)
-    else ""
-  in
-
-  (* Handle scientific notation: e or E followed by optional sign and digits *)
-  (* Only treat as exponent if followed by digit or sign+digit *)
-  let exponent =
-    match peek t with
-    | Some ('e' | 'E') ->
-        (* Look ahead to see if this is scientific notation *)
-        let next_pos = t.pos + 1 in
-        if next_pos < String.length t.input then
-          let next_char = t.input.[next_pos] in
-          match next_char with
-          | '0' .. '9' | '+' | '-' ->
-              skip t;
-              let exp_sign =
-                if peek t = Some '+' then (
-                  skip t;
-                  "+")
-                else if peek t = Some '-' then (
-                  skip t;
-                  "-")
-                else ""
-              in
-              let exp_digits = while_ t is_digit in
-              if String.length exp_digits = 0 then err_invalid_number t;
-              "e" ^ exp_sign ^ exp_digits
-          | _ -> "" (* Not scientific notation, could be a unit like 'em' *)
-        else ""
-    | _ -> ""
-  in
-
+  let decimal = number_read_decimal t whole in
+  let exponent = number_read_exponent t in
   let num_str = whole ^ decimal ^ exponent in
   if String.length num_str = 0 || num_str = "." then err_invalid_number t;
-
-  let value =
-    match float_of_string_opt num_str with
-    | Some v -> v
-    | None -> err_invalid t ("invalid number: " ^ num_str)
-  in
+  let value = number_parse t num_str in
   let result = if negative then -.value else value in
   if (not allow_negative) && result < 0.0 then
     err_invalid t "negative values not allowed"
@@ -610,11 +689,31 @@ let lookahead f t =
     raise exn
 
 let option f t =
-  try Some (atomic t (fun () -> f t)) with Parse_error _ -> None
+  match atomic t (fun () -> f t) with
+  | value -> Some value
+  | exception Parse_error _ -> None
 
 let try_parse_err f t =
-  try Ok (atomic t (fun () -> f t))
-  with Parse_error error -> Error error.message
+  match atomic t (fun () -> f t) with
+  | value -> Ok value
+  | exception Parse_error error -> Error error.message
+
+let many_handle_no_progress acc =
+  (* Parser succeeded but made no progress - abort to prevent infinite loop *)
+  if acc = [] then ([], Some "parser made no progress")
+  else (List.rev acc, Some "parser made no progress")
+
+let many_handle_error t acc msg =
+  (* If we haven't parsed anything yet, this might be a fatal error. But if
+     we've already parsed some items, it's just the end of the sequence. *)
+  if acc = [] then
+    (* No items parsed - check if it's just empty input *)
+    if is_done t then ([], None) else ([], Some msg)
+  else if
+    (* We parsed some items - only report error if not at end *)
+    is_done t
+  then (List.rev acc, None)
+  else (List.rev acc, Some msg)
 
 let many f t =
   let rec loop acc =
@@ -623,43 +722,32 @@ let many f t =
     let pos_before = t.pos in
     match try_parse_err f t with
     | Ok item ->
-        if t.pos = pos_before then
-          (* Parser succeeded but made no progress - abort to prevent infinite
-             loop *)
-          if acc = [] then ([], Some "parser made no progress")
-          else (List.rev acc, Some "parser made no progress")
+        if t.pos = pos_before then many_handle_no_progress acc
         else loop (item :: acc)
-    | Error msg ->
-        (* If we haven't parsed anything yet, this might be a fatal error *)
-        (* But if we've already parsed some items, it's just the end of the sequence *)
-        if acc = [] then
-          (* No items parsed - check if it's just empty input *)
-          if is_done t then ([], None) else ([], Some msg)
-        else if
-          (* We parsed some items - only report error if not at end *)
-          is_done t
-        then (List.rev acc, None)
-        else (List.rev acc, Some msg)
+    | Error msg -> many_handle_error t acc msg
   in
   loop []
+
+let one_of_merge_got got_value error_got =
+  match got_value with
+  | None -> error_got (* Use the first 'got' value we encounter *)
+  | some -> some (* Keep the existing got value *)
+
+let one_of_fail t errors got_value =
+  let msg =
+    if errors = [] then "no parsers provided"
+    else "expected one of: " ^ String.concat ", " (List.rev errors)
+  in
+  err ?got:got_value t msg
 
 let one_of parsers t =
   let rec try_parsers parsers_list errors got_value parser_idx =
     match parsers_list with
-    | [] ->
-        let msg =
-          if errors = [] then "no parsers provided"
-          else "expected one of: " ^ String.concat ", " (List.rev errors)
-        in
-        err ?got:got_value t msg
+    | [] -> one_of_fail t errors got_value
     | parser :: rest -> (
         try atomic t (fun () -> parser t)
         with Parse_error error ->
-          let new_got =
-            match got_value with
-            | None -> error.got (* Use the first 'got' value we encounter *)
-            | some -> some (* Keep the existing got value *)
-          in
+          let new_got = one_of_merge_got got_value error.got in
           try_parsers rest (error.message :: errors) new_got (parser_idx + 1))
   in
   try_parsers parsers [] None 1
@@ -710,41 +798,45 @@ let take max_count parser t =
 
 (* New enhanced combinators *)
 
+let css_value_handle_quoted_escape t acc =
+  (* Backslash inside a quoted string: consume the next char literally. *)
+  match peek t with
+  | None -> ("\\" :: acc, false)
+  | Some next_c ->
+      skip t;
+      (String.make 1 next_c :: "\\" :: acc, true)
+
+let css_value_in_quote t acc c quote_char depth =
+  skip t;
+  if c = quote_char then `Continue (String.make 1 c :: acc, depth, false, '\000')
+  else if c = '\\' then
+    let acc', _ = css_value_handle_quoted_escape t acc in
+    `Continue (acc', depth, true, quote_char)
+  else `Continue (String.make 1 c :: acc, depth, true, quote_char)
+
 let css_value ~stops t =
-  let rec parse_until acc depth in_quote quote_char =
+  let rec collect_until acc depth in_quote quote_char =
     match peek t with
     | None -> String.concat "" (List.rev acc)
-    | Some c when in_quote ->
-        skip t;
-        if c = quote_char then
-          parse_until (String.make 1 c :: acc) depth false '\000'
-        else if c = '\\' then (
-          (* Handle escape sequence *)
-          match peek t with
-          | None ->
-              parse_until (String.make 1 c :: acc) depth in_quote quote_char
-          | Some next_c ->
-              skip t;
-              parse_until
-                (String.make 1 next_c :: String.make 1 c :: acc)
-                depth in_quote quote_char)
-        else parse_until (String.make 1 c :: acc) depth in_quote quote_char
+    | Some c when in_quote -> (
+        match css_value_in_quote t acc c quote_char depth with
+        | `Continue (acc', d, iq, qc) -> collect_until acc' d iq qc)
     | Some (('"' | '\'') as q) ->
         skip t;
-        parse_until (String.make 1 q :: acc) depth true q
+        collect_until (String.make 1 q :: acc) depth true q
     | Some (('(' | '[' | '{') as c) ->
         skip t;
-        parse_until (String.make 1 c :: acc) (depth + 1) in_quote quote_char
+        collect_until (String.make 1 c :: acc) (depth + 1) in_quote quote_char
     | Some ((')' | ']' | '}') as c) when depth > 0 ->
         skip t;
-        parse_until (String.make 1 c :: acc) (depth - 1) in_quote quote_char
+        collect_until (String.make 1 c :: acc) (depth - 1) in_quote quote_char
     | Some c when depth = 0 && List.mem c stops ->
         String.concat "" (List.rev acc)
     | Some c ->
         skip t;
-        parse_until (String.make 1 c :: acc) depth in_quote quote_char
+        collect_until (String.make 1 c :: acc) depth in_quote quote_char
   in
-  String.trim (parse_until [] 0 false '\000')
+  String.trim (collect_until [] 0 false '\000')
 
 let enum_impl ?default label mapping t =
   (* Try to match enum value first using option combinator *)
@@ -832,33 +924,41 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
       let c = p3 t in
       (a, b, c))
 
-let list_impl ?(sep = fun (_ : t) -> ()) ?(at_least = 0) ?at_most item t =
-  let rec loop acc =
-    let pos_before = t.pos in
-    match option item t with
-    | None -> List.rev acc
-    | Some parsed_item ->
-        if t.pos = pos_before then
-          (* Parser succeeded but made no progress - abort to prevent infinite
-             loop *)
-          err t "parser made no progress in list"
-        else
-          let acc = parsed_item :: acc in
-          if option sep t = Some () then loop acc else List.rev acc
-  in
-  let items = loop [] in
-  if List.length items < at_least then
+let list_impl_check_at_least t item at_least items =
+  if List.length items >= at_least then ()
+  else if List.length items = 0 && at_least > 0 then
     (* If we got no items and at_least:1 was specified, try to parse one more
-       time to get a better error message that includes the nested context *)
-    if List.length items = 0 && at_least > 0 then
-      (* This will fail and propagate the error with full context *)
-      let _ = item t in
-      err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
-    else err t ("expected at least " ^ string_of_int at_least ^ " item(s)");
-  (match at_most with
+       time to get a better error message that includes the nested context. This
+       will fail and propagate the error with full context. *)
+    let _ = item t in
+    err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
+  else err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
+
+let list_impl_check_at_most t at_most items =
+  match at_most with
   | Some n when List.length items > n ->
       err t ("too many values (maximum " ^ string_of_int n ^ " allowed)")
-  | _ -> ());
+  | _ -> ()
+
+let list_impl_continue t sep acc =
+  if option sep t = Some () then `Continue acc else `Done (List.rev acc)
+
+let list_impl_step t sep item acc =
+  let pos_before = t.pos in
+  match option item t with
+  | None -> `Done (List.rev acc)
+  | Some _ when t.pos = pos_before -> err t "parser made no progress in list"
+  | Some parsed_item -> list_impl_continue t sep (parsed_item :: acc)
+
+let list_impl ?(sep = fun (_ : t) -> ()) ?(at_least = 0) ?at_most item t =
+  let rec loop acc =
+    match list_impl_step t sep item acc with
+    | `Continue acc -> loop acc
+    | `Done items -> items
+  in
+  let items = loop [] in
+  list_impl_check_at_least t item at_least items;
+  list_impl_check_at_most t at_most items;
   items
 
 (* Helpers for reading function calls *)
@@ -914,12 +1014,35 @@ let enum_or_calls_impl ?default label idents ~calls t =
       (fun (k, v) -> if String.lowercase_ascii k = name then Some v else None)
       lst
   in
+  let consume_ident_result name result =
+    let consumed_name = ident t in
+    assert (consumed_name = name);
+    result
+  in
+  let run_default options =
+    match default with Some f -> f t | None -> err t options
+  in
+  let read_ident_call name =
+    match find_assoc_ci name calls with
+    | Some p -> p t
+    | None -> (
+        match find_assoc_ci name idents with
+        | Some result -> consume_ident_result name result
+        | None ->
+            let options = List.map fst calls |> String.concat ", " in
+            run_default ("expected one of functions: " ^ options))
+  in
+  let read_ident_value name =
+    match find_assoc_ci name idents with
+    | Some result -> consume_ident_result name result
+    | None ->
+        let options = List.map fst idents |> String.concat ", " in
+        run_default (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
+  in
   atomic t (fun () ->
       ws t;
       if not (would_start_identifier t) then
-        match default with
-        | Some f -> f t
-        | None -> err t (label ^ ": expected " ^ label)
+        run_default (label ^ ": expected " ^ label)
       else
         let name, has_paren =
           lookahead
@@ -928,61 +1051,35 @@ let enum_or_calls_impl ?default label idents ~calls t =
               (n, peek t = Some '('))
             t
         in
-        if has_paren then
-          match find_assoc_ci name calls with
-          | Some p -> p t
-          | None -> (
-              match find_assoc_ci name idents with
-              | Some result ->
-                  let consumed_name = ident t in
-                  assert (consumed_name = name);
-                  result
-              | None -> (
-                  match default with
-                  | Some f -> f t
-                  | None ->
-                      let options = List.map fst calls |> String.concat ", " in
-                      err t ("expected one of functions: " ^ options)))
-        else
-          match find_assoc_ci name idents with
-          | Some result ->
-              let consumed_name = ident t in
-              assert (consumed_name = name);
-              result
-          | None -> (
-              match default with
-              | Some f -> f t
-              | None ->
-                  let options = List.map fst idents |> String.concat ", " in
-                  err t
-                    (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
-              ))
+        if has_paren then read_ident_call name else read_ident_value name)
+
+let fold_many_handle_no_progress t acc consumed =
+  (* Parser succeeded but made no progress - abort to prevent infinite loop *)
+  if consumed then (acc, Some "parser made no progress")
+  else err_invalid t "parser made no progress (potential infinite loop)"
+
+let fold_many_handle_error t acc init consumed msg =
+  match (consumed, is_done t) with
+  | true, true -> (acc, None)
+  | true, false -> (acc, Some msg)
+  | false, true -> (init, None)
+  | false, false -> err_invalid t "value"
+
+let fold_many_step parser ~init ~f t acc consumed =
+  ws t;
+  let pos_before = t.pos in
+  match try_parse_err parser t with
+  | Ok _ when t.pos = pos_before ->
+      `Done (fold_many_handle_no_progress t acc consumed)
+  | Ok item -> `Continue (f acc item, true)
+  | Error msg -> `Done (fold_many_handle_error t acc init consumed msg)
 
 let fold_many parser ~init ~f t =
   with_context t "fold_many" @@ fun () ->
   let rec loop acc consumed =
-    ws t;
-    let pos_before = t.pos in
-    match try_parse_err parser t with
-    | Ok item ->
-        if t.pos = pos_before then
-          (* Parser succeeded but made no progress - abort to prevent infinite
-             loop *)
-          if consumed then (acc, Some "parser made no progress")
-          else err_invalid t "parser made no progress (potential infinite loop)"
-        else loop (f acc item) true
-    | Error msg ->
-        if consumed then
-          (* End of sequence, return what we have - only report error if not at
-             end *)
-          if is_done t then (acc, None) else (acc, Some msg)
-        else if
-          (* No items parsed at all - check if just empty input *)
-          is_done t
-        then (init, None)
-        else
-          (* Real error that should propagate *)
-          err_invalid t "value"
+    match fold_many_step parser ~init ~f t acc consumed with
+    | `Continue (acc, consumed) -> loop acc consumed
+    | `Done result -> result
   in
   loop init false
 

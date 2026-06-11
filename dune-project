@@ -1,4 +1,6 @@
-(lang dune 3.0)
+(lang dune 3.21)
+(implicit_transitive_deps false)
+(using mdx 0.4)
 (name cascade)
 (generate_opam_files true)
 (source (github samoht/cascade))
@@ -14,11 +16,22 @@
    Supports selectors, properties, values, media queries, container queries,
    @supports, @property, @layer, @keyframes, @font-face, and CSS variables.")
  (depends
-  (ocaml (>= 4.14))
+  (ocaml (>= 5.2))
   dune
   dune-build-info
   (alcotest :with-test)
   (alcobar :with-test)
   (astring :with-test)
+  (eio :with-test)
+  (eio_main :with-test)
+  (lambdasoup :with-test)
+  (mdx :with-test)
+  (re :with-test)
   fmt
-  cmdliner))
+  base-unix
+  uutf
+  unionFind
+  psq
+  logs
+  cmdliner
+  memtrace))

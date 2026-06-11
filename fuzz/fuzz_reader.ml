@@ -7,59 +7,59 @@ open Alcobar
 
 (** Reader.of_string + is_done — must not crash. *)
 let test_of_string buf =
-  let r = Css.Reader.of_string buf in
-  ignore (Css.Reader.is_done r)
+  let r = Reader.of_string buf in
+  ignore (Reader.is_done r)
 
 (** Reader.ident — must not crash on arbitrary input. *)
 let test_ident buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.ident r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.ident r) with Reader.Parse_error _ -> ()
 
 (** Reader.token — must not crash. *)
 let test_token buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.token r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.token r) with Reader.Parse_error _ -> ()
 
 (** Reader.number — must not crash. *)
 let test_number buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.number r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.number r) with Reader.Parse_error _ -> ()
 
 (** Reader.int — must not crash. *)
 let test_int buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.int r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.int r) with Reader.Parse_error _ -> ()
 
 (** Reader.string — must not crash (quoted string parser). *)
 let test_string buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.string r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.string r) with Reader.Parse_error _ -> ()
 
 (** Reader.hex — must not crash. *)
 let test_hex buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.hex r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.hex r) with Reader.Parse_error _ -> ()
 
 (** Reader.css_value — must not crash. *)
 let test_css_value buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.css_value ~stops:[ ';'; '}' ] r)
-  with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.css_value ~stops:[ ';'; '}' ] r)
+  with Reader.Parse_error _ -> ()
 
 (** Reader.url — must not crash. *)
 let test_url buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.url r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.url r) with Reader.Parse_error _ -> ()
 
 (** Reader.bool — must not crash. *)
 let test_bool buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.bool r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.bool r) with Reader.Parse_error _ -> ()
 
 (** Reader.pct — must not crash. *)
 let test_pct buf =
-  let r = Css.Reader.of_string buf in
-  try ignore (Css.Reader.pct r) with Css.Reader.Parse_error _ -> ()
+  let r = Reader.of_string buf in
+  try ignore (Reader.pct r) with Reader.Parse_error _ -> ()
 
 let suite =
   ( "reader",

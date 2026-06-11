@@ -1,0 +1,7 @@
+@media screen {
+  @media (width >= 768px) {
+    a {
+      color: red;
+    }
+  }
+}

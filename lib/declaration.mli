@@ -8,6 +8,9 @@ val pp_property : 'a Properties.property Pp.t
 val pp_declaration : declaration Pp.t
 (** [pp_declaration] is the pretty-printer for declarations. *)
 
+val pp : t Pp.t
+(** [pp] is the pretty-printer for declarations. *)
+
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] is the pretty-printer for typed values. *)
 
@@ -17,32 +20,48 @@ val meta_of_declaration : declaration -> Values.meta option
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
+val normalize : ?lossless:bool -> declaration -> declaration
+(** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
+    the optimizer holds a canonical declaration and the pretty-printer stays a
+    pure serialiser. [lossless] disables colour approximation. *)
+
 val string_of_declaration : ?minify:bool -> declaration -> string
 (** [string_of_declaration ~minify decl] converts a declaration to its string
     representation. If [minify] is [true] (default: [false]), the output is
     minified. *)
 
+val to_string : ?minify:bool -> t -> string
+(** [to_string ~minify d] converts a declaration to CSS source text. *)
+
 val custom_property : ?layer:string -> string -> string -> declaration
-(** [custom_property ?layer name value] is a raw custom property declaration. *)
+(** [custom_property ?layer name value] is a custom property declaration from
+    authored CSS text. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
-val read_property_name : Reader.t -> string
+val read_property_name : Cursor.t -> string
 (** [read_property_name t] is the property name read from [t]. *)
 
-val read_property_value : Reader.t -> string
+val read_property_value : Cursor.t -> string
 (** [read_property_value t] is the value read from [t] (until ';' or '\}'). *)
 
-val read_declaration : Reader.t -> declaration option
+val read_declaration : Cursor.t -> declaration option
 (** [read_declaration t] is one typed declaration, or [None] when no more valid
     declarations. Performs full property name and value validation per CSS spec.
 *)
 
-val read_declarations : Reader.t -> declaration list
+val read : Cursor.t -> t
+(** [read t] parses one typed declaration from [t]. *)
+
+val of_string : string -> declaration
+(** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
+    Raises [Failure] if [s] is not a valid declaration. *)
+
+val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)
 
-val read_block : Reader.t -> declaration list
+val read_block : Cursor.t -> declaration list
 (** [read_block t] is the typed declarations parsed from a braced block. *)
 
 (** {2 Type-driven helper functions} *)
@@ -50,29 +69,55 @@ val read_block : Reader.t -> declaration list
 val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
 (** [v ?important property value] creates a typed declaration. *)
 
-val custom_declaration :
-  ?important:bool ->
-  ?layer:string ->
-  ?meta:Values.meta ->
-  string ->
-  'a kind ->
-  'a ->
-  declaration
-(** [custom_declaration ?important ?layer ?meta name kind value] creates a
-    custom property declaration. *)
+val theme_guarded : var_name:string -> declaration -> declaration
+(** [theme_guarded ~var_name decl] wraps [decl] in a theme guard. *)
+
+val hash : declaration -> int
+(** [hash decl] returns the structural fingerprint cached at construction. Two
+    declarations that are equal under [=] always return the same value; the
+    converse may fail on hash collisions, so use it only as a cheap pre-filter
+    before falling back to structural equality. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
 
+val is_invalid : declaration -> bool
+(** [is_invalid decl] is [true] when [decl]'s typed value is a CSS
+    spec-violation cascade detected at parse time. The minify-time
+    [Optimize.drop_invalid] pass uses this predicate to remove the declaration.
+*)
+
+val value_uses_color_4 : declaration -> bool
+(** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
+    CSS Color 4 / 5 construct. [var()] returns [false]. *)
+
+val value_uses_runtime_subst : declaration -> bool
+(** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value
+    contains a [var()] / [env()] / [attr()] / anchor query, possibly through
+    [calc()]. Covers length / length-list / length-percentage properties used in
+    cross-tier fallback patterns. *)
+
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
-val resolve_theme_guards : Pp.ctx -> declaration list -> declaration list
-(** [resolve_theme_guards ctx decls] filters out [Theme_guarded] declarations
-    whose [var_name] is not in the theme, and unwraps those that are. *)
+type prop_key
+(** A property identity comparable with stdlib structural equality, without
+    serialising the name to a string. *)
+
+val property_key : declaration -> prop_key
+(** [property_key decl] is the identity of [decl]'s property. Two declarations
+    have the same property name iff their keys are structurally equal. *)
+
+val same_property : declaration -> declaration -> bool
+(** [same_property d1 d2] is [property_key d1 = property_key d2]: the two
+    declarations target the same property name. *)
 
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
+
+val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
+(** [value_size ?minify decl] is the byte length of
+    [string_of_value ?minify decl], computed without allocating the string. *)
 
 (* Single-to-list property helpers. These construct typed declarations for
    properties that accept comma-separated lists, while keeping a simple
@@ -130,7 +175,7 @@ val z_index_auto : declaration
 val font_variant_numeric_tokens :
   font_variant_numeric_token list -> font_variant_numeric
 (** [font_variant_numeric_tokens tokens] composes numeric font-variant tokens
-    into a [font_variant_numeric] value. *)
+    into a {!val-font_variant_numeric} value. *)
 
 val font_variant_numeric_composed :
   ?ordinal:font_variant_numeric_token ->
@@ -142,7 +187,7 @@ val font_variant_numeric_composed :
   font_variant_numeric
 (** [font_variant_numeric_composed ?ordinal ?slashed_zero ?numeric_figure
      ?numeric_spacing ?numeric_fraction ()] composes optional numeric
-    font-variant tokens into a [font_variant_numeric] value. *)
+    font-variant tokens into a {!val-font_variant_numeric} value. *)
 
 val background : background -> declaration
 (** [background bg] is the
@@ -358,7 +403,7 @@ val grid_column : grid_line * grid_line -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
      grid-column} property. *)
 
-val grid_area : string -> declaration
+val grid_area : grid_area -> declaration
 (** [grid_area v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-area} grid-area}
     property. *)
@@ -429,8 +474,8 @@ val font_size : length -> declaration
     property. *)
 
 val font_size_kw : font_size -> declaration
-(** [font_size_kw fs] is the font-size property accepting the full [font_size]
-    type including absolute/relative size keywords. *)
+(** [font_size_kw fs] is the font-size property accepting the full
+    {!val-font_size} type including absolute/relative size keywords. *)
 
 val line_height : line_height -> declaration
 (** [line_height v] is the
@@ -462,6 +507,53 @@ val text_underline_offset : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset}
      text-underline-offset} property. *)
 
+val text_decoration_skip : text_decoration_skip -> declaration
+(** [text_decoration_skip v] is the CSS [text-decoration-skip] property. *)
+
+val text_decoration_skip_self : text_decoration_skip_self -> declaration
+(** [text_decoration_skip_self v] is the CSS [text-decoration-skip-self]
+    property. *)
+
+val text_decoration_skip_box : text_decoration_skip_box -> declaration
+(** [text_decoration_skip_box v] is the CSS [text-decoration-skip-box] property.
+*)
+
+val text_decoration_skip_inset : text_decoration_skip_inset -> declaration
+(** [text_decoration_skip_inset v] is the CSS [text-decoration-skip-inset]
+    property. *)
+
+val text_decoration_skip_spaces : text_decoration_skip_spaces -> declaration
+(** [text_decoration_skip_spaces v] is the CSS [text-decoration-skip-spaces]
+    property. *)
+
+val text_emphasis : text_emphasis -> declaration
+(** [text_emphasis v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis}
+     text-emphasis} property. *)
+
+val text_emphasis_style : text_emphasis_style -> declaration
+(** [text_emphasis_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-style}
+     text-emphasis-style} property. *)
+
+val text_emphasis_color : color -> declaration
+(** [text_emphasis_color v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-color}
+     text-emphasis-color} property. *)
+
+val text_emphasis_position : text_emphasis_position -> declaration
+(** [text_emphasis_position v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-position}
+     text-emphasis-position} property. *)
+
+val text_emphasis_skip : text_emphasis_skip -> declaration
+(** [text_emphasis_skip v] is the CSS [text-emphasis-skip] property. *)
+
+val text_orientation : text_orientation -> declaration
+(** [text_orientation v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-orientation}
+     text-orientation} property. *)
+
 val text_transform : text_transform -> declaration
 (** [text_transform v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform}
@@ -492,12 +584,12 @@ val visibility : visibility -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
     property. *)
 
-val inset : length -> declaration
+val inset : length list -> declaration
 (** [inset v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property.
 *)
 
-val inset_inline : length -> declaration
+val inset_inline : length list -> declaration
 (** [inset_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-inline}
      inset-inline} property. *)
@@ -508,7 +600,7 @@ val inset_inline_start : length -> declaration
 val inset_inline_end : length -> declaration
 (** [inset_inline_end v] is the inset-inline-end property. *)
 
-val inset_block : length -> declaration
+val inset_block : length list -> declaration
 (** [inset_block v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-block}
      inset-block} property. *)
@@ -561,7 +653,7 @@ val flex_shrink : float -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink}
      flex-shrink} property. *)
 
-val flex_basis : length -> declaration
+val flex_basis : flex_basis -> declaration
 (** [flex_basis v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis} flex-basis}
     property. *)
@@ -570,6 +662,9 @@ val flex_wrap : flex_wrap -> declaration
 (** [flex_wrap v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
     property. *)
+
+val flex_flow : flex_flow -> declaration
+(** [flex_flow v] is the CSS [flex-flow] property. *)
 
 val order : Properties.order -> declaration
 (** [order v] is the
@@ -626,7 +721,7 @@ val border_width : border_width -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-width}
      border-width} property. *)
 
-val border_radius : length -> declaration
+val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property. *)
@@ -691,7 +786,7 @@ val table_layout : table_layout -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/table-layout}
      table-layout} property. *)
 
-val border_spacing : length list -> declaration
+val border_spacing : border_spacing -> declaration
 (** [border_spacing values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
      border-spacing} property. Accepts 1 or 2 length values. *)
@@ -705,6 +800,9 @@ val object_fit : object_fit -> declaration
 (** [object_fit v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
+
+val object_view_box : object_view_box -> declaration
+(** [object_view_box v] is the CSS [object-view-box] property. *)
 
 val clip : clip -> declaration
 (** [clip v] is the
@@ -720,6 +818,39 @@ val float : float_side -> declaration
 (** [float v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/float} float} property.
 *)
+
+val interactivity : interactivity -> declaration
+(** [interactivity v] is the CSS [interactivity] property. *)
+
+val caret_animation : caret_animation -> declaration
+(** [caret_animation v] is the CSS [caret-animation] property. *)
+
+val caret_shape : caret_shape -> declaration
+(** [caret_shape v] is the CSS [caret-shape] property. *)
+
+val caret : caret -> declaration
+(** [caret v] is the CSS [caret] property. *)
+
+val interest_delay : interest_delay -> declaration
+(** [interest_delay v] is the CSS [interest-delay] property. *)
+
+val interest_delay_start : interest_delay -> declaration
+(** [interest_delay_start v] is the CSS [interest-delay-start] property. *)
+
+val interest_delay_end : interest_delay -> declaration
+(** [interest_delay_end v] is the CSS [interest-delay-end] property. *)
+
+val nav_up : nav -> declaration
+(** [nav_up v] is the CSS [nav-up] property. *)
+
+val nav_right : nav -> declaration
+(** [nav_right v] is the CSS [nav-right] property. *)
+
+val nav_down : nav -> declaration
+(** [nav_down v] is the CSS [nav-down] property. *)
+
+val nav_left : nav -> declaration
+(** [nav_left v] is the CSS [nav-left] property. *)
 
 val touch_action : touch_action -> declaration
 (** [touch_action v] is the
@@ -741,12 +872,15 @@ val writing_mode : writing_mode -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/writing-mode}
      writing-mode} property. *)
 
+val text_combine_upright : text_combine_upright -> declaration
+(** [text_combine_upright v] is the CSS [text-combine-upright] property. *)
+
 val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
 (** [text_decoration_skip_ink v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
      text-decoration-skip-ink} property. *)
 
-val animation_name : string -> declaration
+val animation_name : animation_name -> declaration
 (** [animation_name v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-name}
      animation-name} property. *)
@@ -791,7 +925,7 @@ val background_blend_mode : blend_mode -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-blend-mode}
      background-blend-mode} property. *)
 
-val scroll_margin : length -> declaration
+val scroll_margin : length list -> declaration
 (** [scroll_margin v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin}
      scroll-margin} shorthand. *)
@@ -816,7 +950,7 @@ val scroll_margin_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left}
      scroll-margin-left} property. *)
 
-val scroll_margin_inline : length -> declaration
+val scroll_margin_inline : length list -> declaration
 (** [scroll_margin_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline}
      scroll-margin-inline} property. *)
@@ -831,10 +965,11 @@ val scroll_margin_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline-end}
      scroll-margin-inline-end} property. *)
 
-val scroll_margin_block : length -> declaration
-(** [scroll_margin_block v] is the
+val scroll_margin_block : length list -> declaration
+(** [scroll_margin_block vs] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block}
-     scroll-margin-block} property. *)
+     scroll-margin-block} property; takes 1 (both edges) or 2 (start, end)
+    length values per the spec. *)
 
 val scroll_margin_block_start : length -> declaration
 (** [scroll_margin_block_start v] is the
@@ -846,7 +981,7 @@ val scroll_margin_block_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block-end}
      scroll-margin-block-end} property. *)
 
-val scroll_padding : length -> declaration
+val scroll_padding : length list -> declaration
 (** [scroll_padding v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding}
      scroll-padding} shorthand. *)
@@ -871,7 +1006,7 @@ val scroll_padding_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left}
      scroll-padding-left} property. *)
 
-val scroll_padding_inline : length -> declaration
+val scroll_padding_inline : length list -> declaration
 (** [scroll_padding_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline}
      scroll-padding-inline} property. *)
@@ -886,7 +1021,7 @@ val scroll_padding_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline-end}
      scroll-padding-inline-end} property. *)
 
-val scroll_padding_block : length -> declaration
+val scroll_padding_block : length list -> declaration
 (** [scroll_padding_block v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block}
      scroll-padding-block} property. *)
@@ -901,7 +1036,7 @@ val scroll_padding_block_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block-end}
      scroll-padding-block-end} property. *)
 
-val overscroll_behavior : overscroll_behavior -> declaration
+val overscroll_behavior : overscroll_behavior list -> declaration
 (** [overscroll_behavior v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior}
      overscroll-behavior} property. *)
@@ -1018,6 +1153,10 @@ val print_color_adjust : print_color_adjust -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/print-color-adjust}
      print-color-adjust} property. *)
 
+val webkit_print_color_adjust : print_color_adjust -> declaration
+(** [webkit_print_color_adjust v] is the [-webkit-print-color-adjust] property,
+    the legacy WebKit-prefixed alias of [print-color-adjust]. *)
+
 val box_decoration_break : box_decoration_break -> declaration
 (** [box_decoration_break v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-decoration-break}
@@ -1055,22 +1194,22 @@ val background_attachment : background_attachment -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-attachment}
      background-attachment} property. *)
 
-val border_top : string -> declaration
+val border_top : border -> declaration
 (** [border_top v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top} border-top}
     shorthand. *)
 
-val border_right : string -> declaration
+val border_right : border -> declaration
 (** [border_right v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right}
      border-right} shorthand. *)
 
-val border_bottom : string -> declaration
+val border_bottom : border -> declaration
 (** [border_bottom v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom}
      border-bottom} shorthand. *)
 
-val border_left : string -> declaration
+val border_left : border -> declaration
 (** [border_left v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
      border-left} shorthand. *)
@@ -1095,7 +1234,7 @@ val clip_path : clip_path -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
     property. *)
 
-val mask : string -> declaration
+val mask : mask -> declaration
 (** [mask v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
@@ -1171,11 +1310,52 @@ val text_overflow : text_overflow -> declaration
 val text_wrap : text_wrap -> declaration
 (** [text_wrap v] is the CSS [text-wrap] property. *)
 
+val text_wrap_mode : text_wrap_mode -> declaration
+(** [text_wrap_mode v] is the CSS [text-wrap-mode] property. *)
+
+val text_underline_position : text_underline_position -> declaration
+(** [text_underline_position v] is the CSS [text-underline-position] property.
+*)
+
+val text_box_edge : text_box_edge -> declaration
+(** [text_box_edge v] is the CSS [text-box-edge] property. *)
+
+val inline_sizing : inline_sizing -> declaration
+(** [inline_sizing v] is the CSS [inline-sizing] property. *)
+
+val line_fit_edge : line_fit_edge -> declaration
+(** [line_fit_edge v] is the CSS [line-fit-edge] property. *)
+
+val interpolate_size : interpolate_size -> declaration
+(** [interpolate_size v] is the CSS [interpolate-size] property. *)
+
+val min_intrinsic_sizing : min_intrinsic_sizing -> declaration
+(** [min_intrinsic_sizing v] is the CSS [min-intrinsic-sizing] property. *)
+
+val ruby_align : ruby_align -> declaration
+(** [ruby_align v] is the CSS [ruby-align] property. *)
+
+val ruby_merge : ruby_merge -> declaration
+(** [ruby_merge v] is the CSS [ruby-merge] property. *)
+
+val ruby_overhang : ruby_overhang -> declaration
+(** [ruby_overhang v] is the CSS [ruby-overhang] property. *)
+
+val ruby_position : ruby_position -> declaration
+(** [ruby_position v] is the CSS [ruby-position] property. *)
+
+val glyph_orientation_vertical : glyph_orientation_vertical -> declaration
+(** [glyph_orientation_vertical v] is the CSS [glyph-orientation-vertical]
+    property. *)
+
 val word_break : word_break -> declaration
 (** [word_break v] is the CSS [word-break] property. *)
 
 val overflow_wrap : overflow_wrap -> declaration
 (** [overflow_wrap v] is the CSS [overflow-wrap] property. *)
+
+val line_break : line_break -> declaration
+(** [line_break v] is the CSS [line-break] property. *)
 
 val hyphens : hyphens -> declaration
 (** [hyphens v] is the CSS [hyphens] property. *)
@@ -1186,8 +1366,44 @@ val webkit_hyphens : hyphens -> declaration
 val font_stretch : font_stretch -> declaration
 (** [font_stretch v] is the CSS [font-stretch] property. *)
 
+val font_optical_sizing : font_optical_sizing -> declaration
+(** [font_optical_sizing v] is the CSS [font-optical-sizing] property. *)
+
+val font_kerning : font_kerning -> declaration
+(** [font_kerning v] is the CSS [font-kerning] property. *)
+
+val font_language_override : font_language_override -> declaration
+(** [font_language_override v] is the CSS [font-language-override] property. *)
+
+val font_synthesis_style : font_synthesis_style -> declaration
+(** [font_synthesis_style v] is the CSS [font-synthesis-style] property. *)
+
+val font_synthesis_weight : font_synthesis_weight -> declaration
+(** [font_synthesis_weight v] is the CSS [font-synthesis-weight] property. *)
+
+val font_synthesis_small_caps : font_synthesis_small_caps -> declaration
+(** [font_synthesis_small_caps v] is the CSS [font-synthesis-small-caps]
+    property. *)
+
+val font_synthesis_position : font_synthesis_position -> declaration
+(** [font_synthesis_position v] is the CSS [font-synthesis-position] property.
+*)
+
+val font_variant_ligatures : font_variant_ligatures -> declaration
+(** [font_variant_ligatures v] is the CSS [font-variant-ligatures] property. *)
+
+val font_variant_caps : font_variant_caps -> declaration
+(** [font_variant_caps v] is the CSS [font-variant-caps] property. *)
+
 val font_variant_numeric : font_variant_numeric -> declaration
 (** [font_variant_numeric v] is the CSS [font-variant-numeric] property. *)
+
+val font_variant_position : font_variant_position -> declaration
+(** [font_variant_position v] is the CSS [font-variant-position] property. *)
+
+val font_variant_east_asian : font_variant_east_asian -> declaration
+(** [font_variant_east_asian v] is the CSS [font-variant-east-asian] property.
+*)
 
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter v] is the CSS [backdrop-filter] property. *)
@@ -1212,6 +1428,12 @@ val background_size : background_size -> declaration
 
 val content : content -> declaration
 (** [content v] is the CSS [content] property. *)
+
+val counter_reset : counter_set -> declaration
+(** [counter_reset v] is the CSS [counter-reset] property. *)
+
+val counter_increment : counter_set -> declaration
+(** [counter_increment v] is the CSS [counter-increment] property. *)
 
 val border_left_width : border_width -> declaration
 (** [border_left_width v] is the CSS [border-left-width] property. *)
@@ -1260,6 +1482,9 @@ val border_inline_end_color : color -> declaration
 (** [border_inline_end_color v] is the CSS [border-inline-end-color] property.
 *)
 
+val border_inline_color : logical_border_color -> declaration
+(** [border_inline_color v] is the CSS [border-inline-color] property. *)
+
 val quotes : Properties.quotes -> declaration
 (** [quotes v] is the CSS [quotes] property. *)
 
@@ -1297,16 +1522,16 @@ val webkit_text_decoration_color : color -> declaration
 (** [webkit_text_decoration_color v] is the WebKit-only
     [-webkit-text-decoration- color] property. *)
 
-val text_indent : length -> declaration
+val text_indent : text_indent_value -> declaration
 (** [text_indent v] is the CSS [text-indent] property. *)
 
 val border_collapse : border_collapse -> declaration
 (** [border_collapse v] is the CSS [border-collapse] property. *)
 
-val list_style : string -> declaration
+val list_style : list_style -> declaration
 (** [list_style v] is the CSS [list-style] shorthand. *)
 
-val font : string -> declaration
+val font : font -> declaration
 (** [font v] is the CSS [font] shorthand. *)
 
 val webkit_appearance : webkit_appearance -> declaration
@@ -1333,12 +1558,19 @@ val container_type : container_type -> declaration
 val container_name : string -> declaration
 (** [container_name v] is the CSS [container-name] property. *)
 
+val container : ?type_:container_type -> string -> declaration
+(** [container ?type_ name] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container} container}
+    shorthand declaration. Emits [container: <name>] when [type_] is omitted, or
+    [container: <name> / <type>] when both are present. The name is mandatory
+    because [container:] with neither slot is invalid per spec. *)
+
 val transform : transform -> declaration
 (** [transform t] is the CSS [transform] property with a single transformation.
 *)
 
 val transforms : transform list -> declaration
-(** [transforms ts] is the CSS [transform] property with multiple
+(** [transforms ts] is the CSS {!val-transform} property with multiple
     transformations. *)
 
 val rotate : rotate_value -> declaration
@@ -1409,10 +1641,28 @@ val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the CSS [break-inside] property for page/column/region
     breaks. *)
 
+val page_break_before : page_break_value -> declaration
+(** [page_break_before v] is the legacy [page-break-before] property. *)
+
+val page_break_after : page_break_value -> declaration
+(** [page_break_after v] is the legacy [page-break-after] property. *)
+
+val page_break_inside : page_break_inside_value -> declaration
+(** [page_break_inside v] is the legacy [page-break-inside] property. *)
+
 val columns : columns_value -> declaration
 (** [columns v] is the CSS [columns] property for multi-column layout. *)
 
-val padding_inline : length -> declaration
+val column_rule : border -> declaration
+(** [column_rule v] is the CSS [column-rule] shorthand property. *)
+
+val border_block : border -> declaration
+(** [border_block v] is the CSS [border-block] shorthand property. *)
+
+val column_span : column_span -> declaration
+(** [column_span v] is the CSS [column-span] property. *)
+
+val padding_inline : length list -> declaration
 (** [padding_inline v] is the CSS [padding-inline] property. *)
 
 val padding_inline_start : length -> declaration
@@ -1421,7 +1671,7 @@ val padding_inline_start : length -> declaration
 val padding_inline_end : length -> declaration
 (** [padding_inline_end v] is the CSS [padding-inline-end] property. *)
 
-val padding_block : length -> declaration
+val padding_block : length list -> declaration
 (** [padding_block v] is the CSS [padding-block] property. *)
 
 val padding_block_start : length -> declaration
@@ -1468,3 +1718,9 @@ val scroll_behavior : scroll_behavior -> declaration
 
 val color_scheme : color_scheme -> declaration
 (** [color_scheme v] is the CSS [color-scheme] property. *)
+
+val image_rendering : image_rendering -> declaration
+(** [image_rendering v] is the CSS [image-rendering] property. *)
+
+val image_resolution : image_resolution -> declaration
+(** [image_resolution v] is the CSS [image-resolution] property. *)

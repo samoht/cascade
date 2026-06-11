@@ -1,0 +1,5 @@
+a {
+  mask-image: linear-gradient(black, transparent);
+  mask-repeat: no-repeat;
+  mask-border: url(mask.png) 25 round;
+}

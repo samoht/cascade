@@ -1,0 +1,10 @@
+@media screen and (width >= 768px) {
+  a {
+    color: red;
+  }
+}
+@media screen and (width >= 768px) {
+  b {
+    margin: 0;
+  }
+}

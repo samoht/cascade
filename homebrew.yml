@@ -9,11 +9,7 @@ tap:
   clone_url: https://github.com/samoht/homebrew-tap.git
   push_url: git@github.com:samoht/homebrew-tap
 
-binaries:
+packages:
   - name: cascade
-    target: bin/cascade_main.exe
-    description: "CSS generation and manipulation tool"
-
-  - name: cssdiff
-    target: bin/cssdiff.exe
-    description: "Compare CSS files with structural analysis"
+    target: bin/main.exe
+    description: "CSS formatter, minifier, inliner, and structural diff tool"

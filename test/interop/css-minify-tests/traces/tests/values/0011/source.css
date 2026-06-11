@@ -1,0 +1,4 @@
+a {
+  width: calc(100% - 20px);
+  height: calc(50vh + 10px);
+}

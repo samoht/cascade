@@ -1,26 +1,80 @@
-## 1.1.0
+## 0.9.0
 
-### Fixed
+First public release. Cascade was extracted from the [tw](https://github.com/samoht/tw)
+(Tailwind CSS v4 in OCaml) project as a standalone CSS command-line tool and
+library, then stabilised over several internal milestones.
 
-- Accept custom property names starting with a digit after `--` in `var()`
-  references (e.g. `var(--1A202C)`). Per CSS Syntax Level 3 §4.3.11, `--`
-  itself is a valid ident-start, and any ident code point (including digits)
-  can follow.
+### Library
 
-## 1.0.0
+- Typed CSS AST: selectors, declarations, values, statements, and
+  stylesheets are sealed ADTs. Invalid constructions are caught at compile
+  time.
+- Single warning-aware parse entry point:
+  - `Css.of_string` runs CSS Syntax Level 3 recovery and returns
+    `(parse, Error.t) result`, where `parse = { stylesheet; warnings }`.
+  - `~strict:true` promotes the first warning to `Error _`.
+  - `Css.of_string_exn` returns the recovered stylesheet directly and raises
+    `Error.Parse_error` on `Error`.
+- Pretty-printer with separate pretty and minified contexts
+  (`Css.to_string ?minify`), with several typed printers exposed
+  (`pp_color`, `pp_length`, ...).
+- Structural transforms (`fold`, `map`, `sort`, `flatten_nesting`,
+  `inline_imports`) and structural CSS diff utilities via the
+  `cascade.diff` sub-library.
+- Optimizer with deduplication, rule merging, selector combining, and
+  shorthand/longhand coverage including `all` reset folding.
+- Spec coverage:
+  - Selectors Level 4 -- including `:has()`, `:is()`, `:where()`, `:not()`,
+    nesting `&`, and full attribute syntax.
+  - Values & Units Level 4 -- `calc()`, `clamp()`, `min()`, `max()`,
+    `minmax()`, the modern length units, durations, angles.
+  - Color Level 4 -- 15 colour spaces including `oklch()`, `oklab()`,
+    `lch()`, `hwb()`, `color-mix()`, plus the 148 named colours.
+  - Conditional Rules Level 3-5 -- `@media`, `@supports`, `@container`
+    (including typed `style()`/`scroll-state()` queries with range
+    operators), `@when` / `@else`.
+  - Cascade Level 5 -- `@layer` declarations and blocks, CSS-wide
+    keywords, and `all` reset semantics in the optimizer.
+  - Custom Properties Level 1 -- `var()` parsing/printing, typed
+    fallbacks, theme/default substitution, `@property` registration.
+  - Fonts Level 4 (`@font-face` descriptors), Animations Level 1
+    (`@keyframes`, `@starting-style`).
+- Over 400 typed properties cover box model, flexbox, grid (including
+  `grid-template-areas` validation), logical properties, typography
+  (`font-variant-*`, `text-emphasis-*`, `text-decoration-skip-*`,
+  `initial-letter*`), borders and `border-image`, backgrounds and
+  gradients, transforms (`translate`, `scale`, `rotate`, `transform`),
+  transitions, animations (`animation-range*`, scroll-driven timelines),
+  filters, masks, scroll snap, anchor positioning (`position-anchor`,
+  `position-area`, `position-try-fallbacks`), view transitions, and the
+  common vendor-prefixed properties.
+- Custom-property workflows: typed `<syntax>` parsing for `@property`,
+  registered-property substitution against an explicit `Css.Context.t`,
+  and round-trip-stable `var()` serialisation with literal fallbacks.
 
-### Added
+### CLI tools
 
-- Initial release of Cascade as a standalone CSS library
-- Typed CSS AST with selectors, properties, values, declarations, and stylesheets
-- CSS parser with error recovery (`Css.of_string`)
-- CSS pretty-printer with minification support (`Css.to_string`)
-- CSS optimizer: deduplication, rule merging, selector combining (`Css.optimize`)
-- CSS custom properties with `@property` registration and typed syntax
-- At-rules: `@media`, `@supports`, `@layer`, `@keyframes`, `@font-face`,
-  `@container`, `@property`, `@starting-style`
-- Modern color spaces: oklch, oklab, lch, hwb, color-mix, system colors
-- Logical properties (inline/block variants)
-- `cascade` CLI tool for formatting, minifying, and optimizing CSS
-- `cssdiff` CLI tool for structural CSS comparison
-- `cascade.tools` sub-library for programmatic CSS diffing
+- `cascade` -- pretty-print and minify CSS files. It accepts stdin via `-`
+  or a missing file argument, and writes output to stdout.
+- `cascade --minify` applies the standard safe transforms, including
+  deduplication, rule merging, selector grouping, empty-rule elimination, and
+  nested-rule flattening.
+- `cascade --inline-imports` resolves local `@import` rules relative to the
+  input file, and `cascade --inline-vars` substitutes static custom-property
+  references. `--keep-vars=NAMES` preserves selected custom properties.
+- `cascade diff` provides structural CSS diffing between two files with
+  `auto`, `tree`, `string`, and `semantic` modes; respects `NO_COLOR` and
+  `CASCADE_COLOR`.
+- The CLI is installable as a binary through the Homebrew tap
+  `samoht/tap/cascade`, with opam installation still available for OCaml users.
+
+### Notes
+
+- `cascade` parses already-decoded UTF-8 strings. The CSS Syntax Level 3
+  byte-stream decoding step (BOM handling, `@charset` byte sniffing,
+  HTTP/environment charset fallback) is the caller's responsibility.
+- CSS nesting round-trips through the parser and printer, and the minifier
+  flattens nested rules when safe.
+- `@import` rules are preserved by default. Use `--inline-imports` for
+  explicit closed-world filesystem inlining.
+- No source-map support.

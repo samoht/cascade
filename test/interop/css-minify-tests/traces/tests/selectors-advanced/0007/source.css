@@ -1,0 +1,3 @@
+a:not(:not(.active)) {
+  color: red;
+}

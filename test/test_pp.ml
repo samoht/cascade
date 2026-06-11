@@ -65,22 +65,21 @@ let float_case () =
   check_float (-3.14) ~expected:"-3.14"
 
 let float_leading_zero () =
-  (* Pretty keeps leading zero *)
-  check_float 0.5 ~expected:"0.5";
-  check_float 0.25 ~expected:"0.25";
-  check_float 0.125 ~expected:"0.125";
+  (* CSSOM-style serialization drops leading zeros in both pretty and minified
+     modes; pretty mode controls whitespace, not numeric source-token
+     fidelity. *)
+  check_float 0.5 ~expected:".5";
+  check_float 0.25 ~expected:".25";
+  check_float 0.125 ~expected:".125";
 
-  (* Minified drops leading zero *)
   check_float ~minify:true 0.5 ~expected:".5";
   check_float ~minify:true 0.25 ~expected:".25";
   check_float ~minify:true 0.125 ~expected:".125"
 
 let float_negative_leading_zero () =
-  (* Pretty negative keeps zero *)
-  check_float (-0.5) ~expected:"-0.5";
-  check_float (-0.25) ~expected:"-0.25";
+  check_float (-0.5) ~expected:"-.5";
+  check_float (-0.25) ~expected:"-.25";
 
-  (* Minified negative drops zero *)
   check_float ~minify:true (-0.5) ~expected:"-.5";
   check_float ~minify:true (-0.25) ~expected:"-.25"
 

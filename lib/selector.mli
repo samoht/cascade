@@ -3,6 +3,12 @@
 include module type of Selector_intf
 (** Shared selector types exposed by both implementation and interface. *)
 
+val pp_component_values : component_values Pp.t
+(** [pp_component_values] pretty-prints preserved selector component values. *)
+
+val read_component_values : Cursor.t -> component_values
+(** [read_component_values t] reads preserved selector component values. *)
+
 val element : ?ns:ns -> string -> t
 (** [element ?ns name] element selector (e.g., "div"). Validates CSS
     identifiers; raises [Invalid_argument] on invalid. *)
@@ -21,9 +27,9 @@ val id : string -> t
 
 val of_string : string -> t
 (** [of_string s] parses a CSS-escaped selector string:
-    - [".classname"] → class selector
-    - ["#idname"] → id selector
-    - ["element"] → element selector
+    - [".classname"] -> class selector
+    - ["#idname"] -> id selector
+    - ["element"] -> element selector
 
     Unescapes both simple escapes (e.g., ["\:"]) and hex escapes (e.g.,
     ["\3A"]). Example: [of_string ".sm\\:p-4"] creates a class selector for
@@ -74,17 +80,37 @@ val ( || ) : t -> t -> t
 val pp : t Pp.t
 (** [pp] pretty-prints selectors. *)
 
+val top_level_is_unwrap : t -> t
+(** [top_level_is_unwrap sel] applies the CSS Selectors 4 sec. 17 [:is()] unwrap
+    at the top level of a rule selector: a whole-selector [:is(s1, s2, ...)] or
+    [:is] members of a top-level list flatten into the enclosing selector list
+    when each argument is a structurally simple selector ([Element] / [Class] /
+    [Id] / [Universal] / [Attribute], or a [Compound] of those). Returns [sel]
+    unchanged otherwise. *)
+
 val to_string : ?minify:bool -> t -> string
 (** [to_string ?minify sel] renders a selector to a string. *)
 
 val to_buffer : ?minify:bool -> Buffer.t -> t -> unit
 (** [to_buffer ?minify buf sel] renders a selector into [buf]. *)
 
+val specificity : t -> specificity
+(** [specificity selector] computes Selectors specificity as
+    [(ids, classes, elements)]. For selector-list-like pseudos such as [:is()],
+    [:not()], and [:has()], the most specific argument is used; [:where()]
+    contributes zero. *)
+
 val map : (t -> t) -> t -> t
 (** [map f selector] recursively applies [f] to all selectors in the tree. The
     function [f] is applied bottom-up: first to descendants, then to the current
     node. This is useful for transforming class names throughout a complex
     selector structure. *)
+
+val canonicalize : t -> t
+(** [canonicalize selector] removes lexical-only redundancy so that distinct
+    ASTs denoting the same selector become structurally equal: the implied
+    universal in a compound is dropped ([*::before] -> [::before]) and a
+    one-part compound collapses to that part. Idempotent. *)
 
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)
@@ -101,13 +127,13 @@ val pp_attr_flag : attr_flag option Pp.t
 val pp_aria_attr : aria_attr Pp.t
 (** [pp_aria_attr] pretty-prints aria attributes. *)
 
-val read_aria_attr : Reader.t -> aria_attr
+val read_aria_attr : Cursor.t -> aria_attr
 (** [read_aria_attr t] parses an [aria_attr] from [t]. *)
 
 val pp_attr_name : attr_name Pp.t
 (** [pp_attr_name] pretty-prints attribute names. *)
 
-val read_attr_name : Reader.t -> attr_name
+val read_attr_name : Cursor.t -> attr_name
 (** [read_attr_name t] parses an [attr_name] from [t]. *)
 
 val attr_value_needs_quoting : string -> bool
@@ -122,33 +148,43 @@ val attr_value_needs_quoting : string -> bool
 val pp_nth : nth Pp.t
 (** [pp_nth] pretty-prints nth expressions. *)
 
-val read_selector_list : Reader.t -> t
+val read_selector_list : Cursor.t -> t
 (** [read_selector_list r] reads a selector list without checking for end of
     input. Used when parsing selectors as part of a larger CSS structure. *)
 
-val read : Reader.t -> t
+val read_strict_selector_list : Cursor.t -> t
+(** [read_strict_selector_list r] reads a non-forgiving selector list, rejecting
+    unknown pseudo-classes and other invalid selector-list arms. *)
+
+val read : Cursor.t -> t
 (** [read r] parses a CSS selector. *)
 
-val read_relative : Reader.t -> t
+val read_relative : Cursor.t -> t
 (** [read_relative r] parses a CSS relative selector (may start with a
     combinator like [+], [>], or [~]). Used for :has() arguments. *)
 
-val read_combinator : Reader.t -> combinator
+val drop_redundant_nesting_prefix : t -> t
+(** [drop_redundant_nesting_prefix sel] removes a redundant leading [&] from a
+    nested-rule selector: [& .bar] -> [.bar], [& > .bar] -> [> .bar]. A nested
+    selector is implicitly relative to the parent [&] (CSS Nesting 1 sec. 2), so
+    this is shape-preserving for selectors used in a nested position. *)
+
+val read_combinator : Cursor.t -> combinator
 (** [read_combinator r] parses a combinator. *)
 
-val read_attribute_match : Reader.t -> attribute_match
+val read_attribute_match : Cursor.t -> attribute_match
 (** [read_attribute_match r] parses an attribute matcher. *)
 
-val read_ns : Reader.t -> ns option
+val read_ns : Cursor.t -> ns option
 (** [read_ns r] parses an optional attribute/selector namespace. *)
 
-val read_attr_flag : Reader.t -> attr_flag option
+val read_attr_flag : Cursor.t -> attr_flag option
 (** [read_attr_flag r] parses an attribute selector flag ([i] or [s]). *)
 
-val read_nth : Reader.t -> nth
+val read_nth : Cursor.t -> nth
 (** [read_nth r] parses an An+B nth expression. *)
 
-val read_nth_selector : Reader.t -> nth * t list option
+val read_nth_selector : Cursor.t -> nth * t list option
 (** [read_nth_selector r] parses an An+B expression with optional [of S]. *)
 
 val is_ : t list -> t
@@ -216,6 +252,19 @@ val has_newer_pseudo_class : t -> bool
 val has_pseudo_element : t -> bool
 (** [has_pseudo_element sel] returns [true] if selector contains a
     pseudo-element like ::before, ::after, ::marker, etc. *)
+
+val matches_nothing : t -> bool
+(** [matches_nothing sel] returns [true] when [sel] cannot match any element.
+    The canonical case is an empty forgiving [:is()] or [:where()] (every
+    argument was an invalid pseudo-class), and the predicate propagates through
+    compound, combined, and relative selectors. A selector list matches nothing
+    only when every entry does. *)
+
+val has_unknown_pseudo_class : t -> bool
+(** [has_unknown_pseudo_class sel] returns [true] when [sel] contains an
+    [Unknown_pseudo_class] / [Unknown_pseudo_class_call] anywhere in the tree.
+    Used to flag unforgiving-site unknown pseudo-classes ([.x,:future-pseudo])
+    as spec deviations in strict mode. *)
 
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in

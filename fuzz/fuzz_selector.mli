@@ -1,4 +1,4 @@
-(** Fuzz tests for the CSS Selector module. *)
+(** Fuzz tests for selector parsing, specificity, and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for CSS selectors. *)
+(** [suite] declares the selector fuzz cases. *)

@@ -1,0 +1,54 @@
+#!/bin/sh
+# pre-commit hook for cascade.
+#
+# Runs:
+#   1. dune fmt -- if it rewrites a staged file, aborts so the change is staged.
+#   2. merlint   -- across the whole project (not only the staged files), so a
+#                   change in one module that breaks a lint elsewhere is caught
+#                   before the commit lands.
+#
+# Enable from a fresh checkout with:
+#
+#   git config core.hooksPath .githooks
+#
+# The hook does nothing when no OCaml files are staged.
+
+set -eu
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ml|mli|mll|mly)$' || true)
+[ -n "$STAGED" ] || exit 0
+
+# 1. dune fmt
+if ! dune fmt 2>/dev/null; then
+    echo "error: dune fmt failed" >&2
+    exit 1
+fi
+
+REFORMATTED=$(git diff --name-only -- $STAGED 2>/dev/null || true)
+if [ -n "$REFORMATTED" ]; then
+    echo "error: dune fmt rewrote staged files:" >&2
+    echo "$REFORMATTED" >&2
+    echo "re-stage them and commit again." >&2
+    exit 1
+fi
+
+# 2. merlint -- prefer a project-local build if present, otherwise PATH.
+MERLINT=""
+if [ -x _build/default/merlint/bin/main.exe ]; then
+    MERLINT=_build/default/merlint/bin/main.exe
+elif command -v merlint >/dev/null 2>&1; then
+    MERLINT=merlint
+fi
+
+if [ -n "$MERLINT" ]; then
+    # Scan the whole project. [--no-build] skips the [dune build @check] step
+    # so the commit stays fast; the typedtree-backed rules are silently
+    # skipped on any module whose .cmt is stale.
+    if ! "$MERLINT" --no-build; then
+        echo "" >&2
+        echo "merlint reported issues; fix them and commit again." >&2
+        exit 1
+    fi
+else
+    echo "warning: merlint not found on PATH; skipping lint" >&2
+fi

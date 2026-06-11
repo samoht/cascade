@@ -1,0 +1,3 @@
+a {
+  font-size: clamp(0.5rem, 2vw + 0.5rem, 2rem);
+}

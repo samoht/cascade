@@ -6,14 +6,19 @@ open Css.Values
 open Css_test_helpers
 open Css.Variables
 
-let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
+let check_any_syntax =
+  check_value_cursor "any_syntax" read_any_syntax pp_any_syntax
+
+let decl_t : Css.Declaration.declaration Alcotest.testable =
+  Alcotest.testable
+    (fun fmt d ->
+      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    ( = )
 
 (* These tests are for CSS Variables module *)
 let test_any_var () =
   (* Test CSS custom property declaration creation using Variables.var *)
-  let decl, _var =
-    var "primary-color" Color (Hex { hash = true; value = "ff0000" })
-  in
+  let decl, _var = var "primary-color" Color (Css.Values.hex "ff0000") in
 
   (* Check declaration is created properly *)
   let name_opt = custom_declaration_name decl in
@@ -24,9 +29,7 @@ let test_any_var () =
   | None -> Alcotest.fail "Expected custom declaration");
 
   (* Test var with fallback *)
-  let decl2, _var2 =
-    var "theme-color" Color (Hex { hash = true; value = "ff0000" })
-  in
+  let decl2, _var2 = var "theme-color" Color (Css.Values.hex "ff0000") in
 
   let name_opt2 = custom_declaration_name decl2 in
   (match name_opt2 with
@@ -35,7 +38,7 @@ let test_any_var () =
   | None -> Alcotest.fail "Expected custom declaration for theme color");
 
   (* Test negative cases *)
-  neg parse_var_reference "not-a-var()"
+  neg_cursor read_reference "not-a-var()"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -90,10 +93,42 @@ let test_vars_of_property () =
   let no_vars = vars_of_property Width (Length (Px 100.)) in
   Alcotest.(check int) "no variables in px value" 0 (List.length no_vars)
 
+let spec_vars_of_property_matrix () =
+  let check property_name declaration =
+    let decl = Css.Declaration.of_string declaration in
+    let vars = vars_of_declarations [ decl ] in
+    Alcotest.(check int) property_name 1 (List.length vars)
+  in
+  List.iter
+    (fun (property_name, declaration) -> check property_name declaration)
+    [
+      ("caption-side", "caption-side: var(--spec-caption-side)");
+      ("dominant-baseline", "dominant-baseline: var(--spec-dominant-baseline)");
+      ("field-sizing", "field-sizing: var(--spec-field-sizing)");
+      ( "grid-template-areas",
+        "grid-template-areas: var(--spec-grid-template-areas)" );
+      ("hyphens", "hyphens: var(--spec-hyphens)");
+      ( "initial-letter-align",
+        "initial-letter-align: var(--spec-initial-letter-align)" );
+      ( "initial-letter-wrap",
+        "initial-letter-wrap: var(--spec-initial-letter-wrap)" );
+      ("isolation", "isolation: var(--spec-isolation)");
+      ("mask-type", "mask-type: var(--spec-mask-type)");
+      ("order", "order: var(--spec-order)");
+      ("table-layout", "table-layout: var(--spec-table-layout)");
+      ( "text-emphasis-skip",
+        "text-emphasis-skip: var(--spec-text-emphasis-skip)" );
+      ( "text-emphasis-style",
+        "text-emphasis-style: var(--spec-text-emphasis-style)" );
+      ("-webkit-hyphens", "-webkit-hyphens: var(--spec-webkit-hyphens)");
+      ("-webkit-line-clamp", "-webkit-line-clamp: var(--spec-webkit-line-clamp)");
+      ("z-index", "z-index: var(--spec-z-index)");
+    ]
+
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
-    var "text-color" Color (Hex { hash = true; value = "333333" })
+    var "text-color" Color (Css.Values.hex "333333")
   in
   let custom_size_decl, size_var = var "font-size" Length (Rem 1.0) in
 
@@ -121,7 +156,7 @@ let test_any_var_name () =
 let test_extract_custom_declarations () =
   let regular = v Width (Length (Px 100.)) in
 
-  let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
+  let custom1, _ = var "color1" Color (Css.Values.hex "ff0000") in
   let custom2, _ = var "size1" Length (Px 16.) in
 
   let decls = [ custom1; regular; custom2 ] in
@@ -157,7 +192,7 @@ let test_compare_vars_by_name () =
 (* Not a roundtrip test *)
 let test_custom_property_roundtrip () =
   (* Create a custom property using Variables.var *)
-  let custom, _ = var "primary" Color (Hex { hash = true; value = "0080ff" }) in
+  let custom, _ = var "primary" Color (Css.Values.hex "0080ff") in
 
   (* Check it follows CSS custom property syntax *)
   match custom_declaration_name custom with
@@ -180,30 +215,50 @@ let test_any_syntax () =
   check_any_syntax "\"<angle>\"";
   check_any_syntax "\"<time>\"";
   check_any_syntax "\"*\"";
-  check_any_syntax "\"<length> | <percentage>\"";
+  check_any_syntax ~expected:"\"<length>|<percentage>\""
+    "\"<length> | <percentage>\"";
 
   (* Test invalid syntax values *)
-  neg read_any_syntax "<length>";
+  neg_cursor read_any_syntax "<length>";
   (* Missing quotes *)
-  neg read_any_syntax "length";
+  neg_cursor read_any_syntax "length";
   (* No angle brackets or quotes *)
-  neg read_any_syntax "\"<invalid-type>\"";
+  neg_cursor read_any_syntax "\"<invalid-type>\"";
   (* Invalid type name *)
-  neg read_any_syntax "\"\"";
+  neg_cursor read_any_syntax "\"\"";
   (* Empty syntax *)
-  neg read_any_syntax "unquoted"
+  neg_cursor read_any_syntax "unquoted"
+
+let spec_property_syntax_edges () =
+  check_any_syntax "\"<length>+\"";
+  check_any_syntax "\"<color>#\"";
+  check_any_syntax "\"<custom-ident>\"";
+  check_any_syntax "\"<transform-list>\"";
+  check_any_syntax "\"<url>\"";
+  check_any_syntax "\"<image>\"";
+  check_any_syntax ~expected:"\"<length>|<percentage>|auto\""
+    "\"<length> | <percentage> | auto\"";
+  check_any_syntax ~expected:"\"<number>|none\"" "\"<number> | none\"";
+  neg_cursor read_any_syntax "\"<length>++\"";
+  neg_cursor read_any_syntax "\"<color># #\"";
+  neg_cursor read_any_syntax "\"<length>|\"";
+  neg_cursor read_any_syntax "\"| <length>\"";
+  neg_cursor read_any_syntax "\"<length> <color>\"";
+  neg_cursor read_any_syntax "\"<length> || <color>\"";
+  neg_cursor read_any_syntax "\"<unknown>\"";
+  neg_cursor read_any_syntax "\"<length\""
 
 (* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
   ()
 
-(* ignore-test: parse_var_reference is a function, not a type *)
-let test_parse_var_reference () =
+(* ignore-test: read_reference is a function, not a type *)
+let test_read_var_reference () =
   (* Test parsing CSS var() references - just extracts name and fallback *)
   let check_var_ref input expected_name expected_fallback =
-    let r = Css.Reader.of_string input in
-    let name, fallback = parse_var_reference r in
+    let r = Cursor.of_string input in
+    let name, fallback = read_reference r in
     Alcotest.(check string) "variable name" expected_name name;
     Alcotest.(check (option string)) "fallback" expected_fallback fallback
   in
@@ -225,12 +280,12 @@ let test_parse_var_reference () =
 
   (* Test invalid cases *)
   let neg input =
-    let r = Css.Reader.of_string input in
+    let r = Cursor.of_string input in
     try
-      let _ = parse_var_reference r in
+      let _ = read_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
-    | Css.Reader.Parse_error _ -> ()
+    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
     | exn ->
         Alcotest.failf "Unexpected exception for '%s': %s" input
           (Printexc.to_string exn)
@@ -245,12 +300,76 @@ let test_parse_var_reference () =
   (* Wrong function name *)
   neg "var(--)" (* No name after -- *)
 
+let spec_custom_fallback_edges () =
+  let check_var_ref input expected_name expected_fallback =
+    let r = Cursor.of_string input in
+    let name, fallback = read_reference r in
+    Alcotest.(check string) (input ^ " name") expected_name name;
+    Alcotest.(check (option string))
+      (input ^ " fallback") expected_fallback fallback
+  in
+  check_var_ref "var(--color,)" "color" (Some "");
+  check_var_ref "var(--color, red, blue)" "color" (Some "red, blue");
+  check_var_ref "var(--shadow, 0 0 0 var(--fallback, black))" "shadow"
+    (Some "0 0 0 var(--fallback, black)");
+  check_var_ref "var(--tokens, { color: red; })" "tokens"
+    (Some "{ color: red; }");
+  check_var_ref "var(--list, [a, b], (c))" "list" (Some "[a, b], (c)");
+  check_var_ref "var(--commented, a /*x*/ b)" "commented" (Some "a /*x*/ b");
+  check_var_ref "var(--string, \"a,b\")" "string" (Some "\"a,b\"");
+  check_var_ref "var(--empty-block, {})" "empty-block" (Some "{}");
+  (* CSS Syntax §4.3.5 consumes ')' as part of an unterminated string at EOF; it
+     is not a function close token. *)
+  check_var_ref "var(--bad-string, \"unterminated)" "bad-string"
+    (Some "\"unterminated)");
+  let neg input =
+    let r = Cursor.of_string input in
+    try
+      let _ = read_reference r in
+      Alcotest.failf "Expected failure for: %s" input
+    with
+    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
+    | exn ->
+        Alcotest.failf "Unexpected exception for '%s': %s" input
+          (Printexc.to_string exn)
+  in
+  neg "var(--color";
+  neg "var(---)";
+  neg "var(--, red)"
+
+let spec_custom_computed_edges () =
+  let check_context name specified =
+    let decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
+    let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
+    Alcotest.(check (option decl_t))
+      (name ^ " context") (Some decl)
+      (Css.Context.custom_property name ctx)
+  in
+  check_context "--gap" "var(--space, 1rem)";
+  check_context "--self" "var(--self)";
+  check_context "--a" "var(--b)";
+  check_context "--registered" "10px";
+  check_context "--invalid-fallback" "var(--missing, 10px)";
+  let check_var_ref input expected_name expected_fallback =
+    let r = Cursor.of_string input in
+    let name, fallback = read_reference r in
+    Alcotest.(check string) (input ^ " name") expected_name name;
+    Alcotest.(check (option string))
+      (input ^ " fallback") expected_fallback fallback
+  in
+  check_var_ref "var(--self)" "self" None;
+  check_var_ref "var(--a, var(--b, var(--c)))" "a" (Some "var(--b, var(--c))");
+  check_var_ref "var(--registered, color(display-p3 1 0 0))" "registered"
+    (Some "color(display-p3 1 0 0)")
+
 let tests =
   [
     ("any_var", `Quick, test_any_var);
     ("any_syntax", `Quick, test_any_syntax);
+    ("spec property syntax descriptor edges", `Quick, spec_property_syntax_edges);
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
+    ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);
     ("vars of declarations", `Quick, test_vars_of_declarations);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);
@@ -258,7 +377,11 @@ let tests =
     ("compare vars by name", `Quick, test_compare_vars_by_name);
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
-    ("parse_var_reference", `Quick, test_parse_var_reference);
+    ("read_reference", `Quick, test_read_var_reference);
+    ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
+    ( "spec custom property computed-time edges",
+      `Quick,
+      spec_custom_computed_edges );
   ]
 
 let suite = ("variables", tests)

@@ -1,73 +1,175 @@
 module String_set = Set.Make (String)
 
+type counter = { mutable count : int; mutable last : char }
+(** A byte sink that records only the running length and the last emitted byte.
+    It lets [size] measure output with no [Buffer] (hence no allocation): the
+    last byte is all the emission-time lookback under minify needs, and the
+    backward newline scan in [column] only runs in pretty mode. *)
+
+type out = Buffer of Buffer.t | Counter of counter
+
 type ctx = {
   minify : bool;
-  indent : int;
-  buf : Buffer.t;
+  level : int;  (** current nesting depth *)
+  indent : int option;
+      (** indent width per nesting level. [None] disables per-level indentation
+          even when not minifying. *)
+  out : out;
   inline : bool;
   in_function : bool;
-  theme : String_set.t option;
-  theme_defaults : string -> string option;
+  in_calc : bool;
+  in_feature_query : bool;
+      (** Set while serialising the value of an [@supports (property: value)]
+          feature test. The value is a capability predicate for that exact
+          syntax, so lossy rewrites (e.g. static colour folding) must be
+          suppressed there. *)
+  lossless : bool;
+      (** Set under [--minify --lossless]: suppress colour-channel rounding and
+          other colour approximations while keeping exact serialisation
+          shortenings. *)
+  enforce_spec : bool;
+      (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
+          serialisation but without evergreen-target facts, so target-dependent
+          shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
+          suppressed. *)
 }
 
 type 'a t = ctx -> 'a -> unit
 
-let no_theme_defaults _ = None
+let emit_string out s =
+  match out with
+  | Buffer b -> Buffer.add_string b s
+  | Counter c ->
+      let n = String.length s in
+      if n > 0 then (
+        c.count <- c.count + n;
+        c.last <- s.[n - 1])
 
-let in_theme ctx name =
-  match ctx.theme with None -> true | Some set -> String_set.mem name set
+let emit_char out ch =
+  match out with
+  | Buffer b -> Buffer.add_char b ch
+  | Counter c ->
+      c.count <- c.count + 1;
+      c.last <- ch
 
-let ctx ?(minify = false) ?(inline = false) ?theme
-    ?(theme_defaults = no_theme_defaults) buf =
+let out_length = function Buffer b -> Buffer.length b | Counter c -> c.count
+
+(* Only the backward newline scan in [column] reads positions other than the
+   last byte, and that runs in pretty mode; under minify (the only mode
+   [Counter] serves) there are no newlines, so the counter answers for the last
+   byte and yields [\000] elsewhere. *)
+let out_nth out i =
+  match out with
+  | Buffer b -> Buffer.nth b i
+  | Counter c -> if i = c.count - 1 then c.last else '\000'
+
+(* [resolve_indent ~minify indent]: under [minify] there is no indentation;
+   otherwise pick the explicit value or the default 2-space indent. *)
+let resolve_indent ~minify = function
+  | Some _ as i -> i
+  | None -> if minify then None else Some 2
+
+let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
+    ?(enforce_spec = false) out =
   {
     minify;
-    indent = 0;
-    buf;
+    level = 0;
+    indent = resolve_indent ~minify indent;
+    out;
     inline;
     in_function = false;
-    theme;
-    theme_defaults;
+    in_calc = false;
+    in_feature_query = false;
+    lossless;
+    enforce_spec;
   }
 
-let to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a =
-  let ctx = ctx ?minify ?inline ?theme ?theme_defaults buf in
+let ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf =
+  v ?minify ?indent ?inline ?lossless ?enforce_spec (Buffer buf)
+
+let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
+  let ctx = ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf in
   pp ctx a
 
-let to_string ?minify ?inline ?theme ?theme_defaults pp a =
+let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
   let buf = Buffer.create 1024 in
-  to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a;
+  to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a;
   Buffer.contents buf
 
+(* Byte length of [pp a] with no allocation: the counter sink records only the
+   running length and last byte, so there is no [Buffer] and no result
+   string. *)
+let size ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
+  let counter = { count = 0; last = '\000' } in
+  let ctx =
+    v ?minify ?indent ?inline ?lossless ?enforce_spec (Counter counter)
+  in
+  pp ctx a;
+  counter.count
+
 let nop _ _ = ()
-let string ctx s = Buffer.add_string ctx.buf s
+let string ctx s = emit_string ctx.out s
+let char ctx c = emit_char ctx.out c
 
 let quoted ctx s =
-  Buffer.add_char ctx.buf '"';
-  Buffer.add_string ctx.buf s;
-  Buffer.add_char ctx.buf '"'
+  char ctx '"';
+  string ctx s;
+  char ctx '"'
 
-let char ctx c = Buffer.add_char ctx.buf c
+(* The last byte emitted so far, for token-boundary spacing decisions. *)
+let last_char ctx =
+  let len = out_length ctx.out in
+  if len = 0 then None else Some (out_nth ctx.out (len - 1))
 
-(* Helper to output a quoted string with proper escaping *)
+let is_hex_digit = function
+  | '0' .. '9' | 'a' .. 'f' | 'A' .. 'F' -> true
+  | _ -> false
+
+(* CSS Syntax 3 sec. 4.3.7: a hex escape consumes up to 6 hex digits and one
+   trailing whitespace. The space terminator is only needed when the following
+   character would otherwise be eaten by the escape - a hex digit or a
+   whitespace. Omit it everywhere else for the shortest spelling. *)
+let hex_escape_byte ctx ~next c =
+  let code = Char.code c in
+  let hex_digits = "0123456789abcdef" in
+  char ctx '\\';
+  if code >= 0x10 then char ctx hex_digits.[code lsr 4];
+  char ctx hex_digits.[code land 0xF];
+  match next with
+  | Some (' ' | '\t' | '\n' | '\r' | '\012') -> char ctx ' '
+  | Some c when is_hex_digit c -> char ctx ' '
+  | _ -> ()
+
+(* Output a string literal with CSS section 9.2 escaping: backslash for the
+   delimiter and for '\', hex escapes for control bytes (U+0000..U+001F, U+007F)
+   so the serialized form parses back to the same string. *)
 let quoted_string ctx s =
   char ctx '"';
-  String.iter
-    (function
-      | '"' -> string ctx "\\\"" | '\\' -> string ctx "\\\\" | c -> char ctx c)
+  let len = String.length s in
+  String.iteri
+    (fun i c ->
+      match c with
+      | '"' -> string ctx "\\\""
+      | '\\' -> string ctx "\\\\"
+      | '\x00' .. '\x1F' | '\x7F' ->
+          let next = if i + 1 < len then Some s.[i + 1] else None in
+          hex_escape_byte ctx ~next c
+      | c -> char ctx c)
     s;
   char ctx '"'
 
-let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
-let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
+let sp ctx () = if not ctx.minify then char ctx ' '
+let cut ctx () = if not ctx.minify then string ctx "\n" else ()
 
 let nest n pp ctx a =
-  let new_ctx = { ctx with indent = ctx.indent + n } in
+  let new_ctx = { ctx with level = ctx.level + n } in
   pp new_ctx a
 
 let indent pp ctx a =
-  (* Output indentation spaces when not minifying *)
-  if not ctx.minify then
-    Buffer.add_string ctx.buf (String.make (2 * ctx.indent) ' ');
+  (* Output [level * indent] spaces when an indent width is set. *)
+  (match ctx.indent with
+  | Some w when w > 0 -> string ctx (String.make (w * ctx.level) ' ')
+  | _ -> ());
   pp ctx a
 
 let ( ++ ) pp1 pp2 ctx a =
@@ -98,22 +200,41 @@ let list ?sep pp ctx l =
           pp ctx x)
         t
 
+(* CSS Syntax 3 sec. 4 token-boundary separator: under minify, drop the space
+   when the previous token ends with [)] or [%] - both close cleanly so the
+   following ident/number cannot be re-tokenised into a single token. Falls back
+   to a regular space in pretty mode. *)
+let token_sp ctx () =
+  if not ctx.minify then char ctx ' '
+  else
+    let len = out_length ctx.out in
+    if len = 0 then ()
+    else
+      match out_nth ctx.out (len - 1) with ')' | '%' -> () | _ -> char ctx ' '
+
 let column ctx =
-  let buf = ctx.buf in
-  let len = Buffer.length buf in
+  let len = out_length ctx.out in
   let rec find_newline i =
     if i < 0 then len
-    else if Buffer.nth buf i = '\n' then len - i - 1
+    else if out_nth ctx.out i = '\n' then len - i - 1
     else find_newline (i - 1)
   in
   find_newline (len - 1)
+
+let list_wrap_append ~threshold ~wrap_sep ctx s =
+  char ctx ',';
+  if column ctx + 1 + String.length s > threshold then (
+    char ctx '\n';
+    string ctx wrap_sep)
+  else char ctx ' ';
+  string ctx s
 
 let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
   if ctx.minify then list ~sep pp ctx l
   else
     let measure_item x =
       let tmp = Buffer.create 64 in
-      let tmp_ctx = { ctx with buf = tmp } in
+      let tmp_ctx = { ctx with out = Buffer tmp } in
       pp tmp_ctx x;
       Buffer.contents tmp
     in
@@ -123,17 +244,9 @@ let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
     | [ x ] -> pp ctx x
     | h :: t ->
         pp ctx h;
+        ignore sep;
         List.iter
-          (fun x ->
-            ignore sep;
-            (* Always emit comma *)
-            Buffer.add_char ctx.buf ',';
-            let s = measure_item x in
-            if column ctx + 1 + String.length s > threshold then (
-              Buffer.add_char ctx.buf '\n';
-              Buffer.add_string ctx.buf wrap_sep)
-            else Buffer.add_char ctx.buf ' ';
-            Buffer.add_string ctx.buf s)
+          (fun x -> list_wrap_append ~threshold ~wrap_sep ctx (measure_item x))
           t
 
 let option ?(none = nop) pp ctx = function
@@ -204,7 +317,7 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let s = trim_decimal_suffix s in
   format_decimal ~drop_leading_zero s max_decimals is_neg
 
-let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
+let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
   match classify_float f with
   | FP_zero -> "0"
@@ -227,17 +340,32 @@ let round_sig n f =
     let factor = 10.0 ** (Float.of_int n -. d) in
     Float.round (f *. factor) /. factor
 
-let float ctx f =
-  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)
+(* Emit the decimal digits of [i] straight into the sink. [string_of_int] routes
+   through C [snprintf] (slow) and allocates a string even when the sink only
+   counts bytes; the optimizer measures declarations O(n^2) times, so this is
+   hot. Recurse in the non-positive domain so [min_int] cannot overflow. *)
+let int ctx i =
+  if i < 0 then char ctx '-';
+  let rec go n =
+    if n <= -10 then go (n / 10);
+    char ctx (Char.unsafe_chr (Char.code '0' - (n mod 10)))
+  in
+  go (if i > 0 then -i else i)
 
-let float_compact ctx f =
-  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
+(* An integer-valued float prints as that integer (see [format_integer]); take
+   the allocation-free [int] path instead of building a string via
+   [string_of_float]. The bound mirrors [format_integer]'s own guard. *)
+let float ctx f =
+  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+    int ctx (int_of_float f)
+  else string ctx (string_of_float ~drop_leading_zero:true f)
+
+let float_compact = float
 
 let float_n n ctx f =
-  let s = float_to_string ~drop_leading_zero:ctx.minify ~max_decimals:n f in
-  Buffer.add_string ctx.buf s
-
-let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
+  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+    int ctx (int_of_float f)
+  else string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
 let hex ctx i =
   let hex_digit n =
@@ -255,35 +383,33 @@ let hex ctx i =
     else if n < 16 then String.make 1 (hex_digit n)
     else to_hex (n / 16) ^ to_hex (n mod 16)
   in
-  Buffer.add_string ctx.buf (to_hex i)
+  string ctx (to_hex i)
 
 let unit ctx f suffix =
-  if f = 0. then char ctx '0'
-  else (
-    float ctx f;
-    string ctx suffix)
+  float ctx f;
+  string ctx suffix
 
-let pct ?(always = false) ctx f =
-  (* CSS spec allows "0" without "%" for zero percentage values. This is a
-     minification optimization used by cssnano and other tools. Ref:
-     https://www.w3.org/TR/css-values-4/#zero-value When always=true, always
-     include % unit (required for [@property] initial-value) *)
-  if always || f <> 0. then (
-    float ctx f;
-    string ctx "%")
-  else char ctx '0'
+let pct ctx f =
+  (* CSS Values 4 §6.5 only allows the unit to drop on a zero [<length>]; a zero
+     [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%] are no
+     longer equivalent, and dimension/percentage-typed grammars reject a bare
+     [0]). *)
+  float ctx (if ctx.lossless then f else round_sig 6 f);
+  string ctx "%"
 
 let sep ctx s =
-  Buffer.add_string ctx.buf s;
-  if not ctx.minify then Buffer.add_char ctx.buf ' '
+  string ctx s;
+  if not ctx.minify then char ctx ' '
 
 let comma ctx () = sep ctx ","
-let semicolon ctx () = Buffer.add_char ctx.buf ';'
-let slash ctx () = Buffer.add_char ctx.buf '/'
-let space ctx () = Buffer.add_char ctx.buf ' '
-let block_open ctx () = Buffer.add_char ctx.buf '{'
-let block_close ctx () = Buffer.add_char ctx.buf '}'
+let semicolon ctx () = char ctx ';'
+let slash ctx () = char ctx '/'
+let space ctx () = char ctx ' '
+let block_open ctx () = char ctx '{'
+let block_close ctx () = char ctx '}'
 let minified ctx = ctx.minify
+let in_feature_query ctx = ctx.in_feature_query
+let enter_feature_query ctx = { ctx with in_feature_query = true }
 let cond p a b ctx x = if p ctx then a ctx x else b ctx x
 let space_if_pretty = sp
 
@@ -305,6 +431,20 @@ let braces pp =
     block_close ctx ()
   in
   surround ~left:open_ ~right:close_ (nest 1 (indent pp))
+
+let semicolon_cut ctx () =
+  semicolon ctx ();
+  cut ctx ()
+
+let braced_list ?sep pp_item ctx items =
+  braces
+    (fun ctx () ->
+      cut ctx ();
+      nest 2 (list ?sep pp_item) ctx items;
+      cut ctx ())
+    ctx ()
+
+let braced_semicolon_list pp_item = braced_list ~sep:semicolon_cut pp_item
 
 let call name pp_args ctx args =
   string ctx name;

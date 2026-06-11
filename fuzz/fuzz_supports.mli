@@ -1,4 +1,4 @@
-(** Fuzz tests for [@supports] condition parsing. *)
+(** Fuzz tests for CSS supports query parsing and serialization. *)
 
 val suite : string * Alcobar.test_case list
-(** [suite] is the collection of fuzz tests for [@supports] conditions. *)
+(** [suite] declares the supports-query fuzz cases. *)

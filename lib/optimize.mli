@@ -3,6 +3,26 @@
 open Declaration
 open Stylesheet
 
+(** {1 Scope Assumption} *)
+
+type scope = [ `Fragment | `Stylesheet ]
+(** The [scope] knob tells the optimizer how much surrounding CSS context the
+    input might be embedded in.
+
+    [`Fragment] (the default) treats the input as an excerpt that may be
+    concatenated with arbitrary other author CSS - earlier [<link>], later
+    [<style>], bundler concatenation, layer statements outside the file,
+    caller-side composition. Only semantics-preserving rewrites under any
+    surrounding CSS are allowed; resetful shorthands are synthesised only when
+    the local longhand run is {e reset-closed} (every absent longhand the
+    shorthand would reset is present in the run), so the shorthand cannot shadow
+    a prior cascade write the optimizer cannot see.
+
+    [`Stylesheet] asserts the caller controls the whole author stylesheet graph
+    (after [@import] resolution). The optimizer may then synthesise a
+    partial-coverage shorthand because the omitted longhand resets are
+    guaranteed not to disturb any prior write. *)
+
 (** {1 Declaration Optimization} *)
 
 val duplicate_buggy_properties : declaration list -> declaration list
@@ -11,15 +31,90 @@ val duplicate_buggy_properties : declaration list -> declaration list
     older Safari versions. See: https://bugs.webkit.org/show_bug.cgi?id=101180.
 *)
 
-val deduplicate_declarations : declaration list -> declaration list
-(** [deduplicate_declarations decls] removes overridden declarations following
-    CSS cascade rules: !important wins over normal, and among same importance
-    the last one wins. *)
+val deduplicate_declarations :
+  ?scope:scope -> declaration list -> declaration list
+(** [deduplicate_declarations ?scope decls] removes overridden declarations
+    following CSS cascade rules: !important wins over normal, and among same
+    importance the last one wins. [scope] (default [`Fragment]) gates
+    partial-coverage shorthand synthesis; see the {!scope} doc. *)
+
+type ctx
+(** Optimization context: the {!scope} together with the registered-custom-
+    property predicate and the lossless knob. The shorthand composers take it;
+    build one with {!ctx_of_scope}. *)
+
+val ctx_of_scope : ?lossless:bool -> scope option -> ctx
+(** [ctx_of_scope ?lossless scope] builds the context the composers take; [None]
+    is [`Fragment]. *)
+
+val compose_shorthands :
+  ctx:ctx -> (int * declaration) list -> (int * declaration) list
+(** [compose_shorthands ~ctx decls] runs the shorthand-composition pipeline over
+    index-tagged declarations: longhands fold into shorthands, resets reorder,
+    and shadowed longhands drop. Each declaration it leaves unchanged is
+    returned with its physical identity preserved, so a no-op shares every
+    element with the input. *)
+
+val merge_box_shorthand_longhands :
+  (int * declaration) list ->
+  (int * declaration) list ->
+  (int * declaration) list
+(** [merge_box_shorthand_longhands source decls] folds box-shorthand longhands
+    that follow a matching box shorthand back into it. A declaration that
+    absorbs nothing is returned unchanged by physical identity. *)
+
+val merge_overflow_longhands :
+  (int * declaration) list -> (int * declaration) list
+(** [merge_overflow_longhands decls] folds [overflow-x] and [overflow-y] into
+    the [overflow] shorthand when both appear with matching importance. A
+    declaration left unmerged keeps its physical identity. *)
+
+val drop_invalid : t -> t
+(** [drop_invalid ss] removes every declaration whose typed value contains an
+    [Invalid] arm cascade detected at parse time (CSS spec violations that
+    cascade preserved verbatim for round-trip). Run as part of minify-time
+    spec-based optimization. *)
+
+val drop_unknown_at_rules : t -> t
+(** [drop_unknown_at_rules ss] removes every [Unknown_at_rule] statement at any
+    block depth. CSS Syntax 3 §5.4.1 says an unknown at-rule is discarded; the
+    parser preserves them in the AST for fidelity, and minify-time
+    canonicalization then drops them. *)
+
+val drop_empty_rules : t -> t
+(** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
+    is empty (no declarations and no nested rules). *)
+
+(** {1 Edge Model} *)
+
+type packed_property =
+  | Packed : 'a Properties.property -> packed_property
+      (** Existential wrapper that hides the value type of a typed property tag,
+          so properties of different value types can live in the same edge list.
+      *)
+
+type edge = {
+  summary : Selector_summary.t;
+  property : packed_property;
+  important : bool;
+}
+(** A single property write in the CSS graph: a selector's subject summary
+    paired with the typed property it writes. This is the (selector, property)
+    edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
+    cheap subject-summary fingerprint used in place of full selector
+    intersection. *)
+
+val edges_of_rule : rule -> edge list
+(** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector] is
+    a comma-separated list, one edge is emitted per (subject summary, property)
+    pair; otherwise one edge per declaration. Useful for asserting no-new-edges
+    invariants on rule rewrites and for the fuzz harness's selector-intersection
+    and biclique vectors. *)
 
 (** {1 Rule Optimization} *)
 
-val single_rule : rule -> rule
-(** [single_rule rule] deduplicates declarations in one rule. *)
+val single_rule : ?scope:scope -> rule -> rule
+(** [single_rule ?scope rule] deduplicates declarations in one rule. *)
 
 val merge_rules : rule list -> rule list
 (** [merge_rules rules] merges adjacent rules with identical selectors while
@@ -29,8 +124,17 @@ val combine_identical_rules : rule list -> rule list
 (** [combine_identical_rules rules] combines consecutive rules with identical
     declarations into comma-separated selectors. *)
 
-val rules : rule list -> rule list
-(** [rules rs] optimizes a list of flat rules. *)
+val factor_anchor_gaps : rule list -> rule list
+(** [factor_anchor_gaps rules] factors out a declaration shared across rules
+    with non-conflicting selectors, even across intervening rules, when
+    cascade-safe and smaller. Anchors are scheduled best-first from a priority
+    search queue keyed by the output size each factoring saves (the greedy
+    weight order of the SatCSS heuristic) over a [Pool]; only anchors whose
+    window overlapped a rewritten region are re-scored, so it drains to the
+    factoring fixed point without re-walking the whole list. *)
+
+val rules : ?scope:scope -> rule list -> rule list
+(** [rules ?scope rs] optimizes a list of flat rules. *)
 
 (** {1 Nested Structure Optimization} *)
 
@@ -40,8 +144,106 @@ val apply_property_duplication : t -> t
 (** [apply_property_duplication ss] applies only property duplication for
     browser compatibility without other optimizations. *)
 
-val stylesheet : t -> t
-(** [stylesheet ss] optimizes an entire stylesheet while preserving cascade
-    semantics. When [@supports] blocks are present alongside top-level rules,
-    optimization is limited because the stylesheet structure separates rules
-    from [@supports] blocks, losing their relative ordering. *)
+val stylesheet :
+  ?scope:scope ->
+  ?flatten_nesting:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  t ->
+  t
+(** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ss] optimizes an
+    entire stylesheet while preserving cascade semantics. When [@supports]
+    blocks are present alongside top-level rules, optimization is limited
+    because the stylesheet structure separates rules from [@supports] blocks,
+    losing their relative ordering.
+
+    When [flatten_nesting] is [true] (default [false]) nested rules are
+    desugared into flat rules: child selectors with [&] have the parent selector
+    substituted in, child selectors without [&] are joined to the parent with
+    the descendant combinator, and at-rules nested inside a rule are emitted at
+    the top level with the parent selector applied to their inner rules.
+
+    [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
+    see the {!scope} doc.
+
+    [lossless] disables colour approximation while keeping exact colour
+    canonicalisation.
+
+    When [enforce_spec] is [false] (default) the optimizer may treat baseline
+    feature queries as known facts and elide [@supports] guards whose condition
+    is satisfied in maintained evergreen browsers; [true] keeps every feature
+    query and applies only CSS-text-and-spec-provable rewrites. *)
+
+val flatten_nesting : t -> t
+(** [flatten_nesting ss] returns [ss] with every nested rule flattened into a
+    top-level rule. Equivalent to the [~flatten_nesting:true] mode of
+    {!stylesheet} but without the deduplication / merge passes. *)
+
+type pass_stat = {
+  mutable time : float;  (** accumulated wall-clock, seconds *)
+  mutable calls : int;  (** times the pass ran across all fixpoint iterations *)
+  mutable changes : int;  (** times the pass returned a structurally new list *)
+  mutable rules_in : int;  (** total input rule count summed across calls *)
+  mutable rules_out : int;  (** total output rule count summed across calls *)
+}
+(** One pass's contribution to a single [Optimize.stylesheet] run. *)
+
+val pass_times : (string, pass_stat) Hashtbl.t
+(** Per-pass stats for [factor_rules_to_fixpoint]. Populated as a side effect
+    during {!val-stylesheet} runs; reset at each entry. Keys are pass names. *)
+
+val set_profile : bool -> unit
+(** Enable or disable exact diagnostic size collection for subsequent optimizer
+    runs. Default is [false]. *)
+
+type iteration_stat = {
+  fixpoint : int;
+  iteration : int;
+  local_iteration : int;
+  before_rules : int;
+  after_rules : int;
+  before_bytes : int;
+  after_bytes : int;
+  bytes_saved : int;
+  active_passes : int;
+  changed_passes : int;
+  elapsed : float;
+}
+(** One global factoring fixpoint iteration. *)
+
+val iteration_stats : unit -> iteration_stat list
+(** Per-iteration stats for [factor_rules_to_fixpoint], newest first. *)
+
+type counters = {
+  mutable iterations : int;  (** [factor_rules_to_fixpoint] iterations *)
+  mutable factor_fixpoints_run : int;
+      (** global factoring fixpoints attempted after the preflight *)
+  mutable marginal_stops : int;
+      (** fixpoints stopped because consecutive iterations had low byte gain *)
+  mutable summary_hits : int;  (** [factor_rule_summary] memo hits *)
+  mutable summary_misses : int;  (** [factor_rule_summary] memo misses *)
+  mutable factor_fixpoints_skipped : int;
+      (** global factoring fixpoints skipped by the incremental preflight *)
+  mutable factor_preflight_gain : int;
+      (** total raw-byte gain estimated by the global factoring preflight *)
+  mutable factor_bytes_saved : int;
+      (** total committed byte savings reported by global factoring passes *)
+  mutable anchors_scored : int;  (** [factor_anchor_score] invocations *)
+  mutable anchors_prefiltered : int;
+      (** scored anchors rejected by the no-shared-declaration pre-filter *)
+  mutable factorings_applied : int;  (** anchor-gap factorings committed *)
+  mutable interval_candidates : int;
+      (** [factor_common] interval candidates considered by the indexed scorer
+      *)
+  mutable interval_pruned : int;
+      (** interval candidates rejected by the optimistic size upper bound *)
+  mutable interval_scored : int;
+      (** interval candidates that reached exact cascade-aware scoring *)
+  mutable interval_selected : int;
+      (** interval candidates selected by weighted interval scheduling *)
+}
+(** Global counters across the last [Optimize.stylesheet] run. *)
+
+val counters : counters
+(** The counters; mutated by the optimizer, reset at each {!val-stylesheet}
+    entry. *)

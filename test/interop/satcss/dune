@@ -1,0 +1,20 @@
+; SatCSS interop. The test runs from the local oracle in traces/ (gitignored:
+; third-party corpus CSS, see scripts/generate.sh). With no traces present it
+; reports a single skip, so a fresh checkout / CI stays green without the tool.
+
+(test
+ (name test)
+ (libraries cascade alcotest fmt)
+ (deps
+  (source_tree traces)))
+
+; Regenerate the SatCSS oracle: dune build @regen-traces
+
+(rule
+ (alias regen-traces)
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))

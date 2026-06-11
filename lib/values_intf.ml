@@ -1,5 +1,16 @@
 type meta = ..
 
+type component_values = Component.t list
+(** Parsed CSS component values preserved for fallback and invalid-value
+    round-tripping. *)
+
+type invalid_value = component_values
+(** Spec-invalid value fragments preserved until optimization decides whether to
+    drop the containing declaration. *)
+
+type custom_value = component_values
+(** CSS custom-property token stream. *)
+
 type 'a fallback =
   | Empty (* Empty fallback: var(--name,) *)
   | Empty2
@@ -7,9 +18,10 @@ type 'a fallback =
        a bug in tailwindcss *)
   | None (* No fallback: var(--name) *)
   | Fallback of 'a (* Value fallback: var(--name, value) *)
+  | Syntax_fallback of component_values
+    (* Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of
       string (* Nested var fallback: var(--name, var(--fallback)) *)
-  | Raw_fallback of string (* Raw string fallback when typed parsing fails *)
 
 type 'a var = {
   name : string;
@@ -19,15 +31,90 @@ type 'a var = {
   meta : meta option;
 }
 
+type 'a env = { name : string; indices : int list; fallback : 'a option }
 type calc_op = Add | Sub | Mul | Div
+
+(** CSS Values 4 §10.7.1 math constants - emitted at the source byte sequence
+    (e.g. [pi], [e]) rather than their floating-point evaluation, so pretty pp
+    preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)]. *)
+type math_const = Pi | E | Infinity | Neg_infinity | Nan
+
+(** CSS Values 4 §10.7 numeric math function arguments. Self-recursive so nested
+    calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants stays
+    as a tree ([(e - exp(1))]). *)
+type math_arg =
+  | Lit of float
+  | Dim of float * string
+      (** A dimension argument (e.g. [1vw], [1%]). [sign(<dimension>)] only
+          cares about the numeric coefficient; the unit is preserved for pretty
+          pp. *)
+  | Const of math_const
+  | Var_arg of math_arg var
+  | Op of math_arg * calc_op * math_arg
+  | Parens_arg of math_arg
+  | Math_call of math_fn
+
+(** CSS Values 4 §10.7 numeric math functions. Each arm preserves its source arg
+    shape so pretty pp re-emits [name(args)]; the optimizer evaluates to [Num]
+    under minify. *)
+and math_fn =
+  | Sin of angle_arg
+  | Cos of angle_arg
+  | Tan of angle_arg
+  | Asin of math_arg
+  | Acos of math_arg
+  | Atan of math_arg
+  | Atan2 of math_arg * math_arg
+  | Sqrt of math_arg
+  | Exp of math_arg
+  | Log of math_arg * math_arg option
+  | Pow of math_arg * math_arg
+  | Hypot of math_arg list
+  | Sign_n of math_arg
+  | Abs_n of math_arg
+
+(** [sin] / [cos] / [tan] accept an [<angle>] or unitless [<number>] expression
+    (treated as radians). Arithmetic over angles ([22deg + 23deg]) and
+    parentheses round-trip via [Operation] / [Grouped]. *)
+and angle_arg =
+  | Deg of float
+  | Rad of float
+  | Turn of float
+  | Grad of float
+  | Numeric_arg of math_arg
+  | Operation of angle_arg * calc_op * angle_arg
+  | Grouped of angle_arg
 
 type 'a calc =
   | Var of 'a var
   | Val of 'a
   | Num of float
+  | Math_const of math_const
+  | Sibling_index
+  | Sibling_count
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
+  | Math_fn of math_fn
+(* CSS Values 4 §10.7 numeric math functions ([sin], [cos], [hypot], ...).
+   Pretty pp emits [name(args)] preserving source shape; minify pp / optimizer
+   evaluates to [Num]. *)
+
+type attr_syntax = Length | Length_percentage | Color | Number | Percentage
+
+type attr_type =
+  | Type of attr_syntax
+  | Unit of string
+  | Raw_string
+  | Number_type
+
+type 'a attr_fallback = No_fallback | Empty_fallback | Attr_fallback of 'a
+
+type 'a attr_call = {
+  name : string;
+  type_ : attr_type option;
+  fallback : 'a attr_fallback;
+}
 
 type length =
   | Px of float
@@ -42,6 +129,7 @@ type length =
   | Ex of float
   | Cap of float
   | Ic of float
+  | Ric of float
   | Rlh of float
   | Pct of float
   | Vw of float
@@ -62,10 +150,22 @@ type length =
   | Svw of float
   | Svmin of float
   | Svmax of float
+  | Cqw of float
+  | Cqh of float
+  | Cqi of float
+  | Cqb of float
+  | Cqmin of float
+  | Cqmax of float
   | Ch of float
   | Lh of float
+  | Dimension of { value : float; unit : string; repr : string }
+  | Size
   | Auto
   | None
+  | Normal
+      (** [normal] keyword used by [letter-spacing], [word-spacing],
+          [line-height], etc. when their value falls back to the user-agent
+          default. *)
   | Zero
   | Inherit
   | Initial
@@ -73,14 +173,39 @@ type length =
   | Revert
   | Revert_layer
   | Fit_content
+  | Fit_content_arg of length
+      (** [fit-content(<length-percentage>)] - CSS Sizing 3 §5.1. The argument
+          is a [<length-percentage>]; we store it via the [length] type because
+          [length] already has a [Pct of float] case for the percentage form (a
+          separate [length_percentage] would force a mutually-recursive type).
+      *)
   | Content
+  | Contain
   | Max_content
   | Min_content
   | From_font
-  | Clamp of string
-  | Min of string
-  | Max of string
-  | Minmax of string
+  | Hairline
+  | Thin
+  | Medium
+  | Thick
+  | Stretch
+  | Clamp of length * length * length
+  | Min of length list
+  | Max of length list
+  | Minmax of length * length
+  | Round of string * length * length
+  | Mod of length * length
+  | Rem_fn of length * length
+  | Hypot of length list
+  | Abs of length
+  | Sign of length
+  | Calc_size of length * length calc
+  | Anchor_size of string
+  | Anchor of string option * string * length option
+  | Attr of length attr_call
+      (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
+          typed-value contexts. *)
+  | Env of length env
   | Var of length var
   | Calc of length calc
 
@@ -251,7 +376,16 @@ type color_name =
   | White_smoke
   | Yellow_green
 
-type channel = Int of int | Num of float | Pct of float | Var of channel var
+type channel =
+  | Int of int
+  | Num of float
+  | Pct of float
+  | Var of channel var
+  | None
+      (** CSS Color 4 sec. 4.2.3 [none] sentinel. Carries through to the
+          serialised output as the [none] keyword and participates in
+          [color-mix] / relative-color substitution by adopting the other
+          operand's analogous channel instead of being treated as a zero. *)
 
 type rgb =
   | Channels of { r : channel; g : channel; b : channel }
@@ -262,11 +396,26 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
+  | Round of string * angle * angle
+  | Mod of angle * angle
+  | Rem of angle * angle
   | Calc of angle calc
   | Var of angle var
+  | Invalid of invalid_value
+      (** Spec-invalid [<angle>] input (e.g. [asin(<angle>)] - inverse trig
+          takes [<number>], not [<angle>]) that upstream tools preserve
+          verbatim. The pretty-printer emits the tokens unchanged; the
+          [Optimize.drop_invalid] pass removes any declaration whose typed value
+          reduces to this arm under [--minify]. *)
 
-type alpha = None | Num of float | Pct of float | Var of alpha var
-type hue = Unitless of float | Angle of angle | Var of hue var
+type alpha =
+  | None
+  | Num of float
+  | Pct of float
+  | Var of alpha var
+  | Calc of alpha calc
+
+type hue = Unitless of float | Angle of angle | Var of hue var | Hue_none
 
 type component =
   | Num of float
@@ -274,6 +423,7 @@ type component =
   | Angle of hue
   | Var of component var
   | Calc of component calc
+  | Component_none
 
 type percentage =
   | Pct of float
@@ -284,8 +434,14 @@ type percentage =
 type length_percentage =
   | Length of length
   | Pct of float
+  | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
+  | Invalid of invalid_value
+      (** Spec-invalid input cascade detected (e.g. [width: asin(sin(45deg))]
+          - the inner reduction yields an angle, but [<length-percentage>]
+            doesn't accept angles). Pretty-printer emits the tokens verbatim;
+            [Optimize.drop_invalid] removes the declaration under [--minify]. *)
 
 type number_percentage =
   | Num of float
@@ -293,7 +449,15 @@ type number_percentage =
   | Var of number_percentage var
   | Calc of number_percentage calc
 
-type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+type hue_interpolation =
+  | Shorter
+  | Longer
+  | Increasing
+  | Decreasing
+  | Specified
+      (** CSS Color 5 §13 [specified hue] - keep authored hue values without
+          interpolation rotation. *)
+  | Default
 
 (** CSS system colors - case-insensitive keywords that map to OS/browser colors
 *)
@@ -321,25 +485,48 @@ type system_color =
   | Webkit_focus_ring_color
 
 type color =
-  | Hex of { hash : bool; value : string }
+  | Hex of { r : int; g : int; b : int; a : int }
+      (** A hex colour decoded to its sRGB byte components ([a = 255] when
+          opaque). Every spelling ([#fff] / [#ffffff] / [#FFFFFF]) decodes to
+          one node, so the printer picking the shortest spelling round-trips. *)
+  | Authored_hex of { value : string; r : int; g : int; b : int; a : int }
+      (** A parsed hex colour preserving the source spelling without the leading
+          [#]. Optimisation folds this to the canonical semantic colour. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
-  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
-  | Oklab of {
-      l : percentage;
+  | Relative_rgb of string
+  | Relative_color of string * string
+      (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for any color
+          function other than [rgb()] (CSS Color 5 §2). The first string is the
+          function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb], [color]),
+          the second is the parenthesised body verbatim. *)
+  | Contrast_color of color
+  | Light_dark of color * color
+  | Attribute of string * color option
+  | Lab of {
+      l : percentage option;
       a : float option;
       b : float option;
       alpha : alpha;
     }
-  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Oklch of { l : percentage option; c : float option; h : hue; alpha : alpha }
+  | Oklab of {
+      l : percentage option;
+      a : float option;
+      b : float option;
+      alpha : alpha;
+    }
+  | Lch of { l : percentage option; c : float option; h : hue; alpha : alpha }
   | Named of color_name
   | System of system_color
   | Var of color var
   | Current
   | Transparent
+  | Auto
+      (** [auto] keyword (e.g., [accent-color: auto], [caret-color: auto]) *)
   | Inherit
   | Initial
   | Unset
@@ -354,6 +541,33 @@ type color =
       percent2 : percentage option;
     }
 
-type duration = Ms of float | S of float | Var of duration var
-type number = Num of float | Var of number var
+type duration =
+  | Ms of float
+  | S of float
+  | Durations of duration list
+  | Round of string * duration * duration
+  | Mod of duration * duration
+  | Rem of duration * duration
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of duration var
+  | Calc of duration calc
+
+type number =
+  | Num of float
+  | Var of number var
+  | Calc of number calc
+  | Round of string * number * number
+  | Mod of number * number
+  | Rem of number * number
+  | Hypot of number * number
+  | Pow of number * number
+  | Sqrt of number
+  | Abs of number
+  | Sign of number
+  | Sin of angle
+
 type transition_behavior = Normal | Allow_discrete
