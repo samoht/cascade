@@ -49,15 +49,20 @@ let compare_files file1 file2 style_renderer mode lossless memtrace_path () =
         Fmt.pr "CSS files are identical@.";
         Ok ())
       else
-        match run_diff mode ~lossless ~css1 ~css2 with
+        let result = run_diff mode ~lossless ~css1 ~css2 in
+        match result.Cascade_diff.Css_compare.result with
         | No_diff _ ->
+            (* Equal ASTs can still hide parse-dropped declarations; show the
+               warnings so the equality verdict is honest about them. *)
+            let buf = Buffer.create 256 in
+            Cascade_diff.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+            print_string (Buffer.contents buf);
             Fmt.pr "CSS files are identical@.";
             Ok ()
-        | String_diff _ as result ->
+        | String_diff _ ->
             print_diff_report ~file1 ~file2 ~css1 ~css2 result;
             Error (`Msg "CSS files differ (string diff)")
-        | (Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _) as
-          result ->
+        | Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _ ->
             print_diff_report ~file1 ~file2 ~css1 ~css2 result;
             Error (`Msg "CSS files differ"))
   | Error e, _ | _, Error e -> Error e
