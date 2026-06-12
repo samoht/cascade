@@ -444,17 +444,6 @@ let word_like_end : Component.t -> bool = function
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
-(* A [Func] or Paren [Block] on the left ends in [)] which closes its token
-   cleanly; the boundary kept by [word_like_end] exists for the following
-   ident-like token (CSS Color 4 sec. 11.1 relative colour channels). When the
-   right side is itself a [Func] or Paren [Block], no grammar needs the
-   separator and [)var(] re-tokenises identically, so the pair elides. *)
-let paren_shaped : Component.t -> bool = function
-  | Func _ | Block { node = { opening = Paren; _ }; _ } -> true
-  | _ -> false
-
-let elidable_paren_pair p next = paren_shaped p && paren_shaped next
-
 let word_like_start : Component.t -> bool = function
   | Preserved
       {
@@ -584,7 +573,6 @@ and cvs_to_buffer_min buf cvs =
            && word_like_end p
            && (not (is_backslash_delim p))
            && word_like_start next
-           && not (elidable_paren_pair p next)
   in
   let rec loop prev separated = function
     | [] -> ()
@@ -657,6 +645,10 @@ let rec drop_whitespace_components = function
   | cv :: rest when is_whitespace cv -> drop_whitespace_components rest
   | other -> other
 
+let custom_min_is_math_delim = function
+  | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
+  | _ -> false
+
 let custom_min_is_bang = function
   | Component.Preserved { kind = Token.Delim "!"; _ } -> true
   | _ -> false
@@ -684,18 +676,18 @@ let custom_min_word_boundary p next =
   && word_like_end p
   && (not (is_backslash_delim p))
   && word_like_start next
-  && not (elidable_paren_pair p next)
 
-(* CSS Values 4 sec. 10.1 requires whitespace only around [+] and [-] in math
-   expressions, since those can otherwise fuse into a signed-number token. [*]
-   and [/] are unambiguous, so [16/9] is a valid two-number/divide token
-   sequence and dropping whitespace around them is sound everywhere a custom
-   property is substituted, including [calc()]. *)
+(* A whitespace token in a custom-property value is part of the stream a var()
+   substitution receives, so an authored separator around [*] and [/] is
+   collapsed to one space, never deleted: [16 / 9] and [16/9] are different
+   token streams even though both parse in [calc()]. *)
 let custom_min_needs_separator prev next rest =
   match prev with
   | None -> false
   | Some p ->
       pair_forms_multichar_token p next
+      || custom_min_is_math_delim p
+      || custom_min_is_math_delim next
       || custom_min_bang_boundary prev next rest
       || custom_min_word_boundary p next
 

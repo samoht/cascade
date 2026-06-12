@@ -3116,16 +3116,12 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       | None -> ()
       | Some pos1 -> (
           (* CSS Syntax 3 §4: ident- and hash-typed colours absorb the following
-             digit/hex into the same token ([red0%] -> ident [red0] + [%];
-             [#00f50%] -> hash [#00f50] + [%]), so the separator before the
-             position is mandatory. Function-shaped colours ([var(...)] /
-             [rgb(...)] / etc.) end with [)] which closes their token cleanly,
-             so the space is elidable in minified output. *)
-          let ends_with_paren =
-            String.length rendered_color > 0
-            && rendered_color.[String.length rendered_color - 1] = ')'
-          in
-          if not (Pp.minified ctx && ends_with_paren) then Pp.space ctx ();
+             digit/hex into the same token ([red0%] -> ident [red0] + [%]), so
+             the separator is mandatory there; and when the stop lives in a
+             custom-property token stream, the whitespace token between a
+             function-shaped colour and its position is part of the value a
+             var() substitution receives, so it is never elided either. *)
+          Pp.space ctx ();
           pp_length_percentage ~always:true ctx pos1;
           match pos2_opt with
           | None -> ()
