@@ -5,8 +5,8 @@
 (rule
  (alias runtest)
  (deps
-  (:properties %{project_root}/lib/properties.ml)
-  (:properties_intf %{project_root}/lib/properties_intf.ml)
+  (:properties ../lib/properties.ml)
+  (:properties_intf ../lib/properties_intf.ml)
   (:script check_properties.exe))
  (action
   (run %{script})))
@@ -17,9 +17,9 @@
 (rule
  (alias runtest)
  (deps
-  (glob_files %{project_root}/lib/*_intf.ml)
-  (glob_files %{project_root}/lib/*.mli)
-  (glob_files %{project_root}/test/test_*.ml)
+  (glob_files ../lib/*_intf.ml)
+  (glob_files ../lib/*.mli)
+  (glob_files ../test/test_*.ml)
   (:script check_api_consistency.exe))
  (action
   (run %{script})))
