@@ -14512,6 +14512,7 @@ let rec read_scroll_behavior (t : Cursor.t) : scroll_behavior =
     t
 
 let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
+  Cursor.ws t;
   let read_single t =
     Cursor.enum_or_var "scroll-snap-align"
       [
@@ -14875,6 +14876,7 @@ let rec read_page_size t : page_size =
     t
 
 let rec read_scroll_snap_stop (t : Cursor.t) : scroll_snap_stop =
+  Cursor.ws t;
   Cursor.enum_or_var "scroll-snap-stop"
     [
       ("normal", (Normal : scroll_snap_stop));
