@@ -1497,6 +1497,13 @@ val read_conic_gradient_config : Cursor.t -> conic_gradient_config
 (** [read_conic_gradient_config t] parses a conic-gradient prefix configuration.
 *)
 
+val pp_gradient_position : gradient_position Pp.t
+(** [pp_gradient_position] pretty-prints a gradient prelude/position value. *)
+
+val read_gradient_position : Cursor.t -> gradient_position
+(** [read_gradient_position t] parses a linear, radial, or conic gradient
+    prelude/position value. *)
+
 val pp_gradient_stop : gradient_stop Pp.t
 (** [pp_gradient_stop] is the pretty-printer for [gradient_stop]. *)
 

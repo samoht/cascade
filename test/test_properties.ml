@@ -413,6 +413,10 @@ let check_gradient_direction =
   check_value_cursor "gradient-direction" read_gradient_direction
     pp_gradient_direction
 
+let check_gradient_position =
+  check_value_cursor "gradient-position" read_gradient_position
+    pp_gradient_position
+
 let check_gradient_stop =
   check_value_cursor "gradient-stop" read_gradient_stop pp_gradient_stop
 
@@ -2266,6 +2270,21 @@ let test_gradient_direction () =
   optimizes ~into:"270deg" "to left";
   neg_cursor read_gradient_direction "invalid-direction"
 
+(* CSS Images 4 sections 6.1-6.3: the gradient prelude is a linear direction, a
+   radial shape/size/position, or a conic angle/position; a typed custom
+   property holding a gradient prelude accepts any of the three. *)
+let test_gradient_position () =
+  check_gradient_position "to right";
+  check_gradient_position "45deg";
+  check_gradient_position "to right in oklab";
+  check_gradient_position "circle at center";
+  check_gradient_position "closest-side";
+  check_gradient_position "at center";
+  check_gradient_position "from 45deg";
+  check_gradient_position "from 90deg at left top";
+  check_gradient_position "var(--gradient-position)";
+  neg_cursor read_gradient_position "invalid-position"
+
 let test_gradient_stop () =
   (* Basic color stops *)
   check_gradient_stop "red";
@@ -2371,9 +2390,11 @@ let test_background_image () =
     "linear-gradient(in oklab to right, red, blue)";
   check_background_image ~expected:"radial-gradient(in oklab,red,blue)"
     "radial-gradient(in oklab, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,blue)"
     "radial-gradient(in oklab circle at center, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,blue)"
     "radial-gradient(circle at center in oklab, red, blue)";
   decl_optimizes ~prop:"background-image"
     ~into:"radial-gradient(in oklab,red,#00f)"
@@ -2425,10 +2446,20 @@ let test_radial_size () =
 
 let test_radial_gradient_config () =
   check_radial_gradient_config "circle";
-  check_radial_gradient_config ~expected:"" "ellipse";
+  check_radial_gradient_config "ellipse";
   check_radial_gradient_config "circle closest-side";
-  check_radial_gradient_config ~expected:"circle" "circle at center";
-  neg_cursor read_radial_gradient_config "invalid-config"
+  check_radial_gradient_config "circle at center";
+  neg_cursor read_radial_gradient_config "invalid-config";
+  (* pp holds the authored defaults; the optimizer elides them (CSS Images 4
+     section 3.1: ellipse / farthest-corner / center are implied). *)
+  decl_optimizes ~prop:"background"
+    ~held:"radial-gradient(circle at center,red,#123456)"
+    ~into:"radial-gradient(circle,red,#123456)"
+    "radial-gradient(circle at center, red, #123456)";
+  decl_optimizes ~prop:"background"
+    ~held:"radial-gradient(ellipse farthest-corner,red,#123456)"
+    ~into:"radial-gradient(red,#123456)"
+    "radial-gradient(ellipse farthest-corner, red, #123456)"
 
 let test_conic_gradient_config () =
   check_conic_gradient_config "from 45deg";
@@ -3759,6 +3790,7 @@ let tests =
     test_case "transform" `Quick test_transform;
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
+    test_case "gradient position" `Quick test_gradient_position;
     test_case "gradient stop" `Quick test_gradient_stop;
     test_case "color interpolation" `Quick test_color_interpolation;
     test_case "overscroll-behavior" `Quick test_overscroll_behavior;

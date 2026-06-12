@@ -2433,25 +2433,6 @@ type gradient_direction =
   | With_interpolation of gradient_direction * color_interpolation
   | Var of gradient_direction var
 
-type gradient_stop =
-  | Color_percentage of
-      color * length_percentage option * length_percentage option
-    (* Color with optional length-percentage position *)
-  | Color_length of
-      color
-      * length option
-      * length option (* Color with optional length position *)
-  | Length of length (* Interpolation hint with length, e.g., "50px" *)
-  | Channel of channel
-      (** Residual numeric channel token from custom-property substitution. *)
-  | List of
-      gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
-  | Percentage of
-      percentage (* Interpolation hint with percentage, e.g., "50%" *)
-  | Direction of gradient_direction
-  | Var of gradient_stop var
-(* Gradient direction for stops, e.g., "to right" or Var *)
-
 type radial_shape = Circle | Ellipse | Var of radial_shape var
 
 type radial_size =
@@ -2526,6 +2507,32 @@ type conic_gradient_config = {
   interpolation : color_interpolation option;
       (** Optional [in <color-interpolation-method>] clause. *)
 }
+
+type gradient_position =
+  | Linear_position of gradient_direction
+  | Radial_position of radial_gradient_config
+  | Conic_position of conic_gradient_config
+  | Var of gradient_position var
+
+type gradient_stop =
+  | Color_percentage of
+      color * length_percentage option * length_percentage option
+    (* Color with optional length-percentage position *)
+  | Color_length of
+      color
+      * length option
+      * length option (* Color with optional length position *)
+  | Length of length (* Interpolation hint with length, e.g., "50px" *)
+  | Channel of channel
+      (** Residual numeric channel token from custom-property substitution. *)
+  | List of
+      gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
+  | Percentage of
+      percentage (* Interpolation hint with percentage, e.g., "50%" *)
+  | Position of gradient_position
+  | Direction of gradient_direction
+  | Var of gradient_stop var
+(* Gradient direction for stops, e.g., "to right" or Var *)
 
 module Webkit_gradient = struct
   type point = Left_top | Left_bottom | Center | Position of position_value
@@ -4197,6 +4204,7 @@ type _ kind =
   | Content : content kind
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind
+  | Gradient_position : gradient_position kind
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind
