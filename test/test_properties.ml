@@ -3660,7 +3660,7 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_view_transition_class "none card";
   neg_cursor read_view_transition_name "match-element card"
 
-let test_enum_readers_accept_leading_ws () =
+let enum_readers_accept_leading_ws () =
   List.iter
     (fun check -> check ())
     [
@@ -3729,7 +3729,7 @@ let tests =
     test_case "scroll-snap-strictness" `Quick test_scroll_snap_strictness;
     test_case "scroll-snap-type" `Quick test_scroll_snap_type;
     test_case "enum readers accept leading whitespace" `Quick
-      test_enum_readers_accept_leading_ws;
+      enum_readers_accept_leading_ws;
     test_case "property names" `Quick test_property_names;
     (* Additional coverage for missing readers *)
     test_case "grid auto-flow" `Quick test_grid_auto_flow;
