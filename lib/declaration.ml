@@ -1711,6 +1711,20 @@ let read_custom_property_payload name value_str =
       read_custom_property_value ~font_family:true (Cursor.of_string value_str)
   else read_custom_property_value (Cursor.of_string value_str)
 
+let whitespace_only_custom_property_value =
+  Tokens [ Component.Preserved (Token.synthetic Token.Whitespace) ]
+
+(* Keep a single space when the raw declaration value was whitespace-only - that
+   one space is the spec-required token sequence (CSS Custom Properties for
+   Cascading Variables 1 sec. 2.1). *)
+let read_custom_value name ~raw_is_whitespace_only value_str =
+  let value_str =
+    if value_str = "" && raw_is_whitespace_only then " " else value_str
+  in
+  if value_str = " " && raw_is_whitespace_only then
+    whitespace_only_custom_property_value
+  else read_custom_property_payload name value_str
+
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
   (* CSS Syntax 3 §4.3.7 lets [\X] escapes carry any code point into an ident,
@@ -1731,14 +1745,11 @@ let read_custom_property_declaration t : declaration =
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_custom_important raw_value in
-  let value_str =
-    (* Keep a single space when the raw declaration value was whitespace- only -
-       that one space is the spec-required token sequence. *)
-    if value_str = "" && raw_is_whitespace_only then " " else value_str
-  in
   (* custom_property may raise Failure for invalid names like "--" *)
   try
-    let custom_value = read_custom_property_payload name value_str in
+    let custom_value =
+      read_custom_value name ~raw_is_whitespace_only value_str
+    in
     let decl =
       v (Custom_property name)
         (Custom_value { value = custom_value; layer = None; meta = None })

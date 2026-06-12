@@ -444,6 +444,17 @@ let word_like_end : Component.t -> bool = function
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
+(* A [Func] or Paren [Block] on the left ends in [)] which closes its token
+   cleanly; the boundary kept by [word_like_end] exists for the following
+   ident-like token (CSS Color 4 sec. 11.1 relative colour channels). When the
+   right side is itself a [Func] or Paren [Block], no grammar needs the
+   separator and [)var(] re-tokenises identically, so the pair elides. *)
+let paren_shaped : Component.t -> bool = function
+  | Func _ | Block { node = { opening = Paren; _ }; _ } -> true
+  | _ -> false
+
+let elidable_paren_pair p next = paren_shaped p && paren_shaped next
+
 let word_like_start : Component.t -> bool = function
   | Preserved
       {
@@ -573,6 +584,7 @@ and cvs_to_buffer_min buf cvs =
            && word_like_end p
            && (not (is_backslash_delim p))
            && word_like_start next
+           && not (elidable_paren_pair p next)
   in
   let rec loop prev separated = function
     | [] -> ()
@@ -672,6 +684,7 @@ let custom_min_word_boundary p next =
   && word_like_end p
   && (not (is_backslash_delim p))
   && word_like_start next
+  && not (elidable_paren_pair p next)
 
 (* CSS Values 4 sec. 10.1 requires whitespace only around [+] and [-] in math
    expressions, since those can otherwise fuse into a signed-number token. [*]
@@ -773,9 +786,11 @@ and cvs_to_buffer_min_custom buf cvs =
   loop None false cvs
 
 let to_string_custom_minified cvs =
-  let buf = Buffer.create 64 in
-  cvs_to_buffer_min_custom buf cvs;
-  Buffer.contents buf
+  if cvs <> [] && List.for_all is_whitespace cvs then " "
+  else
+    let buf = Buffer.create 64 in
+    cvs_to_buffer_min_custom buf cvs;
+    Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
 

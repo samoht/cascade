@@ -889,7 +889,7 @@ let custom_properties () =
   (* With var() references *)
   check_declaration ~expected:"--primary:var(--base-color)"
     "--primary: var(--base-color)";
-  check_declaration ~expected:"--size:calc(var(--base) * 2)"
+  check_declaration ~expected:"--size:calc(var(--base)*2)"
     "--size: calc(var(--base) * 2)";
   check_declaration ~expected:"--fallback:var(--undefined,10px)"
     "--fallback: var(--undefined, 10px)";
