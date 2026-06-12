@@ -20235,7 +20235,9 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Opacity -> pp pp_opacity
   | Value ->
       let rendered =
-        if Pp.minified ctx then Parser.to_string_custom_minified value
+        if Pp.minified ctx then
+          Parser.to_string_custom_minified
+            ~fold_ident:Values.fold_custom_value_ident value
         else Parser.to_string_custom value
       in
       Pp.string ctx rendered
