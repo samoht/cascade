@@ -2290,7 +2290,7 @@ let test_gradient_stop () =
   check_gradient_stop "red";
   check_gradient_stop "blue 50%";
   check_gradient_stop ~expected:"#ff5733 25%" "#ff5733 25%";
-  check_gradient_stop ~expected:"rgb(255 0 0)10px" "rgb(255,0,0) 10px";
+  check_gradient_stop ~expected:"rgb(255 0 0) 10px" "rgb(255,0,0) 10px";
   decl_optimizes ~prop:"background-image" ~into:"linear-gradient(#00f 50%,red)"
     "linear-gradient(blue 50%,red)";
   decl_optimizes ~prop:"background-image" ~into:"linear-gradient(red 10px,#00f)"
@@ -2305,13 +2305,10 @@ let test_gradient_stop () =
 
   (* CSS variables in gradient stops *)
   check_gradient_stop "var(--tw-gradient-from)";
-  check_gradient_stop ~expected:"var(--color-blue-500)50%"
-    "var(--color-blue-500) 50%";
+  check_gradient_stop "var(--color-blue-500) 50%";
 
   (* Complex var with fallback *)
-  check_gradient_stop
-    ~expected:"var(--tw-gradient-from)var(--tw-gradient-from-position)"
-    "var(--tw-gradient-from) var(--tw-gradient-from-position)";
+  check_gradient_stop "var(--tw-gradient-from) var(--tw-gradient-from-position)";
 
   (* Multiple vars in sequence (as used in Tailwind gradients) *)
   check_gradient_stop ~expected:"var(--tw-gradient-position)"
@@ -2320,7 +2317,9 @@ let test_gradient_stop () =
   (* Nested var with complex fallback *)
   check_gradient_stop
     ~expected:
-      "var(--tw-gradient-via-stops,var(--tw-gradient-position),var(--tw-gradient-from)var(--tw-gradient-from-position),var(--tw-gradient-to)var(--tw-gradient-to-position))"
+      "var(--tw-gradient-via-stops,var(--tw-gradient-position),var(--tw-gradient-from) \
+       var(--tw-gradient-from-position),var(--tw-gradient-to) \
+       var(--tw-gradient-to-position))"
     "var(--tw-gradient-via-stops, var(--tw-gradient-position), \
      var(--tw-gradient-from) var(--tw-gradient-from-position), \
      var(--tw-gradient-to) var(--tw-gradient-to-position))";
