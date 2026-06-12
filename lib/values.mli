@@ -343,8 +343,9 @@ val read_color : Cursor.t -> color
 
 val read_color_keyword_of_string : string -> color option
 (** [read_color_keyword_of_string s] is the color keyword named by the
-    lower-case ident [s]: a named color, [transparent], [currentcolor], [auto],
-    [inherit], or a system color. [None] when [s] names no color keyword. *)
+    lower-case ident [s]: a named color, {!val-transparent}, [currentcolor],
+    [auto], [inherit], or a system color. [None] when [s] names no color
+    keyword. *)
 
 val fold_custom_value_ident : string -> string
 (** [fold_custom_value_ident s] is the canonical lower-case spelling of [s] when
