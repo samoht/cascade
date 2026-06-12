@@ -891,6 +891,8 @@ let custom_properties () =
     "--primary: var(--base-color)";
   check_declaration ~expected:"--size:calc(var(--base) * 2)"
     ~optimized:"--size:calc(var(--base)*2)" "--size: calc(var(--base) * 2)";
+  check_declaration ~expected:"--aspect-video:16 / 9"
+    ~optimized:"--aspect-video:16/9" "--aspect-video: 16 / 9";
   check_declaration ~expected:"--stops:var(--from) var(--from-position)"
     "--stops: var(--from) var(--from-position)";
   check_declaration ~expected:"--fallback:var(--undefined,10px)"

@@ -284,6 +284,17 @@ let canonical_top_level_selector_list_permutation_equal () =
    comparison normalizes it - including inside custom-property values, where the
    calc body is otherwise round-tripped verbatim. *)
 
+let canonical_bare_ratio_whitespace_equal () =
+  (* The motivating cross-tool case: Tailwind authors [--aspect-video: 16 / 9]
+     while a typed ratio serialises as [16/9]; the whitespace around [/] is
+     insignificant wherever the stream is substituted, so canonical comparison
+     folds it even outside a math function. *)
+  let expected = ".x{--aspect-video: 16 / 9}" in
+  let actual = ".x{--aspect-video:16/9}" in
+  Alcotest.(check bool)
+    "bare ratio whitespace around / canonicalizes equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
 let canonical_calc_mul_div_whitespace_equal () =
   let expected = ".x{--v:calc(1 / 2 * 100%)}" in
   let actual = ".x{--v:calc(1/2*100%)}" in
@@ -824,6 +835,8 @@ let suite =
         canonical_nested_where_is_permutation_equal;
       Alcotest.test_case "canonical top-level selector list permutation" `Quick
         canonical_top_level_selector_list_permutation_equal;
+      Alcotest.test_case "canonical bare ratio whitespace" `Quick
+        canonical_bare_ratio_whitespace_equal;
       Alcotest.test_case "canonical calc *,/ whitespace" `Quick
         canonical_calc_mul_div_whitespace_equal;
       Alcotest.test_case "canonical calc paren whitespace" `Quick

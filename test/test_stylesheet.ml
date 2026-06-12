@@ -5834,12 +5834,12 @@ let customprops13_box_shadow_zero_spread () =
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "unregistered OKLab custom property keeps opaque token stream"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
     "unregistered OKLab custom property preserves required token boundary"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
   Alcotest.(check string)
