@@ -20516,6 +20516,9 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Object_view_box -> normalize_object_view_box value
   | Object_position -> normalize_position_value value
   | Perspective_origin -> normalize_position_value value
+  | Background_position -> map_preserve normalize_position_value value
+  | Mask_position -> map_preserve normalize_position_value value
+  | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
   | View_timeline_inset -> normalize_timeline_inset value
