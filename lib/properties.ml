@@ -20467,6 +20467,29 @@ let strip_math_whitespace comps =
   in
   aux [] comps
 
+let is_mul_or_div_delim = function
+  | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
+  | _ -> false
+
+(* Outside a math function only the whitespace adjacent to a [*] or [/] delim is
+   insignificant (CSS Values 4 sec. 10.1): [16 / 9] and [16/9] re-tokenise
+   identically wherever the stream is substituted. Every other separator stays
+   (a whitespace token between two values is part of the stream). *)
+let strip_mul_div_whitespace comps =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+        let prev_md =
+          match acc with [] -> false | p :: _ -> is_mul_or_div_delim p
+        in
+        let next_md =
+          match rest with [] -> false | n :: _ -> is_mul_or_div_delim n
+        in
+        if prev_md || next_md then aux acc rest else aux (ws :: acc) rest
+    | other :: rest -> aux (other :: acc) rest
+  in
+  aux [] comps
+
 (* [in_math] tracks whether the current component list is inside a math
    function's grammar. It enters at the args of a [calc()] / [min()] / ... call,
    propagates through grouping parens ([Block]s) since those are math operands,
@@ -20495,7 +20518,8 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
         | Component.Preserved _ -> c)
       comps
   in
-  if in_math then strip_math_whitespace comps' else comps'
+  if in_math then strip_math_whitespace comps'
+  else strip_mul_div_whitespace comps'
 
 (* AST-level value normaliser: applies semantic (equivalence) canonicalisation
    so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
