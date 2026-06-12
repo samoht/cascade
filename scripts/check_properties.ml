@@ -91,15 +91,11 @@ let extract_handled_properties content =
   extract_from_string region
 
 let () =
-  (* Try to find the project root *)
-  let rec find_project_root dir =
-    if Sys.file_exists (Filename.concat dir "dune-project") then dir
-    else
-      let parent = Filename.dirname dir in
-      if parent = dir then "." else find_project_root parent
-  in
-
-  let project_root = find_project_root (Sys.getcwd ()) in
+  (* The script lives in <root>/scripts inside the build tree, so the enclosing
+     cascade root is one directory up from the executable. Walking up from the
+     cwd to the nearest dune-project breaks when cascade is vendored inside
+     another dune workspace. *)
+  let project_root = Filename.dirname (Filename.dirname Sys.executable_name) in
   let intf_file = Filename.concat project_root "lib/properties_intf.ml" in
   let impl_file = Filename.concat project_root "lib/properties.ml" in
 

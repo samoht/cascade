@@ -436,18 +436,11 @@ let print_module_results
       (List.sort compare missing_neg) (fun n ->
         print_string ("  test_" ^ n ^ "\n")))
 
-(* Project root detected by looking for dune-project file. *)
-let project_root () =
-  let rec search dir =
-    if Sys.file_exists (dir // "dune-project") then dir
-    else
-      let parent = Filename.dirname dir in
-      if parent = dir then
-        failwith "Could not find project root (no dune-project file found)"
-      else search parent
-  in
-  search (Sys.getcwd ())
-
+(* The script lives in <root>/scripts inside the build tree, so the enclosing
+   cascade root is one directory up from the executable. Walking up from the cwd
+   to the nearest dune-project breaks when cascade is vendored inside another
+   dune workspace. *)
+let project_root () = Filename.dirname (Filename.dirname Sys.executable_name)
 let root = project_root ()
 let lib_dir = root // "lib"
 let test_dir = root // "test"
