@@ -2768,33 +2768,6 @@ type gradient_direction = Properties.gradient_direction =
   | With_interpolation of gradient_direction * color_interpolation
   | Var of gradient_direction var  (** Gradient stop values *)
 
-type gradient_stop = Properties.gradient_stop =
-  | Color_percentage of
-      color * length_percentage option * length_percentage option
-      (** Color with optional percentage positions *)
-  | Color_length of color * length option * length option
-      (** Color with optional length positions *)
-  | Length of length  (** Interpolation hint with length, e.g., "50px" *)
-  | Channel of channel
-      (** Residual numeric channel token from custom-property substitution. *)
-  | List of gradient_stop list
-      (** Multiple gradient stops - used for var fallbacks *)
-  | Percentage of percentage
-      (** Interpolation hint with percentage, e.g., "50%" *)
-  | Direction of gradient_direction
-      (** Gradient direction for stops, e.g., "to right" or Var *)
-  | Var of gradient_stop var
-
-val gradient_stops : gradient_stop list -> gradient_stop
-(** [gradient_stops stops] groups multiple gradient stops, usually for variable
-    fallbacks. *)
-
-val gradient_hint_length : length -> gradient_stop
-(** [gradient_hint_length value] is a length interpolation hint. *)
-
-val gradient_hint_percentage : percentage -> gradient_stop
-(** [gradient_hint_percentage value] is a percentage interpolation hint. *)
-
 (** Shape of a radial gradient *)
 type radial_shape = Properties.radial_shape =
   | Circle
@@ -2827,6 +2800,40 @@ type conic_gradient_config = Properties.conic_gradient_config = {
 }
 (** Configuration for conic-gradient prefix: starting angle, center, and
     optional [in <color-interpolation-method>] clause. *)
+
+type gradient_position = Properties.gradient_position =
+  | Linear_position of gradient_direction
+  | Radial_position of radial_gradient_config
+  | Conic_position of conic_gradient_config
+  | Var of gradient_position var
+
+type gradient_stop = Properties.gradient_stop =
+  | Color_percentage of
+      color * length_percentage option * length_percentage option
+      (** Color with optional percentage positions *)
+  | Color_length of color * length option * length option
+      (** Color with optional length positions *)
+  | Length of length  (** Interpolation hint with length, e.g., "50px" *)
+  | Channel of channel
+      (** Residual numeric channel token from custom-property substitution. *)
+  | List of gradient_stop list
+      (** Multiple gradient stops - used for var fallbacks *)
+  | Percentage of percentage
+      (** Interpolation hint with percentage, e.g., "50%" *)
+  | Position of gradient_position
+  | Direction of gradient_direction
+      (** Gradient direction for stops, e.g., "to right" or Var *)
+  | Var of gradient_stop var
+
+val gradient_stops : gradient_stop list -> gradient_stop
+(** [gradient_stops stops] groups multiple gradient stops, usually for variable
+    fallbacks. *)
+
+val gradient_hint_length : length -> gradient_stop
+(** [gradient_hint_length value] is a length interpolation hint. *)
+
+val gradient_hint_percentage : percentage -> gradient_stop
+(** [gradient_hint_percentage value] is a percentage interpolation hint. *)
 
 val radial_gradient_config :
   ?shape:radial_shape ->
@@ -7173,6 +7180,7 @@ type 'a kind = 'a Properties.kind =
   | Content : content kind
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind
+  | Gradient_position : gradient_position kind
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind

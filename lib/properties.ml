@@ -2915,57 +2915,6 @@ let canonicalise_gradient_stops stops =
       strip_pos first :: strip_last rest
   | _ -> strip_last stops
 
-let rec pp_gradient_stop : gradient_stop Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_gradient_stop ctx v
-  | Color_percentage (c, pos1_opt, pos2_opt) -> (
-      let rendered_color =
-        Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-          pp_color c
-      in
-      Pp.string ctx rendered_color;
-      match pos1_opt with
-      | None -> () (* No positions *)
-      | Some pos1 -> (
-          (* CSS Syntax 3 §4: ident- and hash-typed colours absorb the following
-             digit/hex into the same token ([red0%] -> ident [red0] + [%];
-             [#00f50%] -> hash [#00f50] + [%]), so the separator before the
-             position is mandatory. Function-shaped colours ([var(...)] /
-             [rgb(...)] / etc.) end with [)] which closes their token cleanly,
-             so the space is elidable in minified output. *)
-          let ends_with_paren =
-            String.length rendered_color > 0
-            && rendered_color.[String.length rendered_color - 1] = ')'
-          in
-          if not (Pp.minified ctx && ends_with_paren) then Pp.space ctx ();
-          pp_length_percentage ~always:true ctx pos1;
-          match pos2_opt with
-          | None -> ()
-          | Some pos2 ->
-              Pp.space ctx ();
-              pp_length_percentage ~always:true ctx pos2))
-  | Color_length (c, len1_opt, len2_opt) -> (
-      pp_color ctx c;
-      match len1_opt with
-      | None -> () (* No positions *)
-      | Some len1 -> (
-          (* Space between color and length, even for variables *)
-          Pp.space ctx ();
-          pp_length ctx len1;
-          match len2_opt with
-          | None -> ()
-          | Some len2 ->
-              Pp.space ctx ();
-              pp_length ctx len2))
-  | Length len -> pp_length ctx len
-  | Channel channel -> pp_channel ctx channel
-  | Percentage pct -> pp_percentage ctx pct
-  | List stops ->
-      (* Pretty-print multiple gradient stops separated by commas *)
-      Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-        (if Pp.minified ctx then canonicalise_gradient_stops stops else stops)
-  | Direction dir -> pp_gradient_direction ctx dir
-
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -3146,6 +3095,63 @@ let pp_conic_gradient_config : conic_gradient_config Pp.t =
       Pp.space ctx ();
       pp_position_value ctx p
   | None -> ()
+
+let rec pp_gradient_position : gradient_position Pp.t =
+ fun ctx -> function
+  | Linear_position dir -> pp_gradient_direction ctx dir
+  | Radial_position config -> pp_radial_gradient_config ctx config
+  | Conic_position config -> pp_conic_gradient_config ctx config
+  | Var v -> pp_var pp_gradient_position ctx v
+
+let rec pp_gradient_stop : gradient_stop Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_gradient_stop ctx v
+  | Color_percentage (c, pos1_opt, pos2_opt) -> (
+      let rendered_color =
+        Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
+          pp_color c
+      in
+      Pp.string ctx rendered_color;
+      match pos1_opt with
+      | None -> ()
+      | Some pos1 -> (
+          (* CSS Syntax 3 §4: ident- and hash-typed colours absorb the following
+             digit/hex into the same token ([red0%] -> ident [red0] + [%];
+             [#00f50%] -> hash [#00f50] + [%]), so the separator before the
+             position is mandatory. Function-shaped colours ([var(...)] /
+             [rgb(...)] / etc.) end with [)] which closes their token cleanly,
+             so the space is elidable in minified output. *)
+          let ends_with_paren =
+            String.length rendered_color > 0
+            && rendered_color.[String.length rendered_color - 1] = ')'
+          in
+          if not (Pp.minified ctx && ends_with_paren) then Pp.space ctx ();
+          pp_length_percentage ~always:true ctx pos1;
+          match pos2_opt with
+          | None -> ()
+          | Some pos2 ->
+              Pp.space ctx ();
+              pp_length_percentage ~always:true ctx pos2))
+  | Color_length (c, len1_opt, len2_opt) -> (
+      pp_color ctx c;
+      match len1_opt with
+      | None -> ()
+      | Some len1 -> (
+          Pp.space ctx ();
+          pp_length ctx len1;
+          match len2_opt with
+          | None -> ()
+          | Some len2 ->
+              Pp.space ctx ();
+              pp_length ctx len2))
+  | Length len -> pp_length ctx len
+  | Channel channel -> pp_channel ctx channel
+  | Percentage pct -> pp_percentage ctx pct
+  | List stops ->
+      Pp.list ~sep:Pp.comma pp_gradient_stop ctx
+        (if Pp.minified ctx then canonicalise_gradient_stops stops else stops)
+  | Position pos -> pp_gradient_position ctx pos
+  | Direction dir -> pp_gradient_direction ctx dir
 
 let pp_webkit_gradient_point ctx = function
   | Webkit_gradient.Left_top ->
@@ -17940,12 +17946,11 @@ let read_conic_gradient_config t : conic_gradient_config =
   then Cursor.err_invalid t "conic-gradient config";
   { angle = !angle; position = !position; interpolation = !interpolation }
 
-let read_linear_gradient_body_stops t =
-  (* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to
-     <side-or-corner> ]? || <color-interpolation-method> A bare interpolation, a
-     bare direction, or both in either order are all valid. After the prelude
-     the comma separating it from the colour-stop list is required if and only
-     if the prelude consumed any tokens. *)
+(* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to <side-or-corner>
+   ]? || <color-interpolation-method> A bare interpolation, a bare direction, or
+   both in either order are all valid. Returns [None] when the prelude consumed
+   no tokens. *)
+let read_linear_prelude_opt t : gradient_direction option =
   let direction : gradient_direction option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
   let try_direction () =
@@ -17971,15 +17976,43 @@ let read_linear_gradient_body_stops t =
     if try_direction () || try_interpolation () then loop ()
   in
   loop ();
-  let prelude_consumed =
-    !direction <> Option.None || !interpolation <> Option.None
-  in
+  match (!direction, !interpolation) with
+  | Some d, Some i -> Option.Some (With_interpolation (d, i))
+  | Some d, None -> Option.Some d
+  | None, Some i -> Option.Some (With_interpolation (Default_direction, i))
+  | None, None -> Option.None
+
+let rec read_gradient_position t : gradient_position =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      (Var (Values.read_var read_gradient_position t) : gradient_position)
+  | _ -> (
+      match Cursor.peek_ident t with
+      | Some "from" -> Conic_position (read_conic_gradient_config t)
+      | Some
+          ( "circle" | "ellipse" | "closest-side" | "closest-corner"
+          | "farthest-side" | "farthest-corner" | "at" ) ->
+          Radial_position (read_radial_gradient_config t)
+      | _ ->
+          Cursor.one_of
+            [
+              (fun t ->
+                match read_linear_prelude_opt t with
+                | Option.Some direction ->
+                    (Linear_position direction : gradient_position)
+                | Option.None -> Cursor.err_expected t "gradient position");
+              (fun t -> Radial_position (read_radial_gradient_config t));
+            ]
+            t)
+
+let read_linear_gradient_body_stops t =
+  (* After the prelude the comma separating it from the colour-stop list is
+     required if and only if the prelude consumed any tokens. *)
+  let prelude = read_linear_prelude_opt t in
+  let prelude_consumed = prelude <> Option.None in
   let direction =
-    match (!direction, !interpolation) with
-    | Some d, Some i -> With_interpolation (d, i)
-    | Some d, None -> d
-    | None, Some i -> With_interpolation (Default_direction, i)
-    | None, None -> Default_direction
+    match prelude with Option.Some d -> d | Option.None -> Default_direction
   in
   if prelude_consumed then (
     Cursor.ws t;
@@ -20260,6 +20293,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Content -> pp pp_content
   | Gradient_stop -> pp pp_gradient_stop
   | Gradient_direction -> pp pp_gradient_direction
+  | Gradient_position -> pp pp_gradient_position
   | Animation -> pp pp_animation
   | Timing_function -> pp pp_timing_function
   | Transform -> pp pp_transform
@@ -20317,6 +20351,7 @@ let string_of_kind_value : type a. a kind -> a -> string =
       | Var _ -> "initial")
   | Animation -> Pp.to_string pp_animation value
   | Gradient_direction -> Pp.to_string pp_gradient_direction value
+  | Gradient_position -> Pp.to_string pp_gradient_position value
   | _ -> "initial"
 
 let pp_custom_property_value ctx = function
