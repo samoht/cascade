@@ -721,7 +721,6 @@ let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
 and cvs_to_buffer_min_custom buf cvs =
-  let start = Buffer.length buf in
   let rec loop prev separated = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
@@ -733,16 +732,7 @@ and cvs_to_buffer_min_custom buf cvs =
         cv_to_buffer_custom_min buf cv;
         loop (Some cv) false rest
   in
-  loop None false cvs;
-  (* CSS Custom Properties for Cascading Variables 1 sec. 2.1:
-     [<declaration-value>] is "any sequence of one or more tokens", so a
-     whitespace-only value ([--foo: ;]) is in-grammar and the inter-colon
-     whitespace IS the value's sole token. The minifier's
-     [drop_whitespace_components] would otherwise collapse it to nothing,
-     turning the spec-valid input into the technically-out-of-grammar form
-     [--foo:;] (which browsers tolerate but the spec doesn't admit). Emit a
-     single space so the token count stays >= 1. *)
-  if Buffer.length buf = start && cvs <> [] then Buffer.add_char buf ' '
+  loop None false cvs
 
 let to_string_custom_minified cvs =
   let buf = Buffer.create 64 in
