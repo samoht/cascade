@@ -750,6 +750,7 @@ let try_enum table t =
   | _ -> None
 
 let enum ?default label table t =
+  ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
@@ -764,6 +765,7 @@ let enum ?default label table t =
   | _ -> ( match default with Some f -> f t | None -> err_expected t label)
 
 let enum_calls ?default table t =
+  ws t;
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
       match List.assoc_opt (String.lowercase_ascii_preserve name) table with
@@ -778,6 +780,7 @@ let enum_calls ?default table t =
       | None -> err_expected t "function call")
 
 let enum_or_var ?default label idents ~var t =
+  ws t;
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii_preserve name = "var" ->
@@ -785,6 +788,7 @@ let enum_or_var ?default label idents ~var t =
   | _ -> enum ?default label idents t
 
 let enum_or_calls ?default label idents ?(calls = []) t =
+  ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
       (* CSS idents are case-insensitive (Syntax section 3.3). *)
