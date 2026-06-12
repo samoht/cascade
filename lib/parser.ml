@@ -693,8 +693,40 @@ let custom_min_item_separator buf prev separated cv =
       Buffer.add_char buf ' '
   | _ -> ()
 
+(* CSS Syntax 3 sec. 3 says ident tokens are ASCII-case-insensitive at the
+   tokenizer level, but the parser keeps the source case so selectors stay
+   case-sensitive. Inside a custom-property value the tokens are always
+   interpreted as value-context idents, where the canonical spelling of a
+   CSS-wide keyword or [currentcolor] / [transparent] is lower-case. Fold those
+   specific idents here so [--c: currentColor] and [--c: currentcolor] serialise
+   to the same canonical bytes. The set is conservative on purpose: a tw class
+   name token that happens to live inside a custom property body must not
+   collapse, so unrecognised idents pass through unchanged. *)
+let case_insensitive_value_idents =
+  let s = Hashtbl.create 16 in
+  List.iter
+    (fun k -> Hashtbl.add s k ())
+    [
+      "currentcolor";
+      "transparent";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+    ];
+  s
+
+let fold_value_ident s =
+  let lower = String.lowercase_ascii s in
+  if Hashtbl.mem case_insensitive_value_idents lower then lower else s
+
+let string_of_custom_value_token : Token.kind -> string = function
+  | Token.Ident s -> escape_ident (fold_value_ident s)
+  | other -> string_of_token_kind other
+
 let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
+  | Preserved t -> Buffer.add_string buf (string_of_custom_value_token t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom buf value;
