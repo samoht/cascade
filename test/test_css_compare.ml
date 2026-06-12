@@ -568,6 +568,40 @@ let diff_expected_error () =
   let result = Cascade_diff.Css_compare.diff expected actual in
   ignore result
 
+(* ===== parse warnings surfaced in diff reports ===== *)
+
+(* When one side's declaration is rejected by the value parser, the declaration
+   is dropped from the AST and the structural diff alone reads as a phantom
+   addition on the side that parsed. The rendered report must surface the parse
+   warning so the reader sees the real cause. *)
+let diff_surfaces_parse_warnings () =
+  let expected = ".a { color: red; scroll-snap-align: corner }" in
+  let actual = ".a { color: red; scroll-snap-align: start }" in
+  let result = Cascade_diff.Css_compare.diff expected actual in
+  let buf = Buffer.create 256 in
+  Cascade_diff.Css_compare.pp buf result;
+  let rendered = Buffer.contents buf in
+  Alcotest.(check bool)
+    "report mentions the rejected value" true
+    (contains_substring rendered "corner");
+  Alcotest.(check bool)
+    "report labels the parse warning" true
+    (contains_substring rendered "parse warning")
+
+let diff_surfaces_parse_warnings_same_ast () =
+  (* Both sides parse to the same AST once the bad declaration is dropped; the
+     report must still surface the warning instead of presenting the difference
+     as purely textual. *)
+  let expected = ".a { scroll-snap-align: corner }" in
+  let actual = ".a { }" in
+  let result = Cascade_diff.Css_compare.diff expected actual in
+  let buf = Buffer.create 256 in
+  Cascade_diff.Css_compare.pp buf result;
+  let rendered = Buffer.contents buf in
+  Alcotest.(check bool)
+    "report labels the parse warning" true
+    (contains_substring rendered "parse warning")
+
 (* ===== strip_tool_header tests ===== *)
 
 let strip_tool_header_no_header () =
@@ -839,6 +873,10 @@ let suite =
       Alcotest.test_case "diff String_diff" `Quick diff_string_diff;
       Alcotest.test_case "diff actual error" `Quick diff_actual_error;
       Alcotest.test_case "diff expected error" `Quick diff_expected_error;
+      Alcotest.test_case "diff surfaces parse warnings" `Quick
+        diff_surfaces_parse_warnings;
+      Alcotest.test_case "diff surfaces parse warnings on same AST" `Quick
+        diff_surfaces_parse_warnings_same_ast;
       Alcotest.test_case "strip_tool_header no header" `Quick
         strip_tool_header_no_header;
       Alcotest.test_case "strip_tool_header with header" `Quick
