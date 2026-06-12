@@ -5739,6 +5739,19 @@ let normalize_minified css =
    declarations as opaque token streams. CSS Properties and Values API 1 section
    2 lifts a custom property into a typed value only after an @property
    registration for that name. *)
+(* CSS Scroll Snap 1 section 6.2: [scroll-snap-align] takes one or two
+   keywords; the reader must stop at the end of the value, not consume the
+   declaration's trailing semicolon as a missing second keyword. *)
+let scroll_snap_align_trailing_semicolon () =
+  Alcotest.(check string)
+    "scroll-snap-align value followed by a semicolon parses"
+    ".x{scroll-snap-align:none}"
+    (normalize_minified ".x { scroll-snap-align: none; }");
+  Alcotest.(check string)
+    "scroll-snap-align pair followed by a semicolon parses"
+    ".x{scroll-snap-align:start end}"
+    (normalize_minified ".x { scroll-snap-align: start end; }")
+
 let customprops13_unregistered_font_stack () =
   Alcotest.(check string)
     "unregistered font-stack custom property keeps string tokens"
@@ -6663,6 +6676,9 @@ let additional_tests =
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
       customprops13_declaration );
+    ( "spec scroll-snap 6.2 trailing semicolon",
+      `Quick,
+      scroll_snap_align_trailing_semicolon );
     ( "spec custom-properties 1 3 colour keyword case fold",
       `Quick,
       customprops13_color_keyword_case_fold );
