@@ -353,7 +353,10 @@ and substitute_var visible ~visited original name fallback =
 let declaration_with_components decl components : Declaration.declaration option
     =
   let property = Declaration.property_name decl in
-  let value = Parser.to_string_custom_minified components in
+  let value =
+    Parser.to_string_custom_minified ~fold_ident:Values.fold_custom_value_ident
+      components
+  in
   if String.trim value = "" then None
   else
     let important =

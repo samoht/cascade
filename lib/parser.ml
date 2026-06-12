@@ -740,15 +740,16 @@ let fold_value_ident s =
   let lower = String.lowercase_ascii s in
   if Hashtbl.mem case_insensitive_value_idents lower then lower else s
 
-let string_of_custom_value_token : Token.kind -> string = function
-  | Token.Ident s -> escape_ident (fold_value_ident s)
+let string_of_custom_value_token ~fold_ident : Token.kind -> string = function
+  | Token.Ident s -> escape_ident (fold_ident s)
   | other -> string_of_token_kind other
 
-let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (string_of_custom_value_token t.kind)
+let rec cv_to_buffer_custom_min ~fold_ident buf : Component.t -> unit = function
+  | Preserved t ->
+      Buffer.add_string buf (string_of_custom_value_token ~fold_ident t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_min_custom buf value;
+      cvs_to_buffer_min_custom ~fold_ident buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ }
     when String.lowercase_ascii name = "url" -> (
@@ -760,18 +761,18 @@ let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
       | None ->
           Buffer.add_string buf (escape_ident name);
           Buffer.add_char buf '(';
-          cvs_to_buffer_min_custom buf arguments;
+          cvs_to_buffer_min_custom ~fold_ident buf arguments;
           Buffer.add_char buf ')')
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min_custom buf arguments;
+      cvs_to_buffer_min_custom ~fold_ident buf arguments;
       Buffer.add_char buf ')'
 
 (* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
-and cvs_to_buffer_min_custom buf cvs =
+and cvs_to_buffer_min_custom ~fold_ident buf cvs =
   let rec loop prev separated = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
@@ -780,16 +781,16 @@ and cvs_to_buffer_min_custom buf cvs =
         loop prev separated' rest'
     | cv :: rest ->
         custom_min_item_separator buf prev separated cv;
-        cv_to_buffer_custom_min buf cv;
+        cv_to_buffer_custom_min ~fold_ident buf cv;
         loop (Some cv) false rest
   in
   loop None false cvs
 
-let to_string_custom_minified cvs =
+let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min_custom buf cvs;
+    cvs_to_buffer_min_custom ~fold_ident buf cvs;
     Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)

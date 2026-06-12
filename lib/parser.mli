@@ -49,10 +49,20 @@ val to_string_custom : Component.t list -> string
     streams. Whitespace is preserved at the top level and inside nested blocks
     and functions. *)
 
-val to_string_custom_minified : Component.t list -> string
+val fold_value_ident : string -> string
+(** [fold_value_ident s] is the canonical lower-case spelling of [s] when [s]
+    names a CSS-wide keyword, [currentcolor], or [transparent]; any other ident
+    keeps its source case. This is the default ident fold of
+    {!to_string_custom_minified}. *)
+
+val to_string_custom_minified :
+  ?fold_ident:(string -> string) -> Component.t list -> string
 (** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
     streams. Optional whitespace is collapsed using the rules of
-    {!to_string_minified} while preserving token boundaries. *)
+    {!to_string_minified} while preserving token boundaries. [fold_ident]
+    (default {!fold_value_ident}) maps each ident token to its serialized
+    spelling; callers that can recognise a wider set of case-insensitive value
+    keywords pass a stronger fold. *)
 
 val escape_ident : string -> string
 (** [escape_ident s] returns [s] with non-ident-continue code points backslash-
