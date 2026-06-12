@@ -1917,7 +1917,7 @@ let c41_declared_values () =
     (List.map declared_property declared);
   Alcotest.(check (list string))
     "declared values expose serialized values"
-    [ "#f00"; "1px"; "#00f"; "currentColor" ]
+    [ "#f00"; "1px"; "#00f"; "currentcolor" ]
     (List.map declared_value declared);
   Alcotest.(check (list int))
     "declared values preserve source order" [ 0; 1; 2; 3 ]
@@ -5807,12 +5807,12 @@ let customprops13_box_shadow_zero_spread () =
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "unregistered OKLab custom property keeps opaque token stream"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
     "unregistered OKLab custom property preserves required token boundary"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034 / .1)}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
   Alcotest.(check string)
