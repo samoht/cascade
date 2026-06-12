@@ -2371,9 +2371,11 @@ let test_background_image () =
     "linear-gradient(in oklab to right, red, blue)";
   check_background_image ~expected:"radial-gradient(in oklab,red,blue)"
     "radial-gradient(in oklab, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,blue)"
     "radial-gradient(in oklab circle at center, red, blue)";
-  check_background_image ~expected:"radial-gradient(in oklab circle,red,blue)"
+  check_background_image
+    ~expected:"radial-gradient(in oklab circle at center,red,blue)"
     "radial-gradient(circle at center in oklab, red, blue)";
   decl_optimizes ~prop:"background-image"
     ~into:"radial-gradient(in oklab,red,#00f)"
@@ -2425,10 +2427,20 @@ let test_radial_size () =
 
 let test_radial_gradient_config () =
   check_radial_gradient_config "circle";
-  check_radial_gradient_config ~expected:"" "ellipse";
+  check_radial_gradient_config "ellipse";
   check_radial_gradient_config "circle closest-side";
-  check_radial_gradient_config ~expected:"circle" "circle at center";
-  neg_cursor read_radial_gradient_config "invalid-config"
+  check_radial_gradient_config "circle at center";
+  neg_cursor read_radial_gradient_config "invalid-config";
+  (* pp holds the authored defaults; the optimizer elides them (CSS Images 4
+     section 3.1: ellipse / farthest-corner / center are implied). *)
+  decl_optimizes ~prop:"background"
+    ~held:"radial-gradient(circle at center,red,#123456)"
+    ~into:"radial-gradient(circle,red,#123456)"
+    "radial-gradient(circle at center, red, #123456)";
+  decl_optimizes ~prop:"background"
+    ~held:"radial-gradient(ellipse farthest-corner,red,#123456)"
+    ~into:"radial-gradient(red,#123456)"
+    "radial-gradient(ellipse farthest-corner, red, #123456)"
 
 let test_conic_gradient_config () =
   check_conic_gradient_config "from 45deg";

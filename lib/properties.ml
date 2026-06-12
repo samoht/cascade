@@ -3082,30 +3082,20 @@ let position_value_is_center : position_value -> bool = function
   | XY (Pct 50., Pct 50.) -> true
   | _ -> false
 
-let radial_shape_kept ~drop_default (s : radial_shape option) :
-    radial_shape option =
-  match s with
-  | Some s when drop_default && radial_shape_is_default s -> None
-  | s -> s
+let radial_shape_kept (s : radial_shape option) : radial_shape option =
+  match s with Some s when radial_shape_is_default s -> None | s -> s
 
-let radial_size_kept ~drop_default (s : radial_size option) : radial_size option
-    =
-  match s with
-  | Some s when drop_default && radial_size_is_default s -> None
-  | s -> s
+let radial_size_kept (s : radial_size option) : radial_size option =
+  match s with Some s when radial_size_is_default s -> None | s -> s
 
-let radial_position_kept ~drop_default (p : position_value option) :
-    position_value option =
-  match p with
-  | Some p when drop_default && position_value_is_center p -> None
-  | p -> p
+let radial_position_kept (p : position_value option) : position_value option =
+  match p with Some p when position_value_is_center p -> None | p -> p
 
 let pp_radial_gradient_config : radial_gradient_config Pp.t =
  fun ctx config ->
-  let drop_default = Pp.minified ctx in
-  let shape = radial_shape_kept ~drop_default config.shape in
-  let size = radial_size_kept ~drop_default config.size in
-  let position = radial_position_kept ~drop_default config.position in
+  let shape = config.shape in
+  let size = config.size in
+  let position = config.position in
   let has_output = ref false in
   let emit_space_if_needed () =
     if !has_output then Pp.space ctx () else has_output := true
@@ -3303,11 +3293,8 @@ let pp_webkit_linear_gradient_named name ctx (dir, stops) =
 let pp_radial_gradient_named name ctx (config, stops) =
   Pp.call name
     (fun ctx (config, stops) ->
-      let drop_default = Pp.minified ctx in
       let has_config =
-        radial_shape_kept ~drop_default config.shape <> None
-        || radial_size_kept ~drop_default config.size <> None
-        || radial_position_kept ~drop_default config.position <> None
+        config.shape <> None || config.size <> None || config.position <> None
         || config.interpolation <> None
       in
       if has_config then (
@@ -3882,12 +3869,21 @@ let normalize_position_value ?(strip = true) : position_value -> position_value
   | other -> other
 
 let normalize_radial_config (c : radial_gradient_config) =
-  let size = option_map_preserve normalize_radial_size c.size in
-  let position =
-    option_map_preserve (normalize_position_value ~strip:false) c.position
+  (* CSS Images 4 section 3.1: inside a radial-gradient() prelude the default
+     shape (ellipse), size (farthest-corner) and position (center) are implied,
+     so the canonical form drops them. pp stays faithful to the AST; this
+     elision is an optimize-side rewrite. *)
+  let shape = radial_shape_kept c.shape in
+  let size =
+    option_map_preserve normalize_radial_size (radial_size_kept c.size)
   in
-  if size == c.size && position == c.position then c
-  else { c with size; position }
+  let position =
+    option_map_preserve
+      (normalize_position_value ~strip:false)
+      (radial_position_kept c.position)
+  in
+  if shape == c.shape && size == c.size && position == c.position then c
+  else { shape; size; position; interpolation = c.interpolation }
 
 let normalize_conic_config (c : conic_gradient_config) =
   let angle = option_map_preserve Values.normalize_angle c.angle in
