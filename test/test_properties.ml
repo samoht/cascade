@@ -3660,6 +3660,36 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_view_transition_class "none card";
   neg_cursor read_view_transition_name "match-element card"
 
+let test_enum_readers_accept_leading_ws () =
+  List.iter
+    (fun check -> check ())
+    [
+      (fun () -> check_position ~expected:"relative" " relative");
+      (fun () -> check_flex_direction ~expected:"row" " row");
+      (fun () -> check_align_self ~expected:"center" " center");
+      (fun () -> check_text_align ~expected:"start" " start");
+      (fun () -> check_text_decoration_style ~expected:"dashed" " dashed");
+      (fun () -> check_overflow ~expected:"hidden" " hidden");
+      (fun () -> check_visibility ~expected:"hidden" " hidden");
+      (fun () -> check_scroll_snap_align ~expected:"start" " start");
+      (fun () -> check_scroll_snap_stop ~expected:"always" " always");
+      (fun () -> check_scroll_snap_axis ~expected:"inline" " inline");
+      (fun () ->
+        check_scroll_snap_strictness ~expected:"mandatory" " mandatory");
+      (fun () -> check_user_select ~expected:"none" " none");
+      (fun () -> check_pointer_events ~expected:"none" " none");
+      (fun () -> check_resize ~expected:"both" " both");
+      (fun () -> check_box_sizing ~expected:"border-box" " border-box");
+      (fun () -> check_object_fit ~expected:"cover" " cover");
+      (fun () -> check_content_visibility ~expected:"auto" " auto");
+      (fun () -> check_direction ~expected:"rtl" " rtl");
+      (fun () -> check_writing_mode ~expected:"vertical-rl" " vertical-rl");
+      (fun () -> check_print_color_adjust ~expected:"exact" " exact");
+      (fun () -> check_appearance ~expected:"button" " button");
+      (fun () -> check_clear ~expected:"both" " both");
+      (fun () -> check_float_side ~expected:"left" " left");
+    ]
+
 let tests =
   [
     test_case "display" `Quick test_display;
@@ -3698,6 +3728,8 @@ let tests =
     test_case "scroll-snap-axis" `Quick test_scroll_snap_axis;
     test_case "scroll-snap-strictness" `Quick test_scroll_snap_strictness;
     test_case "scroll-snap-type" `Quick test_scroll_snap_type;
+    test_case "enum readers accept leading whitespace" `Quick
+      test_enum_readers_accept_leading_ws;
     test_case "property names" `Quick test_property_names;
     (* Additional coverage for missing readers *)
     test_case "grid auto-flow" `Quick test_grid_auto_flow;
