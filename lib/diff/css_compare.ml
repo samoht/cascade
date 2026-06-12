@@ -222,47 +222,60 @@ let css_for_semantic_comparison ?property css =
   | None -> css
   | Some property -> ":root{" ^ property ^ ":" ^ css ^ "}"
 
-let canonical_semantic_css ~strict css =
+let canonical_semantic_css ~strict ~lossless css =
   match Css.of_string ~strict css with
   | Ok { stylesheet; _ } -> (
-      try Some (stylesheet |> Css.optimize |> Css.to_string ~minify:true)
+      try
+        Some
+          (stylesheet |> Css.optimize ~lossless
+          |> Css.to_string ~minify:true ~lossless)
       with Invalid_argument _ -> None)
   | Error _ -> None
 
-let canonical_css ~strict css = canonical_semantic_css ~strict css
+let canonical_css ~strict ~lossless css =
+  canonical_semantic_css ~strict ~lossless css
 
-let canonical_pair ~strict expected actual =
-  match (canonical_css ~strict expected, canonical_css ~strict actual) with
+let canonical_pair ~strict ~lossless expected actual =
+  match
+    ( canonical_css ~strict ~lossless expected,
+      canonical_css ~strict ~lossless actual )
+  with
   | Some expected_norm, Some actual_norm ->
       Some (String.equal expected_norm actual_norm)
   | _ -> None
 
-let canonical_diff_inputs ~strict expected actual =
-  match (canonical_css ~strict expected, canonical_css ~strict actual) with
+let canonical_diff_inputs ~strict ~lossless expected actual =
+  match
+    ( canonical_css ~strict ~lossless expected,
+      canonical_css ~strict ~lossless actual )
+  with
   | Some expected, Some actual -> Some (expected, actual)
   | _ -> None
 
-let canonical_diff_inputs_with_fallback expected actual =
-  match canonical_diff_inputs ~strict:true expected actual with
+let canonical_diff_inputs_with_fallback ~lossless expected actual =
+  match canonical_diff_inputs ~strict:true ~lossless expected actual with
   | Some _ as result -> result
-  | None -> canonical_diff_inputs ~strict:false expected actual
+  | None -> canonical_diff_inputs ~strict:false ~lossless expected actual
 
 (* Internal: full-stylesheet equality under the canonical minified form. *)
-let semantic_equal ?property expected actual =
+let semantic_equal ?property ?(lossless = false) expected actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then true
   else
     let expected_css = css_for_semantic_comparison ?property expected in
     let actual_css = css_for_semantic_comparison ?property actual in
-    match canonical_pair ~strict:true expected_css actual_css with
+    match canonical_pair ~strict:true ~lossless expected_css actual_css with
     | Some equal -> equal
     | None -> (
-        match canonical_pair ~strict:false expected_css actual_css with
+        match
+          canonical_pair ~strict:false ~lossless expected_css actual_css
+        with
         | Some equal -> equal
         | None -> false)
 
-let equivalent_value ~property a b = semantic_equal ~property a b
+let equivalent_value ?lossless ~property a b =
+  semantic_equal ?lossless ~property a b
 
 (* Parse two CSS strings and return their diff or parse errors *)
 type t =
@@ -330,12 +343,12 @@ let diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon =
       else Tree_diff structural_diff
   | _ -> diff_auto ~expected ~actual
 
-let diff_canonical ~expected ~actual =
+let diff_canonical ~lossless ~expected ~actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then No_diff { canonical_byte_diff = None }
   else
-    match canonical_diff_inputs_with_fallback expected actual with
+    match canonical_diff_inputs_with_fallback ~lossless expected actual with
     | None -> diff_auto ~expected ~actual
     | Some (expected_canon, actual_canon) ->
         if String.equal expected_canon actual_canon then
@@ -371,16 +384,17 @@ let diff_tree ~expected ~actual =
   | Ok _, Error e -> Actual_error e
   | Error e, Ok _ -> Expected_error e
 
-let diff ?(mode = `Auto) expected actual =
+let diff ?(mode = `Auto) ?(lossless = false) expected actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   match mode with
   | `Auto -> diff_auto ~expected ~actual
-  | `Canonical -> diff_canonical ~expected ~actual
+  | `Canonical -> diff_canonical ~lossless ~expected ~actual
   | `String -> diff_string ~expected ~actual
   | `Tree -> diff_tree ~expected ~actual
 
-let equal ?mode a b = match diff ?mode a b with No_diff _ -> true | _ -> false
+let equal ?mode ?lossless a b =
+  match diff ?mode ?lossless a b with No_diff _ -> true | _ -> false
 
 let as_tree_diff = function
   | Tree_diff d -> Some d

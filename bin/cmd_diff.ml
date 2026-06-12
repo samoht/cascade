@@ -17,7 +17,7 @@ let resolve_style_renderer style_renderer =
   | Some s when s <> "" -> Some `None
   | _ -> style_renderer
 
-let run_diff mode ~css1 ~css2 =
+let run_diff mode ~lossless ~css1 ~css2 =
   let mode =
     match mode with
     | Auto -> `Auto
@@ -25,7 +25,7 @@ let run_diff mode ~css1 ~css2 =
     | String -> `String
     | Canonical -> `Canonical
   in
-  Cascade_diff.Css_compare.diff ~mode css1 css2
+  Cascade_diff.Css_compare.diff ~mode ~lossless css1 css2
 
 let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   let stats =
@@ -38,7 +38,7 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-let compare_files file1 file2 style_renderer mode memtrace_path () =
+let compare_files file1 file2 style_renderer mode lossless memtrace_path () =
   Cli_io.start_memtrace memtrace_path;
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
@@ -49,7 +49,7 @@ let compare_files file1 file2 style_renderer mode memtrace_path () =
         Fmt.pr "CSS files are identical@.";
         Ok ())
       else
-        match run_diff mode ~css1 ~css2 with
+        match run_diff mode ~lossless ~css1 ~css2 with
         | No_diff _ ->
             Fmt.pr "CSS files are identical@.";
             Ok ()
@@ -86,6 +86,17 @@ let mode_arg =
   in
   Arg.(value & opt mode_conv Auto & info [ "diff" ] ~docv:"MODE" ~doc)
 
+let lossless_arg =
+  let doc =
+    "Disable colour approximation in $(b,--diff=semantic) canonicalisation. \
+     Exact colour canonicalisation still runs, but static modern colour-space \
+     and color-mix() values stay functional and channels keep their full \
+     precision. Two stylesheets that only differ by colours folded within the \
+     approximation budget then report as different rather than collapsing to \
+     equal. Has no effect outside $(b,--diff=semantic)."
+  in
+  Arg.(value & flag & info [ "lossless" ] ~doc)
+
 let memtrace_arg =
   let doc =
     "Write a Memtrace allocation profile to $(docv) covering the diff run. \
@@ -100,7 +111,7 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ memtrace_arg $ Cli_log.term)
+   $ mode_arg $ lossless_arg $ memtrace_arg $ Cli_log.term)
 
 let man =
   [
@@ -129,6 +140,11 @@ let man =
     `I
       ( "--diff=semantic",
         "Compare canonical minified CSS before reporting a diff" );
+    `I
+      ( "--lossless",
+        "Disable colour approximation under $(b,--diff=semantic): colour \
+         channels keep their authored precision and static modern colour-space \
+         values stay functional. No effect outside semantic mode." );
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
     `I ("0", "if the CSS files are identical");

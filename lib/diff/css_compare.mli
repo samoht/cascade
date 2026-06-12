@@ -52,12 +52,13 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       color positions. If the normalized forms differ, the returned diff is
       reported from those normalized outputs. *)
 
-val diff : ?mode:mode -> string -> string -> t
+val diff : ?mode:mode -> ?lossless:bool -> string -> string -> t
 (** [diff ?mode expected actual] returns the diff between two CSS strings. A
     leading [/*! ... */] tool banner on either side is stripped before
-    comparison. Parsing failures surface as [_error] variants. *)
+    comparison. Parsing failures surface as [_error] variants. [lossless]
+    preserves exact color channels during canonical comparison. *)
 
-val equal : ?mode:mode -> string -> string -> bool
+val equal : ?mode:mode -> ?lossless:bool -> string -> string -> bool
 (** [equal ?mode a b] is [true] iff [diff ?mode a b] is {!No_diff}. *)
 
 val as_tree_diff : t -> Tree_diff.t option
@@ -93,7 +94,8 @@ val pp_stats : Buffer.t -> stats -> unit
 
 (** {1:property_values Property-scoped value comparison} *)
 
-val equivalent_value : property:string -> string -> string -> bool
+val equivalent_value :
+  ?lossless:bool -> property:string -> string -> string -> bool
 (** [equivalent_value ~property a b] returns [true] when [a] and [b], parsed as
     the right-hand side of a [property:] declaration, share the same canonical
     declaration serialization through {!Cascade.Css.to_string}. This is the
