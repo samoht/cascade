@@ -14529,17 +14529,17 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
       t
   in
   let first = read_single t in
-  Cursor.ws t;
-  if Cursor.is_done t then first
-  else (
-    (match first with
-    | Inherit | Initial | Unset | Revert | Revert_layer ->
-        Cursor.err_invalid t "scroll-snap-align CSS-wide value in pair"
-    | _ -> ());
-    let second = read_single t in
-    Cursor.ws t;
-    Cursor.expect_eof t;
-    Snap_align_pair (first, second))
+  (* The optional second keyword is probed with backtracking so the reader stops
+     cleanly at whatever follows the value (the declaration's [;], a block
+     close, ...). *)
+  match Cursor.option read_single t with
+  | Option.None -> first
+  | Option.Some second ->
+      (match first with
+      | Inherit | Initial | Unset | Revert | Revert_layer ->
+          Cursor.err_invalid t "scroll-snap-align CSS-wide value in pair"
+      | _ -> ());
+      Snap_align_pair (first, second)
 
 let rec read_timeline_axis t : timeline_axis =
   Cursor.enum_or_var "timeline-axis"
