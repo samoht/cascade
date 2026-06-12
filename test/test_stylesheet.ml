@@ -5703,6 +5703,33 @@ let customprops13_declaration () =
     "--x: ; preserves the whitespace-token value" ".x{--x: }"
     (normalize ".x { --x: ; }")
 
+let customprops13_color_keyword_case_fold () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "--c: RED folds to the canonical lower-case colour keyword" ".x{--c:red}"
+    (normalize ".x { --c: RED }");
+  Alcotest.(check string)
+    "--c: ToMaTo folds to the canonical named colour" ".x{--c:tomato}"
+    (normalize ".x { --c: ToMaTo }");
+  Alcotest.(check string)
+    "named colour folds inside a larger token stream"
+    ".x{--c:1px solid rebeccapurple}"
+    (normalize ".x { --c: 1px solid rebeccaPurple }");
+  Alcotest.(check string)
+    "--c: AUTO folds like the other colour-position keywords" ".x{--c:auto}"
+    (normalize ".x { --c: AUTO }");
+  Alcotest.(check string)
+    "unrecognised idents keep their source case" ".x{--c:MyToken}"
+    (normalize ".x { --c: MyToken }");
+  Alcotest.(check string)
+    "system colour keywords keep their canonical mixed case"
+    ".x{--c:ButtonText}"
+    (normalize ".x { --c: ButtonText }")
+
 let normalize_minified css =
   match Css.of_string ~strict:false css with
   | Ok parsed -> minify parsed.stylesheet |> String.trim
@@ -6636,6 +6663,9 @@ let additional_tests =
     ( "spec custom-properties 1 3 custom property declaration",
       `Quick,
       customprops13_declaration );
+    ( "spec custom-properties 1 3 colour keyword case fold",
+      `Quick,
+      customprops13_color_keyword_case_fold );
     ( "spec custom-properties 1 3 unregistered font stack",
       `Quick,
       customprops13_unregistered_font_stack );

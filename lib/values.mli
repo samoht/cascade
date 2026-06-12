@@ -341,6 +341,17 @@ val read_margin_shorthand : Cursor.t -> length list
 val read_color : Cursor.t -> color
 (** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
 
+val read_color_keyword_of_string : string -> color option
+(** [read_color_keyword_of_string s] is the color keyword named by the
+    lower-case ident [s]: a named color, [transparent], [currentcolor], [auto],
+    [inherit], or a system color. [None] when [s] names no color keyword. *)
+
+val fold_custom_value_ident : string -> string
+(** [fold_custom_value_ident s] is the canonical lower-case spelling of [s] when
+    [s] names a color keyword other than a system color, or one of the idents
+    {!Parser.fold_value_ident} folds; other idents keep their source case. Pass
+    as [fold_ident] to {!Parser.to_string_custom_minified}. *)
+
 val pp_hue : hue Pp.t
 (** [pp_hue] pretty-prints {!hue} values. *)
 

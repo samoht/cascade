@@ -10,6 +10,207 @@ let var_ref ?fallback ?default ?layer ?meta name =
 
 let syntax_fallback s = Syntax_fallback (Cursor.remaining (Cursor.of_string s))
 
+let read_system_color_of_string keyword : color option =
+  (* System colors are case-insensitive per CSS spec *)
+  match String.lowercase_ascii keyword with
+  | "accentcolor" -> Some (System Accent_color)
+  | "accentcolortext" -> Some (System Accent_color_text)
+  | "activetext" -> Some (System Active_text)
+  | "buttonborder" -> Some (System Button_border)
+  | "buttonface" -> Some (System Button_face)
+  | "buttontext" -> Some (System Button_text)
+  | "canvas" -> Some (System Canvas)
+  | "canvastext" -> Some (System Canvas_text)
+  | "field" -> Some (System Field)
+  | "fieldtext" -> Some (System Field_text)
+  | "graytext" -> Some (System Gray_text)
+  | "highlight" -> Some (System Highlight)
+  | "highlighttext" -> Some (System Highlight_text)
+  | "linktext" -> Some (System Link_text)
+  | "mark" -> Some (System Mark)
+  | "marktext" -> Some (System Mark_text)
+  | "selecteditem" -> Some (System Selected_item)
+  | "selecteditemtext" -> Some (System Selected_item_text)
+  | "visitedtext" -> Some (System Visited_text)
+  (* WebKit-specific system colors *)
+  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
+  | _ -> None
+
+let read_color_keyword_of_string keyword : color option =
+  match keyword with
+  | "transparent" -> Some Transparent
+  | "currentcolor" -> Some Current
+  | "auto" -> Some Auto
+  | "inherit" -> Some Inherit
+  | "red" -> Some (Named Red)
+  | "green" -> Some (Named Green)
+  | "blue" -> Some (Named Blue)
+  | "white" -> Some (Named White)
+  | "black" -> Some (Named Black)
+  | "gray" -> Some (Named Gray)
+  | "grey" -> Some (Named Grey)
+  | "silver" -> Some (Named Silver)
+  | "maroon" -> Some (Named Maroon)
+  | "yellow" -> Some (Named Yellow)
+  | "olive" -> Some (Named Olive)
+  | "lime" -> Some (Named Lime)
+  | "aqua" -> Some (Named Aqua)
+  | "cyan" -> Some (Named Cyan)
+  | "teal" -> Some (Named Teal)
+  | "navy" -> Some (Named Navy)
+  | "fuchsia" -> Some (Named Fuchsia)
+  | "magenta" -> Some (Named Magenta)
+  | "purple" -> Some (Named Purple)
+  | "orange" -> Some (Named Orange)
+  | "pink" -> Some (Named Pink)
+  | "aliceblue" -> Some (Named Alice_blue)
+  | "antiquewhite" -> Some (Named Antique_white)
+  | "aquamarine" -> Some (Named Aquamarine)
+  | "azure" -> Some (Named Azure)
+  | "beige" -> Some (Named Beige)
+  | "bisque" -> Some (Named Bisque)
+  | "blanchedalmond" -> Some (Named Blanched_almond)
+  | "blueviolet" -> Some (Named Blue_violet)
+  | "brown" -> Some (Named Brown)
+  | "burlywood" -> Some (Named Burlywood)
+  | "cadetblue" -> Some (Named Cadet_blue)
+  | "chartreuse" -> Some (Named Chartreuse)
+  | "chocolate" -> Some (Named Chocolate)
+  | "coral" -> Some (Named Coral)
+  | "cornflowerblue" -> Some (Named Cornflower_blue)
+  | "cornsilk" -> Some (Named Cornsilk)
+  | "crimson" -> Some (Named Crimson)
+  | "darkblue" -> Some (Named Dark_blue)
+  | "darkcyan" -> Some (Named Dark_cyan)
+  | "darkgoldenrod" -> Some (Named Dark_goldenrod)
+  | "darkgray" -> Some (Named Dark_gray)
+  | "darkgreen" -> Some (Named Dark_green)
+  | "darkgrey" -> Some (Named Dark_grey)
+  | "darkkhaki" -> Some (Named Dark_khaki)
+  | "darkmagenta" -> Some (Named Dark_magenta)
+  | "darkolivegreen" -> Some (Named Dark_olive_green)
+  | "darkorange" -> Some (Named Dark_orange)
+  | "darkorchid" -> Some (Named Dark_orchid)
+  | "darkred" -> Some (Named Dark_red)
+  | "darksalmon" -> Some (Named Dark_salmon)
+  | "darkseagreen" -> Some (Named Dark_sea_green)
+  | "darkslateblue" -> Some (Named Dark_slate_blue)
+  | "darkslategray" -> Some (Named Dark_slate_gray)
+  | "darkslategrey" -> Some (Named Dark_slate_grey)
+  | "darkturquoise" -> Some (Named Dark_turquoise)
+  | "darkviolet" -> Some (Named Dark_violet)
+  | "deeppink" -> Some (Named Deep_pink)
+  | "deepskyblue" -> Some (Named Deep_sky_blue)
+  | "dimgray" -> Some (Named Dim_gray)
+  | "dimgrey" -> Some (Named Dim_grey)
+  | "dodgerblue" -> Some (Named Dodger_blue)
+  | "firebrick" -> Some (Named Firebrick)
+  | "floralwhite" -> Some (Named Floral_white)
+  | "forestgreen" -> Some (Named Forest_green)
+  | "gainsboro" -> Some (Named Gainsboro)
+  | "ghostwhite" -> Some (Named Ghost_white)
+  | "gold" -> Some (Named Gold)
+  | "goldenrod" -> Some (Named Goldenrod)
+  | "greenyellow" -> Some (Named Green_yellow)
+  | "honeydew" -> Some (Named Honeydew)
+  | "hotpink" -> Some (Named Hot_pink)
+  | "indianred" -> Some (Named Indian_red)
+  | "indigo" -> Some (Named Indigo)
+  | "ivory" -> Some (Named Ivory)
+  | "khaki" -> Some (Named Khaki)
+  | "lavender" -> Some (Named Lavender)
+  | "lavenderblush" -> Some (Named Lavender_blush)
+  | "lawngreen" -> Some (Named Lawn_green)
+  | "lemonchiffon" -> Some (Named Lemon_chiffon)
+  | "lightblue" -> Some (Named Light_blue)
+  | "lightcoral" -> Some (Named Light_coral)
+  | "lightcyan" -> Some (Named Light_cyan)
+  | "lightgoldenrodyellow" -> Some (Named Light_goldenrod_yellow)
+  | "lightgray" -> Some (Named Light_gray)
+  | "lightgreen" -> Some (Named Light_green)
+  | "lightgrey" -> Some (Named Light_grey)
+  | "lightpink" -> Some (Named Light_pink)
+  | "lightsalmon" -> Some (Named Light_salmon)
+  | "lightseagreen" -> Some (Named Light_sea_green)
+  | "lightskyblue" -> Some (Named Light_sky_blue)
+  | "lightslategray" -> Some (Named Light_slate_gray)
+  | "lightslategrey" -> Some (Named Light_slate_grey)
+  | "lightsteelblue" -> Some (Named Light_steel_blue)
+  | "lightyellow" -> Some (Named Light_yellow)
+  | "limegreen" -> Some (Named Lime_green)
+  | "linen" -> Some (Named Linen)
+  | "mediumaquamarine" -> Some (Named Medium_aquamarine)
+  | "mediumblue" -> Some (Named Medium_blue)
+  | "mediumorchid" -> Some (Named Medium_orchid)
+  | "mediumpurple" -> Some (Named Medium_purple)
+  | "mediumseagreen" -> Some (Named Medium_sea_green)
+  | "mediumslateblue" -> Some (Named Medium_slate_blue)
+  | "mediumspringgreen" -> Some (Named Medium_spring_green)
+  | "mediumturquoise" -> Some (Named Medium_turquoise)
+  | "mediumvioletred" -> Some (Named Medium_violet_red)
+  | "midnightblue" -> Some (Named Midnight_blue)
+  | "mintcream" -> Some (Named Mint_cream)
+  | "mistyrose" -> Some (Named Misty_rose)
+  | "moccasin" -> Some (Named Moccasin)
+  | "navajowhite" -> Some (Named Navajo_white)
+  | "oldlace" -> Some (Named Old_lace)
+  | "olivedrab" -> Some (Named Olive_drab)
+  | "orangered" -> Some (Named Orange_red)
+  | "orchid" -> Some (Named Orchid)
+  | "palegoldenrod" -> Some (Named Pale_goldenrod)
+  | "palegreen" -> Some (Named Pale_green)
+  | "paleturquoise" -> Some (Named Pale_turquoise)
+  | "palevioletred" -> Some (Named Pale_violet_red)
+  | "papayawhip" -> Some (Named Papaya_whip)
+  | "peachpuff" -> Some (Named Peach_puff)
+  | "peru" -> Some (Named Peru)
+  | "plum" -> Some (Named Plum)
+  | "powderblue" -> Some (Named Powder_blue)
+  | "rebeccapurple" -> Some (Named Rebecca_purple)
+  | "rosybrown" -> Some (Named Rosy_brown)
+  | "royalblue" -> Some (Named Royal_blue)
+  | "saddlebrown" -> Some (Named Saddle_brown)
+  | "salmon" -> Some (Named Salmon)
+  | "sandybrown" -> Some (Named Sandy_brown)
+  | "seagreen" -> Some (Named Sea_green)
+  | "seashell" -> Some (Named Sea_shell)
+  | "sienna" -> Some (Named Sienna)
+  | "skyblue" -> Some (Named Sky_blue)
+  | "slateblue" -> Some (Named Slate_blue)
+  | "slategray" -> Some (Named Slate_gray)
+  | "slategrey" -> Some (Named Slate_grey)
+  | "snow" -> Some (Named Snow)
+  | "springgreen" -> Some (Named Spring_green)
+  | "steelblue" -> Some (Named Steel_blue)
+  | "tan" -> Some (Named Tan)
+  | "thistle" -> Some (Named Thistle)
+  | "tomato" -> Some (Named Tomato)
+  | "turquoise" -> Some (Named Turquoise)
+  | "violet" -> Some (Named Violet)
+  | "wheat" -> Some (Named Wheat)
+  | "whitesmoke" -> Some (Named White_smoke)
+  | "yellowgreen" -> Some (Named Yellow_green)
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  (* CSS system colors - case-insensitive matching *)
+  | _ -> read_system_color_of_string keyword
+
+(* Inside a custom-property body, colour keywords (the named colours,
+   [transparent], [currentcolor], [auto], [inherit]) are ASCII-case-insensitive
+   value idents whose canonical spelling is lower-case, like the CSS-wide
+   keywords [Parser.fold_value_ident] already folds. System colours stay
+   untouched because their canonical spelling is mixed-case; idents that name no
+   colour keyword pass through so a class-name token keeps its source case. *)
+let fold_custom_value_ident s =
+  let lower = String.lowercase_ascii s in
+  if
+    Option.is_some (read_color_keyword_of_string lower)
+    && Option.is_none (read_system_color_of_string lower)
+  then lower
+  else Parser.fold_value_ident s
+
 let string_of_number_percentage (np : number_percentage) =
   match np with Num f | Pct f -> Pp.string_of_float f | _ -> "initial"
 
@@ -104,7 +305,9 @@ let pp_var_fallback ctx fallback_name =
 
 let pp_syntax_fallback ctx value =
   Pp.string ctx
-    (if Pp.minified ctx then Parser.to_string_custom_minified value
+    (if Pp.minified ctx then
+       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
+         value
      else Parser.to_string_custom value)
 
 let pp_var_ref ctx name =
@@ -226,7 +429,9 @@ let pp_calc_op : calc_op Pp.t =
 
 let pp_component_values ctx values =
   let value =
-    if Pp.minified ctx then Parser.to_string_custom_minified values
+    if Pp.minified ctx then
+      Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
+        values
     else Parser.to_string_custom values
   in
   Pp.string ctx value
@@ -4093,7 +4298,9 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
   | { fallback = Syntax_fallback value; default = Option.None; _ }
     when ctx.inline ->
       let rendered =
-        if Pp.minified ctx then Parser.to_string_custom_minified value
+        if Pp.minified ctx then
+          Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
+            value
         else Parser.to_string_custom value
       in
       Pp.string ctx (first_top_level_comma_segment rendered)
@@ -5949,193 +6156,6 @@ let relative_color_has_empty_alpha cvs =
     | _ :: rest -> loop rest
   in
   loop cvs
-
-let read_system_color_of_string keyword : color option =
-  (* System colors are case-insensitive per CSS spec *)
-  match String.lowercase_ascii keyword with
-  | "accentcolor" -> Some (System Accent_color)
-  | "accentcolortext" -> Some (System Accent_color_text)
-  | "activetext" -> Some (System Active_text)
-  | "buttonborder" -> Some (System Button_border)
-  | "buttonface" -> Some (System Button_face)
-  | "buttontext" -> Some (System Button_text)
-  | "canvas" -> Some (System Canvas)
-  | "canvastext" -> Some (System Canvas_text)
-  | "field" -> Some (System Field)
-  | "fieldtext" -> Some (System Field_text)
-  | "graytext" -> Some (System Gray_text)
-  | "highlight" -> Some (System Highlight)
-  | "highlighttext" -> Some (System Highlight_text)
-  | "linktext" -> Some (System Link_text)
-  | "mark" -> Some (System Mark)
-  | "marktext" -> Some (System Mark_text)
-  | "selecteditem" -> Some (System Selected_item)
-  | "selecteditemtext" -> Some (System Selected_item_text)
-  | "visitedtext" -> Some (System Visited_text)
-  (* WebKit-specific system colors *)
-  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
-  | _ -> None
-
-let read_color_keyword_of_string keyword : color option =
-  match keyword with
-  | "transparent" -> Some Transparent
-  | "currentcolor" -> Some Current
-  | "auto" -> Some Auto
-  | "inherit" -> Some Inherit
-  | "red" -> Some (Named Red)
-  | "green" -> Some (Named Green)
-  | "blue" -> Some (Named Blue)
-  | "white" -> Some (Named White)
-  | "black" -> Some (Named Black)
-  | "gray" -> Some (Named Gray)
-  | "grey" -> Some (Named Grey)
-  | "silver" -> Some (Named Silver)
-  | "maroon" -> Some (Named Maroon)
-  | "yellow" -> Some (Named Yellow)
-  | "olive" -> Some (Named Olive)
-  | "lime" -> Some (Named Lime)
-  | "aqua" -> Some (Named Aqua)
-  | "cyan" -> Some (Named Cyan)
-  | "teal" -> Some (Named Teal)
-  | "navy" -> Some (Named Navy)
-  | "fuchsia" -> Some (Named Fuchsia)
-  | "magenta" -> Some (Named Magenta)
-  | "purple" -> Some (Named Purple)
-  | "orange" -> Some (Named Orange)
-  | "pink" -> Some (Named Pink)
-  | "aliceblue" -> Some (Named Alice_blue)
-  | "antiquewhite" -> Some (Named Antique_white)
-  | "aquamarine" -> Some (Named Aquamarine)
-  | "azure" -> Some (Named Azure)
-  | "beige" -> Some (Named Beige)
-  | "bisque" -> Some (Named Bisque)
-  | "blanchedalmond" -> Some (Named Blanched_almond)
-  | "blueviolet" -> Some (Named Blue_violet)
-  | "brown" -> Some (Named Brown)
-  | "burlywood" -> Some (Named Burlywood)
-  | "cadetblue" -> Some (Named Cadet_blue)
-  | "chartreuse" -> Some (Named Chartreuse)
-  | "chocolate" -> Some (Named Chocolate)
-  | "coral" -> Some (Named Coral)
-  | "cornflowerblue" -> Some (Named Cornflower_blue)
-  | "cornsilk" -> Some (Named Cornsilk)
-  | "crimson" -> Some (Named Crimson)
-  | "darkblue" -> Some (Named Dark_blue)
-  | "darkcyan" -> Some (Named Dark_cyan)
-  | "darkgoldenrod" -> Some (Named Dark_goldenrod)
-  | "darkgray" -> Some (Named Dark_gray)
-  | "darkgreen" -> Some (Named Dark_green)
-  | "darkgrey" -> Some (Named Dark_grey)
-  | "darkkhaki" -> Some (Named Dark_khaki)
-  | "darkmagenta" -> Some (Named Dark_magenta)
-  | "darkolivegreen" -> Some (Named Dark_olive_green)
-  | "darkorange" -> Some (Named Dark_orange)
-  | "darkorchid" -> Some (Named Dark_orchid)
-  | "darkred" -> Some (Named Dark_red)
-  | "darksalmon" -> Some (Named Dark_salmon)
-  | "darkseagreen" -> Some (Named Dark_sea_green)
-  | "darkslateblue" -> Some (Named Dark_slate_blue)
-  | "darkslategray" -> Some (Named Dark_slate_gray)
-  | "darkslategrey" -> Some (Named Dark_slate_grey)
-  | "darkturquoise" -> Some (Named Dark_turquoise)
-  | "darkviolet" -> Some (Named Dark_violet)
-  | "deeppink" -> Some (Named Deep_pink)
-  | "deepskyblue" -> Some (Named Deep_sky_blue)
-  | "dimgray" -> Some (Named Dim_gray)
-  | "dimgrey" -> Some (Named Dim_grey)
-  | "dodgerblue" -> Some (Named Dodger_blue)
-  | "firebrick" -> Some (Named Firebrick)
-  | "floralwhite" -> Some (Named Floral_white)
-  | "forestgreen" -> Some (Named Forest_green)
-  | "gainsboro" -> Some (Named Gainsboro)
-  | "ghostwhite" -> Some (Named Ghost_white)
-  | "gold" -> Some (Named Gold)
-  | "goldenrod" -> Some (Named Goldenrod)
-  | "greenyellow" -> Some (Named Green_yellow)
-  | "honeydew" -> Some (Named Honeydew)
-  | "hotpink" -> Some (Named Hot_pink)
-  | "indianred" -> Some (Named Indian_red)
-  | "indigo" -> Some (Named Indigo)
-  | "ivory" -> Some (Named Ivory)
-  | "khaki" -> Some (Named Khaki)
-  | "lavender" -> Some (Named Lavender)
-  | "lavenderblush" -> Some (Named Lavender_blush)
-  | "lawngreen" -> Some (Named Lawn_green)
-  | "lemonchiffon" -> Some (Named Lemon_chiffon)
-  | "lightblue" -> Some (Named Light_blue)
-  | "lightcoral" -> Some (Named Light_coral)
-  | "lightcyan" -> Some (Named Light_cyan)
-  | "lightgoldenrodyellow" -> Some (Named Light_goldenrod_yellow)
-  | "lightgray" -> Some (Named Light_gray)
-  | "lightgreen" -> Some (Named Light_green)
-  | "lightgrey" -> Some (Named Light_grey)
-  | "lightpink" -> Some (Named Light_pink)
-  | "lightsalmon" -> Some (Named Light_salmon)
-  | "lightseagreen" -> Some (Named Light_sea_green)
-  | "lightskyblue" -> Some (Named Light_sky_blue)
-  | "lightslategray" -> Some (Named Light_slate_gray)
-  | "lightslategrey" -> Some (Named Light_slate_grey)
-  | "lightsteelblue" -> Some (Named Light_steel_blue)
-  | "lightyellow" -> Some (Named Light_yellow)
-  | "limegreen" -> Some (Named Lime_green)
-  | "linen" -> Some (Named Linen)
-  | "mediumaquamarine" -> Some (Named Medium_aquamarine)
-  | "mediumblue" -> Some (Named Medium_blue)
-  | "mediumorchid" -> Some (Named Medium_orchid)
-  | "mediumpurple" -> Some (Named Medium_purple)
-  | "mediumseagreen" -> Some (Named Medium_sea_green)
-  | "mediumslateblue" -> Some (Named Medium_slate_blue)
-  | "mediumspringgreen" -> Some (Named Medium_spring_green)
-  | "mediumturquoise" -> Some (Named Medium_turquoise)
-  | "mediumvioletred" -> Some (Named Medium_violet_red)
-  | "midnightblue" -> Some (Named Midnight_blue)
-  | "mintcream" -> Some (Named Mint_cream)
-  | "mistyrose" -> Some (Named Misty_rose)
-  | "moccasin" -> Some (Named Moccasin)
-  | "navajowhite" -> Some (Named Navajo_white)
-  | "oldlace" -> Some (Named Old_lace)
-  | "olivedrab" -> Some (Named Olive_drab)
-  | "orangered" -> Some (Named Orange_red)
-  | "orchid" -> Some (Named Orchid)
-  | "palegoldenrod" -> Some (Named Pale_goldenrod)
-  | "palegreen" -> Some (Named Pale_green)
-  | "paleturquoise" -> Some (Named Pale_turquoise)
-  | "palevioletred" -> Some (Named Pale_violet_red)
-  | "papayawhip" -> Some (Named Papaya_whip)
-  | "peachpuff" -> Some (Named Peach_puff)
-  | "peru" -> Some (Named Peru)
-  | "plum" -> Some (Named Plum)
-  | "powderblue" -> Some (Named Powder_blue)
-  | "rebeccapurple" -> Some (Named Rebecca_purple)
-  | "rosybrown" -> Some (Named Rosy_brown)
-  | "royalblue" -> Some (Named Royal_blue)
-  | "saddlebrown" -> Some (Named Saddle_brown)
-  | "salmon" -> Some (Named Salmon)
-  | "sandybrown" -> Some (Named Sandy_brown)
-  | "seagreen" -> Some (Named Sea_green)
-  | "seashell" -> Some (Named Sea_shell)
-  | "sienna" -> Some (Named Sienna)
-  | "skyblue" -> Some (Named Sky_blue)
-  | "slateblue" -> Some (Named Slate_blue)
-  | "slategray" -> Some (Named Slate_gray)
-  | "slategrey" -> Some (Named Slate_grey)
-  | "snow" -> Some (Named Snow)
-  | "springgreen" -> Some (Named Spring_green)
-  | "steelblue" -> Some (Named Steel_blue)
-  | "tan" -> Some (Named Tan)
-  | "thistle" -> Some (Named Thistle)
-  | "tomato" -> Some (Named Tomato)
-  | "turquoise" -> Some (Named Turquoise)
-  | "violet" -> Some (Named Violet)
-  | "wheat" -> Some (Named Wheat)
-  | "whitesmoke" -> Some (Named White_smoke)
-  | "yellowgreen" -> Some (Named Yellow_green)
-  | "initial" -> Some Initial
-  | "unset" -> Some Unset
-  | "revert" -> Some Revert
-  | "revert-layer" -> Some Revert_layer
-  (* CSS system colors - case-insensitive matching *)
-  | _ -> read_system_color_of_string keyword
 
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
