@@ -663,6 +663,17 @@ let vars_of_color_interpolation (value : Properties.color_interpolation) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_position_value (value : Properties.position_value) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Single l -> vars_of_length l
+  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
+  | Edge_offset_axis (_, lp, _) -> vars_of_length_percentage lp
+  | Axis_edge_offset (_, _, length) -> vars_of_length length
+  | Edge_offset_edge_offset (_, lp1, _, lp2) ->
+      vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
+  | _ -> []
+
 let rec vars_of_gradient_direction (value : Properties.gradient_direction) :
     any_var list =
   match value with
@@ -672,6 +683,38 @@ let rec vars_of_gradient_direction (value : Properties.gradient_direction) :
       @ vars_of_color_interpolation interpolation
   | Var v -> [ V v ]
   | _ -> []
+
+let vars_of_radial_shape (value : Properties.radial_shape) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_radial_size (value : Properties.radial_size) : any_var list =
+  match value with
+  | Circle_radius length -> vars_of_length length
+  | Ellipse_radii (lp1, lp2) ->
+      vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
+  | Var v -> [ V v ]
+  | _ -> []
+
+let vars_of_radial_gradient_config (value : Properties.radial_gradient_config) :
+    any_var list =
+  Option.fold ~none:[] ~some:vars_of_radial_shape value.shape
+  @ Option.fold ~none:[] ~some:vars_of_radial_size value.size
+  @ Option.fold ~none:[] ~some:vars_of_position_value value.position
+  @ Option.fold ~none:[] ~some:vars_of_color_interpolation value.interpolation
+
+let vars_of_conic_gradient_config (value : Properties.conic_gradient_config) :
+    any_var list =
+  Option.fold ~none:[] ~some:vars_of_angle value.angle
+  @ Option.fold ~none:[] ~some:vars_of_position_value value.position
+  @ Option.fold ~none:[] ~some:vars_of_color_interpolation value.interpolation
+
+let vars_of_gradient_position (value : Properties.gradient_position) :
+    any_var list =
+  match value with
+  | Linear_position direction -> vars_of_gradient_direction direction
+  | Radial_position config -> vars_of_radial_gradient_config config
+  | Conic_position config -> vars_of_conic_gradient_config config
+  | Var v -> [ V v ]
 
 let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
     =
@@ -689,6 +732,7 @@ let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
   | Channel channel -> vars_of_channel channel
   | Percentage percentage -> vars_of_percentage percentage
   | List stops -> List.concat_map vars_of_gradient_stop stops
+  | Position position -> vars_of_gradient_position position
   | Direction direction -> vars_of_gradient_direction direction
 
 let vars_of_background_image (value : Properties.background_image) :
@@ -824,17 +868,6 @@ let vars_of_list_style_image (value : Properties.list_style_image) :
 let vars_of_list_style_type (value : Properties.list_style_type) : any_var list
     =
   match value with Var v -> [ V v ] | _ -> []
-
-let vars_of_position_value (value : Properties.position_value) : any_var list =
-  match value with
-  | Var v -> [ V v ]
-  | Single l -> vars_of_length l
-  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
-  | Edge_offset_axis (_, lp, _) -> vars_of_length_percentage lp
-  | Axis_edge_offset (_, _, length) -> vars_of_length length
-  | Edge_offset_edge_offset (_, lp1, _, lp2) ->
-      vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
-  | _ -> []
 
 let vars_of_outline_style (value : Properties.outline_style) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
