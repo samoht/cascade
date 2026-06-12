@@ -466,7 +466,10 @@ let semantic_legacy_pseudo_element_alias () =
      p:first-of-type):not(:where([class~=not-prose],[class~=not-prose] \
      *))::before{content:\"\"}}"
   in
-  match Cascade_diff.Css_compare.diff ~mode:`Canonical legacy modern with
+  match
+    (Cascade_diff.Css_compare.diff ~mode:`Canonical legacy modern)
+      .Cascade_diff.Css_compare.result
+  with
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected :before and ::before to canonicalize equally"
 
@@ -505,13 +508,13 @@ let semantically_equivalent_rejects_different_colors () =
 let diff_no_diff () =
   let css = ".a { color: red }" in
   let result = Cascade_diff.Css_compare.diff css css in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff"
 
 let diff_no_diff_empty () =
   let result = Cascade_diff.Css_compare.diff "" "" in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for empty strings"
 
@@ -521,7 +524,7 @@ let diff_tree_diff () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
   let result = Cascade_diff.Css_compare.diff expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff d ->
       Alcotest.(check bool)
         "tree diff is not empty" false
@@ -532,7 +535,7 @@ let diff_tree_diff_added_rule () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: red } .b { margin: 0 }" in
   let result = Cascade_diff.Css_compare.diff expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff for added rule"
 
@@ -545,7 +548,7 @@ let diff_string_diff () =
   let expected = ".a { color: red }" in
   let actual = ".a  { color: red }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`String expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.String_diff d ->
       Alcotest.(check bool) "string diff has position" true (d.position >= 0)
   | Cascade_diff.Css_compare.No_diff _ ->
@@ -683,7 +686,7 @@ let diff_auto () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`Auto expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff in auto mode"
 
@@ -691,7 +694,7 @@ let diff_tree () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`Tree expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff _ -> ()
   | _ -> Alcotest.fail "expected Tree_diff in tree mode"
 
@@ -699,7 +702,7 @@ let diff_string () =
   let expected = ".a { color: red }" in
   let actual = ".a { color: blue }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`String expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.String_diff _ -> ()
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected String_diff or No_diff in string mode"
@@ -707,7 +710,7 @@ let diff_string () =
 let diff_string_identical () =
   let css = ".a { color: red }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`String css css in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for identical in string mode"
 
@@ -715,7 +718,7 @@ let semantic_color_mix_mode () =
   let expected = ".a { color: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { color: " ^ color_mix_transparent_hex ^ " }" in
   let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.No_diff _ -> ()
   | _ -> Alcotest.fail "expected No_diff for semantically equivalent CSS"
 
@@ -728,7 +731,7 @@ let diff_canonical_uses_outputs () =
     "@unknown{color:red}.a{-webkit-tap-highlight-color:#0000;color:blue}"
   in
   let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
-  match result with
+  match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff _ ->
       let buf = Buffer.create 256 in
       Cascade_diff.Css_compare.pp buf result;

@@ -21,7 +21,7 @@ open Cascade
     this module wraps it with parse-error handling and a string-diff fallback.
 *)
 
-type t =
+type result =
   | Tree_diff of Tree_diff.t  (** Structural AST differences. *)
   | String_diff of String_diff.t
       (** Strings differ but no structural change was detected. *)
@@ -38,6 +38,18 @@ type t =
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
+
+type t = {
+  result : result;
+  expected_warnings : Error.t list;
+  actual_warnings : Error.t list;
+}
+(** A comparison outcome plus the parse warnings each side accumulated. A
+    declaration the parser rejects is dropped from that side's AST, so without
+    the warnings a structural diff would read as a phantom addition on the side
+    that parsed (or as no difference at all when both sides collapse to the same
+    AST). The warnings are empty in mode [`String], which never parses, and when
+    the header-stripped inputs are bytewise equal. *)
 
 type mode = [ `Auto | `Tree | `String | `Canonical ]
 (** CSS comparison mode.
@@ -66,9 +78,9 @@ val as_tree_diff : t -> Tree_diff.t option
     a {!Tree_diff}; [None] otherwise. *)
 
 val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
-(** [pp ?expected ?actual buf result] formats [result] into [buf]. The
-    [expected]/[actual] labels are used in the rendered header (defaults:
-    ["Expected"], ["Actual"]). *)
+(** [pp ?expected ?actual buf result] formats [result] into [buf], then renders
+    each side's parse warnings. The [expected]/[actual] labels are used in the
+    rendered header and warning lines (defaults: ["Expected"], ["Actual"]). *)
 
 (** {1:stats Statistics} *)
 

@@ -278,7 +278,7 @@ let equivalent_value ?lossless ~property a b =
   semantic_equal ?lossless ~property a b
 
 (* Parse two CSS strings and return their diff or parse errors *)
-type t =
+type result =
   | Tree_diff of Tree_diff.t (* CSS AST differences found *)
   | String_diff of String_diff.t (* No structural diff but strings differ *)
   | No_diff of { canonical_byte_diff : (string * string) option }
@@ -292,6 +292,12 @@ type t =
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
+
+type t = {
+  result : result;
+  expected_warnings : Error.t list;
+  actual_warnings : Error.t list;
+}
 
 type mode = [ `Auto | `Tree | `String | `Canonical ]
 
@@ -319,20 +325,20 @@ let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
   if not (is_empty structural_diff) then Tree_diff structural_diff
   else diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm
 
-let diff_auto ~expected ~actual =
-  let expected = strip_tool_header expected in
-  let actual = strip_tool_header actual in
+let diff_auto ~expected ~actual ~expected_parse ~actual_parse =
   (* First check if original strings are identical *)
   if expected = actual then No_diff { canonical_byte_diff = None }
   else
-    match (Css.of_string expected, Css.of_string actual) with
-    | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+    match (expected_parse, actual_parse) with
+    | ( Ok { Css.stylesheet = expected_ast; _ },
+        Ok { Css.stylesheet = actual_ast; _ } ) ->
         diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast
     | Error e1, Error e2 -> Both_errors (e1, e2)
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
-let diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon =
+let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
+    ~expected_canon ~actual_canon =
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
       let structural_diff =
@@ -341,15 +347,13 @@ let diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon =
       if is_empty structural_diff then
         No_diff { canonical_byte_diff = Some (expected_canon, actual_canon) }
       else Tree_diff structural_diff
-  | _ -> diff_auto ~expected ~actual
+  | _ -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
 
-let diff_canonical ~lossless ~expected ~actual =
-  let expected = strip_tool_header expected in
-  let actual = strip_tool_header actual in
+let diff_canonical ~lossless ~expected ~actual ~expected_parse ~actual_parse =
   if expected = actual then No_diff { canonical_byte_diff = None }
   else
     match canonical_diff_inputs_with_fallback ~lossless expected actual with
-    | None -> diff_auto ~expected ~actual
+    | None -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
     | Some (expected_canon, actual_canon) ->
         if String.equal expected_canon actual_canon then
           No_diff { canonical_byte_diff = None }
@@ -363,7 +367,8 @@ let diff_canonical ~lossless ~expected ~actual =
              inside [url()], ...). Expose the canonical byte forms on [No_diff]
              so maintainers can spot which canonical-pass gap to chip away at
              next, without ever overriding the structural answer. *)
-          diff_canonical_parsed ~expected ~actual ~expected_canon ~actual_canon
+          diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
+            ~expected_canon ~actual_canon
 
 let diff_string ~expected ~actual =
   if expected = actual then No_diff { canonical_byte_diff = None }
@@ -372,9 +377,10 @@ let diff_string ~expected ~actual =
     | Some sdiff -> String_diff sdiff
     | None -> No_diff { canonical_byte_diff = None }
 
-let diff_tree ~expected ~actual =
-  match (Css.of_string expected, Css.of_string actual) with
-  | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+let diff_tree ~expected_parse ~actual_parse =
+  match (expected_parse, actual_parse) with
+  | ( Ok { Css.stylesheet = expected_ast; _ },
+      Ok { Css.stylesheet = actual_ast; _ } ) ->
       let structural_diff =
         tree_diff ~expected:expected_ast ~actual:actual_ast
       in
@@ -384,19 +390,49 @@ let diff_tree ~expected ~actual =
   | Ok _, Error e -> Actual_error e
   | Error e, Ok _ -> Expected_error e
 
+let parse_warnings = function
+  | Ok { Css.warnings; _ } -> warnings
+  | Error _ -> []
+
 let diff ?(mode = `Auto) ?(lossless = false) expected actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
-  match mode with
-  | `Auto -> diff_auto ~expected ~actual
-  | `Canonical -> diff_canonical ~lossless ~expected ~actual
-  | `String -> diff_string ~expected ~actual
-  | `Tree -> diff_tree ~expected ~actual
+  if expected = actual then
+    {
+      result = No_diff { canonical_byte_diff = None };
+      expected_warnings = [];
+      actual_warnings = [];
+    }
+  else
+    match mode with
+    | `String ->
+        {
+          result = diff_string ~expected ~actual;
+          expected_warnings = [];
+          actual_warnings = [];
+        }
+    | (`Auto | `Tree | `Canonical) as mode ->
+        let expected_parse = Css.of_string expected in
+        let actual_parse = Css.of_string actual in
+        let result =
+          match mode with
+          | `Auto -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
+          | `Canonical ->
+              diff_canonical ~lossless ~expected ~actual ~expected_parse
+                ~actual_parse
+          | `Tree -> diff_tree ~expected_parse ~actual_parse
+        in
+        {
+          result;
+          expected_warnings = parse_warnings expected_parse;
+          actual_warnings = parse_warnings actual_parse;
+        }
 
 let equal ?mode ?lossless a b =
-  match diff ?mode ?lossless a b with No_diff _ -> true | _ -> false
+  match (diff ?mode ?lossless a b).result with No_diff _ -> true | _ -> false
 
-let as_tree_diff = function
+let as_tree_diff t =
+  match t.result with
   | Tree_diff d -> Some d
   | String_diff _ | No_diff _ | Both_errors _ | Expected_error _
   | Actual_error _ ->
@@ -407,7 +443,7 @@ let compute_stats ~expected_str ~actual_str diff_result =
   let expected_chars = String.length expected_str in
   let actual_chars = String.length actual_str in
 
-  match diff_result with
+  match diff_result.result with
   | Tree_diff d ->
       let count_rule_type pred = List.filter pred d.rules |> List.length in
       {
@@ -445,8 +481,17 @@ let compute_stats ~expected_str ~actual_str diff_result =
 let stats = compute_stats
 let add_strings b ls = List.iter (Buffer.add_string b) ls
 
-(* Format the result of diff with optional labels *)
-let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
+(* Render each side's parse warnings so a declaration the parser dropped never
+   reads as a phantom structural difference on the side that parsed. *)
+let pp_parse_warnings buf label warnings =
+  List.iter
+    (fun w ->
+      if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
+      then Buffer.add_char buf '\n';
+      add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ])
+    warnings
+
+let pp_result ?(expected = "Expected") ?(actual = "Actual") buf = function
   | Tree_diff d ->
       (* Show structural differences *)
       D.pp ~expected ~actual buf d
@@ -476,6 +521,11 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
       add_strings buf [ expected; " CSS parse error: "; Error.to_string e ]
   | Actual_error e ->
       add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
+
+let pp ?(expected = "Expected") ?(actual = "Actual") buf t =
+  pp_result ~expected ~actual buf t.result;
+  pp_parse_warnings buf expected t.expected_warnings;
+  pp_parse_warnings buf actual t.actual_warnings
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in
