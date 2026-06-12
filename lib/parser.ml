@@ -434,7 +434,14 @@ let word_like_end : Component.t -> bool = function
       } ->
       false
   | Preserved _ -> true
-  | Func _ -> false
+  (* CSS Color 4 sec. 11.1 (relative colour) and similar grammars use whitespace
+     as the separator between a [<color>] argument expressed as a [var()] (or
+     another function call) and the following channel ident. [oklab(from
+     var(--c) l a b)] tokenises fine with [var(--c)l] adjacent, but spec-strict
+     parsers expect the separator. Treat a [Func] (and a Paren [Block]) as
+     word-like-end so [Func] + [Ident] keeps its boundary. *)
+  | Func _ -> true
+  | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
 let word_like_start : Component.t -> bool = function
@@ -638,10 +645,6 @@ let rec drop_whitespace_components = function
   | cv :: rest when is_whitespace cv -> drop_whitespace_components rest
   | other -> other
 
-let custom_min_is_math_delim = function
-  | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
-  | _ -> false
-
 let custom_min_is_bang = function
   | Component.Preserved { kind = Token.Delim "!"; _ } -> true
   | _ -> false
@@ -670,13 +673,16 @@ let custom_min_word_boundary p next =
   && (not (is_backslash_delim p))
   && word_like_start next
 
+(* CSS Values 4 sec. 10.1 requires whitespace only around [+] and [-] in math
+   expressions, since those can otherwise fuse into a signed-number token. [*]
+   and [/] are unambiguous, so [16/9] is a valid two-number/divide token
+   sequence and dropping whitespace around them is sound everywhere a custom
+   property is substituted, including [calc()]. *)
 let custom_min_needs_separator prev next rest =
   match prev with
   | None -> false
   | Some p ->
       pair_forms_multichar_token p next
-      || custom_min_is_math_delim p
-      || custom_min_is_math_delim next
       || custom_min_bang_boundary prev next rest
       || custom_min_word_boundary p next
 
