@@ -434,7 +434,14 @@ let word_like_end : Component.t -> bool = function
       } ->
       false
   | Preserved _ -> true
-  | Func _ -> false
+  (* CSS Color 4 sec. 11.1 (relative colour) and similar grammars use whitespace
+     as the separator between a [<color>] argument expressed as a [var()] (or
+     another function call) and the following channel ident. [oklab(from
+     var(--c) l a b)] tokenises fine with [var(--c)l] adjacent, but spec-strict
+     parsers expect the separator. Treat a [Func] (and a Paren [Block]) as
+     word-like-end so [Func] + [Ident] keeps its boundary. *)
+  | Func _ -> true
+  | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
 let word_like_start : Component.t -> bool = function
