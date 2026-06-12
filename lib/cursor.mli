@@ -426,16 +426,17 @@ val any_function_call : (string -> t -> 'a) -> t -> 'a option
 (** {1 Enums} *)
 
 val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
-(** [enum ?default label table t] consumes an ident and looks it up in [table].
-    Falls back to [default] if provided, otherwise raises. *)
+(** [enum ?default label table t] skips leading whitespace, consumes an ident,
+    and looks it up in [table]. Falls back to [default] if provided, otherwise
+    raises. *)
 
 val try_enum : (string * 'a) list -> t -> 'a option
 (** [try_enum table t] is like {!enum} but returns [None] without raising. *)
 
 val enum_calls : ?default:(t -> 'a) -> (string * (t -> 'a)) list -> t -> 'a
-(** [enum_calls ?default table t] dispatches on the name of the next function
-    call. Each parser receives the raw cursor (still pointing at the function)
-    and is expected to consume it. *)
+(** [enum_calls ?default table t] skips leading whitespace, then dispatches on
+    the name of the next function call. Each parser receives the raw cursor
+    (still pointing at the function) and is expected to consume it. *)
 
 val enum_or_calls :
   ?default:(t -> 'a) ->
@@ -444,9 +445,10 @@ val enum_or_calls :
   ?calls:(string * (t -> 'a)) list ->
   t ->
   'a
-(** [enum_or_calls ?default label idents ?calls t] first tries to match [idents]
-    (ident token), then [calls] (function call), and finally falls back to
-    [default]. Raises if none apply and no default is given. *)
+(** [enum_or_calls ?default label idents ?calls t] skips leading whitespace,
+    first tries to match [idents] (ident token), then [calls] (function call),
+    and finally falls back to [default]. Raises if none apply and no default is
+    given. *)
 
 val enum_or_var :
   ?default:(t -> 'a) -> string -> (string * 'a) list -> var:(t -> 'a) -> t -> 'a
