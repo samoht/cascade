@@ -3218,6 +3218,14 @@ let test_color_scheme () =
   (* Color Adjust 1 SS 2.1: <custom-ident> is in the grammar for forward
      compatibility, so unknown idents are accepted. *)
   check_color_scheme "future-scheme";
+  (* Color Adjust 1 SS 2.1: [only] is unordered relative to the scheme keywords,
+     but the canonical serialization (CSSOM, browsers, Tailwind) puts the scheme
+     first and [only] last. *)
+  check_color_scheme "dark only";
+  check_color_scheme "light only";
+  check_color_scheme ~expected:"dark only" "only dark";
+  check_color_scheme ~expected:"light only" "only light";
+  check_color_scheme ~expected:"light dark only" "only light dark";
   neg_cursor read_color_scheme "normal light"
 
 let test_columns_value () =

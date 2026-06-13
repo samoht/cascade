@@ -1786,7 +1786,7 @@ let spec_remaining_prop_vectors () =
       ( "position-visibility: anchors-visible",
         "position-visibility:anchors-visible" );
       ("accent-color: auto", "accent-color:auto");
-      ("color-scheme: only light dark", "color-scheme:only light dark");
+      ("color-scheme: only light dark", "color-scheme:light dark only");
       ( "forced-color-adjust: preserve-parent-color",
         "forced-color-adjust:preserve-parent-color" );
       ("print-color-adjust: exact", "print-color-adjust:exact");
