@@ -1298,6 +1298,15 @@ let test_spec_forgiving_selector_lists () =
   check_minified_to ":where()" ":where(,)";
   check_minified_to ":is()" ":is(:future-pseudo,::before)";
   check_minified_to ":where()" ":where(:future-pseudo,::before)";
+  (* A single-argument [:is(s)] only unwraps when [s] is itself a single
+     compound. When [s] contains a combinator the [:is()] is a grouping
+     boundary: splicing its argument into the surrounding compound would
+     re-anchor the combinator and change the match set, so the wrapper stays.
+     [.a:is(.b .c)] must NOT become [.a.b .c]. *)
+  check_minified_to ".a:is(.b .c)" ".a:is(.b .c)";
+  check_minified_to "div:is(.b>.c)" "div:is(.b > .c)";
+  check_minified_to ".flex:is(:where(.group):focus *)"
+    ".flex:is(:where(.group):focus *)";
   check ":not(.a,#b)";
   neg_cursor read ".a,:future-pseudo";
   neg_cursor read ":not(.a,:future-pseudo)";

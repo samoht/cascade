@@ -2159,11 +2159,20 @@ and pp : t Pp.t =
   | Cue selectors -> elem_func ctx "cue" sels selectors
   | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
-  | Is [ single ] when Pp.minified ctx ->
+  | Is [ single ]
+    when Pp.minified ctx
+         &&
+         match single with
+         | Combined _ | Relative _ | List _ -> false
+         | _ -> true ->
       (* CSS Selectors 4 17: a single-argument [:is(s)] matches the same
          elements as [s] with the same specificity. The forgiving list drops
          invalid arguments so a [:is(:future-pseudo, .a)] also reduces here,
-         which the spec test asserts. *)
+         which the spec test asserts. The reduction is sound only when [s] is a
+         single compound: when [s] carries a combinator ([Combined] /
+         [Relative], or a [List]) the [:is()] is a grouping boundary, and
+         splicing the argument into the surrounding compound would re-anchor the
+         combinator and change the match set. *)
       pp ctx single
   | Is selectors
     when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
