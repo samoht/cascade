@@ -8393,20 +8393,23 @@ let rec pp_color_scheme : color_scheme Pp.t =
       Pp.string ctx "light";
       Pp.space ctx ();
       Pp.string ctx "dark"
+  (* Color Adjust 1 SS 2.1: [only] is unordered relative to the scheme keywords;
+     the canonical serialization (CSSOM, browsers) puts the scheme first and
+     [only] last. *)
   | Only_light ->
-      Pp.string ctx "only";
-      Pp.space ctx ();
-      Pp.string ctx "light"
-  | Only_dark ->
-      Pp.string ctx "only";
-      Pp.space ctx ();
-      Pp.string ctx "dark"
-  | Only_light_dark ->
-      Pp.string ctx "only";
-      Pp.space ctx ();
       Pp.string ctx "light";
       Pp.space ctx ();
-      Pp.string ctx "dark"
+      Pp.string ctx "only"
+  | Only_dark ->
+      Pp.string ctx "dark";
+      Pp.space ctx ();
+      Pp.string ctx "only"
+  | Only_light_dark ->
+      Pp.string ctx "light";
+      Pp.space ctx ();
+      Pp.string ctx "dark";
+      Pp.space ctx ();
+      Pp.string ctx "only"
   | Custom names -> Pp.list ~sep:Pp.space Pp.string ctx names
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -15232,9 +15235,12 @@ let rec read_color_scheme t : color_scheme =
     | [ "light" ] -> Light
     | [ "dark" ] -> Dark
     | [ "light"; "dark" ] | [ "dark"; "light" ] -> Light_dark
-    | [ "only"; "light" ] -> Only_light
-    | [ "only"; "dark" ] -> Only_dark
-    | [ "only"; "light"; "dark" ] | [ "only"; "dark"; "light" ] ->
+    | [ "only"; "light" ] | [ "light"; "only" ] -> Only_light
+    | [ "only"; "dark" ] | [ "dark"; "only" ] -> Only_dark
+    | [ "only"; "light"; "dark" ]
+    | [ "only"; "dark"; "light" ]
+    | [ "light"; "dark"; "only" ]
+    | [ "dark"; "light"; "only" ] ->
         Only_light_dark
     | [ "inherit" ] -> Inherit
     | [ "initial" ] -> Initial
