@@ -2720,7 +2720,11 @@ let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
   let has_inset_var =
     pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback
   in
-  if has_inset_var then Pp.space_if_pretty ctx ();
+  (* The [var(--name,)] prefix stands in for the optional [inset] keyword, so
+     the separator before the offsets is load-bearing (a var resolving to
+     [inset] must read [inset 0 ...], never [inset0 ...]); emit it
+     unconditionally, not only in pretty mode. *)
+  if has_inset_var then Pp.space ctx ();
   pp_length ctx h;
   Pp.space ctx ();
   pp_length ctx v;
