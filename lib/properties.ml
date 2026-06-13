@@ -2706,15 +2706,6 @@ let pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback =
    pass, leaving pp a pure serialiser. *)
 let pp_shadow_spread _ctx (spread : length option) : length option = spread
 
-let pp_shadow_blur ctx ~has_var_color (blur : length option)
-    (spread : length option) : length option =
-  match (blur, spread) with
-  (* A [var()] colour with no blur or spread needs an explicit [0] blur so the
-     var is not re-parsed as the blur length. Dropping a redundant zero blur is,
-     by contrast, a node-changing fold and lives in [normalize_shadow]. *)
-  | None, None when Pp.minified ctx && has_var_color -> Some Zero
-  | blur, _ -> blur
-
 let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     color =
   let has_inset_var =
@@ -2729,10 +2720,6 @@ let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
   Pp.space ctx ();
   pp_length ctx v;
   let spread = pp_shadow_spread ctx spread in
-  let has_var_color =
-    match (color : color option) with Some (Var _) -> true | _ -> false
-  in
-  let blur = pp_shadow_blur ctx ~has_var_color blur spread in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
   match color with Some c -> pp_color_after_length ctx c | None -> ()
@@ -4419,19 +4406,13 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
          from the end. [spread] is always the last token, so a zero spread drops
          freely; a zero blur drops only when no spread follows - otherwise it is
          positional and dropping it would re-bind the spread as the blur (e.g.
-         [0 1px 0 5px] must keep the [0] blur). A [var()] colour keeps an
-         explicit zero blur as a disambiguator (see [pp_shadow_blur]). *)
+         [0 1px 0 5px] must keep the [0] blur). *)
       let spread : length option =
         match spread with Some sp when is_zero_length sp -> None | _ -> spread
       in
-      let has_var_color =
-        match color with Some (Var _) -> true | _ -> false
-      in
       let blur : length option =
         match blur with
-        | Some b
-          when is_zero_length b && Option.is_none spread && not has_var_color ->
-            None
+        | Some b when is_zero_length b && Option.is_none spread -> None
         | _ -> blur
       in
       preserve_if_equal value
@@ -15227,63 +15208,63 @@ let rec read_appearance t : appearance =
     ~var:(fun t -> (Var (Values.read_var read_appearance t) : appearance))
     t
 
+let color_scheme_of_idents t names : color_scheme =
+  match names with
+  | [ "normal" ] -> Normal
+  | [ "light" ] -> Light
+  | [ "dark" ] -> Dark
+  | [ "light"; "dark" ] | [ "dark"; "light" ] -> Light_dark
+  | [ "only"; "light" ] | [ "light"; "only" ] -> Only_light
+  | [ "only"; "dark" ] | [ "dark"; "only" ] -> Only_dark
+  | [ "only"; "light"; "dark" ]
+  | [ "only"; "dark"; "light" ]
+  | [ "light"; "dark"; "only" ]
+  | [ "dark"; "light"; "only" ] ->
+      Only_light_dark
+  | [ "inherit" ] -> Inherit
+  | [ "initial" ] -> Initial
+  | [ "unset" ] -> Unset
+  | [ "revert" ] -> Revert
+  | [ "revert-layer" ] -> Revert_layer
+  | [] -> Cursor.err t "empty color-scheme"
+  | _ ->
+      (* CSS Color Adjust 1 section 2.1: [color-scheme] is [normal | [light |
+         dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive with
+         the list form; [only] is a modifier that must accompany a non-empty
+         list; CSS-wide keywords can only stand alone. *)
+      let has_normal = List.mem "normal" names in
+      let has_css_wide =
+        List.exists
+          (fun n ->
+            List.mem (String.lowercase_ascii n)
+              [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ])
+          names
+      in
+      if has_normal then
+        Cursor.err_invalid t
+          "color-scheme: [normal] cannot be mixed with other keywords";
+      if has_css_wide then
+        Cursor.err_invalid t
+          "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
+      let non_only_names =
+        List.filter (fun n -> String.lowercase_ascii n <> "only") names
+      in
+      if non_only_names = [] then
+        Cursor.err_invalid t
+          "color-scheme: [only] must be combined with a color scheme";
+      Custom names
+
 let rec read_color_scheme t : color_scheme =
   let rec read_idents acc =
     Cursor.ws t;
     if Cursor.is_done t || Cursor.peek_semicolon t then List.rev acc
     else read_idents (Cursor.ident t :: acc)
   in
-  let known_or_custom names =
-    match names with
-    | [ "normal" ] -> Normal
-    | [ "light" ] -> Light
-    | [ "dark" ] -> Dark
-    | [ "light"; "dark" ] | [ "dark"; "light" ] -> Light_dark
-    | [ "only"; "light" ] | [ "light"; "only" ] -> Only_light
-    | [ "only"; "dark" ] | [ "dark"; "only" ] -> Only_dark
-    | [ "only"; "light"; "dark" ]
-    | [ "only"; "dark"; "light" ]
-    | [ "light"; "dark"; "only" ]
-    | [ "dark"; "light"; "only" ] ->
-        Only_light_dark
-    | [ "inherit" ] -> Inherit
-    | [ "initial" ] -> Initial
-    | [ "unset" ] -> Unset
-    | [ "revert" ] -> Revert
-    | [ "revert-layer" ] -> Revert_layer
-    | [] -> Cursor.err t "empty color-scheme"
-    | _ ->
-        (* CSS Color Adjust 1 section 2.1: [color-scheme] is [normal | [light |
-           dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive
-           with the list form; [only] is a modifier that must accompany a
-           non-empty list; CSS-wide keywords can only stand alone. *)
-        let has_normal = List.mem "normal" names in
-        let has_css_wide =
-          List.exists
-            (fun n ->
-              List.mem (String.lowercase_ascii n)
-                [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ])
-            names
-        in
-        if has_normal then
-          Cursor.err_invalid t
-            "color-scheme: [normal] cannot be mixed with other keywords";
-        if has_css_wide then
-          Cursor.err_invalid t
-            "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
-        let non_only_names =
-          List.filter (fun n -> String.lowercase_ascii n <> "only") names
-        in
-        if non_only_names = [] then
-          Cursor.err_invalid t
-            "color-scheme: [only] must be combined with a color scheme";
-        Custom names
-  in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
     when String.equal (String.lowercase_ascii name) "var" ->
       Var (Values.read_var read_color_scheme t)
-  | _ -> known_or_custom (read_idents [])
+  | _ -> color_scheme_of_idents t (read_idents [])
 
 let rec read_print_color_adjust t : print_color_adjust =
   Cursor.enum_or_var "print-color-adjust"
