@@ -20563,6 +20563,38 @@ let strip_mul_div_whitespace comps =
   in
   aux [] comps
 
+(* CSS Values 4 sec. 2.5: [var()] / [env()] / [attr()] substitute a token stream
+   textually, so the whitespace next to one is significant - dropping it lets
+   the substituted values merge ([var(--a) var(--b)] could become [1px2px]).
+   Every other function and every block closes with a hard token boundary ([)],
+   []], [}]) that no neighbour can merge across. *)
+let is_substitution_func_name name =
+  match String.lowercase_ascii name with
+  | "var" | "env" | "attr" -> true
+  | _ -> false
+
+(* Whitespace immediately after a function or block that closes with a hard
+   token boundary is insignificant: [drop-shadow(a) drop-shadow(b)] and
+   [calc(45deg*-1) in oklab] re-tokenise identically without it, wherever the
+   stream is substituted. Whitespace after a substitution function stays. *)
+let strip_after_close_paren comps =
+  let closes_hard = function
+    | Component.Func wrapped ->
+        not (is_substitution_func_name wrapped.Component.node.name)
+    | Component.Block _ -> true
+    | _ -> false
+  in
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+        let prev_hard =
+          match acc with [] -> false | p :: _ -> closes_hard p
+        in
+        if prev_hard then aux acc rest else aux (ws :: acc) rest
+    | other :: rest -> aux (other :: acc) rest
+  in
+  aux [] comps
+
 (* [in_math] tracks whether the current component list is inside a math
    function's grammar. It enters at the args of a [calc()] / [min()] / ... call,
    propagates through grouping parens ([Block]s) since those are math operands,
@@ -20591,8 +20623,11 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
         | Component.Preserved _ -> c)
       comps
   in
-  if in_math then strip_math_whitespace comps'
-  else strip_mul_div_whitespace comps'
+  let comps' =
+    if in_math then strip_math_whitespace comps'
+    else strip_mul_div_whitespace comps'
+  in
+  strip_after_close_paren comps'
 
 (* AST-level value normaliser: applies semantic (equivalence) canonicalisation
    so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
