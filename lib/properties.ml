@@ -3419,7 +3419,10 @@ let is_font_family_ident_word s =
   && String.for_all is_ident_char s
 
 let pp_font_family_name ctx s =
-  if Pp.minified ctx then Pp.string ctx s
+  (* A multi-word named family unquotes under minify (shorter, valid), but the
+     CSSOM-canonical serialization quotes it, so enforce_spec keeps the
+     quotes. *)
+  if Pp.minified ctx && not ctx.Pp.enforce_spec then Pp.string ctx s
   else (
     Pp.char ctx '"';
     Pp.string ctx s;
@@ -3602,7 +3605,10 @@ let rec pp_font_family : font_family Pp.t =
             "default";
           ]
       in
-      if Pp.minified ctx && can_unquote_font_family_name s then Pp.string ctx s
+      if
+        Pp.minified ctx && (not ctx.Pp.enforce_spec)
+        && can_unquote_font_family_name s
+      then Pp.string ctx s
       else if
         s = ""
         || (not (String.for_all safe_ident_char s))
