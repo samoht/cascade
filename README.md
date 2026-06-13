@@ -208,8 +208,16 @@ Rule-level rewrites:
   for the evergreen target.
 - MQ4 range syntax when shorter (`(min-width:48px)` -> `(width>=48px)`).
 
-These rules compose wherever cascade has a typed CSS value. Unregistered
-custom-property values remain opaque token streams.
+These rules compose wherever cascade has a typed CSS value. An unregistered
+custom-property value stays an opaque token stream, with one exception: a
+complete colour function inside it (`oklab(...)`, `color-mix(...)`,
+`rgb(...)`, ...) is a clearly typed substream and folds to its shortest
+spelling. Such a function is unconditionally a colour in every `var()`
+substitution site, so the fold preserves every rendered result. Bare colour
+keywords stay opaque, since they may be a `<custom-ident>` in a non-colour
+context. The fold changes the exact token string a script reads back via
+`getPropertyValue`; cascade does not treat that byte-exact CSSOM serialization
+as an observable to preserve.
 
 ### Color approximation
 
@@ -284,8 +292,9 @@ frameworks.
   context.
 - **Comments and source positions** are not preserved across the
   parser/printer round trip.
-- **Unregistered custom properties** remain opaque token streams to the
-  optimizer.
+- **Unregistered custom properties** stay opaque token streams to the
+  optimizer, apart from complete colour functions inside them, which fold to
+  their shortest spelling.
 
 ## Using cascade as a library
 
