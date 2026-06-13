@@ -2040,7 +2040,23 @@ let test_font_family () =
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)
-  neg_cursor read_font_family ""
+  neg_cursor read_font_family "";
+  (* Default minify unquotes a multi-word [<family-name>] (CSS Fonts 4 sec. 4.1:
+     an ident sequence is a valid family name and the unquoted form is shorter).
+     [enforce_spec] keeps the quotes, matching the CSSOM-canonical
+     serialization, so a font stack stored verbatim in a custom property keeps
+     its authored quoting. *)
+  let stack =
+    read_font_family (Cursor.of_string "\"Segoe UI Symbol\",monospace")
+  in
+  Alcotest.(check string)
+    "default minify unquotes a multi-word family name"
+    "Segoe UI Symbol,monospace"
+    (Css.Pp.to_string ~minify:true pp_font_family stack);
+  Alcotest.(check string)
+    "enforce_spec keeps a multi-word family name quoted"
+    "\"Segoe UI Symbol\",monospace"
+    (Css.Pp.to_string ~minify:true ~enforce_spec:true pp_font_family stack)
 
 let test_font_stretch () =
   check_font_stretch "normal";
