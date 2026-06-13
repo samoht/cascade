@@ -263,9 +263,12 @@ let pp_property_rule : 'a property_rule Pp.t =
   let pp_initial_value ctx v =
     Pp.semicolon ctx ();
     Pp.cut ctx ();
-    Pp.string ctx "initial-value:";
-    Pp.space_if_pretty ctx ();
-    Variables.pp_value syntax ctx v
+    Pp.indent
+      (fun ctx () ->
+        Pp.string ctx "initial-value:";
+        Pp.space_if_pretty ctx ();
+        Variables.pp_value syntax ctx v)
+      ctx ()
   in
   let pp_initial_value_opt ctx =
     if Pp.minified ctx && is_empty_universal_initial syntax initial_value then
@@ -278,20 +281,19 @@ let pp_property_rule : 'a property_rule Pp.t =
   Pp.sp ctx ();
   Pp.braces
     (fun ctx () ->
+      Pp.string ctx "syntax:";
+      Pp.space_if_pretty ctx ();
+      Variables.pp_syntax ctx syntax;
+      Pp.string ctx ";";
       Pp.cut ctx ();
-      Pp.nest 2
+      Pp.indent
         (fun ctx () ->
-          Pp.string ctx "syntax:";
-          Pp.space_if_pretty ctx ();
-          Variables.pp_syntax ctx syntax;
-          Pp.string ctx ";";
-          Pp.cut ctx ();
           Pp.string ctx "inherits:";
           Pp.space_if_pretty ctx ();
-          Pp.string ctx (if inherits then "true" else "false");
-          pp_initial_value_opt ctx)
+          Pp.string ctx (if inherits then "true" else "false"))
         ctx ();
-      Pp.cut ctx ())
+      pp_initial_value_opt ctx;
+      if not ctx.Pp.minify then Pp.semicolon ctx ())
     ctx ()
 
 (* CSS Animations 1 §3 [<keyframes-name>] is [<custom-ident> | <string>]. The
@@ -347,7 +349,9 @@ let pp_keyframes_block_statement ctx header name frames =
   Pp.string ctx header;
   pp_keyframes_name ctx name;
   Pp.sp ctx ();
-  Pp.braced_list ~sep:Pp.cut pp_keyframe ctx frames
+  (* Sibling frame blocks separate with a blank line, like statements in any
+     other block (see [pp_block]). *)
+  Pp.braced_list ~sep:Pp.(cut ++ cut) pp_keyframe ctx frames
 
 let pp_page_pseudo ctx p =
   Pp.char ctx ':';
@@ -383,17 +387,22 @@ let pp_page_margin_rule : page_margin_rule Pp.t =
 let pp_page_with_margins_body ctx descriptors margins =
   Pp.braces
     (fun ctx () ->
-      Pp.cut ctx ();
-      Pp.nest 2
-        (fun ctx () ->
-          Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx
-            descriptors;
-          if descriptors <> [] && margins <> [] then (
-            Pp.semicolon ctx ();
-            Pp.cut ctx ());
-          Pp.list ~sep:Pp.cut pp_page_margin_rule ctx margins)
-        ctx ();
-      Pp.cut ctx ())
+      Pp.list ~sep:Pp.semicolon_cut
+        (fun ctx (i, d) ->
+          if i = 0 then Declaration.pp_declaration ctx d
+          else Pp.indent Declaration.pp_declaration ctx d)
+        ctx
+        (List.mapi (fun i d -> (i, d)) descriptors);
+      if descriptors <> [] && margins <> [] then (
+        Pp.semicolon ctx ();
+        Pp.cut ctx ())
+      else if descriptors <> [] && not ctx.Pp.minify then Pp.semicolon ctx ();
+      Pp.list ~sep:Pp.cut
+        (fun ctx (i, m) ->
+          if i = 0 && descriptors = [] then pp_page_margin_rule ctx m
+          else Pp.indent pp_page_margin_rule ctx m)
+        ctx
+        (List.mapi (fun i m -> (i, m)) margins))
     ctx ()
 
 let pp_scope_selector ctx s = Selector.pp ctx s
@@ -1229,7 +1238,9 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@font-feature-values ";
       Pp.list ~sep:Pp.comma Properties.pp_font_family ctx families;
       Pp.sp ctx ();
-      Pp.braced_list ~sep:Pp.cut pp_font_feature_values_block ctx blocks
+      Pp.braced_list
+        ~sep:Pp.(cut ++ cut)
+        pp_font_feature_values_block ctx blocks
   | View_transition descriptors ->
       Pp.string ctx "@view-transition";
       Pp.sp ctx ();
