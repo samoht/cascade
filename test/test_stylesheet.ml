@@ -5849,8 +5849,8 @@ let customprops13_registered_numeric_calc () =
 
 let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
-    "unregistered OKLCH custom property keeps token stream"
-    ".x{--color-zinc-500:oklch(55.2% .016 285.938)}"
+    "unregistered OKLCH custom property folds the colour function"
+    ".x{--color-zinc-500:#71717b}"
     (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }");
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
@@ -5915,13 +5915,13 @@ let customprops13_box_shadow_zero_spread () =
 
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
-    "unregistered OKLab custom property keeps opaque token stream"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
+    "unregistered OKLab custom property folds the colour function"
+    ".prose{--tw-prose-kbd-shadows:#1118281a}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
-    "unregistered OKLab custom property preserves required token boundary"
-    ".prose{--tw-prose-kbd-shadows:oklab(21% -.003-.034/.1)}"
+    "unregistered OKLab custom property folds regardless of source sign spacing"
+    ".prose{--tw-prose-kbd-shadows:#1118281a}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
   Alcotest.(check string)

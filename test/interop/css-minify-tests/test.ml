@@ -407,6 +407,16 @@ let normalize_expected ~category ~id expected =
          authored unit. *)
       fixture ~category ~id ~upstream:"a{font-size:16px}"
         ~cascade:"a{font-size:12pt}" upstream
+  | "values", "0057" ->
+      (* The upstream oracle keeps [rgb(0 0 0)] verbatim to preserve the exact
+         token string a script reads back via [getPropertyValue]. A complete
+         colour function is unconditionally a colour in every [var()]
+         substitution site, so folding it to the shortest spelling preserves
+         every rendered result; the only loss is byte-exact CSSOM readback,
+         which is not an evergreen-rendering fact. [rgb(0 0 0)] is black, so
+         [#000] is the shortest spelling. *)
+      fixture ~category ~id ~upstream:"a{--brand-color: rgb(0 0 0)}"
+        ~cascade:"a{--brand-color:#000}" upstream
   | "whitespace", "0009" ->
       (* The default minifier may use maintained-evergreen target facts.
          [display:flex] is true for that target, so [@supports not
