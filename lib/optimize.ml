@@ -531,6 +531,21 @@ let map_statement_block_preserve f stmt =
       if block' == block then stmt else Scope (a, b, block')
   | _ -> stmt
 
+let iter_statement_block f stmt =
+  match stmt with
+  | Layer (_, block)
+  | Media (_, block)
+  | Container (_, _, block)
+  | Supports (_, block)
+  | Moz_document (_, block)
+  | When (_, block)
+  | Else (_, block)
+  | Starting_style block
+  | Origin (_, block)
+  | Scope (_, _, block) ->
+      List.iter f block
+  | _ -> ()
+
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
     [@position-try]) and removes declarations whose typed value contains an
@@ -698,12 +713,22 @@ let promote_registered_custom_decl ~lossless registry decl =
 
 let promote_registered_custom_properties ~lossless (stmts : statement list) =
   let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
+  (* An [@property] registration is document-global regardless of source order
+     (CSS Properties and Values API 1 SS 2). Tailwind emits its [@property]
+     rules after the [@layer] that uses them, so collect every registration in a
+     first pass before promoting any declaration. *)
+  let rec collect_stmt (stmt : statement) : unit =
+    match stmt with
+    | Property pr ->
+        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
+    | Rule r -> List.iter collect_stmt r.nested
+    | _ -> iter_statement_block collect_stmt stmt
+  in
+  List.iter collect_stmt stmts;
   let promote_decl = promote_registered_custom_decl ~lossless registry in
   let rec walk_stmt (stmt : statement) : statement =
     match stmt with
-    | Property pr ->
-        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax);
-        stmt
+    | Property _ -> stmt
     | Rule r ->
         let declarations = list_map_preserve promote_decl r.declarations in
         let nested = list_map_preserve walk_stmt r.nested in

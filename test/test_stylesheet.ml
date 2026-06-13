@@ -5843,7 +5843,19 @@ let customprops13_registered_oklch_chroma () =
     (normalize_minified
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
-        285.938) }")
+        285.938) }");
+  (* A [@property] registration is document-global regardless of source order
+     (CSS Properties and Values API 1 SS 2), so a usage inside [@layer] that
+     precedes its [@property] rule (the Tailwind output shape) is still promoted
+     and colour-canonicalised. *)
+  Alcotest.(check string)
+    "registration applies to a prior usage nested in a layer"
+    "@layer utilities{.x{--color-zinc-500:#71717b}}@property \
+     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}"
+    (normalize_minified
+       "@layer utilities { .x { --color-zinc-500: oklch(55.2% .016 285.938) } \
+        } @property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
+        initial-value: black }")
 
 let customprops13_registered_percent_calc () =
   Alcotest.(check string)
