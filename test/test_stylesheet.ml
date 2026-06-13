@@ -3666,6 +3666,47 @@ let pretty_preserves css fragments =
 (* CSS Color 4 section 12.1 + cascade convention: authored hex colours decode to
    sRGB bytes but keep their source spelling for pretty-printing, while
    minify+optimize emits the shorter equivalent spelling. *)
+(* The pretty printer formats every braced at-rule body with the same line
+   discipline as a style rule body: one declaration per line at one indent
+   level deeper, a trailing semicolon on the last declaration, and the closing
+   brace back at the parent's indentation. Sibling blocks inside @keyframes
+   are separated by a blank line, like statements in any other block. The
+   oracle is Tailwind's authored output format (e.g. the @keyframes bounce
+   block in tailwindcss theme.css). *)
+let pretty_at_rule_block_bodies () =
+  let pretty css =
+    match Css.of_string ~strict:false css with
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+    | Ok parsed -> Css.to_string parsed.stylesheet |> String.trim
+  in
+  Alcotest.(check string)
+    "@property body formats like a rule body"
+    "@property --x {\n\
+    \  syntax: \"<length>\";\n\
+    \  inherits: true;\n\
+    \  initial-value: 0px;\n\
+     }"
+    (pretty
+       "@property --x { syntax: \"<length>\"; inherits: true; initial-value: \
+        0px }");
+  Alcotest.(check string)
+    "@font-face body formats like a rule body"
+    "@font-face {\n  font-family: MyFont;\n  src: url(font.woff2);\n}"
+    (pretty "@font-face { font-family: MyFont; src: url(font.woff2) }");
+  Alcotest.(check string)
+    "@keyframes frames format like sibling blocks"
+    "@keyframes spin {\n\
+    \  from {\n\
+    \    transform: rotate(0deg);\n\
+    \  }\n\n\
+    \  to {\n\
+    \    transform: rotate(360deg);\n\
+    \  }\n\
+     }"
+    (pretty
+       "@keyframes spin { from { transform: rotate(0deg) } to { transform: \
+        rotate(360deg) } }")
+
 let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
   pretty_preserves ".x { color: #f00 }" [ "#f00" ];
@@ -6774,6 +6815,7 @@ let additional_tests =
       `Quick,
       bg336_bgpos_collapse );
     (* Non-minified fidelity: pretty printer preserves the source spelling. *)
+    ("pretty at-rule block bodies", `Quick, pretty_at_rule_block_bodies);
     ("fidelity hex form preserved", `Quick, fidelity_hex_form_preserved);
     ("fidelity color form preserved", `Quick, fidelity_color_form_preserved);
     ( "fidelity keyframe selector preserved",
