@@ -82,11 +82,30 @@ let registered_custom_property_tokens () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_mix_tokens () =
+  (* color-mix() is unconditionally a colour wherever it is substituted, so two
+     spellings of the same colour-mix are equal under canonical comparison even
+     inside an unregistered custom property. transparent and #0000 are the same
+     colour, so these two forms compare equal. *)
   let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
   Alcotest.(check bool)
-    "unregistered custom color-mix token streams stay opaque" false
+    "custom color-mix spellings of one colour compare equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+let canonical_custom_color_function_alpha () =
+  (* oklab() is unconditionally a colour, so an alpha written as 25% or .25 is
+     the same value; canonical comparison equates them inside a custom-property
+     body. *)
+  Alcotest.(check bool)
+    "oklab alpha 25% and .25 compare equal in a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { --s: oklab(50% 0 0 / 25%) }" ".a { --s: oklab(50% 0 0 / .25) }");
+  (* A bare colour keyword could be a custom-ident in a non-colour substitution
+     context, so it stays opaque: transparent and #0000 are not equated. *)
+  Alcotest.(check bool)
+    "bare transparent and #0000 stay distinct in a custom property" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
+       ".a { --c: #0000 }")
 
 let canonical_custom_calc_percentage () =
   let expected = ".a { --tw-translate-x: calc(1 / 2 * 100%) }" in
@@ -803,6 +822,8 @@ let suite =
         registered_custom_property_tokens;
       Alcotest.test_case "canonical custom color-mix tokens" `Quick
         canonical_custom_color_mix_tokens;
+      Alcotest.test_case "canonical custom color-function alpha" `Quick
+        canonical_custom_color_function_alpha;
       Alcotest.test_case "canonical custom calc percentage" `Quick
         canonical_custom_calc_percentage;
       Alcotest.test_case "semantic with recovered warning" `Quick
