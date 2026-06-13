@@ -20516,6 +20516,11 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
    so the optimizer holds a canonical AST and [pp] stays a pure serialiser. Add
    property cases here as their folds migrate out of [pp]; everything else is
    identity. *)
+let normalize_font_size (fs : font_size) : font_size =
+  match fs with
+  | Length l -> preserve_if_equal fs (Length (Values.normalize_length l))
+  | _ -> fs
+
 let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
  fun ?(lossless = false) property value ->
   let normalize_color =
@@ -20625,6 +20630,7 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Grid_auto_rows -> normalize_grid_template value
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
+  | Font_size -> normalize_font_size value
   | Padding_left -> Values.normalize_length value
   | Padding_right -> Values.normalize_length value
   | Padding_bottom -> Values.normalize_length value

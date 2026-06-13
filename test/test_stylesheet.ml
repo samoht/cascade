@@ -4693,7 +4693,10 @@ let v4107_minmax_reduction () =
   Alcotest.(check string)
     "clamp(1rem, 2vw, 3rem) stays (mixed units)"
     ".x{width:clamp(1rem,2vw,3rem)}"
-    (normalize ".x { width: clamp(1rem, 2vw, 3rem) }")
+    (normalize ".x { width: clamp(1rem, 2vw, 3rem) }");
+  Alcotest.(check string)
+    "font-size folds a constant clamp too" ".x{font-size:2rem}"
+    (normalize ".x { font-size: clamp(1rem, 2rem, 3rem) }")
 
 (* CSS Selectors L4 section 17 (:is()): a single-argument [:is(.x)] matches the
    same elements as bare [.x] with the same specificity. Per shortest-wins
