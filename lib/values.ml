@@ -3543,9 +3543,18 @@ let rec normalize_length ?(strip = true) (l : length) : length =
         with
         | Val v -> v
         | folded -> Calc folded)
-    | Clamp (mn, v, mx) ->
+    | Clamp (mn, v, mx) -> (
         let mn = nf mn and v = nf v and mx = nf mx in
-        if mn = v && v = mx then v else Clamp (mn, v, mx)
+        if mn = v && v = mx then v
+        else
+          (* clamp(lo, v, hi) = max(lo, min(v, hi)); folds to one value when all
+             three share a unit, returning lo when lo > hi. *)
+          match try_reduce_typed_min_max [ v; mx ] Float.min with
+          | Some inner -> (
+              match try_reduce_typed_min_max [ mn; inner ] Float.max with
+              | Some r -> r
+              | None -> Clamp (mn, v, mx))
+          | None -> Clamp (mn, v, mx))
     | Min xs -> (
         let xs = List.map nf xs in
         match try_reduce_typed_min_max xs Float.min with
