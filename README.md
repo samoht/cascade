@@ -210,14 +210,15 @@ Rule-level rewrites:
 
 These rules compose wherever cascade has a typed CSS value. An unregistered
 custom-property value stays an opaque token stream, with one exception: a
-complete colour function inside it (`oklab(...)`, `color-mix(...)`,
-`rgb(...)`, ...) is a clearly typed substream and folds to its shortest
-spelling. Such a function is unconditionally a colour in every `var()`
-substitution site, so the fold preserves every rendered result. Bare colour
-keywords stay opaque, since they may be a `<custom-ident>` in a non-colour
-context. The fold changes the exact token string a script reads back via
-`getPropertyValue`; cascade does not treat that byte-exact CSSOM serialization
-as an observable to preserve.
+substream whose type is fixed by its own syntax. A complete colour function
+(`oklab(...)`, `color-mix(...)`, `rgb(...)`, ...) or a hex colour (`#abc`) is
+unconditionally a colour in every `var()` substitution site, so it folds to its
+shortest spelling and the fold preserves every rendered result. The fold never
+produces a bare colour keyword: a name like `red` is also a valid
+`<custom-ident>`, so it stays distinct from `#f00` even though it is shorter,
+and hex stays hex. The fold changes the exact token string a script reads back
+via `getPropertyValue`; cascade does not treat that byte-exact CSSOM
+serialization as an observable to preserve.
 
 ### Color approximation
 
