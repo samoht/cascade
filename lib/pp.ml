@@ -436,15 +436,29 @@ let semicolon_cut ctx () =
   semicolon ctx ();
   cut ctx ()
 
-let braced_list ?sep pp_item ctx items =
+(* [braces] indents the body's first line and emits the cuts around the braces
+   itself, so the body prints the first item bare, re-indents every item after a
+   separator's cut, and adds no leading or trailing cut. *)
+let braced_items ?sep ?(trailing = nop) pp_item ctx items =
   braces
     (fun ctx () ->
-      cut ctx ();
-      nest 2 (list ?sep pp_item) ctx items;
-      cut ctx ())
+      match items with
+      | [] -> ()
+      | first :: rest ->
+          pp_item ctx first;
+          List.iter
+            (fun item ->
+              (match sep with Some s -> s ctx () | None -> ());
+              indent pp_item ctx item)
+            rest;
+          trailing ctx ())
     ctx ()
 
-let braced_semicolon_list pp_item = braced_list ~sep:semicolon_cut pp_item
+let braced_list ?sep pp_item ctx items = braced_items ?sep pp_item ctx items
+let semicolon_if_pretty ctx () = if not ctx.minify then semicolon ctx ()
+
+let braced_semicolon_list pp_item =
+  braced_items ~sep:semicolon_cut ~trailing:semicolon_if_pretty pp_item
 
 let call name pp_args ctx args =
   string ctx name;

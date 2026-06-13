@@ -293,12 +293,14 @@ val semicolon_cut : unit t
 (** [semicolon_cut] outputs a semicolon followed by a layout cut. *)
 
 val braced_list : ?sep:unit t -> 'a t -> 'a list t
-(** [braced_list formatter] wraps a list in braces using the same multiline
-    layout as CSS at-rule bodies. *)
+(** [braced_list formatter] wraps a list in braces with one item per line at one
+    indent level deeper and the closing brace back at the parent's indentation.
+*)
 
 val braced_semicolon_list : 'a t -> 'a list t
-(** [braced_semicolon_list formatter] wraps a list in braces and separates items
-    with {!val-semicolon_cut}. *)
+(** [braced_semicolon_list formatter] is {!val-braced_list} with items separated
+    by {!val-semicolon_cut} and, in pretty output, a trailing semicolon after
+    the last item, matching style rule bodies. *)
 
 val call : string -> 'a t -> 'a t
 (** [call name args] formats a function call: [name( args )]. *)
