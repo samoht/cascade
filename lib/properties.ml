@@ -20197,6 +20197,70 @@ let read_custom_value_as kind read components =
 let read_custom_property_value ?font_family:_ cursor =
   Tokens (Cursor.remaining cursor)
 
+(* A registered [<color>] custom property carries a typed colour once promoted,
+   so canonicalise it the same way a real colour property would. *)
+let is_color_function name =
+  match String.lowercase_ascii name with
+  | "rgb" | "rgba" | "hsl" | "hsla" | "hwb" | "lab" | "lch" | "oklab" | "oklch"
+  | "color" | "color-mix" | "light-dark" ->
+      true
+  | _ -> false
+
+(* A complete colour function is unconditionally a colour in every [var()]
+   substitution site, so folding it to its canonical spelling inside an opaque
+   custom-property token stream preserves every rendered result while collapsing
+   two spellings of the same colour. The only observable change is the exact
+   token string a script reads back via [getPropertyValue]; that readback is the
+   optimizer's domain (it already folds insignificant math whitespace here), so
+   the canonical diff inherits this fold rather than shimming it. Bare keywords
+   are left untouched - they may be a [<custom-ident>] in a non-colour
+   context. *)
+let rec canonicalize_custom_colors_components ~lossless comps =
+  List.concat_map
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Func wrapped
+        when is_color_function wrapped.Component.node.name -> (
+          let text = Parser.to_string_custom [ c ] in
+          let cur = Cursor.of_string text in
+          match
+            try Some (Values.read_color cur) with Cursor.Parse_error _ -> None
+          with
+          | Some col when Cursor.is_done cur -> (
+              let canon =
+                Pp.to_string ~minify:true Values.pp_color
+                  (Values.normalize_color ~lossless ~in_feature_query:false col)
+              in
+              match read_custom_property_value (Cursor.of_string canon) with
+              | Tokens cs -> cs
+              | Typed _ -> [ c ])
+          | _ ->
+              let func = wrapped.Component.node in
+              let args =
+                canonicalize_custom_colors_components ~lossless func.arguments
+              in
+              [
+                Component.Func
+                  { wrapped with node = { func with arguments = args } };
+              ])
+      | Component.Func wrapped ->
+          let func = wrapped.Component.node in
+          let args =
+            canonicalize_custom_colors_components ~lossless func.arguments
+          in
+          [
+            Component.Func
+              { wrapped with node = { func with arguments = args } };
+          ]
+      | Component.Block wrapped ->
+          let block = wrapped.Component.node in
+          let value =
+            canonicalize_custom_colors_components ~lossless block.value
+          in
+          [ Component.Block { wrapped with node = { block with value } } ]
+      | Component.Preserved _ -> [ c ])
+    comps
+
 (* Typed re-readers exposed for the registry pass that consumes [@property]
    declarations. Each reader takes a token stream and tries to parse it as the
    matching typed kind, returning [None] when the stream doesn't match. The
@@ -20715,15 +20779,15 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->
           let components' =
-            canonicalize_math_whitespace_components components
+            components
+            |> canonicalize_custom_colors_components ~lossless
+            |> canonicalize_math_whitespace_components
           in
           if components' == components then value
           else Custom_value { r with value = Tokens components' }
       | Custom_value _ -> value)
   | _ -> value
 
-(* A registered [<color>] custom property carries a typed colour once promoted,
-   so canonicalise it the same way a real colour property would. *)
 let normalize_custom_property_value ?(lossless = false) :
     custom_property_value -> custom_property_value = function
   | Typed { kind = Length; value } ->
@@ -20752,7 +20816,9 @@ let normalize_custom_property_value ?(lossless = false) :
           value = normalize_gradient_direction value;
         }
   | Tokens components ->
-      Tokens (canonicalize_math_whitespace_components components)
+      Tokens
+        (canonicalize_math_whitespace_components
+           (canonicalize_custom_colors_components ~lossless components))
   | Typed _ as other -> other
 
 let pp_property_value : type a. (a property * a) Pp.t =
