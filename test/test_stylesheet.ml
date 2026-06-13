@@ -4680,7 +4680,23 @@ let v4107_minmax_reduction () =
     (normalize ".x { width: max(1px, 2px) }");
   Alcotest.(check string)
     "min(min(1px, 2px), 3px) -> 1px" ".x{width:1px}"
-    (normalize ".x { width: min(min(1px, 2px), 3px) }")
+    (normalize ".x { width: min(min(1px, 2px), 3px) }");
+  (* CSS Values 4 section 10: [clamp(lo, v, hi)] is [max(lo, min(v, hi))], so a
+     clamp of three same-unit literals folds to a single value (returning [lo]
+     when [lo > hi]). Mixed units cannot be compared and are preserved. *)
+  Alcotest.(check string)
+    "clamp(1rem, 2rem, 3rem) -> 2rem" ".x{width:2rem}"
+    (normalize ".x { width: clamp(1rem, 2rem, 3rem) }");
+  Alcotest.(check string)
+    "clamp(3rem, 2rem, 1rem) -> 3rem" ".x{width:3rem}"
+    (normalize ".x { width: clamp(3rem, 2rem, 1rem) }");
+  Alcotest.(check string)
+    "clamp(1rem, 2vw, 3rem) stays (mixed units)"
+    ".x{width:clamp(1rem,2vw,3rem)}"
+    (normalize ".x { width: clamp(1rem, 2vw, 3rem) }");
+  Alcotest.(check string)
+    "font-size folds a constant clamp too" ".x{font-size:2rem}"
+    (normalize ".x { font-size: clamp(1rem, 2rem, 3rem) }")
 
 (* CSS Selectors L4 section 17 (:is()): a single-argument [:is(.x)] matches the
    same elements as bare [.x] with the same specificity. Per shortest-wins
