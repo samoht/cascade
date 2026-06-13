@@ -2768,6 +2768,19 @@ let static_color_to_srgb_bytes c : (int * int * int * int) option =
       Some (component r, component g, component b, a)
   | _ -> Option.None
 
+(* A bare colour keyword ([red], [transparent]) is also a valid [<custom-ident>]
+   in a non-colour context, so it must not be introduced when folding a colour
+   inside an opaque custom-property token stream: re-spell a named/transparent
+   colour as its hex form, which is a colour or nothing in every context. A
+   hex/function/currentcolor colour already carries no keyword spelling. *)
+let nonkeyword_color (c : color) : color =
+  match c with
+  | Named _ | Transparent -> (
+      match static_color_to_srgb_bytes c with
+      | Some (r, g, b, a) -> Hex { r; g; b; a }
+      | None -> c)
+  | _ -> c
+
 let exact_rgb_to_srgb_bytes c : (int * int * int * int) option =
   match c with
   | Rgb (Channels { r; g; b }) -> (

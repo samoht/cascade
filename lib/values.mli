@@ -72,6 +72,13 @@ val minify_color : color -> color
 (** [minify_color c] converts named colors to hex when the hex form is shorter
     or equal length, matching Lightning CSS behavior. *)
 
+val nonkeyword_color : color -> color
+(** [nonkeyword_color c] re-spells a colour written as a bare keyword (a named
+    colour, or transparent) as its hex form, leaving every other colour
+    unchanged. A bare colour keyword is also a valid [<custom-ident>], so it
+    must not be introduced when folding a colour inside an opaque
+    custom-property token stream. *)
+
 val current_color : color
 (** [current_color] is the CSS currentcolor value. *)
 
