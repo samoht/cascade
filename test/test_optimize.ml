@@ -1023,6 +1023,29 @@ let test_keep_var_border_spaces () =
     "a{border:var(--bw) var(--bs) var(--bc)}"
     (minify_str "a{border:var(--bw) var(--bs) var(--bc)}")
 
+let test_custom_value_close_paren_whitespace () =
+  (* A [)] closing a non-substitution function or a block is a hard token
+     boundary that no neighbour can merge across, so the whitespace after it is
+     insignificant: optimize folds it out (and the canonical diff inherits
+     that), while pp keeps it because pp is a pure serializer. *)
+  Alcotest.(check string)
+    "pp keeps whitespace after a function close (held)"
+    "a{--x:drop-shadow(0 0 0) drop-shadow(1px 1px)}"
+    (pp_min "a{--x:drop-shadow(0 0 0) drop-shadow(1px 1px)}");
+  Alcotest.(check string)
+    "optimize folds whitespace after a function close (canonical)"
+    "a{--x:drop-shadow(0 0 0)drop-shadow(1px 1px)}"
+    (minify_str "a{--x:drop-shadow(0 0 0) drop-shadow(1px 1px)}");
+  Alcotest.(check string)
+    "optimize folds whitespace after calc() before an ident"
+    "a{--x:calc(45deg*-1)in oklab}"
+    (minify_str "a{--x:calc(45deg * -1) in oklab}");
+  (* A [var()] substitutes a token stream textually, so dropping the whitespace
+     after it could merge the substituted values ([1px2px]); it stays. *)
+  Alcotest.(check string)
+    "optimize keeps whitespace after var()" "a{--x:var(--a) var(--b)}"
+    (minify_str "a{--x:var(--a) var(--b)}")
+
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
      authored rather than being moved past the following rule. *)
@@ -3676,6 +3699,9 @@ let selector_merging_tests =
       `Quick,
       test_keep_zero_duration_transition );
     ("var border keeps significant spaces", `Quick, test_keep_var_border_spaces);
+    ( "custom value folds whitespace after a hard close-paren",
+      `Quick,
+      test_custom_value_close_paren_whitespace );
     ( "leading bang comment stays leading",
       `Quick,
       test_keep_bang_comment_leading );
