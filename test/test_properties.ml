@@ -2867,7 +2867,21 @@ let test_shadow () =
   Alcotest.(check string)
     "inset-var shadow keeps the separator after the var prefix when minified"
     "var(--tw-ring-inset,) 0 0 0 1px #000"
-    (Css.Pp.to_string ~minify:true pp_shadow inset_var_shadow)
+    (Css.Pp.to_string ~minify:true pp_shadow inset_var_shadow);
+  (* A var() colour with no blur/spread serialises to [12px 12px var(--c)] - the
+     shortest form. cascade does not pad it with an explicit [0] blur: a
+     var-colour shadow and a var-blur shadow produce identical tokens (the var
+     is opaque), so the [0] would only preserve a cascade-internal AST
+     distinction at the cost of a longer, browser-equivalent value. *)
+  let var_color_shadow =
+    shadow ~h_offset:(Px 12.) ~v_offset:(Px 12.)
+      ~color:(Values.Var (Values.var_ref "c"))
+      ()
+  in
+  Alcotest.(check string)
+    "var-colour shadow serialises to the shortest form (no padding 0 blur)"
+    "12px 12px var(--c)"
+    (Css.Pp.to_string ~minify:true pp_shadow var_color_shadow)
 
 let test_align_items () =
   check_align_items "stretch";
