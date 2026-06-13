@@ -2855,7 +2855,19 @@ let test_shadow () =
     "0 0 rgba(0,0,0,0)";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
-  neg_cursor read_shadow "10px"
+  neg_cursor read_shadow "10px";
+  (* A [var(--name,)] inset prefix stands in for the optional [inset] keyword,
+     so the separator before the offset is load-bearing: if the var resolves to
+     [inset] the result must read [inset 0 ...], never [inset0 ...]. The space
+     must survive minification. *)
+  let inset_var_shadow =
+    shadow ~inset_var:"tw-ring-inset" ~h_offset:Zero ~v_offset:Zero ~blur:Zero
+      ~spread:(Px 1.) ~color:(Values.hex "#000") ()
+  in
+  Alcotest.(check string)
+    "inset-var shadow keeps the separator after the var prefix when minified"
+    "var(--tw-ring-inset,) 0 0 0 1px #000"
+    (Css.Pp.to_string ~minify:true pp_shadow inset_var_shadow)
 
 let test_align_items () =
   check_align_items "stretch";
