@@ -20206,35 +20206,45 @@ let is_color_function name =
       true
   | _ -> false
 
-(* A complete colour function is unconditionally a colour in every [var()]
-   substitution site, so folding it to its canonical spelling inside an opaque
-   custom-property token stream preserves every rendered result while collapsing
-   two spellings of the same colour. The only observable change is the exact
-   token string a script reads back via [getPropertyValue]; that readback is the
-   optimizer's domain (it already folds insignificant math whitespace here), so
-   the canonical diff inherits this fold rather than shimming it. Bare keywords
-   are left untouched - they may be a [<custom-ident>] in a non-colour
-   context. *)
+(* A construct whose type is fixed by its own syntax - a complete colour
+   function ([oklab(...)], [color-mix(...)], ...) or a hex colour ([#abc]) - is
+   unconditionally a colour in every [var()] substitution site, so folding it to
+   its canonical spelling inside an opaque custom-property token stream
+   preserves every rendered result while collapsing two spellings of the same
+   colour. The only observable change is the exact token string a script reads
+   back via [getPropertyValue]; that readback is the optimizer's domain (it
+   already folds insignificant math whitespace here), so the canonical diff
+   inherits this fold rather than shimming it. Bare keywords are left untouched
+   - they may be a [<custom-ident>] in a non-colour context, whereas a hex token
+   never can. *)
+(* [c] is one component whose syntax fixes it as a colour; fold it to the
+   shortest non-keyword spelling, falling back to [fallback ()] when it does not
+   actually parse as a complete colour. *)
+let fold_custom_color ~lossless (c : Component.t) ~fallback =
+  let text = Parser.to_string_custom [ c ] in
+  let cur = Cursor.of_string text in
+  match
+    try Some (Values.read_color cur) with Cursor.Parse_error _ -> None
+  with
+  | Some col when Cursor.is_done cur -> (
+      let canon =
+        Pp.to_string ~minify:true Values.pp_color
+          (Values.nonkeyword_color
+             (Values.normalize_color ~lossless ~in_feature_query:false col))
+      in
+      match read_custom_property_value (Cursor.of_string canon) with
+      | Tokens cs -> cs
+      | Typed _ -> [ c ])
+  | _ -> fallback ()
+
 let rec canonicalize_custom_colors_components ~lossless comps =
+  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
   List.concat_map
     (fun (c : Component.t) ->
       match c with
       | Component.Func wrapped
-        when is_color_function wrapped.Component.node.name -> (
-          let text = Parser.to_string_custom [ c ] in
-          let cur = Cursor.of_string text in
-          match
-            try Some (Values.read_color cur) with Cursor.Parse_error _ -> None
-          with
-          | Some col when Cursor.is_done cur -> (
-              let canon =
-                Pp.to_string ~minify:true Values.pp_color
-                  (Values.normalize_color ~lossless ~in_feature_query:false col)
-              in
-              match read_custom_property_value (Cursor.of_string canon) with
-              | Tokens cs -> cs
-              | Typed _ -> [ c ])
-          | _ ->
+        when is_color_function wrapped.Component.node.name ->
+          fold_color c ~fallback:(fun () ->
               let func = wrapped.Component.node in
               let args =
                 canonicalize_custom_colors_components ~lossless func.arguments
@@ -20243,6 +20253,8 @@ let rec canonicalize_custom_colors_components ~lossless comps =
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
               ])
+      | Component.Preserved { kind = Token.Hash _; _ } ->
+          fold_color c ~fallback:(fun () -> [ c ])
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let args =

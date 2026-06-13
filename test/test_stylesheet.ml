@@ -5913,6 +5913,29 @@ let customprops13_box_shadow_zero_spread () =
        ".shadow-sm { --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, \
         #0000001a) }")
 
+let customprops13_hex_color_folds () =
+  Alcotest.(check string)
+    "unregistered hex custom property folds to the shortest hex" ".x{--c:#fff}"
+    (normalize_minified ".x { --c: #ffffff }");
+  (* An opaque alpha hex with no shorter form stays verbatim. *)
+  Alcotest.(check string)
+    "8-digit hex without a shorter form is unchanged" ".x{--c:#abcdef12}"
+    (normalize_minified ".x { --c: #abcdef12 }");
+  (* A bare colour keyword is also a valid <custom-ident> in a non-colour
+     substitution site, so the fold must never produce a name: red folds to the
+     hex form, not to [red], even though [red] is one byte shorter. *)
+  Alcotest.(check string)
+    "hex folds to hex, never to a named colour" ".x{--c:#f00}"
+    (normalize_minified ".x { --c: #ff0000 }");
+  Alcotest.(check string)
+    "an rgb() function also folds to hex, not a name" ".x{--c:#f00}"
+    (normalize_minified ".x { --c: rgb(255 0 0) }");
+  (* A hex inside an <image> function (itself a clearly typed substream) folds
+     through the recursion. *)
+  Alcotest.(check string)
+    "hex nested in a gradient folds" ".x{--g:linear-gradient(#f00,#00f)}"
+    (normalize_minified ".x { --g: linear-gradient(#ff0000, #0000ff) }")
+
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "unregistered OKLab custom property folds the colour function"
@@ -6775,6 +6798,9 @@ let additional_tests =
     ( "spec custom-properties 1 3 unregistered box-shadow token stream",
       `Quick,
       customprops13_box_shadow_zero_spread );
+    ( "spec custom-properties 1 3 hex colour folds",
+      `Quick,
+      customprops13_hex_color_folds );
     ( "spec custom-properties 1 3 registered oklab sign boundaries",
       `Quick,
       customprops13_shortest_oklab_sign_boundaries );
