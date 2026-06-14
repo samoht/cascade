@@ -891,6 +891,11 @@ let spec_color5_function_edges () =
     "oklab(50% 0.1 0.2)";
   check_color ~expected:"oklch(50%.1 20/.5)" ~optimized:"#944a4b80"
     "oklch(50% 0.1 20 / 0.5)";
+  (* CSS Color 4 sec. 9.2/9.3: an oklab/oklch lightness number out of [0,1]
+     clamps (like lab/lch on 0-100), instead of dropping the declaration. *)
+  check_color ~expected:"oklch(1 .1 30)" "oklch(1.5 0.1 30)";
+  check_color ~expected:"oklch(0 .1 30)" "oklch(-0.5 0.1 30)";
+  check_color ~expected:"oklab(0 .1 .1)" "oklab(-1 0.1 0.1)";
   check_color ~expected:"color(srgb 1 0 0/.5)" ~optimized:"#ff000080"
     "color(srgb 1 0 0 / 0.5)";
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
