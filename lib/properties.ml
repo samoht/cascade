@@ -20238,6 +20238,35 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
       | Typed _ -> [ c ])
   | _ -> fallback ()
 
+(* A math function ([calc()], [min()], [clamp()], ...) is unconditionally a math
+   expression, so when its operands are all constants it reduces to a single
+   <number> with the same value in every [var()] substitution site - fold it
+   inside an opaque custom-property stream like a complete colour. A function
+   that still references a var or carries units does not reduce to a [Num] and
+   stays verbatim. *)
+let is_math_function name =
+  match String.lowercase_ascii name with
+  | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "abs" | "sign"
+  | "hypot" | "pow" | "sqrt" | "exp" | "log" ->
+      true
+  | _ -> false
+
+let fold_custom_calc (c : Component.t) ~fallback =
+  let text = Parser.to_string_custom [ c ] in
+  let cur = Cursor.of_string text in
+  match
+    try Some (Values.read_number cur) with Cursor.Parse_error _ -> None
+  with
+  | Some n when Cursor.is_done cur -> (
+      match Values.normalize_number n with
+      | Num _ as folded -> (
+          let canon = Pp.to_string ~minify:true Values.pp_number folded in
+          match read_custom_property_value (Cursor.of_string canon) with
+          | Tokens cs -> cs
+          | Typed _ -> [ c ])
+      | _ -> fallback ())
+  | _ -> fallback ()
+
 let rec canonicalize_custom_colors_components ~lossless comps =
   let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
   List.concat_map
@@ -20256,6 +20285,17 @@ let rec canonicalize_custom_colors_components ~lossless comps =
               ])
       | Component.Preserved { kind = Token.Hash _; _ } ->
           fold_color c ~fallback:(fun () -> [ c ])
+      | Component.Func wrapped when is_math_function wrapped.Component.node.name
+        ->
+          fold_custom_calc c ~fallback:(fun () ->
+              let func = wrapped.Component.node in
+              let args =
+                canonicalize_custom_colors_components ~lossless func.arguments
+              in
+              [
+                Component.Func
+                  { wrapped with node = { func with arguments = args } };
+              ])
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let args =
