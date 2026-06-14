@@ -820,11 +820,50 @@ let pp_does_not_crash () =
   (* Just verify it doesn't crash *)
   ignore (Buffer.contents buf)
 
+(* ===== @import diffs ===== *)
+
+let equal = Cascade_diff.Css_compare.equal
+
+(* Two @import rules that differ in target, media, or order are
+   cascade-significant differences, not equal, in both the structural Tree mode
+   and the semantic Canonical mode. *)
+let import_tree_url () =
+  Alcotest.(check bool)
+    "different @import targets differ (tree)" false
+    (equal ~mode:`Tree "@import url(a.css);" "@import url(b.css);");
+  Alcotest.(check bool)
+    "identical @import equal (tree)" true
+    (equal ~mode:`Tree "@import url(a.css);" "@import url(a.css);")
+
+let import_tree_media () =
+  Alcotest.(check bool)
+    "different @import media differ (tree)" false
+    (equal ~mode:`Tree "@import url(a.css) screen;" "@import url(a.css) print;")
+
+let import_tree_order () =
+  Alcotest.(check bool)
+    "swapped @import order differs (tree)" false
+    (equal ~mode:`Tree "@import url(a.css);@import url(b.css);"
+       "@import url(b.css);@import url(a.css);")
+
+let import_canonical_media () =
+  Alcotest.(check bool)
+    "different @import media differ (canonical)" false
+    (equal ~mode:`Canonical "@import url(a.css) screen;"
+       "@import url(a.css) print;");
+  Alcotest.(check bool)
+    "identical @import equal (canonical)" true
+    (equal ~mode:`Canonical "@import url(a.css);" "@import url(a.css);")
+
 (* ===== Suite ===== *)
 
 let suite =
   ( "css_compare",
     [
+      Alcotest.test_case "import tree url" `Quick import_tree_url;
+      Alcotest.test_case "import tree media" `Quick import_tree_media;
+      Alcotest.test_case "import tree order" `Quick import_tree_order;
+      Alcotest.test_case "import canonical media" `Quick import_canonical_media;
       Alcotest.test_case "equal identical" `Quick equal_identical;
       Alcotest.test_case "equal different" `Quick equal_different;
       Alcotest.test_case "equal empty" `Quick equal_empty;

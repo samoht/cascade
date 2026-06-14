@@ -2037,23 +2037,102 @@ let detect_container_position_changes stmts1 stmts2 containers =
     containers
 
 (* Main diff function *)
+(* @import and the other selectorless leaf rules collapse onto the universal
+   selector key in [rule_diffs], so two distinct imports match as identical and
+   their differences vanish. Compare them here on their serialised form, which
+   captures the target URL, layer, supports condition and media query. Import
+   order is cascade-significant, so a pure reorder is a difference too. *)
+let import_strings stmts =
+  List.filter_map
+    (fun s ->
+      match Css.as_import s with
+      | Some _ ->
+          Some
+            (Css.Stylesheet.to_string ~minify:true (Css.v [ s ]) |> String.trim)
+      | None -> None)
+    stmts
+
+(* [items] minus one occurrence for each element of [remove]. *)
+let multiset_remove_each ~remove items =
+  let counts = Hashtbl.create 16 in
+  List.iter
+    (fun x ->
+      Hashtbl.replace counts x
+        (1 + try Hashtbl.find counts x with Not_found -> 0))
+    remove;
+  List.filter
+    (fun x ->
+      match Hashtbl.find_opt counts x with
+      | Some n when n > 0 ->
+          Hashtbl.replace counts x (n - 1);
+          false
+      | _ -> true)
+    items
+
+(* Precondition: [l1] and [l2] hold the same imports in a different order. *)
+let import_reorder l1 l2 : rule_diff option =
+  let arr2 = Array.of_list l2 in
+  let index_in_l2 s =
+    let rec idx j =
+      if j >= Array.length arr2 then 0
+      else if arr2.(j) = s then j
+      else idx (j + 1)
+    in
+    idx 0
+  in
+  let rec first_moved i = function
+    | x :: rest ->
+        if i < Array.length arr2 && arr2.(i) = x then first_moved (i + 1) rest
+        else Some (i, x)
+    | [] -> None
+  in
+  match first_moved 0 l1 with
+  | None -> None
+  | Some (expected_pos, moved) ->
+      Some
+        (Reordered
+           {
+             selector = moved;
+             expected_pos;
+             actual_pos = index_in_l2 moved;
+             swapped_with = None;
+             old_declarations = None;
+             new_declarations = None;
+           })
+
+let process_imports stmts1 stmts2 : rule_diff list =
+  let l1 = import_strings stmts1 and l2 = import_strings stmts2 in
+  if l1 = l2 then []
+  else if List.sort compare l1 = List.sort compare l2 then
+    Option.to_list (import_reorder l1 l2)
+  else
+    List.map
+      (fun s -> (Removed { selector = s; declarations = [] } : rule_diff))
+      (multiset_remove_each ~remove:l2 l1)
+    @ List.map
+        (fun s -> (Added { selector = s; declarations = [] } : rule_diff))
+        (multiset_remove_each ~remove:l1 l2)
+
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
-  let rules1 = Css.statements expected in
-  let rules2 = Css.statements actual in
+  let all1 = Css.statements expected in
+  let all2 = Css.statements actual in
+  (* Imports are diffed separately ([process_imports]); excluding them here
+     keeps [rule_diffs] from matching every import on the universal key. *)
+  let rules1 = List.filter (fun s -> Css.as_import s = None) all1 in
+  let rules2 = List.filter (fun s -> Css.as_import s = None) all2 in
   let added, removed, modified = rule_diffs rules1 rules2 in
 
   let rule_changes =
     List.map convert_added_rule added
     @ List.map convert_removed_rule removed
     @ List.filter_map (convert_modified_rule ~rules1 ~rules2) modified
+    @ process_imports all1 all2
   in
 
   (* Delegate all container and nested-container diffs to the generic walker *)
   let containers =
-    let stmts1 = Css.statements expected in
-    let stmts2 = Css.statements actual in
-    let base_containers = nested_differences ~depth:0 stmts1 stmts2 in
-    detect_container_position_changes stmts1 stmts2 base_containers
+    let base_containers = nested_differences ~depth:0 all1 all2 in
+    detect_container_position_changes all1 all2 base_containers
   in
 
   { rules = rule_changes; containers }
