@@ -107,6 +107,24 @@ let canonical_custom_color_function_alpha () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
        ".a { --c: #0000 }")
 
+let canonical_custom_font_family_quotes () =
+  (* A quoted multi-word font name and the unquoted ident sequence substitute
+     identically into font-family, so canonical comparison equates them inside a
+     custom-property body even though both forms stay verbatim on output. *)
+  Alcotest.(check bool)
+    "quoted and unquoted multi-word font name compare equal in a custom \
+     property"
+    true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       {|:root { --font-sans: ui-sans-serif, system-ui, "Noto Color Emoji" }|}
+       {|:root { --font-sans: ui-sans-serif, system-ui, Noto Color Emoji }|});
+  (* A single-word string could be a custom-ident in a non-font substitution
+     context, so it stays opaque: "foo" and foo are not equated. *)
+  Alcotest.(check bool)
+    "single-word quoted string stays distinct in a custom property" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical {|.a { --x: "foo" }|}
+       {|.a { --x: foo }|})
+
 let canonical_custom_calc_percentage () =
   let expected = ".a { --tw-translate-x: calc(1 / 2 * 100%) }" in
   let actual = ".a { --tw-translate-x: 50% }" in
@@ -824,6 +842,8 @@ let suite =
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom color-function alpha" `Quick
         canonical_custom_color_function_alpha;
+      Alcotest.test_case "canonical custom font-family quotes" `Quick
+        canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
         canonical_custom_calc_percentage;
       Alcotest.test_case "semantic with recovered warning" `Quick
