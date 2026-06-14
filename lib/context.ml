@@ -836,11 +836,17 @@ module Var_residual = struct
       | Values.Empty2 | Values.None ->
           ops.of_var (simplify_var_record ~simplify ~visited var)
     and on_var ~visited (var : a Values.var) =
-      match resolve_var ~simplify ~visited var with
-      | Some result when ops.as_var result <> None ->
-          on_var_residual ~visited var result
-      | Some result -> result
-      | None -> on_var_unresolved ~visited var
+      if List.mem var.name visited then
+        (* A var() forming a cycle is invalid at computed-value time; its own
+           fallback does not rescue it (CSS Variables L1 sec 3). Leave it as an
+           unresolved residual so an outer consumer's fallback can apply. *)
+        ops.of_var (simplify_var_record ~simplify ~visited var)
+      else
+        match resolve_var ~simplify ~visited var with
+        | Some result when ops.as_var result <> None ->
+            on_var_residual ~visited var result
+        | Some result -> result
+        | None -> on_var_unresolved ~visited var
     and simplify ~authored ~visited value =
       match ops.as_var value with
       | Some var -> on_var ~visited var
