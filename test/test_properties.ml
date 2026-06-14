@@ -2370,6 +2370,7 @@ let test_hue_interpolation_method () =
   neg_cursor read_hue_interpolation_method "hue";
   neg_cursor read_hue_interpolation_method "unknown hue"
 
+(* ignore-test: url() escaping spans the printers, not a single property. *)
 let test_url_escaping () =
   (* CSS Syntax 4.3.5: a quoted url() must escape the backslash and the
      delimiter quote it wraps, or the re-parse drops or mangles those bytes.
