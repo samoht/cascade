@@ -2370,6 +2370,39 @@ let test_hue_interpolation_method () =
   neg_cursor read_hue_interpolation_method "hue";
   neg_cursor read_hue_interpolation_method "unknown hue"
 
+(* ignore-test: url() escaping spans the printers, not a single property. *)
+let test_url_escaping () =
+  (* CSS Syntax 4.3.5: a quoted url() must escape the backslash and the
+     delimiter quote it wraps, or the re-parse drops or mangles those bytes.
+     Both the minify printer (Pp.url) and the pretty printer (pp_quoted_url)
+     route through the same escaper. *)
+  let render ~minify css =
+    match Css.of_string css with
+    | Ok { Css.stylesheet; _ } ->
+        Css.to_string ~minify stylesheet |> String.trim
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let minify = render ~minify:true in
+  let stable css =
+    let canon = minify css in
+    (* The minified output and the pretty output must both re-parse to the same
+       value, i.e. neither printer lost or mangled a byte. *)
+    Alcotest.(check string) ("minify idempotent " ^ css) canon (minify canon);
+    Alcotest.(check string)
+      ("pretty preserves " ^ css)
+      canon
+      (minify (render ~minify:false css))
+  in
+  Alcotest.(check string)
+    "minify escapes the delimiter quote" {|.a{background:url("ab\"cd")}|}
+    (minify {|.a{background:url("ab\"cd")}|});
+  Alcotest.(check string)
+    "minify escapes the backslash" {|.a{background:url("a\\b")}|}
+    (minify {|.a{background:url("a\\b")}|});
+  stable {|.a{background:url("ab\"cd")}|};
+  stable {|.a{background:url("a\\b")}|};
+  stable {|.a{background:url('x\\y')}|}
+
 let test_background_image () =
   check_background_image "none";
   check_background_image "url(image.jpg)";
@@ -3859,6 +3892,7 @@ let tests =
     test_case "background-repeat" `Quick test_background_repeat;
     test_case "background-size" `Quick test_background_size;
     test_case "background-image" `Quick test_background_image;
+    test_case "url escaping" `Quick test_url_escaping;
     test_case "filter" `Quick test_filter;
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
