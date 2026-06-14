@@ -1046,6 +1046,32 @@ let test_custom_value_close_paren_whitespace () =
     "optimize keeps whitespace after var()" "a{--x:var(--a) var(--b)}"
     (minify_str "a{--x:var(--a) var(--b)}")
 
+let test_distant_media_merge () =
+  (* Non-adjacent same-condition @media merge: safe when the crossed rule sets a
+     different property, so no element's computed value changes. *)
+  Alcotest.(check string)
+    "merges across a non-conflicting intervening rule"
+    "@media(width>=1px){a{color:red;background:#0b0}}a{color:green}"
+    (minify_str
+       "@media (width>=1px){a{color:red}}a{color:green}@media \
+        (width>=1px){a{background:#0b0}}");
+  (* A crossed rule that reorders the same property to a different value blocks
+     the merge. *)
+  Alcotest.(check string)
+    "keeps blocks apart on a conflicting reorder"
+    "@media(width>=1px){a{color:red}}a{color:green}@media(width>=1px){a{color:#00f}}"
+    (minify_str
+       "@media (width>=1px){a{color:red}}a{color:green}@media \
+        (width>=1px){a{color:blue}}");
+  (* A layer statement establishes cascade order; never merge across it. *)
+  Alcotest.(check string)
+    "no merge across a layer statement"
+    "@media(width>=1px){a{color:red}}@layer \
+     theme;@media(width>=1px){a{color:#00f}}"
+    (minify_str
+       "@media (width>=1px){a{color:red}}@layer theme;@media \
+        (width>=1px){a{color:blue}}")
+
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
      authored rather than being moved past the following rule. *)
@@ -3702,6 +3728,7 @@ let selector_merging_tests =
     ( "custom value folds whitespace after a hard close-paren",
       `Quick,
       test_custom_value_close_paren_whitespace );
+    ("distant @media merge when safe", `Quick, test_distant_media_merge);
     ( "leading bang comment stays leading",
       `Quick,
       test_keep_bang_comment_leading );

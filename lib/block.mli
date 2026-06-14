@@ -12,6 +12,15 @@ val merge_consecutive_media :
   Stylesheet.statement list
 (** Merge adjacent [@media] blocks with identical conditions. *)
 
+val merge_distant_media :
+  optimize_merged_block:(Stylesheet.statement list -> Stylesheet.statement list) ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
+(** Merge a later same-condition [@media] block into the first occurrence when
+    hoisting it past the intervening statements cannot reorder a conflicting
+    rule (overlapping selector with a shared property set to a different value).
+*)
+
 val merge_consecutive_supports :
   optimize_merged_block:(Stylesheet.statement list -> Stylesheet.statement list) ->
   Stylesheet.statement list ->
