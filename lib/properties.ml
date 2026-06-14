@@ -2345,35 +2345,41 @@ module Shadow = struct
           blur = None && spread = None && !color = None && h_offset = Zero
           && v_offset = Zero
         then err_invalid_value t "shadow" "blur, spread, or color is required";
-        (Shadow
-           {
-             inset = !inset;
-             inset_var = None;
-             inset_var_no_fallback = false;
-             h_offset;
-             v_offset;
-             blur;
-             spread;
-             color = !color;
-           }
-          : shadow)
+        let body = { h_offset; v_offset; blur; spread; color = !color } in
+        (if !inset then Inset (Body body) else Shadow body : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
 end
 
 let rec read_shadow_single t : shadow =
-  let read_var t : shadow = Var (read_var read_shadow_single t) in
+  let read_var_shadow t : shadow = Var (read_var read_shadow_single t) in
   Cursor.ws t;
-  Cursor.enum_or_calls "shadow"
-    [
-      ("none", None);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", read_var) ]
-    ~default:Shadow.read t
+  (* inset var(--x): Shadow.read needs concrete offsets, so handle it here. *)
+  let snap = Cursor.save t in
+  let inset_var : shadow option =
+    match Cursor.ident_opt t with
+    | Some "inset" -> (
+        Cursor.ws t;
+        match Cursor.peek t with
+        | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+            Some (Inset (Var (read_var read_shadow_single t)))
+        | _ -> Option.None)
+    | _ -> Option.None
+  in
+  match inset_var with
+  | Some shadow -> shadow
+  | Option.None ->
+      Cursor.restore t snap;
+      Cursor.enum_or_calls "shadow"
+        [
+          ("none", None);
+          ("inherit", Inherit);
+          ("initial", Initial);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
+        ]
+        ~calls:[ ("var", read_var_shadow) ]
+        ~default:Shadow.read t
 
 let read_shadow t : shadow =
   match Cursor.list ~sep:Cursor.comma ~at_least:1 read_shadow_single t with
@@ -2679,66 +2685,50 @@ let pp_color_after_length ctx color =
   Pp.space ctx ();
   pp_color ctx color
 
-let pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback =
-  (* If inset_var is set, output var(--<name>,) or var(--<name>) before shadow
-     values. The variable value includes trailing space when set to "inset ".
-     Otherwise use the bool inset flag. *)
-  match inset_var with
-  | Some var_name ->
-      if inset_var_no_fallback then Pp.string ctx ("var(--" ^ var_name ^ ")")
-      else (
-        (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified.
-           The two pretty-mode spaces are: comma-space + fallback-space. *)
-        Pp.string ctx ("var(--" ^ var_name ^ ",");
-        Pp.space_if_pretty ctx ();
-        Pp.space_if_pretty ctx ();
-        Pp.string ctx ")");
-      true
-  | None ->
-      if inset then (
-        Pp.string ctx "inset";
-        Pp.space ctx ());
-      false
-
 (* Faithful: a default-zero spread is dropped in [normalize_shadow], not here.
    [Some Zero] re-parses differently from [None] ([0 1px 3px 0] vs [0 1px 3px]),
    so collapsing it is a node-changing fold that belongs in the AST normalize
    pass, leaving pp a pure serialiser. *)
 let pp_shadow_spread _ctx (spread : length option) : length option = spread
 
-let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
-    color =
-  let has_inset_var =
-    pp_shadow_inset ctx ~inset ~inset_var ~inset_var_no_fallback
-  in
-  (* The [var(--name,)] prefix stands in for the optional [inset] keyword, so
-     the separator before the offsets is load-bearing (a var resolving to
-     [inset] must read [inset 0 ...], never [inset0 ...]); emit it
-     unconditionally, not only in pretty mode. *)
-  if has_inset_var then Pp.space ctx ();
-  pp_length ctx h;
+let pp_shadow_body ctx { h_offset; v_offset; blur; spread; color } =
+  pp_length ctx h_offset;
   Pp.space ctx ();
-  pp_length ctx v;
+  pp_length ctx v_offset;
   let spread = pp_shadow_spread ctx spread in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
   match color with Some c -> pp_color_after_length ctx c | None -> ()
 
+(* The [var(--name,)] prefix stands in for the optional [inset] keyword (a var
+   resolving to [inset] must read [inset 0 ...], never [inset0 ...]), so the
+   separator after it is load-bearing. *)
+let pp_inset_toggle ctx ~name ~no_fallback =
+  Pp.string ctx "var(--";
+  Pp.string ctx name;
+  if no_fallback then Pp.string ctx ")"
+  else (
+    (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified. *)
+    Pp.char ctx ',';
+    Pp.space_if_pretty ctx ();
+    Pp.space_if_pretty ctx ();
+    Pp.string ctx ")")
+
 let rec pp_shadow : shadow Pp.t =
  fun ctx -> function
-  | Shadow
-      {
-        inset;
-        inset_var;
-        inset_var_no_fallback;
-        h_offset;
-        v_offset;
-        blur;
-        spread;
-        color;
-      } ->
-      pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h_offset
-        v_offset blur spread color
+  | Shadow body -> pp_shadow_body ctx body
+  | Inset (Body body) ->
+      Pp.string ctx "inset";
+      Pp.space ctx ();
+      pp_shadow_body ctx body
+  | Inset (Var v) ->
+      Pp.string ctx "inset";
+      Pp.space ctx ();
+      pp_var pp_shadow ctx v
+  | Inset (Toggle { name; no_fallback; body }) ->
+      pp_inset_toggle ctx ~name ~no_fallback;
+      Pp.space ctx ();
+      pp_shadow_body ctx body
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -4403,34 +4393,39 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
 
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
  fun value ->
+  let normalize_body (s : shadow_body) : shadow_body =
+    let blur = option_map_preserve Values.normalize_length s.blur in
+    let spread = option_map_preserve Values.normalize_length s.spread in
+    let color = option_map_preserve (normalize_color ~lossless) s.color in
+    (* Drop a trailing optional length equal to its [0] default, contiguously
+       from the end. [spread] is always the last token, so a zero spread drops
+       freely; a zero blur drops only when no spread follows - otherwise it is
+       positional and dropping it would re-bind the spread as the blur (e.g. [0
+       1px 0 5px] must keep the [0] blur). *)
+    let spread : length option =
+      match spread with Some sp when is_zero_length sp -> None | _ -> spread
+    in
+    let blur : length option =
+      match blur with
+      | Some b when is_zero_length b && Option.is_none spread -> None
+      | _ -> blur
+    in
+    {
+      h_offset = Values.normalize_length s.h_offset;
+      v_offset = Values.normalize_length s.v_offset;
+      blur;
+      spread;
+      color;
+    }
+  in
   match value with
-  | Shadow s ->
-      let blur = option_map_preserve Values.normalize_length s.blur in
-      let spread = option_map_preserve Values.normalize_length s.spread in
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
-      (* Drop a trailing optional length equal to its [0] default, contiguously
-         from the end. [spread] is always the last token, so a zero spread drops
-         freely; a zero blur drops only when no spread follows - otherwise it is
-         positional and dropping it would re-bind the spread as the blur (e.g.
-         [0 1px 0 5px] must keep the [0] blur). *)
-      let spread : length option =
-        match spread with Some sp when is_zero_length sp -> None | _ -> spread
-      in
-      let blur : length option =
-        match blur with
-        | Some b when is_zero_length b && Option.is_none spread -> None
-        | _ -> blur
-      in
+  | Shadow s -> preserve_if_equal value (Shadow (normalize_body s))
+  | Inset (Body s) ->
+      preserve_if_equal value (Inset (Body (normalize_body s)) : shadow)
+  | Inset (Toggle { name; no_fallback; body }) ->
       preserve_if_equal value
-        (Shadow
-           {
-             s with
-             h_offset = Values.normalize_length s.h_offset;
-             v_offset = Values.normalize_length s.v_offset;
-             blur;
-             spread;
-             color;
-           })
+        (Inset (Toggle { name; no_fallback; body = normalize_body body })
+          : shadow)
   | List shadows ->
       preserve_if_equal value
         (List (map_preserve (normalize_shadow ~lossless) shadows))
@@ -19076,34 +19071,26 @@ let shadow ?(inset = false) ?(inset_var : string option)
     ?(v_offset : length option) ?(blur : length option)
     ?(spread : length option) ?(color : color option) () : shadow =
   let default_color = rgb_black in
-  Shadow
+  let body =
     {
-      inset;
-      inset_var;
-      inset_var_no_fallback;
       h_offset = Option.value h_offset ~default:(Px 0.);
       v_offset = Option.value v_offset ~default:(Px 0.);
       blur;
       spread;
       color = Some (Option.value color ~default:default_color);
     }
+  in
+  match inset_var with
+  | Some name ->
+      Inset (Toggle { name; no_fallback = inset_var_no_fallback; body })
+  | None -> if inset then Inset (Body body) else Shadow body
 
 let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
     ?(blur : length option) ?(spread : length option) ?(color : color option) ()
     : shadow =
   let h_offset = Option.value h_offset ~default:(Zero : length) in
   let v_offset = Option.value v_offset ~default:(Zero : length) in
-  Shadow
-    {
-      inset = true;
-      inset_var = None;
-      inset_var_no_fallback = false;
-      h_offset;
-      v_offset;
-      blur;
-      spread;
-      color;
-    }
+  (Inset (Body { h_offset; v_offset; blur; spread; color }) : shadow)
 
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)

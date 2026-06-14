@@ -2863,6 +2863,10 @@ let test_shadow () =
   check_shadow "red inset 2px 2px" ~expected:"inset 2px 2px red";
   check_shadow "red inset 2px 2px 4px" ~expected:"inset 2px 2px 4px red";
   check_shadow "red inset 2px 2px 4px 1px" ~expected:"inset 2px 2px 4px 1px red";
+  (* [inset var(--x)]: the [<length>{2,4} && <color>?] body supplied wholesale
+     by one var, which the concrete-offset [Shadow] record cannot hold. *)
+  check_shadow "inset var(--shadow)";
+  check_shadow "var(--a),inset var(--b)";
   (* Test compact printing - when blur and spread are not provided, should print
      compactly. Cross-form colour canonicalization is an optimize transform. *)
   check_shadow "0 0 #0000" ~expected:"0 0 #0000";
