@@ -2839,29 +2839,26 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
 
 let simplify_shadow_leaf length color simplify ~authored ~visited
     (value : Properties.shadow) =
+  let simplify_body
+      ({ h_offset; v_offset; blur; spread; color = shadow_color } :
+        Properties.shadow_body) : Properties.shadow_body =
+    {
+      h_offset = length authored h_offset;
+      v_offset = length authored v_offset;
+      blur = Option.map (length authored) blur;
+      spread = Option.map (length authored) spread;
+      color = Option.map color shadow_color;
+    }
+  in
   match value with
-  | Properties.Shadow
-      {
-        inset;
-        inset_var;
-        inset_var_no_fallback;
-        h_offset;
-        v_offset;
-        blur;
-        spread;
-        color = shadow_color;
-      } ->
-      (Properties.Shadow
-         {
-           inset;
-           inset_var;
-           inset_var_no_fallback;
-           h_offset = length authored h_offset;
-           v_offset = length authored v_offset;
-           blur = Option.map (length authored) blur;
-           spread = Option.map (length authored) spread;
-           color = Option.map color shadow_color;
-         }
+  | Properties.Shadow body ->
+      (Properties.Shadow (simplify_body body) : Properties.shadow)
+  | Properties.Inset (Properties.Body body) ->
+      (Properties.Inset (Properties.Body (simplify_body body))
+        : Properties.shadow)
+  | Properties.Inset (Properties.Toggle { name; no_fallback; body }) ->
+      (Properties.Inset
+         (Properties.Toggle { name; no_fallback; body = simplify_body body })
         : Properties.shadow)
   | Properties.List shadows ->
       (Properties.List (List.map (simplify ~authored ~visited) shadows)

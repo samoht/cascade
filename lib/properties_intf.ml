@@ -2278,21 +2278,8 @@ type blend_mode =
   | Var of blend_mode var
 
 type shadow =
-  | Shadow of {
-      inset : bool;
-      inset_var : string option;
-          (** If set, outputs var(--<name>) before shadow values. Used by
-              Tailwind's ring system for dynamic inset toggle. *)
-      inset_var_no_fallback : bool;
-          (** When true, emits [var(--name)] without fallback instead of
-              [var(--name,)] with empty fallback. Used by the forms plugin where
-              the variable is always set in the same rule. *)
-      h_offset : length;
-      v_offset : length;
-      blur : length option;
-      spread : length option;
-      color : color option;
-    }
+  | Shadow of shadow_body
+  | Inset of inset
   | None
   | Inherit
   | Initial
@@ -2301,6 +2288,21 @@ type shadow =
   | Revert_layer
   | List of shadow list
   | Var of shadow var
+
+and shadow_body = {
+  h_offset : length;
+  v_offset : length;
+  blur : length option;
+  spread : length option;
+  color : color option;
+}
+(** The [<length>{2,4} && <color>?] body of a single [<shadow>]. *)
+
+and inset =
+  | Var of shadow var (* inset var(--x): whole body from one var *)
+  | Body of shadow_body (* inset 2px 4px red *)
+  | Toggle of { name : string; no_fallback : bool; body : shadow_body }
+(* var(--name) <body>: ring inset toggle *)
 
 type text_shadow =
   | None
