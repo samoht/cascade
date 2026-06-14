@@ -1448,6 +1448,13 @@ val declaration_value : ?minify:bool -> ?inline:bool -> declaration -> string
     [inline] is [true] (default: [false]), variables are resolved to their
     default values. *)
 
+val declaration_value_for_equivalence : declaration -> string
+(** [declaration_value_for_equivalence decl] is the value of [decl] with a
+    quoted multi-word [<string>] in a custom-property token stream rewritten as
+    the equivalent unquoted [<ident>] sequence. Used as a structural-diff key so
+    [--font: "Noto Color Emoji"] and [--font: Noto Color Emoji] compare equal;
+    not for emission, where both forms stay verbatim. *)
+
 val string_of_declaration : ?minify:bool -> declaration -> string
 (** [string_of_declaration ~minify decl] converts a declaration to its string
     representation. If [minify] is [true] (default: [false]), the output is
