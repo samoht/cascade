@@ -3199,15 +3199,7 @@ let pp_webkit_gradient : Webkit_gradient.t Pp.t =
 
 let pp_quoted_url quote ctx url =
   Pp.string ctx "url(";
-  Pp.char ctx quote;
-  String.iter
-    (fun c ->
-      if c = quote then (
-        Pp.char ctx '\\';
-        Pp.char ctx c)
-      else Pp.char ctx c)
-    url;
-  Pp.char ctx quote;
+  Pp.quoted_string ~quote ctx url;
   Pp.char ctx ')'
 
 let conic_gradient_has_config (config : conic_gradient_config) =
