@@ -298,22 +298,24 @@ let parse_var_components args : (string * Component.t list option) option =
       Some (name, Option.map trim_components fallback)
   with Cursor.Parse_error _ -> None
 
-let rec substitute_components visible ~visited components =
+let rec substitute_components ~kept visible ~visited components =
   let one = function
     | Component.Func ({ node = { name; arguments; _ }; _ } as fn)
       when String.lowercase_ascii name = "var" -> (
         match parse_var_components arguments with
         | None -> Components [ Component.Func fn ]
         | Some (name, fallback) ->
-            substitute_var visible ~visited fn name fallback)
+            substitute_var ~kept visible ~visited fn name fallback)
     | Component.Func fn -> (
-        match substitute_components visible ~visited fn.node.arguments with
+        match
+          substitute_components ~kept visible ~visited fn.node.arguments
+        with
         | Components arguments ->
             Components
               [ Component.Func { fn with node = { fn.node with arguments } } ]
         | Cycle -> Cycle)
     | Component.Block block -> (
-        match substitute_components visible ~visited block.node.value with
+        match substitute_components ~kept visible ~visited block.node.value with
         | Components value ->
             Components
               [
@@ -331,14 +333,47 @@ let rec substitute_components visible ~visited components =
   in
   loop [] components
 
-and substitute_var visible ~visited original name fallback =
+and substitute_var ~kept visible ~visited original name fallback =
   let fallback_or_original () =
     match fallback with
     | None -> Components [ Component.Func original ]
-    | Some components -> substitute_components visible ~visited components
+    | Some components -> substitute_components ~kept visible ~visited components
+  in
+  (* A kept var stays a live [var(--name, ...)] reference, but its fallback may
+     still hold resolvable vars ([var(--tw-ease, var(--default-ease))] becomes
+     [var(--tw-ease, ease)]), so substitute inside the fallback and rebuild the
+     wrapper rather than collapsing to the fallback. *)
+  let keep_wrapper () =
+    match fallback with
+    | None -> Components [ Component.Func original ]
+    | Some components -> (
+        match substitute_components ~kept visible ~visited components with
+        | Cycle -> Components [ Component.Func original ]
+        | Components subst ->
+            let rec name_prefix acc = function
+              | (Component.Preserved { kind = Token.Comma; _ } as c) :: _ ->
+                  List.rev (c :: acc)
+              | x :: rest -> name_prefix (x :: acc) rest
+              | [] -> List.rev acc
+            in
+            let prefix = name_prefix [] original.Component.node.arguments in
+            Components
+              [
+                Component.Func
+                  {
+                    original with
+                    node =
+                      {
+                        original.Component.node with
+                        arguments = prefix @ subst;
+                      };
+                  };
+              ])
   in
   let resolved_or_fallback value =
-    match substitute_components visible ~visited:(name :: visited) value with
+    match
+      substitute_components ~kept visible ~visited:(name :: visited) value
+    with
     | Components _ as resolved -> resolved
     | Cycle -> (
         match fallback with None -> Cycle | Some _ -> fallback_or_original ())
@@ -347,7 +382,9 @@ and substitute_var visible ~visited original name fallback =
     match fallback with None -> Cycle | Some _ -> fallback_or_original ()
   else
     match lookup_visible_custom_components visible name with
-    | None -> fallback_or_original ()
+    | None ->
+        if List.mem (String.concat "" [ "--"; name ]) kept then keep_wrapper ()
+        else fallback_or_original ()
     | Some value -> resolved_or_fallback value
 
 let declaration_with_components decl components : Declaration.declaration option
@@ -389,37 +426,67 @@ let declaration_with_components decl components : Declaration.declaration option
         else if has_comma components then None
         else opaque ()
 
-let should_use_typed_default visible vars =
+let should_use_typed_default ~kept visible vars =
   vars <> []
   && List.for_all
        (fun (Variables.V var) ->
          Option.is_some var.Values.default
          && Option.is_none
-              (lookup_visible_custom_components visible var.Values.name))
+              (lookup_visible_custom_components visible var.Values.name)
+         (* A kept var must keep its live [var()] reference, so do not collapse
+            it to its typed default. *)
+         && not (List.mem (String.concat "" [ "--"; var.Values.name ]) kept))
        vars
 
-let apply_substituted_components ctx decl ~original_components components =
+(* True when [components] still reference a kept var. [Context.eval] is a
+   closed-world fold that would collapse [var(--kept, fallback)] to its
+   fallback; a kept var must stay a live reference, so its declaration keeps the
+   substituted components verbatim instead. *)
+let rec components_reference_kept ~kept components =
+  List.exists
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          (String.lowercase_ascii name = "var"
+          &&
+          match parse_var_components arguments with
+          | Some (n, _) -> List.mem (String.concat "" [ "--"; n ]) kept
+          | None -> false)
+          || components_reference_kept ~kept arguments
+      | Component.Block { node = { value; _ }; _ } ->
+          components_reference_kept ~kept value
+      | Component.Preserved _ -> false)
+    components
+
+let apply_substituted_components ~kept ctx decl ~original_components components
+    =
   if components = original_components then Some (Context.eval ctx decl)
   else
     match declaration_with_components decl components with
     | None -> None
-    | Some decl -> Some (Context.eval ctx decl)
+    | Some decl ->
+        if components_reference_kept ~kept components then Some decl
+        else Some (Context.eval ctx decl)
 
-let substitute_non_custom visible ctx decl =
+let substitute_non_custom ~kept visible ctx decl =
   let vars = Variables.vars_of_declarations [ decl ] in
-  if should_use_typed_default visible vars then Some (Context.eval ctx decl)
+  if should_use_typed_default ~kept visible vars then
+    Some (Context.eval ctx decl)
   else
     let value = Declaration.string_of_value ~minify:false decl in
     let original_components = Cursor.remaining (Cursor.of_string value) in
-    match substitute_components visible ~visited:[] original_components with
+    match
+      substitute_components ~kept visible ~visited:[] original_components
+    with
     | Cycle -> Some (Context.eval ctx decl)
     | Components components ->
-        apply_substituted_components ctx decl ~original_components components
+        apply_substituted_components ~kept ctx decl ~original_components
+          components
 
-let substitute_declaration visible ctx decl =
+let substitute_declaration ~kept visible ctx decl =
   match custom_name decl with
   | Some _ -> Some decl
-  | None -> substitute_non_custom visible ctx decl
+  | None -> substitute_non_custom ~kept visible ctx decl
 
 let font_src_var_fallback ~simplify ~visited (var : Font_face.src Values.var) =
   match var.Values.fallback with
@@ -502,10 +569,10 @@ let selector_for_parents = function [] -> universal_selector | p :: _ -> p
 let universal_visible_customs ~scopes ~at_path =
   visible_customs ~scopes ~at_path ~selector:universal_selector
 
-let eval_decls ~scopes ~at_path selector decls =
+let eval_decls ~kept ~scopes ~at_path selector decls =
   let visible = visible_customs ~scopes ~at_path ~selector in
   let ctx = context_for visible in
-  List.filter_map (substitute_declaration visible ctx) decls
+  List.filter_map (substitute_declaration ~kept visible ctx) decls
 
 (* @page, @keyframes, and @position-try declarations apply to elements whose
    effective selector is universal at this at-path. Customs declared on [:root],
@@ -531,13 +598,14 @@ let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
   Page_with_margins
     (sel, List.map eval_page descriptors, List.map update_margin margins)
 
-let rec substitute ~scopes ~parents ~at_path stmts =
-  List.map (substitute_stmt ~scopes ~parents ~at_path) stmts
+let rec substitute ~kept ~scopes ~parents ~at_path stmts =
+  List.map (substitute_stmt ~kept ~scopes ~parents ~at_path) stmts
 
-and substitute_stmt ~scopes ~parents ~at_path stmt =
+and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
   match at_wrapper stmt with
   | Some (node, body, rebuild) ->
-      rebuild (substitute ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
+      rebuild
+        (substitute ~kept ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
   | None -> (
       match stmt with
       | Rule rule ->
@@ -545,14 +613,17 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
           Rule
             {
               rule with
-              declarations = eval_decls ~scopes ~at_path eff rule.declarations;
+              declarations =
+                eval_decls ~kept ~scopes ~at_path eff rule.declarations;
               nested =
-                substitute ~scopes ~parents:(eff :: parents) ~at_path
+                substitute ~kept ~scopes ~parents:(eff :: parents) ~at_path
                   rule.nested;
             }
       | Declarations decls ->
           Declarations
-            (eval_decls ~scopes ~at_path (selector_for_parents parents) decls)
+            (eval_decls ~kept ~scopes ~at_path
+               (selector_for_parents parents)
+               decls)
       | Page (sel, decls) ->
           let visible = universal_visible_customs ~scopes ~at_path in
           let ctx = context_for visible in
@@ -969,7 +1040,9 @@ let vars ?(keep_vars = []) stylesheet =
   let cyclic_live_set =
     cyclic_live_customs ~consumers:original_consumers ~customs:original_customs
   in
-  let substituted = substitute ~scopes ~parents:[] ~at_path:[] stylesheet in
+  let substituted =
+    substitute ~kept:keep ~scopes ~parents:[] ~at_path:[] stylesheet
+  in
   let consumers, customs = collect_scoped_refs substituted in
   let live_set = live_customs ~consumers ~customs @ cyclic_live_set in
   strip_dead ~keep ~live_set substituted

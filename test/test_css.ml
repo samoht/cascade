@@ -903,7 +903,29 @@ let public_theme_var_rendering_edges () =
     "theme_defaults still resolves non-theme vars with fallback"
     ".font-sans{font-family:Arial,sans-serif}"
     (render_theme ~theme:empty_theme ~theme_defaults:resolve_font
-       (sheet_for (Var font_fallback)))
+       (sheet_for (Var font_fallback)));
+  (* A runtime channel var ([--tw-duration]) keeps its live [var()] reference,
+     while a theme default reachable only through its fallback
+     ([--default-transition-duration]) is inlined - the theme-inline transition
+     shape. The kept wrapper must survive even though its fallback is a concrete
+     duration. *)
+  let tw_duration : duration var =
+    var_ref ~fallback:(Var_fallback "default-transition-duration") "tw-duration"
+  in
+  let resolve_duration = function
+    | "default-transition-duration" -> Some ".1s"
+    | _ -> None
+  in
+  Alcotest.(check string)
+    "kept var keeps its wrapper while the nested theme default inlines"
+    ".transition{transition-duration:var(--tw-duration,.1s)}"
+    (render_theme ~theme:empty_theme ~theme_defaults:resolve_duration
+       (v
+          [
+            rule
+              ~selector:(Selector.class_ "transition")
+              [ transition_duration (Var tw_duration) ];
+          ]))
 
 let public_parse_edges () =
   match of_string ~strict:true ~filename:"spec.css" ".a{color:rgb(300)}" with

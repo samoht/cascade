@@ -870,9 +870,15 @@ let collect_var_names stylesheet =
   let seen = Hashtbl.create 8 in
   let record_decls decls =
     List.iter
-      (fun v ->
-        let name = Variables.any_var_name v in
-        Hashtbl.replace seen name ())
+      (fun (Variables.V vv as v) ->
+        Hashtbl.replace seen (Variables.any_var_name v) ();
+        (* A theme default reachable only through a [var()] fallback
+           ([var(--tw-duration, var(--default-transition-duration))]) is still a
+           resolution root, so record the nested fallback name too. *)
+        match vv.Values.fallback with
+        | Values.Var_fallback fname ->
+            Hashtbl.replace seen (String.concat "" [ "--"; fname ]) ()
+        | _ -> ())
       (Variables.vars_of_declarations decls)
   in
   let rec walk = function
