@@ -132,6 +132,20 @@ let canonical_custom_calc_percentage () =
     "unregistered custom calc token streams stay opaque" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+let canonical_custom_calc_constant_fold () =
+  (* A math function whose operands are all constants reduces to the same number
+     in every substitution site, so [calc(2.25/1.875)] and [1.2] compare equal
+     inside a custom property. A calc that carries units or a var() does not
+     reduce and stays opaque. *)
+  Alcotest.(check bool)
+    "constant number calc folds in a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { --lh: calc(2.25 / 1.875) }" ".a { --lh: 1.2 }");
+  Alcotest.(check bool)
+    "calc with a var stays distinct in a custom property" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { --x: calc(var(--y) * 2) }" ".a { --x: 2 }")
+
 let semantic_with_recovered_warning () =
   let expected =
     "@unknown { color: red } .a { -webkit-tap-highlight-color: transparent; \
@@ -900,6 +914,8 @@ let suite =
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
         canonical_custom_calc_percentage;
+      Alcotest.test_case "canonical custom calc constant fold" `Quick
+        canonical_custom_calc_constant_fold;
       Alcotest.test_case "semantic with recovered warning" `Quick
         semantic_with_recovered_warning;
       Alcotest.test_case "semantic custom var fallback" `Quick
