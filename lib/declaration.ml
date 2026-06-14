@@ -90,6 +90,32 @@ let rec custom_declaration_layer = function
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
+(* Equivalence-only normalisation for structural diffing: rewrite a quoted
+   multi-word [<string>] in a custom-property token stream as the equivalent
+   unquoted [<ident>] sequence ([Properties.unquote_font_family_strings]). The
+   two forms substitute identically into [font-family], so cascade treats them
+   as equal even though it keeps both verbatim on output (a custom property is
+   opaque, so unquoting it for real could corrupt a [content] use). Gated on a
+   generic family being present: an unregistered custom property is otherwise
+   type-unknown ([var(--x)] could land in [content]), so only a value that
+   proves itself a font-family list folds. *)
+let unquote_custom_font_strings = function
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value ({ value = Tokens components; _ } as cv);
+        important;
+        _;
+      }
+    when Properties.components_have_generic_family components ->
+      v ~important property
+        (Custom_value
+           {
+             cv with
+             value = Tokens (Properties.unquote_font_family_strings components);
+           })
+  | decl -> decl
+
 (* Parser functions *)
 
 (** Parse a property name. Property names are plain idents in the component

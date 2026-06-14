@@ -51,6 +51,12 @@ val unquote_font_family_strings : custom_value -> custom_value
     equivalent in font-family-typed positions). Single-word strings and any
     token that isn't a [<string>] pass through unchanged. *)
 
+val components_have_generic_family : custom_value -> bool
+(** [components_have_generic_family components] is [true] when a bare ident in
+    [components] matches a generic font family ([sans-serif], [ui-monospace],
+    ...). A generic family is only valid in a font-family list, so its presence
+    proves the stream is a font-family value. *)
+
 val try_read_custom_color : custom_value -> custom_property_value option
 (** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning a
     typed payload when the stream matches. *)
