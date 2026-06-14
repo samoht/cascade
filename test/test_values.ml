@@ -906,7 +906,7 @@ let spec_color5_function_edges () =
      fold to hex. *)
   check_color ~expected:"color-mix(in lch,lch(70 50 30),lch(70 50 60))"
     ~optimized:"#f2906d" "color-mix(in lch, lch(70 50 30), lch(70 50 60))";
-  check_color ~expected:"color-mix(in lab,lab(50 10 10),lab(70 -10 5))"
+  check_color ~expected:"color-mix(in lab,lab(50 10 10),lab(70-10 5))"
     ~optimized:"#959083" "color-mix(in lab, lab(50 10 10), lab(70 -10 5))";
   (* CSS Color 5 sec. 3: the default hue interpolation is shorter; mixing hues
      350 and 10 takes the 20-degree arc through 0, not the linear average

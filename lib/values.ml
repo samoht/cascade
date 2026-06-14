@@ -2897,12 +2897,22 @@ let mix_optional_float ~w1 ~w2 v1 v2 =
   | Some f, None | None, Some f -> Some f
   | None, None -> Option.None
 
-let mix_optional_percentage ~w1 ~w2 v1 v2 =
-  match (v1, v2) with
+(* Mix the lightness channel of a lab-family colour. [l_num_max] is the L value
+   that 100% denotes: 100. for lab/lch (a bare number is already on the 0-100
+   scale) and 1. for oklab/oklch (a bare number is on 0-1). The result is stored
+   as a bare number on that scale, matching the [mix_in_*_space] fallback. A
+   [none] L channel carries the other operand's value over verbatim. *)
+let mix_lightness ~l_num_max ~w1 ~w2 l1 l2 =
+  let to_float = function
+    | (Num f : percentage) -> Some f
+    | Pct f -> Some (f /. 100. *. l_num_max)
+    | _ -> None
+  in
+  match (l1, l2) with
   | Some p1, Some p2 -> (
-      match (float_of_percentage p1, float_of_percentage p2) with
+      match (to_float p1, to_float p2) with
       | Some f1, Some f2 ->
-          Some (Some (Pct ((f1 *. w1) +. (f2 *. w2)) : percentage))
+          Some (Some (Num ((f1 *. w1) +. (f2 *. w2)) : percentage))
       | _ -> Option.None)
   | Some p, None | None, Some p -> Some (Some p)
   | None, None -> Some None
@@ -2913,22 +2923,27 @@ let mix_alpha ~w1 ~w2 ~alpha_mult a1 a2 =
       Some (alpha_of_mixed_value (((f1 *. w1) +. (f2 *. w2)) *. alpha_mult))
   | _ -> Option.None
 
-let mix_optional_hue ~w1 ~w2 h1 h2 =
+(* Mix two hues along the shorter arc (the default interpolation method, the
+   only one the typed lab-family fold handles; specified methods bail out to
+   [keep]). A [none] hue carries the other operand's hue over verbatim. *)
+let mix_hue_shorter ~w2 h1 h2 =
   match (h1, h2) with
   | Hue_none, Hue_none -> Some Hue_none
   | Hue_none, h | h, Hue_none -> Some h
   | h1, h2 -> (
       match (deg_of_hue h1, deg_of_hue h2) with
       | Some f1, Some f2 ->
-          Some (Unitless (normalize_hue ((f1 *. w1) +. (f2 *. w2))))
+          Some
+            (Unitless (Color_space.interpolate_hue Color_space.Shorter f1 f2 w2))
       | _ -> Option.None)
 
-let mix_lab_like_result ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2 =
+let mix_lab_like_result ~l_num_max ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2
+    =
   match mix_weights p1 p2 with
   | None -> Option.None
   | Some (w1, w2, alpha_mult) -> (
       match
-        ( mix_optional_percentage ~w1 ~w2 l1 l2,
+        ( mix_lightness ~l_num_max ~w1 ~w2 l1 l2,
           Some (mix_optional_float ~w1 ~w2 a1 a2),
           Some (mix_optional_float ~w1 ~w2 b1 b2),
           mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
@@ -2936,14 +2951,15 @@ let mix_lab_like_result ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2 =
       | Some l, Some a, Some b, Some alpha -> Some (build l a b alpha)
       | _ -> Option.None)
 
-let mix_lch_like_result ~p1 ~p2 build l1 c1 h1 alpha1 l2 c2 h2 alpha2 =
+let mix_lch_like_result ~l_num_max ~p1 ~p2 build l1 c1 h1 alpha1 l2 c2 h2 alpha2
+    =
   match mix_weights p1 p2 with
   | None -> Option.None
   | Some (w1, w2, alpha_mult) -> (
       match
-        ( mix_optional_percentage ~w1 ~w2 l1 l2,
+        ( mix_lightness ~l_num_max ~w1 ~w2 l1 l2,
           Some (mix_optional_float ~w1 ~w2 c1 c2),
-          mix_optional_hue ~w1 ~w2 h1 h2,
+          mix_hue_shorter ~w2 h1 h2,
           mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
       with
       | Some l, Some c, Some h, Some alpha -> Some (build l c h alpha)
@@ -2954,25 +2970,25 @@ let mix_lab_family in_space color1 color2 ~p1 ~p2 =
   | ( Some (Lab : color_space),
       Lab { l = l1; a = a1; b = b1; alpha = alpha1 },
       Lab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
-      mix_lab_like_result ~p1 ~p2
+      mix_lab_like_result ~l_num_max:100. ~p1 ~p2
         (fun l a b alpha -> Lab { l; a; b; alpha })
         l1 a1 b1 alpha1 l2 a2 b2 alpha2
   | ( Some (Oklab : color_space),
       Oklab { l = l1; a = a1; b = b1; alpha = alpha1 },
       Oklab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
-      mix_lab_like_result ~p1 ~p2
+      mix_lab_like_result ~l_num_max:1. ~p1 ~p2
         (fun l a b alpha -> Oklab { l; a; b; alpha })
         l1 a1 b1 alpha1 l2 a2 b2 alpha2
   | ( Some (Lch : color_space),
       Lch { l = l1; c = c1; h = h1; alpha = alpha1 },
       Lch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
-      mix_lch_like_result ~p1 ~p2
+      mix_lch_like_result ~l_num_max:100. ~p1 ~p2
         (fun l c h alpha -> Lch { l; c; h; alpha })
         l1 c1 h1 alpha1 l2 c2 h2 alpha2
   | ( Some (Oklch : color_space),
       Oklch { l = l1; c = c1; h = h1; alpha = alpha1 },
       Oklch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
-      mix_lch_like_result ~p1 ~p2
+      mix_lch_like_result ~l_num_max:1. ~p1 ~p2
         (fun l c h alpha -> Oklch { l; c; h; alpha })
         l1 c1 h1 alpha1 l2 c2 h2 alpha2
   | _ -> None
