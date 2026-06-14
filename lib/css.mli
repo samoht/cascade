@@ -101,6 +101,12 @@ module Transform : sig
   (** [of_string s] parses [s] as a single {!val-transform} value. *)
 end
 
+module Gradient_direction : sig
+  val of_string : string -> (Properties.gradient_direction, Error.t) result
+  (** [of_string s] parses [s] as a gradient [<direction>] (a side keyword, an
+      [<angle>], or a [<direction> in <color-interpolation>] form). *)
+end
+
 module Transform_origin : sig
   val of_string : string -> (Properties.transform_origin, Error.t) result
   (** [of_string s] parses [s] as a [transform-origin] value. *)
