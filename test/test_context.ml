@@ -1365,6 +1365,8 @@ let computed_calc_contract () =
     ~expected:"250px" "width: 25dvw";
   check_eval_value "viewport svh resolves against viewport height" ~ctx
     ~expected:"60px" "height: 10svh";
+  check_eval_value "viewport dvh resolves against viewport height" ~ctx
+    ~expected:"60px" "height: 10dvh";
   check_eval_value "container cqi resolves against inline size" ~ctx
     ~expected:"125px" "width: 25cqi";
   check_eval_value "container cqb resolves against block size" ~ctx
