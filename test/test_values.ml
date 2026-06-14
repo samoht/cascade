@@ -900,6 +900,22 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in hsl shorter hue,red,blue 40%)"
     ~optimized:"color-mix(in hsl,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
+  (* CSS Color 4 sec. 9.2/9.3: lab/lch lightness uses a 0-100 number scale (a
+     bare number L and the same number as a percentage are equal), so mixing two
+     L=70 colours keeps L=70, not 70*100. Both results are in the sRGB gamut and
+     fold to hex. *)
+  check_color ~expected:"color-mix(in lch,lch(70 50 30),lch(70 50 60))"
+    ~optimized:"#f2906d" "color-mix(in lch, lch(70 50 30), lch(70 50 60))";
+  check_color ~expected:"color-mix(in lab,lab(50 10 10),lab(70-10 5))"
+    ~optimized:"#959083" "color-mix(in lab, lab(50 10 10), lab(70 -10 5))";
+  (* CSS Color 5 sec. 3: the default hue interpolation is shorter; mixing hues
+     350 and 10 takes the 20-degree arc through 0, not the linear average
+     180. *)
+  check_color ~expected:"color-mix(in oklch,oklch(.7 .15 350),oklch(.7 .15 10))"
+    ~optimized:"#e7729b"
+    "color-mix(in oklch, oklch(0.7 0.15 350), oklch(0.7 0.15 10))";
+  check_color ~expected:"color-mix(in lch,lch(70 50 350),lch(70 50 10))"
+    ~optimized:"#fc84ae" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
   (* CSS Color 4 sec. 12.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
