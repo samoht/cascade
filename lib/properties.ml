@@ -2821,6 +2821,10 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
   | To_left -> Pp.string ctx "to left"
   | To_top_left -> Pp.string ctx "to top left"
   | Angle a -> pp_angle ctx a
+  | With_interpolation (Default_direction, interp) ->
+      (* default direction is omitted: [in <interp>], not [to bottom in
+         <interp>] *)
+      pp_color_interpolation ctx interp
   | With_interpolation (dir, interp) ->
       pp_gradient_direction ctx dir;
       (* After calc() or var(), the closing ) is a delimiter token so no space
@@ -17969,6 +17973,12 @@ let read_linear_prelude_opt t : gradient_direction option =
   | Some d, None -> Option.Some d
   | None, Some i -> Option.Some (With_interpolation (Default_direction, i))
   | None, None -> Option.None
+
+(* Direction plus the optional [in <interpolation>] tail ([45deg in oklab]). *)
+let read_gradient_prelude t : gradient_direction =
+  match read_linear_prelude_opt t with
+  | Some d -> d
+  | None -> Cursor.err_expected t "gradient direction"
 
 let rec read_gradient_position t : gradient_position =
   Cursor.ws t;
