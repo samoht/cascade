@@ -334,41 +334,17 @@ let rec substitute_components ~kept visible ~visited components =
   loop [] components
 
 and substitute_var ~kept visible ~visited original name fallback =
+  (* An unresolved var() with no fallback is kept verbatim at the top level for
+     the cascade engine, but inside another custom property's value it is
+     guaranteed-invalid and propagates failure to the nearest enclosing
+     fallback. *)
+  let keep_or_fail () =
+    if visited = [] then Components [ Component.Func original ] else Cycle
+  in
   let fallback_or_original () =
     match fallback with
-    | None -> Components [ Component.Func original ]
+    | None -> keep_or_fail ()
     | Some components -> substitute_components ~kept visible ~visited components
-  in
-  (* A kept var stays a live [var(--name, ...)] reference, but its fallback may
-     still hold resolvable vars ([var(--tw-ease, var(--default-ease))] becomes
-     [var(--tw-ease, ease)]), so substitute inside the fallback and rebuild the
-     wrapper rather than collapsing to the fallback. *)
-  let keep_wrapper () =
-    match fallback with
-    | None -> Components [ Component.Func original ]
-    | Some components -> (
-        match substitute_components ~kept visible ~visited components with
-        | Cycle -> Components [ Component.Func original ]
-        | Components subst ->
-            let rec name_prefix acc = function
-              | (Component.Preserved { kind = Token.Comma; _ } as c) :: _ ->
-                  List.rev (c :: acc)
-              | x :: rest -> name_prefix (x :: acc) rest
-              | [] -> List.rev acc
-            in
-            let prefix = name_prefix [] original.Component.node.arguments in
-            Components
-              [
-                Component.Func
-                  {
-                    original with
-                    node =
-                      {
-                        original.Component.node with
-                        arguments = prefix @ subst;
-                      };
-                  };
-              ])
   in
   let resolved_or_fallback value =
     match
@@ -378,14 +354,44 @@ and substitute_var ~kept visible ~visited original name fallback =
     | Cycle -> (
         match fallback with None -> Cycle | Some _ -> fallback_or_original ())
   in
-  if List.mem name visited then
-    match fallback with None -> Cycle | Some _ -> fallback_or_original ()
+  (* A var() forming a cycle is invalid at computed-value time; its own fallback
+     does not rescue it, so propagate failure to a consumer fallback. *)
+  if List.mem name visited then Cycle
   else
     match lookup_visible_custom_components visible name with
     | None ->
-        if List.mem (String.concat "" [ "--"; name ]) kept then keep_wrapper ()
+        if List.mem (String.concat "" [ "--"; name ]) kept then
+          keep_wrapper ~kept visible ~visited original fallback
         else fallback_or_original ()
     | Some value -> resolved_or_fallback value
+
+(* A kept var stays a live [var(--name, ...)] reference, but its fallback may
+   still hold resolvable vars ([var(--tw-ease, var(--default-ease))] becomes
+   [var(--tw-ease, ease)]), so substitute inside the fallback and rebuild the
+   wrapper rather than collapsing to the fallback. *)
+and keep_wrapper ~kept visible ~visited original fallback =
+  match fallback with
+  | None -> Components [ Component.Func original ]
+  | Some components -> (
+      match substitute_components ~kept visible ~visited components with
+      | Cycle -> Components [ Component.Func original ]
+      | Components subst ->
+          let rec name_prefix acc = function
+            | (Component.Preserved { kind = Token.Comma; _ } as c) :: _ ->
+                List.rev (c :: acc)
+            | x :: rest -> name_prefix (x :: acc) rest
+            | [] -> List.rev acc
+          in
+          let prefix = name_prefix [] original.Component.node.arguments in
+          Components
+            [
+              Component.Func
+                {
+                  original with
+                  node =
+                    { original.Component.node with arguments = prefix @ subst };
+                };
+            ])
 
 let declaration_with_components decl components : Declaration.declaration option
     =
