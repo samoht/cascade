@@ -131,9 +131,9 @@ val last_char : ctx -> char option
     been written yet. Use it for token-boundary spacing decisions instead of
     reaching into the output sink directly. *)
 
-val quoted_string : string t
-(** [quoted_string] writes a double-quoted string with proper escaping of quotes
-    and backslashes. *)
+val quoted_string : ?quote:char -> string t
+(** [quoted_string ?quote] writes a [quote]-delimited string (default ['"'])
+    with proper escaping of the delimiter quote and backslashes. *)
 
 (** {2 Layout Control}
 

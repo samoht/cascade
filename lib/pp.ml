@@ -143,20 +143,23 @@ let hex_escape_byte ctx ~next c =
 (* Output a string literal with CSS section 9.2 escaping: backslash for the
    delimiter and for '\', hex escapes for control bytes (U+0000..U+001F, U+007F)
    so the serialized form parses back to the same string. *)
-let quoted_string ctx s =
-  char ctx '"';
+let quoted_string ?(quote = '"') ctx s =
+  char ctx quote;
   let len = String.length s in
   String.iteri
     (fun i c ->
-      match c with
-      | '"' -> string ctx "\\\""
-      | '\\' -> string ctx "\\\\"
-      | '\x00' .. '\x1F' | '\x7F' ->
-          let next = if i + 1 < len then Some s.[i + 1] else None in
-          hex_escape_byte ctx ~next c
-      | c -> char ctx c)
+      if c = quote then (
+        char ctx '\\';
+        char ctx c)
+      else
+        match c with
+        | '\\' -> string ctx "\\\\"
+        | '\x00' .. '\x1F' | '\x7F' ->
+            let next = if i + 1 < len then Some s.[i + 1] else None in
+            hex_escape_byte ctx ~next c
+        | c -> char ctx c)
     s;
-  char ctx '"'
+  char ctx quote
 
 let sp ctx () = if not ctx.minify then char ctx ' '
 let cut ctx () = if not ctx.minify then string ctx "\n" else ()
@@ -479,9 +482,5 @@ let url ctx s =
         c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
       s
   in
-  if needs_quotes then (
-    string ctx "\"";
-    string ctx s;
-    string ctx "\"")
-  else string ctx s;
+  if needs_quotes then quoted_string ctx s else string ctx s;
   string ctx ")"
