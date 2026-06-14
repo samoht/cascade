@@ -6,8 +6,9 @@
     order maintenance) and apply merges directly, so each pass is local rather
     than a whole-list rescan.
 
-    This is being built one merge kind at a time; for now it exposes the
-    simplest one. *)
+    It exposes two merge kinds: {!combine_identical} unions adjacent rules that
+    share a declaration block, and {!factor_common} hoists a declaration shared
+    by a run of rules into a single rule ahead of them. *)
 
 val combine_identical : Stylesheet.rule list -> Stylesheet.rule list
 (** [combine_identical rs] merges each run of consecutive rules that share an
