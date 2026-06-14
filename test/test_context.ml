@@ -1080,6 +1080,7 @@ let computed_edge_contract () =
           Css.Declaration.of_string "--accent: var(--brand)";
           Css.Declaration.of_string "--cycle-a: var(--cycle-b)";
           Css.Declaration.of_string "--cycle-b: var(--cycle-a)";
+          Css.Declaration.of_string "--cycle-fb: var(--cycle-fb, red)";
           Css.Declaration.of_string "--space: 2em";
         ]
       ~inherited_values:[ Css.Declaration.of_string "font-size: 12px" ]
@@ -1128,6 +1129,10 @@ let computed_edge_contract () =
     "background-image: url(/icons/logo.svg)";
   check_eval_preserves "custom property cycle is unresolved" ~ctx
     "color: var(--cycle-a)";
+  (* A cyclic custom property is invalid at computed-value time: its own var()
+     fallback does not rescue it, so the consumer's fallback wins. *)
+  check_eval_value "cyclic var ignores its own fallback for the consumer's" ~ctx
+    ~expected:"blue" "color: var(--cycle-fb, blue)";
   check_eval_preserves "width percentage needs layout context" ~ctx "width: 50%";
   check_eval_preserves "em unit without parent font context is unresolved"
     ~ctx:Css.Context.empty "margin-left: 2em";
