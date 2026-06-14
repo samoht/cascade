@@ -855,6 +855,19 @@ let import_canonical_media () =
     "identical @import equal (canonical)" true
     (equal ~mode:`Canonical "@import url(a.css);" "@import url(a.css);")
 
+(* Two same-selector rules with conflicting declarations cascade last-wins, so
+   swapping their order flips the winner: a real difference the structural Tree
+   mode must report, not only Auto/Canonical. *)
+let tree_same_selector_reorder () =
+  Alcotest.(check bool)
+    "same-selector reorder flips the cascade winner (tree)" false
+    (equal ~mode:`Tree ".a{color:red}.a{color:blue}"
+       ".a{color:blue}.a{color:red}");
+  Alcotest.(check bool)
+    "same order stays equal (tree)" true
+    (equal ~mode:`Tree ".a{color:red}.a{color:blue}"
+       ".a{color:red}.a{color:blue}")
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -864,6 +877,8 @@ let suite =
       Alcotest.test_case "import tree media" `Quick import_tree_media;
       Alcotest.test_case "import tree order" `Quick import_tree_order;
       Alcotest.test_case "import canonical media" `Quick import_canonical_media;
+      Alcotest.test_case "tree same-selector reorder" `Quick
+        tree_same_selector_reorder;
       Alcotest.test_case "equal identical" `Quick equal_identical;
       Alcotest.test_case "equal different" `Quick equal_different;
       Alcotest.test_case "equal empty" `Quick equal_empty;
