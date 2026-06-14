@@ -1894,6 +1894,22 @@ let background_run_is_reset_closed layer =
       "clip";
     ]
 
+(* A layer shorthand resets every layer field, so synthesizing it from a run
+   silently reverts any same-family longhand sitting before the run (separated
+   from it by an unrelated declaration). Even [`Stylesheet] scope, which is
+   closed over external CSS only, must not shadow that earlier same-block
+   longhand, so composition refuses when one exists. *)
+let has_prior_family_longhand part_of idx i =
+  let rec aux j =
+    if j >= i then false
+    else if Rule_index.is_absorbed idx j then aux (j + 1)
+    else
+      match part_of (Rule_index.decl_at idx j) with
+      | Some _ -> true
+      | None -> aux (j + 1)
+  in
+  aux 0
+
 let take_background_run_at idx i =
   let n = Rule_index.length idx in
   let rec aux j acc =
@@ -1922,7 +1938,8 @@ let try_compose_background_at ~ctx idx i =
          shorthand could shadow. *)
       let permit =
         match scope ctx with
-        | `Stylesheet -> true
+        | `Stylesheet ->
+            not (has_prior_family_longhand background_part_of idx i)
         | `Fragment -> background_run_is_reset_closed layer
       in
       if not permit then None
@@ -2065,6 +2082,7 @@ let try_compose_mask_at ~ctx idx i =
     let raw_decls = List.map fst parts in
     if not (same_importance raw_decls) then None
     else if scope ctx <> `Stylesheet then None
+    else if has_prior_family_longhand mask_part_of idx i then None
     else
       let layer =
         List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
