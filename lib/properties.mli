@@ -1454,6 +1454,11 @@ val pp_gradient_direction : gradient_direction Pp.t
 val read_gradient_direction : Cursor.t -> gradient_direction
 (** [read_gradient_direction t] is the [gradient_direction] parsed from [t]. *)
 
+val read_gradient_prelude : Cursor.t -> gradient_direction
+(** [read_gradient_prelude t] parses a gradient direction including the optional
+    [in <color-interpolation>] tail ([45deg in oklab]), unlike
+    {!read_gradient_direction} which stops before the tail. *)
+
 val pp_color_interpolation : color_interpolation Pp.t
 (** [pp_color_interpolation] pretty-prints a color interpolation space (e.g.,
     "in oklab"). *)
