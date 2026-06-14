@@ -3269,7 +3269,10 @@ and read_nested_container_rule r =
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   let condition : Container.t option =
     if condition_str = "" then Option.None
-    else Some (Container.of_string condition_str)
+    else
+      match Container.of_string condition_str with
+      | condition -> Some condition
+      | exception Failure msg -> Cursor.err_invalid r msg
   in
   Container (container_name, condition, content)
 

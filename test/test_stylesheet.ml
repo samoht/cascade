@@ -180,6 +180,24 @@ let test_container_rule_creation () =
   let output = Css.Stylesheet.pp ~minify:true sheet in
   check_stylesheet output
 
+(* ignore-test: error-recovery contract, not a per-statement constructor. *)
+let test_nested_container_recovers () =
+  (* A nested @container with an invalid query (empty style(), mixed operators)
+     must surface through of_string as a recoverable parse warning, not an
+     uncaught Failure escaping the documented (parse, Error.t) result. *)
+  let recovers input =
+    match Css.of_string input with
+    | Ok { Css.warnings; _ } ->
+        Alcotest.(check bool)
+          ("nested container recovered: " ^ input)
+          true (warnings <> [])
+    | Error _ ->
+        Alcotest.failf "expected recovery with a warning, got Error: %s" input
+  in
+  recovers {|.x { @container style() { .y { color: red } } }|};
+  recovers
+    {|.x { @container (width > 1px) and (height > 1px) or (width > 2px) { .y { color: red } } }|}
+
 (* Not a roundtrip test *)
 let test_supports_rule_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
@@ -1272,6 +1290,7 @@ let stylesheet_tests =
     ("rule creation", `Quick, test_rule_creation);
     ("media rule creation", `Quick, test_media_rule_creation);
     ("container rule creation", `Quick, test_container_rule_creation);
+    ("nested container recovers", `Quick, test_nested_container_recovers);
     ("supports rule creation", `Quick, test_supports_rule_creation);
     ("supports nested creation", `Quick, test_supports_nested_creation);
     ("property rule creation", `Quick, test_property_rule_creation);
