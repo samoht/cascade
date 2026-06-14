@@ -220,6 +220,12 @@ and hex stays hex. The fold changes the exact token string a script reads back
 via `getPropertyValue`; cascade does not treat that byte-exact CSSOM
 serialization as an observable to preserve.
 
+Whitespace inside an opaque value is likewise folded only where it is
+insignificant: a `)` closing a non-substitution function or a block is a hard
+token boundary, so the space after it is dropped (`drop-shadow(a) drop-shadow(b)`
+-> `drop-shadow(a)drop-shadow(b)`). The space after a `var()` / `env()` / `attr()`
+stays, since the substituted value could otherwise merge with its neighbour.
+
 ### Color approximation
 
 Cascade folds colors only within `0.002` ΔE<sub>OK</sub> (the CSS Color 4
