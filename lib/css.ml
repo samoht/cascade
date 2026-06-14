@@ -398,6 +398,10 @@ let declaration_name = Declaration.property_name
 let declaration_value ?(minify = false) ?(inline = false) decl =
   Declaration.string_of_value ~minify ~inline decl
 
+let declaration_value_for_equivalence decl =
+  Declaration.string_of_value ~minify:false
+    (Declaration.unquote_custom_font_strings decl)
+
 (* Override rule function to return statement directly *)
 let rule ~selector ?nested ?merge_key declarations =
   Rule (Stylesheet.rule ~selector ?nested ?merge_key declarations)

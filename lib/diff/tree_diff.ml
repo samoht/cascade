@@ -664,7 +664,7 @@ let strings_of_rule stmt =
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
-  let value = Css.declaration_value ~minify:false decl in
+  let value = Css.declaration_value_for_equivalence decl in
   let value =
     if Css.declaration_is_important decl then value ^ " !important" else value
   in

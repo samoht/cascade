@@ -40,6 +40,12 @@ val custom_property : ?layer:string -> string -> string -> declaration
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
+val unquote_custom_font_strings : declaration -> declaration
+(** [unquote_custom_font_strings d] rewrites a quoted multi-word [<string>] in a
+    custom-property token stream as the equivalent unquoted [<ident>] sequence.
+    Equivalence-only normalisation for structural diffing; other declarations
+    pass through unchanged. *)
+
 val read_property_name : Cursor.t -> string
 (** [read_property_name t] is the property name read from [t]. *)
 

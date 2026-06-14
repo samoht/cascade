@@ -15740,6 +15740,18 @@ let generic_font_family_keywords =
     "fangsong";
   ]
 
+(* A bare ident matching a generic family ([sans-serif], [ui-monospace], ...) is
+   only valid inside a font-family list, so its presence proves the whole token
+   stream is a font-family value (the same "the type is obviously correct"
+   reasoning that folds a colour function in an opaque stream). *)
+let components_have_generic_family components =
+  List.exists
+    (function
+      | Component.Preserved { kind = Token.Ident name; _ } ->
+          List.mem (String.lowercase_ascii name) generic_font_family_keywords
+      | _ -> false)
+    components
+
 let long_generic_family_start r =
   let is_ws = function
     | Component.Preserved { kind = Token.Whitespace; _ } -> true
