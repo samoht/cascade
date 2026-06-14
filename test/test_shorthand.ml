@@ -81,6 +81,38 @@ let test_compose_shorthands_and_runtime_guard () =
     "runtime substitution prevents typed border shorthand" 12
     (List.length guarded)
 
+let test_stylesheet_scope_prior_longhand_guard () =
+  (* A layer shorthand resets every layer field, so synthesizing one from a run
+     would silently revert a same-family longhand that sits before the run.
+     Closed-world (stylesheet) scope is closed over external CSS only, not over
+     this same-block longhand, so composition must refuse here. *)
+  let ctx = Ctx.of_scope (Some `Stylesheet) in
+  let compose css =
+    css |> decls |> indexed
+    |> Shorthand.compose_shorthands ~ctx
+    |> unindexed |> decl_strings
+  in
+  Alcotest.(check (list string))
+    "a prior background-clip blocks background composition"
+    [
+      "background-clip:text";
+      "color:red";
+      "background-color:blue";
+      "background-image:url(x.png)";
+    ]
+    (compose
+       ".a{background-clip:text;color:red;background-color:blue;background-image:url(x.png)}");
+  Alcotest.(check (list string))
+    "a prior mask-clip blocks mask composition"
+    [
+      "mask-clip:view-box";
+      "color:red";
+      "mask-image:url(x.png)";
+      "mask-repeat:no-repeat";
+    ]
+    (compose
+       ".a{mask-clip:view-box;color:red;mask-image:url(x.png);mask-repeat:no-repeat}")
+
 let test_deduplicate_keeps_legacy_fallbacks () =
   let result =
     ".a{display:-webkit-box;display:flex;color:red;color:blue}" |> decls
@@ -102,6 +134,8 @@ let suite =
         test_merge_overflow_longhands;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
+      Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
+        test_stylesheet_scope_prior_longhand_guard;
       Alcotest.test_case "deduplicate keeps legacy fallbacks" `Quick
         test_deduplicate_keeps_legacy_fallbacks;
     ] )
