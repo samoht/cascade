@@ -41,6 +41,11 @@ module Transform = struct
   let of_string s = parse_full ~property:"transform" Properties.read_transform s
 end
 
+module Gradient_direction = struct
+  let of_string s =
+    parse_full ~property:"gradient-direction" Properties.read_gradient_prelude s
+end
+
 module Transform_origin = struct
   let of_string s =
     parse_full ~property:"transform-origin" Properties.read_transform_origin s

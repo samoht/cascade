@@ -2293,6 +2293,10 @@ let test_gradient_position () =
   check_gradient_position "to right";
   check_gradient_position "45deg";
   check_gradient_position "to right in oklab";
+  (* No explicit direction: the interpolation prints without a redundant [to
+     bottom], distinct from [to bottom in <interp>]. *)
+  check_gradient_position "in oklab";
+  check_gradient_position "in oklch shorter hue";
   check_gradient_position "circle at center";
   check_gradient_position "closest-side";
   check_gradient_position "at center";
