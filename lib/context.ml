@@ -1117,7 +1117,7 @@ module Length = struct
     | Vh f | Lvh f | Svh f ->
         Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
     | Dvw f -> Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
-    | Dvh _ -> None
+    | Dvh f -> Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
     | Vmin f | Lvmin f | Svmin f | Dvmin f ->
         viewport_v (fun w h -> f *. Float.min w h /. 100.)
     | Vmax f | Lvmax f | Svmax f | Dvmax f ->

@@ -1388,11 +1388,12 @@ let eval_calc_family_contract () =
       ~custom_properties:[ Css.Declaration.of_string "--lp: calc(50% + 1rem)" ]
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~viewport_width:(Css.Values.Px 1000.)
-      ~viewport_height:(Css.Values.Px 800.)
       ~container_width:(Css.Values.Px 400.) ()
   in
   check_eval "eval partially folds length-percentage calc" ~ctx
     ~expected:"width: calc(50% + 16px)" "width: var(--lp)";
+  (* The context supplies no viewport height, so [dvh] stays a live leaf while
+     the [rem] term folds. *)
   check_eval "eval preserves unknown viewport leaf after folding known units"
     ~ctx ~expected:"height: calc(16px + 10dvh)" "height: calc(1rem + 10dvh)"
 
