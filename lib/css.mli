@@ -4872,21 +4872,25 @@ val font_feature_settings : font_feature_settings -> declaration
      font-feature-settings} property. *)
 
 (** CSS shadow values *)
-type shadow = Properties.shadow =
-  | Shadow of {
-      inset : bool;
-      inset_var : string option;
-          (** If set, outputs var(--<name>) before shadow values. Used by
-              Tailwind's ring system for dynamic inset toggle. *)
-      inset_var_no_fallback : bool;
-          (** When true, emits [var(--name)] without fallback instead of
-              [var(--name,)] with empty fallback. Used by the forms plugin. *)
-      h_offset : length;
-      v_offset : length;
-      blur : length option;
-      spread : length option;
-      color : color option;
-    }
+type shadow_body = Properties.shadow_body = {
+  h_offset : length;
+  v_offset : length;
+  blur : length option;
+  spread : length option;
+  color : color option;
+}
+(** The [<length>{2,4} && <color>?] part of a single [<shadow>]. *)
+
+and inset = Properties.inset =
+  | Var of shadow var  (** [inset var(--x)]: the whole body from one var. *)
+  | Body of shadow_body  (** [inset 2px 4px red]: a concrete inset body. *)
+  | Toggle of { name : string; no_fallback : bool; body : shadow_body }
+      (** [var(--name) <body>]: a dynamic inset toggle (Tailwind's ring system).
+      *)
+
+and shadow = Properties.shadow =
+  | Shadow of shadow_body  (** A non-inset shadow. *)
+  | Inset of inset  (** An inset shadow. *)
   | None
   | Inherit
   | Initial
