@@ -123,7 +123,16 @@ let test_inline_cycle_fallbacks () =
     ":root{--a:var(--b);--b:var(--a)}.x{color:fallback}";
   check_inline_case "three-cycle uses consumer fallback"
     ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}"
-    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}"
+    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}";
+  (* A cyclic custom property is invalid at computed-value time: its own var()
+     fallback does not rescue it, so the consumer's fallback wins. *)
+  check_inline_case
+    "self-cycle ignores its own fallback, consumer fallback wins"
+    ":root{--a:var(--a,red)}.x{color:var(--a,blue)}" ".x{color:blue}";
+  (* A custom property resolving to an undefined var() is itself invalid, so a
+     consumer fallback applies rather than leaving a dead var() behind. *)
+  check_inline_case "chain to an undefined var resolves the consumer fallback"
+    ":root{--a:var(--b)}.x{color:var(--a,red)}" ".x{color:red}"
 
 let test_inline_shorthand_functions () =
   check_inline_case "transition variable resolves into property slot"
