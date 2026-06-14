@@ -39,12 +39,6 @@ let read_input path =
   let filename = if path = "-" then "<stdin>" else path in
   parse_css ~filename css
 
-let print_output output =
-  let output = if output = "\n" then "" else output in
-  print_string output;
-  if output <> "" && output.[String.length output - 1] <> '\n' then
-    print_newline ()
-
 let split_comma s =
   String.split_on_char ',' s |> List.map String.trim
   |> List.filter (fun s -> s <> "")
