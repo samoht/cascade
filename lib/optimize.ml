@@ -125,6 +125,7 @@ let reset_counters () =
 
 let merge_consecutive_layers = Block.merge_consecutive_layers
 let merge_consecutive_media = Block.merge_consecutive_media
+let merge_distant_media = Block.merge_distant_media
 let merge_consecutive_supports = Block.merge_consecutive_supports
 let merge_consecutive_containers = Block.merge_consecutive_containers
 let is_layer_empty = Block.is_layer_empty
@@ -206,6 +207,7 @@ let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
         let stmts =
           stmts
           |> merge_consecutive_media ~optimize_merged_block
+          |> merge_distant_media ~optimize_merged_block
           |> merge_consecutive_supports ~optimize_merged_block
           |> merge_consecutive_containers ~optimize_merged_block
         in
