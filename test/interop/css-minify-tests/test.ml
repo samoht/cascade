@@ -407,6 +407,20 @@ let normalize_expected ~category ~id expected =
          authored unit. *)
       fixture ~category ~id ~upstream:"a{font-size:16px}"
         ~cascade:"a{font-size:12pt}" upstream
+  | "merging", "0008" ->
+      (* The upstream oracle keeps the two [@media (width>=1px)] blocks apart,
+         assuming a non-adjacent merge is always cascade-unsafe. Here it is
+         safe: the second block sets [background] while the intervening
+         [a{color:green}] sets [color], so no element's computed value changes
+         when the blocks merge. cascade merges them (and only when no shared
+         property reorders to a different value). *)
+      fixture ~category ~id
+        ~upstream:
+          "@media (width>=1px){a{color:red}}a{color:green}@media \
+           (width>=1px){a{background:#0b0}}"
+        ~cascade:
+          "@media(width>=1px){a{color:red;background:#0b0}}a{color:green}"
+        upstream
   | "values", "0057" ->
       (* The upstream oracle keeps [rgb(0 0 0)] verbatim to preserve the exact
          token string a script reads back via [getPropertyValue]. A complete

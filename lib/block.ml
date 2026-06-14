@@ -145,6 +145,103 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
     merge_media_blocks ~optimize_merged_block stmts
   else stmts
 
+(* Leaf rules reachable from a statement, descending into nested blocks. *)
+let rec leaf_rules stmt =
+  match stmt with
+  | Rule r -> r :: List.concat_map leaf_rules r.nested
+  | Media (_, b)
+  | Supports (_, b)
+  | Layer (_, b)
+  | Container (_, _, b)
+  | Starting_style b
+  | Origin (_, b)
+  | Moz_document (_, b)
+  | Scope (_, _, b)
+  | When (_, b)
+  | Else (_, b) ->
+      List.concat_map leaf_rules b
+  | _ -> []
+
+let decl_value_key d =
+  ( Declaration.property_name d,
+    Declaration.string_of_value ~minify:true d,
+    Declaration.is_important d )
+
+(* Two rules whose declarations would reorder unsafely: overlapping selectors
+   and a shared property set to a different value. Equal values reorder
+   freely. *)
+let rules_conflict (r1 : rule) (r2 : rule) =
+  Selector_summary.may_overlap
+    (Selector_summary.of_selector r1.selector)
+    (Selector_summary.of_selector r2.selector)
+  && List.exists
+       (fun a ->
+         let pa = Declaration.property_name a in
+         List.exists
+           (fun b ->
+             Declaration.property_name b = pa
+             && decl_value_key a <> decl_value_key b)
+           r2.declarations)
+       r1.declarations
+
+let needs_distant_media_merge stmts =
+  let conds =
+    List.filter_map (function Media (c, _) -> Some c | _ -> None) stmts
+  in
+  let rec dup = function
+    | [] -> false
+    | c :: rest -> List.exists (Media.equal c) rest || dup rest
+  in
+  dup conds
+
+(* CSS Conditional 3: same-condition [@media] blocks are spec-equivalent to one
+   block. Merge a later block into the first occurrence when hoisting it past
+   the intervening statements cannot reorder a conflicting rule. *)
+let merge_distant_media ~optimize_merged_block stmts =
+  if not (needs_distant_media_merge stmts) then stmts
+  else
+    let try_merge out cond block : statement list option =
+      let hoisted = List.concat_map leaf_rules block in
+      let rec split before :
+          statement list ->
+          (statement list * statement list * statement list) option = function
+        | [] -> None
+        | Media (c, b) :: after when Media.equal c cond ->
+            Some (List.rev before, b, after)
+        | x :: rest -> split (x :: before) rest
+      in
+      (* Only cross statements whose cascade is pure source order: plain rules
+         and conditional groups. Layers, origins, scopes, imports, etc.
+         establish ordering/context that hoisting past would change. *)
+      let crossable = function
+        | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
+        | _ -> false
+      in
+      match split [] out with
+      | None -> None
+      | Some (before, target, after) when List.for_all crossable after ->
+          let crossed = List.concat_map leaf_rules after in
+          if
+            List.exists
+              (fun h -> List.exists (rules_conflict h) crossed)
+              hoisted
+          then None
+          else Some (before @ [ Media (cond, target @ block) ] @ after)
+      | Some _ -> None
+    in
+    List.fold_left
+      (fun out stmt ->
+        match stmt with
+        | Media (cond, block) when not (has_nested_preference_media block) -> (
+            match try_merge out cond block with
+            | Some out' -> out'
+            | None -> out @ [ stmt ])
+        | _ -> out @ [ stmt ])
+      [] stmts
+    |> List.map (function
+      | Media (c, b) -> Media (c, optimize_merged_block b)
+      | s -> s)
+
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
