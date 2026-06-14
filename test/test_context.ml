@@ -1365,6 +1365,8 @@ let computed_calc_contract () =
     ~expected:"250px" "width: 25dvw";
   check_eval_value "viewport svh resolves against viewport height" ~ctx
     ~expected:"60px" "height: 10svh";
+  check_eval_value "viewport dvh resolves against viewport height" ~ctx
+    ~expected:"60px" "height: 10dvh";
   check_eval_value "container cqi resolves against inline size" ~ctx
     ~expected:"125px" "width: 25cqi";
   check_eval_value "container cqb resolves against block size" ~ctx
@@ -1386,11 +1388,12 @@ let eval_calc_family_contract () =
       ~custom_properties:[ Css.Declaration.of_string "--lp: calc(50% + 1rem)" ]
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~viewport_width:(Css.Values.Px 1000.)
-      ~viewport_height:(Css.Values.Px 800.)
       ~container_width:(Css.Values.Px 400.) ()
   in
   check_eval "eval partially folds length-percentage calc" ~ctx
     ~expected:"width: calc(50% + 16px)" "width: var(--lp)";
+  (* The context supplies no viewport height, so [dvh] stays a live leaf while
+     the [rem] term folds. *)
   check_eval "eval preserves unknown viewport leaf after folding known units"
     ~ctx ~expected:"height: calc(16px + 10dvh)" "height: calc(1rem + 10dvh)"
 
