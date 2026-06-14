@@ -954,7 +954,12 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
 let add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
   let sel1_key = selector_key_of_selector sel1 in
   let sel2_key = selector_key_of_selector sel2 in
-  if sel1_key = sel2_key then acc
+  if sel1_key = sel2_key then
+    (* Same selector at this position: a difference only when its declarations
+       differ, i.e. same-selector rules were reordered so the cascade winner
+       flips. *)
+    if decls_signature decls1 = decls_signature decls2 then acc
+    else (sel1, sel2, decls1, decls2) :: acc
   else if
     selector_in_list sel1_key remaining2 && selector_in_list sel2_key remaining1
   then
@@ -1094,11 +1099,18 @@ let handle_structural_diff rules1 rules2 =
   let modified = sel_changes @ filtered_other_modified in
 
   let has_structural_changes = added <> [] || removed <> [] || modified <> [] in
+  (* Key reorder detection on the (selector, declarations) sequence, not the
+     selector alone: two same-selector rules with conflicting declarations
+     cascade last-wins, so swapping them is a real change. *)
+  let order_signature stmts =
+    List.map
+      (fun s -> (selector_key_of_stmt s, decls_signature (rule_declarations s)))
+      stmts
+  in
   let has_ordering_changes =
     (not has_structural_changes)
     && has_same_selectors rules1 rules2
-    && List.map selector_key_of_stmt rules1
-       <> List.map selector_key_of_stmt rules2
+    && order_signature rules1 <> order_signature rules2
   in
 
   let modified_with_order =
