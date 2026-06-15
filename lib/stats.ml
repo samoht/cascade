@@ -49,8 +49,6 @@ type counters = {
   mutable iterations : int;
   mutable factor_fixpoints_run : int;
   mutable marginal_stops : int;
-  mutable summary_hits : int;
-  mutable summary_misses : int;
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
@@ -68,8 +66,6 @@ let counters =
     iterations = 0;
     factor_fixpoints_run = 0;
     marginal_stops = 0;
-    summary_hits = 0;
-    summary_misses = 0;
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
@@ -109,8 +105,6 @@ let reset () =
   counters.iterations <- 0;
   counters.factor_fixpoints_run <- 0;
   counters.marginal_stops <- 0;
-  counters.summary_hits <- 0;
-  counters.summary_misses <- 0;
   counters.factor_fixpoints_skipped <- 0;
   counters.factor_preflight_gain <- 0;
   counters.factor_bytes_saved <- 0;

@@ -1,8 +1,5 @@
 (** Cascade-aware rule factoring. *)
 
-val clear : unit -> unit
-(** Clear physical-identity summary caches. *)
-
 val common : Stylesheet.rule list -> Stylesheet.rule list
 (** Factor common declaration groups from adjacent and indexed lookahead runs.
 *)

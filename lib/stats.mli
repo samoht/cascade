@@ -54,8 +54,6 @@ type counters = {
       (** global factoring fixpoints attempted after the preflight *)
   mutable marginal_stops : int;
       (** fixpoints stopped because consecutive iterations had low byte gain *)
-  mutable summary_hits : int;  (** summary memo hits *)
-  mutable summary_misses : int;  (** summary memo misses *)
   mutable factor_fixpoints_skipped : int;
       (** global factoring fixpoints skipped by the incremental preflight *)
   mutable factor_preflight_gain : int;
