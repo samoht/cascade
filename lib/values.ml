@@ -853,6 +853,12 @@ let rec eval_calc : type a. a calc -> a calc = function
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
           match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+      (* Multiplicative identities hold for any finite operand, so they fold
+         even when the other side is a [var()] or other opaque term: [x * 1] and
+         [1 * x] reduce to [x], [x * 0] and [0 * x] reduce to [0]. *)
+      | _, Mul, Num 1. -> l
+      | Num 1., Mul, _ -> r
+      | _, Mul, Num 0. | Num 0., Mul, _ -> Num 0.
       | _ -> (
           match fold_zero_numeric_expr lc op rc with
           | Some zero -> zero
