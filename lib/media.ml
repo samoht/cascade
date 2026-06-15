@@ -1474,11 +1474,6 @@ let responsive_value k =
   | Responsive_max (unit_ord, value) -> (Float.of_int unit_ord *. 1e9) -. value
   | _ -> 0.
 
-(* Chain comparators lazily: the right-hand thunk runs only when the left-hand
-   key ties. This keeps the [to_string] tie-break (which allocates a [Buffer]
-   and runs the printer) off the hot path of every comparison. *)
-let ( <?> ) c next = if c <> 0 then c else next ()
-
 (* The sort order is decided by four cheap ordinal keys and, only when those all
    tie, the serialized text. Extracting the kinds and serializing both allocate
    ([feature_bound], [Pp.v]), so a sort that re-derives them on every comparison
@@ -1505,12 +1500,21 @@ let sort_key t =
     text = to_string t;
   }
 
+(* A plain [if c <> 0 then c else ...] chain: it short-circuits like the thunk
+   combinator but allocates no closures, which matters because a sort calls this
+   O(n log n) times. *)
 let compare_keys a b =
-  Int.compare a.group b.group <?> fun () ->
-  Int.compare a.subkind b.subkind <?> fun () ->
-  Float.compare a.responsive b.responsive <?> fun () ->
-  Int.compare a.preference b.preference <?> fun () ->
-  String.compare a.text b.text
+  let c = Int.compare a.group b.group in
+  if c <> 0 then c
+  else
+    let c = Int.compare a.subkind b.subkind in
+    if c <> 0 then c
+    else
+      let c = Float.compare a.responsive b.responsive in
+      if c <> 0 then c
+      else
+        let c = Int.compare a.preference b.preference in
+        if c <> 0 then c else String.compare a.text b.text
 
 let sort_by project items =
   List.map (fun x -> (sort_key (project x), x)) items
@@ -1520,10 +1524,16 @@ let sort_by project items =
 let compare a b =
   let ka, kb = (kind a, kind b) in
   let ga, _ = group_order ka and gb, _ = group_order kb in
-  Int.compare ga gb <?> fun () ->
-  Int.compare (responsive_subkind a) (responsive_subkind b) <?> fun () ->
-  Float.compare (responsive_value ka) (responsive_value kb) <?> fun () ->
-  Int.compare (preference_order a) (preference_order b) <?> fun () ->
-  String.compare (to_string a) (to_string b)
+  let c = Int.compare ga gb in
+  if c <> 0 then c
+  else
+    let c = Int.compare (responsive_subkind a) (responsive_subkind b) in
+    if c <> 0 then c
+    else
+      let c = Float.compare (responsive_value ka) (responsive_value kb) in
+      if c <> 0 then c
+      else
+        let c = Int.compare (preference_order a) (preference_order b) in
+        if c <> 0 then c else String.compare (to_string a) (to_string b)
 
 let equal a b = compare a b = 0
