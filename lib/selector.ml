@@ -1906,6 +1906,16 @@ let name_is_plain_ascii_ident name =
       true
     with Not_plain -> false
 
+let name_is_ascii name =
+  let len = String.length name in
+  let exception Has_non_ascii in
+  try
+    for i = 0 to len - 1 do
+      if Char.code (String.unsafe_get name i) >= 0x80 then raise Has_non_ascii
+    done;
+    true
+  with Has_non_ascii -> false
+
 let escape_selector_name name =
   if String.length name = 0 then ""
   else if name = "-" then "\\-"
@@ -1914,11 +1924,19 @@ let escape_selector_name name =
     let buf = Buffer.create (String.length name * 2) in
     let first_needs_hex_escape = first_needs_hex_escape name in
     let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
-    let folder () i = function
-      | `Uchar u -> add_selector_uchar buf ~add_ascii i u
-      | `Malformed bytes -> add_selector_malformed buf ~add_ascii i bytes
-    in
-    Uutf.String.fold_utf_8 folder () name;
+    (* A name with escapable punctuation but no byte >= 0x80 (the common
+       Tailwind case: [hover:p-4], [w-1/2], [bg-[#fff]]) has no multi-byte
+       sequence to decode, so escape it byte by byte and skip [Uutf], which
+       would box a [Uchar] per character. [String.iteri]'s index is the byte
+       offset, which equals the [Uutf] fold's index for single-byte input. *)
+    if name_is_ascii name then String.iteri add_ascii name
+    else begin
+      let folder () i = function
+        | `Uchar u -> add_selector_uchar buf ~add_ascii i u
+        | `Malformed bytes -> add_selector_malformed buf ~add_ascii i bytes
+      in
+      Uutf.String.fold_utf_8 folder () name
+    end;
     Buffer.contents buf
 
 let pp_ns ctx = function
