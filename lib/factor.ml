@@ -81,49 +81,11 @@ let prop_ids_mem = Summary.ids_mem
 let prop_ids_disjoint = Summary.ids_disjoint
 let prop_ids_inter = Summary.ids_inter
 
-(* Memoise summaries by physical identity. Rules are persistent records, so the
-   same rule heap object is inspected by many overlapping factoring windows in a
-   single [to_fixpoint] iteration; [rule_pp_size] does two [Pp.size] traversals
-   each call, which made the inner factoring loops quadratic in the window size.
-   We key on the boxed [Obj.repr] of the rule: [Hashtbl] uses our [equal =
-   (==)], so misses on identity, never false hits. The hash function is
-   fixed-depth (stdlib default depth, capped) so it is bounded regardless of the
-   rule's structure. *)
-module Rule_id_tbl = Hashtbl.Make (struct
-  type t = Stylesheet.rule
-
-  let equal = ( == )
-
-  (* O(1) bucket hash combining the cached [Declaration.hash] of the first two
-     declarations -- both are field loads on the structural fingerprint stored
-     at declaration construction. With [equal = (==)], a bucket collision falls
-     through to a physical pointer scan, so we never walk the rule structure on
-     lookup. *)
-  let hash (r : t) =
-    match r.Stylesheet_intf.declarations with
-    | [] -> 0
-    | [ d ] -> Declaration.hash d
-    | d1 :: d2 :: _ -> Declaration.hash d1 lxor (Declaration.hash d2 lsl 1)
-end)
-
-let summary_memo : summary Rule_id_tbl.t = Rule_id_tbl.create 4096
-let clear () = Rule_id_tbl.reset summary_memo
-
 let summarize_factor_rule factor_rule =
-  match Rule_id_tbl.find_opt summary_memo factor_rule with
-  | Some s ->
-      counters.summary_hits <- counters.summary_hits + 1;
-      s
-  | None ->
-      counters.summary_misses <- counters.summary_misses + 1;
-      let s =
-        Summary.v ~rule_size:rule_pp_size
-          ~decl_size:(Pp.size ~minify:true Declaration.pp_declaration)
-          ~selector_size:(Pp.size ~minify:true Selector.pp)
-          factor_rule
-      in
-      Rule_id_tbl.add summary_memo factor_rule s;
-      s
+  Summary.v ~rule_size:rule_pp_size
+    ~decl_size:(Pp.size ~minify:true Declaration.pp_declaration)
+    ~selector_size:(Pp.size ~minify:true Selector.pp)
+    factor_rule
 
 let declares_all summary props = Summary.declares_all summary props
 let declares_ids summary props = Summary.declares_ids summary props

@@ -66,7 +66,6 @@ let finalize_rule_without_nested = Rule.finalize
 let merge_rules = Rule.merge
 let combine_identical_rules = Rule.identical
 let factor_anchor_gaps = Factor.anchor
-let clear_summary_memo = Factor.clear
 
 (* Per-pass and global counters for the --profile CLI flag. Reset at each
    [Optimize.stylesheet] entry; bumped from the hot loops below. *)
@@ -101,8 +100,6 @@ type counters = Stats.counters = {
   mutable iterations : int;
   mutable factor_fixpoints_run : int;
   mutable marginal_stops : int;
-  mutable summary_hits : int;
-  mutable summary_misses : int;
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
@@ -1019,7 +1016,6 @@ let race_extend_lists ~run ~strict stylesheet =
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) (stylesheet : t) : t =
-  clear_summary_memo ();
   Selector_summary.clear_memo ();
   reset_counters ();
   let scope = Option.value scope ~default:`Fragment in

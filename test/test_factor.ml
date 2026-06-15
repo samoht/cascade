@@ -13,7 +13,6 @@ let render rules =
     (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) rules)
 
 let test_common_hoists_profitable_adjacent_run () =
-  Factor.clear ();
   let optimized =
     Factor.common
       (rules
@@ -25,14 +24,12 @@ let test_common_hoists_profitable_adjacent_run () =
     (render optimized)
 
 let test_common_rejects_duplicate_property_member () =
-  Factor.clear ();
   let css = ".a{display:flex;display:block}.b{display:flex}" in
   Alcotest.(check string)
     "unsafe duplicate property run is untouched" css
     (Factor.common (rules css) |> render)
 
 let test_anchor_hoists_across_unrelated_gap () =
-  Factor.clear ();
   let optimized =
     Factor.anchor
       (rules
@@ -44,14 +41,12 @@ let test_anchor_hoists_across_unrelated_gap () =
     (render optimized)
 
 let test_anchor_respects_tied_overlap () =
-  Factor.clear ();
   let css = ".a{color:red}.x.a{color:green}.a{color:blue}" in
   Alcotest.(check string)
     "intervening same-specificity overlap blocks merge" css
     (Factor.anchor (rules css) |> render)
 
 let test_run_reaches_fixpoint_with_finalizer () =
-  Factor.clear ();
   let optimized =
     Factor.run ~ctx:Ctx.fragment
       ~finalize:(Rule.finalize ~ctx:Ctx.fragment)

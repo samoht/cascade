@@ -43,12 +43,6 @@ let print_pass_profile entries =
 
 let print_factor_profile_footer () =
   let module S = Cascade.Stats in
-  let hits = S.counters.summary_hits in
-  let misses = S.counters.summary_misses in
-  let total_lookups = hits + misses in
-  let hit_pct =
-    if total_lookups = 0 then 0.0 else 100. *. float hits /. float total_lookups
-  in
   Fmt.epr
     "@.factor stops: %d marginal, committed savings: %d bytes@.factor anchors \
      scored: %d (prefiltered %d), factorings applied: %d@."
@@ -60,9 +54,7 @@ let print_factor_profile_footer () =
   Fmt.epr
     "factor intervals: %d candidates, %d pruned, %d exact-scored, %d selected@."
     S.counters.interval_candidates S.counters.interval_pruned
-    S.counters.interval_scored S.counters.interval_selected;
-  Fmt.epr "summarize_factor_rule cache: %d hits, %d misses (%.1f%% hit rate)@."
-    hits misses hit_pct
+    S.counters.interval_scored S.counters.interval_selected
 
 let report_profile () =
   let module S = Cascade.Stats in

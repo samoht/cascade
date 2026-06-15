@@ -7,8 +7,6 @@ let check_zeroed_counters label =
     (label ^ " factor_fixpoints_run")
     0 S.counters.factor_fixpoints_run;
   Alcotest.(check int) (label ^ " marginal_stops") 0 S.counters.marginal_stops;
-  Alcotest.(check int) (label ^ " summary_hits") 0 S.counters.summary_hits;
-  Alcotest.(check int) (label ^ " summary_misses") 0 S.counters.summary_misses;
   Alcotest.(check int)
     (label ^ " factor_fixpoints_skipped")
     0 S.counters.factor_fixpoints_skipped;
@@ -103,8 +101,6 @@ let test_reset_clears_mutable_state () =
   S.counters.iterations <- 1;
   S.counters.factor_fixpoints_run <- 2;
   S.counters.marginal_stops <- 3;
-  S.counters.summary_hits <- 4;
-  S.counters.summary_misses <- 5;
   S.counters.factor_fixpoints_skipped <- 6;
   S.counters.factor_preflight_gain <- 7;
   S.counters.factor_bytes_saved <- 8;
