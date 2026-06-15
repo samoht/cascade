@@ -1286,11 +1286,12 @@ let test_spec_forgiving_selector_lists () =
      :not(), and :has() remain unforgiving. *)
   check_minified_to ":is(.valid,#id)" ":is(.valid,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)" ":where(.valid,:future-pseudo,#id)";
-  (* Per shortest-wins, single-argument [:is(.item)] unwraps to bare [.item]
-     (same match set, same specificity per Selectors L4 §17). [:where()] cannot
-     unwrap because it contributes zero specificity while bare [.item]
-     contributes a class specificity. *)
-  check_minified_to ".item" ":is(, .item)";
+  (* Single-argument [:is(.item)] is spec-equivalent to bare [.item] (same match
+     set and specificity per Selectors L4 §17), but unwrapping it is a node
+     change reserved for the optimizer's [Selector.canonicalize]; pp is
+     lexical-only and holds the [:is()]. [:where()] holds too (and could not
+     unwrap regardless, contributing zero specificity). *)
+  check_minified_to ":is(.item)" ":is(, .item)";
   check_minified_to ":where(.item)" ":where(, .item)";
   check_minified_to ":is()" ":is()";
   check_minified_to ":where()" ":where()";

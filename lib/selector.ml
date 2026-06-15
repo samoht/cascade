@@ -2159,21 +2159,6 @@ and pp : t Pp.t =
   | Cue selectors -> elem_func ctx "cue" sels selectors
   | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
-  | Is [ single ]
-    when Pp.minified ctx
-         &&
-         match single with
-         | Combined _ | Relative _ | List _ -> false
-         | _ -> true ->
-      (* CSS Selectors 4 17: a single-argument [:is(s)] matches the same
-         elements as [s] with the same specificity. The forgiving list drops
-         invalid arguments so a [:is(:future-pseudo, .a)] also reduces here,
-         which the spec test asserts. The reduction is sound only when [s] is a
-         single compound: when [s] carries a combinator ([Combined] /
-         [Relative], or a [List]) the [:is()] is a grouping boundary, and
-         splicing the argument into the surrounding compound would re-anchor the
-         combinator and change the match set. *)
-      pp ctx single
   | Is selectors
     when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
       (* CSS Selectors 4 sec. 8.2: [:any-link] is defined as equivalent to
@@ -2347,7 +2332,20 @@ let canonicalize sel =
               else Compound components')
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
-      | Is selectors -> canon (fun xs -> Is xs) selectors
+      | Is selectors -> (
+          (* CSS Selectors 4 sec. 17: a single-argument [:is(s)] matches the
+             same elements as [s] with the same specificity, so it reduces to
+             [s]. Sound only when [s] is a single compound: a combinator
+             ([Combined] / [Relative]) or a [List] makes [:is()] a grouping
+             boundary that cannot be spliced into the surrounding compound. *)
+          let sorted = canonicalize_unordered_list selectors in
+          match sorted with
+          | [ single ]
+            when match single with
+                 | Combined _ | Relative _ | List _ -> false
+                 | _ -> true ->
+              single
+          | _ -> if list_same sorted selectors then node else Is sorted)
       | Not selectors -> canon (fun xs -> Not xs) selectors
       | Has selectors -> canon (fun xs -> Has xs) selectors
       | Moz_any_call selectors -> canon (fun xs -> Moz_any_call xs) selectors
