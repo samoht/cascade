@@ -7155,6 +7155,47 @@ val tab_size_value : tab_size -> declaration
 (** [tab_size_value v] is the [tab-size] property from a typed value, allowing a
     [<length>] in addition to an integer. *)
 
+type scrollbar_width = Properties.scrollbar_width =
+  | Auto
+  | Thin
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_width var
+
+type scrollbar_color = Properties.scrollbar_color =
+  | Auto
+  | Colors of color * color
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_color var
+
+type scrollbar_gutter = Properties.scrollbar_gutter =
+  | Auto
+  | Stable
+  | Stable_both_edges
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_gutter var
+
+val scrollbar_width : scrollbar_width -> declaration
+(** [scrollbar_width v] is the [scrollbar-width] property. *)
+
+val scrollbar_color : scrollbar_color -> declaration
+(** [scrollbar_color v] is the [scrollbar-color] property. *)
+
+val scrollbar_gutter : scrollbar_gutter -> declaration
+(** [scrollbar_gutter v] is the [scrollbar-gutter] property. *)
+
 val font_variation_settings : font_variation_settings -> declaration
 (** [font_variation_settings settings] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings}

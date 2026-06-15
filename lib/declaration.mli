@@ -1509,6 +1509,15 @@ val tab_size_value : tab_size -> declaration
 (** [tab_size_value v] is the CSS [tab-size] property from a typed value,
     allowing a [<length>] in addition to an integer. *)
 
+val scrollbar_width : scrollbar_width -> declaration
+(** [scrollbar_width v] is the CSS [scrollbar-width] property. *)
+
+val scrollbar_color : scrollbar_color -> declaration
+(** [scrollbar_color v] is the CSS [scrollbar-color] property. *)
+
+val scrollbar_gutter : scrollbar_gutter -> declaration
+(** [scrollbar_gutter v] is the CSS [scrollbar-gutter] property. *)
+
 val webkit_text_size_adjust : text_size_adjust -> declaration
 (** [webkit_text_size_adjust v] is the WebKit-only [-webkit-text-size-adjust] p
     roperty. *)
