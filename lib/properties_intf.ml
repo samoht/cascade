@@ -203,6 +203,18 @@ type tab_size =
   | Revert_layer
   | Var of tab_size var
 
+type zoom =
+  | Normal
+  | Reset
+  | Num of float
+  | Pct of float
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of zoom var
+
 type order =
   | Int of int
   | Calc of string
@@ -4442,6 +4454,7 @@ type 'a property =
   | Border_inline_end : border property
   | Background : background list property
   | Tab_size : tab_size property
+  | Zoom : zoom property
   | Webkit_text_size_adjust : text_size_adjust property
   | Font_feature_settings : font_feature_settings property
   | Font_variation_settings : font_variation_settings property

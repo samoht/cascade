@@ -984,6 +984,7 @@ let check_shape_image_threshold =
     pp_shape_image_threshold
 
 let check_tab_size = check_value_cursor "tab_size" read_tab_size pp_tab_size
+let check_zoom = check_value_cursor "zoom" read_zoom pp_zoom
 let check_text_box = check_value_cursor "text_box" read_text_box pp_text_box
 
 let check_text_box_edge =
@@ -1174,6 +1175,13 @@ let test_overflow () =
   neg_cursor read_overflow "none";
   (* overflow accepts at most two axes *)
   neg_cursor read_overflow "visible hidden scroll"
+
+let test_zoom () =
+  check_zoom "normal";
+  check_zoom "reset";
+  check_zoom "50%";
+  check_zoom "1.5";
+  neg_cursor read_zoom "not-a-zoom"
 
 let test_border_style () =
   check_border_style "none";
@@ -3589,6 +3597,8 @@ let spec_generated_box_layout_edges () =
   check_overflow_clip_margin "content-box 1px";
   check_shape_image_threshold ".5";
   check_tab_size "4";
+  check_zoom "50%";
+  check_zoom "normal";
   neg_cursor read_alignment_baseline "baseline middle";
   neg_cursor read_baseline_shift "sub super";
   neg_cursor read_baseline_source "middle";
@@ -3816,6 +3826,7 @@ let tests =
     test_case "display" `Quick test_display;
     test_case "position" `Quick test_position;
     test_case "overflow" `Quick test_overflow;
+    test_case "zoom" `Quick test_zoom;
     test_case "border-style" `Quick test_border_style;
     test_case "border" `Quick test_border;
     test_case "visibility" `Quick test_visibility;

@@ -7196,6 +7196,21 @@ val scrollbar_color : scrollbar_color -> declaration
 val scrollbar_gutter : scrollbar_gutter -> declaration
 (** [scrollbar_gutter v] is the [scrollbar-gutter] property. *)
 
+type zoom = Properties.zoom =
+  | Normal
+  | Reset
+  | Num of float
+  | Pct of float
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of zoom var
+
+val zoom : zoom -> declaration
+(** [zoom v] is the CSS [zoom] property. *)
+
 val font_variation_settings : font_variation_settings -> declaration
 (** [font_variation_settings settings] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings}

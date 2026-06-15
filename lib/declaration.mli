@@ -1518,6 +1518,9 @@ val scrollbar_color : scrollbar_color -> declaration
 val scrollbar_gutter : scrollbar_gutter -> declaration
 (** [scrollbar_gutter v] is the CSS [scrollbar-gutter] property. *)
 
+val zoom : zoom -> declaration
+(** [zoom v] is the CSS [zoom] property. *)
+
 val webkit_text_size_adjust : text_size_adjust -> declaration
 (** [webkit_text_size_adjust v] is the WebKit-only [-webkit-text-size-adjust] p
     roperty. *)

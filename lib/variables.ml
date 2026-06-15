@@ -933,6 +933,13 @@ let vars_of_tab_size (value : Properties.tab_size) : any_var list =
   | Var v -> [ V v ]
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
+let vars_of_zoom (value : Properties.zoom) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Normal | Reset | Num _ | Pct _ | Initial | Inherit | Unset | Revert
+  | Revert_layer ->
+      []
+
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 (** {1 Variable name utilities} *)
@@ -2006,6 +2013,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Opacity (typed math) *)
   | Opacity, value -> vars_of_opacity value
   | Tab_size, value -> vars_of_tab_size value
+  | Zoom, value -> vars_of_zoom value
   | Align_content, value -> vars_of_align_content value
   | Align_items, value -> vars_of_align_items value
   | Align_self, value -> vars_of_align_self value
