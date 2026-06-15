@@ -177,6 +177,33 @@ let test_spec_media_sorting_edges () =
     ]
     sorted
 
+let test_sort_key () =
+  let qs =
+    [
+      plain "prefers-color-scheme" (Ident Dark);
+      min_width 768.;
+      plain "hover" (Ident Hover);
+      max_width 1024.;
+      plain "prefers-reduced-motion" (Ident Reduce);
+      print_type;
+      not_all_and (Plain (Min Width, Length (Css.Values.Px 768.)));
+      min_width 320.;
+    ]
+  in
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          Alcotest.(check int)
+            "compare_keys (sort_key a) (sort_key b) = compare a b" (compare a b)
+            (compare_keys (sort_key a) (sort_key b)))
+        qs)
+    qs;
+  Alcotest.(check (list string))
+    "sort_by reproduces List.sort compare"
+    (List.sort compare qs |> List.map to_string)
+    (sort_by Fun.id qs |> List.map to_string)
+
 let spec_media_context_vectors () =
   let check condition expected =
     Alcotest.(check string)
@@ -217,6 +244,7 @@ let suite =
         spec_media_error_recovery_vectors;
       test_case "kind" `Quick test_kind;
       test_case "compare" `Quick test_compare;
+      test_case "sort_key" `Quick test_sort_key;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
       test_case "spec media query context syntax vectors" `Quick
         spec_media_context_vectors;

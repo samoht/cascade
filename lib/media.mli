@@ -179,6 +179,26 @@ val compare : t -> t -> int
 val equal : t -> t -> bool
 (** Structural equality on media queries. *)
 
+type key
+(** A precomputed sort key for {!val-compare}. Deriving the order serializes the
+    query and re-extracts its kind, both of which allocate; a sort that compares
+    raw queries pays that on every comparison. Precompute a [key] once per query
+    with {!sort_key} and compare with {!compare_keys}. *)
+
+val sort_key : t -> key
+(** [sort_key t] precomputes the components {!compare} derives from [t]. *)
+
+val compare_keys : key -> key -> int
+(** [compare_keys k1 k2] orders two queries by their precomputed keys, with no
+    allocation. [compare_keys (sort_key a) (sort_key b) = compare a b]. *)
+
+val sort_by : ('a -> t) -> 'a list -> 'a list
+(** [sort_by project items] orders [items] by the media query [project] returns
+    for each, serializing each query exactly once. Sorting this way, rather than
+    with [List.sort (fun a b -> compare (project a) (project b))], is the point
+    of {!val-key}: the comparator form re-derives and re-serializes a query on
+    every comparison, which a sort does O(n log n) times. The sort is stable. *)
+
 type kind =
   | Hover
   | Responsive of int * float
