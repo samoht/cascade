@@ -2356,6 +2356,7 @@ let border ?width ?style ?color () =
 
 let border_block value = v Border_block value
 let tab_size value = v Tab_size (Int value : tab_size)
+let tab_size_value value = v Tab_size (value : tab_size)
 let webkit_text_size_adjust value = v Webkit_text_size_adjust value
 let font_feature_settings value = v Font_feature_settings value
 let font_variation_settings value = v Font_variation_settings value

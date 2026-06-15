@@ -1505,6 +1505,10 @@ val border :
 val tab_size : int -> declaration
 (** [tab_size v] is the CSS [tab-size] property. *)
 
+val tab_size_value : tab_size -> declaration
+(** [tab_size_value v] is the CSS [tab-size] property from a typed value,
+    allowing a [<length>] in addition to an integer. *)
+
 val webkit_text_size_adjust : text_size_adjust -> declaration
 (** [webkit_text_size_adjust v] is the WebKit-only [-webkit-text-size-adjust] p
     roperty. *)

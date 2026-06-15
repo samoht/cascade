@@ -7151,6 +7151,10 @@ val tab_size : int -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/tab-size} tab-size}
     property. *)
 
+val tab_size_value : tab_size -> declaration
+(** [tab_size_value v] is the [tab-size] property from a typed value, allowing a
+    [<length>] in addition to an integer. *)
+
 val font_variation_settings : font_variation_settings -> declaration
 (** [font_variation_settings settings] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings}
