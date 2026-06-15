@@ -190,15 +190,35 @@ let normalize_expected ~category ~id expected =
   let upstream = expected in
   let expected = normalize_expected_tokens expected in
   match (category, id) with
+  | "colors", "0029" ->
+      (* color-mix(in oklch, red, blue) folds to a static oklch(). cascade keeps
+         3 hue decimals (326.643) where the keithamus oracle rounds to 1
+         (326.6): a 1-decimal hue at this chroma shifts the rendered colour. *)
+      fixture ~category ~id ~upstream:"a{color:oklch(.54 .285 326.6)}"
+        ~cascade:"a{color:oklch(.54 .285 326.643)}" upstream
   | "colors", "0044" ->
       (* color-mix(in oklch, lime, blue) folds to a static oklch(). On the
          evergreen default target oklch chroma takes a <percentage> (CSS Color
          4: 100% = 0.4 on this axis), so chroma .304 serializes as the exact,
          shorter 76% - the same number->% chroma canonicalization as
          colors/0047. The keithamus oracle keeps the number form, which
-         --enforce-spec emits. *)
+         --enforce-spec emits. cascade keeps 3 hue decimals (203.274) where the
+         oracle rounds to 1 (203.3): at this chroma a 1-decimal hue shifts the
+         rendered colour. *)
       fixture ~category ~id ~upstream:"a{color:oklch(.659 .304 203.3)}"
-        ~cascade:"a{color:oklch(.659 76% 203.3)}" upstream
+        ~cascade:"a{color:oklch(.659 76% 203.274)}" upstream
+  | "colors", "0046" ->
+      (* cascade keeps 3 hue decimals (180.457 vs the oracle's 180.5); the
+         oklab() leading-channel space elision is the usual safe-token-boundary
+         normalization. *)
+      fixture ~category ~id
+        ~upstream:
+          "a{color:oklch(.554 .123 180.5/.746);background-color:oklab(.654 \
+           -.235 .189)}"
+        ~cascade:
+          "a{color:oklch(.554 .123 \
+           180.457/.746);background-color:oklab(.654-.235 .189)}"
+        upstream
   | "colors", "0047" ->
       (* CSS Color 4 defines 100% lch() chroma as 150 on this axis, so rounded
          chroma 100.5 is exactly 67%, and [67%] is shorter. The lab() channel
@@ -209,7 +229,7 @@ let normalize_expected ~category ~id expected =
           "a{color:lch(54.3 100.5 274.5/.746);background-color:lab(54.3 -60.5 \
            70.8)}"
         ~cascade:
-          "a{color:lch(54.3 67% 274.5/.746);background-color:lab(54.3-60.5 \
+          "a{color:lch(54.3 67% 274.456/.746);background-color:lab(54.3-60.5 \
            70.8)}"
         upstream
   | "colors", "0048" ->

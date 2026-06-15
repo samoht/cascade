@@ -3499,7 +3499,11 @@ let rec pp_angle : angle Pp.t =
    and matches the shipping-minifier convention. *)
 let pp_hue_float ctx f =
   if Pp.minified ctx then
-    let max_decimals = if ctx.Pp.lossless then 8 else 1 in
+    (* 3 decimals, matching the oklch/lch colour axes: at high chroma a hue
+       rounded to 1 decimal shifts the rendered colour (e.g. an oklch hue of
+       262.881 must not collapse to 262.9). Trailing zeros are dropped, so
+       integer hues stay integers. *)
+    let max_decimals = if ctx.Pp.lossless then 8 else 3 in
     Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
   else Pp.float ctx f
 
