@@ -202,6 +202,64 @@ let test_fuzz_overlapping_rewrite_queue_matches_greedy_oracle () =
       "final rule order" expected_names (names pool)
   done
 
+(* Scalability. The loop re-scores only the anchors a merge actually touches and
+   keeps its frontier in a priority-search queue, so draining N adjacent merges
+   is O(N log N) work. A batch fixpoint (re-scan every rule each pass until
+   nothing changes) would instead do O(passes x rules); on a chain that merges
+   pairwise it degrades towards quadratic. We measure allocation (a
+   deterministic proxy for work, unlike wall-clock) at growing N and assert each
+   doubling stays well under the 4x a quadratic would show. *)
+let drain_pairwise count =
+  let pool = Pool.of_rules (List.init count (fun _ -> mk "r")) in
+  (* Track the original nodes by stable id (selector-name parsing caps at three
+     digits); a merge replaces its anchor with a non-original ["m"] node, so
+     only original-original adjacencies stay mergeable -- a maximal matching of
+     [count / 2] merges down the chain. *)
+  let originals = Hashtbl.create count in
+  List.iter
+    (fun n -> Hashtbl.replace originals (Pool.id n) ())
+    (Pool.nodes pool);
+  let is_original node = Hashtbl.mem originals (Pool.id node) in
+  let score node =
+    if is_original node then
+      match Pool.next node with
+      | Some next when is_original next ->
+          Some
+            (Loop.action ~replacement:[ mk "m" ] ~consumed:[ next ] ~saving:1)
+      | _ -> None
+    else None
+  in
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let t0 = Unix.gettimeofday () in
+  let applied = Loop.run (Loop.v pool score) in
+  let ms = (Unix.gettimeofday () -. t0) *. 1000. in
+  (applied, Gc.minor_words () -. w0, ms)
+
+let test_scales_subquadratically () =
+  let sizes = [ 1000; 2000; 4000; 8000 ] in
+  let rows = List.map (fun n -> (n, drain_pairwise n)) sizes in
+  List.iter
+    (fun (n, (applied, words, ms)) ->
+      Alcotest.(check int)
+        (Fmt.str "N=%d merges every adjacent pair" n)
+        (n / 2) applied;
+      Fmt.epr "  N=%-5d  words/rule=%-6.1f  %.2f ms@." n (words /. float n) ms)
+    rows;
+  (* Each doubling of N must keep allocation growth well below the 4x a
+     quadratic shows; O(N log N) lands around 2.1-2.2x. *)
+  let words = List.map (fun (_, (_, w, _)) -> w) rows in
+  let rec doublings = function
+    | a :: (b :: _ as rest) -> (b /. a) :: doublings rest
+    | _ -> []
+  in
+  List.iter
+    (fun r ->
+      Alcotest.(check bool)
+        (Fmt.str "per-doubling work ratio %.2f stays sub-quadratic (< 2.6)" r)
+        true (r < 2.6))
+    (doublings words)
+
 let suite =
   ( "loop",
     [
@@ -217,4 +275,6 @@ let suite =
         test_large_non_overlapping_rewrite_queue;
       Alcotest.test_case "fuzz overlapping rewrite queue matches greedy oracle"
         `Quick test_fuzz_overlapping_rewrite_queue_matches_greedy_oracle;
+      Alcotest.test_case "scales sub-quadratically with rule count" `Quick
+        test_scales_subquadratically;
     ] )

@@ -30,7 +30,6 @@
   fmt
   base-unix
   uutf
-  unionFind
   psq
   logs
   cmdliner

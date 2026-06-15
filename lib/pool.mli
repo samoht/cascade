@@ -6,9 +6,13 @@
 
     - {b order} is kept by {!Order_maintenance}, so "does rule A come before
       rule B?" stays O(1) as rules are inserted and removed;
-    - {b merge classes} are kept by a union-find (Pottier's [UnionFind]), so
-      combining two rules is near-constant and a handle to an original rule
-      still resolves to its current merged representative.
+    - {b merge classes} are kept by a small in-tree union-find (path-compressed,
+      union-by-rank, in [pool.ml]), so combining two rules is near-constant and
+      a handle to an original rule still resolves to its current merged
+      representative.
+
+    {!Loop} drives the greedy, priority-ordered merging over this pool; its
+    interface documents that design and the simpler batch-fixpoint alternative.
 
     A {!node} is a stable handle to one live rule. Combining or removing a node
     invalidates it; the surviving node keeps the merged rule. *)
