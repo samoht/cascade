@@ -226,6 +226,22 @@ token boundary, so the space after it is dropped (`drop-shadow(a) drop-shadow(b)
 -> `drop-shadow(a)drop-shadow(b)`). The space after a `var()` / `env()` / `attr()`
 stays, since the substituted value could otherwise merge with its neighbour.
 
+### How rule merging scales
+
+The rule-level rewrites run as an *incremental, priority-driven* merge loop, not
+repeated full passes. Rules live in a pool that keeps cascade order with O(1)
+precedence queries (order-maintenance) and merge classes in a small union-find;
+a priority-search queue holds the frontier of candidate merges, largest
+byte-saving first. Applying a merge re-scores only the rules it touched, so the
+loop never re-scans the whole stylesheet.
+
+The simpler alternative -- a batch fixpoint that re-scans every rule each pass
+until nothing changes -- needs none of that machinery, but is O(passes x rules)
+and tends towards quadratic on large stylesheets. The incremental loop is
+O(n log n): doubling the rule count costs about 2.2x work, well under the 4x a
+quadratic shows (measured in `test/test_loop.ml`). The internals are documented
+in `lib/loop.mli` and `lib/pool.mli`.
+
 ### Color approximation
 
 Cascade folds colors only within `0.002` ΔE<sub>OK</sub> (the CSS Color 4
