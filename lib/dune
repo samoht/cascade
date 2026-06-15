@@ -3,7 +3,7 @@
  (name cascade)
  (flags
   (:standard -w -9))
- (libraries uutf unionFind psq logs unix))
+ (libraries uutf psq logs unix))
 
 (mdx
  (files
