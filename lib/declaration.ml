@@ -1218,6 +1218,7 @@ let read_position_value_prop : type a.
       Some (v Forced_color_adjust (read_forced_color_adjust t))
   | Scroll_snap_type -> Some (v Scroll_snap_type (read_scroll_snap_type t))
   | Tab_size -> Some (v Tab_size (read_tab_size t))
+  | Zoom -> Some (v Zoom (read_zoom t))
   | _ -> None
 
 let read_vendor_font_value : type a.
@@ -2360,6 +2361,7 @@ let tab_size_value value = v Tab_size (value : tab_size)
 let scrollbar_width value = v Scrollbar_width value
 let scrollbar_color value = v Scrollbar_color value
 let scrollbar_gutter value = v Scrollbar_gutter value
+let zoom value = v Zoom value
 let webkit_text_size_adjust value = v Webkit_text_size_adjust value
 let font_feature_settings value = v Font_feature_settings value
 let font_variation_settings value = v Font_variation_settings value

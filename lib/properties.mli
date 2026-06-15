@@ -659,8 +659,14 @@ val read_z_index : Cursor.t -> z_index
 val pp_tab_size : tab_size Pp.t
 (** [pp_tab_size] is the pretty-printer for [tab_size]. *)
 
+val pp_zoom : zoom Pp.t
+(** [pp_zoom] is the pretty-printer for [zoom]. *)
+
 val read_tab_size : Cursor.t -> tab_size
 (** [read_tab_size t] is the [tab_size] parsed from [t]. *)
+
+val read_zoom : Cursor.t -> zoom
+(** [read_zoom t] is the [zoom] value parsed from [t]. *)
 
 val pp_order : order Pp.t
 (** [pp_order] is the pretty-printer for [order]. *)

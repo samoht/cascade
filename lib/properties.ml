@@ -5151,6 +5151,19 @@ let rec pp_tab_size : tab_size Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_tab_size ctx v
 
+let rec pp_zoom : zoom Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Reset -> Pp.string ctx "reset"
+  | Num n -> Pp.float ctx n
+  | Pct p -> Pp.pct ctx p
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_zoom ctx v
+
 let rec pp_order : order Pp.t =
  fun ctx -> function
   | Int i -> Pp.int ctx i
@@ -7035,6 +7048,7 @@ let pp_property : type a. a property Pp.t =
   | Border -> Pp.string ctx "border"
   | Background -> Pp.string ctx "background"
   | Tab_size -> Pp.string ctx "tab-size"
+  | Zoom -> Pp.string ctx "zoom"
   | Webkit_text_size_adjust -> Pp.string ctx "-webkit-text-size-adjust"
   | Font_feature_settings -> Pp.string ctx "font-feature-settings"
   | Font_variation_settings -> Pp.string ctx "font-variation-settings"
@@ -15346,6 +15360,29 @@ let rec read_tab_size (t : Cursor.t) : tab_size =
     ~var:(fun t -> Var (Values.read_var read_tab_size t))
     ~default:read_value t
 
+let rec read_zoom (t : Cursor.t) : zoom =
+  let read_value t =
+    match Cursor.percentage_opt t with
+    | Some p -> (Pct p : zoom)
+    | None -> (
+        match Cursor.number_opt t with
+        | Some n -> Num n
+        | None ->
+            Cursor.err_invalid t "expected a number or percentage for zoom")
+  in
+  Cursor.enum_or_var "zoom"
+    [
+      ("normal", (Normal : zoom));
+      ("reset", Reset);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_zoom t))
+    ~default:read_value t
+
 let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
   Cursor.enum_or_var "text-decoration-skip-ink"
     [
@@ -18715,6 +18752,7 @@ let read_any_property t =
   | "font" -> Prop Font
   | "outline" -> Prop Outline
   | "z-index" -> Prop Z_index
+  | "zoom" -> Prop Zoom
   | "inset" -> Prop Inset
   | "inset-inline" -> Prop Inset_inline
   | "inset-inline-start" -> Prop Inset_inline_start
@@ -20986,6 +21024,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Mix_blend_mode -> pp pp_blend_mode
   | Z_index -> pp pp_z_index
   | Tab_size -> pp pp_tab_size
+  | Zoom -> pp pp_zoom
   | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
   | Inset -> pp (pp_box_shorthand pp_length)
