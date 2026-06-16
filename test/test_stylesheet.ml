@@ -4799,8 +4799,12 @@ let transforms1_11_chain_whitespace_dropped () =
 (* CSS Custom Properties L1 section 2 (var()): variable references are
    late-bound through the cascade and resolved at computed-value time. The
    optimizer cannot inline a variable without a context that resolves it (a
-   [theme] map keyed on custom property names). At syntax time, [var(--x,
-   fallback)] must round-trip preserved. *)
+   [theme] map keyed on custom property names), so the [var()] reference and its
+   [calc()] wrapper round-trip preserved. The value-independent CSS Values 4
+   §10.7 identities ([x * 1], [x + 0], ...) still fold: they hold for every
+   possible substitution because the [var()] stays inside calc()'s grammar, so
+   [calc(var(--x) * 1)] shortens to [calc(var(--x))] (not to bare [var(--x)],
+   which §10.10 forbids without knowing the value). *)
 let customprops12_inlining () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4821,32 +4825,32 @@ let customprops12_inlining () =
     ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing)) }");
   Alcotest.(check string)
-    "calc var times one keeps var arithmetic"
-    ".x{padding:calc(var(--spacing)*1)}"
+    "calc var times one folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing) * 1) }");
   Alcotest.(check string)
-    "calc one times var keeps var arithmetic"
-    ".x{padding:calc(1*var(--spacing))}"
+    "calc one times var folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(1 * var(--spacing)) }");
   Alcotest.(check string)
-    "calc var divided by one keeps var arithmetic"
-    ".x{padding:calc(var(--spacing)/1)}"
+    "calc var divided by one folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing) / 1) }");
   Alcotest.(check string)
-    "calc var plus zero keeps var arithmetic"
-    ".x{padding:calc(var(--spacing) + 0px)}"
+    "calc var plus zero folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing) + 0px) }");
   Alcotest.(check string)
-    "calc zero plus var keeps var arithmetic"
-    ".x{padding:calc(0px + var(--spacing))}"
+    "calc zero plus var folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(0px + var(--spacing)) }");
   Alcotest.(check string)
-    "calc var minus zero keeps var arithmetic"
-    ".x{padding:calc(var(--spacing) - 0px)}"
+    "calc var minus zero folds, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing) - 0px) }");
   Alcotest.(check string)
-    "calc nested var identities keep var arithmetic"
-    ".x{padding:calc(var(--spacing)*1 + 0px)}"
+    "calc nested var identities fold, keeping the var reference"
+    ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc((var(--spacing) * 1) + 0px) }");
   Alcotest.(check string)
     "calc var-free left subtree may fold before var"

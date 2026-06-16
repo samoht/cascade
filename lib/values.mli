@@ -507,6 +507,21 @@ val eval_calc : 'a calc -> 'a calc
     operands survive — type-specific simplification (e.g., length arithmetic) is
     the caller's job. *)
 
+val calc_identity :
+  zero:'a calc ->
+  is_zero:('a -> bool) ->
+  'a calc ->
+  calc_op ->
+  'a calc ->
+  'a calc option
+(** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
+    Values 4 §10.7 identities to one [Expr (l, op, r)] node, returning the
+    folded operand when one applies. These hold for any operand including a kept
+    [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
+    [x / 1], [x + 0], [0 + x], [x - 0] keep [x]; [x * 0] / [0 * x] reduce to
+    [zero]. [is_zero] recognises a typed zero leaf ([0px]). Numeric [op] numeric
+    is the caller's job. *)
+
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
 
