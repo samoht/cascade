@@ -396,8 +396,10 @@ let pct ctx f =
   (* CSS Values 4 §6.5 only allows the unit to drop on a zero [<length>]; a zero
      [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%] are no
      longer equivalent, and dimension/percentage-typed grammars reject a bare
-     [0]). *)
-  float ctx (if ctx.lossless then f else round_sig 6 f);
+     [0]). The coefficient prints in full, like [float]: rounding it changes the
+     value (a repeating fraction such as [33.333333%] from [w-1/3] would lose
+     digits), so any precision reduction belongs in the optimizer, not here. *)
+  float ctx f;
   string ctx "%"
 
 let sep ctx s =

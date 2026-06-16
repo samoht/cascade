@@ -3774,6 +3774,19 @@ let fidelity_alpha_form_preserved () =
   pretty_preserves ".x { color: rgb(255 0 0 / 50%) }" [ "50%" ];
   pretty_preserves ".x { color: hsl(180 50% 25% / 30%) }" [ "30%" ]
 
+let fidelity_percentage_precision_preserved () =
+  (* [w-1/3] and friends author repeating-fraction percentages; the printer
+     keeps every digit (Tailwind does) rather than rounding to six significant
+     figures, in pretty and minified output alike. *)
+  pretty_preserves ".x { width: 33.333333% }" [ "33.333333%" ];
+  Alcotest.(check bool)
+    "minify keeps the full percentage" true
+    (match Css.of_string ~strict:false ".x { width: 66.666667% }" with
+    | Ok parsed ->
+        Astring.String.is_infix ~affix:"66.666667%"
+          (Css.to_string ~minify:true parsed.stylesheet)
+    | Error _ -> false)
+
 (* CSS Values 4 section 6.1 + cascade convention: dropping the unit on a zero
    length is a minify-only optimization; the pretty printer keeps the source
    spelling. *)
@@ -6945,6 +6958,9 @@ let additional_tests =
       `Quick,
       fidelity_universal_in_compound_preserved );
     ("fidelity alpha form preserved", `Quick, fidelity_alpha_form_preserved);
+    ( "fidelity percentage precision preserved",
+      `Quick,
+      fidelity_percentage_precision_preserved );
     ("fidelity zero length preserved", `Quick, fidelity_zero_length_preserved);
     ( "fidelity shorthand form preserved",
       `Quick,
