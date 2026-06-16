@@ -2725,6 +2725,19 @@ let simplify_percentage ?layer_order ?layer ctx value =
     | _ -> None
   in
   let of_number n = (Values.Pct n : Values.percentage) in
+  (* A [<percentage>] slot also accepts a bare [<number>] (e.g. an oklch
+     lightness: [.7] and [70%] are equal, but [.7%] is not [.7]). Canonicalise
+     the float spelling without collapsing the [Num] / [Pct] distinction, which
+     [of_number] would, since it always reissues a [Pct]. *)
+  let normalize_value (value : Values.percentage) : Values.percentage =
+    let canon n =
+      try float_of_string (Pp.string_of_float n) with Failure _ -> n
+    in
+    match value with
+    | Values.Num n -> Values.Num (canon n)
+    | Values.Pct n -> Values.Pct (canon n)
+    | other -> other
+  in
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.percentage Calc_residual.ops =
     {
@@ -2734,7 +2747,7 @@ let simplify_percentage ?layer_order ?layer ctx value =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
-      normalize_value = normalize_numeric_value ~to_number ~of_number;
+      normalize_value;
       as_var =
         (function (Values.Var var : Values.percentage) -> Some var | _ -> None);
       of_var = (fun var -> Values.Var var);

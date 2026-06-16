@@ -81,6 +81,14 @@ let test_inline_zero_value_collapse () =
           ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px \
            * var(--tw-divide-x-reverse))}"))
 
+let test_inline_oklch_number_lightness () =
+  (* An oklch lightness written as a bare number ([.7]) is the number 0.7, equal
+     to [70%] but not to [.7%]. Simplifying the colour while inlining must keep
+     the number form rather than reissue it as a percentage, which would corrupt
+     [.7] into [.7%] (0.7%). *)
+  check_inline_case "oklch number lightness keeps its number form"
+    ".b{color:oklch(.7 .15 145.5)}" ".b{color:oklch(.7 .15 145.5)}"
+
 let test_decode_import_url () =
   Alcotest.(check string)
     "url form" "theme.css"
@@ -209,6 +217,8 @@ let suite =
         test_inline_keep_vars_calc_identity;
       Alcotest.test_case "inline vars collapse a literal zero times a kept var"
         `Quick test_inline_zero_value_collapse;
+      Alcotest.test_case "inline vars keep an oklch number lightness" `Quick
+        test_inline_oklch_number_lightness;
       Alcotest.test_case "decode import url forms" `Quick test_decode_import_url;
       Alcotest.test_case "inline imports resolves loader stylesheet" `Quick
         test_inline_import_loader;
