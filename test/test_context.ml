@@ -2484,9 +2484,31 @@ let cascade_rule_resolver_contract () =
       @layer theme { .btn { outline-color: red; } }
     |}
 
+let runtime_var_not_folded_contract () =
+  let open Css.Values in
+  (* A [~runtime:true] theme var keeps its var() reference even when its default
+     is known, so a script can still override --spacing at runtime. *)
+  let _decl, spacing = Css.var ~runtime:true "spacing" Length (Px 4.) in
+  let decl = Css.width (Calc (Expr (Var spacing, Mul, Num 4.))) in
+  Alcotest.(check decl_t)
+    "runtime var stays a var() in calc" decl
+    (Css.eval_declaration Css.Context.empty decl);
+  (* Without [~runtime] the same calc folds to a constant through the
+     default. *)
+  let _decl, fixed = Css.var "fixed-spacing" Length (Px 4.) in
+  let folding = Css.width (Calc (Expr (Var fixed, Mul, Num 4.))) in
+  Alcotest.(check bool)
+    "non-runtime var folds" false
+    (String.equal
+       (Css.Declaration.string_of_declaration folding)
+       (Css.Declaration.string_of_declaration
+          (Css.eval_declaration Css.Context.empty folding)))
+
 let suite =
   ( "context",
     [
+      Alcotest.test_case "runtime var not folded" `Quick
+        runtime_var_not_folded_contract;
       Alcotest.test_case "empty property value context" `Quick
         test_empty_property_value;
       Alcotest.test_case "empty side contexts" `Quick test_empty_side_contexts;

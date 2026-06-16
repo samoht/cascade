@@ -562,6 +562,7 @@ let color_var_of_length_var (var : Values.length Values.var) :
     default = None;
     layer = var.layer;
     meta = var.meta;
+    runtime = var.runtime;
   }
 
 let rec rewrite_shadow_value color_vars (value : Properties.shadow) :

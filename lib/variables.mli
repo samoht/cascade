@@ -48,6 +48,7 @@ val var :
   ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
+  ?runtime:bool ->
   string ->
   'a kind ->
   'a ->

@@ -7283,10 +7283,11 @@ val var_ref :
   ?default:'a ->
   ?layer:string ->
   ?meta:meta ->
+  ?runtime:bool ->
   string ->
   'a var
-(** [var_ref ?fallback ?default ?layer ?meta name] is a CSS variable reference.
-    This is primarily for the CSS parser to create var() references.
+(** [var_ref ?fallback ?default ?layer ?meta ?runtime name] is a CSS variable
+    reference. This is primarily for the CSS parser to create var() references.
 
     - [name] is the variable name (without the -- prefix)
     - [fallback] is used inside var(--name, fallback) in CSS output
@@ -7340,12 +7341,15 @@ val var :
   ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
+  ?runtime:bool ->
   string ->
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?default ?fallback ?layer name kind value] returns a declaration and a
-    variable handle.
+(** [var ?default ?fallback ?layer ?runtime name kind value] returns a
+    declaration and a variable handle. With [~runtime:true] a context keeps the
+    [var()] reference instead of folding it to [value], so a runtime stylesheet
+    or script can still override [--name].
 
     - [name] is the variable name without the [--] prefix
     - [kind] specifies the value type (Length, Color, Angle, Float, etc.)

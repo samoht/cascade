@@ -834,6 +834,7 @@ and justify_var_of_align_var (v : align_self var) : justify_self var =
     default = Option.map justify_self_of_align_self v.default;
     layer = v.layer;
     meta = v.meta;
+    runtime = v.runtime;
   }
 
 let read_place_self_value t =
@@ -2338,10 +2339,26 @@ let aspect_ratio a = v Aspect_ratio a
 let filter value = v Filter value
 
 let filter_var_empty name : filter =
-  Var { name; fallback = Empty; default = None; layer = None; meta = None }
+  Var
+    {
+      name;
+      fallback = Empty;
+      default = None;
+      layer = None;
+      meta = None;
+      runtime = false;
+    }
 
 let background_image_var_none name : background_image =
-  Var { name; fallback = None; default = None; layer = None; meta = None }
+  Var
+    {
+      name;
+      fallback = None;
+      default = None;
+      layer = None;
+      meta = None;
+      runtime = false;
+    }
 
 let word_spacing value = v Word_spacing value
 let quotes value = v Quotes value
