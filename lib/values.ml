@@ -3979,9 +3979,12 @@ let rec pp_rgb : rgb Pp.t =
     and minified output; minified output additionally rounds to 6 sig digits for
     compactness. *)
 let string_of_lab_float ~max_decimals ctx f =
-  let max_decimals = if ctx.Pp.lossless then 8 else max_decimals in
-  Pp.string_of_float ~drop_leading_zero:true ~max_decimals
-    (if ctx.Pp.minify && not ctx.Pp.lossless then Pp.round_sig 6 f else f)
+  if ctx.Pp.minify && not ctx.Pp.lossless then
+    (* Minify shortens to the per-axis decimal budget; pretty (and lossless)
+       keep the authored coefficient in full so the value round-trips, matching
+       [pp_component_float] for the [color()] function. *)
+    Pp.string_of_float ~drop_leading_zero:true ~max_decimals (Pp.round_sig 6 f)
+  else Pp.string_of_float ~drop_leading_zero:true f
 
 let pp_lab_float ~max_decimals ctx f =
   Pp.string ctx (string_of_lab_float ~max_decimals ctx f)

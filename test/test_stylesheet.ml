@@ -5101,7 +5101,21 @@ let color4_invalid_color_function_rejected () =
 let fidelity_color_space_preserved () =
   pretty_preserves ".x { color: oklch(0.628 0.258 29.23) }" [ ".258"; "29.23" ];
   pretty_preserves ".x { color: lab(54.29 80.81 69.89) }" [ "lab" ];
-  pretty_preserves ".x { color: color(srgb 1 0 0) }" [ "color(srgb 1 0 0)" ]
+  pretty_preserves ".x { color: color(srgb 1 0 0) }" [ "color(srgb 1 0 0)" ];
+  (* Pretty keeps oklab/oklch coefficients in full so the value round-trips,
+     matching the [color()] function; the per-axis decimal budget is a minify
+     shortening only. *)
+  pretty_preserves ".x { color: oklab(21% -0.00316127 -0.0338527 / 0.1) }"
+    [ "-.00316127"; "-.0338527" ];
+  Alcotest.(check bool)
+    "minify still rounds oklch chroma to the per-axis budget" true
+    (match
+       Css.of_string ~strict:false ".x { color: oklch(0.628 0.2584567 29.23) }"
+     with
+    | Ok parsed ->
+        Astring.String.is_infix ~affix:"oklch(.628 .258 29.23"
+          (minify parsed.stylesheet)
+    | Error _ -> false)
 
 (* {2 @supports (CSS Conditional L4 §2)} *)
 
