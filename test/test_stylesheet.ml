@@ -5103,19 +5103,29 @@ let fidelity_color_space_preserved () =
   pretty_preserves ".x { color: lab(54.29 80.81 69.89) }" [ "lab" ];
   pretty_preserves ".x { color: color(srgb 1 0 0) }" [ "color(srgb 1 0 0)" ];
   (* Pretty keeps oklab/oklch coefficients in full so the value round-trips,
-     matching the [color()] function; the per-axis decimal budget is a minify
-     shortening only. *)
+     matching the [color()] function. *)
   pretty_preserves ".x { color: oklab(21% -0.00316127 -0.0338527 / 0.1) }"
     [ "-.00316127"; "-.0338527" ];
+  (* The minified printer keeps them too: rounding a coefficient changes the
+     colour, so it is a lossy fold that belongs in [optimize], not in [pp]. A
+     consumer that serialises a typed colour with [to_string ~minify:true] (no
+     optimize collapse) must get the authored value, matching Tailwind. *)
+  let minify_pp css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let oklab =
+    minify_pp ".x { color: oklab(21% -0.00316127 -0.0338527 / 0.1) }"
+  in
   Alcotest.(check bool)
-    "minify still rounds oklch chroma to the per-axis budget" true
-    (match
-       Css.of_string ~strict:false ".x { color: oklch(0.628 0.2584567 29.23) }"
-     with
-    | Ok parsed ->
-        Astring.String.is_infix ~affix:"oklch(.628 .258 29.23"
-          (minify parsed.stylesheet)
-    | Error _ -> false)
+    "minify pp keeps full oklab precision" true
+    (Astring.String.is_infix ~affix:"-.00316127" oklab
+    && Astring.String.is_infix ~affix:"-.0338527" oklab);
+  let oklch = minify_pp ".x { color: oklch(0.628 0.2584567 29.23) }" in
+  Alcotest.(check bool)
+    "minify pp keeps full oklch chroma" true
+    (Astring.String.is_infix ~affix:".2584567" oklch)
 
 (* {2 @supports (CSS Conditional L4 §2)} *)
 

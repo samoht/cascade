@@ -3974,23 +3974,22 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-(** Lab-like float string with precision control. CSSOM serialisation (CSS
-    Values 4 §6.7.2) drops a leading zero on fractional numbers in both pretty
-    and minified output; minified output additionally rounds to 6 sig digits for
-    compactness. *)
-let string_of_lab_float ~max_decimals ctx f =
-  if ctx.Pp.minify && not ctx.Pp.lossless then
-    (* Minify shortens to the per-axis decimal budget; pretty (and lossless)
-       keep the authored coefficient in full so the value round-trips, matching
-       [pp_component_float] for the [color()] function. *)
-    Pp.string_of_float ~drop_leading_zero:true ~max_decimals (Pp.round_sig 6 f)
-  else Pp.string_of_float ~drop_leading_zero:true f
+(** Lab-like float string. CSSOM serialisation (CSS Values 4 §6.7.2) drops a
+    leading zero on fractional numbers; the coefficient prints in full so the
+    value round-trips, with precision reduction left to [normalize_color]. *)
+let string_of_lab_float f =
+  (* The printer serialises a lab/oklab coefficient faithfully in both pretty
+     and minified output: reducing its precision changes the colour (and can
+     cross an sRGB 8-bit boundary), so it is a lossy, node-changing fold that
+     belongs in [optimize] (the oklab -> hex collapse via [round_color_axis]),
+     not in [pp]. This mirrors [pp_component_float] for the [color()]
+     function. *)
+  Pp.string_of_float ~drop_leading_zero:true f
 
-let pp_lab_float ~max_decimals ctx f =
-  Pp.string ctx (string_of_lab_float ~max_decimals ctx f)
+let pp_lab_float ctx f = Pp.string ctx (string_of_lab_float f)
 
-let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
-  let n = string_of_lab_float ~max_decimals ctx f in
+let string_of_scaled_color_axis ~pct_scale ctx f =
+  let n = string_of_lab_float f in
   (* The number -> percentage axis swap (e.g. oklch chroma [.304] -> [76%]) is a
      shortest-spelling minify win, but [%] on these axes is an evergreen-target
      fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
@@ -4002,9 +4001,7 @@ let string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f =
        percentage ("-2%") and flips on the next pass - making the spelling
        non-idempotent. *)
     let n_value = try float_of_string n with Failure _ -> f in
-    let pct =
-      string_of_lab_float ~max_decimals ctx (n_value /. pct_scale) ^ "%"
-    in
+    let pct = string_of_lab_float (n_value /. pct_scale) ^ "%" in
     if String.length pct < String.length n then pct else n
   else n
 
@@ -4039,16 +4036,15 @@ let starts_unsigned_number s =
 (* Pure serialiser: the percentage<->number choice for L is made in the AST
    normalize pass ([canonical_color_lightness]), so this faithfully prints
    whichever node it is given ([Pct] -> [%], [Num] -> bare number). The
-   [~pct_scale] argument is unused now but kept for call-site symmetry. *)
-let pp_color_lightness ~pct_scale:_ ~axis_max_decimals ctx
-    (l : percentage option) : percentage option =
+   precision is fixed in the AST normalize pass, so this prints in full. *)
+let pp_color_lightness ctx (l : percentage option) : percentage option =
   match l with
   | Some (Pct f) ->
-      pp_lab_float ~max_decimals:(axis_max_decimals + 2) ctx f;
+      pp_lab_float ctx f;
       Pp.char ctx '%';
       l
   | Some (Num f) ->
-      pp_lab_float ~max_decimals:axis_max_decimals ctx f;
+      pp_lab_float ctx f;
       l
   | Some l ->
       pp_percentage ctx l;
@@ -4057,22 +4053,13 @@ let pp_color_lightness ~pct_scale:_ ~axis_max_decimals ctx
       Pp.string ctx "none";
       None
 
-let pp_pct_chroma_hue_alpha ~lightness_pct_scale ~chroma_pct_scale
-    ~axis_max_decimals : (percentage option * float option * hue * alpha) Pp.t =
+let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
+    (percentage option * float option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
-  (* CSS Color 4 lch / oklch L precision under minify. [axis_max_decimals] is
-     calibrated per-space so the absolute precision is comparable: oklch L is
-     [0, 1] (3 decimals = ~0.001) while lch L is [0, 100] (1 decimal = ~0.1 =
-     same relative precision). *)
-  let printed_l =
-    pp_color_lightness ~pct_scale:lightness_pct_scale ~axis_max_decimals ctx l
-  in
+  let printed_l = pp_color_lightness ctx l in
   (match c with
   | Some c ->
-      let c =
-        string_of_scaled_color_axis ~max_decimals:axis_max_decimals
-          ~pct_scale:chroma_pct_scale ctx c
-      in
+      let c = string_of_scaled_color_axis ~pct_scale:chroma_pct_scale ctx c in
       space_after_color_percentage ctx printed_l ~next:(Some c);
       Pp.string ctx c
   | None ->
@@ -4082,10 +4069,7 @@ let pp_pct_chroma_hue_alpha ~lightness_pct_scale ~chroma_pct_scale
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
-let pp_oklch =
-  Pp.call "oklch"
-    (pp_pct_chroma_hue_alpha ~lightness_pct_scale:0.01 ~chroma_pct_scale:0.004
-       ~axis_max_decimals:3)
+let pp_oklch = Pp.call "oklch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004)
 
 let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
@@ -4114,23 +4098,15 @@ let pp_alpha_drop_zero : alpha Pp.t =
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
 
-let string_of_lab_axis ~max_decimals ~pct_scale ctx f =
-  string_of_scaled_color_axis ~max_decimals ~pct_scale ctx f
+let string_of_lab_axis ~pct_scale ctx f =
+  string_of_scaled_color_axis ~pct_scale ctx f
 
-let pp_lab_like_args ~lightness_pct_scale ~axis_pct_scale ~axis_max_decimals :
+let pp_lab_like_args ~axis_pct_scale :
     (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
-  (* CSS Color 4 oklab / lab L / a / b precision under minify. The decimals are
-     calibrated per-space so the absolute precision is comparable: oklab L is
-     [0, 1] (3 decimals = ~0.001) while lab L is [0, 100] (1 decimal = ~0.1 =
-     same relative precision). *)
-  let printed_l =
-    pp_color_lightness ~pct_scale:lightness_pct_scale ~axis_max_decimals ctx l
-  in
+  let printed_l = pp_color_lightness ctx l in
   let string_of_axis = function
-    | Some f ->
-        string_of_lab_axis ~max_decimals:axis_max_decimals
-          ~pct_scale:axis_pct_scale ctx f
+    | Some f -> string_of_lab_axis ~pct_scale:axis_pct_scale ctx f
     | None -> "none"
   in
   let a = string_of_axis a in
@@ -4155,20 +4131,9 @@ let pp_lab_like_args ~lightness_pct_scale ~axis_pct_scale ~axis_max_decimals :
       Pp.op_char ctx '/';
       pp_alpha_drop_zero ctx a
 
-let pp_lab =
-  Pp.call "lab"
-    (pp_lab_like_args ~lightness_pct_scale:1.0 ~axis_pct_scale:1.25
-       ~axis_max_decimals:1)
-
-let pp_oklab =
-  Pp.call "oklab"
-    (pp_lab_like_args ~lightness_pct_scale:0.01 ~axis_pct_scale:0.004
-       ~axis_max_decimals:3)
-
-let pp_lch =
-  Pp.call "lch"
-    (pp_pct_chroma_hue_alpha ~lightness_pct_scale:1.0 ~chroma_pct_scale:1.5
-       ~axis_max_decimals:1)
+let pp_lab = Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25)
+let pp_oklab = Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004)
+let pp_lch = Pp.call "lch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:1.5)
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -6964,6 +6929,19 @@ let drop_full_alpha (c : color) : color =
    lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
    normalize pass, so [pp_color_lightness] serialises the node faithfully rather
    than swapping percentage for number at print time. *)
+(* Round a lab/oklab/lch/oklch coefficient to its canonical decimal budget. The
+   printer serialises faithfully, so this AST fold is where the value-changing
+   precision reduction lives: [axis_max_decimals] gives the same shortest form
+   the colour used to acquire at print time, but a consumer that skips
+   [normalize_color] (e.g. [to_string ~minify:true] on a typed colour) keeps the
+   authored coefficient. [lossless] suppresses the reduction. *)
+let round_color_axis ~lossless ~decimals f =
+  if lossless then f
+  else
+    let f = Pp.round_sig 6 f in
+    let m = 10. ** float_of_int decimals in
+    Float.round (f *. m) /. m
+
 let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
     (l : percentage option) : percentage option =
   let fmt ~max_decimals f =
@@ -6975,13 +6953,19 @@ let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
   let pct_len f =
     String.length (fmt ~max_decimals:(axis_max_decimals + 2) f) + 1
   in
+  let num f : percentage =
+    Num (round_color_axis ~lossless ~decimals:axis_max_decimals f)
+  in
+  let pct f : percentage =
+    Pct (round_color_axis ~lossless ~decimals:(axis_max_decimals + 2) f)
+  in
   match l with
   | Some (Pct f) ->
-      if num_len (f *. pct_scale) <= pct_len f then Some (Num (f *. pct_scale))
-      else l
+      if num_len (f *. pct_scale) <= pct_len f then Some (num (f *. pct_scale))
+      else Some (pct f)
   | Some (Num f) ->
-      if pct_len (f /. pct_scale) < num_len f then Some (Pct (f /. pct_scale))
-      else l
+      if pct_len (f /. pct_scale) < num_len f then Some (pct (f /. pct_scale))
+      else Some (num f)
   | other -> other
 
 let normalize_static_modern_color ~in_feature_query ~lossless c =
@@ -7050,41 +7034,43 @@ let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
       | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
       | _ -> None)
 
+(* Round the surviving coefficients of a lab-family colour to its canonical
+   decimal budget. Applied only after the sRGB fold has run, so a colour that
+   already collapsed to hex / named keeps its full-precision projection and only
+   one that stayed in its own space (out of gamut) gets rounded for display. *)
+let round_lab_family_axes ~lossless (c : color) : color =
+  let r3 = Option.map (round_color_axis ~lossless ~decimals:3) in
+  let r1 = Option.map (round_color_axis ~lossless ~decimals:1) in
+  let ok_l =
+    canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
+  in
+  let lab_l =
+    canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
+  in
+  match c with
+  | Oklch r -> Oklch { r with l = ok_l r.l; c = r3 r.c }
+  | Oklab r -> Oklab { r with l = ok_l r.l; a = r3 r.a; b = r3 r.b }
+  | Lch r -> Lch { r with l = lab_l r.l; c = r1 r.c }
+  | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
+  | other -> other
+
 (* AST-level color canonicalisation: the folds the printer used to do, producing
    a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
-   gates the static colour-space fold (suppressed inside [@supports] tests). *)
+   gates the static colour-space fold (suppressed inside [@supports] tests). The
+   sRGB fold runs on the authored coefficients first; [round_lab_family_axes]
+   then rounds only what survives in its own colour space. *)
 let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
     color =
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
+  let static_fold () =
+    round_lab_family_axes ~lossless
+      (normalize_static_modern_color ~in_feature_query ~lossless c)
+  in
   match c with
-  | Oklch ({ l = Some _; c = Some _; _ } as r) ->
-      let l =
-        canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
-          r.l
-      in
-      normalize_static_modern_color ~in_feature_query ~lossless
-        (Oklch { r with l })
-  | Oklab ({ l = Some _; a = Some _; b = Some _; _ } as r) ->
-      let l =
-        canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
-          r.l
-      in
-      normalize_static_modern_color ~in_feature_query ~lossless
-        (Oklab { r with l })
-  | Lch ({ l = Some _; c = Some _; _ } as r) ->
-      let l =
-        canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
-          r.l
-      in
-      normalize_static_modern_color ~in_feature_query ~lossless
-        (Lch { r with l })
-  | Lab ({ l = Some _; a = Some _; b = Some _; _ } as r) ->
-      let l =
-        canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
-          r.l
-      in
-      normalize_static_modern_color ~in_feature_query ~lossless
-        (Lab { r with l })
+  | Oklch { l = Some _; c = Some _; _ } -> static_fold ()
+  | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
+  | Lch { l = Some _; c = Some _; _ } -> static_fold ()
+  | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Color _ -> normalize_static_modern_color ~in_feature_query ~lossless c
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       normalize_hex_color c r g b a
