@@ -2,11 +2,11 @@
 
 include Values_intf
 
-let var_ref ?fallback ?default ?layer ?meta name =
+let var_ref ?fallback ?default ?layer ?meta ?(runtime = false) name =
   let fallback : _ fallback =
     match fallback with None -> None | Some x -> x
   in
-  { name; fallback; default; layer; meta }
+  { name; fallback; default; layer; meta; runtime }
 
 let syntax_fallback s = Syntax_fallback (Cursor.remaining (Cursor.of_string s))
 
@@ -272,6 +272,7 @@ let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
            default = None;
            layer = None;
            meta = None;
+           runtime = false;
          })
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 = None }
@@ -287,6 +288,7 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
            default = None;
            layer = None;
            meta = None;
+           runtime = false;
          })
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 = None }
@@ -948,7 +950,15 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
         | Var_fallback s -> Var_fallback s
       in
       let default = Option.map f v.default in
-      Var { name = v.name; fallback; default; layer = v.layer; meta = v.meta }
+      Var
+        {
+          name = v.name;
+          fallback;
+          default;
+          layer = v.layer;
+          meta = v.meta;
+          runtime = v.runtime;
+        }
   | Num f -> Num f
   | Sibling_index -> Sibling_index
   | Sibling_count -> Sibling_count

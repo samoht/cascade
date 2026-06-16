@@ -802,7 +802,9 @@ module Var_residual = struct
     in
     let resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
-      if List.mem var.name visited then None
+      (* A [runtime] var stays a [var()] reference so a script can override the
+         custom property; never fold it to its theme value. *)
+      if var.runtime || List.mem var.name visited then None
       else
         match lookup_parsed var.name with
         | Some value ->
@@ -2941,6 +2943,7 @@ let gradient_stop_of_color_var (var : Values.color Values.var) :
         var.default;
     layer = var.layer;
     meta = var.meta;
+    runtime = var.runtime;
   }
 
 let simplify_color_var_gradient_stop (color : Values.color -> Values.color)

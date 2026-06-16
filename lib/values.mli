@@ -10,10 +10,13 @@ val var_ref :
   ?default:'a ->
   ?layer:string ->
   ?meta:meta ->
+  ?runtime:bool ->
   string ->
   'a var
-(** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
-    reference to [--name]. *)
+(** [var_ref ?fallback ?default ?layer ?meta ?runtime name] creates a CSS
+    variable reference to [--name]. With [~runtime:true] a context keeps the
+    [var()] reference instead of folding it to its [default], so a runtime
+    stylesheet or script can still override [--name]. *)
 
 val syntax_fallback : string -> 'a fallback
 (** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a

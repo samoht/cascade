@@ -29,6 +29,11 @@ type 'a var = {
   default : 'a option;
   layer : string option;
   meta : meta option;
+  runtime : bool;
+      (** When [true], a context never folds this var to its [default]: the
+          [var()] reference is kept so a runtime stylesheet or script can still
+          override the custom property. The [default] then acts only as a
+          browser-time fallback hint. *)
 }
 
 type 'a env = { name : string; indices : int list; fallback : 'a option }

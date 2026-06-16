@@ -295,11 +295,12 @@ let var : type a.
     ?fallback:a fallback ->
     ?layer:string ->
     ?meta:meta ->
+    ?runtime:bool ->
     string ->
     a kind ->
     a ->
     declaration * a var =
- fun ?default ?fallback ?layer ?meta name kind value ->
+ fun ?default ?fallback ?layer ?meta ?(runtime = false) name kind value ->
   (* Create the declaration directly with the value *)
   let decl =
     Declaration.v
@@ -313,7 +314,9 @@ let var : type a.
   let default_value =
     match default with Some d -> Some d | None -> Some value
   in
-  let var_handle = { name; fallback; default = default_value; layer; meta } in
+  let var_handle =
+    { name; fallback; default = default_value; layer; meta; runtime }
+  in
   (decl, var_handle)
 
 (** {1 Variable extraction} *)
