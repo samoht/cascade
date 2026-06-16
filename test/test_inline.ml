@@ -65,6 +65,22 @@ let test_inline_keep_vars_calc_identity () =
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 4)}"))
 
+let test_inline_zero_value_collapse () =
+  (* [divide-x-0] multiplies a literal [0px] by a kept reverse var; [0 * x] is
+     zero for every [x], so the [calc()] and the [var()] both drop out. The
+     printer keeps the zero's unit ([0px]); stripping it to [0] is the
+     optimizer's zero-length minification, not the printer's job. *)
+  let inline css =
+    parse css |> Css.inline_vars ~keep_vars:[ "tw-divide-x-reverse" ]
+  in
+  Alcotest.(check string)
+    "literal zero times a kept var collapses, dropping the calc and var"
+    ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:0px}"
+    (minified
+       (inline
+          ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px \
+           * var(--tw-divide-x-reverse))}"))
+
 let test_decode_import_url () =
   Alcotest.(check string)
     "url form" "theme.css"
@@ -191,6 +207,8 @@ let suite =
         test_inline_keep_vars;
       Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
         test_inline_keep_vars_calc_identity;
+      Alcotest.test_case "inline vars collapse a literal zero times a kept var"
+        `Quick test_inline_zero_value_collapse;
       Alcotest.test_case "decode import url forms" `Quick test_decode_import_url;
       Alcotest.test_case "inline imports resolves loader stylesheet" `Quick
         test_inline_import_loader;
