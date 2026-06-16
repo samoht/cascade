@@ -5125,7 +5125,14 @@ let fidelity_color_space_preserved () =
   let oklch = minify_pp ".x { color: oklch(0.628 0.2584567 29.23) }" in
   Alcotest.(check bool)
     "minify pp keeps full oklch chroma" true
-    (Astring.String.is_infix ~affix:".2584567" oklch)
+    (Astring.String.is_infix ~affix:".2584567" oklch);
+  (* The hue is a coefficient too: at high chroma a rounded hue shifts the
+     colour, so the printer keeps it in full and [optimize] does the
+     rounding. *)
+  let hue = minify_pp ".x { color: oklch(0.628 0.2 264.123456) }" in
+  Alcotest.(check bool)
+    "minify pp keeps full oklch hue" true
+    (Astring.String.is_infix ~affix:"264.123456" hue)
 
 (* {2 @supports (CSS Conditional L4 §2)} *)
 
