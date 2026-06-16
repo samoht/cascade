@@ -3510,18 +3510,12 @@ let rec pp_angle : angle Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(* Hue precision: round to 1 decimal under minify. Browsers round to ~1/256 deg
-   (~0.004) but [180.5] vs [180.4567] is below display precision for a hue wheel
-   and matches the shipping-minifier convention. *)
+(* A bare or [deg] hue prints in full in both modes: reducing its precision
+   changes the rendered colour, so that is a lossy fold owned by the AST
+   normalize pass ([round_hue]), not the printer, and a consumer serialising a
+   typed oklch with [to_string ~minify:true] round-trips the authored hue. *)
 let pp_hue_float ctx f =
-  if Pp.minified ctx then
-    (* 3 decimals, matching the oklch/lch colour axes: at high chroma a hue
-       rounded to 1 decimal shifts the rendered colour (e.g. an oklch hue of
-       262.881 must not collapse to 262.9). Trailing zeros are dropped, so
-       integer hues stay integers. *)
-    let max_decimals = if ctx.Pp.lossless then 8 else 3 in
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
-  else Pp.float ctx f
+  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f)
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
@@ -3531,7 +3525,16 @@ let rec pp_hue : hue Pp.t =
       pp_hue_float ctx f
   | Angle a when ctx.minify -> (
       match deg_of_hue (Angle a) with
-      | Some f -> pp_hue_float ctx (normalize_hue f)
+      | Some f ->
+          (* A non-degree angle unit canonicalises to bare degrees; the
+             conversion is approximate (radians go through pi), so it rounds
+             here rather than emitting a noise-precision tail. *)
+          let f = normalize_hue f in
+          let s =
+            if ctx.Pp.lossless then Pp.string_of_float ~drop_leading_zero:true f
+            else Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 f
+          in
+          Pp.string ctx s
       | None -> pp_angle ctx a)
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
@@ -6930,17 +6933,33 @@ let drop_full_alpha (c : color) : color =
    normalize pass, so [pp_color_lightness] serialises the node faithfully rather
    than swapping percentage for number at print time. *)
 (* Round a lab/oklab/lch/oklch coefficient to its canonical decimal budget. The
-   printer serialises faithfully, so this AST fold is where the value-changing
-   precision reduction lives: [axis_max_decimals] gives the same shortest form
-   the colour used to acquire at print time, but a consumer that skips
-   [normalize_color] (e.g. [to_string ~minify:true] on a typed colour) keeps the
-   authored coefficient. [lossless] suppresses the reduction. *)
+   printer serialises faithfully, so this AST fold owns the value-changing
+   precision reduction: [axis_max_decimals] picks the shortest form for the
+   canonical (optimize) output, while a consumer that skips [normalize_color]
+   (e.g. [to_string ~minify:true] on a typed colour) keeps the authored
+   coefficient. [lossless] suppresses the reduction. *)
 let round_color_axis ~lossless ~decimals f =
   if lossless then f
   else
     let f = Pp.round_sig 6 f in
     let m = 10. ** float_of_int decimals in
     Float.round (f *. m) /. m
+
+(* Round an oklch/lch hue to 3 decimals for the canonical (optimize) form: a
+   bare or [deg] hue keeps its representation, other angle units collapse to the
+   canonical bare degree. A [var()] / [calc()] / [none] hue is left opaque. *)
+let round_hue ~lossless (h : hue) : hue =
+  if lossless then h
+  else
+    let r f = round_color_axis ~lossless ~decimals:3 f in
+    match h with
+    | Unitless f -> Unitless (r f)
+    | Angle (Deg f) -> Angle (Deg (r f))
+    | Angle a -> (
+        match deg_of_hue (Angle a) with
+        | Some f -> Unitless (r (normalize_hue f))
+        | None -> h)
+    | Hue_none | Var _ -> h
 
 let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
     (l : percentage option) : percentage option =
@@ -7048,17 +7067,20 @@ let round_lab_family_axes ~lossless (c : color) : color =
     canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
   in
   match c with
-  | Oklch r -> Oklch { r with l = ok_l r.l; c = r3 r.c }
+  | Oklch r ->
+      Oklch { r with l = ok_l r.l; c = r3 r.c; h = round_hue ~lossless r.h }
   | Oklab r -> Oklab { r with l = ok_l r.l; a = r3 r.a; b = r3 r.b }
-  | Lch r -> Lch { r with l = lab_l r.l; c = r1 r.c }
+  | Lch r ->
+      Lch { r with l = lab_l r.l; c = r1 r.c; h = round_hue ~lossless r.h }
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
   | other -> other
 
-(* AST-level color canonicalisation: the folds the printer used to do, producing
-   a canonical [color] so [pp_color] is a pure serialiser. [in_feature_query]
-   gates the static colour-space fold (suppressed inside [@supports] tests). The
-   sRGB fold runs on the authored coefficients first; [round_lab_family_axes]
-   then rounds only what survives in its own colour space. *)
+(* AST-level color canonicalisation: the value-changing colour folds live here,
+   producing a canonical [color] so [pp_color] stays a pure serialiser.
+   [in_feature_query] gates the static colour-space fold (suppressed inside
+   [@supports] tests). The sRGB fold runs on the authored coefficients first;
+   [round_lab_family_axes] then rounds only what survives in its own colour
+   space. *)
 let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
     color =
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
