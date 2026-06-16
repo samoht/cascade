@@ -2502,7 +2502,23 @@ let runtime_var_not_folded_contract () =
     (String.equal
        (Css.Declaration.string_of_declaration folding)
        (Css.Declaration.string_of_declaration
-          (Css.eval_declaration Css.Context.empty folding)))
+          (Css.eval_declaration Css.Context.empty folding)));
+  (* Multiplicative identities never read the variable's value, so they still
+     simplify a runtime var; only value resolution ([* n], n >= 2) is
+     skipped. *)
+  let eval c =
+    Css.Declaration.string_of_declaration ~minify:true
+      (Css.eval_declaration Css.Context.empty (Css.width (Calc c)))
+  in
+  Alcotest.(check string)
+    "runtime var * 0 folds to 0" "width:0"
+    (eval (Expr (Var spacing, Mul, Num 0.)));
+  Alcotest.(check string)
+    "runtime var * 1 folds to the operand" "width:var(--spacing)"
+    (eval (Expr (Var spacing, Mul, Num 1.)));
+  Alcotest.(check string)
+    "runtime var * 4 keeps the var() reference" "width:calc(var(--spacing)*4)"
+    (eval (Expr (Var spacing, Mul, Num 4.)))
 
 let suite =
   ( "context",

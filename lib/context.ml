@@ -944,13 +944,30 @@ module Calc_residual = struct
           (ops.combine_value_num value Values.Mul n)
     | _ -> None
 
+  (* Multiplicative identities that hold for any operand, so they apply even to
+     an unresolved [var()] (a [~runtime] theme var): [x * 0] is zero and [x * 1]
+     / [x / 1] is [x], neither of which reads the variable's value. Tried after
+     the numeric / value folds so a resolved [Val] keeps its typed zero. *)
+  let fold_identity_expr : type a.
+      a Values.calc -> Values.calc_op -> a Values.calc -> a Values.calc option =
+   fun left op right ->
+    let open Values in
+    match (left, op, right) with
+    | _, Mul, Num 0. | Num 0., Mul, _ -> Some (Num 0.)
+    | operand, Mul, Num 1. | Num 1., Mul, operand -> Some operand
+    | operand, Div, Num 1. -> Some operand
+    | _ -> None
+
   let fold_calc_expr ops left op right =
     match fold_num_expr left op right with
     | Some folded -> folded
     | None -> (
         match fold_value_expr ops left op right with
         | Some folded -> folded
-        | None -> Values.Expr (left, op, right))
+        | None -> (
+            match fold_identity_expr left op right with
+            | Some folded -> folded
+            | None -> Values.Expr (left, op, right)))
 
   let fold_calc_wrapper wrap reduced =
     let open Values in
@@ -972,6 +989,26 @@ module Calc_residual = struct
         fold_calc_wrapper (fun v -> Parens v) (fold_calc ops inner)
     | leaf -> leaf
 
+  (* Apply only the value-independent identities ([fold_identity_expr]), leaving
+     every other subexpression verbatim. Used when a calc keeps an unresolved
+     [var()]: the var() reference is preserved, but [x * 0] / [x * 1] still
+     simplify because they never read the variable. *)
+  let rec fold_calc_identities : type a. a Values.calc -> a Values.calc =
+   fun calc ->
+    let open Values in
+    match calc with
+    | Expr (left, op, right) -> (
+        let left = fold_calc_identities left in
+        let right = fold_calc_identities right in
+        match fold_identity_expr left op right with
+        | Some folded -> folded
+        | None -> Expr (left, op, right))
+    | Nested inner ->
+        fold_calc_wrapper (fun v -> Nested v) (fold_calc_identities inner)
+    | Parens inner ->
+        fold_calc_wrapper (fun v -> Parens v) (fold_calc_identities inner)
+    | leaf -> leaf
+
   let calc_result_to_value (type a) (ops : a ops) simplify ~visited
       (calc : a Values.calc) : a =
     match calc with
@@ -980,6 +1017,7 @@ module Calc_residual = struct
         match ops.of_unitless_number n with
         | Some value -> value
         | None -> ops.of_calc (Values.Num n))
+    | Values.Var var -> ops.of_var var
     | calc -> ops.of_calc calc
 
   let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =
@@ -1036,7 +1074,8 @@ module Calc_residual = struct
           Values.Expr (walk_calc ~visited left, op, walk_calc ~visited right)
     and simplify_calc ?(preserve = false) ~visited calc =
       let calc = walk_calc ~visited calc in
-      if preserve && contains_var calc then calc else fold_calc ops calc
+      if preserve && contains_var calc then fold_calc_identities calc
+      else fold_calc ops calc
     and simplify ~authored ~visited value =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
       let run_calc ~preserve ~visited calc =
