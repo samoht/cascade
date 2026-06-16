@@ -17,6 +17,11 @@ type cascade_rule = {
 type t = {
   custom_properties : Declaration.declaration list;
       (** Custom property declarations, e.g. [--gap: 1rem]. *)
+  runtime_vars : string list;
+      (** Custom-property names (without the [--] prefix) kept as live [var()]
+          references: a resolver treats them like a [~runtime] var, folding only
+          value-independent simplifications (calc identities) and never
+          collapsing the reference to a theme value. *)
   inherited_values : Declaration.declaration list;
       (** Parent/inherited property declarations. *)
   initial_values : Declaration.declaration list;
@@ -101,6 +106,7 @@ val empty : t
 
 val v :
   ?custom_properties:Declaration.declaration list ->
+  ?runtime_vars:string list ->
   ?inherited_values:Declaration.declaration list ->
   ?initial_values:Declaration.declaration list ->
   ?layer_order:string list ->

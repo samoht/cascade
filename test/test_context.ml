@@ -2518,7 +2518,16 @@ let runtime_var_not_folded_contract () =
     (eval (Expr (Var spacing, Mul, Num 1.)));
   Alcotest.(check string)
     "runtime var * 4 keeps the var() reference" "width:calc(var(--spacing)*4)"
-    (eval (Expr (Var spacing, Mul, Num 4.)))
+    (eval (Expr (Var spacing, Mul, Num 4.)));
+  (* The spacing utilities multiply the theme var, so the [* 1] case must reach
+     the operand through a property shorthand too: [p-N] for N=1 is [padding:
+     var(--spacing)], not [calc(var(--spacing) * 1)]. *)
+  Alcotest.(check string)
+    "runtime var * 1 in the padding shorthand folds to the operand"
+    "padding:var(--spacing)"
+    (Css.Declaration.string_of_declaration ~minify:true
+       (Css.eval_declaration Css.Context.empty
+          (Css.padding [ Calc (Expr (Var spacing, Mul, Num 1.)) ])))
 
 let suite =
   ( "context",

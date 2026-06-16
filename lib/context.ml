@@ -10,6 +10,12 @@ type cascade_rule = {
 
 type t = {
   custom_properties : Declaration.declaration list;
+  runtime_vars : string list;
+      (** Custom-property names (without the [--] prefix) that must stay live
+          [var()] references: a resolver keeps them like a [~runtime] var rather
+          than folding to a theme value, so the closed-world inliner can still
+          apply value-independent simplifications (calc identities) without
+          collapsing the reference. *)
   inherited_values : Declaration.declaration list;
   initial_values : Declaration.declaration list;
   layer_order : string list;
@@ -75,6 +81,7 @@ type property_registry = { property_registrations : property_registration list }
 let empty =
   {
     custom_properties = [];
+    runtime_vars = [];
     inherited_values = [];
     initial_values = [];
     layer_order = [];
@@ -90,12 +97,13 @@ let empty =
     container_height = None;
   }
 
-let v ?(custom_properties = []) ?(inherited_values = []) ?(initial_values = [])
-    ?(layer_order = []) ?layer ?cascade_rules ?base_url ?root_font_size
-    ?parent_font_size ?current_color ?viewport_width ?viewport_height
-    ?container_width ?container_height () =
+let v ?(custom_properties = []) ?(runtime_vars = []) ?(inherited_values = [])
+    ?(initial_values = []) ?(layer_order = []) ?layer ?cascade_rules ?base_url
+    ?root_font_size ?parent_font_size ?current_color ?viewport_width
+    ?viewport_height ?container_width ?container_height () =
   {
     custom_properties;
+    runtime_vars;
     inherited_values;
     initial_values;
     layer_order;
@@ -802,9 +810,14 @@ module Var_residual = struct
     in
     let resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
-      (* A [runtime] var stays a [var()] reference so a script can override the
+      (* A [runtime] var - either flagged on the value or named in the context's
+         [runtime_vars] - stays a [var()] reference so a script can override the
          custom property; never fold it to its theme value. *)
-      if var.runtime || List.mem var.name visited then None
+      if
+        var.runtime
+        || List.mem var.name cascade.runtime_vars
+        || List.mem var.name visited
+      then None
       else
         match lookup_parsed var.name with
         | Some value ->
