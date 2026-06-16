@@ -180,7 +180,19 @@ let visible_customs ~scopes ~at_path ~selector =
       else [])
     scopes
 
-let context_for visible = Context.v ~custom_properties:(List.rev visible) ()
+(* [kept] names carry the [--] prefix; [Context.runtime_vars] expects the bare
+   custom-property name. *)
+let runtime_var_names kept =
+  List.map
+    (fun name ->
+      if String.length name >= 2 && String.sub name 0 2 = "--" then
+        String.sub name 2 (String.length name - 2)
+      else name)
+    kept
+
+let context_for ?(kept = []) visible =
+  Context.v ~custom_properties:(List.rev visible)
+    ~runtime_vars:(runtime_var_names kept) ()
 
 let read_custom_components read = function
   | Declaration.Declaration
@@ -444,35 +456,17 @@ let should_use_typed_default ~kept visible vars =
          && not (List.mem (String.concat "" [ "--"; var.Values.name ]) kept))
        vars
 
-(* True when [components] still reference a kept var. [Context.eval] is a
-   closed-world fold that would collapse [var(--kept, fallback)] to its
-   fallback; a kept var must stay a live reference, so its declaration keeps the
-   substituted components verbatim instead. *)
-let rec components_reference_kept ~kept components =
-  List.exists
-    (fun (c : Component.t) ->
-      match c with
-      | Component.Func { node = { name; arguments; _ }; _ } ->
-          (String.lowercase_ascii name = "var"
-          &&
-          match parse_var_components arguments with
-          | Some (n, _) -> List.mem (String.concat "" [ "--"; n ]) kept
-          | None -> false)
-          || components_reference_kept ~kept arguments
-      | Component.Block { node = { value; _ }; _ } ->
-          components_reference_kept ~kept value
-      | Component.Preserved _ -> false)
-    components
-
-let apply_substituted_components ~kept ctx decl ~original_components components
-    =
+(* [Context.eval] keeps a kept var live (the context lists it in [runtime_vars],
+   so the resolver leaves the [var()] reference intact and never collapses it to
+   a fallback) while still applying the value-independent simplifications such
+   as the calc identities. So the substituted declaration is always evaluated,
+   whether or not it still references a kept var. *)
+let apply_substituted_components ctx decl ~original_components components =
   if components = original_components then Some (Context.eval ctx decl)
   else
     match declaration_with_components decl components with
     | None -> None
-    | Some decl ->
-        if components_reference_kept ~kept components then Some decl
-        else Some (Context.eval ctx decl)
+    | Some decl -> Some (Context.eval ctx decl)
 
 let substitute_non_custom ~kept visible ctx decl =
   let vars = Variables.vars_of_declarations [ decl ] in
@@ -486,8 +480,7 @@ let substitute_non_custom ~kept visible ctx decl =
     with
     | Cycle -> Some (Context.eval ctx decl)
     | Components components ->
-        apply_substituted_components ~kept ctx decl ~original_components
-          components
+        apply_substituted_components ctx decl ~original_components components
 
 let substitute_declaration ~kept visible ctx decl =
   match custom_name decl with
@@ -577,7 +570,7 @@ let universal_visible_customs ~scopes ~at_path =
 
 let eval_decls ~kept ~scopes ~at_path selector decls =
   let visible = visible_customs ~scopes ~at_path ~selector in
-  let ctx = context_for visible in
+  let ctx = context_for ~kept visible in
   List.filter_map (substitute_declaration ~kept visible ctx) decls
 
 (* @page, @keyframes, and @position-try declarations apply to elements whose

@@ -43,6 +43,28 @@ let test_inline_keep_vars () =
     ":root{--brand:blue}.button{color:var(--brand);border-color:#00f}"
     (optimized_minified inlined)
 
+let test_inline_keep_vars_calc_identity () =
+  (* A kept theme var stays a live reference, but the value-independent calc
+     identities still simplify: [p-1] expands to [calc(var(--spacing) * 1)],
+     which must collapse to [var(--spacing)] (Tailwind's form), and [* 0] to a
+     bare zero. Only value resolution ([* n], n >= 2) keeps the
+     multiplication. *)
+  let inline css = parse css |> Css.inline_vars ~keep_vars:[ "spacing" ] in
+  Alcotest.(check string)
+    "kept var times one folds to the operand"
+    ":root{--spacing:.25rem}.p{padding:var(--spacing)}"
+    (minified
+       (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 1)}"));
+  Alcotest.(check string)
+    "kept var times zero folds to zero" ":root{--spacing:.25rem}.p{padding:0}"
+    (minified
+       (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 0)}"));
+  Alcotest.(check string)
+    "kept var times four keeps the var() reference"
+    ":root{--spacing:.25rem}.p{padding:calc(var(--spacing)*4)}"
+    (minified
+       (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 4)}"))
+
 let test_decode_import_url () =
   Alcotest.(check string)
     "url form" "theme.css"
@@ -167,6 +189,8 @@ let suite =
         `Quick test_inline_substitutes_vars;
       Alcotest.test_case "inline vars keep requested references" `Quick
         test_inline_keep_vars;
+      Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
+        test_inline_keep_vars_calc_identity;
       Alcotest.test_case "decode import url forms" `Quick test_decode_import_url;
       Alcotest.test_case "inline imports resolves loader stylesheet" `Quick
         test_inline_import_loader;
