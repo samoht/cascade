@@ -6176,10 +6176,12 @@ let customprops1_calc_inline () =
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
     |> Css.to_string ~minify:true)
 
-(* CSS Custom Properties L1: a theme var referenced only inside another emitted
-   theme var's opaque value is resolved through [theme_defaults] and merged into
-   the same rule - in place, with no spurious extra block and without pulling in
-   unrelated defaults. *)
+(* CSS Custom Properties L1: a theme var referenced anywhere - inside another
+   var's opaque value or inside a utility rule - and resolvable through
+   [theme_defaults] is emitted at root scope, the global token's cascade scope.
+   It merges into an existing :root,:host block (no spurious extra block), is
+   never injected into the element-scoped rule that references it, and an
+   unrelated @supports polyfill default is not pulled in. *)
 let customprops1_transitive_merge () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -6197,6 +6199,10 @@ let customprops1_transitive_merge () =
     "transitive theme var merges into the same :root,:host block"
     ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
     (render ":root,:host{--shadow:0 0 var(--spacing) black}");
+  Alcotest.(check string)
+    "a theme var referenced from a utility lands in :root, not the utility"
+    ":root{--spacing:.25rem}.shadow{--shadow:0 0 var(--spacing) black}"
+    (render ".shadow{--shadow:0 0 var(--spacing) black}");
   Alcotest.(check string)
     "an unrelated @supports polyfill default is not pulled in"
     "@supports(color:lab(0 0 \

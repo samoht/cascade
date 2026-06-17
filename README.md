@@ -363,6 +363,31 @@ Structural diff lives in the separate `cascade.diff` sub-library
 (`Cascade_diff.Css_compare`, `Cascade_diff.Tree_diff`,
 `Cascade_diff.String_diff`); it is what `cascade diff` is built on.
 
+### Theme resolution
+
+`Css.resolve_theme ?theme ?theme_defaults` is the AST-level form of the
+`--inline-vars --keep-vars` recipe above: it resolves design-token variables
+against caller-supplied data.
+
+- `theme` is the set of variable names whose `var()` references stay live. When
+  `theme` is given, references to any other name are inlined to the value
+  `theme_defaults` resolves for it.
+- `theme_defaults` maps a custom-property name to its value and supplies the
+  global token definitions. Every `var()` reference that is undefined in the
+  stylesheet and resolvable through `theme_defaults` is emitted as a definition
+  in the root-scope theme block: an existing `:root` / `:host` rule, or a fresh
+  `:root`. Resolution is transitive, and a chain that cycles or hits a dead end
+  is dropped. A name `theme_defaults` returns `None` on (for example a runtime
+  `--tw-*` variable) is left free.
+
+The definition lands at root scope by design. Custom properties are inherited
+and resolved per element
+([Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/)), so
+`var(--x)` needs `--x` defined on the element or an ancestor. A theme token is
+global: defining it on `:root` / `:host` makes it inherit to every element and
+stay globally overridable, whereas defining it on the element-scoped rule that
+happens to reference it would confine and shadow it.
+
 ### Parsing modes
 
 `Css.of_string ~strict:false s` always returns

@@ -7549,9 +7549,27 @@ val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t
 (** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST step
     matching the print-time [~theme] / [~theme_defaults] knobs on {!to_string}.
-    [theme] names the variables that should keep their [var()] reference live;
-    [theme_defaults] is the external default resolver consulted at print time
-    for variables not in [theme]. *)
+
+    [theme] names the variables whose [var()] references stay live. When [theme]
+    is given, references to any other name are inlined to the value
+    [theme_defaults] resolves for it.
+
+    [theme_defaults] maps a custom-property name to its value and is the source
+    of global theme-token definitions. Every [var()] reference that is undefined
+    in [stylesheet] and resolvable through [theme_defaults] - transitively, and
+    only when the whole chain closes without a cycle or dead end - is emitted as
+    a definition in the root-scope theme block: merged into an existing [:root]
+    / [:host] rule, or a fresh [:root]. A name with no [theme_defaults] value
+    (e.g. a runtime [--tw-*] variable) is left free, so non-theme variables are
+    gated out.
+
+    Root scope is deliberate. Per CSS Custom Properties L1 a custom property is
+    inherited and resolved per element at computed-value time, so [var(--x)]
+    needs [--x] defined on the element or an ancestor. A value [theme_defaults]
+    supplies is a global token: defining it at [:root] / [:host] makes it
+    inherit to every element and stay globally overridable, whereas defining it
+    on the element-scoped rule that happens to reference it would confine and
+    shadow it. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

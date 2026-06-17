@@ -873,18 +873,18 @@ let public_theme_var_rendering_edges () =
     sheet |> Css.resolve_theme ?theme ?theme_defaults |> to_string ~minify:true
   in
   Alcotest.(check string)
-    "normal stylesheet keeps theme var reference"
-    ".font-sans{font-family:var(--font-sans)}"
+    "kept theme var keeps its reference and gains a :root default"
+    ":root{--font-sans:Arial,sans-serif}.font-sans{font-family:var(--font-sans)}"
     (render_theme ~theme:font_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_sans)));
   Alcotest.(check string)
-    "normal stylesheet keeps theme var fallback reference"
-    ".font-sans{font-family:var(--font-fallback,Arial,sans-serif)}"
+    "kept theme var with fallback gains a :root default"
+    ":root{--font-fallback:Arial,sans-serif}.font-sans{font-family:var(--font-fallback,Arial,sans-serif)}"
     (render_theme ~theme:fallback_theme ~theme_defaults:resolve_font
        (sheet_for (Var font_fallback)));
   Alcotest.(check string)
-    "normal stylesheet without explicit theme keeps var reference"
-    ".font-sans{font-family:var(--font-sans)}"
+    "theme default emitted in :root without an explicit theme"
+    ":root{--font-sans:Arial,sans-serif}.font-sans{font-family:var(--font-sans)}"
     (render_theme ~theme_defaults:resolve_font (sheet_for (Var font_sans)));
   Alcotest.(check string)
     "inline stylesheet may use typed default"
