@@ -10,11 +10,22 @@ type t = {
       (* Where to point errors raised at end of this cursor. For a cursor over a
          nested block body this is the block's closing delimiter position, not
          the end of the whole input. *)
+  depth : int;
+      (* Function-call nesting depth, bumped by [call] each time it descends
+         into a function's arguments. Bounds recursion ([calc(calc(...))],
+         [:is(:is(...))]) so [of_string] over untrusted CSS cannot be driven
+         into a stack overflow or super-linear validation by deeply nested
+         input. *)
 }
+
+(* CSS Syntax has no nesting limit, but real authored CSS nests functions only a
+   handful deep; browsers cap too. Generous enough never to reject real input,
+   small enough that the per-level selector validation walks stay linear. *)
+let max_nesting_depth = 100
 
 let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
     ?eof_loc cvs =
-  { cvs; source; warnings = ref []; recover; meta; eof_loc }
+  { cvs; source; warnings = ref []; recover; meta; eof_loc; depth = 0 }
 
 let sub ?eof_loc t cvs =
   {
@@ -24,6 +35,7 @@ let sub ?eof_loc t cvs =
     recover = t.recover;
     meta = t.meta;
     eof_loc = (match eof_loc with Some _ -> eof_loc | None -> t.eof_loc);
+    depth = t.depth;
   }
 
 let push_warning t e = t.warnings := e :: !(t.warnings)
@@ -59,6 +71,7 @@ let of_string ?(meta = Loc.default_meta_level) s =
     recover = false;
     meta;
     eof_loc = None;
+    depth = 0;
   }
 
 let of_reader ?(meta = Loc.default_meta_level) r =
@@ -70,6 +83,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
     recover = false;
     meta;
     eof_loc = None;
+    depth = 0;
   }
 
 let is_ws_cv : Component.t -> bool = function
@@ -734,7 +748,10 @@ let call name t f =
     when String.lowercase_ascii_preserve fn.node.name
          = String.lowercase_ascii_preserve name ->
       let _ = next t in
-      f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
+      let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      let arg = { arg with depth = t.depth + 1 } in
+      if arg.depth > max_nesting_depth then err arg "nesting too deep";
+      f arg
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)
