@@ -20,7 +20,8 @@ val meta_of_declaration : declaration -> Values.meta option
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
-val normalize : ?lossless:bool -> declaration -> declaration
+val normalize :
+  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
 (** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
     the optimizer holds a canonical declaration and the pretty-printer stays a
     pure serialiser. [lossless] disables colour approximation. *)

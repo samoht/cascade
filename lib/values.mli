@@ -177,15 +177,26 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
+type calc_ctx = { var_is_single_valued : string -> bool }
+(** Context threaded through the calc folds for stylesheet-dependent rewrites.
+    [var_is_single_valued n] reports whether [--n] is registered with a
+    single-component [@property] syntax, so its [var()] substitutes exactly one
+    calc term and a redundant [calc(var(--n))] nested inside another [calc()]
+    may be unwrapped. *)
+
+val default_calc_ctx : calc_ctx
+(** [default_calc_ctx] knows of no single-valued variables, so every
+    context-dependent calc rewrite is a no-op. *)
+
 val normalize_length_percentage :
-  ?strip:bool -> length_percentage -> length_percentage
+  ?strip:bool -> ?ctx:calc_ctx -> length_percentage -> length_percentage
 (** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. [strip]
     (default [true]) also drops a wrapped zero length's unit; pass [strip:false]
     for CSS function operands. *)
 
-val normalize_length : ?strip:bool -> length -> length
+val normalize_length : ?strip:bool -> ?ctx:calc_ctx -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
     / mod / rem / hypot / abs fold on {!val-px}; calc folds through the
@@ -194,13 +205,14 @@ val normalize_length : ?strip:bool -> length -> length
     zero ([0px] -> [0]); pass [strip:false] for a calc / function operand, which
     keeps its unit. *)
 
-val normalize_angle : angle -> angle
+val normalize_angle : ?ctx:calc_ctx -> angle -> angle
 (** [normalize_angle a] folds the static angle math functions (round / mod / rem
     on [deg] operands) and converts to the shortest of the
     losslessly-interconvertible units (deg / turn / grad); [rad] (irrational via
     pi) stays as-is. *)
 
-val normalize_number_percentage : number_percentage -> number_percentage
+val normalize_number_percentage :
+  ?ctx:calc_ctx -> number_percentage -> number_percentage
 (** [normalize_number_percentage np] picks the shorter spelling for a typed
     [<number-percentage>] leaf where percentage and number are spec-equivalent
     (100% = 1, e.g. transform [scale()], the [scale] property, and the [filter]
@@ -208,17 +220,17 @@ val normalize_number_percentage : number_percentage -> number_percentage
     sub-forms stay opaque - inside a [calc()], the two spellings are not
     interchangeable. *)
 
-val normalize_number : number -> number
+val normalize_number : ?ctx:calc_ctx -> number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. *)
 
-val normalize_percentage : percentage -> percentage
+val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
 (** [normalize_percentage p] folds the value-independent parts of a
     [<percentage>] [calc()] ([calc(1 / 2 * 100%)] becomes [calc(.5*100%)]),
     keeping any [var()]. *)
 
-val normalize_duration : duration -> duration
+val normalize_duration : ?ctx:calc_ctx -> duration -> duration
 (** [normalize_duration d] folds the value-independent parts of a [<time>]
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. *)
@@ -516,12 +528,13 @@ val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
 (** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc
     structure (operators, [Nested], [Parens], [Var] fallbacks). *)
 
-val eval_calc : 'a calc -> 'a calc
+val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
 (** [eval_calc calc] applies CSS Values 4 §10.7 structural simplification: folds
     [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps trivial
     [Nested] / [Parens] around leaves. [Val] / [Var] leaves and mixed-type
     operands survive — type-specific simplification (e.g., length arithmetic) is
-    the caller's job. *)
+    the caller's job. With [~ctx], a [Nested] / [Parens] around a single-valued
+    [Var] leaf is also unwrapped (see {!calc_ctx}). *)
 
 val calc_identity :
   zero:'a calc ->
