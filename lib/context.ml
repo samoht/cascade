@@ -878,6 +878,9 @@ module Calc_residual = struct
 
   type 'a ops = {
     of_unitless_number : float -> 'a option;
+    zero : 'a Values.calc;
+        (** The type's canonical unitless zero, returned by [x * 0] when neither
+            operand carries a unit. *)
     is_zero : 'a -> bool;
         (** Recognises a literal zero value, so [0 * x] collapses to zero even
             when [x] is an unresolved [var()]. Conservative [false] is always
@@ -961,28 +964,15 @@ module Calc_residual = struct
           (ops.combine_value_num value Values.Mul n)
     | _ -> None
 
-  (* Multiplicative identities that hold for any operand, so they apply even to
-     an unresolved [var()] (a [~runtime] theme var): [x * 0] is zero and [x * 1]
-     / [x / 1] is [x], neither of which reads the variable's value. A literal
-     zero value ([0px], not just the unitless [0]) collapses the same way, so
-     [divide-x-0]'s [calc(0px * var(--tw-divide-x-reverse))] reduces to [0].
-     Tried after the numeric / value folds so a resolved [Val] keeps its typed
-     zero. *)
-  let fold_identity_expr : type a.
-      is_zero:(a -> bool) ->
-      a Values.calc ->
-      Values.calc_op ->
-      a Values.calc ->
-      a Values.calc option =
-   fun ~is_zero left op right ->
-    let open Values in
-    match (left, op, right) with
-    | _, Mul, Num 0. | Num 0., Mul, _ -> Some (Num 0.)
-    | (Val v as zero), Mul, _ when is_zero v -> Some zero
-    | _, Mul, (Val v as zero) when is_zero v -> Some zero
-    | operand, Mul, Num 1. | Num 1., Mul, operand -> Some operand
-    | operand, Div, Num 1. -> Some operand
-    | _ -> None
+  (* The value-independent identities ([x * 0], [x * 1], [x + 0], ...) live in
+     [Values.calc_identity], shared with the AST evaluators so the two paths
+     never drift. They hold for any operand, so they apply even to an unresolved
+     [var()] (a [~runtime] theme var). [ops.is_zero] lets a literal zero value
+     ([0px], not just the unitless [0]) collapse too, so [divide-x-0]'s
+     [calc(0px * var(--tw-divide-x-reverse))] reduces to [0]. Tried after the
+     numeric / value folds so a resolved [Val] keeps its typed zero. *)
+  let fold_identity_expr ops left op right =
+    Values.calc_identity ~zero:ops.zero ~is_zero:ops.is_zero left op right
 
   let fold_calc_expr ops left op right =
     match fold_num_expr left op right with
@@ -991,7 +981,7 @@ module Calc_residual = struct
         match fold_value_expr ops left op right with
         | Some folded -> folded
         | None -> (
-            match fold_identity_expr ~is_zero:ops.is_zero left op right with
+            match fold_identity_expr ops left op right with
             | Some folded -> folded
             | None -> Values.Expr (left, op, right)))
 
@@ -1019,25 +1009,21 @@ module Calc_residual = struct
      every other subexpression verbatim. Used when a calc keeps an unresolved
      [var()]: the var() reference is preserved, but [x * 0] / [x * 1] still
      simplify because they never read the variable. *)
-  let rec fold_calc_identities : type a.
-      is_zero:(a -> bool) -> a Values.calc -> a Values.calc =
-   fun ~is_zero calc ->
+  let rec fold_calc_identities : type a. a ops -> a Values.calc -> a Values.calc
+      =
+   fun ops calc ->
     let open Values in
     match calc with
     | Expr (left, op, right) -> (
-        let left = fold_calc_identities ~is_zero left in
-        let right = fold_calc_identities ~is_zero right in
-        match fold_identity_expr ~is_zero left op right with
+        let left = fold_calc_identities ops left in
+        let right = fold_calc_identities ops right in
+        match fold_identity_expr ops left op right with
         | Some folded -> folded
         | None -> Expr (left, op, right))
     | Nested inner ->
-        fold_calc_wrapper
-          (fun v -> Nested v)
-          (fold_calc_identities ~is_zero inner)
+        fold_calc_wrapper (fun v -> Nested v) (fold_calc_identities ops inner)
     | Parens inner ->
-        fold_calc_wrapper
-          (fun v -> Parens v)
-          (fold_calc_identities ~is_zero inner)
+        fold_calc_wrapper (fun v -> Parens v) (fold_calc_identities ops inner)
     | leaf -> leaf
 
   let calc_result_to_value (type a) (ops : a ops) simplify ~visited
@@ -1105,8 +1091,7 @@ module Calc_residual = struct
           Values.Expr (walk_calc ~visited left, op, walk_calc ~visited right)
     and simplify_calc ?(preserve = false) ~visited calc =
       let calc = walk_calc ~visited calc in
-      if preserve && contains_var calc then
-        fold_calc_identities ~is_zero:ops.is_zero calc
+      if preserve && contains_var calc then fold_calc_identities ops calc
       else fold_calc ops calc
     and simplify ~authored ~visited value =
       let simplify_resolved ~authored:_ = simplify ~authored:false in
@@ -1365,6 +1350,7 @@ module Length = struct
       let of_number px = Values.Px px in
       {
         of_unitless_number = (fun _ -> None);
+        zero = Values.Num 0.;
         is_zero = Values.length_is_zero;
         combine_values = combine_numeric_values ~to_number ~of_number;
         combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -1923,6 +1909,7 @@ let simplify_length_percentage ?layer_order ?layer cascade length_ctx value =
     in
     {
       Calc_residual.of_unitless_number = (fun _ -> None);
+      zero = Values.Num 0.;
       is_zero = (fun v -> match to_px v with Some n -> n = 0. | None -> false);
       combine_values;
       combine_value_num;
@@ -1967,6 +1954,7 @@ let simplify_border_width ?layer_order ?layer cascade (length_ctx : Length.ctx)
   let ops : Properties.border_width Calc_residual.ops =
     {
       of_unitless_number = (fun _ -> None);
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
@@ -2014,6 +2002,7 @@ let simplify_font_size ?layer_order ?layer cascade (length_ctx : Length.ctx)
   let ops : Properties.font_size Calc_residual.ops =
     {
       of_unitless_number = (fun _ -> None);
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
@@ -2052,6 +2041,7 @@ let simplify_opacity ?layer_order ?layer cascade value =
     let of_number n = Properties.Opacity_number n in
     {
       of_unitless_number = (fun n -> Some (Properties.Opacity_number n));
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
@@ -2092,6 +2082,7 @@ let simplify_angle ?layer_order ?layer cascade value =
     let of_number deg = Values.Deg deg in
     {
       of_unitless_number = (fun _ -> None);
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
@@ -2122,6 +2113,7 @@ let simplify_duration ?layer_order ?layer cascade value =
     let of_number seconds = Values.S seconds in
     {
       of_unitless_number = (fun _ -> None);
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
@@ -2174,6 +2166,7 @@ let simplify_number_percentage ?layer_order ?layer cascade value =
     {
       Calc_residual.of_unitless_number =
         (fun n -> Some (number_percentage_num n));
+      zero = Values.Num 0.;
       is_zero = (fun _ -> false);
       combine_values = combine_number_percentage_values;
       combine_value_num = combine_number_percentage_value_num;
@@ -2708,6 +2701,7 @@ let simplify_component ?layer_order ?layer ctx value =
   let ops : Values.component Calc_residual.ops =
     {
       Calc_residual.of_unitless_number = (fun n -> Some (Values.Num n));
+      zero = Values.Num 0.;
       is_zero = (fun _ -> false);
       combine_values;
       combine_value_num;
@@ -2731,15 +2725,29 @@ let simplify_percentage ?layer_order ?layer ctx value =
     | _ -> None
   in
   let of_number n = (Values.Pct n : Values.percentage) in
+  (* A [<percentage>] slot also accepts a bare [<number>] (e.g. an oklch
+     lightness: [.7] and [70%] are equal, but [.7%] is not [.7]). Canonicalise
+     the float spelling without collapsing the [Num] / [Pct] distinction, which
+     [of_number] would, since it always reissues a [Pct]. *)
+  let normalize_value (value : Values.percentage) : Values.percentage =
+    let canon n =
+      try float_of_string (Pp.string_of_float n) with Failure _ -> n
+    in
+    match value with
+    | Values.Num n -> Values.Num (canon n)
+    | Values.Pct n -> Values.Pct (canon n)
+    | other -> other
+  in
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Values.percentage Calc_residual.ops =
     {
       of_unitless_number = (fun n -> Some (Values.Num n));
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values = combine_numeric_values ~to_number ~of_number;
       combine_value_num = combine_numeric_value_num ~to_number ~of_number;
-      normalize_value = normalize_numeric_value ~to_number ~of_number;
+      normalize_value;
       as_var =
         (function (Values.Var var : Values.percentage) -> Some var | _ -> None);
       of_var = (fun var -> Values.Var var);
@@ -2779,6 +2787,7 @@ let simplify_alpha ?layer_order ?layer ctx value =
   let ops : Values.alpha Calc_residual.ops =
     {
       of_unitless_number = (fun n -> Some (alpha_num n));
+      zero = Values.Num 0.;
       is_zero =
         (fun v -> match to_number v with Some n -> n = 0. | None -> false);
       combine_values;

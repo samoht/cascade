@@ -820,12 +820,47 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
+(* CSS Values 4 §10.7 value-independent calc identities. These hold for any
+   finite operand, so they fold even across a kept [var()]: inside [calc()] a
+   [var()] is single-valued, so [var * 1 = var] regardless of what the variable
+   resolves to. The identities that keep an operand ([x * 1], [1 * x], [x / 1],
+   [x + 0], [0 + x], [x - 0]) return that operand verbatim, so the result is
+   always the same type. The zero-producing cases need the type's canonical zero
+   ([Num 0.] for numbers, [Val Zero] for lengths): [~zero] supplies it.
+   [~is_zero] recognises a typed zero leaf ([0px], not just the unitless [0]) so
+   a literal zero length collapses [0px * x] too. Operands are the
+   already-evaluated subtrees; numeric [op] numeric must be folded by the caller
+   first. *)
+let calc_identity : type a.
+    zero:a calc ->
+    is_zero:(a -> bool) ->
+    a calc ->
+    calc_op ->
+    a calc ->
+    a calc option =
+ fun ~zero ~is_zero l op r ->
+  match (l, op, r) with
+  | _, Mul, Num 1. | _, Div, Num 1. -> Some l
+  | Num 1., Mul, _ -> Some r
+  (* Additive identity holds for the unitless [0] and for a typed zero ([0px]).
+     [0 - x] is [-x], not [x], so only the [0 +] direction folds on the left. *)
+  | _, (Add | Sub), Num 0. -> Some l
+  | _, (Add | Sub), Val v when is_zero v -> Some l
+  | Num 0., Add, _ -> Some r
+  | Val v, Add, _ when is_zero v -> Some r
+  | _, Mul, Num 0. | Num 0., Mul, _ -> Some zero
+  (* A typed zero ([0px]) keeps its own spelling here; the optimizer's
+     zero-length strip canonicalises it, so a non-optimised serialisation still
+     reads [0px] rather than a bare [0]. *)
+  | (Val v as z), Mul, _ when is_zero v -> Some z
+  | _, Mul, (Val v as z) when is_zero v -> Some z
+  | _ -> None
+
 (* CSS Values 4 10.7 structural simplification of a typed calc AST. Folds [Expr
-   (Num _, op, Num _)] subtrees and constant-identity patterns ([x + 0], [0 +
-   x], [x - 0], [x * 1], [1 * x], [x / 1]) into shorter equivalents. The
-   per-type "zero is the identity" cases involving typed [Val] leaves (e.g. [Val
-   Zero] for [length]) are handled by per-type pre-passes that rewrite typed
-   zeros to [Num 0.] before this generic fold. *)
+   (Num _, op, Num _)] subtrees and the value-independent identities
+   ([calc_identity]). The per-type evaluators ([eval_length_calc] /
+   [eval_lp_calc]) add the typed [Val] combinations ([1px + 2px], [2px * 3]) and
+   pass their own [~zero] / [~is_zero] so a typed zero collapses too. *)
 let rec eval_calc : type a. a calc -> a calc = function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
@@ -855,16 +890,15 @@ let rec eval_calc : type a. a calc -> a calc = function
       | Num a, Mul, Num b -> Num (a *. b)
       | Num a, Div, Num b -> (
           match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
-      (* Multiplicative identities hold for any finite operand, so they fold
-         even when the other side is a [var()] or other opaque term: [x * 1] and
-         [1 * x] reduce to [x], [x * 0] and [0 * x] reduce to [0]. *)
-      | _, Mul, Num 1. -> l
-      | Num 1., Mul, _ -> r
-      | _, Mul, Num 0. | Num 0., Mul, _ -> Num 0.
       | _ -> (
-          match fold_zero_numeric_expr lc op rc with
-          | Some zero -> zero
-          | None -> Expr (l, op, r)))
+          match
+            calc_identity ~zero:(Num 0.) ~is_zero:(fun _ -> false) l op r
+          with
+          | Some folded -> folded
+          | None -> (
+              match fold_zero_numeric_expr lc op rc with
+              | Some zero -> zero
+              | None -> Expr (l, op, r))))
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
@@ -1203,7 +1237,6 @@ let rec eval_length_calc : length calc -> length calc =
          decimal. *)
       let lc = calc_operand_value l in
       let rc = calc_operand_value r in
-      let identity_safe x = not (length_calc_has_runtime_subst x) in
       match (lc, op, rc) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
@@ -1212,12 +1245,6 @@ let rec eval_length_calc : length calc -> length calc =
           match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
       | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
           Option.get (fold_zero_numeric_expr lc op rc)
-      | x, Add, Num 0. when identity_safe x -> x
-      | Num 0., Add, x when identity_safe x -> x
-      | x, Sub, Num 0. when identity_safe x -> x
-      | x, Mul, Num 1. when identity_safe x -> x
-      | Num 1., Mul, x when identity_safe x -> x
-      | x, Div, Num 1. when identity_safe x -> x
       | Val a, op, Val b -> (
           match length_combine op a b with
           | Some v -> Val v
@@ -1234,9 +1261,14 @@ let rec eval_length_calc : length calc -> length calc =
           | None -> Expr (l, op, r))
       (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
          reduces back to [x]. *)
-      | Num 1., Div, Parens (Expr (Num 1., Div, x)) when identity_safe x -> x
-      | Num 1., Div, Expr (Num 1., Div, x) when identity_safe x -> x
-      | _ -> Expr (l, op, r))
+      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
+      | Num 1., Div, Expr (Num 1., Div, x) -> x
+      | _ -> (
+          match
+            calc_identity ~zero:(Val Zero) ~is_zero:length_is_zero l op r
+          with
+          | Some folded -> folded
+          | None -> Expr (l, op, r)))
 
 type length_unit =
   | Px
@@ -1635,20 +1667,10 @@ let lp_of_math_fn (fn : math_fn) : length_percentage option =
       |> Option.some
   | _ -> None
 
-(* See [length_has_runtime_subst]. *)
-let rec lp_has_runtime_subst : length_percentage -> bool = function
-  | Env _ | Var _ -> true
-  | Length l -> length_has_runtime_subst l
-  | Calc c -> lp_calc_has_runtime_subst c
-  | Pct _ | Invalid _ -> false
-
-and lp_calc_has_runtime_subst : length_percentage calc -> bool = function
-  | Var _ -> true
-  | Val v -> lp_has_runtime_subst v
-  | Num _ | Math_const _ | Sibling_index | Sibling_count -> false
-  | Math_fn fn -> math_fn_contains_var fn
-  | Nested inner | Parens inner -> lp_calc_has_runtime_subst inner
-  | Expr (l, _, r) -> lp_calc_has_runtime_subst l || lp_calc_has_runtime_subst r
+let lp_is_zero : length_percentage -> bool = function
+  | Length l -> length_is_zero l
+  | Pct f -> f = 0.
+  | _ -> false
 
 let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
  fun calc ->
@@ -1680,7 +1702,6 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
          leaking the decimal. *)
       let lc = calc_operand_value l in
       let rc = calc_operand_value r in
-      let identity_safe x = not (lp_calc_has_runtime_subst x) in
       match (lc, op, rc) with
       | Num a, Add, Num b -> Num (a +. b)
       | Num a, Sub, Num b -> Num (a -. b)
@@ -1689,12 +1710,6 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
       | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
           Option.get (fold_zero_numeric_expr lc op rc)
-      | x, Add, Num 0. when identity_safe x -> x
-      | Num 0., Add, x when identity_safe x -> x
-      | x, Sub, Num 0. when identity_safe x -> x
-      | x, Mul, Num 1. when identity_safe x -> x
-      | Num 1., Mul, x when identity_safe x -> x
-      | x, Div, Num 1. when identity_safe x -> x
       | Val a, op, Val b -> (
           match lp_combine op a b with
           | Some v -> Val v
@@ -1709,9 +1724,14 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
       (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
          reduces back to [x]. *)
-      | Num 1., Div, Parens (Expr (Num 1., Div, x)) when identity_safe x -> x
-      | Num 1., Div, Expr (Num 1., Div, x) when identity_safe x -> x
-      | _ -> Expr (l, op, r))
+      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
+      | Num 1., Div, Expr (Num 1., Div, x) -> x
+      | _ -> (
+          match
+            calc_identity ~zero:(Val (Length Zero)) ~is_zero:lp_is_zero l op r
+          with
+          | Some folded -> folded
+          | None -> Expr (l, op, r)))
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (Pct, n)

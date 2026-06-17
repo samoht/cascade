@@ -642,6 +642,69 @@ let test_invalid_value_mutations buf =
   let kind, input = invalid_value_mutation buf in
   assert_value_reject kind input
 
+let optimize_one css =
+  match Css.of_string ~strict:false css with
+  | Ok parsed ->
+      Some (parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true)
+  | Error _ -> None
+
+(* (property, operand, type-matched zero) triples driving the calc-identity
+   invariants below: [width] / [padding] reach the per-type length /
+   length-percentage evaluators, [opacity] the generic number one. *)
+let calc_identity_targets =
+  [
+    ("width", "12px", "0px");
+    ("width", "var(--a)", "0px");
+    ("width", "50%", "0px");
+    ("padding", "var(--a)", "0px");
+    ("padding", ".5rem", "0px");
+    ("opacity", "var(--a)", "0");
+    ("opacity", ".5", "0");
+  ]
+
+(* CSS Values 4 §10.7 identity law: wrapping a value in a value-independent
+   identity ([x * 1], [1 * x], [x / 1], [x + 0], [0 + x], [x - 0]) and
+   optimising lands on the same normal form as optimising the bare value - the
+   [var()] reference and the [calc()] wrapper survive, only the redundant
+   arithmetic folds. Drives the shared [Values.calc_identity] through every
+   evaluator the optimize pass reaches, so the generic and per-type folds cannot
+   drift. *)
+let test_calc_identity_law buf =
+  let prop, operand, zero = pick calc_identity_targets buf 0 in
+  let decl v = ".x{" ^ prop ^ ":" ^ v ^ "}" in
+  match optimize_one (decl ("calc(" ^ operand ^ ")")) with
+  | None -> ()
+  | Some bare ->
+      List.iter
+        (fun w ->
+          match optimize_one (decl w) with
+          | None -> failf "calc identity wrapper did not optimise: %S" w
+          | Some got ->
+              if got <> bare then
+                failf "calc identity law broken: %S -> %S (bare %S)" w got bare)
+        [
+          "calc(" ^ operand ^ " * 1)";
+          "calc(1 * " ^ operand ^ ")";
+          "calc(" ^ operand ^ " / 1)";
+          "calc(" ^ operand ^ " + " ^ zero ^ ")";
+          "calc(" ^ zero ^ " + " ^ operand ^ ")";
+          "calc(" ^ operand ^ " - " ^ zero ^ ")";
+        ]
+
+(* The identity and constant folds both converge, so a second optimize pass over
+   a calc is a no-op. *)
+let test_calc_optimize_idempotent buf =
+  let prop, operand, zero = pick calc_identity_targets buf 0 in
+  let css = ".x{" ^ prop ^ ":calc(" ^ operand ^ " * 1 + " ^ zero ^ ")}" in
+  match optimize_one css with
+  | None -> ()
+  | Some once -> (
+      match optimize_one once with
+      | None -> failf "optimised calc did not reparse: %S" once
+      | Some twice ->
+          if once <> twice then
+            failf "optimise not idempotent: %S -> %S -> %S" css once twice)
+
 let reader_cases =
   [
     test_case "read_color crash safety" [ bytes ] test_read_color;
@@ -686,6 +749,8 @@ let roundtrip_cases =
     test_case "pp size matches serialized length" [ bytes ]
       test_pp_size_matches_length;
     test_case "pp preserves the AST node" [ bytes ] test_pp_preserves_ast;
+    test_case "calc identity law" [ bytes ] test_calc_identity_law;
+    test_case "calc optimize idempotent" [ bytes ] test_calc_optimize_idempotent;
   ]
 
 let grammar_cases =
