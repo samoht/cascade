@@ -1053,6 +1053,122 @@ let theme_defaults_source defaults =
   in
   ":root{" ^ body ^ "}"
 
+(* Names declared as a custom property anywhere in the tree (bare, no [--]). *)
+let declared_custom_prop_names (stmts : Stylesheet.statement list) :
+    (string, unit) Hashtbl.t =
+  let tbl = Hashtbl.create 16 in
+  let note decls =
+    List.iter
+      (fun d ->
+        match Variables.custom_declaration_name d with
+        | Some n -> Hashtbl.replace tbl (bare_theme_name n) ()
+        | None -> ())
+      decls
+  in
+  let rec scan (stmt : Stylesheet.statement) =
+    match stmt with
+    | Stylesheet.Rule r ->
+        note r.declarations;
+        List.iter scan r.nested
+    | Stylesheet.Declarations decls -> note decls
+    | Stylesheet.Media (_, b)
+    | Stylesheet.Supports (_, b)
+    | Stylesheet.Container (_, _, b)
+    | Stylesheet.Layer (_, b)
+    | Stylesheet.Origin (_, b)
+    | Stylesheet.Scope (_, _, b)
+    | Stylesheet.Starting_style b
+    | Stylesheet.Moz_document (_, b)
+    | Stylesheet.When (_, b)
+    | Stylesheet.Else (_, b) ->
+        List.iter scan b
+    | _ -> ()
+  in
+  List.iter scan stmts;
+  tbl
+
+(* Apply [f] to every [Rule] in the tree, recursing through nested rules and
+   block at-rules. *)
+let rec map_rule_statements f (stmts : Stylesheet.statement list) :
+    Stylesheet.statement list =
+  List.map (map_rule_statement f) stmts
+
+and map_rule_statement f (stmt : Stylesheet.statement) : Stylesheet.statement =
+  match stmt with
+  | Stylesheet.Rule r ->
+      let r = f r in
+      Stylesheet.Rule { r with nested = map_rule_statements f r.nested }
+  | Stylesheet.Media (c, b) -> Stylesheet.Media (c, map_rule_statements f b)
+  | Stylesheet.Supports (c, b) ->
+      Stylesheet.Supports (c, map_rule_statements f b)
+  | Stylesheet.Container (n, c, b) ->
+      Stylesheet.Container (n, c, map_rule_statements f b)
+  | Stylesheet.Layer (n, b) -> Stylesheet.Layer (n, map_rule_statements f b)
+  | Stylesheet.Origin (o, b) -> Stylesheet.Origin (o, map_rule_statements f b)
+  | Stylesheet.Scope (s, e, b) ->
+      Stylesheet.Scope (s, e, map_rule_statements f b)
+  | Stylesheet.Starting_style b ->
+      Stylesheet.Starting_style (map_rule_statements f b)
+  | Stylesheet.Moz_document (c, b) ->
+      Stylesheet.Moz_document (c, map_rule_statements f b)
+  | Stylesheet.When (c, b) -> Stylesheet.When (c, map_rule_statements f b)
+  | Stylesheet.Else (c, b) -> Stylesheet.Else (c, map_rule_statements f b)
+  | other -> other
+
+(* A custom property referenced only inside an emitted theme var's opaque value
+   (e.g. [--shadow: ... var(--spacing) ...]) is invisible to the AST var
+   collector, so a value the caller supplies only through [theme_defaults]
+   ([--spacing: .25rem]) goes undefined. Resolve such references transitively
+   and merge the resulting declarations into the same rule that emits the kept
+   theme var, so the dependency is defined in place. Only rules declaring a kept
+   theme var are touched (so unrelated [@property] / polyfill defaults are never
+   pulled in), a var already declared anywhere is left alone (no duplicate or
+   cascade conflict), and a kept var is skipped (it is emitted elsewhere). *)
+let emit_transitive_theme_refs ~keep_set ~theme_defaults stylesheet =
+  match theme_defaults with
+  | Option.None -> stylesheet
+  | Option.Some lookup ->
+      let declared = declared_custom_prop_names stylesheet in
+      let rec resolve acc name =
+        let bare = bare_theme_name name in
+        if
+          List.mem_assoc name acc
+          || Pp.String_set.mem bare keep_set
+          || Hashtbl.mem declared bare
+        then acc
+        else
+          match lookup bare with
+          | Option.None -> acc
+          | Option.Some value ->
+              List.fold_left resolve ((name, value) :: acc)
+                (var_names_in_theme_value value)
+      in
+      let declares_kept (r : Stylesheet.rule) =
+        List.exists
+          (fun d ->
+            match Variables.custom_declaration_name d with
+            | Some n -> Pp.String_set.mem (bare_theme_name n) keep_set
+            | None -> false)
+          r.declarations
+      in
+      let augment (r : Stylesheet.rule) : Stylesheet.rule =
+        if not (declares_kept r) then r
+        else
+          let refs =
+            List.concat_map
+              (fun d -> var_names_in_theme_value (declaration_value d))
+              (Variables.custom_declarations r.declarations)
+          in
+          let to_add = List.rev (List.fold_left resolve [] refs) in
+          if to_add = [] then r
+          else
+            match of_string ~strict:false (theme_defaults_source to_add) with
+            | Ok { stylesheet = [ Stylesheet.Rule injected ]; _ } ->
+                { r with declarations = injected.declarations @ r.declarations }
+            | _ -> r
+      in
+      map_rule_statements augment stylesheet
+
 (* Theme resolution as an explicit AST step. [theme] names the variables whose
    [var()] references should survive (handed to [Inline.vars]' keep-set) and
    filters [Theme_guarded] declarations to keep only those whose [var_name] is
@@ -1067,38 +1183,45 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
   let keep_set =
     match theme with None -> Pp.String_set.empty | Some set -> set
   in
-  let keep_vars = Pp.String_set.elements keep_set in
-  let defaults =
-    collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet
+  let stylesheet =
+    let keep_vars = Pp.String_set.elements keep_set in
+    let defaults =
+      collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet
+    in
+    if defaults = [] then stylesheet
+    else
+      (* Only the names [theme_defaults] resolved get their [var()] references
+         substituted. [Inline.vars] applied here would also collapse [var(--x,
+         fallback)] references for names the resolver returned [None] on
+         (because [var()]'s built-in fallback arm is consulted when no
+         declaration is visible); the explicit semantics keep those references
+         live. Limit [Inline.vars] to a stylesheet containing only the injected
+         [:root] declarations and the matching subtrees, then merge the result
+         back at the source's position. We achieve that by injecting a [:root]
+         rule plus extending [keep_vars] with every var name we did *not*
+         resolve, so the unresolved sites keep their declarations live and the
+         substitution falls through to [fallback_or_original]'s original-Func
+         branch. *)
+      let resolved_names = List.map fst defaults in
+      let unresolved_keep =
+        collect_var_names stylesheet
+        |> List.filter (fun n -> not (List.mem n resolved_names))
+      in
+      let keep_vars =
+        List.fold_left
+          (fun acc n -> if List.mem n acc then acc else n :: acc)
+          keep_vars unresolved_keep
+      in
+      let source = theme_defaults_source defaults in
+      match of_string ~strict:false source with
+      | Ok { stylesheet = root_stmts; _ } ->
+          inline_vars ~keep_vars (root_stmts @ stylesheet)
+      | Error _ -> stylesheet
   in
-  if defaults = [] then stylesheet
-  else
-    (* Only the names [theme_defaults] resolved get their [var()] references
-       substituted. [Inline.vars] applied here would also collapse [var(--x,
-       fallback)] references for names the resolver returned [None] on (because
-       [var()]'s built-in fallback arm is consulted when no declaration is
-       visible); the explicit semantics keep those references live. Limit
-       [Inline.vars] to a stylesheet containing only the injected [:root]
-       declarations and the matching subtrees, then merge the result back at the
-       source's position. We achieve that by injecting a [:root] rule plus
-       extending [keep_vars] with every var name we did *not* resolve, so the
-       unresolved sites keep their declarations live and the substitution falls
-       through to [fallback_or_original]'s original-Func branch. *)
-    let resolved_names = List.map fst defaults in
-    let unresolved_keep =
-      collect_var_names stylesheet
-      |> List.filter (fun n -> not (List.mem n resolved_names))
-    in
-    let keep_vars =
-      List.fold_left
-        (fun acc n -> if List.mem n acc then acc else n :: acc)
-        keep_vars unresolved_keep
-    in
-    let source = theme_defaults_source defaults in
-    match of_string ~strict:false source with
-    | Ok { stylesheet = root_stmts; _ } ->
-        inline_vars ~keep_vars (root_stmts @ stylesheet)
-    | Error _ -> stylesheet
+  (* Pull in a theme var referenced only inside another emitted theme var's
+     opaque value (the AST collector above cannot see it), merged into the same
+     rule. *)
+  emit_transitive_theme_refs ~keep_set ~theme_defaults stylesheet
 
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

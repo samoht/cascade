@@ -6176,6 +6176,42 @@ let customprops1_calc_inline () =
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
     |> Css.to_string ~minify:true)
 
+(* CSS Custom Properties L1: a theme var referenced only inside another emitted
+   theme var's opaque value is resolved through [theme_defaults] and merged into
+   the same rule - in place, with no spurious extra block and without pulling in
+   unrelated defaults. *)
+let customprops1_transitive_merge () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.of_list [ "shadow" ] in
+  let spacing = function "spacing" -> Some ".25rem" | _ -> None in
+  let render ?(theme_defaults = spacing) css =
+    parse css
+    |> Css.resolve_theme ~theme ~theme_defaults
+    |> Css.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "transitive theme var merges into the same :root,:host block"
+    ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
+    (render ":root,:host{--shadow:0 0 var(--spacing) black}");
+  Alcotest.(check string)
+    "an unrelated @supports polyfill default is not pulled in"
+    "@supports(color:lab(0 0 \
+     0)){:root{--tw-x:initial}}:root,:host{--spacing:.25rem;--shadow:0 0 \
+     var(--spacing) black}"
+    (render
+       "@supports (color: lab(0 0 0)){:root{--tw-x:initial}} \
+        :root,:host{--shadow:0 0 var(--spacing) black}");
+  Alcotest.(check string)
+    "an unresolved reference is kept live, not materialised"
+    ":root,:host{--shadow:0 0 var(--spacing) black}"
+    (render
+       ~theme_defaults:(fun _ -> None)
+       ":root,:host{--shadow:0 0 var(--spacing) black}")
+
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
    ([var(--font, "Helvetica", sans-serif)]) inlines if the variable resolves,
    otherwise the fallback list is kept intact. *)
@@ -6904,6 +6940,9 @@ let additional_tests =
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
       customprops1_calc_inline );
+    ( "spec custom-properties 1 transitive theme var merges in place",
+      `Quick,
+      customprops1_transitive_merge );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
       customprops1_fallback_list );
