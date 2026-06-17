@@ -5214,8 +5214,15 @@ and read_calc_non_paren_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       read_sibling_count_factor;
       read_calc_zero;
       read_calc_numeric_function;
-      (fun t -> Val (read_a t));
+      (* A plain unitless [<number>] in a calc is the [<number>] type, not the
+         surrounding property's value, so read it as a [Num] leaf before the
+         typed reader. Otherwise a property that accepts a bare number (e.g.
+         line-height, opacity) reads it as a [Val], which the multiplication
+         dimension check then mistakes for a dimension and rejects [2 * 3]. A
+         dimension ([2px]) or percentage token is not a [Number_tok], so it
+         still falls through to the typed [Val] reader. *)
       (fun t -> (Num (Cursor.number t) : a calc));
+      (fun t -> Val (read_a t));
       read_math_constant_factor;
     ]
     t

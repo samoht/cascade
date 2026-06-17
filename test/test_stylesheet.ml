@@ -4580,6 +4580,15 @@ let v4_10_2_calc_arithmetic () =
   Alcotest.(check string)
     "calc(2 * 3) -> 6" ".x{aspect-ratio:6}"
     (normalize ".x { aspect-ratio: calc(2 * 3) }");
+  (* A property whose value accepts a bare [<number>] (line-height) must still
+     read the [<number>] operands of a calc multiplication as numbers, not as
+     typed values that the dimension check rejects. *)
+  Alcotest.(check string)
+    "line-height calc(2 * 3) -> 6" ".x{line-height:6}"
+    (normalize ".x { line-height: calc(2 * 3) }");
+  Alcotest.(check string)
+    "line-height calc(2px * 1) -> 2px" ".x{line-height:2px}"
+    (normalize ".x { line-height: calc(2px * 1) }");
   Alcotest.(check string)
     "calc(1px - 1px) -> 0" ".x{width:0}"
     (normalize ".x { width: calc(1px - 1px) }");
