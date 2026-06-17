@@ -1049,6 +1049,145 @@ let race_extend_lists ~run ~strict stylesheet =
     let size s = Pp.size ~minify:true pp_stylesheet s in
     if size extended < size strict then extended else strict
 
+(* CSS Custom Properties: a rule whose declarations are all custom properties,
+   each declared nowhere else in the stylesheet, is position-independent - a
+   [var()] resolves at computed-value time, and a globally-unique custom
+   property cannot conflict with another declaration. Canonicalise such a rule's
+   position (hoist to the front of its context, sorted) so two stylesheets that
+   differ only by where the rule sits optimise to the same output. A custom
+   property declared more than once is left untouched: its declarations' order
+   is cascade-significant. *)
+let count_custom_prop_decls (stmts : statement list) : (string, int) Hashtbl.t =
+  let tbl = Hashtbl.create 16 in
+  let bump n =
+    Hashtbl.replace tbl n (1 + Option.value ~default:0 (Hashtbl.find_opt tbl n))
+  in
+  let count_decls decls =
+    List.iter
+      (fun d ->
+        match Variables.custom_declaration_name d with
+        | Some n -> bump n
+        | None -> ())
+      decls
+  in
+  let rec walk (stmt : statement) =
+    match stmt with
+    | Rule r ->
+        count_decls r.declarations;
+        List.iter walk r.nested
+    | Declarations decls -> count_decls decls
+    | _ -> iter_statement_block walk stmt
+  in
+  List.iter walk stmts;
+  tbl
+
+let is_independent_custom_prop_rule counts (stmt : statement) : bool =
+  match stmt with
+  | Rule r when r.nested = [] && r.declarations <> [] ->
+      List.for_all
+        (fun d ->
+          match Variables.custom_declaration_name d with
+          | Some n -> Hashtbl.find_opt counts n = Some 1
+          | None -> false)
+        r.declarations
+  | _ -> false
+
+(* Anchors that bound a hoist segment: order-significant prelude rules
+   ([@charset] / [@import] / a bare [@layer] order declaration must precede
+   style rules) and [@property] registrations (kept before their uses so the
+   reorder stays minimal). Independent custom-prop rules move only within an
+   anchor-bounded segment, never across an anchor. *)
+let is_hoist_anchor (stmt : statement) : bool =
+  match stmt with
+  | Charset _ | Import _ | Property _ -> true
+  | Layer (_, []) -> true
+  | _ -> false
+
+let rec phys_equal_list a b =
+  match (a, b) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> x == y && phys_equal_list xs ys
+  | _ -> false
+
+let custom_prop_sort_key stmt =
+  Pp.to_string ~minify:true (fun ctx s -> pp_stylesheet ctx [ s ]) stmt
+
+let hoist_custom_prop_segment counts seg =
+  let hoistable, rest =
+    List.partition (is_independent_custom_prop_rule counts) seg
+  in
+  match hoistable with
+  | [] -> seg
+  | _ ->
+      let hoistable =
+        List.stable_sort
+          (fun a b ->
+            String.compare (custom_prop_sort_key a) (custom_prop_sort_key b))
+          hoistable
+      in
+      let result = hoistable @ rest in
+      if phys_equal_list result seg then seg else result
+
+(* Split a level into anchor-bounded segments and hoist within each. *)
+let rec segment_hoist counts = function
+  | [] -> []
+  | stmt :: rest when is_hoist_anchor stmt -> stmt :: segment_hoist counts rest
+  | stmts ->
+      let rec span acc = function
+        | s :: tl when not (is_hoist_anchor s) -> span (s :: acc) tl
+        | tl -> (List.rev acc, tl)
+      in
+      let seg, after = span [] stmts in
+      hoist_custom_prop_segment counts seg @ segment_hoist counts after
+
+let rec recurse_custom_prop_blocks counts (stmt : statement) : statement =
+  let go b = canonicalize_custom_prop_blocks counts b in
+  match stmt with
+  | Rule r ->
+      let nested = go r.nested in
+      if nested == r.nested then stmt else Rule { r with nested }
+  | Layer (n, b) ->
+      let b' = go b in
+      if b' == b then stmt else Layer (n, b')
+  | Media (m, b) ->
+      let b' = go b in
+      if b' == b then stmt else Media (m, b')
+  | Container (n, c, b) ->
+      let b' = go b in
+      if b' == b then stmt else Container (n, c, b')
+  | Supports (s, b) ->
+      let b' = go b in
+      if b' == b then stmt else Supports (s, b')
+  | Moz_document (c, b) ->
+      let b' = go b in
+      if b' == b then stmt else Moz_document (c, b')
+  | When (c, b) ->
+      let b' = go b in
+      if b' == b then stmt else When (c, b')
+  | Else (c, b) ->
+      let b' = go b in
+      if b' == b then stmt else Else (c, b')
+  | Starting_style b ->
+      let b' = go b in
+      if b' == b then stmt else Starting_style b'
+  | Origin (o, b) ->
+      let b' = go b in
+      if b' == b then stmt else Origin (o, b')
+  | Scope (s, e, b) ->
+      let b' = go b in
+      if b' == b then stmt else Scope (s, e, b')
+  | other -> other
+
+and canonicalize_custom_prop_blocks counts (stmts : statement list) :
+    statement list =
+  let recursed = list_map_preserve (recurse_custom_prop_blocks counts) stmts in
+  let hoisted = segment_hoist counts recursed in
+  if phys_equal_list hoisted recursed then recursed else hoisted
+
+let canonicalize_custom_prop_position (stmts : statement list) : statement list
+    =
+  canonicalize_custom_prop_blocks (count_custom_prop_decls stmts) stmts
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) (stylesheet : t) : t =
   Selector_summary.clear_memo ();
@@ -1067,4 +1206,4 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet
   in
   let strict = run ~extend_lists:false in
-  race_extend_lists ~run ~strict stylesheet
+  race_extend_lists ~run ~strict stylesheet |> canonicalize_custom_prop_position
