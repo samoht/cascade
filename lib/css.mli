@@ -3774,6 +3774,7 @@ type grid_template = Properties.grid_template =
   | Vmin of float
   | Vmax of float
   | Zero
+  | Length of length
   | Fr of float
   | Auto
   | Min_content

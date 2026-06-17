@@ -744,6 +744,10 @@ type grid_template =
   | Vmin of float
   | Vmax of float
   | Zero
+  | Length of length
+      (** A track sized by a general [<length-percentage>] that the unit-
+          specific cases above do not carry: a [calc()], a [var()] inside a
+          [calc()], or a less common unit (e.g. [cm], [ch]). *)
   | Fr of float
   | Auto
   | Min_content
