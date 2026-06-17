@@ -649,17 +649,35 @@ let optimize_one css =
   | Error _ -> None
 
 (* (property, operand, type-matched zero) triples driving the calc-identity
-   invariants below: [width] / [padding] reach the per-type length /
-   length-percentage evaluators, [opacity] the generic number one. *)
+   invariants below. Spans every value type whose [calc()] folds through the
+   optimize pass now that the printer is a pure serialiser: lengths / percentages
+   ([width], [padding]), the generic number ([opacity]), and the own-typed
+   [line-height] / [<time>] / [font-size] / [vertical-align] / [border-width] /
+   [number-percentage] folds. *)
+(* The third field is the additive identity element when the type folds [x + 0]
+   in the optimize pass: lengths / percentages collapse a typed [0px], numbers a
+   unitless [0]. Own-typed lengths reached only through the generic [eval_calc]
+   ([font-size], [border-width], [<time>]) fold the multiplicative identity but
+   not a typed-zero addition, and a unitless [0] is invalid there, so they carry
+   [None]. *)
 let calc_identity_targets =
   [
-    ("width", "12px", "0px");
-    ("width", "var(--a)", "0px");
-    ("width", "50%", "0px");
-    ("padding", "var(--a)", "0px");
-    ("padding", ".5rem", "0px");
-    ("opacity", "var(--a)", "0");
-    ("opacity", ".5", "0");
+    ("width", "12px", Some "0px");
+    ("width", "var(--a)", Some "0px");
+    ("width", "50%", Some "0px");
+    ("padding", "var(--a)", Some "0px");
+    ("padding", ".5rem", Some "0px");
+    ("opacity", "var(--a)", Some "0");
+    ("opacity", ".5", Some "0");
+    ("line-height", "var(--a)", Some "0");
+    ("transition-duration", "var(--a)", None);
+    ("animation-delay", "var(--a)", None);
+    ("font-size", "16px", None);
+    ("font-size", "var(--a)", None);
+    ("vertical-align", "var(--a)", None);
+    ("border-top-width", "var(--a)", None);
+    ("scale", "var(--a)", Some "0");
+    ("flex-grow", "var(--a)", Some "0");
   ]
 
 (* CSS Values 4 §10.7 identity law: wrapping a value in a value-independent
@@ -670,11 +688,28 @@ let calc_identity_targets =
    evaluator the optimize pass reaches, so the generic and per-type folds cannot
    drift. *)
 let test_calc_identity_law buf =
-  let prop, operand, zero = pick calc_identity_targets buf 0 in
+  let prop, operand, add_zero = pick calc_identity_targets buf 0 in
   let decl v = ".x{" ^ prop ^ ":" ^ v ^ "}" in
   match optimize_one (decl ("calc(" ^ operand ^ ")")) with
   | None -> ()
   | Some bare ->
+      let multiplicative =
+        [
+          "calc(" ^ operand ^ " * 1)";
+          "calc(1 * " ^ operand ^ ")";
+          "calc(" ^ operand ^ " / 1)";
+        ]
+      in
+      let additive =
+        match add_zero with
+        | None -> []
+        | Some z ->
+            [
+              "calc(" ^ operand ^ " + " ^ z ^ ")";
+              "calc(" ^ z ^ " + " ^ operand ^ ")";
+              "calc(" ^ operand ^ " - " ^ z ^ ")";
+            ]
+      in
       List.iter
         (fun w ->
           match optimize_one (decl w) with
@@ -682,20 +717,13 @@ let test_calc_identity_law buf =
           | Some got ->
               if got <> bare then
                 failf "calc identity law broken: %S -> %S (bare %S)" w got bare)
-        [
-          "calc(" ^ operand ^ " * 1)";
-          "calc(1 * " ^ operand ^ ")";
-          "calc(" ^ operand ^ " / 1)";
-          "calc(" ^ operand ^ " + " ^ zero ^ ")";
-          "calc(" ^ zero ^ " + " ^ operand ^ ")";
-          "calc(" ^ operand ^ " - " ^ zero ^ ")";
-        ]
+        (multiplicative @ additive)
 
 (* The identity and constant folds both converge, so a second optimize pass over
    a calc is a no-op. *)
 let test_calc_optimize_idempotent buf =
-  let prop, operand, zero = pick calc_identity_targets buf 0 in
-  let css = ".x{" ^ prop ^ ":calc(" ^ operand ^ " * 1 + " ^ zero ^ ")}" in
+  let prop, operand, _ = pick calc_identity_targets buf 0 in
+  let css = ".x{" ^ prop ^ ":calc(" ^ operand ^ " * 1)}" in
   match optimize_one css with
   | None -> ()
   | Some once -> (

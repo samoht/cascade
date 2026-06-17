@@ -213,6 +213,16 @@ val normalize_number : number -> number
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. *)
 
+val normalize_percentage : percentage -> percentage
+(** [normalize_percentage p] folds the value-independent parts of a
+    [<percentage>] [calc()] ([calc(1 / 2 * 100%)] becomes [calc(.5*100%)]),
+    keeping any [var()]. *)
+
+val normalize_duration : duration -> duration
+(** [normalize_duration d] folds the value-independent parts of a [<time>]
+    [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
+    [var()]. *)
+
 val normalize_color : ?lossless:bool -> in_feature_query:bool -> color -> color
 (** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
     shortest spelling: a static colour in any space folds through sRGB to
