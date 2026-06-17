@@ -1008,6 +1008,47 @@ let var_names_in_theme_value value =
   done;
   !names
 
+(* The AST var collector records the names a custom property *defines*, but not
+   the [var()] references nested inside its opaque value token stream. So a
+   target referenced only from a kept custom property (e.g. an emitted
+   [--shadow: ... var(--spacing) ...]) is never a resolution root. Scan the
+   serialized value of every custom-property declaration so those references
+   pull their targets into the inject set too. *)
+let var_refs_in_custom_values stylesheet =
+  let acc = ref [] in
+  let scan_decls decls =
+    List.iter
+      (fun decl ->
+        List.iter
+          (fun n -> acc := n :: !acc)
+          (var_names_in_theme_value (declaration_value decl)))
+      (Variables.custom_declarations decls)
+  in
+  let rec walk = function
+    | [] -> ()
+    | stmt :: rest ->
+        (match stmt with
+        | Stylesheet.Rule r ->
+            scan_decls r.declarations;
+            walk r.nested
+        | Declarations decls -> scan_decls decls
+        | Media (_, b)
+        | Supports (_, b)
+        | Container (_, _, b)
+        | Layer (_, b)
+        | Origin (_, b)
+        | Scope (_, _, b)
+        | Starting_style b
+        | Moz_document (_, b)
+        | When (_, b)
+        | Else (_, b) ->
+            walk b
+        | _ -> ());
+        walk rest
+  in
+  walk stylesheet;
+  !acc
+
 let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
   let resolved : (string, string) Hashtbl.t = Hashtbl.create 16 in
   let cyclic = ref [] in
@@ -1036,7 +1077,9 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
                 Hashtbl.replace resolved raw_name value)
   in
   (match theme with
-  | Option.Some _ -> List.iter dfs (collect_var_names stylesheet)
+  | Option.Some _ ->
+      List.iter dfs (collect_var_names stylesheet);
+      List.iter dfs (var_refs_in_custom_values stylesheet)
   | Option.None -> ());
   Hashtbl.fold (fun k v acc -> (k, v) :: acc) resolved []
 
@@ -1089,10 +1132,14 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
       collect_var_names stylesheet
       |> List.filter (fun n -> not (List.mem n resolved_names))
     in
+    (* A var referenced only inside a kept custom property's opaque value cannot
+       be inlined there, so its injected definition must survive: keep those
+       names live too (the resolved ones are emitted into [:root] above). *)
+    let keep_extra = unresolved_keep @ var_refs_in_custom_values stylesheet in
     let keep_vars =
       List.fold_left
         (fun acc n -> if List.mem n acc then acc else n :: acc)
-        keep_vars unresolved_keep
+        keep_vars keep_extra
     in
     let source = theme_defaults_source defaults in
     match of_string ~strict:false source with
