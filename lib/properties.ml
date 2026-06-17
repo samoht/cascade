@@ -9,6 +9,7 @@ let err_invalid_value ?got t prop_name value =
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
   let n, repr, unit = Cursor.number_repr_with_unit t in
+  let n, repr = normalize_signed_zero n repr in
   if n < 0. then Cursor.err_invalid t "line-height cannot be negative"
   else
     let authored () : line_height = Number { value = n; unit; repr } in

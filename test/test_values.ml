@@ -133,6 +133,14 @@ let test_length () =
   check_length ~expected:".5rem" "0.5rem";
   check_length "-.5rem";
 
+  (* CSS Values 4 sec. 6.1: a signed zero is the same value as unsigned zero, so
+     any zero collapses to the canonical 0 (the unit is kept). *)
+  check_length ~expected:"0px" "-0px";
+  check_length ~expected:"0px" "+0px";
+  check_length ~expected:"0px" "0.0px";
+  check_length ~expected:"0px" "-0.0px";
+  check_length ~expected:"0" "-0";
+
   (* Test var in length context *)
   check_length ~expected:"var(--spacing,10px)" "var(--spacing, 10px)";
 

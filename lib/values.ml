@@ -4718,8 +4718,17 @@ let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
  fun read_value t ->
   Cursor.call "env" t (fun inner -> read_body read_value inner)
 
+(* CSS Values 4 sec. 6.1: a signed zero is the same value as unsigned zero.
+   Collapse any zero to the canonical [0]: normalise [-0.] to [0.] (so the AST
+   never carries a negative-zero float, which breaks structural equality) and
+   regenerate the repr from that value rather than echo the authored sign, so
+   [-0px] / [+0px] serialise as [0px]. *)
+let normalize_signed_zero n repr =
+  if n = 0.0 then (0.0, Pp.string_of_float 0.0) else (n, repr)
+
 let read_length_unit ?(allow_negative = true) t =
   let n, repr, unit_raw = Cursor.number_repr_with_unit t in
+  let n, repr = normalize_signed_zero n repr in
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   let authored unit =

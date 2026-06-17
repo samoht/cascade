@@ -340,6 +340,12 @@ end
 
 (** {1 Parsing Functions} *)
 
+val normalize_signed_zero : float -> string -> float * string
+(** [normalize_signed_zero n repr] collapses any zero to the canonical [0]: when
+    [n] is zero it returns [(0., "0")], dropping a signed or over-precise
+    authored spelling so [-0px] / [+0px] / [0.0px] all read (and serialise) with
+    a [0] repr. Other values pass through unchanged. *)
+
 val read_length :
   ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length
 (** [read_length t] parses a CSS length. *)
