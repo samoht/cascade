@@ -640,15 +640,21 @@ let atom_of_string s =
 let rec unnamed_query_not s stripped =
   if String.length stripped >= 4 && String.sub stripped 0 4 = "not " then
     (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly one
-       [<query-in-parens>], so [not not (x)] is a parse error. The inner
-       expression must be wrapped in parens (a feature query, a
-       style()/scroll-state() function, or a parenthesised compound
-       condition). *)
+       [<query-in-parens>], so [not not (x)] is a parse error. The operand is a
+       parenthesised compound condition or a [style()] / [scroll-state()]
+       function; the latter carry their own parentheses, so they need no extra
+       wrapping ([not style(--a)] is valid, not just [not (style(--a))]). *)
     let inner =
       String.trim (String.sub stripped 4 (String.length stripped - 4))
     in
-    if String.length inner = 0 || inner.[0] <> '(' then
-      failwith "container query: 'not' requires a parenthesised operand"
+    let is_function_operand =
+      match classify_query_surface inner with
+      | Style_func _ | Scroll_state_func _ -> true
+      | Parenthesized_feature | Other_query -> false
+      | exception Failure _ -> false
+    in
+    if String.length inner = 0 || (inner.[0] <> '(' && not is_function_operand)
+    then failwith "container query: 'not' requires a query-in-parens operand"
     else Not (unnamed_of_string inner)
   else atom_of_string s
 
