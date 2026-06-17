@@ -34,6 +34,14 @@ let test_string_output () =
   Alcotest.(check string)
     "named style query raw" "card style(--variant: featured)"
     (to_string (Named ("card", of_string "style(--variant: featured)")));
+  (* CSS Conditional Rules 5 §4: [not] takes one query-in-parens, and a
+     [style()] function is one, so [not style(--a)] needs no extra wrapping. *)
+  Alcotest.(check string)
+    "negated style query" "not style(--a)"
+    (to_string ~minify:true (of_string "not style(--a)"));
+  Alcotest.(check string)
+    "named negated style query" "card not style(--variant)"
+    (to_string ~minify:true (Named ("card", of_string "not style(--variant)")));
   Alcotest.(check string)
     "chained range query raw" "(30em <= inline-size < 60em)"
     (to_string (of_string "(30em <= inline-size < 60em)"));
