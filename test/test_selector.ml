@@ -699,6 +699,24 @@ let parse_errors_pseudo () =
   check_parse_error ".test:not()" "expected at least one selector";
   check_parse_error ".test:has()" "expected at least one selector"
 
+let parse_errors_nesting_depth () =
+  (* A pathologically deep functional-pseudo-class nest is capped rather than
+     driving the per-level selector validation into super-linear time (a
+     parse-time DoS on untrusted CSS). [:not] is non-forgiving, so the cap
+     surfaces as a [Parse_error]; a nest within the cap still parses. *)
+  let nested fn n =
+    let rep s = String.concat "" (List.init n (fun _ -> s)) in
+    ".x" ^ rep (fn ^ "(") ^ "a" ^ rep ")"
+  in
+  check_parse_error (nested ":not" 200) "nesting too deep";
+  List.iter
+    (fun s ->
+      match Cursor.option read (Cursor.of_string s) with
+      | Some _ -> ()
+      | None ->
+          Alcotest.failf "selector within the nesting cap should parse: %s" s)
+    [ nested ":not" 8; nested ":is" 8 ]
+
 let parse_errors_empty_list () =
   check_parse_error ", ," "expected at least one selector";
   check_parse_error ", h1, h2" "expected at least one selector";
@@ -1750,6 +1768,7 @@ let suite =
       test_case "parse errors - combinators" `Quick parse_errors_combinators;
       test_case "parse errors - starts" `Quick parse_errors_starts;
       test_case "parse errors - pseudo" `Quick parse_errors_pseudo;
+      test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
       test_case "callstack accuracy" `Quick callstack_accuracy;
