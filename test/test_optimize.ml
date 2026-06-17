@@ -2389,6 +2389,36 @@ let c61_no_named_atrule_merge () =
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
 
+let canonicalize_independent_custom_prop_position () =
+  let opt css =
+    Css.Stylesheet.read (Cursor.of_string css)
+    |> Css.Optimize.stylesheet
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  (* A custom property declared once is position-independent (var() resolves at
+     computed-value time), so both orderings canonicalise to the same output. *)
+  Alcotest.(check string)
+    "independent :root position is canonicalized"
+    (opt ":root{--spacing:.25rem}.a{width:var(--spacing)}")
+    (opt ".a{width:var(--spacing)}:root{--spacing:.25rem}");
+  Alcotest.(check string)
+    "the canonical form hoists the independent :root"
+    ":root{--spacing:.25rem}.a{width:var(--spacing)}"
+    (opt ".a{width:var(--spacing)}:root{--spacing:.25rem}");
+  (* A custom property declared twice is order-significant: the two orderings
+     have different effective values, so they must not collapse together. *)
+  Alcotest.(check bool)
+    "conflicting redefinitions stay order-significant" false
+    (String.equal
+       (opt ":root{--spacing:1rem}.a{width:1px}:root{--spacing:2rem}")
+       (opt ":root{--spacing:2rem}.a{width:1px}:root{--spacing:1rem}"));
+  (* @property is an anchor: a use is not hoisted before its registration. *)
+  Alcotest.(check string)
+    "custom-property use stays after its @property"
+    "@property --x{syntax:\"*\";inherits:false}.y{--x:1}"
+    (opt "@property --x{syntax:\"*\";inherits:false}.y{--x:1}")
+
 let calc_flatten_registered_single_valued () =
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
@@ -3906,6 +3936,9 @@ let selector_merging_tests =
     ( "calc flatten gated on single-valued @property registration",
       `Quick,
       calc_flatten_registered_single_valued );
+    ( "canonicalize independent custom-property rule position",
+      `Quick,
+      canonicalize_independent_custom_prop_position );
     ( "spec cascade 6.1 nesting synthesis preserves source order",
       `Quick,
       c61_nesting_synthesis_source_order );
