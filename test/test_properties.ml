@@ -3093,6 +3093,17 @@ let test_grid_template () =
   check_grid_template "1fr 2fr";
   check_grid_template "auto auto";
   check_grid_template "inherit";
+  (* CSS Grid 2 sec. 7.2: a track is any <length-percentage>, so a calc(), a
+     var() inside a calc(), or a less common unit is a valid track, carried by
+     the [Length] track. *)
+  check_grid_template ~roundtrip:true ~expected:"calc(var(--spacing)*4)"
+    "calc(var(--spacing) * 4)";
+  check_grid_template ~roundtrip:true ~expected:"calc(var(--x)*2)1fr"
+    "calc(var(--x) * 2) 1fr";
+  check_grid_template "calc(100px + 1rem)";
+  check_grid_template "10cm";
+  check_grid_template ~expected:"minmax(calc(var(--x)*2),1fr)"
+    "minmax(calc(var(--x) * 2), 1fr)";
   neg_cursor read_grid_template "invalid-template"
 
 let test_grid_template_areas () =

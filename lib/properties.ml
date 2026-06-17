@@ -10023,6 +10023,7 @@ let rec pp_grid_template : grid_template Pp.t =
   | Vmin f -> Pp.unit ctx f "vmin"
   | Vmax f -> Pp.unit ctx f "vmax"
   | Zero -> Pp.char ctx '0'
+  | Length l -> pp_length ctx l
   (* CSS Grid 2 sec. 7.2: [<flex>] is [<number>fr]; the unit-drop rule is for
      [<length>] only. [0fr] is a zero flex factor, distinct from a [0]
      [<length>] in [grid-template]'s union grammar. *)
@@ -12337,7 +12338,11 @@ let read_grid_area t : grid_area =
 
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
-    match read_length t with
+    (* [~with_keywords:false]: track keywords (auto / min-content / ...) are a
+       separate [one_of] alternative, so this reader handles only real lengths -
+       the unit-specific cases below, plus a general [Length] carrier for a
+       [calc()], a [var()] in a [calc()], or a less common unit. *)
+    match read_length ~with_keywords:false t with
     | Px n -> (Px n : grid_template)
     | Rem n -> Rem n
     | Em n -> Em n
@@ -12347,7 +12352,7 @@ module Grid_template = struct
     | Vmax n -> Vmax n
     | Pct n -> Pct n
     | Zero -> Zero
-    | _ -> Cursor.err_expected t "<length-percentage>"
+    | other -> Length other
 
   let read_fr t : grid_template =
     (* [1fr] lexes as a single [Dimension] with unit "fr". *)
