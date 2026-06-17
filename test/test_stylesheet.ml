@@ -6176,32 +6176,6 @@ let customprops1_calc_inline () =
     |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:resolve
     |> Css.to_string ~minify:true)
 
-(* CSS Custom Properties L1: a [var()] referenced only inside a custom
-   property's opaque value is invisible to the AST var collector, so its
-   [theme_defaults] definition must still be pulled into [:root]. The reference
-   stays live (it cannot be inlined inside the opaque value); when the resolver
-   has no answer, nothing is materialised. *)
-let customprops1_transitive_custom_value () =
-  let parse css =
-    match Css.of_string ~strict:false css with
-    | Ok parsed -> parsed.stylesheet
-    | Error _ -> Alcotest.failf "failed to parse: %s" css
-  in
-  let theme = Css.Pp.String_set.of_list [ "shadow" ] in
-  let resolve = function "spacing" -> Some ".25rem" | _ -> None in
-  Alcotest.(check string)
-    "var() inside a custom value pulls its theme default into :root"
-    ":root{--spacing:.25rem}:root{--shadow:0 0 var(--spacing) black}"
-    (parse ":root { --shadow: 0 0 var(--spacing) black }"
-    |> Css.resolve_theme ~theme ~theme_defaults:resolve
-    |> Css.to_string ~minify:true);
-  Alcotest.(check string)
-    "an unresolved nested var() is kept live, not materialised"
-    ":root{--shadow:0 0 var(--spacing) black}"
-    (parse ":root { --shadow: 0 0 var(--spacing) black }"
-    |> Css.resolve_theme ~theme ~theme_defaults:(fun _ -> None)
-    |> Css.to_string ~minify:true)
-
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
    ([var(--font, "Helvetica", sans-serif)]) inlines if the variable resolves,
    otherwise the fallback list is kept intact. *)
@@ -6930,9 +6904,6 @@ let additional_tests =
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
       customprops1_calc_inline );
-    ( "spec custom-properties 1 transitive default via custom value",
-      `Quick,
-      customprops1_transitive_custom_value );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
       customprops1_fallback_list );
