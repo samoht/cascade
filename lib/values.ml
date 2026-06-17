@@ -902,7 +902,6 @@ let rec eval_calc : type a. a calc -> a calc = function
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
-  let calc = if Pp.minified ctx then eval_calc calc else calc in
   match calc with
   (* CSS Values 4 §10.10: a [var()] inside [calc()] is a runtime substitution
      boundary - the substituted tokens go through calc's typed grammar, not the
@@ -3730,6 +3729,27 @@ let rec normalize_number (n : number) : number =
   | Sign v -> Sign (normalize_number v)
   | Sin _ | Num _ | Var _ -> n
 
+(* Fold the value-independent parts of a [<percentage>] [calc()] ([calc(1 / 2 *
+   100%)] -> [calc(.5*100%)]), keeping any [var()]. Replaces the numeric /
+   identity reduction the printer did under minify, now that pp is a pure
+   serialiser. *)
+let normalize_percentage (p : percentage) : percentage =
+  match p with
+  | Calc c -> (
+      match eval_calc c with
+      | Num f -> Num f
+      | Val v -> v
+      | folded -> Calc folded)
+  | Pct _ | Num _ | Var _ -> p
+
+(* Fold the value-independent parts of a [<time>] [calc()] ([calc(var(--d) * 1)]
+   -> [calc(var(--d))]), keeping any [var()]. A bare-number reduction stays
+   wrapped (a [<number>] is not a [<time>]). *)
+let normalize_duration (d : duration) : duration =
+  match d with
+  | Calc c -> ( match eval_calc c with Val v -> v | folded -> Calc folded)
+  | _ -> d
+
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
    losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
@@ -3815,9 +3835,15 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
    faithfully. [Var] and [Calc] sub-forms are left untouched - inside a calc(),
    [%] and number are not interchangeable, and a [var()] reference is
    context-free. *)
-let normalize_number_percentage (np : number_percentage) : number_percentage =
+let rec normalize_number_percentage (np : number_percentage) : number_percentage
+    =
   let len f = String.length (Pp.string_of_float ~drop_leading_zero:true f) in
   match np with
+  | Calc c -> (
+      match eval_calc c with
+      | Num f -> normalize_number_percentage (Num f)
+      | Val v -> normalize_number_percentage v
+      | folded -> Calc folded)
   | Pct f ->
       let num_f = f /. 100. in
       (* num spelling vs pct spelling (one extra '%' character); Num wins on tie
@@ -5188,8 +5214,15 @@ and read_calc_non_paren_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       read_sibling_count_factor;
       read_calc_zero;
       read_calc_numeric_function;
-      (fun t -> Val (read_a t));
+      (* A plain unitless [<number>] in a calc is the [<number>] type, not the
+         surrounding property's value, so read it as a [Num] leaf before the
+         typed reader. Otherwise a property that accepts a bare number (e.g.
+         line-height, opacity) reads it as a [Val], which the multiplication
+         dimension check then mistakes for a dimension and rejects [2 * 3]. A
+         dimension ([2px]) or percentage token is not a [Number_tok], so it
+         still falls through to the typed [Val] reader. *)
       (fun t -> (Num (Cursor.number t) : a calc));
+      (fun t -> Val (read_a t));
       read_math_constant_factor;
     ]
     t

@@ -20715,7 +20715,43 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
 let normalize_font_size (fs : font_size) : font_size =
   match fs with
   | Length l -> preserve_if_equal fs (Length (Values.normalize_length l))
+  | Calc c -> (
+      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
   | _ -> fs
+
+(* Fold the value-independent parts of these own-typed [calc()]s ([calc(var(--x)
+   * 1)] -> [calc(var(--x))], [calc(10 / 2)] -> [5]), keeping any [var()]. The
+   printer is a pure serialiser, so these AST-level folds replace the numeric /
+   identity reduction the printer did under minify. *)
+let normalize_opacity (o : opacity) : opacity =
+  match o with
+  | Calc c -> (
+      match Values.eval_calc c with
+      | Values.Num f -> Opacity_number f
+      | Values.Val v -> v
+      | folded -> Calc folded)
+  | _ -> o
+
+let normalize_line_height (lh : line_height) : line_height =
+  match lh with
+  | Calc c -> (
+      match Values.eval_calc c with
+      | Values.Num f -> Num f
+      | Values.Val v -> v
+      | folded -> Calc folded)
+  | _ -> lh
+
+let normalize_vertical_align (va : vertical_align) : vertical_align =
+  match va with
+  | Calc c -> (
+      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+  | _ -> va
+
+let normalize_border_width (bw : border_width) : border_width =
+  match bw with
+  | Calc c -> (
+      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+  | _ -> bw
 
 let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
  fun ?(lossless = false) property value ->
@@ -20912,6 +20948,29 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
           if components' == components then value
           else Custom_value { r with value = Tokens components' }
       | Custom_value _ -> value)
+  | Opacity -> normalize_opacity value
+  | Line_height -> normalize_line_height value
+  | Vertical_align -> normalize_vertical_align value
+  | Border_top_width -> normalize_border_width value
+  | Border_right_width -> normalize_border_width value
+  | Border_bottom_width -> normalize_border_width value
+  | Border_left_width -> normalize_border_width value
+  | Border_inline_start_width -> normalize_border_width value
+  | Border_inline_end_width -> normalize_border_width value
+  | Border_block_start_width -> normalize_border_width value
+  | Border_block_end_width -> normalize_border_width value
+  | Transition_duration -> Values.normalize_duration value
+  | Transition_delay -> Values.normalize_duration value
+  | Animation_duration -> Values.normalize_duration value
+  | Animation_delay -> Values.normalize_duration value
+  | Webkit_transition_duration -> Values.normalize_duration value
+  | Webkit_transition_delay -> Values.normalize_duration value
+  | Webkit_animation_duration -> Values.normalize_duration value
+  | Webkit_animation_delay -> Values.normalize_duration value
+  | Moz_transition_duration -> Values.normalize_duration value
+  | Moz_transition_delay -> Values.normalize_duration value
+  | Moz_animation_duration -> Values.normalize_duration value
+  | Moz_animation_delay -> Values.normalize_duration value
   | _ -> value
 
 let normalize_custom_property_value ?(lossless = false) :
@@ -20926,7 +20985,8 @@ let normalize_custom_property_value ?(lossless = false) :
         }
   | Typed { kind = Number; value } ->
       Typed { kind = Number; value = Values.normalize_number value }
-  | Typed { kind = Percentage; value } -> Typed { kind = Percentage; value }
+  | Typed { kind = Percentage; value } ->
+      Typed { kind = Percentage; value = Values.normalize_percentage value }
   | Typed { kind = Length_percentage; value } ->
       Typed
         {
