@@ -6197,6 +6197,17 @@ let customprops1_transitive_merge () =
     "transitive theme var merges into the same :root,:host block"
     ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
     (render ":root,:host{--shadow:0 0 var(--spacing) black}");
+  (* The referenced var being in the keep-set means its reference is kept live,
+     not that it is defined: a kept-but-undeclared var still gets its
+     default. *)
+  Alcotest.(check string)
+    "a kept-but-undeclared referenced var still gets its default"
+    ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
+    (parse ":root,:host{--shadow:0 0 var(--spacing) black}"
+    |> Css.resolve_theme
+         ~theme:(Css.Pp.String_set.of_list [ "shadow"; "spacing" ])
+         ~theme_defaults:spacing
+    |> Css.to_string ~minify:true);
   Alcotest.(check string)
     "an unrelated @supports polyfill default is not pulled in"
     "@supports(color:lab(0 0 \

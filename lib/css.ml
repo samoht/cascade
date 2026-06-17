@@ -1122,20 +1122,20 @@ and map_rule_statement f (stmt : Stylesheet.statement) : Stylesheet.statement =
    and merge the resulting declarations into the same rule that emits the kept
    theme var, so the dependency is defined in place. Only rules declaring a kept
    theme var are touched (so unrelated [@property] / polyfill defaults are never
-   pulled in), a var already declared anywhere is left alone (no duplicate or
-   cascade conflict), and a kept var is skipped (it is emitted elsewhere). *)
+   pulled in), and a var already declared anywhere is left alone (no duplicate
+   or cascade conflict) - a kept-but-undeclared var still gets its default. *)
 let emit_transitive_theme_refs ~keep_set ~theme_defaults stylesheet =
   match theme_defaults with
   | Option.None -> stylesheet
   | Option.Some lookup ->
       let declared = declared_custom_prop_names stylesheet in
+      (* [keep_set] means "keep this [var()] reference live", not "already
+         defined": a kept var can be undefined and rely on [theme_defaults], so
+         it is not a skip reason here. Skip only an actually-declared var (no
+         duplicate) or one already collected (cycle guard). *)
       let rec resolve acc name =
         let bare = bare_theme_name name in
-        if
-          List.mem_assoc name acc
-          || Pp.String_set.mem bare keep_set
-          || Hashtbl.mem declared bare
-        then acc
+        if List.mem_assoc name acc || Hashtbl.mem declared bare then acc
         else
           match lookup bare with
           | Option.None -> acc
