@@ -20754,8 +20754,9 @@ let normalize_border_width (bw : border_width) : border_width =
       match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
   | _ -> bw
 
-let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
- fun ?(lossless = false) property value ->
+let normalize_property_value : type a.
+    ?lossless:bool -> ?ctx:Values.calc_ctx -> a property -> a -> a =
+ fun ?(lossless = false) ?(ctx = Values.default_calc_ctx) property value ->
   let normalize_color =
     Values.normalize_color ~lossless ~in_feature_query:false
   in
@@ -20775,20 +20776,20 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Offset_path -> normalize_offset_path value
   | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
-  | Width -> Values.normalize_length_percentage value
-  | Height -> Values.normalize_length_percentage value
-  | Min_width -> Values.normalize_length_percentage value
-  | Min_height -> Values.normalize_length_percentage value
-  | Min_inline_size -> Values.normalize_length_percentage value
-  | Min_block_size -> Values.normalize_length_percentage value
-  | Max_width -> Values.normalize_length_percentage value
-  | Max_height -> Values.normalize_length_percentage value
-  | Inline_size -> Values.normalize_length_percentage value
-  | Max_inline_size -> Values.normalize_length_percentage value
-  | Block_size -> Values.normalize_length_percentage value
-  | Max_block_size -> Values.normalize_length_percentage value
-  | Shape_margin -> Values.normalize_length_percentage value
-  | Offset_distance -> Values.normalize_length_percentage value
+  | Width -> Values.normalize_length_percentage ~ctx value
+  | Height -> Values.normalize_length_percentage ~ctx value
+  | Min_width -> Values.normalize_length_percentage ~ctx value
+  | Min_height -> Values.normalize_length_percentage ~ctx value
+  | Min_inline_size -> Values.normalize_length_percentage ~ctx value
+  | Min_block_size -> Values.normalize_length_percentage ~ctx value
+  | Max_width -> Values.normalize_length_percentage ~ctx value
+  | Max_height -> Values.normalize_length_percentage ~ctx value
+  | Inline_size -> Values.normalize_length_percentage ~ctx value
+  | Max_inline_size -> Values.normalize_length_percentage ~ctx value
+  | Block_size -> Values.normalize_length_percentage ~ctx value
+  | Max_block_size -> Values.normalize_length_percentage ~ctx value
+  | Shape_margin -> Values.normalize_length_percentage ~ctx value
+  | Offset_distance -> Values.normalize_length_percentage ~ctx value
   | Border_radius -> normalize_border_radius value
   | Background_image ->
       map_preserve (normalize_background_image ~lossless) value
@@ -20864,80 +20865,80 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
-  | Padding_left -> Values.normalize_length value
-  | Padding_right -> Values.normalize_length value
-  | Padding_bottom -> Values.normalize_length value
-  | Padding_top -> Values.normalize_length value
-  | Padding_inline_start -> Values.normalize_length value
-  | Padding_inline_end -> Values.normalize_length value
-  | Padding_block_start -> Values.normalize_length value
-  | Padding_block_end -> Values.normalize_length value
-  | Margin_inline_end -> Values.normalize_length value
-  | Margin_inline_start -> Values.normalize_length value
-  | Margin_left -> Values.normalize_length value
-  | Margin_right -> Values.normalize_length value
-  | Margin_top -> Values.normalize_length value
-  | Margin_bottom -> Values.normalize_length value
-  | Margin_block_start -> Values.normalize_length value
-  | Margin_block_end -> Values.normalize_length value
-  | Column_gap -> Values.normalize_length value
-  | Row_gap -> Values.normalize_length value
-  | Text_underline_offset -> Values.normalize_length value
-  | Letter_spacing -> Values.normalize_length value
-  | Border_top_left_radius -> Values.normalize_length value
-  | Border_top_right_radius -> Values.normalize_length value
-  | Border_bottom_left_radius -> Values.normalize_length value
-  | Border_bottom_right_radius -> Values.normalize_length value
-  | Border_start_start_radius -> Values.normalize_length value
-  | Border_start_end_radius -> Values.normalize_length value
-  | Border_end_start_radius -> Values.normalize_length value
-  | Border_end_end_radius -> Values.normalize_length value
-  | Outline_width -> Values.normalize_length value
-  | Outline_offset -> Values.normalize_length value
-  | Line_height_step -> Values.normalize_length value
-  | Perspective -> Values.normalize_length value
-  | Word_spacing -> Values.normalize_length value
-  | Text_decoration_thickness -> Values.normalize_length value
-  | Stroke_width -> Values.normalize_length value
-  | Scroll_margin_top -> Values.normalize_length value
-  | Scroll_margin_right -> Values.normalize_length value
-  | Scroll_margin_bottom -> Values.normalize_length value
-  | Scroll_margin_left -> Values.normalize_length value
-  | Scroll_margin_inline_start -> Values.normalize_length value
-  | Scroll_margin_inline_end -> Values.normalize_length value
-  | Scroll_margin_block_start -> Values.normalize_length value
-  | Scroll_margin_block_end -> Values.normalize_length value
-  | Scroll_padding_top -> Values.normalize_length value
-  | Scroll_padding_right -> Values.normalize_length value
-  | Scroll_padding_bottom -> Values.normalize_length value
-  | Scroll_padding_left -> Values.normalize_length value
-  | Scroll_padding_inline_start -> Values.normalize_length value
-  | Scroll_padding_inline_end -> Values.normalize_length value
-  | Scroll_padding_block_start -> Values.normalize_length value
-  | Scroll_padding_block_end -> Values.normalize_length value
-  | Padding -> map_preserve Values.normalize_length value
-  | Padding_inline -> map_preserve Values.normalize_length value
-  | Padding_block -> map_preserve Values.normalize_length value
-  | Margin -> map_preserve Values.normalize_length value
-  | Margin_inline -> map_preserve Values.normalize_length value
-  | Margin_block -> map_preserve Values.normalize_length value
-  | Inset -> map_preserve Values.normalize_length value
-  | Inset_inline -> map_preserve Values.normalize_length value
-  | Inset_inline_start -> map_preserve Values.normalize_length value
-  | Inset_inline_end -> map_preserve Values.normalize_length value
-  | Inset_block -> map_preserve Values.normalize_length value
-  | Inset_block_start -> map_preserve Values.normalize_length value
-  | Inset_block_end -> map_preserve Values.normalize_length value
-  | Top -> map_preserve Values.normalize_length value
-  | Right -> map_preserve Values.normalize_length value
-  | Bottom -> map_preserve Values.normalize_length value
-  | Left -> map_preserve Values.normalize_length value
-  | Scroll_margin -> map_preserve Values.normalize_length value
-  | Scroll_margin_inline -> map_preserve Values.normalize_length value
-  | Scroll_margin_block -> map_preserve Values.normalize_length value
-  | Scroll_padding -> map_preserve Values.normalize_length value
-  | Scroll_padding_inline -> map_preserve Values.normalize_length value
-  | Scroll_padding_block -> map_preserve Values.normalize_length value
+  | Padding_left -> Values.normalize_length ~ctx value
+  | Padding_right -> Values.normalize_length ~ctx value
+  | Padding_bottom -> Values.normalize_length ~ctx value
+  | Padding_top -> Values.normalize_length ~ctx value
+  | Padding_inline_start -> Values.normalize_length ~ctx value
+  | Padding_inline_end -> Values.normalize_length ~ctx value
+  | Padding_block_start -> Values.normalize_length ~ctx value
+  | Padding_block_end -> Values.normalize_length ~ctx value
+  | Margin_inline_end -> Values.normalize_length ~ctx value
+  | Margin_inline_start -> Values.normalize_length ~ctx value
+  | Margin_left -> Values.normalize_length ~ctx value
+  | Margin_right -> Values.normalize_length ~ctx value
+  | Margin_top -> Values.normalize_length ~ctx value
+  | Margin_bottom -> Values.normalize_length ~ctx value
+  | Margin_block_start -> Values.normalize_length ~ctx value
+  | Margin_block_end -> Values.normalize_length ~ctx value
+  | Column_gap -> Values.normalize_length ~ctx value
+  | Row_gap -> Values.normalize_length ~ctx value
+  | Text_underline_offset -> Values.normalize_length ~ctx value
+  | Letter_spacing -> Values.normalize_length ~ctx value
+  | Border_top_left_radius -> Values.normalize_length ~ctx value
+  | Border_top_right_radius -> Values.normalize_length ~ctx value
+  | Border_bottom_left_radius -> Values.normalize_length ~ctx value
+  | Border_bottom_right_radius -> Values.normalize_length ~ctx value
+  | Border_start_start_radius -> Values.normalize_length ~ctx value
+  | Border_start_end_radius -> Values.normalize_length ~ctx value
+  | Border_end_start_radius -> Values.normalize_length ~ctx value
+  | Border_end_end_radius -> Values.normalize_length ~ctx value
+  | Outline_width -> Values.normalize_length ~ctx value
+  | Outline_offset -> Values.normalize_length ~ctx value
+  | Line_height_step -> Values.normalize_length ~ctx value
+  | Perspective -> Values.normalize_length ~ctx value
+  | Word_spacing -> Values.normalize_length ~ctx value
+  | Text_decoration_thickness -> Values.normalize_length ~ctx value
+  | Stroke_width -> Values.normalize_length ~ctx value
+  | Scroll_margin_top -> Values.normalize_length ~ctx value
+  | Scroll_margin_right -> Values.normalize_length ~ctx value
+  | Scroll_margin_bottom -> Values.normalize_length ~ctx value
+  | Scroll_margin_left -> Values.normalize_length ~ctx value
+  | Scroll_margin_inline_start -> Values.normalize_length ~ctx value
+  | Scroll_margin_inline_end -> Values.normalize_length ~ctx value
+  | Scroll_margin_block_start -> Values.normalize_length ~ctx value
+  | Scroll_margin_block_end -> Values.normalize_length ~ctx value
+  | Scroll_padding_top -> Values.normalize_length ~ctx value
+  | Scroll_padding_right -> Values.normalize_length ~ctx value
+  | Scroll_padding_bottom -> Values.normalize_length ~ctx value
+  | Scroll_padding_left -> Values.normalize_length ~ctx value
+  | Scroll_padding_inline_start -> Values.normalize_length ~ctx value
+  | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
+  | Scroll_padding_block_start -> Values.normalize_length ~ctx value
+  | Scroll_padding_block_end -> Values.normalize_length ~ctx value
+  | Padding -> map_preserve (Values.normalize_length ~ctx) value
+  | Padding_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Padding_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Margin -> map_preserve (Values.normalize_length ~ctx) value
+  | Margin_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Margin_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_inline_start -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_inline_end -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_block_start -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_block_end -> map_preserve (Values.normalize_length ~ctx) value
+  | Top -> map_preserve (Values.normalize_length ~ctx) value
+  | Right -> map_preserve (Values.normalize_length ~ctx) value
+  | Bottom -> map_preserve (Values.normalize_length ~ctx) value
+  | Left -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_margin -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_margin_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_margin_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_padding -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_padding_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_padding_block -> map_preserve (Values.normalize_length ~ctx) value
   | Custom_property _ -> (
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->
@@ -20960,24 +20961,25 @@ let normalize_property_value : type a. ?lossless:bool -> a property -> a -> a =
   | Border_inline_end_width -> normalize_border_width value
   | Border_block_start_width -> normalize_border_width value
   | Border_block_end_width -> normalize_border_width value
-  | Transition_duration -> Values.normalize_duration value
-  | Transition_delay -> Values.normalize_duration value
-  | Animation_duration -> Values.normalize_duration value
-  | Animation_delay -> Values.normalize_duration value
-  | Webkit_transition_duration -> Values.normalize_duration value
-  | Webkit_transition_delay -> Values.normalize_duration value
-  | Webkit_animation_duration -> Values.normalize_duration value
-  | Webkit_animation_delay -> Values.normalize_duration value
-  | Moz_transition_duration -> Values.normalize_duration value
-  | Moz_transition_delay -> Values.normalize_duration value
-  | Moz_animation_duration -> Values.normalize_duration value
-  | Moz_animation_delay -> Values.normalize_duration value
+  | Transition_duration -> Values.normalize_duration ~ctx value
+  | Transition_delay -> Values.normalize_duration ~ctx value
+  | Animation_duration -> Values.normalize_duration ~ctx value
+  | Animation_delay -> Values.normalize_duration ~ctx value
+  | Webkit_transition_duration -> Values.normalize_duration ~ctx value
+  | Webkit_transition_delay -> Values.normalize_duration ~ctx value
+  | Webkit_animation_duration -> Values.normalize_duration ~ctx value
+  | Webkit_animation_delay -> Values.normalize_duration ~ctx value
+  | Moz_transition_duration -> Values.normalize_duration ~ctx value
+  | Moz_transition_delay -> Values.normalize_duration ~ctx value
+  | Moz_animation_duration -> Values.normalize_duration ~ctx value
+  | Moz_animation_delay -> Values.normalize_duration ~ctx value
   | _ -> value
 
-let normalize_custom_property_value ?(lossless = false) :
+let normalize_custom_property_value ?(lossless = false)
+    ?(ctx = Values.default_calc_ctx) :
     custom_property_value -> custom_property_value = function
   | Typed { kind = Length; value } ->
-      Typed { kind = Length; value = Values.normalize_length value }
+      Typed { kind = Length; value = Values.normalize_length ~ctx value }
   | Typed { kind = Color; value } ->
       Typed
         {
@@ -20985,17 +20987,18 @@ let normalize_custom_property_value ?(lossless = false) :
           value = Values.normalize_color ~lossless ~in_feature_query:false value;
         }
   | Typed { kind = Number; value } ->
-      Typed { kind = Number; value = Values.normalize_number value }
+      Typed { kind = Number; value = Values.normalize_number ~ctx value }
   | Typed { kind = Percentage; value } ->
-      Typed { kind = Percentage; value = Values.normalize_percentage value }
+      Typed
+        { kind = Percentage; value = Values.normalize_percentage ~ctx value }
   | Typed { kind = Length_percentage; value } ->
       Typed
         {
           kind = Length_percentage;
-          value = Values.normalize_length_percentage value;
+          value = Values.normalize_length_percentage ~ctx value;
         }
   | Typed { kind = Angle; value } ->
-      Typed { kind = Angle; value = Values.normalize_angle value }
+      Typed { kind = Angle; value = Values.normalize_angle ~ctx value }
   | Typed { kind = Gradient_direction; value } ->
       Typed
         {

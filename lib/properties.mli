@@ -10,7 +10,8 @@ val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
 
-val normalize_property_value : ?lossless:bool -> 'a property -> 'a -> 'a
+val normalize_property_value :
+  ?lossless:bool -> ?ctx:Values.calc_ctx -> 'a property -> 'a -> 'a
 (** [normalize_property_value ?lossless prop value] applies semantic
     (equivalence) canonicalisation to [value] so the optimizer holds a canonical
     AST and the pretty-printer stays a pure serialiser. Identity for properties
@@ -18,7 +19,10 @@ val normalize_property_value : ?lossless:bool -> 'a property -> 'a -> 'a
     approximation while keeping exact colour canonicalisation. *)
 
 val normalize_custom_property_value :
-  ?lossless:bool -> custom_property_value -> custom_property_value
+  ?lossless:bool ->
+  ?ctx:Values.calc_ctx ->
+  custom_property_value ->
+  custom_property_value
 (** [normalize_custom_property_value v] canonicalises the typed value of a
     registered custom property (currently the [<color>] syntax) so a promoted
     custom-property value folds the same way a typed colour property would. *)

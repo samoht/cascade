@@ -861,23 +861,42 @@ let calc_identity : type a.
    ([calc_identity]). The per-type evaluators ([eval_length_calc] /
    [eval_lp_calc]) add the typed [Val] combinations ([1px + 2px], [2px * 3]) and
    pass their own [~zero] / [~is_zero] so a typed zero collapses too. *)
-let rec eval_calc : type a. a calc -> a calc = function
+(* Context threaded through the calc simplifier for rewrites that depend on the
+   surrounding stylesheet. [var_is_single_valued n] reports whether [--n] is
+   registered with a single-component [@property] syntax, so its [var()]
+   substitutes exactly one calc term and a redundant nested [calc(var(--n))]
+   grouping may be dropped. The default knows nothing, so every such rewrite is
+   a no-op. *)
+type calc_ctx = { var_is_single_valued : string -> bool }
+
+let default_calc_ctx = { var_is_single_valued = (fun _ -> false) }
+
+(* A nested [calc()] or a parenthesised group around a single leaf is redundant
+   grouping: drop it. A [var()] leaf is only safe to unwrap when the var is
+   single-valued; otherwise its substitution could be a multi-term expression
+   that needs the grouping (CSS Values 4 §10.10). *)
+let unwrap_grouping : type a.
+    ctx:calc_ctx -> rewrap:(a calc -> a calc) -> a calc -> a calc =
+ fun ~ctx ~rewrap reduced ->
+  match reduced with
+  | (Val _ | Num _) as leaf -> leaf
+  | Var v as leaf when ctx.var_is_single_valued v.name -> leaf
+  | reduced -> rewrap reduced
+
+let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
+ fun ?(ctx = default_calc_ctx) -> function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
       match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
-  | Nested inner -> (
-      match eval_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Nested reduced)
-  | Parens inner -> (
-      match eval_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Parens reduced)
+  | Nested inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_calc ~ctx inner)
+  | Parens inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (eval_calc ~ctx inner)
   | Expr (l, op, r) -> (
-      let l = eval_calc l in
-      let r = eval_calc r in
+      let l = eval_calc ~ctx l in
+      let r = eval_calc ~ctx r in
       (* Match on the const-folded operands but keep [l] / [r] in the no-fold
          results, so an unreduced expression keeps the short [calc(.. pi ..)].
          Identity rules need a type-aware [Val] inspection (runtime subst?);
@@ -1206,8 +1225,8 @@ and length_calc_has_runtime_subst : length calc -> bool = function
   | Expr (l, _, r) ->
       length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
 
-let rec eval_length_calc : length calc -> length calc =
- fun calc ->
+let rec eval_length_calc : ?ctx:calc_ctx -> length calc -> length calc =
+ fun ?(ctx = default_calc_ctx) calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
@@ -1219,17 +1238,17 @@ let rec eval_length_calc : length calc -> length calc =
           match length_math_fn_value fn with
           | Some v -> Num v
           | None -> Math_fn fn))
-  | Nested inner -> (
-      match eval_length_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Nested reduced)
-  | Parens inner -> (
-      match eval_length_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Parens reduced)
+  | Nested inner ->
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Nested r)
+        (eval_length_calc ~ctx inner)
+  | Parens inner ->
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Parens r)
+        (eval_length_calc ~ctx inner)
   | Expr (l, op, r) -> (
-      let l = eval_length_calc l in
-      let r = eval_length_calc r in
+      let l = eval_length_calc ~ctx l in
+      let r = eval_length_calc ~ctx r in
       (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
          [r] in the no-fold results, so an expression that does not reduce to a
          leaf keeps the short [calc(.. pi ..)] rather than leaking the
@@ -1671,8 +1690,9 @@ let lp_is_zero : length_percentage -> bool = function
   | Pct f -> f = 0.
   | _ -> false
 
-let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
- fun calc ->
+let rec eval_lp_calc :
+    ?ctx:calc_ctx -> length_percentage calc -> length_percentage calc =
+ fun ?(ctx = default_calc_ctx) calc ->
   match calc with
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
@@ -1684,17 +1704,13 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match length_math_fn_value fn with
           | Some v -> Num v
           | None -> Math_fn fn))
-  | Nested inner -> (
-      match eval_lp_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Nested reduced)
-  | Parens inner -> (
-      match eval_lp_calc inner with
-      | (Val _ | Num _) as leaf -> leaf
-      | reduced -> Parens reduced)
+  | Nested inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_lp_calc ~ctx inner)
+  | Parens inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (eval_lp_calc ~ctx inner)
   | Expr (l, op, r) -> (
-      let l = eval_lp_calc l in
-      let r = eval_lp_calc r in
+      let l = eval_lp_calc ~ctx l in
+      let r = eval_lp_calc ~ctx r in
       (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
          [r] in the no-fold results, so an expression that does not reduce to a
          leaf (e.g. [2px / pi]) keeps the short [calc(2px/pi)] rather than
@@ -3604,13 +3620,15 @@ let strip_zero_length (l : length) : length =
 
 (* [strip] is true for a top-level [<length>] (a direct property/shorthand
    value) and false for a calc / math-function operand, which keeps its unit. *)
-let rec normalize_length ?(strip = true) (l : length) : length =
-  let nf = normalize_length ~strip:false in
+let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
+    : length =
+  let nf = normalize_length ~strip:false ~ctx in
   let result =
     match l with
     | Calc cv -> (
         match
-          cv |> eval_length_calc |> linear_length_calc |> eval_length_calc
+          cv |> eval_length_calc ~ctx |> linear_length_calc
+          |> eval_length_calc ~ctx
         with
         | Val v -> v
         | folded -> Calc folded)
@@ -3666,7 +3684,8 @@ let rec normalize_length ?(strip = true) (l : length) : length =
     | Calc_size (basis, calc) -> (
         let basis = nf basis in
         match
-          calc |> eval_length_calc |> linear_length_calc |> eval_length_calc
+          calc |> eval_length_calc ~ctx |> linear_length_calc
+          |> eval_length_calc ~ctx
         with
         | folded -> Calc_size (basis, folded))
     | _ -> l
@@ -3676,15 +3695,15 @@ let rec normalize_length ?(strip = true) (l : length) : length =
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. A wrapped [<length>] folds its own math functions. *)
-let normalize_length_percentage ?(strip = true) (lp : length_percentage) :
-    length_percentage =
+let normalize_length_percentage ?(strip = true) ?(ctx = default_calc_ctx)
+    (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
-      match c |> eval_lp_calc |> linear_lp_calc |> eval_lp_calc with
+      match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
       | Val v -> v
       | folded -> Calc folded)
   | Length l ->
-      let l' = normalize_length ~strip l in
+      let l' = normalize_length ~strip ~ctx l in
       if l' == l then lp else Length l'
   | _ -> lp
 
@@ -3692,51 +3711,50 @@ let normalize_length_percentage ?(strip = true) (lp : length_percentage) :
    used to do under minify), so the printer stays a pure serialiser. Recurses so
    nested calls fold ([abs(hypot(3, 4))] -> [5]); a non-static operand keeps the
    call. *)
-let rec normalize_number (n : number) : number =
+let rec normalize_number ?(ctx = default_calc_ctx) (n : number) : number =
+  let nf = normalize_number ~ctx in
   match n with
   | Calc c -> (
-      match eval_calc c with
+      match eval_calc ~ctx c with
       | Num f -> Num f
-      | Val v -> normalize_number v
+      | Val v -> nf v
       | folded -> Calc folded)
   | Round (strategy, a, b) -> (
-      match (normalize_number a, normalize_number b) with
+      match (nf a, nf b) with
       | Num value, Num step when step <> 0. ->
           Num (round_to_step strategy value step)
       | a, b -> Round (strategy, a, b))
   | Mod (a, b) -> (
-      match (normalize_number a, normalize_number b) with
+      match (nf a, nf b) with
       | Num a, Num b when b <> 0. -> Num (mod_value a b)
       | a, b -> Mod (a, b))
   | Rem (a, b) -> (
-      match (normalize_number a, normalize_number b) with
+      match (nf a, nf b) with
       | Num a, Num b when b <> 0. -> Num (Float.rem a b)
       | a, b -> Rem (a, b))
   | Hypot (a, b) -> (
-      match (normalize_number a, normalize_number b) with
+      match (nf a, nf b) with
       | Num a, Num b -> Num (Float.sqrt ((a *. a) +. (b *. b)))
       | a, b -> Hypot (a, b))
   | Pow (a, b) -> (
-      match (normalize_number a, normalize_number b) with
+      match (nf a, nf b) with
       | Num a, Num b -> Num (Float.pow a b)
       | a, b -> Pow (a, b))
   | Sqrt v -> (
-      match normalize_number v with
-      | Num a when a >= 0. -> Num (Float.sqrt a)
-      | v -> Sqrt v)
-  | Abs v -> (
-      match normalize_number v with Num a -> Num (Float.abs a) | v -> Abs v)
-  | Sign v -> Sign (normalize_number v)
+      match nf v with Num a when a >= 0. -> Num (Float.sqrt a) | v -> Sqrt v)
+  | Abs v -> ( match nf v with Num a -> Num (Float.abs a) | v -> Abs v)
+  | Sign v -> Sign (nf v)
   | Sin _ | Num _ | Var _ -> n
 
 (* Fold the value-independent parts of a [<percentage>] [calc()] ([calc(1 / 2 *
    100%)] -> [calc(.5*100%)]), keeping any [var()]. Replaces the numeric /
    identity reduction the printer did under minify, now that pp is a pure
    serialiser. *)
-let normalize_percentage (p : percentage) : percentage =
+let normalize_percentage ?(ctx = default_calc_ctx) (p : percentage) : percentage
+    =
   match p with
   | Calc c -> (
-      match eval_calc c with
+      match eval_calc ~ctx c with
       | Num f -> Num f
       | Val v -> v
       | folded -> Calc folded)
@@ -3745,16 +3763,17 @@ let normalize_percentage (p : percentage) : percentage =
 (* Fold the value-independent parts of a [<time>] [calc()] ([calc(var(--d) * 1)]
    -> [calc(var(--d))]), keeping any [var()]. A bare-number reduction stays
    wrapped (a [<number>] is not a [<time>]). *)
-let normalize_duration (d : duration) : duration =
+let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
   match d with
-  | Calc c -> ( match eval_calc c with Val v -> v | folded -> Calc folded)
+  | Calc c -> (
+      match eval_calc ~ctx c with Val v -> v | folded -> Calc folded)
   | _ -> d
 
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
    losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
    pi, so it cannot share one magnitude and is left as-is. *)
-let normalize_angle =
+let normalize_angle ?(ctx = default_calc_ctx) =
   let render unit f =
     String.length
       (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
@@ -3795,7 +3814,7 @@ let normalize_angle =
         | Deg x, Deg y when y <> 0. -> shortest (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
-        match eval_calc c with Val v -> go v | folded -> Calc folded)
+        match eval_calc ~ctx c with Val v -> go v | folded -> Calc folded)
     | Deg _ | Turn _ | Grad _ -> shortest a
     | Rad _ | Var _ | Invalid _ -> a
   in
@@ -3835,14 +3854,14 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
    faithfully. [Var] and [Calc] sub-forms are left untouched - inside a calc(),
    [%] and number are not interchangeable, and a [var()] reference is
    context-free. *)
-let rec normalize_number_percentage (np : number_percentage) : number_percentage
-    =
+let rec normalize_number_percentage ?(ctx = default_calc_ctx)
+    (np : number_percentage) : number_percentage =
   let len f = String.length (Pp.string_of_float ~drop_leading_zero:true f) in
   match np with
   | Calc c -> (
-      match eval_calc c with
-      | Num f -> normalize_number_percentage (Num f)
-      | Val v -> normalize_number_percentage v
+      match eval_calc ~ctx c with
+      | Num f -> normalize_number_percentage ~ctx (Num f)
+      | Val v -> normalize_number_percentage ~ctx v
       | folded -> Calc folded)
   | Pct f ->
       let num_f = f /. 100. in

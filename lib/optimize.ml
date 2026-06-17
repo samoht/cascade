@@ -878,28 +878,63 @@ let registered_foldable (stylesheet : t) : string -> bool =
   List.iter collect stylesheet;
   fun name -> Hashtbl.mem tbl name
 
-let normalize_live_declarations ~lossless decls =
+(* CSS Properties and Values API 1: a custom property registered with a
+   single-component [@property] syntax (not a [+]/[#] list, [*], or a transform
+   list) substitutes exactly one calc term, so a redundant [calc(var(--n))]
+   nested in another [calc()] may be unwrapped. *)
+let rec syntax_is_single_valued : type a. a Variables.syntax -> bool = function
+  | Variables.Universal | Variables.Transform_list -> false
+  | Variables.Plus _ | Variables.Hash _ -> false
+  | Variables.Or (a, b) ->
+      syntax_is_single_valued a && syntax_is_single_valued b
+  | _ -> true
+
+(* [@property] registrations are document-global, so collect every single-valued
+   registration up front to build the calc-simplifier context. *)
+let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
+  let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  (* [@property] names carry the [--] prefix; calc [Var] leaves store the bare
+     name (the reader strips it), so key the table on the bare name. *)
+  let bare name =
+    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+      String.sub name 2 (String.length name - 2)
+    else name
+  in
+  let rec collect (stmt : statement) =
+    match stmt with
+    | Property pr ->
+        if syntax_is_single_valued pr.syntax then
+          Hashtbl.replace tbl (bare pr.name) ()
+    | Rule r -> List.iter collect r.nested
+    | _ -> iter_statement_block collect stmt
+  in
+  List.iter collect stmts;
+  { Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name) }
+
+let normalize_live_declarations ~ctx ~lossless decls =
   list_edit_preserve
     (fun decl ->
-      let decl' = Declaration.normalize ~lossless decl in
+      let decl' = Declaration.normalize ~ctx ~lossless decl in
       if Declaration.is_invalid decl' then List.Drop
       else if decl' == decl then List.Keep
       else List.Replace decl')
     decls
 
-let sanitize_keyframe ~lossless (k : keyframe) : keyframe =
-  let declarations = normalize_live_declarations ~lossless k.declarations in
+let sanitize_keyframe ~ctx ~lossless (k : keyframe) : keyframe =
+  let declarations =
+    normalize_live_declarations ~ctx ~lossless k.declarations
+  in
   if declarations == k.declarations then k else { k with declarations }
 
-let rec sanitize_block ~lossless (b : statement list) : statement list =
-  list_edit_preserve (sanitize_statement ~lossless) b
+let rec sanitize_block ~ctx ~lossless (b : statement list) : statement list =
+  list_edit_preserve (sanitize_statement ~ctx ~lossless) b
 
-and sanitize_statement ~lossless (s : statement) : statement List.edit =
-  let nd = normalize_live_declarations ~lossless in
+and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
+  let nd = normalize_live_declarations ~ctx ~lossless in
   match s with
   | Rule r ->
       let declarations = nd r.declarations in
-      let nested = sanitize_block ~lossless r.nested in
+      let nested = sanitize_block ~ctx ~lossless r.nested in
       let r' = rule_with_declarations_and_nested r declarations nested in
       if r' == r then List.Keep else List.Replace (Rule r')
   | Declarations d ->
@@ -926,43 +961,43 @@ and sanitize_statement ~lossless (s : statement) : statement List.edit =
       let d' = nd d in
       if d' == d then List.Keep else List.Replace (Supports_condition (n, d'))
   | Keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
       if ks' == ks then List.Keep else List.Replace (Keyframes (n, ks'))
   | Webkit_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
       if ks' == ks then List.Keep else List.Replace (Webkit_keyframes (n, ks'))
   | Moz_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~lossless) ks in
+      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
       if ks' == ks then List.Keep else List.Replace (Moz_keyframes (n, ks'))
   | Layer (n, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Layer (n, b'))
   | Media (c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Media (c, b'))
   | Container (n, c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Container (n, c, b'))
   | Supports (c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Supports (c, b'))
   | Moz_document (c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Moz_document (c, b'))
   | Starting_style b ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Starting_style b')
   | When (c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (When (c, b'))
   | Else (c, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Else (c, b'))
   | Origin (o, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Origin (o, b'))
   | Scope (s1, s2, b) ->
-      let b' = sanitize_block ~lossless b in
+      let b' = sanitize_block ~ctx ~lossless b in
       if b' == b then List.Keep else List.Replace (Scope (s1, s2, b'))
   | Property r ->
       let initial_value =
@@ -1019,7 +1054,8 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   Selector_summary.clear_memo ();
   reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
-  let stylesheet = sanitize_block ~lossless stylesheet in
+  let ctx = single_valued_calc_ctx stylesheet in
+  let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
   let stylesheet =
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in

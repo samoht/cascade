@@ -2389,6 +2389,33 @@ let c61_no_named_atrule_merge () =
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
 
+let calc_flatten_registered_single_valued () =
+  let check label css expected =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet input in
+    Alcotest.(check string)
+      label expected
+      (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
+  in
+  (* CSS Properties and Values API 1: a single-component [@property] syntax
+     substitutes exactly one calc term, so a redundant nested [calc(var)] folds
+     to a bare reference. *)
+  check "single-valued registration flattens the nested calc"
+    "@property \
+     --x{syntax:\"<length>\";inherits:false;initial-value:0px}.a{width:calc(calc(var(--x)) \
+     * 2)}"
+    "@property \
+     --x{syntax:\"<length>\";inherits:false;initial-value:0px}.a{width:calc(var(--x)*2)}";
+  (* CSS Values 4 §10.10: an unregistered var() could substitute a multi-term
+     value, so the grouping must stay. *)
+  check "unregistered var keeps the nested calc"
+    ".a{width:calc(calc(var(--x)) * 2)}" ".a{width:calc(calc(var(--x))*2)}";
+  (* A universal syntax is not a single term, so it is not unwrapped. *)
+  check "universal-syntax registration keeps the nested calc"
+    "@property --x{syntax:\"*\";inherits:false}.a{width:calc(calc(var(--x)) * \
+     2)}"
+    "@property --x{syntax:\"*\";inherits:false}.a{width:calc(calc(var(--x))*2)}"
+
 let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
      is true when @scope appears as a nested group rule inside a style rule. *)
@@ -3876,6 +3903,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 scope/page/nested boundaries are opaque",
       `Quick,
       c61_no_nested_boundary_merge );
+    ( "calc flatten gated on single-valued @property registration",
+      `Quick,
+      calc_flatten_registered_single_valued );
     ( "spec cascade 6.1 nesting synthesis preserves source order",
       `Quick,
       c61_nesting_synthesis_source_order );
