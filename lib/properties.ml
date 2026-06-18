@@ -6463,7 +6463,7 @@ let rec pp_grid_line : grid_line Pp.t =
       Pp.int ctx n;
       Pp.char ctx ' ';
       Pp.string ctx name
-  | Calc s -> Pp.string ctx s
+  | Calc c -> pp_calc pp_grid_line ctx c
   | Var v -> pp_var pp_grid_line ctx v
 
 let rec pp_grid_line_pair : grid_line_pair Pp.t =
@@ -11647,62 +11647,6 @@ let rec read_baseline_shift t : baseline_shift =
       Shift (Values.read_length_percentage ~with_keywords:false t))
     t
 
-let string_of_calc_const = function
-  | Pi -> "pi"
-  | E -> "e"
-  | Infinity -> "infinity"
-  | Neg_infinity -> "-infinity"
-  | Nan -> "NaN"
-
-let string_of_calc_op (op : calc_op) =
-  match op with Add -> " + " | Sub -> " - " | Mul -> " * " | Div -> " / "
-
-let add_string_of_calc_var : type a. (string -> unit) -> a var -> unit =
- fun add v ->
-  add "var(--";
-  add v.Values.name;
-  (match v.Values.fallback with
-  | Fallback _ | Syntax_fallback _ -> add ", <fallback>"
-  | Var_fallback name ->
-      add ", var(--";
-      add name;
-      add ")"
-  | Empty -> add ","
-  | Empty2 -> add ",  "
-  | None -> ());
-  add ")"
-
-let string_of_calc (type a) (expr : a calc) : string =
-  let buf = Buffer.create 32 in
-  let add = Buffer.add_string buf in
-  let rec pp_expr : type a. a calc -> unit = function
-    | Num n ->
-        if Float.is_integer n then add (string_of_int (int_of_float n))
-        else add (string_of_float n)
-    | Math_const c -> add (string_of_calc_const c)
-    | Sibling_index -> add "sibling-index()"
-    | Sibling_count -> add "sibling-count()"
-    | Var v -> add_string_of_calc_var add v
-    | Val _ -> add "<val>"
-    | Math_fn _ -> add "<math-fn>"
-    | Nested inner ->
-        add "calc(";
-        pp_expr inner;
-        add ")"
-    | Parens inner ->
-        add "(";
-        pp_expr inner;
-        add ")"
-    | Expr (left, op, right) ->
-        pp_expr left;
-        add (string_of_calc_op op);
-        pp_expr right
-  in
-  add "calc(";
-  pp_expr expr;
-  add ")";
-  Buffer.contents buf
-
 let rec read_z_index t : z_index =
   let read_calc_z t =
     (* read_calc handles the calc(...) wrapper itself *)
@@ -12299,7 +12243,7 @@ let read_grid_line_calc t : grid_line =
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> Num (int_of_float f)
   | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
-  | None -> Calc (string_of_calc expr)
+  | None -> Calc expr
 
 let rec read_grid_line t : grid_line =
   Cursor.enum_or_calls "grid-line"

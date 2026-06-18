@@ -3830,7 +3830,7 @@ type grid_line = Properties.grid_line =
   | Span of int  (** span 2, span 3, etc. *)
   | Span_name of string  (** span <custom-ident> *)
   | Span_num_name of int * string  (** span <integer> <custom-ident> *)
-  | Calc of string  (** calc(12 * -1), etc. *)
+  | Calc of grid_line calc  (** calc(12 * -1), etc. *)
   | Var of grid_line var
 
 type grid_line_pair = Properties.grid_line_pair =
