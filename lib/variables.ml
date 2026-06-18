@@ -27,6 +27,46 @@ let custom_value_var_empty_fallback name =
 
 let string_of_custom_value = Parser.to_string_custom
 
+(* The first dashed-ident argument of a [var()] is the referenced custom
+   property; leading whitespace is skipped. *)
+let rec first_var_ref_ident = function
+  | [] -> Option.None
+  | Component.Preserved { Token.kind = Token.Ident n; _ } :: _
+    when String.length n >= 2 && n.[0] = '-' && n.[1] = '-' ->
+      Option.Some n
+  | _ :: rest -> first_var_ref_ident rest
+
+(* Custom-property names referenced through a real [var()] function anywhere in
+   a component stream, recursing into function arguments and bracketed blocks. A
+   [var(] inside a string or url is an atomic [Preserved] token, never a [Func],
+   so it is correctly ignored - the false positive a text scan would produce. *)
+let rec var_refs_in_components acc (components : Component.t list) =
+  List.fold_left
+    (fun acc (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          let acc =
+            if String.lowercase_ascii name = "var" then
+              match first_var_ref_ident arguments with
+              | Option.Some n -> n :: acc
+              | Option.None -> acc
+            else acc
+          in
+          var_refs_in_components acc arguments
+      | Component.Block { node = { value; _ }; _ } ->
+          var_refs_in_components acc value
+      | Component.Preserved _ -> acc)
+    acc components
+
+let var_refs_in_value_string value =
+  let p = Parser.of_string value in
+  let rec collect acc =
+    match Parser.next p with
+    | Component.Preserved { Token.kind = Token.Eof; _ } -> List.rev acc
+    | c -> collect (c :: acc)
+  in
+  var_refs_in_components [] (collect [])
+
 (** Pretty-print a syntax descriptor to CSS syntax string *)
 let rec pp_syntax_inner : type a. a syntax Pp.t =
  fun ctx syn ->

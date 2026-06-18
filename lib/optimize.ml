@@ -1196,36 +1196,17 @@ let canonicalize_custom_prop_position (stmts : statement list) : statement list
 let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
     =
   let tbl = Hashtbl.create 64 in
-  let ident_char c =
-    (c >= 'a' && c <= 'z')
-    || (c >= 'A' && c <= 'Z')
-    || (c >= '0' && c <= '9')
-    || c = '-' || c = '_'
-  in
-  let scan s =
-    let n = String.length s in
-    let i = ref 0 in
-    while !i + 4 <= n do
-      if
-        s.[!i] = 'v' && s.[!i + 1] = 'a' && s.[!i + 2] = 'r' && s.[!i + 3] = '('
-      then (
-        let j = ref (!i + 4) in
-        while !j < n && s.[!j] = ' ' do
-          incr j
-        done;
-        if !j + 2 <= n && s.[!j] = '-' && s.[!j + 1] = '-' then (
-          let k = ref (!j + 2) in
-          while !k < n && ident_char s.[!k] do
-            incr k
-          done;
-          if !k > !j + 2 then
-            Hashtbl.replace tbl (String.sub s (!j + 2) (!k - (!j + 2))) ());
-        i := !i + 4)
-      else incr i
-    done
+  let bare n =
+    if String.length n >= 2 && n.[0] = '-' && n.[1] = '-' then
+      String.sub n 2 (String.length n - 2)
+    else n
   in
   let note_decls =
-    List.iter (fun d -> scan (Declaration.string_of_declaration ~minify:true d))
+    List.iter (fun d ->
+        List.iter
+          (fun n -> Hashtbl.replace tbl (bare n) ())
+          (Variables.var_refs_in_value_string
+             (Declaration.string_of_declaration ~minify:true d)))
   in
   let rec walk stmt =
     match stmt with

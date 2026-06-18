@@ -803,7 +803,14 @@ let test_prune_unused_custom_props () =
     (Astring.String.is_infix ~affix:"--spacing"
        (opt ~prune:true
           ":root{--spacing:.25rem;--shadow:0 0 \
-           var(--spacing)}.x{box-shadow:var(--shadow)}"))
+           var(--spacing)}.x{box-shadow:var(--shadow)}"));
+  (* A [var()] inside a string literal is data, not a reference (recognised
+     structurally, not by text), so a binding referenced only there is
+     pruned. *)
+  Alcotest.(check string)
+    "opt-in: a var() inside a string is not a reference"
+    ":root{--x:\"var(--y)\"}.a{width:var(--x)}"
+    (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}")
 
 let optimize_tests =
   [

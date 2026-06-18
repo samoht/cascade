@@ -969,44 +969,12 @@ let bare_theme_name raw_name =
     String.sub raw_name 2 (String.length raw_name - 2)
   else raw_name
 
-let is_theme_var_call value i =
-  i + 4 <= String.length value && String.sub value i 4 = "var("
-
-let rec skip_theme_var_space value i =
-  if i < String.length value && (value.[i] = ' ' || value.[i] = '\t') then
-    skip_theme_var_space value (i + 1)
-  else i
-
-let is_theme_var_name_start value i =
-  i + 1 < String.length value && value.[i] = '-' && value.[i + 1] = '-'
-
-let theme_var_name_end value start =
-  let n = String.length value in
-  let rec loop i =
-    if i >= n then i
-    else match value.[i] with ',' | ')' | ' ' | '\t' -> i | _ -> loop (i + 1)
-  in
-  loop start
-
-(* The [var()] references nested anywhere inside a default value (e.g. [calc(1px
-   + var(--foo))]), so resolving one default pulls its targets into the inject
-   set, and [Inline.vars]' recursive substitution chains them. Scan the value
-   text for [var(--name)] starts; a custom-property value is an opaque token
-   stream, so the AST var collector does not see inside it. *)
-let var_names_in_theme_value value =
-  let n = String.length value in
-  let names = ref [] in
-  let i = ref 0 in
-  while !i + 4 <= n do
-    if is_theme_var_call value !i then (
-      let j = skip_theme_var_space value (!i + 4) in
-      (if is_theme_var_name_start value j then
-         let k = theme_var_name_end value j in
-         names := String.sub value j (k - j) :: !names);
-      i := !i + 4)
-    else incr i
-  done;
-  !names
+(* [var()] references nested anywhere inside a value, so resolving one theme
+   default pulls its targets into the inject set and [Inline.vars]' recursive
+   substitution chains them. A custom-property value is an opaque token stream,
+   so the typed AST var collector does not see inside it; recognise references
+   structurally (see {!Variables.var_refs_in_value_string}). *)
+let var_names_in_theme_value = Variables.var_refs_in_value_string
 
 let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
   let resolved : (string, string) Hashtbl.t = Hashtbl.create 16 in
