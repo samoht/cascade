@@ -943,6 +943,33 @@ let spec_color5_function_edges () =
     "color-mix(in srgb, #0000, red)";
   check_color ~expected:"color-mix(in srgb,transparent,red)"
     ~optimized:"#ff000080" "color-mix(in srgb, transparent, red)";
+  (* Sec. 12.3 premultiplication applies in every interpolation space, not just
+     sRGB. Mixing #0088cc 50% with transparent must restore #0088cc at half
+     alpha in oklab/oklch/lab/lch too, never bleed transparent's zero
+     coordinates in and darken the result. *)
+  check_color ~expected:"color-mix(in oklab,#08c 50%,transparent)"
+    ~optimized:"#0088cc80" "color-mix(in oklab, #0088cc 50%, transparent)";
+  check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
+    ~optimized:"#0088cc80" "color-mix(in oklch, #0088cc 50%, transparent)";
+  check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
+    ~optimized:"#0088cc80" "color-mix(in lab, #0088cc 50%, transparent)";
+  check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
+    ~optimized:"#0088cc80" "color-mix(in lch, #0088cc 50%, transparent)";
+  (* No explicit percentage: the 50/50 default restores the colour the same
+     way. *)
+  check_color ~expected:"color-mix(in oklab,#08c,transparent)"
+    ~optimized:"#0088cc80" "color-mix(in oklab, #0088cc, transparent)";
+  (* A zero-chroma operand (transparent) has a powerless hue in the polar spaces
+     (sec. 12.2): it carries the opaque operand's hue over instead of
+     interpolating toward an undefined angle, so red at half alpha stays red. *)
+  check_color ~expected:"color-mix(in oklch,red 50%,transparent)"
+    ~optimized:"#ff000080" "color-mix(in oklch, red 50%, transparent)";
+  (* Typed lab-family operands with partial alpha route through the
+     premultiplied path too: mixing a colour 50% with a fully transparent one
+     restores it at half alpha. *)
+  check_color ~expected:"color-mix(in oklab,oklab(60%.1-.1),oklab(30%0 0/0))"
+    ~optimized:"#9f63ba80"
+    "color-mix(in oklab, oklab(60% 0.1 -0.1), oklab(30% 0 0 / 0))";
   (* Percentages summing to <100% scale only the result alpha (here 60%), not
      the colour channels. *)
   check_color ~expected:"color-mix(in srgb,red 30%,blue 30%)"
