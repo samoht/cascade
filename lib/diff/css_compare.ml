@@ -222,18 +222,20 @@ let css_for_semantic_comparison ?property css =
   | None -> css
   | Some property -> ":root{" ^ property ^ ":" ^ css ^ "}"
 
-let canonical_semantic_css ~strict ~lossless css =
+let canonical_semantic_css ~strict ~lossless
+    ?(prune_unused_custom_props = false) css =
   match Css.of_string ~strict css with
   | Ok { stylesheet; _ } -> (
       try
         Some
-          (stylesheet |> Css.optimize ~lossless
+          (stylesheet
+          |> Css.optimize ~lossless ~prune_unused_custom_props
           |> Css.to_string ~minify:true ~lossless)
       with Invalid_argument _ -> None)
   | Error _ -> None
 
-let canonical_css ~strict ~lossless css =
-  canonical_semantic_css ~strict ~lossless css
+let canonical_css ~strict ~lossless ?(prune_unused_custom_props = false) css =
+  canonical_semantic_css ~strict ~lossless ~prune_unused_custom_props css
 
 let canonical_pair ~strict ~lossless expected actual =
   match
@@ -244,18 +246,25 @@ let canonical_pair ~strict ~lossless expected actual =
       Some (String.equal expected_norm actual_norm)
   | _ -> None
 
-let canonical_diff_inputs ~strict ~lossless expected actual =
+let canonical_diff_inputs ~strict ~lossless ?(prune_unused_custom_props = false)
+    expected actual =
   match
-    ( canonical_css ~strict ~lossless expected,
-      canonical_css ~strict ~lossless actual )
+    ( canonical_css ~strict ~lossless ~prune_unused_custom_props expected,
+      canonical_css ~strict ~lossless ~prune_unused_custom_props actual )
   with
   | Some expected, Some actual -> Some (expected, actual)
   | _ -> None
 
-let canonical_diff_inputs_with_fallback ~lossless expected actual =
-  match canonical_diff_inputs ~strict:true ~lossless expected actual with
+let canonical_diff_inputs_with_fallback ~lossless
+    ?(prune_unused_custom_props = false) expected actual =
+  match
+    canonical_diff_inputs ~strict:true ~lossless ~prune_unused_custom_props
+      expected actual
+  with
   | Some _ as result -> result
-  | None -> canonical_diff_inputs ~strict:false ~lossless expected actual
+  | None ->
+      canonical_diff_inputs ~strict:false ~lossless ~prune_unused_custom_props
+        expected actual
 
 (* Internal: full-stylesheet equality under the canonical minified form. *)
 let semantic_equal ?property ?(lossless = false) expected actual =
@@ -349,10 +358,14 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
       else Tree_diff structural_diff
   | _ -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
 
-let diff_canonical ~lossless ~expected ~actual ~expected_parse ~actual_parse =
+let diff_canonical ~lossless ~prune_unused_custom_props ~expected ~actual
+    ~expected_parse ~actual_parse =
   if expected = actual then No_diff { canonical_byte_diff = None }
   else
-    match canonical_diff_inputs_with_fallback ~lossless expected actual with
+    match
+      canonical_diff_inputs_with_fallback ~lossless ~prune_unused_custom_props
+        expected actual
+    with
     | None -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
     | Some (expected_canon, actual_canon) ->
         if String.equal expected_canon actual_canon then
@@ -394,7 +407,8 @@ let parse_warnings = function
   | Ok { Css.warnings; _ } -> warnings
   | Error _ -> []
 
-let diff ?(mode = `Auto) ?(lossless = false) expected actual =
+let diff ?(mode = `Auto) ?(lossless = false)
+    ?(prune_unused_custom_props = false) expected actual =
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then
@@ -418,8 +432,8 @@ let diff ?(mode = `Auto) ?(lossless = false) expected actual =
           match mode with
           | `Auto -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
           | `Canonical ->
-              diff_canonical ~lossless ~expected ~actual ~expected_parse
-                ~actual_parse
+              diff_canonical ~lossless ~prune_unused_custom_props ~expected
+                ~actual ~expected_parse ~actual_parse
           | `Tree -> diff_tree ~expected_parse ~actual_parse
         in
         {
@@ -428,8 +442,10 @@ let diff ?(mode = `Auto) ?(lossless = false) expected actual =
           actual_warnings = parse_warnings actual_parse;
         }
 
-let equal ?mode ?lossless a b =
-  match (diff ?mode ?lossless a b).result with No_diff _ -> true | _ -> false
+let equal ?mode ?lossless ?prune_unused_custom_props a b =
+  match (diff ?mode ?lossless ?prune_unused_custom_props a b).result with
+  | No_diff _ -> true
+  | _ -> false
 
 let as_tree_diff t =
   match t.result with

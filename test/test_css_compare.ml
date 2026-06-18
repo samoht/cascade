@@ -33,6 +33,23 @@ let equal_empty () =
     "empty strings equal" true
     (Cascade_diff.Css_compare.equal "" "")
 
+let equal_prune_unused_custom_props () =
+  let with_bind = ":root{--spacing:.25rem}.top-0{top:0}" in
+  let without = ".top-0{top:0}" in
+  Alcotest.(check bool)
+    "default: a dead binding is a real difference" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical with_bind without);
+  Alcotest.(check bool)
+    "opt-in: a dead binding compares equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ~prune_unused_custom_props:true with_bind without);
+  Alcotest.(check bool)
+    "opt-in: a referenced binding still differs" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ~prune_unused_custom_props:true
+       ":root{--spacing:.25rem}.gap{gap:var(--spacing)}"
+       ".gap{gap:var(--spacing)}")
+
 let equal_whitespace_difference () =
   (* Structurally same but different formatting - default mode does not collapse
      formatting, so this returns false. *)
@@ -1029,4 +1046,6 @@ let suite =
       Alcotest.test_case "as_tree_diff with tree" `Quick as_tree_diff_with_tree;
       Alcotest.test_case "as_tree_diff with no diff" `Quick as_tree_diff_no_diff;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
+      Alcotest.test_case "opt-in prune-unused-custom-props" `Quick
+        equal_prune_unused_custom_props;
     ] )

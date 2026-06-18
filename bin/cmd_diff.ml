@@ -17,7 +17,7 @@ let resolve_style_renderer style_renderer =
   | Some s when s <> "" -> Some `None
   | _ -> style_renderer
 
-let run_diff mode ~lossless ~css1 ~css2 =
+let run_diff mode ~lossless ~prune_unused_custom_props ~css1 ~css2 =
   let mode =
     match mode with
     | Auto -> `Auto
@@ -25,7 +25,8 @@ let run_diff mode ~lossless ~css1 ~css2 =
     | String -> `String
     | Canonical -> `Canonical
   in
-  Cascade_diff.Css_compare.diff ~mode ~lossless css1 css2
+  Cascade_diff.Css_compare.diff ~mode ~lossless ~prune_unused_custom_props css1
+    css2
 
 let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   let stats =
@@ -38,7 +39,9 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-let compare_files file1 file2 style_renderer mode lossless memtrace_path () =
+type semantic_opts = { lossless : bool; prune_unused_custom_props : bool }
+
+let compare_files file1 file2 style_renderer mode opts memtrace_path () =
   Cli_io.start_memtrace memtrace_path;
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
@@ -49,7 +52,11 @@ let compare_files file1 file2 style_renderer mode lossless memtrace_path () =
         Fmt.pr "CSS files are identical@.";
         Ok ())
       else
-        let result = run_diff mode ~lossless ~css1 ~css2 in
+        let result =
+          run_diff mode ~lossless:opts.lossless
+            ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1
+            ~css2
+        in
         match result.Cascade_diff.Css_compare.result with
         | No_diff _ ->
             (* Equal ASTs can still hide parse-dropped declarations; show the
@@ -102,6 +109,16 @@ let lossless_arg =
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
+let prune_unused_custom_props_arg =
+  let doc =
+    "Drop custom-property bindings referenced by nothing on both sides before \
+     comparing in $(b,--diff=semantic), so two stylesheets that differ only by \
+     a dead binding compare equal. Makes the comparison blind to \
+     dead-custom-property divergences (a render-no-op); enable only when that \
+     difference is immaterial. Has no effect outside $(b,--diff=semantic)."
+  in
+  Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
+
 let memtrace_arg =
   let doc =
     "Write a Memtrace allocation profile to $(docv) covering the diff run. \
@@ -114,9 +131,14 @@ let term =
   let style_renderer_with_env =
     Fmt_cli.style_renderer ~env:(Cmd.Env.info "CASCADE_COLOR") ()
   in
+  let semantic_opts =
+    const (fun lossless prune_unused_custom_props ->
+        { lossless; prune_unused_custom_props })
+    $ lossless_arg $ prune_unused_custom_props_arg
+  in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ lossless_arg $ memtrace_arg $ Cli_log.term)
+   $ mode_arg $ semantic_opts $ memtrace_arg $ Cli_log.term)
 
 let man =
   [
