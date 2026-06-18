@@ -5168,7 +5168,7 @@ let rec pp_zoom : zoom Pp.t =
 let rec pp_order : order Pp.t =
  fun ctx -> function
   | Int i -> Pp.int ctx i
-  | Calc s -> Pp.string ctx s
+  | Calc c -> pp_calc pp_order ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -11740,7 +11740,7 @@ let rec read_order t : order =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> (Int (int_of_float f) : order)
     | Some _ -> Cursor.err_invalid t "order calc must evaluate to integer"
-    | None -> (Calc (string_of_calc expr) : order)
+    | None -> (Calc expr : order)
   in
   let read_var t : order = Var (read_var read_order t) in
   Cursor.enum_or_calls "order"

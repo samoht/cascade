@@ -217,7 +217,7 @@ type zoom =
 
 type order =
   | Int of int
-  | Calc of string
+  | Calc of order calc
   | Inherit
   | Initial
   | Unset

@@ -528,7 +528,13 @@ let flexbox_flex_and_basis () =
     "flex-basis: clamp(1px, var(--spacing), 100%)";
   check_declaration ~expected:"flex-basis:abs(var(--x))"
     "flex-basis: abs(var(--x))";
-  neg_cursor read_declaration "flex-basis: sign(var(--x))"
+  neg_cursor read_declaration "flex-basis: sign(var(--x))";
+  (* order: a calc carrying a var stays a typed calc and round-trips; an
+     all-numeric order calc folds to an integer. *)
+  check_declaration ~expected:"order:2" "order: 2";
+  check_declaration ~expected:"order:calc(var(--o)*-1)"
+    "order: calc(var(--o) * -1)";
+  check_declaration ~expected:"order:6" "order: calc(3 * 2)"
 
 let flexbox_alignment () =
   (* Align items *)
