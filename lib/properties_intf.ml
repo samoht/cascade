@@ -164,7 +164,7 @@ type baseline_shift =
 type z_index =
   | Auto
   | Index of int
-  | Calc of string
+  | Calc of z_index calc
   | Inherit
   | Initial
   | Unset

@@ -5133,7 +5133,7 @@ let rec pp_z_index : z_index Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Index i -> Pp.int ctx i
-  | Calc s -> Pp.string ctx s
+  | Calc c -> pp_calc pp_z_index ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -11701,7 +11701,7 @@ let rec read_z_index t : z_index =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)
     | Some _ -> Cursor.err_invalid t "z-index calc must evaluate to integer"
-    | None -> Calc (string_of_calc expr)
+    | None -> Calc expr
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
   Cursor.enum_or_calls "z-index"
