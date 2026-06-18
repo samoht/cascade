@@ -807,7 +807,7 @@ type grid_line =
   | Span of int
   | Span_name of string
   | Span_num_name of int * string
-  | Calc of string
+  | Calc of grid_line calc
   | Var of grid_line var
 
 type grid_line_pair =

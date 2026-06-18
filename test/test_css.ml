@@ -789,6 +789,19 @@ let public_value_combinator_edges () =
   Alcotest.(check string)
     "order calc builds via typed calc" ".o{order:calc(var(--o))}"
     (to_string ~minify:true order_calc_sheet);
+  (* grid-line carries a typed calc, so col-start-[calc(...)] and similar
+     arbitraries build through the typed API rather than a raw string. *)
+  let grid_line_calc_sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "g")
+          [ grid_column_start (Calc (Calc.var "n")) ];
+      ]
+  in
+  Alcotest.(check string)
+    "grid-line calc builds via typed calc"
+    ".g{grid-column-start:calc(var(--n))}"
+    (to_string ~minify:true grid_line_calc_sheet);
 
   let sheet =
     v

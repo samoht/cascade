@@ -765,6 +765,11 @@ let grid () =
   check_declaration ~expected:"grid-row-end:3" "grid-row-end: 3";
   check_declaration ~expected:"grid-column-start:1" "grid-column-start: 1";
   check_declaration ~expected:"grid-column-end:-1" "grid-column-end: -1";
+  (* A grid-line calc carrying a var is kept as a typed calc and round-trips; an
+     all-numeric grid-line calc folds to an integer. *)
+  check_declaration ~expected:"grid-column-start:calc(var(--n)*-1)"
+    "grid-column-start: calc(var(--n) * -1)";
+  check_declaration ~expected:"grid-column-end:6" "grid-column-end: calc(3 * 2)";
 
   (* Grid auto flow *)
   check_declaration ~expected:"grid-auto-flow:row" "grid-auto-flow: row";
