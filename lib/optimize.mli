@@ -156,6 +156,7 @@ val stylesheet :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
+  ?prune_unused_custom_props:bool ->
   t ->
   t
 (** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ss] optimizes an
@@ -179,7 +180,13 @@ val stylesheet :
     When [enforce_spec] is [false] (default) the optimizer may treat baseline
     feature queries as known facts and elide [@supports] guards whose condition
     is satisfied in maintained evergreen browsers; [true] keeps every feature
-    query and applies only CSS-text-and-spec-provable rewrites. *)
+    query and applies only CSS-text-and-spec-provable rewrites.
+
+    When [prune_unused_custom_props] is [true] (default [false]) custom-property
+    bindings referenced by no [var()] anywhere are dropped. This is opt-in
+    because it assumes a complete stylesheet with no out-of-band reader (another
+    stylesheet, or [getComputedStyle]) - the same closed-world assumption as
+    {!inline_vars}. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting ss] returns [ss] with every nested rule flattened into a

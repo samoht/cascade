@@ -7508,6 +7508,7 @@ val optimize :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
+  ?prune_unused_custom_props:bool ->
   t ->
   t
 (** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
@@ -7532,7 +7533,12 @@ val optimize :
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
     runs even when the preflight predicts low gain, and the top-level
     statement-optimisation pipeline iterates until the AST reaches a structural
-    fixpoint (capped at a small bound). *)
+    fixpoint (capped at a small bound).
+
+    When [prune_unused_custom_props] is [true] (default [false]) custom-property
+    bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a
+    complete stylesheet with no out-of-band reader (another stylesheet, or
+    [getComputedStyle]), the same closed-world assumption as {!inline_vars}. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

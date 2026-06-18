@@ -1188,8 +1188,89 @@ let canonicalize_custom_prop_position (stmts : statement list) : statement list
     =
   canonicalize_custom_prop_blocks (count_custom_prop_decls stmts) stmts
 
+(* Bare names of every custom property referenced through a [var()] anywhere in
+   the tree. Scans the serialized declarations, so it sees references inside
+   opaque custom-property values too and over-keeps (a [var(] inside a string
+   counts) - it must never miss a live reference, or the prune below would drop
+   a binding still in use. *)
+let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
+    =
+  let tbl = Hashtbl.create 64 in
+  let ident_char c =
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9')
+    || c = '-' || c = '_'
+  in
+  let scan s =
+    let n = String.length s in
+    let i = ref 0 in
+    while !i + 4 <= n do
+      if
+        s.[!i] = 'v' && s.[!i + 1] = 'a' && s.[!i + 2] = 'r' && s.[!i + 3] = '('
+      then (
+        let j = ref (!i + 4) in
+        while !j < n && s.[!j] = ' ' do
+          incr j
+        done;
+        if !j + 2 <= n && s.[!j] = '-' && s.[!j + 1] = '-' then (
+          let k = ref (!j + 2) in
+          while !k < n && ident_char s.[!k] do
+            incr k
+          done;
+          if !k > !j + 2 then
+            Hashtbl.replace tbl (String.sub s (!j + 2) (!k - (!j + 2))) ());
+        i := !i + 4)
+      else incr i
+    done
+  in
+  let note_decls =
+    List.iter (fun d -> scan (Declaration.string_of_declaration ~minify:true d))
+  in
+  let rec walk stmt =
+    match stmt with
+    | Rule r ->
+        note_decls r.declarations;
+        List.iter walk r.nested
+    | Declarations decls -> note_decls decls
+    | _ -> iter_statement_block walk stmt
+  in
+  List.iter walk stmts;
+  tbl
+
+(* Drop custom-property bindings referenced by no [var()] - a dead binding has
+   no rendering effect (an emptied rule is removed at serialization). Caller
+   opt-in only: the no-runtime-reader, complete-stylesheet assumption is theirs,
+   like [Inline.vars]. *)
+let drop_unused_custom_props (stmts : statement list) : statement list =
+  let referenced = referenced_custom_props stmts in
+  let bare name =
+    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+      String.sub name 2 (String.length name - 2)
+    else name
+  in
+  let keep_decl d =
+    match Variables.custom_declaration_name d with
+    | Some name -> Hashtbl.mem referenced (bare name)
+    | None -> true
+  in
+  let rec prune stmt =
+    match stmt with
+    | Rule r ->
+        let declarations = list_filter_preserve keep_decl r.declarations in
+        let nested = list_map_preserve prune r.nested in
+        if declarations == r.declarations && nested == r.nested then stmt
+        else Rule { r with declarations; nested }
+    | Declarations decls ->
+        let decls' = list_filter_preserve keep_decl decls in
+        if decls' == decls then stmt else Declarations decls'
+    | _ -> map_statement_block_preserve prune stmt
+  in
+  list_map_preserve prune stmts
+
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
-    ?(enforce_spec = false) ?(aggressive = false) (stylesheet : t) : t =
+    ?(enforce_spec = false) ?(aggressive = false)
+    ?(prune_unused_custom_props = false) (stylesheet : t) : t =
   Selector_summary.clear_memo ();
   reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
@@ -1206,4 +1287,6 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet
   in
   let strict = run ~extend_lists:false in
-  race_extend_lists ~run ~strict stylesheet |> canonicalize_custom_prop_position
+  race_extend_lists ~run ~strict stylesheet
+  |> canonicalize_custom_prop_position
+  |> if prune_unused_custom_props then drop_unused_custom_props else Fun.id
