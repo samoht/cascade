@@ -1860,7 +1860,7 @@ type visibility = Properties.visibility =
 type z_index = Properties.z_index =
   | Auto
   | Index of int
-  | Calc of string
+  | Calc of z_index calc
   | Inherit
   | Initial
   | Unset

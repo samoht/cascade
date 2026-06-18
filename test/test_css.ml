@@ -769,6 +769,18 @@ let public_value_combinator_edges () =
     "flex-basis calc multiplier builds via generic Calc.float"
     ".basis-4{flex-basis:calc(var(--spacing)*4)}"
     (to_string ~minify:true flex_basis_calc_sheet);
+  (* z-index carries a typed calc, so a var-based z-index calc builds through
+     the typed API rather than a raw string. *)
+  let z_index_calc_sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "z")
+          [ z_index (Calc (Calc.var "layer")) ];
+      ]
+  in
+  Alcotest.(check string)
+    "z-index calc builds via typed calc" ".z{z-index:calc(var(--layer))}"
+    (to_string ~minify:true z_index_calc_sheet);
 
   let sheet =
     v

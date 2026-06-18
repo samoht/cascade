@@ -777,6 +777,11 @@ let misc () =
   check_declaration ~expected:"z-index:10" "z-index: 10";
   check_declaration ~expected:"z-index:-1" "z-index: -1";
   check_declaration ~expected:"z-index:9999" "z-index: 9999";
+  (* A calc that cannot const-fold (carries a var) is kept as a typed calc and
+     round-trips; an all-numeric calc still folds to an integer. *)
+  check_declaration ~expected:"z-index:calc(var(--z)*-1)"
+    "z-index: calc(var(--z) * -1)";
+  check_declaration ~expected:"z-index:10" "z-index: calc(5 * 2)";
 
   (* Cursor *)
   check_declaration ~expected:"cursor:auto" "cursor: auto";
