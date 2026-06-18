@@ -586,6 +586,18 @@ type flex_basis =
   | Max_content
   | Min_content
   | From_font
+  (* Math functions over [<length-percentage>] (CSS Values 4 §10). Args reuse
+     [length] (which already carries [Pct]) and mirror the [length]
+     constructors; [flex_basis_of_length] carries them across and the printer
+     delegates to [pp_length]. *)
+  | Clamp of length * length * length
+  | Min of length list
+  | Max of length list
+  | Round of string * length * length
+  | Mod of length * length
+  | Rem_fn of length * length
+  | Hypot of length list
+  | Abs of length
   | Calc of flex_basis calc
   | Var of flex_basis var
 

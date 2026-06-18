@@ -3346,6 +3346,14 @@ type flex_basis = Properties.flex_basis =
   | Max_content
   | Min_content
   | From_font
+  | Clamp of length * length * length
+  | Min of length list
+  | Max of length list
+  | Round of string * length * length
+  | Mod of length * length
+  | Rem_fn of length * length
+  | Hypot of length list
+  | Abs of length
   | Calc of flex_basis calc
   | Var of flex_basis var  (** CSS flex shorthand values. *)
 
