@@ -519,7 +519,16 @@ let flexbox_flex_and_basis () =
      dimensionally neutral and unifies with any typed calc context), this is
      what the typed flex-basis Calc emitter has to round-trip to. *)
   check_declaration ~expected:"flex-basis:calc(var(--spacing)*4)"
-    "flex-basis: calc(var(--spacing) * 4)"
+    "flex-basis: calc(var(--spacing) * 4)";
+  (* Math functions over <length-percentage> are valid flex-basis values and
+     round-trip; sign() yields a <number> and is rejected. *)
+  check_declaration ~expected:"flex-basis:min(10px,100%)"
+    "flex-basis: min(10px, 100%)";
+  check_declaration ~expected:"flex-basis:clamp(1px,var(--spacing),100%)"
+    "flex-basis: clamp(1px, var(--spacing), 100%)";
+  check_declaration ~expected:"flex-basis:abs(var(--x))"
+    "flex-basis: abs(var(--x))";
+  neg_cursor read_declaration "flex-basis: sign(var(--x))"
 
 let flexbox_alignment () =
   (* Align items *)

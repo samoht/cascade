@@ -2032,9 +2032,11 @@ let simplify_opacity ?layer_order ?layer cascade value =
     | Properties.Opacity_number n -> Some n
     | _ -> None
   in
-  let simplify_leaf simplify _simplify_calc ~visited = function
-    | Properties.Abs value -> Properties.Abs (simplify ~visited value)
-    | Properties.Sign value -> Properties.Sign (simplify ~visited value)
+  let simplify_leaf simplify _simplify_calc ~visited (leaf : Properties.opacity)
+      : Properties.opacity =
+    match leaf with
+    | Abs value -> Abs (simplify ~visited value)
+    | Sign value -> Sign (simplify ~visited value)
     | value -> value
   in
   let ops : Properties.opacity Calc_residual.ops =

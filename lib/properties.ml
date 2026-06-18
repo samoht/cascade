@@ -5241,11 +5241,13 @@ let rec read_opacity t : opacity =
         ("max", read_numeric_math);
         ("clamp", read_numeric_math);
         ( "abs",
-          fun t -> Cursor.call "abs" t (fun inner -> Abs (read_opacity inner))
-        );
+          fun t ->
+            Cursor.call "abs" t (fun inner ->
+                (Abs (read_opacity inner) : opacity)) );
         ( "sign",
-          fun t -> Cursor.call "sign" t (fun inner -> Sign (read_opacity inner))
-        );
+          fun t ->
+            Cursor.call "sign" t (fun inner ->
+                (Sign (read_opacity inner) : opacity)) );
       ]
     ~default:read_number_or_percentage t
 
@@ -10295,6 +10297,15 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
+  (* Math functions mirror [length]; reuse its printer. *)
+  | Clamp (a, b, c) -> pp_length ctx (Clamp (a, b, c))
+  | Min xs -> pp_length ctx (Min xs)
+  | Max xs -> pp_length ctx (Max xs)
+  | Round (s, a, b) -> pp_length ctx (Round (s, a, b))
+  | Mod (a, b) -> pp_length ctx (Mod (a, b))
+  | Rem_fn (a, b) -> pp_length ctx (Rem_fn (a, b))
+  | Hypot xs -> pp_length ctx (Hypot xs)
+  | Abs a -> pp_length ctx (Abs a)
   | Var v -> pp_var pp_flex_basis ctx v
   | Calc cv -> pp_calc pp_flex_basis ctx cv
 
@@ -11955,6 +11966,17 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Dimension { value = 0.; unit = "svmax"; _ } -> Svmax 0.
   | Dimension { value = 0.; unit = "ch"; _ } -> Ch 0.
   | Dimension { value = 0.; unit = "lh"; _ } -> Lh 0.
+  (* Math functions over <length-percentage> carry across unchanged:
+     [flex_basis] mirrors [length]'s constructors. [Sign] (a <number>) and
+     [Minmax] (grid only) are not valid here, so they stay rejected. *)
+  | Clamp (a, b, c) -> Clamp (a, b, c)
+  | Min xs -> Min xs
+  | Max xs -> Max xs
+  | Round (s, a, b) -> Round (s, a, b)
+  | Mod (a, b) -> Mod (a, b)
+  | Rem_fn (a, b) -> Rem_fn (a, b)
+  | Hypot xs -> Hypot xs
+  | Abs a -> Abs a
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
 let rec read_flex_basis t : flex_basis =
