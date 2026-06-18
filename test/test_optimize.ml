@@ -774,12 +774,46 @@ let test_optimize_preserves_physical_identity () =
         true (again == canon))
     cases
 
+let test_prune_unused_custom_props () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok p -> p.stylesheet
+    | Error _ -> Alcotest.fail "parse"
+  in
+  let opt ?(prune = false) css =
+    parse css
+    |> Css.optimize ~prune_unused_custom_props:prune
+    |> Css.to_string ~minify:true
+  in
+  let dead = ":root{--spacing:.25rem}.top-0{top:0}" in
+  Alcotest.(check string)
+    "default keeps an unreferenced binding"
+    ":root{--spacing:.25rem}.top-0{top:0}" (opt dead);
+  Alcotest.(check string)
+    "opt-in drops an unreferenced binding" ".top-0{top:0}"
+    (opt ~prune:true dead);
+  Alcotest.(check string)
+    "opt-in keeps a referenced binding"
+    ":root{--spacing:.25rem}.gap{gap:var(--spacing)}"
+    (opt ~prune:true ":root{--spacing:.25rem}.gap{gap:var(--spacing)}");
+  (* A [var()] inside an opaque custom-property value still counts, so the
+     binding it depends on is not pruned. *)
+  Alcotest.(check bool)
+    "opt-in keeps a binding referenced only inside an opaque value" true
+    (Astring.String.is_infix ~affix:"--spacing"
+       (opt ~prune:true
+          ":root{--spacing:.25rem;--shadow:0 0 \
+           var(--spacing)}.x{box-shadow:var(--shadow)}"))
+
 let optimize_tests =
   [
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
+    ( "opt-in prune unused custom properties",
+      `Quick,
+      test_prune_unused_custom_props );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
