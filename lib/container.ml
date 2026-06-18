@@ -223,12 +223,21 @@ let rec lower_for_minify c =
       if c'' == c' then c else Not c''
   | Style _ | Scroll_state _ -> c
 
+(* A real [var()] function anywhere in the components, recursing into function
+   arguments and bracketed blocks. A [var(] inside a string or url() is an
+   atomic [Preserved] token, never a [Func], so it is data, not a reference. *)
+let rec components_have_var (components : Component.t list) =
+  List.exists
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          String.lowercase_ascii name = "var" || components_have_var arguments
+      | Component.Block { node = { value; _ }; _ } -> components_have_var value
+      | Component.Preserved _ -> false)
+    components
+
 let contains_var_function s =
-  let len = String.length s in
-  let rec loop i =
-    i + 4 <= len && (String.sub s i 4 = "var(" || loop (i + 1))
-  in
-  loop 0
+  Cursor.of_string s |> Cursor.remaining |> components_have_var
 
 let unresolved_media_feature s =
   let s = String.trim s in
