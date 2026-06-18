@@ -18,6 +18,13 @@ val custom_value_var_empty_fallback : string -> custom_value
 val string_of_custom_value : custom_value -> string
 (** [string_of_custom_value value] serializes a custom-property token stream. *)
 
+val var_refs_in_value_string : string -> string list
+(** [var_refs_in_value_string value] is the [--name]s referenced through a real
+    [var()] function anywhere in [value] (including nested in [calc()] and
+    inside opaque custom-property streams). It parses [value] to components and
+    walks them, so a [var(] inside a string or [url()] is recognised as data,
+    not a reference - unlike a textual scan. *)
+
 val pp_syntax : 'a syntax Pp.t
 (** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)
 
