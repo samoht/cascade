@@ -64,13 +64,32 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       color positions. If the normalized forms differ, the returned diff is
       reported from those normalized outputs. *)
 
-val diff : ?mode:mode -> ?lossless:bool -> string -> string -> t
+val diff :
+  ?mode:mode ->
+  ?lossless:bool ->
+  ?prune_unused_custom_props:bool ->
+  string ->
+  string ->
+  t
 (** [diff ?mode expected actual] returns the diff between two CSS strings. A
     leading [/*! ... */] tool banner on either side is stripped before
     comparison. Parsing failures surface as [_error] variants. [lossless]
-    preserves exact color channels during canonical comparison. *)
+    preserves exact color channels during canonical comparison.
 
-val equal : ?mode:mode -> ?lossless:bool -> string -> string -> bool
+    [prune_unused_custom_props] (default [false], [`Canonical] mode only) drops
+    custom-property bindings referenced by nothing on both sides before
+    comparing, so two stylesheets that differ only by a dead binding compare
+    equal. Opt-in: it makes the comparator blind to dead-custom-property
+    divergences, so enable it only when that render-no-op difference is
+    immaterial (e.g. a parity harness against output that omits the binding). *)
+
+val equal :
+  ?mode:mode ->
+  ?lossless:bool ->
+  ?prune_unused_custom_props:bool ->
+  string ->
+  string ->
+  bool
 (** [equal ?mode a b] is [true] iff [diff ?mode a b] is {!No_diff}. *)
 
 val as_tree_diff : t -> Tree_diff.t option
