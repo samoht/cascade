@@ -781,6 +781,14 @@ let public_value_combinator_edges () =
   Alcotest.(check string)
     "z-index calc builds via typed calc" ".z{z-index:calc(var(--layer))}"
     (to_string ~minify:true z_index_calc_sheet);
+  (* order carries a typed calc, so a var-based order calc builds through the
+     typed API rather than a raw string. *)
+  let order_calc_sheet =
+    v [ rule ~selector:(Selector.class_ "o") [ order (Calc (Calc.var "o")) ] ]
+  in
+  Alcotest.(check string)
+    "order calc builds via typed calc" ".o{order:calc(var(--o))}"
+    (to_string ~minify:true order_calc_sheet);
 
   let sheet =
     v

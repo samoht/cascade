@@ -1882,7 +1882,7 @@ type opacity = Properties.opacity =
 
 type order = Properties.order =
   | Int of int
-  | Calc of string
+  | Calc of order calc
   | Inherit
   | Initial
   | Unset
