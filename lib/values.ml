@@ -3016,29 +3016,44 @@ let mix_lch_like_result ~l_num_max ~p1 ~p2 build l1 c1 h1 alpha1 l2 c2 h2 alpha2
       | Some l, Some c, Some h, Some alpha -> Some (build l c h alpha)
       | _ -> Option.None)
 
+(* The typed lab-family mix interpolates coordinates directly, which is only
+   correct when both operands are fully opaque (premultiplying by 1 is a no-op).
+   A partially transparent operand needs the premultiplied [mix_in_*_space]
+   path, so a non-opaque operand falls through to [None] here and the caller
+   routes it there. *)
+let alpha_opaque : alpha -> bool = function
+  | None -> true
+  | Num f -> f >= 1.0
+  | Pct f -> f >= 100.0
+  | Var _ | Calc _ -> false
+
 let mix_lab_family in_space color1 color2 ~p1 ~p2 =
   match (in_space, color1, color2) with
   | ( Some (Lab : color_space),
       Lab { l = l1; a = a1; b = b1; alpha = alpha1 },
-      Lab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
+      Lab { l = l2; a = a2; b = b2; alpha = alpha2 } )
+    when alpha_opaque alpha1 && alpha_opaque alpha2 ->
       mix_lab_like_result ~l_num_max:100. ~p1 ~p2
         (fun l a b alpha -> Lab { l; a; b; alpha })
         l1 a1 b1 alpha1 l2 a2 b2 alpha2
   | ( Some (Oklab : color_space),
       Oklab { l = l1; a = a1; b = b1; alpha = alpha1 },
-      Oklab { l = l2; a = a2; b = b2; alpha = alpha2 } ) ->
+      Oklab { l = l2; a = a2; b = b2; alpha = alpha2 } )
+    when alpha_opaque alpha1 && alpha_opaque alpha2 ->
       mix_lab_like_result ~l_num_max:1. ~p1 ~p2
         (fun l a b alpha -> Oklab { l; a; b; alpha })
         l1 a1 b1 alpha1 l2 a2 b2 alpha2
   | ( Some (Lch : color_space),
       Lch { l = l1; c = c1; h = h1; alpha = alpha1 },
-      Lch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
+      Lch { l = l2; c = c2; h = h2; alpha = alpha2 } )
+    when alpha_opaque alpha1 && alpha_opaque alpha2 ->
       mix_lch_like_result ~l_num_max:100. ~p1 ~p2
         (fun l c h alpha -> Lch { l; c; h; alpha })
         l1 c1 h1 alpha1 l2 c2 h2 alpha2
   | ( Some (Oklch : color_space),
       Oklch { l = l1; c = c1; h = h1; alpha = alpha1 },
-      Oklch { l = l2; c = c2; h = h2; alpha = alpha2 } ) ->
+      Oklch { l = l2; c = c2; h = h2; alpha = alpha2 } )
+    when alpha_opaque alpha1 && alpha_opaque alpha2 ->
       mix_lch_like_result ~l_num_max:1. ~p1 ~p2
         (fun l c h alpha -> Oklch { l; c; h; alpha })
         l1 c1 h1 alpha1 l2 c2 h2 alpha2
@@ -3238,25 +3253,57 @@ let color_space_hue (h : hue_interpolation) : Color_space.hue_interpolation =
 let alpha_of_unit_float a : alpha =
   if a >= 1.0 -. 1e-6 then None else if a <= 1e-6 then Num 0.0 else Num a
 
+(* Premultiplied interpolation (CSS Color 4 sec. 12.3): each coordinate is
+   multiplied by its operand alpha before mixing and the sum divided by the
+   interpolated alpha, so a [transparent] operand contributes only alpha and not
+   its zero coordinates. The [alpha_mult] (<100%-sum) scaling lands on the final
+   alpha, never the coordinates - matching [mix_srgb_bytes]. *)
+let premult_mix3 ~w1 ~w2 ~a1 ~a2 (x1, y1, z1) (x2, y2, z2) =
+  let interp_alpha = (a1 *. w1) +. (a2 *. w2) in
+  let axis c1 c2 =
+    let pre = (c1 *. a1 *. w1) +. (c2 *. a2 *. w2) in
+    if interp_alpha <= 0. then 0. else pre /. interp_alpha
+  in
+  ((axis x1 x2, axis y1 y2, axis z1 z2), interp_alpha)
+
+(* Polar variant: lightness and chroma premultiply like rectangular axes, but
+   the hue angle never does. A zero-chroma operand ([transparent], grey, white)
+   has a powerless hue (CSS Color 4 sec. 12.2): it carries the other operand's
+   hue over instead of dragging the mix toward an undefined angle. *)
+let premult_mix_polar ~w1 ~w2 ~a1 ~a2 ~hue (l1, c1, h1) (l2, c2, h2) =
+  let interp_alpha = (a1 *. w1) +. (a2 *. w2) in
+  let axis v1 v2 =
+    let pre = (v1 *. a1 *. w1) +. (v2 *. a2 *. w2) in
+    if interp_alpha <= 0. then 0. else pre /. interp_alpha
+  in
+  let powerless c = c <= 1e-6 in
+  let h =
+    match (powerless c1, powerless c2) with
+    | true, true -> h1
+    | true, false -> h2
+    | false, true -> h1
+    | false, false -> Color_space.interpolate_hue (color_space_hue hue) h1 h2 w2
+  in
+  ((axis l1 l2, axis c1 c2, h), interp_alpha)
+
 let mix_in_oklab_space c1 c2 ~p1 ~p2 : color option =
   match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
   | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
       match mix_weights p1 p2 with
       | None -> None
       | Some (w1, w2, alpha_mult) ->
-          let l1, a1, b1 = Color_space.oklab_of_linear_srgb lrgb1 in
-          let l2, a2, b2 = Color_space.oklab_of_linear_srgb lrgb2 in
-          let l = (l1 *. w1) +. (l2 *. w2) in
-          let a = (a1 *. w1) +. (a2 *. w2) in
-          let b = (b1 *. w1) +. (b2 *. w2) in
-          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          let (l, a, b), interp_alpha =
+            premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2
+              (Color_space.oklab_of_linear_srgb lrgb1)
+              (Color_space.oklab_of_linear_srgb lrgb2)
+          in
           Some
             (Oklab
                {
                  l = Some (Num l : percentage);
                  a = Some a;
                  b = Some b;
-                 alpha = alpha_of_unit_float alpha_v;
+                 alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
 
@@ -3266,23 +3313,20 @@ let mix_in_oklch_space c1 c2 ~p1 ~p2 hue : color option =
       match mix_weights p1 p2 with
       | None -> None
       | Some (w1, w2, alpha_mult) ->
-          let l1, ca1, h1 =
-            Color_space.oklch_of_oklab (Color_space.oklab_of_linear_srgb lrgb1)
+          let (l, c, h), interp_alpha =
+            premult_mix_polar ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 ~hue
+              (Color_space.oklch_of_oklab
+                 (Color_space.oklab_of_linear_srgb lrgb1))
+              (Color_space.oklch_of_oklab
+                 (Color_space.oklab_of_linear_srgb lrgb2))
           in
-          let l2, ca2, h2 =
-            Color_space.oklch_of_oklab (Color_space.oklab_of_linear_srgb lrgb2)
-          in
-          let l = (l1 *. w1) +. (l2 *. w2) in
-          let c = (ca1 *. w1) +. (ca2 *. w2) in
-          let h = Color_space.interpolate_hue (color_space_hue hue) h1 h2 w2 in
-          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
           Some
             (Oklch
                {
                  l = Some (Num l : percentage);
                  c = Some c;
                  h = Unitless h;
-                 alpha = alpha_of_unit_float alpha_v;
+                 alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
 
@@ -3296,19 +3340,17 @@ let mix_in_lab_space c1 c2 ~p1 ~p2 : color option =
             lrgb |> Color_space.xyz65_of_linear_srgb |> Color_space.d50_of_xyz65
             |> Color_space.lab_of_xyz50
           in
-          let l1, a1, b1 = to_lab lrgb1 in
-          let l2, a2, b2 = to_lab lrgb2 in
-          let l = (l1 *. w1) +. (l2 *. w2) in
-          let a = (a1 *. w1) +. (a2 *. w2) in
-          let b = (b1 *. w1) +. (b2 *. w2) in
-          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          let (l, a, b), interp_alpha =
+            premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 (to_lab lrgb1)
+              (to_lab lrgb2)
+          in
           Some
             (Lab
                {
                  l = Some (Num l : percentage);
                  a = Some a;
                  b = Some b;
-                 alpha = alpha_of_unit_float alpha_v;
+                 alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
 
@@ -3322,19 +3364,17 @@ let mix_in_lch_space c1 c2 ~p1 ~p2 hue : color option =
             lrgb |> Color_space.xyz65_of_linear_srgb |> Color_space.d50_of_xyz65
             |> Color_space.lab_of_xyz50 |> Color_space.lch_of_lab
           in
-          let l1, ca1, h1 = to_lch lrgb1 in
-          let l2, ca2, h2 = to_lch lrgb2 in
-          let l = (l1 *. w1) +. (l2 *. w2) in
-          let c = (ca1 *. w1) +. (ca2 *. w2) in
-          let h = Color_space.interpolate_hue (color_space_hue hue) h1 h2 w2 in
-          let alpha_v = ((alpha1 *. w1) +. (alpha2 *. w2)) *. alpha_mult in
+          let (l, c, h), interp_alpha =
+            premult_mix_polar ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 ~hue (to_lch lrgb1)
+              (to_lch lrgb2)
+          in
           Some
             (Lch
                {
                  l = Some (Num l : percentage);
                  c = Some c;
                  h = Unitless h;
-                 alpha = alpha_of_unit_float alpha_v;
+                 alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
 
