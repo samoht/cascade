@@ -890,10 +890,12 @@ module Calc : sig
       expressions. Example: [var "spacing"] or
       [var ~fallback:(Rem 1.2) "tw-leading"]. *)
 
-  val float : float -> length calc
-  (** [float f] is a numeric value for {!type-calc} expressions. *)
+  val float : float -> 'a calc
+  (** [float f] is a numeric value for {!type-calc} expressions. It is unitless,
+      so it works in a calc of any leaf type (e.g. a flex-basis multiplier), not
+      only lengths. *)
 
-  val infinity : length calc
+  val infinity : 'a calc
   (** [infinity] is the CSS infinity value for {!type-calc} expressions. *)
 
   val px : float -> length calc

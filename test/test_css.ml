@@ -755,6 +755,21 @@ let public_value_combinator_edges () =
     "padding bare var stays bare" ".p-1{padding:var(--spacing)}"
     (to_string ~minify:true bare_var_sheet);
 
+  (* [Calc.float] is generic ['a calc], so a non-length calc - here a flex_basis
+     calc with a numeric multiplier - can be built through the typed API. *)
+  let flex_basis_calc_sheet =
+    v
+      [
+        rule
+          ~selector:(Selector.class_ "basis-4")
+          [ flex_basis (Calc Calc.(var "spacing" * float 4.)) ];
+      ]
+  in
+  Alcotest.(check string)
+    "flex-basis calc multiplier builds via generic Calc.float"
+    ".basis-4{flex-basis:calc(var(--spacing)*4)}"
+    (to_string ~minify:true flex_basis_calc_sheet);
+
   let sheet =
     v
       [
