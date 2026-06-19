@@ -5198,16 +5198,27 @@ let rec pp_opacity : opacity Pp.t =
    [read_calc_factor] falls through to its own [Num] path, matching the
    [<number-percentage>] convention. *)
 let rec read_opacity_dim_only t : opacity =
-  Cursor.enum_or_calls "opacity"
+  Cursor.ws t;
+  Cursor.one_of
     [
-      ("inherit", (Inherit : opacity));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
+      (* A [<percentage>] operand is the number it denotes (50% = 0.5), matching
+         how a bare opacity percentage parses. A raw [<number>] is excluded so
+         [read_calc] falls through to its own [Num] path. *)
+      (fun t -> (Opacity_number (Cursor.pct t /. 100.) : opacity));
+      (fun t ->
+        Cursor.enum_or_calls "opacity"
+          [
+            ("inherit", (Inherit : opacity));
+            ("initial", Initial);
+            ("unset", Unset);
+            ("revert", Revert);
+            ("revert-layer", Revert_layer);
+          ]
+          ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
+          ~default:(fun t ->
+            Cursor.err_expected t "opacity (var/calc inside calc)")
+          t);
     ]
-    ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
-    ~default:(fun t -> Cursor.err_expected t "opacity (var/calc inside calc)")
     t
 
 let rec read_opacity t : opacity =
@@ -20695,10 +20706,22 @@ let normalize_font_size (fs : font_size) : font_size =
    * 1)] -> [calc(var(--x))], [calc(10 / 2)] -> [5]), keeping any [var()]. The
    printer is a pure serialiser, so these AST-level folds replace the numeric /
    identity reduction the printer did under minify. *)
+(* A [<percentage>] operand parsed inside an opacity [calc()] is the number it
+   denotes ([Val (Opacity_number f)] = [f]); drop the [Val] wrapper so the
+   generic numeric fold combines it like any other number. *)
+let rec flatten_opacity_pct (c : opacity Values.calc) : opacity Values.calc =
+  match c with
+  | Values.Val (Opacity_number f) -> Values.Num f
+  | Values.Nested inner -> Values.Nested (flatten_opacity_pct inner)
+  | Values.Parens inner -> Values.Parens (flatten_opacity_pct inner)
+  | Values.Expr (l, op, r) ->
+      Values.Expr (flatten_opacity_pct l, op, flatten_opacity_pct r)
+  | _ -> c
+
 let normalize_opacity (o : opacity) : opacity =
   match o with
   | Calc c -> (
-      match Values.eval_calc c with
+      match Values.eval_calc (flatten_opacity_pct c) with
       | Values.Num f -> Opacity_number f
       | Values.Val v -> v
       | folded -> Calc folded)
