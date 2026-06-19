@@ -437,6 +437,34 @@ let test_angle () =
   decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
   decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
 
+  (* CSS Values 4 §10.7: scaling a typed <angle> by a unitless number folds to a
+     concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
+     -45deg matches what the browser computes. Both operand orders fold. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(1deg*-45)" ~into:"-45deg"
+    "calc(1deg * -45)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2)" ~into:"90deg"
+    "calc(45deg * 2)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(-45*1deg)" ~into:"-45deg"
+    "calc(-45 * 1deg)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(1turn*.5)" ~into:".5turn"
+    "calc(1turn * 0.5)";
+  (* Division folds only when the quotient is exact: 90/2 reduces, 45/7 keeps
+     the calc() so no precision is lost. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(90deg/2)" ~into:"45deg"
+    "calc(90deg / 2)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg/7)" ~into:"calc(45deg/7)"
+    "calc(45deg / 7)";
+  (* A var() operand is a runtime substitution boundary and stays unfolded; only
+     the static 45deg*2 sub-expression reduces. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(var(--x)*1deg)"
+    ~into:"calc(var(--x)*1deg)" "calc(var(--x) * 1deg)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2*var(--x))"
+    ~into:"calc(90deg*var(--x))" "calc(45deg * 2 * var(--x))";
+  (* Out of scope: combining two angles (add/sub) is a different operation and
+     stays unfolded. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg + 45deg)"
+    ~into:"calc(45deg + 45deg)" "calc(45deg + 45deg)";
+
   (* Var with angle fallback *)
   check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
 

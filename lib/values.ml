@@ -3809,6 +3809,84 @@ let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
       match eval_calc ~ctx c with Val v -> v | folded -> Calc folded)
   | _ -> d
 
+(* CSS Values 4 §10.7: a typed [<angle>] multiplied or divided by a unitless
+   number scales the angle's coefficient and keeps its unit, so [calc(1deg *
+   -45)] reduces to [-45deg]. Division folds only when the quotient is [exact]
+   (see [exact_div]); dividing by a math constant ([pi] / ...) is irrational, so
+   it rounds like the matching multiplication. *)
+let angle_scale ?(exact = true) op (a : angle) n : angle option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match a with
+    | Deg v -> scaled (fun x -> Deg x) v
+    | Rad v -> scaled (fun x -> Rad x) v
+    | Turn v -> scaled (fun x -> Turn x) v
+    | Grad v -> scaled (fun x -> Grad x) v
+    | _ -> Option.none
+
+(* The generic [eval_calc] only folds [<number>] arithmetic; angles also reduce
+   when scaled by a number ([calc(<angle> * <number>)]). Mirrors
+   [eval_length_calc] for the scale cases and otherwise keeps the generic
+   structure so non-scale forms behave exactly as before. *)
+let rec eval_angle_calc : ?ctx:calc_ctx -> angle calc -> angle calc =
+ fun ?(ctx = default_calc_ctx) calc ->
+  match calc with
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_const _ as leaf -> leaf
+  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
+  | Math_fn fn -> (
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  | Nested inner ->
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Nested r)
+        (eval_angle_calc ~ctx inner)
+  | Parens inner ->
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Parens r)
+        (eval_angle_calc ~ctx inner)
+  | Expr (l, op, r) -> (
+      let l = eval_angle_calc ~ctx l in
+      let r = eval_angle_calc ~ctx r in
+      let lc = calc_operand_value l in
+      let rc = calc_operand_value r in
+      match (lc, op, rc) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b -> (
+          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+      | Val a, ((Mul | Div) as op), Num n -> (
+          let exact = match r with Math_const _ -> false | _ -> true in
+          match angle_scale ~exact op a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | Num n, Mul, Val a -> (
+          match angle_scale Mul a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | _ -> (
+          match
+            calc_identity ~zero:(Num 0.) ~is_zero:(fun _ -> false) l op r
+          with
+          | Some folded -> folded
+          | None -> (
+              match fold_zero_numeric_expr lc op rc with
+              | Some zero -> zero
+              | None -> Expr (l, op, r))))
+
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
    losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
@@ -3854,7 +3932,9 @@ let normalize_angle ?(ctx = default_calc_ctx) =
         | Deg x, Deg y when y <> 0. -> shortest (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
-        match eval_calc ~ctx c with Val v -> go v | folded -> Calc folded)
+        match eval_angle_calc ~ctx c with
+        | Val v -> go v
+        | folded -> Calc folded)
     | Deg _ | Turn _ | Grad _ -> shortest a
     | Rad _ | Var _ | Invalid _ -> a
   in
