@@ -213,8 +213,12 @@ custom-property value stays an opaque token stream, with one exception: a
 substream whose type is fixed by its own syntax. A complete colour function
 (`oklab(...)`, `color-mix(...)`, `rgb(...)`, ...) or a hex colour (`#abc`) is
 unconditionally a colour in every `var()` substitution site, so it folds to its
-shortest spelling and the fold preserves every rendered result. The fold never
-produces a bare colour keyword: a name like `red` is also a valid
+shortest spelling and the fold preserves every rendered result. The same holds
+for a complete math function whose units fix its dimension unambiguously: a
+constant `calc()` reducing to an `<angle>` or `<time>` (`calc(1deg * 0)` ->
+`0deg`) folds, while a `<percentage>` (ambiguous: length vs number percentage)
+or a `calc()` that still references a `var()` stays verbatim. The colour fold
+never produces a bare colour keyword: a name like `red` is also a valid
 `<custom-ident>`, so it stays distinct from `#f00` even though it is shorter,
 and hex stays hex. The fold changes the exact token string a script reads back
 via `getPropertyValue`; cascade does not treat that byte-exact CSSOM
@@ -316,8 +320,9 @@ frameworks.
 - **Comments and source positions** are not preserved across the
   parser/printer round trip.
 - **Unregistered custom properties** stay opaque token streams to the
-  optimizer, apart from complete colour functions inside them, which fold to
-  their shortest spelling.
+  optimizer, apart from substreams whose type their own syntax fixes
+  unambiguously (complete colour functions, and constant math functions
+  reducing to an `<angle>` or `<time>`), which fold to their shortest spelling.
 
 ## Using cascade as a library
 

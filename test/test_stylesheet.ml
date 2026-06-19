@@ -5976,12 +5976,19 @@ let customprops13_registered_negative_dimension_calc () =
         initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")
 
 let customprops13_registered_angle_time_calc () =
-  (* Registered <angle>/<time> custom properties fold their calc() like
-     <length>/<percentage>; unregistered ones stay opaque token streams. *)
+  (* <angle>/<time> custom properties fold their calc() whether or not they are
+     registered: the unit unambiguously fixes the type, so a complete math
+     function reduces to its dimension in every var() site (like a complete
+     colour). The registered path uses the typed kind; the unregistered path
+     folds the opaque substream. *)
   Alcotest.(check string)
-    "unregistered angle calc custom property keeps token stream"
-    ".x{--tw-rotate:calc(1deg*0)}"
+    "unregistered angle calc custom property folds to an angle"
+    ".x{--tw-rotate:0deg}"
     (normalize_minified ".x { --tw-rotate: calc(1deg * 0) }");
+  Alcotest.(check string)
+    "unregistered time calc custom property folds to a duration"
+    ".x{--tw-delay:2s}"
+    (normalize_minified ".x { --tw-delay: calc(1s * 2) }");
   Alcotest.(check string)
     "registered angle custom property reduces to an angle"
     "@property \
@@ -5995,7 +6002,13 @@ let customprops13_registered_angle_time_calc () =
      --tw-delay{syntax:\"<time>\";inherits:false;initial-value:0s}.x{--tw-delay:2s}"
     (normalize_minified
        "@property --tw-delay { syntax: \"<time>\"; inherits: false; \
-        initial-value: 0s } .x { --tw-delay: calc(1s * 2) }")
+        initial-value: 0s } .x { --tw-delay: calc(1s * 2) }");
+  (* A percentage is ambiguous (length vs number percentage) so an unregistered
+     percentage calc stays an opaque token stream. *)
+  Alcotest.(check string)
+    "unregistered percentage calc custom property stays opaque"
+    ".x{--a:calc(50%*2)}"
+    (normalize_minified ".x { --a: calc(50% * 2) }")
 
 let customprops13_shortest_unresolved_calc_spacing () =
   Alcotest.(check string)
