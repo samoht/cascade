@@ -919,6 +919,67 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
               | Some zero -> zero
               | None -> Expr (l, op, r))))
 
+(* CSS Values 4 §10.7 typed [calc()] reduction, shared by every dimensioned
+   type. The [Expr] dispatch is identical across types; only the per-type leaf
+   operations differ, so they are passed in: [math_fn] reduces a static math
+   function to a typed leaf, [scale] multiplies or divides a [Val] by a unitless
+   number, [combine] adds or subtracts two [Val]s, and [zero] / [is_zero] drive
+   the additive and multiplicative identities. A type with no [scale] /
+   [combine] for a given operand shape returns [None] and the [calc()] is kept
+   verbatim. *)
+let rec eval_typed_calc : type a.
+    math_fn:(math_fn -> a calc) ->
+    scale:(exact:bool -> calc_op -> a -> float -> a option) ->
+    combine:(calc_op -> a -> a -> a option) ->
+    is_zero:(a -> bool) ->
+    zero:a calc ->
+    ctx:calc_ctx ->
+    a calc ->
+    a calc =
+ fun ~math_fn ~scale ~combine ~is_zero ~zero ~ctx calc ->
+  let recurse = eval_typed_calc ~math_fn ~scale ~combine ~is_zero ~zero ~ctx in
+  match calc with
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Math_const _ as leaf -> leaf
+  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
+  | Math_fn fn -> math_fn fn
+  | Nested inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (recurse inner)
+  | Parens inner ->
+      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (recurse inner)
+  | Expr (l, op, r) -> (
+      let l = recurse l in
+      let r = recurse r in
+      let lc = calc_operand_value l in
+      let rc = calc_operand_value r in
+      match (lc, op, rc) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b -> (
+          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
+          Option.get (fold_zero_numeric_expr lc op rc)
+      | Val a, op, Val b -> (
+          match combine op a b with Some v -> Val v | None -> Expr (l, op, r))
+      | Val _, Div, Num 0. -> Expr (l, op, r)
+      | Val a, ((Mul | Div) as op), Num n -> (
+          let exact = match r with Math_const _ -> false | _ -> true in
+          match scale ~exact op a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | Num n, Mul, Val a -> (
+          match scale ~exact:true Mul a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion. *)
+      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
+      | Num 1., Div, Expr (Num 1., Div, x) -> x
+      | _ -> (
+          match calc_identity ~zero ~is_zero l op r with
+          | Some folded -> folded
+          | None -> Expr (l, op, r)))
+
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   match calc with
@@ -1225,68 +1286,16 @@ and length_calc_has_runtime_subst : length calc -> bool = function
   | Expr (l, _, r) ->
       length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
 
-let rec eval_length_calc : ?ctx:calc_ctx -> length calc -> length calc =
- fun ?(ctx = default_calc_ctx) calc ->
-  match calc with
-  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const _ as leaf -> leaf
-  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
-  | Math_fn fn -> (
-      match length_of_math_fn fn with
-      | Some l -> Val l
-      | None -> (
-          match length_math_fn_value fn with
-          | Some v -> Num v
-          | None -> Math_fn fn))
-  | Nested inner ->
-      unwrap_grouping ~ctx
-        ~rewrap:(fun r -> Nested r)
-        (eval_length_calc ~ctx inner)
-  | Parens inner ->
-      unwrap_grouping ~ctx
-        ~rewrap:(fun r -> Parens r)
-        (eval_length_calc ~ctx inner)
-  | Expr (l, op, r) -> (
-      let l = eval_length_calc ~ctx l in
-      let r = eval_length_calc ~ctx r in
-      (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
-         [r] in the no-fold results, so an expression that does not reduce to a
-         leaf keeps the short [calc(.. pi ..)] rather than leaking the
-         decimal. *)
-      let lc = calc_operand_value l in
-      let rc = calc_operand_value r in
-      match (lc, op, rc) with
-      | Num a, Add, Num b -> Num (a +. b)
-      | Num a, Sub, Num b -> Num (a -. b)
-      | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b -> (
-          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
-      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
-          Option.get (fold_zero_numeric_expr lc op rc)
-      | Val a, op, Val b -> (
-          match length_combine op a b with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      | Val _, Div, Num 0. -> Expr (l, op, r)
-      | Val a, ((Mul | Div) as op), Num n -> (
-          let exact = match r with Math_const _ -> false | _ -> true in
-          match length_scale ~exact op a n with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      | Num n, Mul, Val a -> (
-          match length_scale Mul a n with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
-         reduces back to [x]. *)
-      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
-      | Num 1., Div, Expr (Num 1., Div, x) -> x
-      | _ -> (
-          match
-            calc_identity ~zero:(Val Zero) ~is_zero:length_is_zero l op r
-          with
-          | Some folded -> folded
-          | None -> Expr (l, op, r)))
+let length_calc_math_fn (fn : math_fn) : length calc =
+  match length_of_math_fn fn with
+  | Some l -> Val l
+  | None -> (
+      match length_math_fn_value fn with Some v -> Num v | None -> Math_fn fn)
+
+let eval_length_calc ?(ctx = default_calc_ctx) (c : length calc) : length calc =
+  eval_typed_calc ~math_fn:length_calc_math_fn
+    ~scale:(fun ~exact op v n -> length_scale ~exact op v n)
+    ~combine:length_combine ~is_zero:length_is_zero ~zero:(Val Zero) ~ctx c
 
 type length_unit =
   | Px
@@ -1690,63 +1699,17 @@ let lp_is_zero : length_percentage -> bool = function
   | Pct f -> f = 0.
   | _ -> false
 
-let rec eval_lp_calc :
-    ?ctx:calc_ctx -> length_percentage calc -> length_percentage calc =
- fun ?(ctx = default_calc_ctx) calc ->
-  match calc with
-  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const _ as leaf -> leaf
-  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
-  | Math_fn fn -> (
-      match lp_of_math_fn fn with
-      | Some lp -> Val lp
-      | None -> (
-          match length_math_fn_value fn with
-          | Some v -> Num v
-          | None -> Math_fn fn))
-  | Nested inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_lp_calc ~ctx inner)
-  | Parens inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (eval_lp_calc ~ctx inner)
-  | Expr (l, op, r) -> (
-      let l = eval_lp_calc ~ctx l in
-      let r = eval_lp_calc ~ctx r in
-      (* Match on the const-folded operands ([pi] -> its value) but keep [l] /
-         [r] in the no-fold results, so an expression that does not reduce to a
-         leaf (e.g. [2px / pi]) keeps the short [calc(2px/pi)] rather than
-         leaking the decimal. *)
-      let lc = calc_operand_value l in
-      let rc = calc_operand_value r in
-      match (lc, op, rc) with
-      | Num a, Add, Num b -> Num (a +. b)
-      | Num a, Sub, Num b -> Num (a -. b)
-      | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b -> (
-          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
-      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
-          Option.get (fold_zero_numeric_expr lc op rc)
-      | Val a, op, Val b -> (
-          match lp_combine op a b with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      | Val _, Div, Num 0. -> Expr (l, op, r)
-      | Val a, ((Mul | Div) as op), Num n -> (
-          let exact = match r with Math_const _ -> false | _ -> true in
-          match lp_scale ~exact op a n with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      | Num n, Mul, Val a -> (
-          match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
-      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion and
-         reduces back to [x]. *)
-      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
-      | Num 1., Div, Expr (Num 1., Div, x) -> x
-      | _ -> (
-          match
-            calc_identity ~zero:(Val (Length Zero)) ~is_zero:lp_is_zero l op r
-          with
-          | Some folded -> folded
-          | None -> Expr (l, op, r)))
+let lp_calc_math_fn (fn : math_fn) : length_percentage calc =
+  match lp_of_math_fn fn with
+  | Some lp -> Val lp
+  | None -> (
+      match length_math_fn_value fn with Some v -> Num v | None -> Math_fn fn)
+
+let eval_lp_calc ?(ctx = default_calc_ctx) (c : length_percentage calc) :
+    length_percentage calc =
+  eval_typed_calc ~math_fn:lp_calc_math_fn
+    ~scale:(fun ~exact op v n -> lp_scale ~exact op v n)
+    ~combine:lp_combine ~is_zero:lp_is_zero ~zero:(Val (Length Zero)) ~ctx c
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (Pct, n)
@@ -3790,24 +3753,178 @@ let rec normalize_number ?(ctx = default_calc_ctx) (n : number) : number =
    100%)] -> [calc(.5*100%)]), keeping any [var()]. Replaces the numeric /
    identity reduction the printer did under minify, now that pp is a pure
    serialiser. *)
+(* [<percentage>] scaling/combining: [calc(50% * 2)] -> [100%], [calc(10% +
+   20%)] -> [30%]. A bare [<number>] operand stays a [Num] leaf and folds
+   through the generic numeric arms. *)
+let pct_scale ?(exact = true) op (p : percentage) n : percentage option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match p with
+    | Pct v -> scaled (fun x -> (Pct x : percentage)) v
+    | Num v -> scaled (fun x -> (Num x : percentage)) v
+    | _ -> Option.none
+
+let pct_combine op (a : percentage) (b : percentage) : percentage option =
+  let f x y =
+    match op with
+    | Add -> Option.some (x +. y)
+    | Sub -> Option.some (x -. y)
+    | Mul | Div -> Option.none
+  in
+  match (a, b) with
+  | Pct x, Pct y -> Option.map (fun r -> (Pct r : percentage)) (f x y)
+  | Num x, Num y -> Option.map (fun r -> (Num r : percentage)) (f x y)
+  | _ -> Option.none
+
+let pct_is_zero : percentage -> bool = function
+  | Pct f | Num f -> f = 0.
+  | _ -> false
+
+let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
+    percentage calc =
+  eval_typed_calc
+    ~math_fn:(fun fn ->
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+    ~scale:(fun ~exact op v n -> pct_scale ~exact op v n)
+    ~combine:pct_combine ~is_zero:pct_is_zero
+    ~zero:(Val (Pct 0.) : percentage calc)
+    ~ctx c
+
 let normalize_percentage ?(ctx = default_calc_ctx) (p : percentage) : percentage
     =
   match p with
   | Calc c -> (
-      match eval_calc ~ctx c with
+      match eval_pct_calc ~ctx c with
       | Num f -> Num f
       | Val v -> v
       | folded -> Calc folded)
   | Pct _ | Num _ | Var _ -> p
 
-(* Fold the value-independent parts of a [<time>] [calc()] ([calc(var(--d) * 1)]
-   -> [calc(var(--d))]), keeping any [var()]. A bare-number reduction stays
-   wrapped (a [<number>] is not a [<time>]). *)
+(* [<time>] scaling/combining ([calc(1s * 2)] -> [2s], [calc(.5s + .5s)] ->
+   [1s]); same-unit only, so [s] and [ms] stay distinct. A bare-number reduction
+   stays wrapped (a [<number>] is not a [<time>]). *)
+let time_scale ?(exact = true) op (d : duration) n : duration option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match d with
+    | S v -> scaled (fun x -> S x) v
+    | Ms v -> scaled (fun x -> Ms x) v
+    | _ -> Option.none
+
+let time_combine op (a : duration) (b : duration) : duration option =
+  let f x y =
+    match op with
+    | Add -> Option.some (x +. y)
+    | Sub -> Option.some (x -. y)
+    | Mul | Div -> Option.none
+  in
+  match (a, b) with
+  | S x, S y -> Option.map (fun r -> S r) (f x y)
+  | Ms x, Ms y -> Option.map (fun r -> Ms r) (f x y)
+  | _ -> Option.none
+
+let time_is_zero : duration -> bool = function
+  | S f | Ms f -> f = 0.
+  | _ -> false
+
+let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
+    =
+  eval_typed_calc
+    ~math_fn:(fun fn ->
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+    ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
+    ~combine:time_combine ~is_zero:time_is_zero
+    ~zero:(Val (S 0.) : duration calc)
+    ~ctx c
+
 let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
   match d with
   | Calc c -> (
-      match eval_calc ~ctx c with Val v -> v | folded -> Calc folded)
+      match eval_time_calc ~ctx c with Val v -> v | folded -> Calc folded)
   | _ -> d
+
+(* CSS Values 4 §10.7: a typed [<angle>] multiplied or divided by a unitless
+   number scales the angle's coefficient and keeps its unit, so [calc(1deg *
+   -45)] reduces to [-45deg]. Division folds only when the quotient is [exact]
+   (see [exact_div]); dividing by a math constant ([pi] / ...) is irrational, so
+   it rounds like the matching multiplication. *)
+let angle_scale ?(exact = true) op (a : angle) n : angle option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match a with
+    | Deg v -> scaled (fun x -> Deg x) v
+    | Rad v -> scaled (fun x -> Rad x) v
+    | Turn v -> scaled (fun x -> Turn x) v
+    | Grad v -> scaled (fun x -> Grad x) v
+    | _ -> Option.none
+
+let angle_is_zero : angle -> bool = function
+  | Deg f | Rad f | Turn f | Grad f -> f = 0.
+  | _ -> false
+
+(* CSS Values 4 §10.7: same-unit add/sub of two typed angles reduces to one
+   angle ([calc(45deg + 45deg)] -> [90deg]). Cross-unit operands (e.g. [1turn +
+   90deg]) stay unfolded; [normalize_angle] picks the shortest spelling of a
+   single folded operand, not across a mixed sum. *)
+let angle_combine op (a : angle) (b : angle) : angle option =
+  let f x y =
+    match op with
+    | Add -> Option.some (x +. y)
+    | Sub -> Option.some (x -. y)
+    | Mul | Div -> Option.none
+  in
+  match (a, b) with
+  | Deg x, Deg y -> Option.map (fun r -> Deg r) (f x y)
+  | Rad x, Rad y -> Option.map (fun r -> Rad r) (f x y)
+  | Turn x, Turn y -> Option.map (fun r -> Turn r) (f x y)
+  | Grad x, Grad y -> Option.map (fun r -> Grad r) (f x y)
+  | _ -> Option.none
+
+let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
+  eval_typed_calc
+    ~math_fn:(fun fn ->
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+    ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
+    ~combine:angle_combine ~is_zero:angle_is_zero ~zero:(Val (Deg 0.)) ~ctx c
 
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
@@ -3854,7 +3971,9 @@ let normalize_angle ?(ctx = default_calc_ctx) =
         | Deg x, Deg y when y <> 0. -> shortest (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
-        match eval_calc ~ctx c with Val v -> go v | folded -> Calc folded)
+        match eval_angle_calc ~ctx c with
+        | Val v -> go v
+        | folded -> Calc folded)
     | Deg _ | Turn _ | Grad _ -> shortest a
     | Rad _ | Var _ | Invalid _ -> a
   in
@@ -3894,12 +4013,63 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
    faithfully. [Var] and [Calc] sub-forms are left untouched - inside a calc(),
    [%] and number are not interchangeable, and a [var()] reference is
    context-free. *)
+(* [<number-percentage>] shares [<percentage>]'s scaling/combining; the type is
+   distinct, so the helpers are too. *)
+let np_scale ?(exact = true) op (np : number_percentage) n :
+    number_percentage option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match np with
+    | Pct v -> scaled (fun x -> (Pct x : number_percentage)) v
+    | Num v -> scaled (fun x -> (Num x : number_percentage)) v
+    | _ -> Option.none
+
+let np_combine op (a : number_percentage) (b : number_percentage) :
+    number_percentage option =
+  let f x y =
+    match op with
+    | Add -> Option.some (x +. y)
+    | Sub -> Option.some (x -. y)
+    | Mul | Div -> Option.none
+  in
+  match (a, b) with
+  | Pct x, Pct y -> Option.map (fun r -> (Pct r : number_percentage)) (f x y)
+  | Num x, Num y -> Option.map (fun r -> (Num r : number_percentage)) (f x y)
+  | _ -> Option.none
+
+let np_is_zero : number_percentage -> bool = function
+  | Pct f | Num f -> f = 0.
+  | _ -> false
+
+let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
+    number_percentage calc =
+  eval_typed_calc
+    ~math_fn:(fun fn ->
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+    ~scale:(fun ~exact op v n -> np_scale ~exact op v n)
+    ~combine:np_combine ~is_zero:np_is_zero
+    ~zero:(Val (Num 0.) : number_percentage calc)
+    ~ctx c
+
 let rec normalize_number_percentage ?(ctx = default_calc_ctx)
     (np : number_percentage) : number_percentage =
   let len f = String.length (Pp.string_of_float ~drop_leading_zero:true f) in
   match np with
   | Calc c -> (
-      match eval_calc ~ctx c with
+      match eval_np_calc ~ctx c with
       | Num f -> normalize_number_percentage ~ctx (Num f)
       | Val v -> normalize_number_percentage ~ctx v
       | folded -> Calc folded)
@@ -7030,10 +7200,61 @@ let canonical_color_of_hex r g b a : color =
    a [var()] channel). CSS Color 4 sec. 4.1: a fully-opaque [/ 1] / [/ 100%] is
    redundant and drops; an alpha [<percentage>] is the [<number>] divided by 100
    and serialises as the number. *)
-let normalize_alpha (a : alpha) : alpha =
+let alpha_scale ?(exact = true) op (a : alpha) n : alpha option =
+  if not (Float.is_finite n) then Option.none
+  else
+    let scaled rebuild v =
+      match op with
+      | Mul ->
+          let r = v *. n in
+          if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Div ->
+          if exact then Option.map rebuild (exact_div v n)
+          else if n = 0. then Option.none
+          else
+            let r = v /. n in
+            if Float.is_finite r then Option.some (rebuild r) else Option.none
+      | Add | Sub -> Option.none
+    in
+    match a with
+    | Num v -> scaled (fun x -> (Num x : alpha)) v
+    | Pct v -> scaled (fun x -> (Pct x : alpha)) v
+    | _ -> Option.none
+
+let alpha_combine op (a : alpha) (b : alpha) : alpha option =
+  let f x y =
+    match op with
+    | Add -> Option.some (x +. y)
+    | Sub -> Option.some (x -. y)
+    | Mul | Div -> Option.none
+  in
+  match (a, b) with
+  | Num x, Num y -> Option.map (fun r -> (Num r : alpha)) (f x y)
+  | Pct x, Pct y -> Option.map (fun r -> (Pct r : alpha)) (f x y)
+  | _ -> Option.none
+
+let alpha_is_zero : alpha -> bool = function
+  | Num f | Pct f -> f = 0.
+  | _ -> false
+
+let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
+  eval_typed_calc
+    ~math_fn:(fun fn ->
+      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+    ~scale:(fun ~exact op v n -> alpha_scale ~exact op v n)
+    ~combine:alpha_combine ~is_zero:alpha_is_zero
+    ~zero:(Val (Num 0.) : alpha calc)
+    ~ctx c
+
+let rec normalize_alpha (a : alpha) : alpha =
   match a with
   | Num 1.0 | Pct 100.0 -> None
   | Pct f -> Num (f /. 100.)
+  | Calc c -> (
+      match eval_alpha_calc c with
+      | Num f -> normalize_alpha (Num f)
+      | Val v -> normalize_alpha v
+      | folded -> Calc folded)
   | other -> other
 
 let drop_full_alpha (c : color) : color =
