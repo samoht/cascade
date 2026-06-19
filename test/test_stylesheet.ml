@@ -5957,7 +5957,7 @@ let customprops13_registered_percent_calc () =
   Alcotest.(check string)
     "registered percent custom property uses typed calc minification"
     "@property \
-     --tw-translate-x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{--tw-translate-x:calc(.5*100%)}"
+     --tw-translate-x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{--tw-translate-x:50%}"
     (normalize_minified
        "@property --tw-translate-x { syntax: \"<percentage>\"; inherits: \
         false; initial-value: 0% } .x { --tw-translate-x: calc(1 / 2 * 100%) }")

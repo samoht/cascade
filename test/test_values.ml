@@ -437,6 +437,36 @@ let test_angle () =
   decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
   decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
 
+  (* CSS Values 4 §10.7: scaling a typed <angle> by a unitless number folds to a
+     concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
+     -45deg matches what the browser computes. Both operand orders fold. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(1deg*-45)" ~into:"-45deg"
+    "calc(1deg * -45)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2)" ~into:"90deg"
+    "calc(45deg * 2)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(-45*1deg)" ~into:"-45deg"
+    "calc(-45 * 1deg)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(1turn*.5)" ~into:".5turn"
+    "calc(1turn * 0.5)";
+  (* Division folds only when the quotient is exact: 90/2 reduces, 45/7 keeps
+     the calc() so no precision is lost. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(90deg/2)" ~into:"45deg"
+    "calc(90deg / 2)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg/7)" ~into:"calc(45deg/7)"
+    "calc(45deg / 7)";
+  (* A var() operand is a runtime substitution boundary and stays unfolded; only
+     the static 45deg*2 sub-expression reduces. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(var(--x)*1deg)"
+    ~into:"calc(var(--x)*1deg)" "calc(var(--x) * 1deg)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2*var(--x))"
+    ~into:"calc(90deg*var(--x))" "calc(45deg * 2 * var(--x))";
+  (* Same-unit add/sub of two angles combines into one (CSS Values 4 §10.7);
+     cross-unit operands stay unfolded. *)
+  decl_optimizes ~prop:"rotate" ~held:"calc(45deg + 45deg)" ~into:"90deg"
+    "calc(45deg + 45deg)";
+  decl_optimizes ~prop:"rotate" ~held:"calc(90deg - 45deg)" ~into:"45deg"
+    "calc(90deg - 45deg)";
+
   (* Var with angle fallback *)
   check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
 
@@ -472,6 +502,18 @@ let test_duration () =
   check_duration ".1s";
   check_duration ~expected:".15s" "150ms";
   check_duration "1.5s";
+
+  (* CSS Values 4 §10.7: a typed <time> scales by a number and same-unit
+     operands combine. s and ms stay distinct, and an inexact division keeps the
+     calc() so no precision is lost. *)
+  decl_optimizes ~prop:"transition-duration" ~held:"calc(1s*2)" ~into:"2s"
+    "calc(1s * 2)";
+  decl_optimizes ~prop:"transition-duration" ~held:"calc(2s/2)" ~into:"1s"
+    "calc(2s / 2)";
+  decl_optimizes ~prop:"transition-duration" ~held:"calc(.5s + .5s)" ~into:"1s"
+    "calc(0.5s + 0.5s)";
+  decl_optimizes ~prop:"transition-duration" ~held:"calc(1s/3)"
+    ~into:"calc(1s/3)" "calc(1s / 3)";
 
   (* Var with duration fallback *)
   check_duration ~expected:"var(--custom-time,1s)" "var(--custom-time, 1s)";
@@ -753,6 +795,12 @@ let test_alpha () =
   check_alpha ~expected:"0" "-0.5";
   check_alpha ~expected:"100%" "150%";
   decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
+  (* CSS Values 4 §10.7: an alpha calc() resolves - a scaled or added alpha
+     folds, and a percentage alpha that reaches 100% drops the channel. *)
+  decl_optimizes ~prop:"color" ~into:"#ff000080" "rgb(255 0 0 / calc(0.5 * 1))";
+  decl_optimizes ~prop:"color" ~into:"#ff00004d"
+    "rgb(255 0 0 / calc(0.2 + 0.1))";
+  decl_optimizes ~prop:"color" ~into:"red" "rgb(255 0 0 / calc(50% * 2))";
   neg_cursor read_alpha "1px"
 
 let test_hue_interpolation () =
