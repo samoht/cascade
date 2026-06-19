@@ -20357,6 +20357,12 @@ let try_read_custom_number components =
 let try_read_custom_percentage components =
   read_custom_value_as Percentage read_percentage components
 
+let try_read_custom_angle components =
+  read_custom_value_as Angle read_angle_unit_required components
+
+let try_read_custom_time components =
+  read_custom_value_as Duration read_duration components
+
 let pp_number_value ctx (value : number) =
   let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
   match value with
@@ -20994,6 +21000,8 @@ let normalize_custom_property_value ?(lossless = false)
         }
   | Typed { kind = Angle; value } ->
       Typed { kind = Angle; value = Values.normalize_angle ~ctx value }
+  | Typed { kind = Duration; value } ->
+      Typed { kind = Duration; value = Values.normalize_duration ~ctx value }
   | Typed { kind = Gradient_direction; value } ->
       Typed
         {

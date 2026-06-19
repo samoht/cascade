@@ -658,6 +658,8 @@ let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
       Properties.try_read_custom_length_percentage components
   | Variables.Number -> Properties.try_read_custom_number components
   | Variables.Percentage -> Properties.try_read_custom_percentage components
+  | Variables.Angle -> Properties.try_read_custom_angle components
+  | Variables.Time -> Properties.try_read_custom_time components
   | _ -> None
 
 (* Does the registered syntax somewhere accept a [<custom-ident>] (possibly

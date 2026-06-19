@@ -79,6 +79,12 @@ val try_read_custom_number : custom_value -> custom_property_value option
 val try_read_custom_percentage : custom_value -> custom_property_value option
 (** [try_read_custom_percentage tokens] parses [tokens] as a [<percentage>]. *)
 
+val try_read_custom_angle : custom_value -> custom_property_value option
+(** [try_read_custom_angle tokens] parses [tokens] as an [<angle>]. *)
+
+val try_read_custom_time : custom_value -> custom_property_value option
+(** [try_read_custom_time tokens] parses [tokens] as a [<time>]. *)
+
 val components_of_custom_property_value :
   custom_property_value -> Component.t list
 (** [components_of_custom_property_value value] returns the component stream
