@@ -3371,6 +3371,14 @@ let test_opacity () =
   check_opacity ~expected:".5" "0.5";
   check_opacity "1";
   check_opacity "0";
+  (* A <percentage> operand inside an opacity calc() is the number it denotes
+     (50% = .5), so the calc parses (was rejected) and folds like any number. *)
+  check_opacity ~expected:"calc(.5*2)" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(.5*2)" ~into:"1" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(.5 + .25)" ~into:".75"
+    "calc(50% + 25%)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(.5*var(--x))"
+    ~into:"calc(.5*var(--x))" "calc(50% * var(--x))";
   neg_cursor read_opacity "invalid-opacity"
 
 let test_order () =
