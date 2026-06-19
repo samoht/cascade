@@ -1077,10 +1077,13 @@ let test_custom_value_close_paren_whitespace () =
     "optimize folds whitespace after a function close (canonical)"
     "a{--x:drop-shadow(0 0 0)drop-shadow(1px 1px)}"
     (minify_str "a{--x:drop-shadow(0 0 0) drop-shadow(1px 1px)}");
+  (* A [var()]-carrying calc does not reduce to a leaf, so it stays a function
+     and exercises the whitespace-after-[)] fold (a fully-constant angle calc
+     instead folds to a dimension - see the custom-property folding tests). *)
   Alcotest.(check string)
     "optimize folds whitespace after calc() before an ident"
-    "a{--x:calc(45deg*-1)in oklab}"
-    (minify_str "a{--x:calc(45deg * -1) in oklab}");
+    "a{--x:calc(45deg*var(--n))in oklab}"
+    (minify_str "a{--x:calc(45deg * var(--n)) in oklab}");
   (* A [var()] substitutes a token stream textually, so dropping the whitespace
      after it could merge the substituted values ([1px2px]); it stays. *)
   Alcotest.(check string)

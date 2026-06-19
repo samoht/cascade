@@ -20260,11 +20260,13 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | _ -> fallback ()
 
 (* A math function ([calc()], [min()], [clamp()], ...) is unconditionally a math
-   expression, so when its operands are all constants it reduces to a single
-   <number> with the same value in every [var()] substitution site - fold it
-   inside an opaque custom-property stream like a complete colour. A function
-   that still references a var or carries units does not reduce to a [Num] and
-   stays verbatim. *)
+   expression whose type is fixed by its operands' units, so when it reduces to
+   a single constant it has that value in every [var()] substitution site - fold
+   it inside an opaque custom-property stream like a complete colour. [<number>]
+   and the unit-unambiguous dimensions ([<angle>] / [<time>]) qualify;
+   [<percentage>] is ambiguous (length vs number percentage) so it stays
+   verbatim, as does a function that still references a [var()] (it does not
+   reduce to a leaf). *)
 let is_math_function name =
   match String.lowercase_ascii name with
   | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "abs" | "sign"
@@ -20274,19 +20276,51 @@ let is_math_function name =
 
 let fold_custom_calc (c : Component.t) ~fallback =
   let text = Parser.to_string_custom [ c ] in
-  let cur = Cursor.of_string text in
+  (* Parse the whole token as one typed value and fold only when it reduces to a
+     single concrete leaf (not a [calc()] that still carries a [var()]). *)
+  let try_typed : type a.
+      (Cursor.t -> a) ->
+      (a -> a) ->
+      a Pp.t ->
+      (a -> bool) ->
+      Component.t list option =
+   fun reader normalize pp reduced ->
+    let cur = Cursor.of_string text in
+    match try Some (reader cur) with Cursor.Parse_error _ -> None with
+    | Some v when Cursor.is_done cur ->
+        let folded = normalize v in
+        if reduced folded then
+          match
+            read_custom_property_value
+              (Cursor.of_string (Pp.to_string ~minify:true pp folded))
+          with
+          | Tokens cs -> Some cs
+          | Typed _ -> None
+        else None
+    | _ -> None
+  in
+  let number_reduced = function (Num _ : number) -> true | _ -> false in
+  let angle_reduced = function
+    | (Deg _ | Rad _ | Turn _ | Grad _ : angle) -> true
+    | _ -> false
+  in
+  let time_reduced = function (S _ | Ms _ : duration) -> true | _ -> false in
   match
-    try Some (Values.read_number cur) with Cursor.Parse_error _ -> None
+    List.find_map Fun.id
+      [
+        try_typed read_number
+          (fun n -> normalize_number n)
+          pp_number number_reduced;
+        try_typed read_angle_unit_required
+          (fun a -> normalize_angle a)
+          pp_angle angle_reduced;
+        try_typed read_duration
+          (fun d -> normalize_duration d)
+          pp_duration time_reduced;
+      ]
   with
-  | Some n when Cursor.is_done cur -> (
-      match Values.normalize_number n with
-      | Num _ as folded -> (
-          let canon = Pp.to_string ~minify:true Values.pp_number folded in
-          match read_custom_property_value (Cursor.of_string canon) with
-          | Tokens cs -> cs
-          | Typed _ -> [ c ])
-      | _ -> fallback ())
-  | _ -> fallback ()
+  | Some cs -> cs
+  | None -> fallback ()
 
 let rec canonicalize_custom_colors_components ~lossless comps =
   let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
