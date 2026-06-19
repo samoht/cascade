@@ -145,7 +145,12 @@ let vendor_prefixes () =
   check_declaration ~expected:"-webkit-print-color-adjust:exact"
     "-webkit-print-color-adjust: exact;";
   check_declaration ~expected:"-webkit-mask-image:linear-gradient(red,blue)"
-    "-webkit-mask-image: linear-gradient(red, blue);"
+    "-webkit-mask-image: linear-gradient(red, blue);";
+  (* -webkit-mask-image normalizes like mask-image: its gradient angle and
+     colours fold under optimize (200grad -> 180deg, the default direction, is
+     dropped; blue -> #00f). *)
+  decl_optimizes ~prop:"-webkit-mask-image" ~into:"linear-gradient(red,#00f)"
+    "linear-gradient(200grad, red, blue)"
 
 let multiple () =
   (* Basic multiple declarations *)

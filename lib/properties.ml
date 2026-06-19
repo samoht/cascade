@@ -20765,6 +20765,7 @@ let normalize_property_value : type a.
   | Background_image ->
       map_preserve (normalize_background_image ~lossless) value
   | Mask_image -> normalize_background_image ~lossless value
+  | Webkit_mask_image -> normalize_background_image ~lossless value
   | Border_image_source -> normalize_background_image ~lossless value
   | Background -> map_preserve (normalize_background ~lossless) value
   | Mask -> normalize_mask ~lossless value
