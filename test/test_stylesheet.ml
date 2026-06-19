@@ -5975,6 +5975,28 @@ let customprops13_registered_negative_dimension_calc () =
        "@property --tw-tracking { syntax: \"<length>\"; inherits: false; \
         initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")
 
+let customprops13_registered_angle_time_calc () =
+  (* Registered <angle>/<time> custom properties fold their calc() like
+     <length>/<percentage>; unregistered ones stay opaque token streams. *)
+  Alcotest.(check string)
+    "unregistered angle calc custom property keeps token stream"
+    ".x{--tw-rotate:calc(1deg*0)}"
+    (normalize_minified ".x { --tw-rotate: calc(1deg * 0) }");
+  Alcotest.(check string)
+    "registered angle custom property reduces to an angle"
+    "@property \
+     --tw-rotate{syntax:\"<angle>\";inherits:false;initial-value:0deg}.x{--tw-rotate:0deg}"
+    (normalize_minified
+       "@property --tw-rotate { syntax: \"<angle>\"; inherits: false; \
+        initial-value: 0deg } .x { --tw-rotate: calc(1deg * 0) }");
+  Alcotest.(check string)
+    "registered time custom property reduces to a duration"
+    "@property \
+     --tw-delay{syntax:\"<time>\";inherits:false;initial-value:0s}.x{--tw-delay:2s}"
+    (normalize_minified
+       "@property --tw-delay { syntax: \"<time>\"; inherits: false; \
+        initial-value: 0s } .x { --tw-delay: calc(1s * 2) }")
+
 let customprops13_shortest_unresolved_calc_spacing () =
   Alcotest.(check string)
     "unregistered unresolved calc custom property keeps token stream"
@@ -6910,6 +6932,9 @@ let additional_tests =
     ( "spec custom-properties 1 3 registered negative dimension calc",
       `Quick,
       customprops13_registered_negative_dimension_calc );
+    ( "spec custom-properties 1 3 registered angle and time calc",
+      `Quick,
+      customprops13_registered_angle_time_calc );
     ( "spec custom-properties 1 3 unregistered unresolved calc spacing",
       `Quick,
       customprops13_shortest_unresolved_calc_spacing );
