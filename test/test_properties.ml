@@ -1757,6 +1757,16 @@ let test_border_width () =
   check_border_width "thick";
   check_border_width "2px";
   check_border_width ".0625rem";
+  (* A zero-valued border-width collapses the unit like any other zero length
+     (border-width: 0px -> 0), matching width/outline-width. Holds for the
+     longhand, the logical longhand, and the 1-4 value shorthand; non-zero
+     values keep their unit. *)
+  decl_optimizes ~prop:"border-width" ~held:"0px" ~into:"0" "0px";
+  decl_optimizes ~prop:"border-right-width" ~held:"0px" ~into:"0" "0px";
+  decl_optimizes ~prop:"border-inline-start-width" ~held:"0px" ~into:"0" "0px";
+  decl_optimizes ~prop:"border-width" ~held:"0px 1px 0 2rem"
+    ~into:"0 1px 0 2rem" "0px 1px 0 2rem";
+  decl_optimizes ~prop:"border-width" ~held:"2px" ~into:"2px" "2px";
   neg_cursor read_border_width "invalid-width";
   neg_cursor read_border_width "-2px";
   (* negative width *)
