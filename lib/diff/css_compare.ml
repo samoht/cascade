@@ -23,6 +23,7 @@ type stats = {
   removed_rules : int;
   modified_rules : int;
   reordered_rules : int;
+  regrouped_rules : int;
   container_changes : int;
 }
 
@@ -477,6 +478,8 @@ let compute_stats ~expected_str ~actual_str diff_result =
             | _ -> false);
         reordered_rules =
           count_rule_type (function D.Reordered _ -> true | _ -> false);
+        regrouped_rules =
+          count_rule_type (function D.Regrouped _ -> true | _ -> false);
         container_changes = List.length d.containers;
       }
   | _ ->
@@ -490,6 +493,7 @@ let compute_stats ~expected_str ~actual_str diff_result =
         removed_rules = 0;
         modified_rules = 0;
         reordered_rules = 0;
+        regrouped_rules = 0;
         container_changes = 0;
       }
 
@@ -565,6 +569,7 @@ let emit_changes buf stats =
       (stats.removed_rules, "removed", "rule");
       (stats.modified_rules, "modified", "rule");
       (stats.reordered_rules, "reordered", "rule");
+      (stats.regrouped_rules, "regrouped", "rule");
     ]
     |> List.filter (fun (n, _, _) -> n > 0)
   in

@@ -38,6 +38,11 @@ type rule_diff =
       old_declarations : Css.declaration list option;
       new_declarations : Css.declaration list option;
     }
+  | Regrouped of { from_selectors : string list; to_selectors : string list }
+      (** A comma group merged or split across rules with identical
+          declarations: the same selectors survive, only the grouping differs.
+          [from_selectors]/[to_selectors] are the rule selectors in expected and
+          actual. *)
 
 type container_info = {
   container_type :

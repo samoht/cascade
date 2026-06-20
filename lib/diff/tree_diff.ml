@@ -37,6 +37,12 @@ type rule_diff =
       old_declarations : Css.declaration list option;
       new_declarations : Css.declaration list option;
     }
+  | Regrouped of {
+      from_selectors : string list; (* rule selectors in expected *)
+      to_selectors : string list; (* rule selectors in actual *)
+    }
+(* A comma group merged or split across rules with identical declarations: the
+   same selectors survive, only the grouping differs. *)
 
 type container_info = {
   container_type :
@@ -349,6 +355,23 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
           pp_position_reorder ~prefix buf ~selector:r.selector
             ~expected_pos:r.expected_pos ~actual_pos:r.actual_pos
             ~swapped_with:r.swapped_with)
+  | Regrouped { from_selectors; to_selectors } ->
+      let prefix = tree_prefix ~style ~is_last ~parent_prefix in
+      let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
+      let nf = List.length from_selectors and nt = List.length to_selectors in
+      let verb =
+        if nf > nt then "merged" else if nf < nt then "split" else "regrouped"
+      in
+      Buffer.add_string buf (prefix ^ "selectors " ^ verb ^ "\n");
+      let indent =
+        if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
+      in
+      List.iter
+        (fun s -> Buffer.add_string buf (indent ^ ansi_red ("- " ^ s) ^ "\n"))
+        from_selectors;
+      List.iter
+        (fun s -> Buffer.add_string buf (indent ^ ansi_green ("+ " ^ s) ^ "\n"))
+        to_selectors
 
 let pp_rule_diff_simple buf (diff : rule_diff) =
   match diff with
@@ -364,6 +387,13 @@ let pp_rule_diff_simple buf (diff : rule_diff) =
       Buffer.add_string buf
         ("Reordered(" ^ selector ^ ":" ^ string_of_int expected_pos ^ "->"
        ^ string_of_int actual_pos ^ ")")
+  | Regrouped { from_selectors; to_selectors } ->
+      Buffer.add_string buf
+        ("Regrouped("
+        ^ String.concat " | " from_selectors
+        ^ "->"
+        ^ String.concat " | " to_selectors
+        ^ ")")
 
 let meaningful_rules (rules : rule_diff list) =
   List.filter
@@ -480,6 +510,11 @@ let count_rule_changes (rule_changes : rule_diff list) =
                match diff with Selector_changed _ -> true | _ -> false)
          in
          if n > 0 then Some (string_of_int n ^ " selector changed") else None);
+        (let n =
+           count (fun (diff : rule_diff) ->
+               match diff with Regrouped _ -> true | _ -> false)
+         in
+         if n > 0 then Some (string_of_int n ^ " regrouped") else None);
       ]
   in
   parts
@@ -1074,6 +1109,129 @@ let exclude_modified_selector_changes sel_changes other_modified =
       not (List.mem (sel1_str, sel2_str) sel_change_selectors))
     other_modified
 
+(* The single selectors and declaration signature of a flat rule (no nested
+   body); [None] for any other statement. *)
+let flat_rule_parts stmt =
+  match Css.as_rule stmt with
+  | Some (sel, decls, []) ->
+      let subs = match sel with List subs -> subs | s -> [ s ] in
+      Some (decls, subs, decls_signature decls)
+  | _ -> None
+
+let grouping_pair_count rules =
+  let h = Hashtbl.create 16 in
+  List.iter
+    (fun stmt ->
+      match flat_rule_parts stmt with
+      | Some (_, subs, sign) ->
+          List.iter
+            (fun sub ->
+              let p = (selector_key_of_selector sub, sign) in
+              Hashtbl.replace h p
+                (1 + Option.value ~default:0 (Hashtbl.find_opt h p)))
+            subs
+      | None -> ())
+    rules;
+  h
+
+(* Drop each selector whose pair the [common] budget still covers; keep the rule
+   unchanged when none drop, trim it to the survivors otherwise, remove it when
+   all drop. *)
+let trim_reconciled_grouping common rules =
+  let budget = Hashtbl.copy common in
+  List.filter_map
+    (fun stmt ->
+      match flat_rule_parts stmt with
+      | Some (decls, subs, sign) ->
+          let kept =
+            List.filter
+              (fun sub ->
+                let p = (selector_key_of_selector sub, sign) in
+                match Hashtbl.find_opt budget p with
+                | Some n when n > 0 ->
+                    Hashtbl.replace budget p (n - 1);
+                    false
+                | _ -> true)
+              subs
+          in
+          if kept = [] then None
+          else if List.compare_lengths kept subs = 0 then Some stmt
+          else
+            let selector =
+              match kept with [ s ] -> s | many -> Css.Selector.list many
+            in
+            Some (Css.rule ~selector decls)
+      | None -> Some stmt)
+    rules
+
+(* A comma-grouped rule split or merged across rules with identical declarations
+   ([.a, .b { x }] vs [.a { x } .b { x }]) is not a semantic change: the same
+   [(single selector, declarations)] pairs survive, only regrouped. Reconcile
+   the leftover add/remove candidates at the pair level so the regrouping does
+   not read as add/remove noise - a pair on both sides is unchanged and drops
+   from each, trimming the rule's selector list, or dropping the rule when no
+   selector survives. Restricted to flat rules: a nested rule's [(selector,
+   declarations)] pair does not capture its nested body. *)
+let partial_trim added removed =
+  let added_count = grouping_pair_count added in
+  let removed_count = grouping_pair_count removed in
+  let common = Hashtbl.create 16 in
+  Hashtbl.iter
+    (fun p ac ->
+      match Hashtbl.find_opt removed_count p with
+      | Some rc -> Hashtbl.replace common p (min ac rc)
+      | None -> ())
+    added_count;
+  if Hashtbl.length common = 0 then (added, removed)
+  else
+    ( trim_reconciled_grouping common added,
+      trim_reconciled_grouping common removed )
+
+let rule_sig stmt = Option.map (fun (_, _, s) -> s) (flat_rule_parts stmt)
+
+let rule_selector_str stmt =
+  Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule stmt)
+
+(* A declaration signature is a pure regroup when its removed and added flat
+   rules carry the same multiset of single selectors (only the grouping moved).
+   Emit a [Regrouped] note for it; the rules are dropped from add/remove. *)
+let detect_pure_regroups added removed =
+  let with_sig s rules = List.filter (fun r -> rule_sig r = Some s) rules in
+  let single_keys rules =
+    List.concat_map
+      (fun r ->
+        match flat_rule_parts r with
+        | Some (_, subs, _) -> List.map selector_key_of_selector subs
+        | None -> [])
+      rules
+    |> List.sort compare
+  in
+  List.filter_map rule_sig (added @ removed)
+  |> List.sort_uniq compare
+  |> List.filter_map (fun s ->
+      let radd = with_sig s added and rrem = with_sig s removed in
+      if radd <> [] && rrem <> [] && single_keys radd = single_keys rrem then
+        Some
+          ( s,
+            (Regrouped
+               {
+                 from_selectors = List.filter_map rule_selector_str rrem;
+                 to_selectors = List.filter_map rule_selector_str radd;
+               }
+              : rule_diff) )
+      else None)
+
+let reconcile_selector_grouping added removed =
+  let pure = detect_pure_regroups added removed in
+  let pure_sigs = List.map fst pure in
+  let in_pure r =
+    match rule_sig r with Some s -> List.mem s pure_sigs | None -> false
+  in
+  let added = List.filter (fun r -> not (in_pure r)) added in
+  let removed = List.filter (fun r -> not (in_pure r)) removed in
+  let added, removed = partial_trim added removed in
+  (added, removed, List.map snd pure)
+
 let handle_structural_diff rules1 rules2 =
   let all_added_candidates = rules_added_diff rules1 rules2 in
   let all_removed_candidates = rules_removed_diff rules1 rules2 in
@@ -1090,6 +1248,7 @@ let handle_structural_diff rules1 rules2 =
       (fun r -> not (List.memq r matched_removed))
       all_removed_candidates
   in
+  let added, removed, regrouped = reconcile_selector_grouping added removed in
 
   let other_modified = rules_modified_diff rules1 rules2 in
   let filtered_other_modified =
@@ -1098,7 +1257,9 @@ let handle_structural_diff rules1 rules2 =
 
   let modified = sel_changes @ filtered_other_modified in
 
-  let has_structural_changes = added <> [] || removed <> [] || modified <> [] in
+  let has_structural_changes =
+    added <> [] || removed <> [] || modified <> [] || regrouped <> []
+  in
   (* Key reorder detection on the (selector, declarations) sequence, not the
      selector alone: two same-selector rules with conflicting declarations
      cascade last-wins, so swapping them is a real change. *)
@@ -1118,7 +1279,7 @@ let handle_structural_diff rules1 rules2 =
     else modified
   in
 
-  (added, removed, modified_with_order)
+  (added, removed, modified_with_order, regrouped)
 
 let rule_diffs rules1 rules2 = handle_structural_diff rules1 rules2
 
@@ -1325,10 +1486,11 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
 
 (* Assemble rule changes (added/removed/modified) between two rule lists *)
 let to_rule_changes rules1 rules2 : rule_diff list =
-  let r_added, r_removed, r_modified = rule_diffs rules1 rules2 in
+  let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   List.map convert_added_rule r_added
   @ List.map convert_removed_rule r_removed
   @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
+  @ r_regrouped
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =
@@ -1674,8 +1836,12 @@ let rec media_condition_differs rules_list1 rules_list2 =
   in
   let all_rules1 = List.concat rules_list1 in
   let all_rules2 = List.concat rules_list2 in
-  let added_r, removed_r, modified_r = rule_diffs all_rules1 all_rules2 in
-  let has_immediate = added_r <> [] || removed_r <> [] || modified_r <> [] in
+  let added_r, removed_r, modified_r, regrouped_r =
+    rule_diffs all_rules1 all_rules2
+  in
+  let has_immediate =
+    added_r <> [] || removed_r <> [] || modified_r <> [] || regrouped_r <> []
+  in
   let has_nested = nested_differences ~depth:1 all_rules1 all_rules2 <> [] in
   if has_immediate || has_nested || block_count_differs then
     Some (all_rules1, all_rules2)
@@ -1794,8 +1960,10 @@ and layer_diff items1 items2 =
   let key_of (name_opt, _) = Option.value ~default:"" name_opt in
   let key_equal = String.equal in
   let is_empty_diff (_, rules1) (_, rules2) =
-    let a_r, r_r, m_r = rule_diffs rules1 rules2 in
-    let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] in
+    let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
+    let has_immediate_diffs =
+      a_r <> [] || r_r <> [] || m_r <> [] || rg_r <> []
+    in
     if has_immediate_diffs then false
     else
       (* Also check for nested differences *)
@@ -1866,8 +2034,8 @@ and process_nested_layers ~depth stmts1 stmts2 =
   collect_container_diffs ~container_type:`Layer ~depth added removed modified
 
 and container_has_no_diff (_, _, rules1) (_, _, rules2) =
-  let a_r, r_r, m_r = rule_diffs rules1 rules2 in
-  let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] in
+  let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
+  let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] || rg_r <> [] in
   if has_immediate_diffs then false
   else nested_differences ~depth:1 rules1 rules2 = []
 
@@ -2132,13 +2300,13 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
      keeps [rule_diffs] from matching every import on the universal key. *)
   let rules1 = List.filter (fun s -> Css.as_import s = None) all1 in
   let rules2 = List.filter (fun s -> Css.as_import s = None) all2 in
-  let added, removed, modified = rule_diffs rules1 rules2 in
+  let added, removed, modified, regrouped = rule_diffs rules1 rules2 in
 
   let rule_changes =
     List.map convert_added_rule added
     @ List.map convert_removed_rule removed
     @ List.filter_map (convert_modified_rule ~rules1 ~rules2) modified
-    @ process_imports all1 all2
+    @ regrouped @ process_imports all1 all2
   in
 
   (* Delegate all container and nested-container diffs to the generic walker *)
