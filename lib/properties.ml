@@ -20782,10 +20782,21 @@ let normalize_vertical_align (va : vertical_align) : vertical_align =
       match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
   | _ -> va
 
+(* A zero-valued border-width unit ([0px], [0em]) is the bare length [0]
+   ([border-width: 0] = [border-width: 0px]); collapse it to [Zero] like every
+   other zero length ([width: 0px] -> [0]), which [<length>]-valued properties
+   already do via [normalize_length]. *)
+let border_width_is_zero (bw : border_width) =
+  match length_of_border_width bw with
+  | Some l -> (
+      match Values.normalize_length l with Values.Zero -> true | _ -> false)
+  | None -> false
+
 let normalize_border_width (bw : border_width) : border_width =
   match bw with
   | Calc c -> (
       match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+  | _ when border_width_is_zero bw -> Zero
   | _ -> bw
 
 let normalize_property_value : type a.
@@ -20988,6 +20999,7 @@ let normalize_property_value : type a.
   | Opacity -> normalize_opacity value
   | Line_height -> normalize_line_height value
   | Vertical_align -> normalize_vertical_align value
+  | Border_width -> map_preserve normalize_border_width value
   | Border_top_width -> normalize_border_width value
   | Border_right_width -> normalize_border_width value
   | Border_bottom_width -> normalize_border_width value
