@@ -284,11 +284,75 @@ let pp_rule_diff_simple_ok () =
         "pp_rule_diff_simple produces output" true
         (String.length output > 0)
 
+(* ===== Selector grouping reconciliation ===== *)
+
+let string_contains ~needle hay =
+  let nl = String.length needle and hl = String.length hay in
+  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
+  go 0
+
+let render d =
+  let buf = Buffer.create 256 in
+  Cascade_diff.Tree_diff.pp buf d;
+  Buffer.contents buf
+
+let diff_selector_group_split_reported () =
+  (* Splitting a group with identical declarations is reported as a structural
+     regroup (not add/remove noise, not silently identical). *)
+  let expected = parse ".a, .b { color: red }" in
+  let actual = parse ".a { color: red } .b { color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "split is reported, not identical" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
+  Alcotest.(check bool)
+    "describes a split" true
+    (string_contains ~needle:"split" s);
+  Alcotest.(check bool)
+    "names both selectors" true
+    (string_contains ~needle:".a" s && string_contains ~needle:".b" s)
+
+let diff_selector_group_merge_reported () =
+  let expected = parse ".a { color: red } .b { color: red }" in
+  let actual = parse ".a, .b { color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "merge is reported, not identical" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
+  Alcotest.(check bool)
+    "describes a merge" true
+    (string_contains ~needle:"merged" s)
+
+let diff_selector_group_partial_change () =
+  (* Splitting the group and changing one selector: only the changed selector
+     surfaces, the unchanged one is reconciled away (not add/remove noise). *)
+  let expected = parse ".a, .b { color: red }" in
+  let actual = parse ".a { color: red } .b { color: blue }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "partial regroup is not empty" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
+  Alcotest.(check bool)
+    "reports the changed .b" true
+    (string_contains ~needle:".b" s);
+  Alcotest.(check bool)
+    "does not report the unchanged .a" false
+    (string_contains ~needle:".a" s)
+
 (* ===== Suite ===== *)
 
 let suite =
   ( "tree_diff",
     [
+      Alcotest.test_case "selector group split reported" `Quick
+        diff_selector_group_split_reported;
+      Alcotest.test_case "selector group merge reported" `Quick
+        diff_selector_group_merge_reported;
+      Alcotest.test_case "selector group partial change" `Quick
+        diff_selector_group_partial_change;
       Alcotest.test_case "identical" `Quick diff_identical;
       Alcotest.test_case "identical multiple rules" `Quick
         diff_identical_multiple_rules;

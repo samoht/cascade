@@ -112,6 +112,7 @@ type stats = {
   removed_rules : int;
   modified_rules : int;
   reordered_rules : int;
+  regrouped_rules : int;
   container_changes : int;
 }
 (** Summary of differences extracted from a {!t}. *)
