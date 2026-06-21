@@ -2631,12 +2631,6 @@ let pp_keyword s ctx = Pp.string ctx s
 
 (* Read only the body of a url(...) call when used inside enum_calls. The
    surrounding function name and parentheses are handled by Cursor. *)
-let read_url_arg t =
-  Cursor.ws t;
-  match Cursor.string_opt t with
-  | Some s -> String.trim s
-  | None -> Cursor.url t
-
 let is_zero_length : length -> bool = function
   | Zero
   | Px 0.
@@ -17405,24 +17399,33 @@ end
 
 let rec read_filter_item t : filter =
   let read_var t : filter = Var (read_var read_filter t) in
-  let read_url t = (Url (read_url_arg t) : filter) in
-  Cursor.enum_or_calls "filter"
-    [ ("none", (None : filter)) ]
-    ~calls:
-      [
-        ("blur", read_blur);
-        ("brightness", Filter.read_brightness);
-        ("contrast", Filter.read_contrast);
-        ("grayscale", Filter.read_grayscale);
-        ("hue-rotate", Filter.read_hue_rotate);
-        ("invert", Filter.read_invert);
-        ("opacity", Filter.read_opacity);
-        ("saturate", Filter.read_saturate);
-        ("sepia", Filter.read_sepia);
-        ("drop-shadow", Filter.read_drop_shadow);
-        ("url", read_url);
-        ("var", read_var);
-      ]
+  (* [<filter-value-list>] mixes filter functions with a bare [<url>] reference
+     to an SVG filter. [url(#id)] tokenises as a url-token, not a [url(]
+     function, so it is read via [Cursor.url] (which handles both that and the
+     quoted [url("#id")] form) and backtracks to the function dispatch. *)
+  let read_url t = (Url (Cursor.url t) : filter) in
+  Cursor.one_of
+    [
+      read_url;
+      (fun t ->
+        Cursor.enum_or_calls "filter"
+          [ ("none", (None : filter)) ]
+          ~calls:
+            [
+              ("blur", read_blur);
+              ("brightness", Filter.read_brightness);
+              ("contrast", Filter.read_contrast);
+              ("grayscale", Filter.read_grayscale);
+              ("hue-rotate", Filter.read_hue_rotate);
+              ("invert", Filter.read_invert);
+              ("opacity", Filter.read_opacity);
+              ("saturate", Filter.read_saturate);
+              ("sepia", Filter.read_sepia);
+              ("drop-shadow", Filter.read_drop_shadow);
+              ("var", read_var);
+            ]
+          t);
+    ]
     t
 
 and read_filter t : filter =

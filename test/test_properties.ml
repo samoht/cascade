@@ -2896,6 +2896,12 @@ let test_filter () =
     "hue-rotate(30deg) opacity(0.5)";
   check_filter ~expected:"drop-shadow(2px 4px 6px red)"
     "drop-shadow(2px 4px 6px red)";
+  (* <url> reference to an SVG filter, in both the url-token and quoted forms,
+     standalone and mixed with filter functions *)
+  check_filter "url(#liquid)";
+  check_filter "url(foo.svg#x)";
+  check_filter ~expected:"url(#liquid)" "url(\"#liquid\")";
+  check_filter ~expected:"url(#blur)blur(2px)" "url(#blur) blur(2px)";
   neg_cursor read_filter "invalid-filter"
 
 let test_shadow () =
