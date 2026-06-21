@@ -42,6 +42,7 @@
   pp.mli
   properties.mli
   reader.mli
+  resolve.mli
   rule.mli
   rule_index.mli
   selector.mli

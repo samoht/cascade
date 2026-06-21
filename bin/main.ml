@@ -17,7 +17,9 @@ let info =
   in
   Cmd.info "cascade" ~version:Cascade_info.version ~doc ~man
 
-let cmd = Cmd.group info ~default:Cmd_fmt.term [ Cmd_fmt.cmd; Cmd_diff.cmd ]
+let cmd =
+  Cmd.group info ~default:Cmd_fmt.term
+    [ Cmd_fmt.cmd; Cmd_diff.cmd; Cmd_inline.cmd ]
 
 (* cmdliner's [Cmd.group ~default] only invokes the default term when the
    command line is empty or the first positional is a known subcommand name; any
@@ -28,7 +30,9 @@ let rewrite_argv_for_default argv =
   if Array.length argv <= 1 then argv
   else
     let first = argv.(1) in
-    let is_known_subcommand = first = "fmt" || first = "diff" in
+    let is_known_subcommand =
+      first = "fmt" || first = "diff" || first = "inline"
+    in
     let is_help_or_version =
       first = "--help" || first = "-h" || first = "--version"
     in
