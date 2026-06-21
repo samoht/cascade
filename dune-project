@@ -24,7 +24,7 @@
   (astring :with-test)
   (eio :with-test)
   (eio_main :with-test)
-  (lambdasoup :with-test)
+  lambdasoup
   (mdx :with-test)
   (re :with-test)
   fmt
