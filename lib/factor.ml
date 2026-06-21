@@ -1782,11 +1782,14 @@ let run ~ctx ~finalize (rules : Stylesheet.rule list) =
   then
     counters.factor_preflight_gain <-
       counters.factor_preflight_gain + Preflight.estimated_gain summary;
-  (* [--aggressive] forces the fixpoint regardless of the preflight estimate. *)
+  (* [--aggressive] forces the fixpoint regardless of the preflight estimate,
+     and disables the adaptive marginal-stall early-out so it runs to true
+     convergence even above [small_declaration_threshold]. *)
   if Preflight.useful summary || Ctx.aggressive ctx then
     let adaptive =
-      Preflight.declaration_count summary
-      > Preflight.small_declaration_threshold
+      (not (Ctx.aggressive ctx))
+      && Preflight.declaration_count summary
+         > Preflight.small_declaration_threshold
     in
     to_fixpoint ~adaptive ~ctx ~finalize 16 rules
   else begin
