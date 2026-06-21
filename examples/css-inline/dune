@@ -1,0 +1,5 @@
+(executable
+ (name main)
+ (flags
+  (:standard -w -a))
+ (libraries cascade lambdasoup))
