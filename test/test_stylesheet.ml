@@ -81,6 +81,12 @@ let test_rule () =
 let test_stylesheet () =
   (* Test basic stylesheet parsing *)
   check_stylesheet ".btn{color:red}";
+  (* Regression (cssQuake): [aspect-ratio:auto] before a separator must keep the
+     declaration (the trailing token used to defeat the bare-auto path), and a
+     [background] shorthand layer holds a single image, so commas separate
+     layers rather than being swallowed as a [background-image] list. *)
+  check_stylesheet ".x{aspect-ratio:auto;color:red}";
+  check_stylesheet ".x{background:url(a.png),red}";
   (* pp holds the authored Named node; cross-folding blue -> #00f (hex at most
      as long as the name) is optimize. *)
   assert_minify_and_optimize "body{margin:0}.btn{color:blue}"

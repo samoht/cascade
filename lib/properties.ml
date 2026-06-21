@@ -12603,13 +12603,14 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   in
   let read_auto t : aspect_ratio =
     match Cursor.peek_ident t with
-    | Some "auto" ->
+    | Some "auto" -> (
         Cursor.skip t;
-        Cursor.ws t;
-        if Cursor.is_done t then Auto
-        else
-          let w, h = read_ratio t in
-          Auto_ratio_calc (w, h)
+        (* [auto] may stand alone or be followed by a [<ratio>]. Only treat a
+           following number as a ratio so a trailing separator / whitespace
+           (e.g. [aspect-ratio: auto;]) resolves to plain [Auto]. *)
+        match Cursor.option read_ratio t with
+        | Some (w, h) -> Auto_ratio_calc (w, h)
+        | None -> Auto)
     | _ -> Cursor.err_expected t "auto"
   in
   Cursor.enum_or_var "aspect-ratio"
@@ -19530,7 +19531,10 @@ let rec read_transform_box (t : Cursor.t) : transform_box =
 
 module Background_shorthand = struct
   let read_image_item t =
-    let img = read_background_image t in
+    (* A single image per layer: commas in the [background] shorthand separate
+       layers, not images (that comma-list is the [background-image]
+       longhand). *)
+    let img = read_bg_image t in
     fun (bg : background_shorthand) ->
       if bg.image = None then { bg with image = Some img } else bg
 
