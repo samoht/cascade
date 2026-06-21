@@ -865,11 +865,33 @@ let test_var_color_functions_preserved () =
     "a none channel still folds (none computes to 0)" ".x{color:#000}"
     (opt ".x{color:rgb(none 0 0)}")
 
+let test_minify_smallest () =
+  let parsed : Css.t =
+    match Css.of_string ".a{color:red;color:blue}" with
+    | Ok { Css.stylesheet; _ } -> stylesheet
+    | Error _ -> Alcotest.fail "parse error"
+  in
+  let plain = Css.to_string ~minify:true parsed in
+  let optimised = Css.to_string ~minify:true (Css.optimize parsed) in
+  (* The optimiser drops the overridden [color:red], shrinking raw bytes. *)
+  Alcotest.(check bool)
+    "optimise shortens the raw form" true
+    (String.length optimised < String.length plain);
+  (* A size measure keeps the optimised candidate. *)
+  Alcotest.(check string)
+    "size measure keeps the optimised form" optimised
+    (Css.minify_smallest ~measure:String.length parsed);
+  (* A measure that prefers longer output makes it decline optimisation. *)
+  Alcotest.(check string)
+    "measure can decline optimisation" plain
+    (Css.minify_smallest ~measure:(fun s -> -String.length s) parsed)
+
 let optimize_tests =
   [
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );
+    ("minify smallest by measure", `Quick, test_minify_smallest);
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );

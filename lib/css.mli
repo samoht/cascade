@@ -7541,6 +7541,29 @@ val optimize :
     complete stylesheet with no out-of-band reader (another stylesheet, or
     [getComputedStyle]), the same closed-world assumption as {!inline_vars}. *)
 
+val minify_smallest :
+  measure:(string -> int) ->
+  ?scope:Optimize.scope ->
+  ?flatten_nesting:bool ->
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?prune_unused_custom_props:bool ->
+  t ->
+  string
+(** [minify_smallest ~measure stylesheet] serialises [stylesheet] minified at
+    three optimisation settings (unoptimised, {!optimize}d, and [~aggressive]ly
+    optimised) and returns the candidate for which [measure] is smallest.
+
+    [measure] is the caller's cost model. Pass [String.length] for the fewest
+    raw bytes, in which case the most-optimised candidate wins. Pass a
+    compressor's output size (e.g. brotli) for the fewest bytes on the wire:
+    that can differ, because a structural rewrite that removes raw bytes can
+    still enlarge the compressed output. Merging near-identical rules fragments
+    the repetition a compressor already exploits, so the unoptimised candidate
+    sometimes compresses smallest. No compressor is linked into the library;
+    [measure] is supplied by the caller. The optional arguments pass through to
+    {!optimize}, and a tie keeps the more-optimised (smaller-raw) candidate. *)
+
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule
     flattened into a top-level rule (without running the rest of the

@@ -856,6 +856,25 @@ let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
   Optimize.stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec
     ?aggressive ?prune_unused_custom_props stylesheet
 
+let minify_smallest ~measure ?scope ?flatten_nesting ?lossless ?enforce_spec
+    ?prune_unused_custom_props stylesheet =
+  let minify s = to_string ~minify:true ?lossless ?enforce_spec s in
+  let opt aggressive =
+    optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ~aggressive
+      ?prune_unused_custom_props stylesheet
+  in
+  let s_aggressive = minify (opt true) in
+  let s_default = minify (opt false) in
+  let s_plain = minify stylesheet in
+  (* Most-optimised first, so a tie in [measure] keeps the smaller raw form. *)
+  List.fold_left
+    (fun (best_m, best_s) s ->
+      let m = measure s in
+      if m < best_m then (m, s) else (best_m, best_s))
+    (measure s_aggressive, s_aggressive)
+    [ s_default; s_plain ]
+  |> snd
+
 let flatten_nesting = Optimize.flatten_nesting
 
 (** {1 Closed-world inlining} *)
