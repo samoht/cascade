@@ -111,7 +111,13 @@ let ids_inter a b =
   loop 0 0;
   Array.of_list (List.rev !acc)
 
-let bloom_mask (h : int) = (1 lsl (h land 63)) lor (1 lsl ((h lsr 8) land 63))
+(* A 63-bit OCaml int has bit positions 0..62; [1 lsl 63] is 0. Reduce each tap
+   into 0..62 so it never selects the out-of-range bit 63. *)
+let bloom_tap h =
+  let positive = h land max_int in
+  1 lsl (positive mod 63)
+
+let bloom_mask (h : int) = bloom_tap h lor bloom_tap (h lsr 8)
 let bloom_add b h = b lor bloom_mask h
 
 let bloom_might_contain b h =
