@@ -1928,6 +1928,12 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Contain -> Pp.string ctx "contain"
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
+  | Webkit_max_content -> Pp.string ctx "-webkit-max-content"
+  | Webkit_min_content -> Pp.string ctx "-webkit-min-content"
+  | Webkit_fit_content -> Pp.string ctx "-webkit-fit-content"
+  | Moz_max_content -> Pp.string ctx "-moz-max-content"
+  | Moz_min_content -> Pp.string ctx "-moz-min-content"
+  | Moz_fit_content -> Pp.string ctx "-moz-fit-content"
   | From_font -> Pp.string ctx "from-font"
   | Hairline -> Pp.string ctx "hairline"
   | Thin -> Pp.string ctx "thin"
@@ -5010,6 +5016,15 @@ let read_length_keyword t : length =
       ("max-content", Max_content);
       ("min-content", Min_content);
       ("fit-content", Fit_content);
+      (* Legacy vendor-prefixed intrinsic sizing keywords (kept as a fallback
+         for old Safari / Firefox; the unprefixed forms above win in modern
+         ones). *)
+      ("-webkit-max-content", Webkit_max_content);
+      ("-webkit-min-content", Webkit_min_content);
+      ("-webkit-fit-content", Webkit_fit_content);
+      ("-moz-max-content", Moz_max_content);
+      ("-moz-min-content", Moz_min_content);
+      ("-moz-fit-content", Moz_fit_content);
       ("contain", Contain);
       ("stretch", Stretch);
       ("from-font", From_font);
