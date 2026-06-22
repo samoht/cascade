@@ -38,6 +38,19 @@ val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
     authored CSS text. *)
 
+val parse_declaration : ?layer:string -> string -> string -> declaration option
+(** [parse_declaration ?layer property value] parses ["property: value"] with
+    the declaration parser into a fully-typed declaration:
+    - a known property (e.g. [mask-type], [display]) becomes a typed
+      declaration;
+    - a custom property ([--x]) or an unknown property keeps its parsed
+      component stream (not an opaque [Tokens] wrapper), so [var()] references
+      in [value] are visible to [vars_of_declarations];
+    - [None] if [value] does not parse.
+
+    [layer] applies only to a custom property (a typed declaration has no
+    layer). Unlike {!custom_property}, this parses the full property grammar. *)
+
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 

@@ -2324,8 +2324,69 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Default case for all other properties *)
   | _ -> []
 
+(* CSS Variables L1 §3: a custom property's value can itself reference other
+   custom properties. A [Typed] value embeds real [var] handles, so recurse via
+   the kind. A raw [Tokens] value carries refs as [var()] functions in the
+   stream; surfacing those here changes [resolve_theme]'s prune set, so it is a
+   separate change (a [var()] inside an opaque value is found via
+   [var_refs_in_value_string] where that path needs it). *)
+let vars_of_kind : type a. a kind -> a -> any_var list =
+ fun kind value ->
+  match kind with
+  | Length -> vars_of_length value
+  | Color -> vars_of_color value
+  | Rgb -> vars_of_rgb value
+  | Number -> vars_of_number_value value
+  | Int -> []
+  | Float -> []
+  | Percentage -> vars_of_percentage value
+  | Length_percentage -> vars_of_length_percentage value
+  | Number_percentage -> []
+  | Opacity -> []
+  | Value -> []
+  | Duration -> vars_of_duration value
+  | Aspect_ratio -> vars_of_aspect_ratio value
+  | Border_style -> vars_of_border_style value
+  | Outline_style -> []
+  | Border -> vars_of_border value
+  | Font_weight -> vars_of_font_weight value
+  | Font_size -> vars_of_font_size value
+  | Line_height -> vars_of_line_height value
+  | Font_family -> vars_of_font_family value
+  | Font_feature_settings -> vars_of_font_feature_settings value
+  | Font_variation_settings -> vars_of_font_variation_settings value
+  | Numeric -> vars_of_font_variant_numeric value
+  | Font_variant_numeric_token -> []
+  | Blend_mode -> vars_of_blend_mode value
+  | Scroll_snap_strictness -> vars_of_scroll_snap_strictness value
+  | Angle -> vars_of_angle value
+  | Rotate -> vars_of_rotate_value value
+  | Scale -> vars_of_scale value
+  | Shadow -> vars_of_shadow value
+  | Box_shadow -> vars_of_shadow value
+  | Content -> vars_of_content value
+  | Gradient_stop -> vars_of_gradient_stop value
+  | Gradient_direction -> vars_of_gradient_direction value
+  | Gradient_position -> vars_of_gradient_position value
+  | Animation -> vars_of_animation value
+  | Timing_function -> []
+  | Transform -> vars_of_transform value
+  | Touch_action -> []
+  | Transition_property_value -> vars_of_transition_property_value value
+  | Background_image -> vars_of_background_image value
+  | Z_index -> []
+  | Filter -> vars_of_filter value
+  | Font_src -> []
+
+let vars_of_custom_property_value : custom_property_value -> any_var list =
+  function
+  | Typed { kind; value } -> vars_of_kind kind value
+  | Tokens _ -> []
+
 let rec extract_vars_of_declaration : declaration -> any_var list = function
-  | Declaration { property = Custom_property _; _ } -> []
+  | Declaration
+      { property = Custom_property _; value = Custom_value { value; _ }; _ } ->
+      vars_of_custom_property_value value
   | Declaration { property; value; _ } -> vars_of_property property value
   | Theme_guarded { decl; _ } -> extract_vars_of_declaration decl
 
