@@ -33,4 +33,17 @@ for f in "$dir"/fixtures/*.html; do
     rm -f "$out"
   done
 done
+# Real pages downloaded by fetch.sh (gitignored): reported for coverage, but
+# they do not gate the run - they change upstream and exercise features still
+# being grown, so only the committed fixtures decide pass/fail.
+if [ -d "$dir/pages" ]; then
+  for f in "$dir"/pages/*.html; do
+    [ -e "$f" ] || continue
+    out=$(mktemp)
+    "$CASCADE" inline --minimal "$f" > "$out" 2>/dev/null
+    res=$(node "$dir/xtest.js" "$f" "$out" 2>/dev/null | grep RESULT)
+    echo "real $(basename "$f"): ${res:-no result}"
+    rm -f "$out"
+  done
+fi
 exit $fail

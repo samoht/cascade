@@ -6,3 +6,6 @@ _homebrew_build/
 .claude/
 
 /mono
+
+# Real pages downloaded by test/inline/fetch.sh for the differential test.
+/test/inline/pages/
