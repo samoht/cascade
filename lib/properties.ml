@@ -3454,6 +3454,13 @@ let unquote_font_family_strings components =
   in
   if !changed then result else components
 
+let is_generic_family : font_family -> bool = function
+  | Sans_serif | Serif | Monospace | Cursive | Fantasy | System_ui
+  | Ui_sans_serif | Ui_serif | Ui_monospace | Ui_rounded | Emoji | Math
+  | Fangsong ->
+      true
+  | _ -> false
+
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
   (* Generic CSS font families *)
@@ -3603,18 +3610,28 @@ let rec pp_font_family : font_family Pp.t =
       in
       (* CSS Fonts 4 sec. 4.1: [font-family] is a fallback list, so a duplicate
          entry never wins under cascade resolution - drop it under minify (the
-         first occurrence keeps the source position). *)
+         first occurrence keeps the source position). A bare generic keyword
+         (notably [monospace]) takes the UA generic-font size, so the
+         [monospace, monospace] idiom opts back into the normal size; a dedup
+         must not collapse a list to a single generic, which would shrink the
+         text. *)
       let fonts =
         if Pp.minified ctx then
           let seen = Hashtbl.create 8 in
-          List.filter
-            (fun f ->
-              let key = Pp.to_string ~minify:true pp_font_family f in
-              if Hashtbl.mem seen key then false
-              else (
-                Hashtbl.add seen key ();
-                true))
-            fonts
+          let deduped =
+            List.filter
+              (fun f ->
+                let key = Pp.to_string ~minify:true pp_font_family f in
+                if Hashtbl.mem seen key then false
+                else (
+                  Hashtbl.add seen key ();
+                  true))
+              fonts
+          in
+          match deduped with
+          | [ single ] when is_generic_family single && List.length fonts > 1 ->
+              fonts
+          | _ -> deduped
         else fonts
       in
       Pp.list_wrap ~threshold:90 ~sep:Pp.comma ~wrap_indent:(level_chars + 2)
