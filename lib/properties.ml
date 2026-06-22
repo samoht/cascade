@@ -10001,11 +10001,12 @@ let rec pp_scroll_snap_type : scroll_snap_type Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_scroll_snap_type ctx v
 
-let pp_repeat_count ctx (count : repeat_count) =
+let rec pp_repeat_count ctx (count : repeat_count) =
   match count with
   | Count n -> Pp.int ctx n
   | Auto_fill -> Pp.string ctx "auto-fill"
   | Auto_fit -> Pp.string ctx "auto-fit"
+  | Var v -> pp_var pp_repeat_count ctx v
 
 let pp_grid_auto_flow_shorthand ctx = function
   | Row | Column -> Pp.string ctx "auto-flow"
@@ -12370,14 +12371,16 @@ module Grid_template = struct
     Cursor.ws inner;
     Fit_content (read_length inner)
 
-  let read_repeat_count t : repeat_count =
-    match Cursor.option Cursor.int t with
-    | Some n -> Count n
-    | None -> (
-        match Cursor.ident t with
-        | "auto-fill" -> Auto_fill
-        | "auto-fit" -> Auto_fit
-        | ident -> Cursor.err_invalid t ("repeat count: " ^ ident))
+  let rec read_repeat_count t : repeat_count =
+    if Cursor.looking_at t "var(" then Var (Values.read_var read_repeat_count t)
+    else
+      match Cursor.option Cursor.int t with
+      | Some n -> Count n
+      | None -> (
+          match Cursor.ident t with
+          | "auto-fill" -> Auto_fill
+          | "auto-fit" -> Auto_fit
+          | ident -> Cursor.err_invalid t ("repeat count: " ^ ident))
 
   let read_line_names t : grid_template =
     Cursor.brackets
