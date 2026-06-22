@@ -209,6 +209,16 @@ and component_has_invalid_var = function
       components_have_invalid_var value
   | Component.Preserved _ -> false
 
+let rec components_contain_var components =
+  List.exists component_contains_var components
+
+and component_contains_var = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      String.lowercase_ascii_preserve name = "var"
+      || components_contain_var arguments
+  | Component.Block { node = { value; _ }; _ } -> components_contain_var value
+  | Component.Preserved _ -> false
+
 let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
@@ -1855,10 +1865,34 @@ let color_fallback_function raw_value =
            ])
   | _ -> false
 
-let is_unsupported_color_fallback name raw_value =
-  color_fallback_function raw_value
-  &&
-  match name with
+(* A colour function whose arguments contain a [var()] can't be validated until
+   substitution (CSS Variables L1 section 3): the var() may stand for several
+   channels or the alpha, so the arity and legacy/modern separator style aren't
+   known at parse time. [rgba(var(--rgb), var(--a))] with a comma-list [--rgb]
+   only stays valid as the legacy comma form, so cascade keeps the declaration
+   verbatim. The function may be nested (a gradient stop, a shadow colour), so
+   the search recurses. (A math function whose return type is wrong regardless
+   of the var, e.g. [flex-basis: sign(var(--x))], is still rejected by the
+   reader.) *)
+let rec components_have_var_color_function components =
+  List.exists component_has_var_color_function components
+
+and component_has_var_color_function = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      List.mem
+        (String.lowercase_ascii_preserve name)
+        [ "rgb"; "rgba"; "hsl"; "hsla"; "hwb"; "lab"; "lch"; "oklab"; "oklch" ]
+      && components_contain_var arguments
+      || components_have_var_color_function arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_have_var_color_function value
+  | Component.Preserved _ -> false
+
+let has_var_color_function raw_value =
+  Cursor.of_string raw_value |> Cursor.remaining
+  |> components_have_var_color_function
+
+let is_color_property = function
   | "color" | "background-color" | "border-color" | "border-top-color"
   | "border-right-color" | "border-bottom-color" | "border-left-color"
   | "border-inline-start-color" | "border-inline-end-color"
@@ -1867,6 +1901,9 @@ let is_unsupported_color_fallback name raw_value =
   | "caret-color" | "fill" | "stroke" ->
       true
   | _ -> false
+
+let is_unsupported_color_fallback name raw_value =
+  color_fallback_function raw_value && is_color_property name
 
 let is_unknown_property_name = is_decl_unknown_property_name
 
@@ -1878,6 +1915,7 @@ let allows_unknown_fallback name raw_value =
   (not (raw_value_has_invalid_var raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
+     || has_var_color_function raw_value
      || raw_value_contains_var raw_value)
 
 let read_font_src_declaration t raw_value =

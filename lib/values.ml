@@ -2696,6 +2696,16 @@ let channel_byte_value (c : channel) =
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
   | _ -> None
 
+(* Classify a channel for static sRGB folding. [Some (Some byte)] is numeric;
+   [Some Option.None] is the [none] keyword (foldable, no byte); the outer
+   [Option.None] is a [Var] which makes the whole colour unfoldable. Conflating
+   the two [None]s would fold [rgb(var(--r) var(--g) var(--b))] to black. *)
+let channel_srgb_slot (c : channel) : int option option =
+  match c with
+  | None -> Some Option.None
+  | Var _ -> Option.None
+  | _ -> Option.map (fun b -> Some b) (channel_byte_value c)
+
 let exact_channel_byte_value (c : channel) =
   match c with
   | Int i when i >= 0 && i <= 255 -> Some i
@@ -2736,18 +2746,14 @@ let static_color_to_srgb_channels :
   function
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       Some (Some r, Some g, Some b, Some a)
-  | Rgb (Channels { r; g; b }) ->
-      Some
-        ( channel_byte_value r,
-          channel_byte_value g,
-          channel_byte_value b,
-          Some 255 )
-  | Rgba { rgb = Channels { r; g; b }; a } ->
-      Some
-        ( channel_byte_value r,
-          channel_byte_value g,
-          channel_byte_value b,
-          alpha_value_byte a )
+  | Rgb (Channels { r; g; b }) -> (
+      match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
+      | Some r, Some g, Some b -> Some (r, g, b, Some 255)
+      | _ -> Option.None)
+  | Rgba { rgb = Channels { r; g; b }; a } -> (
+      match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
+      | Some r, Some g, Some b -> Some (r, g, b, alpha_value_byte a)
+      | _ -> Option.None)
   | Hsl { h; s; l; a } -> (
       match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness ->
@@ -4562,7 +4568,12 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
 
 and pp_rgb_color ctx = function
   | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
-  | Var v -> pp_rgb_as_color ctx (Var v)
+  (* keep the [rgb()] wrapper: a bare [var(--x)] assumes [--x] is a whole
+     colour, whereas [rgb(var(--x))] takes [--x] as the channel list - dropping
+     the wrapper changes the value (and renders black instead of the colour).
+     The var prints with [pp_rgb] so a fallback stays bare channels, not a
+     nested [rgb()]. *)
+  | Var v -> Pp.call "rgb" pp_rgb ctx (Var v)
 
 and pp_rgba_color ctx rgb a =
   match rgb with

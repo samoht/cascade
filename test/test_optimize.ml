@@ -812,8 +812,64 @@ let test_prune_unused_custom_props () =
     ":root{--x:\"var(--y)\"}.a{width:var(--x)}"
     (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}")
 
+(* A colour function carrying a var() is a pending-substitution value (CSS
+   Variables L1 section 3): its arity and legacy/modern separator style aren't
+   known until substitution, so minify+optimize must keep it verbatim - never
+   dropped, never re-spelled (a comma-list var like [--bs-*-rgb: 255, 255, 255]
+   only stays valid in the legacy comma form). *)
+let test_var_color_functions_preserved () =
+  let opt css =
+    match Css.of_string css with
+    | Ok { Css.stylesheet; _ } -> minify stylesheet
+    | Error _ -> Alcotest.failf "expected %s to parse, not be dropped" css
+  in
+  let same css = Alcotest.(check string) css css (opt css) in
+  same ".x{color:rgba(var(--rgb),var(--op))}";
+  same ".x{background-color:rgba(var(--rgb),var(--op))}";
+  same ".x{border-color:rgba(var(--rgb),var(--op))}";
+  same ".x{outline-color:rgba(var(--rgb),var(--op))}";
+  same ".x{text-decoration-color:rgba(var(--rgb),var(--op))}";
+  same ".x{caret-color:rgba(var(--rgb),var(--op))}";
+  same ".x{fill:rgba(var(--rgb),var(--op))}";
+  same ".x{stroke:rgba(var(--rgb),var(--op))}";
+  same ".x{color:hsla(var(--hsl),var(--a))}";
+  same ".x{color:rgba(var(--rgb),.5)}";
+  (* nested in a gradient stop, a shadow colour, a border shorthand *)
+  same
+    ".x{background:linear-gradient(90deg,rgba(var(--rgb),var(--op)),transparent)}";
+  same ".x{box-shadow:0 0 4px rgba(var(--rgb),var(--op))}";
+  same ".x{text-shadow:0 1px rgba(var(--rgb),var(--op))}";
+  same ".x{border:1px solid rgba(var(--rgb),var(--op))}";
+  (* a var() in any channel slot must never be read as 0 and folded to black *)
+  same ".x{color:rgb(var(--r) var(--g) var(--b))}";
+  same ".x{color:rgb(255 var(--g) 0)}";
+  same ".x{color:rgb(var(--rgb)/var(--op))}";
+  (* the rgb() wrapper around a whole-channels var must survive: a bare
+     [var(--x)] is a different value and renders black *)
+  same ".x{color:rgb(var(--rgb))}";
+  same ".x{color:rgb(var(--x,1 2 3))}";
+  Alcotest.(check string)
+    "distinct channel vars canonicalise to the space form, not black"
+    ".x{color:rgb(var(--r) var(--g) var(--b))}"
+    (opt ".x{color:rgb(var(--r),var(--g),var(--b))}");
+  (* a sub-byte fractional channel stays verbatim, not floored to black *)
+  same ".x{color:rgb(.5 0 0)}";
+  (* guard: fully static colours still fold *)
+  Alcotest.(check string)
+    "static rgb still folds to hex" ".x{color:#fff}"
+    (opt ".x{color:rgb(255,255,255)}");
+  Alcotest.(check string)
+    "static rgb still folds to a keyword" ".x{color:red}"
+    (opt ".x{color:rgb(255 0 0)}");
+  Alcotest.(check string)
+    "a none channel still folds (none computes to 0)" ".x{color:#000}"
+    (opt ".x{color:rgb(none 0 0)}")
+
 let optimize_tests =
   [
+    ( "var() colour functions preserved",
+      `Quick,
+      test_var_color_functions_preserved );
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );
