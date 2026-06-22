@@ -204,6 +204,30 @@ let test_nested_container_recovers () =
   recovers
     {|.x { @container (width > 1px) and (height > 1px) or (width > 2px) { .y { color: red } } }|}
 
+(* ignore-test: error-recovery contract, not a per-statement constructor. *)
+let test_layer_rule_recovery () =
+  (* CSS Syntax 3 §5.4.1: an invalid rule inside an @layer / @media block is
+     dropped on its own; its sibling rules must survive. [.x→y] has a literal
+     arrow (U+2192), which is not a valid ident code point, so the browser drops
+     that rule too - but keeps the rest of the block. *)
+  let keeps_siblings input =
+    match Css.of_string input with
+    | Ok { Css.stylesheet; warnings; _ } ->
+        let out = Css.to_string ~minify:true stylesheet in
+        Alcotest.(check bool) ("warns: " ^ input) true (warnings <> []);
+        Alcotest.(check bool)
+          ("keeps .a and .b: " ^ out)
+          true
+          (Astring.String.is_infix ~affix:".a{" out
+          && Astring.String.is_infix ~affix:".b{" out)
+    | Error e ->
+        Alcotest.failf "expected recovery: %s" (Cascade.Error.to_string e)
+  in
+  keeps_siblings "@layer u{.a{color:red}.x→y{color:lime}.b{color:blue}}";
+  keeps_siblings "@media screen{.a{color:red}.x→y{color:lime}.b{color:blue}}";
+  keeps_siblings
+    "@supports (display:grid){.a{color:red}.x→y{color:lime}.b{color:blue}}"
+
 (* Not a roundtrip test *)
 let test_supports_rule_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
@@ -1297,6 +1321,7 @@ let stylesheet_tests =
     ("media rule creation", `Quick, test_media_rule_creation);
     ("container rule creation", `Quick, test_container_rule_creation);
     ("nested container recovers", `Quick, test_nested_container_recovers);
+    ("invalid rule in a block recovers", `Quick, test_layer_rule_recovery);
     ("supports rule creation", `Quick, test_supports_rule_creation);
     ("supports nested creation", `Quick, test_supports_nested_creation);
     ("property rule creation", `Quick, test_property_rule_creation);

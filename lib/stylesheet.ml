@@ -3016,13 +3016,32 @@ let rec read_statement (r : Cursor.t) : statement =
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =
+  (* Skip a statement that failed to parse: consume to the end of its block
+     ([{...}]) or its terminating [;], leaving the cursor at the next rule. *)
+  let rec skip_bad_statement () =
+    match Cursor.next_raw r with
+    | None -> ()
+    | Some (Component.Block _)
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+        ()
+    | Some _ -> skip_bad_statement ()
+  in
   let rec read_statements acc =
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
     else
       let loc = Cursor.position r in
-      let stmt = read_statement r in
-      match stmt with
+      let snap = Cursor.save r in
+      match read_statement r with
+      (* CSS Syntax 3 §5.4.1: a rule that fails to parse (e.g. an invalid
+         selector) is dropped, and parsing resumes at the next rule - one bad
+         rule must not take the rest of the [@layer] / [@media] block with it.
+         Strict mode ([not (Cursor.recover r)]) still raises. *)
+      | exception Error.Parse_error e when Cursor.recover r ->
+          Cursor.restore r snap;
+          Cursor.push_warning r e;
+          skip_bad_statement ();
+          read_statements acc
       | Import _ ->
           (* CSS Cascade L6 §2: @import is only valid at the top of the
              stylesheet. Drop a misplaced one rather than emitting it. *)
@@ -3032,7 +3051,7 @@ and read_block (r : Cursor.t) : block =
           read_statements acc
       | Else _ when not (List.exists follows_conditional acc) ->
           Cursor.err_invalid r "@else without preceding @when"
-      | _ -> read_statements (stmt :: acc)
+      | stmt -> read_statements (stmt :: acc)
   in
   read_statements []
 
