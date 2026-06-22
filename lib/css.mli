@@ -6673,6 +6673,53 @@ type list_style_type = Properties.list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
+  | Decimal_leading_zero
+  | Arabic_indic
+  | Armenian
+  | Upper_armenian
+  | Lower_armenian
+  | Bengali
+  | Cambodian
+  | Khmer
+  | Cjk_decimal
+  | Devanagari
+  | Georgian
+  | Gujarati
+  | Gurmukhi
+  | Hebrew
+  | Kannada
+  | Lao
+  | Malayalam
+  | Mongolian
+  | Myanmar
+  | Oriya
+  | Persian
+  | Tamil
+  | Telugu
+  | Thai
+  | Tibetan
+  | Lower_latin
+  | Upper_latin
+  | Cjk_earthly_branch
+  | Cjk_heavenly_stem
+  | Lower_greek
+  | Hiragana
+  | Hiragana_iroha
+  | Katakana
+  | Katakana_iroha
+  | Disclosure_open
+  | Disclosure_closed
+  | Cjk_ideographic
+  | Japanese_informal
+  | Japanese_formal
+  | Korean_hangul_formal
+  | Korean_hanja_informal
+  | Korean_hanja_formal
+  | Simp_chinese_informal
+  | Simp_chinese_formal
+  | Trad_chinese_informal
+  | Trad_chinese_formal
+  | Ethiopic_numeric
   | String of string
   | Symbols of symbols_type option * list_style_symbol list
   | Inherit

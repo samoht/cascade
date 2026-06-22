@@ -6321,6 +6321,53 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Upper_alpha -> Pp.string ctx "upper-alpha"
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
+  | Decimal_leading_zero -> Pp.string ctx "decimal-leading-zero"
+  | Arabic_indic -> Pp.string ctx "arabic-indic"
+  | Armenian -> Pp.string ctx "armenian"
+  | Upper_armenian -> Pp.string ctx "upper-armenian"
+  | Lower_armenian -> Pp.string ctx "lower-armenian"
+  | Bengali -> Pp.string ctx "bengali"
+  | Cambodian -> Pp.string ctx "cambodian"
+  | Khmer -> Pp.string ctx "khmer"
+  | Cjk_decimal -> Pp.string ctx "cjk-decimal"
+  | Devanagari -> Pp.string ctx "devanagari"
+  | Georgian -> Pp.string ctx "georgian"
+  | Gujarati -> Pp.string ctx "gujarati"
+  | Gurmukhi -> Pp.string ctx "gurmukhi"
+  | Hebrew -> Pp.string ctx "hebrew"
+  | Kannada -> Pp.string ctx "kannada"
+  | Lao -> Pp.string ctx "lao"
+  | Malayalam -> Pp.string ctx "malayalam"
+  | Mongolian -> Pp.string ctx "mongolian"
+  | Myanmar -> Pp.string ctx "myanmar"
+  | Oriya -> Pp.string ctx "oriya"
+  | Persian -> Pp.string ctx "persian"
+  | Tamil -> Pp.string ctx "tamil"
+  | Telugu -> Pp.string ctx "telugu"
+  | Thai -> Pp.string ctx "thai"
+  | Tibetan -> Pp.string ctx "tibetan"
+  | Lower_latin -> Pp.string ctx "lower-latin"
+  | Upper_latin -> Pp.string ctx "upper-latin"
+  | Cjk_earthly_branch -> Pp.string ctx "cjk-earthly-branch"
+  | Cjk_heavenly_stem -> Pp.string ctx "cjk-heavenly-stem"
+  | Lower_greek -> Pp.string ctx "lower-greek"
+  | Hiragana -> Pp.string ctx "hiragana"
+  | Hiragana_iroha -> Pp.string ctx "hiragana-iroha"
+  | Katakana -> Pp.string ctx "katakana"
+  | Katakana_iroha -> Pp.string ctx "katakana-iroha"
+  | Disclosure_open -> Pp.string ctx "disclosure-open"
+  | Disclosure_closed -> Pp.string ctx "disclosure-closed"
+  | Cjk_ideographic -> Pp.string ctx "cjk-ideographic"
+  | Japanese_informal -> Pp.string ctx "japanese-informal"
+  | Japanese_formal -> Pp.string ctx "japanese-formal"
+  | Korean_hangul_formal -> Pp.string ctx "korean-hangul-formal"
+  | Korean_hanja_informal -> Pp.string ctx "korean-hanja-informal"
+  | Korean_hanja_formal -> Pp.string ctx "korean-hanja-formal"
+  | Simp_chinese_informal -> Pp.string ctx "simp-chinese-informal"
+  | Simp_chinese_formal -> Pp.string ctx "simp-chinese-formal"
+  | Trad_chinese_informal -> Pp.string ctx "trad-chinese-informal"
+  | Trad_chinese_formal -> Pp.string ctx "trad-chinese-formal"
+  | Ethiopic_numeric -> Pp.string ctx "ethiopic-numeric"
   | String s -> Pp.quoted_string ctx s
   | Symbols (kind, symbols) ->
       Pp.call "symbols" pp_list_style_symbols ctx (kind, symbols)
@@ -13173,6 +13220,53 @@ let rec read_list_style_type t : list_style_type =
       ("upper-alpha", Upper_alpha);
       ("lower-roman", Lower_roman);
       ("upper-roman", Upper_roman);
+      ("decimal-leading-zero", (Decimal_leading_zero : list_style_type));
+      ("arabic-indic", (Arabic_indic : list_style_type));
+      ("armenian", (Armenian : list_style_type));
+      ("upper-armenian", (Upper_armenian : list_style_type));
+      ("lower-armenian", (Lower_armenian : list_style_type));
+      ("bengali", (Bengali : list_style_type));
+      ("cambodian", (Cambodian : list_style_type));
+      ("khmer", (Khmer : list_style_type));
+      ("cjk-decimal", (Cjk_decimal : list_style_type));
+      ("devanagari", (Devanagari : list_style_type));
+      ("georgian", (Georgian : list_style_type));
+      ("gujarati", (Gujarati : list_style_type));
+      ("gurmukhi", (Gurmukhi : list_style_type));
+      ("hebrew", (Hebrew : list_style_type));
+      ("kannada", (Kannada : list_style_type));
+      ("lao", (Lao : list_style_type));
+      ("malayalam", (Malayalam : list_style_type));
+      ("mongolian", (Mongolian : list_style_type));
+      ("myanmar", (Myanmar : list_style_type));
+      ("oriya", (Oriya : list_style_type));
+      ("persian", (Persian : list_style_type));
+      ("tamil", (Tamil : list_style_type));
+      ("telugu", (Telugu : list_style_type));
+      ("thai", (Thai : list_style_type));
+      ("tibetan", (Tibetan : list_style_type));
+      ("lower-latin", (Lower_latin : list_style_type));
+      ("upper-latin", (Upper_latin : list_style_type));
+      ("cjk-earthly-branch", (Cjk_earthly_branch : list_style_type));
+      ("cjk-heavenly-stem", (Cjk_heavenly_stem : list_style_type));
+      ("lower-greek", (Lower_greek : list_style_type));
+      ("hiragana", (Hiragana : list_style_type));
+      ("hiragana-iroha", (Hiragana_iroha : list_style_type));
+      ("katakana", (Katakana : list_style_type));
+      ("katakana-iroha", (Katakana_iroha : list_style_type));
+      ("disclosure-open", (Disclosure_open : list_style_type));
+      ("disclosure-closed", (Disclosure_closed : list_style_type));
+      ("cjk-ideographic", (Cjk_ideographic : list_style_type));
+      ("japanese-informal", (Japanese_informal : list_style_type));
+      ("japanese-formal", (Japanese_formal : list_style_type));
+      ("korean-hangul-formal", (Korean_hangul_formal : list_style_type));
+      ("korean-hanja-informal", (Korean_hanja_informal : list_style_type));
+      ("korean-hanja-formal", (Korean_hanja_formal : list_style_type));
+      ("simp-chinese-informal", (Simp_chinese_informal : list_style_type));
+      ("simp-chinese-formal", (Simp_chinese_formal : list_style_type));
+      ("trad-chinese-informal", (Trad_chinese_informal : list_style_type));
+      ("trad-chinese-formal", (Trad_chinese_formal : list_style_type));
+      ("ethiopic-numeric", (Ethiopic_numeric : list_style_type));
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
