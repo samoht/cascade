@@ -182,6 +182,7 @@ let rec read_position t : position =
       ("absolute", Absolute);
       ("fixed", Fixed);
       ("sticky", Sticky);
+      ("-webkit-sticky", Webkit_sticky);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -817,6 +818,7 @@ let rec read_text_align t : text_align =
       ("start", Start);
       ("end", End);
       ("match-parent", Match_parent);
+      ("-webkit-match-parent", Webkit_match_parent);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -5076,6 +5078,7 @@ let rec pp_position : position Pp.t =
   | Absolute -> Pp.string ctx "absolute"
   | Fixed -> Pp.string ctx "fixed"
   | Sticky -> Pp.string ctx "sticky"
+  | Webkit_sticky -> Pp.string ctx "-webkit-sticky"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -5696,6 +5699,7 @@ let rec pp_text_align : text_align Pp.t =
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
   | Match_parent -> Pp.string ctx "match-parent"
+  | Webkit_match_parent -> Pp.string ctx "-webkit-match-parent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"

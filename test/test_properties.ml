@@ -1153,6 +1153,7 @@ let test_position () =
   check_position "absolute";
   check_position "fixed";
   check_position "sticky";
+  check_position "-webkit-sticky";
   neg_cursor read_position "invalid-position";
   (* multiple values *)
   neg_cursor read_position "absolute relative";
@@ -1349,6 +1350,8 @@ let test_text_align () =
   check_text_align "justify";
   check_text_align "start";
   check_text_align "end";
+  check_text_align "match-parent";
+  check_text_align "-webkit-match-parent";
   check_text_align "inherit";
   neg_cursor read_text_align "invalid-align";
   (* vertical align, not text align *)
