@@ -1,0 +1,7 @@
+; Developer-run differential test helper: filters getComputedStyle differences
+; down to the ones cascade considers a real render change. Not part of the
+; default test run; driven by run.sh.
+
+(executable
+ (name canon_filter)
+ (libraries cascade cascade_diff))

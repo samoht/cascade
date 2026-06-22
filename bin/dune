@@ -11,4 +11,5 @@
   fmt.tty
   logs
   logs.fmt
-  memtrace))
+  memtrace
+  lambdasoup))

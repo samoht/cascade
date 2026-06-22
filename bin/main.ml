@@ -8,16 +8,19 @@ let info =
     [
       `S Manpage.s_description;
       `P
-        "Cascade ships two subcommands: $(b,fmt) (format, minify, inline) and \
-         $(b,diff) (structural CSS diff). When no subcommand is given, \
-         $(b,fmt) is used.";
+        "Cascade ships three subcommands: $(b,fmt) (format, minify, inline \
+         imports), $(b,diff) (structural CSS diff) and $(b,apply) (resolve a \
+         stylesheet into an HTML page's inline styles). When no subcommand is \
+         given, $(b,fmt) is used.";
       `S Manpage.s_bugs;
       `P "Report bugs at https://github.com/samoht/cascade";
     ]
   in
   Cmd.info "cascade" ~version:Cascade_info.version ~doc ~man
 
-let cmd = Cmd.group info ~default:Cmd_fmt.term [ Cmd_fmt.cmd; Cmd_diff.cmd ]
+let cmd =
+  Cmd.group info ~default:Cmd_fmt.term
+    [ Cmd_fmt.cmd; Cmd_diff.cmd; Cmd_apply.cmd ]
 
 (* cmdliner's [Cmd.group ~default] only invokes the default term when the
    command line is empty or the first positional is a known subcommand name; any
@@ -28,7 +31,9 @@ let rewrite_argv_for_default argv =
   if Array.length argv <= 1 then argv
   else
     let first = argv.(1) in
-    let is_known_subcommand = first = "fmt" || first = "diff" in
+    let is_known_subcommand =
+      first = "fmt" || first = "diff" || first = "apply"
+    in
     let is_help_or_version =
       first = "--help" || first = "-h" || first = "--version"
     in
