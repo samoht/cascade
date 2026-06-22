@@ -431,6 +431,15 @@ let font_properties () =
     "font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif";
   check_declaration ~expected:"font-family:Georgia,serif"
     "font-family: Georgia, serif";
+  (* minify dedups a repeated family, but must not collapse the list to a lone
+     generic keyword - [monospace, monospace] opts a bare generic back into the
+     normal UA size, so dropping the duplicate would shrink the text. *)
+  check_declaration ~expected:"font-family:Arial,Helvetica"
+    "font-family: Arial, Helvetica, Arial";
+  check_declaration ~expected:"font-family:monospace,monospace"
+    "font-family: monospace, monospace";
+  check_declaration ~expected:"font-family:serif,serif"
+    "font-family: serif, serif";
   (* CSS Fonts 4 defines font-family names as <custom-ident> sequences. Quoted
      reserved words are family names; unquoted CSS-wide keywords remain CSS-wide
      keywords and must not be reinterpreted as family names. *)
