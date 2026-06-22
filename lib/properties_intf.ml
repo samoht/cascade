@@ -1642,6 +1642,7 @@ type vertical_align =
   | Text_bottom
   | Sub
   | Super
+  | Zero
   | Px of float
   | Rem of float
   | Em of float

@@ -40,6 +40,9 @@ let read_vertical_align_length t : vertical_align =
   | Some "rem" -> Rem n
   | Some "em" -> Em n
   | Some "%" -> Pct n
+  (* A unitless [0] is the valid zero <length> (CSS Values 4 §6.1); any other
+     unitless number is not a length and is rejected. *)
+  | None when n = 0. -> Zero
   | None -> Cursor.err_invalid t "vertical-align requires a unit"
   | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
 
@@ -6432,6 +6435,7 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Text_bottom -> Pp.string ctx "text-bottom"
   | Sub -> Pp.string ctx "sub"
   | Super -> Pp.string ctx "super"
+  | Zero -> Pp.string ctx "0"
   | Px f -> Pp.unit ctx f "px"
   | Rem f -> Pp.unit ctx f "rem"
   | Em f -> Pp.unit ctx f "em"
