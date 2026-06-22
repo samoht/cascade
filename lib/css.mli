@@ -3757,6 +3757,7 @@ type repeat_count = Properties.repeat_count =
   | Count of int
   | Auto_fill
   | Auto_fit
+  | Var of repeat_count var
 
 (** CSS grid-auto-flow values *)
 type grid_auto_flow = Properties.grid_auto_flow =

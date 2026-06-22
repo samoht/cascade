@@ -742,6 +742,12 @@ let grid () =
     "grid-template-columns: 1fr 2fr";
   check_declaration ~expected:"grid-template-columns:repeat(3,1fr)"
     "grid-template-columns: repeat(3, 1fr)";
+  (* a var() in the repeat count is a pending-substitution count, kept verbatim
+     rather than dropped *)
+  check_declaration ~expected:"grid-template-columns:repeat(var(--n),1fr)"
+    "grid-template-columns: repeat(var(--n), 1fr)";
+  check_declaration ~expected:"grid-template-columns:repeat(var(--n,3),1fr)"
+    "grid-template-columns: repeat(var(--n, 3), 1fr)";
 
   (* minmax with fr units *)
   check_declaration ~expected:"grid-template-columns:minmax(100px,1fr)200px"

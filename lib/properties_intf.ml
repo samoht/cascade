@@ -740,9 +740,14 @@ type grid_auto_flow =
   | Revert_layer
   | Var of grid_auto_flow var
 
-(** [repeat()] count argument: an explicit integer or one of the auto-track-list
-    keywords (CSS Grid 1 §7.2.3.1 / 2). *)
-type repeat_count = Count of int | Auto_fill | Auto_fit
+(** [repeat()] count argument: an explicit integer, one of the auto-track-list
+    keywords (CSS Grid 1 §7.2.3.1 / 2), or a [var()] standing in for the count.
+*)
+type repeat_count =
+  | Count of int
+  | Auto_fill
+  | Auto_fit
+  | Var of repeat_count var
 
 type grid_template =
   | None
