@@ -2112,6 +2112,25 @@ let of_string s =
   | Some d -> d
   | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
 
+let is_custom_property_name name =
+  String.length name > 2 && name.[0] = '-' && name.[1] = '-'
+
+let parse_declaration ?layer property value =
+  (* Parse [property:value] with the full declaration parser: a known property
+     (e.g. [mask-type], [display]) becomes a typed declaration, a custom
+     property ([--x]) or an unknown property keeps its parsed component stream
+     (so [vars_of_declarations] still finds its [var()] references), unlike
+     [custom_property] which forces an opaque [Tokens] value. A [layer] only
+     applies to a custom property; [custom_property] attaches it and yields the
+     same parsed token stream the declaration parser would. *)
+  match layer with
+  | Some _ when is_custom_property_name property -> (
+      try Some (custom_property ?layer property value) with Failure _ -> None)
+  | _ -> (
+      let s = String.concat "" [ property; ":"; value ] in
+      try read_declaration (Cursor.of_string s)
+      with Cursor.Parse_error _ -> None)
+
 let read t =
   match read_declaration t with
   | Some d -> d

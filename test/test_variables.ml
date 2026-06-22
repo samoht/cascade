@@ -142,7 +142,22 @@ let test_vars_of_declarations () =
   in
 
   (* Should find the two variables used in declarations (not definitions) *)
-  Alcotest.(check bool) "found variables" true (List.length vars >= 2)
+  Alcotest.(check bool) "found variables" true (List.length vars >= 2);
+
+  (* A custom property whose typed value references another var must expose that
+     reference, just like a standard property does (regression: returned []). *)
+  let _black_decl, black_var =
+    var "color-black" Color (Css.Values.hex "000000")
+  in
+  let standard_ref = vars_of_declarations [ v Color (Var black_var) ] in
+  let custom_ref =
+    vars_of_declarations [ fst (var "x" Color (Var black_var)) ]
+  in
+  let has_black = List.exists (fun av -> any_var_name av = "--color-black") in
+  Alcotest.(check bool)
+    "standard property exposes the ref" true (has_black standard_ref);
+  Alcotest.(check bool)
+    "custom Typed value exposes the ref" true (has_black custom_ref)
 
 (* Not a roundtrip test *)
 let test_any_var_name () =

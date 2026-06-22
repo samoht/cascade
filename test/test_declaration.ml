@@ -2244,10 +2244,47 @@ let spec_property_grammar_manifest () =
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 
+let parse_declaration_case () =
+  (* A known property parses to a typed declaration. *)
+  (match parse_declaration "mask-type" "luminance" with
+  | Some d ->
+      Alcotest.(check string)
+        "typed prop" "mask-type"
+        (Css.Declaration.property_name d)
+  | None -> Alcotest.fail "mask-type:luminance should parse");
+  (* A known property's var() refs are visible to vars_of_declarations. *)
+  (match parse_declaration "color" "var(--color-black)" with
+  | Some d ->
+      let names = List.map Css.any_var_name (Css.vars_of_declarations [ d ]) in
+      Alcotest.(check bool)
+        "typed var ref visible" true
+        (List.mem "--color-black" names)
+  | None -> Alcotest.fail "color:var(--color-black) should parse");
+  (* A custom property parses (and keeps its component stream, not an opaque
+     wrapper); it is dispatched as a custom property, not dropped. *)
+  (match parse_declaration "--gradient-bg" "var(--color-black)" with
+  | Some d ->
+      Alcotest.(check (option string))
+        "custom name" (Some "--gradient-bg")
+        (Css.custom_declaration_name d)
+  | None -> Alcotest.fail "--gradient-bg should parse");
+  (* A layer attaches to a custom property. *)
+  (match parse_declaration ~layer:"theme" "--c" "red" with
+  | Some d ->
+      Alcotest.(check (option string))
+        "layer" (Some "theme")
+        (custom_declaration_layer d)
+  | None -> Alcotest.fail "--c should parse");
+  (* An unparseable value yields None, not a recovered declaration. *)
+  Alcotest.(check bool)
+    "invalid value is None" true
+    (parse_declaration "mask-type" "definitely-not-a-mask-type" = None)
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
     test_case "multiple" `Quick multiple;
