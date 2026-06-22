@@ -95,7 +95,7 @@ let parse_inline s =
   | Error _ -> []
 
 let decl_value d =
-  let s = Sheet.inline_style_of_declarations ~minify:true [ d ] in
+  let s = Sheet.inline_style_of_declarations ~minify:true ~mode:Variables [ d ] in
   match String.index_opt s ':' with
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s
@@ -123,8 +123,12 @@ let resolved sheet n =
 let style_node node = function
   | [] -> ()
   | decls ->
+      (* [~mode:Variables] keeps [var()] references; the element's own custom
+         properties are resolved onto it too, so the browser still resolves
+         them. The [Inline] mode would substitute a var() with its fallback,
+         dropping the reference and changing the render. *)
       Soup.set_attribute "style"
-        (Sheet.inline_style_of_declarations ~minify:true decls)
+        (Sheet.inline_style_of_declarations ~minify:true ~mode:Variables decls)
         node
 
 (* ---------- splitting static / dynamic ---------- *)
