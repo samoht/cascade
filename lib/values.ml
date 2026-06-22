@@ -6368,11 +6368,22 @@ let read_color_function t : color =
   let alpha = read_optional_alpha t in
   Color { space; components; alpha }
 
+(* A bare [<percentage>] leaf inside a color-mix weight [calc()]. Unlike the
+   top-level weight it is not range-checked: CSS Values 4 §10 clamps the math
+   function's result, not its individual operands. [read_calc] handles the
+   [var()] and nested-[calc()] factors itself, so the leaf only sees a token. *)
+let read_color_mix_calc_pct t : percentage = Pct (Cursor.pct t)
+
 (** Forward declaration for percentage reader used in color-mix *)
 let rec read_percentage_in_color_mix t : percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
     Var (read_var read_percentage_in_color_mix t)
+  else if Cursor.looking_at_calc t then
+    (* CSS Color 5 §3: the weight may be a math function. We can't bound-check a
+       [calc()] statically (it may carry a [var()]), so we keep it verbatim and
+       let substitution-time clamping apply. *)
+    Calc (read_calc read_color_mix_calc_pct t)
   else
     let n = Cursor.number t in
     Cursor.expect '%' t;
@@ -6389,6 +6400,8 @@ let read_optional_percentage t : percentage option =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
     Some (Var (read_var read_percentage_in_color_mix t))
+  else if Cursor.looking_at_calc t then
+    Some (Calc (read_calc read_color_mix_calc_pct t))
   else
     match Cursor.percentage_opt t with
     | Some n ->
