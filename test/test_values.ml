@@ -926,6 +926,15 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
     ~optimized:"color-mix(in srgb longer hue,red,#00f)"
     "color-mix(in srgb longer hue, red, blue)";
+  (* CSS Color 5 §3: the color-mix weight may be a [calc()]. A constant folds to
+     a plain percentage; a [var()]-bearing one is kept verbatim. The weight
+     reader previously rejected any [calc()] here. *)
+  check_color ~expected:"color-mix(in srgb,red 30%,blue)"
+    ~optimized:"color-mix(in srgb,red 30%,#00f)"
+    "color-mix(in srgb, red calc(30%), blue)";
+  check_color ~expected:"color-mix(in srgb,var(--c) calc(var(--o)*100%),blue)"
+    ~optimized:"color-mix(in srgb,var(--c) calc(var(--o)*100%),#00f)"
+    "color-mix(in srgb, var(--c) calc(var(--o) * 100%), blue)";
   check_color ~expected:"hsl(0 50% 50%)" ~optimized:"#bf4040"
     "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/.5)"
@@ -937,6 +946,7 @@ let spec_values_l45_math_color () =
   neg_cursor read_length "anchor-size()";
   neg_cursor read_number "sibling-index(1)";
   neg_cursor read_color "color-mix(in oklab)";
+  neg_cursor read_color "color-mix(in oklab, red calc(50%) calc(20%), blue)";
   neg_cursor read_color "rgb(from red r g)";
   neg_cursor read_color "color(display-p3 1 0)"
 
