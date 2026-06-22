@@ -1940,10 +1940,10 @@ let target_minify_enforce_spec_split () =
        theme,grid;@layer grid{.x{color:red}}@layer theme{.x{color:#00f}}";
   check_modes "explicit flex zero basis is not one-value shorthand"
     "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
-  check_modes "color-mix default oklab elides in both modes"
+  check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
-    ~default:"a{color:color-mix(var(--a),var(--b))}"
-    ~spec:"a{color:color-mix(var(--a),var(--b))}";
+    ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
+    ~spec:"a{color:color-mix(in oklab,var(--a),var(--b))}";
   (* oklch/oklab chroma takes <number> | <percentage>, exactly interchangeable
      (CSS Color 4: 100% = 0.4 on this axis). Default minify picks the shorter
      spelling per axis - .304 becomes 76%, but .1 stays because 25% is longer.
