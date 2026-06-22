@@ -188,6 +188,12 @@ type length =
   | Contain
   | Max_content
   | Min_content
+  | Webkit_max_content
+  | Webkit_min_content
+  | Webkit_fit_content
+  | Moz_max_content
+  | Moz_min_content
+  | Moz_fit_content
   | From_font
   | Hairline
   | Thin

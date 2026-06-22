@@ -110,6 +110,14 @@ let test_length () =
   check_length "max-content";
   check_length "min-content";
   check_length "fit-content";
+  (* Legacy vendor-prefixed intrinsic sizing keywords (Bootstrap,
+     Fontsource). *)
+  check_length "-webkit-max-content";
+  check_length "-webkit-min-content";
+  check_length "-webkit-fit-content";
+  check_length "-moz-max-content";
+  check_length "-moz-min-content";
+  check_length "-moz-fit-content";
   check_length "from-font";
 
   (* Edge cases *)
