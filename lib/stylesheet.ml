@@ -1698,27 +1698,6 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
-let validate_font_weight_range r first second =
-  match (first, second) with
-  | ( (Properties.Weight a : Properties.font_weight),
-      (Properties.Weight b : Properties.font_weight) )
-    when a <= b ->
-      ()
-  | _ -> Cursor.err_invalid r "invalid font-weight descriptor range"
-
-let validate_font_style_oblique_range r first second =
-  match (Values.angle_degrees_opt first, Values.angle_degrees_opt second) with
-  | Some a, Some b when a <= b -> ()
-  | Some _, Some _ -> Cursor.err_invalid r "invalid font-style descriptor range"
-  | _ -> ()
-
-let validate_font_style_descriptor_range r first second =
-  match (first, second) with
-  | ( (Properties.Oblique_angle first : Properties.font_style),
-      Properties.Oblique_angle second ) ->
-      validate_font_style_oblique_range r first second
-  | _ -> ()
-
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -1727,10 +1706,12 @@ let read_font_weight_descriptor r =
       Cursor.ws c;
       if Cursor.is_done c then Font_weight first
       else
+        (* CSS Fonts 4 §11.2 wants the first weight <= the second, but browsers
+           keep a descending range ([font-weight:900 100]), so accept any
+           pair. *)
         let second = Properties.read_font_weight c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        validate_font_weight_range r first second;
         Font_weight_range (first, second))
     r
 
@@ -1745,7 +1726,6 @@ let read_font_style_descriptor r =
         let second = Properties.read_font_style c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        validate_font_style_descriptor_range r first second;
         Font_style_range (first, second))
     r
 
@@ -1966,19 +1946,6 @@ let read_font_face_desc name r =
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
-(* Keep in sync with [read_font_face_desc]. CSS Fonts 4 §11.2 / CSS Syntax 3
-   §5.4.4: an unknown descriptor is dropped and the rest of the @font-face is
-   kept (browsers ignore it, e.g. Fontsource's non-standard
-   [font-named-instance]). A known descriptor with a bad value still rejects the
-   rule (cascade is stricter than browsers here on purpose). *)
-let is_known_font_face_descriptor = function
-  | "font-family" | "src" | "font-style" | "font-weight" | "font-stretch"
-  | "font-display" | "unicode-range" | "font-variant" | "font-feature-settings"
-  | "font-variation-settings" | "font-tech" | "size-adjust" | "ascent-override"
-  | "descent-override" | "line-gap-override" ->
-      true
-  | _ -> false
-
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -1992,8 +1959,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         Cursor.ws r;
         if Cursor.peek_semicolon r then Cursor.skip r;
         Some descriptor
-    | exception Error.Parse_error e
-      when not (is_known_font_face_descriptor name) ->
+    | exception Error.Parse_error e ->
+        (* CSS Fonts 4 §11.2 / CSS Syntax 3 §5.4.4: a descriptor that does not
+           parse - an unknown name (Fontsource's [font-named-instance]) or an
+           invalid value of a known one ([font-display:maybe]) - is dropped and
+           the rest of the @font-face is kept, matching browsers. *)
         Cursor.push_warning r e;
         let rec skip_to_semicolon () =
           match Cursor.next_raw r with

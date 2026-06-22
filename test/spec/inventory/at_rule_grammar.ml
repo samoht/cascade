@@ -139,9 +139,6 @@ let negative =
     invalid "font-face" "nested-rule"
       "@font-face { font-family: Brand; src: url(brand.woff2); @media screen { \
        .x { color: red } } }";
-    invalid "font-face" "bad-range"
-      "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
-       900 100 }";
     invalid "page" "invalid-pseudo" "@page :unknown { margin: 1cm }";
     invalid "page" "invalid-margin-descriptor"
       "@page { @top-center { display: block } }";

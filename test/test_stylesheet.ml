@@ -683,28 +683,6 @@ let font_face_case () =
      font-display: swap; }"
 
 let spec_fontface_descriptors () =
-  let expect_stylesheets_rejected inputs =
-    let accepted =
-      List.filter_map
-        (fun input ->
-          let c = Cursor.of_string input in
-          match read_stylesheet c with
-          | exception Error.Parse_error _ -> None
-          | sheet ->
-              if Cursor.is_done c then
-                Fmt.kstr
-                  (fun s -> Some s)
-                  "%S -> %S" input
-                  (Css.Pp.to_string ~minify:true pp_stylesheet sheet)
-              else None)
-        inputs
-    in
-    match accepted with
-    | [] -> ()
-    | _ ->
-        Alcotest.failf "accepted invalid @font-face cases:\n%s"
-          (String.concat "\n" accepted)
-  in
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:local(Brand),url(brand.woff2)format(woff2)tech(variations);font-weight:400 \
@@ -752,18 +730,28 @@ let spec_fontface_descriptors () =
     ~expected:"@font-face{font-family:Foo;src:url(foo.woff2);font-style:normal}"
     "@font-face { font-family: Foo; src: url(foo.woff2); font-named-instance: \
      'Regular'; font-style: normal; }";
-  expect_stylesheets_rejected
-    [
-      "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
-       maybe; }";
-      "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
-       common-ligatures no-common-ligatures; }";
-      "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
-       oblique 20deg 10deg; }";
-      "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
-       200% 50%; }";
-      "@font-face { font-family: Brand; src: local(\"\"); }";
-    ]
+  (* An invalid value of a *known* descriptor drops just that descriptor and
+     keeps the rest of the @font-face, like browsers (CSS Fonts 4 §11.2). *)
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
+     maybe; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
+     common-ligatures no-common-ligatures; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: 200% \
+     50%; }";
+  (* [oblique <angle> <angle>] is kept even when the first angle is larger than
+     the second, and [local("")] is a valid empty family name; browsers accept
+     both, so cascade keeps them rather than dropping the @font-face. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-style:oblique \
+       20deg 10deg}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+     oblique 20deg 10deg; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:local(\"\")}"
+    "@font-face { font-family: Brand; src: local(\"\"); }"
 
 (** Test [@page] rules *)
 let page_case () =
@@ -858,16 +846,22 @@ let spec_font_face_descriptor_matrix () =
          ascent-override: 120%; descent-override: 125%; line-gap-override: 0%; \
          }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
-    [
-      "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
-       900 100 }";
-      "@font-face { font-family: Brand; src: url(brand.woff2); \
-       ascent-override: -1%; }";
-      "@font-face { font-family: Brand; src: url(brand.woff2); size-adjust: \
-       normal; }";
-    ]
+  (* A descending font-weight range is kept (browsers accept it, like the
+     oblique range above). *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(brand.woff2);font-weight:900 100}"
+    "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: 900 \
+     100 }";
+  (* An invalid metric / size-adjust value drops just that descriptor. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:Brand;src:url(brand.woff2)}"
+    "@font-face { font-family: Brand; src: url(brand.woff2); ascent-override: \
+     -1%; }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:Brand;src:url(brand.woff2)}"
+    "@font-face { font-family: Brand; src: url(brand.woff2); size-adjust: \
+     normal; }"
 
 let spec_keyframes_selector_matrix () =
   (* CSS Animations 1 section 7.1: [from] / [to] / [0%] / [100%] are pairwise
