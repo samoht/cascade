@@ -4508,6 +4508,28 @@ let normalize_scale : scale -> scale =
   | XYZ (x, y, z) -> preserve_if_equal value (XYZ (np x, np y, np z))
   | other -> other
 
+(* [transform-origin] had no normalize pass, so [0px 50%] and [0% 50%] (and
+   [left center]) stayed in distinct spellings of the same origin. [0], [0px]
+   and [0%] all place the origin at the same edge, so fold every zero component
+   to the unitless [0] - the canonical form the [left]/[top] keywords already
+   minify to. *)
+let normalize_transform_origin : transform_origin -> transform_origin =
+  let z l =
+    match (l : Values.length) with
+    | Pct 0. -> (Zero : Values.length)
+    | _ -> Values.normalize_length l
+  in
+  fun value ->
+    match value with
+    | X a -> preserve_if_equal value (X (z a))
+    | XY (a, b) -> preserve_if_equal value (XY (z a, z b))
+    | XYZ (a, b, c) -> preserve_if_equal value (XYZ (z a, z b, z c))
+    | Position p ->
+        preserve_if_equal value (Position (normalize_position_value p))
+    | Position_z (p, c) ->
+        preserve_if_equal value (Position_z (normalize_position_value p, z c))
+    | other -> other
+
 let normalize_ray_size : ray_size -> ray_size =
  fun value ->
   match value with
@@ -20943,6 +20965,7 @@ let normalize_property_value : type a.
   | Rotate -> normalize_rotate value
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
+  | Transform_origin -> normalize_transform_origin value
   | Offset_path -> normalize_offset_path value
   | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
