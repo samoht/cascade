@@ -2054,6 +2054,10 @@ let test_vertical_align () =
   check_vertical_align "10px";
   check_vertical_align "var(--v)";
   check_vertical_align "calc(50% + 10px)";
+  (* A unitless 0 is the valid zero <length> and stays unitless; any other
+     unitless number is not a length. *)
+  check_vertical_align "0";
+  neg_cursor read_vertical_align "5";
   neg_cursor read_vertical_align "invalid-align"
 
 let test_font_family () =
