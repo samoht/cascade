@@ -746,6 +746,12 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
   check_stylesheet ~expected:"" "@font-face { font-display: swap; }";
+  (* An unknown descriptor (e.g. Fontsource's non-standard font-named-instance)
+     is dropped; the rest of the @font-face is kept, like browsers. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:Foo;src:url(foo.woff2);font-style:normal}"
+    "@font-face { font-family: Foo; src: url(foo.woff2); font-named-instance: \
+     'Regular'; font-style: normal; }";
   expect_stylesheets_rejected
     [
       "@font-face { font-family: Brand; src: url(font.woff2); font-display: \

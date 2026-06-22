@@ -1966,6 +1966,19 @@ let read_font_face_desc name r =
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
+(* Keep in sync with [read_font_face_desc]. CSS Fonts 4 §11.2 / CSS Syntax 3
+   §5.4.4: an unknown descriptor is dropped and the rest of the @font-face is
+   kept (browsers ignore it, e.g. Fontsource's non-standard
+   [font-named-instance]). A known descriptor with a bad value still rejects the
+   rule (cascade is stricter than browsers here on purpose). *)
+let is_known_font_face_descriptor = function
+  | "font-family" | "src" | "font-style" | "font-weight" | "font-stretch"
+  | "font-display" | "unicode-range" | "font-variant" | "font-feature-settings"
+  | "font-variation-settings" | "font-tech" | "size-adjust" | "ascent-override"
+  | "descent-override" | "line-gap-override" ->
+      true
+  | _ -> false
+
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -1974,10 +1987,22 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
     None)
   else
     let name = Cursor.ident ~keep_case:false r in
-    let descriptor = read_font_face_desc name r in
-    Cursor.ws r;
-    if Cursor.peek_semicolon r then Cursor.skip r;
-    Some descriptor
+    match read_font_face_desc name r with
+    | descriptor ->
+        Cursor.ws r;
+        if Cursor.peek_semicolon r then Cursor.skip r;
+        Some descriptor
+    | exception Error.Parse_error e
+      when not (is_known_font_face_descriptor name) ->
+        Cursor.push_warning r e;
+        let rec skip_to_semicolon () =
+          match Cursor.next_raw r with
+          | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+              ()
+          | Some _ -> skip_to_semicolon ()
+        in
+        skip_to_semicolon ();
+        None
 
 let read_font_face_block inner =
   let rec read_descriptors acc =
