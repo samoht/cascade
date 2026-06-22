@@ -2012,6 +2012,19 @@ let test_list_style_type () =
   check_list_style_type "upper-alpha";
   check_list_style_type "lower-roman";
   check_list_style_type "upper-roman";
+  (* Predefined counter styles (CSS Counter Styles 3 §6). *)
+  check_list_style_type "decimal-leading-zero";
+  check_list_style_type "lower-greek";
+  check_list_style_type "lower-latin";
+  check_list_style_type "upper-latin";
+  check_list_style_type "armenian";
+  check_list_style_type "georgian";
+  check_list_style_type "cjk-decimal";
+  check_list_style_type "hebrew";
+  check_list_style_type "katakana";
+  check_list_style_type "ethiopic-numeric";
+  check_list_style_type "disclosure-open";
+  (* An unknown bare identifier is still rejected (no @counter-style here). *)
   neg_cursor read_list_style_type "invalid-style"
 
 let test_list_style_position () =
