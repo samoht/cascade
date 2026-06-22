@@ -16,8 +16,13 @@ module type NODE = sig
   (** The element name (e.g. ["div"]), or [None] for an anonymous node. *)
 
   val id : t -> string option
+  (** The [id] attribute, or [None]. *)
+
   val classes : t -> string list
+  (** The class names from the [class] attribute. *)
+
   val attribute : t -> string -> string option
+  (** [attribute t name] is the value of attribute [name], or [None]. *)
 
   val parent : t -> t option
   (** The parent element, or [None] at the root. *)

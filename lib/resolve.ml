@@ -92,8 +92,7 @@ module Make (N : NODE) = struct
     | Selector.List ss | Selector.Is ss | Selector.Where ss ->
         List.exists (fun s -> matches s n) ss
     | Selector.Not ss -> not (List.exists (fun s -> matches s n) ss)
-    | Selector.Combined (left, comb, right) ->
-        matches right n && combinator left comb n
+    | Selector.Combined _ -> anchors sel n <> []
     | Selector.Root -> N.parent n = None
     | Selector.First_child -> is_first n
     | Selector.Last_child -> is_last n
@@ -102,16 +101,31 @@ module Make (N : NODE) = struct
     (* stateful / generated / unknown forms cannot be matched statically *)
     | _ -> false
 
-  and combinator left comb n =
+  (* [Selector] is right-leaning: [a b > c] is [Combined (a, Descendant,
+     Combined (b, Child, c))], so the rightmost compound (the subject) sits at
+     the bottom of [right] and each combinator joins its [left] compound to the
+     compound *after* it, not to the subject. [anchors sel n] returns the nodes
+     where [sel]'s leftmost compound matches when [sel] matches with subject [n]
+     (empty = no match): [right] must match [n], then for every node [a] that
+     [right]'s leftmost compound anchored at, [left] must be [comb]-related to
+     [a]. Threading the anchor this way is what the old subject-only
+     [combinator] missed for any selector with two or more combinators. *)
+  and anchors sel n =
+    match sel with
+    | Selector.Combined (left, comb, right) ->
+        anchors right n |> List.concat_map (related left comb)
+    | _ -> if matches sel n then [ n ] else []
+
+  and related left comb a =
     match comb with
-    | Selector.Descendant -> List.exists (matches left) (ancestors n)
+    | Selector.Descendant -> List.filter (matches left) (ancestors a)
     | Selector.Child -> (
-        match N.parent n with Some p -> matches left p | None -> false)
+        match N.parent a with Some p when matches left p -> [ p ] | _ -> [])
     | Selector.Next_sibling -> (
-        match imm_pred n with Some s -> matches left s | None -> false)
+        match imm_pred a with Some s when matches left s -> [ s ] | _ -> [])
     | Selector.Subsequent_sibling ->
-        List.exists (matches left) (preceding_siblings n)
-    | _ -> false
+        List.filter (matches left) (preceding_siblings a)
+    | _ -> []
 
   let resolve sheet node =
     let upsert acc d =
