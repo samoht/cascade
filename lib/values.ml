@@ -7491,17 +7491,12 @@ let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
 and normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
     ~percent1 ~color2 ~percent2 =
   let keep () =
-    (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and the [in
-       oklab] method is the default, so both drop when the mix is left as a
-       colour-mix; percentages that restate the [100% - other] default drop
-       too. *)
+    (* CSS Color 5 sec. 3 / sec. 13: [shorter] is the default hue and drops, and
+       percentages that restate the [100% - other] default drop too. The
+       interpolation method itself is required syntax, so a written [in oklab]
+       stays - dropping it yields [color-mix(<color>, <color>)], which every
+       browser rejects. *)
     let hue = match hue with Shorter -> Default | h -> h in
-    let in_space : color_space option =
-      match (in_space : color_space option) with
-      | Some Oklab when hue = Default -> None
-      | None -> None
-      | _ -> in_space
-    in
     let pct (p : percentage option) =
       match p with Some (Pct f) -> Some f | _ -> None
     in

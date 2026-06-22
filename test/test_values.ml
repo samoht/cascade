@@ -374,7 +374,7 @@ let test_color () =
 let lossless_color () =
   decl_lossless ~prop:"color" ~into:"oklch(.552 .016 285.938)"
     "oklch(55.2% .016 285.938)";
-  decl_lossless ~prop:"color" ~into:"color-mix(red,#00f)"
+  decl_lossless ~prop:"color" ~into:"color-mix(in oklab,red,#00f)"
     "color-mix(in oklab, red 50%, blue 50%)";
   decl_lossless ~prop:"color" ~into:"red" "rgb(255 0 0)";
   decl_lossless ~prop:"color" ~into:"#0003" "rgb(0 0 0 / .2)";
@@ -1028,7 +1028,7 @@ let spec_color5_function_edges () =
     ~optimized:"#944b4080"
     "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
   check_color ~expected:"color-mix(in oklab,var(--a),var(--b))"
-    ~optimized:"color-mix(var(--a),var(--b))"
+    ~optimized:"color-mix(in oklab,var(--a),var(--b))"
     "color-mix(in oklab, var(--a), var(--b))";
   check_color ~expected:"color-mix(var(--a),var(--b))"
     "color-mix(var(--a), var(--b))";
