@@ -324,6 +324,9 @@ let check_background_repeat =
   check_value_cursor "background-repeat" read_background_repeat
     pp_background_repeat
 
+(* The standalone longhand (comma-separated layer list) goes through the [_list]
+   readers; the single-value [check_*] above is the per-layer / shorthand
+   path. *)
 let check_background_size =
   check_value_cursor "background-size" read_background_size pp_background_size
 
@@ -1660,6 +1663,10 @@ let test_background_box () =
   check_background_box "border-box";
   check_background_box "padding-box";
   check_background_box "content-box";
+  (* Comma-separated layers are valid; space-separated is not. *)
+  decl_optimizes ~prop:"background-clip"
+    ~into:"border-box,padding-box,content-box"
+    "border-box,padding-box,content-box";
   neg_cursor read_background_box "invalid-box";
   neg_cursor read_background_box "margin-box";
   (* doesn't exist for background *)
@@ -1681,6 +1688,11 @@ let test_background () =
     "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png)50%/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
+  (* Multi-layer shorthand (CSS Backgrounds 3 §2.1): the layer comma separates
+     layers and must not be eaten by a per-component reader. [repeat] is the
+     default and folds away; the second layer's [space] stays. *)
+  decl_optimizes ~prop:"background" ~into:"url(a.png),url(b.png)space"
+    "url(a.png) repeat,url(b.png) space";
   check_background ~expected:"0 0" "none";
   neg_cursor read_background "invalid-background";
   neg_cursor read_background "red blue";
@@ -2251,6 +2263,7 @@ let test_background_attachment () =
   check_background_attachment "fixed";
   check_background_attachment "local";
   check_background_attachment "inherit";
+  check_background_attachment "scroll,fixed,local";
   neg_cursor read_background_attachment "invalid-attachment"
 
 let test_background_repeat () =
@@ -2261,6 +2274,13 @@ let test_background_repeat () =
   check_background_repeat "repeat-x";
   check_background_repeat "repeat-y";
   check_background_repeat "inherit";
+  (* CSS Backgrounds 3 §3.6: the longhand is a comma-separated layer list. *)
+  decl_optimizes ~prop:"background-repeat" ~into:"no-repeat,repeat-y,no-repeat"
+    "no-repeat,repeat-y,no-repeat";
+  decl_optimizes ~prop:"background-repeat" ~into:"repeat-x,repeat-y"
+    "repeat-x,repeat-y";
+  decl_optimizes ~prop:"background-repeat" ~into:"repeat space,no-repeat"
+    "repeat space,no-repeat";
   neg_cursor read_background_repeat "invalid-repeat"
 
 let test_background_size () =
@@ -2276,6 +2296,10 @@ let test_background_size () =
   check_background_size "var(--s)";
   check_background_size "calc(50% + 10px)";
   check_background_size "calc(50% + 10px) auto";
+  (* Comma-separated layer list (CSS Backgrounds 3 §3.9). *)
+  decl_optimizes ~prop:"background-size" ~into:"cover,contain" "cover,contain";
+  decl_optimizes ~prop:"background-size" ~into:"100px 200px,auto"
+    "100px 200px,auto";
   neg_cursor read_background_size "invalid-size"
 
 let test_gradient_direction () =
@@ -3360,6 +3384,8 @@ let test_mask_box () =
   check_mask_box "padding-box";
   check_mask_box "fill-box";
   check_mask_box "inherit";
+  decl_optimizes ~prop:"mask-clip" ~into:"border-box,fill-box,no-clip"
+    "border-box,fill-box,no-clip";
   neg_cursor read_mask_box "invalid-mask-box"
 
 let test_mask_composite () =
@@ -3368,6 +3394,8 @@ let test_mask_composite () =
   check_mask_composite "intersect";
   check_mask_composite "exclude";
   check_mask_composite "inherit";
+  decl_optimizes ~prop:"mask-composite" ~into:"add,subtract,intersect"
+    "add,subtract,intersect";
   neg_cursor read_mask_composite "invalid-composite"
 
 let test_mask_mode () =
