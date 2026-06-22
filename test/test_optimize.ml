@@ -865,11 +865,33 @@ let test_var_color_functions_preserved () =
     "a none channel still folds (none computes to 0)" ".x{color:#000}"
     (opt ".x{color:rgb(none 0 0)}")
 
+(* [0], [0px], [0%] and the [left]/[top] keywords all name the same origin, so
+   the optimiser folds every zero transform-origin component to the unitless
+   [0]; a non-zero origin is left alone. *)
+let test_transform_origin_zero_folds () =
+  let opt css =
+    match Css.of_string css with
+    | Ok { Css.stylesheet; _ } -> minify stylesheet
+    | Error _ -> Alcotest.failf "expected %s to parse" css
+  in
+  let same canonical input =
+    Alcotest.(check string) input canonical (opt input)
+  in
+  same ".x{transform-origin:0}" ".x{transform-origin:0% 50%}";
+  same ".x{transform-origin:0}" ".x{transform-origin:0px 50%}";
+  same ".x{transform-origin:0}" ".x{transform-origin:left center}";
+  same ".x{transform-origin:0 0}" ".x{transform-origin:0% 0px}";
+  same ".x{transform-origin:50%}" ".x{transform-origin:50% 50%}";
+  same ".x{transform-origin:10px 20px}" ".x{transform-origin:10px 20px}"
+
 let optimize_tests =
   [
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );
+    ( "transform-origin zero components fold to 0",
+      `Quick,
+      test_transform_origin_zero_folds );
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );
