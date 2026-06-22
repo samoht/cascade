@@ -121,6 +121,21 @@ let test_deduplicate_keeps_legacy_fallbacks () =
   Alcotest.(check (list string))
     "vendor fallback is kept but ordinary duplicate is dropped"
     [ "display:-webkit-box"; "display:flex"; "color:blue" ]
+    (decl_strings result);
+  (* The prefixed-keyword fallbacks for position / text-align are kept too: old
+     Safari only understands -webkit-sticky / -webkit-match-parent. *)
+  let result =
+    ".a{position:-webkit-sticky;position:sticky;text-align:-webkit-match-parent;text-align:start}"
+    |> decls |> Shorthand.deduplicate_declarations
+  in
+  Alcotest.(check (list string))
+    "prefixed-keyword position/text-align fallbacks are kept"
+    [
+      "position:-webkit-sticky";
+      "position:sticky";
+      "text-align:-webkit-match-parent";
+      "text-align:start";
+    ]
     (decl_strings result)
 
 let suite =

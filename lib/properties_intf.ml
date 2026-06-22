@@ -101,6 +101,7 @@ type position =
   | Absolute
   | Fixed
   | Sticky
+  | Webkit_sticky
   | Initial
   | Inherit
   | Unset
@@ -871,6 +872,7 @@ type text_align =
   | Start
   | End
   | Match_parent
+  | Webkit_match_parent
   | Inherit
   | Initial
   | Unset

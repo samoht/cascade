@@ -254,6 +254,12 @@ let rec value_is_vendor_prefixed decl =
       background_image_is_vendor value
   | Declaration { property = Border_image_source; value; _ } ->
       background_image_is_vendor value
+  (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
+     are the same browser-compat pattern: old Safari only understands the
+     prefixed keyword, so the earlier declaration is a real fallback. *)
+  | Declaration { property = Position; value = Webkit_sticky; _ } -> true
+  | Declaration { property = Text_align; value = Webkit_match_parent; _ } ->
+      true
   | Declaration _ -> false
 
 (* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides.
