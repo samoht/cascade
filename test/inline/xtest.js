@@ -4,7 +4,9 @@ const CHROME = process.env.CHROME;
 const SKIP = { STYLE:1, SCRIPT:1, HEAD:1, META:1, TITLE:1, BASE:1, LINK:1, HTML:1 };
 const EXTRACTOR = '<script>(function(){var s=' + JSON.stringify(SKIP) +
   ';var e=document.querySelectorAll("*"),o=[];for(var i=0;i<e.length;i++){var x=e[i];if(s[x.tagName])continue;' +
-  'var c=getComputedStyle(x),r={_tag:x.tagName};for(var j=0;j<c.length;j++){var p=c[j];r[p]=c.getPropertyValue(p);}o.push(r);}' +
+  // skip custom properties (--*): they affect rendering only through var() in
+  // real properties, which are already resolved and compared below.
+  'var c=getComputedStyle(x),r={_tag:x.tagName};for(var j=0;j<c.length;j++){var p=c[j];if(p.indexOf("--")===0)continue;r[p]=c.getPropertyValue(p);}o.push(r);}' +
   'document.body.setAttribute("data-xtest",btoa(unescape(encodeURIComponent(JSON.stringify(o)))));})();</script>';
 function computed(path){
   let h = fs.readFileSync(path,'utf8');
