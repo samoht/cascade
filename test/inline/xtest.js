@@ -19,10 +19,23 @@ function computed(path){
   return JSON.parse(Buffer.from(m[1],'base64').toString('utf8'));
 }
 const a = computed(process.argv[2]), b = computed(process.argv[3]);
-const diffs = [];
-if (a.length !== b.length) diffs.push('element count '+a.length+' vs '+b.length);
 const n = Math.min(a.length,b.length);
-for (let i=0;i<n;i++) for (const p in a[i]) if (a[i][p]!==b[i][p]) diffs.push('['+i+' '+a[i]._tag+'] '+p+': "'+a[i][p]+'" vs "'+b[i][p]+'"');
-console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length);
+// Candidate differences: any property whose getComputedStyle string differs.
+const cand = [];
+for (let i=0;i<n;i++) for (const p in a[i]) if (a[i][p]!==b[i][p])
+  cand.push(i+'\t'+a[i]._tag+'\t'+p+'\t'+a[i][p]+'\t'+b[i][p]);
+// Reduce to render-real differences: a pair like "0% 0%" vs "0px 0px" or "red"
+// vs "rgb(255, 0, 0)" is the same render, so canon_filter (Css_compare
+// ~mode:Canonical) drops it; only an actual render change survives.
+let lines = cand;
+const CANON = process.env.CANON_FILTER;
+if (CANON && cand.length) {
+  const tmp = '/tmp/canon_'+process.pid+'.tsv';
+  fs.writeFileSync(tmp, cand.join('\n'));
+  lines = execSync(`"${CANON}" < "${tmp}"`,{encoding:'utf8',maxBuffer:1e8}).split('\n').filter(Boolean);
+}
+const diffs = lines.map(l=>{const f=l.split('\t');return '['+f[0]+' '+f[1]+'] '+f[2]+': "'+f[3]+'" vs "'+f[4]+'"';});
+if (a.length !== b.length) diffs.unshift('element count '+a.length+' vs '+b.length);
+console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length+(CANON?' (canonical compare)':''));
 if (!diffs.length) console.log('RESULT: IDENTICAL computed styles (inlining preserves the render)');
 else { console.log('RESULT: '+diffs.length+' difference(s):'); diffs.slice(0,40).forEach(d=>console.log('  '+d)); }

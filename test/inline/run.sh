@@ -13,6 +13,13 @@ if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
 export CHROME
+# Canonical-difference filter: compares values the way cascade does, so
+# render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
+if command -v dune >/dev/null 2>&1; then
+  dune build test/inline/canon_filter.exe 2>/dev/null
+  CANON_FILTER=$(cd "$dir/../.." && find _build -name canon_filter.exe 2>/dev/null | head -1)
+  [ -n "$CANON_FILTER" ] && export CANON_FILTER="$(cd "$dir/../.." && pwd)/$CANON_FILTER"
+fi
 fail=0
 for f in "$dir"/fixtures/*.html; do
   for mode in "" "--minimal"; do
