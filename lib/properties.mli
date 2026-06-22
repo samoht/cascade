@@ -1462,13 +1462,23 @@ val pp_background_repeat : background_repeat Pp.t
 (** [pp_background_repeat] is the pretty-printer for [background_repeat]. *)
 
 val read_background_repeat : Cursor.t -> background_repeat
-(** [read_background_repeat t] is the [background_repeat] parsed from [t]. *)
+(** [read_background_repeat t] is the single-layer [background_repeat] parsed
+    from [t] (used by the [background] / [mask] shorthand). *)
+
+val read_background_repeat_list : Cursor.t -> background_repeat
+(** [read_background_repeat_list t] parses the standalone [background-repeat] /
+    [mask-repeat] longhand: a comma-separated layer list. *)
 
 val pp_background_size : background_size Pp.t
 (** [pp_background_size] is the pretty-printer for [background_size]. *)
 
 val read_background_size : Cursor.t -> background_size
-(** [read_background_size t] is the [background_size] parsed from [t]. *)
+(** [read_background_size t] is the single-layer [background_size] parsed from
+    [t] (used by the shorthand). *)
+
+val read_background_size_list : Cursor.t -> background_size
+(** [read_background_size_list t] parses the standalone size longhand: a
+    comma-separated layer list. *)
 
 val pp_gradient_direction : gradient_direction Pp.t
 (** [pp_gradient_direction] is the pretty-printer for [gradient_direction]. *)
@@ -1556,8 +1566,12 @@ val minify_background_image : background_image -> background_image
     their shortest hex form, matching Lightning CSS behavior. *)
 
 val read_background_box : Cursor.t -> background_box
-(** [read_background_box t] parses a background-clip or background-origin value.
-*)
+(** [read_background_box t] parses a single-layer background-clip or
+    background-origin value (used by the shorthand). *)
+
+val read_background_box_list : Cursor.t -> background_box
+(** [read_background_box_list t] parses the standalone background-clip /
+    background-origin longhand: a comma-separated layer list. *)
 
 val pp_background_box : background_box Pp.t
 (** [pp_background_box] pretty-prints a background-clip or background-origin
@@ -1570,7 +1584,12 @@ val pp_webkit_mask_composite : webkit_mask_composite Pp.t
 (** [pp_webkit_mask_composite] pretty-prints a webkit-mask-composite value. *)
 
 val read_mask_composite : Cursor.t -> mask_composite
-(** [read_mask_composite t] parses a standard mask-composite value. *)
+(** [read_mask_composite t] parses a single-layer standard mask-composite value
+    (used by the shorthand). *)
+
+val read_mask_composite_list : Cursor.t -> mask_composite
+(** [read_mask_composite_list t] parses the standalone mask-composite longhand:
+    a comma-separated layer list. *)
 
 val pp_mask_composite : mask_composite Pp.t
 (** [pp_mask_composite] pretty-prints a standard mask-composite value. *)
@@ -1595,7 +1614,12 @@ val pp_mask_type : mask_type Pp.t
 (** [pp_mask_type] pretty-prints a mask-type value. *)
 
 val read_mask_box : Cursor.t -> mask_box
-(** [read_mask_box t] parses a mask-clip or mask-origin value. *)
+(** [read_mask_box t] parses a single-layer mask-clip or mask-origin value (used
+    by the shorthand). *)
+
+val read_mask_box_list : Cursor.t -> mask_box
+(** [read_mask_box_list t] parses the standalone mask-clip / mask-origin
+    longhand: a comma-separated layer list. *)
 
 val pp_mask_box : mask_box Pp.t
 (** [pp_mask_box] pretty-prints a mask-clip or mask-origin value. *)

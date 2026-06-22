@@ -2708,6 +2708,7 @@ type background_repeat = Properties.background_repeat =
   | No_repeat
   | Repeat_x
   | Repeat_y
+  | Layers of background_repeat list
   | Repeat_repeat
   | Repeat_space
   | Repeat_round
@@ -2737,6 +2738,7 @@ type background_size = Properties.background_size =
   | Contain
   | Length of length
   | Size of length * length
+  | Layers of background_size list
   | Inherit
   | Initial
   | Unset
@@ -3024,6 +3026,7 @@ type background_box = Properties.background_box =
   | Padding_box
   | Content_box
   | Text
+  | Layers of background_box list
   | Inherit
   | Initial
   | Unset
@@ -3049,6 +3052,7 @@ type mask_composite = Properties.mask_composite =
   | Subtract
   | Intersect
   | Exclude
+  | Composites of mask_composite list
   | Inherit
   | Initial
   | Unset
@@ -3097,6 +3101,7 @@ type mask_box = Properties.mask_box =
   | Stroke_box
   | View_box
   | No_clip  (** Only valid for mask-clip *)
+  | Layers of mask_box list
   | Inherit
   | Initial
   | Unset

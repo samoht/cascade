@@ -7795,6 +7795,7 @@ let rec pp_background_attachment : background_attachment Pp.t =
 let rec pp_background_repeat : background_repeat Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_background_repeat ctx v
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_background_repeat ctx layers
   | Repeat -> Pp.string ctx "repeat"
   | Space -> Pp.string ctx "space"
   | Round -> Pp.string ctx "round"
@@ -7835,6 +7836,7 @@ let rec pp_background_repeat : background_repeat Pp.t =
 let rec pp_background_box : background_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_background_box ctx v
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_background_box ctx layers
   | Border_box -> Pp.string ctx "border-box"
   | Padding_box -> Pp.string ctx "padding-box"
   | Content_box -> Pp.string ctx "content-box"
@@ -7863,6 +7865,8 @@ let rec pp_webkit_mask_composite : webkit_mask_composite Pp.t =
 let rec pp_mask_composite : mask_composite Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_mask_composite ctx v
+  | Composites composites ->
+      Pp.list ~sep:Pp.comma pp_mask_composite ctx composites
   | Add -> Pp.string ctx "add"
   | Subtract -> Pp.string ctx "subtract"
   | Intersect -> Pp.string ctx "intersect"
@@ -7912,6 +7916,7 @@ let rec pp_mask_type : mask_type Pp.t =
 let rec pp_mask_box : mask_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_mask_box ctx v
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_mask_box ctx layers
   | Border_box -> Pp.string ctx "border-box"
   | Content_box -> Pp.string ctx "content-box"
   | Fill_box -> Pp.string ctx "fill-box"
@@ -7927,6 +7932,7 @@ let rec pp_mask_box : mask_box Pp.t =
 
 let rec pp_background_size : background_size Pp.t =
  fun ctx -> function
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_background_size ctx layers
   | Auto -> Pp.string ctx "auto"
   | Cover -> Pp.string ctx "cover"
   | Contain -> Pp.string ctx "contain"
@@ -17676,6 +17682,16 @@ let rec read_background_repeat t : background_repeat =
     ~var:(fun t -> Var (read_var read_background_repeat t))
     ~default:read_repeats t
 
+(* The standalone [background-repeat] / [mask-repeat] longhand is a
+   comma-separated layer list (CSS Backgrounds 3 §3.6); the [background] /
+   [mask] shorthand reuses the single-value [read_background_repeat] so it does
+   not eat the layer comma. Same split for the box / size / composite readers
+   below. *)
+let read_background_repeat_list t : background_repeat =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_background_repeat t with
+  | [ one ] -> one
+  | many -> Layers many
+
 let rec read_background_size t : background_size =
   let read_pair t : background_size =
     let a, b =
@@ -17706,6 +17722,11 @@ let rec read_background_size t : background_size =
     ~var:read_var_call
     ~default:(fun t -> Cursor.one_of [ read_pair; read_single ] t)
     t
+
+let read_background_size_list t : background_size =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_background_size t with
+  | [ one ] -> one
+  | many -> Layers many
 
 module Gradient_direction = struct
   type keyword = Top | Bottom | Left | Right
@@ -19334,6 +19355,11 @@ let rec read_background_box t : background_box =
     ~var:(fun t -> Var (read_var read_background_box t))
     t
 
+let read_background_box_list t : background_box =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_background_box t with
+  | [ one ] -> one
+  | many -> Layers many
+
 (* Parser for webkit_mask_composite values *)
 let rec read_webkit_mask_composite t : webkit_mask_composite =
   let read_item t =
@@ -19378,6 +19404,11 @@ let rec read_mask_composite t : mask_composite =
     ]
     ~var:(fun t -> Var (Values.read_var read_mask_composite t))
     t
+
+let read_mask_composite_list t : mask_composite =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_composite t with
+  | [ one ] -> one
+  | many -> Composites many
 
 (* Parser for webkit_mask_source_type values *)
 let rec read_webkit_mask_source_type t : webkit_mask_source_type =
@@ -19455,6 +19486,11 @@ let rec read_mask_box t : mask_box =
     ]
     ~var:(fun t -> Var (Values.read_var read_mask_box t))
     t
+
+let read_mask_box_list t : mask_box =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_box t with
+  | [ one ] -> one
+  | many -> Layers many
 
 module Mask_shorthand = struct
   let init =
