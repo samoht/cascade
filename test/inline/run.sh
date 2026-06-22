@@ -1,5 +1,5 @@
 #!/bin/sh
-# Differential test for `cascade inline`: the resolved page must produce the
+# Differential test for `cascade apply`: the resolved page must produce the
 # same computed style, for every element, as the original page with its
 # <style> blocks, in a real headless browser. Both output modes are checked.
 # Skips cleanly when no headless browser or node is available (e.g. in CI).
@@ -24,7 +24,7 @@ fail=0
 for f in "$dir"/fixtures/*.html; do
   for mode in "" "--minimal"; do
     out=$(mktemp)
-    "$CASCADE" inline $mode "$f" > "$out" 2>/dev/null
+    "$CASCADE" apply $mode "$f" > "$out" 2>/dev/null
     if node "$dir/xtest.js" "$f" "$out" 2>&1 | grep -q "IDENTICAL"; then
       echo "ok   $(basename "$f") ${mode:-full}"
     else
@@ -40,7 +40,7 @@ if [ -d "$dir/pages" ]; then
   for f in "$dir"/pages/*.html; do
     [ -e "$f" ] || continue
     out=$(mktemp)
-    "$CASCADE" inline --minimal "$f" > "$out" 2>/dev/null
+    "$CASCADE" apply --minimal "$f" > "$out" 2>/dev/null
     res=$(node "$dir/xtest.js" "$f" "$out" 2>/dev/null | grep RESULT)
     echo "real $(basename "$f"): ${res:-no result}"
     rm -f "$out"

@@ -1,6 +1,6 @@
-# `cascade inline` differential test
+# `cascade apply` differential test
 
-`cascade inline` resolves a stylesheet into each element's `style` attribute and
+`cascade apply` resolves a stylesheet into each element's `style` attribute and
 drops the `<style>` blocks. This checks that the result is equivalent to the
 original: for every element, the **complete `getComputedStyle`** in a real
 headless browser must be identical between the original page and the inlined

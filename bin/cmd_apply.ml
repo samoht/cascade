@@ -1,4 +1,4 @@
-(* [cascade inline <page.html> [extra.css]]: resolve a stylesheet against the
+(* [cascade apply <page.html> [extra.css]]: resolve a stylesheet against the
    HTML, write each element's winning declarations into its style attribute, and
    keep the rules with no inline form (:hover, @media, ...) in a <style>. The
    cascade itself lives in {!Cascade.Resolve}; this command adds the
@@ -95,7 +95,9 @@ let parse_inline s =
   | Error _ -> []
 
 let decl_value d =
-  let s = Sheet.inline_style_of_declarations ~minify:true ~mode:Variables [ d ] in
+  let s =
+    Sheet.inline_style_of_declarations ~minify:true ~mode:Variables [ d ]
+  in
   match String.index_opt s ':' with
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s
@@ -298,4 +300,4 @@ let cmd =
          and are kept in a single $(b,<style>) block.";
     ]
   in
-  Cmd.v (Cmd.info "inline" ~doc ~man) Term.(term_result term)
+  Cmd.v (Cmd.info "apply" ~doc ~man) Term.(term_result term)
