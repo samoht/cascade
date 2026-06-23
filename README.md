@@ -131,7 +131,7 @@ usable as a CI check.
 - `tree`: structural diff only; formatting-only differences collapse to
   "identical".
 - `string`: character-level comparison.
-- `semantic`: passes when the two inputs share cascade's canonical minified
+- `canonical`: passes when the two inputs share cascade's canonical minified
   form. This is not full CSS semantic equivalence: equivalent shorthand
   decompositions and cascade-affecting rule reorderings are not modelled.
 
@@ -139,7 +139,7 @@ usable as a CI check.
 ```bash
 cascade diff reference.css output.css
 cascade diff --diff=tree reference.css output.css
-cascade diff --diff=semantic reference.css output.css
+cascade diff --diff=canonical reference.css output.css
 NO_COLOR=1 cascade diff reference.css output.css
 ```
 
@@ -157,8 +157,8 @@ cascade --minify --inline-vars src/style.css > dist/style.min.css
 cascade src/style.css > /tmp/fmt.css
 cascade diff --diff=tree src/style.css /tmp/fmt.css
 
-# pre-commit: catch semantic-only changes
-cascade diff --diff=semantic origin/main:src/style.css src/style.css
+# pre-commit: catch changes beyond formatting
+cascade diff --diff=canonical origin/main:src/style.css src/style.css
 ```
 
 The exit code is 0 when the inputs are identical under the chosen mode and 1
