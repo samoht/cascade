@@ -1,13 +1,12 @@
 (* [cascade apply <page.html> [extra.css]]: resolve a stylesheet against the
    HTML, write each element's winning declarations into its style attribute, and
    keep the rules with no inline form (:hover, @media, ...) in a <style>. The
-   cascade itself lives in {!Cascade.Resolve}; this command adds the
-   inline-specific policy and the lambdasoup glue. *)
+   projection lives in {!Cascade.Apply}; this command is the lambdasoup glue:
+   parse the HTML, hand the element tree to the library, and write the result
+   back. *)
 
 open Cmdliner
 module Sheet = Cascade.Stylesheet
-module Sel = Cascade.Selector
-module Decl = Cascade.Declaration
 module Css = Cascade.Css
 
 (* ---------- the tree: lambdasoup element nodes ---------- *)
@@ -23,104 +22,7 @@ module Node = struct
   let children n = Soup.children n |> Soup.elements |> Soup.to_list
 end
 
-module R = Cascade.Resolve.Make (Node)
-
-(* ---------- inline policy ---------- *)
-
-(* selectors that can be written as an inline style (no state / condition) *)
-let inlinable (sel : Sel.t) =
-  let rec ok = function
-    | Sel.Universal _ | Sel.Element _ | Sel.Class _ | Sel.Id _ | Sel.Attribute _
-    | Sel.Root | Sel.First_child | Sel.Last_child | Sel.Only_child | Sel.Empty
-      ->
-        true
-    | Sel.Compound ps | Sel.List ps | Sel.Is ps | Sel.Where ps | Sel.Not ps ->
-        List.for_all ok ps
-    | Sel.Combined (a, _, b) -> ok a && ok b
-    | _ -> false
-  in
-  ok sel
-
-(* [html] is stylable so that :root custom properties land on it. *)
-let no_style = [ "head"; "meta"; "title"; "base"; "link"; "style"; "script" ]
-
-(* CSS inherited properties (a conservative set: missing one only keeps a
-   redundant declaration; the differential test guards against dropping a needed
-   one). *)
-let inherited =
-  [
-    "color";
-    "font";
-    "font-family";
-    "font-size";
-    "font-weight";
-    "font-style";
-    "font-variant";
-    "font-stretch";
-    "font-feature-settings";
-    "line-height";
-    "letter-spacing";
-    "word-spacing";
-    "text-align";
-    "text-indent";
-    "text-transform";
-    "text-shadow";
-    "white-space";
-    "word-break";
-    "overflow-wrap";
-    "hyphens";
-    "tab-size";
-    "visibility";
-    "cursor";
-    "direction";
-    "list-style";
-    "list-style-type";
-    "list-style-position";
-    "list-style-image";
-    "quotes";
-    "caption-side";
-    "border-collapse";
-    "border-spacing";
-    "empty-cells";
-  ]
-
-let is_inherited p = List.mem (String.lowercase_ascii p) inherited
-
-let parse_inline s =
-  match Css.of_string ("a{" ^ s ^ "}") with
-  | Ok p -> (
-      match Sheet.rules p.Css.stylesheet with
-      | r :: _ -> Sheet.declarations r
-      | [] -> [])
-  | Error _ -> []
-
-let decl_value d =
-  let s =
-    Sheet.inline_style_of_declarations ~minify:true ~mode:Variables [ d ]
-  in
-  match String.index_opt s ':' with
-  | Some i -> String.sub s (i + 1) (String.length s - i - 1)
-  | None -> s
-
-(* a node's style: the author cascade from {!R.resolve} with the element's own
-   inline style overlaid (inline beats a selector, but an author !important
-   beats a normal inline declaration). *)
-let resolved sheet n =
-  let author = R.resolve sheet n in
-  match Soup.attribute "style" n with
-  | None -> author
-  | Some s ->
-      let overlay map d =
-        let k = Decl.property_name d in
-        match List.assoc_opt k map with
-        | Some cur when Decl.is_important cur && not (Decl.is_important d) ->
-            map
-        | _ -> (k, d) :: List.remove_assoc k map
-      in
-      List.fold_left overlay
-        (List.map (fun d -> (Decl.property_name d, d)) author)
-        (parse_inline s)
-      |> List.rev_map snd
+module Apply = Cascade.Apply.Make (Node)
 
 let style_node node = function
   | [] -> ()
@@ -133,49 +35,6 @@ let style_node node = function
         (Sheet.inline_style_of_declarations ~minify:true ~mode:Variables decls)
         node
 
-(* ---------- splitting static / dynamic ---------- *)
-module SSet = Set.Make (String)
-
-(* every property a kept (conditional / stateful) rule can set, recursing into
-   @media / @supports / @container / @layer blocks. *)
-let rec props_of_stmts acc stmts =
-  List.fold_left
-    (fun acc s ->
-      match s with
-      | Sheet.Rule r ->
-          List.fold_left
-            (fun a d ->
-              SSet.add (String.lowercase_ascii (Decl.property_name d)) a)
-            acc (Sheet.declarations r)
-      | Sheet.Media (_, b) | Sheet.Supports (_, b) | Sheet.Layer (_, b) ->
-          props_of_stmts acc b
-      | Sheet.Container (_, _, b) -> props_of_stmts acc b
-      | _ -> acc)
-    acc stmts
-
-(* ---------- the walk ---------- *)
-(* [ctx] maps each inherited property to the value in force from the ancestors,
-   so [minimal] can drop a declaration that only restates it. *)
-let rec walk ~minimal sheet ctx node =
-  if List.mem (String.lowercase_ascii (Soup.name node)) no_style then
-    List.iter (walk ~minimal sheet ctx) (Node.children node)
-  else begin
-    let kept, ctx' =
-      List.fold_left
-        (fun (kept, ctx) d ->
-          let p = String.lowercase_ascii (Decl.property_name d) in
-          if minimal && is_inherited p then
-            let v = decl_value d in
-            match List.assoc_opt p ctx with
-            | Some pv when pv = v -> (kept, ctx)
-            | _ -> (d :: kept, (p, v) :: List.remove_assoc p ctx)
-          else (d :: kept, ctx))
-        ([], ctx) (resolved sheet node)
-    in
-    style_node node (List.rev kept);
-    List.iter (walk ~minimal sheet ctx') (Node.children node)
-  end
-
 let inline_html ~minimal ~html ~extra =
   let soup = Soup.parse html in
   let page_css =
@@ -183,51 +42,11 @@ let inline_html ~minimal ~html ~extra =
     |> String.concat "\n"
   in
   let css = page_css ^ "\n" ^ extra in
-  let inline_sheet, keep_css, kept =
-    match Css.of_string css with
-    | Ok p ->
-        (* flatten nesting up front, so the static/dynamic split and
-           {!R.resolve} see the same flat rules. *)
-        let stmts = Cascade.Flatten.block p.Css.stylesheet in
-        (* properties a kept rule can override must stay in the cascade. *)
-        let dyn =
-          props_of_stmts SSet.empty
-            (List.filter
-               (function
-                 | Sheet.Rule r -> not (inlinable (Sheet.selector r))
-                 | _ -> true)
-               stmts)
-        in
-        let is_dyn d =
-          SSet.mem (String.lowercase_ascii (Decl.property_name d)) dyn
-        in
-        let inline_rules = ref [] in
-        let keep =
-          List.filter_map
-            (fun stmt ->
-              match stmt with
-              | Sheet.Rule r when inlinable (Sheet.selector r) -> (
-                  let sel = Sheet.selector r and ds = Sheet.declarations r in
-                  (match List.filter (fun d -> not (is_dyn d)) ds with
-                  | [] -> ()
-                  | inl ->
-                      inline_rules :=
-                        Sheet.Rule (Sheet.rule ~selector:sel inl)
-                        :: !inline_rules);
-                  match List.filter is_dyn ds with
-                  | [] -> None
-                  | res -> Some (Sheet.Rule (Sheet.rule ~selector:sel res)))
-              | other -> Some other)
-            stmts
-        in
-        let keep_css =
-          if keep = [] then "" else Css.to_string ~minify:true (Sheet.v keep)
-        in
-        (Sheet.v (List.rev !inline_rules), keep_css, List.length keep)
-    | Error _ -> (Sheet.empty, "", 0)
+  let roots = Soup.children soup |> Soup.elements |> Soup.to_list in
+  let { Cascade.Apply.styles; keep_css; kept } =
+    Apply.compute ~minimal ~css roots
   in
-  Soup.children soup |> Soup.elements |> Soup.to_list
-  |> List.iter (walk ~minimal inline_sheet []);
+  List.iter (fun (node, decls) -> style_node node decls) styles;
   (* the static rules now live on the elements; keep only the un-inlinable
      ones. *)
   Soup.select "style" soup |> Soup.iter Soup.delete;
