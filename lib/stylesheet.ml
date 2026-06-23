@@ -1698,6 +1698,23 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
+(* CSS Fonts 4 §11.2 wants the first bound of a descriptor range <= the second.
+   Browsers keep a descending range, so the readers accept it but record a
+   warning here; [Css.of_string ~strict] then turns the warning into an
+   error. *)
+let warn_descending_range r property =
+  Cursor.push_warning r
+    (Error.bad_value (Cursor.position r) ~property
+       ~reason:
+         "range must run from the smaller value to the larger (CSS Fonts 4 \
+          §11.2)")
+
+let font_weight_num = function
+  | (Properties.Weight n : Properties.font_weight) -> Some n
+  | Properties.Normal -> Some 400
+  | Properties.Bold -> Some 700
+  | _ -> None
+
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -1706,12 +1723,12 @@ let read_font_weight_descriptor r =
       Cursor.ws c;
       if Cursor.is_done c then Font_weight first
       else
-        (* CSS Fonts 4 §11.2 wants the first weight <= the second, but browsers
-           keep a descending range ([font-weight:900 100]), so accept any
-           pair. *)
         let second = Properties.read_font_weight c in
         Cursor.ws c;
         Cursor.expect_eof c;
+        (match (font_weight_num first, font_weight_num second) with
+        | Some a, Some b when a > b -> warn_descending_range r "font-weight"
+        | _ -> ());
         Font_weight_range (first, second))
     r
 
@@ -1721,12 +1738,18 @@ let read_font_style_descriptor r =
       let c = Cursor.of_string value in
       let first = Properties.read_font_style c in
       Cursor.ws c;
-      if Cursor.is_done c then Font_style first
-      else
-        let second = Properties.read_font_style c in
-        Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_style_range (first, second))
+      let descriptor =
+        if Cursor.is_done c then Font_style first
+        else
+          let second = Properties.read_font_style c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_style_range (first, second)
+      in
+      (* [read_font_style] warns on a descending oblique range; the value is
+         parsed in [c], so surface its warnings on the drained cursor [r]. *)
+      List.iter (Cursor.push_warning r) (Cursor.drain_warnings c);
+      descriptor)
     r
 
 let validate_nonempty_descriptor r name value =

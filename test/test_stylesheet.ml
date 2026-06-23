@@ -1259,6 +1259,15 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "font-face unicode-range descending range",
         "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
          U+20-10 }" );
+      (* Browsers keep a descending font-weight / oblique-angle range, so the
+         lenient parse keeps it with a warning; strict turns that into an error
+         (CSS Fonts 4 §11.2 wants the first bound <= the second). *)
+      ( "font-face descending font-weight range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+         900 100 }" );
+      ( "font-face descending oblique angle range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+         oblique 20deg 10deg }" );
       ( "font-face invalid font-display list",
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }" );
