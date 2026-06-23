@@ -402,6 +402,27 @@ let normalize_expected ~category ~id expected =
       fixture ~category ~id
         ~upstream:"a{mask:linear-gradient(#000,transparent)}"
         ~cascade:"a{mask:linear-gradient(#000,#0000)}" upstream
+  | "shorthands", "0061" ->
+      (* A [@property] registration takes effect document-wide regardless of
+         source order, so a run of uniquely-named registrations has no
+         observable source-order effect. The stable minified oracle sorts them
+         by name, the same canonicalization as the selector-branch sort in
+         duplicates/0009. *)
+      fixture ~category ~id
+        ~upstream:
+          {|@property --pt{syntax:"<length>";inherits:false;initial-value:0px}@property --pr{syntax:"<length>";inherits:false;initial-value:0px}@property --pb{syntax:"<length>";inherits:false;initial-value:0px}@property --pl{syntax:"<length>";inherits:false;initial-value:0px}a{padding:var(--pt) var(--pr) var(--pb) var(--pl)}|}
+        ~cascade:
+          {|@property --pb{syntax:"<length>";inherits:false;initial-value:0px}@property --pl{syntax:"<length>";inherits:false;initial-value:0px}@property --pr{syntax:"<length>";inherits:false;initial-value:0px}@property --pt{syntax:"<length>";inherits:false;initial-value:0px}a{padding:var(--pt) var(--pr) var(--pb) var(--pl)}|}
+        upstream
+  | "shorthands", "0062" ->
+      (* Same unique-name [@property] canonical-order policy as
+         shorthands/0061. *)
+      fixture ~category ~id
+        ~upstream:
+          {|@property --bw{syntax:"<length>";inherits:false;initial-value:0px}@property --bs{syntax:"<custom-ident>";inherits:false;initial-value:none}@property --bc{syntax:"<color>";inherits:false;initial-value:#000}a{border:var(--bw) var(--bs) var(--bc)}|}
+        ~cascade:
+          {|@property --bc{syntax:"<color>";inherits:false;initial-value:#000}@property --bs{syntax:"<custom-ident>";inherits:false;initial-value:none}@property --bw{syntax:"<length>";inherits:false;initial-value:0px}a{border:var(--bw) var(--bs) var(--bc)}|}
+        upstream
   | "shorthands", "0065" ->
       (* The fixture runs under stylesheet scope: [--custom] has no matching
          @position-try rule anywhere in the fixture, so the fallback list can

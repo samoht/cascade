@@ -1142,6 +1142,48 @@ let rec segment_hoist counts = function
       let seg, after = span [] stmts in
       hoist_custom_prop_segment counts seg @ segment_hoist counts after
 
+(* CSS Properties & Values API: a [@property] registration takes effect
+   document-wide regardless of source order, so a run of registrations with
+   unique names is order-independent. Sort each such run by name into a
+   canonical order, so two stylesheets differing only by registration order
+   optimise to the same output. A run that repeats a name is left untouched: a
+   duplicate registration is last-wins, so its order is significant. *)
+let at_property_name = function Property r -> Some r.name | _ -> None
+
+let sort_property_runs (stmts : statement list) : statement list =
+  if not (List.exists (fun s -> at_property_name s <> None) stmts) then stmts
+  else
+    let changed = ref false in
+    let rec go = function
+      | [] -> []
+      | Property _ :: _ as l ->
+          let rec span acc = function
+            | (Property _ as p) :: tl -> span (p :: acc) tl
+            | tl -> (List.rev acc, tl)
+          in
+          let run, rest = span [] l in
+          let names = List.filter_map at_property_name run in
+          let run =
+            if
+              List.length names
+              = List.length (List.sort_uniq String.compare names)
+              && names <> List.sort String.compare names
+            then (
+              changed := true;
+              List.stable_sort
+                (fun a b ->
+                  String.compare
+                    (Option.value ~default:"" (at_property_name a))
+                    (Option.value ~default:"" (at_property_name b)))
+                run)
+            else run
+          in
+          run @ go rest
+      | s :: rest -> s :: go rest
+    in
+    let result = go stmts in
+    if !changed then result else stmts
+
 let rec recurse_custom_prop_blocks counts (stmt : statement) : statement =
   let go b = canonicalize_custom_prop_blocks counts b in
   match stmt with
@@ -1184,7 +1226,8 @@ and canonicalize_custom_prop_blocks counts (stmts : statement list) :
     statement list =
   let recursed = list_map_preserve (recurse_custom_prop_blocks counts) stmts in
   let hoisted = segment_hoist counts recursed in
-  if phys_equal_list hoisted recursed then recursed else hoisted
+  let sorted = sort_property_runs hoisted in
+  if phys_equal_list sorted recursed then recursed else sorted
 
 let canonicalize_custom_prop_position (stmts : statement list) : statement list
     =
