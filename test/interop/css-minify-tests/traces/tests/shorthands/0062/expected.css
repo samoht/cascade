@@ -1,1 +1,1 @@
-@property --bw{syntax:"<length>";inherits:false;initial-value:0px}@property --bs{syntax:"<custom-ident>";inherits:false;initial-value:none}@property --bc{syntax:"<color>";inherits:false;initial-value:#000}a{border:var(--bw) var(--bs) var(--bc)}
+@property --bc{syntax:"<color>";inherits:false;initial-value:#000}@property --bs{syntax:"<custom-ident>";inherits:false;initial-value:none}@property --bw{syntax:"<length>";inherits:false;initial-value:0px}a{border:var(--bw) var(--bs) var(--bc)}
