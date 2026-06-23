@@ -157,7 +157,15 @@ let test_vars_of_declarations () =
   Alcotest.(check bool)
     "standard property exposes the ref" true (has_black standard_ref);
   Alcotest.(check bool)
-    "custom Typed value exposes the ref" true (has_black custom_ref)
+    "custom Typed value exposes the ref" true (has_black custom_ref);
+  (* A custom property whose *opaque* token-stream value references another var
+     exposes it too: the value never went through a typed parser, so the
+     reference is recovered structurally from the component stream. *)
+  let tokens_ref =
+    vars_of_declarations [ of_string "--gradient-bg:var(--color-black)" ]
+  in
+  Alcotest.(check bool)
+    "custom Tokens value exposes the ref" true (has_black tokens_ref)
 
 (* Not a roundtrip test *)
 let test_any_var_name () =

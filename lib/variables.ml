@@ -2326,10 +2326,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
 
 (* CSS Variables L1 §3: a custom property's value can itself reference other
    custom properties. A [Typed] value embeds real [var] handles, so recurse via
-   the kind. A raw [Tokens] value carries refs as [var()] functions in the
-   stream; surfacing those here changes [resolve_theme]'s prune set, so it is a
-   separate change (a [var()] inside an opaque value is found via
-   [var_refs_in_value_string] where that path needs it). *)
+   the kind; a raw [Tokens] value carries refs as [var()] functions in the
+   stream, recovered structurally by {!vars_of_token_stream}. *)
 let vars_of_kind : type a. a kind -> a -> any_var list =
  fun kind value ->
   match kind with
@@ -2378,10 +2376,24 @@ let vars_of_kind : type a. a kind -> a -> any_var list =
   | Filter -> vars_of_filter value
   | Font_src -> []
 
+(* Names referenced via real [var()] functions in an opaque token stream. The
+   structural scan returns each name with its leading [--]; [Values.var_ref]
+   re-adds it, so strip the prefix before rebuilding the handle. *)
+let vars_of_token_stream (components : Component.t list) : any_var list =
+  List.rev_map
+    (fun name ->
+      let bare =
+        if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+          String.sub name 2 (String.length name - 2)
+        else name
+      in
+      V (Values.var_ref bare))
+    (var_refs_in_components [] components)
+
 let vars_of_custom_property_value : custom_property_value -> any_var list =
   function
   | Typed { kind; value } -> vars_of_kind kind value
-  | Tokens _ -> []
+  | Tokens components -> vars_of_token_stream components
 
 let rec extract_vars_of_declaration : declaration -> any_var list = function
   | Declaration

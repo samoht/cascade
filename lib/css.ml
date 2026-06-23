@@ -1222,10 +1222,22 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
         collect_var_names stylesheet
         |> List.filter (fun n -> not (List.mem n resolved_names))
       in
+      (* Theme substitution only rewrites resolved [var()] references; it must
+         not delete custom-property *definitions*. Keep every declared
+         custom-prop name live so [Inline.vars]' dead-declaration pass leaves
+         unrelated definitions in place - e.g. an @supports polyfill's
+         [--tw-x:initial] that nothing in this stylesheet references. *)
+      let declared_names =
+        Hashtbl.fold
+          (fun n () acc -> n :: acc)
+          (declared_custom_prop_names stylesheet)
+          []
+      in
       let keep_vars =
         List.fold_left
           (fun acc n -> if List.mem n acc then acc else n :: acc)
-          keep_vars unresolved_keep
+          keep_vars
+          (unresolved_keep @ declared_names)
       in
       let source = theme_defaults_source defaults in
       match of_string ~strict:false source with
