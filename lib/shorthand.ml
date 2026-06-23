@@ -241,6 +241,28 @@ let background_image_is_vendor : Properties.background_image -> bool = function
    value in modern browsers, but old browsers only understand the prefixed
    spelling, so dropping the earlier declaration removes a real browser-compat
    fallback. *)
+(* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
+   or-pattern does not refine the value type, so each constructor is matched on
+   its own; everything else is not a sizing fallback. *)
+let sizing_value_is_vendor_prefixed : type a. a Properties.property -> a -> bool
+    =
+ fun property value ->
+  let pfx = Values.length_percentage_is_vendor_prefixed in
+  match property with
+  | Width -> pfx value
+  | Height -> pfx value
+  | Min_width -> pfx value
+  | Min_height -> pfx value
+  | Max_width -> pfx value
+  | Max_height -> pfx value
+  | Block_size -> pfx value
+  | Inline_size -> pfx value
+  | Min_block_size -> pfx value
+  | Min_inline_size -> pfx value
+  | Max_block_size -> pfx value
+  | Max_inline_size -> pfx value
+  | _ -> false
+
 let rec value_is_vendor_prefixed decl =
   match decl with
   | Theme_guarded { decl; _ } -> value_is_vendor_prefixed decl
@@ -260,7 +282,11 @@ let rec value_is_vendor_prefixed decl =
   | Declaration { property = Position; value = Webkit_sticky; _ } -> true
   | Declaration { property = Text_align; value = Webkit_match_parent; _ } ->
       true
-  | Declaration _ -> false
+  (* [width:-webkit-max-content;width:max-content] and the other intrinsic
+     sizing properties: the prefixed keyword is a fallback for old Safari /
+     Firefox, so the earlier declaration must survive minify dedup. *)
+  | Declaration { property; value; _ } ->
+      sizing_value_is_vendor_prefixed property value
 
 (* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides.
    Authored shorthands stay as authored when optimise has no longhand to absorb;

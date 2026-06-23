@@ -130,6 +130,10 @@ val pp_length : ?always:bool -> length Pp.t
     units are always included even for zero values (required for CSS [@property]
     initial-value). *)
 
+val length_percentage_is_vendor_prefixed : length_percentage -> bool
+(** [length_percentage_is_vendor_prefixed v] is [true] when [v] is a legacy
+    vendor-prefixed intrinsic sizing keyword ([-webkit-max-content] etc.). *)
+
 val length_has_runtime_subst : length -> bool
 (** [length_has_runtime_subst l] is [true] when [l] is [var()] / [env()] /
     [attr()] / an anchor query, or a [calc()] containing one. *)

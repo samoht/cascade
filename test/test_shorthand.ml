@@ -136,6 +136,21 @@ let test_deduplicate_keeps_legacy_fallbacks () =
       "text-align:-webkit-match-parent";
       "text-align:start";
     ]
+    (decl_strings result);
+  (* The prefixed intrinsic sizing keywords are kept against the unprefixed
+     form, on a length-percentage and a min-* property. *)
+  let result =
+    ".a{width:-webkit-max-content;width:max-content;min-width:-moz-fit-content;min-width:fit-content}"
+    |> decls |> Shorthand.deduplicate_declarations
+  in
+  Alcotest.(check (list string))
+    "prefixed sizing keyword fallbacks are kept"
+    [
+      "width:-webkit-max-content";
+      "width:max-content";
+      "min-width:-moz-fit-content";
+      "min-width:fit-content";
+    ]
     (decl_strings result)
 
 let suite =

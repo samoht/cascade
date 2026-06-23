@@ -1272,6 +1272,19 @@ let length_math_fn_value (fn : math_fn) : float option =
 
 (* CSS Values 4 §10.10: identity-rule simplifications around a runtime
    substitution would change the substituted-grammar context. *)
+(* A [-webkit-] / [-moz-] intrinsic sizing keyword, the legacy fallback an
+   author pairs with the unprefixed form ([width:-webkit-max-content;
+   width:max-content]). *)
+let length_is_vendor_prefixed_sizing : length -> bool = function
+  | Webkit_max_content | Webkit_min_content | Webkit_fit_content
+  | Moz_max_content | Moz_min_content | Moz_fit_content ->
+      true
+  | _ -> false
+
+let length_percentage_is_vendor_prefixed : length_percentage -> bool = function
+  | Length l -> length_is_vendor_prefixed_sizing l
+  | _ -> false
+
 let rec length_has_runtime_subst : length -> bool = function
   | Var _ | Env _ | Attr _ | Anchor _ | Anchor_size _ -> true
   | Calc c -> length_calc_has_runtime_subst c
