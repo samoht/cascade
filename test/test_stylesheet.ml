@@ -6242,6 +6242,32 @@ let customprops1_unresolved_fallback () =
     ".x{color:var(--a,var(--b,#00f))}"
     (normalize_minified ".x { color: var(--a, var(--b, blue)) }")
 
+(* CSS Custom Properties L1: a theme var reachable only through another var()'s
+   *typed* fallback ([transition-timing-function: var(--tw-ease, var(--theme))])
+   still resolves transitively. Theme resolution is seeded by a structural value
+   scan, so the nested var is found even though the typed AST spells that
+   fallback as a value rather than a [Var_fallback]; the outer runtime var stays
+   live. *)
+let customprops1_transitive_fallback () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function
+    | "default-transition-timing-function" -> Some "ease"
+    | _ -> None
+  in
+  let theme = Css.Pp.String_set.of_list [ "tw-ease" ] in
+  Alcotest.(check string)
+    "nested theme var in a typed fallback inlines, runtime var stays live"
+    ".t{transition-timing-function:var(--tw-ease,ease)}"
+    (parse
+       ".t { transition-timing-function: var(--tw-ease, \
+        var(--default-transition-timing-function)) }"
+    |> Css.resolve_theme ~theme ~theme_defaults:resolve
+    |> Css.to_string ~minify:true)
+
 (* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
    resolves the variable, and the resulting all-constant calc reduces under
    minify. *)
@@ -7028,6 +7054,9 @@ let additional_tests =
     ( "spec custom-properties 1 fallback preserved when unknown",
       `Quick,
       customprops1_unresolved_fallback );
+    ( "spec custom-properties 1 nested theme var in typed fallback resolves",
+      `Quick,
+      customprops1_transitive_fallback );
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
       customprops1_calc_inline );
