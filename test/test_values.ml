@@ -943,6 +943,17 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb,var(--c) calc(var(--o)*100%),blue)"
     ~optimized:"color-mix(in srgb,var(--c) calc(var(--o)*100%),#00f)"
     "color-mix(in srgb, var(--c) calc(var(--o) * 100%), blue)";
+  (* Both the colour and the percentage are [var()]: the leading var is the
+     colour, so source order is preserved (regression: the two were swapped,
+     landing the alpha var in the colour slot). *)
+  check_color ~expected:"color-mix(in oklab,var(--a) var(--b),blue)"
+    ~optimized:"color-mix(in oklab,var(--a) var(--b),#00f)"
+    "color-mix(in oklab, var(--a) var(--b), blue)";
+  (* A [var()] followed by a concrete colour can only be the percentage, so it
+     is read percentage-first and re-emitted colour-first. *)
+  check_color ~expected:"color-mix(in oklab,red var(--p),blue)"
+    ~optimized:"color-mix(in oklab,red var(--p),#00f)"
+    "color-mix(in oklab, var(--p) red, blue)";
   check_color ~expected:"hsl(0 50% 50%)" ~optimized:"#bf4040"
     "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/.5)"
