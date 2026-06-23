@@ -100,6 +100,31 @@ let test_resolve_cascade () =
     "sibling-combined rule applies" (Some "font-weight:700")
     (value "font-weight")
 
+(* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
+   the element, a rule with no inline form ([:hover]) stays in a <style>
+   block. *)
+let test_apply_compute () =
+  let module A = Apply.Make (Node) in
+  let result : tree Apply.result =
+    A.compute ~css:"#s2{font-weight:700}#s2:hover{color:#00f}" [ _section ]
+  in
+  let s2_decls =
+    List.find_map
+      (fun (n, decls) -> if Node.equal n s2 then Some decls else None)
+      result.styles
+    |> Option.value ~default:[]
+  in
+  Alcotest.(check bool)
+    "static rule projected onto s2" true
+    (List.exists
+       (fun d -> Declaration.property_name d = "font-weight")
+       s2_decls);
+  Alcotest.(check bool)
+    "dynamic property not projected" false
+    (List.exists (fun d -> Declaration.property_name d = "color") s2_decls);
+  Alcotest.(check int) "the :hover rule is kept in a <style>" 1 result.kept;
+  Alcotest.(check bool) "kept css is non-empty" true (result.keep_css <> "")
+
 let suite =
   ( "resolve",
     [
@@ -109,4 +134,6 @@ let suite =
         test_sibling_then_descendant;
       Alcotest.test_case "resolve applies the cascade" `Quick
         test_resolve_cascade;
+      Alcotest.test_case "apply projects a static rule, keeps a dynamic one"
+        `Quick test_apply_compute;
     ] )
