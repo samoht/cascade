@@ -2316,3 +2316,129 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   in
 
   { rules = rule_changes; containers }
+
+(* ===== Canonical-mode reorder suppression =====
+
+   In canonical mode a reorder is reportable only when it can change a cascade
+   outcome. Both suppressions below are sound: each drops a report only when the
+   reorder provably cannot affect the cascade.
+
+   - @property registrations with unique names register independently, so their
+   relative order is irrelevant. Only a duplicate name (last-wins) makes order
+   observable. - A rule-position reorder is neutral when the moved rule shares
+   no cascade-conflicting property (shorthand / [all]-aware) with any statement
+   whose order relative to it flipped. Selector overlap is overestimated (any
+   shared or covered property counts as a conflict, and any flipped container or
+   ambiguous match counts as a conflict), so a real change is never hidden. *)
+
+let property_names_of stmts =
+  List.filter_map
+    (fun s ->
+      match Css.as_property s with
+      | Some (Css.Property_info { name; _ }) -> Some name
+      | None -> None)
+    stmts
+
+let stmts_have_duplicate_property_names stmts =
+  let names = property_names_of stmts in
+  List.length names <> List.length (List.sort_uniq String.compare names)
+
+let is_unique_property_reorder : container_diff -> bool = function
+  | Modified
+      {
+        info = { container_type = `Property; rules; _ };
+        actual_rules;
+        rule_changes;
+        _;
+      } ->
+      List.for_all
+        (function (Reordered _ : rule_diff) -> true | _ -> false)
+        rule_changes
+      && (not (stmts_have_duplicate_property_names rules))
+      && not (stmts_have_duplicate_property_names actual_rules)
+  | _ -> false
+
+let decls_cascade_conflict d1 d2 =
+  List.exists
+    (fun a ->
+      List.exists
+        (fun b ->
+          Css.declaration_name a = Css.declaration_name b
+          || Shorthand.declaration_covers a b
+          || Shorthand.declaration_covers b a)
+        d2)
+    d1
+
+(* [(key, decls option)] per top-level statement, in source order. [None] decls
+   marks a container or other opaque statement that we cannot see into. *)
+let keyed_statements (sheet : Css.t) =
+  Css.statements sheet
+  |> List.filter_map (fun st ->
+      match describe_statement st with
+      | None -> None
+      | Some key -> Some (key, Option.map (fun (_, d, _) -> d) (Css.as_rule st)))
+
+(* Index of [key] only when it occurs exactly once; absent or ambiguous keys
+   yield [None] so the caller falls back to "not neutral". *)
+let unique_index key items =
+  match List.filter (fun (k, _) -> k = key) items with
+  | [ _ ] -> List.find_index (fun (k, _) -> k = key) items
+  | _ -> None
+
+let rule_reorder_is_neutral ~expected ~actual ~selector =
+  let er = keyed_statements expected in
+  let ar = keyed_statements actual in
+  match (unique_index selector er, unique_index selector ar) with
+  | Some ie, Some ia -> (
+      match List.nth er ie with
+      | _, None -> false
+      | _, Some a_decls ->
+          List.for_all
+            (fun (key, _) ->
+              key = selector
+              ||
+              match (unique_index key er, unique_index key ar) with
+              | Some je, Some ja -> (
+                  (* order relative to the moved rule preserved: irrelevant *)
+                  je < ie = (ja < ia)
+                  ||
+                  (* flipped: neutral only against a non-conflicting rule *)
+                  match List.nth ar ja with
+                  | _, Some d -> not (decls_cascade_conflict a_decls d)
+                  | _, None -> false)
+              | _ -> false)
+            er)
+  | _ -> false
+
+let is_neutral_rule_reorder ~expected ~actual : rule_diff -> bool = function
+  | Reordered { old_declarations = None; selector; _ } ->
+      rule_reorder_is_neutral ~expected ~actual ~selector
+  | _ -> false
+
+let rec suppress_neutral_reorders ~expected ~actual (t : t) : t =
+  {
+    rules =
+      List.filter
+        (fun rd -> not (is_neutral_rule_reorder ~expected ~actual rd))
+        t.rules;
+    containers =
+      List.filter_map (suppress_container ~expected ~actual) t.containers;
+  }
+
+and suppress_container ~expected ~actual c =
+  if is_unique_property_reorder c then None
+  else
+    match c with
+    | Modified m ->
+        let inner =
+          suppress_neutral_reorders ~expected ~actual
+            { rules = m.rule_changes; containers = m.container_changes }
+        in
+        Some
+          (Modified
+             {
+               m with
+               rule_changes = inner.rules;
+               container_changes = inner.containers;
+             })
+    | other -> Some other

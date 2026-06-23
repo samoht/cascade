@@ -823,6 +823,46 @@ let diff_canonical_uses_outputs () =
         (contains_substring rendered "color:")
   | _ -> Alcotest.fail "expected canonical diff on normalized outputs"
 
+(* ===== canonical-mode reorder suppression ===== *)
+
+let eq_canonical a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b
+
+let canonical_suppresses_property_reorder () =
+  (* Unique @property names register independently: order is irrelevant. *)
+  let a =
+    {|@property --a{syntax:"*";inherits:false}@property --b{syntax:"*";inherits:false}.x{color:red}|}
+  in
+  let b =
+    {|@property --b{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}.x{color:red}|}
+  in
+  Alcotest.(check bool)
+    "unique @property reorder is cascade-neutral" true (eq_canonical a b)
+
+let canonical_suppresses_disjoint_rule_reorder () =
+  (* Rules with disjoint property sets cannot conflict, so reordering them does
+     not change any cascade outcome. *)
+  Alcotest.(check bool)
+    "disjoint-property rule reorder is neutral" true
+    (eq_canonical ".a{position:absolute}.b{color:red}.c{margin:0}"
+       ".c{margin:0}.a{position:absolute}.b{color:red}")
+
+let canonical_keeps_conflicting_rule_reorder () =
+  (* Same property on overlapping rules: order is last-wins, so the reorder is a
+     real difference and must still be reported. *)
+  Alcotest.(check bool)
+    "same-property reorder is reported" false
+    (eq_canonical ".a{color:red}.b{color:blue}" ".b{color:blue}.a{color:red}");
+  (* Shorthand / longhand overlap is a conflict too. *)
+  Alcotest.(check bool)
+    "shorthand/longhand reorder is reported" false
+    (eq_canonical ".a{margin:0}.b{margin-top:5px}"
+       ".b{margin-top:5px}.a{margin:0}");
+  (* A move that crosses a conflicting middle rule is reported. *)
+  Alcotest.(check bool)
+    "reorder crossing a conflicting rule is reported" false
+    (eq_canonical ".a{color:red}.mid{color:green}.b{margin:0}"
+       ".mid{color:green}.b{margin:0}.a{color:red}")
+
 (* ===== as_tree_diff tests ===== *)
 
 let as_tree_diff_with_tree () =
@@ -1048,4 +1088,10 @@ let suite =
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "opt-in prune-unused-custom-props" `Quick
         equal_prune_unused_custom_props;
+      Alcotest.test_case "canonical suppresses unique @property reorder" `Quick
+        canonical_suppresses_property_reorder;
+      Alcotest.test_case "canonical suppresses disjoint rule reorder" `Quick
+        canonical_suppresses_disjoint_rule_reorder;
+      Alcotest.test_case "canonical keeps conflicting rule reorder" `Quick
+        canonical_keeps_conflicting_rule_reorder;
     ] )

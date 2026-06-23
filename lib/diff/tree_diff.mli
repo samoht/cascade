@@ -83,6 +83,16 @@ val diff : expected:Css.t -> actual:Css.t -> t
 (** [diff ~expected ~actual] computes structural differences between two CSS
     ASTs. *)
 
+val suppress_neutral_reorders : expected:Css.t -> actual:Css.t -> t -> t
+(** [suppress_neutral_reorders ~expected ~actual t] drops the reorder reports in
+    [t] that cannot change a cascade outcome: [@property] reorders among
+    uniquely-named registrations, and rule-position reorders where the moved
+    rule shares no cascade-conflicting property (shorthand / [all]-aware) with
+    any statement whose order relative to it flipped. Overlap is overestimated,
+    so a real difference is never suppressed. Intended for [`Canonical]
+    comparison, where source order matters only where it affects the cascade;
+    [`Tree] / [`String] keep exact structural fidelity. *)
+
 val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
 (** [pp ?expected ?actual buf t] pretty-prints a tree diff with optional labels.
     Default labels are "Expected" and "Actual". *)

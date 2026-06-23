@@ -353,6 +353,7 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
       let structural_diff =
         tree_diff ~expected:expected_ast ~actual:actual_ast
+        |> D.suppress_neutral_reorders ~expected:expected_ast ~actual:actual_ast
       in
       if is_empty structural_diff then
         No_diff { canonical_byte_diff = Some (expected_canon, actual_canon) }
