@@ -976,6 +976,40 @@ let bare_theme_name raw_name =
    structurally (see {!Variables.var_refs_in_value_string}). *)
 let var_names_in_theme_value = Variables.var_refs_in_value_string
 
+(* Every [var()] reference (with leading [--]) found by structurally scanning
+   each declaration's serialized value, typed declarations included.
+   [collect_var_names] only records a nested fallback var when it carries the
+   [Var_fallback] spelling; a var nested inside a *typed* fallback
+   ([transition-timing-function: var(--tw-ease, var(--default-...))]) is
+   invisible to it. Seeding theme resolution from this too lets such a nested
+   theme var resolve transitively instead of surviving as a nested [var()]. *)
+let structural_var_refs (stmts : Stylesheet.statement list) : string list =
+  let acc = ref [] in
+  let note d =
+    acc := List.rev_append (var_names_in_theme_value (declaration_value d)) !acc
+  in
+  let rec scan (stmt : Stylesheet.statement) =
+    match stmt with
+    | Stylesheet.Rule r ->
+        List.iter note r.declarations;
+        List.iter scan r.nested
+    | Stylesheet.Declarations decls -> List.iter note decls
+    | Stylesheet.Media (_, b)
+    | Stylesheet.Supports (_, b)
+    | Stylesheet.Container (_, _, b)
+    | Stylesheet.Layer (_, b)
+    | Stylesheet.Origin (_, b)
+    | Stylesheet.Scope (_, _, b)
+    | Stylesheet.Starting_style b
+    | Stylesheet.Moz_document (_, b)
+    | Stylesheet.When (_, b)
+    | Stylesheet.Else (_, b) ->
+        List.iter scan b
+    | _ -> ()
+  in
+  List.iter scan stmts;
+  !acc
+
 let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
   let resolved : (string, string) Hashtbl.t = Hashtbl.create 16 in
   let cyclic = ref [] in
@@ -1004,7 +1038,9 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
                 Hashtbl.replace resolved raw_name value)
   in
   (match theme with
-  | Option.Some _ -> List.iter dfs (collect_var_names stylesheet)
+  | Option.Some _ ->
+      List.iter dfs
+        (collect_var_names stylesheet @ structural_var_refs stylesheet)
   | Option.None -> ());
   Hashtbl.fold (fun k v acc -> (k, v) :: acc) resolved []
 
