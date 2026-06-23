@@ -39,7 +39,7 @@ let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
-type semantic_opts = { lossless : bool; prune_unused_custom_props : bool }
+type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
 let compare_files file1 file2 style_renderer mode opts memtrace_path () =
   Cli_io.start_memtrace memtrace_path;
@@ -85,7 +85,8 @@ let file2_arg =
 let mode_arg =
   let doc =
     "Diff mode: 'auto' (smart detection), 'tree' (force structural diff), \
-     'string' (force string diff), or 'semantic' (canonical semantic compare)"
+     'string' (force string diff), or 'canonical' (compare optimized canonical \
+     minified serialization)"
   in
   let mode_conv =
     Arg.enum
@@ -93,29 +94,29 @@ let mode_arg =
         ("auto", Auto);
         ("tree", Tree);
         ("string", String);
-        ("semantic", Canonical);
+        ("canonical", Canonical);
       ]
   in
   Arg.(value & opt mode_conv Auto & info [ "diff" ] ~docv:"MODE" ~doc)
 
 let lossless_arg =
   let doc =
-    "Disable colour approximation in $(b,--diff=semantic) canonicalisation. \
+    "Disable colour approximation in $(b,--diff=canonical) canonicalisation. \
      Exact colour canonicalisation still runs, but static modern colour-space \
      and color-mix() values stay functional and channels keep their full \
      precision. Two stylesheets that only differ by colours folded within the \
      approximation budget then report as different rather than collapsing to \
-     equal. Has no effect outside $(b,--diff=semantic)."
+     equal. Has no effect outside $(b,--diff=canonical)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
 let prune_unused_custom_props_arg =
   let doc =
     "Drop custom-property bindings referenced by nothing on both sides before \
-     comparing in $(b,--diff=semantic), so two stylesheets that differ only by \
-     a dead binding compare equal. Makes the comparison blind to \
+     comparing in $(b,--diff=canonical), so two stylesheets that differ only \
+     by a dead binding compare equal. Makes the comparison blind to \
      dead-custom-property divergences (a render-no-op); enable only when that \
-     difference is immaterial. Has no effect outside $(b,--diff=semantic)."
+     difference is immaterial. Has no effect outside $(b,--diff=canonical)."
   in
   Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
 
@@ -131,14 +132,14 @@ let term =
   let style_renderer_with_env =
     Fmt_cli.style_renderer ~env:(Cmd.Env.info "CASCADE_COLOR") ()
   in
-  let semantic_opts =
+  let canonical_opts =
     const (fun lossless prune_unused_custom_props ->
         { lossless; prune_unused_custom_props })
     $ lossless_arg $ prune_unused_custom_props_arg
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ semantic_opts $ memtrace_arg $ Cli_log.term)
+   $ mode_arg $ canonical_opts $ memtrace_arg $ Cli_log.term)
 
 let man =
   [
@@ -165,13 +166,13 @@ let man =
       ( "--diff=string",
         "Force character-by-character string diff (faster, less intelligent)" );
     `I
-      ( "--diff=semantic",
+      ( "--diff=canonical",
         "Compare canonical minified CSS before reporting a diff" );
     `I
       ( "--lossless",
-        "Disable colour approximation under $(b,--diff=semantic): colour \
+        "Disable colour approximation under $(b,--diff=canonical): colour \
          channels keep their authored precision and static modern colour-space \
-         values stay functional. No effect outside semantic mode." );
+         values stay functional. No effect outside canonical mode." );
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
     `I ("0", "if the CSS files are identical");

@@ -57,7 +57,7 @@ diffing).
   [124]
 
 
-The semantic diff mode compares canonical minified CSS and accepts
+The canonical diff mode compares canonical minified CSS and accepts
 equivalent spellings.
 
   $ cat > i.css <<EOF
@@ -66,7 +66,7 @@ equivalent spellings.
   $ cat > j.css <<EOF
   > .x { color: color-mix(in oklab, currentcolor 50%, #0000) }
   > EOF
-  $ cascade diff --diff=semantic i.css j.css
+  $ cascade diff --diff=canonical i.css j.css
   CSS files are identical
 
 
