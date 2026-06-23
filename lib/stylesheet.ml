@@ -1782,26 +1782,23 @@ let font_stretch_pct_opt = function
   | Properties.Ultra_expanded -> Some 200.
   | _ -> None
 
-let validate_font_stretch_range r first second =
-  match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
-  | Some a, Some b when a <= b -> ()
-  | _ -> Cursor.err_invalid r "invalid font-stretch descriptor range"
-
-let read_font_stretch_descriptor_value value =
-  let c = Cursor.of_string value in
-  let first = Properties.read_font_stretch c in
-  Cursor.ws c;
-  if Cursor.is_done c then Font_stretch first
-  else
-    let second = Properties.read_font_stretch c in
-    Cursor.ws c;
-    Cursor.expect_eof c;
-    validate_font_stretch_range c first second;
-    Font_stretch_range value
-
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value
-    read_font_stretch_descriptor_value r
+    (fun value ->
+      let c = Cursor.of_string value in
+      let first = Properties.read_font_stretch c in
+      Cursor.ws c;
+      if Cursor.is_done c then Font_stretch first
+      else begin
+        let second = Properties.read_font_stretch c in
+        Cursor.ws c;
+        Cursor.expect_eof c;
+        (match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
+        | Some a, Some b when a > b -> warn_descending_range r "font-stretch"
+        | _ -> ());
+        Font_stretch_range value
+      end)
+    r
 
 let read_unicode_range_descriptor r =
   read_descriptor_value

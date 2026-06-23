@@ -738,7 +738,11 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
-  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+  (* A descending font-stretch range is kept like the font-weight / oblique
+     ranges below: browsers do not enforce CSS Fonts 4 §11.2. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:200% 50%}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: 200% \
      50%; }";
   (* [oblique <angle> <angle>] is kept even when the first angle is larger than
@@ -1268,6 +1272,9 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "font-face descending oblique angle range",
         "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
          oblique 20deg 10deg }" );
+      ( "font-face descending font-stretch range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+         200% 50% }" );
       ( "font-face invalid font-display list",
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }" );
