@@ -86,6 +86,13 @@ val with_filename : ?filename:string -> t -> t
     already carry one. Used by entry points that know the source filename to
     annotate warnings collected by inner readers. *)
 
+val with_property : string -> t -> t
+(** [with_property property t] fills in the property name of a {!Bad_value}
+    error raised without one - the typed value readers reject a right-hand side
+    without knowing which property they serve, so the declaration parser stamps
+    it back on. A non-{!Bad_value} error, or one that already names a property,
+    is returned unchanged. *)
+
 val context : t -> Loc.Context.t
 (** [context t] is the structured error context. *)
 

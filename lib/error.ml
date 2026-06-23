@@ -106,6 +106,12 @@ let with_filename ?filename t =
   | None, _ | _, Some _ -> t
   | Some _, None -> { t with filename }
 
+let with_property property t =
+  match t.kind with
+  | Bad_value { property = ""; reason } ->
+      { t with kind = Bad_value { property; reason } }
+  | _ -> t
+
 let fail e = Stdlib.raise (Parse_error e)
 
 let with_context label f =
