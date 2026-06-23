@@ -1952,15 +1952,25 @@ let read_typed_property_declaration t start =
      declaration survives with the auto-closed shape. *)
   match prop_type with
   | Unknown_property name -> read_unknown_property_declaration t name
-  | _ ->
-      let decl = read_value prop_type t in
-      validate_no_extra_tokens t;
-      let is_important = read_importance t in
-      validate_no_extra_tokens t;
-      (match Cursor.peek_delim t with
-      | Some '!' -> Cursor.err_invalid t "duplicate !important"
-      | _ -> ());
-      if is_important then important decl else decl
+  | _ -> (
+      (* The typed value readers and [validate_no_extra_tokens] reject a
+         right-hand side without knowing which property they serve, so a
+         [Bad_value] surfaces with an empty property name ([bad value for :]).
+         Stamp the property back on so the warning names it ([bad value for
+         background-image:]). *)
+      let read () =
+        let decl = read_value prop_type t in
+        validate_no_extra_tokens t;
+        let is_important = read_importance t in
+        validate_no_extra_tokens t;
+        (match Cursor.peek_delim t with
+        | Some '!' -> Cursor.err_invalid t "duplicate !important"
+        | _ -> ());
+        if is_important then important decl else decl
+      in
+      try read ()
+      with Cursor.Parse_error e ->
+        Error.fail (Error.with_property (prop_name prop_type) e))
 
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =

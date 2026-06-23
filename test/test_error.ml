@@ -33,6 +33,23 @@ let bad_value () =
     (Error.bad_value loc ~property:"color" ~reason:"not a color")
     "bad value for color: not a color at [12-13] (in property-value)"
 
+let with_property () =
+  (* A value reader raises [Bad_value] without a property name; the declaration
+     parser stamps it back on. *)
+  check "fills an empty property"
+    (Error.with_property "width"
+       (Error.bad_value loc ~property:"" ~reason:"bad"))
+    "bad value for width: bad at [12-13] (in property-value)";
+  (* An already-named property is left as-is. *)
+  check "keeps an existing property"
+    (Error.with_property "width"
+       (Error.bad_value loc ~property:"color" ~reason:"bad"))
+    "bad value for color: bad at [12-13] (in property-value)";
+  (* A non-[Bad_value] error is untouched. *)
+  check "leaves a non-bad-value error"
+    (Error.with_property "width" (Error.bad_selector loc "double dot"))
+    "bad selector: double dot at [12-13] (in selector)"
+
 let unknown_at_rule () =
   check "unknown at-rule"
     (Error.unknown_at_rule loc "weird")
@@ -62,6 +79,7 @@ let suite =
       Alcotest.test_case "unexpected token" `Quick unexpected_token;
       Alcotest.test_case "missing token" `Quick missing_token;
       Alcotest.test_case "bad selector" `Quick bad_selector;
+      Alcotest.test_case "with_property" `Quick with_property;
       Alcotest.test_case "bad value" `Quick bad_value;
       Alcotest.test_case "unknown at-rule" `Quick unknown_at_rule;
       Alcotest.test_case "unterminated" `Quick unterminated;
