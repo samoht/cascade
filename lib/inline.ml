@@ -981,9 +981,6 @@ let filter_live_custom_decls ~keep ~live_set ~at_path ~selector =
             Some (normalize_custom_value d)
           else None)
 
-let property_is_live ~keep ~live_set ~at_path name =
-  custom_is_live ~keep ~live_set ~at_path ~selector:universal_selector name
-
 let strip_dead_rule ~filter_decls ~map_stmts ~parents ~at_path
     (rule : Stylesheet.rule) : Stylesheet.statement option =
   let eff = effective_selector ~parents rule.selector in
@@ -1016,9 +1013,13 @@ let strip_dead ~keep ~live_set stmts =
     match stmt with
     | Rule rule ->
         strip_dead_rule ~filter_decls ~map_stmts ~parents ~at_path rule
-    | Property rule ->
-        if property_is_live ~keep ~live_set ~at_path rule.name then Some stmt
-        else None
+    | Property _ ->
+        (* A [@property] registration is a global, author-declared binding, not
+           dead code in the cascade sense. The closed-world inline drops the
+           ones for fully-substituted vars via [statements_for_inline]; the
+           dead-declaration pass must not drop them here, or a partial inline
+           (resolve_theme) would lose unrelated registrations. *)
+        Some stmt
     | Declarations decls ->
         strip_dead_declarations ~filter_decls ~parents ~at_path decls
     | Page (sel, decls) ->

@@ -6268,6 +6268,27 @@ let customprops1_transitive_fallback () =
     |> Css.resolve_theme ~theme ~theme_defaults:resolve
     |> Css.to_string ~minify:true)
 
+(* CSS Properties & Values API: resolve_theme is a partial inline - it
+   substitutes resolved theme vars but must leave unrelated [@property]
+   registrations untouched. Inlining one theme token previously dropped every
+   [@property] in the stylesheet. *)
+let customprops1_resolve_keeps_property () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "inlining a theme var keeps an unrelated @property registration"
+    "@property --tw-foo{syntax:\"*\";inherits:false}.x{width:24px}"
+    (parse
+       "@property --tw-foo{syntax:\"*\";inherits:false}.x{width:var(--blur-xl)}"
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
+         ~theme_defaults:(function
+         | "blur-xl" -> Some "24px"
+         | _ -> None)
+    |> Css.to_string ~minify:true)
+
 (* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
    resolves the variable, and the resulting all-constant calc reduces under
    minify. *)
@@ -7057,6 +7078,9 @@ let additional_tests =
     ( "spec custom-properties 1 nested theme var in typed fallback resolves",
       `Quick,
       customprops1_transitive_fallback );
+    ( "spec custom-properties 1 resolve keeps unrelated @property",
+      `Quick,
+      customprops1_resolve_keeps_property );
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
       customprops1_calc_inline );

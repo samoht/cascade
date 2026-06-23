@@ -1278,7 +1278,13 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
       let source = theme_defaults_source defaults in
       match of_string ~strict:false source with
       | Ok { stylesheet = root_stmts; _ } ->
-          inline_vars ~keep_vars (root_stmts @ stylesheet)
+          (* Substitute the resolved theme vars but do NOT run the closed-world
+             [statements_for_inline] cleanup: this is a partial inline, so it
+             must preserve unrelated [@property] registrations and [@layer]
+             structure (the cleanup strips every [@property] and flattens every
+             [@layer], which would drop author registrations like an unrelated
+             [@property --tw-foo]). *)
+          Inline.vars ~keep_vars (root_stmts @ stylesheet)
       | Error _ -> stylesheet
   in
   (* Emit root-scope definitions for theme vars referenced but undefined,
