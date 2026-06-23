@@ -6609,9 +6609,22 @@ let rec read_color_mix t : color =
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
 and read_color_mix_component t =
-  match Cursor.option read_color_mix_prefix_percentage t with
+  (* CSS Color 5 §3: a component is [<color> && <percentage>?] - the two may
+     appear in either order. Prefer the [<color> <percentage>?] reading so an
+     ambiguous leading [var()] is taken as the colour ([var(--c) var(--p)] keeps
+     its source order rather than being re-emitted percentage-first). Fall back
+     to [<percentage> <color>] only when the colour-first reading leaves the
+     component unconsumed - i.e. the leading token was really the percentage and
+     a concrete colour follows ([var(--p) red], [30% red]). *)
+  let color_first t =
+    let component = read_color_mix_suffix_percentage t in
+    Cursor.ws t;
+    if Cursor.peek_comma t || Cursor.is_done t then component
+    else Cursor.err_expected t "color-mix component end"
+  in
+  match Cursor.option color_first t with
   | Some component -> component
-  | None -> read_color_mix_suffix_percentage t
+  | None -> read_color_mix_prefix_percentage t
 
 and read_color_mix_prefix_percentage t =
   match read_optional_percentage t with
