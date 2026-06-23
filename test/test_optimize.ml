@@ -3878,8 +3878,26 @@ let c734_revert_origin_candidates () =
     [ "ua-important"; "user-important" ]
     (List.map origin_value important_author_rollback)
 
+(* CSS Properties & Values API: a [@property] registration takes effect
+   document-wide regardless of source order, so a run of registrations with
+   unique names is order-independent. Optimize sorts each such run into a
+   canonical by-name order; a run repeating a name (last-wins) is left to the
+   deduplication pass. *)
+let test_property_canonical_order () =
+  Alcotest.(check string)
+    "unique @property run sorts by name"
+    {|@property --a{syntax:"*";inherits:false}@property --z{syntax:"*";inherits:false}|}
+    (minify_str
+       {|@property --z{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}|});
+  Alcotest.(check string)
+    "@property runs sort within rule-bounded segments"
+    {|@property --a{syntax:"*";inherits:false}@property --m{syntax:"*";inherits:false}.x{color:red}|}
+    (minify_str
+       {|@property --m{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}.x{color:red}|})
+
 let selector_merging_tests =
   [
+    ("property canonical order", `Quick, test_property_canonical_order);
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
     ( "combine identical oklab(none) rules",
       `Quick,
