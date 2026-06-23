@@ -250,7 +250,6 @@ let spec_fontface_src_invalid_edges () =
       "";
       "url()";
       "url(\"\")";
-      "local(\"\")";
       "url(\"font.woff2\"),";
       "url(\"font.woff2\") garbage";
       "url(\"font.woff2\") format(\"woff2\") garbage";

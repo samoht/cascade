@@ -168,16 +168,21 @@ let size_adjust_of_string s =
 let read_function_arg name t =
   Cursor.call name t @@ fun inner ->
   Cursor.ws inner;
-  let value =
+  let value, from_string =
     match Cursor.string_opt inner with
-    | Some s -> s
-    | None -> Cursor.consume_remaining_as_string ~trim:true inner
+    | Some s -> (s, true)
+    | None -> (Cursor.consume_remaining_as_string ~trim:true inner, false)
   in
   Cursor.expect_eof inner;
-  (* CSS Fonts 4 §11.1: [local(<family-name>)], [format(<font-format> |
-     <string>)] and [tech(<font-tech>)] all take exactly one argument; an empty
-     body like [format()] is invalid. *)
-  if value = "" then Cursor.err_invalid inner ("empty " ^ name ^ "()");
+  (* CSS Fonts 4 §11.1: each of [local()] / [format()] / [tech()] takes exactly
+     one argument, so an empty body ([format()], [local()]) is invalid. The one
+     exception browsers accept is [local("")] - an explicit empty <string>
+     family name - so keep that. *)
+  let is_empty_local_string =
+    from_string && value = "" && String.lowercase_ascii name = "local"
+  in
+  if value = "" && not is_empty_local_string then
+    Cursor.err_invalid inner ("empty " ^ name ^ "()");
   value
 
 let read_url t =

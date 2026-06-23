@@ -1040,8 +1040,6 @@ let test_invalid_atrule_descriptor buf =
         "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
          initial-value: 0 }";
         "@font-face { src: url(\"brand.woff2\"); }";
-        "@font-face { font-family: Brand; src: url(\"brand.woff2\"); \
-         font-weight: 900 100 }";
         "@font-face { font-family: Brand; src: format(\"woff2\"); }";
         "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
          U+20-10 }";
@@ -1125,8 +1123,6 @@ let test_invalid_font_face buf =
   let input =
     pick
       [
-        "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
-         900 100 }";
         "@font-face { font-family: Brand; src: url(brand.woff2); \
          ascent-override: -1%; }";
         "@font-face { font-family: Brand; src: url(brand.woff2); size-adjust: \

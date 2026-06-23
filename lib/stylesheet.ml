@@ -1698,26 +1698,22 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
-let validate_font_weight_range r first second =
-  match (first, second) with
-  | ( (Properties.Weight a : Properties.font_weight),
-      (Properties.Weight b : Properties.font_weight) )
-    when a <= b ->
-      ()
-  | _ -> Cursor.err_invalid r "invalid font-weight descriptor range"
+(* CSS Fonts 4 §11.2 wants the first bound of a descriptor range <= the second.
+   Browsers keep a descending range, so the readers accept it but record a
+   warning here; [Css.of_string ~strict] then turns the warning into an
+   error. *)
+let warn_descending_range r property =
+  Cursor.push_warning r
+    (Error.bad_value (Cursor.position r) ~property
+       ~reason:
+         "range must run from the smaller value to the larger (CSS Fonts 4 \
+          §11.2)")
 
-let validate_font_style_oblique_range r first second =
-  match (Values.angle_degrees_opt first, Values.angle_degrees_opt second) with
-  | Some a, Some b when a <= b -> ()
-  | Some _, Some _ -> Cursor.err_invalid r "invalid font-style descriptor range"
-  | _ -> ()
-
-let validate_font_style_descriptor_range r first second =
-  match (first, second) with
-  | ( (Properties.Oblique_angle first : Properties.font_style),
-      Properties.Oblique_angle second ) ->
-      validate_font_style_oblique_range r first second
-  | _ -> ()
+let font_weight_num = function
+  | (Properties.Weight n : Properties.font_weight) -> Some n
+  | Properties.Normal -> Some 400
+  | Properties.Bold -> Some 700
+  | _ -> None
 
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -1730,7 +1726,9 @@ let read_font_weight_descriptor r =
         let second = Properties.read_font_weight c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        validate_font_weight_range r first second;
+        (match (font_weight_num first, font_weight_num second) with
+        | Some a, Some b when a > b -> warn_descending_range r "font-weight"
+        | _ -> ());
         Font_weight_range (first, second))
     r
 
@@ -1740,13 +1738,18 @@ let read_font_style_descriptor r =
       let c = Cursor.of_string value in
       let first = Properties.read_font_style c in
       Cursor.ws c;
-      if Cursor.is_done c then Font_style first
-      else
-        let second = Properties.read_font_style c in
-        Cursor.ws c;
-        Cursor.expect_eof c;
-        validate_font_style_descriptor_range r first second;
-        Font_style_range (first, second))
+      let descriptor =
+        if Cursor.is_done c then Font_style first
+        else
+          let second = Properties.read_font_style c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_style_range (first, second)
+      in
+      (* [read_font_style] warns on a descending oblique range; the value is
+         parsed in [c], so surface its warnings on the drained cursor [r]. *)
+      List.iter (Cursor.push_warning r) (Cursor.drain_warnings c);
+      descriptor)
     r
 
 let validate_nonempty_descriptor r name value =
@@ -1779,26 +1782,23 @@ let font_stretch_pct_opt = function
   | Properties.Ultra_expanded -> Some 200.
   | _ -> None
 
-let validate_font_stretch_range r first second =
-  match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
-  | Some a, Some b when a <= b -> ()
-  | _ -> Cursor.err_invalid r "invalid font-stretch descriptor range"
-
-let read_font_stretch_descriptor_value value =
-  let c = Cursor.of_string value in
-  let first = Properties.read_font_stretch c in
-  Cursor.ws c;
-  if Cursor.is_done c then Font_stretch first
-  else
-    let second = Properties.read_font_stretch c in
-    Cursor.ws c;
-    Cursor.expect_eof c;
-    validate_font_stretch_range c first second;
-    Font_stretch_range value
-
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value
-    read_font_stretch_descriptor_value r
+    (fun value ->
+      let c = Cursor.of_string value in
+      let first = Properties.read_font_stretch c in
+      Cursor.ws c;
+      if Cursor.is_done c then Font_stretch first
+      else begin
+        let second = Properties.read_font_stretch c in
+        Cursor.ws c;
+        Cursor.expect_eof c;
+        (match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
+        | Some a, Some b when a > b -> warn_descending_range r "font-stretch"
+        | _ -> ());
+        Font_stretch_range value
+      end)
+    r
 
 let read_unicode_range_descriptor r =
   read_descriptor_value
@@ -1966,19 +1966,6 @@ let read_font_face_desc name r =
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
-(* Keep in sync with [read_font_face_desc]. CSS Fonts 4 §11.2 / CSS Syntax 3
-   §5.4.4: an unknown descriptor is dropped and the rest of the @font-face is
-   kept (browsers ignore it, e.g. Fontsource's non-standard
-   [font-named-instance]). A known descriptor with a bad value still rejects the
-   rule (cascade is stricter than browsers here on purpose). *)
-let is_known_font_face_descriptor = function
-  | "font-family" | "src" | "font-style" | "font-weight" | "font-stretch"
-  | "font-display" | "unicode-range" | "font-variant" | "font-feature-settings"
-  | "font-variation-settings" | "font-tech" | "size-adjust" | "ascent-override"
-  | "descent-override" | "line-gap-override" ->
-      true
-  | _ -> false
-
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -1992,8 +1979,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         Cursor.ws r;
         if Cursor.peek_semicolon r then Cursor.skip r;
         Some descriptor
-    | exception Error.Parse_error e
-      when not (is_known_font_face_descriptor name) ->
+    | exception Error.Parse_error e ->
+        (* CSS Fonts 4 §11.2 / CSS Syntax 3 §5.4.4: a descriptor that does not
+           parse - an unknown name (Fontsource's [font-named-instance]) or an
+           invalid value of a known one ([font-display:maybe]) - is dropped and
+           the rest of the @font-face is kept, matching browsers. *)
         Cursor.push_warning r e;
         let rec skip_to_semicolon () =
           match Cursor.next_raw r with
