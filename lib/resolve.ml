@@ -127,6 +127,23 @@ module Make (N : NODE) = struct
         List.filter (matches left) (preceding_siblings a)
     | _ -> []
 
+  (* A selector list has no single specificity: a rule [s1, s2 {...}] cascades
+     as if duplicated per branch, so the specificity that applies to [node] is
+     that of the highest-specificity branch matching [node], not the whole
+     list. *)
+  let matched_specificity sel node =
+    match Selector.as_list sel with
+    | Some branches -> (
+        match List.filter (fun b -> matches b node) branches with
+        | [] -> Selector.specificity sel
+        | b :: rest ->
+            List.fold_left
+              (fun acc b ->
+                let s = Selector.specificity b in
+                if compare s acc > 0 then s else acc)
+              (Selector.specificity b) rest)
+    | None -> Selector.specificity sel
+
   let resolve sheet node =
     let upsert acc d =
       let k = Declaration.property_name d in
@@ -138,7 +155,7 @@ module Make (N : NODE) = struct
       |> List.mapi (fun i r ->
           let sel = Stylesheet.selector r in
           if matches sel node then
-            Some (Selector.specificity sel, i, Stylesheet.declarations r)
+            Some (matched_specificity sel node, i, Stylesheet.declarations r)
           else None)
       |> List.filter_map Fun.id
       |> List.stable_sort (fun (s1, i1, _) (s2, i2, _) ->
