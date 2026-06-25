@@ -864,11 +864,11 @@ let flatten_nesting = Optimize.flatten_nesting
    substitute every resolvable [var()] reference, then strip the now-empty
    [@layer] wrappers and the [@property] / [@layer-decl] rules that only existed
    to register the substituted variables. *)
-let inline_vars ?keep_vars stylesheet =
+let inline_vars ?keep_vars ?warn stylesheet =
   let substituted =
     match keep_vars with
-    | None -> Inline.vars stylesheet
-    | Some keep_vars -> Inline.vars ~keep_vars stylesheet
+    | None -> Inline.vars ?warn stylesheet
+    | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
   List.concat_map statements_for_inline substituted
 

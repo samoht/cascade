@@ -26,16 +26,29 @@ Mixed forms with and without [--] accepted.
   $ cascade --minify --inline-vars --keep-vars=--brand,spacing-3 theme.css
   :root{--brand:red;--spacing-3:12px}.btn{color:var(--brand);padding:var(--spacing-3)}
 
-Keeping a variable also keeps the runtime dependencies that its value
-references. Otherwise the kept variable would compute differently after
-dead-stripping.
+Inlining a variable folds it into the kept variables that reference it and
+deletes its definition: the kept variable carries the value, no inline
+definition is left behind.
 
   $ cat > transitive.css <<EOF
   > :root { --brand: var(--palette-red); --palette-red: red; --gap: 8px }
   > .btn { color: var(--brand); padding: var(--gap) }
   > EOF
   $ cascade --minify --inline-vars --keep-vars=brand transitive.css
-  :root{--brand:var(--palette-red);--palette-red:red}.btn{color:var(--brand);padding:8px}
+  :root{--brand:red}.btn{color:var(--brand);padding:8px}
+
+A variable overridden in a different scope cannot be inlined safely: freezing
+it would lose the override. It is kept as a live var() chain (so dark mode keeps
+working through the variable) and a warning names it.
+
+  $ cat > dark.css <<EOF
+  > :root { --brand: var(--palette-red); --palette-red: red }
+  > .dark { --palette-red: black }
+  > .btn { color: var(--brand) }
+  > EOF
+  $ cascade --minify --inline-vars --keep-vars=brand dark.css 2>&1
+  Warning: --palette-red is redefined in a different scope; kept live (cannot inline safely)
+  :root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}
 
 Custom property names are case-sensitive. Keeping [--brand] must not
 also keep [--Brand].

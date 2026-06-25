@@ -83,7 +83,8 @@ inside the layer scope to layer consumers.
   $ cascade --minify --inline-imports --inline-vars app-layer.css
   .x{color:red}.e{color:#00f}
 
-Imported kept variables retain imported runtime dependencies.
+An imported variable that a kept variable references is folded into the kept
+variable and deleted, the same as a local one.
 
   $ cat > tokens-transitive.css <<EOF
   > :root { --brand: var(--palette-red); --palette-red: red; --gap: 8px }
@@ -93,4 +94,4 @@ Imported kept variables retain imported runtime dependencies.
   > .btn { color: var(--brand); padding: var(--gap) }
   > EOF
   $ cascade --minify --inline-imports --inline-vars --keep-vars=brand app-transitive.css
-  :root{--brand:var(--palette-red);--palette-red:red}.btn{color:var(--brand);padding:8px}
+  :root{--brand:red}.btn{color:var(--brand);padding:8px}

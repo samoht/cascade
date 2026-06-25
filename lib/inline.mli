@@ -5,12 +5,19 @@
     Both transforms assume a closed world (no runtime mutation, full file
     resolution). *)
 
-val vars : ?keep_vars:string list -> Stylesheet.t -> Stylesheet.t
-(** [vars ?keep_vars stylesheet] substitutes [var(--name)] references with the
-    value of the corresponding [--name] declaration in [stylesheet] and drops
-    the now-unused custom-property definitions. Names listed in [keep_vars]
-    (with or without the leading [--]) keep their definitions and remain as live
-    [var()] references in the output. *)
+val vars :
+  ?keep_vars:string list ->
+  ?warn:(string -> unit) ->
+  Stylesheet.t ->
+  Stylesheet.t
+(** [vars ?keep_vars ?warn stylesheet] substitutes [var(--name)] references with
+    the value of the corresponding [--name] declaration and deletes the
+    definition, but only for a variable with a single definition (its value is
+    then unambiguous). A variable in [keep_vars], or one redefined in a
+    different scope (a real cascade override such as dark mode), keeps its
+    definition and stays a live [var()] reference. [warn] is called with each
+    name (leading [--]) that could not be inlined because it is redefined in a
+    different scope. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

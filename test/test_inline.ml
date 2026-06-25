@@ -43,6 +43,38 @@ let test_inline_keep_vars () =
     ":root{--brand:blue}.button{color:var(--brand);border-color:#00f}"
     (optimized_minified inlined)
 
+(* Inlining deletes a non-kept variable's definition only when it has a single
+   definition scope; a variable overridden in another scope is kept as a live
+   var() chain and reported through [warn]. *)
+let test_inline_fold_deletes_defs () =
+  let fold css =
+    parse css |> Css.inline_vars ~keep_vars:[ "brand" ] |> minified
+  in
+  Alcotest.(check string)
+    "single definition folds into the kept var and is deleted"
+    ":root{--brand:red}.btn{color:var(--brand)}"
+    (fold
+       ":root{--brand:var(--palette-red);--palette-red:red}.btn{color:var(--brand)}");
+  Alcotest.(check string)
+    "a class-scope override keeps the variable as a live chain"
+    ":root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}"
+    (fold
+       ":root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}");
+  Alcotest.(check string)
+    "an @media override keeps the variable as a live chain"
+    ":root{--brand:var(--palette-red);--palette-red:red}@media(prefers-color-scheme:dark){:root{--palette-red:black}}.btn{color:var(--brand)}"
+    (fold
+       ":root{--brand:var(--palette-red);--palette-red:red}@media \
+        (prefers-color-scheme:dark){:root{--palette-red:black}}.btn{color:var(--brand)}");
+  let warned = ref [] in
+  ignore
+    (parse
+       ":root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}"
+    |> Css.inline_vars ~keep_vars:[ "brand" ] ~warn:(fun n ->
+        warned := n :: !warned));
+  Alcotest.(check (list string))
+    "an overridden variable is reported via warn" [ "--palette-red" ] !warned
+
 let test_inline_keep_vars_calc_identity () =
   (* A kept theme var stays a live reference, but the value-independent calc
      identities still simplify: [p-1] expands to [calc(var(--spacing) * 1)],
@@ -213,6 +245,8 @@ let suite =
         `Quick test_inline_substitutes_vars;
       Alcotest.test_case "inline vars keep requested references" `Quick
         test_inline_keep_vars;
+      Alcotest.test_case "inline vars fold and delete non-kept definitions"
+        `Quick test_inline_fold_deletes_defs;
       Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
         test_inline_keep_vars_calc_identity;
       Alcotest.test_case "inline vars collapse a literal zero times a kept var"
