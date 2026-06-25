@@ -13239,6 +13239,71 @@ let read_list_style_symbol t : list_style_symbol =
     ]
     t
 
+let list_style_type_keywords : (string * list_style_type) list =
+  [
+    ("none", (None : list_style_type));
+    ("disc", Disc);
+    ("circle", Circle);
+    ("square", Square);
+    ("decimal", Decimal);
+    ("lower-alpha", Lower_alpha);
+    ("upper-alpha", Upper_alpha);
+    ("lower-roman", Lower_roman);
+    ("upper-roman", Upper_roman);
+    ("decimal-leading-zero", (Decimal_leading_zero : list_style_type));
+    ("arabic-indic", (Arabic_indic : list_style_type));
+    ("armenian", (Armenian : list_style_type));
+    ("upper-armenian", (Upper_armenian : list_style_type));
+    ("lower-armenian", (Lower_armenian : list_style_type));
+    ("bengali", (Bengali : list_style_type));
+    ("cambodian", (Cambodian : list_style_type));
+    ("khmer", (Khmer : list_style_type));
+    ("cjk-decimal", (Cjk_decimal : list_style_type));
+    ("devanagari", (Devanagari : list_style_type));
+    ("georgian", (Georgian : list_style_type));
+    ("gujarati", (Gujarati : list_style_type));
+    ("gurmukhi", (Gurmukhi : list_style_type));
+    ("hebrew", (Hebrew : list_style_type));
+    ("kannada", (Kannada : list_style_type));
+    ("lao", (Lao : list_style_type));
+    ("malayalam", (Malayalam : list_style_type));
+    ("mongolian", (Mongolian : list_style_type));
+    ("myanmar", (Myanmar : list_style_type));
+    ("oriya", (Oriya : list_style_type));
+    ("persian", (Persian : list_style_type));
+    ("tamil", (Tamil : list_style_type));
+    ("telugu", (Telugu : list_style_type));
+    ("thai", (Thai : list_style_type));
+    ("tibetan", (Tibetan : list_style_type));
+    ("lower-latin", (Lower_latin : list_style_type));
+    ("upper-latin", (Upper_latin : list_style_type));
+    ("cjk-earthly-branch", (Cjk_earthly_branch : list_style_type));
+    ("cjk-heavenly-stem", (Cjk_heavenly_stem : list_style_type));
+    ("lower-greek", (Lower_greek : list_style_type));
+    ("hiragana", (Hiragana : list_style_type));
+    ("hiragana-iroha", (Hiragana_iroha : list_style_type));
+    ("katakana", (Katakana : list_style_type));
+    ("katakana-iroha", (Katakana_iroha : list_style_type));
+    ("disclosure-open", (Disclosure_open : list_style_type));
+    ("disclosure-closed", (Disclosure_closed : list_style_type));
+    ("cjk-ideographic", (Cjk_ideographic : list_style_type));
+    ("japanese-informal", (Japanese_informal : list_style_type));
+    ("japanese-formal", (Japanese_formal : list_style_type));
+    ("korean-hangul-formal", (Korean_hangul_formal : list_style_type));
+    ("korean-hanja-informal", (Korean_hanja_informal : list_style_type));
+    ("korean-hanja-formal", (Korean_hanja_formal : list_style_type));
+    ("simp-chinese-informal", (Simp_chinese_informal : list_style_type));
+    ("simp-chinese-formal", (Simp_chinese_formal : list_style_type));
+    ("trad-chinese-informal", (Trad_chinese_informal : list_style_type));
+    ("trad-chinese-formal", (Trad_chinese_formal : list_style_type));
+    ("ethiopic-numeric", (Ethiopic_numeric : list_style_type));
+    ("inherit", Inherit);
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
 let rec read_list_style_type t : list_style_type =
   let read_var t : list_style_type = Var (read_var read_list_style_type t) in
   let read_symbols_body t : list_style_type =
@@ -13249,71 +13314,7 @@ let rec read_list_style_type t : list_style_type =
     in
     Symbols (kind, symbols)
   in
-  Cursor.enum_or_var "list-style-type"
-    [
-      ("none", (None : list_style_type));
-      ("disc", Disc);
-      ("circle", Circle);
-      ("square", Square);
-      ("decimal", Decimal);
-      ("lower-alpha", Lower_alpha);
-      ("upper-alpha", Upper_alpha);
-      ("lower-roman", Lower_roman);
-      ("upper-roman", Upper_roman);
-      ("decimal-leading-zero", (Decimal_leading_zero : list_style_type));
-      ("arabic-indic", (Arabic_indic : list_style_type));
-      ("armenian", (Armenian : list_style_type));
-      ("upper-armenian", (Upper_armenian : list_style_type));
-      ("lower-armenian", (Lower_armenian : list_style_type));
-      ("bengali", (Bengali : list_style_type));
-      ("cambodian", (Cambodian : list_style_type));
-      ("khmer", (Khmer : list_style_type));
-      ("cjk-decimal", (Cjk_decimal : list_style_type));
-      ("devanagari", (Devanagari : list_style_type));
-      ("georgian", (Georgian : list_style_type));
-      ("gujarati", (Gujarati : list_style_type));
-      ("gurmukhi", (Gurmukhi : list_style_type));
-      ("hebrew", (Hebrew : list_style_type));
-      ("kannada", (Kannada : list_style_type));
-      ("lao", (Lao : list_style_type));
-      ("malayalam", (Malayalam : list_style_type));
-      ("mongolian", (Mongolian : list_style_type));
-      ("myanmar", (Myanmar : list_style_type));
-      ("oriya", (Oriya : list_style_type));
-      ("persian", (Persian : list_style_type));
-      ("tamil", (Tamil : list_style_type));
-      ("telugu", (Telugu : list_style_type));
-      ("thai", (Thai : list_style_type));
-      ("tibetan", (Tibetan : list_style_type));
-      ("lower-latin", (Lower_latin : list_style_type));
-      ("upper-latin", (Upper_latin : list_style_type));
-      ("cjk-earthly-branch", (Cjk_earthly_branch : list_style_type));
-      ("cjk-heavenly-stem", (Cjk_heavenly_stem : list_style_type));
-      ("lower-greek", (Lower_greek : list_style_type));
-      ("hiragana", (Hiragana : list_style_type));
-      ("hiragana-iroha", (Hiragana_iroha : list_style_type));
-      ("katakana", (Katakana : list_style_type));
-      ("katakana-iroha", (Katakana_iroha : list_style_type));
-      ("disclosure-open", (Disclosure_open : list_style_type));
-      ("disclosure-closed", (Disclosure_closed : list_style_type));
-      ("cjk-ideographic", (Cjk_ideographic : list_style_type));
-      ("japanese-informal", (Japanese_informal : list_style_type));
-      ("japanese-formal", (Japanese_formal : list_style_type));
-      ("korean-hangul-formal", (Korean_hangul_formal : list_style_type));
-      ("korean-hanja-informal", (Korean_hanja_informal : list_style_type));
-      ("korean-hanja-formal", (Korean_hanja_formal : list_style_type));
-      ("simp-chinese-informal", (Simp_chinese_informal : list_style_type));
-      ("simp-chinese-formal", (Simp_chinese_formal : list_style_type));
-      ("trad-chinese-informal", (Trad_chinese_informal : list_style_type));
-      ("trad-chinese-formal", (Trad_chinese_formal : list_style_type));
-      ("ethiopic-numeric", (Ethiopic_numeric : list_style_type));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:read_var
+  Cursor.enum_or_var "list-style-type" list_style_type_keywords ~var:read_var
     ~default:
       (Cursor.one_of
          [
