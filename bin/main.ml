@@ -22,6 +22,18 @@ let cmd =
   Cmd.group info ~default:Cmd_fmt.term
     [ Cmd_fmt.cmd; Cmd_diff.cmd; Cmd_apply.cmd ]
 
+let known_subcommand = function "fmt" | "diff" | "apply" -> true | _ -> false
+
+let help_or_version = function
+  | "--help" | "-h" | "--version" -> true
+  | _ -> false
+
+let option_like first =
+  String.length first > 1 && first.[0] = '-' && first <> "-"
+
+let default_fmt_arg first =
+  not (known_subcommand first || help_or_version first || option_like first)
+
 (* cmdliner's [Cmd.group ~default] only invokes the default term when the
    command line is empty or the first positional is a known subcommand name; any
    other unrecognised first positional aborts with "unknown command". Rewrite
@@ -31,14 +43,7 @@ let rewrite_argv_for_default argv =
   if Array.length argv <= 1 then argv
   else
     let first = argv.(1) in
-    let is_known_subcommand =
-      first = "fmt" || first = "diff" || first = "apply"
-    in
-    let is_help_or_version =
-      first = "--help" || first = "-h" || first = "--version"
-    in
-    let is_flag = String.length first > 1 && first.[0] = '-' && first <> "-" in
-    if is_known_subcommand || is_help_or_version || is_flag then argv
+    if not (default_fmt_arg first) then argv
     else
       Array.append
         [| argv.(0); "fmt" |]
