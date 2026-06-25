@@ -6266,6 +6266,13 @@ let customprops1_transitive_fallback () =
        ".t { transition-timing-function: var(--tw-ease, \
         var(--default-transition-timing-function)) }"
     |> Css.resolve_theme ~theme ~theme_defaults:resolve
+    |> Css.to_string ~minify:true);
+  Alcotest.(check string)
+    "declared theme default still inlines into a kept runtime var fallback"
+    ":root,:host{--tw-ease:initial}.t{transition-timing-function:var(--tw-ease,ease)}"
+    (parse
+       ":root,:host{--default-transition-timing-function:ease;--tw-ease:initial}.t{transition-timing-function:var(--tw-ease,var(--default-transition-timing-function))}"
+    |> Css.resolve_theme ~theme ~theme_defaults:resolve
     |> Css.to_string ~minify:true)
 
 (* CSS Properties & Values API: resolve_theme is a partial inline - it
@@ -6306,11 +6313,12 @@ let customprops1_calc_inline () =
     |> Css.to_string ~minify:true)
 
 (* CSS Custom Properties L1: a theme var referenced anywhere - inside another
-   var's opaque value or inside a utility rule - and resolvable through
-   [theme_defaults] is emitted at root scope, the global token's cascade scope.
-   It merges into an existing :root,:host block (no spurious extra block), is
-   never injected into the element-scoped rule that references it, and an
-   unrelated @supports polyfill default is not pulled in. *)
+   custom property's opaque value or inside a utility rule - and resolvable
+   through [theme_defaults] is inlined at the reference site, including inside
+   the opaque value of a kept custom property. It is not materialised as a :root
+   binding merely to back a reference; an unrelated @supports polyfill default
+   is not pulled in; and a reference the resolver returns [None] for stays a
+   live var(). *)
 let customprops1_transitive_merge () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -6325,18 +6333,17 @@ let customprops1_transitive_merge () =
     |> Css.to_string ~minify:true
   in
   Alcotest.(check string)
-    "transitive theme var merges into the same :root,:host block"
-    ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
+    "a resolvable theme var inlines into a kept custom property's opaque value"
+    ":root,:host{--shadow:0 0 .25rem black}"
     (render ":root,:host{--shadow:0 0 var(--spacing) black}");
   Alcotest.(check string)
-    "a theme var referenced from a utility lands in :root, not the utility"
-    ":root{--spacing:.25rem}.shadow{--shadow:0 0 var(--spacing) black}"
+    "it inlines at the utility reference site, not as a :root binding"
+    ".shadow{--shadow:0 0 .25rem black}"
     (render ".shadow{--shadow:0 0 var(--spacing) black}");
   Alcotest.(check string)
     "an unrelated @supports polyfill default is not pulled in"
-    "@supports(color:lab(0 0 \
-     0)){:root{--tw-x:initial}}:root,:host{--spacing:.25rem;--shadow:0 0 \
-     var(--spacing) black}"
+    "@supports(color:lab(0 0 0)){:root{--tw-x:initial}}:root,:host{--shadow:0 \
+     0 .25rem black}"
     (render
        "@supports (color: lab(0 0 0)){:root{--tw-x:initial}} \
         :root,:host{--shadow:0 0 var(--spacing) black}");

@@ -5,12 +5,20 @@
     Both transforms assume a closed world (no runtime mutation, full file
     resolution). *)
 
-val vars : ?keep_vars:string list -> Stylesheet.t -> Stylesheet.t
-(** [vars ?keep_vars stylesheet] substitutes [var(--name)] references with the
-    value of the corresponding [--name] declaration in [stylesheet] and drops
-    the now-unused custom-property definitions. Names listed in [keep_vars]
-    (with or without the leading [--]) keep their definitions and remain as live
-    [var()] references in the output. *)
+val vars :
+  ?inline_kept_values:bool ->
+  ?keep_vars:string list ->
+  Stylesheet.t ->
+  Stylesheet.t
+(** [vars ?inline_kept_values ?keep_vars stylesheet] substitutes [var(--name)]
+    references with the value of the corresponding [--name] declaration in
+    [stylesheet] and drops the now-unused custom-property definitions. Names
+    listed in [keep_vars] (with or without the leading [--]) keep their
+    definitions and remain as live [var()] references in the output.
+
+    When [inline_kept_values] is true, resolvable references inside kept custom
+    property definitions may still be substituted. This is for partial theme
+    default resolution; the default keeps user-requested variables verbatim. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

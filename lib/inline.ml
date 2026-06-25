@@ -482,8 +482,30 @@ let substitute_non_custom ~kept visible ctx decl =
     | Components components ->
         apply_substituted_components ctx decl ~original_components components
 
-let substitute_declaration ~kept visible ctx decl =
+(* A kept custom property's definition survives (its [var()] references stay
+   live), so inline any resolvable, non-kept [var()] inside its own value rather
+   than leaving it to leak a [:root] binding. A non-kept custom property is
+   dropped once its references inline, so keeping it verbatim costs nothing. *)
+let substitute_custom ~kept visible decl =
+  match custom_value_components decl with
+  | None -> Some decl
+  | Some original_components -> (
+      match
+        substitute_components ~kept visible ~visited:[] original_components
+      with
+      | Cycle -> Some decl
+      | Components components -> (
+          if components = original_components then Some decl
+          else
+            match declaration_with_components decl components with
+            | Some decl' -> Some decl'
+            | None -> Some decl))
+
+let substitute_declaration ~inline_kept_values ~kept visible ctx decl =
   match custom_name decl with
+  | Some name when List.mem name kept || List.mem ("--" ^ name) kept ->
+      if inline_kept_values then substitute_custom ~kept visible decl
+      else Some decl
   | Some _ -> Some decl
   | None -> substitute_non_custom ~kept visible ctx decl
 
@@ -568,10 +590,12 @@ let selector_for_parents = function [] -> universal_selector | p :: _ -> p
 let universal_visible_customs ~scopes ~at_path =
   visible_customs ~scopes ~at_path ~selector:universal_selector
 
-let eval_decls ~kept ~scopes ~at_path selector decls =
+let eval_decls ~inline_kept_values ~kept ~scopes ~at_path selector decls =
   let visible = visible_customs ~scopes ~at_path ~selector in
   let ctx = context_for ~kept visible in
-  List.filter_map (substitute_declaration ~kept visible ctx) decls
+  List.filter_map
+    (substitute_declaration ~inline_kept_values ~kept visible ctx)
+    decls
 
 (* @page, @keyframes, and @position-try declarations apply to elements whose
    effective selector is universal at this at-path. Customs declared on [:root],
@@ -597,14 +621,17 @@ let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
   Page_with_margins
     (sel, List.map eval_page descriptors, List.map update_margin margins)
 
-let rec substitute ~kept ~scopes ~parents ~at_path stmts =
-  List.map (substitute_stmt ~kept ~scopes ~parents ~at_path) stmts
+let rec substitute ~inline_kept_values ~kept ~scopes ~parents ~at_path stmts =
+  List.map
+    (substitute_stmt ~inline_kept_values ~kept ~scopes ~parents ~at_path)
+    stmts
 
-and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
+and substitute_stmt ~inline_kept_values ~kept ~scopes ~parents ~at_path stmt =
   match at_wrapper stmt with
   | Some (node, body, rebuild) ->
       rebuild
-        (substitute ~kept ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
+        (substitute ~inline_kept_values ~kept ~scopes ~parents
+           ~at_path:(at_path @ [ node ]) body)
   | None -> (
       match stmt with
       | Rule rule ->
@@ -613,14 +640,15 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
             {
               rule with
               declarations =
-                eval_decls ~kept ~scopes ~at_path eff rule.declarations;
+                eval_decls ~inline_kept_values ~kept ~scopes ~at_path eff
+                  rule.declarations;
               nested =
-                substitute ~kept ~scopes ~parents:(eff :: parents) ~at_path
-                  rule.nested;
+                substitute ~inline_kept_values ~kept ~scopes
+                  ~parents:(eff :: parents) ~at_path rule.nested;
             }
       | Declarations decls ->
           Declarations
-            (eval_decls ~kept ~scopes ~at_path
+            (eval_decls ~inline_kept_values ~kept ~scopes ~at_path
                (selector_for_parents parents)
                decls)
       | Page (sel, decls) ->
@@ -1033,7 +1061,7 @@ let normalise_var_name name =
   if String.length name >= 2 && String.sub name 0 2 = "--" then name
   else String.concat "" [ "--"; name ]
 
-let vars ?(keep_vars = []) stylesheet =
+let vars ?(inline_kept_values = false) ?(keep_vars = []) stylesheet =
   let keep = List.map normalise_var_name keep_vars in
   let scopes = collect_scopes ~kept:keep stylesheet in
   let original_consumers, original_customs = collect_scoped_refs stylesheet in
@@ -1041,7 +1069,8 @@ let vars ?(keep_vars = []) stylesheet =
     cyclic_live_customs ~consumers:original_consumers ~customs:original_customs
   in
   let substituted =
-    substitute ~kept:keep ~scopes ~parents:[] ~at_path:[] stylesheet
+    substitute ~inline_kept_values ~kept:keep ~scopes ~parents:[] ~at_path:[]
+      stylesheet
   in
   let consumers, customs = collect_scoped_refs substituted in
   let live_set = live_customs ~consumers ~customs @ cyclic_live_set in
