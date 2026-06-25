@@ -25,6 +25,7 @@ let () =
       Test_cursor.suite;
       Test_error.suite;
       Test_resolve.suite;
+      Test_apply.suite;
       Test_sort.suite;
       Test_order_maintenance.suite;
       Test_common.suite;

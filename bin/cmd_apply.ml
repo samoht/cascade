@@ -24,6 +24,8 @@ end
 
 module Apply = Cascade.Apply.Make (Node)
 
+let err_msg fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
+
 let style_node node = function
   | [] -> ()
   | decls ->
@@ -67,7 +69,7 @@ let read_file path =
     let s = really_input_string ic (in_channel_length ic) in
     close_in ic;
     Ok s
-  with Sys_error msg -> Error (`Msg (Fmt.str "Error reading %s: %s" path msg))
+  with Sys_error msg -> err_msg "Error reading %s: %s" path msg
 
 let run minimal html_file css_file () =
   match read_file html_file with

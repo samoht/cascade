@@ -7468,13 +7468,13 @@ val custom_property : ?layer:string -> string -> string -> declaration
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] parses ["property: value"] with
     the full declaration parser:
-    - a known property (e.g. [mask-type], [display]) becomes a typed
+    - a known property (e.g. [mask-type], {!val-display}) becomes a typed
       declaration;
     - a custom property ([--x]) or an unknown property keeps its parsed
       component stream, so [var()] references in [value] are visible to
       {!vars_of_declarations} (unlike {!custom_property}, which forces an opaque
       token value);
-    - [None] if [value] does not parse.
+    - {!constructor-None} if [value] does not parse.
 
     [layer] applies only to a custom property. *)
 
