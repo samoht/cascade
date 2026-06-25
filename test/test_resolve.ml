@@ -100,6 +100,28 @@ let test_resolve_cascade () =
     "sibling-combined rule applies" (Some "font-weight:700")
     (value "font-weight")
 
+(* A selector list has no single specificity. Only the [.x] branch (one class)
+   matches [node]; the unmatched [#y] branch must not lend its id specificity to
+   the rule, so the later two-class rule wins. The old code keyed the rule at
+   the whole list's max specificity (the id), wrongly beating [.x.w]. *)
+let test_resolve_list_specificity () =
+  let node = elt ~classes:[ "x"; "w" ] "div" [] in
+  let sheet =
+    match Css.of_string ".x,#y{color:red}.x.w{color:blue}" with
+    | Ok { stylesheet; _ } -> stylesheet
+    | Error e -> Alcotest.failf "parse: %s" (Error.to_string e)
+  in
+  let color =
+    R.resolve sheet node
+    |> List.find_map (fun d ->
+        if Declaration.property_name d = "color" then
+          Some (Declaration.string_of_declaration ~minify:true d)
+        else None)
+  in
+  Alcotest.(check (option string))
+    "two-class rule beats a list matched only on its one-class branch"
+    (Some "color:blue") color
+
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
    the element, a rule with no inline form ([:hover]) stays in a <style>
    block. *)
@@ -134,6 +156,8 @@ let suite =
         test_sibling_then_descendant;
       Alcotest.test_case "resolve applies the cascade" `Quick
         test_resolve_cascade;
+      Alcotest.test_case "selector-list specificity is the matching branch"
+        `Quick test_resolve_list_specificity;
       Alcotest.test_case "apply projects a static rule, keeps a dynamic one"
         `Quick test_apply_compute;
     ] )
