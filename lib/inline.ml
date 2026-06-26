@@ -39,7 +39,14 @@ let effective_selector ~parents sel =
         (fun child parent -> combine_with_parent parent child)
         sel parents
 
-let universal_selector_text s = s = ":root" || s = "html" || s = "*"
+(* A selector reaches the whole subtree when one of its comma branches is a
+   universal/root selector: [:root] (and [html]) inherit to every element and
+   [*] matches every element, so [:root,:host] covers via its [:root] branch
+   while a lone [:host] (shadow root only) does not. *)
+let universal_selector_text s =
+  String.split_on_char ',' s
+  |> List.exists (fun p ->
+      match String.trim p with ":root" | "html" | "*" -> true | _ -> false)
 
 (* [.theme] is an ancestor of [.theme .descendant] (descendant-prefix); not of
    [.other]. Universal selectors always cover. The text comparison is
