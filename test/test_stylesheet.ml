@@ -6325,18 +6325,17 @@ let customprops1_transitive_merge () =
     |> Css.to_string ~minify:true
   in
   Alcotest.(check string)
-    "transitive theme var merges into the same :root,:host block"
-    ":root,:host{--spacing:.25rem;--shadow:0 0 var(--spacing) black}"
+    "transitive theme default is folded into the kept variable"
+    ":root,:host{--shadow:0 0 .25rem black}"
     (render ":root,:host{--shadow:0 0 var(--spacing) black}");
   Alcotest.(check string)
-    "a theme var referenced from a utility lands in :root, not the utility"
-    ":root{--spacing:.25rem}.shadow{--shadow:0 0 var(--spacing) black}"
+    "a theme default referenced from a utility is folded into it"
+    ".shadow{--shadow:0 0 .25rem black}"
     (render ".shadow{--shadow:0 0 var(--spacing) black}");
   Alcotest.(check string)
     "an unrelated @supports polyfill default is not pulled in"
-    "@supports(color:lab(0 0 \
-     0)){:root{--tw-x:initial}}:root,:host{--spacing:.25rem;--shadow:0 0 \
-     var(--spacing) black}"
+    "@supports(color:lab(0 0 0)){:root{--tw-x:initial}}:root,:host{--shadow:0 \
+     0 .25rem black}"
     (render
        "@supports (color: lab(0 0 0)){:root{--tw-x:initial}} \
         :root,:host{--shadow:0 0 var(--spacing) black}");

@@ -482,9 +482,25 @@ let substitute_non_custom ~kept visible ctx decl =
     | Components components ->
         apply_substituted_components ctx decl ~original_components components
 
+(* A custom property's own value: fold the inlinable (non-kept) variables it
+   references in place so they can be deleted, while a [kept] variable it
+   references stays a live [var()]. *)
+let fold_custom_value ~kept visible decl =
+  match custom_value_components decl with
+  | None -> Some decl
+  | Some original -> (
+      match substitute_components ~kept visible ~visited:[] original with
+      | Cycle -> Some decl
+      | Components components -> (
+          if components = original then Some decl
+          else
+            match declaration_with_components decl components with
+            | Some decl' -> Some decl'
+            | None -> Some decl))
+
 let substitute_declaration ~kept visible ctx decl =
   match custom_name decl with
-  | Some _ -> Some decl
+  | Some _ -> fold_custom_value ~kept visible decl
   | None -> substitute_non_custom ~kept visible ctx decl
 
 let font_src_var_fallback ~simplify ~visited (var : Font_face.src Values.var) =
@@ -1033,19 +1049,92 @@ let normalise_var_name name =
   if String.length name >= 2 && String.sub name 0 2 = "--" then name
   else String.concat "" [ "--"; name ]
 
-let vars ?(keep_vars = []) stylesheet =
+(* Per custom-property name, how many definitions it has across the whole
+   stylesheet, plus the set of names referenced anywhere. A variable is safe to
+   inline and delete only when it has a single definition: its value is then
+   unambiguous. A variable redefined in another scope is a real cascade override
+   (dark mode, a media query, a component) and must stay a live [var()] so its
+   consumers still track it - inlining it would freeze the value. *)
+let var_census stylesheet =
+  (* Count the distinct cascade scopes (selector + at-rule context) that define
+     each variable, so a redeclaration within one scope counts once while a real
+     override in another scope counts as two. Plus the set of referenced
+     names. *)
+  let scopes_of : (string, (at_node list * string) list) Hashtbl.t =
+    Hashtbl.create 64
+  in
+  let add name key =
+    let prev = Option.value ~default:[] (Hashtbl.find_opt scopes_of name) in
+    if not (List.mem key prev) then Hashtbl.replace scopes_of name (key :: prev)
+  in
+  List.iter
+    (fun (s : scope) ->
+      let key = (s.at_path, Selector.to_string ~minify:true s.selector) in
+      s.customs
+      |> List.filter_map (fun d ->
+          Option.map normalise_var_name (custom_name d))
+      |> List.sort_uniq compare
+      |> List.iter (fun n -> add n key))
+    (collect_scopes ~kept:[] stylesheet);
+  let counts : (string, int) Hashtbl.t = Hashtbl.create 64 in
+  Hashtbl.iter
+    (fun name keys -> Hashtbl.replace counts name (List.length keys))
+    scopes_of;
+  let referenced = ref [] in
+  let add_refs decls =
+    referenced :=
+      names_of_vars (Variables.vars_of_declarations decls) @ !referenced
+  in
+  let rec walk stmt =
+    match at_wrapper stmt with
+    | Some (_, body, _) -> List.iter walk body
+    | None -> (
+        match stmt with
+        | Rule r ->
+            add_refs r.declarations;
+            List.iter walk r.nested
+        | Declarations decls -> add_refs decls
+        | _ -> ())
+  in
+  List.iter walk stylesheet;
+  (counts, List.sort_uniq compare !referenced)
+
+let vars ?(keep_vars = []) ?(warn = fun _ -> ()) stylesheet =
   let keep = List.map normalise_var_name keep_vars in
-  let scopes = collect_scopes ~kept:keep stylesheet in
+  let counts, referenced = var_census stylesheet in
+  let inlinable name =
+    (not (List.mem name keep)) && Hashtbl.find_opt counts name = Some 1
+  in
+  (* Everything not inlinable stays live: the keep-set, plus any non-kept
+     variable redefined across scopes. Those are folded by the substitution as
+     if kept, so the single-def variables fold into them and get stripped. *)
+  let kept =
+    Hashtbl.fold
+      (fun name _ acc -> if inlinable name then acc else name :: acc)
+      counts keep
+    |> List.sort_uniq compare
+  in
+  (* Warn for a non-kept variable kept only because it is redefined in a
+     different scope, so the caller knows it escaped inlining. *)
+  Hashtbl.iter
+    (fun name count ->
+      if count > 1 && (not (List.mem name keep)) && List.mem name referenced
+      then warn name)
+    counts;
+  let scopes = collect_scopes ~kept stylesheet in
   let original_consumers, original_customs = collect_scoped_refs stylesheet in
   let cyclic_live_set =
     cyclic_live_customs ~consumers:original_consumers ~customs:original_customs
   in
   let substituted =
-    substitute ~kept:keep ~scopes ~parents:[] ~at_path:[] stylesheet
+    substitute ~kept ~scopes ~parents:[] ~at_path:[] stylesheet
   in
   let consumers, customs = collect_scoped_refs substituted in
   let live_set = live_customs ~consumers ~customs @ cyclic_live_set in
-  strip_dead ~keep ~live_set substituted
+  (* Keep every definition of a kept variable (including a cross-scope override
+     like an @media one), so the live chain stays complete; single-def
+     inlinables are not in [kept] and are stripped once folded. *)
+  strip_dead ~keep:kept ~live_set substituted
 
 (** {1 [@import] inlining helpers} *)
 

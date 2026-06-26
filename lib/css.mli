@@ -7628,13 +7628,14 @@ val flatten_nesting : t -> t
     Transforms that assume the caller controls properties the open web cannot
     guarantee (no runtime variable mutation, full file resolution). *)
 
-val inline_vars : ?keep_vars:string list -> t -> t
-(** [inline_vars ?keep_vars stylesheet] substitutes [var(--name)] references
-    with the value of the corresponding [--name] declaration in [stylesheet] and
-    drops the now-unused custom-property definitions. Names listed in
-    [keep_vars] (with or without the leading [--]) keep their definitions and
-    remain as live [var()] references in the output. The transform assumes no
-    runtime mutation of custom properties. *)
+val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
+(** [inline_vars ?keep_vars ?warn stylesheet] substitutes [var(--name)]
+    references with the value of the corresponding [--name] declaration and
+    deletes the definition, but only for a variable with a single definition. A
+    variable in [keep_vars], or one redefined in a different scope (a real
+    cascade override such as dark mode), keeps its definition and stays a live
+    [var()] reference; [warn] is called with each such name. The transform
+    assumes no runtime mutation of custom properties. *)
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t
