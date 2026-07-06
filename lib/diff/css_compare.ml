@@ -231,6 +231,7 @@ let canonical_semantic_css ~strict ~lossless
         Some
           (stylesheet
           |> Css.optimize ~lossless ~prune_unused_custom_props
+          |> Css.canonicalize_rule_order
           |> Css.to_string ~minify:true ~lossless)
       with Invalid_argument _ -> None)
   | Error _ -> None

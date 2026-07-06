@@ -203,110 +203,6 @@ let single_rule () =
   in
   check int "only one color declaration remains" 1 color_count
 
-(** Test rule merging *)
-let test_merge_rules () =
-  let selector = Css.Selector.class_ "test" in
-  let rule1 : Css.Stylesheet.rule =
-    {
-      selector;
-      declarations = [ v Color (hex_color "ff0000") ];
-      nested = [];
-      merge_key = None;
-    }
-  in
-  let rule2 : Css.Stylesheet.rule =
-    {
-      selector;
-      declarations = [ v Background_color (hex_color "0000ff") ];
-      nested = [];
-      merge_key = None;
-    }
-  in
-
-  let merged = merge_rules [ rule1; rule2 ] in
-  check int "rules with same selector are merged" 1 (List.length merged);
-
-  let merged_rule = List.hd merged in
-  check int "merged rule has both declarations" 2
-    (List.length merged_rule.declarations)
-
-(** Test selector grouping *)
-let test_group_selectors () =
-  let decls = [ v Color (hex_color "ff0000") ] in
-  let rule1 : Css.Stylesheet.rule =
-    {
-      selector = Css.Selector.class_ "a";
-      declarations = decls;
-      nested = [];
-      merge_key = None;
-    }
-  in
-  let rule2 : Css.Stylesheet.rule =
-    {
-      selector = Css.Selector.class_ "b";
-      declarations = decls;
-      nested = [];
-      merge_key = None;
-    }
-  in
-  let rule3 : Css.Stylesheet.rule =
-    {
-      selector = Css.Selector.class_ "c";
-      declarations = decls;
-      nested = [];
-      merge_key = None;
-    }
-  in
-
-  (* Test combine_identical_rules function *)
-  let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
-  check int "rules with same declarations are grouped" 1 (List.length grouped);
-
-  (* Check that selector is a list *)
-  let grouped_rule = List.hd grouped in
-  check bool "grouped selector is a list" true
-    (Css.Selector.is_compound_list grouped_rule.selector)
-
-(** Test selector grouping with complex prose-like selectors *)
-let test_group_complex_selectors () =
-  (* Mimics prose selectors: .prose :where(a strong), .prose :where(blockquote
-     strong) *)
-  let decls = [ v Color Inherit ] in
-
-  (* Parse complex selectors from strings to match real-world prose selectors *)
-  let sel1_str =
-    ".prose :where(a strong):not(:where([class~=not-prose], [class~=not-prose] \
-     *))"
-  in
-  let sel2_str =
-    ".prose :where(blockquote strong):not(:where([class~=not-prose], \
-     [class~=not-prose] *))"
-  in
-  let sel3_str =
-    ".prose :where(thead th strong):not(:where([class~=not-prose], \
-     [class~=not-prose] *))"
-  in
-
-  let sel1 = Css.Selector.read (Cursor.of_string sel1_str) in
-  let sel2 = Css.Selector.read (Cursor.of_string sel2_str) in
-  let sel3 = Css.Selector.read (Cursor.of_string sel3_str) in
-
-  let rule1 : Css.Stylesheet.rule =
-    { selector = sel1; declarations = decls; nested = []; merge_key = None }
-  in
-  let rule2 : Css.Stylesheet.rule =
-    { selector = sel2; declarations = decls; nested = []; merge_key = None }
-  in
-  let rule3 : Css.Stylesheet.rule =
-    { selector = sel3; declarations = decls; nested = []; merge_key = None }
-  in
-
-  (* Complex selectors with descendant combinators can still be grouped when
-     their declarations and cascade context are identical. Tailwind source shape
-     compatibility is not a reason to block shortest-safe grouping. *)
-  let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
-  check int "complex descendant selectors are grouped" 1 (List.length grouped)
-
 (** Test complete stylesheet optimization *)
 let count_rules stmts =
   List.fold_left
@@ -707,6 +603,8 @@ let test_tw_conditionals_layer () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "default minify elides baseline supports inside utility layer"
+    (* Source order is preserved: generator order is a public contract for
+       Tailwind utilities even when disjoint properties would commute. *)
     "@layer \
      utilities{.grid{display:grid}.gap{gap:1rem}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
     output;
@@ -809,7 +707,7 @@ let test_prune_unused_custom_props () =
      pruned. *)
   Alcotest.(check string)
     "opt-in: a var() inside a string is not a reference"
-    ":root{--x:\"var(--y)\"}.a{width:var(--x)}"
+    ".a{width:var(--x)}:root{--x:\"var(--y)\"}"
     (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}")
 
 (* A colour function carrying a var() is a pending-substitution value (CSS
@@ -904,9 +802,6 @@ let optimize_tests =
       test_deduplicate_declarations_physical_identity );
     ("duplicate buggy properties", `Quick, test_duplicate_buggy_properties);
     ("optimize single rule", `Quick, single_rule);
-    ("merge rules", `Quick, test_merge_rules);
-    ("group selectors", `Quick, test_group_selectors);
-    ("group complex selectors", `Quick, test_group_complex_selectors);
     ("optimize stylesheet", `Quick, optimize_all);
     ("optimize media queries", `Quick, media_queries);
     ("optimize layers", `Quick, layers);
@@ -1173,7 +1068,7 @@ let test_distant_media_merge () =
      different property, so no element's computed value changes. *)
   Alcotest.(check string)
     "merges across a non-conflicting intervening rule"
-    "@media(width>=1px){a{color:red;background:#0b0}}a{color:green}"
+    "@media(width>=1px){a{background:#0b0;color:red}}a{color:green}"
     (minify_str
        "@media (width>=1px){a{color:red}}a{color:green}@media \
         (width>=1px){a{background:#0b0}}");
@@ -1402,12 +1297,14 @@ let c3_shorthand_resets () =
     "background shorthand resets previous background-image"
     ".hero{background:#008000}" background_output
 
-let c3_open_closed_world_background_synthesis () =
+let c3_stylesheet_scope_background_synthesis () =
   (* CSS Backgrounds shorthands are resetful: synthesizing [background] resets
-     omitted background longhands. In the default open world, a fragment cannot
-     assume no earlier author CSS wrote one of those omitted longhands. In a
-     closed world, the caller asserts the whole relevant author stylesheet graph
-     is available, so the shorter resetful shorthand is allowed. *)
+     omitted background longhands. Under the default [`Fragment] scope, a
+     fragment cannot assume no earlier author CSS wrote one of those omitted
+     longhands. Under [`Stylesheet] scope, the caller asserts the whole relevant
+     author stylesheet graph is available, so the shorter resetful shorthand is
+     allowed. This is the CSS-text scope axis, not the [~closed_world] DOM
+     assumption. *)
   let optimize ?scope css =
     Css.of_string_exn ~strict:false css
     |> Css.optimize ?scope |> Css.to_string ~minify:true |> String.trim
@@ -1429,7 +1326,7 @@ let c3_open_closed_world_background_synthesis () =
      0;background-attachment:scroll}"
     (optimize partial_run);
   Alcotest.(check string)
-    "closed-world partial background run may synthesize shorthand"
+    "stylesheet-scope partial background run may synthesize shorthand"
     ".card{background:red}"
     (optimize ~scope:`Stylesheet partial_run);
   let reset_closed_run =
@@ -1450,6 +1347,49 @@ let c3_open_closed_world_background_synthesis () =
     "open-world reset-closed background run may synthesize shorthand"
     ".card{background:red}"
     (optimize reset_closed_run)
+
+let closed_world_groups_disjoint_selectors () =
+  (* [.a] and [.b] share a body, but [.c] sits between them writing a different
+     value for the same property. In the open world an element could be [.b.c],
+     where grouping [.a,.b] ahead of [.c] would flip its colour, so the default
+     refuses. Under closed_world the caller asserts no element matches two of
+     these selectors, so the group is safe. *)
+  let opt ?closed_world css =
+    Css.of_string_exn ~strict:false css
+    |> Css.optimize ?closed_world |> Css.to_string ~minify:true
+  in
+  let input = ".a{color:red}.c{color:blue}.b{color:red}" in
+  let default = opt input in
+  let closed = opt ~closed_world:true input in
+  (* the only comma either output can carry is a grouped selector list *)
+  Alcotest.(check bool)
+    "open world keeps the selectors separate (a .b.c element would flip)" false
+    (String.contains default ',');
+  Alcotest.(check bool)
+    "closed world groups the disjoint .a and .b" true
+    (String.contains closed ',');
+  Alcotest.(check bool)
+    "closed world is shorter" true
+    (String.length closed < String.length default)
+
+let coalesce_adjacent_custom_property_rules () =
+  let opt css =
+    Css.of_string_exn ~strict:false css
+    |> Css.optimize |> Css.to_string ~minify:true
+  in
+  (* Custom-property rules are barred from the DAG factoring, but adjacent rules
+     with an identical custom-property body (Tailwind gradient/mask/ring stacks)
+     are unconditionally safe to coalesce into one comma-selector rule. *)
+  Alcotest.(check string)
+    "adjacent identical custom-property rules coalesce"
+    ".a,.b,.c{--tw-gradient-from:#3b82f6}"
+    (opt
+       ".a{--tw-gradient-from:#3b82f6}.b{--tw-gradient-from:#3b82f6}.c{--tw-gradient-from:#3b82f6}");
+  (* A different value between them keeps the run split: merging across the
+     conflicting `.b` would flip a `.b.c` element. *)
+  Alcotest.(check bool)
+    "custom-property run split by a conflicting value stays unmerged" false
+    (String.contains (opt ".a{--x:red}.b{--x:blue}.c{--x:red}") ',')
 
 let c3_shorthand_order_edges () =
   (* CSS Cascade section 3 plus source order: a later shorthand resets all
@@ -1599,9 +1539,14 @@ let c61_no_merge_intervening () =
   in
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  (* The two [.a] rules merge across the tied [.b]: [.b] writes [color], which
+     pins the merged rule at the slot where [.b] still wins for [.a.b];
+     [background-color] is uncontested, so joining it is cascade-neutral. The
+     merged body uses canonical declaration order. The graph rewrite's
+     acyclicity check is what proves this safe. *)
   Alcotest.(check string)
-    "same selector is not merged across a tied intervening rule"
-    ".a{color:red}.b{color:#0f0}.a{background-color:#00f}" output
+    "same selector merges across a tied intervening rule when safe"
+    ".a{background-color:#00f;color:red}.b{color:#0f0}" output
 
 let c61_no_group_nonadjacent () =
   (* CSS Cascade section 6.1: selector grouping changes where a rule appears in
@@ -2400,7 +2345,7 @@ let c61_no_merge_supports () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "default minify elides baseline supports boundary"
-    ".card{color:red;background-color:#00f}.feature{display:flex}" output;
+    ".card{background-color:#00f;color:red}.feature{display:flex}" output;
   let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
   let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
   Alcotest.(check string)
@@ -2511,22 +2456,19 @@ let c61_no_named_atrule_merge () =
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
 
-let canonicalize_independent_custom_prop_position () =
+let preserve_independent_custom_prop_position () =
   let opt css =
     Css.Stylesheet.read (Cursor.of_string css)
     |> Css.Optimize.stylesheet
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
-  (* A custom property declared once is position-independent (var() resolves at
-     computed-value time), so both orderings canonicalise to the same output. *)
+  (* A rule of only globally-unique custom properties is position-independent
+     for the cascade, but the optimiser keeps source order for rules it has no
+     cascade reason to reorder rather than inventing a canonical position. *)
   Alcotest.(check string)
-    "independent :root position is canonicalized"
-    (opt ":root{--spacing:.25rem}.a{width:var(--spacing)}")
-    (opt ".a{width:var(--spacing)}:root{--spacing:.25rem}");
-  Alcotest.(check string)
-    "the canonical form hoists the independent :root"
-    ":root{--spacing:.25rem}.a{width:var(--spacing)}"
+    "independent :root keeps its source position"
+    ".a{width:var(--spacing)}:root{--spacing:.25rem}"
     (opt ".a{width:var(--spacing)}:root{--spacing:.25rem}");
   (* A custom property declared twice is order-significant: the two orderings
      have different effective values, so they must not collapse together. *)
@@ -2535,7 +2477,7 @@ let canonicalize_independent_custom_prop_position () =
     (String.equal
        (opt ":root{--spacing:1rem}.a{width:1px}:root{--spacing:2rem}")
        (opt ":root{--spacing:2rem}.a{width:1px}:root{--spacing:1rem}"));
-  (* @property is an anchor: a use is not hoisted before its registration. *)
+  (* @property is an anchor: a use is not reordered before its registration. *)
   Alcotest.(check string)
     "custom-property use stays after its @property"
     "@property --x{syntax:\"*\";inherits:false}.y{--x:1}"
@@ -2624,7 +2566,9 @@ let c61_nesting_synthesis_source_order () =
         ( "same-context adjacent synthesis is allowed inside media",
           "@media(min-width:40em){.card{color:red}.card .title{color:blue}}",
           "@media(width>=40em){.card{color:red;.title{color:#00f}}}" );
-        ( "intervening rule blocks nesting synthesis",
+        (* The intervening [.other] is cascade-neutral, but source-stable
+           emission does not move the nested child across it. *)
+        ( "non-competing intervening rule preserves source order",
           ".card{color:red}.other{display:block}.card .title{color:blue}",
           ".card{color:red}.other{display:block}.card .title{color:#00f}" );
         ( "intervening cascade competitor blocks nesting synthesis",
@@ -3878,26 +3822,24 @@ let c734_revert_origin_candidates () =
     [ "ua-important"; "user-important" ]
     (List.map origin_value important_author_rollback)
 
-(* CSS Properties & Values API: a [@property] registration takes effect
-   document-wide regardless of source order, so a run of registrations with
-   unique names is order-independent. Optimize sorts each such run into a
-   canonical by-name order; a run repeating a name (last-wins) is left to the
-   deduplication pass. *)
-let test_property_canonical_order () =
+(* CSS Properties & Values API registrations are document-global, but generated
+   CSS often treats emitted registration order as part of its textual contract.
+   Preserve it instead of sorting into a canonical by-name order. *)
+let test_property_source_order () =
   Alcotest.(check string)
-    "unique @property run sorts by name"
-    {|@property --a{syntax:"*";inherits:false}@property --z{syntax:"*";inherits:false}|}
+    "unique @property run keeps source order"
+    {|@property --z{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}|}
     (minify_str
        {|@property --z{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}|});
   Alcotest.(check string)
-    "@property runs sort within rule-bounded segments"
-    {|@property --a{syntax:"*";inherits:false}@property --m{syntax:"*";inherits:false}.x{color:red}|}
+    "@property runs keep source order within rule-bounded segments"
+    {|@property --m{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}.x{color:red}|}
     (minify_str
        {|@property --m{syntax:"*";inherits:false}@property --a{syntax:"*";inherits:false}.x{color:red}|})
 
 let selector_merging_tests =
   [
-    ("property canonical order", `Quick, test_property_canonical_order);
+    ("property source order", `Quick, test_property_source_order);
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
     ( "combine identical oklab(none) rules",
       `Quick,
@@ -3946,9 +3888,15 @@ let selector_merging_tests =
     ( "spec cascade 3 shorthand resets omitted longhands",
       `Quick,
       c3_shorthand_resets );
-    ( "spec cascade 3 open/closed world background synthesis",
+    ( "spec cascade 3 stylesheet-scope background synthesis",
       `Quick,
-      c3_open_closed_world_background_synthesis );
+      c3_stylesheet_scope_background_synthesis );
+    ( "closed-world groups disjoint selectors",
+      `Quick,
+      closed_world_groups_disjoint_selectors );
+    ( "coalesce adjacent custom-property rules",
+      `Quick,
+      coalesce_adjacent_custom_property_rules );
     ( "spec cascade 3 shorthand source order corner cases",
       `Quick,
       c3_shorthand_order_edges );
@@ -4076,9 +4024,9 @@ let selector_merging_tests =
     ( "calc flatten gated on single-valued @property registration",
       `Quick,
       calc_flatten_registered_single_valued );
-    ( "canonicalize independent custom-property rule position",
+    ( "preserve independent custom-property rule position",
       `Quick,
-      canonicalize_independent_custom_prop_position );
+      preserve_independent_custom_prop_position );
     ( "spec cascade 6.1 nesting synthesis preserves source order",
       `Quick,
       c61_nesting_synthesis_source_order );
@@ -4193,4 +4141,526 @@ let selector_merging_tests =
       c734_revert_origin_candidates );
   ]
 
-let suite = ("optimize", optimize_tests @ selector_merging_tests)
+(* Property-based fuzz tests for [Css.optimize]'s high-level invariants.
+   Namespaced so this stays in test_optimize.ml (mapping to lib/optimize.ml)
+   rather than a standalone module with no library counterpart. *)
+module Fuzz = struct
+  open Cascade
+
+  let error_str e = Error.to_string e
+
+  let parse s =
+    match Css.of_string ~strict:false s with
+    | Ok p -> p.Css.stylesheet
+    | Error e -> Alcotest.failf "parse failed: %s\n  for: %s" (error_str e) s
+
+  let minify_str s = parse s |> Css.to_string ~minify:true
+  let optimize_str s = parse s |> Css.optimize |> Css.to_string ~minify:true
+
+  (* --- deterministic generator --- *)
+
+  let selectors =
+    [| ".a"; ".b"; ".c"; ".a.b"; ".a.c"; ".b.c"; "#x"; "div"; "p"; "div.a" |]
+
+  (* Only independent property names (no shorthand/longhand aliasing), so an
+     element's computed style is a clean per-name map - and a name-level cascade
+     change is exactly what a reordering bug would cause. *)
+  let decls =
+    [|
+      "color:red";
+      "color:green";
+      "color:blue";
+      "margin:0";
+      "margin:1px";
+      "display:block";
+      "display:flex";
+      "padding:0";
+      "padding:2px";
+      "top:0";
+      "top:1px";
+      "z-index:1";
+      "z-index:2";
+    |]
+
+  let pick rng a = a.(Random.State.int rng (Array.length a))
+
+  let gen_rule rng =
+    let sel = pick rng selectors in
+    let n = 1 + Random.State.int rng 3 in
+    let ds = List.init n (fun _ -> pick rng decls) in
+    Fmt.str "%s{%s}" sel (String.concat ";" ds)
+
+  let gen_rules rng =
+    List.init (2 + Random.State.int rng 6) (fun _ -> gen_rule rng)
+
+  (* --- elements for the cascade resolver --- *)
+
+  type node = { nname : string; nid : string option; nclasses : string list }
+
+  module Node = struct
+    type t = node
+
+    let equal = ( = )
+    let name t = Some t.nname
+    let id t = t.nid
+    let classes t = t.nclasses
+    let attribute _ _ : string option = None
+    let parent _ : node option = None
+    let children _ = []
+  end
+
+  module R = Resolve.Make (Node)
+
+  (* Every element distinguishable by the selector alphabet: tag x optional id x
+     class subset. Checking all of them makes the cascade-equivalence and
+     permutation-neutrality judgements complete for this alphabet. *)
+  let all_elements =
+    let class_subsets =
+      [
+        [];
+        [ "a" ];
+        [ "b" ];
+        [ "c" ];
+        [ "a"; "b" ];
+        [ "a"; "c" ];
+        [ "b"; "c" ];
+        [ "a"; "b"; "c" ];
+      ]
+    in
+    List.concat_map
+      (fun nname ->
+        List.concat_map
+          (fun nid ->
+            List.map (fun nclasses -> { nname; nid; nclasses }) class_subsets)
+          [ None; Some "x" ])
+      [ "div"; "p"; "span" ]
+
+  (* Canonical form of one declaration's value, so the comparison is semantic,
+     not textual: optimize legitimately rewrites a value (e.g. [blue] -> [#00f],
+     [0px] -> [0]) without changing the cascade. Memoized - the same
+     declarations recur across thousands of iterations. *)
+  let canon_memo : (string, string) Hashtbl.t = Hashtbl.create 256
+
+  let canon_decl d =
+    let s = Pp.to_string ~minify:true Declaration.pp_declaration d in
+    match Hashtbl.find_opt canon_memo s with
+    | Some c -> c
+    | None ->
+        let c =
+          match Css.of_string ~strict:false ("x{" ^ s ^ "}") with
+          | Ok p ->
+              let out =
+                Css.to_string ~minify:true (Css.optimize p.Css.stylesheet)
+              in
+              if String.length out >= 3 then
+                String.sub out 2 (String.length out - 3)
+              else out
+          | Error _ -> s
+        in
+        Hashtbl.replace canon_memo s c;
+        c
+
+  let computed sheet elt =
+    R.resolve sheet elt |> List.map canon_decl |> List.sort String.compare
+
+  let describe e =
+    Fmt.str "%s%s%s" e.nname
+      (match e.nid with Some i -> "#" ^ i | None -> "")
+      (match e.nclasses with [] -> "" | cs -> "." ^ String.concat "." cs)
+
+  let iters = 1000
+
+  (* Invariant 1 - idempotence: reparsing and re-optimizing the output changes
+     nothing. Guards against any pass that only converges on a second run. *)
+  let fuzz_idempotent () =
+    let rng = Random.State.make [| 0x1d3a |] in
+    for _ = 1 to iters do
+      let css = String.concat "" (gen_rules rng) in
+      let once = optimize_str css in
+      let twice = optimize_str once in
+      if once <> twice then
+        Alcotest.failf
+          "not a fixed point:\n  in:    %s\n  once:  %s\n  twice: %s" css once
+          twice
+    done
+
+  (* Invariant 2 - validity and size: the output reparses and is never larger
+     than plain (non-optimizing) minification of the same input. *)
+  let fuzz_valid_and_no_larger () =
+    let rng = Random.State.make [| 0x5a1d |] in
+    for _ = 1 to iters do
+      let css = String.concat "" (gen_rules rng) in
+      let opt = optimize_str css in
+      (match Css.of_string ~strict:false opt with
+      | Ok _ -> ()
+      | Error e ->
+          Alcotest.failf
+            "optimize produced invalid CSS: %s\n  in:  %s\n  out: %s"
+            (error_str e) css opt);
+      if String.length opt > String.length (minify_str css) then
+        Alcotest.failf
+          "optimize larger than minify:\n  in:  %s\n  min: %s\n  opt: %s" css
+          (minify_str css) opt
+    done
+
+  (* Invariant 3 - cascade equivalence (soundness): the computed style of every
+     element is identical before and after optimization. *)
+  let fuzz_cascade_equivalent () =
+    let rng = Random.State.make [| 0xca5c |] in
+    for _ = 1 to iters do
+      let css = String.concat "" (gen_rules rng) in
+      let before = parse css and after = parse (optimize_str css) in
+      List.iter
+        (fun e ->
+          let b = computed before e and a = computed after e in
+          if b <> a then
+            Alcotest.failf
+              "optimize changed the cascade for %s:\n\
+              \  css:    %s\n\
+              \  before: %s\n\
+              \  after:  %s"
+              (describe e) css (String.concat " " b) (String.concat " " a))
+        all_elements
+    done
+
+  (* Invariant 4 - neutral-permutation soundness: a permutation that preserves
+     every element's computed style (a cascade-neutral reorder) must still
+     compute the same styles after optimization. The outputs need not be
+     byte-identical: source order is part of the generator-facing textual
+     contract. Neutrality is judged over the complete element set, so it is
+     never falsely claimed. *)
+  let shuffle rng lst =
+    let a = Array.of_list lst in
+    for i = Array.length a - 1 downto 1 do
+      let j = Random.State.int rng (i + 1) in
+      let t = a.(i) in
+      a.(i) <- a.(j);
+      a.(j) <- t
+    done;
+    Array.to_list a
+
+  let fuzz_neutral_permutation_soundness () =
+    let rng = Random.State.make [| 0xbeef |] in
+    let checked = ref 0 in
+    for _ = 1 to iters do
+      let rules = gen_rules rng in
+      let x = String.concat "" rules
+      and x' = String.concat "" (shuffle rng rules) in
+      let bx = parse x and bx' = parse x' in
+      let neutral =
+        List.for_all (fun e -> computed bx e = computed bx' e) all_elements
+      in
+      if neutral then begin
+        incr checked;
+        let ax = parse (optimize_str x) and ax' = parse (optimize_str x') in
+        List.iter
+          (fun e ->
+            let sx = computed ax e and sx' = computed ax' e in
+            if sx <> sx' then
+              Alcotest.failf
+                "cascade-neutral permutation diverged after optimization for %s:\n\
+                \  x:   %s\n\
+                \  x':  %s\n\
+                \  x:   %s\n\
+                \  x':  %s"
+                (describe e) x x' (String.concat " " sx) (String.concat " " sx'))
+          all_elements
+      end
+    done;
+    (* a permutation is neutral often enough that this should fire many times;
+       guard against the test silently checking nothing. *)
+    Alcotest.(check bool)
+      (Fmt.str "exercised %d neutral permutations" !checked)
+      true (!checked > 0)
+
+  (* --- shorthand cascade-order soundness ---
+
+     The per-name [computed] above is blind to shorthand/longhand overlap: it
+     treats [border-top] and [border-color] as different properties, missing
+     that both write [border-top-color]. This oracle compares the computed style
+     at the *longhand* level, expanding each declaration through a hand-written
+     footprint table independent of cascade's own shorthand code. Values are
+     chosen not to fold under minify (5px/7px/red/green/solid all stay), so an
+     optimised declaration minifies back to its alphabet key. *)
+  let sh_alphabet =
+    [
+      ( "margin:5px",
+        [
+          ("margin-top", "5px");
+          ("margin-right", "5px");
+          ("margin-bottom", "5px");
+          ("margin-left", "5px");
+        ] );
+      ( "margin:9px",
+        [
+          ("margin-top", "9px");
+          ("margin-right", "9px");
+          ("margin-bottom", "9px");
+          ("margin-left", "9px");
+        ] );
+      ("margin-top:7px", [ ("margin-top", "7px") ]);
+      ( "padding:5px",
+        [
+          ("padding-top", "5px");
+          ("padding-right", "5px");
+          ("padding-bottom", "5px");
+          ("padding-left", "5px");
+        ] );
+      ( "border-top:3px solid red",
+        [
+          ("border-top-width", "3px");
+          ("border-top-style", "solid");
+          ("border-top-color", "red");
+        ] );
+      ( "border-color:green",
+        [
+          ("border-top-color", "green");
+          ("border-right-color", "green");
+          ("border-bottom-color", "green");
+          ("border-left-color", "green");
+        ] );
+      ("border-top-color:red", [ ("border-top-color", "red") ]);
+      ("color:red", [ ("color", "red") ]);
+    ]
+
+  let sh_decls = Array.of_list (List.map fst sh_alphabet)
+  let sh_decl_string d = Pp.to_string ~minify:true Declaration.pp_declaration d
+
+  (* Four-side box shorthands: physical longhand names, in top/right/bottom/left
+     order. optimize composes longhand runs back into these, so the oracle must
+     expand any box shorthand, not just the uniform alphabet forms. *)
+  let box_sides =
+    [
+      ( "margin",
+        [ "margin-top"; "margin-right"; "margin-bottom"; "margin-left" ] );
+      ( "padding",
+        [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ] );
+      ("inset", [ "top"; "right"; "bottom"; "left" ]);
+      ( "border-color",
+        [
+          "border-top-color";
+          "border-right-color";
+          "border-bottom-color";
+          "border-left-color";
+        ] );
+      ( "border-width",
+        [
+          "border-top-width";
+          "border-right-width";
+          "border-bottom-width";
+          "border-left-width";
+        ] );
+      ( "border-style",
+        [
+          "border-top-style";
+          "border-right-style";
+          "border-bottom-style";
+          "border-left-style";
+        ] );
+    ]
+
+  (* Distribute 1..4 box values over top/right/bottom/left per the CSS box
+     rule. *)
+  let box_values value =
+    match String.split_on_char ' ' value |> List.filter (fun s -> s <> "") with
+    | [ a ] -> [ a; a; a; a ]
+    | [ a; b ] -> [ a; b; a; b ]
+    | [ a; b; c ] -> [ a; b; c; b ]
+    | a :: b :: c :: d :: _ -> [ a; b; c; d ]
+    | [] -> [ value; value; value; value ]
+
+  (* Expand a declaration to its (longhand, value) footprint, independent of
+     cascade's own shorthand code. [box_sides] handles the four-side families
+     (including composed forms like [margin:7px 9px 9px]); [sh_alphabet] handles
+     the non-box shorthands ([border-top]); anything else is its own
+     longhand. *)
+  let longhands_of s =
+    match String.index_opt s ':' with
+    | None -> [ (s, "") ]
+    | Some i -> (
+        let prop = String.sub s 0 i in
+        let value = String.sub s (i + 1) (String.length s - i - 1) in
+        match List.assoc_opt prop box_sides with
+        | Some sides -> List.combine sides (box_values value)
+        | None -> (
+            match List.assoc_opt s sh_alphabet with
+            | Some lhs -> lhs
+            | None -> [ (prop, value) ]))
+
+  (* Class-only branches: nested [&.c] output can compose into nested [Compound]
+     nodes, so collect class parts recursively inside a compound. Selectors with
+     combinators or non-class parts still contribute no branch; the shorthand
+     alphabet is class-only. *)
+  let rec class_only_compound : Selector.t -> string list option = function
+    | Selector.Class c -> Some [ c ]
+    | Selector.Compound ps ->
+        List.fold_left
+          (fun acc part ->
+            match (acc, class_only_compound part) with
+            | Some acc, Some classes -> Some (acc @ classes)
+            | _ -> None)
+          (Some []) ps
+    | _ -> None
+
+  let rec branch_class_sets (sel : Selector.t) =
+    match sel with
+    | Selector.Class c -> [ [ c ] ]
+    | Selector.Compound _ -> (
+        match class_only_compound sel with
+        | Some classes -> [ classes ]
+        | None -> [])
+    | Selector.List ss -> List.concat_map branch_class_sets ss
+    | _ -> []
+
+  let class_subset small big = List.for_all (fun x -> List.mem x big) small
+
+  (* applicable specificity = max class count over matching branches, or None *)
+  let sh_match sel classes : int option =
+    match
+      branch_class_sets sel |> List.filter (fun cs -> class_subset cs classes)
+    with
+    | [] -> None
+    | bs -> Some (List.fold_left (fun m cs -> max m (List.length cs)) 0 bs)
+
+  let sh_rules sheet =
+    let rec rule ?parent (rule : Stylesheet.rule) =
+      let selector =
+        match parent with
+        | None -> Stylesheet.selector rule
+        | Some parent -> Nest.combine parent (Stylesheet.selector rule)
+      in
+      let direct =
+        if Stylesheet.declarations rule = [] then []
+        else [ { rule with selector; nested = [] } ]
+      in
+      direct @ statements ~parent:selector (Stylesheet.nested rule)
+    and statements ?parent stmts =
+      List.concat_map
+        (function Stylesheet.Rule r -> rule ?parent r | _ -> [])
+        stmts
+    in
+    statements (Css.statements sheet)
+
+  (* computed longhand -> value map for one element, in cascade order *)
+  let sh_computed sheet classes =
+    let matched =
+      sh_rules sheet
+      |> List.mapi (fun i r -> (i, r))
+      |> List.filter_map (fun (i, r) ->
+          match sh_match (Stylesheet.selector r) classes with
+          | Some spec -> Some (spec, i, Stylesheet.declarations r)
+          | None -> None)
+      |> List.sort (fun (s1, i1, _) (s2, i2, _) ->
+          match compare s1 s2 with 0 -> compare i1 i2 | c -> c)
+    in
+    let tbl = Hashtbl.create 16 in
+    List.iter
+      (fun (_, _, decls) ->
+        List.iter
+          (fun d ->
+            List.iter
+              (fun (lh, v) -> Hashtbl.replace tbl lh v)
+              (longhands_of (sh_decl_string d)))
+          decls)
+      matched;
+    Hashtbl.fold (fun k v acc -> (k ^ ":" ^ v) :: acc) tbl []
+    |> List.sort String.compare
+
+  let sh_class_subsets =
+    [
+      [];
+      [ "a" ];
+      [ "b" ];
+      [ "c" ];
+      [ "a"; "b" ];
+      [ "a"; "c" ];
+      [ "b"; "c" ];
+      [ "a"; "b"; "c" ];
+    ]
+
+  let sh_selectors = [| ".a"; ".b"; ".c"; ".a.b"; ".a.c"; ".b.c"; ".a.b.c" |]
+
+  let gen_sh_rule rng =
+    let sel = pick rng sh_selectors in
+    let n = 1 + Random.State.int rng 2 in
+    let ds = List.init n (fun _ -> pick rng sh_decls) in
+    Fmt.str "%s{%s}" sel (String.concat ";" ds)
+
+  let gen_sh_rules rng =
+    List.init (2 + Random.State.int rng 6) (fun _ -> gen_sh_rule rng)
+
+  (* The DAG must keep two rules ordered (or refuse to merge) whenever their
+     declarations share a longhand, even through different shorthands
+     ([border-top] vs [border-color] over [border-top-color]). A false-disjoint
+     reorders them and flips a longhand winner; this catches it. *)
+  let fuzz_shorthand_cascade_equivalent () =
+    let rng = Random.State.make [| 0x5304 |] in
+    for _ = 1 to iters do
+      let css = String.concat "" (gen_sh_rules rng) in
+      let before = parse css and after = parse (optimize_str css) in
+      List.iter
+        (fun classes ->
+          let b = sh_computed before classes
+          and a = sh_computed after classes in
+          if b <> a then
+            Alcotest.failf
+              "optimize changed the longhand cascade for .%s:\n\
+              \  css:    %s\n\
+              \  before: %s\n\
+              \  after:  %s"
+              (String.concat "." classes)
+              css (String.concat " " b) (String.concat " " a))
+        sh_class_subsets
+    done
+
+  (* Two source orders that agree on every element's longhand cascade must
+     optimise to cascade-equivalent output: the DAG result cannot depend on a
+     shorthand-overlap order it is free to reorder. *)
+  let fuzz_shorthand_permutation_sound () =
+    let rng = Random.State.make [| 0x5305 |] in
+    let checked = ref 0 in
+    for _ = 1 to iters do
+      let rules = gen_sh_rules rng in
+      let x = String.concat "" rules
+      and x' = String.concat "" (shuffle rng rules) in
+      let bx = parse x and bx' = parse x' in
+      let neutral =
+        List.for_all
+          (fun e -> sh_computed bx e = sh_computed bx' e)
+          sh_class_subsets
+      in
+      if neutral then begin
+        incr checked;
+        let ax = parse (optimize_str x) and ax' = parse (optimize_str x') in
+        List.iter
+          (fun e ->
+            if sh_computed ax e <> sh_computed ax' e then
+              Alcotest.failf
+                "shorthand-neutral permutation diverged for .%s:\n\
+                \  x:  %s\n\
+                \  x': %s"
+                (String.concat "." e) x x')
+          sh_class_subsets
+      end
+    done;
+    Alcotest.(check bool)
+      (Fmt.str "exercised %d shorthand-neutral permutations" !checked)
+      true (!checked > 0)
+
+  let cases =
+    [
+      Alcotest.test_case "optimize is idempotent" `Slow fuzz_idempotent;
+      Alcotest.test_case "optimize output is valid and no larger" `Slow
+        fuzz_valid_and_no_larger;
+      Alcotest.test_case "optimize preserves the cascade" `Slow
+        fuzz_cascade_equivalent;
+      Alcotest.test_case "cascade-neutral permutations stay equivalent" `Slow
+        fuzz_neutral_permutation_soundness;
+      Alcotest.test_case "shorthand longhand cascade preserved" `Slow
+        fuzz_shorthand_cascade_equivalent;
+      Alcotest.test_case "shorthand-neutral permutations stay equivalent" `Slow
+        fuzz_shorthand_permutation_sound;
+    ]
+end
+
+let suite = ("optimize", optimize_tests @ selector_merging_tests @ Fuzz.cases)

@@ -10,13 +10,19 @@ val fragment : t
 (** Default fragment context. *)
 
 val of_scope :
-  ?lossless:bool -> ?aggressive:bool -> ?extend_lists:bool -> scope option -> t
+  ?lossless:bool ->
+  ?aggressive:bool ->
+  ?extend_lists:bool ->
+  ?closed_world:bool ->
+  scope option ->
+  t
 (** Build a context from an optional scope. *)
 
 val v :
   ?lossless:bool ->
   ?aggressive:bool ->
   ?extend_lists:bool ->
+  ?closed_world:bool ->
   ?registered:(string -> bool) ->
   scope ->
   t
@@ -36,11 +42,28 @@ val aggressive : t -> bool
     fixpoint) run regardless of the preflight's byte-gain estimate. *)
 
 val extend_lists : t -> bool
-(** Whether the body-keyed across-gap combine ({!Merge.identical_global}) is
-    allowed to absorb candidates into an existing {!Selector.List} rule or treat
-    such a rule as a multi-subselector candidate. Off by default; the A/B
-    optimizer in {!Optimize.stylesheet} flips it for one of two runs and emits
-    whichever stylesheet serializes shorter. *)
+(** Whether DAG identical-body factoring may absorb candidates into an existing
+    {!Selector.List} rule or treat such a rule as a multi-subselector candidate.
+    Off by default for direct scheduler callers; the main optimizer enables it
+    through the guarded DAG candidate selector, which also keeps the strict
+    non-list alternative when that is locally better. *)
+
+val closed_world : t -> bool
+(** Whether the caller knows the exact HTML the CSS will style.
+
+    Off by default: the optimizer assumes any HTML is possible, so it never
+    merges or reorders two rules when some element could match both selectors
+    and get a different result. That keeps the output correct for any page.
+
+    On: the caller promises the clashing selector combinations never appear on a
+    real element, which lets the optimizer merge more. It is unsafe if such an
+    element does turn up, including one a script adds at runtime. This is about
+    the HTML, separate from {!scope}, which is about how much of the CSS you
+    control. *)
+
+val with_extend_lists : bool -> t -> t
+(** [with_extend_lists enabled ctx] returns [ctx] with only the list-extension
+    strategy flag changed. *)
 
 val pp : t Pp.t
 (** Pretty-printer for debugging. *)

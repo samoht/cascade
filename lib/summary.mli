@@ -32,35 +32,14 @@ module Map : sig
   (** [find_opt prop t] returns the value bound to [prop], if any. *)
 end
 
-type ids = int array
-(** Sorted compact property-id set. *)
-
 type bloom
 (** Compact declaration-hash prefilter. *)
 
 type t
 (** Summary of one rule used by factoring passes. *)
 
-val reset : unit -> unit
-(** [reset ()] clears the process-local property-id table. *)
-
 val prop : Declaration.t -> Declaration.prop_key
 (** [prop decl] returns the comparable property key for [decl]. *)
-
-val ids_empty : ids -> bool
-(** [ids_empty ids] is [true] when [ids] has no property ids. *)
-
-val ids_mem : int -> ids -> bool
-(** [ids_mem id ids] tests membership by binary search. *)
-
-val ids_disjoint : ids -> ids -> bool
-(** [ids_disjoint a b] is [true] when the sorted id sets do not intersect. *)
-
-val ids_subset : ids -> ids -> bool
-(** [ids_subset a b] is [true] when every id in [a] is present in [b]. *)
-
-val ids_inter : ids -> ids -> ids
-(** [ids_inter a b] returns the sorted intersection of [a] and [b]. *)
 
 val v :
   rule_size:(Stylesheet.rule -> int) ->
@@ -92,13 +71,6 @@ val decl_count : t -> int
 val prop_set : t -> Props.t
 (** [prop_set t] is the set of properties declared by [rule t]. *)
 
-val prop_ids : t -> ids
-(** [prop_ids t] is the compact sorted id set for [prop_set t]. *)
-
-val decl_prop_ids : t -> ids
-(** [decl_prop_ids t] are property ids aligned with declarations in source
-    order. *)
-
 val selector_summary : t -> Selector_summary.t Lazy.t
 (** [selector_summary t] is the lazily computed selector summary. *)
 
@@ -121,10 +93,6 @@ val may_share_decl_hash : t -> t -> bool
 val declares_all : t -> Declaration.prop_key list -> bool
 (** [declares_all t props] is [true] when [t] declares every property in
     [props]. *)
-
-val declares_ids : t -> ids -> bool
-(** [declares_ids t ids] is [true] when [t] declares every property id in [ids].
-*)
 
 val decl_for_prop : t -> Declaration.prop_key -> Declaration.t option
 (** [decl_for_prop t prop] returns the first declaration for [prop], if any. *)

@@ -43,18 +43,10 @@ let print_pass_profile entries =
 
 let print_factor_profile_footer () =
   let module S = Cascade.Stats in
-  Fmt.epr
-    "@.factor stops: %d marginal, committed savings: %d bytes@.factor anchors \
-     scored: %d (prefiltered %d), factorings applied: %d@."
-    S.counters.marginal_stops S.counters.factor_bytes_saved
-    S.counters.anchors_scored S.counters.anchors_prefiltered
-    S.counters.factorings_applied;
+  Fmt.epr "@.factor stops: %d marginal, committed savings: %d bytes@."
+    S.counters.marginal_stops S.counters.factor_bytes_saved;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
-    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain;
-  Fmt.epr
-    "factor intervals: %d candidates, %d pruned, %d exact-scored, %d selected@."
-    S.counters.interval_candidates S.counters.interval_pruned
-    S.counters.interval_scored S.counters.interval_selected
+    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain
 
 let report_profile () =
   let module S = Cascade.Stats in
@@ -82,8 +74,8 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~aggressive ~inline_imports_flag ~inline_vars_flag ~keep_vars
-    ~memtrace_path ~profile =
+    ~enforce_spec ~aggressive ~closed_world ~inline_imports_flag
+    ~inline_vars_flag ~keep_vars ~memtrace_path ~profile =
   Cli_io.start_memtrace memtrace_path;
   try
     let stylesheet = Cli_io.read_input input_path in
@@ -99,7 +91,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       if minify then
         let () = Cascade.Stats.set_profile profile in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
-          stylesheet
+          ~closed_world stylesheet
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
@@ -223,6 +215,18 @@ let memtrace_arg =
   in
   Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
 
+let closed_world_arg =
+  let doc =
+    "Assume you know the exact HTML and that no element ever matches two \
+     clashing selectors, so cascade may merge rules it would otherwise keep \
+     apart (the assumption tools like SatCSS make from a captured page). \
+     Unsafe: the page can render wrong if such an element appears, including \
+     one a script adds at runtime. This is about the HTML, separate from \
+     $(b,--scope) (how much of the CSS you control). Has no effect without \
+     $(b,--minify)."
+  in
+  Arg.(value & flag & info [ "closed-world" ] ~doc)
+
 let profile_arg =
   let doc =
     "Print per-pass timings of the optimizer factoring fixpoint to stderr \
@@ -242,6 +246,7 @@ let term =
         lossless
         enforce_spec
         aggressive
+        closed_world
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
@@ -267,14 +272,17 @@ let term =
           Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
         if aggressive && not minify then
           Fmt.epr "Warning: --aggressive has no effect without --minify@.";
+        if closed_world && not minify then
+          Fmt.epr "Warning: --closed-world has no effect without --minify@.";
         if profile && not minify then
           Fmt.epr "Warning: --profile has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~aggressive ~inline_imports_flag ~inline_vars_flag
-          ~keep_vars ~memtrace_path ~profile)
+          ~enforce_spec ~aggressive ~closed_world ~inline_imports_flag
+          ~inline_vars_flag ~keep_vars ~memtrace_path ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
-    $ enforce_spec_arg $ aggressive_arg $ inline_imports_arg $ inline_vars_arg
-    $ keep_vars_arg $ memtrace_arg $ profile_arg $ Cli_log.term)
+    $ enforce_spec_arg $ aggressive_arg $ closed_world_arg $ inline_imports_arg
+    $ inline_vars_arg $ keep_vars_arg $ memtrace_arg $ profile_arg
+    $ Cli_log.term)
 
 let man =
   [

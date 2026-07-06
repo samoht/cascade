@@ -55,8 +55,8 @@ it into a structured CSS model, and writes formatted CSS to stdout.
 
 Without flags it pretty-prints. With `--minify` it runs the standard safe
 transforms (deduplication, rule merging, selector grouping, empty-rule
-elimination, nested-rule flattening, shorthand composition, color
-canonicalization) and emits minified output.
+elimination, nested-rule flattening, shorthand composition, colour
+canonicalisation) and emits minified output.
 
 This is a parser/printer round trip, not a byte-preserving formatter: comments
 are discarded during parsing, and empty rules and invalid declarations are
@@ -78,16 +78,16 @@ cat style.css | cascade -                                          # read stdin
 
 | Flag | Purpose |
 |---|---|
-| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. |
-| `--aggressive` | Force the global factoring fixpoint and re-run the top-level pipeline until the AST stops changing (capped at 5 iterations). Trades roughly 10-20x wall clock for the last few percent of bytes. Has no effect without `--minify`. |
-| `--lossless` | Disable color approximation under `--minify`. Exact color canonicalization still runs; static modern color-space values and `color-mix()` stay functional. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serializes to the shortest CSS form it knows, but it keeps every `@supports` and `supports()` guard unless the CSS text and spec alone prove the rewrite. Has no effect without `--minify`. |
+| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing (capped at 5 iterations), so the output is a fixed point: rule-order canonicalisation can expose a merge a single pass would miss. |
+| `--aggressive` | Force the global factoring fixpoint regardless of the preflight, and widen the convergence cap. Trades roughly 10-20x wall clock for the last few percent of bytes. Has no effect without `--minify`. |
+| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Has no effect without `--minify`. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest CSS form it knows, but it keeps every `@supports` and `supports()` guard unless the CSS text and spec alone prove the rewrite. Has no effect without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. |
 | `--inline-imports` | Resolve `@import` against files relative to the input. Closed-world: assumes you control file resolution. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
-| `--profile` | Print per-pass timings of the optimizer to stderr after the run. Useful to triage which pass dominates on a slow input. Has no effect without `--minify`. |
+| `--profile` | Print per-pass timings of the optimiser to stderr after the run. Useful to triage which pass dominates on a slow input. Has no effect without `--minify`. |
 | `--memtrace=FILE` | Write a memtrace allocation trace to FILE. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
 
@@ -132,8 +132,12 @@ usable as a CI check.
   "identical".
 - `string`: character-level comparison.
 - `canonical`: passes when the two inputs share cascade's canonical minified
-  form. This is not full CSS semantic equivalence: equivalent shorthand
-  decompositions and cascade-affecting rule reorderings are not modelled.
+  form, modulo cascade-neutral reordering. Declarations or rules whose
+  footprints are disjoint (they write different properties) may swap freely, and
+  distinct custom properties may swap within any rule, since none of those moves
+  can change a computed value. Cascade-significant order is kept distinct (two
+  writes of the same property, a shorthand and its longhand, a vendor-prefixed
+  alias). Equivalent shorthand decompositions are still not modelled.
 
 <!-- $MDX skip -->
 ```bash
@@ -171,22 +175,22 @@ loop.
 
 ## `--minify` policy
 
-Cascade picks the shortest behavior-preserving spelling at every choice point.
+Cascade picks the shortest behaviour-preserving spelling at every choice point.
 Where the CSS spec and browser-compatible recovery rules permit several valid
-serializations, cascade chooses the shortest valid one.
+serialisations, cascade chooses the shortest valid one.
 
 ### What runs
 
 Value-level rewrites:
 
-- **Colors:** hex when no longer than the name (`black` -> `#000`,
-  `blue` -> `#00f`; `red` stays a name). Modern color functions
+- **Colours:** hex when no longer than the name (`black` -> `#000`,
+  `blue` -> `#00f`; `red` stays a name). Modern colour functions
   (`lab`/`lch`/`oklab`/`oklch`/`color()`) fold to shorter sRGB only within the
   ΔE<sub>OK</sub> budget below.
 - **Numbers and lengths:** drop leading/trailing zeros (`0.5` -> `.5`); convert
   compatible units only when shorter (`12pt` stays `12pt`).
 - **Math:** `calc()`, `hypot()`, etc. fold constant subexpressions only when
-  the serialized result is exact (`calc(100%/3)` stays `calc(100%/3)`).
+  the serialised result is exact (`calc(100%/3)` stays `calc(100%/3)`).
 - **Whitespace:** elided at safe token boundaries (`100% 0` -> `100%0`).
 
 Selector-level rewrites:
@@ -199,9 +203,14 @@ Rule-level rewrites:
 
 - Adjacent same-selector merging and identical-body combining across
   non-overlapping intermediates, with specificity and importance reasoning.
-- `factor_anchor` extracts shared declarations into comma-list rules when
+- The DAG optimiser extracts shared declarations into comma-list rules when
   cascade-safe and net smaller.
-- Shorthands with unordered components serialize in cascade's canonical order
+- Rule ordering is stable and deterministic: the optimiser builds a
+  cascade-dependency DAG, then emits a topological order whose tie-break is the
+  first source appearance of each node. If two rules are not order-constrained,
+  cascade does not invent a lexicographic CSS order for them; it keeps the
+  source-order key.
+- Shorthands with unordered components serialise in cascade's canonical order
   (`animation:1s slide` -> `animation:slide 1s`).
 - Dead-rule elimination, `@layer` consolidation, and
   `@supports`/`@media`/`@container` flattening when the condition is satisfied
@@ -222,7 +231,7 @@ never produces a bare colour keyword: a name like `red` is also a valid
 `<custom-ident>`, so it stays distinct from `#f00` even though it is shorter,
 and hex stays hex. The fold changes the exact token string a script reads back
 via `getPropertyValue`; cascade does not treat that byte-exact CSSOM
-serialization as an observable to preserve.
+serialisation as an observable to preserve.
 
 Whitespace inside an opaque value is likewise folded only where it is
 insignificant: a `)` closing a non-substitution function or a block is a hard
@@ -232,28 +241,29 @@ stays, since the substituted value could otherwise merge with its neighbour.
 
 ### How rule merging scales
 
-The rule-level rewrites run as an *incremental, priority-driven* merge loop, not
-repeated full passes. Rules live in a pool that keeps cascade order with O(1)
-precedence queries (order-maintenance) and merge classes in a small union-find;
-a priority-search queue holds the frontier of candidate merges, largest
-byte-saving first. Applying a merge re-scores only the rules it touched, so the
-loop never re-scans the whole stylesheet.
+The rule-level rewrites run on a cascade-dependency DAG, not on repeated linear
+file scans. Graph edges represent only order-sensitive cascade dependencies:
+same-origin rules whose equal-specificity selector branches may match the same
+element and whose equal-importance declarations overlap after
+shorthand/longhand expansion. Disjoint rules remain unordered in the graph.
 
-The simpler alternative -- a batch fixpoint that re-scans every rule each pass
-until nothing changes -- needs none of that machinery, but is O(passes x rules)
-and tends towards quadratic on large stylesheets. The incremental loop is
-O(n log n): doubling the rule count costs about 2.2x work, well under the 4x a
-quadratic shows (measured in `test/test_loop.ml`). The internals are documented
-in `lib/loop.mli` and `lib/pool.mli`.
+Candidate rewrites are scheduled through an incremental priority queue,
+largest byte-saving first. Applying a rewrite updates the graph and
+re-enumerates only the affected neighbourhood; a full enumeration is kept as the
+fallback when the queue drains. The final output is a deterministic
+topological projection of the live graph, with first source appearance as the
+stable tie-break key. Produced group/residual nodes inherit the earliest source
+slot they represent, so the optimiser is source-stable whenever the cascade
+does not force another order.
 
-### Color approximation
+### Colour approximation
 
-Cascade folds colors only within `0.002` ΔE<sub>OK</sub> (the CSS Color 4
+Cascade folds colours only within `0.002` ΔE<sub>OK</sub> (the CSS Color 4
 Delta-E metric for Oklab/OkLCh). Alpha is separate: functional alpha rounds
 to three decimals (`0.0005` tolerance); the 8-bit alpha of a hex fold is
 its canonical spelling and is not gated by that tolerance.
 
-Pass `--lossless` to keep color values exact: hex/named canonicalization and
+Pass `--lossless` to keep colour values exact: hex/named canonicalisation and
 modern-syntax rewrites still run, but channel rounding, within-budget
 modern-space folds, and static `color-mix()` resolution are disabled.
 
@@ -266,9 +276,9 @@ or runtime custom-property mutation. The output stays sound when the minified
 stylesheet is embedded in a larger page.
 
 `--scope=stylesheet` asserts the input is the whole author CSS graph (after
-`@import` resolution). The optimizer can then synthesize a partial-coverage
+`@import` resolution). The optimiser can then synthesise a partial-coverage
 shorthand whose omitted longhand resets are proved not to disturb a prior
-write the optimizer can't see.
+write the optimiser can't see.
 
 ### Target browsers
 
@@ -277,7 +287,7 @@ baseline feature queries like `@supports(display:flex)` as true and remove the
 wrapper, and may use the HTML direction model to shorten `:not(:dir(ltr))` to
 `:dir(rtl)`.
 
-`--enforce-spec` drops those facts. Cascade still serializes to the shortest
+`--enforce-spec` drops those facts. Cascade still serialises to the shortest
 CSS form it knows, but feature queries stay and the direction model is not
 assumed.
 
@@ -285,15 +295,15 @@ assumed.
 
 Cascade targets selected **CSS Level 3, Level 4, and Level 5** modules. Its
 conformance target is CSS parsing, ASTs, printing, transforms, diffs, and
-optimization; it is not a complete web-platform runtime.
+optimisation; it is not a complete web-platform runtime.
 
 | Specification | Coverage |
 |---|---|
 | [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting, specificity |
 | [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
-| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colors, 15 color spaces |
+| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colours, 15 colour spaces |
 | [Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/) | `@media` (recovering a failed condition parse as `not all`), `@supports` property and selector checks, `@when` / `@else`, `@supports-condition` |
-| [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimizer |
+| [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimiser |
 | [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
 | [Container Queries Level 5](https://www.w3.org/TR/css-conditional-5/#container-queries) | `@container` with size queries and typed `style()` / `scroll-state()` queries, including range operators |
 | [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution, `@property` registration |
@@ -320,7 +330,7 @@ frameworks.
 - **Comments and source positions** are not preserved across the
   parser/printer round trip.
 - **Unregistered custom properties** stay opaque token streams to the
-  optimizer, apart from substreams whose type their own syntax fixes
+  optimiser, apart from substreams whose type their own syntax fixes
   unambiguously (complete colour functions, and constant math functions
   reducing to an `<angle>` or `<time>`), which fold to their shortest spelling.
 
@@ -405,7 +415,7 @@ warned. When both succeed, their minified outputs are identical.
 The core `cascade` library links only
 [uutf](https://erratique.ch/software/uutf) and the OCaml runtime; it does not
 pull `fmt`, so js_of_ocaml embedders stay lean. A local jsoo build that
-parses and minifies one stylesheet compressed to under 200 KiB
+parses and minifies one stylesheet compresses to under 200 KiB
 (`--opt 3 --no-source-map`, size-oriented runtime flags).
 
 ## Development and testing
@@ -432,7 +442,7 @@ Three oracle corpora cover parser conformance and minified-output behaviour:
 - **keithamus/css-minify-tests.** A vendor-neutral hand-curated set of
   `source.css`/`expected.css` pairs covering 29 CSS feature categories. Each
   pair must equal the upstream `expected.css` after cascade's documented
-  normalizations.
+  normalisations.
 
 A fourth corpus, [SatCSS](test/interop/satcss/) (Hague-Lin-Hong's CSS
 minification benchmark), is regenerated locally and not vendored: the upstream
@@ -442,7 +452,7 @@ repository carries no licence for redistributing the website CSS snapshots.
 
 **Other CSS tooling.** [Lightning CSS](https://github.com/parcel-bundler/lightningcss)
 (Rust), [esbuild](https://github.com/evanw/esbuild) (Go), and the JS
-optimizers [CSSO](https://github.com/css/csso),
+optimisers [CSSO](https://github.com/css/csso),
 [cssnano](https://github.com/cssnano/cssnano), and
 [clean-css](https://github.com/clean-css/clean-css) all serve as cached
 minifier oracles in the test suite.
@@ -452,13 +462,13 @@ parser/AST projects worth comparing against. Earlier OCaml CSS work:
 [css-parser](https://github.com/astrada/ocaml-css-parser) and
 [OCaml-css](https://zoggy.frama.io/ocaml-css/).
 
-**Optimization research.**
+**Optimisation research.**
 [Hague, Lin, Hong (2018)](https://arxiv.org/abs/1812.02989) formalize rule
 merging as a CSS-graph problem: a merge is legal only when selector
 intersection and the intervening cascade dependencies preserve semantics.
 [Visscher, Punt, Zaytsev (2016)](https://grammarware.net/text/2016/aba-css.pdf)
 catalogue A-B*-A patterns (a property set, overridden, then restored), useful
-adversarial input for optimizers since source order, specificity,
+adversarial input for optimisers since source order, specificity,
 inheritance, and implicit defaults all affect whether a rewrite is sound.
 [CILLA](https://github.com/saltlab/cilla) (Mesbah, Mirshokraie) analyses
 runtime DOM-CSS matching to flag dead selectors at the layout level, a useful

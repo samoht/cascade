@@ -2838,6 +2838,8 @@ let spec_nesting_selector_edges () =
      img) { display: grid } }"
     ~minified:
       ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
+      (* nested rule order is preserved; selector spelling and declaration
+         values are still canonicalized. *)
     ~optimized:
       ".card{color:red;&:is(:focus-visible,:hover){color:#00f}&:has(>img){display:grid}}";
   check_stylesheet
@@ -3997,10 +3999,10 @@ let c61_same_condition_merge () =
 
 (* CSS Cascade 6.1 (Cascade Sorting Order): [.a] and the intervening [.b] tie on
    specificity (0,1,0), but the merge folds the later [.a] up into the earlier
-   slot, moving only [margin]. [.b] writes [color], which neither [.a] property
-   conflicts with, so the move is unobservable and the two [.a] rules combine
-   across it. A conflicting, same-specificity intervening rule would block
-   it. *)
+   slot and canonicalises the merged body. [.b] writes [color], which neither
+   [.a] property conflicts with, so the move is unobservable and the two [.a]
+   rules combine across it. A conflicting, same-specificity intervening rule
+   would block it. *)
 let c61_merge_across_nonconflicting () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4012,7 +4014,7 @@ let c61_merge_across_nonconflicting () =
   in
   Alcotest.(check string)
     "non-conflicting intervening rule does not block the merge"
-    ".a{padding:10px;margin:5px}.b{color:red}" output
+    ".a{margin:5px;padding:10px}.b{color:red}" output
 
 (* {2 More fidelity tests for the new edges}
 

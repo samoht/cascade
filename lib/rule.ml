@@ -12,7 +12,6 @@ let with_declarations (rule : rule) declarations =
   if declarations == rule.declarations then rule else { rule with declarations }
 
 let same_property = Shorthand.same_property
-let same_minified_declaration = Shorthand.same_minified_declaration
 let is_intentionally_duplicated = Shorthand.is_intentionally_duplicated
 let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let canonical_selector_key = Merge.key
@@ -213,9 +212,6 @@ let finalize ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
     else rule
   in
   with_declarations rule declarations
-
-let merge = Merge.adjacent
-let identical = Merge.identical ~same:same_minified_declaration
 
 let drop_shadowed_rules (rules : rule list) : rule list =
   let later_by_selector = Cover.v () in

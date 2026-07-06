@@ -15,22 +15,7 @@ let check_zeroed_counters label =
     0 S.counters.factor_preflight_gain;
   Alcotest.(check int)
     (label ^ " factor_bytes_saved")
-    0 S.counters.factor_bytes_saved;
-  Alcotest.(check int) (label ^ " anchors_scored") 0 S.counters.anchors_scored;
-  Alcotest.(check int)
-    (label ^ " anchors_prefiltered")
-    0 S.counters.anchors_prefiltered;
-  Alcotest.(check int)
-    (label ^ " factorings_applied")
-    0 S.counters.factorings_applied;
-  Alcotest.(check int)
-    (label ^ " interval_candidates")
-    0 S.counters.interval_candidates;
-  Alcotest.(check int) (label ^ " interval_pruned") 0 S.counters.interval_pruned;
-  Alcotest.(check int) (label ^ " interval_scored") 0 S.counters.interval_scored;
-  Alcotest.(check int)
-    (label ^ " interval_selected")
-    0 S.counters.interval_selected
+    0 S.counters.factor_bytes_saved
 
 let test_pass_bucket_reuse_and_reset () =
   S.reset ();
@@ -104,13 +89,6 @@ let test_reset_clears_mutable_state () =
   S.counters.factor_fixpoints_skipped <- 6;
   S.counters.factor_preflight_gain <- 7;
   S.counters.factor_bytes_saved <- 8;
-  S.counters.anchors_scored <- 9;
-  S.counters.anchors_prefiltered <- 10;
-  S.counters.factorings_applied <- 11;
-  S.counters.interval_candidates <- 12;
-  S.counters.interval_pruned <- 13;
-  S.counters.interval_scored <- 14;
-  S.counters.interval_selected <- 15;
   S.record_iteration ~fixpoint:1 ~local_iteration:1 ~before_rules:1
     ~before_bytes:1 ~after_rules:1 ~after_bytes:1 ~bytes_saved:1
     ~active_passes:1 ~changed_passes:1 ~elapsed:0.0;

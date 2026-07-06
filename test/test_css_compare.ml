@@ -899,6 +899,30 @@ let tree_same_selector_reorder () =
     (equal ~mode:`Tree ".a{color:red}.a{color:blue}"
        ".a{color:red}.a{color:blue}")
 
+let canonical_same_selector_merge_across_intervening_rules () =
+  let merged =
+    "@layer \
+     base{.form-select{appearance:none;background-color:#fff;border-color:#6b7280;border-width:1px;border-radius:0;padding:.5rem \
+     .75rem;font-size:1rem;line-height:1.5rem;background-image:url(x);background-position:right \
+     .5rem center;background-repeat:no-repeat;background-size:1.5em \
+     1.5em;padding-right:2.5rem}.form-select:focus{outline:2px solid \
+     transparent;outline-offset:2px;border-color:#2563eb}.form-select:where([size]:not([size=\"1\"])){background-image:none;background-position:0 \
+     0;background-repeat:unset;background-size:initial;padding-right:.75rem}}"
+  in
+  let split =
+    "@layer \
+     base{.form-select{appearance:none;background-color:#fff;border-color:#6b7280;border-width:1px;border-radius:0;padding:.5rem \
+     .75rem;font-size:1rem;line-height:1.5rem}.form-select:focus{outline:2px \
+     solid \
+     transparent;outline-offset:2px;border-color:#2563eb}.form-select{background-image:url(x);background-position:right \
+     .5rem center;background-repeat:no-repeat;background-size:1.5em \
+     1.5em;padding-right:2.5rem}.form-select:where([size]:not([size=\"1\"])){background-image:none;background-position:0 \
+     0;background-repeat:unset;background-size:initial;padding-right:.75rem}}"
+  in
+  Alcotest.(check bool)
+    "canonical diff reconciles split/merged same-selector forms rules" true
+    (equal ~mode:`Canonical merged split)
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -910,6 +934,9 @@ let suite =
       Alcotest.test_case "import canonical media" `Quick import_canonical_media;
       Alcotest.test_case "tree same-selector reorder" `Quick
         tree_same_selector_reorder;
+      Alcotest.test_case
+        "canonical same-selector merge across intervening rules" `Quick
+        canonical_same_selector_merge_across_intervening_rules;
       Alcotest.test_case "equal identical" `Quick equal_identical;
       Alcotest.test_case "equal different" `Quick equal_different;
       Alcotest.test_case "equal empty" `Quick equal_empty;

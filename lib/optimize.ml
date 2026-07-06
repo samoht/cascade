@@ -63,9 +63,6 @@ let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let deduplicate_declarations = Shorthand.deduplicate_declarations
 let single_rule_without_nested = Rule.single
 let finalize_rule_without_nested = Rule.finalize
-let merge_rules = Rule.merge
-let combine_identical_rules = Rule.identical
-let factor_anchor_gaps = Factor.anchor
 
 (* Per-pass and global counters for the --profile CLI flag. Reset at each
    [Optimize.stylesheet] entry; bumped from the hot loops below. *)
@@ -103,20 +100,10 @@ type counters = Stats.counters = {
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
-  mutable anchors_scored : int;
-  mutable anchors_prefiltered : int;
-  mutable factorings_applied : int;
-  mutable interval_candidates : int;
-  mutable interval_pruned : int;
-  mutable interval_scored : int;
-  mutable interval_selected : int;
 }
 
 let counters = Stats.counters
-
-let reset_counters () =
-  Stats.reset ();
-  Summary.reset ()
+let reset_counters () = Stats.reset ()
 
 (** {1 Statement Optimization} *)
 
@@ -134,6 +121,7 @@ let drop_misplaced_imports = Block.drop_misplaced_imports
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
 let merge_lone_nested_rule = Nest.merge_lone
 let synthesize_nesting_statements = Nest.statements
+let stylesheet_key stmts = Pp.to_string ~minify:true pp_stylesheet stmts
 
 (* A block holds a conditional named layer when it directly contains a named
    [@layer] block with content. Unwrapping a known-true [@supports] around such
@@ -164,8 +152,8 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
       collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
-let factor_rules_incremental ~ctx rules =
-  Factor.run ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
+let factor_rules_incremental ?cache ~ctx rules =
+  Factor.run ?cache ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
@@ -183,12 +171,12 @@ let drop_nesting_prefix (stmt : statement) : statement =
         }
   | other -> other
 
-let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
-    =
+let rec statements ?factor_cache ~ctx ~enforce_spec (stmts : statement list) :
+    statement list =
   match stmts with
   | [] -> stmts
   | _ ->
-      let optimize_merged_block = statements ~ctx ~enforce_spec in
+      let optimize_merged_block = statements ?factor_cache ~ctx ~enforce_spec in
       (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
          invalid and ignored by every browser, so it is a no-op that must not
          act as a cascade boundary. Stripping it up front lets the rules it
@@ -199,7 +187,9 @@ let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
         let stmts =
           drop_misplaced_imports stmts |> merge_named_layers_by_name
         in
-        let stmts = process_statements ~ctx ~enforce_spec [] stmts in
+        let stmts =
+          process_statements ?factor_cache ~ctx ~enforce_spec [] stmts
+        in
         let stmts = synthesize_nesting_statements stmts in
         let stmts =
           stmts
@@ -217,65 +207,72 @@ let rec statements ~ctx ~enforce_spec (stmts : statement list) : statement list
    pending; when both are empty, return the final reversed list. This shape lets
    [process_supports_statement] splice three segments without first
    materialising their concatenation. *)
-and process_statements ~ctx ~enforce_spec ?(pending : statement list list = [])
-    (acc : statement list) (remaining : statement list) : statement list =
+and process_statements ?factor_cache ~ctx ~enforce_spec
+    ?(pending : statement list list = []) (acc : statement list)
+    (remaining : statement list) : statement list =
   match remaining with
   | [] -> (
       match pending with
       | [] -> List.rev acc
       | next :: rest_pending ->
-          process_statements ~ctx ~enforce_spec ~pending:rest_pending acc next)
+          process_statements ?factor_cache ~ctx ~enforce_spec
+            ~pending:rest_pending acc next)
   | (Rule r as stmt) :: rest ->
-      process_rule_run ~ctx ~enforce_spec ~pending acc stmt r rest
+      process_rule_run ?factor_cache ~ctx ~enforce_spec ~pending acc stmt r rest
   | (Media (cond, block) as stmt) :: rest ->
-      process_media_statement ~ctx ~enforce_spec ~pending acc stmt cond block
-        rest
+      process_media_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        cond block rest
   | (Container (name, cond, block) as stmt) :: rest ->
-      process_container_statement ~ctx ~enforce_spec ~pending acc stmt name cond
-        block rest
+      process_container_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
+        stmt name cond block rest
   | Supports (cond, block) :: rest ->
-      process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest
+      process_supports_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
+        cond block rest
   | (Scope (start, end_, block) as stmt) :: rest ->
       let start' = option_map_preserve canonicalize_scope_selector start in
       let end_' = option_map_preserve canonicalize_scope_selector end_ in
-      let optimized_block = statements ~ctx ~enforce_spec block in
+      let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
       let optimized =
         if start' == start && end_' == end_ && optimized_block == block then
           stmt
         else Scope (start', end_', optimized_block)
       in
-      process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+        (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
-      let optimized_block = statements ~ctx ~enforce_spec block in
+      let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
       let optimized =
         if optimized_block == block then stmt
         else Origin (origin, optimized_block)
       in
-      process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+        (optimized :: acc) rest
   | (Layer (name, block) as stmt) :: rest ->
-      process_layer_statement ~ctx ~enforce_spec ~pending acc stmt name block
-        rest
+      process_layer_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        name block rest
   | (Import import as stmt) :: rest ->
-      process_import_statement ~ctx ~enforce_spec ~pending acc stmt import rest
+      process_import_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
+        stmt import rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
-      process_statements ~ctx ~enforce_spec ~pending (hd :: acc) rest
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending (hd :: acc)
+        rest
 
-and process_rule_run ~ctx ~enforce_spec ~pending acc stmt r rest =
+and process_rule_run ?factor_cache ~ctx ~enforce_spec ~pending acc stmt r rest =
   let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
-  let optimized = rules_aux ~ctx ~enforce_spec plain_rules in
+  let optimized = rules_aux ?factor_cache ~ctx ~enforce_spec plain_rules in
   let as_statements =
     if optimized == plain_rules then plain_stmts
     else List.map (fun r -> Rule r) optimized
   in
-  process_statements ~ctx ~enforce_spec ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending
     (List.rev_append as_statements acc)
     rest
 
-and process_media_statement ~ctx ~enforce_spec ~pending acc stmt cond block rest
-    =
+and process_media_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+    cond block rest =
   let cond = if enforce_spec then cond else Media.lower_for_minify cond in
-  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
   let optimized =
     if
       (cond == match stmt with Media (c, _) -> c | _ -> assert false)
@@ -283,15 +280,16 @@ and process_media_statement ~ctx ~enforce_spec ~pending acc stmt cond block rest
     then stmt
     else Media (cond, optimized_block)
   in
-  process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+    (optimized :: acc) rest
 
-and process_container_statement ~ctx ~enforce_spec ~pending acc stmt name cond
-    block rest =
+and process_container_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
+    stmt name cond block rest =
   let cond =
     if enforce_spec then cond
     else option_map_preserve Container.lower_for_minify cond
   in
-  let optimized_block = statements ~ctx ~enforce_spec block in
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
   let optimized =
     if
       (cond == match stmt with Container (_, c, _) -> c | _ -> assert false)
@@ -299,16 +297,18 @@ and process_container_statement ~ctx ~enforce_spec ~pending acc stmt name cond
     then stmt
     else Container (name, cond, optimized_block)
   in
-  process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+    (optimized :: acc) rest
 
-and process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest =
-  let optimized_block = statements ~ctx ~enforce_spec block in
+and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
+    cond block rest =
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
   let baseline =
     if enforce_spec then `Cond cond else Supports.simplify_baseline cond
   in
   match baseline with
   | `True when block_introduces_layer_order optimized_block ->
-      process_statements ~ctx ~enforce_spec ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
         (Supports (cond, optimized_block) :: acc)
         rest
   | `True ->
@@ -319,34 +319,38 @@ and process_supports_statement ~ctx ~enforce_spec ~pending acc cond block rest =
          adjacency-aware merge is exactly the point of unwrapping a
          baseline-true @supports. Use tail-recursive [List.concat] so a long
          [optimized_block] doesn't stack-overflow. *)
-      process_statements ~ctx ~enforce_spec ~pending acc
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending acc
         (List.concat [ trailing; optimized_block; rest ])
-  | `False -> process_statements ~ctx ~enforce_spec ~pending acc rest
+  | `False ->
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending acc rest
   | `Cond cond' ->
-      process_statements ~ctx ~enforce_spec ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
         (Supports (cond', optimized_block) :: acc)
         rest
 
-and process_layer_statement ~ctx ~enforce_spec ~pending acc stmt name block rest
-    =
-  let optimized_block = statements ~ctx ~enforce_spec block in
+and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+    name block rest =
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
   if is_layer_empty optimized_block then
     match name with
     | Some layer_name ->
         let all_names, remaining =
           collect_empty_layer_names [ layer_name ] rest
         in
-        process_statements ~ctx ~enforce_spec ~pending
+        process_statements ?factor_cache ~ctx ~enforce_spec ~pending
           (Layer_decl all_names :: acc)
           remaining
-    | None -> process_statements ~ctx ~enforce_spec ~pending acc rest
+    | None ->
+        process_statements ?factor_cache ~ctx ~enforce_spec ~pending acc rest
   else
     let optimized =
       if optimized_block == block then stmt else Layer (name, optimized_block)
     in
-    process_statements ~ctx ~enforce_spec ~pending (optimized :: acc) rest
+    process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+      (optimized :: acc) rest
 
-and process_import_statement ~ctx ~enforce_spec ~pending acc stmt import rest =
+and process_import_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+    import rest =
   let stmt =
     match import.supports with
     | Some cond
@@ -354,9 +358,10 @@ and process_import_statement ~ctx ~enforce_spec ~pending acc stmt import rest =
         Import { import with supports = None }
     | _ -> stmt
   in
-  process_statements ~ctx ~enforce_spec ~pending (stmt :: acc) rest
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending (stmt :: acc)
+    rest
 
-and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
+and rules_aux ?factor_cache ~ctx ~enforce_spec (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively, then drop the
      redundant nesting prefix (see [drop_nesting_prefix]). *)
   let with_optimized_nested =
@@ -366,7 +371,7 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
           match rule.nested with
           | [] -> []
           | nested ->
-              let nested = statements ~ctx ~enforce_spec nested in
+              let nested = statements ?factor_cache ~ctx ~enforce_spec nested in
               if enforce_spec then nested
               else list_map_preserve drop_nesting_prefix nested
         in
@@ -378,15 +383,12 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
         merge_lone_nested_rule rule)
       rules
   in
-  (* Apply standard rule optimizations. Adjacent same-selector rules merge:
-     [.x{a}] [.x{b}] -> [.x{a;b}], which is safe because cascade order within
-     the merged block matches the source order of the originals.
-     [combine_identical_rules] then groups same-declaration rules under a
-     selector list ([.a, .b, .c{...}]). *)
+  (* Apply local rule normalization before the DAG factor scheduler decides
+     global selector/declaration grouping. *)
   let prepared =
     list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
   in
-  let prepared = prepared |> Rule.drop_shadowed |> merge_rules in
+  let prepared = Rule.drop_shadowed prepared in
   let prepared =
     list_map_preserve
       (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
@@ -397,7 +399,7 @@ and rules_aux ~ctx ~enforce_spec (rules : rule list) : rule list =
      optimizations above always run; this incremental gate only decides whether
      the expensive global factoring fixpoint is likely to buy enough bytes to
      justify the full indexed scheduler walk. *)
-  factor_rules_incremental ~ctx prepared
+  factor_rules_incremental ?cache:factor_cache ~ctx prepared
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
@@ -436,11 +438,11 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
    blocks ([@layer name {}]) stay in place so the [empty-named-layer ->
    Layer_decl] normalisation in [process_statements] still folds them into the
    order-only declaration. *)
-let statements_top_level ~ctx ~enforce_spec (stmts : statement list) :
-    statement list =
-  let optimize_merged_block = statements ~ctx ~enforce_spec in
+let statements_top_level ?factor_cache ~ctx ~enforce_spec
+    (stmts : statement list) : statement list =
+  let optimize_merged_block = statements ?factor_cache ~ctx ~enforce_spec in
   let stmts' =
-    statements ~ctx ~enforce_spec stmts
+    statements ?factor_cache ~ctx ~enforce_spec stmts
     |> merge_consecutive_layers ~optimize_merged_block
     |> drop_redundant_layer_decls |> drop_shadowed_keyframes
   in
@@ -1014,224 +1016,43 @@ and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
   | Unknown_at_rule _ -> List.Drop
   | _ -> List.Keep
 
+let rec statement_rule_count = function
+  | Rule _ -> 1
+  | stmt ->
+      let count = ref 0 in
+      iter_statement_block
+        (fun stmt -> count := !count + statement_rule_count stmt)
+        stmt;
+      !count
+
+let stylesheet_rule_count stmts =
+  List.fold_left (fun count stmt -> count + statement_rule_count stmt) 0 stmts
+
 let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
-  if not aggressive then statements_top_level ~ctx ~enforce_spec stylesheet
-  else
-    (* Re-run the top-level pipeline until the AST stops changing or a small
-       iteration cap fires. Each subsequent pass may shrink the input again
-       because earlier passes (vendor-alias drop, shorthand composition) may
-       have exposed new merge / factoring opportunities the previous pass didn't
-       see. *)
-    let rec loop n stmts =
-      if n <= 0 then stmts
+  (* Re-run the top-level pipeline until the AST stops changing or a small
+     iteration cap fires. Each subsequent pass may shrink the input again
+     because an earlier pass (vendor-alias drop, shorthand composition, media /
+     support merging) exposed a rule run that the DAG factor pass can now
+     optimize. Rule order projection is folded into [Factor.run], so the hot
+     loop does not build a separate ordering graph. Rule count is non-increasing
+     across passes, so this converges. [aggressive] only widens the cap. *)
+  let cap =
+    if aggressive then 6
+    else if stylesheet_rule_count stylesheet > 128 then 1
+    else 5
+  in
+  let factor_cache = Factor.cache () in
+  let rec loop n key stmts =
+    if n <= 0 then stmts
+    else
+      let next = statements_top_level ~factor_cache ~ctx ~enforce_spec stmts in
+      if next == stmts then stmts
+      else if next = stmts then stmts
       else
-        let next = statements_top_level ~ctx ~enforce_spec stmts in
-        if next == stmts then stmts else loop (n - 1) next
-    in
-    loop 5 stylesheet
-
-let has_top_level_selector_list (stylesheet : t) =
-  List.exists
-    (function
-      | Stylesheet.Rule r -> Selector.is_compound_list r.selector | _ -> false)
-    stylesheet
-
-(* Compound-list extension in [combine_identical_global] reads more of the
-   factor pipeline's potential moves when each commit can land, but it can also
-   block better downstream [factor_anchor] decisions by locking in a greedy
-   local merge. The trade-off is input-specific and not predictable from the AST
-   shape alone, so we race the two settings and emit whichever stylesheet
-   serializes shorter. The race is skipped when no [Selector.List] rule exists
-   at the top level - the relaxation can only matter for those, so the second
-   pipeline run would just pay wall-clock for nothing. *)
-let race_extend_lists ~run ~strict stylesheet =
-  if not (has_top_level_selector_list stylesheet) then strict
-  else
-    let extended = run ~extend_lists:true in
-    let size s = Pp.size ~minify:true pp_stylesheet s in
-    if size extended < size strict then extended else strict
-
-(* CSS Custom Properties: a rule whose declarations are all custom properties,
-   each declared nowhere else in the stylesheet, is position-independent - a
-   [var()] resolves at computed-value time, and a globally-unique custom
-   property cannot conflict with another declaration. Canonicalise such a rule's
-   position (hoist to the front of its context, sorted) so two stylesheets that
-   differ only by where the rule sits optimise to the same output. A custom
-   property declared more than once is left untouched: its declarations' order
-   is cascade-significant. *)
-let count_custom_prop_decls (stmts : statement list) : (string, int) Hashtbl.t =
-  let tbl = Hashtbl.create 16 in
-  let bump n =
-    Hashtbl.replace tbl n (1 + Option.value ~default:0 (Hashtbl.find_opt tbl n))
+        let next_key = stylesheet_key next in
+        if String.equal key next_key then next else loop (n - 1) next_key next
   in
-  let count_decls decls =
-    List.iter
-      (fun d ->
-        match Variables.custom_declaration_name d with
-        | Some n -> bump n
-        | None -> ())
-      decls
-  in
-  let rec walk (stmt : statement) =
-    match stmt with
-    | Rule r ->
-        count_decls r.declarations;
-        List.iter walk r.nested
-    | Declarations decls -> count_decls decls
-    | _ -> iter_statement_block walk stmt
-  in
-  List.iter walk stmts;
-  tbl
-
-let is_independent_custom_prop_rule counts (stmt : statement) : bool =
-  match stmt with
-  | Rule r when r.nested = [] && r.declarations <> [] ->
-      List.for_all
-        (fun d ->
-          match Variables.custom_declaration_name d with
-          | Some n -> Hashtbl.find_opt counts n = Some 1
-          | None -> false)
-        r.declarations
-  | _ -> false
-
-(* Anchors that bound a hoist segment: order-significant prelude rules
-   ([@charset] / [@import] / a bare [@layer] order declaration must precede
-   style rules) and [@property] registrations (kept before their uses so the
-   reorder stays minimal). Independent custom-prop rules move only within an
-   anchor-bounded segment, never across an anchor. *)
-let is_hoist_anchor (stmt : statement) : bool =
-  match stmt with
-  | Charset _ | Import _ | Property _ -> true
-  | Layer (_, []) -> true
-  | _ -> false
-
-let rec phys_equal_list a b =
-  match (a, b) with
-  | [], [] -> true
-  | x :: xs, y :: ys -> x == y && phys_equal_list xs ys
-  | _ -> false
-
-let custom_prop_sort_key stmt =
-  Pp.to_string ~minify:true (fun ctx s -> pp_stylesheet ctx [ s ]) stmt
-
-let hoist_custom_prop_segment counts seg =
-  let hoistable, rest =
-    List.partition (is_independent_custom_prop_rule counts) seg
-  in
-  match hoistable with
-  | [] -> seg
-  | _ ->
-      let hoistable =
-        List.stable_sort
-          (fun a b ->
-            String.compare (custom_prop_sort_key a) (custom_prop_sort_key b))
-          hoistable
-      in
-      let result = hoistable @ rest in
-      if phys_equal_list result seg then seg else result
-
-(* Split a level into anchor-bounded segments and hoist within each. *)
-let rec segment_hoist counts = function
-  | [] -> []
-  | stmt :: rest when is_hoist_anchor stmt -> stmt :: segment_hoist counts rest
-  | stmts ->
-      let rec span acc = function
-        | s :: tl when not (is_hoist_anchor s) -> span (s :: acc) tl
-        | tl -> (List.rev acc, tl)
-      in
-      let seg, after = span [] stmts in
-      hoist_custom_prop_segment counts seg @ segment_hoist counts after
-
-(* CSS Properties & Values API: a [@property] registration takes effect
-   document-wide regardless of source order, so a run of registrations with
-   unique names is order-independent. Sort each such run by name into a
-   canonical order, so two stylesheets differing only by registration order
-   optimise to the same output. A run that repeats a name is left untouched: a
-   duplicate registration is last-wins, so its order is significant. *)
-let at_property_name = function Property r -> Some r.name | _ -> None
-
-let sort_property_runs (stmts : statement list) : statement list =
-  if not (List.exists (fun s -> at_property_name s <> None) stmts) then stmts
-  else
-    let changed = ref false in
-    let rec go = function
-      | [] -> []
-      | Property _ :: _ as l ->
-          let rec span acc = function
-            | (Property _ as p) :: tl -> span (p :: acc) tl
-            | tl -> (List.rev acc, tl)
-          in
-          let run, rest = span [] l in
-          let names = List.filter_map at_property_name run in
-          let run =
-            if
-              List.length names
-              = List.length (List.sort_uniq String.compare names)
-              && names <> List.sort String.compare names
-            then (
-              changed := true;
-              List.stable_sort
-                (fun a b ->
-                  String.compare
-                    (Option.value ~default:"" (at_property_name a))
-                    (Option.value ~default:"" (at_property_name b)))
-                run)
-            else run
-          in
-          run @ go rest
-      | s :: rest -> s :: go rest
-    in
-    let result = go stmts in
-    if !changed then result else stmts
-
-let rec recurse_custom_prop_blocks counts (stmt : statement) : statement =
-  let go b = canonicalize_custom_prop_blocks counts b in
-  match stmt with
-  | Rule r ->
-      let nested = go r.nested in
-      if nested == r.nested then stmt else Rule { r with nested }
-  | Layer (n, b) ->
-      let b' = go b in
-      if b' == b then stmt else Layer (n, b')
-  | Media (m, b) ->
-      let b' = go b in
-      if b' == b then stmt else Media (m, b')
-  | Container (n, c, b) ->
-      let b' = go b in
-      if b' == b then stmt else Container (n, c, b')
-  | Supports (s, b) ->
-      let b' = go b in
-      if b' == b then stmt else Supports (s, b')
-  | Moz_document (c, b) ->
-      let b' = go b in
-      if b' == b then stmt else Moz_document (c, b')
-  | When (c, b) ->
-      let b' = go b in
-      if b' == b then stmt else When (c, b')
-  | Else (c, b) ->
-      let b' = go b in
-      if b' == b then stmt else Else (c, b')
-  | Starting_style b ->
-      let b' = go b in
-      if b' == b then stmt else Starting_style b'
-  | Origin (o, b) ->
-      let b' = go b in
-      if b' == b then stmt else Origin (o, b')
-  | Scope (s, e, b) ->
-      let b' = go b in
-      if b' == b then stmt else Scope (s, e, b')
-  | other -> other
-
-and canonicalize_custom_prop_blocks counts (stmts : statement list) :
-    statement list =
-  let recursed = list_map_preserve (recurse_custom_prop_blocks counts) stmts in
-  let hoisted = segment_hoist counts recursed in
-  let sorted = sort_property_runs hoisted in
-  if phys_equal_list sorted recursed then recursed else sorted
-
-let canonicalize_custom_prop_position (stmts : statement list) : statement list
-    =
-  canonicalize_custom_prop_blocks (count_custom_prop_decls stmts) stmts
+  loop cap (stylesheet_key stylesheet) stylesheet
 
 (* Bare names of every custom property referenced through a [var()] anywhere in
    the tree. Scans the serialized declarations, so it sees references inside
@@ -1295,7 +1116,7 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   list_map_preserve prune stmts
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
-    ?(enforce_spec = false) ?(aggressive = false)
+    ?(enforce_spec = false) ?(aggressive = false) ?(closed_world = false)
     ?(prune_unused_custom_props = false) (stylesheet : t) : t =
   Selector_summary.clear_memo ();
   reset_counters ();
@@ -1308,11 +1129,8 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
-  let run ~extend_lists =
-    let ctx = Ctx.v ~lossless ~aggressive ~extend_lists ~registered scope in
-    run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet
-  in
-  let strict = run ~extend_lists:false in
-  race_extend_lists ~run ~strict stylesheet
-  |> canonicalize_custom_prop_position
+  let ctx = Ctx.v ~lossless ~aggressive ~closed_world ~registered scope in
+  run_pipeline
+    ~ctx:(Ctx.with_extend_lists true ctx)
+    ~enforce_spec ~aggressive stylesheet
   |> if prune_unused_custom_props then drop_unused_custom_props else Fun.id

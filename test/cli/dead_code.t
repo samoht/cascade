@@ -112,7 +112,7 @@ Adjacent rules with the same selector merge.
   > .x { margin: 5px }
   > EOF
   $ cascade --minify adjacent.css
-  .x{color:red;padding:10px;margin:5px}
+  .x{color:red;margin:5px;padding:10px}
 
 Non-adjacent rules with the same selector merge across an intervening
 rule that shares no conflicting declaration. Here [.y] writes [color],
@@ -124,7 +124,7 @@ which neither [.x] rule touches, so reordering is unobservable.
   > .x { margin: 5px }
   > EOF
   $ cascade --minify non-adjacent.css
-  .x{padding:10px;margin:5px}.y{color:red}
+  .x{margin:5px;padding:10px}.y{color:red}
 
 Different selectors with the same declaration block group into a
 single rule with a selector list.

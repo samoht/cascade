@@ -10,14 +10,6 @@ module Map = Map.Make (struct
   let compare = Stdlib.compare
 end)
 
-module Prop_key_tbl = Hashtbl.Make (struct
-  type t = Declaration.prop_key
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end)
-
-type ids = int array
 type bloom = int
 
 type t = {
@@ -28,88 +20,13 @@ type t = {
   decl_pp_size : int;
   decl_count : int;
   prop_set : Props.t;
-  prop_ids : ids;
-  decl_prop_ids : ids;
   decl_map : Declaration.t Map.t;
   decl_size_map : int Map.t;
   decl_bloom : bloom;
   selector_summary : Selector_summary.t Lazy.t;
 }
 
-let prop_ids : int Prop_key_tbl.t = Prop_key_tbl.create 512
-let next_prop_id = ref 0
-
-let reset () =
-  Prop_key_tbl.reset prop_ids;
-  next_prop_id := 0
-
 let prop d = Declaration.property_key d
-
-let prop_id prop =
-  match Prop_key_tbl.find_opt prop_ids prop with
-  | Some id -> id
-  | None ->
-      let id = !next_prop_id in
-      incr next_prop_id;
-      Prop_key_tbl.add prop_ids prop id;
-      id
-
-let ids_of_set props =
-  let ids = Props.to_seq props |> Array.of_seq |> Array.map prop_id in
-  Array.sort compare ids;
-  ids
-
-let ids_of_decls decls =
-  decls |> List.map (fun d -> prop_id (prop d)) |> Array.of_list
-
-let ids_empty ids = Array.length ids = 0
-
-let ids_mem id ids =
-  let rec search lo hi =
-    if lo > hi then false
-    else
-      let mid = (lo + hi) lsr 1 in
-      let value = ids.(mid) in
-      if id = value then true
-      else if id < value then search lo (mid - 1)
-      else search (mid + 1) hi
-  in
-  search 0 (Array.length ids - 1)
-
-let ids_disjoint a b =
-  let rec loop i j =
-    if i >= Array.length a || j >= Array.length b then true
-    else
-      let x = a.(i) and y = b.(j) in
-      if x = y then false else if x < y then loop (i + 1) j else loop i (j + 1)
-  in
-  loop 0 0
-
-let ids_subset a b =
-  let rec loop i j =
-    if i >= Array.length a then true
-    else if j >= Array.length b then false
-    else
-      let x = a.(i) and y = b.(j) in
-      if x = y then loop (i + 1) (j + 1)
-      else if x < y then false
-      else loop i (j + 1)
-  in
-  loop 0 0
-
-let ids_inter a b =
-  let acc = ref [] in
-  let rec loop i j =
-    if i < Array.length a && j < Array.length b then
-      let x = a.(i) and y = b.(j) in
-      if x = y then (
-        acc := x :: !acc;
-        loop (i + 1) (j + 1))
-      else if x < y then loop (i + 1) j
-      else loop i (j + 1)
-  in
-  loop 0 0;
-  Array.of_list (List.rev !acc)
 
 (* A 63-bit OCaml int has bit positions 0..62; [1 lsl 63] is 0. Reduce each tap
    into 0..62 so it never selects the out-of-range bit 63. *)
@@ -154,8 +71,6 @@ let v ~rule_size ~decl_size ~selector_size (rule : Stylesheet.rule) =
     decl_pp_size = List.fold_left ( + ) 0 decl_sizes;
     decl_count = List.length decls;
     prop_set;
-    prop_ids = ids_of_set prop_set;
-    decl_prop_ids = ids_of_decls decls;
     decl_map;
     decl_size_map;
     decl_bloom = bloom_of_decls decls;
@@ -170,8 +85,6 @@ let decl_sizes t = t.decl_sizes
 let decl_pp_size t = t.decl_pp_size
 let decl_count t = t.decl_count
 let prop_set t = t.prop_set
-let prop_ids t = t.prop_ids
-let decl_prop_ids t = t.decl_prop_ids
 let selector_summary t = t.selector_summary
 let same_bloom a b = a.decl_bloom = b.decl_bloom
 let bloom t = t.decl_bloom
@@ -181,7 +94,6 @@ let may_share_decl_hash a b = a.decl_bloom land b.decl_bloom <> 0
 let declares_all t props =
   List.for_all (fun prop -> Props.mem prop t.prop_set) props
 
-let declares_ids t props = ids_subset props t.prop_ids
 let decl_for_prop t prop = Map.find_opt prop t.decl_map
 let decl_size_for_prop t prop = Map.find_opt prop t.decl_size_map
 

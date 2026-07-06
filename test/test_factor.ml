@@ -12,39 +12,28 @@ let render rules =
   String.concat ""
     (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) rules)
 
-let test_common_hoists_profitable_adjacent_run () =
-  let optimized =
-    Factor.common
-      (rules
-         ".a{display:flex;color:red}.b{display:flex;color:blue}.c{display:flex;color:green}")
+let optimize_str css =
+  match Css.of_string css with
+  | Ok { stylesheet; _ } ->
+      Css.optimize stylesheet |> Css.to_string ~minify:true
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+(* A selector whose box shorthand is split across rules (its base plus a corner
+   longhand, as Tailwind emits for [.form-select]) must optimise to the same
+   output as the already consolidated form the optimiser itself produces:
+   consolidation runs before factoring, so a partial group cannot absorb the
+   shared base before the selector's own rules are merged. *)
+let test_split_shorthand_confluence () =
+  let split =
+    ".i{color:red;margin:0;padding:5px}.s{color:red;margin:0;padding:5px}.s{background-repeat:no-repeat;padding-right:8px}.t{color:red;margin:0;padding:5px}"
+  in
+  let consolidated =
+    ".i{color:red;margin:0;padding:5px}.s{color:red;margin:0;padding:5px;background-repeat:no-repeat;padding-right:8px}.t{color:red;margin:0;padding:5px}"
   in
   Alcotest.(check string)
-    "shared declaration is hoisted"
-    ".a,.b,.c{display:flex;color:red}.b{color:blue}.c{color:green}"
-    (render optimized)
-
-let test_common_rejects_duplicate_property_member () =
-  let css = ".a{display:flex;display:block}.b{display:flex}" in
-  Alcotest.(check string)
-    "unsafe duplicate property run is untouched" css
-    (Factor.common (rules css) |> render)
-
-let test_anchor_hoists_across_unrelated_gap () =
-  let optimized =
-    Factor.anchor
-      (rules
-         ".a{background-color:red;border-color:red}.x{width:1px}.b{background-color:red;border-color:blue}.c{background-color:red;border-color:green}")
-  in
-  Alcotest.(check string)
-    "shared declaration crosses unrelated rule"
-    ".a,.b,.c{background-color:red}.a{border-color:red}.x{width:1px}.b{border-color:blue}.c{border-color:green}"
-    (render optimized)
-
-let test_anchor_respects_tied_overlap () =
-  let css = ".a{color:red}.x.a{color:green}.a{color:blue}" in
-  Alcotest.(check string)
-    "intervening same-specificity overlap blocks merge" css
-    (Factor.anchor (rules css) |> render)
+    "split and consolidated shorthands optimise identically"
+    (optimize_str consolidated)
+    (optimize_str split)
 
 let test_run_reaches_fixpoint_with_finalizer () =
   let optimized =
@@ -58,17 +47,32 @@ let test_run_reaches_fixpoint_with_finalizer () =
     ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
     (render optimized)
 
+let test_cache_reuses_identical_rule_run () =
+  Stats.reset ();
+  let cache = Factor.cache () in
+  let input =
+    rules
+      ".a{display:flex;margin:1px}.b{display:flex;margin:2px}.c{display:flex;margin:3px}"
+  in
+  let finalize = Rule.finalize ~ctx:Ctx.fragment in
+  let first = Factor.run ~cache ~ctx:Ctx.fragment ~finalize input in
+  let fixpoints = Stats.counters.factor_fixpoints_run in
+  ignore (Factor.run ~cache ~ctx:Ctx.fragment ~finalize input);
+  Alcotest.(check int)
+    "cached run does not start another fixpoint" fixpoints
+    Stats.counters.factor_fixpoints_run;
+  Alcotest.(check string)
+    "first run still optimizes"
+    ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
+    (render first)
+
 let suite =
   ( "factor",
     [
-      Alcotest.test_case "common hoists profitable adjacent run" `Quick
-        test_common_hoists_profitable_adjacent_run;
-      Alcotest.test_case "common rejects duplicate property member" `Quick
-        test_common_rejects_duplicate_property_member;
-      Alcotest.test_case "anchor hoists across unrelated gap" `Quick
-        test_anchor_hoists_across_unrelated_gap;
-      Alcotest.test_case "anchor respects tied overlap" `Quick
-        test_anchor_respects_tied_overlap;
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
         test_run_reaches_fixpoint_with_finalizer;
+      Alcotest.test_case "cache reuses identical rule run" `Quick
+        test_cache_reuses_identical_rule_run;
+      Alcotest.test_case "split shorthand optimises like consolidated" `Quick
+        test_split_shorthand_confluence;
     ] )
