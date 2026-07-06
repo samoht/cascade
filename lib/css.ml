@@ -1043,7 +1043,7 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
       List.iter dfs
         (collect_var_names stylesheet @ structural_var_refs stylesheet)
   | Option.None -> ());
-  Hashtbl.fold (fun k v acc -> (k, v) :: acc) resolved []
+  Hashtbl.fold (fun k v acc -> (bare_theme_name k, v) :: acc) resolved []
 
 let theme_defaults_source defaults =
   let body =
@@ -1225,12 +1225,13 @@ let emit_transitive_theme_refs ~theme_defaults stylesheet =
    [var()] reference live. Only resolved names get substituted: [Inline.vars]
    alone would also collapse [var(--x, fallback)] for names the resolver
    returned [None] on (its built-in fallback arm fires when no declaration is
-   visible). We inject a [:root] rule for the resolved names and extend
-   [keep_vars] with every name we did *not* resolve, so unresolved sites keep
-   their declarations live and fall through to the original-Func branch. Every
-   declared custom-prop name is kept too, so the dead-declaration pass leaves
-   unrelated definitions (e.g. an @supports polyfill's [--tw-x:initial]) in
-   place. *)
+   visible). A [:root] binding is injected only for resolved names with no
+   declaration of their own; an already-declared theme token inlines from that
+   declaration, so a second binding - which would make it look multiply-defined
+   and keep it live - is skipped. [keep_vars] gains every unresolved name and
+   every declared custom-prop EXCEPT the ones being resolved, so unrelated
+   definitions (e.g. an @supports polyfill's [--tw-x:initial]) stay while a
+   resolved token is inlined and dropped. *)
 let inline_theme_defaults ?theme ?theme_defaults ~keep_set stylesheet =
   let keep_vars = Pp.String_set.elements keep_set in
   let defaults =
@@ -1238,33 +1239,36 @@ let inline_theme_defaults ?theme ?theme_defaults ~keep_set stylesheet =
   in
   if defaults = [] then stylesheet
   else
-    let resolved_names = List.map fst defaults in
+    let declared = declared_custom_prop_names stylesheet in
+    let resolved = List.map fst defaults in
     let unresolved_keep =
-      collect_var_names stylesheet
-      |> List.filter (fun n -> not (List.mem n resolved_names))
+      referenced_var_names stylesheet
+      |> List.filter (fun n -> not (List.mem n resolved))
     in
-    let declared_names =
-      Hashtbl.fold
-        (fun n () acc -> n :: acc)
-        (declared_custom_prop_names stylesheet)
-        []
+    let declared_keep =
+      Hashtbl.fold (fun n () acc -> n :: acc) declared []
+      |> List.filter (fun n -> not (List.mem n resolved))
     in
     let keep_vars =
       List.fold_left
         (fun acc n -> if List.mem n acc then acc else n :: acc)
         keep_vars
-        (unresolved_keep @ declared_names)
+        (unresolved_keep @ declared_keep)
     in
-    let source = theme_defaults_source defaults in
-    match of_string ~strict:false source with
-    | Ok { stylesheet = root_stmts; _ } ->
-        (* Do NOT run the closed-world [statements_for_inline] cleanup: this is
-           a partial inline, so it must preserve unrelated [@property]
-           registrations and [@layer] structure (the cleanup strips every
-           [@property] and flattens every [@layer], dropping author
-           registrations like an unrelated [@property --tw-foo]). *)
-        Inline.vars ~keep_vars (root_stmts @ stylesheet)
-    | Error _ -> stylesheet
+    let inject =
+      List.filter (fun (n, _) -> not (Hashtbl.mem declared n)) defaults
+    in
+    if inject = [] then Inline.vars ~keep_vars stylesheet
+    else
+      match of_string ~strict:false (theme_defaults_source inject) with
+      | Ok { stylesheet = root_stmts; _ } ->
+          (* Do NOT run the closed-world [statements_for_inline] cleanup: this
+             is a partial inline, so it must preserve unrelated [@property]
+             registrations and [@layer] structure (the cleanup strips every
+             [@property] and flattens every [@layer], dropping author
+             registrations like an unrelated [@property --tw-foo]). *)
+          Inline.vars ~keep_vars (root_stmts @ stylesheet)
+      | Error _ -> stylesheet
 
 (* Theme resolution as an explicit AST step. [theme] names the variables whose
    [var()] references should survive (handed to [Inline.vars]' keep-set) and

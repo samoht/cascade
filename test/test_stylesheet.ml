@@ -6291,6 +6291,31 @@ let customprops1_resolve_keeps_property () =
          | _ -> None)
     |> Css.to_string ~minify:true)
 
+(* CSS Custom Properties L1: a theme token already declared in the input on a
+   root-scope block ([:root,:host], as Tailwind emits) and resolvable through
+   [theme_defaults] inlines from that declaration and is dropped - the existing
+   binding must not survive, be duplicated, or block the substitution. The
+   declared value wins over the theme default (cascade). *)
+let customprops1_inline_declared_root_token () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let blur = function "blur-xl" -> Some "24px" | _ -> None in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults:blur
+    |> Css.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "a declared :root,:host theme token inlines and its block is dropped"
+    ".x{filter:blur(24px)}"
+    (render ":root,:host{--blur-xl:24px}.x{filter:blur(var(--blur-xl))}");
+  Alcotest.(check string)
+    "the declared value wins over the theme default" ".x{filter:blur(9px)}"
+    (render ":root{--blur-xl:9px}.x{filter:blur(var(--blur-xl))}")
+
 (* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
    resolves the variable, and the resulting all-constant calc reduces under
    minify. *)
@@ -7082,6 +7107,9 @@ let additional_tests =
     ( "spec custom-properties 1 resolve keeps unrelated @property",
       `Quick,
       customprops1_resolve_keeps_property );
+    ( "spec custom-properties 1 inline declared root-scope token",
+      `Quick,
+      customprops1_inline_declared_root_token );
     ( "spec custom-properties 1 inlined var in calc simplifies",
       `Quick,
       customprops1_calc_inline );
