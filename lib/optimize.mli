@@ -40,18 +40,25 @@ val deduplicate_declarations :
 
 type ctx
 (** Optimization context: the {!scope} together with the registered-custom-
-    property predicate and the lossless knob. The shorthand composers take it;
-    build one with {!ctx_of_scope}. *)
+    property predicate and the [lossless], [aggressive], [extend_lists], and
+    [closed_world] knobs. The shorthand composers take it; build one with
+    {!ctx_of_scope}. *)
 
 val ctx_of_scope :
   ?lossless:bool ->
   ?aggressive:bool ->
   ?extend_lists:bool ->
+  ?closed_world:bool ->
   scope option ->
   ctx
-(** [ctx_of_scope ?lossless ?aggressive scope] builds the context the composers
-    take; [None] is [`Fragment]. [aggressive] forces the expensive global
-    factoring fixpoint to run even when its preflight predicts low gain. *)
+(** [ctx_of_scope ?lossless ?aggressive ?extend_lists ?closed_world scope]
+    builds the context the composers take; [None] is [`Fragment]. [aggressive]
+    forces the expensive global factoring fixpoint to run even when its
+    preflight predicts low gain. [extend_lists] is for direct DAG-scheduler
+    experiments; the main stylesheet optimizer enables guarded selector-list
+    extension internally. [closed_world] asserts the caller knows the exact HTML
+    and that no element matches two clashing selectors, so the optimizer may
+    merge rules it would otherwise keep apart; unsafe for an unknown DOM. *)
 
 val compose_shorthands :
   ctx:ctx -> (int * declaration) list -> (int * declaration) list
@@ -122,23 +129,6 @@ val edges_of_rule : rule -> edge list
 val single_rule : ?scope:scope -> rule -> rule
 (** [single_rule ?scope rule] deduplicates declarations in one rule. *)
 
-val merge_rules : rule list -> rule list
-(** [merge_rules rules] merges adjacent rules with identical selectors while
-    preserving cascade order. *)
-
-val combine_identical_rules : rule list -> rule list
-(** [combine_identical_rules rules] combines consecutive rules with identical
-    declarations into comma-separated selectors. *)
-
-val factor_anchor_gaps : rule list -> rule list
-(** [factor_anchor_gaps rules] factors out a declaration shared across rules
-    with non-conflicting selectors, even across intervening rules, when
-    cascade-safe and smaller. Anchors are scheduled best-first from a priority
-    search queue keyed by the output size each factoring saves (the greedy
-    weight order of the SatCSS heuristic) over a [Pool]; only anchors whose
-    window overlapped a rewritten region are re-scored, so it drains to the
-    factoring fixed point without re-walking the whole list. *)
-
 val rules : ?scope:scope -> rule list -> rule list
 (** [rules ?scope rs] optimizes a list of flat rules. *)
 
@@ -156,14 +146,16 @@ val stylesheet :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
+  ?closed_world:bool ->
   ?prune_unused_custom_props:bool ->
   t ->
   t
 (** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ss] optimizes an
-    entire stylesheet while preserving cascade semantics. When [@supports]
-    blocks are present alongside top-level rules, optimization is limited
-    because the stylesheet structure separates rules from [@supports] blocks,
-    losing their relative ordering.
+    entire stylesheet while preserving cascade semantics for any DOM (with
+    [closed_world] off, the default). When [@supports] blocks are present
+    alongside top-level rules, optimization is limited because the stylesheet
+    structure separates rules from [@supports] blocks, losing their relative
+    ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
     desugared into flat rules: child selectors with [&] have the parent selector
@@ -181,6 +173,14 @@ val stylesheet :
     feature queries as known facts and elide [@supports] guards whose condition
     is satisfied in maintained evergreen browsers; [true] keeps every feature
     query and applies only CSS-text-and-spec-provable rewrites.
+
+    When [closed_world] is [true] (default [false]) the optimizer assumes the
+    caller knows the exact HTML and that no element ever matches two clashing
+    selectors, so it may merge rules it would otherwise keep apart. Unsafe: the
+    page can render wrong if such an element appears, including one a script
+    adds at runtime. This is about the HTML, separate from [scope] (how much of
+    the CSS you control). The default is safe for any page; see
+    {!Ctx.closed_world}.
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. This is opt-in
@@ -240,19 +240,6 @@ type counters = {
       (** total raw-byte gain estimated by the global factoring preflight *)
   mutable factor_bytes_saved : int;
       (** total committed byte savings reported by global factoring passes *)
-  mutable anchors_scored : int;  (** [factor_anchor_score] invocations *)
-  mutable anchors_prefiltered : int;
-      (** scored anchors rejected by the no-shared-declaration pre-filter *)
-  mutable factorings_applied : int;  (** anchor-gap factorings committed *)
-  mutable interval_candidates : int;
-      (** [factor_common] interval candidates considered by the indexed scorer
-      *)
-  mutable interval_pruned : int;
-      (** interval candidates rejected by the optimistic size upper bound *)
-  mutable interval_scored : int;
-      (** interval candidates that reached exact cascade-aware scoring *)
-  mutable interval_selected : int;
-      (** interval candidates selected by weighted interval scheduling *)
 }
 (** Global counters across the last [Optimize.stylesheet] run. *)
 

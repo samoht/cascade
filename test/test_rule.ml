@@ -56,15 +56,6 @@ let test_drop_shadowed_selector_list_requires_all_branches () =
     [ ".a{color:blue}"; ".b{color:green}" ]
     (rule_strings optimized)
 
-let test_wrappers_delegate_to_merge_passes () =
-  Alcotest.(check (list string))
-    "merge adjacent same selectors"
-    [ ".a{color:red;width:1px}" ]
-    (Rule.merge (rules ".a{color:red}.a{width:1px}") |> rule_strings);
-  Alcotest.(check (list string))
-    "combine identical blocks" [ ".a,.b{color:red}" ]
-    (Rule.identical (rules ".a{color:red}.b{color:red}") |> rule_strings)
-
 let suite =
   ( "rule",
     [
@@ -76,6 +67,4 @@ let suite =
         `Quick test_drop_shadowed_declarations_keeps_live_properties;
       Alcotest.test_case "drop shadowed selector list requires all branches"
         `Quick test_drop_shadowed_selector_list_requires_all_branches;
-      Alcotest.test_case "wrappers delegate to merge passes" `Quick
-        test_wrappers_delegate_to_merge_passes;
     ] )

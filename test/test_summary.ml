@@ -25,20 +25,11 @@ let summary rule =
   Summary.v ~rule_size:(fun _ -> 123) ~decl_size ~selector_size rule
 
 let same a b = a == b || (Declaration.hash a = Declaration.hash b && a = b)
-let custom_decl i = Fmt.str "--p%d:%d" i i
 
 let custom_rule ?(selector = ".a") decls =
   rule (selector ^ "{" ^ String.concat ";" decls ^ "}")
 
-let sorted_unique_ints values =
-  values |> List.sort_uniq Int.compare |> Array.of_list
-
-let array_for_all p xs =
-  let rec loop i = i = Array.length xs || (p xs.(i) && loop (i + 1)) in
-  loop 0
-
 let test_rule_identity_and_first_decl () =
-  Summary.reset ();
   let rule = rule ".a{color:red;color:blue;width:1px}" in
   let t = summary rule in
   Alcotest.(check bool) "rule identity" true (Summary.rule t == rule);
@@ -56,20 +47,7 @@ let test_rule_identity_and_first_decl () =
         "first declaration" "color:red" (decl_string first)
   | None -> Alcotest.fail "missing color declaration"
 
-let test_ids_intersection () =
-  Summary.reset ();
-  let a = summary (rule ".a{color:red;width:1px}") in
-  let b = summary (rule ".b{color:blue;height:1px}") in
-  let c = summary (rule ".c{margin:0}") in
-  let common = Summary.ids_inter (Summary.prop_ids a) (Summary.prop_ids b) in
-  Alcotest.(check bool) "common is non-empty" false (Summary.ids_empty common);
-  Alcotest.(check bool) "a declares common" true (Summary.declares_ids a common);
-  Alcotest.(check bool)
-    "c disjoint" true
-    (Summary.ids_disjoint common (Summary.prop_ids c))
-
 let test_duplicate_property_maps_keep_first_decl_and_size () =
-  Summary.reset ();
   let t = summary (rule ".a{color:red;width:1px;color:blue}") in
   let color = Summary.prop (decl "color:green") in
   Alcotest.(check (option string))
@@ -80,31 +58,7 @@ let test_duplicate_property_maps_keep_first_decl_and_size () =
     (Some (String.length "color:red"))
     (Summary.decl_size_for_prop t color)
 
-let test_decl_property_ids_preserve_duplicate_source_order () =
-  Summary.reset ();
-  let t = summary (rule ".a{color:red;width:1px;color:blue}") in
-  let prop_ids = Summary.prop_ids t in
-  let decl_prop_ids = Summary.decl_prop_ids t in
-  Alcotest.(check int) "unique property ids" 2 (Array.length prop_ids);
-  Alcotest.(check int) "ids per declaration" 3 (Array.length decl_prop_ids);
-  Alcotest.(check bool)
-    "duplicate color ids match" true
-    (decl_prop_ids.(0) = decl_prop_ids.(2));
-  Alcotest.(check bool)
-    "width id differs from color id" true
-    (decl_prop_ids.(0) <> decl_prop_ids.(1));
-  Alcotest.(check bool)
-    "color id is in property id set" true
-    (Summary.ids_mem decl_prop_ids.(0) prop_ids);
-  Alcotest.(check bool)
-    "width id is in property id set" true
-    (Summary.ids_mem decl_prop_ids.(1) prop_ids);
-  Alcotest.(check (array int))
-    "self intersection is stable" prop_ids
-    (Summary.ids_inter prop_ids prop_ids)
-
 let test_contains_does_not_trust_bloom_hit () =
-  Summary.reset ();
   let t = summary (rule ".a{color:red}") in
   let color = decl "color:red" in
   let calls = ref 0 in
@@ -121,7 +75,6 @@ let test_contains_does_not_trust_bloom_hit () =
     (Summary.contains ~same t color)
 
 let test_cached_fields_and_bloom_for_reordered_decls () =
-  Summary.reset ();
   let t = summary (rule ".a{color:red;width:1px}") in
   Alcotest.(check int) "rule size is cached from callback" 123 (Summary.size t);
   Alcotest.(check (list int))
@@ -140,24 +93,7 @@ let test_cached_fields_and_bloom_for_reordered_decls () =
     "same declaration set may share declaration hashes" true
     (Summary.may_share_decl_hash t reversed)
 
-let test_large_id_set_operations () =
-  let even = Array.init 1_000 (fun i -> i * 2) in
-  let third = Array.init 700 (fun i -> i * 3) in
-  let inter = Summary.ids_inter even third in
-  Alcotest.(check int) "intersection size" 334 (Array.length inter);
-  Alcotest.(check bool)
-    "intersection subset of even" true
-    (Summary.ids_subset inter even);
-  Alcotest.(check bool)
-    "intersection subset of third" true
-    (Summary.ids_subset inter third);
-  Alcotest.(check bool)
-    "large disjoint negative" false
-    (Summary.ids_disjoint even third);
-  Alcotest.(check bool) "membership near end" true (Summary.ids_mem 1_998 even)
-
 let test_large_summary_with_many_duplicate_properties () =
-  Summary.reset ();
   let unique = 240 in
   let decls =
     List.init (unique * 2) (fun i ->
@@ -167,77 +103,31 @@ let test_large_summary_with_many_duplicate_properties () =
   let t = summary (custom_rule decls) in
   Alcotest.(check int)
     "all declarations counted" (unique * 2) (Summary.decl_count t);
-  Alcotest.(check int)
-    "unique property ids" unique
-    (Array.length (Summary.prop_ids t));
-  Alcotest.(check int)
-    "declaration property ids keep duplicates" (unique * 2)
-    (Array.length (Summary.decl_prop_ids t));
-  let prop = Summary.prop (decl (custom_decl 37)) in
+  let prop = Summary.prop (decl "--p37:37") in
   Alcotest.(check (option string))
     "first duplicate declaration retained" (Some "--p37:37")
-    (Option.map decl_string (Summary.decl_for_prop t prop))
-
-let test_fuzz_id_set_operations () =
-  for seed = 0 to 119 do
-    let rng = Random.State.make [| 0x51; seed |] in
-    let gen () =
-      List.init (Random.State.int rng 80) (fun _ -> Random.State.int rng 160)
-      |> sorted_unique_ints
-    in
-    let a = gen () in
-    let b = gen () in
-    let expected_inter =
-      Array.to_list a
-      |> List.filter (fun id -> Array.exists (( = ) id) b)
-      |> sorted_unique_ints
-    in
-    let inter = Summary.ids_inter a b in
-    Alcotest.(check (array int)) "intersection" expected_inter inter;
-    Alcotest.(check bool)
-      "disjoint"
-      (Array.length expected_inter = 0)
-      (Summary.ids_disjoint a b);
-    Alcotest.(check bool)
-      "intersection subset left" true
-      (Summary.ids_subset inter a);
-    Alcotest.(check bool)
-      "intersection subset right" true
-      (Summary.ids_subset inter b);
-    for id = 0 to 159 do
-      Alcotest.(check bool)
-        "membership"
-        (Array.exists (( = ) id) a)
-        (Summary.ids_mem id a)
-    done
-  done
+    (Option.map decl_string (Summary.decl_for_prop t prop));
+  Alcotest.(check bool)
+    "declares sampled properties" true
+    (Summary.declares_all t
+       [ Summary.prop (decl "--p0:0"); Summary.prop (decl "--p239:239") ])
 
 let test_fuzz_summary_declaration_invariants () =
   for seed = 0 to 79 do
-    Summary.reset ();
     let rng = Random.State.make [| 0x52; seed |] in
     let decl_count = 1 + Random.State.int rng 90 in
     let prop_count = 1 + Random.State.int rng 24 in
     let first_by_prop = Hashtbl.create prop_count in
-    let seen_props = Hashtbl.create prop_count in
     let decls =
       List.init decl_count (fun i ->
           let prop = Random.State.int rng prop_count in
           let declaration = Fmt.str "--p%d:%d" prop i in
-          Hashtbl.replace seen_props prop ();
           if not (Hashtbl.mem first_by_prop prop) then
             Hashtbl.add first_by_prop prop declaration;
           declaration)
     in
     let t = summary (custom_rule ~selector:(Fmt.str ".fuzz%d" seed) decls) in
     Alcotest.(check int) "declaration count" decl_count (Summary.decl_count t);
-    Alcotest.(check int)
-      "declaration property ids count" decl_count
-      (Array.length (Summary.decl_prop_ids t));
-    Alcotest.(check int)
-      "unique property id count"
-      (Hashtbl.length seen_props)
-      (Array.length (Summary.prop_ids t));
     Hashtbl.iter
       (fun prop first ->
         let probe = Summary.prop (Fmt.kstr decl "--p%d:0" prop) in
@@ -251,12 +141,7 @@ let test_fuzz_summary_declaration_invariants () =
         Alcotest.(check bool)
           "property declared" true
           (Summary.declares_all t [ probe ]))
-      first_by_prop;
-    Alcotest.(check bool)
-      "declaration ids are declared" true
-      (array_for_all
-         (fun id -> Summary.ids_mem id (Summary.prop_ids t))
-         (Summary.decl_prop_ids t))
+      first_by_prop
   done
 
 let suite =
@@ -264,21 +149,14 @@ let suite =
     [
       Alcotest.test_case "rule identity and first declaration" `Quick
         test_rule_identity_and_first_decl;
-      Alcotest.test_case "property id intersection" `Quick test_ids_intersection;
       Alcotest.test_case "duplicate maps keep first declaration" `Quick
         test_duplicate_property_maps_keep_first_decl_and_size;
-      Alcotest.test_case "decl property ids preserve source order" `Quick
-        test_decl_property_ids_preserve_duplicate_source_order;
       Alcotest.test_case "contains verifies bloom hits" `Quick
         test_contains_does_not_trust_bloom_hit;
       Alcotest.test_case "cached fields and bloom for reordered decls" `Quick
         test_cached_fields_and_bloom_for_reordered_decls;
-      Alcotest.test_case "large id set operations" `Quick
-        test_large_id_set_operations;
       Alcotest.test_case "large summary with duplicate properties" `Quick
         test_large_summary_with_many_duplicate_properties;
-      Alcotest.test_case "fuzz id set operations" `Quick
-        test_fuzz_id_set_operations;
       Alcotest.test_case "fuzz summary declaration invariants" `Quick
         test_fuzz_summary_declaration_invariants;
     ] )

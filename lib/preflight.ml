@@ -1,4 +1,4 @@
-let small_declaration_threshold = 4_000
+let small_declaration_threshold = 1_000
 let useful_gain_units = 2_048
 let useful_gain_ratio_ppm = 140_000
 

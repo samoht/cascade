@@ -66,6 +66,16 @@ let covers_longhand : type a b.
   | Background, Background_position -> true
   | Background, Background_repeat -> true
   | Background, Background_size -> true
+  | Flex, Flex_grow -> true
+  | Flex, Flex_shrink -> true
+  | Flex, Flex_basis -> true
+  | Flex_flow, Flex_direction -> true
+  | Flex_flow, Flex_wrap -> true
+  | Transition, Transition_property -> true
+  | Transition, Transition_duration -> true
+  | Transition, Transition_timing_function -> true
+  | Transition, Transition_delay -> true
+  | Transition, Transition_behavior -> true
   (* CSS Logical 1: physical-axis pairs. *)
   | Margin_inline, Margin_inline_start -> true
   | Margin_inline, Margin_inline_end -> true
@@ -216,6 +226,335 @@ let declaration_covers covering covered =
       Declaration.same_property covering covered
       || covers_longhand covering_p covered_p
   | _ -> false
+
+type overlap_key = int
+
+let overlap_key_equal = Int.equal
+let overlap_key_hash key = key land max_int
+let mix_int acc x = ((acc lsl 5) - acc) lxor x
+
+let hash_string s =
+  let hash = ref 0x811c9dc5 in
+  String.iter (fun c -> hash := mix_int !hash (Char.code c)) s;
+  !hash
+
+let overlap_key_of_name name =
+  (* Hash collisions only add conservative ordering edges. They cannot make two
+     overlapping declarations look disjoint. *)
+  (hash_string name lsl 1) lor 1
+
+let key = overlap_key_of_name
+let broad_overlap_key = key "*"
+let typed_key hash = (hash land (max_int lsr 1)) lsl 1
+
+let property_key : type a. a Properties.property -> overlap_key =
+ fun property ->
+  match property with
+  | Custom_property name -> key ("--" ^ name)
+  | Unknown_property name -> key name
+  | property -> typed_key (Hashtbl.seeded_hash 0 property)
+
+let border_block_start_keys =
+  [
+    key "border-block-start-width";
+    key "border-block-start-style";
+    key "border-block-start-color";
+  ]
+
+let border_block_end_keys =
+  [
+    key "border-block-end-width";
+    key "border-block-end-style";
+    key "border-block-end-color";
+  ]
+
+let border_inline_start_keys =
+  [
+    key "border-inline-start-width";
+    key "border-inline-start-style";
+    key "border-inline-start-color";
+  ]
+
+let border_inline_end_keys =
+  [
+    key "border-inline-end-width";
+    key "border-inline-end-style";
+    key "border-inline-end-color";
+  ]
+
+let property_footprint : type a. a Properties.property -> overlap_key list =
+  function
+  | All -> [ key "*" ]
+  | Margin ->
+      [
+        key "margin-top";
+        key "margin-right";
+        key "margin-bottom";
+        key "margin-left";
+      ]
+  | Margin_top -> [ key "margin-top" ]
+  | Margin_right -> [ key "margin-right" ]
+  | Margin_bottom -> [ key "margin-bottom" ]
+  | Margin_left -> [ key "margin-left" ]
+  | Margin_inline -> [ key "margin-inline-start"; key "margin-inline-end" ]
+  | Margin_inline_start -> [ key "margin-inline-start" ]
+  | Margin_inline_end -> [ key "margin-inline-end" ]
+  | Margin_block -> [ key "margin-block-start"; key "margin-block-end" ]
+  | Margin_block_start -> [ key "margin-block-start" ]
+  | Margin_block_end -> [ key "margin-block-end" ]
+  | Padding ->
+      [
+        key "padding-top";
+        key "padding-right";
+        key "padding-bottom";
+        key "padding-left";
+      ]
+  | Padding_top -> [ key "padding-top" ]
+  | Padding_right -> [ key "padding-right" ]
+  | Padding_bottom -> [ key "padding-bottom" ]
+  | Padding_left -> [ key "padding-left" ]
+  | Padding_inline -> [ key "padding-inline-start"; key "padding-inline-end" ]
+  | Padding_inline_start -> [ key "padding-inline-start" ]
+  | Padding_inline_end -> [ key "padding-inline-end" ]
+  | Padding_block -> [ key "padding-block-start"; key "padding-block-end" ]
+  | Padding_block_start -> [ key "padding-block-start" ]
+  | Padding_block_end -> [ key "padding-block-end" ]
+  | Inset -> [ key "top"; key "right"; key "bottom"; key "left" ]
+  | Top -> [ key "top" ]
+  | Right -> [ key "right" ]
+  | Bottom -> [ key "bottom" ]
+  | Left -> [ key "left" ]
+  | Inset_inline -> [ key "inset-inline-start"; key "inset-inline-end" ]
+  | Inset_inline_start -> [ key "inset-inline-start" ]
+  | Inset_inline_end -> [ key "inset-inline-end" ]
+  | Inset_block -> [ key "inset-block-start"; key "inset-block-end" ]
+  | Inset_block_start -> [ key "inset-block-start" ]
+  | Inset_block_end -> [ key "inset-block-end" ]
+  | Background ->
+      [
+        key "background-attachment";
+        key "background-blend-mode";
+        key "background-clip";
+        key "background-color";
+        key "background-image";
+        key "background-origin";
+        key "background-position";
+        key "background-repeat";
+        key "background-size";
+      ]
+  | Background_attachment -> [ key "background-attachment" ]
+  | Background_blend_mode -> [ key "background-blend-mode" ]
+  | Background_clip -> [ key "background-clip" ]
+  | Background_color -> [ key "background-color" ]
+  | Background_image -> [ key "background-image" ]
+  | Background_origin -> [ key "background-origin" ]
+  | Background_position -> [ key "background-position" ]
+  | Background_repeat -> [ key "background-repeat" ]
+  | Background_size -> [ key "background-size" ]
+  | Flex -> [ key "flex-grow"; key "flex-shrink"; key "flex-basis" ]
+  | Flex_grow -> [ key "flex-grow" ]
+  | Flex_shrink -> [ key "flex-shrink" ]
+  | Flex_basis -> [ key "flex-basis" ]
+  | Flex_flow -> [ key "flex-direction"; key "flex-wrap" ]
+  | Flex_direction -> [ key "flex-direction" ]
+  | Flex_wrap -> [ key "flex-wrap" ]
+  | Transition ->
+      [
+        key "transition-property";
+        key "transition-duration";
+        key "transition-timing-function";
+        key "transition-delay";
+        key "transition-behavior";
+      ]
+  | Transition_property -> [ key "transition-property" ]
+  | Transition_duration -> [ key "transition-duration" ]
+  | Transition_timing_function -> [ key "transition-timing-function" ]
+  | Transition_delay -> [ key "transition-delay" ]
+  | Transition_behavior -> [ key "transition-behavior" ]
+  | Border ->
+      [
+        key "border-top-width";
+        key "border-right-width";
+        key "border-bottom-width";
+        key "border-left-width";
+        key "border-top-style";
+        key "border-right-style";
+        key "border-bottom-style";
+        key "border-left-style";
+        key "border-top-color";
+        key "border-right-color";
+        key "border-bottom-color";
+        key "border-left-color";
+        key "border-image";
+      ]
+  | Border_width ->
+      [
+        key "border-top-width";
+        key "border-right-width";
+        key "border-bottom-width";
+        key "border-left-width";
+      ]
+  | Border_style ->
+      [
+        key "border-top-style";
+        key "border-right-style";
+        key "border-bottom-style";
+        key "border-left-style";
+      ]
+  | Border_color ->
+      [
+        key "border-top-color";
+        key "border-right-color";
+        key "border-bottom-color";
+        key "border-left-color";
+      ]
+  | Border_top ->
+      [ key "border-top-width"; key "border-top-style"; key "border-top-color" ]
+  | Border_right ->
+      [
+        key "border-right-width";
+        key "border-right-style";
+        key "border-right-color";
+      ]
+  | Border_bottom ->
+      [
+        key "border-bottom-width";
+        key "border-bottom-style";
+        key "border-bottom-color";
+      ]
+  | Border_left ->
+      [
+        key "border-left-width";
+        key "border-left-style";
+        key "border-left-color";
+      ]
+  | Border_top_width -> [ key "border-top-width" ]
+  | Border_right_width -> [ key "border-right-width" ]
+  | Border_bottom_width -> [ key "border-bottom-width" ]
+  | Border_left_width -> [ key "border-left-width" ]
+  | Border_top_style -> [ key "border-top-style" ]
+  | Border_right_style -> [ key "border-right-style" ]
+  | Border_bottom_style -> [ key "border-bottom-style" ]
+  | Border_left_style -> [ key "border-left-style" ]
+  | Border_top_color -> [ key "border-top-color" ]
+  | Border_right_color -> [ key "border-right-color" ]
+  | Border_bottom_color -> [ key "border-bottom-color" ]
+  | Border_left_color -> [ key "border-left-color" ]
+  | Border_image -> [ key "border-image" ]
+  | Border_inline_start_width -> [ key "border-inline-start-width" ]
+  | Border_inline_end_width -> [ key "border-inline-end-width" ]
+  | Border_block_start_width -> [ key "border-block-start-width" ]
+  | Border_block_end_width -> [ key "border-block-end-width" ]
+  | Border_inline_start_color -> [ key "border-inline-start-color" ]
+  | Border_inline_end_color -> [ key "border-inline-end-color" ]
+  | Border_inline_color ->
+      [ key "border-inline-start-color"; key "border-inline-end-color" ]
+  | Border_inline_style ->
+      [ key "border-inline-start-style"; key "border-inline-end-style" ]
+  | Border_block_style ->
+      [ key "border-block-start-style"; key "border-block-end-style" ]
+  | Border_block -> border_block_start_keys @ border_block_end_keys
+  | Border_block_start -> border_block_start_keys
+  | Border_block_end -> border_block_end_keys
+  | Border_inline -> border_inline_start_keys @ border_inline_end_keys
+  | Border_inline_start -> border_inline_start_keys
+  | Border_inline_end -> border_inline_end_keys
+  | Mask ->
+      [
+        key "mask-image";
+        key "mask-repeat";
+        key "mask-size";
+        key "mask-position";
+        key "mask-origin";
+        key "mask-clip";
+        key "mask-mode";
+        key "mask-composite";
+        key "mask-border";
+      ]
+  | Mask_image -> [ key "mask-image" ]
+  | Mask_repeat -> [ key "mask-repeat" ]
+  | Mask_size -> [ key "mask-size" ]
+  | Mask_position -> [ key "mask-position" ]
+  | Mask_origin -> [ key "mask-origin" ]
+  | Mask_clip -> [ key "mask-clip" ]
+  | Mask_mode -> [ key "mask-mode" ]
+  | Mask_composite -> [ key "mask-composite" ]
+  | Mask_border -> [ key "mask-border" ]
+  | Font ->
+      [
+        key "font-style";
+        key "font-weight";
+        key "font-stretch";
+        key "font-size";
+        key "line-height";
+        key "font-family";
+        key "font-variant-ligatures";
+        key "font-variant-caps";
+        key "font-variant-numeric";
+        key "font-variant-position";
+        key "font-variant-east-asian";
+        key "font-variant-emoji";
+        key "font-variation-settings";
+        key "font-feature-settings";
+        key "font-size-adjust";
+        key "font-kerning";
+        key "font-optical-sizing";
+      ]
+  | Font_style -> [ key "font-style" ]
+  | Font_weight -> [ key "font-weight" ]
+  | Font_stretch -> [ key "font-stretch" ]
+  | Font_size -> [ key "font-size" ]
+  | Line_height -> [ key "line-height" ]
+  | Font_family -> [ key "font-family" ]
+  | Font_variant_ligatures -> [ key "font-variant-ligatures" ]
+  | Caps -> [ key "font-variant-caps" ]
+  | Numeric -> [ key "font-variant-numeric" ]
+  | Font_variant_position -> [ key "font-variant-position" ]
+  | East_asian -> [ key "font-variant-east-asian" ]
+  | Font_variant_emoji -> [ key "font-variant-emoji" ]
+  | Font_variation_settings -> [ key "font-variation-settings" ]
+  | Font_feature_settings -> [ key "font-feature-settings" ]
+  | Font_size_adjust -> [ key "font-size-adjust" ]
+  | Font_kerning -> [ key "font-kerning" ]
+  | Font_optical_sizing -> [ key "font-optical-sizing" ]
+  | Custom_property name -> [ key ("--" ^ name) ]
+  | Unknown_property name -> [ key name ]
+  | property -> [ property_key property ]
+
+let footprint_mem footprint = List.exists (overlap_key_equal footprint)
+
+let overlap_keys_intersect a b =
+  List.exists (fun footprint -> footprint_mem footprint b) a
+
+let declaration_overlap_keys decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property; _ } -> property_footprint property
+  | _ -> [ key (Declaration.property_name decl) ]
+
+let declarations_overlap_with_keys a a_keys b b_keys =
+  match (unwrap_theme_guard a, unwrap_theme_guard b) with
+  | ( Declaration { property = Custom_property a; _ },
+      Declaration { property = Custom_property b; _ } ) ->
+      String.equal a b
+  | Declaration { property = Custom_property _; _ }, _ -> false
+  | _, Declaration { property = Custom_property _; _ } -> false
+  | ( Declaration { property = Unknown_property a; _ },
+      Declaration { property = Unknown_property b; _ } ) ->
+      String.equal a b
+  | Declaration { property = Unknown_property _; _ }, _ -> false
+  | _, Declaration { property = Unknown_property _; _ } -> false
+  | Declaration { property = All; _ }, Declaration { property; _ } ->
+      not (is_excluded_from_all_reset property)
+  | Declaration { property; _ }, Declaration { property = All; _ } ->
+      not (is_excluded_from_all_reset property)
+  | Declaration _, Declaration _ -> overlap_keys_intersect a_keys b_keys
+  | _ -> false
+
+let declarations_overlap a b =
+  declarations_overlap_with_keys a
+    (declaration_overlap_keys a)
+    b
+    (declaration_overlap_keys b)
 
 let display_value_is_vendor : Properties.display -> bool = function
   | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box

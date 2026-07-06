@@ -10,7 +10,7 @@ let wrap prop value = String.concat "" [ "x{"; prop; ":"; value; "}" ]
 let canon_equal prop a b =
   try
     Cascade_diff.Css_compare.equal ~mode:`Canonical (wrap prop a) (wrap prop b)
-  with _ -> false
+  with Cascade.Reader.Parse_error _ | Failure _ | Invalid_argument _ -> false
 
 let () =
   try

@@ -52,13 +52,6 @@ type counters = {
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
-  mutable anchors_scored : int;
-  mutable anchors_prefiltered : int;
-  mutable factorings_applied : int;
-  mutable interval_candidates : int;
-  mutable interval_pruned : int;
-  mutable interval_scored : int;
-  mutable interval_selected : int;
 }
 
 let counters =
@@ -69,13 +62,6 @@ let counters =
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
-    anchors_scored = 0;
-    anchors_prefiltered = 0;
-    factorings_applied = 0;
-    interval_candidates = 0;
-    interval_pruned = 0;
-    interval_scored = 0;
-    interval_selected = 0;
   }
 
 let record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
@@ -107,11 +93,4 @@ let reset () =
   counters.marginal_stops <- 0;
   counters.factor_fixpoints_skipped <- 0;
   counters.factor_preflight_gain <- 0;
-  counters.factor_bytes_saved <- 0;
-  counters.anchors_scored <- 0;
-  counters.anchors_prefiltered <- 0;
-  counters.factorings_applied <- 0;
-  counters.interval_candidates <- 0;
-  counters.interval_pruned <- 0;
-  counters.interval_scored <- 0;
-  counters.interval_selected <- 0
+  counters.factor_bytes_saved <- 0

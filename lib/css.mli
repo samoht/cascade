@@ -7577,19 +7577,29 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
+val canonicalize_rule_order : t -> t
+(** [canonicalize_rule_order t] reorders cascade-independent rules into a
+    deterministic order (a content-keyed linear extension of the
+    cascade-conflict graph), so two stylesheets that differ only by a
+    cascade-safe rule reorder project to the same form. Conflicting rules keep
+    their relative order. This is a comparison-side normalisation;
+    {!val-optimize} stays source-stable. *)
+
 val optimize :
   ?scope:Optimize.scope ->
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
+  ?closed_world:bool ->
   ?prune_unused_custom_props:bool ->
   t ->
   t
 (** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
      stylesheet] applies CSS optimizations to the stylesheet, including merging
     consecutive identical selectors and combining rules with identical
-    properties. Preserves CSS cascade semantics.
+    properties. Preserves CSS cascade semantics for any DOM, unless
+    [closed_world] is set.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
     Pass [`Stylesheet] when the caller controls the whole author stylesheet
@@ -7609,6 +7619,13 @@ val optimize :
     runs even when the preflight predicts low gain, and the top-level
     statement-optimisation pipeline iterates until the AST reaches a structural
     fixpoint (capped at a small bound).
+
+    When [closed_world] is [true] (default [false]) the optimizer assumes the
+    caller knows the exact HTML and that no element ever matches two clashing
+    selectors, so it may merge rules it would otherwise keep apart. Unsafe: the
+    page can render wrong if such an element appears, including one a script
+    adds at runtime. This is about the HTML, separate from [scope] (how much of
+    the CSS you control). The default is safe for any page.
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a

@@ -13,9 +13,6 @@ let rule css =
   | [ r ] -> r
   | rs -> Alcotest.failf "expected one rule, got %d" (List.length rs)
 
-let rule_strings rules =
-  List.map (fun r -> Pp.to_string ~minify:true Stylesheet.pp_rule r) rules
-
 let same_decl a b = a == b || a = b
 
 let test_pseudo_and_vendor_detection () =
@@ -29,35 +26,6 @@ let test_pseudo_and_vendor_detection () =
   Alcotest.(check bool)
     "regular selector is not vendor" false
     (Merge.vendor (Selector.of_string ".a::before"))
-
-let test_adjacent_merges_same_selector_only () =
-  let merged =
-    Merge.adjacent (rules ".a{color:red}.a{width:1px}.b{color:red}")
-  in
-  Alcotest.(check (list string))
-    "adjacent same selectors merge"
-    [ ".a{color:red;width:1px}"; ".b{color:red}" ]
-    (rule_strings merged)
-
-let test_identical_combines_safe_non_adjacent_rules () =
-  let merged =
-    Merge.identical ~same:same_decl
-      (rules ".a{color:red}.x{width:1px}.b{color:red}")
-  in
-  Alcotest.(check (list string))
-    "non-perturbing middle rule is delayed"
-    [ ".a,.b{color:red}"; ".x{width:1px}" ]
-    (rule_strings merged)
-
-let test_identical_stops_at_perturbing_rule () =
-  let merged =
-    Merge.identical ~same:same_decl
-      (rules ".a{color:red}.x{color:blue}.b{color:red}")
-  in
-  Alcotest.(check (list string))
-    "same property write blocks delayed combine"
-    [ ".a{color:red}"; ".x{color:blue}"; ".b{color:red}" ]
-    (rule_strings merged)
 
 let test_declarations_equal_fast_and_structural_paths () =
   let r = rule ".a{color:red;width:1px}" in
@@ -78,12 +46,6 @@ let suite =
     [
       Alcotest.test_case "pseudo and vendor detection" `Quick
         test_pseudo_and_vendor_detection;
-      Alcotest.test_case "adjacent merges same selector only" `Quick
-        test_adjacent_merges_same_selector_only;
-      Alcotest.test_case "identical combines safe non-adjacent rules" `Quick
-        test_identical_combines_safe_non_adjacent_rules;
-      Alcotest.test_case "identical stops at perturbing rule" `Quick
-        test_identical_stops_at_perturbing_rule;
       Alcotest.test_case "declarations_equal fast and structural paths" `Quick
         test_declarations_equal_fast_and_structural_paths;
     ] )

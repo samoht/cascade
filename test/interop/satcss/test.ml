@@ -13,9 +13,14 @@ let parse path css =
   | Ok { Cascade.Css.stylesheet; _ } -> stylesheet
   | Error e -> Alcotest.failf "%s: %s" path (Cascade.Error.to_string e)
 
+(* SatCSS minifies each stylesheet against the page's captured DOM, so it makes
+   merges only safe for that specific DOM. [~closed_world:true] is the matching
+   opt-in: the caller asserts no element matches two distinct selectors that
+   would otherwise tie, so cascade makes the same DOM-dependent merges and the
+   comparison is like-for-like. (cascade's default still assumes any DOM.) *)
 let cascade_output input =
   input |> parse "input.css"
-  |> Cascade.Css.optimize ~scope:`Stylesheet
+  |> Cascade.Css.optimize ~scope:`Stylesheet ~closed_world:true
   |> Cascade.Css.to_string ~minify:false
 
 let satcss_output expected =
@@ -38,44 +43,22 @@ let cases () =
         (not (String.equal name ".gitignore")) && case_dir name)
     |> List.sort String.compare
 
-(* Cases where cascade's output is legitimately larger than SatCSS's because the
-   merge SatCSS makes is unsafe for an arbitrary DOM. SatCSS minifies each
-   stylesheet against that page's captured DOM, so it can merge rules that are
-   only safe for that specific DOM. cascade preserves rendering for ANY DOM (it
-   is scoped to CSS text, never a runtime DOM; see {!Cascade.Optimize.scope}),
-   so it correctly leaves such merges undone. These are not cascade deficiencies
-   and cannot be closed without stepping outside cascade's scope.
-
-   Each entry asserts cascade is STILL larger, so a fix that closes the gap
-   fails the test and prompts removing the entry. *)
+(* Residual cases where cascade stays a little larger than SatCSS even under
+   closed-world (where it already makes the same DOM-dependent merges). The
+   remainder is a structural-shape difference in the merged form, not a refused
+   merge. Each entry asserts cascade is STILL larger, so a fix that closes the
+   gap fails the test and prompts removing the entry. *)
 let known_larger =
   [
-    ( "sohu-3",
-      "DOM-dependent: hoisting shared declarations out of `.auto-search1 \
-       .log-search` / `.hangxing-select .hangxing-input` would cross \
-       `.auto-hot-tag li` (a descendant-combinator tie writing a different \
-       `border`/`height`). For a possible `li.log-search` element this changes \
-       rendering at any hoist position; SatCSS proves no such element exists \
-       from the page DOM." );
     ( "vk-3",
-      "DOM-dependent: `.blocked_about_login` ties `.blocked_no_code` on \
-       `padding-top` with a different value, so grouping them is safe only if \
-       no element carries both classes - which only the page DOM can \
-       establish." );
+      "Residual +17 bytes under closed-world: SatCSS's grouping of \
+       `.blocked_about_login`/`.blocked_no_code` (tied on `padding-top`) lands \
+       a marginally tighter structure than cascade's equivalent merge." );
     ( "google-2",
-      "DOM-dependent: SatCSS groups the `position:relative` rules \
-       (`#viewport,.goog-inline-block,.logo-subtext`) and the \
-       `position:absolute` rules (`#footer,.jfk-bubble,.jfk-bubble-arrow`). \
-       Both cross `.goog-inline-block{position:relative}`, a class selector \
-       (0,1,0) that ties `.jfk-bubble` (0,1,0) with a different `position` \
-       value - hoisting across it would flip an element matching \
-       `.jfk-bubble.goog-inline-block`. cascade correctly refuses; SatCSS \
-       relies on the page DOM proving no such element exists." );
-    ( "outlook-3",
-      "DOM-dependent: after cost-aware extraction of the `padding-top` group, \
-       the residual gap is SatCSS grouping `background-color` and `dir`-scoped \
-       (`html[dir=ltr]`/`html[dir=rtl]`) `left`/`right`/`text-align` rules \
-       across class ties only the page DOM can prove disjoint." );
+      "Residual +39 bytes under closed-world: with the DOM-disjointness \
+       assumption cascade groups the `position` rules \
+       (`#viewport,.goog-inline-block,...` and `#footer,.jfk-bubble,...`) but \
+       reaches all but ~39 bytes of SatCSS's exact shape." );
   ]
 
 let check_case name () =

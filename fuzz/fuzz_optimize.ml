@@ -703,14 +703,6 @@ let check_noop_identity name input result =
     failf "%s reallocated a value it did not change (x = f x but not x == f x)"
       name
 
-let mk_rule buf i : Css.Stylesheet.rule =
-  {
-    selector = selector buf i;
-    declarations = [ declaration buf (i + 1) ];
-    nested = [];
-    merge_key = None;
-  }
-
 let test_drop_invalid_identity buf =
   let ss = generated_stylesheet buf in
   check_noop_identity "drop_invalid" ss (Css.Optimize.drop_invalid ss)
@@ -738,17 +730,6 @@ let test_dup_buggy_identity buf =
   let props = List.init n (fun i -> declaration buf (i + 1)) in
   check_noop_identity "duplicate_buggy_properties" props
     (Css.Optimize.duplicate_buggy_properties props)
-
-let test_merge_rules_identity buf =
-  let n = 1 + (byte_at buf 0 mod 5) in
-  let rules = List.init n (fun i -> mk_rule buf (i * 2)) in
-  check_noop_identity "merge_rules" rules (Css.Optimize.merge_rules rules)
-
-let test_combine_rules_identity buf =
-  let n = 1 + (byte_at buf 0 mod 5) in
-  let rules = List.init n (fun i -> mk_rule buf (i * 2)) in
-  check_noop_identity "combine_identical_rules" rules
-    (Css.Optimize.combine_identical_rules rules)
 
 (* The shorthand composers run on index-tagged declarations and always rebuild
    the list spine (the [go]/[List.rev] fold), so the contract is per-element,
@@ -808,10 +789,6 @@ let identity_cases =
       test_flatten_identity;
     test_case "duplicate_buggy_properties preserves physical identity" [ bytes ]
       test_dup_buggy_identity;
-    test_case "merge_rules preserves physical identity" [ bytes ]
-      test_merge_rules_identity;
-    test_case "combine_identical_rules preserves physical identity" [ bytes ]
-      test_combine_rules_identity;
     test_case "compose_shorthands preserves element identity" [ bytes ]
       test_compose_identity;
     test_case "merge_box_shorthand_longhands preserves element identity"

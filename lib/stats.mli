@@ -60,18 +60,6 @@ type counters = {
       (** total raw-byte gain estimated by the global factoring preflight *)
   mutable factor_bytes_saved : int;
       (** total committed byte savings reported by global factoring passes *)
-  mutable anchors_scored : int;  (** anchor score invocations *)
-  mutable anchors_prefiltered : int;
-      (** scored anchors rejected by the no-shared-declaration pre-filter *)
-  mutable factorings_applied : int;  (** anchor-gap factorings committed *)
-  mutable interval_candidates : int;
-      (** interval candidates considered by the indexed scorer *)
-  mutable interval_pruned : int;
-      (** interval candidates rejected by the optimistic size upper bound *)
-  mutable interval_scored : int;
-      (** interval candidates that reached exact cascade-aware scoring *)
-  mutable interval_selected : int;
-      (** interval candidates selected by weighted interval scheduling *)
 }
 (** Global counters across the last optimizer run. *)
 
