@@ -1,4 +1,5 @@
 type scope = [ `Fragment | `Stylesheet ]
+type objective = [ `Raw | `Transfer ]
 
 type t = {
   scope : scope;
@@ -7,6 +8,7 @@ type t = {
   aggressive : bool;
   extend_lists : bool;
   closed_world : bool;
+  objective : objective;
 }
 
 let fragment =
@@ -17,17 +19,43 @@ let fragment =
     aggressive = false;
     extend_lists = false;
     closed_world = false;
+    objective = `Transfer;
   }
 
 let of_scope ?(lossless = false) ?(aggressive = false) ?(extend_lists = false)
-    ?(closed_world = false) = function
+    ?(closed_world = false) ?(objective = `Transfer) = function
   | Some scope ->
-      { fragment with scope; lossless; aggressive; extend_lists; closed_world }
-  | None -> { fragment with lossless; aggressive; extend_lists; closed_world }
+      {
+        fragment with
+        scope;
+        lossless;
+        aggressive;
+        extend_lists;
+        closed_world;
+        objective;
+      }
+  | None ->
+      {
+        fragment with
+        lossless;
+        aggressive;
+        extend_lists;
+        closed_world;
+        objective;
+      }
 
 let v ?(lossless = false) ?(aggressive = false) ?(extend_lists = false)
-    ?(closed_world = false) ?(registered = fun _ -> false) scope =
-  { scope; registered; lossless; aggressive; extend_lists; closed_world }
+    ?(closed_world = false) ?(objective = `Transfer)
+    ?(registered = fun _ -> false) scope =
+  {
+    scope;
+    registered;
+    lossless;
+    aggressive;
+    extend_lists;
+    closed_world;
+    objective;
+  }
 
 let scope t = t.scope
 let registered t = t.registered
@@ -35,6 +63,7 @@ let lossless t = t.lossless
 let aggressive t = t.aggressive
 let extend_lists t = t.extend_lists
 let closed_world t = t.closed_world
+let objective t = t.objective
 let with_extend_lists extend_lists t = { t with extend_lists }
 
 let pp_scope ctx = function
@@ -52,4 +81,7 @@ let pp ctx t =
   Pp.string ctx (string_of_bool t.extend_lists);
   Pp.string ctx ";closed_world=";
   Pp.string ctx (string_of_bool t.closed_world);
+  Pp.string ctx ";objective=";
+  Pp.string ctx
+    (match t.objective with `Raw -> "raw" | `Transfer -> "transfer");
   Pp.string ctx "}"

@@ -46,7 +46,10 @@ let print_factor_profile_footer () =
   Fmt.epr "@.factor stops: %d marginal, committed savings: %d bytes@."
     S.counters.marginal_stops S.counters.factor_bytes_saved;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
-    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain
+    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain;
+  if S.counters.factor_transfer_reverts > 0 then
+    Fmt.epr "factor transfer gate: %d segments reverted@."
+      S.counters.factor_transfer_reverts
 
 let report_profile () =
   let module S = Cascade.Stats in
@@ -74,7 +77,7 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~aggressive ~closed_world ~inline_imports_flag
+    ~enforce_spec ~aggressive ~closed_world ~objective ~inline_imports_flag
     ~inline_vars_flag ~keep_vars ~memtrace_path ~profile =
   Cli_io.start_memtrace memtrace_path;
   try
@@ -91,7 +94,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       if minify then
         let () = Cascade.Stats.set_profile profile in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
-          ~closed_world stylesheet
+          ~closed_world ~objective stylesheet
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
@@ -174,6 +177,20 @@ let aggressive_arg =
   in
   Arg.(value & flag & info [ "aggressive" ] ~doc)
 
+let objective_arg =
+  let doc =
+    "Size metric $(b,--minify) optimises for. $(b,transfer) (the default) \
+     keeps a global-factoring result only when it also shrinks the estimated \
+     gzip (DEFLATE) size of the output, since repeated declaration text is \
+     nearly free once compressed; $(b,raw) keeps every raw-byte win, the right \
+     objective when the output ships uncompressed (inline style attributes, \
+     email HTML). Has no effect without $(b,--minify)."
+  in
+  Arg.(
+    value
+    & opt (enum [ ("transfer", `Transfer); ("raw", `Raw) ]) `Transfer
+    & info [ "objective" ] ~doc ~docv:"OBJECTIVE")
+
 let flatten_nesting_arg =
   let doc =
     "Compatibility transform: flatten nested style rules into top-level rules \
@@ -247,6 +264,7 @@ let term =
         enforce_spec
         aggressive
         closed_world
+        objective
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
@@ -274,15 +292,18 @@ let term =
           Fmt.epr "Warning: --aggressive has no effect without --minify@.";
         if closed_world && not minify then
           Fmt.epr "Warning: --closed-world has no effect without --minify@.";
+        if objective = `Raw && not minify then
+          Fmt.epr "Warning: --objective has no effect without --minify@.";
         if profile && not minify then
           Fmt.epr "Warning: --profile has no effect without --minify@.";
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~aggressive ~closed_world ~inline_imports_flag
-          ~inline_vars_flag ~keep_vars ~memtrace_path ~profile)
+          ~enforce_spec ~aggressive ~closed_world ~objective
+          ~inline_imports_flag ~inline_vars_flag ~keep_vars ~memtrace_path
+          ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
-    $ enforce_spec_arg $ aggressive_arg $ closed_world_arg $ inline_imports_arg
-    $ inline_vars_arg $ keep_vars_arg $ memtrace_arg $ profile_arg
-    $ Cli_log.term)
+    $ enforce_spec_arg $ aggressive_arg $ closed_world_arg $ objective_arg
+    $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg $ memtrace_arg
+    $ profile_arg $ Cli_log.term)
 
 let man =
   [

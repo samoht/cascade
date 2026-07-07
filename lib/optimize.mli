@@ -49,6 +49,7 @@ val ctx_of_scope :
   ?aggressive:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
+  ?objective:Ctx.objective ->
   scope option ->
   ctx
 (** [ctx_of_scope ?lossless ?aggressive ?extend_lists ?closed_world scope]
@@ -147,6 +148,7 @@ val stylesheet :
   ?enforce_spec:bool ->
   ?aggressive:bool ->
   ?closed_world:bool ->
+  ?objective:Ctx.objective ->
   ?prune_unused_custom_props:bool ->
   t ->
   t
@@ -240,6 +242,8 @@ type counters = {
       (** total raw-byte gain estimated by the global factoring preflight *)
   mutable factor_bytes_saved : int;
       (** total committed byte savings reported by global factoring passes *)
+  mutable factor_transfer_reverts : int;
+      (** factoring results discarded because the estimated DEFLATE size grew *)
 }
 (** Global counters across the last [Optimize.stylesheet] run. *)
 

@@ -52,6 +52,7 @@ type counters = {
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
+  mutable factor_transfer_reverts : int;
 }
 
 let counters =
@@ -62,6 +63,7 @@ let counters =
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
+    factor_transfer_reverts = 0;
   }
 
 let record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
@@ -93,4 +95,5 @@ let reset () =
   counters.marginal_stops <- 0;
   counters.factor_fixpoints_skipped <- 0;
   counters.factor_preflight_gain <- 0;
-  counters.factor_bytes_saved <- 0
+  counters.factor_bytes_saved <- 0;
+  counters.factor_transfer_reverts <- 0

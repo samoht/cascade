@@ -60,6 +60,8 @@ type counters = {
       (** total raw-byte gain estimated by the global factoring preflight *)
   mutable factor_bytes_saved : int;
       (** total committed byte savings reported by global factoring passes *)
+  mutable factor_transfer_reverts : int;
+      (** factoring results discarded because the estimated DEFLATE size grew *)
 }
 (** Global counters across the last optimizer run. *)
 

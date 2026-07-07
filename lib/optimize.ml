@@ -100,6 +100,7 @@ type counters = Stats.counters = {
   mutable factor_fixpoints_skipped : int;
   mutable factor_preflight_gain : int;
   mutable factor_bytes_saved : int;
+  mutable factor_transfer_reverts : int;
 }
 
 let counters = Stats.counters
@@ -1117,7 +1118,8 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) ?(closed_world = false)
-    ?(prune_unused_custom_props = false) (stylesheet : t) : t =
+    ?(objective = `Transfer) ?(prune_unused_custom_props = false)
+    (stylesheet : t) : t =
   Selector_summary.clear_memo ();
   reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
@@ -1129,7 +1131,9 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
-  let ctx = Ctx.v ~lossless ~aggressive ~closed_world ~registered scope in
+  let ctx =
+    Ctx.v ~lossless ~aggressive ~closed_world ~objective ~registered scope
+  in
   run_pipeline
     ~ctx:(Ctx.with_extend_lists true ctx)
     ~enforce_spec ~aggressive stylesheet
