@@ -7641,7 +7641,7 @@ val optimize :
     DEFLATE (gzip) size of the output is discarded even when it shrinks raw
     bytes, since repeated declaration text is nearly free once compressed. Pass
     [`Raw] to keep every raw-byte win, the right objective when the output ships
-    uncompressed (inline [style] attributes, email HTML).
+    uncompressed (inline HTML style attributes, email HTML).
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a

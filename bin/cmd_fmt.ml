@@ -252,6 +252,15 @@ let profile_arg =
   in
   Arg.(value & flag & info [ "profile" ] ~doc)
 
+(* Flags that only act under [--minify]; warn when set without it. *)
+let warn_minify_only ~minify checks =
+  if not minify then
+    List.iter
+      (fun (active, flag) ->
+        if active then
+          Fmt.epr "Warning: %s has no effect without --minify@." flag)
+      checks
+
 let term =
   Term.(
     const
@@ -282,20 +291,16 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
-        if scope = `Stylesheet && not minify then
-          Fmt.epr "Warning: --scope=stylesheet has no effect without --minify@.";
-        if lossless && not minify then
-          Fmt.epr "Warning: --lossless has no effect without --minify@.";
-        if enforce_spec && not minify then
-          Fmt.epr "Warning: --enforce-spec has no effect without --minify@.";
-        if aggressive && not minify then
-          Fmt.epr "Warning: --aggressive has no effect without --minify@.";
-        if closed_world && not minify then
-          Fmt.epr "Warning: --closed-world has no effect without --minify@.";
-        if objective = `Raw && not minify then
-          Fmt.epr "Warning: --objective has no effect without --minify@.";
-        if profile && not minify then
-          Fmt.epr "Warning: --profile has no effect without --minify@.";
+        warn_minify_only ~minify
+          [
+            (scope = `Stylesheet, "--scope=stylesheet");
+            (lossless, "--lossless");
+            (enforce_spec, "--enforce-spec");
+            (aggressive, "--aggressive");
+            (closed_world, "--closed-world");
+            (objective = `Raw, "--objective");
+            (profile, "--profile");
+          ];
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
           ~enforce_spec ~aggressive ~closed_world ~objective
           ~inline_imports_flag ~inline_vars_flag ~keep_vars ~memtrace_path
