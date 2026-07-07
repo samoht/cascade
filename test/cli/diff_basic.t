@@ -82,6 +82,29 @@ others), including when a same-condition block was split around the rule.
   $ cascade diff --diff=canonical grouped.css split.css
   CSS files are identical
 
+Canonical mode reorders declarations that write disjoint cascade slots, so two
+rules holding the same declarations in a different commuting order compare
+identical, while a shorthand and its longhand (which overlap) stay ordered.
+
+  $ cat > order-a.css <<EOF
+  > .sr-only{position:absolute;clip-path:inset(50%);width:1px;overflow:hidden}
+  > EOF
+  $ cat > order-b.css <<EOF
+  > .sr-only{width:1px;overflow:hidden;position:absolute;clip-path:inset(50%)}
+  > EOF
+  $ cascade diff --diff=canonical order-a.css order-b.css
+  CSS files are identical
+
+  $ cat > over-a.css <<EOF
+  > .x{margin:0;margin-top:5px}
+  > EOF
+  $ cat > over-b.css <<EOF
+  > .x{margin-top:5px;margin:0}
+  > EOF
+  $ NO_COLOR=1 cascade diff --diff=canonical over-a.css over-b.css > /dev/null; echo $?
+  cascade: CSS files differ
+  124
+
 Canonical mode also equates different factorings of the same content: a
 declaration hoisted into a shared selector-list group is the same declaration
 written inline.

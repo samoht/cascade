@@ -65,6 +65,72 @@ let is_identity order =
     order;
   !id
 
+(* Source-order-preserving edge count: [indeg.(j)] is the number of
+   source-earlier declarations that overlap [j], which must all be emitted
+   before [j]. *)
+let overlap_indegrees (arr : Declaration.declaration array) : int array =
+  let n = Array.length arr in
+  let indeg = Array.make n 0 in
+  for j = 0 to n - 1 do
+    for i = 0 to j - 1 do
+      if Shorthand.declarations_overlap arr.(i) arr.(j) then
+        indeg.(j) <- indeg.(j) + 1
+    done
+  done;
+  indeg
+
+(* Among not-yet-emitted declarations whose overlapping predecessors are all
+   emitted ([indeg = 0]), the one with the smallest content key (then index). *)
+let ready_min ~emitted ~indeg ~keys =
+  let best = ref (-1) in
+  for i = 0 to Array.length keys - 1 do
+    if (not emitted.(i)) && indeg.(i) = 0 then
+      if
+        !best < 0
+        ||
+        let c = String.compare keys.(i) keys.(!best) in
+        c < 0 || (c = 0 && i < !best)
+      then best := i
+  done;
+  !best
+
+(* Canonical order for a rule's declarations. Two declarations whose footprints
+   overlap - the same property, or a shorthand and a longhand writing a common
+   slot - keep their source order because it is cascade-significant; two with
+   disjoint footprints can never change each other's computed value, so they
+   sort into a deterministic content order. The declaration-level analogue of
+   the rule-level reordering, so two rules holding the same declarations in a
+   different commuting order project to one canonical form. Preserves physical
+   identity when the source order is already canonical. *)
+let canonical_declarations (decls : Declaration.declaration list) :
+    Declaration.declaration list =
+  match decls with
+  | [] | [ _ ] -> decls
+  | _ ->
+      let arr = Array.of_list decls in
+      let n = Array.length arr in
+      let keys =
+        Array.map
+          (fun d -> Pp.to_string ~minify:true Declaration.pp_declaration d)
+          arr
+      in
+      let indeg = overlap_indegrees arr in
+      let emitted = Array.make n false in
+      let order = Array.make n 0 in
+      let changed = ref false in
+      for pos = 0 to n - 1 do
+        let b = ready_min ~emitted ~indeg ~keys in
+        if b <> pos then changed := true;
+        emitted.(b) <- true;
+        order.(pos) <- b;
+        for j = b + 1 to n - 1 do
+          if (not emitted.(j)) && Shorthand.declarations_overlap arr.(b) arr.(j)
+          then indeg.(j) <- indeg.(j) - 1
+        done
+      done;
+      if not !changed then decls
+      else Array.to_list (Array.map (fun i -> arr.(i)) order)
+
 (* Reorder one maximal run of elements into a canonical linear extension of its
    dependency graph, breaking ties among independent elements by serialized
    statement content so two source orderings converge to one form, while
@@ -169,7 +235,8 @@ let merge scan changed ~from ~into =
         {
           earlier with
           declarations =
-            dedup_keep_last (earlier.declarations @ later.declarations);
+            canonical_declarations
+              (dedup_keep_last (earlier.declarations @ later.declarations));
         }
       in
       scan.arr.(into) <- (Rule merged, [ merged ])
@@ -271,7 +338,10 @@ let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
       let nested =
         canonicalize_block ~parent:(Some child_parent) changed r.nested
       in
-      if nested == r.nested then stmt else Rule { r with nested }
+      let declarations = canonical_declarations r.declarations in
+      if declarations != r.declarations then changed := true;
+      if nested == r.nested && declarations == r.declarations then stmt
+      else Rule { r with declarations; nested }
   | Layer (n, b) -> Layer (n, here b)
   | Media (m, b) -> Media (m, here b)
   | Container (n, c, b) -> Container (n, c, here b)
