@@ -17,10 +17,12 @@ let parse path css =
    merges only safe for that specific DOM. [~closed_world:true] is the matching
    opt-in: the caller asserts no element matches two distinct selectors that
    would otherwise tie, so cascade makes the same DOM-dependent merges and the
-   comparison is like-for-like. (cascade's default still assumes any DOM.) *)
+   comparison is like-for-like. (cascade's default still assumes any DOM.)
+   [~objective:`Raw] matches SatCSS's raw-character objective: this suite
+   compares structural rule-merging power, not compressed transfer size. *)
 let cascade_output input =
   input |> parse "input.css"
-  |> Cascade.Css.optimize ~scope:`Stylesheet ~closed_world:true
+  |> Cascade.Css.optimize ~scope:`Stylesheet ~closed_world:true ~objective:`Raw
   |> Cascade.Css.to_string ~minify:false
 
 let satcss_output expected =

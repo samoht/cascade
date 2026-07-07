@@ -3,6 +3,10 @@
 type scope = [ `Fragment | `Stylesheet ]
 (** Surrounding CSS context assumed by optimizations. *)
 
+type objective = [ `Raw | `Transfer ]
+(** Size metric optimizations are judged by: raw bytes, or estimated DEFLATE
+    (gzip) transfer bytes. *)
+
 type t
 (** Shared optimizer context. *)
 
@@ -14,6 +18,7 @@ val of_scope :
   ?aggressive:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
+  ?objective:objective ->
   scope option ->
   t
 (** Build a context from an optional scope. *)
@@ -23,6 +28,7 @@ val v :
   ?aggressive:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
+  ?objective:objective ->
   ?registered:(string -> bool) ->
   scope ->
   t
@@ -60,6 +66,13 @@ val closed_world : t -> bool
     element does turn up, including one a script adds at runtime. This is about
     the HTML, separate from {!scope}, which is about how much of the CSS you
     control. *)
+
+val objective : t -> objective
+(** Size metric optimizations are judged by. Under [`Transfer] (the default) the
+    global factoring result is kept only when it does not grow the estimated
+    DEFLATE-compressed output; [`Raw] keeps every raw-byte win, the right
+    objective when the output ships uncompressed (inline [style], email) or for
+    structural comparisons against raw-size oracles. *)
 
 val with_extend_lists : bool -> t -> t
 (** [with_extend_lists enabled ctx] returns [ctx] with only the list-extension

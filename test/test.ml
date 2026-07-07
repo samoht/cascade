@@ -37,6 +37,7 @@ let () =
       Test_pool.suite;
       Test_loop.suite;
       Test_stats.suite;
+      Test_gzip_size.suite;
       Test_edge.suite;
       Test_shorthand.suite;
       Test_merge.suite;

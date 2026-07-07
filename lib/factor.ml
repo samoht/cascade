@@ -24,6 +24,7 @@ let ctx_key ctx =
       b (Ctx.aggressive ctx);
       b (Ctx.extend_lists ctx);
       b (Ctx.closed_world ctx);
+      (match Ctx.objective ctx with `Raw -> "r" | `Transfer -> "t");
     ]
 
 (* Structural key: the rule list keys the cache directly (sound poly hash/equal
@@ -82,6 +83,25 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
     ~elapsed;
   if changed then rules' else rules
 
+(* Factoring rewrites are chosen by raw-byte gain, but stylesheets ship
+   DEFLATE-compressed: replacing repeated declaration text (nearly free under
+   LZ77) with unique selector-list structure can grow the compressed output even
+   as raw bytes shrink. Under the [`Transfer] objective, keep a segment's
+   factoring only when the estimated transfer size does not grow. Below
+   [transfer_gate_min_bytes] the estimate is noise against DEFLATE's block
+   overhead, so raw-byte wins stand unchallenged. *)
+let transfer_gate_min_bytes = 4096
+
+let render_rules rules =
+  Pp.to_string ~minify:true (fun ctx -> List.iter (pp_rule ctx)) rules
+
+let factored_grows_transfer ~ctx ~unfactored ~factored =
+  Ctx.objective ctx = `Transfer
+  &&
+  let before = render_rules unfactored in
+  String.length before >= transfer_gate_min_bytes
+  && Gzip_size.estimate (render_rules factored) > Gzip_size.estimate before
+
 let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in
   match
@@ -104,7 +124,20 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
         else begin
           counters.factor_fixpoints_run <- counters.factor_fixpoints_run + 1;
           let fixpoint = counters.factor_fixpoints_run in
-          optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules graph
+          let unfactored = ordered_rules rules graph in
+          let factored =
+            optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
+              graph
+          in
+          if
+            factored != rules
+            && factored_grows_transfer ~ctx ~unfactored ~factored
+          then begin
+            counters.factor_transfer_reverts <-
+              counters.factor_transfer_reverts + 1;
+            unfactored
+          end
+          else factored
         end
       in
       (match (cache, key) with

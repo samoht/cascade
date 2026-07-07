@@ -1123,12 +1123,13 @@ let spec_property_grammar_table_expansion () =
             ( Some "border-image:linear-gradient(red,blue)30",
               Some "border-image:linear-gradient(red,blue)30" )
         | "background", "url(bg.png) no-repeat center / cover border-box" ->
-            (Some "background:url(bg.png)50%/cover no-repeat border-box", None)
+            ( Some "background:url(bg.png)center/cover no-repeat border-box",
+              Some "background:url(bg.png)50%/cover no-repeat border-box" )
         | "scrollbar-color", "red blue" ->
             (Some "scrollbar-color:red blue", Some "scrollbar-color:red #00f")
         | "border", "1px solid currentColor" -> (Some "border:1px solid", None)
         | "background-position", "left 10px top 20px" ->
-            ( Some "background-position:10px 20px",
+            ( Some "background-position:left 10px top 20px",
               Some "background-position:10px 20px" )
         | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
             ( Some "box-shadow:0 1px 2px rgb(0 0 0/.2)",
@@ -1680,7 +1681,8 @@ let spec_values_l45_edges () =
         "filter:drop-shadow(0 0 2px rgb(0 0 0/.4))" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
         "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
-      ("background-position: left 10px top 20%", "background-position:10px 20%");
+      ( "background-position: left 10px top 20%",
+        "background-position:left 10px top 20%" );
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
       ( "clip-path: xywh(0 0 100% 100% round 10px)",
         "clip-path:xywh(0 0 100% 100% round 10px)" );
@@ -1700,6 +1702,9 @@ let spec_values_l45_edges () =
     "translate(10px, 20%) rotate(.25turn) scale(1.2)";
   decl_optimizes ~prop:"background-position" ~into:"10px 20%"
     "left 10px top 20%";
+  decl_optimizes ~prop:"background-position" ~into:"50%" "center";
+  decl_optimizes ~prop:"background-position" ~into:"top" "center top";
+  decl_optimizes ~prop:"mask-position" ~into:"10px 20px" "left 10px top 20px";
   List.iter
     (fun input -> neg_cursor read_declaration input)
     [
@@ -1812,7 +1817,7 @@ let spec_remaining_prop_vectors () =
       ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg)30 fill");
       ("mask-size: contain", "mask-size:contain");
       ("mask-repeat: no-repeat", "mask-repeat:no-repeat");
-      ("mask-position: left 10px top 20px", "mask-position:10px 20px");
+      ("mask-position: left 10px top 20px", "mask-position:left 10px top 20px");
       ( "backdrop-filter: blur(4px) saturate(120%)",
         "backdrop-filter:blur(4px)saturate(120%)" );
       ("will-change: transform, opacity", "will-change:transform,opacity");

@@ -7592,6 +7592,7 @@ val optimize :
   ?enforce_spec:bool ->
   ?aggressive:bool ->
   ?closed_world:bool ->
+  ?objective:[ `Raw | `Transfer ] ->
   ?prune_unused_custom_props:bool ->
   t ->
   t
@@ -7626,6 +7627,13 @@ val optimize :
     page can render wrong if such an element appears, including one a script
     adds at runtime. This is about the HTML, separate from [scope] (how much of
     the CSS you control). The default is safe for any page.
+
+    [objective] (default [`Transfer]) is the size metric factoring is judged by:
+    under [`Transfer], a global factoring result that grows the estimated
+    DEFLATE (gzip) size of the output is discarded even when it shrinks raw
+    bytes, since repeated declaration text is nearly free once compressed. Pass
+    [`Raw] to keep every raw-byte win, the right objective when the output ships
+    uncompressed (inline [style] attributes, email HTML).
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a
