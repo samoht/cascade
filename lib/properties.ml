@@ -2930,20 +2930,8 @@ let rec pp_filter : filter Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_filter ctx v
 
-(* CSS Backgrounds 3 sec. 3.6: a <position> offset resolves as [offset = P% *
-   (positioning_area - object_size)], so at [0%] the offset is 0 regardless of
-   any size - [0%] is unconditionally [0] here. Fold it under minify (sound only
-   at the <position> boundary; <length-percentage> sizing keeps [0%] because
-   definiteness can make them differ). *)
-let pp_position_length ctx (l : Values.length) =
-  match l with
-  | Pct 0. when Pp.minified ctx -> Pp.char ctx '0'
-  | _ -> pp_length ctx l
-
 let pp_position_offset ctx (lp : Values.length_percentage) =
-  match lp with
-  | (Pct 0. | Length (Pct 0.)) when Pp.minified ctx -> Pp.char ctx '0'
-  | _ -> pp_length_percentage ~always:true ctx lp
+  pp_length_percentage ~always:true ctx lp
 
 let rec pp_position_value : position_value Pp.t =
  fun ctx -> function
@@ -2969,18 +2957,11 @@ let rec pp_position_value : position_value Pp.t =
   | Top_right -> Pp.string ctx "top right"
   | Bottom_left -> Pp.string ctx "bottom left"
   | Bottom_right -> Pp.string ctx "bottom right"
-  | XY (a, b)
-    when Pp.minified ctx && match b with Pct 50. -> true | _ -> false ->
-      (* CSS Backgrounds 3 sec. 3.6: a single-value position sets the horizontal
-         component and defaults the vertical to [center] ([50%]). So [<a> 50%]
-         (e.g. [50% 50%], [10px 50%]) collapses to the single value [<a>], but a
-         non-centred vertical like [0 0] must keep both values. *)
-      pp_position_length ctx a
   | XY (a, b) ->
-      pp_position_length ctx a;
+      pp_length ctx a;
       Pp.space ctx ();
-      pp_position_length ctx b
-  | Single l -> pp_position_length ctx l
+      pp_length ctx b
+  | Single l -> pp_length ctx l
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
@@ -2992,7 +2973,7 @@ let rec pp_position_value : position_value Pp.t =
       Pp.space ctx ();
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_position_length ctx offset
+      pp_length ctx offset
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
@@ -3018,6 +2999,7 @@ let radial_size_is_default : radial_size -> bool = function
 let position_value_is_center : position_value -> bool = function
   | Center -> true
   | XY (Pct 50., Pct 50.) -> true
+  | Single (Pct 50.) -> true
   | _ -> false
 
 let radial_shape_kept (s : radial_shape option) : radial_shape option =
@@ -3850,29 +3832,89 @@ let normalize_webkit_gradient ?(lossless = false) :
       in
       if stops == r.stops then value else Radial { r with stops }
 
+(* [<position>] spelling canonicalization. CSS Values 4 sec. 6.1: the edge
+   keywords are percentage synonyms ([left] = [top] = [0%], [center] = [50%],
+   [right] = [bottom] = [100%]), a percentage offset of [0%] and the length [0]
+   resolve to the same point, and a single value defaults the vertical component
+   to [center]. Fold every statically-known position to the node the parser
+   produces for its shortest spelling; the printer stays faithful to the node,
+   so a normalized AST and the reparse of its output agree (the structural-hash
+   invariant of [Declaration.v]). *)
+let position_zero (l : Values.length) : Values.length =
+  match l with Pct 0. -> Zero | l -> l
+
+let position_offset_zero (lp : Values.length_percentage) :
+    Values.length_percentage =
+  match lp with Pct 0. | Length (Pct 0.) -> Length Zero | lp -> lp
+
+(* The horizontal and vertical components of a statically-known position; [None]
+   when a component is dynamic ([var()], [calc()], [env()]) or offset from a
+   non-zero edge ([right]/[bottom] offsets need the box size). *)
+let position_xy : position_value -> (Values.length * Values.length) option =
+  let pct n : Values.length = Pct n in
+  let static_offset : Values.length_percentage -> Values.length option =
+    function
+    | Length l -> Some l
+    | Pct n -> Some (pct n)
+    | Env _ | Var _ | Calc _ | Invalid _ -> None
+  in
+  function
+  | Center -> Some (pct 50., pct 50.)
+  | Left -> Some (pct 0., pct 50.)
+  | Right -> Some (pct 100., pct 50.)
+  | Top -> Some (pct 50., pct 0.)
+  | Bottom -> Some (pct 50., pct 100.)
+  | Left_top | Top_left -> Some (pct 0., pct 0.)
+  | Left_center -> Some (pct 0., pct 50.)
+  | Left_bottom | Bottom_left -> Some (pct 0., pct 100.)
+  | Right_top | Top_right -> Some (pct 100., pct 0.)
+  | Right_center -> Some (pct 100., pct 50.)
+  | Right_bottom | Bottom_right -> Some (pct 100., pct 100.)
+  | Center_top -> Some (pct 50., pct 0.)
+  | Center_bottom -> Some (pct 50., pct 100.)
+  | XY (x, y) -> Some (x, y)
+  | Single x -> Some (x, pct 50.)
+  | Edge_offset_axis ("left", off, "center") ->
+      Option.map (fun x -> (x, pct 50.)) (static_offset off)
+  | Edge_offset_axis ("left", off, "top") ->
+      Option.map (fun x -> (x, pct 0.)) (static_offset off)
+  | Axis_edge_offset ("center", "top", off) -> Some (pct 50., off)
+  | Edge_offset_edge_offset ("left", x, "top", y) -> (
+      match (static_offset x, static_offset y) with
+      | Some x, Some y -> Some (x, y)
+      | _ -> None)
+  | _ -> None
+
+(* The parser's node for the shortest spelling of a static (x, y) position: [x]
+   alone when [y] is centred, the [top] / [bottom] keywords when they beat [50%
+   0] / [50% 100%], a plain pair otherwise. *)
+let position_of_xy (x : Values.length) (y : Values.length) : position_value =
+  match (position_zero x, position_zero y) with
+  | x, Pct 50. -> Single x
+  | Pct 50., Zero -> Top
+  | Pct 50., Pct 100. -> Bottom
+  | x, y -> XY (x, y)
+
 let normalize_position_value ?(strip = true) : position_value -> position_value
     =
  fun value ->
-  match value with
-  | XY (x, y) ->
-      preserve_if_equal value
-        (XY (Values.normalize_length ~strip x, Values.normalize_length ~strip y))
-  | Single l ->
-      preserve_if_equal value (Single (Values.normalize_length ~strip l))
-  | Edge_offset_axis (e, lp, a) ->
-      preserve_if_equal value
-        (Edge_offset_axis (e, Values.normalize_length_percentage ~strip lp, a))
-  | Axis_edge_offset (a, e, l) ->
-      preserve_if_equal value
-        (Axis_edge_offset (a, e, Values.normalize_length ~strip l))
-  | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
-      preserve_if_equal value
-        (Edge_offset_edge_offset
-           ( e1,
-             Values.normalize_length_percentage ~strip lp1,
-             e2,
-             Values.normalize_length_percentage ~strip lp2 ))
-  | other -> other
+  let length l = position_zero (Values.normalize_length ~strip l) in
+  let offset lp =
+    position_offset_zero (Values.normalize_length_percentage ~strip lp)
+  in
+  match position_xy value with
+  | Some (x, y) ->
+      preserve_if_equal value (position_of_xy (length x) (length y))
+  | None -> (
+      match value with
+      | Edge_offset_axis (e, lp, a) ->
+          preserve_if_equal value (Edge_offset_axis (e, offset lp, a))
+      | Axis_edge_offset (a, e, l) ->
+          preserve_if_equal value (Axis_edge_offset (a, e, length l))
+      | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
+          preserve_if_equal value
+            (Edge_offset_edge_offset (e1, offset lp1, e2, offset lp2))
+      | other -> other)
 
 let normalize_radial_config (c : radial_gradient_config) =
   (* CSS Images 4 section 3.1: inside a radial-gradient() prelude the default
@@ -7952,57 +7994,8 @@ let rec pp_background_size : background_size Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_background_size ctx v
 
-let pp_background_position_value : position_value Pp.t =
- fun ctx value ->
-  let pct n = (Pct n : length) in
-  let length_of_lp : length_percentage -> length option = function
-    | Length l -> Some l
-    | Pct n -> Some (pct n)
-    | Env _ | Var _ | Calc _ | Invalid _ -> None
-  in
-  (* Use [pp_position_length], not [pp_length]: a [<position>] component zero is
-     spelled [0] rather than [0%], so converting a keyword edge to its
-     percentage must compose the same [Pct 0.] -> [0] fold the directly-parsed
-     form gets. Otherwise [left center] prints [0%] here but [0] after a
-     reparse, and the optimizer is not a fixed point. *)
-  let pp_pair ctx x y =
-    pp_position_length ctx x;
-    Pp.space ctx ();
-    pp_position_length ctx y
-  in
-  match value with
-  | Center when Pp.minified ctx -> pp_position_length ctx (pct 50.)
-  | (Left_top | Top_left) when Pp.minified ctx -> pp_pair ctx Zero Zero
-  | (Bottom_left | Left_bottom) when Pp.minified ctx ->
-      pp_pair ctx (pct 0.) (pct 100.)
-  | (Bottom_right | Right_bottom) when Pp.minified ctx ->
-      pp_pair ctx (pct 100.) (pct 100.)
-  | Left_center when Pp.minified ctx -> pp_position_length ctx (pct 0.)
-  | Right_center when Pp.minified ctx -> pp_position_length ctx (pct 100.)
-  | Center_top when Pp.minified ctx -> Pp.string ctx "top"
-  | Center_bottom when Pp.minified ctx -> Pp.string ctx "bottom"
-  | Axis_edge_offset ("center", "top", offset) when Pp.minified ctx ->
-      pp_pair ctx (pct 50.) offset
-  | Edge_offset_axis ("left", offset, "center") -> (
-      match length_of_lp offset with
-      | Some x -> pp_position_length ctx x
-      | None ->
-          pp_position_value ctx (Edge_offset_axis ("left", offset, "center")))
-  | Edge_offset_axis ("left", offset, "top") -> (
-      match length_of_lp offset with
-      | Some x -> pp_pair ctx x (pct 0.)
-      | None -> pp_position_value ctx (Edge_offset_axis ("left", offset, "top"))
-      )
-  | Edge_offset_edge_offset ("left", x, "top", y) -> (
-      match (length_of_lp x, length_of_lp y) with
-      | Some x, Some y -> pp_pair ctx x y
-      | _ ->
-          pp_position_value ctx (Edge_offset_edge_offset ("left", x, "top", y)))
-  | value -> pp_position_value ctx value
-
 let pp_background_position : background_position Pp.t =
- fun ctx positions ->
-  pp_box_shorthand pp_background_position_value ctx positions
+ fun ctx positions -> pp_box_shorthand pp_position_value ctx positions
 
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
@@ -8225,7 +8218,7 @@ let pp_background_shorthand : background_shorthand Pp.t =
   in
 
   pp_bg_prop maybe_space pp_background_image ctx image;
-  pp_bg_prop maybe_space pp_background_position_value ctx position;
+  pp_bg_prop maybe_space pp_position_value ctx position;
   pp_bg_size_with_position maybe_space { bg with position; size } ctx;
   pp_bg_prop maybe_space pp_background_repeat ctx repeat;
   pp_bg_prop maybe_space pp_background_attachment ctx attachment;

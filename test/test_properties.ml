@@ -1689,7 +1689,7 @@ let test_background () =
     "linear-gradient(to right, red, blue)";
   decl_optimizes ~prop:"background" ~into:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
-  check_background ~expected:"url(image.png)50%/cover no-repeat fixed red"
+  check_background ~expected:"url(image.png)center/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
   (* Multi-layer shorthand (CSS Backgrounds 3 §2.1): the layer comma separates
      layers and must not be eaten by a per-component reader. [repeat] is the
@@ -1959,13 +1959,13 @@ let test_flex_basis () =
 let test_background_shorthand () =
   check_background_shorthand "red";
   check_background_shorthand "url(image.png)";
-  check_background_shorthand ~expected:"50%" "center";
+  check_background_shorthand "center";
   check_background_shorthand "no-repeat";
   check_background_shorthand ~expected:"repeat" "repeat repeat";
   check_background_shorthand ~expected:"url(image.png)red" "red url(image.png)";
-  check_background_shorthand ~expected:"url(image.png)50%"
+  check_background_shorthand ~expected:"url(image.png)center"
     "url(image.png) center";
-  check_background_shorthand ~expected:"url(image.png)50%no-repeat red"
+  check_background_shorthand ~expected:"url(image.png)center no-repeat red"
     "red url(image.png) center no-repeat";
   neg_cursor read_background_shorthand "invalid invalid";
   neg_cursor read_background_shorthand "red blue green";
@@ -2531,10 +2531,10 @@ let test_background_image () =
     ~into:"conic-gradient(in hsl longer hue,red,#00f)"
     "conic-gradient(in hsl longer hue, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
     "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at center,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
     "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
   check_background_image ~minify:false
     ~expected:"radial-gradient(in oklab, red, blue)"
@@ -2584,8 +2584,8 @@ let test_conic_gradient_config () =
   neg_cursor read_conic_gradient_config "from"
 
 let test_background_position () =
-  check_background_position ~expected:"50%" "center";
-  check_background_position ~expected:"0 0" "left top";
+  check_background_position "center";
+  check_background_position "left top";
   check_background_position ~expected:"100% 0" "right 0";
   check_background_position ~expected:"100% -15.625rem" "right -15.625rem";
   check_background_position "right .5rem center";
