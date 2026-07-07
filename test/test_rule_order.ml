@@ -109,6 +109,28 @@ let coalesce_drops_exact_duplicates () =
     ".a{color:red;margin:0}"
     (canonical ".a{color:red}.a{color:red;margin:0}")
 
+let commuting_declarations_converge () =
+  (* Declarations that write disjoint cascade slots sort into one canonical
+     order, so two rules holding the same set in a different commuting order
+     converge (the .sr-only phantom: every declaration writes a distinct
+     property). *)
+  let a =
+    ".x{position:absolute;clip-path:inset(50%);width:1px;overflow:hidden}"
+  in
+  let b =
+    ".x{width:1px;overflow:hidden;position:absolute;clip-path:inset(50%)}"
+  in
+  Alcotest.(check string)
+    "both commuting orders converge" (canonical a) (canonical b)
+
+let overlapping_declarations_keep_order () =
+  (* A shorthand and its longhand write a common slot, so their relative order
+     is cascade-significant and the two source orders must not converge. *)
+  Alcotest.(check bool)
+    "shorthand/longhand order stays distinct" true
+    (canonical ".x{margin:0;margin-top:5px}"
+    <> canonical ".x{margin-top:5px;margin:0}")
+
 let nested_conditionals_participate () =
   let css =
     "@media print{@supports (display:flex){.z{color:red}}}.b{margin:0}"
@@ -139,6 +161,10 @@ let suite =
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
         coalesce_drops_exact_duplicates;
+      Alcotest.test_case "commuting declarations converge" `Quick
+        commuting_declarations_converge;
+      Alcotest.test_case "overlapping declarations keep order" `Quick
+        overlapping_declarations_keep_order;
       Alcotest.test_case "block with layer content is barrier" `Quick
         block_with_layer_content_is_barrier;
       Alcotest.test_case "nested conditionals participate" `Quick

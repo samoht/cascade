@@ -494,9 +494,10 @@ let canonical_registered_font_family_quoted_unquoted_equal () =
    so canonical comparison sorts them alphabetically by name. This restores the
    "all paths canonicalize the same" invariant for theme blocks regardless of
    the source's emission order (Tailwind's (priority, suborder) convention, a
-   typed Var.binding constructor's order, or hand-written CSS all converge).
-   Sort only applies to :root/:host blocks; regular rules preserve declaration
-   order (cascade semantics). *)
+   typed Var.binding constructor's order, or hand-written CSS all converge). In
+   a regular rule the sort is footprint-gated instead: declarations that write
+   no common cascade slot sort into a deterministic order, while overlapping
+   ones (same property, shorthand and longhand) keep source order. *)
 
 let canonical_root_custom_props_permutation_equal () =
   let expected = ":root{--zebra:1;--apple:2;--mango:3}" in
@@ -512,27 +513,47 @@ let canonical_host_custom_props_permutation_equal () =
     ":host custom-property permutations canonicalize equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-(* SAFETY: outside :root/:host the alphabetical sort must not apply - in a
-   regular rule, custom-property declarations participate in the normal cascade
-   (later same-name wins), so reordering them is semantically load-bearing.
-   Permutations must stay distinct. *)
-let canonical_non_root_custom_props_distinct () =
+(* Two custom-property declarations for DIFFERENT names write disjoint cascade
+   slots and resolve independently, so their order in a regular rule cannot
+   change a computed value; canonical mode reorders them into a deterministic
+   order. Two declarations of the SAME name still stay ordered (later wins), but
+   optimize already dedups those to the last value. *)
+let canonical_distinct_custom_props_permutation_equal () =
   let expected = ".x{--zebra:1;--apple:2}" in
   let actual = ".x{--apple:2;--zebra:1}" in
   Alcotest.(check bool)
-    "non-:root/:host custom-property permutations stay distinct" false
+    "distinct custom-property permutations canonicalize equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-(* SAFETY: regular property declarations are never alphabetised - source order
-   is cascade-meaningful for any property (shorthand interactions, same-name
-   dedup, etc.). Permutations stay distinct even when the properties themselves
-   don't conflict. *)
-let canonical_regular_decls_permutation_distinct () =
+(* Regular declarations whose footprints are disjoint (they write no common
+   cascade slot after shorthand expansion) can never change each other's
+   computed value, so canonical mode sorts them into a deterministic order and
+   permutations compare equal. *)
+let canonical_disjoint_decls_permutation_equal () =
   let expected = ".x{color:red;background:blue;margin:1px}" in
   let actual = ".x{background:blue;margin:1px;color:red}" in
   Alcotest.(check bool)
-    "regular property declaration permutations stay distinct" false
+    "disjoint property declaration permutations canonicalize equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+
+(* SAFETY: overlapping declarations keep their source order. A shorthand and a
+   longhand that write a common slot, and two writes that expand onto a shared
+   sub-property, resolve differently when swapped, so canonical mode must keep
+   such permutations distinct. *)
+let canonical_overlapping_decls_stay_distinct () =
+  let check desc a b =
+    Alcotest.(check bool)
+      desc false
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  check "shorthand and its longhand stay ordered" ".x{margin:0;margin-top:5px}"
+    ".x{margin-top:5px;margin:0}";
+  check "overlapping shorthands stay ordered"
+    ".x{border-top:1px solid red;border-color:blue}"
+    ".x{border-color:blue;border-top:1px solid red}";
+  check "background shorthand over its longhand stays ordered"
+    ".x{background:blue;background-color:red}"
+    ".x{background-color:red;background:blue}"
 
 let semantic_legacy_pseudo_element_alias () =
   let legacy =
@@ -1022,10 +1043,12 @@ let suite =
         canonical_root_custom_props_permutation_equal;
       Alcotest.test_case "canonical :host custom-props alphabetised" `Quick
         canonical_host_custom_props_permutation_equal;
-      Alcotest.test_case "canonical non-:root custom-props stay distinct" `Quick
-        canonical_non_root_custom_props_distinct;
-      Alcotest.test_case "canonical regular decls stay distinct" `Quick
-        canonical_regular_decls_permutation_distinct;
+      Alcotest.test_case "canonical distinct custom-props canonicalize equal"
+        `Quick canonical_distinct_custom_props_permutation_equal;
+      Alcotest.test_case "canonical disjoint decls canonicalize equal" `Quick
+        canonical_disjoint_decls_permutation_equal;
+      Alcotest.test_case "canonical overlapping decls stay distinct" `Quick
+        canonical_overlapping_decls_stay_distinct;
       Alcotest.test_case "semantic legacy pseudo-element alias" `Quick
         semantic_legacy_pseudo_element_alias;
       Alcotest.test_case "semantic vendor color with recovered warning" `Quick
