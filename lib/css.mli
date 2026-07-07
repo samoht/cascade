@@ -7578,15 +7578,17 @@ val of_string_exn :
     Tools for optimizing CSS output for performance and file size. *)
 
 val canonicalize_rule_order : t -> t
-(** [canonicalize_rule_order t] reorders cascade-independent statements into a
-    deterministic order (a content-keyed linear extension of the
-    cascade-conflict graph), so two stylesheets that differ only by a
-    cascade-safe reorder project to the same form. A [@media] / [@supports] /
-    [@container] block whose transitive content is plain rules moves as one
-    unit, keyed by the union of its rules' conflict footprints; conflicting
-    statements keep their relative order, and named [@layer] blocks pin the
-    layer order where they stand. This is a comparison-side normalisation;
-    {!val-optimize} stays source-stable. *)
+(** [canonicalize_rule_order t] projects cascade-equivalent stylesheets to one
+    deterministic form: selector-list rules expand onto their branches,
+    same-selector rules coalesce when no intervening write can observe the move
+    (so a declaration hoisted into a shared group and the same declaration
+    written inline converge), and cascade-independent statements sort into a
+    content-keyed linear extension of the cascade-conflict graph. A [@media] /
+    [@supports] / [@container] block whose transitive content is plain rules
+    moves as one unit, keyed by the union of its rules' conflict footprints;
+    conflicting statements keep their relative order, and named [@layer] blocks
+    pin the layer order where they stand. This is a comparison-side
+    normalisation; {!val-optimize} stays source-stable. *)
 
 val optimize :
   ?scope:Optimize.scope ->

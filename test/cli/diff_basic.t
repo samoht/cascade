@@ -82,6 +82,19 @@ others), including when a same-condition block was split around the rule.
   $ cascade diff --diff=canonical grouped.css split.css
   CSS files are identical
 
+Canonical mode also equates different factorings of the same content: a
+declaration hoisted into a shared selector-list group is the same declaration
+written inline.
+
+  $ cat > hoisted.css <<EOF
+  > .absolute,.sr-only{position:absolute}.sr-only{white-space:nowrap}
+  > EOF
+  $ cat > inline.css <<EOF
+  > .absolute{position:absolute}.sr-only{white-space:nowrap;position:absolute}
+  > EOF
+  $ cascade diff --diff=canonical hoisted.css inline.css
+  CSS files are identical
+
 A conditional block whose rules write the same property on the same selector
 stays ordered: swapping it with the rule is a real difference.
 
