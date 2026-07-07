@@ -14,14 +14,15 @@ let sorts_independent_rules_into_content_order () =
     (canonical ".b{color:red}.a{margin:0}")
 
 let keeps_conflicting_rules_in_source_order () =
-  (* Same-selector rules coalesce (the merged declaration order resolves
-     identically), but the write order inside stays cascade-significant: the two
-     source orders must not converge. *)
+  (* Same-selector rules coalesce and the merged declarations reduce with the
+     cascade dedup: the last write of a property wins and the dead earlier one
+     is dropped, so the two source orders keep their opposite winners and stay
+     distinct. *)
   Alcotest.(check string)
-    "same selector and property remains ordered" ".a{color:red;color:blue}"
+    "same selector and property keeps the last winner" ".a{color:blue}"
     (canonical ".a{color:red}.a{color:blue}");
   Alcotest.(check string)
-    "opposite source order keeps the opposite winner" ".a{color:blue;color:red}"
+    "opposite source order keeps the opposite winner" ".a{color:red}"
     (canonical ".a{color:blue}.a{color:red}")
 
 let custom_property_position_converges () =
@@ -89,10 +90,21 @@ let hoisted_group_converges_with_inline () =
     (canonical
        ".absolute,.sr-only{position:absolute}.sr-only{white-space:nowrap}")
 
-let selector_list_expands_to_branches () =
+let selector_list_stays_grouped_without_coalesce () =
+  (* A selector-list rule whose branches occur nowhere else has nothing to
+     coalesce with, so it is left grouped rather than split into singletons -
+     splitting would only bloat the projection. *)
   Alcotest.(check string)
-    "list rule projects onto its branches" ".a{margin:0}.b{margin:0}"
+    "list rule with no shared branch stays grouped" ".a,.b{margin:0}"
     (canonical ".a,.b{margin:0}")
+
+let selector_list_expands_when_a_branch_is_shared () =
+  (* When a branch also appears in another rule, the list is expanded so the
+     coalesce can fold that branch; the non-shared branch keeps its
+     declarations. *)
+  Alcotest.(check string)
+    "shared branch expands and coalesces" ".a{margin:0}.b{color:red;margin:0}"
+    (canonical ".a,.b{margin:0}.b{color:red}")
 
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
@@ -108,6 +120,18 @@ let coalesce_drops_exact_duplicates () =
     "duplicate declaration collapses to the later occurrence"
     ".a{color:red;margin:0}"
     (canonical ".a{color:red}.a{color:red;margin:0}")
+
+let coalesce_drops_dead_override () =
+  (* When optimize factors a shared default into a group and specialises one
+     branch ([.a,.b{color:red}] then [.b{color:blue}]), expanding and coalescing
+     [.b] must drop the dead default so the coalesced rule holds the same
+     declarations a sheet that folded [.b] directly would - otherwise the two
+     project to different declaration sets and the structural comparison
+     desynchronises (the tw-parity shadow/scrollbar regression). *)
+  Alcotest.(check string)
+    "coalesced branch drops the overridden default"
+    ".a{color:red}.b{color:blue}"
+    (canonical ".a,.b{color:red}.b{color:blue}")
 
 let commuting_declarations_converge () =
   (* Declarations that write disjoint cascade slots sort into one canonical
@@ -155,12 +179,16 @@ let suite =
       Alcotest.test_case "layer blocks stay put" `Quick layer_blocks_stay_put;
       Alcotest.test_case "hoisted group converges with inline" `Quick
         hoisted_group_converges_with_inline;
-      Alcotest.test_case "selector list expands to branches" `Quick
-        selector_list_expands_to_branches;
+      Alcotest.test_case "selector list stays grouped without coalesce" `Quick
+        selector_list_stays_grouped_without_coalesce;
+      Alcotest.test_case "selector list expands when a branch is shared" `Quick
+        selector_list_expands_when_a_branch_is_shared;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
         coalesce_drops_exact_duplicates;
+      Alcotest.test_case "coalesce drops dead override" `Quick
+        coalesce_drops_dead_override;
       Alcotest.test_case "commuting declarations converge" `Quick
         commuting_declarations_converge;
       Alcotest.test_case "overlapping declarations keep order" `Quick
