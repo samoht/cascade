@@ -173,34 +173,58 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
         (Array.map (fun i -> fst arr.(Rule_graph.Node_id.to_int i)) order)
     end
 
+let branch_key sel = Pp.to_string ~minify:true Selector.pp sel
+
+(* Selector branches that occur in more than one rule of a block: the only
+   branches a later coalesce can fold. Expanding a list rule is only worthwhile
+   when one of its branches is such a shared branch. *)
+let shared_branches (stmts : statement list) : (string, unit) Hashtbl.t =
+  let counts = Hashtbl.create 64 in
+  List.iter
+    (function
+      | Rule r when r.nested = [] && r.merge_key = None ->
+          List.iter
+            (fun sel ->
+              let k = branch_key sel in
+              Hashtbl.replace counts k
+                (1 + Option.value ~default:0 (Hashtbl.find_opt counts k)))
+            (Edge.selectors r.selector)
+      | _ -> ())
+    stmts;
+  let shared = Hashtbl.create 16 in
+  Hashtbl.iter (fun k n -> if n > 1 then Hashtbl.replace shared k ()) counts;
+  shared
+
 (* A grouped rule is semantically the sequence of its per-branch rules, and a
    hoisted shared declaration is the same declaration written inline, so two
    sheets that factor the same content differently ([.absolute,.sr-only
    {position:absolute}] on one side, the declaration kept inline in [.sr-only]
-   on the other) only project to one canonical form if grouping is undone first:
-   expand every selector-list rule into singleton-branch rules, then coalesce
-   same-selector rules whose merge no intervening write can observe. *)
-let expand_lists (stmt : statement) : statement list =
+   on the other) only project to one canonical form if grouping is undone first.
+   Expand a selector-list rule into singleton-branch rules only when a branch is
+   shared with another rule, so a coalesce can actually fold it; a list whose
+   branches all occur once ([:host,:root], [*,::before,::after]) has nothing to
+   coalesce with, and splitting it only bloats the projection and desynchronises
+   the structural comparison of two otherwise-equivalent sheets. *)
+let expand_lists shared (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (
       match Edge.selectors r.selector with
       | [] | [ _ ] -> [ stmt ]
-      | branches -> List.map (fun selector -> Rule { r with selector }) branches
-      )
+      | branches
+        when List.exists
+               (fun sel -> Hashtbl.mem shared (branch_key sel))
+               branches ->
+          List.map (fun selector -> Rule { r with selector }) branches
+      | _ -> [ stmt ])
   | _ -> [ stmt ]
 
-(* Exact duplicates across coalesced occurrences collapse to the later one;
-   distinct values of the same property keep both writes in order, which
-   resolves identically to the split form. *)
-let dedup_keep_last decls =
-  let rec keep = function
-    | [] -> []
-    | d :: rest ->
-        if List.exists (Shorthand.same_minified_declaration d) rest then
-          keep rest
-        else d :: keep rest
-  in
-  keep decls
+(* Coalescing two occurrences of a selector concatenates their declarations, so
+   an earlier write that a later one overrides (as when one occurrence carried a
+   shared default the other specialises) becomes dead. Reduce with the same
+   cascade dedup the optimizer uses - keep the last write of each property,
+   preserving genuine fallback pairs - so a coalesced rule holds the same
+   declaration set a sheet that never split it would. *)
+let coalesced_declarations decls = Shorthand.deduplicate_declarations decls
 
 (* Mutable state of one coalescing scan: the run's elements, the graph nodes
    accumulated into each surviving element, and which elements remain. *)
@@ -236,7 +260,8 @@ let merge scan changed ~from ~into =
           earlier with
           declarations =
             canonical_declarations
-              (dedup_keep_last (earlier.declarations @ later.declarations));
+              (coalesced_declarations
+                 (earlier.declarations @ later.declarations));
         }
       in
       scan.arr.(into) <- (Rule merged, [ merged ])
@@ -359,7 +384,8 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
-  let expanded = List.concat_map expand_lists stmts in
+  let shared = shared_branches stmts in
+  let expanded = List.concat_map (expand_lists shared) stmts in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function
     | [] -> []
