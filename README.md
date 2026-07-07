@@ -140,11 +140,14 @@ usable as a CI check.
 - `string`: character-level comparison.
 - `canonical`: passes when the two inputs share cascade's canonical minified
   form, modulo cascade-neutral reordering. Declarations or rules whose
-  footprints are disjoint (they write different properties) may swap freely, and
-  distinct custom properties may swap within any rule, since none of those moves
-  can change a computed value. Cascade-significant order is kept distinct (two
+  footprints are disjoint (they write different properties) may swap freely,
+  a `@media`/`@supports`/`@container` block containing only plain rules moves
+  as a unit past statements its rules cannot conflict with, and distinct
+  custom properties may swap within any rule, since none of those moves can
+  change a computed value. Cascade-significant order is kept distinct (two
   writes of the same property, a shorthand and its longhand, a vendor-prefixed
-  alias). Equivalent shorthand decompositions are still not modelled.
+  alias, `@layer` blocks). Equivalent shorthand decompositions are still not
+  modelled.
 
 <!-- $MDX skip -->
 ```bash

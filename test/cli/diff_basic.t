@@ -69,6 +69,40 @@ equivalent spellings.
   $ cascade diff --diff=canonical i.css j.css
   CSS files are identical
 
+Canonical mode also accepts moving a rule past a conditional block when their
+contents cannot conflict (here [display] on one selector vs [flex-grow] on
+others), including when a same-condition block was split around the rule.
+
+  $ cat > grouped.css <<EOF
+  > @layer utilities{.md\:block{display:block}@media (min-width:48rem){.md\:flex-grow,.md\:grow{flex-grow:1}}}
+  > EOF
+  $ cat > split.css <<EOF
+  > @layer utilities{@media (min-width:48rem){.md\:flex-grow{flex-grow:1}}.md\:block{display:block}@media (min-width:48rem){.md\:grow{flex-grow:1}}}
+  > EOF
+  $ cascade diff --diff=canonical grouped.css split.css
+  CSS files are identical
+
+A conditional block whose rules write the same property on the same selector
+stays ordered: swapping it with the rule is a real difference.
+
+  $ cat > before.css <<EOF
+  > .a{display:block}@media print{.a{display:flex}}
+  > EOF
+  $ cat > after.css <<EOF
+  > @media print{.a{display:flex}}.a{display:block}
+  > EOF
+  $ NO_COLOR=1 cascade diff --diff=canonical before.css after.css
+  cascade: CSS files differ
+  CSS: 48 chars vs 48 chars (0.0% diff)
+  Changes: 1 reordered rule
+  
+  --- before.css
+  +++ after.css
+  Rules reordered (1 rules):
+  └─ .a ↔  @media print
+  
+  [124]
+
 
 
 The --diff=string mode falls back to character-level diffing.
