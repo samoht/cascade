@@ -107,6 +107,153 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
         (Array.map (fun i -> fst arr.(Rule_graph.Node_id.to_int i)) order)
     end
 
+(* A grouped rule is semantically the sequence of its per-branch rules, and a
+   hoisted shared declaration is the same declaration written inline, so two
+   sheets that factor the same content differently ([.absolute,.sr-only
+   {position:absolute}] on one side, the declaration kept inline in [.sr-only]
+   on the other) only project to one canonical form if grouping is undone first:
+   expand every selector-list rule into singleton-branch rules, then coalesce
+   same-selector rules whose merge no intervening write can observe. *)
+let expand_lists (stmt : statement) : statement list =
+  match stmt with
+  | Rule r when r.nested = [] && r.merge_key = None -> (
+      match Edge.selectors r.selector with
+      | [] | [ _ ] -> [ stmt ]
+      | branches -> List.map (fun selector -> Rule { r with selector }) branches
+      )
+  | _ -> [ stmt ]
+
+(* Exact duplicates across coalesced occurrences collapse to the later one;
+   distinct values of the same property keep both writes in order, which
+   resolves identically to the split form. *)
+let dedup_keep_last decls =
+  let rec keep = function
+    | [] -> []
+    | d :: rest ->
+        if List.exists (Shorthand.same_minified_declaration d) rest then
+          keep rest
+        else d :: keep rest
+  in
+  keep decls
+
+(* Mutable state of one coalescing scan: the run's elements, the graph nodes
+   accumulated into each surviving element, and which elements remain. *)
+type scan = {
+  graph : Rule_graph.t;
+  arr : (statement * rule list) array;
+  members : int list array;
+  alive : bool array;
+  mutable merged_any : bool;
+}
+
+(* Nothing strictly between [lo] and [hi] conflicts with any accumulated
+   occurrence in [mems]: moving those writes across the interval is
+   unobservable. *)
+let interval_clear scan ~lo ~hi mems =
+  let node i = Rule_graph.Node_id.of_int_exn i in
+  let ok = ref true in
+  for m = lo + 1 to hi - 1 do
+    if
+      List.exists
+        (fun a -> Rule_graph.conflict scan.graph (node m) (node a))
+        mems
+    then ok := false
+  done;
+  !ok
+
+let merge scan changed ~from ~into =
+  (match (scan.arr.(from), scan.arr.(into)) with
+  | (Rule rf, _), (Rule ri, _) ->
+      let earlier, later = if from < into then (rf, ri) else (ri, rf) in
+      let merged =
+        {
+          earlier with
+          declarations =
+            dedup_keep_last (earlier.declarations @ later.declarations);
+        }
+      in
+      scan.arr.(into) <- (Rule merged, [ merged ])
+  | _ -> assert false);
+  scan.members.(into) <- scan.members.(from) @ scan.members.(into);
+  scan.alive.(from) <- false;
+  scan.merged_any <- true;
+  changed := true
+
+(* Fold the earlier occurrence [i] down into [j] when nothing in between
+   observes its writes moving; otherwise fold [j]'s writes up into [i] when
+   nothing in between observes those. *)
+let try_merge scan changed ~last ~key i j =
+  if interval_clear scan ~lo:i ~hi:j scan.members.(i) then begin
+    merge scan changed ~from:i ~into:j;
+    Hashtbl.replace last key j
+  end
+  else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
+    merge scan changed ~from:j ~into:i
+  else Hashtbl.replace last key j
+
+(* Coalesce same-selector singleton rules within one run. Folding an occurrence
+   into another moves its declarations past every element in between, which is
+   observable only if one of those elements conflicts with the moved rule; the
+   conflict test is the graph's, against every original occurrence already
+   accumulated into the surviving element. *)
+let coalesce ?parent changed (run : (statement * rule list) list) :
+    (statement * rule list) list =
+  match run with
+  | [] | [ _ ] -> run
+  | _ ->
+      let arr = Array.of_list run in
+      let n = Array.length arr in
+      let graph =
+        Rule_graph.of_rules ?parent
+          (List.map (fun (stmt, rules) -> element_node stmt rules) run)
+      in
+      let scan =
+        {
+          graph;
+          arr;
+          members = Array.init n (fun i -> [ i ]);
+          alive = Array.make n true;
+          merged_any = false;
+        }
+      in
+      let selector_key i =
+        match arr.(i) with
+        | Rule r, _ when r.merge_key = None ->
+            Some (Pp.to_string ~minify:true Selector.pp r.selector)
+        | _ -> None
+      in
+      let last = Hashtbl.create 16 in
+      for j = 0 to n - 1 do
+        match selector_key j with
+        | None -> ()
+        | Some key -> (
+            match Hashtbl.find_opt last key with
+            | Some i when scan.alive.(i) ->
+                try_merge scan changed ~last ~key i j
+            | _ -> Hashtbl.replace last key j)
+      done;
+      if not scan.merged_any then run
+      else Array.to_list arr |> List.filteri (fun i _ -> scan.alive.(i))
+
+(* Sort and coalesce to a fixed point: sorting can empty the interval between
+   two same-selector occurrences that a conflicting element previously kept
+   apart, enabling a merge the source order hid, so equivalent sheets converge
+   regardless of which arrangement they started from. Each merging round removes
+   at least one element, so this terminates. *)
+let rec settle ?parent changed (run : (statement * rule list) list) :
+    statement list =
+  let stmts = sort_run ?parent changed run in
+  let sorted =
+    List.filter_map
+      (fun s ->
+        match element_rules s with
+        | Some rules -> Some (s, rules)
+        | None -> None)
+      stmts
+  in
+  let coalesced = coalesce ?parent changed sorted in
+  if coalesced == sorted then stmts else settle ?parent changed coalesced
+
 (* Canonicalise every cascade context. At-rule block bodies inherit the current
    nesting [parent]; a style rule's nested body is canonicalised under the
    rule's own (expanded) selector as the new parent, so nested relative
@@ -140,8 +287,10 @@ let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
 and canonicalize_block ~parent changed (stmts : statement list) : statement list
     =
   (* Canonicalise interiors first so run elements are ranked on their canonical
-     serialized form. *)
+     serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
+  let expanded = List.concat_map expand_lists stmts in
+  if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function
     | [] -> []
     | stmt :: rest -> (
@@ -155,10 +304,10 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
               | [] -> (List.rev acc, [])
             in
             let run, rest = take [ (stmt, rules) ] rest in
-            sort_run ?parent changed run @ go rest
+            settle ?parent changed run @ go rest
         | None -> stmt :: go rest)
   in
-  go stmts
+  go expanded
 
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in

@@ -139,15 +139,17 @@ usable as a CI check.
   "identical".
 - `string`: character-level comparison.
 - `canonical`: passes when the two inputs share cascade's canonical minified
-  form, modulo cascade-neutral reordering. Declarations or rules whose
-  footprints are disjoint (they write different properties) may swap freely,
-  a `@media`/`@supports`/`@container` block containing only plain rules moves
-  as a unit past statements its rules cannot conflict with, and distinct
-  custom properties may swap within any rule, since none of those moves can
-  change a computed value. Cascade-significant order is kept distinct (two
-  writes of the same property, a shorthand and its longhand, a vendor-prefixed
-  alias, `@layer` blocks). Equivalent shorthand decompositions are still not
-  modelled.
+  form, modulo cascade-neutral reordering and regrouping. Declarations or
+  rules whose footprints are disjoint (they write different properties) may
+  swap freely, a `@media`/`@supports`/`@container` block containing only
+  plain rules moves as a unit past statements its rules cannot conflict with,
+  distinct custom properties may swap within any rule, and different
+  factorings of the same content (a declaration hoisted into a shared
+  selector-list group vs written inline, split vs grouped selector lists)
+  compare equal, since none of those moves can change a computed value.
+  Cascade-significant order is kept distinct (two writes of the same
+  property, a shorthand and its longhand, a vendor-prefixed alias, `@layer`
+  blocks). Equivalent shorthand decompositions are still not modelled.
 
 <!-- $MDX skip -->
 ```bash
