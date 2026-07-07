@@ -56,6 +56,35 @@ let test_drop_shadowed_selector_list_requires_all_branches () =
     [ ".a{color:blue}"; ".b{color:green}" ]
     (rule_strings optimized)
 
+let extend_ctx = Ctx.with_extend_lists true Ctx.fragment
+
+let test_merge_adjacent_identical_bodies () =
+  let merged =
+    Rule.merge_adjacent_identical ~ctx:extend_ctx
+      (rules ".flex-grow{flex-grow:1}.grow{flex-grow:1}.basis-0{flex-basis:0}")
+  in
+  Alcotest.(check (list string))
+    "adjacent identical bodies merge into a selector list"
+    [ ".flex-grow,.grow{flex-grow:1}"; ".basis-0{flex-basis:0}" ]
+    (rule_strings merged)
+
+let test_merge_adjacent_skips_intervening_rule () =
+  let input = rules ".a{color:red}.mid{margin:0}.b{color:red}" in
+  let merged = Rule.merge_adjacent_identical ~ctx:extend_ctx input in
+  Alcotest.(check bool)
+    "non-adjacent identical bodies stay split, input physically unchanged" true
+    (merged == input)
+
+let test_merge_adjacent_skips_vendor_pseudo () =
+  (* A selector list with an unsupported vendor branch invalidates the whole
+     rule in other engines, so vendor pseudo-elements never share a list. *)
+  let input =
+    rules "::-webkit-scrollbar{display:none}::-moz-focus-inner{display:none}"
+  in
+  let merged = Rule.merge_adjacent_identical ~ctx:extend_ctx input in
+  Alcotest.(check bool)
+    "vendor pseudo-element selectors never share a list" true (merged == input)
+
 let suite =
   ( "rule",
     [
@@ -67,4 +96,10 @@ let suite =
         `Quick test_drop_shadowed_declarations_keeps_live_properties;
       Alcotest.test_case "drop shadowed selector list requires all branches"
         `Quick test_drop_shadowed_selector_list_requires_all_branches;
+      Alcotest.test_case "merge adjacent identical bodies" `Quick
+        test_merge_adjacent_identical_bodies;
+      Alcotest.test_case "merge adjacent skips intervening rule" `Quick
+        test_merge_adjacent_skips_intervening_rule;
+      Alcotest.test_case "merge adjacent skips vendor pseudo" `Quick
+        test_merge_adjacent_skips_vendor_pseudo;
     ] )

@@ -400,7 +400,12 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec (rules : rule list) : rule list =
      optimizations above always run; this incremental gate only decides whether
      the expensive global factoring fixpoint is likely to buy enough bytes to
      justify the full indexed scheduler walk. *)
-  factor_rules_incremental ?cache:factor_cache ~ctx prepared
+  let factored = factor_rules_incremental ?cache:factor_cache ~ctx prepared in
+  (* After factoring so the greedy scheduler sees the unconstrained input (a
+     local pre-merge can lock a pair together and hide a larger group): this
+     only picks up the merges factoring did not make because its preflight
+     skipped the run or the transfer gate discarded its result. *)
+  Rule.merge_adjacent_identical ~ctx factored
 
 (* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the

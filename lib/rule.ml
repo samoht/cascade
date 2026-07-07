@@ -320,3 +320,54 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
 
 let drop_shadowed rules =
   rules |> drop_shadowed_declarations |> drop_shadowed_rules
+
+(* Adjacent identical-body merging. Two neighbouring rules with the same
+   declarations apply those declarations identically whether split or grouped
+   under one selector list, so the merge is cascade-safe for any DOM with no
+   ordering analysis, and it shrinks raw and compressed output alike. It runs
+   with the always-on local rewrites: the global factoring engine also finds
+   these groups (plus non-adjacent ones), but only when its preflight predicts
+   enough total gain, and its result is discarded wholesale when the transfer
+   estimate grows - neither gamble should cost the obvious local merge. *)
+let adjacent_merge_eligible ~ctx (r : rule) =
+  r.nested = [] && r.merge_key = None
+  && (not (Merge.vendor r.selector))
+  && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
+  && not (List.exists Shorthand.is_all_declaration r.declarations)
+
+let merged_selector group =
+  Selector.canonicalize
+    (Merge.selector_list
+       (List.concat_map (fun (r : rule) -> Edge.selectors r.selector) group))
+
+let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
+  let bodies_equal a b =
+    Merge.declarations_equal ~same:Shorthand.same_minified_declaration a b
+  in
+  let changed = ref false in
+  let rec go = function
+    | [] -> []
+    | r :: rest when adjacent_merge_eligible ~ctx r && r.declarations <> [] ->
+        let rec take group = function
+          | s :: tail
+            when adjacent_merge_eligible ~ctx s
+                 && bodies_equal r.declarations s.declarations
+                 && List.for_all
+                      (fun (g : rule) -> Merge.compatible g.selector s.selector)
+                      group ->
+              take (s :: group) tail
+          | tail -> (group, tail)
+        in
+        let group, rest = take [ r ] rest in
+        let merged =
+          match group with
+          | [ _ ] -> r
+          | group ->
+              changed := true;
+              { r with selector = merged_selector (List.rev group) }
+        in
+        merged :: go rest
+    | r :: rest -> r :: go rest
+  in
+  let result = go rules in
+  if !changed then result else rules

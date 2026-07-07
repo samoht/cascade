@@ -782,6 +782,31 @@ let test_transform_origin_zero_folds () =
   same ".x{transform-origin:50%}" ".x{transform-origin:50% 50%}";
   same ".x{transform-origin:10px 20px}" ".x{transform-origin:10px 20px}"
 
+(* Adjacent identical-body rules must merge even on a sheet whose factoring
+   preflight predicts too little gain to run the global scheduler: the merge is
+   a local always-on rewrite. The filler rules share nothing, so the only
+   predicted gain is the one duplicate body, far below the preflight
+   threshold. *)
+let test_adjacent_merge_survives_preflight_skip () =
+  let filler =
+    List.init 1200 (fun i ->
+        String.concat ""
+          [
+            ".r"; string_of_int i; "{margin-left:"; string_of_int (i + 1); "px}";
+          ])
+  in
+  let css =
+    String.concat ""
+      (filler @ [ ".flex-grow{flex-grow:1}"; ".grow{flex-grow:1}" ])
+  in
+  match Css.of_string css with
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  | Ok { Css.stylesheet; _ } ->
+      let out = minify stylesheet in
+      Alcotest.(check bool)
+        "adjacent duplicate bodies merged on a preflight-skipped sheet" true
+        (Astring.String.is_infix ~affix:".flex-grow,.grow{flex-grow:1}" out)
+
 let optimize_tests =
   [
     ( "var() colour functions preserved",
@@ -790,6 +815,9 @@ let optimize_tests =
     ( "transform-origin zero components fold to 0",
       `Quick,
       test_transform_origin_zero_folds );
+    ( "adjacent merge survives preflight skip",
+      `Quick,
+      test_adjacent_merge_survives_preflight_skip );
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );
