@@ -92,6 +92,15 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
    overhead, so raw-byte wins stand unchallenged. *)
 let transfer_gate_min_bytes = 4096
 
+(* The estimate is a greedy-LZ77 approximation, and it costs a factored group by
+   the whole segment's compressibility, so an unrelated grouping elsewhere in
+   the segment shifts it by a byte or two. Revert only when factoring grows the
+   estimate beyond that noise floor, so a sub-percent difference does not flip a
+   distant, otherwise raw-smaller factoring; real regressions (the youtube-class
+   case, ~2% of the segment) stay well clear of it. Reverting on the noise also
+   hurt real gzip - the estimate's error swamps the byte it was chasing. *)
+let transfer_gate_margin before = max 16 (before / 100)
+
 let render_rules rules =
   Pp.to_string ~minify:true (fun ctx -> List.iter (pp_rule ctx)) rules
 
@@ -100,7 +109,10 @@ let factored_grows_transfer ~ctx ~unfactored ~factored =
   &&
   let before = render_rules unfactored in
   String.length before >= transfer_gate_min_bytes
-  && Gzip_size.estimate (render_rules factored) > Gzip_size.estimate before
+  &&
+  let before_gz = Gzip_size.estimate before in
+  Gzip_size.estimate (render_rules factored)
+  > before_gz + transfer_gate_margin before_gz
 
 let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in

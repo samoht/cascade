@@ -66,6 +66,36 @@ let test_cache_reuses_identical_rule_run () =
     ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
     (render first)
 
+let read_example name =
+  let candidates = [ "examples/" ^ name; "test/examples/" ^ name ] in
+  match List.find_opt Sys.file_exists candidates with
+  | Some path ->
+      let ic = open_in path in
+      Fun.protect
+        ~finally:(fun () -> close_in ic)
+        (fun () -> really_input_string ic (in_channel_length ic))
+  | None -> Alcotest.failf "fixture %s not found (tried examples/)" name
+
+(* Factoring must not depend on unrelated content: two sheets that differ only
+   in whether an unrelated pair of rules is written grouped or split must
+   optimise identically. The transfer-objective gate scores a segment by its
+   estimated compressed size, which a distant grouping shifts by a byte or two;
+   reverting on that noise once flipped a far-away, otherwise raw-smaller
+   factoring (the prose list-item rules here) depending only on the shadow
+   spelling. The fixture holds the shared prose; the two spellings of the
+   unrelated [.shadow]/[.shadow-sm] pair are appended here. *)
+let test_factoring_stable_under_unrelated_grouping () =
+  let prose = read_example "prose_lg_prefix.css" in
+  let shadow =
+    "{--tw-shadow:0 1px 3px 0 var(--tw-shadow-color,#0000001a),0 1px 2px -1px \
+     var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow),var(--tw-inset-ring-shadow),var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow)}"
+  in
+  let separate = prose ^ ".shadow" ^ shadow ^ ".shadow-sm" ^ shadow ^ "}" in
+  let grouped = prose ^ ".shadow,.shadow-sm" ^ shadow ^ "}" in
+  Alcotest.(check string)
+    "unrelated grouping does not change factoring" (optimize_str separate)
+    (optimize_str grouped)
+
 let suite =
   ( "factor",
     [
@@ -75,4 +105,6 @@ let suite =
         test_cache_reuses_identical_rule_run;
       Alcotest.test_case "split shorthand optimises like consolidated" `Quick
         test_split_shorthand_confluence;
+      Alcotest.test_case "factoring stable under unrelated grouping" `Quick
+        test_factoring_stable_under_unrelated_grouping;
     ] )
