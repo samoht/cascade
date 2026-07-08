@@ -196,7 +196,7 @@ val sort_by : ('a -> t) -> 'a list -> 'a list
 (** [sort_by project items] orders [items] by the media query [project] returns
     for each, serializing each query exactly once. Sorting this way, rather than
     with [List.sort (fun a b -> compare (project a) (project b))], is the point
-    of {!val-key}: the comparator form re-derives and re-serializes a query on
+    of {!sort_key}: the comparator form re-derives and re-serializes a query on
     every comparison, which a sort does O(n log n) times. The sort is stable. *)
 
 type kind =

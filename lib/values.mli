@@ -203,7 +203,7 @@ val normalize_length_percentage :
 val normalize_length : ?strip:bool -> ?ctx:calc_ctx -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
-    / mod / rem / hypot / abs fold on {!val-px}; calc folds through the
+    / mod / rem / hypot / abs fold on {!Calc.px}; calc folds through the
     simplifier), recursing into nested calls; a non-static operand keeps the
     call. [strip] (default [true]) additionally drops the unit on a top-level
     zero ([0px] -> [0]); pass [strip:false] for a calc / function operand, which

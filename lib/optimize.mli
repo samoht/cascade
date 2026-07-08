@@ -188,7 +188,7 @@ val stylesheet :
     bindings referenced by no [var()] anywhere are dropped. This is opt-in
     because it assumes a complete stylesheet with no out-of-band reader (another
     stylesheet, or [getComputedStyle]) - the same closed-world assumption as
-    {!inline_vars}. *)
+    {!Css.inline_vars}. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting ss] returns [ss] with every nested rule flattened into a

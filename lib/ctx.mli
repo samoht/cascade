@@ -64,8 +64,8 @@ val closed_world : t -> bool
     On: the caller promises the clashing selector combinations never appear on a
     real element, which lets the optimizer merge more. It is unsafe if such an
     element does turn up, including one a script adds at runtime. This is about
-    the HTML, separate from {!scope}, which is about how much of the CSS you
-    control. *)
+    the HTML, separate from {!type-scope}, which is about how much of the CSS
+    you control. *)
 
 val objective : t -> objective
 (** Size metric optimizations are judged by. Under [`Transfer] (the default) the
