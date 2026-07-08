@@ -1,4 +1,4 @@
-## 0.9.0
+## 1.0.0
 
 First public release. Cascade was extracted from the [tw](https://github.com/samoht/tw)
 (Tailwind CSS v4 in OCaml) project as a standalone CSS command-line tool and
@@ -22,7 +22,13 @@ library, then stabilised over several internal milestones.
   `inline_imports`) and structural CSS diff utilities via the
   `cascade.diff` sub-library.
 - Optimizer with deduplication, rule merging, selector combining, and
-  shorthand/longhand coverage including `all` reset folding.
+  shorthand/longhand coverage including `all` reset folding. Rule merging is
+  order-independent: rules are scheduled through a conflict DAG so cascade-safe
+  reorderings converge on the same output regardless of source order.
+- Minification optimises estimated compressed (gzip) transfer size by default:
+  a global factoring that shrinks raw bytes but would grow the compressed
+  output is not applied. Pass `~objective:\`Raw` (CLI `--objective=raw`) to
+  optimise raw bytes instead, for output that ships uncompressed.
 - Spec coverage:
   - Selectors Level 4 -- including `:has()`, `:is()`, `:where()`, `:not()`,
     nesting `&`, and full attribute syntax.
@@ -58,13 +64,16 @@ library, then stabilised over several internal milestones.
   or a missing file argument, and writes output to stdout.
 - `cascade --minify` applies the standard safe transforms, including
   deduplication, rule merging, selector grouping, empty-rule elimination, and
-  nested-rule flattening.
+  nested-rule flattening, optimising estimated gzip transfer size by default
+  (`--objective=raw` optimises raw bytes instead).
 - `cascade --inline-imports` resolves local `@import` rules relative to the
   input file, and `cascade --inline-vars` substitutes static custom-property
   references. `--keep-vars=NAMES` preserves selected custom properties.
 - `cascade diff` provides structural CSS diffing between two files with
-  `auto`, `tree`, `string`, and `semantic` modes; respects `NO_COLOR` and
-  `CASCADE_COLOR`.
+  `auto`, `tree`, `string`, and `canonical` modes; respects `NO_COLOR` and
+  `CASCADE_COLOR`. The `canonical` mode projects both sheets to a normal form
+  first, so equivalent factorings -- different rule grouping, cascade-safe rule
+  and declaration order -- compare identical rather than as spurious changes.
 - The CLI is installable as a binary through the Homebrew tap
   `samoht/tap/cascade`, with opam installation still available for OCaml users.
 
