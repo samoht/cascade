@@ -85,6 +85,7 @@ end
 
 val snippet : ?window:int -> string -> t -> Context.snippet
 (** [snippet source loc] extracts a snippet of [source] around [loc]:
-    {!field-text} is the byte window (default: 40 bytes on each side of the
-    location), {!field-marker_pos} points at [loc.start_pos] within
-    {!field-text}, and {!field-marker_len} spans the located range. *)
+    {!Context.field-text} is the byte window (default: 40 bytes on each side of
+    the location), {!Context.field-marker_pos} points at [loc.start_pos] within
+    {!Context.field-text}, and {!Context.field-marker_len} spans the located
+    range. *)

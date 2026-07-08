@@ -94,7 +94,7 @@ val equal :
 
 val as_tree_diff : t -> Tree_diff.t option
 (** [as_tree_diff result] returns the underlying [Tree_diff.t] when [result] is
-    a {!Tree_diff}; [None] otherwise. *)
+    a {!constructor-Tree_diff}; [None] otherwise. *)
 
 val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
 (** [pp ?expected ?actual buf result] formats [result] into [buf], then renders
@@ -118,8 +118,8 @@ type stats = {
 (** Summary of differences extracted from a {!t}. *)
 
 val stats : expected_str:string -> actual_str:string -> t -> stats
-(** [stats ~expected_str ~actual_str result] computes a {!stats} record from a
-    diff [result]. *)
+(** [stats ~expected_str ~actual_str result] computes a {!type-stats} record
+    from a diff [result]. *)
 
 val pp_stats : Buffer.t -> stats -> unit
 (** [pp_stats buf stats] formats a stats record into [buf]. *)
