@@ -107,8 +107,9 @@ let strip_tool_header css =
 (* Analyze differences between two parsed CSS ASTs, returning structural
    changes *)
 
-let tree_diff ~(expected : Css.t) ~(actual : Css.t) : Tree_diff.t =
-  D.diff ~expected ~actual
+let tree_diff ~ignore_neutral_reorders ~(expected : Css.t) ~(actual : Css.t) :
+    Tree_diff.t =
+  D.diff ~ignore_neutral_reorders ~expected ~actual ()
 
 (* Collect all rules with their path-qualified selector keys *)
 let rec collect_keyed_rules acc path stmts =
@@ -332,7 +333,10 @@ let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
   (* Do NOT normalize @property order - their order matters for tests *)
   let expected_norm = expected_ast in
   let actual_norm = actual_ast in
-  let structural_diff = tree_diff ~expected:expected_norm ~actual:actual_norm in
+  let structural_diff =
+    tree_diff ~ignore_neutral_reorders:false ~expected:expected_norm
+      ~actual:actual_norm
+  in
   if not (is_empty structural_diff) then Tree_diff structural_diff
   else diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm
 
@@ -353,7 +357,8 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
       let structural_diff =
-        tree_diff ~expected:expected_ast ~actual:actual_ast
+        tree_diff ~ignore_neutral_reorders:true ~expected:expected_ast
+          ~actual:actual_ast
       in
       if is_empty structural_diff then
         No_diff { canonical_byte_diff = Some (expected_canon, actual_canon) }
@@ -397,7 +402,8 @@ let diff_tree ~expected_parse ~actual_parse =
   | ( Ok { Css.stylesheet = expected_ast; _ },
       Ok { Css.stylesheet = actual_ast; _ } ) ->
       let structural_diff =
-        tree_diff ~expected:expected_ast ~actual:actual_ast
+        tree_diff ~ignore_neutral_reorders:false ~expected:expected_ast
+          ~actual:actual_ast
       in
       if is_empty structural_diff then No_diff { canonical_byte_diff = None }
       else Tree_diff structural_diff

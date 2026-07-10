@@ -7593,6 +7593,15 @@ val canonicalize_rule_order : t -> t
     stand. This is a comparison-side normalisation; {!val-optimize} stays
     source-stable. *)
 
+val order_constrained : statement list -> int -> int -> bool
+(** [order_constrained stmts i j] is [true] when reordering the statements at
+    positions [i] and [j] could change a computed value: two run elements (style
+    rules, or [@media] / [@supports] / [@container] blocks over plain rules) are
+    constrained only when their selectors may match a common element at equal
+    specificity and their declarations overlap, while any other statement is a
+    barrier constrained with everything. Lets a structural diff treat a position
+    difference between two mutually unconstrained statements as a no-op. *)
+
 val optimize :
   ?scope:Optimize.scope ->
   ?flatten_nesting:bool ->
