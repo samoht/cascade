@@ -36,6 +36,38 @@ let custom_property_position_converges () =
     "definition before the user" want
     (canonical ":root{--b:1}.x{filter:blur(var(--b))}")
 
+let same_condition_media_blocks_coalesce () =
+  (* Two blocks with the same condition fold into one when the rule between them
+     writes a disjoint property, so a sheet that emits one block and a sheet
+     that splits it across an unrelated block converge. *)
+  let split =
+    "@media (width>=40rem){.a{color:red}}@media \
+     (width>=48rem){.b{margin:0}}@media (width>=40rem){.c{color:green}}"
+  in
+  let merged =
+    "@media (width>=40rem){.a{color:red}.c{color:green}}@media \
+     (width>=48rem){.b{margin:0}}"
+  in
+  Alcotest.(check string)
+    "same-condition blocks coalesce across a disjoint block" (canonical merged)
+    (canonical split)
+
+let same_condition_media_blocks_conflict_stays_split () =
+  (* When the intervening block writes the same property on a selector that can
+     co-occur, folding would change the cascade, so the split and merged forms
+     must not converge. *)
+  let split =
+    "@media (width>=40rem){.a{color:red}}@media \
+     (width>=48rem){.b{color:blue}}@media (width>=40rem){.c{color:green}}"
+  in
+  let merged =
+    "@media (width>=40rem){.a{color:red}.c{color:green}}@media \
+     (width>=48rem){.b{color:blue}}"
+  in
+  Alcotest.(check bool)
+    "conflicting intervening block keeps same-condition blocks distinct" true
+    (canonical split <> canonical merged)
+
 let media_and_independent_rule_converge () =
   (* A conditional block whose rules cannot conflict with a neighbouring rule
      reorders with it, so both source orderings reach one canonical form. *)
@@ -172,6 +204,10 @@ let suite =
         keeps_conflicting_rules_in_source_order;
       Alcotest.test_case "custom-property position converges" `Quick
         custom_property_position_converges;
+      Alcotest.test_case "same-condition media blocks coalesce" `Quick
+        same_condition_media_blocks_coalesce;
+      Alcotest.test_case "same-condition media blocks conflict stays split"
+        `Quick same_condition_media_blocks_conflict_stays_split;
       Alcotest.test_case "media and independent rule converge" `Quick
         media_and_independent_rule_converge;
       Alcotest.test_case "media conflict keeps source order" `Quick
