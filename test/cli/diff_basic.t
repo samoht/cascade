@@ -130,12 +130,15 @@ stays ordered: swapping it with the rule is a real difference.
   $ NO_COLOR=1 cascade diff --diff=canonical before.css after.css
   cascade: CSS files differ
   CSS: 48 chars vs 48 chars (0.0% diff)
-  Changes: 1 reordered rule
+  Changes: 1 reordered rule, 1 containers
   
   --- before.css
   +++ after.css
   Rules reordered (1 rules):
-  └─ .a ↔  @media print
+  ├─ .a ↔  @media print
+  └─ @media print (1 blocks at different positions)
+        - Block at position 1: .a
+        + Block at position 0: .a
   
   [124]
 

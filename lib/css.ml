@@ -858,6 +858,7 @@ let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
 
 let flatten_nesting = Optimize.flatten_nesting
 let canonicalize_rule_order = Rule_order.canonicalize
+let order_constrained = Rule_order.order_constrained
 
 (** {1 Closed-world inlining} *)
 
