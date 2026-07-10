@@ -4464,9 +4464,20 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
     let spread : length option =
       match spread with Some sp when is_zero_length sp -> None | _ -> spread
     in
+    (* A [var()] colour could resolve to a length, so dropping a zero blur
+       before it lets the shortened form re-bind the colour as the blur: [0 3px
+       0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses [var(--c)]
+       as the blur. Keep the explicit [0] there; a concrete colour is
+       unambiguous and the [0] still drops. *)
+    let colour_may_be_length =
+      match color with Some (Var _) -> true | _ -> false
+    in
     let blur : length option =
       match blur with
-      | Some b when is_zero_length b && Option.is_none spread -> None
+      | Some b
+        when is_zero_length b && Option.is_none spread
+             && not colour_may_be_length ->
+          None
       | _ -> blur
     in
     {

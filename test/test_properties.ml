@@ -2993,20 +2993,37 @@ let test_shadow () =
     "inset-var shadow keeps the separator after the var prefix when minified"
     "var(--tw-ring-inset,) 0 0 0 1px #000"
     (Css.Pp.to_string ~minify:true pp_shadow inset_var_shadow);
-  (* A var() colour with no blur/spread serialises to [12px 12px var(--c)] - the
-     shortest form. cascade does not pad it with an explicit [0] blur: a
-     var-colour shadow and a var-blur shadow produce identical tokens (the var
-     is opaque), so the [0] would only preserve a cascade-internal AST
-     distinction at the cost of a longer, browser-equivalent value. *)
+  (* A var() colour with an unspecified blur (blur = None) serialises to [12px
+     12px var(--c)]: pp does not pad in a [0] the author never wrote. An
+     authored zero blur (Some Zero) before a var colour is the opposite case -
+     it must keep the [0] (see the optimize test below), because a var() can
+     resolve to a length, so dropping it would let [12px 12px var(--c)] re-bind
+     the var as the blur. Some Zero and None are not interchangeable here. *)
   let var_color_shadow =
     shadow ~h_offset:(Px 12.) ~v_offset:(Px 12.)
       ~color:(Values.Var (Values.var_ref "c"))
       ()
   in
   Alcotest.(check string)
-    "var-colour shadow serialises to the shortest form (no padding 0 blur)"
+    "unspecified blur before a var colour is not padded with a 0"
     "12px 12px var(--c)"
-    (Css.Pp.to_string ~minify:true pp_shadow var_color_shadow)
+    (Css.Pp.to_string ~minify:true pp_shadow var_color_shadow);
+  (* [normalize_shadow] drops a zero blur when no spread follows, but not before
+     a var() colour: dropping it there changes the value. *)
+  let some_zero_var_shadow =
+    Css.box_shadow
+      (shadow ~h_offset:Zero ~v_offset:(Px 3.) ~blur:Zero
+         ~color:(Values.Var (Values.var_ref "c"))
+         ())
+  in
+  let optimized =
+    Css.v
+      [ Css.rule ~selector:(Css.Selector.class_ "k") [ some_zero_var_shadow ] ]
+    |> Css.optimize |> Css.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "an authored zero blur before a var colour survives optimization"
+    ".k{box-shadow:0 3px 0 var(--c)}" optimized
 
 let test_align_items () =
   check_align_items "stretch";
