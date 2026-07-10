@@ -251,7 +251,7 @@ let interval_clear scan ~lo ~hi mems =
   done;
   !ok
 
-let merge scan changed ~from ~into =
+let rec merge ?parent scan changed ~from ~into =
   (match (scan.arr.(from), scan.arr.(into)) with
   | (Rule rf, _), (Rule ri, _) ->
       let earlier, later = if from < into then (rf, ri) else (ri, rf) in
@@ -265,22 +265,38 @@ let merge scan changed ~from ~into =
         }
       in
       scan.arr.(into) <- (Rule merged, [ merged ])
-  | _ -> assert false);
+  | (be, _), (bl, _) ->
+      (* Two conditional blocks sharing a condition: concatenate their bodies in
+         source order and re-canonicalise the merged interior, so a sheet that
+         emits one block and a sheet that splits it across several converge. *)
+      let earlier, later = if from < into then (be, bl) else (bl, be) in
+      let merged = merge_condition_blocks ?parent changed ~earlier ~later in
+      scan.arr.(into) <-
+        (merged, Option.value ~default:[] (element_rules merged)));
   scan.members.(into) <- scan.members.(from) @ scan.members.(into);
   scan.alive.(from) <- false;
   scan.merged_any <- true;
   changed := true
 
+and merge_condition_blocks ?parent changed ~earlier ~later =
+  let recanon body = canonicalize_block ~parent changed body in
+  match (earlier, later) with
+  | Media (m, b1), Media (_, b2) -> Media (m, recanon (b1 @ b2))
+  | Supports (s, b1), Supports (_, b2) -> Supports (s, recanon (b1 @ b2))
+  | Container (n, c, b1), Container (_, _, b2) ->
+      Container (n, c, recanon (b1 @ b2))
+  | _ -> assert false
+
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
-let try_merge scan changed ~last ~key i j =
+and try_merge ?parent scan changed ~last ~key i j =
   if interval_clear scan ~lo:i ~hi:j scan.members.(i) then begin
-    merge scan changed ~from:i ~into:j;
+    merge ?parent scan changed ~from:i ~into:j;
     Hashtbl.replace last key j
   end
   else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
-    merge scan changed ~from:j ~into:i
+    merge ?parent scan changed ~from:j ~into:i
   else Hashtbl.replace last key j
 
 (* Coalesce same-selector singleton rules within one run. Folding an occurrence
@@ -288,7 +304,7 @@ let try_merge scan changed ~last ~key i j =
    observable only if one of those elements conflicts with the moved rule; the
    conflict test is the graph's, against every original occurrence already
    accumulated into the surviving element. *)
-let coalesce ?parent changed (run : (statement * rule list) list) :
+and coalesce ?parent changed (run : (statement * rule list) list) :
     (statement * rule list) list =
   match run with
   | [] | [ _ ] -> run
@@ -308,20 +324,32 @@ let coalesce ?parent changed (run : (statement * rule list) list) :
           merged_any = false;
         }
       in
-      let selector_key i =
+      (* A style rule coalesces by selector; a conditional block coalesces by
+         its condition (an empty-bodied render keys the header only), so two
+         same-condition blocks fold together. The [@media]/[@supports]/
+         [@container] prefix keeps a block key from colliding with a
+         selector. *)
+      let coalesce_key i =
         match arr.(i) with
         | Rule r, _ when r.merge_key = None ->
             Some (Pp.to_string ~minify:true Selector.pp r.selector)
+        | Media (m, _), _ ->
+            Some (Pp.to_string ~minify:true pp_stylesheet [ Media (m, []) ])
+        | Supports (s, _), _ ->
+            Some (Pp.to_string ~minify:true pp_stylesheet [ Supports (s, []) ])
+        | Container (n, c, _), _ ->
+            Some
+              (Pp.to_string ~minify:true pp_stylesheet [ Container (n, c, []) ])
         | _ -> None
       in
       let last = Hashtbl.create 16 in
       for j = 0 to n - 1 do
-        match selector_key j with
+        match coalesce_key j with
         | None -> ()
         | Some key -> (
             match Hashtbl.find_opt last key with
             | Some i when scan.alive.(i) ->
-                try_merge scan changed ~last ~key i j
+                try_merge ?parent scan changed ~last ~key i j
             | _ -> Hashtbl.replace last key j)
       done;
       if not scan.merged_any then run
@@ -332,8 +360,8 @@ let coalesce ?parent changed (run : (statement * rule list) list) :
    apart, enabling a merge the source order hid, so equivalent sheets converge
    regardless of which arrangement they started from. Each merging round removes
    at least one element, so this terminates. *)
-let rec settle ?parent changed (run : (statement * rule list) list) :
-    statement list =
+and settle ?parent changed (run : (statement * rule list) list) : statement list
+    =
   let stmts = sort_run ?parent changed run in
   let sorted =
     List.filter_map
@@ -350,8 +378,8 @@ let rec settle ?parent changed (run : (statement * rule list) list) :
    nesting [parent]; a style rule's nested body is canonicalised under the
    rule's own (expanded) selector as the new parent, so nested relative
    selectors are compared on their effective form. *)
-let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
-    statement =
+and recurse ~(parent : Selector.t option) changed (stmt : statement) : statement
+    =
   let here b = canonicalize_block ~parent changed b in
   match stmt with
   | Rule r ->
