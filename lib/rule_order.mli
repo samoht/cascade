@@ -22,13 +22,3 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     rules, and custom-property rules are barriers: they keep their position and
     split runs. Returns the input list physically unchanged when no run
     reorders. *)
-
-val order_constrained : Stylesheet.statement list -> int -> int -> bool
-(** [order_constrained stmts i j] is [true] when reordering the statements at
-    positions [i] and [j] could change a computed value. Partially applying it
-    to [stmts] alone returns the predicate over positions. Two run elements
-    (style rules, or [@media]/[@supports]/[@container] blocks over plain rules)
-    are constrained only when their selectors may match a common element at
-    equal specificity and their declarations overlap; any other statement is a
-    barrier constrained with everything. Lets a structural diff treat a position
-    difference between two mutually unconstrained statements as a no-op. *)

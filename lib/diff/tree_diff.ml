@@ -1413,6 +1413,11 @@ let reordered ~rules1 ~rules2 sel1 sel2 selector : rule_diff =
      }
     : rule_diff)
 
+let position_changed ~rules1 ~rules2 sel1 sel2 =
+  let expected_pos = selector_position sel1 rules1 in
+  let actual_pos = selector_position sel2 rules2 in
+  expected_pos <> actual_pos
+
 let is_pure_decl_reordering decls1 decls2 =
   let property_changes, added_props, removed_props =
     properties_diff decls1 decls2
@@ -1441,73 +1446,13 @@ let decls_str_equal d1 d2 =
        (fun x y -> decl_to_prop_value x = decl_to_prop_value y)
        d1 d2
 
-let stmt_key stmt =
-  Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) |> String.trim
-
-(* Statements genuinely reordered between [rules1] and [rules2], keyed by
-   minified serialisation. A statement is reordered only when it and some
-   order-constrained statement flipped relative order; a position difference
-   measured only against statements it cannot cascade-conflict with is neutral
-   drift (a regular rule sliding past disjoint [@media] blocks, or two
-   same-condition blocks sitting at different absolute indices), not a
-   reorder. *)
-let significant_reorder_keys ~ignore_neutral rules1 rules2 =
-  let a1 = Array.of_list rules1 in
-  let n = Array.length a1 in
-  let keys1 = Array.map stmt_key a1 in
-  let pos2 = Hashtbl.create (List.length rules2 + 1) in
-  List.iteri
-    (fun i s ->
-      let k = stmt_key s in
-      if not (Hashtbl.mem pos2 k) then Hashtbl.add pos2 k i)
-    rules2;
-  let reordered = Hashtbl.create 16 in
-  if not ignore_neutral then
-    (* Structural mode: any absolute position change is a reorder. *)
-    Array.iteri
-      (fun i k ->
-        match Hashtbl.find_opt pos2 k with
-        | Some p2 when p2 <> i -> Hashtbl.replace reordered k ()
-        | _ -> ())
-      keys1
-  else begin
-    (* Cascade mode: only a pair of order-constrained statements whose relative
-       order flipped is a reorder; drift past disjoint statements is neutral. *)
-    let constrained = Css.order_constrained rules1 in
-    let flipped i j =
-      match
-        (Hashtbl.find_opt pos2 keys1.(i), Hashtbl.find_opt pos2 keys1.(j))
-      with
-      | Some pi, Some pj -> pi > pj
-      | _ -> false
-    in
-    let mark i j =
-      if constrained i j && flipped i j then begin
-        Hashtbl.replace reordered keys1.(i) ();
-        Hashtbl.replace reordered keys1.(j) ()
-      end
-    in
-    for i = 0 to n - 1 do
-      for j = i + 1 to n - 1 do
-        mark i j
-      done
-    done
-  end;
-  reordered
-
-let convert_modified_rule ~reordered_keys ~rules1 ~rules2
-    (sel1, sel2, decls1, decls2) =
+let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
   let sel1_str = Css.Selector.to_string sel1 in
   let sel2_str = Css.Selector.to_string sel2 in
-  let position_changed () =
-    match List.nth_opt rules1 (selector_position sel1 rules1) with
-    | Some stmt -> Hashtbl.mem reordered_keys (stmt_key stmt)
-    | None -> false
-  in
+  let position_changed () = position_changed ~rules1 ~rules2 sel1 sel2 in
   let reordered selector = reordered ~rules1 ~rules2 sel1 sel2 selector in
   let reorder_or_content selector d1 d2 =
     if position_changed () then Some (reordered selector)
-    else if decls_str_equal d1 d2 then None
     else Some (content_changed selector d1 d2)
   in
 
@@ -1540,14 +1485,11 @@ let convert_modified_rule ~reordered_keys ~rules1 ~rules2
       else reorder_or_content sel1_str decls1 decls2
 
 (* Assemble rule changes (added/removed/modified) between two rule lists *)
-let to_rule_changes ~ignore_neutral rules1 rules2 : rule_diff list =
+let to_rule_changes rules1 rules2 : rule_diff list =
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
-  let reordered_keys = significant_reorder_keys ~ignore_neutral rules1 rules2 in
   List.map convert_added_rule r_added
   @ List.map convert_removed_rule r_removed
-  @ List.filter_map
-      (convert_modified_rule ~reordered_keys ~rules1 ~rules2)
-      r_modified
+  @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
   @ r_regrouped
 
 (* Generic helpers for processing nested containers *)
@@ -1569,29 +1511,24 @@ let group_by_condition items =
     items;
   tbl
 
-let block_positions_differ ~reordered_keys ~stmts1 blocks1_list blocks2_list =
+let block_positions_differ blocks1_list blocks2_list =
   List.length blocks1_list = List.length blocks2_list
-  && List.exists
-       (fun (p1, _) ->
-         match List.nth_opt stmts1 p1 with
-         | Some stmt -> Hashtbl.mem reordered_keys (stmt_key stmt)
-         | None -> false)
-       blocks1_list
+  &&
+  let pos1_list = List.map fst blocks1_list in
+  let pos2_list = List.map fst blocks2_list in
+  List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
 
-let block_structure_differs ~reordered_keys ~stmts1 blocks1_list blocks2_list =
+let block_structure_differs blocks1_list blocks2_list =
   List.length blocks1_list <> List.length blocks2_list
-  || block_positions_differ ~reordered_keys ~stmts1 blocks1_list blocks2_list
+  || block_positions_differ blocks1_list blocks2_list
 
-let detect_block_structure_changes ~reordered_keys ~stmts1 blocks1 blocks2 =
+let detect_block_structure_changes blocks1 blocks2 =
   let block_structure_changed = Hashtbl.create 16 in
   Hashtbl.iter
     (fun cond blocks1_list ->
       match Hashtbl.find_opt blocks2 cond with
       | Some blocks2_list ->
-          if
-            block_structure_differs ~reordered_keys ~stmts1 blocks1_list
-              blocks2_list
-          then
+          if block_structure_differs blocks1_list blocks2_list then
             Hashtbl.replace block_structure_changed cond
               (blocks1_list, blocks2_list)
       | _ -> ())
@@ -1893,7 +1830,7 @@ let modified_container_of_pair ((name_opt, condition, rules1), (_, _, rules2)) =
 
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
-let rec media_condition_differs ~ignore_neutral rules_list1 rules_list2 =
+let rec media_condition_differs rules_list1 rules_list2 =
   let block_count_differs =
     List.length rules_list1 <> List.length rules_list2
   in
@@ -1905,14 +1842,12 @@ let rec media_condition_differs ~ignore_neutral rules_list1 rules_list2 =
   let has_immediate =
     added_r <> [] || removed_r <> [] || modified_r <> [] || regrouped_r <> []
   in
-  let has_nested =
-    nested_differences ~ignore_neutral ~depth:1 all_rules1 all_rules2 <> []
-  in
+  let has_nested = nested_differences ~depth:1 all_rules1 all_rules2 <> [] in
   if has_immediate || has_nested || block_count_differs then
     Some (all_rules1, all_rules2)
   else None
 
-and media_diff ~ignore_neutral items1 items2 =
+and media_diff items1 items2 =
   let group items =
     let tbl = Hashtbl.create 16 in
     List.iter
@@ -1935,9 +1870,7 @@ and media_diff ~ignore_neutral items1 items2 =
             (fun rules -> removed := (cond, rules) :: !removed)
             rules_list1
       | Some rules_list2 -> (
-          match
-            media_condition_differs ~ignore_neutral rules_list1 rules_list2
-          with
+          match media_condition_differs rules_list1 rules_list2 with
           | Some (r1, r2) -> modified := (cond, r1, r2) :: !modified
           | None -> ()))
     groups1;
@@ -1948,15 +1881,15 @@ and media_diff ~ignore_neutral items1 items2 =
     groups2;
   (!added, !removed, !modified)
 
-and process_modified_container ~ignore_neutral ~container_type ~extract_fn
-    ~depth ~stmts1 ~stmts2 ~block_structure_changed cond rules1 rules2 =
+and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
+    ~stmts2 ~block_structure_changed cond rules1 rules2 =
   (* Skip if this condition has a block structure change *)
   if Hashtbl.mem block_structure_changed cond then None
   else
-    let rule_changes = to_rule_changes ~ignore_neutral rules1 rules2 in
+    let rule_changes = to_rule_changes rules1 rules2 in
     (* Recursively check deeper nesting *)
     let nested_containers =
-      nested_differences ~ignore_neutral ~depth:(depth + 1) rules1 rules2
+      nested_differences ~depth:(depth + 1) rules1 rules2
     in
     (* Check for position changes within parent container *)
     let pos1 =
@@ -1977,14 +1910,12 @@ and process_modified_container ~ignore_neutral ~container_type ~extract_fn
            nested_containers)
     else None
 
-and process_nested_containers ~ignore_neutral ~container_type ~extract_fn
-    ~diff_fn ~depth stmts1 stmts2 =
+and process_nested_containers ~container_type ~extract_fn ~diff_fn ~depth stmts1
+    stmts2 =
   let items_with_pos1 = extract_items_with_positions extract_fn stmts1 in
   let items_with_pos2 = extract_items_with_positions extract_fn stmts2 in
   let block_structure_changed =
     detect_block_structure_changes
-      ~reordered_keys:(significant_reorder_keys ~ignore_neutral stmts1 stmts2)
-      ~stmts1
       (group_by_condition items_with_pos1)
       (group_by_condition items_with_pos2)
   in
@@ -2010,8 +1941,8 @@ and process_nested_containers ~ignore_neutral ~container_type ~extract_fn
   List.iter
     (fun (cond, rules1, rules2) ->
       match
-        process_modified_container ~ignore_neutral ~container_type ~extract_fn
-          ~depth ~stmts1 ~stmts2 ~block_structure_changed cond rules1 rules2
+        process_modified_container ~container_type ~extract_fn ~depth ~stmts1
+          ~stmts2 ~block_structure_changed cond rules1 rules2
       with
       | Some diff -> diffs := diff :: !diffs
       | None -> ())
@@ -2025,7 +1956,7 @@ and process_nested_containers ~ignore_neutral ~container_type ~extract_fn
   !diffs
 
 (* Layer diff function *)
-and layer_diff ~ignore_neutral items1 items2 =
+and layer_diff items1 items2 =
   let key_of (name_opt, _) = Option.value ~default:"" name_opt in
   let key_equal = String.equal in
   let is_empty_diff (_, rules1) (_, rules2) =
@@ -2036,9 +1967,7 @@ and layer_diff ~ignore_neutral items1 items2 =
     if has_immediate_diffs then false
     else
       (* Also check for nested differences *)
-      let nested_diffs =
-        nested_differences ~ignore_neutral ~depth:1 rules1 rules2
-      in
+      let nested_diffs = nested_differences ~depth:1 rules1 rules2 in
       nested_diffs = []
   in
   let added, removed, modified_pairs =
@@ -2065,8 +1994,7 @@ and layer_diff ~ignore_neutral items1 items2 =
 
 (* Shared helper: collect added/removed container diffs and process modified
    containers with the standard rule-change + nesting logic. *)
-and collect_container_diffs ~ignore_neutral ~container_type ~depth added removed
-    modified =
+and collect_container_diffs ~container_type ~depth added removed modified =
   let diffs = ref [] in
   List.iter
     (fun (condition, rules) ->
@@ -2078,9 +2006,9 @@ and collect_container_diffs ~ignore_neutral ~container_type ~depth added removed
     removed;
   List.iter
     (fun (condition, rules1, rules2) ->
-      let rule_changes = to_rule_changes ~ignore_neutral rules1 rules2 in
+      let rule_changes = to_rule_changes rules1 rules2 in
       let nested_containers =
-        nested_differences ~ignore_neutral ~depth:(depth + 1) rules1 rules2
+        nested_differences ~depth:(depth + 1) rules1 rules2
       in
       if
         (rule_changes <> [] || nested_containers <> [])
@@ -2099,25 +2027,23 @@ and collect_container_diffs ~ignore_neutral ~container_type ~depth added removed
   !diffs
 
 (* Process layers separately due to different type signature *)
-and process_nested_layers ~ignore_neutral ~depth stmts1 stmts2 =
+and process_nested_layers ~depth stmts1 stmts2 =
   let items1 = List.filter_map Css.as_layer stmts1 in
   let items2 = List.filter_map Css.as_layer stmts2 in
-  let added, removed, modified = layer_diff ~ignore_neutral items1 items2 in
-  collect_container_diffs ~ignore_neutral ~container_type:`Layer ~depth added
-    removed modified
+  let added, removed, modified = layer_diff items1 items2 in
+  collect_container_diffs ~container_type:`Layer ~depth added removed modified
 
-and container_has_no_diff ~ignore_neutral (_, _, rules1) (_, _, rules2) =
+and container_has_no_diff (_, _, rules1) (_, _, rules2) =
   let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
   let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] || rg_r <> [] in
   if has_immediate_diffs then false
-  else nested_differences ~ignore_neutral ~depth:1 rules1 rules2 = []
+  else nested_differences ~depth:1 rules1 rules2 = []
 
 (* Container diff function for @container rules *)
-and container_diff ~ignore_neutral items1 items2 =
+and container_diff items1 items2 =
   let key_equal = String.equal in
   let added, removed, modified_pairs =
-    diffs ~key_of:container_key ~key_equal
-      ~is_empty_diff:(container_has_no_diff ~ignore_neutral)
+    diffs ~key_of:container_key ~key_equal ~is_empty_diff:container_has_no_diff
       items1 items2
   in
   (* Transform to consistent format with media_diff. *)
@@ -2127,15 +2053,15 @@ and container_diff ~ignore_neutral items1 items2 =
   (added, removed, modified)
 
 (* Process container rules *)
-and process_nested_containers_with_name ~ignore_neutral ~depth stmts1 stmts2 =
+and process_nested_containers_with_name ~depth stmts1 stmts2 =
   let items1 = List.filter_map Css.as_container stmts1 in
   let items2 = List.filter_map Css.as_container stmts2 in
-  let added, removed, modified = container_diff ~ignore_neutral items1 items2 in
-  collect_container_diffs ~ignore_neutral ~container_type:`Container ~depth
-    added removed modified
+  let added, removed, modified = container_diff items1 items2 in
+  collect_container_diffs ~container_type:`Container ~depth added removed
+    modified
 
 (* Process property rules *)
-and process_nested_properties ~ignore_neutral ~depth stmts1 stmts2 =
+and process_nested_properties ~depth stmts1 stmts2 =
   let items1 = List.filter_map Css.as_property stmts1 in
   let items2 = List.filter_map Css.as_property stmts2 in
   let added, removed, modified = property_diff items1 items2 in
@@ -2153,9 +2079,9 @@ and process_nested_properties ~ignore_neutral ~depth stmts1 stmts2 =
     removed;
   List.iter
     (fun (name, rules1, rules2) ->
-      let rule_changes = to_rule_changes ~ignore_neutral rules1 rules2 in
+      let rule_changes = to_rule_changes rules1 rules2 in
       let nested_containers =
-        nested_differences ~ignore_neutral ~depth:(depth + 1) rules1 rules2
+        nested_differences ~depth:(depth + 1) rules1 rules2
       in
       diffs :=
         Modified
@@ -2171,7 +2097,7 @@ and process_nested_properties ~ignore_neutral ~depth stmts1 stmts2 =
   !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
-and process_nested_rules ~ignore_neutral ~depth stmts1 stmts2 =
+and process_nested_rules ~depth stmts1 stmts2 =
   (* Extract (selector_key, nested_statements) for all rules, including those
      with empty nesting. This allows detecting when nesting is added/removed. *)
   let extract_nesting stmts =
@@ -2190,10 +2116,9 @@ and process_nested_rules ~ignore_neutral ~depth stmts1 stmts2 =
     (fun (sel1, nested1) ->
       match List.find_opt (fun (s, _) -> s = sel1) items2 with
       | Some (_, nested2) when nested1 <> nested2 ->
-          let rule_changes = to_rule_changes ~ignore_neutral nested1 nested2 in
+          let rule_changes = to_rule_changes nested1 nested2 in
           let nested_containers =
-            nested_differences ~ignore_neutral ~depth:(depth + 1) nested1
-              nested2
+            nested_differences ~depth:(depth + 1) nested1 nested2
           in
           if rule_changes <> [] || nested_containers <> [] then
             diffs :=
@@ -2216,70 +2141,54 @@ and process_nested_rules ~ignore_neutral ~depth stmts1 stmts2 =
   !diffs
 
 (* Main recursive function for nested differences *)
-and nested_differences ~ignore_neutral ?(depth = 0)
-    (stmts1 : Css.statement list) (stmts2 : Css.statement list) :
-    container_diff list =
+and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
+    (stmts2 : Css.statement list) : container_diff list =
   if depth > 3 then [] (* Prevent infinite recursion *)
   else
     (* Process CSS nesting (& .foo { ... } inside rules) *)
-    process_nested_rules ~ignore_neutral ~depth stmts1 stmts2
+    process_nested_rules ~depth stmts1 stmts2
     (* Process media queries *)
-    @ process_nested_containers ~ignore_neutral ~container_type:`Media
-        ~extract_fn:extract_media_as_string
-        ~diff_fn:(media_diff ~ignore_neutral)
-        ~depth stmts1 stmts2
+    @ process_nested_containers ~container_type:`Media
+        ~extract_fn:extract_media_as_string ~diff_fn:media_diff ~depth stmts1
+        stmts2
     (* Process layers - different type signature *)
-    @ process_nested_layers ~ignore_neutral ~depth stmts1 stmts2
+    @ process_nested_layers ~depth stmts1 stmts2
     (* Process supports - reuses media_diff since they have the same
        structure *)
-    @ process_nested_containers ~ignore_neutral ~container_type:`Supports
-        ~extract_fn:extract_supports_as_string
-        ~diff_fn:(media_diff ~ignore_neutral)
-        ~depth stmts1 stmts2
+    @ process_nested_containers ~container_type:`Supports
+        ~extract_fn:extract_supports_as_string ~diff_fn:media_diff ~depth stmts1
+        stmts2
     (* Process container queries *)
-    @ process_nested_containers_with_name ~ignore_neutral ~depth stmts1 stmts2
+    @ process_nested_containers_with_name ~depth stmts1 stmts2
     (* Process property declarations *)
-    @ process_nested_properties ~ignore_neutral ~depth stmts1 stmts2
+    @ process_nested_properties ~depth stmts1 stmts2
     (* Process keyframes animations *)
     @ process_nested_keyframes ~depth stmts1 stmts2
     (* Process font-face rules *)
     @ process_font_face_rules ~depth stmts1 stmts2
 
-let build_media_position_map stmts =
-  List.mapi
-    (fun i stmt ->
-      match Css.as_media stmt with
-      | Some (cond, _) -> Some (Css.Media.to_string cond, i)
-      | None -> None)
-    stmts
-  |> List.filter_map Fun.id
-  |> List.fold_left
-       (fun acc (cond, pos) ->
-         let existing = try List.assoc cond acc with Not_found -> [] in
-         (cond, pos :: existing) :: List.remove_assoc cond acc)
-       []
-
-let media_present pos_map condition =
-  match List.assoc_opt condition pos_map with
-  | Some (_ :: _) -> true
-  | _ -> false
-
-(* A same-condition [@media] block differs only when it is genuinely reordered -
-   it and some order-constrained statement flipped. Two blocks sitting at
-   different absolute indices because unrelated content grew between them is
-   neutral drift. *)
-let media_block_reordered ~reordered_keys ~stmts1 ~pos_map1 condition =
-  List.exists
-    (fun p ->
-      match List.nth_opt stmts1 p with
-      | Some stmt -> Hashtbl.mem reordered_keys (stmt_key stmt)
-      | None -> false)
-    (Option.value ~default:[] (List.assoc_opt condition pos_map1))
-
 (* Check if containers appear at different positions in statement sequence *)
-let detect_container_position_changes ~reordered_keys stmts1 stmts2 containers =
+let detect_container_position_changes stmts1 stmts2 containers =
+  (* Build position maps for @media containers *)
+  let build_media_position_map stmts =
+    List.mapi
+      (fun i stmt ->
+        match Css.as_media stmt with
+        | Some (cond, _) -> Some (Css.Media.to_string cond, i)
+        | None -> None)
+      stmts
+    |> List.filter_map (fun x -> x)
+    |> List.fold_left
+         (fun acc (cond, pos) ->
+           let existing = try List.assoc cond acc with Not_found -> [] in
+           (cond, pos :: existing) :: List.remove_assoc cond acc)
+         []
+  in
+
   let pos_map1 = build_media_position_map stmts1 in
   let pos_map2 = build_media_position_map stmts2 in
+
+  (* Enhance container_diffs with position info *)
   List.map
     (function
       | Modified
@@ -2289,13 +2198,21 @@ let detect_container_position_changes ~reordered_keys stmts1 stmts2 containers =
              container_changes;
              _;
            } as cm)
-        when rule_changes = [] && container_changes = []
-             && media_present pos_map1 condition
-             && media_present pos_map2 condition
-             && media_block_reordered ~reordered_keys ~stmts1 ~pos_map1
-                  condition ->
-          Modified
-            { cm with info = { cm.info with rules = [] }; actual_rules = [] }
+        when rule_changes = [] && container_changes = [] ->
+          (* No content changes - check if position changed *)
+          let pos1 =
+            try List.assoc condition pos_map1 |> List.hd
+            with Not_found | Failure _ -> -1
+          in
+          let pos2 =
+            try List.assoc condition pos_map2 |> List.hd
+            with Not_found | Failure _ -> -1
+          in
+          if pos1 >= 0 && pos2 >= 0 && abs (pos2 - pos1) > 5 then
+            (* Significant position change - report as structure difference *)
+            Modified
+              { cm with info = { cm.info with rules = [] }; actual_rules = [] }
+          else Modified cm
       | other -> other)
     containers
 
@@ -2376,9 +2293,7 @@ let process_imports stmts1 stmts2 : rule_diff list =
         (fun s -> (Added { selector = s; declarations = [] } : rule_diff))
         (multiset_remove_each ~remove:l1 l2)
 
-let diff ?(ignore_neutral_reorders = false) ~(expected : Css.t)
-    ~(actual : Css.t) () : t =
-  let ignore_neutral = ignore_neutral_reorders in
+let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   let all1 = Css.statements expected in
   let all2 = Css.statements actual in
   (* Imports are diffed separately ([process_imports]); excluding them here
@@ -2386,23 +2301,18 @@ let diff ?(ignore_neutral_reorders = false) ~(expected : Css.t)
   let rules1 = List.filter (fun s -> Css.as_import s = None) all1 in
   let rules2 = List.filter (fun s -> Css.as_import s = None) all2 in
   let added, removed, modified, regrouped = rule_diffs rules1 rules2 in
-  let reordered_keys = significant_reorder_keys ~ignore_neutral rules1 rules2 in
 
   let rule_changes =
     List.map convert_added_rule added
     @ List.map convert_removed_rule removed
-    @ List.filter_map
-        (convert_modified_rule ~reordered_keys ~rules1 ~rules2)
-        modified
+    @ List.filter_map (convert_modified_rule ~rules1 ~rules2) modified
     @ regrouped @ process_imports all1 all2
   in
 
   (* Delegate all container and nested-container diffs to the generic walker *)
   let containers =
-    let base_containers =
-      nested_differences ~ignore_neutral ~depth:0 all1 all2
-    in
-    detect_container_position_changes ~reordered_keys all1 all2 base_containers
+    let base_containers = nested_differences ~depth:0 all1 all2 in
+    detect_container_position_changes all1 all2 base_containers
   in
 
   { rules = rule_changes; containers }
