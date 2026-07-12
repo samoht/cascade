@@ -79,13 +79,9 @@ type t = { rules : rule_diff list; containers : container_diff list }
 val is_empty : t -> bool
 (** [is_empty d] returns [true] if [d] contains no differences. *)
 
-val diff :
-  ?ignore_neutral_reorders:bool -> expected:Css.t -> actual:Css.t -> unit -> t
-(** [diff ~expected ~actual ()] computes structural differences between two CSS
-    ASTs. With [~ignore_neutral_reorders:true] a position difference between two
-    statements that cannot cascade-conflict is treated as a no-op rather than a
-    reorder - used by the canonical comparison, whose inputs are already
-    cascade-equivalent up to neutral reordering. *)
+val diff : expected:Css.t -> actual:Css.t -> t
+(** [diff ~expected ~actual] computes structural differences between two CSS
+    ASTs. *)
 
 val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
 (** [pp ?expected ?actual buf t] pretty-prints a tree diff with optional labels.
