@@ -9,14 +9,18 @@ $ cascade --minify style.css > style.min.css
 $ cascade diff a.css b.css
 ```
 
-Cascade aims to be the smallest minifier on real-world stylesheets while
-staying competitive on speed. `--minify` optimises the bytes that actually
-ship: it is the smallest gzip-compressed output of any tool tested on all
-four SatCSS fixtures, and `--objective=raw` is the smallest uncompressed
-output on all four. The diff subcommand reads structure, so refactors that
-move rules around without changing semantics show up as a no-op rather than
-as a wall of red and green. Both modes round-trip through a typed CSS AST, so
-the output is always valid CSS.
+Cascade works from a typed CSS AST rather than the raw text, so every command
+emits valid CSS by construction and reasons about the cascade instead of
+guessing from bytes. `cascade fmt --minify` applies only cascade-safe transforms
+(deduplication, rule merging, selector grouping, colour and value
+canonicalisation), and optimises for the bytes that actually ship: compressed
+transfer size rather than raw length. `cascade diff` compares the parsed
+structure, so a refactor that reorders rules or regroups declarations without
+changing what they compute reads as no difference rather than a wall of red and
+green. The same engine backs the `cascade` OCaml library.
+
+On the SatCSS corpus of real-world stylesheets, cascade is competitive on both
+size and speed; the head-to-head numbers are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Install
 
@@ -93,30 +97,12 @@ cat style.css | cascade -                                          # read stdin
 | `--memtrace=FILE` | Write a memtrace allocation trace to FILE. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
 
-### How it compares
+### Size
 
-Cascade's `--minify` optimises the metric that matters for shipped CSS: the
-compressed transfer size. Benchmarked on the SatCSS corpus (Hague, Lin, Hong,
-TOPLAS 2019), gzip -9 bytes of the emitted CSS and median wall clock over 5
-runs:
-
-| fixture | cascade `--minify` | csso | lightningcss | esbuild | cssnano |
-|---|---|---|---|---|---|
-| github | **34,289** / 570 ms | 34,887 / 120 ms | 34,420 / 10 ms | 34,736 / 10 ms | 34,729 / 240 ms |
-| guardian | **25,979** / 290 ms | 26,653 / 100 ms | 26,008 / 0 ms | 27,616 / 10 ms | 26,408 / 220 ms |
-| youtube | **33,779** / 680 ms | 34,841 / 130 ms | 34,321 / 10 ms | 34,782 / 10 ms | 33,930 / 300 ms |
-| netflix | **29,497** / 740 ms | 33,102 / 140 ms | 31,948 / 10 ms | 33,820 / 10 ms | 31,411 / 280 ms |
-
-Cascade emits the smallest gzip output on every fixture, and the smallest
-brotli output on all but guardian (where Lightning CSS keeps a 0.6% edge).
-`--aggressive` changes little under the default objective: the transfer gate
-already discards factoring that would grow the compressed output. With
-`--objective=raw` the objective flips to uncompressed bytes and cascade emits
-the smallest raw output on every fixture too (github 178,042 vs csso's
-180,825; netflix 172,500 under `--aggressive` vs cssnano's 218,017). Lightning
-CSS and esbuild are well over an order of magnitude faster but emit 0.4-15%
-more compressed bytes; csso and cssnano sit in the same wall-clock band as
-cascade and emit more bytes.
+`--minify` optimises compressed transfer size by default; `--objective=raw`
+optimises uncompressed bytes instead, for output that ships uncompressed
+(inline style attributes, email HTML). Head-to-head sizes and timings against
+other minifiers on the SatCSS corpus are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## `cascade diff`: structural CSS diff
 
