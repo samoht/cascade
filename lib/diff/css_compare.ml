@@ -512,10 +512,11 @@ let pp_parse_warnings buf label warnings =
       add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ])
     warnings
 
-let pp_result ?(expected = "Expected") ?(actual = "Actual") buf = function
+let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
+    = function
   | Tree_diff d ->
       (* Show structural differences *)
-      D.pp ~expected ~actual buf d
+      D.pp ~expected ~actual ~color buf d
   | String_diff sdiff -> String_diff.pp buf sdiff
   | No_diff _ ->
       (* No output for structurally equivalent files (whether or not the
@@ -543,8 +544,8 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") buf = function
   | Actual_error e ->
       add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
 
-let pp ?(expected = "Expected") ?(actual = "Actual") buf t =
-  pp_result ~expected ~actual buf t.result;
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf t =
+  pp_result ~expected ~actual ~color buf t.result;
   pp_parse_warnings buf expected t.expected_warnings;
   pp_parse_warnings buf actual t.actual_warnings
 

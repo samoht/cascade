@@ -96,10 +96,13 @@ val as_tree_diff : t -> Tree_diff.t option
 (** [as_tree_diff result] returns the underlying [Tree_diff.t] when [result] is
     a {!constructor-Tree_diff}; [None] otherwise. *)
 
-val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
-(** [pp ?expected ?actual buf result] formats [result] into [buf], then renders
-    each side's parse warnings. The [expected]/[actual] labels are used in the
-    rendered header and warning lines (defaults: ["Expected"], ["Actual"]). *)
+val pp :
+  ?expected:string -> ?actual:string -> ?color:bool -> Buffer.t -> t -> unit
+(** [pp ?expected ?actual ?color buf result] formats [result] into [buf], then
+    renders each side's parse warnings. The [expected]/[actual] labels are used
+    in the rendered header and warning lines (defaults: ["Expected"],
+    ["Actual"]). [color] (default [false]) wraps diff markers in ANSI escapes;
+    the caller decides whether the destination supports colour. *)
 
 (** {1:stats Statistics} *)
 

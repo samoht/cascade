@@ -86,18 +86,26 @@ let is_empty d = d.rules = [] && d.containers = []
 (* Tree-style formatting helpers *)
 type tree_style = {
   use_tree : bool; (* Whether to use tree-style box-drawing characters *)
+  color : bool; (* Whether to wrap diff markers in ANSI colors *)
 }
 
-let default_style = { use_tree = false }
-let tree_style = { use_tree = true }
+let default_style = { use_tree = false; color = false }
+let tree_style = { use_tree = true; color = false }
 
-(* ANSI color helpers *)
-let ansi_green s = "\027[32m" ^ s ^ "\027[0m"
-let ansi_red s = "\027[31m" ^ s ^ "\027[0m"
-let ansi_yellow s = "\027[33m" ^ s ^ "\027[0m"
+(* ANSI color helpers. Plain text unless [color] is set: the printers write into
+   a [Buffer.t], so tty detection cannot happen here; the caller decides. *)
+let ansi code ~color s =
+  if color then "\027[" ^ code ^ "m" ^ s ^ "\027[0m" else s
 
-let style_text action s =
-  match action with "add" -> ansi_green s | "remove" -> ansi_red s | _ -> s
+let ansi_green ~color s = ansi "32" ~color s
+let ansi_red ~color s = ansi "31" ~color s
+let ansi_yellow ~color s = ansi "33" ~color s
+
+let style_text ~color action s =
+  match action with
+  | "add" -> ansi_green ~color s
+  | "remove" -> ansi_red ~color s
+  | _ -> s
 
 (* Get the appropriate prefix for tree-style formatting *)
 let tree_prefix ~style ~is_last ~parent_prefix =
@@ -136,7 +144,7 @@ let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
       in
       Buffer.add_string buf
         (indent
-        ^ style_text action
+        ^ style_text ~color:style.color action
             (prefix_symbol ^ " " ^ prop_name ^ " " ^ truncated_value)
         ^ "\n"))
     decls
@@ -157,8 +165,11 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
       if len1 <= 30 && len2 <= 30 then
         (* Short values: show inline with red for old, green for new *)
         Buffer.add_string buf
-          (indent ^ "* " ^ property_name ^ ": " ^ ansi_red expected_value
-         ^ " -> " ^ ansi_green actual_value ^ "\n")
+          (indent ^ "* " ^ property_name ^ ": "
+          ^ ansi_red ~color:style.color expected_value
+          ^ " -> "
+          ^ ansi_green ~color:style.color actual_value
+          ^ "\n")
       else
         (* Long values: truncate and show as separate lines *)
         let exp_truncated =
@@ -169,9 +180,13 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
         in
         Buffer.add_string buf (indent ^ "* " ^ property_name ^ ":\n");
         Buffer.add_string buf
-          (indent ^ "  " ^ ansi_red ("- " ^ exp_truncated) ^ "\n");
+          (indent ^ "  "
+          ^ ansi_red ~color:style.color ("- " ^ exp_truncated)
+          ^ "\n");
         Buffer.add_string buf
-          (indent ^ "  " ^ ansi_green ("+ " ^ act_truncated) ^ "\n")
+          (indent ^ "  "
+          ^ ansi_green ~color:style.color ("+ " ^ act_truncated)
+          ^ "\n")
 
 let pp_property_diffs ?(style = default_style) ?(parent_prefix = "") buf
     prop_diffs =
@@ -272,11 +287,13 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     Buffer.add_string buf (prefix ^ selector ^ "\n");
     List.iter
       (fun prop_name ->
-        Buffer.add_string buf (indent ^ ansi_red ("- " ^ prop_name) ^ "\n"))
+        Buffer.add_string buf
+          (indent ^ ansi_red ~color:style.color ("- " ^ prop_name) ^ "\n"))
       removed_properties;
     List.iter
       (fun prop_name ->
-        Buffer.add_string buf (indent ^ ansi_green ("+ " ^ prop_name) ^ "\n"))
+        Buffer.add_string buf
+          (indent ^ ansi_green ~color:style.color ("+ " ^ prop_name) ^ "\n"))
       added_properties;
     pp_property_diffs ~style ~parent_prefix:child_prefix buf property_changes;
     pp_reorder ~style ~parent_prefix:child_prefix old_declarations
@@ -308,6 +325,27 @@ let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
       Buffer.add_string buf
         (prefix ^ truncate selector ^ " (position " ^ string_of_int expected_pos
        ^ " \xe2\x86\x92 " ^ string_of_int actual_pos ^ ")\n")
+
+let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
+    =
+  let nf = List.length from_selectors and nt = List.length to_selectors in
+  let verb =
+    if nf > nt then "merged" else if nf < nt then "split" else "regrouped"
+  in
+  Buffer.add_string buf (prefix ^ "selectors " ^ verb ^ "\n");
+  let indent =
+    if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
+  in
+  List.iter
+    (fun s ->
+      Buffer.add_string buf
+        (indent ^ ansi_red ~color:style.color ("- " ^ s) ^ "\n"))
+    from_selectors;
+  List.iter
+    (fun s ->
+      Buffer.add_string buf
+        (indent ^ ansi_green ~color:style.color ("+ " ^ s) ^ "\n"))
+    to_selectors
 
 let pp_rule_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf (diff : rule_diff) =
@@ -358,20 +396,8 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
   | Regrouped { from_selectors; to_selectors } ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-      let nf = List.length from_selectors and nt = List.length to_selectors in
-      let verb =
-        if nf > nt then "merged" else if nf < nt then "split" else "regrouped"
-      in
-      Buffer.add_string buf (prefix ^ "selectors " ^ verb ^ "\n");
-      let indent =
-        if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
-      in
-      List.iter
-        (fun s -> Buffer.add_string buf (indent ^ ansi_red ("- " ^ s) ^ "\n"))
-        from_selectors;
-      List.iter
-        (fun s -> Buffer.add_string buf (indent ^ ansi_green ("+ " ^ s) ^ "\n"))
-        to_selectors
+      pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors
+        ~to_selectors
 
 let pp_rule_diff_simple buf (diff : rule_diff) =
   match diff with
@@ -569,8 +595,8 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
             ^ "\n"))
       blocks
   in
-  pp_blocks "-" ansi_red expected_blocks;
-  pp_blocks "+" ansi_green actual_blocks
+  pp_blocks "-" (ansi_red ~color:style.color) expected_blocks;
+  pp_blocks "+" (ansi_green ~color:style.color) actual_blocks
 
 let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
     container_type condition rules =
@@ -638,9 +664,11 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
       pp_block_structure_changed ~style ~is_last ~parent_prefix buf
         ~container_type ~condition ~expected_blocks ~actual_blocks
 
-let pp_diff_headers buf expected actual =
-  Buffer.add_string buf (ansi_yellow "---" ^ " " ^ ansi_yellow expected ^ "\n");
-  Buffer.add_string buf (ansi_yellow "+++" ^ " " ^ ansi_yellow actual ^ "\n")
+let pp_diff_headers ~color buf expected actual =
+  Buffer.add_string buf
+    (ansi_yellow ~color "---" ^ " " ^ ansi_yellow ~color expected ^ "\n");
+  Buffer.add_string buf
+    (ansi_yellow ~color "+++" ^ " " ^ ansi_yellow ~color actual ^ "\n")
 
 let pp_rule_list ~style ~container_count buf rule_list =
   let rule_count = List.length rule_list in
@@ -665,7 +693,8 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
-let pp ?(expected = "Expected") ?(actual = "Actual") buf { rules; containers } =
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
+    { rules; containers } =
   if rules = [] && containers = [] then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
@@ -673,7 +702,7 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf { rules; containers } =
        but no rule-level differences found.\n\
        This may indicate reordering or subtle changes in rule organization."
   else (
-    pp_diff_headers buf expected actual;
+    pp_diff_headers ~color buf expected actual;
     let meaningful = meaningful_rules rules in
     let reordered_rules =
       List.filter
@@ -681,7 +710,7 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf { rules; containers } =
           match diff with Reordered _ -> true | _ -> false)
         rules
     in
-    let style = tree_style in
+    let style = { tree_style with color } in
     let container_count = List.length containers in
     pp_rule_list ~style ~container_count buf meaningful;
     pp_reordered_section ~style ~container_count buf reordered_rules;

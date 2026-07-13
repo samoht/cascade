@@ -12,8 +12,16 @@ let read_file path =
     Ok content
   with Sys_error msg -> err_read path msg
 
+let no_color_var = "NO_COLOR"
+
+let no_color_env =
+  Cmd.Env.info no_color_var
+    ~doc:
+      "When set to a non-empty value, disable colour output (see \
+       https://no-color.org/). Overrides $(b,--color) and $(b,CASCADE_COLOR)."
+
 let resolve_style_renderer style_renderer =
-  match Sys.getenv_opt "NO_COLOR" with
+  match Sys.getenv_opt no_color_var with
   | Some s when s <> "" -> Some `None
   | _ -> style_renderer
 
@@ -28,14 +36,14 @@ let run_diff mode ~lossless ~prune_unused_custom_props ~css1 ~css2 =
   Cascade_diff.Css_compare.diff ~mode ~lossless ~prune_unused_custom_props css1
     css2
 
-let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
+let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
   let buf = Buffer.create 1024 in
   Cascade_diff.Css_compare.pp_stats buf stats;
   Buffer.add_char buf '\n';
-  Cascade_diff.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+  Cascade_diff.Css_compare.pp ~expected:file1 ~actual:file2 ~color buf result;
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
@@ -46,6 +54,14 @@ let compare_files file1 file2 style_renderer mode opts memtrace_path () =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
+  (* The report is built in a plain buffer, so the diff printers cannot see the
+     tty; resolve the colour decision Fmt_tty just made (tty detection, --color,
+     CASCADE_COLOR, NO_COLOR) and pass it down. *)
+  let color =
+    match Fmt.style_renderer Fmt.stdout with
+    | `Ansi_tty -> true
+    | `None -> false
+  in
   match (read_file file1, read_file file2) with
   | Ok css1, Ok css2 -> (
       if css1 = css2 then (
@@ -62,16 +78,17 @@ let compare_files file1 file2 style_renderer mode opts memtrace_path () =
             (* Equal ASTs can still hide parse-dropped declarations; show the
                warnings so the equality verdict is honest about them. *)
             let buf = Buffer.create 256 in
-            Cascade_diff.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+            Cascade_diff.Css_compare.pp ~expected:file1 ~actual:file2 ~color buf
+              result;
             print_string (Buffer.contents buf);
             Fmt.pr "CSS files are identical@.";
             Ok ()
-        | String_diff _ ->
-            print_diff_report ~file1 ~file2 ~css1 ~css2 result;
-            Error (`Msg "CSS files differ (string diff)")
-        | Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _ ->
-            print_diff_report ~file1 ~file2 ~css1 ~css2 result;
-            Error (`Msg "CSS files differ"))
+        | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
+        | Actual_error _ ->
+            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 result;
+            (* Differing inputs are a result, not a usage error: exit 1 as
+               documented, distinct from cmdliner's reserved error codes. *)
+            exit 1)
   | Error e, _ | _, Error e -> Error e
 
 let file1_arg =
@@ -130,7 +147,13 @@ let memtrace_arg =
 let term =
   let open Term in
   let style_renderer_with_env =
-    Fmt_cli.style_renderer ~env:(Cmd.Env.info "CASCADE_COLOR") ()
+    Fmt_cli.style_renderer
+      ~env:
+        (Cmd.Env.info "CASCADE_COLOR"
+           ~doc:
+             "Set to $(b,auto), $(b,always), or $(b,never) to control colour \
+              output, like $(b,--color) (overridden by $(b,NO_COLOR)).")
+      ()
   in
   let canonical_opts =
     const (fun lossless prune_unused_custom_props ->
@@ -176,17 +199,8 @@ let man =
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
     `I ("0", "if the CSS files are identical");
-    `I ("1", "if the CSS files differ or an error occurred");
-    `S Manpage.s_environment;
-    `P "Color output can be controlled via environment variables:";
-    `I
-      ( "NO_COLOR",
-        "When set to any non-empty value, disables color output (see \
-         https://no-color.org/)" );
-    `I
-      ( "CASCADE_COLOR",
-        "Set to 'auto', 'always', or 'never' to control color output \
-         (overridden by NO_COLOR)" );
+    `I ("1", "if the CSS files differ");
+    `I ("124", "on command-line errors or unreadable input files");
     `S Manpage.s_examples;
     `P "Compare two CSS files:";
     `Pre "  cascade diff reference.css output.css";
@@ -198,4 +212,4 @@ let man =
 
 let cmd =
   let doc = "Compare two CSS files with structural analysis" in
-  Cmd.v (Cmd.info "diff" ~doc ~man) term
+  Cmd.v (Cmd.info "diff" ~doc ~man ~envs:[ no_color_env ]) term
