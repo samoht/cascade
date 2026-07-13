@@ -70,8 +70,10 @@ library, then stabilised over several internal milestones.
   input file, and `cascade --inline-vars` substitutes static custom-property
   references. `--keep-vars=NAMES` preserves selected custom properties.
 - `cascade diff` provides structural CSS diffing between two files with
-  `auto`, `tree`, `string`, and `canonical` modes; respects `NO_COLOR` and
-  `CASCADE_COLOR`. The `canonical` mode projects both sheets to a normal form
+  `auto`, `tree`, `string`, and `canonical` modes; respects `NO_COLOR`,
+  `CASCADE_COLOR`, and `--color`, and colours only when stdout is a tty.
+  Identical files exit 0 and differing files exit 1, so the command slots
+  into CI checks and git hooks. The `canonical` mode projects both sheets to a normal form
   first, so equivalent factorings -- different rule grouping, cascade-safe rule
   and declaration order -- compare identical rather than as spurious changes.
 - The CLI is installable as a binary through the Homebrew tap

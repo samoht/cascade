@@ -83,9 +83,12 @@ val diff : expected:Css.t -> actual:Css.t -> t
 (** [diff ~expected ~actual] computes structural differences between two CSS
     ASTs. *)
 
-val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
-(** [pp ?expected ?actual buf t] pretty-prints a tree diff with optional labels.
-    Default labels are "Expected" and "Actual". *)
+val pp :
+  ?expected:string -> ?actual:string -> ?color:bool -> Buffer.t -> t -> unit
+(** [pp ?expected ?actual ?color buf t] pretty-prints a tree diff with optional
+    labels. Default labels are "Expected" and "Actual". [color] (default
+    [false]) wraps diff markers in ANSI escapes; the printer writes into a
+    buffer, so the caller decides whether the destination supports colour. *)
 
 val pp_rule_diff_simple : Buffer.t -> rule_diff -> unit
 (** [pp_rule_diff_simple buf rule] pretty-prints a rule diff in a simple format

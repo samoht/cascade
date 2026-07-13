@@ -21,7 +21,6 @@ edit.
   > .x { color: blue }
   > EOF
   $ NO_COLOR=1 cascade diff c.css d.css
-  cascade: CSS files differ
   CSS: 19 chars vs 18 chars (5.6% diff)
   Changes: 1 modified rule
   
@@ -30,9 +29,17 @@ edit.
   └─ .x
         * color: red -> blue
   
-  [124]
+  [1]
 
+Forcing colour on emits ANSI markers even into a pipe; the default
+resolves to plain off-tty, as the NO_COLOR run above shows.
 
+  $ cascade diff --color=always c.css d.css | cat -v | head -5
+  CSS: 19 chars vs 18 chars (5.6% diff)
+  Changes: 1 modified rule
+  
+  ^[[33m---^[[0m ^[[33mc.css^[[0m
+  ^[[33m+++^[[0m ^[[33md.css^[[0m
 
 Equivalent colours under different spellings still surface as a
 modified rule under --diff=tree (cascade does not minify before
@@ -45,7 +52,6 @@ diffing).
   > .x { color: #f00 }
   > EOF
   $ NO_COLOR=1 cascade diff --diff=tree e.css f.css
-  cascade: CSS files differ
   CSS: 19 chars vs 18 chars (5.6% diff)
   Changes: 1 modified rule
   
@@ -54,7 +60,7 @@ diffing).
   └─ .x
         * color: red -> #f00
   
-  [124]
+  [1]
 
 
 The canonical diff mode compares canonical minified CSS and accepts
@@ -102,8 +108,7 @@ identical, while a shorthand and its longhand (which overlap) stay ordered.
   > .x{margin-top:5px;margin:0}
   > EOF
   $ NO_COLOR=1 cascade diff --diff=canonical over-a.css over-b.css > /dev/null; echo $?
-  cascade: CSS files differ
-  124
+  1
 
 Canonical mode also equates different factorings of the same content: a
 declaration hoisted into a shared selector-list group is the same declaration
@@ -128,7 +133,6 @@ stays ordered: swapping it with the rule is a real difference.
   > @media print{.a{display:flex}}.a{display:block}
   > EOF
   $ NO_COLOR=1 cascade diff --diff=canonical before.css after.css
-  cascade: CSS files differ
   CSS: 48 chars vs 48 chars (0.0% diff)
   Changes: 1 reordered rule
   
@@ -137,7 +141,7 @@ stays ordered: swapping it with the rule is a real difference.
   Rules reordered (1 rules):
   └─ .a ↔  @media print
   
-  [124]
+  [1]
 
 
 
@@ -150,7 +154,6 @@ The --diff=string mode falls back to character-level diffing.
   > .x { color: blue }
   > EOF
   $ NO_COLOR=1 cascade diff --diff=string g.css h.css
-  cascade: CSS files differ (string diff)
   CSS: 19 chars vs 18 chars (5.6% diff)
   No structural differences
   
@@ -163,6 +166,6 @@ The --diff=string mode falls back to character-level diffing.
   +.x { color: blue }
                ^
   
-  [124]
+  [1]
 
 
