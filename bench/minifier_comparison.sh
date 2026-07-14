@@ -86,21 +86,20 @@ emit_stdout() {
   sh -c "$cmd <\"$in\" >\"$out\" 2>/dev/null"
 }
 
+# The `cssnano` binary on PATH is cssnano-cli, which pins cssnano 3.10.0 (2017)
+# and is not the minifier anyone ships today. Drive the real plugin through
+# postcss-cli instead.
 emit_cssnano() {
   local in="$1" out="$2"
-  cp "$in" "$TMP/in.css"
-  cssnano "$TMP/in.css" "$out" >/dev/null 2>/dev/null
+  postcss "$in" --use cssnano --no-map -o "$out" >/dev/null 2>/dev/null
 }
 
 run_cssnano_ms() {
-  # cssnano writes to a file argument rather than stdout. /usr/bin/time -p
-  # writes timing on stderr, so we suppress only cssnano's own stdout.
   local in="$1"
-  cp "$in" "$TMP/in.css"
   local times=()
   for _ in $(seq 1 "$RUNS"); do
     local t
-    t=$( { /usr/bin/time -p cssnano "$TMP/in.css" "$TMP/out.css" >/dev/null; } 2>&1 \
+    t=$( { /usr/bin/time -p postcss "$in" --use cssnano --no-map -o "$TMP/out.css" >/dev/null; } 2>&1 \
          | awk '/^real/{printf "%d", $2*1000}')
     times+=("$t")
   done
