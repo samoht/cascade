@@ -445,6 +445,14 @@ let test_angle () =
   decl_optimizes ~prop:"rotate" ~held:"-200grad" ~into:"-180deg" "-200grad";
   decl_optimizes ~prop:"rotate" ~held:"-360deg" ~into:"-1turn" "-360deg";
 
+  (* A [deg -> turn] conversion divides by 360, which floors a small but
+     non-zero angle to [0turn] once the printer caps the mantissa, silently
+     zeroing it. It is only taken when the printed form still denotes the same
+     angle, so a small angle keeps [deg] rather than collapsing to [0turn]. *)
+  decl_optimizes ~prop:"rotate" ~held:".000001deg" ~into:".000001deg"
+    "0.000001deg";
+  decl_optimizes ~prop:"rotate" ~held:".0001deg" ~into:".0001deg" "0.0001deg";
+
   (* CSS Values 4 §10.7: scaling a typed <angle> by a unitless number folds to a
      concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
      -45deg matches what the browser computes. Both operand orders fold. *)
