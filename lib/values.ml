@@ -3955,51 +3955,77 @@ let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
    [rem] on [deg] operands), then pick the shortest of the
    losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
    pi, so it cannot share one magnitude and is left as-is. *)
-let normalize_angle ?(ctx = default_calc_ctx) =
+(* Shortest spelling of a concrete angle, restricted to unit conversions whose
+   printed form still denotes the same value. [deg -> turn] divides by 360, which
+   floors a small but non-zero angle to [0turn] once the printer caps the
+   mantissa, silently changing the value; comparing the printed forms back in
+   degrees rejects such value-changing rewrites. The original spelling is always
+   kept (the fold seed), and ties prefer deg. *)
+let angle_shortest (a : angle) : angle =
   let render unit f =
     String.length
       (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
     + String.length unit
   in
-  let shortest (a : angle) : angle =
-    let cands =
-      match a with
-      | Deg f -> [ (f, "deg", a); (f /. 360., "turn", Turn (f /. 360.)) ]
-      | Turn f -> [ (f, "turn", a); (f *. 360., "deg", Deg (f *. 360.)) ]
-      | Grad f -> [ (f, "grad", a); (f *. 0.9, "deg", Deg (f *. 0.9)) ]
-      | _ -> []
-    in
-    match cands with
-    | [] -> a
-    | (f0, u0, n0) :: rest ->
-        snd
-          (List.fold_left
-             (fun (best_len, best) (f, u, n) ->
-               let l = render u f in
-               if l < best_len then (l, n) else (best_len, best))
-             (render u0 f0, n0)
-             rest)
+  let printed_deg unit f =
+    match
+      float_of_string_opt
+        (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
+    with
+    | Some v -> (
+        match unit with "turn" -> v *. 360. | "grad" -> v *. 0.9 | _ -> v)
+    | None -> Float.nan
   in
+  let cands =
+    match a with
+    | Deg f -> [ (f, "deg", a); (f /. 360., "turn", Turn (f /. 360.)) ]
+    | Turn f -> [ (f, "turn", a); (f *. 360., "deg", Deg (f *. 360.)) ]
+    | Grad f -> [ (f, "grad", a); (f *. 0.9, "deg", Deg (f *. 0.9)) ]
+    | _ -> []
+  in
+  match cands with
+  | [] -> a
+  | (f0, u0, n0) :: rest ->
+      let ref_deg = printed_deg u0 f0 in
+      let round_trips (f, u, _) =
+        (* Exact conversion only: the converted spelling must denote the same
+           angle, modulo the float noise of the unit arithmetic, not merely a
+           close one. A [grad -> deg] re-spelling that drops a significant
+           figure (or a small angle collapsing to [0turn]) is a value change, so
+           the authored unit is kept. *)
+        Float.abs (printed_deg u f -. ref_deg)
+        <= (1e-9 *. Float.abs ref_deg) +. 1e-15
+      in
+      let rest = List.filter round_trips rest in
+      snd
+        (List.fold_left
+           (fun (best_len, best) (f, u, n) ->
+             let l = render u f in
+             if l < best_len then (l, n) else (best_len, best))
+           (render u0 f0, n0)
+           rest)
+
+let normalize_angle ?(ctx = default_calc_ctx) =
   let rec go (a : angle) : angle =
     match a with
     | Round (strategy, v, s) -> (
         match (go v, go s) with
         | Deg v, Deg s when s <> 0. ->
-            shortest (Deg (round_to_step strategy v s))
+            angle_shortest (Deg (round_to_step strategy v s))
         | v, s -> Round (strategy, v, s))
     | Mod (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> shortest (Deg (mod_value x y))
+        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (mod_value x y))
         | x, y -> Mod (x, y))
     | Rem (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> shortest (Deg (Float.rem x y))
+        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
         match eval_angle_calc ~ctx c with
         | Val v -> go v
         | folded -> Calc folded)
-    | Deg _ | Turn _ | Grad _ -> shortest a
+    | Deg _ | Turn _ | Grad _ -> angle_shortest a
     | Rad _ | Var _ | Invalid _ -> a
   in
   go

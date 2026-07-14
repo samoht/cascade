@@ -8,6 +8,46 @@ let byte_at buf i =
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
+(* value(parse(minify(x))) == value(x) for angles. The idempotence properties
+   below cannot catch a value-changing unit conversion, because the wrong output
+   is itself print-stable ([rotate(0turn)] reparses to [rotate(0turn)]); only a
+   numeric check sees it. Printing an angle in its own unit and again after
+   [normalize_angle], then comparing the reparsed degrees, isolates a lossy
+   conversion (deg -> turn zeroing a small angle) from the printer's inherent
+   precision cap, which affects both spellings equally. *)
+let angle_printed_deg a =
+  Css.Values.angle_degrees_opt
+    (Css.Values.read_angle
+       (Cursor.of_string (Css.Pp.to_string ~minify:true Css.Values.pp_angle a)))
+
+let draw_angle buf =
+  let sign = if byte_at buf 0 land 1 = 0 then 1. else -1. in
+  let mantissa = (float_of_int (byte_at buf 1) +. 1.) /. 256. in
+  let f =
+    sign *. mantissa *. (10. ** float_of_int ((byte_at buf 2 mod 20) - 12))
+  in
+  match byte_at buf 3 mod 3 with
+  | 0 -> Css.Values.Deg f
+  | 1 -> Css.Values.Turn f
+  | _ -> Css.Values.Grad f
+
+let test_angle_minify_preserves_value buf =
+  let a = draw_angle buf in
+  match
+    (angle_printed_deg a, angle_printed_deg (Css.Values.normalize_angle a))
+  with
+  | Some d0, Some d1 ->
+      (* Minify must preserve the angle exactly, modulo the float noise of the
+         unit arithmetic. A conversion that re-rounds the value (grad -> deg
+         dropping a significant figure, a small angle collapsing to 0) is a
+         value change, not tolerated: the authored unit is kept instead. *)
+      let scale = Float.max (Float.abs d0) (Float.abs d1) in
+      if Float.abs (d0 -. d1) > (1e-9 *. scale) +. 1e-15 then
+        failf "angle %s minified changed value: %g deg -> %g deg"
+          (Css.Pp.to_string ~minify:true Css.Values.pp_angle a)
+          d0 d1
+  | _, _ -> ()
+
 let selector buf i =
   Css.Selector.class_ (pick [ "card"; "title"; "button"; "panel" ] buf i)
 
@@ -831,5 +871,7 @@ let suite =
         test_layer_before_specificity;
       test_case "name-defining at-rules preserved" [ bytes ]
         test_name_defining_atrules_preserved;
+      test_case "angle minify preserves value" [ bytes ]
+        test_angle_minify_preserves_value;
     ]
     @ identity_cases )
