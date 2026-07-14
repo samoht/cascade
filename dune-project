@@ -27,10 +27,10 @@
   lambdasoup
   (mdx :with-test)
   (re :with-test)
-  fmt
+  (fmt (>= 0.10.0))
   base-unix
   uutf
   psq
   logs
-  cmdliner
+  (cmdliner (>= 1.1.0))
   memtrace))
