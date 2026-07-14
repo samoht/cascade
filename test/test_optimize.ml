@@ -616,6 +616,28 @@ let test_tw_conditionals_layer () =
      utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
     spec_output
 
+let test_supports_greenfield_baseline () =
+  (* An @supports guard for a not-yet-Baseline feature (anchor positioning, view
+     transitions, ...) is written to detect exactly that feature, so the default
+     evergreen minify must keep it; a Baseline feature such as display:grid
+     still unwraps. *)
+  let minify css =
+    Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "greenfield anchor-name guard is kept"
+    "@supports(anchor-name:--x){.a{anchor-name:--x}}"
+    (minify "@supports (anchor-name:--x){.a{anchor-name:--x}}");
+  Alcotest.(check string)
+    "greenfield view-transition-name guard is kept"
+    "@supports(view-transition-name:x){.a{color:red}}"
+    (minify "@supports (view-transition-name:x){.a{color:red}}");
+  Alcotest.(check string)
+    "baseline display:grid guard is unwrapped" ".a{display:grid}"
+    (minify "@supports (display:grid){.a{display:grid}}")
+
 let test_tw_conditionals_split () =
   (* The optimizer must not collect same-condition blocks across an intervening
      utility rule: Tailwind's sort order can intentionally interleave base and
@@ -853,6 +875,9 @@ let optimize_tests =
     ( "tailwind conditionals merge inside layer",
       `Quick,
       test_tw_conditionals_layer );
+    ( "supports greenfield guards kept, baseline unwrapped",
+      `Quick,
+      test_supports_greenfield_baseline );
     ( "tailwind non-adjacent conditionals in layer stay split",
       `Quick,
       test_tw_conditionals_split );

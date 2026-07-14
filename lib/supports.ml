@@ -526,17 +526,43 @@ let rec compare t1 t2 =
 
 let equal a b = compare a b = 0
 
-(* Evergreen-baseline classification of one declaration feature. Cascade's typed
-   property set is its model of "supported in maintained evergreen browsers": a
-   [(prop: value)] test whose property Cascade recognizes (and whose value
-   parsed - the reader only builds [Declaration] on success) is treated as
-   known-true. Properties Cascade does not model parse as [Unknown_property] and
-   stay unknown, as do empty/unsupported/vendor-flag features. *)
+(* An [@supports (prop: value)] test is written to detect a feature a browser
+   might not support, so a guard for a not-yet-Baseline feature is load-bearing
+   and must not be unwrapped. The feature lists live in {!Baseline}, generated
+   from the web-features dataset. *)
+let is_greenfield_property name =
+  List.mem (String.lowercase_ascii name) Baseline.greenfield_properties
+
+let contains_sub ~needle s =
+  let nl = String.length needle and sl = String.length s in
+  let rec go i = i + nl <= sl && (String.sub s i nl = needle || go (i + 1)) in
+  nl > 0 && go 0
+
+(* A [(prop: value)] test can pin a not-yet-Baseline feature through a value
+   function ([anchor()], [calc-size()], ...) even on a Baseline property, so
+   [@supports (width: anchor-size(--x))] keeps its guard. *)
+let value_uses_greenfield value =
+  let v = String.lowercase_ascii value in
+  List.exists
+    (fun fn -> contains_sub ~needle:(fn ^ "(") v)
+    Baseline.greenfield_value_functions
+
+let is_greenfield_feature decl =
+  is_greenfield_property (Declaration.property_name decl)
+  || value_uses_greenfield (Declaration.string_of_value ~minify:true decl)
+
+(* Baseline classification of one declaration feature. A [(prop: value)] test
+   whose property and value Cascade recognizes as Baseline is treated as
+   Baseline-true; a not-yet-Baseline property or a greenfield value function
+   keeps its guard ([`Unknown]). Properties Cascade does not model parse as
+   [Unknown_property] and stay unknown, as do empty/unsupported/vendor-flag
+   features. *)
 let declaration_feature_truth = function
   | Declaration (Declaration.Declaration { property = Unknown_property _; _ })
     ->
       `Unknown
   | Declaration (Declaration.Theme_guarded _) -> `Unknown
+  | Declaration decl when is_greenfield_feature decl -> `Unknown
   | Declaration _ -> `True
   | Empty _ | Unsupported _ | Vendor_flag_enabled -> `Unknown
 
