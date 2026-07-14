@@ -11,7 +11,7 @@
 #
 # Sections: versions rewrites size speed lossless reminify
 #
-# Requirements (all on PATH): cascade (or -c PATH), csso, lightningcss,
+# Requirements (all on PATH): hyperfine, cascade (or -c PATH), csso, lightningcss,
 # esbuild, postcss + cssnano. Note that the `cssnano` BINARY is cssnano-cli,
 # which pins cssnano 3.10.0 from 2017; we drive the real plugin through
 # postcss-cli instead. This is a trap worth remembering.
@@ -27,7 +27,7 @@ CORPUS="${CORPUS:-$ROOT/test/interop/satcss/scripts/.tool/benchmarks}"
 CASCADE="${CASCADE:-$ROOT/_build/default/bin/main.exe}"
 RUNS="${RUNS:-5}"
 SITES=(github guardian youtube netflix amazon cnn)
-TARGETS="${TARGETS:->= 0.25%}"
+TARGETS="${TARGETS:->=0.25%}"  # no space: hyperfine --shell=none splits on whitespace
 ESTARGET="${ESTARGET:-chrome80,safari14,firefox78}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -39,17 +39,17 @@ raw() { wc -c < "$1" | tr -d ' '; }
 # canonical input is plain -stripmq.css; anything else is somebody's output.
 fixture() { echo "$CORPUS/$1-stripmq.css"; }
 
-# Median of RUNS wall-clock milliseconds for a command.
+# Mean wall-clock milliseconds, +- one standard deviation, via hyperfine.
+# /usr/bin/time only resolves to 10ms, which is useless for tools that finish
+# in single-digit milliseconds: it reports them all as "10ms" or "0ms".
 time_ms() {
-  local times=() t
-  for _ in $(seq 1 "$RUNS"); do
-    # Only stdout is redirected: /usr/bin/time reports on stderr, and awk
-    # keeps just the "real" line, so a tool's own stderr noise is ignored.
-    t=$( { /usr/bin/time -p "$@" >/dev/null; } 2>&1 \
-         | awk '/^real/{printf "%d", $2*1000}')
-    times+=("$t")
-  done
-  printf '%s\n' "${times[@]}" | sort -n | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}'
+  local json
+  json="$(hyperfine --warmup 2 --runs "$RUNS" --style none --export-json /dev/stdout \
+            --shell=none "$*" 2>/dev/null)" || { echo "?"; return; }
+  echo "$json" | python3 -c '
+import json,sys
+r = json.load(sys.stdin)["results"][0]
+print("%.1f+-%.1f" % (r["mean"]*1000, r["stddev"]*1000))'
 }
 
 run_cssnano() { postcss "$1" --use cssnano --no-map -o "$2" >/dev/null 2>&1; }
@@ -124,39 +124,33 @@ section_size() {
   echo
 }
 
-# Table 4: wall clock. NOTE: /usr/bin/time -p has 10ms resolution, so the
-# Rust and Go columns are one tick or zero. Reported as "<10" rather than
-# pretending to a precision we do not have.
+# Table 4: wall clock, measured with hyperfine (warmup runs, mean and stddev).
 section_speed() {
-  echo "## Speed (median of $RUNS runs, ms; <10 means below timer resolution)"
-  printf '%-10s %9s %9s %13s %9s %9s %11s\n' \
-    site cascade csso lightningcss esbuild cssnano cascade-aggr
+  echo "## Speed (hyperfine, mean ms +- sd over $RUNS runs, 2 warmup)"
+  printf '%-10s %14s %14s %14s %14s %14s\n' \
+    site cascade csso lightningcss esbuild cssnano
   for s in "${SITES[@]}"; do
     local f; f="$(fixture "$s")"; [ -n "$f" ] || continue
-    local tc ts tl te tn ta
-    tc=$(time_ms "$CASCADE" fmt --minify "$f")
-    ta=$(time_ms "$CASCADE" fmt --minify --aggressive "$f")
-    ts=$(time_ms csso "$f" -o "$TMP/s.css")
-    tl=$(time_ms lightningcss --minify --targets "$TARGETS" "$f" -o "$TMP/l.css")
-    te=$(time_ms esbuild --minify --target="$ESTARGET" "$f" --outfile="$TMP/e.css")
-    tn=$(time_ms postcss "$f" --use cssnano --no-map -o "$TMP/n.css")
-    [ "$tl" -lt 10 ] && tl="<10"; [ "$te" -lt 10 ] && te="<10"
-    printf '%-10s %9s %9s %13s %9s %9s %11s\n' "$s" "$tc" "$ts" "$tl" "$te" "$tn" "$ta"
+    printf '%-10s %14s %14s %14s %14s %14s\n' "$s" \
+      "$(time_ms "$CASCADE" fmt --minify "$f")" \
+      "$(time_ms csso "$f" -o "$TMP/s.css")" \
+      "$(time_ms lightningcss --minify --targets "$TARGETS" "$f" -o "$TMP/l.css")" \
+      "$(time_ms esbuild --minify --target="$ESTARGET" "$f" --outfile="$TMP/e.css")" \
+      "$(time_ms postcss "$f" --use cssnano --no-map -o "$TMP/n.css")"
   done
   echo
 }
 
-# Table 5: what --lossless costs, and what --aggressive buys (spoiler: bytes).
+# Table 5: what the safety flags cost in bytes.
 section_lossless() {
-  echo "## --lossless cost and --aggressive delta (gzip bytes vs default)"
-  printf '%-10s %10s %12s %12s\n' site default lossless aggressive
+  echo "## Cost of the safety flags (gzip bytes vs default)"
+  printf '%-10s %10s %22s\n' site default '--lossless --enforce-spec' 
   for s in "${SITES[@]}"; do
     local f; f="$(fixture "$s")"; [ -n "$f" ] || continue
-    local d l a
+    local d l
     d=$("$CASCADE" fmt --minify "$f" 2>/dev/null | gzip -9 | wc -c | tr -d ' ')
     l=$("$CASCADE" fmt --minify --lossless --enforce-spec "$f" 2>/dev/null | gzip -9 | wc -c | tr -d ' ')
-    a=$("$CASCADE" fmt --minify --aggressive "$f" 2>/dev/null | gzip -9 | wc -c | tr -d ' ')
-    printf '%-10s %10s %+12d %+12d\n' "$s" "$d" "$((l - d))" "$((a - d))"
+    printf '%-10s %10s %+22d\n' "$s" "$d" "$((l - d))"
   done
   echo
 }
