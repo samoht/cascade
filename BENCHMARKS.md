@@ -20,12 +20,15 @@ median over 5 runs.
 
 Cascade emits the smallest gzip output on every fixture here, and the smallest
 brotli output on all but guardian (where Lightning CSS keeps a 0.6% edge).
-`--aggressive` changes little under the default objective: the transfer gate
-already discards factoring that would grow the compressed output.
+The default transfer objective stops short of the aggressive factoring
+fixpoint on purpose: the transfer gate discards any factoring that would grow
+the compressed output, so the extra passes would cost wall clock without
+shrinking gzip.
 
-With `--objective=raw` the objective flips to uncompressed bytes and cascade
-emits the smallest raw output on every fixture too (github 178,042 vs csso's
-180,825; netflix 172,500 under `--aggressive` vs cssnano's 218,017).
+`--objective=raw` flips the metric to uncompressed bytes and drives the
+factoring fixpoint to convergence; cascade emits the smallest raw output on
+every fixture too (github 178,042 vs csso's 180,825; netflix 172,500 vs
+cssnano's 218,017).
 
 Lightning CSS and esbuild are well over an order of magnitude faster but emit
 0.4-15% more compressed bytes; csso and cssnano sit in the same wall-clock band

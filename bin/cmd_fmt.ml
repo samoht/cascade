@@ -77,7 +77,7 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~aggressive ~closed_world ~objective ~inline_imports_flag
+    ~enforce_spec ~closed_world ~objective ~inline_imports_flag
     ~inline_vars_flag ~keep_vars ~memtrace_path ~profile =
   Cli_io.start_memtrace memtrace_path;
   try
@@ -91,10 +91,15 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     let stylesheet =
-      if minify then
-        let () = Cascade.Stats.set_profile profile in
+      if minify then begin
+        Cascade.Stats.set_profile profile;
+        (* Raw output ships uncompressed, so the aggressive global-factoring
+           fixpoint is worth its cost only here: under the transfer objective
+           its extra raw-byte wins grow gzip and get discarded anyway. *)
+        let aggressive = objective = `Raw in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
           ~closed_world ~objective stylesheet
+      end
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
@@ -166,25 +171,15 @@ let lossless_arg =
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
-let aggressive_arg =
-  let doc =
-    "Force the expensive global-factoring fixpoint to run regardless of the \
-     preflight's byte-gain estimate, and re-run the top-level optimisation \
-     pipeline until the AST reaches a structural fixpoint (capped at a small \
-     iteration bound). Use when output size matters more than wall clock; on \
-     small or already-well-factored inputs the gain is usually negligible. Has \
-     no effect without $(b,--minify)."
-  in
-  Arg.(value & flag & info [ "aggressive" ] ~doc)
-
 let objective_arg =
   let doc =
     "Size metric $(b,--minify) optimises for. $(b,transfer) (the default) \
      keeps a global-factoring result only when it also shrinks the estimated \
      gzip (DEFLATE) size of the output, since repeated declaration text is \
-     nearly free once compressed; $(b,raw) keeps every raw-byte win, the right \
-     objective when the output ships uncompressed (inline style attributes, \
-     email HTML). Has no effect without $(b,--minify)."
+     nearly free once compressed; $(b,raw) keeps every raw-byte win and drives \
+     the factoring fixpoint to convergence, the right objective when the \
+     output ships uncompressed (inline style attributes, email HTML), at the \
+     cost of markedly more wall clock. Has no effect without $(b,--minify)."
   in
   Arg.(
     value
@@ -271,7 +266,6 @@ let term =
         flatten_nesting
         lossless
         enforce_spec
-        aggressive
         closed_world
         objective
         inline_imports_flag
@@ -296,19 +290,17 @@ let term =
             (scope = `Stylesheet, "--scope=stylesheet");
             (lossless, "--lossless");
             (enforce_spec, "--enforce-spec");
-            (aggressive, "--aggressive");
             (closed_world, "--closed-world");
             (objective = `Raw, "--objective");
             (profile, "--profile");
           ];
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~aggressive ~closed_world ~objective
-          ~inline_imports_flag ~inline_vars_flag ~keep_vars ~memtrace_path
-          ~profile)
+          ~enforce_spec ~closed_world ~objective ~inline_imports_flag
+          ~inline_vars_flag ~keep_vars ~memtrace_path ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
-    $ enforce_spec_arg $ aggressive_arg $ closed_world_arg $ objective_arg
-    $ inline_imports_arg $ inline_vars_arg $ keep_vars_arg $ memtrace_arg
-    $ profile_arg $ Cli_log.term)
+    $ enforce_spec_arg $ closed_world_arg $ objective_arg $ inline_imports_arg
+    $ inline_vars_arg $ keep_vars_arg $ memtrace_arg $ profile_arg
+    $ Cli_log.term)
 
 let man =
   [
