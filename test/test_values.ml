@@ -136,6 +136,12 @@ let test_length () =
   (* Edge cases for very small values *)
   check_length ~expected:".00001px" "0.00001px";
   check_length ~expected:"-.001em" "-0.001em";
+  (* Below the printer's fixed-point floor: a nonzero magnitude must keep its
+     digits, not round to 0. *)
+  check_length ~expected:".000000001em" "0.000000001em";
+  check_length ~expected:".000000001em" "1e-9em";
+  check_length ~expected:".0000000012em" "0.0000000012em";
+  check_length ~expected:"-.000000001em" "-0.000000001em";
 
   (* Float formatting with lengths *)
   check_length ~expected:".5rem" "0.5rem";

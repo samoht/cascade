@@ -48,6 +48,35 @@ let test_angle_minify_preserves_value buf =
           d0 d1
   | _, _ -> ()
 
+(* A nonzero length must not minify to zero. The printer's fixed-point cap once
+   floored a small magnitude to "0", a value change the idempotence property
+   cannot see ([0em] reparses to [0em]). *)
+let em_value = function
+  | Css.Values.Zero -> Some 0.0
+  | Css.Values.Em f -> Some f
+  | Css.Values.Dimension { value; unit; _ }
+    when String.lowercase_ascii unit = "em" ->
+      Some value
+  | _ -> None
+
+let draw_length_coeff buf =
+  let sign = if byte_at buf 0 land 1 = 0 then 1. else -1. in
+  let mantissa = (float_of_int (byte_at buf 1) +. 1.) /. 256. in
+  sign *. mantissa *. (10. ** float_of_int ((byte_at buf 2 mod 20) - 12))
+
+let test_length_minify_preserves_nonzero buf =
+  let f = draw_length_coeff buf in
+  if f <> 0.0 then begin
+    let printed =
+      Css.Pp.to_string ~minify:true Css.Values.pp_length (Css.Values.Em f)
+    in
+    match em_value (Css.Values.read_length (Cursor.of_string printed)) with
+    | Some g when g = 0.0 ->
+        failf "length %gem minified to %s: nonzero value collapsed to 0" f
+          printed
+    | _ -> ()
+  end
+
 let selector buf i =
   Css.Selector.class_ (pick [ "card"; "title"; "button"; "panel" ] buf i)
 
@@ -873,5 +902,7 @@ let suite =
         test_name_defining_atrules_preserved;
       test_case "angle minify preserves value" [ bytes ]
         test_angle_minify_preserves_value;
+      test_case "length minify preserves nonzero" [ bytes ]
+        test_length_minify_preserves_nonzero;
     ]
     @ identity_cases )
