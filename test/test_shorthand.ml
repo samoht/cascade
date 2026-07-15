@@ -104,6 +104,20 @@ let test_drop_redundant_transition_longhand () =
   decl_optimizes_to ~into:"transition:all 1s;transition-delay:1s"
     "transition:all 1s;transition-delay:1s"
 
+let test_drop_redundant_border_longhand () =
+  (* [border] sets width/style/color; a later longhand equal to an explicit slot
+     is dropped. A differing value or a per-side list is kept. *)
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border:1px solid red;border-color:red";
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border:1px solid red;border-width:1px";
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border:1px solid red;border-style:solid";
+  decl_optimizes_to ~into:"border:1px solid red;border-color:#00f"
+    "border:1px solid red;border-color:blue";
+  decl_optimizes_to ~into:"border:1px solid red;border-color:red green"
+    "border:1px solid red;border-color:red green"
+
 let test_compose_shorthands_and_runtime_guard () =
   let ctx = Ctx.fragment in
   let composed =
@@ -211,6 +225,8 @@ let suite =
         test_drop_redundant_flex_longhand;
       Alcotest.test_case "drop redundant transition longhand" `Quick
         test_drop_redundant_transition_longhand;
+      Alcotest.test_case "drop redundant border longhand" `Quick
+        test_drop_redundant_border_longhand;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
       Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
