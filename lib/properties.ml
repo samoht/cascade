@@ -7634,6 +7634,7 @@ let canonicalise_transform : transform -> transform = function
       Translate_z z
   | Translate (x, Some y) when Values.length_is_zero y -> Translate (x, None)
   | Translate (x, Some y) when Values.length_is_zero x -> Translate_y y
+  | Translate_x x -> Translate (x, None)
   | Scale (x, Some (Num 1.)) -> Scale_x x
   | Scale (Num 1., Some y) -> Scale_y y
   | Scale (x, Some y) when x = y -> Scale (x, None)

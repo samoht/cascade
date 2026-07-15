@@ -1700,6 +1700,13 @@ let spec_values_l45_edges () =
   decl_optimizes ~prop:"transform"
     ~into:"translate(10px,20%)rotate(90deg)scale(1.2)"
     "translate(10px, 20%) rotate(.25turn) scale(1.2)";
+  (* translateX(v) is translate(v, 0) = translate(v), one byte shorter; pp holds
+     the authored function, optimize folds it. translateY has no shorter
+     form. *)
+  decl_optimizes ~prop:"transform" ~held:"translateX(10px)"
+    ~into:"translate(10px)" "translateX(10px)";
+  decl_optimizes ~prop:"transform" ~held:"translateY(10px)"
+    ~into:"translateY(10px)" "translateY(10px)";
   decl_optimizes ~prop:"background-position" ~into:"10px 20%"
     "left 10px top 20%";
   decl_optimizes ~prop:"background-position" ~into:"50%" "center";
