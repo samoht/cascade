@@ -3340,7 +3340,67 @@ let compose_shorthands ~ctx kept =
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
+(* The longhand declaration a shorthand assigns to a slot it covers: the slot
+   value if set, else that longhand's initial. A later longhand equal to this is
+   a redundant no-op. [None] when the shorthand does not cover the longhand or
+   the value cannot be proven. Extend per shorthand; background first. *)
+let implied_longhand covering covered : Declaration.declaration option =
+  match unwrap_theme_guard covering with
+  | Declaration { property = Properties.Background; value; _ } -> (
+      (* Single-layer only; a multi-layer background assigns per-layer values a
+         single longhand rarely matches, so leave those conservative. *)
+      match (value : Properties.background list) with
+      | [ Properties.Shorthand s ] -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Background_size; _ } ->
+              Some
+                (background_size (Option.value s.size ~default:Properties.Auto))
+          | Declaration { property = Properties.Background_repeat; _ } ->
+              Some
+                (background_repeat
+                   (Option.value s.repeat ~default:Properties.Repeat))
+          | Declaration { property = Properties.Background_attachment; _ } ->
+              Some
+                (background_attachment
+                   (Option.value s.attachment ~default:Properties.Scroll))
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
+
+(* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
+   the initial), so a later longhand in the same rule that writes the same value
+   at the same importance is redundant and dropped. Guard on equal value, so
+   [background:red;background-size:cover] keeps the override. *)
+let drop_longhands_after_covering_shorthand props =
+  let arr = Array.of_list props in
+  let dropped = Array.make (Array.length arr) false in
+  let redundant_via j li =
+    (not (Declaration.same_property arr.(j) li))
+    && Bool.equal (is_important arr.(j)) (is_important li)
+    &&
+    match implied_longhand arr.(j) li with
+    | Some implied ->
+        String.equal
+          (string_of_value ~minify:true implied)
+          (string_of_value ~minify:true li)
+    | None -> false
+  in
+  Array.iteri
+    (fun i li ->
+      let rec nearest j =
+        if j < 0 then ()
+        else if dropped.(j) then nearest (j - 1)
+        else if declaration_covers arr.(j) li then
+          if redundant_via j li then dropped.(i) <- true else ()
+        else nearest (j - 1)
+      in
+      nearest (i - 1))
+    arr;
+  let kept = List.filteri (fun i _ -> not dropped.(i)) props in
+  preserve_list props kept
+
 let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
+  let props = drop_longhands_after_covering_shorthand props in
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =

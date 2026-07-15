@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let decl css = Declaration.of_string css
 
@@ -60,6 +61,24 @@ let test_merge_overflow_longhands () =
     "existing overflow blocks composition"
     [ "overflow-x:hidden"; "overflow:auto"; "overflow-y:hidden" ]
     (decl_strings blocked)
+
+let test_drop_redundant_longhand_after_shorthand () =
+  (* A background shorthand sets every longhand it covers, so a later longhand
+     equal to what it set (its slot value, else the initial) is a no-op. *)
+  decl_optimizes_to ~into:"background:red" "background:red;background-size:auto";
+  decl_optimizes_to ~into:"background:red"
+    "background:red;background-repeat:repeat";
+  decl_optimizes_to ~into:"background:red"
+    "background:red;background-attachment:scroll";
+  (* A non-initial value, or an override of a size the shorthand set, is
+     kept. *)
+  decl_optimizes_to ~into:"background:red;background-size:cover"
+    "background:red;background-size:cover";
+  decl_optimizes_to ~into:"background:url(x)50%/cover;background-size:auto"
+    "background:url(x) center/cover;background-size:auto";
+  (* Importance mismatch is a real change, not a no-op. *)
+  decl_optimizes_to ~into:"background:red;background-size:auto!important"
+    "background:red;background-size:auto!important"
 
 let test_compose_shorthands_and_runtime_guard () =
   let ctx = Ctx.fragment in
@@ -162,6 +181,8 @@ let suite =
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick
         test_merge_overflow_longhands;
+      Alcotest.test_case "drop redundant longhand after shorthand" `Quick
+        test_drop_redundant_longhand_after_shorthand;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
       Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
