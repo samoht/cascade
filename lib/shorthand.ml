@@ -3422,6 +3422,22 @@ let implied_longhand covering covered : Declaration.declaration option =
               Option.map border_style s.style
           | _ -> None)
       | _ -> None)
+  | Declaration { property = Properties.Font; value; _ } -> (
+      (* [font] resets style/weight/stretch/line-height to [normal] unless set;
+         font-variant uses a narrower type in the shorthand, so leave it. *)
+      match (value : Properties.font) with
+      | Properties.Shorthand s -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Font_style; _ } ->
+              Some (font_style (Option.value s.style ~default:Normal))
+          | Declaration { property = Properties.Font_weight; _ } ->
+              Some (font_weight (Option.value s.weight ~default:Normal))
+          | Declaration { property = Properties.Font_stretch; _ } ->
+              Some (font_stretch (Option.value s.stretch ~default:Normal))
+          | Declaration { property = Properties.Line_height; _ } ->
+              Some (line_height (Option.value s.line_height ~default:Normal))
+          | _ -> None)
+      | _ -> None)
   | _ -> None
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or

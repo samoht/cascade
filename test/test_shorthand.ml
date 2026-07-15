@@ -118,6 +118,20 @@ let test_drop_redundant_border_longhand () =
   decl_optimizes_to ~into:"border:1px solid red;border-color:red green"
     "border:1px solid red;border-color:red green"
 
+let test_drop_redundant_font_longhand () =
+  (* [font] resets style/weight/stretch/line-height to normal; a later longhand
+     equal to that (weight normal folds to 400) is dropped. *)
+  decl_optimizes_to ~into:"font:16px sans-serif"
+    "font:16px sans-serif;font-weight:400";
+  decl_optimizes_to ~into:"font:16px sans-serif"
+    "font:16px sans-serif;font-weight:normal";
+  decl_optimizes_to ~into:"font:16px sans-serif"
+    "font:16px sans-serif;font-style:normal";
+  decl_optimizes_to ~into:"font:700 16px x" "font:bold 16px x;font-weight:bold";
+  (* A differing value is kept. *)
+  decl_optimizes_to ~into:"font:16px sans-serif;font-weight:700"
+    "font:16px sans-serif;font-weight:700"
+
 let test_compose_shorthands_and_runtime_guard () =
   let ctx = Ctx.fragment in
   let composed =
@@ -227,6 +241,8 @@ let suite =
         test_drop_redundant_transition_longhand;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
+      Alcotest.test_case "drop redundant font longhand" `Quick
+        test_drop_redundant_font_longhand;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
       Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
