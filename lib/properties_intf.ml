@@ -4567,6 +4567,8 @@ type 'a property =
   | Webkit_align_content : align_content property
   | Webkit_align_self : align_self property
   | Webkit_border_radius : border_radius property
+  | Webkit_box_sizing : box_sizing property
+  | Moz_box_sizing : box_sizing property
   | Webkit_box_shadow : shadow property
   | Webkit_background_size : background_size property
   | Webkit_filter : filter property

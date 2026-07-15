@@ -1140,6 +1140,8 @@ let read_shadow_content_value : type a.
   | Nav_down -> Some (v Nav_down (read_nav t))
   | Nav_left -> Some (v Nav_left (read_nav t))
   | Box_sizing -> Some (v Box_sizing (read_box_sizing t))
+  | Webkit_box_sizing -> Some (v Webkit_box_sizing (read_box_sizing t))
+  | Moz_box_sizing -> Some (v Moz_box_sizing (read_box_sizing t))
   | Field_sizing -> Some (v Field_sizing (read_field_sizing t))
   | Caption_side -> Some (v Caption_side (read_caption_side t))
   | _ -> None
