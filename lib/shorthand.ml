@@ -3365,6 +3365,26 @@ let implied_longhand covering covered : Declaration.declaration option =
                    (Option.value s.attachment ~default:Properties.Scroll))
           | _ -> None)
       | _ -> None)
+  | Declaration { property = Properties.Flex; value; _ } -> (
+      (* [flex] always sets grow/shrink/basis; expand the keyword and numeric
+         forms. flex-basis (the [0%] default) is left for a follow-up. *)
+      let grow_shrink =
+        match (value : Properties.flex) with
+        | Initial -> Some (0., 1.)
+        | Auto -> Some (1., 1.)
+        | None -> Some (0., 0.)
+        | Grow (Number g) -> Some (g, 1.)
+        | Basis _ -> Some (1., 1.)
+        | Grow_shrink (Number g, Number s) -> Some (g, s)
+        | Full (Number g, Number s, _) -> Some (g, s)
+        | _ -> Option.none
+      in
+      match (unwrap_theme_guard covered, grow_shrink) with
+      | Declaration { property = Properties.Flex_grow; _ }, Some (g, _) ->
+          Some (flex_grow g)
+      | Declaration { property = Properties.Flex_shrink; _ }, Some (_, s) ->
+          Some (flex_shrink s)
+      | _ -> None)
   | _ -> None
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
