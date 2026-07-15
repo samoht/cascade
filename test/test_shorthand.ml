@@ -80,6 +80,17 @@ let test_drop_redundant_longhand_after_shorthand () =
   decl_optimizes_to ~into:"background:red;background-size:auto!important"
     "background:red;background-size:auto!important"
 
+let test_drop_redundant_flex_longhand () =
+  (* [flex] expands to grow/shrink/basis: a later grow/shrink equal to what it
+     set is dropped. flex:1 is [1 1 0], auto is [1 1 auto], none is [0 0
+     auto]. *)
+  decl_optimizes_to ~into:"flex:1" "flex:1;flex-grow:1";
+  decl_optimizes_to ~into:"flex:auto" "flex:auto;flex-grow:1";
+  decl_optimizes_to ~into:"flex:none" "flex:none;flex-shrink:0";
+  decl_optimizes_to ~into:"flex:2 3" "flex:2 3;flex-grow:2";
+  (* A differing factor is kept. *)
+  decl_optimizes_to ~into:"flex:1;flex-grow:2" "flex:1;flex-grow:2"
+
 let test_compose_shorthands_and_runtime_guard () =
   let ctx = Ctx.fragment in
   let composed =
@@ -183,6 +194,8 @@ let suite =
         test_merge_overflow_longhands;
       Alcotest.test_case "drop redundant longhand after shorthand" `Quick
         test_drop_redundant_longhand_after_shorthand;
+      Alcotest.test_case "drop redundant flex longhand" `Quick
+        test_drop_redundant_flex_longhand;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
       Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
