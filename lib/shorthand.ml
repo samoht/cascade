@@ -3408,6 +3408,20 @@ let implied_longhand covering covered : Declaration.declaration option =
                    (Option.value s.behavior ~default:Properties.Normal))
           | _ -> None)
       | _ -> None)
+  | Declaration { property = Properties.Border; value; _ } -> (
+      (* Only the slots [border] sets explicitly; its initials (medium / none /
+         currentcolor) are rarely written back, so leave those. *)
+      match (value : Properties.border) with
+      | Properties.Shorthand s -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Border_color; _ } ->
+              Option.map border_color s.color
+          | Declaration { property = Properties.Border_width; _ } ->
+              Option.map border_width s.width
+          | Declaration { property = Properties.Border_style; _ } ->
+              Option.map border_style s.style
+          | _ -> None)
+      | _ -> None)
   | _ -> None
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
