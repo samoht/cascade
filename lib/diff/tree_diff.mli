@@ -79,6 +79,12 @@ type t = { rules : rule_diff list; containers : container_diff list }
 val is_empty : t -> bool
 (** [is_empty d] returns [true] if [d] contains no differences. *)
 
+val reorder_is_significant :
+  Css.declaration list -> Css.declaration list -> bool
+(** [reorder_is_significant d1 d2] is [true] when reordering the declarations
+    changes the cascade, i.e. two overlapping declarations swap relative order.
+    A reorder of disjoint declarations is no difference. *)
+
 val diff : expected:Css.t -> actual:Css.t -> t
 (** [diff ~expected ~actual] computes structural differences between two CSS
     ASTs. *)

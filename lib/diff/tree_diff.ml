@@ -258,6 +258,36 @@ let pp_same_property_reorder buf indent prop_names1 prop_names2 =
        ^ "\n")
   | None -> pp_property_move_summary buf indent prop_names1 prop_names2
 
+(* A declaration reorder changes the cascade only when two overlapping
+   declarations swap relative order; disjoint declarations commute, so their
+   reorder is no difference (README contract). Duplicated property names are a
+   same-property override, reported conservatively. *)
+let reorder_is_significant decls1 decls2 =
+  let name = Css.declaration_name in
+  let names1 = List.map name decls1 in
+  let has_dup =
+    let s = List.sort String.compare names1 in
+    let rec go = function a :: (b :: _ as t) -> a = b || go t | _ -> false in
+    go s
+  in
+  has_dup
+  ||
+  let pos2 = Hashtbl.create 16 in
+  List.iteri (fun i d -> Hashtbl.replace pos2 (name d) i) decls2;
+  let pos d = Option.value ~default:(-1) (Hashtbl.find_opt pos2 (name d)) in
+  let arr = Array.of_list decls1 in
+  let n = Array.length arr in
+  let flipped = ref false in
+  for i = 0 to n - 1 do
+    for j = i + 1 to n - 1 do
+      if
+        Shorthand.declarations_overlap arr.(i) arr.(j)
+        && pos arr.(i) >= pos arr.(j)
+      then flipped := true
+    done
+  done;
+  !flipped
+
 let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
     =
   let indent =
@@ -270,8 +300,10 @@ let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
     && List.sort String.compare prop_names1
        = List.sort String.compare prop_names2
   in
-  if same_props && prop_names1 <> prop_names2 then
-    pp_same_property_reorder buf indent prop_names1 prop_names2
+  if
+    same_props && prop_names1 <> prop_names2
+    && reorder_is_significant decls1 decls2
+  then pp_same_property_reorder buf indent prop_names1 prop_names2
 
 let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     ~old_declarations ~new_declarations ~property_changes ~added_properties
@@ -1508,7 +1540,9 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
           (* OCaml ASTs differ but string output is identical (e.g., Nested vs
              bare expression after calc() normalization) — no real difference *)
           None
-        else Some (decl_level_reorder sel1_str decls1 decls2)
+        else if reorder_is_significant decls1 decls2 then
+          Some (decl_level_reorder sel1_str decls1 decls2)
+        else (* cascade-neutral reorder of disjoint declarations *) None
       else if property_changes <> [] || added_props <> [] || removed_props <> []
       then Some (content_changed sel1_str decls1 decls2)
       else reorder_or_content sel1_str decls1 decls2
