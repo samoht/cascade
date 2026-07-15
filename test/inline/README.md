@@ -1,10 +1,16 @@
-# `cascade apply` differential test
+# Differential render tests
 
-`cascade apply` resolves a stylesheet into each element's `style` attribute and
-drops the `<style>` blocks. This checks that the result is equivalent to the
-original: for every element, the **complete `getComputedStyle`** in a real
-headless browser must be identical between the original page and the inlined
-output, in both the default (full) and `--minimal` modes.
+Two transforms must leave the rendered page unchanged: for every element, the
+**complete `getComputedStyle`** in a real headless browser must be identical
+before and after.
+
+- **`cascade apply`** resolves the stylesheet into each element's `style`
+  attribute and drops the `<style>` blocks, in both the default (full) and
+  `--minimal` modes.
+- **`cascade --minify`** rewrites each `<style>` block in place (via
+  `minify_page.js`). Idempotence, size and reparse checks all pass on output
+  that renders differently; only this catches a minification that changes the
+  computed style.
 
 ```sh
 CASCADE=_build/default/bin/main.exe sh test/inline/run.sh
