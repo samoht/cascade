@@ -2078,6 +2078,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_left, value -> vars_of_border value
   | Border_collapse, value -> vars_of_border_collapse value
   | Box_sizing, value -> vars_of_box_sizing value
+  | Webkit_box_sizing, value -> vars_of_box_sizing value
+  | Moz_box_sizing, value -> vars_of_box_sizing value
   | Box_decoration_break, value -> vars_of_box_decoration_break value
   | Break_after, value -> vars_of_break_value value
   | Break_before, value -> vars_of_break_value value

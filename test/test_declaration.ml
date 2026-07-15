@@ -843,6 +843,12 @@ let misc () =
   (* Box sizing *)
   check_declaration ~expected:"box-sizing:content-box" "box-sizing: content-box";
   check_declaration ~expected:"box-sizing:border-box" "box-sizing: border-box";
+  (* Vendor-prefixed box-sizing is typed, so it round-trips and canonicalises
+     its value (an [Unknown_property] would keep [BORDER-BOX] verbatim). *)
+  check_declaration ~expected:"-webkit-box-sizing:border-box"
+    "-webkit-box-sizing: border-box";
+  check_declaration ~expected:"-moz-box-sizing:border-box"
+    "-moz-box-sizing: BORDER-BOX";
 
   (* User select *)
   check_declaration ~expected:"user-select:none" "user-select: none";

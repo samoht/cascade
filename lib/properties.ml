@@ -7414,6 +7414,8 @@ let pp_property : type a. a property Pp.t =
   | Scroll_snap_stop -> Pp.string ctx "scroll-snap-stop"
   | Scroll_behavior -> Pp.string ctx "scroll-behavior"
   | Box_sizing -> Pp.string ctx "box-sizing"
+  | Webkit_box_sizing -> Pp.string ctx "-webkit-box-sizing"
+  | Moz_box_sizing -> Pp.string ctx "-moz-box-sizing"
   | Field_sizing -> Pp.string ctx "field-sizing"
   | Caption_side -> Pp.string ctx "caption-side"
   | Resize -> Pp.string ctx "resize"
@@ -19222,6 +19224,8 @@ let read_any_property t =
   | "-webkit-align-content" -> Prop Webkit_align_content
   | "-webkit-align-self" -> Prop Webkit_align_self
   | "-webkit-border-radius" -> Prop Webkit_border_radius
+  | "-webkit-box-sizing" -> Prop Webkit_box_sizing
+  | "-moz-box-sizing" -> Prop Moz_box_sizing
   | "-webkit-box-shadow" -> Prop Webkit_box_shadow
   | "-webkit-background-size" -> Prop Webkit_background_size
   | "-webkit-filter" -> Prop Webkit_filter
@@ -21402,6 +21406,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_snap_stop -> pp pp_scroll_snap_stop
   | Scroll_behavior -> pp pp_scroll_behavior
   | Box_sizing -> pp pp_box_sizing
+  | Webkit_box_sizing -> pp pp_box_sizing
+  | Moz_box_sizing -> pp pp_box_sizing
   | Field_sizing -> pp pp_field_sizing
   | Caption_side -> pp pp_caption_side
   | Resize -> pp pp_resize
