@@ -1123,7 +1123,8 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
-    Ctx.v ~lossless ~aggressive ~closed_world ~objective ~registered scope
+    Ctx.v ~lossless ~aggressive ~closed_world ~objective ~enforce_spec
+      ~registered scope
   in
   run_pipeline
     ~ctx:(Ctx.with_extend_lists true ctx)

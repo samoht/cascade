@@ -829,8 +829,34 @@ let test_adjacent_merge_survives_preflight_skip () =
         "adjacent duplicate bodies merged on a preflight-skipped sheet" true
         (Astring.String.is_infix ~affix:".flex-grow,.grow{flex-grow:1}" out)
 
+let test_vendor_prefix_strip () =
+  let opt ?(enforce_spec = false) css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~enforce_spec p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* Default targets evergreen browsers: a vendor prefix whose unprefixed twin
+     is present with the same value is redundant and dropped. *)
+  Alcotest.(check string)
+    "box-sizing prefix drops by default" ".a{box-sizing:border-box}"
+    (opt ".a{-moz-box-sizing:border-box;box-sizing:border-box}");
+  (* --enforce-spec drops the evergreen target: every prefix is kept. *)
+  Alcotest.(check string)
+    "enforce-spec keeps every prefix"
+    ".a{-moz-box-sizing:border-box;box-sizing:border-box}"
+    (opt ~enforce_spec:true
+       ".a{-moz-box-sizing:border-box;box-sizing:border-box}");
+  (* A differing value is not a redundant twin. *)
+  Alcotest.(check string)
+    "differing value kept"
+    ".a{-moz-box-sizing:content-box;box-sizing:border-box}"
+    (opt ".a{-moz-box-sizing:content-box;box-sizing:border-box}")
+
 let optimize_tests =
   [
+    ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );

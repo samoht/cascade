@@ -86,7 +86,7 @@ cat style.css | cascade -                                          # read stdin
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing (capped at 5 iterations), so the output is a fixed point: rule-order canonicalisation can expose a merge a single pass would miss. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at roughly 10-30x the wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest CSS form it knows, but it keeps every `@supports` and `supports()` guard unless the CSS text and spec alone prove the rewrite. Has no effect without `--minify`. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest CSS form it knows, but it keeps every `@supports` and `supports()` guard, and every vendor-prefixed declaration, unless the CSS text and spec alone prove the rewrite. Has no effect without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. |
 | `--inline-imports` | Resolve `@import` against files relative to the input. Closed-world: assumes you control file resolution. |
@@ -281,12 +281,14 @@ write the optimiser can't see.
 
 The default minify targets maintained evergreen browsers. Cascade may treat
 baseline feature queries like `@supports(display:flex)` as true and remove the
-wrapper, and may use the HTML direction model to shorten `:not(:dir(ltr))` to
-`:dir(rtl)`.
+wrapper, may use the HTML direction model to shorten `:not(:dir(ltr))` to
+`:dir(rtl)`, and may drop a vendor-prefixed declaration (`-moz-box-sizing`)
+whose unprefixed twin is present, since evergreen browsers understand the
+unprefixed form.
 
 `--enforce-spec` drops those facts. Cascade still serialises to the shortest
-CSS form it knows, but feature queries stay and the direction model is not
-assumed.
+CSS form it knows, but feature queries stay, the direction model is not
+assumed, and every vendor prefix is kept.
 
 ## CSS specification coverage
 
