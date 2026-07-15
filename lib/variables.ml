@@ -1919,6 +1919,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Transform properties *)
   | Transform, value -> vars_of_transform_list value
   | Webkit_transform, value -> vars_of_transform_list value
+  | Moz_transform, value -> vars_of_transform_list value
+  | Ms_transform, value -> vars_of_transform_list value
+  | O_transform, value -> vars_of_transform_list value
   | Translate, value -> vars_of_translate_value value
   (* Border style properties *)
   | Border_style, value -> vars_of_border_style value

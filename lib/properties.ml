@@ -7478,6 +7478,9 @@ let pp_property : type a. a property Pp.t =
   | Accent_color -> Pp.string ctx "accent-color"
   | Caret_color -> Pp.string ctx "caret-color"
   | Webkit_transform -> Pp.string ctx "-webkit-transform"
+  | Moz_transform -> Pp.string ctx "-moz-transform"
+  | Ms_transform -> Pp.string ctx "-ms-transform"
+  | O_transform -> Pp.string ctx "-o-transform"
   | Webkit_transition -> Pp.string ctx "-webkit-transition"
   | Webkit_transition_delay -> Pp.string ctx "-webkit-transition-delay"
   | Webkit_transition_duration -> Pp.string ctx "-webkit-transition-duration"
@@ -19201,6 +19204,9 @@ let read_any_property t =
   | "text-combine-upright" -> Prop Text_combine_upright
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
+  | "-moz-transform" -> Prop Moz_transform
+  | "-ms-transform" -> Prop Ms_transform
+  | "-o-transform" -> Prop O_transform
   | "-webkit-transition" -> Prop Webkit_transition
   | "-webkit-transition-delay" -> Prop Webkit_transition_delay
   | "-webkit-transition-duration" -> Prop Webkit_transition_duration
@@ -21761,6 +21767,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_decoration -> pp pp_text_decoration
   | Webkit_text_size_adjust -> pp pp_text_size_adjust
   | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Moz_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Ms_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | O_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
   | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Webkit_transition_delay -> pp pp_duration
   | Webkit_transition_duration -> pp pp_duration

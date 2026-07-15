@@ -849,6 +849,10 @@ let misc () =
     "-webkit-box-sizing: border-box";
   check_declaration ~expected:"-moz-box-sizing:border-box"
     "-moz-box-sizing: BORDER-BOX";
+  (* The vendor-prefixed transform properties are typed too. *)
+  check_declaration ~expected:"-moz-transform:none" "-moz-transform: NONE";
+  check_declaration ~expected:"-o-transform:rotate(45deg)"
+    "-o-transform: rotate(45deg)";
 
   (* User select *)
   check_declaration ~expected:"user-select:none" "user-select: none";
