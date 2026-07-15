@@ -91,6 +91,19 @@ let test_drop_redundant_flex_longhand () =
   (* A differing factor is kept. *)
   decl_optimizes_to ~into:"flex:1;flex-grow:2" "flex:1;flex-grow:2"
 
+let test_drop_redundant_transition_longhand () =
+  (* [transition] sets duration/timing/delay/behavior; a later longhand equal to
+     its slot (else the initial 0s/ease/normal) is dropped. *)
+  decl_optimizes_to ~into:"transition:all 1s"
+    "transition:all 1s;transition-delay:0s";
+  decl_optimizes_to ~into:"transition:all 1s"
+    "transition:all 1s;transition-timing-function:ease";
+  decl_optimizes_to ~into:"transition:all 1s 2s"
+    "transition:all 1s 2s;transition-delay:2s";
+  (* A differing value is kept. *)
+  decl_optimizes_to ~into:"transition:all 1s;transition-delay:1s"
+    "transition:all 1s;transition-delay:1s"
+
 let test_compose_shorthands_and_runtime_guard () =
   let ctx = Ctx.fragment in
   let composed =
@@ -196,6 +209,8 @@ let suite =
         test_drop_redundant_longhand_after_shorthand;
       Alcotest.test_case "drop redundant flex longhand" `Quick
         test_drop_redundant_flex_longhand;
+      Alcotest.test_case "drop redundant transition longhand" `Quick
+        test_drop_redundant_transition_longhand;
       Alcotest.test_case "compose shorthands and runtime guard" `Quick
         test_compose_shorthands_and_runtime_guard;
       Alcotest.test_case "stylesheet scope prior longhand guard" `Quick
