@@ -19,6 +19,7 @@ val of_scope :
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:objective ->
+  ?enforce_spec:bool ->
   scope option ->
   t
 (** Build a context from an optional scope. *)
@@ -29,6 +30,7 @@ val v :
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:objective ->
+  ?enforce_spec:bool ->
   ?registered:(string -> bool) ->
   scope ->
   t
@@ -73,6 +75,11 @@ val objective : t -> objective
     DEFLATE-compressed output; [`Raw] keeps every raw-byte win, the right
     objective when the output ships uncompressed (inline [style], email) or for
     structural comparisons against raw-size oracles. *)
+
+val enforce_spec : t -> bool
+(** Whether the evergreen-browser target is dropped. Off by default: a vendor-
+    prefixed declaration whose unprefixed twin is present may be stripped, since
+    modern browsers understand the unprefixed form. On: keep every prefix. *)
 
 val with_extend_lists : bool -> t -> t
 (** [with_extend_lists enabled ctx] returns [ctx] with only the list-extension

@@ -50,6 +50,7 @@ val ctx_of_scope :
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:Ctx.objective ->
+  ?enforce_spec:bool ->
   scope option ->
   ctx
 (** [ctx_of_scope ?lossless ?aggressive ?extend_lists ?closed_world scope]

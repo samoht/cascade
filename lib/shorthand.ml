@@ -3280,20 +3280,36 @@ let text_vendor_alias_redundant vendor twin =
       | None -> false)
   | _ -> false
 
+(* Vendor aliases whose unprefixed form is universally understood is a
+   pure-alias drop (always safe); pairs whose prefix an older browser may still
+   need are target-dependent and only drop under the opt-in targets axis. *)
+let vendor_alias_redundant_targeted vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1 },
+      Declaration { property = Box_sizing; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1 },
+      Declaration { property = Box_sizing; value = v2; important = i2 } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance. The unprefixed form supersedes
    in modern browsers, so the vendor copy is dead under the recent-browser
    policy. *)
-let drop_vendor_aliases (kept : (int * declaration) list) :
+let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
     (int * declaration) list =
-  let has_unprefixed_twin (_, decl) =
-    List.exists
-      (fun (_, other) ->
-        vendor_alias_redundant decl other
-        || text_vendor_alias_redundant decl other)
-      kept
-  in
-  filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
+  if Ctx.enforce_spec ctx then kept (* spec-literal: keep every vendor prefix *)
+  else
+    let has_unprefixed_twin (_, decl) =
+      List.exists
+        (fun (_, other) ->
+          vendor_alias_redundant decl other
+          || text_vendor_alias_redundant decl other
+          || vendor_alias_redundant_targeted decl other)
+        kept
+    in
+    filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
 
 (* Run every index-based composer against the same Rule_index so we pay one
    [build] + [to_list] per rule for the whole group. *)
@@ -3478,7 +3494,7 @@ let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
   let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =
     let kept = if merge_box then compose_shorthands ~ctx kept else kept in
-    let kept = drop_vendor_aliases kept in
+    let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
   let result = duplicate_buggy_properties kept in
