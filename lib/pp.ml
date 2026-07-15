@@ -313,6 +313,16 @@ let format_integer is_neg abs_f f =
 let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let scale = 10.0 ** float_of_int max_decimals in
   let scaled = floor ((abs_f *. scale) +. 0.5) in
+  (* Extend the cap past the leading zeros only for a magnitude that would
+     otherwise round to "0", so [0.000000001em] keeps its digits while a coarse
+     [max_decimals] and colour-channel precision stay untouched. *)
+  let max_decimals, scaled =
+    if scaled <> 0.0 then (max_decimals, scaled)
+    else
+      let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
+      let d = max_decimals + min 24 (max 0 leading_zeros) in
+      (d, floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
+  in
   let s =
     if scaled <= float_of_int max_int then string_of_int (int_of_float scaled)
     else string_of_float scaled
