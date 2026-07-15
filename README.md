@@ -73,7 +73,7 @@ dropped in both pretty and minified output.
 ```bash
 cascade style.css > style.formatted.css                            # pretty-print
 cascade --minify style.css > style.min.css                         # minify
-cascade --minify --aggressive style.css > style.min.css            # smallest output
+cascade --minify --objective=raw style.css > style.min.css         # smallest uncompressed
 cascade --inline-imports --inline-vars --minify style.css > out.css # bundle + minify
 cascade --inline-vars --keep-vars=theme,brand style.css > themed.css
 cat style.css | cascade -                                          # read stdin
@@ -84,8 +84,7 @@ cat style.css | cascade -                                          # read stdin
 | Flag | Purpose |
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing (capped at 5 iterations), so the output is a fixed point: rule-order canonicalisation can expose a merge a single pass would miss. |
-| `--aggressive` | Force the global factoring fixpoint regardless of the preflight, and widen the convergence cap. Trades roughly 10-20x wall clock for the last few percent of bytes. Has no effect without `--minify`. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win, the right objective when the output ships uncompressed (inline style attributes, email HTML). Has no effect without `--minify`. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at roughly 10-30x the wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest CSS form it knows, but it keeps every `@supports` and `supports()` guard unless the CSS text and spec alone prove the rewrite. Has no effect without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
@@ -167,9 +166,9 @@ The exit code is 0 when the inputs are identical under the chosen mode and 1
 otherwise, so cascade slots into any tool that branches on exit codes (`git`
 hooks, `make`, GitHub Actions, ...). The `--minify` pipeline is fast enough
 that a 200 KB stylesheet costs well under 100 ms on the SatCSS corpus;
-`--aggressive` trades roughly an order of magnitude of wall clock for the
-last few percent of bytes and fits a release build rather than a watcher
-loop.
+`--objective=raw` trades roughly an order of magnitude of wall clock for the
+last few percent of uncompressed bytes and fits a release build rather than a
+watcher loop.
 
 ## `--minify` policy
 
