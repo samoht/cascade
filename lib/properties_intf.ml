@@ -4545,6 +4545,9 @@ type 'a property =
   | Source : Font_face.src property
   | Webkit_appearance : webkit_appearance property
   | Webkit_transform : transform list property
+  | Moz_transform : transform list property
+  | Ms_transform : transform list property
+  | O_transform : transform list property
   | Webkit_transition : transition list property
   | Webkit_transition_delay : duration property
   | Webkit_transition_duration : duration property
