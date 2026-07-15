@@ -3385,6 +3385,29 @@ let implied_longhand covering covered : Declaration.declaration option =
       | Declaration { property = Properties.Flex_shrink; _ }, Some (_, s) ->
           Some (flex_shrink s)
       | _ -> None)
+  | Declaration { property = Properties.Transition; value; _ } -> (
+      (* Single transition only; a comma list assigns per-item values. *)
+      match (value : Properties.transition list) with
+      | [ Properties.Shorthand s ] -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Transition_duration; _ } ->
+              Some
+                (transition_duration
+                   (Option.value s.duration ~default:(Values.S 0.)))
+          | Declaration { property = Properties.Transition_delay; _ } ->
+              Some
+                (transition_delay (Option.value s.delay ~default:(Values.S 0.)))
+          | Declaration { property = Properties.Transition_timing_function; _ }
+            ->
+              Some
+                (transition_timing_function
+                   (Option.value s.timing_function ~default:Properties.Ease))
+          | Declaration { property = Properties.Transition_behavior; _ } ->
+              Some
+                (transition_behavior
+                   (Option.value s.behavior ~default:Properties.Normal))
+          | _ -> None)
+      | _ -> None)
   | _ -> None
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
