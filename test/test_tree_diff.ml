@@ -101,6 +101,25 @@ let diff_rule_reordered () =
   in
   Alcotest.(check bool) "has Reordered" true has_reordered
 
+let diff_neutral_decl_reorder_is_empty () =
+  (* Disjoint declarations commute, so reordering them is no difference. *)
+  let expected = parse ".a { color: red; background: blue }" in
+  let actual = parse ".a { background: blue; color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "neutral declaration reorder is empty" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let diff_overlapping_decl_reorder_flagged () =
+  (* A shorthand and its longhand overlap, so their order decides the
+     cascade. *)
+  let expected = parse ".a { margin: 1px; margin-top: 2px }" in
+  let actual = parse ".a { margin-top: 2px; margin: 1px }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "overlapping declaration reorder is not empty" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 (* ===== Container (media) changes ===== *)
 
 let diff_media_added () =
@@ -363,6 +382,10 @@ let suite =
       Alcotest.test_case "property added to rule" `Quick
         diff_rule_added_property;
       Alcotest.test_case "rule reordered" `Quick diff_rule_reordered;
+      Alcotest.test_case "neutral declaration reorder is empty" `Quick
+        diff_neutral_decl_reorder_is_empty;
+      Alcotest.test_case "overlapping declaration reorder flagged" `Quick
+        diff_overlapping_decl_reorder_flagged;
       Alcotest.test_case "media added" `Quick diff_media_added;
       Alcotest.test_case "media removed" `Quick diff_media_removed;
       Alcotest.test_case "layer added" `Quick diff_layer_added;
