@@ -7211,7 +7211,9 @@ let pp_property : type a. a property Pp.t =
   | Font_feature_settings -> Pp.string ctx "font-feature-settings"
   | Font_variation_settings -> Pp.string ctx "font-variation-settings"
   | Webkit_tap_highlight_color -> Pp.string ctx "-webkit-tap-highlight-color"
+  | Webkit_text_fill_color -> Pp.string ctx "-webkit-text-fill-color"
   | Webkit_user_select -> Pp.string ctx "-webkit-user-select"
+  | Ms_user_select -> Pp.string ctx "-ms-user-select"
   | Moz_user_select -> Pp.string ctx "-moz-user-select"
   | Webkit_text_decoration -> Pp.string ctx "-webkit-text-decoration"
   | Webkit_text_decoration_color ->
@@ -19253,7 +19255,9 @@ let read_any_property t =
   | "-moz-box-shadow" -> Prop Moz_box_shadow
   | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
+  | "-webkit-text-fill-color" -> Prop Webkit_text_fill_color
   | "-webkit-user-select" -> Prop Webkit_user_select
+  | "-ms-user-select" -> Prop Ms_user_select
   | "-moz-user-select" -> Prop Moz_user_select
   | "-webkit-text-decoration" -> Prop Webkit_text_decoration
   | "-webkit-text-decoration-color" -> Prop Webkit_text_decoration_color
@@ -21380,6 +21384,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Text_decoration_color -> pp pp_color
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
+  | Webkit_text_fill_color -> pp pp_color
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -21761,6 +21766,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Pointer_events -> pp pp_pointer_events
   | User_select -> pp pp_user_select
   | Webkit_user_select -> pp pp_user_select
+  | Ms_user_select -> pp pp_user_select
   | Moz_user_select -> pp pp_user_select
   | Font_feature_settings -> pp pp_font_feature_settings
   | Font_variation_settings -> pp pp_font_variation_settings
