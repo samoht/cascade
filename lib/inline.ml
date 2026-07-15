@@ -1,17 +1,14 @@
 (** Closed-world inlining transforms (var() and \@import).
 
-    The [vars] entry point implements a typed substitution pass layered on top
-    of {!Context} (typed evaluator) and {!Selector}. Visibility of a custom
-    property is computed from the rule structure: a custom property defined on a
-    rule applies to itself and to any rule whose effective selector descends
-    from it, and only if the consumer is inside the same chain of [\@media],
-    [\@layer], [\@supports] blocks.
+    [vars] is a typed substitution pass over {!Context} and {!Selector}. A
+    custom property is visible to itself and to any rule whose effective
+    selector descends from its own, within the same chain of
+    [\@media]/[\@layer]/ [\@supports] blocks.
 
-    The [imports] entry point inlines [\@import] rules from a closed
-    [Context.loader] table. Layer / supports / media guards on the [\@import]
-    prelude are evaluated against [?query] and [?layer_order] when supplied;
-    rejected imports are dropped, accepted ones lose the matched guard from
-    their wrapping. Cyclic imports terminate by dropping the repeat visit. *)
+    [imports] inlines [\@import] rules from a closed [Context.loader] table.
+    Layer/supports/media guards on the prelude are evaluated against [?query]
+    and [?layer_order]; rejected imports drop, accepted ones lose the matched
+    guard, and a repeat visit (cycle) is dropped. *)
 
 open Stylesheet
 open Syntax
@@ -39,19 +36,19 @@ let effective_selector ~parents sel =
         (fun child parent -> combine_with_parent parent child)
         sel parents
 
-(* A selector reaches the whole subtree when one of its comma branches is a
-   universal/root selector: [:root] (and [html]) inherit to every element and
-   [*] matches every element, so [:root,:host] covers via its [:root] branch
-   while a lone [:host] (shadow root only) does not. *)
+(* A selector reaches the whole subtree when a comma branch is universal/root:
+   [:root]/[html] inherit to every element and [*] matches every element, so
+   [:root,:host] covers via [:root] but a lone [:host] (shadow root) does
+   not. *)
 let universal_selector_text s =
   String.split_on_char ',' s
   |> List.exists (fun p ->
       match String.trim p with ":root" | "html" | "*" -> true | _ -> false)
 
-(* [.theme] is an ancestor of [.theme .descendant] (descendant-prefix); not of
-   [.other]. Universal selectors always cover. The text comparison is
-   conservative - exact rather than structural - which mirrors the "static
-   prefix" semantics expected by the cram suite. *)
+(* [.theme] is an ancestor of [.theme .descendant] (descendant-prefix), not of
+   [.other]; universals always cover. The comparison is conservatively exact
+   (not structural), matching the "static prefix" semantics the cram suite
+   expects. *)
 let selector_covers ~ancestor ~consumer =
   let a = Selector.to_string ~minify:true ancestor in
   let c = Selector.to_string ~minify:true consumer in
@@ -353,10 +350,9 @@ let rec substitute_components ~kept visible ~visited components =
   loop [] components
 
 and substitute_var ~kept visible ~visited original name fallback =
-  (* An unresolved var() with no fallback is kept verbatim at the top level for
-     the cascade engine, but inside another custom property's value it is
-     guaranteed-invalid and propagates failure to the nearest enclosing
-     fallback. *)
+  (* An unresolved var() with no fallback is kept verbatim at the top level, but
+     inside another custom property's value it is guaranteed-invalid and
+     propagates failure to the nearest enclosing fallback. *)
   let keep_or_fail () =
     if visited = [] then Components [ Component.Func original ] else Cycle
   in
@@ -384,10 +380,9 @@ and substitute_var ~kept visible ~visited original name fallback =
         else fallback_or_original ()
     | Some value -> resolved_or_fallback value
 
-(* A kept var stays a live [var(--name, ...)] reference, but its fallback may
-   still hold resolvable vars ([var(--tw-ease, var(--default-ease))] becomes
-   [var(--tw-ease, ease)]), so substitute inside the fallback and rebuild the
-   wrapper rather than collapsing to the fallback. *)
+(* A kept var stays a live [var(--name, ...)], but its fallback may hold
+   resolvable vars ([var(--tw-ease, var(--default-ease))] -> [var(--tw-ease,
+   ease)]), so substitute inside the fallback and rebuild the wrapper. *)
 and keep_wrapper ~kept visible ~visited original fallback =
   match fallback with
   | None -> Components [ Component.Func original ]
@@ -463,11 +458,9 @@ let should_use_typed_default ~kept visible vars =
          && not (List.mem (String.concat "" [ "--"; var.Values.name ]) kept))
        vars
 
-(* [Context.eval] keeps a kept var live (the context lists it in [runtime_vars],
-   so the resolver leaves the [var()] reference intact and never collapses it to
-   a fallback) while still applying the value-independent simplifications such
-   as the calc identities. So the substituted declaration is always evaluated,
-   whether or not it still references a kept var. *)
+(* [Context.eval] leaves a kept var's [var()] intact (it is in [runtime_vars])
+   while still applying value-independent simplifications like calc identities,
+   so the substituted declaration is always evaluated, kept var or not. *)
 let apply_substituted_components ctx decl ~original_components components =
   if components = original_components then Some (Context.eval ctx decl)
   else
@@ -805,11 +798,10 @@ let refs_of_declaration decl =
       refs_of_components (Properties.components_of_custom_property_value value)
   | _ -> names_of_vars (Variables.vars_of_declarations [ decl ])
 
-(* Walk the stylesheet to collect, for each declaration, the scope at which it
-   appears and the var names its body references. [consumers] lists non-custom
-   declarations (which determine direct liveness); [customs] lists custom-prop
-   declarations along with the var names their bodies reference (used to
-   propagate liveness through chains like [--quad: calc(var(--double) * 2)]). *)
+(* Collect, per declaration, its scope and the var names its body references.
+   [consumers] are non-custom declarations (direct liveness); [customs] are
+   custom-prop declarations with their referenced vars, propagating liveness
+   through chains like [--quad: calc(var(--double) * 2)]. *)
 let refs_of_at_node = function
   | Media query -> refs_of_media query
   | Supports query -> refs_of_supports query

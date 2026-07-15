@@ -71,11 +71,10 @@ let single ~ctx (rule : rule) : rule =
   in
   with_declarations rule declarations
 
-(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] in the same rule
-   collapse to the [columns] shorthand. [columns] resets exactly those two
-   longhands, so the rewrite preserves every other property's cascade and needs
-   no closed-world assumption. Cascade models the longhands as unknown
-   properties, so their values are re-parsed from text here. *)
+(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] collapse to
+   [columns], which resets exactly those two longhands, so the rewrite is
+   cascade-safe with no closed-world assumption. The longhands are unknown
+   properties, so their values are re-parsed here. *)
 let columns_value_of_longhands width count : Properties.columns_value =
   match (width, count) with
   | `Auto, `Auto -> (Auto : Properties.columns_value)
@@ -83,10 +82,9 @@ let columns_value_of_longhands width count : Properties.columns_value =
   | `Width w, `Auto -> Width w
   | `Width w, `Count n -> Both (w, n)
 
-(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] collapse to the
-   [columns] shorthand, which resets exactly those two longhands. Compose the
-   unique pair of matching importance when both carry a plain (non-[var()],
-   non-CSS-wide) value, emitting the shorthand where the first appeared. *)
+(* Compose the unique [column-width]/[column-count] pair into [columns] when
+   both carry a plain (non-[var()], non-CSS-wide) matching-importance value, at
+   the position of the first. *)
 let synthesize_columns decls =
   let width_of d : (Properties.column_width * bool) option =
     match d with
@@ -139,10 +137,9 @@ let synthesize_columns decls =
       | _ -> decls)
   | _ -> decls
 
-(* CSS Anchor Positioning 1: [position-try] is [<'position-try-order'> ||
-   <'position-try-fallbacks'>]. [position-try-order: normal] is the initial
-   value and folds away. Cascade has no typed [position-try] shorthand, so the
-   synthesised value is re-parsed into the (round-tripping) unknown property. *)
+(* CSS Anchor Positioning 1: [position-try] is [<order> || <fallbacks>]. No
+   typed [position-try] shorthand exists, so the synthesised value is re-parsed
+   into the round-tripping unknown property. *)
 let synthesize_position_try decls =
   let order_of d : (Properties.position_try_order * bool) option =
     match d with
@@ -161,9 +158,8 @@ let synthesize_position_try decls =
   in
   match (uniq order_of, uniq fallbacks_of) with
   | Some (order, oi), Some (fallbacks, fi) when oi = fi -> (
-      (* Compose only plain component values; a CSS-wide keyword or [var()] in
-         one longhand cannot share a shorthand with a real value in the
-         other. *)
+      (* Compose only plain values: a CSS-wide keyword or [var()] in one
+         longhand cannot share a shorthand with a real value in the other. *)
       let plain_order : Properties.position_try_order -> bool = function
         | Normal | Most_width | Most_height | Most_block_size | Most_inline_size
           ->
@@ -202,8 +198,8 @@ let finalize ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
     |> sort_commuting ~selector:rule.selector
     |> preserve_list rule.declarations
   in
-  (* Selectors merged during factoring are fresh comma lists, so re-canonicalise
-     before emission; unchanged selectors keep their identity for the
+  (* Selectors merged during factoring are fresh comma lists, so
+     re-canonicalise; unchanged selectors keep their identity for the
      fixpoint. *)
   let rule =
     if canonicalize_selector then
@@ -240,21 +236,13 @@ let drop_shadowed_rules (rules : rule list) : rule list =
   in
   if !changed then filter 0 rules else rules
 
-(* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop the
-   individual declarations whose property is rewritten by a later rule for every
-   selector this rule targets. The later same-selector write masks the earlier
-   value for every matching element regardless of intervening rules' specificity
-   or [!important] state (cleancss and csso both rely on this to collapse
-   repeated declaration blocks).
-
-   For list selectors ([.x, .y { width: 100px }]), the declaration is dead only
-   when EACH selector in the list is shadowed by some later rule whose selector
-   list contains that selector at same-or-stronger importance. We index later
-   rules per individual selector key so the per-selector check is linear in the
-   size of the list.
-
-   Empty rules left behind are pruned downstream by [drop_empty_rules] on the
-   statement-list pass. *)
+(* Finer-grained sibling of [drop_shadowed_rules]: keep the rule but drop
+   declarations whose property a later same-selector rule rewrites for every
+   selector this rule targets, at same-or-stronger importance (regardless of
+   intervening specificity; cleancss and csso rely on this). For a list selector
+   each selector must be independently shadowed, so later rules are indexed per
+   selector key to keep the check linear. Empty rules left behind are pruned by
+   [drop_empty_rules] downstream. *)
 let selector_keys (r : rule) =
   match Selector.as_list r.Stylesheet_intf.selector with
   | Some xs -> List.map canonical_selector_key xs
@@ -321,14 +309,12 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
 let drop_shadowed rules =
   rules |> drop_shadowed_declarations |> drop_shadowed_rules
 
-(* Adjacent identical-body merging. Two neighbouring rules with the same
-   declarations apply those declarations identically whether split or grouped
-   under one selector list, so the merge is cascade-safe for any DOM with no
-   ordering analysis, and it shrinks raw and compressed output alike. It runs
-   with the always-on local rewrites: the global factoring engine also finds
-   these groups (plus non-adjacent ones), but only when its preflight predicts
-   enough total gain, and its result is discarded wholesale when the transfer
-   estimate grows - neither gamble should cost the obvious local merge. *)
+(* Adjacent identical-body merging: two neighbouring rules with the same
+   declarations apply identically whether split or grouped, so the merge is
+   cascade-safe for any DOM with no ordering analysis. It runs locally because
+   global factoring finds these groups only when its preflight predicts enough
+   gain and discards its result when the transfer estimate grows - neither
+   gamble should cost the obvious local merge. *)
 let adjacent_merge_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = None
   && (not (Merge.vendor r.selector))

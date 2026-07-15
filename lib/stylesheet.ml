@@ -1606,12 +1606,11 @@ let read_keyframes_block inner =
   in
   read_frames []
 
-(* CSS Animations 1 §3: [@keyframes <keyframes-name> { ... }], where
-   [<keyframes-name> = <custom-ident> | <string>]. The reserved spellings
-   ([none], the CSS-wide keywords, and [default]) are excluded from
-   [<keyframes-name>] per the spec, but every mainstream minifier accepts them
-   in [<string>] form, so cascade keeps them in the AST too: rejecting would
-   leak unparsable input that tools downstream already preserve verbatim. *)
+(* CSS Animations 1 §3: [@keyframes <keyframes-name>], [<keyframes-name> =
+   <custom-ident> | <string>]. The reserved spellings ([none], CSS-wide
+   keywords, [default]) are excluded from [<custom-ident>], but every mainstream
+   minifier accepts them as [<string>], so cascade keeps them too rather than
+   leak input that downstream tools preserve verbatim. *)
 let read_keyframes_name r =
   Cursor.ws r;
   match Cursor.string_opt r with
@@ -2900,11 +2899,10 @@ let read_rule_selector ?(nested = false) r =
   in
   let c = Cursor.sub ?eof_loc r prelude in
   (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
-     caller intact. Previously we rewrapped via [Cursor.err r (Error.to_string
-     e)], which erased the structured error and relocated it to the parent
-     cursor's current position. CSS Nesting 1 sec. 2: a nested rule's prelude is
-     a [<relative-selector-list>], so it may start with a combinator ([> .bar])
-     which is implicitly relative to the parent [&]. *)
+     caller intact, rather than rewrapping (which erases the structured error
+     and relocates it). CSS Nesting 1 sec. 2: a nested rule's prelude is a
+     [<relative-selector-list>], so it may start with a combinator ([> .bar])
+     implicitly relative to the parent [&]. *)
   Cursor.with_context c "selector" (fun () ->
       if nested then Selector.read_relative c
       else Selector.read_strict_selector_list c)
@@ -3573,13 +3571,11 @@ let validate_partial_statement loc = function
            ~reason:"forbidden keyframes name")
   | _ -> None
 
-(* @page descriptors, @font-face descriptors, etc. flow through
-   [Declaration.read_declaration] just like ordinary rule declarations and show
-   up as [Unknown_property "marks"] / [Unknown_property "src"] in the AST. The
-   reader already enforces each at-rule's allowed-descriptor list, so an
-   [Unknown_property] arriving in a descriptor block is by construction a known
-   descriptor - skip the [is_invalid] check that would otherwise flag it as a
-   spec-noncompliant unknown property. *)
+(* @page / @font-face descriptors flow through [Declaration.read_declaration]
+   like ordinary declarations and show up as [Unknown_property "marks"] / "src".
+   The reader already enforces each at-rule's allowed-descriptor list, so an
+   [Unknown_property] in a descriptor block is by construction a known
+   descriptor - skip the [is_invalid] check that would flag it. *)
 let descriptor_has_typed_invalid_value = function
   | Declaration.Declaration { property = Properties.Unknown_property _; _ } ->
       false
@@ -3770,10 +3766,9 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
   let bangs = extract_bang_comments source in
   (* Compare a comment's offset against each rule's END, not its start: a rule's
      start absorbs an immediately-preceding comment ([/*!x*/a{}] starts at 0),
-     which would push a leading comment after its rule, but the closing-brace
-     end is unaffected by leading trivia. A leading comment always precedes its
-     rule's end; a comment between two rules precedes the later rule's end and
-     is emitted before it. *)
+     pushing a leading comment after its rule, but the closing-brace end is
+     unaffected by leading trivia, so leading and between-rule comments order
+     before their rule. *)
   let rule_ends = List.map (fun r -> (rule_loc r).Loc.end_pos) out.value in
   let rec interleave bangs rule_ends sheet =
     match (bangs, rule_ends, sheet) with

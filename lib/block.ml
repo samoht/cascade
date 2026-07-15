@@ -457,13 +457,11 @@ let drop_redundant_layer_decls stmts =
   loop [] [] stmts
 
 (* Main statement processing function with layer optimization *)
-(* CSS Cascade 6.1: a rule with no declarations and no nested rules
-   contributes nothing to the cascade. Drop it under [~optimize:true]
-   (Lightning CSS / cssnano convention). [@media] / [@supports] /
-   [@container] / [@scope] / [@starting-style] blocks with an empty body
-   are likewise no-ops and removed. Empty named [@layer] blocks survive
-   as a [Layer_decl] (the layer name still contributes to the layer order
-   per CSS Cascade L6 6.4). *)
+(* CSS Cascade 6.1: an empty rule (no declarations, no nested rules) contributes
+   nothing, so drop it under [~optimize:true]; an empty [@media]/[@supports]/
+   [@container]/[@scope]/[@starting-style] body is likewise removed. An empty
+   named [@layer] survives as a [Layer_decl] since the name still orders the
+   layer (CSS Cascade L6 6.4). *)
 let drop_empty_rules stmts =
   list_filter_preserve
     (function

@@ -1,11 +1,9 @@
 (** Stage 2 stream: characters -> Token.t.
 
-    Wraps a {!Reader.t} char cursor, maintains a token-buffer pushback for
-    {!reconsume}, and exposes the CSS Syntax section 4 tokenizer through the
-    uniform [next / peek / reconsume] triple. The buffer doubles as a
-    backtracking stack: {!save} marks a point in the buffered prefix and
-    {!restore} replays the tokens consumed after it, mirroring
-    {!Reader.save}/{!Reader.restore} for the Token layer. *)
+    Wraps a {!Reader.t} char cursor and exposes the CSS Syntax section 4
+    tokenizer through the uniform [next / peek / reconsume] triple. The token
+    buffer doubles as a backtracking stack: {!save}/{!restore} mark and replay,
+    mirroring {!Reader.save}/{!Reader.restore} for the Token layer. *)
 
 open Token
 
@@ -35,10 +33,9 @@ let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let is_ws c = c = ' ' || c = '\n' || c = '\t' || c = '\r' || c = '\012'
 let is_newline c = c = '\n' || c = '\r' || c = '\012'
 
-(* CSS Syntax Level 3 section 4.2 "non-ASCII ident code point": the specific
-   code-point ranges allowed in identifiers. Kept as a sealed check so that
-   byte-level heuristics ([>= 0x80]) don't over-accept code points the spec
-   explicitly excludes (e.g. most symbols, emoji, BMP non-characters). *)
+(* CSS Syntax 3 section 4.2 "non-ASCII ident code point" ranges. A sealed check,
+   so a byte-level [>= 0x80] heuristic can't over-accept code points the spec
+   excludes (most symbols, emoji, BMP non-characters). *)
 let is_non_ascii_ident_cp cp =
   cp = 0xB7
   || (cp >= 0xC0 && cp <= 0xD6)
@@ -58,10 +55,8 @@ let is_non_ascii_ident_cp cp =
 let is_name_start_ascii c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
 
-(* [is_name_start_at r offset] checks whether the code point at offset is a
-   valid ident-start. ASCII bytes answer directly without UTF-8 decoding; only
-   bytes [>= 0x80] fall back to [peek_utf8_at]. [peek_byte_at] returns [-1] at
-   end of input. *)
+(* Whether the code point at [offset] is a valid ident-start. ASCII bytes answer
+   directly; only [>= 0x80] falls back to [peek_utf8_at]. *)
 let is_name_start_at r offset =
   let b = Reader.peek_byte_at r offset in
   if b < 0 then false
@@ -83,9 +78,8 @@ let is_name_at r offset =
     | None -> false
     | Some (cp, _) -> is_non_ascii_ident_cp cp
 
-(* Legacy byte-level helpers kept for the hot paths where the caller has already
-   materialised the byte. For anything ASCII they match spec; for bytes [>=
-   0x80] they are now conservative (reject), and callers that might see
+(* Byte-level helpers for hot paths where the caller already has the byte. ASCII
+   matches spec; [>= 0x80] is conservative (reject), so callers that may see
    non-ASCII must use the [_at] variants above. *)
 (* 4.3.3 Check if two code points are a valid escape. The reader is at the
    first; check whether ('\\', next) forms a valid escape (i.e. first is '\\'
@@ -201,11 +195,10 @@ let consume_escape r =
       Reader.skip r;
       String.make 1 c
 
-(* Hot loop: walk bytes directly from the source string. ASCII name bytes (the
-   overwhelming majority of CSS identifiers) advance by one without allocating;
-   a backslash bails to the escape-handling slow path; bytes >= 0x80 fall back
-   to the UTF-8 decode for spec-conformant rejection of non-ident code
-   points. *)
+(* Hot loop: walk bytes directly from the source. ASCII name bytes (nearly all
+   idents) advance by one without allocating; a backslash bails to the slow
+   escape path; [>= 0x80] falls back to UTF-8 decode for spec-conformant
+   rejection. *)
 let rec scan_ident_fast r src src_len =
   let pos = Reader.position r in
   if pos >= src_len then `End
@@ -269,15 +262,9 @@ let scan_ident_slow r src buf =
   loop ();
   Buffer.contents buf
 
-(* 4.3.8 Consume an ident sequence. Iterates at the code-point level so
-   multi-byte characters are accepted only when their code point is a valid
-   ident code point per section 4.2 (see [is_name_at]).
-
-   Fast path: when the ident has no [\] escape, the result is exactly the
-   substring of the source between the start position and the position where we
-   stopped, so we return [String.sub src start len] without ever allocating a
-   Buffer. The slow path (escape encountered) seeds a Buffer with the prefix
-   already copied and continues with the original byte-by-byte build. *)
+(* 4.3.8 Consume an ident sequence, at the code-point level (section 4.2, see
+   [is_name_at]). Fast path (no [\] escape) returns [String.sub] of the source
+   with no Buffer; the slow path seeds a Buffer with the copied prefix. *)
 let consume_ident_sequence r =
   let src = Reader.source r in
   let src_len = String.length src in
@@ -417,9 +404,8 @@ let consume_url_token r =
   skip_ws ();
   let rec loop () =
     match Reader.peek r with
-    (* CSS Syntax 3 section 4.3.6: hitting EOF inside [url(] is a parse error,
-       but the algorithm still returns a [<url-token>] - the parse error
-       surfaces via the partial-recovery warnings, not by morphing into
+    (* CSS Syntax 3 section 4.3.6: EOF inside [url(] is a parse error but still
+       returns a [<url-token>], surfacing via recovery warnings rather than a
        [<bad-url-token>]. *)
     | None -> Url (Buffer.contents buf)
     | Some ')' ->
@@ -576,11 +562,9 @@ let rec skip_comment_body r =
     Reader.skip r;
     skip_comment_body r)
 
-(* Skip a run of comments without consuming surrounding whitespace, so a comment
-   between two non-whitespace code points disappears from the token stream
-   rather than synthesising a <whitespace-token>. CSS Syntax §4.3.2 says
-   comments are treated as "nothing"; only actual whitespace produces a
-   <whitespace-token>. *)
+(* Skip a run of comments without consuming surrounding whitespace: CSS Syntax
+   §4.3.2 treats comments as "nothing", so a comment between two non-whitespace
+   points disappears rather than becoming a <whitespace-token>. *)
 let rec skip_comment_run r =
   if Reader.looking_at r "/*" then (
     Reader.skip r;
@@ -648,10 +632,9 @@ let consume_at_start r =
   else Delim "@"
 
 (* 4.3.1 Consume a token. *)
-(* Multi-byte lead or ASCII name-start: either consume a full ident-like token
-   when the code point really starts an ident, or emit a single-code-point
-   [Delim] (CSS Syntax section 4.3.1) - the UTF-8 byte sequence is consumed
-   atomically so the delim token carries the whole code point. *)
+(* Multi-byte lead or ASCII name-start: consume a full ident-like token, or emit
+   a single-code-point [Delim] whose UTF-8 bytes are consumed atomically so the
+   delim carries the whole code point. *)
 let consume_name_start_or_delim ~force_url_function r c =
   if is_name_start_at r 0 then consume_ident_like_token ~force_url_function r
   else if c >= '\x80' then (
@@ -751,11 +734,9 @@ let tokenize_with_loc ?(force_url_function = false) reader =
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
-(* [history] only needs to retain tokens consumed since the last active [save]:
-   [force_url_function] and [reconsume] both look at the head, and [save]
-   snapshots [t.history] for [restore]. With no saves active, the head is all we
-   need, so write a single-element list instead of growing one; when saves are
-   active we keep the full list so restore can rewind. *)
+(* [history] need only retain tokens since the last active [save]. With no saves
+   the head is all [force_url_function]/[reconsume] read, so keep a one-element
+   list; with saves active keep the full list so [restore] can rewind. *)
 let record_consume t tok =
   match t.saves with
   | [] -> t.history <- [ tok ]
@@ -763,12 +744,10 @@ let record_consume t tok =
       t.history <- tok :: t.history;
       List.iter (fun save -> save.trace := tok :: !(save.trace)) saves
 
-(* True iff the previous emitted token was a [Url(...)] AND no separator
-   (whitespace or comment) follows. The next [url(...)] in that case would
-   otherwise re-enter the lexer's url branch and merge with the previous token;
-   treat it as a function-call instead so the two stay distinct. Per CSS Syntax
-   4.3.2, comments behave like whitespace, so a [/* */] between the two urls
-   also disarms this guard. *)
+(* True iff the previous token was [Url(...)] with no separator (whitespace or
+   comment) after: the next [url(...)] would re-enter the url branch and merge,
+   so force a function-call to keep them distinct. Per CSS Syntax 4.3.2 comments
+   act like whitespace, so a [/* */] between the urls also disarms this. *)
 let force_url_function t =
   match t.history with
   | { kind = Url _; loc; _ } :: _ when loc.end_pos = Reader.position t.reader

@@ -445,14 +445,12 @@ let canonical_order t : node_id array =
 
 let canonical_linearization = canonical_order
 
-(* Replace the live nodes [consume] with the new nodes [produce]: a graph
-   transaction. Produced nodes inherit each consumed node's edge with an
-   external node they still conflict with, so the partial order is preserved;
-   produced nodes are mutually ordered by their position in [produce]. The
-   rewrite is rejected (returns [Option.None]) if a consumed node is already
-   dead/stale or if the resulting partial order has a cycle (the factoring would
-   not preserve the cascade). [generation] is bumped so candidates captured
-   against the old graph can be detected as stale. *)
+(* Replace live nodes [consume] with [produce] as one transaction. Produced
+   nodes inherit each consumed node's still-conflicting external edge (partial
+   order preserved) and are mutually ordered by their position in [produce].
+   Rejected ([Option.None]) if a consumed node is dead/stale or the result has a
+   cycle (the factoring would break the cascade). [generation] bumps so stale
+   captured candidates are detectable. *)
 let duplicate_node xs =
   let sorted = List.sort Int.compare xs in
   let rec loop = function
@@ -889,13 +887,11 @@ let rewrite_successors t ~consume ~consumed ~total graph :
       add_produced_edges t ~consume ~total ~produced_count graph succ
       |> Result.map (fun () -> succ)
 
-(* The graph is acyclic before a rewrite, and every edge a rewrite adds involves
-   a produced node (indices [total..node_count)), so any new cycle must pass
-   through one. A forward DFS from the produced nodes therefore detects a cycle
-   while only visiting their reachable cone, instead of the full [topo_order]
-   over every live node (O(reachable) per commit, not O(n)). State is shared
-   across the produced roots within one rewrite, so each node/edge is walked at
-   most once. *)
+(* The graph is acyclic before a rewrite and every new edge touches a produced
+   node ([total..node_count)), so any new cycle passes through one. A forward
+   DFS from the produced nodes detects it visiting only their reachable cone
+   (O(reachable) per commit, not the O(n) [topo_order]); shared state across the
+   produced roots walks each node/edge at most once. *)
 let rewrite_introduces_cycle graph ~total =
   let n = node_count graph in
   let state = Hashtbl.create 64 in

@@ -3,16 +3,14 @@
 
 open Stylesheet
 
-(* A run element is a plain style rule with no nested block, or a conditional
-   at-rule block ([@media] / [@supports] / [@container]) whose transitive
-   content is itself only such elements. The block moves atomically; its
-   contained rules supply the conflict footprint. Custom-property declarations
-   are reorderable too: the dependency graph keys each custom property by name,
-   so two writers of the same property on overlapping selectors keep their
-   order, while a [var()] reader - which writes its own property, not the one it
-   reads - moves freely past the definition. A named [@layer] block or [@layer]
-   declaration pins the layer order at its first occurrence, so it stays a
-   barrier, as does everything else. *)
+(* A run element is a plain style rule, or a conditional at-rule block
+   ([@media]/[@supports]/[@container]) whose transitive content is only such
+   elements; the block moves atomically and its rules supply the conflict
+   footprint. Custom properties are keyed by name in the dependency graph, so
+   two writers of one property on overlapping selectors keep order while a
+   [var()] reader (which writes its own property, not the one it reads) moves
+   freely. A named [@layer] block or declaration pins the layer order at its
+   first occurrence, so it stays a barrier. *)
 let rec element_rules (stmt : statement) : rule list option =
   match stmt with
   | Rule r -> if r.nested = [] then Some [ r ] else None
@@ -195,16 +193,14 @@ let shared_branches (stmts : statement list) : (string, unit) Hashtbl.t =
   Hashtbl.iter (fun k n -> if n > 1 then Hashtbl.replace shared k ()) counts;
   shared
 
-(* A grouped rule is semantically the sequence of its per-branch rules, and a
-   hoisted shared declaration is the same declaration written inline, so two
-   sheets that factor the same content differently ([.absolute,.sr-only
-   {position:absolute}] on one side, the declaration kept inline in [.sr-only]
-   on the other) only project to one canonical form if grouping is undone first.
-   Expand a selector-list rule into singleton-branch rules only when a branch is
-   shared with another rule, so a coalesce can actually fold it; a list whose
-   branches all occur once ([:host,:root], [*,::before,::after]) has nothing to
-   coalesce with, and splitting it only bloats the projection and desynchronises
-   the structural comparison of two otherwise-equivalent sheets. *)
+(* A grouped rule is the sequence of its per-branch rules, and a hoisted shared
+   declaration is the same declaration written inline, so two sheets that factor
+   the same content differently ([.absolute,.sr-only {position:absolute}] vs the
+   declaration inline in [.sr-only]) only converge once grouping is undone.
+   Expand a selector-list rule into singletons only when a branch is shared with
+   another rule, so a coalesce can fold it; a list whose branches each occur
+   once ([:host,:root]) has nothing to coalesce with, and splitting it only
+   bloats the projection. *)
 let expand_lists shared (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (

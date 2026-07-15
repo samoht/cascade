@@ -5272,9 +5272,8 @@ let rec pp_order : order Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_order ctx v
 
-(* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
-   formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
-   we output decimals directly for minified output compatibility. *)
+(* Opacity as a float (0.0-1.0). Tailwind's minifier writes percentages as
+   decimals (50% -> .5), so minified output emits decimals to match. *)
 let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
@@ -16002,11 +16001,9 @@ let read_optional_line_height r =
       Some (read_shorthand_line_height_typed r)
   | _ -> None
 
-(* Parse the [font] shorthand body into a typed [font_shorthand] record. The
-   keyword prefix loop ([italic] / [bold] / etc.) populates style / variant /
-   weight / stretch as it sees the relevant keywords; [normal] is consumed
-   without binding a slot. Once a non-prefix token appears, the required [size]
-   [/ <line-height>?] <family>+ tail is read. *)
+(* Parse the [font] shorthand body: a keyword prefix loop fills style / variant
+   / weight / stretch (a [normal] binds no slot), then the required [size
+   [/<line-height>]? <family>+] tail. *)
 let read_font_shorthand r : font_shorthand =
   let style : font_style option ref = ref Option.None in
   let variant : font_variant_css21 option ref = ref Option.None in
@@ -16337,18 +16334,12 @@ let rec read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  (* Per CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. There are two
-     [var()] shapes to keep distinct:
-
-     - [scale: var(--s)] — the var resolves to the whole [scale] value (which
-     itself can be 1 to 3 components). Produce [Var _]. - [scale: var(--x)
-     var(--y)] — each slot is independently a number- percentage that may be a
-     [var()]. Produce [XY (_, _)] etc.
-
-     We can't tell which shape we're in until we try to read a second component,
-     so we speculatively peel the first [var()] off as a whole- value [Var]; if
-     another component follows, the lookahead-saved snapshot lets us re-read it
-     as a per-slot [Var] and continue with [read_numbers]. *)
+  (* CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. Two [var()] shapes to
+     keep distinct: [scale: var(--s)] is a whole-value var (produce [Var _]);
+     [scale: var(--x) var(--y)] is per-slot (produce [XY _]). They are
+     indistinguishable until a second component appears, so peel the first
+     [var()] as a whole-value [Var]; if another follows, the saved snapshot
+     re-reads it as a per-slot number-percentage. *)
   let read_numbers_from t (x : number_percentage) : scale =
     match Cursor.option Values.read_number_percentage t with
     | None -> X x
@@ -20735,9 +20726,8 @@ let pp_custom_property ctx (Custom_value { value; _ }) =
   pp_custom_property_value ctx value
 
 (* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
-   [min-block-size] have the [auto] keyword as their initial value (not the
-   generic [0]). Under minify [initial] rewrites to [auto] which is the shorter
-   shorter equivalent, and the typed value parses identically. *)
+   [min-block-size] have [auto] as their initial value (not the generic [0]), so
+   under minify [initial] rewrites to the shorter [auto]. *)
 let pp_length_min_max ctx (v : length_percentage) =
   let v : length_percentage =
     match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v

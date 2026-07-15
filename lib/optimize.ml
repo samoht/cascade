@@ -13,12 +13,11 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 type scope = Ctx.scope
 
-(* Optimisation context threaded by the entry points ([stylesheet], [rules],
-   [single_rule], [deduplicate_declarations]) down to the shorthand composers.
-   [scope] drives the fragment-vs-stylesheet decisions; [registered] reports
-   whether a custom property is registered with an [@property] initial-value, so
-   folding its [var()] into a shorthand cannot widen an invalid-at-
-   computed-value failure. Default: fragment, nothing registered. *)
+(* Optimisation context threaded from the entry points to the shorthand
+   composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
+   reports whether a custom property has an [@property] initial-value, so
+   folding its [var()] into a shorthand cannot widen an
+   invalid-at-computed-value failure. Default: fragment, nothing registered. *)
 type ctx = Ctx.t
 
 let ctx_of_scope = Ctx.of_scope
@@ -125,20 +124,18 @@ let synthesize_nesting_statements = Nest.statements
 let stylesheet_key stmts = Pp.to_string ~minify:true pp_stylesheet stmts
 
 (* A block holds a conditional named layer when it directly contains a named
-   [@layer] block with content. Unwrapping a known-true [@supports] around such
-   a block would move that layer's rules - and its place in the layer order (CSS
-   Cascade 6.4) - from conditional to unconditional, so the wrapper must stay
-   even when the condition is baseline-true. A bare [@layer name;] declaration
-   carries no rules, and self-guarding declarations carry no side effect, so
-   both unwrap freely. *)
+   [@layer] block with content. Unwrapping a known-true [@supports] around it
+   would move that layer's rules and its place in the layer order (CSS Cascade
+   6.4) from conditional to unconditional, so the wrapper stays even when
+   baseline-true. Bare [@layer name;] and self-guarding declarations carry no
+   rules or side effect, so both unwrap freely. *)
 let block_introduces_layer_order stmts =
   List.exists (function Layer (Some _, _ :: _) -> true | _ -> false) stmts
 
-(* Pop the run of [Rule]s most recently pushed onto a reversed accumulator,
-   returning them in forward order alongside the remaining accumulator. Used
-   when unwrapping a known-true [@supports] exposes its inner rules to rules
-   already emitted: those preceding rules must rejoin the merge pass so an
-   adjacency the wrapper had hidden can collapse. *)
+(* Pop the run of [Rule]s most recently pushed onto a reversed accumulator, in
+   forward order, with the remaining accumulator. When unwrapping a known-true
+   [@supports] exposes its inner rules, the preceding rules rejoin the merge
+   pass so an adjacency the wrapper hid can collapse. *)
 let pop_trailing_rules acc =
   let rec loop acc rules =
     match acc with
@@ -179,11 +176,10 @@ let rec statements ?factor_cache ~ctx ~enforce_spec (stmts : statement list) :
   | _ ->
       let optimize_merged_block = statements ?factor_cache ~ctx ~enforce_spec in
       (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
-         invalid and ignored by every browser, so it is a no-op that must not
-         act as a cascade boundary. Stripping it up front lets the rules it
-         falsely separated merge in this same pass, which keeps [statements]
-         idempotent - stripping after the merge would leave two adjacent
-         same-selector rules that only a re-run would combine. *)
+         invalid and ignored by browsers, so it must not act as a cascade
+         boundary. Stripping it up front lets the rules it falsely separated
+         merge in this same pass, keeping [statements] idempotent (stripping
+         after the merge would leave a re-run to combine them). *)
       let stmts' =
         let stmts =
           drop_misplaced_imports stmts |> merge_named_layers_by_name
@@ -203,11 +199,10 @@ let rec statements ?factor_cache ~ctx ~enforce_spec (stmts : statement list) :
       in
       preserve_list stmts stmts'
 
-(* Process a "cursor" of (reverse acc, current remaining list, pending segment
-   stack). When the current list is exhausted, pop the next segment from
-   pending; when both are empty, return the final reversed list. This shape lets
-   [process_supports_statement] splice three segments without first
-   materialising their concatenation. *)
+(* Process a cursor of (reverse acc, remaining list, pending segment stack),
+   popping the next pending segment when the list is exhausted. This lets
+   [process_supports_statement] splice three segments without materialising
+   their concatenation. *)
 and process_statements ?factor_cache ~ctx ~enforce_spec
     ?(pending : statement list list = []) (acc : statement list)
     (remaining : statement list) : statement list =
@@ -314,12 +309,11 @@ and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
         rest
   | `True ->
       let trailing, acc = pop_trailing_rules acc in
-      (* [trailing], [optimized_block], and [rest] must be visible to
+      (* [trailing], [optimized_block], and [rest] must reach
          [process_statements] as a SINGLE list so [collect_rules] can pull
-         adjacent rules across the segment boundary into one rule run - that
-         adjacency-aware merge is exactly the point of unwrapping a
-         baseline-true @supports. Use tail-recursive [List.concat] so a long
-         [optimized_block] doesn't stack-overflow. *)
+         adjacent rules across the segment boundary into one run - the whole
+         point of unwrapping a baseline-true @supports. Tail-recursive
+         [List.concat] so a long [optimized_block] cannot stack-overflow. *)
       process_statements ?factor_cache ~ctx ~enforce_spec ~pending acc
         (List.concat [ trailing; optimized_block; rest ])
   | `False ->
@@ -437,13 +431,11 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
   in
   walk [] stmts
 
-(* CSS Cascade 5 sec. 6.4.2: when a named layer is declared multiple times the
-   rules from all occurrences accumulate into the layer. Merge same-name blocks
-   at the position of the FIRST NON-EMPTY occurrence so the merged content stays
-   where the author placed the layer's first real declaration. Leading empty
-   blocks ([@layer name {}]) stay in place so the [empty-named-layer ->
-   Layer_decl] normalisation in [process_statements] still folds them into the
-   order-only declaration. *)
+(* CSS Cascade 5 sec. 6.4.2: rules from all occurrences of a named layer
+   accumulate. Merge same-name blocks at the FIRST NON-EMPTY occurrence so
+   content stays where the author placed the layer's first real declaration.
+   Leading empty blocks ([@layer name {}]) stay in place for the
+   [empty-named-layer -> Layer_decl] normalisation in [process_statements]. *)
 let statements_top_level ?factor_cache ~ctx ~enforce_spec
     (stmts : statement list) : statement list =
   let optimize_merged_block = statements ?factor_cache ~ctx ~enforce_spec in
@@ -652,12 +644,10 @@ let drop_unknown_at_rules (stylesheet : t) : t =
   in
   list_edit_preserve statement stylesheet
 
-(* CSS Properties and Values API 1 sec. 2: an [@property --name { syntax: ... }]
-   declaration registers [name] with a typed CSS syntax, lifting later [--name:
-   ...] uses out of the unregistered opaque-token-stream rule. Apply
-   registrations in source order so a [@property] only affects uses that follow
-   it; later registrations of the same name overwrite, matching how the browser
-   registry resolves duplicate declarations. *)
+(* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
+   typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
+   rule. Apply in source order so a registration only affects later uses; a
+   duplicate name overwrites, matching the browser registry. *)
 let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
   match syntax with
   | Variables.Color -> Properties.try_read_custom_color components
@@ -753,12 +743,11 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
   in
   list_map_preserve walk_stmt stmts
 
-(* Under closed-stylesheet scope the optimiser knows every [@position-try
-   --name] rule defined in the sheet. A [position-try-fallbacks: --x, --y] entry
-   whose name has no matching [@position-try] rule cannot match at runtime, so
-   prune unknown [Name] arms. Keep the [Flip_*] tactics and any [Var]
-   indirection untouched. When every arm gets pruned the whole declaration drops
-   (the property becomes equivalent to its initial). *)
+(* Under closed-stylesheet scope every [@position-try --name] rule is known. A
+   [position-try-fallbacks] entry whose name has no matching rule cannot match
+   at runtime, so prune unknown [Name] arms (keeping [Flip_*] and [Var]). When
+   every arm is pruned the whole declaration drops (equivalent to its
+   initial). *)
 let collect_position_try_names stylesheet =
   let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
   let rec collect (stmt : statement) =
@@ -1035,13 +1024,11 @@ let stylesheet_rule_count stmts =
   List.fold_left (fun count stmt -> count + statement_rule_count stmt) 0 stmts
 
 let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
-  (* Re-run the top-level pipeline until the AST stops changing or a small
-     iteration cap fires. Each subsequent pass may shrink the input again
-     because an earlier pass (vendor-alias drop, shorthand composition, media /
-     support merging) exposed a rule run that the DAG factor pass can now
-     optimize. Rule order projection is folded into [Factor.run], so the hot
-     loop does not build a separate ordering graph. Rule count is non-increasing
-     across passes, so this converges. [aggressive] only widens the cap. *)
+  (* Re-run the top-level pipeline until the AST stops changing or a small cap
+     fires. A pass may shrink the input again because an earlier one
+     (vendor-alias drop, shorthand composition, media/support merging) exposed a
+     rule run the DAG factor pass can now optimize. Rule count is
+     non-increasing, so this converges; [aggressive] only widens the cap. *)
   let cap =
     if aggressive then 6
     else if stylesheet_rule_count stylesheet > 128 then 1
@@ -1060,11 +1047,10 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
   in
   loop cap (stylesheet_key stylesheet) stylesheet
 
-(* Bare names of every custom property referenced through a [var()] anywhere in
-   the tree. Scans the serialized declarations, so it sees references inside
-   opaque custom-property values too and over-keeps (a [var(] inside a string
-   counts) - it must never miss a live reference, or the prune below would drop
-   a binding still in use. *)
+(* Bare names of every custom property referenced through [var()] in the tree.
+   Scans the serialized declarations, so it sees references inside opaque values
+   too and over-keeps (a [var(] inside a string counts): it must never miss a
+   live reference, or the prune below drops a binding still in use. *)
 let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
     =
   let tbl = Hashtbl.create 64 in
