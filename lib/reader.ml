@@ -116,16 +116,12 @@ let utf8_byte_length cp =
   else if cp < 0x10000 then 3
   else 4
 
-(* Decode the UTF-8 code point starting at [t.pos + offset]. Returns [Some
-   (code_point, byte_length)] or [None] at EOF or on a malformed sequence. Uses
-   Uutf for the byte-level decode so overlong, surrogate, and out-of-range
-   sequences are rejected consistently with the Unicode spec.
-
-   Only returns [Some] when the *first* decoded element is a valid [Uchar].
-   [Uutf.String.fold_utf_8] resyncs after a [Malformed] start and yields the
-   next valid codepoint, which would let the caller pretend the malformed bytes
-   were part of the same code point - bad bytes in an ident-like context end up
-   in the unit token. *)
+(* Decode the UTF-8 code point at [t.pos + offset] to [Some (cp, byte_length)],
+   [None] at EOF or on a malformed sequence. Uutf rejects overlong/surrogate/
+   out-of-range sequences per the Unicode spec. Returns [Some] only when the
+   *first* decoded element is a valid [Uchar]: [fold_utf_8] resyncs past a
+   [Malformed] start, which would fold bad bytes into the following code point
+   (and into an ident-like unit token). *)
 (* ASCII fast path before falling back to Uutf: skips the ref/closure
    allocation that a [Uutf.String.fold_utf_8] requires per peek. *)
 let first_utf8_chunk_at input p len =

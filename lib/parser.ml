@@ -147,10 +147,9 @@ let escape_ident_emit_item buf starts () i = function
          same ident. Hex-escape each byte so the serialized form round-trips. *)
       String.iter (fun c -> add_hex_escape buf c) bs
 
-(* True when every byte of [s] is in the ASCII ident-continue set and the
-   leading byte is in the ASCII ident-start set. Such idents serialise to
-   themselves byte-for-byte; the buffer + Uutf walk inside [escape_ident] then
-   allocates nothing useful. *)
+(* An all-ASCII ident (start byte in ident-start, rest in ident-continue)
+   serialises to itself byte-for-byte, so [escape_ident]'s buffer + Uutf walk
+   would allocate nothing useful. *)
 let escape_ident_needs_no_escape s n =
   if n = 0 then true
   else if not (Syntax.is_ascii_ident_start s.[0]) then false
@@ -203,12 +202,10 @@ let string_of_token_kind : Token.kind -> string = function
   | Token.At_keyword s -> "@" ^ escape_ident s
   | Token.Hash { value; _ } -> "#" ^ escape_name value
   | Token.String { value; quote = _; terminated } ->
-      (* Normalize string quoting to double-quote on serialization. The original
-         quote is recorded on the token only so quote-sensitive lookups (e.g.
-         @charset) can inspect it. CSS Syntax §4.3.5 recovers an unterminated
-         string token but the serializer preserves the [terminated] flag so the
-         original byte sequence round-trips: a string the lexer flagged as
-         unterminated emits without its closing quote. *)
+      (* Normalize quoting to double-quote (the original quote is kept on the
+         token only for quote-sensitive lookups like @charset). CSS Syntax
+         §4.3.5 recovers an unterminated string; the [terminated] flag is
+         preserved so one round-trips, emitting without its closing quote. *)
       escape_string ~quote:'"' ~terminated value
   | Token.Bad_string -> ""
   | Token.Url s ->
@@ -233,10 +230,9 @@ let string_of_token_kind : Token.kind -> string = function
   | Token.Number_tok { repr; _ } -> repr
   | Token.Percentage { repr; _ } -> repr ^ "%"
   | Token.Dimension { number; unit_ } ->
-      (* CSS Syntax §9.1 ambiguous-dimension rule: a unit starting with [e]/[E]
-         followed by a digit (with optional sign) round-trips as scientific
-         notation rather than a dimension. Escape the leading letter via the hex
-         form so the lexer cannot fold it into the number's exponent. *)
+      (* CSS Syntax §9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
+         (signed) digit would re-read as scientific notation, so hex-escape the
+         leading letter to keep it out of the number's exponent. *)
       let unit_serialized =
         let len = String.length unit_ in
         let next_is_digit i = i < len && unit_.[i] >= '0' && unit_.[i] <= '9' in
@@ -371,11 +367,10 @@ let rec cv_to_buffer buf : Component.t -> unit = function
       cvs_to_buffer buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
-      (* Always emit the closing [)] - section 5.4.6 says EOF inside a function
-         is a parse error but the function token is still produced; a
-         deserialised round-trip should match the lexer's tokenisation, not the
-         original truncated bytes. The [terminated] flag is for typed validators
-         that want to reject the rule. *)
+      (* Always emit the closing [)]: section 5.4.6 still produces the function
+         token on EOF, so the round-trip should match the lexer, not the
+         truncated bytes. [terminated] is left for typed validators to
+         reject. *)
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
       cvs_to_buffer buf arguments;
@@ -405,19 +400,11 @@ let string_of_components cvs =
   cvs_to_buffer buf cvs;
   Buffer.contents buf
 
-(* CSS Syntax Level 3 section 9.1: when serialising adjacent tokens, the
-   serialiser must keep them lexically separate. Two predicates are needed
-   because the relevant property is what byte the previous token *ends* with and
-   what byte the next token *starts* with:
-
-   - [word_like_end p]: [p] ends with a code point that could continue an
-   ident-like or numeric token (so an adjacent ident-continue or [-] would merge
-   in). - [word_like_start n]: [n] starts with a code point that an ident-like
-   or numeric token could absorb on its left.
-
-   {!Func} components begin with [ident(] (word-like at the start) but end with
-   [)] (self-delimiting). {!Block} is self-delimiting at both ends.
-   Self-delimiting tokens never need separation from a neighbour. *)
+(* CSS Syntax 3 section 9.1: adjacent tokens must stay lexically separate.
+   [word_like_end p]/[word_like_start n] test the byte [p] ends with / [n]
+   starts with, since a merge depends on both. {!Func} is word-like at the start
+   ([ident(]) but self-delimiting at the end ([)]); {!Block} is self-delimiting
+   both ends and never needs separation. *)
 let word_like_end : Component.t -> bool = function
   | Preserved
       {
@@ -434,12 +421,11 @@ let word_like_end : Component.t -> bool = function
       } ->
       false
   | Preserved _ -> true
-  (* CSS Color 4 sec. 11.1 (relative colour) and similar grammars use whitespace
-     as the separator between a [<color>] argument expressed as a [var()] (or
-     another function call) and the following channel ident. [oklab(from
-     var(--c) l a b)] tokenises fine with [var(--c)l] adjacent, but spec-strict
-     parsers expect the separator. Treat a [Func] (and a Paren [Block]) as
-     word-like-end so [Func] + [Ident] keeps its boundary. *)
+  (* CSS Color 4 sec. 11.1 relative colour needs whitespace between a [var()]
+     (or other function) [<color>] arg and the following channel ident:
+     [oklab(from var(--c) l a b)] tokenises fine as [var(--c)l] but spec-strict
+     parsers expect the separator. So [Func]/Paren [Block] count as
+     word-like-end to keep the [Func] + [Ident] boundary. *)
   | Func _ -> true
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
@@ -612,11 +598,10 @@ let to_string_custom cvs =
   cvs_to_buffer buf cvs;
   Buffer.contents buf
 
-(* CSS Custom Properties Level 1: specified custom-property values are opaque
-   token streams, so authored whitespace is preserved by [to_string_custom].
-   This minified rendering is only for canonical output: it collapses optional
-   whitespace in blocks and function arguments while preserving token
-   boundaries. *)
+(* Custom-property values are opaque token streams (CSS Custom Properties 1), so
+   [to_string_custom] keeps authored whitespace. This minified rendering is for
+   canonical output only: collapse optional whitespace in blocks and function
+   args while preserving token boundaries. *)
 let url_string_can_unquote s =
   not
     (String.exists
@@ -677,10 +662,9 @@ let custom_min_word_boundary p next =
   && (not (is_backslash_delim p))
   && word_like_start next
 
-(* A whitespace token in a custom-property value is part of the stream a var()
-   substitution receives, so an authored separator around [*] and [/] is
-   collapsed to one space, never deleted: [16 / 9] and [16/9] are different
-   token streams even though both parse in [calc()]. *)
+(* Whitespace in a custom-property value is part of the stream a var()
+   substitution receives, so a separator around [*] and [/] is collapsed to one
+   space, never deleted: [16 / 9] and [16/9] are distinct streams. *)
 let custom_min_needs_separator prev next rest =
   match prev with
   | None -> false
@@ -704,15 +688,12 @@ let custom_min_item_separator buf prev separated cv =
       Buffer.add_char buf ' '
   | _ -> ()
 
-(* CSS Syntax 3 sec. 3 says ident tokens are ASCII-case-insensitive at the
-   tokenizer level, but the parser keeps the source case so selectors stay
-   case-sensitive. Inside a custom-property value the tokens are always
-   interpreted as value-context idents, where the canonical spelling of a
-   CSS-wide keyword or [currentcolor] / [transparent] is lower-case. Fold those
-   specific idents here so [--c: currentColor] and [--c: currentcolor] serialise
-   to the same canonical bytes. The set is conservative on purpose: a tw class
-   name token that happens to live inside a custom property body must not
-   collapse, so unrecognised idents pass through unchanged. *)
+(* Idents are ASCII-case-insensitive per CSS Syntax 3 sec. 3, but the parser
+   keeps source case so selectors stay case-sensitive. In a custom-property
+   value only these keywords have a canonical lower-case spelling, so fold them
+   ([--c:currentColor] == [--c:currentcolor]). Kept conservative: an
+   unrecognised ident (e.g. a tw class name in a var body) passes through
+   unchanged. *)
 let case_insensitive_value_idents =
   let s = Hashtbl.create 16 in
   List.iter

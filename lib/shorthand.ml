@@ -35,12 +35,11 @@ let is_intentionally_duplicated decl =
       | _ -> false)
   | Declaration { property; _ } -> is_intentionally_duplicated_typed property
 
-(* Typed shorthand -> longhand coverage relation. Each match arm spells out a
-   reachable [(shorthand, longhand)] pair, including transitive cases ([border]
-   covers [border-top-width] both directly and through [border-width] /
-   [border-top]). Properties not listed have no shorthand relation; they
-   self-cover by exact identity, never reset others. Custom and unknown
-   properties are handled by [declaration_covers] separately. *)
+(* Typed shorthand -> longhand coverage relation. Each arm is a reachable
+   [(shorthand, longhand)] pair, transitive cases included ([border] covers
+   [border-top-width] directly and via [border-width] / [border-top]). Unlisted
+   properties self-cover by identity, never reset others; custom and unknown
+   ones go through [declaration_covers]. *)
 let covers_longhand : type a b.
     a Properties.property -> b Properties.property -> bool =
  fun sh lh ->
@@ -572,14 +571,11 @@ let background_image_is_vendor : Properties.background_image -> bool = function
       true
   | _ -> false
 
-(* A value whose rendering begins with a CSS vendor prefix (-webkit-, -moz-,
-   -ms-, -o-). Only [display] keywords and [background-image] gradients render
-   that way, so a structural match on those value types is exhaustive - no
-   rendering needed. Used to preserve legacy fallbacks like
-   [display:-webkit-box;display:flex]: the spec value cascades over the prefixed
-   value in modern browsers, but old browsers only understand the prefixed
-   spelling, so dropping the earlier declaration removes a real browser-compat
-   fallback. *)
+(* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
+   -o-). Only [display] keywords and [background-image] gradients render that
+   way, so a structural match is exhaustive. Preserves legacy fallbacks like
+   [display:-webkit-box;display:flex]: old browsers understand only the prefixed
+   spelling, so dropping the earlier declaration removes a real compat fallback. *)
 (* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
    or-pattern does not refine the value type, so each constructor is matched on
    its own; everything else is not a sizing fallback. *)
@@ -842,12 +838,10 @@ let merge_overflow_longhands decls =
   in
   preserve_list decls (go [] decls)
 
-(* Compose 4 contiguous box-side longhands ([margin-top / -right / -bottom /
-   -left], or the [padding-] equivalents) into a single shorthand. Runs before
-   [merge_box_shorthand_longhands] so the absorption pass can pick up any
-   remaining stragglers. Conservative: requires all four sides present in the
-   next four positions (any order), matching importance, and no
-   runtime-substitution leaves on any side. *)
+(* Compose 4 contiguous box-side longhands ([margin-*] or [padding-*]) into one
+   shorthand. Runs before [merge_box_shorthand_longhands] so the absorption pass
+   picks up stragglers. Requires all four sides in the next four positions (any
+   order), matching importance, and no runtime-substitution leaves. *)
 type box_side = Top | Right | Bottom | Left
 
 let extract_margin_side :
@@ -1348,12 +1342,11 @@ let compose_outline_via_index idx =
         i := !i + 3
   done
 
-(* CSS Fonts 4 sec. 2.7: [font] shorthand reads [<style>? <weight>?
+(* CSS Fonts 4 sec. 2.7: [font] reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
-   composition renders each longhand via its pretty-printer and stitches the
-   shorthand together. Default-valued components ([normal] style, [400] weight,
-   [normal] line-height) drop on emit. Requires both font-size and
-   font-family. *)
+   composition renders each longhand and stitches them together; default-valued
+   components ([normal] style, [400] weight, [normal] line-height) drop on emit.
+   Requires font-size and font-family. *)
 let is_font_longhand : declaration -> bool = function
   | Declaration { property = Font_style; _ } -> true
   | Declaration { property = Font_weight; _ } -> true
@@ -1443,13 +1436,12 @@ let compose_font_via_index idx =
           i := !i + 5
   done
 
-(* The [font] shorthand resets the [font-variant-*] / [font-variation-settings]
-   / [font-feature-settings] / [font-size-adjust] / [font-kerning] /
+(* [font] resets the [font-variant-*] / [font-variation-settings] /
+   [font-feature-settings] / [font-size-adjust] / [font-kerning] /
    [font-optical-sizing] subproperties to their initials. When such a reset
-   declaration precedes a run of [font] longhands that [compose_font_shorthand]
-   will fold (the run carries the mandatory [font-size] and [font-family]), move
-   it after the run so the synthesised [font] does not clobber it - the same
-   pattern as [reorder_border_image_before_border]. *)
+   precedes a foldable run of [font] longhands, move it after the run so the
+   synthesised [font] does not clobber it (as
+   [reorder_border_image_before_border]). *)
 let reorder_font_resets_before_font decls =
   let prop d = property_name (snd d) in
   let is_font_reset d =
@@ -1887,14 +1879,12 @@ let try_compose_border_whole_at ~ctx idx i =
                     }))
         | _ -> None
 
-(* [border-image*] and [border-width/style/color] are independent properties, so
-   a border-image declaration (or longhand run) that immediately precedes the
-   whole-border longhands can move after them without changing any property's
-   cascade. Doing so lets [compose_border_whole_shorthand] synthesise [border]
-   in place: the synthesised [border] resets border-image, but the now-trailing
-   border-image declaration overrides that reset back. Only swap when the
-   following run carries the full width/style/color trio, so the move happens
-   exactly where it enables composition. *)
+(* [border-image*] and [border-width/style/color] are independent, so a
+   border-image declaration immediately preceding the whole-border longhands can
+   move after them without changing any cascade. That lets
+   [compose_border_whole_shorthand] synthesise [border] in place: its
+   border-image reset is overridden back by the now-trailing declaration. Only
+   swap when the following run carries the full width/style/color trio. *)
 let is_border_image_decl = function
   | Declaration { property = Border_image; _ }
   | Declaration { property = Border_image_source; _ }

@@ -16,11 +16,10 @@ let rec meta_of_declaration : declaration -> meta option = function
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> meta_of_declaration decl
 
-(* Smart constructor for declarations. The [hash] field is computed here from
-   the (property, value, important) triple via the stdlib bounded structural
-   hash so two structurally-equal declarations always carry the same hash --
-   which is the property [Optimize.same_minified_declaration] relies on for its
-   O(1) inequality short-circuit. Bounded depth keeps construction O(1) even for
+(* Smart constructor. The [hash] field is the stdlib bounded structural hash of
+   the (property, value, important) triple, so structurally-equal declarations
+   share a hash (the invariant [Optimize.same_minified_declaration] uses for its
+   O(1) inequality short-circuit). Bounded depth keeps construction O(1) on
    large value subtrees. *)
 let v (type a) ?(important = false) (property : a Properties.property)
     (value : a) =
@@ -92,14 +91,12 @@ let rec custom_declaration_layer = function
   | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
 (* Equivalence-only normalisation for structural diffing: rewrite a quoted
-   multi-word [<string>] in a custom-property token stream as the equivalent
-   unquoted [<ident>] sequence ([Properties.unquote_font_family_strings]). The
-   two forms substitute identically into [font-family], so cascade treats them
-   as equal even though it keeps both verbatim on output (a custom property is
-   opaque, so unquoting it for real could corrupt a [content] use). Gated on a
-   generic family being present: an unregistered custom property is otherwise
-   type-unknown ([var(--x)] could land in [content]), so only a value that
-   proves itself a font-family list folds. *)
+   multi-word [<string>] in a custom-property stream as the equivalent unquoted
+   [<ident>] sequence. The forms substitute identically into [font-family] so
+   cascade treats them as equal, but keeps both verbatim on output (unquoting an
+   opaque custom property could corrupt a [content] use). Gated on a generic
+   family being present, since an unregistered property is otherwise
+   type-unknown. *)
 let unquote_custom_font_strings = function
   | Declaration
       {
@@ -223,12 +220,10 @@ let raw_value_has_invalid_var raw_value =
   Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
 
 let raw_value_contains_var raw_value =
-  (* CSS Custom Properties Level 1 section 3: a top-level [var()] in a
-     declaration value makes the typed reader unable to validate the substituted
-     result at parse time, so cascade preserves the value verbatim. A nested
-     [var()] inside another function (e.g. [attr(name type(<color>), var(--fb,
-     red))]) doesn't extend that leniency to the surrounding tokens - it's only
-     relevant if it's a top-level component of the value. *)
+  (* CSS Custom Properties 1 section 3: a top-level [var()] leaves the typed
+     reader unable to validate the substituted result, so cascade keeps the
+     value verbatim. A [var()] nested inside another function does not extend
+     that leniency to the surrounding tokens; only a top-level one counts. *)
   let is_top_level_var = function
     | Component.Func { node = { name; _ }; _ }
       when String.lowercase_ascii_preserve name = "var" ->
@@ -309,14 +304,11 @@ let is_decl_unknown_property_name name =
           Cursor.is_done r
       | exception Cursor.Parse_error _ -> false)
 
-(** [is_invalid decl] is [true] when [decl]'s typed value is a known
-    spec-violation cascade detected at parse time. The minify-time
-    [Optimize.drop_invalid] pass removes such declarations.
-
-    Unknown property names are not invalid - browsers preserve unrecognized
-    declarations (CSS Syntax 3 §5.4 ignores them at used-value time but keeps
-    them in the cascade), and Cascade emits them as raw component lists.
-    Vendor-prefix extensions are also preserved unchanged. *)
+(** [is_invalid decl] is [true] when [decl]'s typed value is a known spec
+    violation detected at parse time; [Optimize.drop_invalid] removes such
+    declarations under minify. An unknown property is not invalid: browsers keep
+    unrecognised declarations (CSS Syntax 3 §5.4), and cascade emits them (and
+    vendor-prefix extensions) as raw component lists. *)
 let rec is_invalid = function
   | Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property; value; _ } ->
@@ -479,13 +471,11 @@ let rec property_key decl =
   | Theme_guarded { decl; _ } -> property_key decl
 
 (* Equality of the typed property tag. The [property] GADT has only two
-   payload-carrying constructors ([Custom_property] / [Unknown_property], both
-   string), compared on their payload. Every other constructor is nullary and
-   interned by the compiler, so physical equality of the unboxed [prop_key]
-   short-circuits the common case ([Width]/[Width], ...) and answers a mismatch
-   ([Custom_property]/[Width]) correctly, with no allocation. The [property]
-   values are existentially typed (two [Declaration] nodes carry different
-   ['a]), so they are packed into [prop_key] to compare under one type. *)
+   payload-carrying constructors ([Custom_property]/[Unknown_property], both
+   string); every other is nullary and interned, so physical equality of the
+   unboxed [prop_key] short-circuits the common case allocation-free.
+   Existential [property] values are packed into [prop_key] to compare under one
+   type. *)
 let same_property d1 d2 =
   match (property_key d1, property_key d2) with
   | Key (Custom_property a), Key (Custom_property b) -> String.equal a b
@@ -1776,12 +1766,10 @@ let read_custom_property_declaration t : declaration =
     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
-  (* CSS Custom Properties for Cascading Variables 1 sec. 2.1: the
-     [<declaration-value>] production matches "any sequence of one or more
-     tokens". The whitespace between [:] and the value IS the value when it's
-     the only thing there ([--foo: ;] declares the property with a single
-     whitespace token); don't skip it before [consume_until_semicolon] or the
-     value's token count becomes input-dependent. *)
+  (* CSS Custom Properties 1 sec. 2.1: [<declaration-value>] matches "any
+     sequence of one or more tokens", so the whitespace after [:] IS the value
+     when nothing else follows ([--foo: ;]). Don't skip it before
+     [consume_until_semicolon], or the token count becomes input-dependent. *)
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_custom_important raw_value in

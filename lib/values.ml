@@ -197,12 +197,11 @@ let read_color_keyword_of_string keyword : color option =
   (* CSS system colors - case-insensitive matching *)
   | _ -> read_system_color_of_string keyword
 
-(* Inside a custom-property body, colour keywords (the named colours,
-   [transparent], [currentcolor], [auto], [inherit]) are ASCII-case-insensitive
-   value idents whose canonical spelling is lower-case, like the CSS-wide
-   keywords [Parser.fold_value_ident] already folds. System colours stay
-   untouched because their canonical spelling is mixed-case; idents that name no
-   colour keyword pass through so a class-name token keeps its source case. *)
+(* Inside a custom-property body, colour keywords ([transparent], named colours,
+   ...) are ASCII-case-insensitive idents whose canonical spelling is
+   lower-case. System colours are left alone (canonical spelling is mixed-case);
+   non-colour idents pass through so a class-name token keeps its source
+   case. *)
 let fold_custom_value_ident s =
   let lower = String.lowercase_ascii s in
   if
@@ -820,17 +819,13 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
-(* CSS Values 4 §10.7 value-independent calc identities. These hold for any
-   finite operand, so they fold even across a kept [var()]: inside [calc()] a
-   [var()] is single-valued, so [var * 1 = var] regardless of what the variable
-   resolves to. The identities that keep an operand ([x * 1], [1 * x], [x / 1],
-   [x + 0], [0 + x], [x - 0]) return that operand verbatim, so the result is
-   always the same type. The zero-producing cases need the type's canonical zero
-   ([Num 0.] for numbers, [Val Zero] for lengths): [~zero] supplies it.
-   [~is_zero] recognises a typed zero leaf ([0px], not just the unitless [0]) so
-   a literal zero length collapses [0px * x] too. Operands are the
-   already-evaluated subtrees; numeric [op] numeric must be folded by the caller
-   first. *)
+(* CSS Values 4 §10.7 value-independent calc identities: hold for any finite
+   operand, so they fold even across a kept [var()] (single-valued inside
+   [calc()], so [var * 1 = var]). Identity cases ([x * 1], [x / 1], [x + 0],
+   ...) return the operand verbatim; zero-producing cases take the type's
+   canonical zero from [~zero], and [~is_zero] recognises a typed zero leaf
+   ([0px], not just [0]) so [0px * x] collapses too. Operands are
+   already-evaluated; numeric op numeric is the caller's job. *)
 let calc_identity : type a.
     zero:a calc ->
     is_zero:(a -> bool) ->
@@ -861,12 +856,10 @@ let calc_identity : type a.
    ([calc_identity]). The per-type evaluators ([eval_length_calc] /
    [eval_lp_calc]) add the typed [Val] combinations ([1px + 2px], [2px * 3]) and
    pass their own [~zero] / [~is_zero] so a typed zero collapses too. *)
-(* Context threaded through the calc simplifier for rewrites that depend on the
-   surrounding stylesheet. [var_is_single_valued n] reports whether [--n] is
-   registered with a single-component [@property] syntax, so its [var()]
-   substitutes exactly one calc term and a redundant nested [calc(var(--n))]
-   grouping may be dropped. The default knows nothing, so every such rewrite is
-   a no-op. *)
+(* Context threaded through the calc simplifier. [var_is_single_valued n] reports
+   whether [--n] has a single-component [@property] syntax, so [calc(var(--n))]
+   substitutes one term and its redundant grouping may be dropped. The default
+   knows nothing, so every such rewrite is a no-op. *)
 type calc_ctx = { var_is_single_valued : string -> bool }
 
 let default_calc_ctx = { var_is_single_valued = (fun _ -> false) }
@@ -920,13 +913,10 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
               | None -> Expr (l, op, r))))
 
 (* CSS Values 4 §10.7 typed [calc()] reduction, shared by every dimensioned
-   type. The [Expr] dispatch is identical across types; only the per-type leaf
-   operations differ, so they are passed in: [math_fn] reduces a static math
-   function to a typed leaf, [scale] multiplies or divides a [Val] by a unitless
-   number, [combine] adds or subtracts two [Val]s, and [zero] / [is_zero] drive
-   the additive and multiplicative identities. A type with no [scale] /
-   [combine] for a given operand shape returns [None] and the [calc()] is kept
-   verbatim. *)
+   type: the [Expr] dispatch is identical, only the per-type leaves differ and
+   are passed in ([math_fn], [scale], [combine], [zero] / [is_zero] for the
+   identities). A shape with no [scale] / [combine] returns [None] and the
+   [calc()] is kept verbatim. *)
 let rec eval_typed_calc : type a.
     math_fn:(math_fn -> a calc) ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
@@ -1233,13 +1223,11 @@ let length_combine op v1 v2 =
       | _ -> None)
   | _ -> None
 
-(* CSS Values 4 10.7: multiplying a typed length by a unitless number scales the
-   length, leaving the unit unchanged. Division folds only when the quotient is
-   [exact] (see [exact_div]); otherwise the caller keeps the [calc()] wrapper to
-   avoid precision loss. Dividing by a math constant ([pi] / [e] / ...) is an
-   exception: the divisor is irrational, so the quotient can never be exact and
-   keeping [calc()] preserves no more precision than the browser computes - fold
-   to the rounded value, matching multiplication by the same constant. *)
+(* CSS Values 4 §10.7: a unitless factor scales a typed length, unit unchanged.
+   Division folds only when [exact_div] is exact, else the [calc()] is kept to
+   avoid precision loss. Exception: an irrational divisor (a math constant [pi]
+   / [e] / ...) can never be exact, and keeping [calc()] preserves no more
+   precision than the browser computes, so fold to the rounded value. *)
 let length_scale ?(exact = true) op v n =
   if not (Float.is_finite n) then Option.none
   else
@@ -1550,13 +1538,11 @@ let ordered_linear_terms terms =
           Hashtbl.replace table unit
             { term with value = term.value +. n; count = term.count + 1 })
     terms;
-  (* CSS Values 4 sec. 10.10: a calc() expression's resulting type is the union
-     of its argument types. Dropping a zero-percentage term from [calc(100px +
-     0%)] would narrow [<length-percentage>] to [<length>] and break transitions
-     / animations interpolating against another [<length- percentage>], so [0%]
-     is kept as a type sentinel. Other zero-valued terms (e.g. [0px] when
-     another [px] term carries the value) are dropped because their unit is
-     already represented in the result. *)
+  (* CSS Values 4 §10.10: a calc()'s type is the union of its argument types.
+     Dropping [0%] from [calc(100px + 0%)] would narrow [<length-percentage>] to
+     [<length>] and break interpolation, so [0%] is kept as a type sentinel.
+     Other zero terms (e.g. [0px] beside another [px]) drop, their unit already
+     in the result. *)
   let keep_zero_term term =
     length_unit_is_pct term.unit
     && Hashtbl.fold
@@ -2221,11 +2207,10 @@ let pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
-(* CSS Color 4 §6.4: every CSS named colour has a canonical sRGB byte triple.
-   The minify path routes [Named n] through this table to pick the shortest
-   spec-equivalent spelling (name vs [#hex]). Hex values are stored in their
-   shortest form ([shorten_hex] folds 6-char [rrggbb] into 3-char [rgb] when
-   each pair is identical), so [pp_color]'s back-conversion is a no-op. *)
+(* CSS Color 4 §6.4: every named colour has a canonical sRGB byte triple. Minify
+   routes [Named n] through this table for the shortest spelling (name vs
+   [#hex]). Hex is stored shortest ([shorten_hex] folds [rrggbb] to [rgb]), so
+   [pp_color]'s back-conversion is a no-op. *)
 
 (** Convert a named color to its hex equivalent (name, hex_value). Returns the
     shortest representation matching Lightning CSS behavior. *)
@@ -2859,14 +2844,12 @@ let lerp_byte b1 b2 w1 w2 =
   Float.to_int
     (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
 
-(* Mix two static colours in sRGB per CSS Color 5 sec. 5. Returns [None] if
-   either operand can't be folded statically (e.g. contains [Var] / [Calc]) or
-   the percentages reduce to zero weight. CSS Color 4 sec. 4.2.3 [none]
-   sentinel: a channel that is [none] in one operand inherits the other
-   operand's analogous channel instead of being averaged in as a zero; if both
-   are [none] the mix result is also [none] for that channel (returned as zero
-   here because the caller routes the mixed bytes through [Hex] and [#000000] is
-   the shortest spelling for a fully-[none] mix). *)
+(* Mix two static colours in sRGB per CSS Color 5 §5. [None] if either operand
+   can't fold statically ([Var] / [Calc]) or the weights reduce to zero. CSS
+   Color 4 §4.2.3 [none] sentinel: a [none] channel inherits the other operand's
+   channel rather than averaging in a zero; both [none] yields [none] (returned
+   as zero, since the caller routes through [Hex] and [#000000] is the shortest
+   fully-[none] spelling). *)
 let mix_srgb_bytes c1 c2 ~p1 ~p2 =
   match
     (static_color_to_srgb_channels c1, static_color_to_srgb_channels c2)
@@ -3955,12 +3938,11 @@ let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
    [rem] on [deg] operands), then pick the shortest of the
    losslessly-interconvertible spellings (deg / turn / grad). [rad] goes through
    pi, so it cannot share one magnitude and is left as-is. *)
-(* Shortest spelling of a concrete angle, restricted to unit conversions whose
-   printed form still denotes the same value. [deg -> turn] divides by 360, which
-   floors a small but non-zero angle to [0turn] once the printer caps the
-   mantissa, silently changing the value; comparing the printed forms back in
-   degrees rejects such value-changing rewrites. The original spelling is always
-   kept (the fold seed), and ties prefer deg. *)
+(* Shortest spelling of a concrete angle, via unit conversions whose printed form
+   still denotes the same value. [deg -> turn] can floor a small angle to [0turn]
+   once the printer caps the mantissa; comparing printed forms back in degrees
+   rejects such value changes. The original spelling seeds the fold; ties prefer
+   deg. *)
 let angle_shortest (a : angle) : angle =
   let render unit f =
     String.length
@@ -4046,11 +4028,10 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(* Pure serialiser: the [Pct] <-> [Num] shortest-spelling choice (including [Pct
-   0. -> 0]) is a node-changing fold that lives in [normalize_number_per-
-   centage], not here. pp now serialises whichever node it is given faithfully.
-   The [~always] flag is retained for caller signature parity; with the swap
-   gone it has no effect on top-level emission. *)
+(* Pure serialiser: the [Pct] <-> [Num] shortest-spelling choice ([Pct 0. -> 0]
+   included) is a node-changing fold in [normalize_number_percentage], not here.
+   [~always] is kept for caller signature parity but has no effect on top-level
+   emission. *)
 let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
@@ -4058,12 +4039,10 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
-(* AST-level [<number-percentage>] canonicalisation: at a typed leaf where
-   [<percentage>] and [<number>] are spec-equivalent (100% = 1), pick the
-   shorter spelling so [pp_number_percentage] serialises a canonical node
-   faithfully. [Var] and [Calc] sub-forms are left untouched - inside a calc(),
-   [%] and number are not interchangeable, and a [var()] reference is
-   context-free. *)
+(* AST-level [<number-percentage>] canonicalisation: at a typed leaf where [%] and
+   number are spec-equivalent (100% = 1), pick the shorter so
+   [pp_number_percentage] serialises a canonical node. [Var] / [Calc] are left
+   alone (inside calc() [%] and number aren't interchangeable). *)
 (* [<number-percentage>] shares [<percentage>]'s scaling/combining; the type is
    distinct, so the helpers are too. *)
 let np_scale ?(exact = true) op (np : number_percentage) n :
@@ -4323,12 +4302,11 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
      shortest-spelling minify win, but [%] on these axes is an evergreen-target
      fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
   if ctx.Pp.minify && (not ctx.Pp.lossless) && not ctx.Pp.enforce_spec then
-    (* Derive the percentage form from the value the number string [n] actually
-       re-parses to, not from the raw float [f]. Otherwise an [f] that rounds to
-       [n] (e.g. -0.00798 -> "-.008") can keep the number because its raw
-       percentage is long ("-1.995%"), while the re-parsed -0.008 has a short
-       percentage ("-2%") and flips on the next pass - making the spelling
-       non-idempotent. *)
+    (* Derive the percentage form from what the number string [n] re-parses to,
+       not the raw float [f]: an [f] rounding to [n] ([-0.00798] -> "-.008")
+       could keep the number for a long raw percentage ("-1.995%") while the
+       re-parsed [-0.008] has a short one ("-2%"), flipping on the next pass
+       (non-idempotent). *)
     let n_value = try float_of_string n with Failure _ -> f in
     let pct = string_of_lab_float (n_value /. pct_scale) ^ "%" in
     if String.length pct < String.length n then pct else n

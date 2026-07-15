@@ -11,10 +11,9 @@ type cascade_rule = {
 type t = {
   custom_properties : Declaration.declaration list;
   runtime_vars : string list;
-      (** Custom-property names (without the [--] prefix) that must stay live
-          [var()] references: a resolver keeps them like a [~runtime] var rather
-          than folding to a theme value, so the closed-world inliner can still
-          apply value-independent simplifications (calc identities) without
+      (** Custom-property names (no [--] prefix) that must stay live [var()]
+          references: a resolver keeps them like a [~runtime] var, so the
+          inliner can still apply value-independent simplifications without
           collapsing the reference. *)
   inherited_values : Declaration.declaration list;
   initial_values : Declaration.declaration list;
@@ -48,11 +47,10 @@ type query = {
       (** Media features the rendering environment claims to expose. Build
           entries with [Media.feature] or [Media.boolean]. *)
   supports : Supports.t list;
-      (** Capability flags the rendering environment claims to support. Each
-          entry is normally a [Supports.Property] or [Supports.Func] leaf, built
-          with [Supports.property] / [Supports.func]. Compound forms ([And] /
-          [Or] / [Not]) are accepted but only match a query that is structurally
-          identical. *)
+      (** Capability flags the environment claims to support, normally a
+          [Supports.Property]/[Supports.Func] leaf. Compound forms
+          ([And]/[Or]/[Not]) are accepted but match only a structurally
+          identical query. *)
   container_name : string option;
   container_features : Container.t list;
       (** Container capabilities exposed by the matching container. Build size
@@ -242,12 +240,10 @@ let scope ?layer_order ?layer ctx =
     layer = (match layer with Some _ -> layer | None -> ctx.layer);
   }
 
-(* CSS Cascade 5 §6.4.3 layered custom-property lookup.
-
-   Important-flagged declarations beat normal ones. For normal author rules the
-   unlayered declaration wins, otherwise later layers beat earlier layers. For
-   important author rules the order reverses: earlier layers beat later layers,
-   and unlayered ranks below them. *)
+(* CSS Cascade 5 §6.4.3 layered custom-property lookup. Important beats normal.
+   Normal author: unlayered wins, else later layers beat earlier. Important
+   author: the order reverses (earlier layers beat later, unlayered ranks
+   below). *)
 let custom_layer_index ~layer_order = function
   | None -> max_int
   | Some name ->
@@ -964,13 +960,11 @@ module Calc_residual = struct
           (ops.combine_value_num value Values.Mul n)
     | _ -> None
 
-  (* The value-independent identities ([x * 0], [x * 1], [x + 0], ...) live in
-     [Values.calc_identity], shared with the AST evaluators so the two paths
-     never drift. They hold for any operand, so they apply even to an unresolved
-     [var()] (a [~runtime] theme var). [ops.is_zero] lets a literal zero value
-     ([0px], not just the unitless [0]) collapse too, so [divide-x-0]'s
-     [calc(0px * var(--tw-divide-x-reverse))] reduces to [0]. Tried after the
-     numeric / value folds so a resolved [Val] keeps its typed zero. *)
+  (* Value-independent identities ([x * 0], [x * 1], [x + 0], ...) live in
+     [Values.calc_identity], shared with the AST evaluators so the paths never
+     drift. They hold for any operand, so they apply to an unresolved [var()]
+     too; [ops.is_zero] collapses a literal zero ([0px], not just [0]). Tried
+     after the numeric/value folds so a resolved [Val] keeps its typed zero. *)
   let fold_identity_expr ops left op right =
     Values.calc_identity ~zero:ops.zero ~is_zero:ops.is_zero left op right
 
@@ -1134,10 +1128,9 @@ module Length = struct
   }
 
   (* CSS Media Queries 4 §1.3: relative units in @media/@container resolve
-     against the initial value of font-size on the root element. Pre-fill
-     [parent_font_size] / [root_font_size] with the 16px default so [em] / [rem]
-     in queries always have a reference, while a fresh user-supplied
-     [Length.ctx] without these fields will reject relative units. *)
+     against root font-size. Pre-fill [parent_font_size]/[root_font_size] with
+     the 16px default so [em]/[rem] in queries always have a reference; a fresh
+     [Length.ctx] without these rejects relative units. *)
   let media_default =
     {
       root_font_size = Some 16.;
@@ -1219,12 +1212,10 @@ module Length = struct
       container_height = unwrap_px ctx.container_height;
     }
 
-  (* CSS Values 4 §10.11 simplification of a typed [length calc]. Folds every
-     subtree whose operands the [ctx] can collapse to absolute lengths, and
-     leaves [Var] / [Sibling_*] / unresolvable subtrees in place. The result is
-     still a [length calc]: a fully reducible body collapses to [Val (Px _)]
-     (caller decides whether to keep the [calc()] wrapper); a partially
-     reducible body keeps the [Expr] structure with the simplified operands. *)
+  (* CSS Values 4 §10.11 simplification of a typed [length calc]: fold every
+     subtree the [ctx] can collapse to absolute lengths, leaving
+     [Var]/[Sibling_*]/unresolvable subtrees. The result stays a [length calc] -
+     [Val (Px _)] when fully reducible, else [Expr] with simplified operands. *)
   let eval_combine_lengths ctx la lb (op : Values.calc_op) :
       Values.length option =
     match (to_px ctx la, to_px ctx lb, op) with
@@ -3702,9 +3693,7 @@ and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name keyword
           eval_source ctx decl |> declaration_with_importance important)
         source
 
-(* [eval] is a declaration-level abstract interpreter: it rewrites a CSS
-   declaration to a more-defined declaration in the same typed AST, preserving
-   unresolved subtrees as residual syntax. The typed walker is the only semantic
-   path; string computed-value resolution is deliberately not used as an
-   alternate evaluator. *)
+(* [eval] is a declaration-level abstract interpreter: it rewrites a declaration
+   to a more-defined one in the same typed AST, keeping unresolved subtrees as
+   residual syntax. The typed walker is the only semantic path. *)
 let eval ?layer_order ?layer ctx decl = eval_typed ?layer_order ?layer ctx decl

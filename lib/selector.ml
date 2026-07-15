@@ -661,22 +661,12 @@ let read_attribute t =
       Attribute (ns, attr_name, matcher, flag))
     t
 
-(** Parse the An+B microsyntax per Selectors Level 4 section 9.2 / CSS Syntax
-    Level 3 section 6. The grammar is handled as a set of shape patterns against
-    the component stream:
-
-    - Keywords [odd] / [even].
-    - Bare [<integer>].
-    - [<n-dimension>] (e.g. [5n]) optionally followed by an offset.
-    - [<ndashdigit-dimension>] like [5n-5] (single token with unit [n-5]).
-    - [<ndash-dimension>] like [5n-] followed by a signless integer.
-    - Ident forms: [n], [-n], [n-5], [-n-5], [n-], [-n-] with same offset
-      handling.
-    - A leading [+] Delim (no whitespace before [n]) promoting the ident forms.
-
-    Case-insensitivity per CSS idents (section 3.3). Whitespace between a
-    leading [+] sign and the ident is invalid: the [+] is part of the ident form
-    lexically, so [+n] is valid but [+ n] is not. *)
+(** Parse the An+B microsyntax (Selectors 4 section 9.2 / CSS Syntax 3 section
+    6) as shape patterns over the component stream: [odd]/[even], bare
+    [<integer>], [<n-dimension>] with optional offset, the [5n-5]/[5n-] token
+    variants, and the [n]/[-n]/[n-5]/... ident forms with an optional leading
+    [+]. Idents are case-insensitive (section 3.3); [+ n] (whitespace after [+])
+    is invalid since [+] is lexically part of the ident form. *)
 
 (* Numeric helpers: split an arbitrary ident's tail into an optional [-digits]
    suffix, for ndashdigit / ndash / n patterns. *)
@@ -1555,13 +1545,11 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    (* CSS Selectors 4 §3.5: at non-forgiving sites we still tolerate unknown
-       pseudo-classes for forward compatibility - vendor pseudos like
-       [::-webkit-scrollbar:horizontal] and authored future-pseudos must
-       round-trip through the parser. The non-forgiving rejection lives where
-       the spec actually requires it: inside [:not()] / [:has()] (see
-       [read_not_content] / [read_has_content]) and inside the rule reader when
-       an entire selector list is unknown. *)
+    (* CSS Selectors 4 §3.5: tolerate unknown pseudo-classes for forward compat
+       (vendor pseudos, authored future-pseudos must round-trip). Non-forgiving
+       rejection lives where the spec requires it: inside [:not()]/[:has()]
+       ([read_not_content]/[read_has_content]) and in the rule reader when a
+       whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
@@ -1608,12 +1596,11 @@ and read_complex t =
         combine left Descendant (read_complex t)
       else left
 
-(* CSS Selectors 4 section 3.5: the top-level rule selector list (and any
-   non-forgiving alias of it) is an unforgiving site. [read_compound] keeps
-   [Unknown_pseudo_class] in the AST so authored vendor pseudos and
-   forward-compat selectors can round-trip, but a top-level selector that
-   carries one is a spec deviation; raise here so [Selector.of_string
-   ".ok,:future-pseudo"] surfaces a [Parse_error]. *)
+(* CSS Selectors 4 section 3.5: the top-level rule selector list is an
+   unforgiving site. [read_compound] keeps [Unknown_pseudo_class] so vendor and
+   forward-compat pseudos round-trip, but one at top level is a spec deviation;
+   raise so [Selector.of_string ".ok,:future-pseudo"] surfaces a
+   [Parse_error]. *)
 let validate_unforgiving_pseudo t sel =
   if has_unknown_pseudo_class sel then
     Cursor.err t "unknown pseudo-class in unforgiving selector list"
@@ -1662,12 +1649,10 @@ let read_relative t =
     Cursor.err t "unexpected characters after selector";
   match selectors with [ s ] -> s | _ -> List selectors
 
-(* CSS Nesting 1 sec. 2: inside a nested rule a selector is implicitly relative
-   to the parent [&], so an explicit leading [& <combinator>] is redundant. Drop
-   it: [& .bar] -> [.bar] (the bare nested form is itself [& .bar]); [& > .bar]
-   -> [> .bar] (the relative form keeps the combinator). Only the leading [&]
-   that is the whole left operand of a combinator is removed; [&.bar] (compound)
-   and a deeper [&] stay untouched. *)
+(* CSS Nesting 1 sec. 2: a nested selector is implicitly relative to [&], so a
+   leading [& <combinator>] is redundant: [& .bar] -> [.bar], [& > .bar] -> [>
+   .bar]. Only a leading [&] that is the whole left operand of a combinator is
+   removed; [&.bar] (compound) and a deeper [&] stay. *)
 let rec drop_redundant_nesting_prefix (sel : t) : t =
   match sel with
   | Combined (Nesting, Descendant, right) -> right
@@ -2325,15 +2310,12 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
-(* Rewrite a selector to its canonical representation so that selectors denoting
-   the same thing are structurally equal. Drops the implied [*] from a
-   multi-part compound ([*::before] -> [::before], [*.foo] -> [.foo]), collapses
-   a one-part compound to that part, and de-duplicates and sorts selector-list
-   alternatives by printed form - both the top-level [List] list and the
-   unordered-union pseudo-class lists ([:is], [:where], [:not], [:has], plus the
-   legacy [:-moz-any] / [:-webkit-any] aliases of [:is]). Per Selectors 4 the
-   matching of these lists is set-based, so their order has no effect on
-   matching or specificity. *)
+(* Canonicalise so selectors denoting the same thing are structurally equal:
+   drop the implied [*] from a multi-part compound ([*.foo] -> [.foo]), collapse
+   a one-part compound, and dedup/sort selector-list alternatives by printed
+   form (both [List] and the set-based [:is]/[:where]/[:not]/[:has] lists, incl.
+   the [:-moz-any]/[:-webkit-any] aliases, whose order Selectors 4 makes
+   irrelevant to matching and specificity). *)
 let canonicalize sel =
   map
     (fun node ->
@@ -2492,11 +2474,10 @@ let rec specificity = function
   | Relative (_, sel) -> specificity sel
   | List xs -> xs |> List.map specificity |> max_specificity
 
-(* Real [top_level_is_unwrap]: unwrap [:is(s1, s2, ...)] to a selector list only
-   when every argument has the same specificity AND is structurally simple. CSS
-   Selectors 4 sec. 17 makes [:is(...)] take the [max] specificity of its
-   arguments, so unwrapping changes per-element specificity unless all arguments
-   are already equal. *)
+(* Unwrap [:is(s1, s2, ...)] to a selector list only when every argument has the
+   same specificity AND is structurally simple. Selectors 4 sec. 17 gives [:is]
+   the [max] specificity of its arguments, so unwrapping changes specificity
+   unless all are already equal. *)
 let rec is_unwrap_safe_is_arg : t -> bool = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
   | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
@@ -2524,11 +2505,9 @@ let rec top_level_is_unwrap : t -> t = function
   | other -> other
 
 (* Public [pp] applies the top-level [:is()] unwrap under [minify] so every
-   caller (including direct [Selector.pp ctx sel] uses in the test harness) sees
-   the canonical form. The internal [pp] above still recurses through the
-   un-unwrapped tree because the unwrap is only sound at the entry point -
-   nested [Is] inside [Combinator] / [Compound] would change matching if
-   distributed. *)
+   caller sees the canonical form. The internal [pp] recurses through the
+   un-unwrapped tree because the unwrap is sound only at the entry point: a
+   nested [Is] inside [Combinator]/[Compound] would change matching. *)
 let pp_inner = pp
 
 let pp ctx sel =
@@ -2628,11 +2607,10 @@ let rec has_peer_marker = function
     peer-* variants. *)
 let has_is_where_pattern sel = has_group_marker sel || has_peer_marker sel
 
-(** Check if a pseudo-class is a "newer" one with limited browser support. These
-    should not be combined in selector lists with :is(:where()) variants because
-    if the browser doesn't support the pseudo-class, the entire rule would be
-    dropped — whereas the :is(:where()) variant would survive on its own due to
-    forgiving selector parsing. *)
+(** A "newer" pseudo-class with limited browser support: it must not be combined
+    in a selector list with an [:is(:where())] variant, since a browser that
+    lacks it drops the whole rule, whereas the forgiving variant would survive.
+*)
 let is_newer_pseudo_class = function
   | User_valid | User_invalid -> true
   | _ -> false

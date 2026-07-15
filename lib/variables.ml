@@ -203,12 +203,10 @@ let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
         (String.concat ""
            [ "Unsupported CSS syntax modifier: '"; String.make 1 c; "'" ])
 
-(* CSS Properties and Values API 1 strictly allows one modifier per
-   syntax-component, but the [+#] chain is the natural shape for
-   font-family-like registrations (a comma-separated list of space-separated
-   ident sequences). Allow exactly that chain so [<custom-ident>+#] parses; keep
-   duplicate-same chains ([++], [##]) and the reverse order ([#+]) rejecting via
-   the unrecognised body. *)
+(* CSS Properties and Values API 1 allows one modifier per syntax-component, but
+   the [+#] chain is the natural shape for font-family-like registrations, so
+   allow exactly that ([<custom-ident>+#]); [++], [##] and the reverse [#+]
+   still reject via the unrecognised body. *)
 let split_syntax_modifiers s : string * char list =
   let n = String.length s in
   if n = 0 then (s, [])
@@ -2482,12 +2480,10 @@ let string_of_fallback inner =
     information which would need to be resolved from a variable registry or
     context. *)
 let read_reference (r : Cursor.t) : string * string option =
-  (* CSS Syntax 3 §4.3.6: EOF inside a function is a parse error. We tolerate it
-     only when the fallback list was opened with a comma — the trailing
-     [<string-token>] from §4.3.5 may have eaten the function's closing [)] — so
-     the declaration still carries a recoverable name + fallback pair. Without a
-     fallback there is no recovery signal and the malformed var() is
-     rejected. *)
+  (* CSS Syntax 3 §4.3.6: EOF inside a function is a parse error, tolerated only
+     when the fallback list opened with a comma (a §4.3.5 [<string-token>] may
+     have eaten the closing [)]) so a recoverable name + fallback survives.
+     Without a fallback there is no recovery signal, so it is rejected. *)
   let terminated =
     match Cursor.peek r with
     | Some (Component.Func fn) -> fn.node.terminated

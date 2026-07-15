@@ -633,12 +633,10 @@ let media_queries t =
 
 (* AST Introspection Helpers *)
 
-(* Per CSS Cascade 6 section 6.4.3, a dotted layer name like [foo.bar] is
-   shorthand for the nested form [@layer foo { @layer bar { ... } }]: both forms
-   declare the layers [foo] and [foo.bar] and place the block contents in
-   [foo.bar]. We walk the @layer tree once, expanding any dotted names into
-   their nested equivalent and prefixing each block with its parent's path, so
-   [foo.bar] is reachable under one canonical name regardless of input shape. *)
+(* CSS Cascade 6 sec. 6.4.3: a dotted layer name [foo.bar] is shorthand for the
+   nested [@layer foo { @layer bar { ... } }]. Walk the @layer tree once,
+   expanding dotted names and prefixing each block with its parent's path, so
+   [foo.bar] is reachable under one canonical name whatever the input shape. *)
 let qualified_layer_blocks sheet =
   let prefix_with parent name =
     if parent = "" then name else parent ^ "." ^ name
@@ -817,14 +815,11 @@ let rec statements_for_inline statement =
   | Starting_style block -> [ Starting_style (inline_block block) ]
   | statement -> [ statement ]
 
-(* Pure serialiser. Walks the AST and emits CSS text. No optimisation, no theme
-   resolution, no inline-vars rewriting. Spec recovery (drop invalid
-   declarations, unknown at-rules, empty rules) still applies because the parser
-   already preserved those shapes for round-trip and browsers discard them
-   during parse - that isn't an optimisation, just keeping the output
-   observationally equivalent to what a fresh parse would produce. Compose
-   {!optimize}, {!resolve_theme}, {!inline_vars} upstream when those rewrites
-   are needed. *)
+(* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
+   rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
+   rules) still applies - browsers discard those at parse, so it keeps the
+   output observationally equal to a fresh parse, not an optimisation. Compose
+   {!optimize}, {!resolve_theme}, {!inline_vars} upstream when needed. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
@@ -977,13 +972,11 @@ let bare_theme_name raw_name =
    structurally (see {!Variables.var_refs_in_value_string}). *)
 let var_names_in_theme_value = Variables.var_refs_in_value_string
 
-(* Every [var()] reference (with leading [--]) found by structurally scanning
-   each declaration's serialized value, typed declarations included.
-   [collect_var_names] only records a nested fallback var when it carries the
-   [Var_fallback] spelling; a var nested inside a *typed* fallback
-   ([transition-timing-function: var(--tw-ease, var(--default-...))]) is
-   invisible to it. Seeding theme resolution from this too lets such a nested
-   theme var resolve transitively instead of surviving as a nested [var()]. *)
+(* Every [var()] reference found by structurally scanning each declaration's
+   serialized value, typed declarations included. [collect_var_names] misses a
+   var nested inside a *typed* fallback (var(--tw-ease, var(--default-...))), so
+   seeding theme resolution from this too lets such a nested theme var resolve
+   transitively instead of surviving. *)
 let structural_var_refs (stmts : Stylesheet.statement list) : string list =
   let acc = ref [] in
   let note d =
@@ -1221,17 +1214,14 @@ let emit_transitive_theme_refs ~theme_defaults stylesheet =
         let result, merged = merge_into_root_scope injected_decls stylesheet in
         if merged then result else injected @ stylesheet
 
-(* Inline the theme defaults the resolver could resolve, leaving every other
-   [var()] reference live. Only resolved names get substituted: [Inline.vars]
-   alone would also collapse [var(--x, fallback)] for names the resolver
-   returned [None] on (its built-in fallback arm fires when no declaration is
-   visible). A [:root] binding is injected only for resolved names with no
-   declaration of their own; an already-declared theme token inlines from that
-   declaration, so a second binding - which would make it look multiply-defined
-   and keep it live - is skipped. [keep_vars] gains every unresolved name and
-   every declared custom-prop EXCEPT the ones being resolved, so unrelated
-   definitions (e.g. an @supports polyfill's [--tw-x:initial]) stay while a
-   resolved token is inlined and dropped. *)
+(* Inline only the theme defaults the resolver resolved, leaving every other
+   [var()] live. [Inline.vars] alone would also collapse [var(--x, fallback)]
+   for unresolved names (its fallback arm fires when no declaration is visible).
+   A [:root] binding is injected only for resolved names with no declaration of
+   their own; an already-declared token inlines from that declaration, and a
+   second binding would keep it live. [keep_vars] gains every name except the
+   ones being resolved, so unrelated definitions (an @supports polyfill's
+   [--tw-x:initial]) stay. *)
 let inline_theme_defaults ?theme ?theme_defaults ~keep_set stylesheet =
   let keep_vars = Pp.String_set.elements keep_set in
   let defaults =

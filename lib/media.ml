@@ -413,12 +413,10 @@ let pp_feature : feature Pp.t =
       pp_value ctx b;
       Pp.char ctx ')'
 
-(* CSS Media Queries 4 sec. 3.3: a lower bound and an upper bound on the same
-   feature combine into the two-sided [<value> <op> <name> <op> <value>]
-   interval, which is shorter than repeating the feature name across an [and].
-   [feature_bound] normalises a single-bound feature ([min-]/[max-] plains and
-   the [<name> <op> <value>] / [<value> <op> <name>] range forms) into a [(name,
-   side, op, value)] view so two bounds can be paired. *)
+(* CSS Media Queries 4 sec. 3.3: a lower and an upper bound on the same feature
+   combine into the two-sided [<value> <op> <name> <op> <value>] interval.
+   [feature_bound] normalises a single-bound feature into a [(name, side, op,
+   value)] view so two bounds can be paired. *)
 type bound_side = Lower | Upper
 
 let feature_bound (f : feature) : (name * bound_side * cmp * value) option =
@@ -815,10 +813,8 @@ let validate_plain_feature (name : name) value =
     | Some _ -> name
     | None -> name
   in
-  (* [env()] / [var()] / [calc()] etc. produce a typed value at use time;
-     cascade can't determine the resolved type at parse time, so accept them
-     wherever a typed numeric is allowed and let the consumer do its own
-     validation. *)
+  (* [env()] / [var()] / [calc()] resolve their type at use time, so accept them
+     wherever a typed numeric is allowed and let the consumer validate. *)
   let is_typed_function = function Function _ -> true | _ -> false in
   let valid_numeric_value (name : name) value =
     is_typed_function value
@@ -1227,11 +1223,10 @@ let feature name value : t =
 
 let boolean name : t = Cond (Feature (Boolean (name_of_string name)))
 
-(* CSS Media Queries 4 sec. 3.4 / 3.3: under minify the optimizer rewrites
-   [min-X]/[max-X] plains into the range form [X>=V]/[X<=V], and pairs a lower
-   and upper bound on the same feature across an [and] into the two-sided
-   interval. These are target-fact grammar upgrades, so they live in the
-   optimize phase (gated by [~enforce_spec]) rather than the printer. *)
+(* CSS Media Queries 4 sec. 3.4 / 3.3: the optimizer rewrites [min-X]/[max-X]
+   into the range form and pairs a lower and upper bound into the two-sided
+   interval. Target-fact grammar upgrades, so they live in optimize (gated by
+   [~enforce_spec]), not the printer. *)
 let lower_feature : feature -> feature = function
   | Plain (Min base, v) -> Range (base, Ge, v)
   | Plain (Max base, v) -> Range (base, Le, v)
@@ -1314,11 +1309,10 @@ let value_sort_key = function
   | Ident _ -> (100, 0.)
   | Function _ -> (200, 0.)
 
-(* A width feature classifies into the responsive buckets by which side of the
-   range it bounds: a lower bound ([min-width] / [width>=] / [width<=value]) is
-   [Responsive], an upper bound ([max-width] / [width<=] / [width>=value]) is
-   [Responsive_max]. Other width plains and [height] keep the plain
-   length-sorted [Responsive] classification. *)
+(* A width feature buckets by which side it bounds: a lower bound ([min-width] /
+   [width>=]) is [Responsive], an upper bound ([max-width] / [width<=]) is
+   [Responsive_max]. Other width plains and [height] stay length-sorted
+   [Responsive]. *)
 let width_bound_kind name side value : kind option =
   match name with
   | Width ->
@@ -1462,25 +1456,21 @@ let responsive_subkind : t -> int = function
   | Type { trailing = Some c; _ } -> condition_subkind c
   | Type _ | List _ -> 2
 
-(* Within a responsive bucket, sort by decreasing specificity: an element
-   matching [(min-width: 768px)] also matches [(min-width: 640px)], so the
-   largest [min] is the most specific and sorts last; symmetrically the smallest
-   [max] is the most specific and sorts last. The [Responsive_max] value is
-   negated so a single ascending comparator gives the largest-first order
-   ([1024, 768, 640]). *)
+(* Within a responsive bucket, sort by decreasing specificity: the largest [min]
+   (and smallest [max]) is most specific and sorts last. [Responsive_max] is
+   negated so one ascending comparator yields largest-first ([1024, 768,
+   640]). *)
 let responsive_value k =
   match k with
   | Responsive (unit_ord, value) -> (Float.of_int unit_ord *. 1e9) +. value
   | Responsive_max (unit_ord, value) -> (Float.of_int unit_ord *. 1e9) -. value
   | _ -> 0.
 
-(* The sort order is decided by four cheap ordinal keys and, only when those all
-   tie, the serialized text. Extracting the kinds and serializing both allocate
-   ([feature_bound], [Pp.v]), so a sort that re-derives them on every comparison
-   pays that cost O(n log n) times - and queries sharing a breakpoint tie on
-   every ordinal key, so they always reach the text. [key] captures all five
-   components; compute it once per query with [sort_key] and compare with
-   [compare_keys], which allocates nothing. *)
+(* Sort by four cheap ordinal keys, then serialized text on a full tie.
+   Extracting kinds and serializing allocate, and breakpoint-sharing queries tie
+   on every ordinal key so they always reach the text; [sort_key] computes the
+   five components once per query and [compare_keys] compares them
+   alloc-free. *)
 type key = {
   group : int;
   subkind : int;

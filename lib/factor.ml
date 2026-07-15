@@ -10,11 +10,9 @@ type cache = (string * rule list, rule list) Hashtbl.t
 
 let cache () = Hashtbl.create 16
 
-(* Cache identity for a context: every value-typed knob that changes factoring,
-   built explicitly rather than from {!Ctx.pp} so a debug-printer change cannot
-   silently break cache correctness. [registered] is a closure that cannot be
-   keyed; it is constant for a cache's lifetime (one context per top-level
-   optimize), so it does not need to appear here. *)
+(* Cache key over the value-typed knobs that change factoring, built explicitly
+   so a {!Ctx.pp} debug-printer change cannot break cache correctness;
+   [registered] is a constant closure, omitted. *)
 let ctx_key ctx =
   let b x = if x then "1" else "0" in
   String.concat ""
@@ -27,9 +25,8 @@ let ctx_key ctx =
       (match Ctx.objective ctx with `Raw -> "r" | `Transfer -> "t");
     ]
 
-(* Structural key: the rule list keys the cache directly (sound poly hash/equal
-   over the immutable AST), so a lookup hashes a sample instead of rendering
-   every rule to CSS. *)
+(* The rule list keys the cache directly: poly hash/equal is sound over the
+   immutable AST, so a lookup need not render every rule to CSS. *)
 let cache_key ~ctx rules = (ctx_key ctx, rules)
 
 let order_is_original rules graph order =
@@ -73,32 +70,25 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
   let after_bytes = if Stats.profile () then rules_pp_size rules' else 0 in
   let elapsed = Unix.gettimeofday () -. started_at in
   let bytes_saved = Stats.saving () in
-  (* [ordered_rules] and [list_map_preserve] return the input list unchanged by
-     physical identity on a no-op, so a pointer compare detects whether
-     factoring changed anything - no need to render both sides to CSS and
-     compare. *)
+  (* Both return the input unchanged by physical identity on a no-op, so a
+     pointer compare detects change without rendering to CSS. *)
   let changed = rules' != rules in
   record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
     ~after_rules:(List.length rules') ~after_bytes ~bytes_saved ~changed
     ~elapsed;
   if changed then rules' else rules
 
-(* Factoring rewrites are chosen by raw-byte gain, but stylesheets ship
-   DEFLATE-compressed: replacing repeated declaration text (nearly free under
-   LZ77) with unique selector-list structure can grow the compressed output even
-   as raw bytes shrink. Under the [`Transfer] objective, keep a segment's
-   factoring only when the estimated transfer size does not grow. Below
-   [transfer_gate_min_bytes] the estimate is noise against DEFLATE's block
-   overhead, so raw-byte wins stand unchallenged. *)
+(* Stylesheets ship DEFLATE-compressed, so a raw-byte factoring win can grow the
+   compressed output (LZ77-cheap repeated text traded for unique selector
+   structure). Under [`Transfer] keep a segment's factoring only if estimated
+   transfer size does not grow; below this floor the estimate is DEFLATE
+   block-overhead noise, so raw wins stand. *)
 let transfer_gate_min_bytes = 4096
 
-(* The estimate is a greedy-LZ77 approximation, and it costs a factored group by
-   the whole segment's compressibility, so an unrelated grouping elsewhere in
-   the segment shifts it by a byte or two. Revert only when factoring grows the
-   estimate beyond that noise floor, so a sub-percent difference does not flip a
-   distant, otherwise raw-smaller factoring; real regressions (the youtube-class
-   case, ~2% of the segment) stay well clear of it. Reverting on the noise also
-   hurt real gzip - the estimate's error swamps the byte it was chasing. *)
+(* The greedy-LZ77 estimate prices a group by the whole segment's
+   compressibility, so unrelated groupings jitter it a byte or two. Revert only
+   past this margin, so noise cannot flip a distant raw-smaller factoring; real
+   regressions (youtube-class, ~2% of the segment) stay well clear. *)
 let transfer_gate_margin before = max 16 (before / 100)
 
 let render_rules rules =
@@ -157,10 +147,9 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
       | _ -> ());
       result
 
-(* Custom-property rules are no longer cascade barriers: the DAG's conflict
-   model keys each custom property by name (a [var()] consumer writes its own
-   property, not the one it reads), so same-custom-property writes stay ordered
-   while disjoint ones merge and reorder freely. The whole rule list is one DAG
+(* Custom-property rules are not cascade barriers: the DAG keys each custom
+   property by name (a [var()] consumer writes its own property, not the one it
+   reads), so disjoint writes reorder freely and the whole list is one
    segment. *)
 let run ?cache ~ctx ~finalize (rules : rule list) =
   run_segment ?cache ~ctx ~finalize rules
