@@ -1,10 +1,10 @@
 #!/bin/sh
-# Differential test for `cascade apply`: the resolved page must produce the
-# same computed style, for every element, as the original page with its
-# <style> blocks, in a real headless browser. Both output modes are checked.
-# Skips cleanly when no headless browser or node is available (e.g. in CI).
+# Differential render tests in a real headless browser: for every element the
+# complete computed style must be identical before and after a transform.
+# Covers `cascade apply` (both modes) and `cascade --minify` (each <style>
+# block minified in place). Skips cleanly with no browser or node (e.g. in CI).
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
-CASCADE=${CASCADE:-cascade}
+export CASCADE=${CASCADE:-cascade}
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
@@ -32,6 +32,18 @@ for f in "$dir"/fixtures/*.html; do
     fi
     rm -f "$out"
   done
+done
+# cascade --minify preserves the render too: minify each <style> block in place
+# and compare computed styles against the original page.
+for f in "$dir"/fixtures/*.html; do
+  out=$(mktemp)
+  node "$dir/minify_page.js" "$f" > "$out" 2>/dev/null
+  if node "$dir/xtest.js" "$f" "$out" 2>&1 | grep -q "IDENTICAL"; then
+    echo "ok   $(basename "$f") minify"
+  else
+    echo "FAIL $(basename "$f") minify"; node "$dir/xtest.js" "$f" "$out" 2>&1 | tail -6; fail=1
+  fi
+  rm -f "$out"
 done
 # Real pages downloaded by fetch.sh (gitignored): reported for coverage, but
 # they do not gate the run - they change upstream and exercise features still
