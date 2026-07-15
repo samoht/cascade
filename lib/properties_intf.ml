@@ -4537,8 +4537,10 @@ type 'a property =
   | Webkit_tap_highlight_color : color property
   | Webkit_user_select : user_select property
   | Moz_user_select : user_select property
+  | Ms_user_select : user_select property
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
+  | Webkit_text_fill_color : color property
   | Text_indent : text_indent_value property
   | List_style : list_style property
   | Font : font property

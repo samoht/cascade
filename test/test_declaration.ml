@@ -853,6 +853,9 @@ let misc () =
   check_declaration ~expected:"-moz-transform:none" "-moz-transform: NONE";
   check_declaration ~expected:"-o-transform:rotate(45deg)"
     "-o-transform: rotate(45deg)";
+  check_declaration ~expected:"-ms-user-select:none" "-ms-user-select: NONE";
+  check_declaration ~expected:"-webkit-text-fill-color:#fff"
+    "-webkit-text-fill-color: #ffffff";
 
   (* User select *)
   check_declaration ~expected:"user-select:none" "user-select: none";

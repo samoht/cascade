@@ -1569,6 +1569,8 @@ let read_interaction_value : type a.
   match prop with
   | User_select -> Some (v User_select (read_user_select t))
   | Webkit_user_select -> Some (v Webkit_user_select (read_user_select t))
+  | Ms_user_select -> Some (v Ms_user_select (read_user_select t))
+  | Webkit_text_fill_color -> Some (v Webkit_text_fill_color (read_color t))
   | Moz_user_select -> Some (v Moz_user_select (read_user_select t))
   | Pointer_events -> Some (v Pointer_events (read_pointer_events t))
   | Resize -> Some (v Resize (read_resize t))
