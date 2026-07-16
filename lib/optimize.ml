@@ -743,6 +743,24 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
   in
   list_map_preserve walk_stmt stmts
 
+(* Compressibility pass: put each rule's declarations in a deterministic
+   cross-rule order so gzip back-references line up, keeping cascade-significant
+   (overlapping) pairs in place. A transfer-objective win, so gated to it. *)
+let canonicalize_declaration_order stmts =
+  let rec walk_stmt (stmt : statement) : statement =
+    match stmt with
+    | Rule r ->
+        let declarations = Rule_order.canonical_declarations r.declarations in
+        let nested = list_map_preserve walk_stmt r.nested in
+        let r' = rule_with_declarations_and_nested r declarations nested in
+        if r' == r then stmt else Rule r'
+    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
+    | Starting_style _ | Moz_document _ | When _ | Else _ ->
+        map_statement_block_preserve walk_stmt stmt
+    | _ -> stmt
+  in
+  list_map_preserve walk_stmt stmts
+
 (* Under closed-stylesheet scope every [@position-try --name] rule is known. A
    [position-try-fallbacks] entry whose name has no matching rule cannot match
    at runtime, so prune unknown [Name] arms (keeping [Flip_*] and [Var]). When
@@ -1126,7 +1144,13 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     Ctx.v ~lossless ~aggressive ~closed_world ~objective ~enforce_spec
       ~registered scope
   in
-  run_pipeline
-    ~ctx:(Ctx.with_extend_lists true ctx)
-    ~enforce_spec ~aggressive stylesheet
-  |> if prune_unused_custom_props then drop_unused_custom_props else Fun.id
+  let result =
+    run_pipeline
+      ~ctx:(Ctx.with_extend_lists true ctx)
+      ~enforce_spec ~aggressive stylesheet
+  in
+  let result =
+    if prune_unused_custom_props then drop_unused_custom_props result
+    else result
+  in
+  if lossless then canonicalize_declaration_order result else result

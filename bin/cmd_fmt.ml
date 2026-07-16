@@ -167,7 +167,9 @@ let lossless_arg =
     "Disable colour approximation under $(b,--minify). Exact colour \
      canonicalisation still runs, but static modern colour-space and \
      color-mix() values stay functional and colour channels keep their normal \
-     serialisation precision. Has no effect without $(b,--minify)."
+     serialisation precision. Also sorts each rule's declarations into a \
+     canonical cross-rule order (keeping cascade-significant pairs in place) \
+     so gzip back-references line up. Has no effect without $(b,--minify)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
