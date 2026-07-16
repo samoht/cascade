@@ -854,9 +854,33 @@ let test_vendor_prefix_strip () =
     ".a{-moz-box-sizing:content-box;box-sizing:border-box}"
     (opt ".a{-moz-box-sizing:content-box;box-sizing:border-box}")
 
+let test_lossless_declaration_order () =
+  let opt ?(lossless = false) css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* Default keeps source order; --lossless sorts declarations into a canonical
+     cross-rule order for gzip alignment. *)
+  Alcotest.(check string)
+    "default keeps source order" ".a{width:1px;color:red}"
+    (opt ".a{width:1px;color:red}");
+  Alcotest.(check string)
+    "lossless sorts independent declarations" ".a{color:red;width:1px}"
+    (opt ~lossless:true ".a{width:1px;color:red}");
+  (* Overlapping declarations keep their relative order (cascade-significant):
+     border-top before border-color decides the top colour. *)
+  Alcotest.(check string)
+    "overlapping declarations keep order"
+    ".a{border-top:1px solid red;border-color:#00f}"
+    (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
+
 let optimize_tests =
   [
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
+    ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );
