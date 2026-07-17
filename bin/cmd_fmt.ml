@@ -65,7 +65,7 @@ let resolve_inline_imports ~input_path stylesheet =
     Fmt.epr
       "Error: --inline-imports requires a file path (cannot resolve relative \
        URLs from stdin)@.";
-    exit 1
+    Stdlib.exit 1
   end
   else Cli_inline_imports.run ~base_url:input_path stylesheet
 
@@ -107,12 +107,12 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
-      exit 1
+      Stdlib.exit 1
   | e ->
       Fmt.epr "Unexpected error: %s@." (Printexc.to_string e);
       let bt = Printexc.get_backtrace () in
       if bt <> "" then Fmt.epr "%s@." bt;
-      exit 1
+      Stdlib.exit 1
 
 let input_arg =
   let doc = "CSS file to process (use - for stdin)" in
@@ -283,7 +283,7 @@ let term =
             "Error: --keep-vars does not accept the wildcard \"*\"; list names \
              explicitly.@.";
           Fmt.epr "[1]@.";
-          exit 1
+          Stdlib.exit 1
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
