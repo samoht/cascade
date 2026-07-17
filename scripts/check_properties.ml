@@ -91,11 +91,10 @@ let extract_handled_properties content =
   extract_from_string region
 
 let () =
-  (* The script lives in <root>/scripts inside the build tree, so the enclosing
-     cascade root is one directory up from the executable. Walking up from the
-     cwd to the nearest dune-project breaks when cascade is vendored inside
-     another dune workspace. *)
-  let project_root = Filename.dirname (Filename.dirname Sys.executable_name) in
+  (* dune runs this runtest action from _build/default/scripts with the lib deps
+     materialised at ../lib; anchor there, as Sys.executable_name is relative in
+     an opam sandbox. *)
+  let project_root = ".." in
   let intf_file = Filename.concat project_root "lib/properties_intf.ml" in
   let impl_file = Filename.concat project_root "lib/properties.ml" in
 

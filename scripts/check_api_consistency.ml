@@ -436,11 +436,10 @@ let print_module_results
       (List.sort compare missing_neg) (fun n ->
         print_string ("  test_" ^ n ^ "\n")))
 
-(* The script lives in <root>/scripts inside the build tree, so the enclosing
-   cascade root is one directory up from the executable. Walking up from the cwd
-   to the nearest dune-project breaks when cascade is vendored inside another
-   dune workspace. *)
-let project_root () = Filename.dirname (Filename.dirname Sys.executable_name)
+(* dune runs this runtest action from _build/default/scripts with the lib and
+   test deps materialised at ../lib and ../test; anchor there, as
+   Sys.executable_name is relative in an opam sandbox. *)
+let project_root () = ".."
 let root = project_root ()
 let lib_dir = root // "lib"
 let test_dir = root // "test"

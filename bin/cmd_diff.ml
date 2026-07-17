@@ -88,7 +88,7 @@ let compare_files file1 file2 style_renderer mode opts memtrace_path () =
             print_diff_report ~color ~file1 ~file2 ~css1 ~css2 result;
             (* Differing inputs are a result, not a usage error: exit 1 as
                documented, distinct from cmdliner's reserved error codes. *)
-            exit 1)
+            Stdlib.exit 1)
   | Error e, _ | _, Error e -> Error e
 
 let file1_arg =

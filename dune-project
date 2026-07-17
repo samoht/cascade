@@ -19,11 +19,11 @@
   (ocaml (>= 5.2))
   dune
   dune-build-info
-  (alcotest :with-test)
+  (alcotest (and (>= 1.7.0) :with-test))
   (alcobar :with-test)
   (astring :with-test)
-  (eio :with-test)
-  (eio_main :with-test)
+  (eio (and (>= 0.14) :with-test))
+  (eio_main (and (>= 0.14) :with-test))
   lambdasoup
   (mdx :with-test)
   (re :with-test)
