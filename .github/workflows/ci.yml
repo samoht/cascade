@@ -28,6 +28,23 @@ jobs:
       - run: opam exec -- dune build
       - run: opam exec -- dune test
 
+  lower-bounds:
+    name: Lower bounds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: '5.2'
+
+      # Resolve every dependency to the oldest version its lower bound allows,
+      # so a call that only compiles against a newer API (a deprecated function
+      # removed upstream) fails here rather than in a downstream opam build.
+      - run: opam install . --deps-only --with-test --criteria="+count[version-lag,solution]"
+      - run: opam exec -- dune build
+      - run: opam exec -- dune test
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
