@@ -108,6 +108,18 @@ let rec props_of_stmts acc stmts =
       | _ -> acc)
     acc stmts
 
+(* A [@layer] block applies unconditionally: it only orders competing
+   declarations, it does not gate them behind a condition the way
+   @media/@supports/@container do. So its rules can be projected onto elements
+   just like top-level rules - splice their contents in place (recursing into
+   nested layers) instead of keeping the whole block in the un-inlinable
+   <style>. *)
+let rec unwrap_layers stmts =
+  List.concat_map
+    (function
+      | Stylesheet.Layer (_, body) -> unwrap_layers body | other -> [ other ])
+    stmts
+
 type 'node assignment = 'node * Declaration.declaration list
 (** The inline-style declarations to write onto a node. *)
 
@@ -180,8 +192,9 @@ module Make (Node : Resolve.NODE) = struct
     | Error _ -> { styles = []; keep_css = ""; kept = 0 }
     | Ok p ->
         (* Flatten nesting up front, so the static/dynamic split and
-           {!R.resolve} see the same flat rules. *)
-        let stmts = Flatten.block p.Css.stylesheet in
+           {!R.resolve} see the same flat rules, then unwrap [@layer] so its
+           rules join the split instead of being kept wholesale. *)
+        let stmts = unwrap_layers (Flatten.block p.Css.stylesheet) in
         (* Properties a kept rule can override must stay in the cascade. *)
         let dyn =
           props_of_stmts SSet.empty

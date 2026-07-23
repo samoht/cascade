@@ -52,6 +52,36 @@ let keeps_stateful_rule_in_css () =
     "kept dynamic rule" ".card:hover{color:blue}" result.keep_css;
   Alcotest.(check int) "kept count" 1 result.kept
 
+(* A @layer block applies unconditionally, so its rules project onto elements
+   just like top-level ones instead of being kept wholesale in a <style>. *)
+let projects_layered_rule_to_inline_style () =
+  let n = node ~classes:[ "card" ] "div" in
+  let result = A.compute ~css:"@layer u{.card{color:red;margin:0}}" [ n ] in
+  match result.styles with
+  | [ (node, decls) ] ->
+      Alcotest.(check bool) "same node" true (Node.equal node n);
+      Alcotest.(check string)
+        "inline declarations" "color:red;margin:0" (inline_style decls);
+      Alcotest.(check string) "no kept css" "" result.keep_css;
+      Alcotest.(check int) "kept count" 0 result.kept
+  | _ -> Alcotest.fail "expected one inline assignment"
+
+(* Inside a layer the static/dynamic split still holds: the plain rule inlines,
+   the stateful one stays in the kept <style>. *)
+let keeps_stateful_rule_inside_layer_in_css () =
+  let n = node ~classes:[ "card" ] "div" in
+  let result =
+    A.compute ~css:"@layer u{.card{margin:0}.card:hover{color:blue}}" [ n ]
+  in
+  Alcotest.(check string)
+    "inline static rule" "margin:0"
+    (match result.styles with
+    | [ (_, decls) ] -> inline_style decls
+    | _ -> Alcotest.fail "expected one inline assignment");
+  Alcotest.(check string)
+    "kept dynamic rule" ".card:hover{color:blue}" result.keep_css;
+  Alcotest.(check int) "kept count" 1 result.kept
+
 let invalid_css_is_empty () =
   let result = A.compute ~css:"a{" [ node "div" ] in
   Alcotest.(check string)
@@ -69,5 +99,9 @@ let suite =
         projects_static_rule_to_inline_style;
       Alcotest.test_case "keeps stateful rule in css" `Quick
         keeps_stateful_rule_in_css;
+      Alcotest.test_case "projects layered rule to inline style" `Quick
+        projects_layered_rule_to_inline_style;
+      Alcotest.test_case "keeps stateful rule inside layer in css" `Quick
+        keeps_stateful_rule_inside_layer_in_css;
       Alcotest.test_case "invalid css is empty" `Quick invalid_css_is_empty;
     ] )
