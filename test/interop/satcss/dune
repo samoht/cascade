@@ -8,13 +8,4 @@
  (deps
   (source_tree traces)))
 
-; Regenerate the SatCSS oracle: dune build @regen-traces
-
-(rule
- (alias regen-traces)
- (deps
-  (source_tree scripts))
- (action
-  (chdir
-   scripts
-   (run ./generate.sh))))
+; Regenerate the SatCSS oracle: REGEN=1 dune build @regen (see traces/dune)
