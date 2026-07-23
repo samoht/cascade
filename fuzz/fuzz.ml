@@ -18,6 +18,7 @@ let () =
       Fuzz_properties.suite;
       Fuzz_declaration.suite;
       Fuzz_variables.suite;
+      Fuzz_inline.suite;
       Fuzz_stylesheet.suite;
       Fuzz_optimize.suite;
       Fuzz_css.suite;

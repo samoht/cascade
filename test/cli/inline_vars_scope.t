@@ -25,15 +25,17 @@ that @media block.
   $ cascade --minify --inline-vars media.css
   @media(width>=30em){.a{color:red}}.b{color:var(--brand)}
 
-A variable declared inside @layer applies to consumers within the same
-layer; outside-layer use stays as var().
+A cascade layer only orders competing declarations, it does not scope
+custom-property visibility (unlike the conditional @media / @container),
+so a variable declared inside @layer resolves for consumers inside and
+outside the layer alike, exactly as without the layer wrapper.
 
   $ cat > layer.css <<EOF
   > @layer theme { :root { --brand: red } .a { color: var(--brand) } }
   > .b { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars layer.css
-  .a{color:red}.b{color:var(--brand)}
+  .a,.b{color:red}
 
 A variable used in a @container query value is preserved (container
 queries evaluate at layout time, not at the syntax layer).
