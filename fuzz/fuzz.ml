@@ -24,4 +24,5 @@ let () =
       Fuzz_supports.suite;
       Fuzz_font_face.suite;
       Fuzz_keyframe.suite;
+      Fuzz_apply.suite;
     ]
