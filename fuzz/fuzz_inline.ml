@@ -69,9 +69,43 @@ let test_layer_placement_invariant buf =
         failf "layer placement changed inlining: unlayered %S vs layered %S" r l
   | _ -> ()
 
+(* CSS Cascade 5 §6.4.2: for normal declarations an unlayered definition beats
+   every layered one, whatever the layers or their order. A variable defined on
+   [:root] across a stack of named layers plus one unlayered definition must
+   therefore fold to the unlayered value. Independent of how the winner is
+   computed, so it catches a wrong winner (e.g. picking the last document
+   order). *)
+let test_unlayered_definition_wins buf =
+  let n = 1 + (byte_at buf 0 mod 3) in
+  let vals = [ "1px"; "2px"; "3px"; "4px" ] in
+  let layered =
+    List.init n (fun i ->
+        let v = List.nth vals (byte_at buf (i + 1) mod List.length vals) in
+        layer
+          (String.concat "" [ "l"; string_of_int i ])
+          (String.concat "" [ ":root{--x:"; v; "}" ]))
+  in
+  let sentinel = "9px" in
+  let unlayered = String.concat "" [ ":root{--x:"; sentinel; "}" ] in
+  let consumer = ".z{width:var(--x)}" in
+  (* Place the unlayered definition before or after the layer stack: it wins
+     from either position. *)
+  let parts =
+    if byte_at buf 9 land 1 = 0 then (unlayered :: layered) @ [ consumer ]
+    else layered @ [ unlayered; consumer ]
+  in
+  match inlined_min (String.concat "" parts) with
+  | None -> ()
+  | Some out ->
+      let expected = String.concat "" [ ".z{width:"; sentinel; "}" ] in
+      if out <> expected then
+        failf "unlayered definition did not win: %S (expected %S)" out expected
+
 let suite =
   ( "inline",
     [
       test_case "layer placement leaves single-def inlining unchanged" [ bytes ]
         test_layer_placement_invariant;
+      test_case "an unlayered definition wins over any layer stack" [ bytes ]
+        test_unlayered_definition_wins;
     ] )

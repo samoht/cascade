@@ -344,6 +344,18 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | Some _ as v -> v
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
+(* The computed winner among a pool of same-property custom-property
+   declarations, resolved by CSS Cascade 5 §6.4.3: important beats normal,
+   [revert-layer] rolls back to the next layer down, and layer order (reversed
+   for important) breaks ties. Layers are read from each declaration's own
+   annotation, so the caller must have tagged them. [None] when the pool is
+   empty or resolves to unset. *)
+let winning_custom_declaration ~layer_order decls =
+  let important, normal = List.partition Declaration.is_important decls in
+  match pick_important_custom ~layer_order important with
+  | Some _ as v -> v
+  | None -> pick_normal_custom ~layer_order normal
+
 (* Extract the value bound to feature [name] from a single media feature. A
    [<name>: <value>] plain and an [<name> = <value>] equality range both pin the
    feature to a concrete value; range / boolean / interval features do not. *)
