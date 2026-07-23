@@ -680,6 +680,20 @@ let test_color_oklch_printing () =
   let s = Css.Pp.to_string pp_color c in
   Alcotest.(check string) "oklch printing" "oklch(50% .123 30)" s
 
+(* A [none] hue is a missing component, not the number zero: it stays [none]
+   through printing, and the colour cannot fold to a hex because a hex would pin
+   the hue that interpolation is meant to take from the other colour. *)
+(* Not a roundtrip test *)
+let test_color_oklch_none_hue () =
+  let open Css.Values in
+  let c = oklch_none_hue 55.6 0.0 in
+  let s = Css.Pp.to_string pp_color c in
+  Alcotest.(check string) "oklch none hue printing" "oklch(55.6% 0 none)" s;
+  (* Optimize still folds the lightness to its shorter number spelling, but the
+     colour stays an oklch(): a hex would pin the missing hue. *)
+  check_color ~expected:"oklch(55.6%0 none)" ~optimized:"oklch(.556 0 none)"
+    "oklch(55.6% 0 none)"
+
 (* Not a roundtrip test *)
 let test_color_mix_printing () =
   let open Css.Values in
@@ -1229,6 +1243,7 @@ let value_tests =
     test_case "minified value formatting" `Quick test_minified_value_formatting;
     test_case "regular value formatting" `Quick test_regular_value_formatting;
     test_case "oklch printing" `Quick test_color_oklch_printing;
+    test_case "oklch none hue" `Quick test_color_oklch_none_hue;
     test_case "color-mix printing" `Quick test_color_mix_printing;
     test_case "var in calc other types" `Quick test_var_in_calc_types;
     test_case "number var printing" `Quick test_number_var_printing;
