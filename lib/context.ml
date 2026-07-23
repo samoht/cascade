@@ -1475,6 +1475,9 @@ module Match_media = struct
       | Some actual -> Option.value ~default:false (f actual)
     in
     function
+    (* Media Queries 4 3.1: an unrecognised <general-enclosed> is [unknown], and
+       unknown becomes false where a boolean is expected. *)
+    | General_enclosed _ -> false
     | Boolean name -> feature_present table name
     | Plain (name, value) -> (
         match strip_min_max name with

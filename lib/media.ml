@@ -122,6 +122,10 @@ type feature =
   | Range of name * cmp * value
   | Range_rev of value * cmp * name
   | Interval of value * cmp * name * cmp * value
+  | General_enclosed of string
+      (** Media Queries 4 Â§3.1 [<general-enclosed>]: a grammatical but
+          unrecognised query, kept verbatim. Its result is [unknown], which
+          becomes false wherever a boolean is expected. *)
 
 type condition =
   | Feature of feature
@@ -365,6 +369,7 @@ let pp_value : value Pp.t =
 
 let pp_feature : feature Pp.t =
  fun ctx -> function
+  | General_enclosed raw -> Pp.string ctx raw
   | Plain (name, value) when Pp.minified ctx ->
       Pp.char ctx '(';
       Pp.string ctx (string_of_name name);
@@ -1021,7 +1026,23 @@ and condition_in_parens sc =
   | Some '(' ->
       advance sc;
       condition_from_paren_content (read_balanced sc)
-  | _ -> failwith "expected '(' in media condition"
+  | _ -> (
+      (* Media Queries 4 §3.1: [<media-in-parens>] also admits
+         [<general-enclosed>], whose first form is a function token. An
+         identifier immediately followed by [(] is one, e.g. [theme(static)]:
+         grammatical, unrecognised, and therefore false. Rejecting it here made
+         a valid query look malformed and cost the whole rule. *)
+      let mark = sc.pos in
+      let id = read_ident sc in
+      match (id, peek sc) with
+      | "", _ | _, None -> failwith "expected '(' in media condition"
+      | _, Some '(' ->
+          advance sc;
+          let args = read_balanced sc in
+          Feature (General_enclosed (String.concat "" [ id; "("; args; ")" ]))
+      | _ ->
+          sc.pos <- mark;
+          failwith "expected '(' in media condition")
 
 and condition_of_string s =
   let sc = mk_scanner s in
@@ -1078,11 +1099,44 @@ let rec next_non_ws s len i : char option =
 
 (* [<media-query>] starts as [<media-condition>] (rather than as a media type)
    when its first non-space token is '(' or "not (". *)
+(* An identifier glued to a [(] is a function token, so the query is a
+   [<general-enclosed>] condition rather than a media type. Without this
+   [theme(static)] is read as the media type [theme] and then trips on the
+   parenthesis. *)
+let function_token_at s pos =
+  let len = String.length s in
+  let rec ident_end i =
+    if i < len then
+      match s.[i] with
+      | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> ident_end (i + 1)
+      | _ -> i
+    else i
+  in
+  let stop = ident_end pos in
+  stop > pos && stop < len && s.[stop] = '('
+
+(* [<media-in-parens>] starts a condition either with [(] or, for the
+   [<general-enclosed>] function form, with an identifier glued to a [(]. [not]
+   takes a [<media-in-parens>] too, so it accepts both shapes. *)
+let starts_with_media_in_parens s pos =
+  match next_non_ws s (String.length s) pos with
+  | Some '(' -> true
+  | _ ->
+      let len = String.length s in
+      let rec skip i =
+        if
+          i < len
+          && (s.[i] = ' ' || s.[i] = '\t' || s.[i] = '\n' || s.[i] = '\r')
+        then skip (i + 1)
+        else i
+      in
+      function_token_at s (skip pos)
+
 let starts_with_condition sc =
   match (peek sc, lookahead_ident sc "not") with
   | Some '(', _ -> true
-  | _, true -> next_non_ws sc.s (String.length sc.s) (sc.pos + 3) = Some '('
-  | _ -> false
+  | _, true -> starts_with_media_in_parens sc.s (sc.pos + 3)
+  | _ -> function_token_at sc.s sc.pos
 
 let read_query_prefix sc =
   if lookahead_ident sc "not" then (
@@ -1363,7 +1417,7 @@ let feature_kind (f : feature) : kind =
           | Plain (name, value) -> plain_feature_kind name value
           | Boolean name -> Option.value (preference_kind name) ~default:Other
           | Interval (lo, _, name, _, _) -> interval_feature_kind name lo
-          | Range _ | Range_rev _ -> Other))
+          | Range _ | Range_rev _ | General_enclosed _ -> Other))
 
 let rec condition_kind (c : condition) : kind =
   match c with

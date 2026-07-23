@@ -231,6 +231,53 @@ let spec_media_query_vectors () =
         (to_string (of_string row.input)))
     Cascade_spec_inventory.Query_grammar.media_positive
 
+(* Media Queries 4 3.1 [<general-enclosed>]: both the [<function-token>] form
+   and the [( <any-value> )] form are grammatical. An unrecognised one is
+   [unknown], which becomes false where a boolean is expected, so the query
+   never matches -- but the rule itself is valid and must survive parsing
+   verbatim. Rejecting it as malformed costs the whole rule. *)
+let general_enclosed_roundtrip () =
+  let check src = Alcotest.(check string) src src (to_string (of_string src)) in
+  (* function-token form *)
+  check "theme(static)";
+  check "foo(bar)";
+  check "unknown-fn(1 2 3)";
+  check "supports-something(a: b)";
+  (* nested parentheses inside the arguments *)
+  check "foo(bar(baz))";
+  (* the ( <ident> ... ) form already parsed; keep it covered *)
+  check "(unknown-feature: 1)";
+  check "(unknown-boolean)"
+
+let general_enclosed_in_context () =
+  let check src = Alcotest.(check string) src src (to_string (of_string src)) in
+  (* negated, listed and combined with a real query *)
+  check "not theme(static)";
+  check "screen and theme(static)";
+  check "theme(static), print";
+  check "print, theme(static)";
+  (* [<media-and>] takes a [<media-in-parens>], so a bare media type cannot
+     follow [and]: that is malformed and becomes [not all], unlike the
+     grammatical forms above. *)
+  Alcotest.(check string)
+    "condition and media type is malformed" "not all"
+    (to_string (of_string "theme(static) and screen"))
+
+(* A function token must not be mistaken for a media type: [theme(static)] is a
+   condition, where [theme] alone would be a type. *)
+let general_enclosed_is_not_a_media_type () =
+  Alcotest.(check string)
+    "bare ident stays a media type" "theme"
+    (to_string (of_string "theme"));
+  Alcotest.(check string)
+    "function token is a condition" "theme(static)"
+    (to_string (of_string "theme(static)"));
+  (* real media types and features keep working *)
+  Alcotest.(check string) "screen" "screen" (to_string (of_string "screen"));
+  Alcotest.(check string)
+    "print and feature" "print and (min-width: 30em)"
+    (to_string (of_string "print and (min-width: 30em)"))
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -250,4 +297,8 @@ let suite =
         spec_media_context_vectors;
       test_case "spec media query boolean and range vectors" `Quick
         spec_media_query_vectors;
+      test_case "general-enclosed roundtrip" `Quick general_enclosed_roundtrip;
+      test_case "general-enclosed in context" `Quick general_enclosed_in_context;
+      test_case "general-enclosed is not a media type" `Quick
+        general_enclosed_is_not_a_media_type;
     ] )

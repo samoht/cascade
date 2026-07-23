@@ -13,6 +13,10 @@
 - Add `Css.Values.oklch_none_hue` to build achromatic colours with a
   missing hue component, printed as `oklch(55.6% 0 none)` per CSS
   Color 4 (#190)
+- Parse the function form of `<general-enclosed>` in media queries, so a
+  grammatical but unrecognised query such as `theme(static)` is kept as
+  never-matching instead of discarding the `@media` block or
+  `@import` (#192)
 
 ## 1.0.0
 

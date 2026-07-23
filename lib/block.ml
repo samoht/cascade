@@ -10,6 +10,7 @@ let media_feature_is name (f : Media.feature) =
   | Media.Plain (n, _) | Media.Boolean n -> n = name
   | Media.Range (n, _, _) | Media.Range_rev (_, _, n) -> n = name
   | Media.Interval (_, _, n, _, _) -> n = name
+  | Media.General_enclosed _ -> false
 
 let rec condition_has_feature name (c : Media.condition) =
   match c with
