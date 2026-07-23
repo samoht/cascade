@@ -1,3 +1,19 @@
+## Unreleased
+
+- `Css.inline_vars` resolves `var()` across `@layer` boundaries: a layer
+  only orders competing declarations, it never scopes custom-property
+  visibility, so a layered stylesheet now inlines like its unlayered
+  form (#187)
+- `Css.inline_vars` folds a custom property redefined across layers on
+  the same element to its cascade winner, instead of leaving a live
+  `var()` that could resolve to the wrong definition (#189)
+- `cascade apply` projects rules inside `@layer` onto elements; a fully
+  layered stylesheet (such as Tailwind v4 output) previously inlined
+  nothing (#188)
+- Add `Css.Values.oklch_none_hue` to build achromatic colours with a
+  missing hue component, printed as `oklch(55.6% 0 none)` per CSS
+  Color 4 (#190)
+
 ## 1.0.0
 
 First public release. Cascade was extracted from the [tw](https://github.com/samoht/tw)
