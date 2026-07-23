@@ -231,6 +231,9 @@ let oklch l c h =
 let oklcha l c h a =
   Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
 
+let oklch_none_hue l c =
+  Oklch { l = Some (Pct l); c = Some c; h = Hue_none; alpha = None }
+
 let oklab l a b =
   Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = None }
 

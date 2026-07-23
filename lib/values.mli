@@ -52,6 +52,11 @@ val oklch : float -> float -> float -> color
 val oklcha : float -> float -> float -> float -> color
 (** [oklcha l c h a] creates an OKLCH color with alpha. *)
 
+val oklch_none_hue : float -> float -> color
+(** [oklch_none_hue l c] creates an OKLCH color whose hue is [none]. The hue of
+    an achromatic color is powerless, and [none] keeps the component missing, so
+    interpolation takes the other color's hue rather than 0. *)
+
 val oklab : float -> float -> float -> color
 (** [oklab l a b] creates an OKLAB color. *)
 
