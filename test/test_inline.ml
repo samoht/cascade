@@ -238,6 +238,34 @@ let test_inline_vars_runtime_boundaries () =
     ":root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}"
     ":root{--bp:30em}@container(min-width:var(--bp)){.x{color:red}}"
 
+let test_inline_across_layers () =
+  (* A cascade layer never scopes custom-property visibility: layers only order
+     competing declarations, so a variable defined in one @layer resolves for a
+     consumer in another layer (or none). inline_vars must substitute across the
+     boundary and drop the now unused definition, exactly as for unlayered
+     rules. *)
+  check_inline_case ~optimized:".p-6{padding:1.5rem}"
+    "definition and reference in different layers substitute"
+    "@layer theme{:root{--spacing:.25rem}}@layer \
+     utilities{.p-6{padding:calc(var(--spacing)*6)}}"
+    ".p-6{padding:calc(.25rem*6)}";
+  check_inline_case ~optimized:".x{padding:1rem}"
+    "definition in a layer, consumer at top level"
+    "@layer t{:root{--s:.25rem}}.x{padding:calc(var(--s)*4)}"
+    ".x{padding:calc(.25rem*4)}";
+  check_inline_case ~optimized:".x{padding:1rem}"
+    "definition at top level, consumer inside a layer"
+    ":root{--s:.25rem}@layer u{.x{padding:calc(var(--s)*4)}}"
+    ".x{padding:calc(.25rem*4)}";
+  (* A variable redefined in a second layer is a real cascade override, so it
+     stays a live var() with every definition, like a cross-scope redefinition
+     without layers. *)
+  check_inline_case ~optimized:":root{--c:blue}.x{color:var(--c)}"
+    "a cross-layer redefinition stays a live reference"
+    "@layer a{:root{--c:red}}@layer b{:root{--c:blue}}@layer \
+     u{.x{color:var(--c)}}"
+    ":root{--c:red}:root{--c:blue}.x{color:var(--c)}"
+
 let suite =
   ( "inline",
     [
@@ -270,4 +298,6 @@ let suite =
         test_inline_shorthand_functions;
       Alcotest.test_case "inline vars runtime boundaries" `Quick
         test_inline_vars_runtime_boundaries;
+      Alcotest.test_case "inline vars substitute across cascade layers" `Quick
+        test_inline_across_layers;
     ] )

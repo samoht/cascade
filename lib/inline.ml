@@ -73,13 +73,26 @@ type at_node =
   | Origin of cascade_origin
   | Scope of Selector.t option * Selector.t option
 
+(* A cascade layer never gates custom-property visibility: [--x] defined in one
+   [@layer] resolves for a consumer in any other layer (or none), because layers
+   only order competing declarations, they do not scope the value. Only the
+   conditional wrappers (@media/@supports/@container/...) are real barriers, so
+   drop [Layer] nodes from a path before comparing. *)
+let rec drop_layers = function
+  | [] -> []
+  | Layer _ :: rest -> drop_layers rest
+  | node :: rest -> node :: drop_layers rest
+
 (* Visibility through at-rule wrappers: a custom property defined outside
    (shorter path) is visible to consumers further inside (longer path). *)
-let rec at_path_prefix ~outer ~inner =
-  match (outer, inner) with
-  | [], _ -> true
-  | _, [] -> false
-  | a :: outer, b :: inner -> a = b && at_path_prefix ~outer ~inner
+let at_path_prefix ~outer ~inner =
+  let rec prefix outer inner =
+    match (outer, inner) with
+    | [], _ -> true
+    | _, [] -> false
+    | a :: outer, b :: inner -> a = b && prefix outer inner
+  in
+  prefix (drop_layers outer) (drop_layers inner)
 
 let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
   | Stylesheet.Layer (n, b) ->
