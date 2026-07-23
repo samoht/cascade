@@ -220,6 +220,17 @@ val custom_property : string -> t -> Declaration.declaration option
 (** [custom_property name ctx] is the custom property declaration named [name]
     in [ctx], if any. *)
 
+val winning_custom_declaration :
+  layer_order:string list ->
+  Declaration.declaration list ->
+  Declaration.declaration option
+(** [winning_custom_declaration ~layer_order decls] is the cascade winner among
+    same-property custom-property declarations per CSS Cascade 5 §6.4.3:
+    [!important] beats normal, [revert-layer] rolls back a layer, and layer
+    order (reversed for [!important]) breaks ties. Each declaration's layer is
+    read from its own annotation. [None] when [decls] is empty or resolves to
+    unset. *)
+
 val inherited_value : string -> t -> Declaration.declaration option
 (** [inherited_value property ctx] is the inherited declaration for [property]
     in [ctx], if any. *)

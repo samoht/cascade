@@ -37,6 +37,39 @@ outside the layer alike, exactly as without the layer wrapper.
   $ cascade --minify --inline-vars layer.css
   .a,.b{color:red}
 
+A variable redefined on the same element across layers has a statically
+decidable winner (CSS Cascade 5 6.4.3), so it folds to that winner rather
+than staying a live var(). For normal declarations the later layer wins.
+
+  $ cat > layer-order.css <<EOF
+  > @layer a { :root { --x: 1px } }
+  > @layer b { :root { --x: 2px } }
+  > .z { width: var(--x) }
+  > EOF
+  $ cascade --minify --inline-vars layer-order.css
+  .z{width:2px}
+
+An unlayered definition wins over a layered one, whatever the document
+order.
+
+  $ cat > layer-unlayered.css <<EOF
+  > :root { --x: 2px }
+  > @layer a { :root { --x: 1px } }
+  > .z { width: var(--x) }
+  > EOF
+  $ cascade --minify --inline-vars layer-unlayered.css
+  .z{width:2px}
+
+A [revert-layer] winner rolls back to the value from the layer below it.
+
+  $ cat > layer-revert.css <<EOF
+  > @layer a { :root { --x: 1px } }
+  > @layer b { :root { --x: revert-layer } }
+  > .z { width: var(--x) }
+  > EOF
+  $ cascade --minify --inline-vars layer-revert.css
+  .z{width:1px}
+
 A variable used in a @container query value is preserved (container
 queries evaluate at layout time, not at the syntax layer).
 

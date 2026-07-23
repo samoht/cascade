@@ -257,14 +257,45 @@ let test_inline_across_layers () =
     "definition at top level, consumer inside a layer"
     ":root{--s:.25rem}@layer u{.x{padding:calc(var(--s)*4)}}"
     ".x{padding:calc(.25rem*4)}";
-  (* A variable redefined in a second layer is a real cascade override, so it
-     stays a live var() with every definition, like a cross-scope redefinition
-     without layers. *)
-  check_inline_case ~optimized:":root{--c:blue}.x{color:var(--c)}"
-    "a cross-layer redefinition stays a live reference"
+  (* A variable redefined across layers on the same element is a statically
+     decidable cascade override, so it folds to the winning layer's value (the
+     later layer wins for normal declarations) instead of staying a live
+     reference. *)
+  check_inline_case ~optimized:".x{color:#00f}"
+    "a cross-layer redefinition folds to the winning layer"
     "@layer a{:root{--c:red}}@layer b{:root{--c:blue}}@layer \
      u{.x{color:var(--c)}}"
-    ":root{--c:red}:root{--c:blue}.x{color:var(--c)}"
+    ".x{color:blue}"
+
+(* A cascade layer only orders competing declarations, so a variable defined on
+   the same element across several layers has a statically decidable winner and
+   folds to it (CSS Cascade 5 §6.4.3). An override that depends on runtime state
+   (a media query, a different selector) cannot be decided statically and stays
+   a live var(). *)
+let test_inline_layer_winner () =
+  check_inline_case ~optimized:".z{width:2px}"
+    "the later layer wins for a normal declaration"
+    "@layer a{:root{--x:1px}}@layer b{:root{--x:2px}}.z{width:var(--x)}"
+    ".z{width:2px}";
+  check_inline_case ~optimized:".z{width:2px}"
+    "an unlayered definition beats a layered one regardless of order"
+    ":root{--x:2px}@layer a{:root{--x:1px}}.z{width:var(--x)}" ".z{width:2px}";
+  check_inline_case ~optimized:".z{width:1px}"
+    "revert-layer rolls back to the earlier layer"
+    "@layer a{:root{--x:1px}}@layer \
+     b{:root{--x:revert-layer}}.z{width:var(--x)}"
+    ".z{width:1px}";
+  check_inline_case ~optimized:".z{width:1px}"
+    "an important definition inverts the layer order"
+    "@layer a{:root{--x:1px!important}}@layer \
+     b{:root{--x:2px}}.z{width:var(--x)}"
+    ".z{width:1px}";
+  check_inline_case "a media-query override stays a live reference"
+    ":root{--c:red}@media(prefers-color-scheme:dark){:root{--c:blue}}.x{color:var(--c)}"
+    ":root{--c:red}@media(prefers-color-scheme:dark){:root{--c:blue}}.x{color:var(--c)}";
+  check_inline_case "a different-selector override stays a live reference"
+    ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
+    ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
 
 let suite =
   ( "inline",
@@ -300,4 +331,7 @@ let suite =
         test_inline_vars_runtime_boundaries;
       Alcotest.test_case "inline vars substitute across cascade layers" `Quick
         test_inline_across_layers;
+      Alcotest.test_case
+        "inline vars fold a layer-decided override to its winner" `Quick
+        test_inline_layer_winner;
     ] )
