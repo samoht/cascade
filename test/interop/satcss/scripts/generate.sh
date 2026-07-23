@@ -15,7 +15,7 @@
 #
 # traces/ is gitignored on purpose: the corpus is third-party website CSS with
 # no redistribution license, so the oracle is generated locally and never
-# committed. Single trigger: dune build @regen-traces
+# committed. Single trigger: REGEN=1 dune build @regen
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
