@@ -1496,15 +1496,30 @@ let read_import_supports (r : Cursor.t) =
         Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
     r
 
+(* In the [@import] prelude [layer(...)] and [supports(...)] are structural, and
+   the grammar allows each once, before the media query list. Reaching the media
+   position still holding one means a duplicate or a misordered prelude. They
+   are function tokens, so the media grammar would otherwise take them as a
+   [<general-enclosed>] query and quietly accept the rule. *)
+let starts_with_import_keyword raw =
+  let lower = String.lowercase_ascii raw in
+  List.exists
+    (fun k -> String.starts_with ~prefix:k lower)
+    [ "layer("; "supports("; "layer " ]
+
 let read_import_media (r : Cursor.t) : Media.t option =
   if Cursor.peek_semicolon r || Cursor.is_done r then None
   else
     let loc = Cursor.position r in
     let raw = Cursor.consume_until_semicolon ~trim:true r in
-    match Media.of_string_strict raw with
-    | media -> Some media
-    | exception Failure reason ->
-        Error.fail_bad_condition loc ~at_rule:"@media" ~reason
+    if starts_with_import_keyword raw then
+      Error.fail_bad_condition loc ~at_rule:"@media"
+        ~reason:"layer()/supports() must precede the media query, and once only"
+    else
+      match Media.of_string_strict raw with
+      | media -> Some media
+      | exception Failure reason ->
+          Error.fail_bad_condition loc ~at_rule:"@media" ~reason
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;

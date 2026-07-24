@@ -102,6 +102,10 @@ type feature =
   | Range of name * cmp * value
   | Range_rev of value * cmp * name
   | Interval of value * cmp * name * cmp * value
+  | General_enclosed of string
+      (** Media Queries 4 Â§3.1 [<general-enclosed>]: a grammatical but
+          unrecognised query, kept verbatim. Its result is [unknown], which
+          becomes false wherever a boolean is expected. *)
 
 type condition =
   | Feature of feature

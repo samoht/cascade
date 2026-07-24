@@ -753,6 +753,7 @@ let refs_of_media_feature : Media.feature -> string list = function
       refs_of_media_value value
   | Interval (lower, _, _, _, upper) ->
       refs_of_media_value lower @ refs_of_media_value upper
+  | General_enclosed _ -> []
 
 let rec refs_of_media_condition : Media.condition -> string list = function
   | Feature f -> refs_of_media_feature f
