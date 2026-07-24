@@ -3407,7 +3407,7 @@ and read_rule_decl_or_nested selector inner decls nested =
       if Cursor.peek_semicolon inner then Cursor.skip inner;
       `Continue (d :: decls, nested)
   | None -> read_nested_rule_or_done selector inner decls nested
-  (* CSS Nesting 1 §2 lets a nested rule start with an identifier, so
+  (* CSS Nesting 1 sec. 2 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
      as one. *)

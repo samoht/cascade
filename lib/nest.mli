@@ -3,7 +3,7 @@
 val contains : Selector.t -> bool
 (** [contains selector] is [true] when [selector] contains [&]. *)
 
-val substitute : parent:Selector.t -> Selector.t -> Selector.t
+val substitute : ?leftmost:bool -> parent:Selector.t -> Selector.t -> Selector.t
 (** Replace every [&] in a selector with [parent]. *)
 
 val combine : Selector.t -> Selector.t -> Selector.t
