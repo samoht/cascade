@@ -14,6 +14,10 @@
   `h2:where(...)`. CSS Nesting 1 makes that prelude ambiguous with a
   declaration until the block appears, and the rule was dropped with a
   warning (#193)
+- Wrap a complex parent selector in `:is()` when substituting `&`, per
+  CSS Nesting 1. Flattening `.a .b { .dark & { ... } }` produced
+  `.dark .a .b`, which matches a different set of elements than
+  `.dark :is(.a .b)` (#194)
 - Add `Css.Values.oklch_none_hue` to build achromatic colours with a
   missing hue component, printed as `oklch(55.6% 0 none)` per CSS
   Color 4 (#190)

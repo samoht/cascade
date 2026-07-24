@@ -39,10 +39,10 @@ let test_empty_block_is_empty () =
     "empty input yields empty output" 0
     (List.length (Flatten.block stmts))
 
-(* CSS Nesting 1 §2 lets a nested rule start with an identifier, so its prelude
-   is ambiguous with a declaration until the block appears: [h2:where(...)]
-   reads as the property [h2] with value [where(...)]. Parsing has to fall back
-   to a rule, or the whole nested block is dropped. *)
+(* CSS Nesting 1 sec. 2 lets a nested rule start with an identifier, so its
+   prelude is ambiguous with a declaration until the block appears:
+   [h2:where(...)] reads as the property [h2] with value [where(...)]. Parsing
+   has to fall back to a rule, or the whole nested block is dropped. *)
 let test_nested_rule_starting_with_ident () =
   let check src expected =
     Alcotest.(check string) src expected (render (block src))
@@ -70,6 +70,27 @@ let test_bad_declaration_still_a_declaration () =
     "the invalid declaration drops, the good one stays" ".a{width:1px}"
     (render stmts)
 
+(* CSS Nesting 1 sec. 2.1: [&] stands for [:is(<parent selector list>)]. The
+   wrapper is load-bearing whenever the parent carries a combinator and [&] does
+   not head the selector, since the parent's own structure would otherwise
+   escape into the surrounding context. *)
+let test_nesting_wraps_complex_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  (* without the wrapper this reads as ".dark .a .b", which additionally demands
+     that ".a" sit inside ".dark" *)
+  check ".a .b{.dark &{color:red}}" ".dark :is(.a .b){color:red}";
+  (* [&] in the middle, and [&] appended to a compound, escape the same way *)
+  check ".a .b{.x & .y{color:red}}" ".x :is(.a .b) .y{color:red}";
+  check ".a .b{.foo&{color:red}}" ".foo:is(.a .b){color:red}";
+  (* a parent with no combinator matches and scores the same either way, so it
+     goes in verbatim *)
+  check ".a{.dark &{color:red}}" ".dark .a{color:red}";
+  (* nothing can escape to the left of a leading [&], so no wrapper there *)
+  check ".a .b{&:hover{color:red}}" ".a .b:hover{color:red}";
+  check ".a .b{& .c{color:red}}" ".a .b .c{color:red}"
+
 let suite =
   ( "flatten",
     [
@@ -83,4 +104,6 @@ let suite =
         test_nested_rule_starting_with_ident;
       Alcotest.test_case "bad declaration stays a declaration" `Quick
         test_bad_declaration_still_a_declaration;
+      Alcotest.test_case "nesting wraps a complex parent" `Quick
+        test_nesting_wraps_complex_parent;
     ] )

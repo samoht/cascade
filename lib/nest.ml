@@ -3,13 +3,43 @@ open Stylesheet
 let contains sel =
   Selector.any (function Selector.Nesting -> true | _ -> false) sel
 
-let substitute ~parent sel =
+(* CSS Nesting 1 sec. 2.1: [&] stands for [:is(<parent selector list>)]. A
+   parent that carries a combinator or lists alternatives needs that wrapper, or
+   its own structure escapes: dropping it turns [.dark &] over parent [.a .b]
+   into [.dark .a .b], which demands that [.a] itself sit inside [.dark]. Where
+   [&] heads the selector nothing can escape to its left, so the wrapper is
+   redundant there and the parent goes in verbatim. *)
+let complex = function
+  | Selector.List _ | Selector.Combined _ | Selector.Relative _ -> true
+  | _ -> false
+
+let count_nesting sel =
+  let n = ref 0 in
+  ignore
+    (Selector.any
+       (fun s ->
+         (match s with Selector.Nesting -> incr n | _ -> ());
+         false)
+       sel);
+  !n
+
+let rec heads = function
+  | Selector.Nesting -> true
+  | Selector.Compound (x :: _) -> heads x
+  | Selector.Combined (l, _, _) -> heads l
+  | _ -> false
+
+let substitute ?(leftmost = true) ~parent sel =
+  let verbatim =
+    (not (complex parent)) || (leftmost && heads sel && count_nesting sel = 1)
+  in
+  let parent = if verbatim then parent else Selector.Is [ parent ] in
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
 
 let combine parent child =
   match child with
   | Selector.Relative (comb, right) ->
-      Selector.Combined (parent, comb, substitute ~parent right)
+      Selector.Combined (parent, comb, substitute ~leftmost:false ~parent right)
   | _ when contains child -> substitute ~parent child
   | _ -> Selector.Combined (parent, Selector.Descendant, child)
 
