@@ -14,8 +14,8 @@ type custom_value = component_values
 type 'a fallback =
   | Empty (* Empty fallback: var(--name,) *)
   | Empty2
-    (* 2-char empty fallback: var(--name, ) — matches tailwindcss output, likely
-       a bug in tailwindcss *)
+    (* 2-char empty fallback: var(--name, ) -- matches tailwindcss output,
+       likely a bug in tailwindcss *)
   | None (* No fallback: var(--name) *)
   | Fallback of 'a (* Value fallback: var(--name, value) *)
   | Syntax_fallback of component_values
@@ -39,14 +39,15 @@ type 'a var = {
 type 'a env = { name : string; indices : int list; fallback : 'a option }
 type calc_op = Add | Sub | Mul | Div
 
-(** CSS Values 4 §10.7.1 math constants - emitted at the source byte sequence
-    (e.g. [pi], [e]) rather than their floating-point evaluation, so pretty pp
-    preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)]. *)
+(** CSS Values 4 sec. 10.7.1 math constants - emitted at the source byte
+    sequence (e.g. [pi], [e]) rather than their floating-point evaluation, so
+    pretty pp preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)].
+*)
 type math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 §10.7 numeric math function arguments. Self-recursive so nested
-    calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants stays
-    as a tree ([(e - exp(1))]). *)
+(** CSS Values 4 sec. 10.7 numeric math function arguments. Self-recursive so
+    nested calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants
+    stays as a tree ([(e - exp(1))]). *)
 type math_arg =
   | Lit of float
   | Dim of float * string
@@ -59,9 +60,9 @@ type math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 §10.7 numeric math functions. Each arm preserves its source arg
-    shape so pretty pp re-emits [name(args)]; the optimizer evaluates to [Num]
-    under minify. *)
+(** CSS Values 4 sec. 10.7 numeric math functions. Each arm preserves its source
+    arg shape so pretty pp re-emits [name(args)]; the optimizer evaluates to
+    [Num] under minify. *)
 and math_fn =
   | Sin of angle_arg
   | Cos of angle_arg
@@ -101,7 +102,7 @@ type 'a calc =
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
   | Math_fn of math_fn
-(* CSS Values 4 §10.7 numeric math functions ([sin], [cos], [hypot], ...).
+(* CSS Values 4 sec. 10.7 numeric math functions ([sin], [cos], [hypot], ...).
    Pretty pp emits [name(args)] preserving source shape; minify pp / optimizer
    evaluates to [Num]. *)
 
@@ -179,11 +180,11 @@ type length =
   | Revert_layer
   | Fit_content
   | Fit_content_arg of length
-      (** [fit-content(<length-percentage>)] - CSS Sizing 3 §5.1. The argument
-          is a [<length-percentage>]; we store it via the [length] type because
-          [length] already has a [Pct of float] case for the percentage form (a
-          separate [length_percentage] would force a mutually-recursive type).
-      *)
+      (** [fit-content(<length-percentage>)] - CSS Sizing 3 sec. 5.1. The
+          argument is a [<length-percentage>]; we store it via the [length] type
+          because [length] already has a [Pct of float] case for the percentage
+          form (a separate [length_percentage] would force a mutually-recursive
+          type). *)
   | Content
   | Contain
   | Max_content
@@ -214,7 +215,7 @@ type length =
   | Anchor_size of string
   | Anchor of string option * string * length option
   | Attr of length attr_call
-      (** CSS Values 5 §10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
+      (** CSS Values 5 sec. 10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
           typed-value contexts. *)
   | Env of length env
   | Var of length var
@@ -466,7 +467,7 @@ type hue_interpolation =
   | Increasing
   | Decreasing
   | Specified
-      (** CSS Color 5 §13 [specified hue] - keep authored hue values without
+      (** CSS Color 5 sec. 13 [specified hue] - keep authored hue values without
           interpolation rotation. *)
   | Default
 
@@ -511,9 +512,9 @@ type color =
   | Relative_rgb of string
   | Relative_color of string * string
       (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for any color
-          function other than [rgb()] (CSS Color 5 §2). The first string is the
-          function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb], [color]),
-          the second is the parenthesised body verbatim. *)
+          function other than [rgb()] (CSS Color 5 sec. 2). The first string is
+          the function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb],
+          [color]), the second is the parenthesised body verbatim. *)
   | Contrast_color of color
   | Light_dark of color * color
   | Attribute of string * color option

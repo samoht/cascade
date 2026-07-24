@@ -787,7 +787,7 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
 
 (* Fold [a / b] only when the float quotient round-trips through multiplication:
    exact divisions like [100/4 = 25] survive but [100/3 = 33.333...] does not,
-   so the calc wrapper stays and CSS Values 4 §10.7's precision requirement
+   so the calc wrapper stays and CSS Values 4 sec. 10.7's precision requirement
    holds. *)
 let exact_div (a : float) (b : float) : float option =
   if b = 0. then Option.none
@@ -822,7 +822,7 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
-(* CSS Values 4 §10.7 value-independent calc identities: hold for any finite
+(* CSS Values 4 sec. 10.7 value-independent calc identities: hold for any finite
    operand, so they fold even across a kept [var()] (single-valued inside
    [calc()], so [var * 1 = var]). Identity cases ([x * 1], [x / 1], [x + 0],
    ...) return the operand verbatim; zero-producing cases take the type's
@@ -870,7 +870,7 @@ let default_calc_ctx = { var_is_single_valued = (fun _ -> false) }
 (* A nested [calc()] or a parenthesised group around a single leaf is redundant
    grouping: drop it. A [var()] leaf is only safe to unwrap when the var is
    single-valued; otherwise its substitution could be a multi-term expression
-   that needs the grouping (CSS Values 4 §10.10). *)
+   that needs the grouping (CSS Values 4 sec. 10.10). *)
 let unwrap_grouping : type a.
     ctx:calc_ctx -> rewrap:(a calc -> a calc) -> a calc -> a calc =
  fun ~ctx ~rewrap reduced ->
@@ -915,7 +915,7 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
               | Some zero -> zero
               | None -> Expr (l, op, r))))
 
-(* CSS Values 4 §10.7 typed [calc()] reduction, shared by every dimensioned
+(* CSS Values 4 sec. 10.7 typed [calc()] reduction, shared by every dimensioned
    type: the [Expr] dispatch is identical, only the per-type leaves differ and
    are passed in ([math_fn], [scale], [combine], [zero] / [is_zero] for the
    identities). A shape with no [scale] / [combine] returns [None] and the
@@ -965,7 +965,7 @@ let rec eval_typed_calc : type a.
           match scale ~exact:true Mul a n with
           | Some v -> Val v
           | None -> Expr (l, op, r))
-      (* CSS Values 4 §10.7: [1 / (1 / x)] cancels the double inversion. *)
+      (* CSS Values 4 sec. 10.7: [1 / (1 / x)] cancels the double inversion. *)
       | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
       | Num 1., Div, Expr (Num 1., Div, x) -> x
       | _ -> (
@@ -976,10 +976,11 @@ let rec eval_typed_calc : type a.
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   match calc with
-  (* CSS Values 4 §10.10: a [var()] inside [calc()] is a runtime substitution
-     boundary - the substituted tokens go through calc's typed grammar, not the
-     surrounding property's grammar. Unwrapping [calc(var(--x))] to bare
-     [var(--x)] would change which substitution shape is valid. *)
+  (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
+     substitution boundary - the substituted tokens go through calc's typed
+     grammar, not the surrounding property's grammar. Unwrapping
+     [calc(var(--x))] to bare [var(--x)] would change which substitution shape
+     is valid. *)
   | Val v when Pp.minified ctx -> pp_value ctx v
   | Num n when Pp.minified ctx -> Pp.float ctx n
   | _ ->
@@ -1196,7 +1197,7 @@ let rec resolve_length_calc_vars ctx : length calc -> length calc = function
     as leaf ->
       leaf
 
-(* CSS Values 4 §6.1: the absolute lengths share px as a canonical unit. *)
+(* CSS Values 4 sec. 6.1: the absolute lengths share px as a canonical unit. *)
 let absolute_unit_px_ratio = function
   | "px" -> Some 1.
   | "in" -> Some 96.
@@ -1207,9 +1208,9 @@ let absolute_unit_px_ratio = function
   | "pc" -> Some (96. /. 6.)
   | _ -> None
 
-(* CSS Values 4 §10.7: same-unit add/sub of two typed lengths reduces to a
+(* CSS Values 4 sec. 10.7: same-unit add/sub of two typed lengths reduces to a
    single length. Mixed cases reduce when both operands are absolute units
-   (px-compatible per §6.1) by combining in the canonical px form; relative
+   (px-compatible per sec. 6.1) by combining in the canonical px form; relative
    units (em/rem/vw/...) still require cascade context and stay unfolded. *)
 let length_combine op v1 v2 =
   let combine a b =
@@ -1226,11 +1227,11 @@ let length_combine op v1 v2 =
       | _ -> None)
   | _ -> None
 
-(* CSS Values 4 §10.7: a unitless factor scales a typed length, unit unchanged.
-   Division folds only when [exact_div] is exact, else the [calc()] is kept to
-   avoid precision loss. Exception: an irrational divisor (a math constant [pi]
-   / [e] / ...) can never be exact, and keeping [calc()] preserves no more
-   precision than the browser computes, so fold to the rounded value. *)
+(* CSS Values 4 sec. 10.7: a unitless factor scales a typed length, unit
+   unchanged. Division folds only when [exact_div] is exact, else the [calc()]
+   is kept to avoid precision loss. Exception: an irrational divisor (a math
+   constant [pi] / [e] / ...) can never be exact, and keeping [calc()] preserves
+   no more precision than the browser computes, so fold to the rounded value. *)
 let length_scale ?(exact = true) op v n =
   if not (Float.is_finite n) then Option.none
   else
@@ -1249,9 +1250,10 @@ let length_scale ?(exact = true) op v n =
           else Option.none
     | _ -> Option.none
 
-(* CSS Values 4 §10.7: [abs()] preserves the input's type, so [abs(<length>)]
-   returns a [<length>]. The generic [Math_fn -> Num] reduction strips the unit;
-   reconstruct a length [Val] when the argument's [Dim] carries one. *)
+(* CSS Values 4 sec. 10.7: [abs()] preserves the input's type, so
+   [abs(<length>)] returns a [<length>]. The generic [Math_fn -> Num] reduction
+   strips the unit; reconstruct a length [Val] when the argument's [Dim] carries
+   one. *)
 let length_of_math_fn (fn : math_fn) : length option =
   match fn with
   | Abs_n (Dim (n, unit)) ->
@@ -1261,7 +1263,7 @@ let length_of_math_fn (fn : math_fn) : length option =
 let length_math_fn_value (fn : math_fn) : float option =
   match fn with Sin _ | Cos _ -> None | fn -> eval_math_fn fn
 
-(* CSS Values 4 §10.10: identity-rule simplifications around a runtime
+(* CSS Values 4 sec. 10.10: identity-rule simplifications around a runtime
    substitution would change the substituted-grammar context. *)
 (* A [-webkit-] / [-moz-] intrinsic sizing keyword, the legacy fallback an
    author pairs with the unprefixed form ([width:-webkit-max-content;
@@ -1541,11 +1543,11 @@ let ordered_linear_terms terms =
           Hashtbl.replace table unit
             { term with value = term.value +. n; count = term.count + 1 })
     terms;
-  (* CSS Values 4 §10.10: a calc()'s type is the union of its argument types.
-     Dropping [0%] from [calc(100px + 0%)] would narrow [<length-percentage>] to
-     [<length>] and break interpolation, so [0%] is kept as a type sentinel.
-     Other zero terms (e.g. [0px] beside another [px]) drop, their unit already
-     in the result. *)
+  (* CSS Values 4 sec. 10.10: a calc()'s type is the union of its argument
+     types. Dropping [0%] from [calc(100px + 0%)] would narrow
+     [<length-percentage>] to [<length>] and break interpolation, so [0%] is
+     kept as a type sentinel. Other zero terms (e.g. [0px] beside another [px])
+     drop, their unit already in the result. *)
   let keep_zero_term term =
     length_unit_is_pct term.unit
     && Hashtbl.fold
@@ -2210,8 +2212,8 @@ let pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
-(* CSS Color 4 §6.4: every named colour has a canonical sRGB byte triple. Minify
-   routes [Named n] through this table for the shortest spelling (name vs
+(* CSS Color 4 sec. 6.4: every named colour has a canonical sRGB byte triple.
+   Minify routes [Named n] through this table for the shortest spelling (name vs
    [#hex]). Hex is stored shortest ([shorten_hex] folds [rrggbb] to [rgb]), so
    [pp_color]'s back-conversion is a no-op. *)
 
@@ -2847,12 +2849,12 @@ let lerp_byte b1 b2 w1 w2 =
   Float.to_int
     (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
 
-(* Mix two static colours in sRGB per CSS Color 5 §5. [None] if either operand
-   can't fold statically ([Var] / [Calc]) or the weights reduce to zero. CSS
-   Color 4 §4.2.3 [none] sentinel: a [none] channel inherits the other operand's
-   channel rather than averaging in a zero; both [none] yields [none] (returned
-   as zero, since the caller routes through [Hex] and [#000000] is the shortest
-   fully-[none] spelling). *)
+(* Mix two static colours in sRGB per CSS Color 5 sec. 5. [None] if either
+   operand can't fold statically ([Var] / [Calc]) or the weights reduce to zero.
+   CSS Color 4 sec. 4.2.3 [none] sentinel: a [none] channel inherits the other
+   operand's channel rather than averaging in a zero; both [none] yields [none]
+   (returned as zero, since the caller routes through [Hex] and [#000000] is the
+   shortest fully-[none] spelling). *)
 let mix_srgb_bytes c1 c2 ~p1 ~p2 =
   match
     (static_color_to_srgb_channels c1, static_color_to_srgb_channels c2)
@@ -3409,7 +3411,7 @@ let named_for_hex value =
     matching Lightning CSS behavior. *)
 let shorten_hex value =
   let len = String.length value in
-  (* #RRGGBB → #RGB when R=R, G=G, B=B *)
+  (* #RRGGBB -> #RGB when R=R, G=G, B=B *)
   if
     len = 6
     && value.[0] = value.[1]
@@ -3420,7 +3422,7 @@ let shorten_hex value =
     Bytes.set s 0 value.[0];
     Bytes.set s 1 value.[2];
     Bytes.set s 2 value.[4];
-    Bytes.to_string s (* #RRGGBBAA → #RGBA when R=R, G=G, B=B, A=A *))
+    Bytes.to_string s (* #RRGGBBAA -> #RGBA when R=R, G=G, B=B, A=A *))
   else if
     len = 8
     && value.[0] = value.[1]
@@ -3429,7 +3431,7 @@ let shorten_hex value =
     && value.[6] = value.[7]
   then (
     if
-      (* Further shorten #RGBA → #RGB when A=f (fully opaque) *)
+      (* Further shorten #RGBA -> #RGB when A=f (fully opaque) *)
       value.[6] = 'f' || value.[6] = 'F'
     then (
       let s = Bytes.create 3 in
@@ -3445,13 +3447,13 @@ let shorten_hex value =
       Bytes.set s 3 value.[6];
       Bytes.to_string s)
   else if
-    (* #RRGGBBFF → #RRGGBB when fully opaque *)
+    (* #RRGGBBFF -> #RRGGBB when fully opaque *)
     len = 8
     && (value.[6] = 'f' || value.[6] = 'F')
     && (value.[7] = 'f' || value.[7] = 'F')
   then String.sub value 0 6
   else if
-    (* #RGBA → #RGB when A=f (fully opaque) *)
+    (* #RGBA -> #RGB when A=f (fully opaque) *)
     len = 4 && (value.[3] = 'f' || value.[3] = 'F')
   then String.sub value 0 3
   else value
@@ -3478,7 +3480,7 @@ let minify_color : color -> color = function
       else Named n
   | c -> c
 
-(* CSS Color 4 §11 normalises system colour keywords to lowercase ASCII. *)
+(* CSS Color 4 sec. 11 normalises system colour keywords to lowercase ASCII. *)
 let pp_system_color : system_color Pp.t =
  fun ctx -> function
   | Accent_color -> Pp.string ctx "accentcolor"
@@ -3593,7 +3595,7 @@ let rec pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f ->
-      (* CSSOM serialisation (CSS Values 4 §6.7.2) drops a leading zero on
+      (* CSSOM serialisation (CSS Values 4 sec. 6.7.2) drops a leading zero on
          fractional numbers: emit [.25] not [0.25] in both modes. Under minify,
          round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB). *)
       let max_decimals = if Pp.minified ctx then 3 else 8 in
@@ -3880,7 +3882,7 @@ let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
       match eval_time_calc ~ctx c with Val v -> v | folded -> Calc folded)
   | _ -> d
 
-(* CSS Values 4 §10.7: a typed [<angle>] multiplied or divided by a unitless
+(* CSS Values 4 sec. 10.7: a typed [<angle>] multiplied or divided by a unitless
    number scales the angle's coefficient and keeps its unit, so [calc(1deg *
    -45)] reduces to [-45deg]. Division folds only when the quotient is [exact]
    (see [exact_div]); dividing by a math constant ([pi] / ...) is irrational, so
@@ -3912,7 +3914,7 @@ let angle_is_zero : angle -> bool = function
   | Deg f | Rad f | Turn f | Grad f -> f = 0.
   | _ -> false
 
-(* CSS Values 4 §10.7: same-unit add/sub of two typed angles reduces to one
+(* CSS Values 4 sec. 10.7: same-unit add/sub of two typed angles reduces to one
    angle ([calc(45deg + 45deg)] -> [90deg]). Cross-unit operands (e.g. [1turn +
    90deg]) stay unfolded; [normalize_angle] picks the shortest spelling of a
    single folded operand, not across a mixed sum. *)
@@ -4285,7 +4287,7 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-(** Lab-like float string. CSSOM serialisation (CSS Values 4 §6.7.2) drops a
+(** Lab-like float string. CSSOM serialisation (CSS Values 4 sec. 6.7.2) drops a
     leading zero on fractional numbers; the coefficient prints in full so the
     value round-trips, with precision reduction left to [normalize_color]. *)
 let string_of_lab_float f =
@@ -4692,7 +4694,7 @@ and pp_color_default : color Pp.t =
 
 let pp_specified_color = pp_color_default
 
-(* CSS Values 4 §6.3: [ms] and [s] are interchangeable; pick the shorter
+(* CSS Values 4 sec. 6.3: [ms] and [s] are interchangeable; pick the shorter
    spelling when minifying. The "s" suffix is one character shorter than "ms",
    so a millisecond value collapses to seconds when its second-form digits are
    no longer than the millisecond-form digits. *)
@@ -5086,7 +5088,7 @@ let read_math_constant_name t name =
   | _ -> Cursor.err t "expected math constant"
 
 let read_math_number_with_unit t =
-  (* CSS Values 5 §10.7 [sign()] / [abs()] accept a [<calc-sum>] over any
+  (* CSS Values 5 sec. 10.7 [sign()] / [abs()] accept a [<calc-sum>] over any
      numeric type, including dimensions and percentages. Capture the leading
      number plus its unit so [sign(-1vw)] and [sign(1%)] preserve their source
      shape. *)
@@ -5170,8 +5172,8 @@ let math_constant_factor_of_name : type a. Cursor.t -> _ -> string -> a calc =
 
 let read_math_constant_factor : type a. Cursor.t -> a calc =
  fun t ->
-  (* CSS Values 4 §10.7.1 math constants ([pi], [e], [infinity], [-infinity],
-     [NaN]) appear as bare identifiers inside [calc()]. *)
+  (* CSS Values 4 sec. 10.7.1 math constants ([pi], [e], [infinity],
+     [-infinity], [NaN]) appear as bare identifiers inside [calc()]. *)
   let snap = Cursor.save t in
   match Cursor.ident_opt t with
   | Some name -> math_constant_factor_of_name t snap name
@@ -5257,7 +5259,7 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
       | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
       | "clamp" -> read_numeric_clamp t
-      (* CSS Values 4 §10.7 numeric math functions: parsed into the typed
+      (* CSS Values 4 sec. 10.7 numeric math functions: parsed into the typed
          [Math_fn] AST so pretty pp re-emits [name(args)]; the optimizer (or
          minify pp) folds via [eval_math_fn]. *)
       | "sqrt" -> Math_fn (Sqrt (read_math_call_arg "sqrt" t))
@@ -5927,7 +5929,7 @@ and read_rgb t : rgb =
 
 let read_rgb_space_separated t : color =
   (* The cursor wraps the [rgb(...)] [Func] arguments, so there is no closing
-     [)] to consume — it's the block boundary. *)
+     [)] to consume -- it's the block boundary. *)
   Cursor.ws t;
   if Cursor.looking_at t "var(" then (
     let snap = Cursor.save t in
@@ -6060,7 +6062,7 @@ let read_atan2_scalar t : atan2_category * float =
   match unit with
   | "" -> (Number, n)
   | "%" -> (Percentage, n)
-  (* CSS Values 4 §6.2 absolute lengths converted to [px]. *)
+  (* CSS Values 4 sec. 6.2 absolute lengths converted to [px]. *)
   | "px" -> (Length, n)
   | "cm" -> (Length, n *. (96. /. 2.54))
   | "mm" -> (Length, n *. (96. /. 25.4))
@@ -6147,7 +6149,7 @@ let read_angle_trig kind name t =
 let read_angle_atan2 t =
   let typed t =
     Cursor.call "atan2" t (fun inner ->
-        (* CSS Values 4 §10.7: atan2(y, x) accepts <number>|<dimension>|
+        (* CSS Values 4 sec. 10.7: atan2(y, x) accepts <number>|<dimension>|
            <percentage> for both arguments (must match types). When both
            arguments reduce to a scalar in a shared category, the ratio is
            unit-free and the result folds to a [Deg] constant. *)
@@ -6404,8 +6406,8 @@ let read_color_function t : color =
   Color { space; components; alpha }
 
 (* A bare [<percentage>] leaf inside a color-mix weight [calc()]. Unlike the
-   top-level weight it is not range-checked: CSS Values 4 §10 clamps the math
-   function's result, not its individual operands. [read_calc] handles the
+   top-level weight it is not range-checked: CSS Values 4 sec. 10 clamps the
+   math function's result, not its individual operands. [read_calc] handles the
    [var()] and nested-[calc()] factors itself, so the leaf only sees a token. *)
 let read_color_mix_calc_pct t : percentage = Pct (Cursor.pct t)
 
@@ -6415,9 +6417,9 @@ let rec read_percentage_in_color_mix t : percentage =
   if Cursor.looking_at t "var(" then
     Var (read_var read_percentage_in_color_mix t)
   else if Cursor.looking_at_calc t then
-    (* CSS Color 5 §3: the weight may be a math function. We can't bound-check a
-       [calc()] statically (it may carry a [var()]), so we keep it verbatim and
-       let substitution-time clamping apply. *)
+    (* CSS Color 5 sec. 3: the weight may be a math function. We can't
+       bound-check a [calc()] statically (it may carry a [var()]), so we keep it
+       verbatim and let substitution-time clamping apply. *)
     Calc (read_calc read_color_mix_calc_pct t)
   else
     let n = Cursor.number t in
@@ -6427,7 +6429,7 @@ let rec read_percentage_in_color_mix t : percentage =
     (Pct n : percentage)
 
 let read_optional_percentage t : percentage option =
-  (* CSS Color 5 §3 (https://drafts.csswg.org/css-color-5/#color-mix): the
+  (* CSS Color 5 sec. 3 (https://drafts.csswg.org/css-color-5/#color-mix): the
      [color-mix()] weight grammar is [<percentage [0,100]>?] - strictly a
      percentage token, no [<number>] alternative. We don't accept a bare decimal
      here even though some minifiers (cssnano) ship the [0% -> 0] shortcut as a
@@ -6616,7 +6618,7 @@ let rec read_color_mix t : color =
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
 and read_color_mix_component t =
-  (* CSS Color 5 §3: a component is [<color> && <percentage>?] - the two may
+  (* CSS Color 5 sec. 3: a component is [<color> && <percentage>?] - the two may
      appear in either order. Prefer the [<color> <percentage>?] reading so an
      ambiguous leading [var()] is taken as the colour ([var(--c) var(--p)] keeps
      its source order rather than being re-emitted percentage-first). Fall back
@@ -6709,9 +6711,9 @@ and read_color_attr t : color =
   Attribute (name, fallback)
 
 and read_relative_color name t : color =
-  (* CSS Color 5 §2: any colour function may take [from <origin> <c1> <c2> <c3>
-     [/ <alpha>]?]. We capture the body verbatim so the printer re-emits the
-     function name + parenthesised tail unchanged. *)
+  (* CSS Color 5 sec. 2: any colour function may take [from <origin> <c1> <c2>
+     <c3> [/ <alpha>]?]. We capture the body verbatim so the printer re-emits
+     the function name + parenthesised tail unchanged. *)
   Cursor.ws t;
   Cursor.expect_string "from" t;
   Cursor.ws t;
@@ -7131,7 +7133,7 @@ let rec read_percentage t : percentage =
   else if Cursor.looking_at_calc t then Calc (read_calc read_percentage t)
   else Pct (Cursor.pct t)
 
-(* CSS Values 5 §10: math functions that produce a non-length type ([asin] /
+(* CSS Values 5 sec. 10: math functions that produce a non-length type ([asin] /
    [acos] / [atan] / [atan2] return angles, [sin] / [cos] / [tan] return
    numbers). Used in a [<length-percentage>] context they are spec-invalid;
    lightning et al. preserve verbatim, so cascade captures the original call as

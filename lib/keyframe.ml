@@ -63,7 +63,7 @@ let parse_percent s =
   else None
 
 (** Parse a [<timeline-range-name> <percentage>] string (Scroll-Driven
-    Animations 1 §8.1). *)
+    Animations 1 sec. 8.1). *)
 let parse_timeline_range_position s =
   match String.index_opt s ' ' with
   | None -> None

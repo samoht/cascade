@@ -731,7 +731,7 @@ let transforms () =
     "transform: scale(2) translateY(20px) rotate(180deg)";
 
   (* Transform origin *)
-  (* Per CSS Transforms 1 §6 [center] is shorthand for [50% 50%] and the
+  (* Per CSS Transforms 1 sec. 6 [center] is shorthand for [50% 50%] and the
      keyword pair [top left] is [0 0]. A single [0] would mean [0 50%], so the
      two-value form must be preserved. *)
   check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
@@ -1373,7 +1373,7 @@ let number_formats () =
 let unterminated () =
   (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and
      function calls at EOF. Assert the recovered declaration matches the shape
-     an explicit closer would have produced — the parser must not silently drop
+     an explicit closer would have produced -- the parser must not silently drop
      content. *)
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
   (* The auto-closed inner parens collapse to a single value, leaving the outer

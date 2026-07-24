@@ -296,9 +296,9 @@ let pp_property_rule : 'a property_rule Pp.t =
       if not ctx.Pp.minify then Pp.semicolon ctx ())
     ctx ()
 
-(* CSS Animations 1 §3 [<keyframes-name>] is [<custom-ident> | <string>]. The
-   reader normalizes either form to a plain OCaml string; on output we prefer
-   the bare identifier when the value is a syntactically valid CSS ident
+(* CSS Animations 1 sec. 3 [<keyframes-name>] is [<custom-ident> | <string>].
+   The reader normalizes either form to a plain OCaml string; on output we
+   prefer the bare identifier when the value is a syntactically valid CSS ident
    (shorter than the quoted form), falling back to a double-quoted string when
    the name contains characters that would otherwise need escaping. *)
 let pp_keyframes_name ctx name =
@@ -1621,7 +1621,7 @@ let read_keyframes_block inner =
   in
   read_frames []
 
-(* CSS Animations 1 §3: [@keyframes <keyframes-name>], [<keyframes-name> =
+(* CSS Animations 1 sec. 3: [@keyframes <keyframes-name>], [<keyframes-name> =
    <custom-ident> | <string>]. The reserved spellings ([none], CSS-wide
    keywords, [default]) are excluded from [<custom-ident>], but every mainstream
    minifier accepts them as [<string>], so cascade keeps them too rather than
@@ -1712,16 +1712,16 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
-(* CSS Fonts 4 §11.2 wants the first bound of a descriptor range <= the second.
-   Browsers keep a descending range, so the readers accept it but record a
-   warning here; [Css.of_string ~strict] then turns the warning into an
+(* CSS Fonts 4 sec. 11.2 wants the first bound of a descriptor range <= the
+   second. Browsers keep a descending range, so the readers accept it but record
+   a warning here; [Css.of_string ~strict] then turns the warning into an
    error. *)
 let warn_descending_range r property =
   Cursor.push_warning r
     (Error.bad_value (Cursor.position r) ~property
        ~reason:
          "range must run from the smaller value to the larger (CSS Fonts 4 \
-          §11.2)")
+          \u{00a7}11.2)")
 
 let font_weight_num = function
   | (Properties.Weight n : Properties.font_weight) -> Some n
@@ -1994,10 +1994,10 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         if Cursor.peek_semicolon r then Cursor.skip r;
         Some descriptor
     | exception Error.Parse_error e ->
-        (* CSS Fonts 4 §11.2 / CSS Syntax 3 §5.4.4: a descriptor that does not
-           parse - an unknown name (Fontsource's [font-named-instance]) or an
-           invalid value of a known one ([font-display:maybe]) - is dropped and
-           the rest of the @font-face is kept, matching browsers. *)
+        (* CSS Fonts 4 sec. 11.2 / CSS Syntax 3 sec. 5.4.4: a descriptor that
+           does not parse - an unknown name (Fontsource's [font-named-instance])
+           or an invalid value of a known one ([font-display:maybe]) - is
+           dropped and the rest of the @font-face is kept, matching browsers. *)
         Cursor.push_warning r e;
         let rec skip_to_semicolon () =
           match Cursor.next_raw r with
@@ -2022,9 +2022,9 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
-  (* CSS Fonts 4 §11.2.1: missing [font-family] / [src] is a semantic mismatch,
-     not a syntax one. [validate_partial_statement] flags it; the syntactic
-     reader accepts. *)
+  (* CSS Fonts 4 sec. 11.2.1: missing [font-family] / [src] is a semantic
+     mismatch, not a syntax one. [validate_partial_statement] flags it; the
+     syntactic reader accepts. *)
   let descriptors = Cursor.braces read_font_face_block r in
   Font_face descriptors
 
@@ -2196,8 +2196,8 @@ let read_counter_style (r : Cursor.t) : statement =
   counter_style_validate r descriptors;
   Counter_style (name, descriptors)
 
-(* CSS Paged Media 3 §3.1: a page selector is an optional page name followed by
-   zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
+(* CSS Paged Media 3 sec. 3.1: a page selector is an optional page name followed
+   by zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
 let page_selector_error r s =
   Cursor.err_invalid r ("invalid @page selector: " ^ s)
 
@@ -2325,8 +2325,8 @@ let read_page_margin_rule r =
     when List.mem name allowed_page_margin_names ->
       Cursor.skip r;
       Cursor.ws r;
-      (* CSS Paged Media §5: a page-margin box accepts every descriptor valid in
-         [@page] plus [content]. *)
+      (* CSS Paged Media sec. 5: a page-margin box accepts every descriptor
+         valid in [@page] plus [content]. *)
       let descriptors =
         Cursor.braces
           (fun inner ->
@@ -2731,7 +2731,7 @@ let unknown_block_body slice value =
       in
       slice first.Loc.start_pos last.Loc.end_pos |> trim_unknown_block_body
 
-(* CSS Syntax 3 §5.4.2 "consume an at-rule": after the at-keyword has been
+(* CSS Syntax 3 sec. 5.4.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
    prelude/block strings are sliced from the original source so the at-rule
    round-trips byte-for-byte even when its grammar is unknown. *)
@@ -3050,7 +3050,7 @@ let rec read_statement (r : Cursor.t) : statement =
       match List.assoc_opt name table with
       | Some p -> p r
       | None ->
-          (* CSS Syntax 3 §5.4.1: an at-rule with no registered handler is
+          (* CSS Syntax 3 sec. 5.4.1: an at-rule with no registered handler is
              reported via a typed warning so [Css.of_string] partial-recovery
              can surface it to callers. The prelude/block stay in the AST as
              [Unknown_at_rule], and [Optimize.drop_unknown] removes them under
@@ -3079,7 +3079,7 @@ and read_block (r : Cursor.t) : block =
       let loc = Cursor.position r in
       let snap = Cursor.save r in
       match read_statement r with
-      (* CSS Syntax 3 §5.4.1: a rule that fails to parse (e.g. an invalid
+      (* CSS Syntax 3 sec. 5.4.1: a rule that fails to parse (e.g. an invalid
          selector) is dropped, and parsing resumes at the next rule - one bad
          rule must not take the rest of the [@layer] / [@media] block with it.
          Strict mode ([not (Cursor.recover r)]) still raises. *)
@@ -3089,7 +3089,7 @@ and read_block (r : Cursor.t) : block =
           skip_bad_statement ();
           read_statements acc
       | Import _ ->
-          (* CSS Cascade L6 §2: @import is only valid at the top of the
+          (* CSS Cascade L6 sec. 2: @import is only valid at the top of the
              stylesheet. Drop a misplaced one rather than emitting it. *)
           Cursor.push_warning r
             (Error.bad_value loc ~property:"stylesheet"

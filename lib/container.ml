@@ -648,7 +648,7 @@ let atom_of_string s =
 
 let rec unnamed_query_not s stripped =
   if String.length stripped >= 4 && String.sub stripped 0 4 = "not " then
-    (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly one
+    (* CSS Containment 3 sec. 4 and Conditional Rules: [not] takes exactly one
        [<query-in-parens>], so [not not (x)] is a parse error. The operand is a
        parenthesised compound condition or a [style()] / [scroll-state()]
        function; the latter carry their own parentheses, so they need no extra

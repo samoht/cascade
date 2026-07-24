@@ -478,10 +478,10 @@ let drop_empty_rules stmts =
       | _ -> true)
     stmts
 
-(* CSS Cascade 5 §6.6.3: a [@layer <name>;] declaration form is prelude-friendly
-   and may interleave with [@charset] / [@import] / [@namespace], so a
-   [Layer_decl] before [@import] / [@namespace] must not flip [seen_body] -
-   otherwise the following [@import] gets dropped as misplaced. *)
+(* CSS Cascade 5 sec. 6.6.3: a [@layer <name>;] declaration form is
+   prelude-friendly and may interleave with [@charset] / [@import] /
+   [@namespace], so a [Layer_decl] before [@import] / [@namespace] must not flip
+   [seen_body] - otherwise the following [@import] gets dropped as misplaced. *)
 let drop_misplaced_imports stmts =
   let seen_body = ref false in
   let seen_import_or_namespace = ref false in

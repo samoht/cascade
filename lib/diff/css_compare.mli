@@ -54,11 +54,12 @@ type t = {
 type mode = [ `Auto | `Tree | `String | `Canonical ]
 (** CSS comparison mode.
 
-    - [`Auto] (default) — tree diff when the ASTs differ, string diff otherwise.
-    - [`Tree] — structural diff only; formatting-only differences collapse to
+    - [`Auto] (default) -- tree diff when the ASTs differ, string diff
+      otherwise.
+    - [`Tree] -- structural diff only; formatting-only differences collapse to
       {!No_diff}.
-    - [`String] — character-level diff; the inputs are not parsed.
-    - [`Canonical] — parse both stylesheets, serialize optimized minified
+    - [`String] -- character-level diff; the inputs are not parsed.
+    - [`Canonical] -- parse both stylesheets, serialize optimized minified
       outputs, and compare those outputs. This includes value spellings that
       Cascade canonicalizes as equivalent, such as [transparent] and [#0000] in
       color positions. If the normalized forms differ, the returned diff is
@@ -146,7 +147,7 @@ val equivalent_value :
     Minifier output frequently starts with a [/*! ... */] banner identifying the
     tool. These helpers normalise that banner away so two outputs can be
     compared on their CSS content. {!diff} and {!equal} already strip the banner
-    internally — these are exposed only for callers that want to do their own
+    internally -- these are exposed only for callers that want to do their own
     pre-processing. *)
 
 val strip_tool_header : string -> string

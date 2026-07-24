@@ -1691,9 +1691,9 @@ let test_background () =
     "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png)center/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
-  (* Multi-layer shorthand (CSS Backgrounds 3 §2.1): the layer comma separates
-     layers and must not be eaten by a per-component reader. [repeat] is the
-     default and folds away; the second layer's [space] stays. *)
+  (* Multi-layer shorthand (CSS Backgrounds 3 sec. 2.1): the layer comma
+     separates layers and must not be eaten by a per-component reader. [repeat]
+     is the default and folds away; the second layer's [space] stays. *)
   decl_optimizes ~prop:"background" ~into:"url(a.png),url(b.png)space"
     "url(a.png) repeat,url(b.png) space";
   check_background ~expected:"0 0" "none";
@@ -2027,7 +2027,7 @@ let test_list_style_type () =
   check_list_style_type "upper-alpha";
   check_list_style_type "lower-roman";
   check_list_style_type "upper-roman";
-  (* Predefined counter styles (CSS Counter Styles 3 §6). *)
+  (* Predefined counter styles (CSS Counter Styles 3 sec. 6). *)
   check_list_style_type "decimal-leading-zero";
   check_list_style_type "lower-greek";
   check_list_style_type "lower-latin";
@@ -2294,7 +2294,8 @@ let test_background_repeat () =
   check_background_repeat "repeat-x";
   check_background_repeat "repeat-y";
   check_background_repeat "inherit";
-  (* CSS Backgrounds 3 §3.6: the longhand is a comma-separated layer list. *)
+  (* CSS Backgrounds 3 sec. 3.6: the longhand is a comma-separated layer
+     list. *)
   decl_optimizes ~prop:"background-repeat" ~into:"no-repeat,repeat-y,no-repeat"
     "no-repeat,repeat-y,no-repeat";
   decl_optimizes ~prop:"background-repeat" ~into:"repeat-x,repeat-y"
@@ -2316,7 +2317,7 @@ let test_background_size () =
   check_background_size "var(--s)";
   check_background_size "calc(50% + 10px)";
   check_background_size "calc(50% + 10px) auto";
-  (* Comma-separated layer list (CSS Backgrounds 3 §3.9). *)
+  (* Comma-separated layer list (CSS Backgrounds 3 sec. 3.9). *)
   decl_optimizes ~prop:"background-size" ~into:"cover,contain" "cover,contain";
   decl_optimizes ~prop:"background-size" ~into:"100px 200px,auto"
     "100px 200px,auto";
@@ -2903,7 +2904,7 @@ let test_text_decoration_skip_ink () =
   neg_cursor read_text_decoration_skip_ink "invalid-skip"
 
 let test_transform_origin () =
-  (* Per CSS Transforms 1 §6 the keyword [center] is shorthand for [50%] and
+  (* Per CSS Transforms 1 sec. 6 the keyword [center] is shorthand for [50%] and
      matched-pair shorthand collapses to a single value. Per shortest- wins
      (Lightning CSS) the printer emits the numeric form. *)
   check_transform_origin ~expected:"50%" "center";

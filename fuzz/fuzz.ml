@@ -1,4 +1,4 @@
-(** CSS parser fuzz tests — main entry point.
+(** CSS parser fuzz tests -- main entry point.
 
     Registers all fuzz test modules and runs them with Alcobar. *)
 

@@ -69,12 +69,12 @@ let test_layer_placement_invariant buf =
         failf "layer placement changed inlining: unlayered %S vs layered %S" r l
   | _ -> ()
 
-(* CSS Cascade 5 §6.4.2: for normal declarations an unlayered definition beats
-   every layered one, whatever the layers or their order. A variable defined on
-   [:root] across a stack of named layers plus one unlayered definition must
-   therefore fold to the unlayered value. Independent of how the winner is
-   computed, so it catches a wrong winner (e.g. picking the last document
-   order). *)
+(* CSS Cascade 5 sec. 6.4.2: for normal declarations an unlayered definition
+   beats every layered one, whatever the layers or their order. A variable
+   defined on [:root] across a stack of named layers plus one unlayered
+   definition must therefore fold to the unlayered value. Independent of how the
+   winner is computed, so it catches a wrong winner (e.g. picking the last
+   document order). *)
 let test_unlayered_definition_wins buf =
   let n = 1 + (byte_at buf 0 mod 3) in
   let vals = [ "1px"; "2px"; "3px"; "4px" ] in

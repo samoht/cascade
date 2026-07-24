@@ -111,14 +111,16 @@ let style_text ~color action s =
 let tree_prefix ~style ~is_last ~parent_prefix =
   if not style.use_tree then ""
   else
-    let connector = if is_last then "└─ " else "├─ " in
+    let connector =
+      if is_last then "\u{2514}\u{2500} " else "\u{251c}\u{2500} "
+    in
     parent_prefix ^ connector
 
 (* Get the continuation prefix for children *)
 let tree_continuation ~style ~is_last ~parent_prefix =
   if not style.use_tree then parent_prefix
   else
-    let continuation = if is_last then "   " else "│  " in
+    let continuation = if is_last then "   " else "\u{2502}  " in
     parent_prefix ^ continuation
 
 (* Print a list of CSS declarations with an action prefix *)
@@ -1538,7 +1540,8 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
         if position_changed () then Some (reordered sel1_str)
         else if decls_str_equal decls1 decls2 then
           (* OCaml ASTs differ but string output is identical (e.g., Nested vs
-             bare expression after calc() normalization) — no real difference *)
+             bare expression after calc() normalization) -- no real
+             difference *)
           None
         else if reorder_is_significant decls1 decls2 then
           Some (decl_level_reorder sel1_str decls1 decls2)

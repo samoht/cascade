@@ -72,7 +72,7 @@ let test_rule () =
   neg_cursor read_stylesheet "{color:red}";
   (* Missing selector *)
   neg_cursor read_stylesheet ".btn";
-  (* Missing declarations. CSS Syntax §5.3.7 auto-closes [.btn{] so it is
+  (* Missing declarations. CSS Syntax sec. 5.3.7 auto-closes [.btn{] so it is
      spec-valid and not asserted here. *)
   neg_cursor read_stylesheet ".btn{color}";
   (* Missing value *)
@@ -131,7 +131,7 @@ let test_stylesheet () =
     "@page :first { margin: 1in }";
   check_stylesheet ~expected:".test{color:red}" ".test { color: red }";
 
-  (* MQ5 §2.1: an empty media query list is valid and evaluates like all. *)
+  (* MQ5 sec. 2.1: an empty media query list is valid and evaluates like all. *)
   check_stylesheet ~expected:"@media{.test{color:red}}"
     "@media { .test { color: red } }";
   check_stylesheet ~expected:"@media{}" "@media { }";
@@ -206,8 +206,8 @@ let test_nested_container_recovers () =
 
 (* ignore-test: error-recovery contract, not a per-statement constructor. *)
 let test_layer_rule_recovery () =
-  (* CSS Syntax 3 §5.4.1: an invalid rule inside an @layer / @media block is
-     dropped on its own; its sibling rules must survive. [.x→y] has a literal
+  (* CSS Syntax 3 sec. 5.4.1: an invalid rule inside an @layer / @media block is
+     dropped on its own; its sibling rules must survive. [.x->y] has a literal
      arrow (U+2192), which is not a valid ident code point, so the browser drops
      that rule too - but keeps the rest of the block. *)
   let keeps_siblings input =
@@ -223,10 +223,12 @@ let test_layer_rule_recovery () =
     | Error e ->
         Alcotest.failf "expected recovery: %s" (Cascade.Error.to_string e)
   in
-  keeps_siblings "@layer u{.a{color:red}.x→y{color:lime}.b{color:blue}}";
-  keeps_siblings "@media screen{.a{color:red}.x→y{color:lime}.b{color:blue}}";
+  keeps_siblings "@layer u{.a{color:red}.x\u{2192}y{color:lime}.b{color:blue}}";
   keeps_siblings
-    "@supports (display:grid){.a{color:red}.x→y{color:lime}.b{color:blue}}"
+    "@media screen{.a{color:red}.x\u{2192}y{color:lime}.b{color:blue}}";
+  keeps_siblings
+    "@supports \
+     (display:grid){.a{color:red}.x\u{2192}y{color:lime}.b{color:blue}}"
 
 (* Not a roundtrip test *)
 let test_supports_rule_creation () =
@@ -731,7 +733,7 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Foo; src: url(foo.woff2); font-named-instance: \
      'Regular'; font-style: normal; }";
   (* An invalid value of a *known* descriptor drops just that descriptor and
-     keeps the rest of the @font-face, like browsers (CSS Fonts 4 §11.2). *)
+     keeps the rest of the @font-face, like browsers (CSS Fonts 4 sec. 11.2). *)
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
      maybe; }";
@@ -739,7 +741,7 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
   (* A descending font-stretch range is kept like the font-weight / oblique
-     ranges below: browsers do not enforce CSS Fonts 4 §11.2. *)
+     ranges below: browsers do not enforce CSS Fonts 4 sec. 11.2. *)
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:200% 50%}"
@@ -1265,7 +1267,7 @@ let spec_strict_rejects_invalid_stylesheets () =
          U+20-10 }" );
       (* Browsers keep a descending font-weight / oblique-angle range, so the
          lenient parse keeps it with a warning; strict turns that into an error
-         (CSS Fonts 4 §11.2 wants the first bound <= the second). *)
+         (CSS Fonts 4 sec. 11.2 wants the first bound <= the second). *)
       ( "font-face descending font-weight range",
         "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
          900 100 }" );
@@ -1425,7 +1427,7 @@ let test_import_rule () =
   (* Missing quotes *)
   neg_cursor read_import_rule "import 'test.css'";
   (* Missing @ *)
-  (* Unclosed quote at EOF — per CSS Syntax §4.3.5 the lexer still returns a
+  (* Unclosed quote at EOF -- per CSS Syntax sec. 4.3.5 the lexer still returns a
      string-token (the ill-formedness is a parse-error warning, not a
      token-level failure), so [\@import 'test.css] parses as a valid import. *)
   check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css"
@@ -1585,7 +1587,7 @@ let test_invalid_properties () =
 
 (* Not a roundtrip test *)
 let test_invalid_syntax () =
-  (* CSS Syntax §5.3.7: unclosed blocks auto-close at EOF and the inner
+  (* CSS Syntax sec. 5.3.7: unclosed blocks auto-close at EOF and the inner
      declaration is preserved. Verify the AST, don't just accept "didn't
      crash". *)
   check_stylesheet ~expected:".btn{color:red}" ".btn { color: red ";
@@ -3244,7 +3246,7 @@ let v465_zero_percentage_equiv () =
    form puts ":" between property name and value with no surrounding spaces in
    minified mode, and "!important" follows the value with no extra whitespace.
    The property name is serialized as-is (already lowercased by the syntax layer
-   per CSS Syntax §3.3) regardless of input case. *)
+   per CSS Syntax sec. 3.3) regardless of input case. *)
 let cssom662_decl_serialization () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4246,8 +4248,8 @@ let bg336_position_keyword () =
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  (* Per CSS Backgrounds L3 §3.6 [top left], [left top], and [0% 0%] all denote
-     position [0 0]. *)
+  (* Per CSS Backgrounds L3 sec. 3.6 [top left], [left top], and [0% 0%] all
+     denote position [0 0]. *)
   Alcotest.(check string)
     "background-position: top left -> 0 0" ".x{background-position:0 0}"
     (normalize ".x { background-position: top left }");
@@ -4792,7 +4794,7 @@ let v4107_minmax_reduction () =
    same elements as bare [.x] with the same specificity. Per shortest-wins
    cascade picks the unwrapped form. *)
 let s417_is_unwrap () =
-  (* CSS Selectors L4 §17: a single-argument [:is(.a)] is spec-equivalent to
+  (* CSS Selectors L4 sec. 17: a single-argument [:is(.a)] is spec-equivalent to
      bare [.a] (same match set, same specificity). Under [~minify:true] the
      printer picks the shortest spec-equivalent spelling - the unwrapped form,
      matching Lightning CSS. Non-minified output preserves the wrapper (see
@@ -4859,10 +4861,10 @@ let transforms1_11_chain_whitespace_dropped () =
    optimizer cannot inline a variable without a context that resolves it (a
    [theme] map keyed on custom property names), so the [var()] reference and its
    [calc()] wrapper round-trip preserved. The value-independent CSS Values 4
-   §10.7 identities ([x * 1], [x + 0], ...) still fold: they hold for every
+   sec. 10.7 identities ([x * 1], [x + 0], ...) still fold: they hold for every
    possible substitution because the [var()] stays inside calc()'s grammar, so
    [calc(var(--x) * 1)] shortens to [calc(var(--x))] (not to bare [var(--x)],
-   which §10.10 forbids without knowing the value). *)
+   which sec. 10.10 forbids without knowing the value). *)
 let customprops12_inlining () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -5074,7 +5076,7 @@ let fidelity_easing_preserved () =
   pretty_preserves ".x { transition: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) }"
     [ "cubic-bezier(0.25, 0.1, 0.25, 1)" ]
 
-(* {2 Background shorthand (CSS Backgrounds L3 §2.1)} *)
+(* {2 Background shorthand (CSS Backgrounds L3 sec. 2.1)} *)
 
 (* CSS Backgrounds and Borders L3, section 2.1 (background shorthand): the
    shorthand expands to several longhands. Default values ([background-position]
@@ -5109,7 +5111,7 @@ let fidelity_background_preserved () =
     [ "50% 50%"; "cover"; "no-repeat" ];
   pretty_preserves ".x { background: red, url(x.png) }" [ "red"; "url(x.png)" ]
 
-(* {2 Strings and escapes (CSS Syntax L3 §4.3.7)} *)
+(* {2 Strings and escapes (CSS Syntax L3 sec. 4.3.7)} *)
 
 (* CSS Syntax L3, section 4.3.7 (Consume an escaped code point): hex escapes
    [\41] decode to the Unicode code point [U+0041 = 'A']. The trailing
@@ -5209,7 +5211,7 @@ let fidelity_color_space_preserved () =
     "minify pp keeps full oklch hue" true
     (Astring.String.is_infix ~affix:"264.123456" hue)
 
-(* {2 @supports (CSS Conditional L4 §2)} *)
+(* {2 @supports (CSS Conditional L4 sec. 2)} *)
 
 (* CSS Conditional Rules Module Level 4, section 2 (The @supports rule): the
    rule body parses as a rule list (like a stylesheet) and round- trips
@@ -5319,7 +5321,7 @@ let fidelity_logical_property_preserved () =
   pretty_preserves ".x { margin-inline-start: 10px }" [ "margin-inline-start" ];
   pretty_preserves ".x { padding-block: 5px 10px }" [ "padding-block" ]
 
-(* {2 Container Queries (CSS Containment L3 §6)} *)
+(* {2 Container Queries (CSS Containment L3 sec. 6)} *)
 
 (* CSS Containment Module Level 3, section 6 (Container Queries): the
    [@container] rule supports an optional name and a query expression. Both
@@ -5350,11 +5352,11 @@ let fidelity_container_query_preserved () =
   pretty_preserves "@container card (inline-size > 30em) { .x { color: red } }"
     [ "card"; "inline-size > 30em" ]
 
-(* {2 Font shorthand (CSS Fonts L4 §6.5)} *)
+(* {2 Font shorthand (CSS Fonts L4 sec. 6.5)} *)
 
 (* CSS Fonts Module Level 4, section 6.5 (Shorthand font property): the [font]
    shorthand expands to several longhands; the keyword [bold] inside the
-   shorthand canonicalizes to [700] under minify per §5.1.2. System font
+   shorthand canonicalizes to [700] under minify per sec. 5.1.2. System font
    keywords ([caption], [icon], [menu]) round-trip preserved. *)
 let fonts4_6_5_font_shorthand () =
   let normalize css =
@@ -5389,7 +5391,7 @@ let fidelity_font_shorthand_preserved () =
     [ "italic"; "small-caps"; "bold" ];
   pretty_preserves ".x { font: caption }" [ "caption" ]
 
-(* {2 List-style shorthand (CSS Lists L3 §3)} *)
+(* {2 List-style shorthand (CSS Lists L3 sec. 3)} *)
 
 (* CSS Lists Module Level 3, section 3 (list-style shorthand): the shorthand
    sets [list-style-type], [list-style-position], and [list- style-image].
@@ -5415,7 +5417,7 @@ let fidelity_list_style_preserved () =
   pretty_preserves ".x { list-style: disc inside }" [ "disc"; "inside" ];
   pretty_preserves ".x { list-style-type: none }" [ "list-style-type" ]
 
-(* {2 Cascade origin + !important interaction (Cascade L6 §6.3)} *)
+(* {2 Cascade origin + !important interaction (Cascade L6 sec. 6.3)} *)
 
 (* CSS Cascading and Inheritance Module Level 6, section 6.3 (Importance): for
    important declarations the origin precedence is inverted - user-agent

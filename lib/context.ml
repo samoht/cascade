@@ -240,10 +240,10 @@ let scope ?layer_order ?layer ctx =
     layer = (match layer with Some _ -> layer | None -> ctx.layer);
   }
 
-(* CSS Cascade 5 §6.4.3 layered custom-property lookup. Important beats normal.
-   Normal author: unlayered wins, else later layers beat earlier. Important
-   author: the order reverses (earlier layers beat later, unlayered ranks
-   below). *)
+(* CSS Cascade 5 sec. 6.4.3 layered custom-property lookup. Important beats
+   normal. Normal author: unlayered wins, else later layers beat earlier.
+   Important author: the order reverses (earlier layers beat later, unlayered
+   ranks below). *)
 let custom_layer_index ~layer_order = function
   | None -> max_int
   | Some name ->
@@ -345,7 +345,7 @@ let lookup_custom_property ?layer ?layer_order ctx name =
       | None -> pick_normal_custom ?layer ~layer_order normal)
 
 (* The computed winner among a pool of same-property custom-property
-   declarations, resolved by CSS Cascade 5 §6.4.3: important beats normal,
+   declarations, resolved by CSS Cascade 5 sec. 6.4.3: important beats normal,
    [revert-layer] rolls back to the next layer down, and layer order (reversed
    for important) breaks ties. Layers are read from each declaration's own
    annotation, so the caller must have tagged them. [None] when the pool is
@@ -671,7 +671,7 @@ let kind_equal : type a b.
   | Properties.Font_src, Properties.Font_src -> Some Refl
   | _ -> None
 
-(* CSS Cascade 5 §6.4 lists inherited properties; the rest default to the
+(* CSS Cascade 5 sec. 6.4 lists inherited properties; the rest default to the
    property's initial value when no value is supplied. *)
 let property_is_inherited = function
   | "color" | "cursor" | "direction" | "font-family" | "font-feature-settings"
@@ -1121,7 +1121,7 @@ module Calc_residual = struct
     run_simplify ops ~resolve_var ~simplify_var_record value
 end
 
-(** {2 Length canonicalisation (CSS Values 4 §6)}
+(** {2 Length canonicalisation (CSS Values 4 sec. 6)}
 
     All length units convert to pixels. Absolute units come from the fixed 1in =
     96px conversion table; font-relative and viewport-relative units require the
@@ -1139,7 +1139,7 @@ module Length = struct
     container_height : float option;
   }
 
-  (* CSS Media Queries 4 §1.3: relative units in @media/@container resolve
+  (* CSS Media Queries 4 sec. 1.3: relative units in @media/@container resolve
      against root font-size. Pre-fill [parent_font_size]/[root_font_size] with
      the 16px default so [em]/[rem] in queries always have a reference; a fresh
      [Length.ctx] without these rejects relative units. *)
@@ -1224,7 +1224,7 @@ module Length = struct
       container_height = unwrap_px ctx.container_height;
     }
 
-  (* CSS Values 4 §10.11 simplification of a typed [length calc]: fold every
+  (* CSS Values 4 sec. 10.11 simplification of a typed [length calc]: fold every
      subtree the [ctx] can collapse to absolute lengths, leaving
      [Var]/[Sibling_*]/unresolvable subtrees. The result stays a [length calc] -
      [Val (Px _)] when fully reducible, else [Expr] with simplified operands. *)
@@ -1261,7 +1261,7 @@ module Length = struct
     | Val la, _, Num n ->
         Option.map (fun out -> Val out) (eval_combine_length_num ctx la n op)
     | Num n, Mul, Val lb ->
-        (* Multiplication is commutative on length × number. *)
+        (* Multiplication is commutative on length x number. *)
         Option.map (fun out -> Val out) (eval_combine_length_num ctx lb n Mul)
     | _ -> None
 
@@ -1389,7 +1389,7 @@ module Length = struct
     | value -> normalize_zero value
 end
 
-(** {2 Media-feature value comparison (CSS Media Queries 4 §3)}
+(** {2 Media-feature value comparison (CSS Media Queries 4 sec. 3)}
 
     [query.media_features] stores typed [Media.feature]s parsed at construction;
     this module is just the numeric comparison glue used when matching range
@@ -1425,7 +1425,7 @@ module Media_value = struct
         | _ -> None)
 end
 
-(** {2 [@supports] evaluation (CSS Conditional 4 §3)}
+(** {2 [@supports] evaluation (CSS Conditional 4 sec. 3)}
 
     Each [Supports.t] constructor has a dedicated evaluator. The structural
     cases ([Not]/[And]/[Or]) recurse into [eval]; the leaves ([Property]/[Func])
@@ -1447,7 +1447,7 @@ end
     [Media.feature], [eval_condition] for [Media.condition], [eval_query] for
     [Media.query], [eval_medium] for [Media.medium], and [eval] for the
     typed-shorthand wrapper [Media.t]. Lengths resolve against a 16px base per
-    §1.3; [min-]/[max-] feature prefixes desugar to range comparisons. *)
+    sec. 1.3; [min-]/[max-] feature prefixes desugar to range comparisons. *)
 
 module Match_media = struct
   open Media
@@ -1523,7 +1523,7 @@ module Match_media = struct
     | List qs -> List.exists (eval q) qs
 end
 
-(** {2 Container-query evaluation (CSS Containment 3 §3.4)}
+(** {2 Container-query evaluation (CSS Containment 3 sec. 3.4)}
 
     Container queries reuse the media-feature evaluator applied to the container
     feature table; they additionally guard on the container name (when supplied)
@@ -1813,7 +1813,7 @@ module Url = struct
       | Some base -> resolve_relative base href
 end
 
-(** {2 [@import] loader (CSS Cascade 5 §6)}
+(** {2 [@import] loader (CSS Cascade 5 sec. 6)}
 
     Resolves the import URL through {!Url}, looks up the body in
     [loader.imports], parses it, and applies any media/supports/layer guards on

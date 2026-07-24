@@ -186,9 +186,9 @@ and statement =
       prelude : string;
       block : string option;
     }
-      (** CSS Syntax 3 §5.4.2 "consume an at-rule" preserves any unrecognised
-          at-rule as raw text so authors can ship unknown vendor or future
-          at-rules without dropping the whole stylesheet. *)
+      (** CSS Syntax 3 sec. 5.4.2 "consume an at-rule" preserves any
+          unrecognised at-rule as raw text so authors can ship unknown vendor or
+          future at-rules without dropping the whole stylesheet. *)
 
 and block = statement list
 (** A block contains a list of statements *)
@@ -288,7 +288,7 @@ and font_face_descriptor =
   | Font_display of Properties.font_display
       (** auto, block, swap, fallback, optional *)
   | Unicode_range of Properties.unicode_range list
-      (** CSS Fonts 4 §4.5 comma-separated [unicode-range] list. *)
+      (** CSS Fonts 4 sec. 4.5 comma-separated [unicode-range] list. *)
   | Font_variant of font_variant_descriptor  (** [font-variant] descriptor *)
   | Font_feature_settings of Properties.font_feature_settings
       (** OpenType feature settings *)

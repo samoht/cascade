@@ -38,40 +38,40 @@ let assert_reject input =
   | None -> ()
   | Some sel -> failf "selector should reject: %S -> %S" input (minified sel)
 
-(** Selector.of_string — must not crash on arbitrary input. *)
+(** Selector.of_string -- must not crash on arbitrary input. *)
 let test_of_string buf =
   try ignore (Css.Selector.of_string buf) with
   | Cursor.Parse_error _ -> ()
   | Invalid_argument _ -> ()
 
-(** Selector.read — must not crash. *)
+(** Selector.read -- must not crash. *)
 let test_read buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Selector.read r) with Cursor.Parse_error _ -> ()
 
-(** Selector.read_selector_list — must not crash. *)
+(** Selector.read_selector_list -- must not crash. *)
 let test_read_selector_list buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_selector_list r)
   with Cursor.Parse_error _ -> ()
 
-(** Selector.read_combinator — must not crash. *)
+(** Selector.read_combinator -- must not crash. *)
 let test_read_combinator buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_combinator r) with Cursor.Parse_error _ -> ()
 
-(** Selector.read_attribute_match — must not crash. *)
+(** Selector.read_attribute_match -- must not crash. *)
 let test_read_attribute_match buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_attribute_match r)
   with Cursor.Parse_error _ -> ()
 
-(** Selector.read_nth — must not crash. *)
+(** Selector.read_nth -- must not crash. *)
 let test_read_nth buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Selector.read_nth r) with Cursor.Parse_error _ -> ()
 
-(** Roundtrip: parse → to_string → parse should not crash. *)
+(** Roundtrip: parse -> to_string -> parse should not crash. *)
 let test_roundtrip buf =
   match
     try Some (Css.Selector.of_string buf)
@@ -84,7 +84,7 @@ let test_roundtrip buf =
       with Cursor.Parse_error _ | Invalid_argument _ ->
         fail "roundtrip re-parse crashed")
 
-(** pp — must not crash on any parsed selector. *)
+(** pp -- must not crash on any parsed selector. *)
 let test_pp buf =
   match
     try Some (Css.Selector.of_string buf)

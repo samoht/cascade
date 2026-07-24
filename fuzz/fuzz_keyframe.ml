@@ -5,17 +5,17 @@
 open Cascade
 open Alcobar
 
-(** position_of_string — must not crash. *)
+(** position_of_string -- must not crash. *)
 let test_position buf = ignore (Css.Keyframe.position_of_string buf)
 
-(** selector_of_string — must reject invalid selectors without unexpected
+(** selector_of_string -- must reject invalid selectors without unexpected
     exceptions. *)
 let test_selector buf =
   match Css.Keyframe.selector_of_string buf with
   | _ -> ()
   | exception Invalid_argument _ -> ()
 
-(** position roundtrip: parse → to_string → parse. *)
+(** position roundtrip: parse -> to_string -> parse. *)
 let test_position_roundtrip buf =
   match Css.Keyframe.position_of_string buf with
   | None -> ()
@@ -27,7 +27,7 @@ let test_position_roundtrip buf =
           if Css.Keyframe.position_compare pos pos2 <> 0 then
             fail "position roundtrip mismatch")
 
-(** selector roundtrip: parse → to_string → parse. *)
+(** selector roundtrip: parse -> to_string -> parse. *)
 let test_selector_roundtrip buf =
   match Css.Keyframe.selector_of_string buf with
   | exception Invalid_argument _ -> ()
@@ -69,7 +69,7 @@ let test_position_serialization_idempotent buf =
           let twice = Css.Keyframe.string_of_position pos2 in
           if once <> twice then fail "keyframe position serialization drifted")
 
-(** position_compare — must not crash on any valid pair. *)
+(** position_compare -- must not crash on any valid pair. *)
 let test_position_compare buf1 buf2 =
   match
     (Css.Keyframe.position_of_string buf1, Css.Keyframe.position_of_string buf2)

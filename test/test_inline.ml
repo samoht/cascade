@@ -269,9 +269,9 @@ let test_inline_across_layers () =
 
 (* A cascade layer only orders competing declarations, so a variable defined on
    the same element across several layers has a statically decidable winner and
-   folds to it (CSS Cascade 5 §6.4.3). An override that depends on runtime state
-   (a media query, a different selector) cannot be decided statically and stays
-   a live var(). *)
+   folds to it (CSS Cascade 5 sec. 6.4.3). An override that depends on runtime
+   state (a media query, a different selector) cannot be decided statically and
+   stays a live var(). *)
 let test_inline_layer_winner () =
   check_inline_case ~optimized:".z{width:2px}"
     "the later layer wins for a normal declaration"

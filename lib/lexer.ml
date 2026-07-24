@@ -563,8 +563,9 @@ let rec skip_comment_body r =
     skip_comment_body r)
 
 (* Skip a run of comments without consuming surrounding whitespace: CSS Syntax
-   §4.3.2 treats comments as "nothing", so a comment between two non-whitespace
-   points disappears rather than becoming a <whitespace-token>. *)
+   sec. 4.3.2 treats comments as "nothing", so a comment between two
+   non-whitespace points disappears rather than becoming a
+   <whitespace-token>. *)
 let rec skip_comment_run r =
   if Reader.looking_at r "/*" then (
     Reader.skip r;

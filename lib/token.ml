@@ -1,6 +1,6 @@
 (** CSS Syntax Module Level 3 section 4.2: token taxonomy.
 
-    Types only; the §4.3 tokenization algorithm lives in {!Lexer}. *)
+    Types only; the sec. 4.3 tokenization algorithm lives in {!Lexer}. *)
 
 type hash_flag = Id | Unrestricted
 type number_flag = Integer | Number

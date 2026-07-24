@@ -574,7 +574,7 @@ let () =
   if stats.missing_modules <> [] then (
     print_string (colored red "Critical:" ^ " Missing module interfaces:\n");
     List.iter
-      (fun m -> print_string ("  • " ^ m ^ ".mli\n"))
+      (fun m -> print_string ("  \u{2022} " ^ m ^ ".mli\n"))
       (List.rev stats.missing_modules);
     print_string "\n");
 

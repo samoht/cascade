@@ -772,7 +772,7 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
             in
             (Declaration.v ~important property value, rest'))
 
-(* CSS Overflow 3 §3.1: [overflow] is the [overflow-x overflow-y] shorthand.
+(* CSS Overflow 3 sec. 3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
    side is later shadowed within the same block, fold them into [overflow] -
    single value when the two axes match, two values otherwise. *)
@@ -868,9 +868,9 @@ let extract_padding_side :
       Some (Left, value, important)
   | _ -> None
 
-(* CSS Position 3 §3.1: [inset] is the [top right bottom left] shorthand. The
-   longhand values are wrapped in a [length list] for grammar reasons but carry
-   exactly one length per side. *)
+(* CSS Position 3 sec. 3.1: [inset] is the [top right bottom left] shorthand.
+   The longhand values are wrapped in a [length list] for grammar reasons but
+   carry exactly one length per side. *)
 let extract_inset_side : declaration -> (box_side * Values.length * bool) option
     = function
   | Declaration { property = Top; value = [ v ]; important } ->
@@ -1183,7 +1183,7 @@ let extract_inset_block_side :
       Some (End, v, important)
   | _ -> None
 
-(* CSS Align 3 §6.1: [place-items] / [place-content] / [place-self] are the
+(* CSS Align 3 sec. 6.1: [place-items] / [place-content] / [place-self] are the
    [<align> <justify>] shorthands. When the two longhands appear contiguously
    with matching importance, fold them; the per-property printer then collapses
    matching pairs to a single value. *)

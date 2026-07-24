@@ -174,10 +174,10 @@ let read_function_arg name t =
     | None -> (Cursor.consume_remaining_as_string ~trim:true inner, false)
   in
   Cursor.expect_eof inner;
-  (* CSS Fonts 4 §11.1: each of [local()] / [format()] / [tech()] takes exactly
-     one argument, so an empty body ([format()], [local()]) is invalid. The one
-     exception browsers accept is [local("")] - an explicit empty <string>
-     family name - so keep that. *)
+  (* CSS Fonts 4 sec. 11.1: each of [local()] / [format()] / [tech()] takes
+     exactly one argument, so an empty body ([format()], [local()]) is invalid.
+     The one exception browsers accept is [local("")] - an explicit empty
+     <string> family name - so keep that. *)
   let is_empty_local_string =
     from_string && value = "" && String.lowercase_ascii name = "local"
   in
@@ -247,7 +247,7 @@ let rec read_src_entry t =
       let url = read_url t in
       read_src_url_modifiers t url
 
-(** Parse a src string into a list of typed entries. CSS Fonts 4 §4.3 spells
+(** Parse a src string into a list of typed entries. CSS Fonts 4 sec. 4.3 spells
     [src] as a comma-separated list, but real-world input occasionally drops the
     comma between entries ([src: local("") url(test.woff)]). Match cleancss /
     lightningcss / esbuild and accept the whitespace-only form too, treating it

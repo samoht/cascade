@@ -18,6 +18,25 @@ set -eu
 STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ml|mli|mll|mly)$' || true)
 [ -n "$STAGED" ] || exit 0
 
+# 0. ASCII only. Source stays 7-bit: write "sec." not the section sign, "--"
+#    not the em dash, and \u{XXXX} escapes for a glyph a string must emit
+#    (e.g. the diff tree connectors). Checks the staged content, not the
+#    worktree.
+NONASCII=""
+for f in $STAGED; do
+    if git show ":$f" | LC_ALL=C grep -n '[^[:print:][:cntrl:]]' >/dev/null 2>&1; then
+        NONASCII="$NONASCII $f"
+    fi
+done
+if [ -n "$NONASCII" ]; then
+    echo "error: non-ASCII byte in staged OCaml source:" >&2
+    for f in $NONASCII; do
+        git show ":$f" | LC_ALL=C grep -n '[^[:print:][:cntrl:]]' | sed "s|^|  $f:|" >&2
+    done
+    echo "use ASCII in comments and \\u{XXXX} escapes in string literals." >&2
+    exit 1
+fi
+
 # 1. dune fmt
 if ! dune fmt 2>/dev/null; then
     echo "error: dune fmt failed" >&2

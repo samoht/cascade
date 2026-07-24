@@ -296,7 +296,7 @@ let trim_decimal_suffix s =
   else s
 
 let strip_exponent_plus s =
-  (* Remove redundant '+' in exponent notation: "3.40282e+38" → "3.40282e38" *)
+  (* Remove redundant '+' in exponent notation: "3.40282e+38" -> "3.40282e38" *)
   match String.index_opt s 'e' with
   | Some i when i + 1 < String.length s && s.[i + 1] = '+' ->
       String.sub s 0 (i + 1) ^ String.sub s (i + 2) (String.length s - i - 2)
@@ -403,12 +403,13 @@ let unit ctx f suffix =
   string ctx suffix
 
 let pct ctx f =
-  (* CSS Values 4 §6.5 only allows the unit to drop on a zero [<length>]; a zero
-     [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%] are no
-     longer equivalent, and dimension/percentage-typed grammars reject a bare
-     [0]). The coefficient prints in full, like [float]: rounding it changes the
-     value (a repeating fraction such as [33.333333%] from [w-1/3] would lose
-     digits), so any precision reduction belongs in the optimizer, not here. *)
+  (* CSS Values 4 sec. 6.5 only allows the unit to drop on a zero [<length>]; a
+     zero [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%]
+     are no longer equivalent, and dimension/percentage-typed grammars reject a
+     bare [0]). The coefficient prints in full, like [float]: rounding it
+     changes the value (a repeating fraction such as [33.333333%] from [w-1/3]
+     would lose digits), so any precision reduction belongs in the optimizer,
+     not here. *)
   float ctx f;
   string ctx "%"
 

@@ -595,7 +595,7 @@ let drop_invalid (stylesheet : t) : t =
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
     depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
     emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
-    §5.4.1 (unknown at-rules are discarded). *)
+    sec. 5.4.1 (unknown at-rules are discarded). *)
 let drop_unknown_at_rules (stylesheet : t) : t =
   let rec statement stmt =
     match stmt with

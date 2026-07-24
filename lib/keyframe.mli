@@ -6,8 +6,8 @@ type position =
   | To  (** [to] or [100%] *)
   | Percent of float  (** Percentage like [50%] *)
   | Timeline_range of string * float
-      (** Scroll-Driven Animations 1 §8.1 [<timeline-range-name> <percentage>]
-          selector such as [entry 0%]. *)
+      (** Scroll-Driven Animations 1 sec. 8.1
+          [<timeline-range-name> <percentage>] selector such as [entry 0%]. *)
 
 val string_of_position : position -> string
 (** [string_of_position pos] renders a position as CSS string. *)

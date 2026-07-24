@@ -14,112 +14,112 @@ let parse_whole parse input =
     if Cursor.is_done r then Some value else None
   with Cursor.Parse_error _ -> None
 
-(** read_color — must not crash on arbitrary input. *)
+(** read_color -- must not crash on arbitrary input. *)
 let test_read_color buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_color r) with Cursor.Parse_error _ -> ()
 
-(** read_length — must not crash. *)
+(** read_length -- must not crash. *)
 let test_read_length buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_length r) with Cursor.Parse_error _ -> ()
 
-(** read_angle — must not crash. *)
+(** read_angle -- must not crash. *)
 let test_read_angle buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_angle r) with Cursor.Parse_error _ -> ()
 
-(** read_duration — must not crash. *)
+(** read_duration -- must not crash. *)
 let test_read_duration buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_duration r) with Cursor.Parse_error _ -> ()
 
-(** read_time — must not crash (can be negative). *)
+(** read_time -- must not crash (can be negative). *)
 let test_read_time buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_time r) with Cursor.Parse_error _ -> ()
 
-(** read_number — must not crash. *)
+(** read_number -- must not crash. *)
 let test_read_number buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_number r) with Cursor.Parse_error _ -> ()
 
-(** read_percentage — must not crash. *)
+(** read_percentage -- must not crash. *)
 let test_read_percentage buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_percentage r) with Cursor.Parse_error _ -> ()
 
-(** read_length_percentage — must not crash. *)
+(** read_length_percentage -- must not crash. *)
 let test_read_length_percentage buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_length_percentage r)
   with Cursor.Parse_error _ -> ()
 
-(** read_number_percentage — must not crash. *)
+(** read_number_percentage -- must not crash. *)
 let test_read_number_percentage buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_number_percentage r)
   with Cursor.Parse_error _ -> ()
 
-(** read_color_name — must not crash. *)
+(** read_color_name -- must not crash. *)
 let test_read_color_name buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_color_name r) with Cursor.Parse_error _ -> ()
 
-(** read_color_space — must not crash. *)
+(** read_color_space -- must not crash. *)
 let test_read_color_space buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_color_space r) with Cursor.Parse_error _ -> ()
 
-(** read_system_color — must not crash. *)
+(** read_system_color -- must not crash. *)
 let test_read_system_color buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_system_color r) with Cursor.Parse_error _ -> ()
 
-(** read_hue — must not crash. *)
+(** read_hue -- must not crash. *)
 let test_read_hue buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_hue r) with Cursor.Parse_error _ -> ()
 
-(** read_alpha — must not crash. *)
+(** read_alpha -- must not crash. *)
 let test_read_alpha buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_alpha r) with Cursor.Parse_error _ -> ()
 
-(** read_hue_interpolation — must not crash. *)
+(** read_hue_interpolation -- must not crash. *)
 let test_read_hue_interpolation buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_hue_interpolation r)
   with Cursor.Parse_error _ -> ()
 
-(** read_calc — must not crash (with read_length as inner parser). *)
+(** read_calc -- must not crash (with read_length as inner parser). *)
 let test_read_calc buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_calc Css.Values.read_length r)
   with Cursor.Parse_error _ -> ()
 
-(** read_channel — must not crash. *)
+(** read_channel -- must not crash. *)
 let test_read_channel buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_channel r) with Cursor.Parse_error _ -> ()
 
-(** read_component — must not crash. *)
+(** read_component -- must not crash. *)
 let test_read_component buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_component r) with Cursor.Parse_error _ -> ()
 
-(** read_rgb — must not crash. *)
+(** read_rgb -- must not crash. *)
 let test_read_rgb buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_rgb r) with Cursor.Parse_error _ -> ()
 
-(** read_transition_behavior — must not crash. *)
+(** read_transition_behavior -- must not crash. *)
 let test_read_transition_behavior buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Values.read_transition_behavior r)
   with Cursor.Parse_error _ -> ()
 
-(** Color roundtrip: parse → pp → parse should not crash. *)
+(** Color roundtrip: parse -> pp -> parse should not crash. *)
 let test_color_roundtrip buf =
   let r = Cursor.of_string buf in
   match
@@ -680,7 +680,7 @@ let calc_identity_targets =
     ("flex-grow", "var(--a)", Some "0");
   ]
 
-(* CSS Values 4 §10.7 identity law: wrapping a value in a value-independent
+(* CSS Values 4 sec. 10.7 identity law: wrapping a value in a value-independent
    identity ([x * 1], [1 * x], [x / 1], [x + 0], [0 + x], [x - 0]) and
    optimising lands on the same normal form as optimising the bare value - the
    [var()] reference and the [calc()] wrapper survive, only the redundant

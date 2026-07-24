@@ -52,7 +52,7 @@ let check_minified_to expected input =
 (* Extra minifier invariant: minify is idempotent (a second pass produces no
    further change), and specificity is preserved. Strict AST equality between
    [original] and [reparsed] does not hold for inputs the minifier rewrites
-   (e.g. CSS Selectors 4 §3.5 lets the printer drop a redundant [*] from a
+   (e.g. CSS Selectors 4 sec. 3.5 lets the printer drop a redundant [*] from a
    compound), so we compare the minified form against itself after re-parsing
    and re-minifying. *)
 let check_minified_equiv input =
@@ -371,7 +371,7 @@ let attribute_cases () =
   check_construct "[ns|attr]" (attribute ~ns:(Prefix "ns") "attr" Presence);
   check_construct "[*|attr]" (attribute ~ns:Any "attr" Presence);
 
-  (* Negative cases: CSS Syntax §5.3.7 / §4.3.5 mandate recovery for
+  (* Negative cases: CSS Syntax sec. 5.3.7 / sec. 4.3.5 mandate recovery for
      unterminated brackets (['\[']) and strings at EOF, so those are spec-valid
      and not tested here. *)
   neg_cursor read "[attr=]";
@@ -650,7 +650,7 @@ let invalid () =
     Alcotest.(check bool) label true (Option.is_none (Cursor.option read c))
   in
   (* CSS Syntax 5.3.7 / 4.3.5 mandate recovery for unterminated blocks and
-     strings at EOF — assert the recovered AST matches what an explicit closing
+     strings at EOF -- assert the recovered AST matches what an explicit closing
      bracket / quote would have produced, rather than silently dropping
      content. *)
   check ~expected:"[href]" "[href";
@@ -1041,7 +1041,7 @@ let test_ns () =
   ()
 
 let test_nth () =
-  (* Test nth type — odd/even are canonicalized to 2n+1/2n *)
+  (* Test nth type -- odd/even are canonicalized to 2n+1/2n *)
   Alcotest.(check bool)
     "odd parses to Odd AST" true
     (read_nth (Cursor.of_string "odd") = Odd);
@@ -1305,7 +1305,7 @@ let test_spec_forgiving_selector_lists () =
   check_minified_to ":is(.valid,#id)" ":is(.valid,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)" ":where(.valid,:future-pseudo,#id)";
   (* Single-argument [:is(.item)] is spec-equivalent to bare [.item] (same match
-     set and specificity per Selectors L4 §17), but unwrapping it is a node
+     set and specificity per Selectors L4 sec. 17), but unwrapping it is a node
      change reserved for the optimizer's [Selector.canonicalize]; pp is
      lexical-only and holds the [:is()]. [:where()] holds too (and could not
      unwrap regardless, contributing zero specificity). *)
