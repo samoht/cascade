@@ -39,6 +39,37 @@ let test_empty_block_is_empty () =
     "empty input yields empty output" 0
     (List.length (Flatten.block stmts))
 
+(* CSS Nesting 1 §2 lets a nested rule start with an identifier, so its prelude
+   is ambiguous with a declaration until the block appears: [h2:where(...)]
+   reads as the property [h2] with value [where(...)]. Parsing has to fall back
+   to a rule, or the whole nested block is dropped. *)
+let test_nested_rule_starting_with_ident () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (block src))
+  in
+  (* the shape that motivated this: element + pseudo-class *)
+  check ".a{color:red;h2:where(:not(.x)){font-size:1px}}"
+    ".a{color:red;h2:where(:not(.x)){font-size:1px}}";
+  (* a bare element with a pseudo-class, and a pseudo-element *)
+  check ".a{p:hover{color:red}}" ".a{p:hover{color:red}}";
+  (* minify canonicalises the legacy one-colon form, as it does at top level *)
+  check ".a{li::before{color:red}}" ".a{li:before{color:red}}";
+  (* several in a row, after and between declarations *)
+  check ".a{color:red;h2:hover{width:1px}h3:hover{width:2px};height:2px}"
+    ".a{color:red;height:2px;h2:hover{width:1px}h3:hover{width:2px}}";
+  (* the shapes that already worked must keep working *)
+  check ".a{&:hover{color:red}}" ".a{&:hover{color:red}}";
+  check ".a{.b{color:red}}" ".a{.b{color:red}}";
+  check ".a{h2+h3{color:red}}" ".a{h2+h3{color:red}}"
+
+(* A declaration that is merely invalid has no block, so it still reports as a
+   bad declaration rather than being retried as a selector. *)
+let test_bad_declaration_still_a_declaration () =
+  let stmts = block ".a{color:;width:1px}" in
+  Alcotest.(check string)
+    "the invalid declaration drops, the good one stays" ".a{width:1px}"
+    (render stmts)
+
 let suite =
   ( "flatten",
     [
@@ -48,4 +79,8 @@ let suite =
         test_flattens_descendant_nesting;
       Alcotest.test_case "empty block stays empty" `Quick
         test_empty_block_is_empty;
+      Alcotest.test_case "nested rule starting with an ident" `Quick
+        test_nested_rule_starting_with_ident;
+      Alcotest.test_case "bad declaration stays a declaration" `Quick
+        test_bad_declaration_still_a_declaration;
     ] )

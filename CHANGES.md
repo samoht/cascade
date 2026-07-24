@@ -10,6 +10,10 @@
 - `cascade apply` projects rules inside `@layer` onto elements; a fully
   layered stylesheet (such as Tailwind v4 output) previously inlined
   nothing (#188)
+- Parse a nested rule whose selector starts with an identifier, such as
+  `h2:where(...)`. CSS Nesting 1 makes that prelude ambiguous with a
+  declaration until the block appears, and the rule was dropped with a
+  warning (#193)
 - Add `Css.Values.oklch_none_hue` to build achromatic colours with a
   missing hue component, printed as `oklch(55.6% 0 none)` per CSS
   Color 4 (#190)

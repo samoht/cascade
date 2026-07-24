@@ -2995,6 +2995,24 @@ let read_property_rule (r : Cursor.t) : statement =
       in
       Property { name; syntax; inherits; initial_value }
 
+(* Does the item ahead hold a curly block before its terminating [;]? Then it is
+   a nested rule, not a declaration, however much its prelude looks like one.
+   Leaves the cursor where it found it. *)
+let item_opens_block inner =
+  let start = Cursor.save inner in
+  let rec scan () =
+    match Cursor.peek inner with
+    | None -> false
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> false
+    | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) -> true
+    | Some _ ->
+        Cursor.skip inner;
+        scan ()
+  in
+  let found = scan () in
+  Cursor.restore inner start;
+  found
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -3382,12 +3400,21 @@ and read_rule_item selector inner decls nested =
   | _ -> read_rule_decl_or_nested selector inner decls nested
 
 and read_rule_decl_or_nested selector inner decls nested =
+  let start = Cursor.save inner in
   match Declaration.read_declaration inner with
   | Some d ->
       Cursor.ws inner;
       if Cursor.peek_semicolon inner then Cursor.skip inner;
       `Continue (d :: decls, nested)
   | None -> read_nested_rule_or_done selector inner decls nested
+  (* CSS Nesting 1 §2 lets a nested rule start with an identifier, so
+     [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
+     take it as a rule; a genuine bad declaration has no block and still reports
+     as one. *)
+  | exception Error.Parse_error _
+    when Cursor.restore inner start;
+         item_opens_block inner ->
+      read_nested_rule_or_done selector inner decls nested
 
 and read_nested_rule_or_done selector inner decls nested =
   if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
