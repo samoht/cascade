@@ -92,8 +92,8 @@ val drop_invalid : t -> t
 
 val drop_unknown_at_rules : t -> t
 (** [drop_unknown_at_rules ss] removes every [Unknown_at_rule] statement at any
-    block depth. CSS Syntax 3 §5.4.1 says an unknown at-rule is discarded; the
-    parser preserves them in the AST for fidelity, and minify-time
+    block depth. CSS Syntax 3 sec. 5.4.1 says an unknown at-rule is discarded;
+    the parser preserves them in the AST for fidelity, and minify-time
     canonicalization then drops them. *)
 
 val drop_empty_rules : t -> t

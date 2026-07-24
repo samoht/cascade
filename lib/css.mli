@@ -649,12 +649,12 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** CSS calc operations. *)
 type calc_op = Values.calc_op = Add | Sub | Mul | Div
 
-(** CSS Values 4 §10.7.1 math constants - emitted at the source byte sequence so
-    pretty pp preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)].
-*)
+(** CSS Values 4 sec. 10.7.1 math constants - emitted at the source byte
+    sequence so pretty pp preserves [calc(2 * pi)] instead of writing
+    [calc(6.28318530718)]. *)
 type math_const = Values.math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 §10.7 numeric math function arguments. *)
+(** CSS Values 4 sec. 10.7 numeric math function arguments. *)
 type math_arg = Values.math_arg =
   | Lit of float
   | Dim of float * string  (** A dimension argument (e.g. [1vw], [1%]). *)
@@ -664,7 +664,7 @@ type math_arg = Values.math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 §10.7 numeric math functions. *)
+(** CSS Values 4 sec. 10.7 numeric math functions. *)
 and math_fn = Values.math_fn =
   | Sin of angle_arg
   | Cos of angle_arg
@@ -699,14 +699,15 @@ type 'a calc = 'a Values.calc =
   | Val of 'a
   | Num of float  (** Unitless number *)
   | Math_const of math_const
-      (** CSS Values 4 §10.7.1 math constant ([pi], [e], [infinity],
+      (** CSS Values 4 sec. 10.7.1 math constant ([pi], [e], [infinity],
           [-infinity], [NaN]) preserved verbatim through pretty pp. *)
   | Sibling_index  (** CSS [sibling-index()] math function. *)
   | Sibling_count  (** CSS [sibling-count()] math function. *)
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
-  | Math_fn of math_fn  (** CSS Values 4 §10.7 numeric math function call. *)
+  | Math_fn of math_fn
+      (** CSS Values 4 sec. 10.7 numeric math function call. *)
 
 type component_values = Component.t list
 (** Parsed CSS component values preserved for fallback and invalid-value
@@ -722,7 +723,7 @@ type custom_value = component_values
 type 'a fallback = 'a Values.fallback =
   | Empty  (** Empty fallback: var(--name,) *)
   | Empty2
-      (** 2-char empty fallback: var(--name, ) — matches tailwindcss output,
+      (** 2-char empty fallback: var(--name, ) -- matches tailwindcss output,
           likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
@@ -857,7 +858,7 @@ type length = Values.length =
   | Anchor of string option * string * length option
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
-      (** CSS [attr()] in typed value contexts (CSS Values 5 §10). *)
+      (** CSS [attr()] in typed value contexts (CSS Values 5 sec. 10). *)
   | Env of length env  (** CSS [env()] reference. *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
@@ -1099,9 +1100,9 @@ type color_name = Values.color_name =
 
 (** CSS channel values (for RGB) *)
 type channel = Values.channel =
-  | Int of int (* 0–255, legacy/comma syntax *)
-  | Num of float (* 0–255, modern/space syntax *)
-  | Pct of float (* 0%–100% *)
+  | Int of int (* 0-255, legacy/comma syntax *)
+  | Num of float (* 0-255, modern/space syntax *)
+  | Pct of float (* 0%-100% *)
   | Var of channel var
   | None (* CSS Color 4 [none] sentinel *)
 
@@ -1135,7 +1136,7 @@ type component = Values.component =
 
 (** CSS percentage values *)
 type percentage = Values.percentage =
-  | Pct of float (* 0%–100% as a % token *)
+  | Pct of float (* 0%-100% as a % token *)
   | Num of float (* Numeric value in percentage context, e.g., opacity 0.5 *)
   | Var of percentage var
   | Calc of percentage calc (* calc(...) that resolves to a % *)
@@ -1252,7 +1253,7 @@ val hex : string -> color
     Examples: [hex "#3b82f6"], [hex "ffffff"]. *)
 
 val rgb : ?alpha:float -> int -> int -> int -> color
-(** [rgb ?alpha r g b] is an RGB color (0–255 components) with optional alpha.
+(** [rgb ?alpha r g b] is an RGB color (0-255 components) with optional alpha.
 *)
 
 val hsl : float -> float -> float -> color
@@ -1841,7 +1842,7 @@ type display = Properties.display =
   | Revert_layer
   | Multi of display * display
       (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
-          3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
+          3 sec. 2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
   | Var of display var  (** CSS position values. *)
 
 type position = Properties.position =
@@ -2047,7 +2048,7 @@ type break_inside_value = Properties.break_inside_value =
 val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the break-inside property. *)
 
-(** CSS Fragmentation 3 §6 deprecated [page-break-before / -after] alias
+(** CSS Fragmentation 3 sec. 6 deprecated [page-break-before / -after] alias
     vocabulary; the shorter value list makes these their own type rather than
     overload {!type-break_value}. *)
 type page_break_value = Properties.page_break_value =
@@ -2058,7 +2059,8 @@ type page_break_value = Properties.page_break_value =
   | Right
   | Inherit
   | Var of page_break_value var
-      (** CSS Fragmentation 3 §6 deprecated [page-break-inside] vocabulary. *)
+      (** CSS Fragmentation 3 sec. 6 deprecated [page-break-inside] vocabulary.
+      *)
 
 type page_break_inside_value = Properties.page_break_inside_value =
   | Auto
@@ -2897,7 +2899,7 @@ type border_radius = Properties.border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
+  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 sec. 5. *)
 
 val radius : length -> border_radius
 (** [radius len] is a one-value [border-radius] shorthand value.
@@ -2979,7 +2981,7 @@ type background_image = Properties.background_image =
   | Repeating_linear_gradient of gradient_direction * gradient_stop list
   | Repeating_radial_gradient of radial_gradient_config * gradient_stop list
   | Repeating_conic_gradient of conic_gradient_config * gradient_stop list
-      (** [repeating-{linear,radial,conic}-gradient()] CSS Images 4 §3. *)
+      (** [repeating-{linear,radial,conic}-gradient()] CSS Images 4 sec. 3. *)
   | Webkit_linear_gradient of gradient_direction * gradient_stop list
   | Webkit_repeating_linear_gradient of gradient_direction * gradient_stop list
   | Webkit_radial_gradient of radial_gradient_config * gradient_stop list
@@ -3769,7 +3771,7 @@ val column_gap : length -> declaration
     @see <https://www.w3.org/TR/css-grid-2/> CSS Grid Layout Module Level 2 *)
 
 (** [repeat()] count argument: an integer or [auto-fill] / [auto-fit] (CSS Grid
-    1 §7.2.3.1). *)
+    1 sec. 7.2.3.1). *)
 type repeat_count = Properties.repeat_count =
   | Count of int
   | Auto_fill
@@ -7397,7 +7399,7 @@ type 'a syntax = 'a Variables.syntax =
   | Hash : 'a syntax -> 'a list syntax
   | Ident_keyword : string -> unit syntax
       (** Type-safe syntax descriptors for CSS [@property] rules per CSS
-          Properties and Values API 1 §2. *)
+          Properties and Values API 1 sec. 2. *)
 
 val property :
   name:string -> 'a syntax -> ?initial_value:'a -> ?inherits:bool -> unit -> t

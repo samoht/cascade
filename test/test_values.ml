@@ -459,8 +459,8 @@ let test_angle () =
     "0.000001deg";
   decl_optimizes ~prop:"rotate" ~held:".0001deg" ~into:".0001deg" "0.0001deg";
 
-  (* CSS Values 4 §10.7: scaling a typed <angle> by a unitless number folds to a
-     concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
+  (* CSS Values 4 sec. 10.7: scaling a typed <angle> by a unitless number folds
+     to a concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
      -45deg matches what the browser computes. Both operand orders fold. *)
   decl_optimizes ~prop:"rotate" ~held:"calc(1deg*-45)" ~into:"-45deg"
     "calc(1deg * -45)";
@@ -482,7 +482,7 @@ let test_angle () =
     ~into:"calc(var(--x)*1deg)" "calc(var(--x) * 1deg)";
   decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2*var(--x))"
     ~into:"calc(90deg*var(--x))" "calc(45deg * 2 * var(--x))";
-  (* Same-unit add/sub of two angles combines into one (CSS Values 4 §10.7);
+  (* Same-unit add/sub of two angles combines into one (CSS Values 4 sec. 10.7);
      cross-unit operands stay unfolded. *)
   decl_optimizes ~prop:"rotate" ~held:"calc(45deg + 45deg)" ~into:"90deg"
     "calc(45deg + 45deg)";
@@ -525,7 +525,7 @@ let test_duration () =
   check_duration ~expected:".15s" "150ms";
   check_duration "1.5s";
 
-  (* CSS Values 4 §10.7: a typed <time> scales by a number and same-unit
+  (* CSS Values 4 sec. 10.7: a typed <time> scales by a number and same-unit
      operands combine. s and ms stay distinct, and an inexact division keeps the
      calc() so no precision is lost. *)
   decl_optimizes ~prop:"transition-duration" ~held:"calc(1s*2)" ~into:"2s"
@@ -553,7 +553,7 @@ let test_duration () =
 let test_percentage () =
   check_percentage "50%";
   check_percentage "100%";
-  (* CSS Values 4 §6.5 only lets a [<length>] zero drop the unit; a zero
+  (* CSS Values 4 sec. 6.5 only lets a [<length>] zero drop the unit; a zero
      [<percentage>] keeps the [%] (otherwise it would type as a [<number>] and
      the dimension/percentage grammars would reject it). *)
   check_percentage "0%";
@@ -831,7 +831,7 @@ let test_alpha () =
   check_alpha ~expected:"0" "-0.5";
   check_alpha ~expected:"100%" "150%";
   decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
-  (* CSS Values 4 §10.7: an alpha calc() resolves - a scaled or added alpha
+  (* CSS Values 4 sec. 10.7: an alpha calc() resolves - a scaled or added alpha
      folds, and a percentage alpha that reaches 100% drops the channel. *)
   decl_optimizes ~prop:"color" ~into:"#ff000080" "rgb(255 0 0 / calc(0.5 * 1))";
   decl_optimizes ~prop:"color" ~into:"#ff00004d"
@@ -962,9 +962,9 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
     ~optimized:"color-mix(in srgb longer hue,red,#00f)"
     "color-mix(in srgb longer hue, red, blue)";
-  (* CSS Color 5 §3: the color-mix weight may be a [calc()]. A constant folds to
-     a plain percentage; a [var()]-bearing one is kept verbatim. The weight
-     reader previously rejected any [calc()] here. *)
+  (* CSS Color 5 sec. 3: the color-mix weight may be a [calc()]. A constant
+     folds to a plain percentage; a [var()]-bearing one is kept verbatim. The
+     weight reader previously rejected any [calc()] here. *)
   check_color ~expected:"color-mix(in srgb,red 30%,blue)"
     ~optimized:"color-mix(in srgb,red 30%,#00f)"
     "color-mix(in srgb, red calc(30%), blue)";

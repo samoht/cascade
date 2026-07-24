@@ -39,10 +39,10 @@ let test_empty_block_is_empty () =
     "empty input yields empty output" 0
     (List.length (Flatten.block stmts))
 
-(* CSS Nesting 1 §2 lets a nested rule start with an identifier, so its prelude
-   is ambiguous with a declaration until the block appears: [h2:where(...)]
-   reads as the property [h2] with value [where(...)]. Parsing has to fall back
-   to a rule, or the whole nested block is dropped. *)
+(* CSS Nesting 1 sec. 2 lets a nested rule start with an identifier, so its
+   prelude is ambiguous with a declaration until the block appears:
+   [h2:where(...)] reads as the property [h2] with value [where(...)]. Parsing
+   has to fall back to a rule, or the whole nested block is dropped. *)
 let test_nested_rule_starting_with_ident () =
   let check src expected =
     Alcotest.(check string) src expected (render (block src))

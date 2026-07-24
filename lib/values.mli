@@ -247,11 +247,11 @@ val normalize_duration : ?ctx:calc_ctx -> duration -> duration
 val normalize_color : ?lossless:bool -> in_feature_query:bool -> color -> color
 (** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
     shortest spelling: a static colour in any space folds through sRGB to
-    hex/named, hex shortens, and named↔hex picks the shorter. [in_feature_query]
-    keeps a colour untouched inside an [@supports] test, where the exact
-    spelling is the capability being probed. [lossless] disables lossy static
-    colour-space and color-mix folds while preserving exact named/hex and
-    byte-exact rgb folds. *)
+    hex/named, hex shortens, and named<->hex picks the shorter.
+    [in_feature_query] keeps a colour untouched inside an [@supports] test,
+    where the exact spelling is the capability being probed. [lossless] disables
+    lossy static colour-space and color-mix folds while preserving exact
+    named/hex and byte-exact rgb folds. *)
 
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
@@ -516,7 +516,7 @@ val read_calc : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
 
 val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
-(** [read_calc_expr read t] parses a calc expression body — the contents of a
+(** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
 
 val eval_numeric_calc : 'a calc -> float option
@@ -525,8 +525,9 @@ val eval_numeric_calc : 'a calc -> float option
     non-numeric values. *)
 
 val eval_math_fn : math_fn -> float option
-(** [eval_math_fn fn] evaluates a CSS Values 4 §10.7 numeric math function call
-    to a float. Returns [None] when an arg references an unresolved variable. *)
+(** [eval_math_fn fn] evaluates a CSS Values 4 sec. 10.7 numeric math function
+    call to a float. Returns [None] when an arg references an unresolved
+    variable. *)
 
 val read_numeric_expression : Cursor.t -> float
 (** [read_numeric_expression t] parses and evaluates a numeric math expression,
@@ -538,12 +539,12 @@ val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
     structure (operators, [Nested], [Parens], [Var] fallbacks). *)
 
 val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
-(** [eval_calc calc] applies CSS Values 4 §10.7 structural simplification: folds
-    [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps trivial
-    [Nested] / [Parens] around leaves. [Val] / [Var] leaves and mixed-type
-    operands survive — type-specific simplification (e.g., length arithmetic) is
-    the caller's job. With [~ctx], a [Nested] / [Parens] around a single-valued
-    [Var] leaf is also unwrapped (see {!calc_ctx}). *)
+(** [eval_calc calc] applies CSS Values 4 sec. 10.7 structural simplification:
+    folds [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps
+    trivial [Nested] / [Parens] around leaves. [Val] / [Var] leaves and
+    mixed-type operands survive -- type-specific simplification (e.g., length
+    arithmetic) is the caller's job. With [~ctx], a [Nested] / [Parens] around a
+    single-valued [Var] leaf is also unwrapped (see {!calc_ctx}). *)
 
 val calc_identity :
   zero:'a calc ->
@@ -553,7 +554,7 @@ val calc_identity :
   'a calc ->
   'a calc option
 (** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
-    Values 4 §10.7 identities to one [Expr (l, op, r)] node, returning the
+    Values 4 sec. 10.7 identities to one [Expr (l, op, r)] node, returning the
     folded operand when one applies. These hold for any operand including a kept
     [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
     [x / 1], [x + 0], [0 + x], [x - 0] keep [x]; [x * 0] / [0 * x] reduce to

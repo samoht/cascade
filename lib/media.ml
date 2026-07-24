@@ -123,7 +123,7 @@ type feature =
   | Range_rev of value * cmp * name
   | Interval of value * cmp * name * cmp * value
   | General_enclosed of string
-      (** Media Queries 4 Â§3.1 [<general-enclosed>]: a grammatical but
+      (** Media Queries 4 sec. 3.1 [<general-enclosed>]: a grammatical but
           unrecognised query, kept verbatim. Its result is [unknown], which
           becomes false wherever a boolean is expected. *)
 
@@ -1027,7 +1027,7 @@ and condition_in_parens sc =
       advance sc;
       condition_from_paren_content (read_balanced sc)
   | _ -> (
-      (* Media Queries 4 §3.1: [<media-in-parens>] also admits
+      (* Media Queries 4 sec. 3.1: [<media-in-parens>] also admits
          [<general-enclosed>], whose first form is a function token. An
          identifier immediately followed by [(] is one, e.g. [theme(static)]:
          grammatical, unrecognised, and therefore false. Rejecting it here made

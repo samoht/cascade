@@ -2,7 +2,7 @@
 
     A shorthand composer looks for a contiguous run of specific longhands (e.g.
     [outline-width / -style / -color], or the 12
-    [border-* per side × width/style/color] longhands) and merges them into a
+    [border-* per side x width/style/color] longhands) and merges them into a
     shorthand declaration. Naively each composer scans the rule's declaration
     list once, so running 14 composers per rule walks the list 14 times. The
     index answers "where in the rule does property P appear?" in O(1), so each

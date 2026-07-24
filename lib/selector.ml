@@ -331,7 +331,7 @@ let read_lang_content t =
   Lang langs
 
 let read_dir_content t =
-  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 §6.5.1. *)
+  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 sec. 6.5.1. *)
   let dir = Cursor.ident t in
   if dir <> "ltr" && dir <> "rtl" then
     Cursor.err_invalid t (":dir() expects ltr or rtl, got: " ^ dir);
@@ -453,7 +453,7 @@ let read_class t =
      including parser-valid double-dash identifiers such as .--x. *)
   Class name
 
-(** Parse an ID selector ([#id]). Per CSS Selectors §6.6, an ID must be an
+(** Parse an ID selector ([#id]). Per CSS Selectors sec. 6.6, an ID must be an
     ident-type hash; unrestricted hashes such as digit-only [#123] are not valid
     IDs. *)
 let read_id t =
@@ -1093,9 +1093,9 @@ let rec matches_nothing = function
   | List xs -> List.for_all matches_nothing xs
   | _ -> false
 
-(* CSS Pseudo-Elements 4 §3.5 / Selectors 4 §3.6.4: a pseudo-element compound
-   may only be followed by pseudo-classes. Class/id/type/attribute selectors
-   after the pseudo-element still make the compound invalid. *)
+(* CSS Pseudo-Elements 4 sec. 3.5 / Selectors 4 sec. 3.6.4: a pseudo-element
+   compound may only be followed by pseudo-classes. Class/id/type/attribute
+   selectors after the pseudo-element still make the compound invalid. *)
 let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element_selector sel)
@@ -1119,7 +1119,7 @@ let pseudo_element_unknown_idents =
 let read_unknown_pseudo_class_call ~all_idents t =
   match Cursor.peek t with
   | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
-      (* CSS Selectors 4 §3.5: a known non-functional pseudo ([:checked],
+      (* CSS Selectors 4 sec. 3.5: a known non-functional pseudo ([:checked],
          [:hover], ...) called with parens ([:checked()]) is invalid. Reject so
          the rule reader drops it rather than passing through as an unknown
          call. *)
@@ -1184,14 +1184,14 @@ let read_nth_col t = Cursor.call "nth-col" t read_nth_col_content
 let read_nth_last_col t = Cursor.call "nth-last-col" t read_nth_last_col_content
 
 let read_highlight_content t =
-  (* ::highlight() takes a single custom-ident per CSS Custom Highlight API
-     §3.1; comma-separated names are rejected. *)
+  (* ::highlight() takes a single custom-ident per CSS Custom Highlight API sec.
+     3.1; comma-separated names are rejected. *)
   let name = Cursor.ident t in
   ensure_call_done t "highlight";
   Highlight [ name ]
 
 let read_vt_class_selector t : vt_class_selector =
-  (* CSS View Transitions 2 §3.4.1 [<vt-class-selector>] = [<vt-name>?
+  (* CSS View Transitions 2 sec. 3.4.1 [<vt-class-selector>] = [<vt-name>?
      [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name or
      at least one class must be present. *)
   Cursor.ws t;
@@ -1332,7 +1332,7 @@ and read_has_content t =
 
 and read_not_content t =
   let selectors = read_complex_list t in
-  (* CSS Selectors 4 §6.2: [:not()] is non-forgiving, so an unknown selector
+  (* CSS Selectors 4 sec. 6.2: [:not()] is non-forgiving, so an unknown selector
      inside it invalidates the whole rule. Top-level lists keep unknown
      pseudo-classes for forward compatibility. *)
   List.iter
@@ -1501,7 +1501,7 @@ and read_pseudo_element t =
         t)
     t
 
-(** Parse a simple selector (one part). Does not skip leading whitespace — the
+(** Parse a simple selector (one part). Does not skip leading whitespace -- the
     caller (read_compound) uses whitespace as a compound / descendant boundary
     marker. *)
 and read_simple ?(allow_unknown_pseudo_class = false) t =
@@ -1545,11 +1545,11 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let prepend_simple acc =
-    (* CSS Selectors 4 §3.5: tolerate unknown pseudo-classes for forward compat
-       (vendor pseudos, authored future-pseudos must round-trip). Non-forgiving
-       rejection lives where the spec requires it: inside [:not()]/[:has()]
-       ([read_not_content]/[read_has_content]) and in the rule reader when a
-       whole selector list is unknown. *)
+    (* CSS Selectors 4 sec. 3.5: tolerate unknown pseudo-classes for forward
+       compat (vendor pseudos, authored future-pseudos must round-trip).
+       Non-forgiving rejection lives where the spec requires it: inside
+       [:not()]/[:has()] ([read_not_content]/[read_has_content]) and in the rule
+       reader when a whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
     if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
@@ -1733,10 +1733,10 @@ let elem ctx name = Pp.string ctx ("::" ^ name)
 let vendor ctx name = Pp.string ctx (":-" ^ name)
 let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
-(* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
-   spelling for the four original pseudo-elements. Minified output uses the
-   shorter valid alias; pretty output preserves the parsed colon form so the
-   authored spelling round-trips. *)
+(* CSS Selectors 4 sec. 3.7 keeps [:before] (CSS 2.1) as a deprecated
+   compatibility spelling for the four original pseudo-elements. Minified output
+   uses the shorter valid alias; pretty output preserves the parsed colon form
+   so the authored spelling round-trips. *)
 let legacy_elem ctx form name =
   let prefix =
     if Pp.minified ctx then ":"
@@ -2624,7 +2624,7 @@ let rec has_newer_pseudo_class = function
   | Relative (_, b) -> has_newer_pseudo_class b
   | List xs -> List.exists has_newer_pseudo_class xs
   | Current_of xs -> List.exists has_newer_pseudo_class xs
-  (* Stop recursion at forgiving selectors — :is()/:where() have forgiving
+  (* Stop recursion at forgiving selectors -- :is()/:where() have forgiving
      parsing, so newer pseudo-classes inside them don't cause the whole rule to
      fail *)
   | Is _ | Where _ | Moz_any_call _ | Webkit_any_call _ -> false

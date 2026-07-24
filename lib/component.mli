@@ -19,8 +19,8 @@ and block = {
   value : t list;
   closed : bool;
       (** [false] when the lexer reached EOF before the matching closer (CSS
-          Syntax §5.4.6 parse error). The serializer still emits the synthetic
-          closer so reserialised output round-trips. *)
+          Syntax sec. 5.4.6 parse error). The serializer still emits the
+          synthetic closer so reserialised output round-trips. *)
 }
 
 and func = {

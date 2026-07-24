@@ -1,4 +1,4 @@
-(** Simple CSS parser API — direct and readable.
+(** Simple CSS parser API -- direct and readable.
 
     Cascade parses already-decoded UTF-8 text. It does not implement the CSS
     Syntax section 3.2 byte-stream decoding layer: BOM handling, HTTP or

@@ -34,7 +34,7 @@ let test_string_output () =
   Alcotest.(check string)
     "named style query raw" "card style(--variant: featured)"
     (to_string (Named ("card", of_string "style(--variant: featured)")));
-  (* CSS Conditional Rules 5 §4: [not] takes one query-in-parens, and a
+  (* CSS Conditional Rules 5 sec. 4: [not] takes one query-in-parens, and a
      [style()] function is one, so [not style(--a)] needs no extra wrapping. *)
   Alcotest.(check string)
     "negated style query" "not style(--a)"

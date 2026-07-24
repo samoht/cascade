@@ -17,11 +17,11 @@ let rec supports_of_expected = function
   | Supports_inventory.Or (left, right) ->
       Css.Supports.Or (supports_of_expected left, supports_of_expected right)
 
-(** Supports.of_string — must not crash on arbitrary input. *)
+(** Supports.of_string -- must not crash on arbitrary input. *)
 let test_of_string buf =
   try ignore (Css.Supports.of_string buf) with Cursor.Parse_error _ -> ()
 
-(** Roundtrip: parse → to_string → parse should not crash. *)
+(** Roundtrip: parse -> to_string -> parse should not crash. *)
 let test_roundtrip buf =
   match
     try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
@@ -67,7 +67,7 @@ let test_mixed_operator_serialization_reparse buf =
         fail "mixed and/or supports serialization did not reparse"
   | _ -> ()
 
-(** pp — must not crash on any parsed condition. *)
+(** pp -- must not crash on any parsed condition. *)
 let test_pp buf =
   match
     try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
@@ -75,7 +75,7 @@ let test_pp buf =
   | None -> ()
   | Some cond -> ignore (Css.Supports.to_string cond)
 
-(** compare — must not crash on any pair of parsed conditions. *)
+(** compare -- must not crash on any pair of parsed conditions. *)
 let test_compare buf1 buf2 =
   match
     ( (try Some (Css.Supports.of_string buf1) with Cursor.Parse_error _ -> None),

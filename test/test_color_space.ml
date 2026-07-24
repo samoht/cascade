@@ -55,7 +55,7 @@ let test_xyz65_of_linear_srgb () =
 
 let test_oklab_of_linear_srgb_known () =
   (* Reference values from the OKLab paper (Ottosson) and confirmed by web.dev /
-     WebKit fixtures: linear-sRGB red -> OKLab ≈ (0.628 0.226 0.126); blue ->
+     WebKit fixtures: linear-sRGB red -> OKLab ~= (0.628 0.226 0.126); blue ->
      (0.452 -0.032 -0.312); white -> (1.0 0 0). *)
   let red = Color_space.oklab_of_linear_srgb (1.0, 0.0, 0.0) in
   Alcotest.(check triplet)

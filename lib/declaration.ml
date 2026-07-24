@@ -307,8 +307,8 @@ let is_decl_unknown_property_name name =
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known spec
     violation detected at parse time; [Optimize.drop_invalid] removes such
     declarations under minify. An unknown property is not invalid: browsers keep
-    unrecognised declarations (CSS Syntax 3 §5.4), and cascade emits them (and
-    vendor-prefix extensions) as raw component lists. *)
+    unrecognised declarations (CSS Syntax 3 sec. 5.4), and cascade emits them
+    (and vendor-prefix extensions) as raw component lists. *)
 let rec is_invalid = function
   | Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property; value; _ } ->
@@ -755,9 +755,9 @@ let read_border_radius_vertical t =
       Some (read_border_radius_radii t)
   | _ -> None
 
-(* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
-   [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
-   1-4 vertical radii. *)
+(* CSS Backgrounds and Borders 3 sec. 5: [border-radius =
+   <length-percentage>{1,4} [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal
+   radii then, after [/], 1-4 vertical radii. *)
 let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
   Cursor.ws t;
   Cursor.enum_or_var "border-radius"
@@ -1764,10 +1764,10 @@ let read_custom_value name ~raw_is_whitespace_only value_str =
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
-  (* CSS Syntax 3 §4.3.7 lets [\X] escapes carry any code point into an ident,
-     so the name may contain characters ([/], whitespace, etc.) that don't
-     tokenize as a bare ident on a string round-trip. We trust the original
-     lexer's tokenization: the only validation we still run is the
+  (* CSS Syntax 3 sec. 4.3.7 lets [\X] escapes carry any code point into an
+     ident, so the name may contain characters ([/], whitespace, etc.) that
+     don't tokenize as a bare ident on a string round-trip. We trust the
+     original lexer's tokenization: the only validation we still run is the
      [<dashed-ident>] prefix check. *)
   if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
@@ -1796,7 +1796,7 @@ let read_custom_property_declaration t : declaration =
    can legitimately appear as a non-special ident. [animation-name] /
    [grid-area] / [will-change] / etc. accept arbitrary ident lists.
    [font-family] also takes a [<custom-ident>#] list, so a CSS-wide keyword
-   inside the list is invalid CSS (CSS Cascade 5 §7.3) but upstream tools
+   inside the list is invalid CSS (CSS Cascade 5 sec. 7.3) but upstream tools
    (lightningcss, csso) preserve the source verbatim. *)
 let property_allows_keyword_as_ident = function
   | "animation-name" | "grid-area" | "grid-row" | "grid-column"
@@ -1942,9 +1942,9 @@ let read_typed_property_declaration t start =
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  (* CSS Syntax 3 §5.3.7 / §4.3.5 auto-close unterminated functions, brackets
-     and strings at EOF. Typed readers consume the spec-recovered tokens; the
-     declaration survives with the auto-closed shape. *)
+  (* CSS Syntax 3 sec. 5.3.7 / sec. 4.3.5 auto-close unterminated functions,
+     brackets and strings at EOF. Typed readers consume the spec-recovered
+     tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
   | Unknown_property name -> read_unknown_property_declaration t name
   | _ -> (

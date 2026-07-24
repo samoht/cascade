@@ -40,13 +40,13 @@ let read_vertical_align_length t : vertical_align =
   | Some "rem" -> Rem n
   | Some "em" -> Em n
   | Some "%" -> Pct n
-  (* A unitless [0] is the valid zero <length> (CSS Values 4 §6.1); any other
-     unitless number is not a length and is rejected. *)
+  (* A unitless [0] is the valid zero <length> (CSS Values 4 sec. 6.1); any
+     other unitless number is not a length and is rejected. *)
   | None when n = 0. -> Zero
   | None -> Cursor.err_invalid t "vertical-align requires a unit"
   | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
 
-(* CSS Display 3 §2.1 [display-outside]: pre-existing aliases inside the
+(* CSS Display 3 sec. 2.1 [display-outside]: pre-existing aliases inside the
    single-value vocabulary that compose with a [display-inside] in the two-value
    form. The composite [<outside> <inside>] is a [Multi]. *)
 let display_outside_idents : (string * display) list =
@@ -116,7 +116,7 @@ let read_display_legacy t : display =
     t
 
 let read_display_two_value t : display =
-  (* CSS Display 3 §2.1 two-value form [<display-outside> <display-inside>].
+  (* CSS Display 3 sec. 2.1 two-value form [<display-outside> <display-inside>].
      Both keywords must come from their respective vocabularies; otherwise
      reject so the caller can fall back to the legacy single-value form. *)
   let outside = Cursor.enum "display-outside" display_outside_idents t in
@@ -762,7 +762,7 @@ let rec read_font_style t : font_style =
         Cursor.ws t;
         if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
         else
-          (* CSS Fonts 4 §11.2 wants the first oblique angle <= the second.
+          (* CSS Fonts 4 sec. 11.2 wants the first oblique angle <= the second.
              Browsers keep a descending range ([oblique 20deg 10deg]), so accept
              it but warn, leaving [Css.of_string ~strict] free to reject it. *)
           let second = read_angle t in
@@ -772,7 +772,7 @@ let rec read_font_style t : font_style =
                 (Error.bad_value (Cursor.position t) ~property:"font-style"
                    ~reason:
                      "oblique angle range must run from the smaller angle to \
-                      the larger (CSS Fonts 4 §11.2)")
+                      the larger (CSS Fonts 4 \u{00a7}11.2)")
           | _ -> ());
           Oblique_range (first, second))
     t
@@ -2102,7 +2102,7 @@ module Cursor_prop = struct
   let rec read_url_cursor (t : Cursor.t) : cursor =
     let (url, hotspot) : string * (float * float) option =
       (* Bare [url(foo.cur)] is a [Token.Url]; quoted [url("foo.cur")] is a
-         [Func "url"] — handle both. *)
+         [Func "url"] -- handle both. *)
       match Cursor.url_opt t with
       | Some url -> (url, None)
       | None -> Cursor.call "url" t read_url_with_hotspot
@@ -3086,10 +3086,10 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       match pos1_opt with
       | None -> ()
       | Some pos1 -> (
-          (* CSS Syntax 3 §4: ident- and hash-typed colours absorb the following
-             digit/hex into the same token ([red0%] -> ident [red0] + [%]), so
-             the separator is mandatory there; and when the stop lives in a
-             custom-property token stream, the whitespace token between a
+          (* CSS Syntax 3 sec. 4: ident- and hash-typed colours absorb the
+             following digit/hex into the same token ([red0%] -> ident [red0] +
+             [%]), so the separator is mandatory there; and when the stop lives
+             in a custom-property token stream, the whitespace token between a
              function-shaped colour and its position is part of the value a
              var() substitution receives, so it is never elided either. *)
           Pp.space ctx ();
@@ -3209,7 +3209,7 @@ let pp_conic_gradient_named name ctx (config, stops) =
 let pp_linear_gradient_named name ctx (dir, stops) =
   Pp.call name
     (fun ctx (dir, stops) ->
-      (* CSS Images 4 §5.1: the default linear-gradient direction is [to
+      (* CSS Images 4 sec. 5.1: the default linear-gradient direction is [to
          bottom], equivalent to [180deg]; both spellings can be elided. *)
       let is_default_direction = function
         | Default_direction -> true
@@ -3403,7 +3403,7 @@ let pp_font_family_name ctx s =
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
-      (* CSS Fonts 4 §4.1: a [<family-name>] formed of two or more
+      (* CSS Fonts 4 sec. 4.1: a [<family-name>] formed of two or more
          [<custom-ident>]s is unambiguous - none of its words can be picked up
          as a property-level CSS-wide keyword once the parser has committed to a
          multi-token value. So [inherit test] / [revert serif] etc. round-trip
@@ -5009,7 +5009,7 @@ let pp_border_shorthand : border_shorthand Pp.t =
         (None : border_style option)
     | style, _, _ -> style
   in
-  (* CSS Backgrounds 3 §4.4: [<border-width>] defaults to [medium]. When the
+  (* CSS Backgrounds 3 sec. 4.4: [<border-width>] defaults to [medium]. When the
      user spelled it explicitly and another slot is non-default, the keyword is
      redundant - drop it. *)
   let width : border_width option =
@@ -7866,8 +7866,8 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | No_repeat -> Pp.string ctx "no-repeat"
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
-  (* CSS Backgrounds 3 §3.6.1: the two-value forms collapse when both axes match
-     ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
+  (* CSS Backgrounds 3 sec. 3.6.1: the two-value forms collapse when both axes
+     match ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
      no-repeat] -> [repeat-x], [no-repeat repeat] -> [repeat-y]). *)
   | Repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat"
   | Space_space when Pp.minified ctx -> Pp.string ctx "space"
@@ -8038,7 +8038,7 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
 let pp_mask_layer : mask_layer Pp.t =
  fun ctx layer ->
   let first = ref true in
-  (* CSS Syntax 3 §5.4.6: a token ending with [)], [\]] or [}] is
+  (* CSS Syntax 3 sec. 5.4.6: a token ending with [)], [\]] or [}] is
      self-delimiting, so under minify we can drop the inter-slot space after
      [url(...)] / [<image>]. *)
   let last_is_self_delim () =
@@ -8146,7 +8146,7 @@ let pp_mask_border_mode ctx = function
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->
   let first = ref true in
-  (* CSS Syntax 3 §5.4.6: tokens ending with [)] are self-delimiting, so the
+  (* CSS Syntax 3 sec. 5.4.6: tokens ending with [)] are self-delimiting, so the
      inter-slot space after [url(...)] / [<image>] can be elided under
      minify. *)
   let last_is_self_delim () =
@@ -8172,7 +8172,7 @@ let pp_border_image : border_image Pp.t =
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat;
-  (* CSS Masking 1 §6: [alpha] is the default mode, so drop it under minify;
+  (* CSS Masking 1 sec. 6: [alpha] is the default mode, so drop it under minify;
      [luminance] always prints. *)
   let mode =
     match mode with
@@ -8373,9 +8373,9 @@ let rec pp_background : background Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | None ->
-      (* CSS Backgrounds 3 §3.10: [background: none] and [background: 0 0] are
-         computed-value-equivalent (both clear the image and set position to [0
-         0]). Pick the shorter form under minify. *)
+      (* CSS Backgrounds 3 sec. 3.10: [background: none] and [background: 0 0]
+         are computed-value-equivalent (both clear the image and set position to
+         [0 0]). Pick the shorter form under minify. *)
       Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
   | Var v -> pp_var pp_background ctx v
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_background) ctx vars
@@ -8435,10 +8435,10 @@ let rec pp_animation_name : animation_name Pp.t =
   | Name name -> Pp.string ctx name
   | Ambiguous name -> Pp.string ctx name
   | Quoted name ->
-      (* CSS Animations 1 §3.3: [<keyframes-name>] excludes [none], the CSS-wide
-         keywords, and [default]. A source [animation-name: "none"] therefore
-         can't refer to a real [@keyframes none] - it's invalid input that
-         browsers tolerate. Minified output drops the quotes so the value
+      (* CSS Animations 1 sec. 3.3: [<keyframes-name>] excludes [none], the
+         CSS-wide keywords, and [default]. A source [animation-name: "none"]
+         therefore can't refer to a real [@keyframes none] - it's invalid input
+         that browsers tolerate. Minified output drops the quotes so the value
          collapses to the equivalent (and shorter) keyword form. *)
       if Pp.minified ctx then Pp.string ctx name else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
@@ -8790,8 +8790,8 @@ let rec pp_position_area : position_area Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_area ctx v
   | None -> Pp.string ctx "none"
-  (* CSS Anchor Positioning 1 §6: the second axis defaults to [center], so [X
-     center] minifies to [X]; both axes equal also collapse. *)
+  (* CSS Anchor Positioning 1 sec. 6: the second axis defaults to [center], so
+     [X center] minifies to [X]; both axes equal also collapse. *)
   | Area (first, Some second)
     when Pp.minified ctx && (first = second || second = Center) ->
       pp_position_area_keyword ctx first
@@ -10312,7 +10312,7 @@ let grid_template_area_row_cells row =
   in
   loop [] 0
 
-(* CSS Grid Layout 2 §7.3: a "null cell token" is one or more sequential
+(* CSS Grid Layout 2 sec. 7.3: a "null cell token" is one or more sequential
    periods, all denoting the same single empty cell. Collapse multi-dot
    spellings ([....] / [..]) to the canonical single [.]. *)
 let normalize_grid_template_area_cell c =
@@ -10601,8 +10601,8 @@ let rec pp_place_items : place_items Pp.t =
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_items a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
-      (* CSS Align 3 §6.1: when align and justify render to the same token, the
-         single-value spelling is canonical. *)
+      (* CSS Align 3 sec. 6.1: when align and justify render to the same token,
+         the single-value spelling is canonical. *)
       if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
       else (
         Pp.string ctx a_s;
@@ -10646,7 +10646,7 @@ let rec pp_timing_function : timing_function Pp.t =
   | Step_start -> Pp.string ctx "step-start"
   | Step_end -> Pp.string ctx "step-end"
   | Steps (1, Some (Jump_start | Start)) when Pp.minified ctx ->
-      (* CSS Easing 1 §2: [steps(1, jump-start)] = [steps(1, start)] = the
+      (* CSS Easing 1 sec. 2: [steps(1, jump-start)] = [steps(1, start)] = the
          [step-start] alias; the [end] / [jump-end] equivalents fold to
          [step-end]. *)
       Pp.string ctx "step-start"
@@ -10704,7 +10704,7 @@ let rec pp_svg_paint : svg_paint Pp.t =
       match fallback with
       | None -> ()
       | Some fb ->
-          (* CSS Syntax 3 §5.4.6: a [url(...)] token closes with [)], so the
+          (* CSS Syntax 3 sec. 5.4.6: a [url(...)] token closes with [)], so the
              whitespace before a fallback keyword/colour can be elided under
              minify. *)
           Pp.sp ctx ();
@@ -10789,12 +10789,12 @@ let rec pp_transition : transition Pp.t =
   | Var v -> pp_var pp_transition ctx v
   | Shorthand s -> pp_transition_shorthand ctx s
 
-(* CSS Syntax 3 §4: two adjacent [<number-percentage>] tokens need a separator
-   unless the boundary is unambiguous - the previous ends with [%] (the unit
-   terminates the token), or the next starts with [-]/[+] (a sign starts a new
-   number). Render values to strings first since [pp_number_percentage] picks
-   between [<number>] and [<percentage>] spelling and the spacing depends on the
-   choice. *)
+(* CSS Syntax 3 sec. 4: two adjacent [<number-percentage>] tokens need a
+   separator unless the boundary is unambiguous - the previous ends with [%]
+   (the unit terminates the token), or the next starts with [-]/[+] (a sign
+   starts a new number). Render values to strings first since
+   [pp_number_percentage] picks between [<number>] and [<percentage>] spelling
+   and the spacing depends on the choice. *)
 let render_number_percentages ctx vs =
   List.map (Pp.to_string ~minify:(Pp.minified ctx) pp_number_percentage) vs
 
@@ -10869,11 +10869,11 @@ let rec pp_translate_value : translate_value Pp.t =
   | Var v -> pp_var pp_translate_value ctx v
 
 let rec read_translate_value t : translate_value =
-  (* Per CSS Transforms 2 §3.5: [<length-percentage> <length-percentage>?
+  (* Per CSS Transforms 2 sec. 3.5: [<length-percentage> <length-percentage>?
      <length>?]. Same two [var()] shapes as [read_scale]:
 
-     - [translate: var(--t)] is a whole-value [var()] — produce [Var _]. -
-     [translate: var(--x) var(--y)] is per-slot — produce [XY (_, _)]. *)
+     - [translate: var(--t)] is a whole-value [var()] -- produce [Var _]. -
+     [translate: var(--x) var(--y)] is per-slot -- produce [XY (_, _)]. *)
   let read_lengths_from t (x : length) : translate_value =
     Cursor.ws t;
     match Cursor.option read_length t with
@@ -11013,9 +11013,9 @@ let read_rotate_angle_axis_tail angle t =
       let third = Cursor.number t in
       (Axis (first, second, third, angle) : rotate_value)
 
-(* CSS Transforms 2 §3.3 [rotate] also accepts angle then axis: [<angle> x|y|z]
-   or [<angle> <number>{3}]. Try angle-first after the plain forms; consume the
-   angle, then look for a trailing axis. *)
+(* CSS Transforms 2 sec. 3.3 [rotate] also accepts angle then axis: [<angle>
+   x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
+   consume the angle, then look for a trailing axis. *)
 let read_rotate_angle_then_axis t : rotate_value =
   let angle = read_angle t in
   Cursor.ws t;
@@ -12392,10 +12392,10 @@ let read_grid_line_pair t : grid_line_pair =
     (Var (Values.read_var read_pair t) : grid_line_pair)
   else read_pair t
 
-(* CSS Grid 2 §8.4: an omitted slot inherits from the corresponding row/column
-   start when that's a [<custom-ident>], else defaults to [auto]. The forward
-   helper is [grid_area_default_from] (defined above with the printer); both
-   directions share it. *)
+(* CSS Grid 2 sec. 8.4: an omitted slot inherits from the corresponding
+   row/column start when that's a [<custom-ident>], else defaults to [auto]. The
+   forward helper is [grid_area_default_from] (defined above with the printer);
+   both directions share it. *)
 let read_grid_area t : grid_area =
   let first = read_grid_line t in
   let rest =
@@ -12682,7 +12682,7 @@ let rec read_grid t : grid_template =
   if Cursor.looking_at_func "var" t then
     (Var (Values.read_var read_grid t) : grid_template)
   else if grid_template_needs_raw_template (Cursor.remaining t) then
-    (* CSS Grid 1 §10.1 [<'grid-template'>] form of [grid]: when the input
+    (* CSS Grid 1 sec. 10.1 [<'grid-template'>] form of [grid]: when the input
        contains a [<string>] token, the value is the [<line-names>? <string>
        <track-size>? <line-names>?]+ form, which [read_grid_template] already
        handles. *)
@@ -14474,10 +14474,10 @@ let rec read_break_value t : break_value =
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
       ("all", All);
-      (* CSS Fragmentation 3 §6: legacy [page-break-*: always] maps to [break-*:
-         page]. The reader accepts the legacy spelling so the page-break alias
-         dispatch (which routes to [Break_before/after]) can keep using this
-         reader. *)
+      (* CSS Fragmentation 3 sec. 6: legacy [page-break-*: always] maps to
+         [break-*: page]. The reader accepts the legacy spelling so the
+         page-break alias dispatch (which routes to [Break_before/after]) can
+         keep using this reader. *)
       ("always", Page);
       ("avoid-page", Avoid_page);
       ("page", Page);
@@ -15863,8 +15863,8 @@ let rec read_font_family_single t : font_family =
   | None -> Cursor.err t "expected font-family value"
 
 and read_font_family t : font_family =
-  (* CSS Cascade 5 §7.3: a CSS-wide keyword ([inherit] / [initial] / [unset] /
-     [revert] / [revert-layer]) must stand alone; mixed inside a
+  (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword ([inherit] / [initial] / [unset]
+     / [revert] / [revert-layer]) must stand alone; mixed inside a
      [<custom-ident>#] list it makes the whole declaration invalid. *)
   let rec loop acc =
     Cursor.ws t;
@@ -16085,7 +16085,7 @@ let rec read_font t : font =
 let rec read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
     let n = Cursor.pct t in
-    (* CSS Fonts 4 §6.1.2: font-stretch percentage is non-negative. *)
+    (* CSS Fonts 4 sec. 6.1.2: font-stretch percentage is non-negative. *)
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
@@ -16342,8 +16342,8 @@ let rec read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  (* CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. Two [var()] shapes to
-     keep distinct: [scale: var(--s)] is a whole-value var (produce [Var _]);
+  (* CSS Transforms 2 sec. 3.6: [<number-percentage>{1,3}]. Two [var()] shapes
+     to keep distinct: [scale: var(--s)] is a whole-value var (produce [Var _]);
      [scale: var(--x) var(--y)] is per-slot (produce [XY _]). They are
      indistinguishable until a second component appears, so peel the first
      [var()] as a whole-value [Var]; if another follows, the saved snapshot
@@ -17691,7 +17691,7 @@ let rec read_background_repeat t : background_repeat =
     ~default:read_repeats t
 
 (* The standalone [background-repeat] / [mask-repeat] longhand is a
-   comma-separated layer list (CSS Backgrounds 3 §3.6); the [background] /
+   comma-separated layer list (CSS Backgrounds 3 sec. 3.6); the [background] /
    [mask] shorthand reuses the single-value [read_background_repeat] so it does
    not eat the layer comma. Same split for the box / size / composite readers
    below. *)
@@ -18139,10 +18139,10 @@ let read_conic_gradient_config t : conic_gradient_config =
   then Cursor.err_invalid t "conic-gradient config";
   { angle = !angle; position = !position; interpolation = !interpolation }
 
-(* CSS Images 4 §6.1 [linear-gradient] prelude: [ <angle> | to <side-or-corner>
-   ]? || <color-interpolation-method> A bare interpolation, a bare direction, or
-   both in either order are all valid. Returns [None] when the prelude consumed
-   no tokens. *)
+(* CSS Images 4 sec. 6.1 [linear-gradient] prelude: [ <angle> | to
+   <side-or-corner> ]? || <color-interpolation-method> A bare interpolation, a
+   bare direction, or both in either order are all valid. Returns [None] when
+   the prelude consumed no tokens. *)
 let read_linear_prelude_opt t : gradient_direction option =
   let direction : gradient_direction option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
@@ -18224,8 +18224,8 @@ let read_linear_gradient_body_stops t =
 
 let read_linear_gradient_body t =
   Cursor.ws t;
-  (* CSS Variables 1 §3: a single [var()] can stand in for the entire body of
-     [linear-gradient(...)], since the variable's value may itself contain
+  (* CSS Variables 1 sec. 3: a single [var()] can stand in for the entire body
+     of [linear-gradient(...)], since the variable's value may itself contain
      commas and stops. Check this case first so the var() does not get
      mis-parsed as an [Angle (Var _)] direction by the prelude reader. *)
   let var_only =
@@ -18755,7 +18755,7 @@ let minify_background_image : background_image -> background_image = function
   | img -> img
 
 let read_any_property t =
-  (* CSS property names are case-insensitive per Syntax §3.3. *)
+  (* CSS property names are case-insensitive per Syntax sec. 3.3. *)
   let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
@@ -19002,7 +19002,7 @@ let read_any_property t =
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
   | "size" -> Prop Page_size
-  (* CSS Fragmentation 3 §6 page-break-* aliases. Keep them as typed legacy
+  (* CSS Fragmentation 3 sec. 6 page-break-* aliases. Keep them as typed legacy
      properties so pretty output preserves the authored property name; minified
      output still serializes through the shorter modern break-* spelling. *)
   | "page-break-before" -> Prop Page_break_before
@@ -20272,7 +20272,7 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
       ]
       t
   in
-  (* CSS Masking 1 §3.6 [<basic-shape> || <geometry-box>]: a shape and a
+  (* CSS Masking 1 sec. 3.6 [<basic-shape> || <geometry-box>]: a shape and a
      reference box may appear in either order, or just a box on its own. *)
   let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
   match read_clip_geometry_box_opt t with
@@ -22857,10 +22857,10 @@ let read_mask_border_mode t =
 let read_border_image t : border_image =
   let source = Cursor.option read_background_image t in
   Cursor.ws t;
-  (* CSS Masking 1 §6 [mask-border-mode] is in [&&] juxtaposition with the other
-     slots, so the keyword may appear after [<source>] (before the slice) or
-     after [<repeat>]. Try the early slot first; combine with the trailing slot
-     below. *)
+  (* CSS Masking 1 sec. 6 [mask-border-mode] is in [&&] juxtaposition with the
+     other slots, so the keyword may appear after [<source>] (before the slice)
+     or after [<repeat>]. Try the early slot first; combine with the trailing
+     slot below. *)
   let mode_early = Cursor.option read_mask_border_mode t in
   Cursor.ws t;
   let slice = Cursor.option read_border_image_slice t in

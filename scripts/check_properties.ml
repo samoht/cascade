@@ -131,6 +131,6 @@ let () =
     StringSet.iter (fun s -> print_string ("  - " ^ s ^ "\n")) extra);
 
   print_string
-    ("✓ All "
+    ("\u{2713} All "
     ^ string_of_int (StringSet.cardinal all_set)
     ^ " properties are properly mapped in read_property\n")

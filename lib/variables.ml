@@ -190,7 +190,7 @@ let read_simple_syntax_component r s : any_syntax =
   | s when is_ident_keyword s -> Syntax (Ident_keyword s)
   | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
-(* CSS Properties and Values API 1 §2: only [+] and [#] are valid syntax
+(* CSS Properties and Values API 1 sec. 2: only [+] and [#] are valid syntax
    multipliers. *)
 let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
     =
@@ -247,7 +247,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
   | Universal ->
-      (* For universal syntax "*", accept any CSS value — consume the remaining
+      (* For universal syntax "*", accept any CSS value -- consume the remaining
          components and serialise them back to source text so the surrounding
          [expect_eof] sees an empty cursor. *)
       Cursor.consume_remaining_as_string ~trim:true reader
@@ -2329,7 +2329,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Default case for all other properties *)
   | _ -> []
 
-(* CSS Variables L1 §3: a custom property's value can itself reference other
+(* CSS Variables L1 sec. 3: a custom property's value can itself reference other
    custom properties. A [Typed] value embeds real [var] handles, so recurse via
    the kind; a raw [Tokens] value carries refs as [var()] functions in the
    stream, recovered structurally by {!vars_of_token_stream}. *)
@@ -2462,11 +2462,11 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
   (* Reuse the main read_syntax function *)
   read_syntax r
 
-(* CSS Custom Properties §3 requires [var()] fallbacks to round-trip including
-   author-written comments. The token stream silently drops comments, so slice
-   the original source between the first and last fallback component instead of
-   re-serialising tokens. Falls back to component-based serialisation when the
-   source is not retained on the cursor. *)
+(* CSS Custom Properties sec. 3 requires [var()] fallbacks to round-trip
+   including author-written comments. The token stream silently drops comments,
+   so slice the original source between the first and last fallback component
+   instead of re-serialising tokens. Falls back to component-based serialisation
+   when the source is not retained on the cursor. *)
 let string_of_fallback inner =
   let cvs = Cursor.remaining inner in
   match (cvs, Cursor.source inner) with
@@ -2487,10 +2487,11 @@ let string_of_fallback inner =
     information which would need to be resolved from a variable registry or
     context. *)
 let read_reference (r : Cursor.t) : string * string option =
-  (* CSS Syntax 3 §4.3.6: EOF inside a function is a parse error, tolerated only
-     when the fallback list opened with a comma (a §4.3.5 [<string-token>] may
-     have eaten the closing [)]) so a recoverable name + fallback survives.
-     Without a fallback there is no recovery signal, so it is rejected. *)
+  (* CSS Syntax 3 sec. 4.3.6: EOF inside a function is a parse error, tolerated
+     only when the fallback list opened with a comma (a sec. 4.3.5
+     [<string-token>] may have eaten the closing [)]) so a recoverable name +
+     fallback survives. Without a fallback there is no recovery signal, so it is
+     rejected. *)
   let terminated =
     match Cursor.peek r with
     | Some (Component.Func fn) -> fn.node.terminated

@@ -23,22 +23,22 @@ let parse_src input =
   try Some (Css.Font_face.src_of_string input)
   with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
 
-(** metric_override_of_string — must not crash. *)
+(** metric_override_of_string -- must not crash. *)
 let test_metric_override buf =
   try ignore (Css.Font_face.metric_override_of_string buf)
   with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
-(** size_adjust_of_string — must not crash. *)
+(** size_adjust_of_string -- must not crash. *)
 let test_size_adjust buf =
   try ignore (Css.Font_face.size_adjust_of_string buf)
   with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
-(** src_of_string — must not crash. *)
+(** src_of_string -- must not crash. *)
 let test_src buf =
   try ignore (Css.Font_face.src_of_string buf)
   with Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
 
-(** metric_override roundtrip: parse → to_string → parse. *)
+(** metric_override roundtrip: parse -> to_string -> parse. *)
 let test_metric_override_roundtrip buf =
   match parse_metric buf with
   | None -> ()
@@ -48,7 +48,7 @@ let test_metric_override_roundtrip buf =
       with Reader.Parse_error _ | Invalid_argument _ | Failure _ ->
         fail "metric_override roundtrip failed")
 
-(** src roundtrip: parse → to_string → parse. *)
+(** src roundtrip: parse -> to_string -> parse. *)
 let test_src_roundtrip buf =
   match parse_src buf with
   | None -> ()

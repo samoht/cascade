@@ -236,7 +236,7 @@ val unit : ctx -> float -> string -> unit
 val pct : ctx -> float -> unit
 (** [pct ctx f] formats a percentage value with the [%] suffix. The value is
     expected to be in the range 0-100. The unit is always emitted: CSS Values 4
-    §6.5 only allows the unit to drop on a zero [<length>], not a zero
+    sec. 6.5 only allows the unit to drop on a zero [<length>], not a zero
     [<percentage>]. *)
 
 val comma : unit t

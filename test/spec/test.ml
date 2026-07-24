@@ -379,8 +379,8 @@ let selectors_where_is () =
   (* Forgiving-parse drops the invalid branch, leaving a single-argument
      [:is(.a)]. Per shortest-wins (Lightning CSS) the single-argument [:is()]
      unwraps to the bare selector, since [:is(.a)] is spec- equivalent to [.a]
-     (same match set, same specificity per Selectors L4 §17). [:where()] cannot
-     unwrap the same way because it contributes zero specificity. *)
+     (same match set, same specificity per Selectors L4 sec. 17). [:where()]
+     cannot unwrap the same way because it contributes zero specificity. *)
   roundtrip ":is(:future-pseudo, .a) { color: red }" ".a{color:red}";
   roundtrip ":where(:future-pseudo, .a) { color: red }" ":where(.a){color:red}"
 

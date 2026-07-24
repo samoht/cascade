@@ -2603,8 +2603,8 @@ let calc_flatten_registered_single_valued () =
      * 2)}"
     "@property \
      --x{syntax:\"<length>\";inherits:false;initial-value:0px}.a{width:calc(var(--x)*2)}";
-  (* CSS Values 4 §10.10: an unregistered var() could substitute a multi-term
-     value, so the grouping must stay. *)
+  (* CSS Values 4 sec. 10.10: an unregistered var() could substitute a
+     multi-term value, so the grouping must stay. *)
   check "unregistered var keeps the nested calc"
     ".a{width:calc(calc(var(--x)) * 2)}" ".a{width:calc(calc(var(--x))*2)}";
   (* A universal syntax is not a single term, so it is not unwrapped. *)
@@ -3564,7 +3564,7 @@ let c64_child_layer_one_anonymous () =
   let optimized = Css.Optimize.stylesheet input in
   (* Per shortest-wins, two adjacent [@layer foo] blocks inside the same
      anonymous parent merge into one - they refer to the same nested layer per
-     Cascade L6 §6.4.2.1, so collapsing is spec-allowed. *)
+     Cascade L6 sec. 6.4.2.1, so collapsing is spec-allowed. *)
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check bool)
     "anonymous parent preserved" true

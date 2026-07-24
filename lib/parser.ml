@@ -203,8 +203,8 @@ let string_of_token_kind : Token.kind -> string = function
   | Token.Hash { value; _ } -> "#" ^ escape_name value
   | Token.String { value; quote = _; terminated } ->
       (* Normalize quoting to double-quote (the original quote is kept on the
-         token only for quote-sensitive lookups like @charset). CSS Syntax
-         §4.3.5 recovers an unterminated string; the [terminated] flag is
+         token only for quote-sensitive lookups like @charset). CSS Syntax sec.
+         4.3.5 recovers an unterminated string; the [terminated] flag is
          preserved so one round-trips, emitting without its closing quote. *)
       escape_string ~quote:'"' ~terminated value
   | Token.Bad_string -> ""
@@ -230,7 +230,7 @@ let string_of_token_kind : Token.kind -> string = function
   | Token.Number_tok { repr; _ } -> repr
   | Token.Percentage { repr; _ } -> repr ^ "%"
   | Token.Dimension { number; unit_ } ->
-      (* CSS Syntax §9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
+      (* CSS Syntax sec. 9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
          (signed) digit would re-read as scientific notation, so hex-escape the
          leading letter to keep it out of the number's exponent. *)
       let unit_serialized =
@@ -611,7 +611,7 @@ let url_string_can_unquote s =
 
 (* If [args] is a single [<string-token>] argument we can fold it into the
    bare-URL form [url(X)] when X has no special characters - per CSS Values L4
-   §3.4 the two notations are equivalent and the bare form is shorter. *)
+   sec. 3.4 the two notations are equivalent and the bare form is shorter. *)
 let url_args_as_bare_string args =
   let stripped =
     List.filter

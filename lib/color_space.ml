@@ -14,7 +14,7 @@ let matrix_mul ((a, b, c), (d, e, f), (g, h, i)) (x, y, z) =
     (d *. x) +. (e *. y) +. (f *. z),
     (g *. x) +. (h *. y) +. (i *. z) )
 
-(* sRGB ↔ linear-sRGB. CSS Color 4 sec. 11.5.1. *)
+(* sRGB <-> linear-sRGB. CSS Color 4 sec. 11.5.1. *)
 
 let linear_of_srgb v =
   let s = Float.copy_sign 1.0 v in
@@ -34,7 +34,7 @@ let linear_rgb_of_rgb (r, g, b) =
 let rgb_of_linear_rgb (r, g, b) =
   (srgb_of_linear r, srgb_of_linear g, srgb_of_linear b)
 
-(* Linear sRGB ↔ XYZ-D65. CSS Color 4 sec. 9.1 reference matrix. *)
+(* Linear sRGB <-> XYZ-D65. CSS Color 4 sec. 9.1 reference matrix. *)
 
 let m_xyz65_of_linear_srgb =
   ( (0.4123907992659593, 0.357584339383878, 0.1804807884018343),
@@ -49,7 +49,7 @@ let m_linear_srgb_of_xyz65 =
 let xyz65_of_linear_srgb rgb = matrix_mul m_xyz65_of_linear_srgb rgb
 let linear_srgb_of_xyz65 xyz = matrix_mul m_linear_srgb_of_xyz65 xyz
 
-(* Display-P3 ↔ XYZ-D65. CSS Color 4 sec. 10.4 reference matrix. The
+(* Display-P3 <-> XYZ-D65. CSS Color 4 sec. 10.4 reference matrix. The
    non-linearity is identical to sRGB. *)
 
 let linear_of_display_p3 = linear_of_srgb
@@ -68,7 +68,7 @@ let m_xyz65_p3 =
 let xyz65_of_linear_p3 rgb = matrix_mul m_p3_xyz65 rgb
 let linear_p3_of_xyz65 xyz = matrix_mul m_xyz65_p3 xyz
 
-(* A98-RGB ↔ XYZ-D65. CSS Color 4 sec. 10.2: the non-linearity is a fixed
+(* A98-RGB <-> XYZ-D65. CSS Color 4 sec. 10.2: the non-linearity is a fixed
    [256/563] power, equivalent to a gamma of [1/(563/256)] = [1/2.1992...]. *)
 
 let a98_rgb_gamma = 563.0 /. 256.0
@@ -94,7 +94,7 @@ let m_linear_a98_of_xyz65 =
 let xyz65_of_linear_a98 rgb = matrix_mul m_xyz65_of_linear_a98 rgb
 let linear_a98_of_xyz65 xyz = matrix_mul m_linear_a98_of_xyz65 xyz
 
-(* ProPhoto-RGB ↔ XYZ-D50. CSS Color 4 sec. 10.3: piecewise gamma with toe at
+(* ProPhoto-RGB <-> XYZ-D50. CSS Color 4 sec. 10.3: piecewise gamma with toe at
    [1/512] and a fixed 1.8 exponent above. *)
 
 let linear_of_prophoto_rgb v =
@@ -120,7 +120,7 @@ let m_xyz50_prophoto =
 let xyz50_of_linear_prophoto rgb = matrix_mul m_prophoto_xyz50 rgb
 let linear_prophoto_of_xyz50 xyz = matrix_mul m_xyz50_prophoto xyz
 
-(* Rec2020 ↔ XYZ-D65. CSS Color 4 sec. 10.5: piecewise gamma with a low-end
+(* Rec2020 <-> XYZ-D65. CSS Color 4 sec. 10.5: piecewise gamma with a low-end
    linear segment and a 1/0.45 power for the upper segment. *)
 
 let rec2020_alpha = 1.09929682680944
@@ -166,7 +166,7 @@ let m_d65_of_xyz50 =
 let d50_of_xyz65 xyz = matrix_mul m_d50_of_xyz65 xyz
 let d65_of_xyz50 xyz = matrix_mul m_d65_of_xyz50 xyz
 
-(* CIE Lab ↔ XYZ-D50. CSS Color 4 sec. 8.2 with D50 white point. *)
+(* CIE Lab <-> XYZ-D50. CSS Color 4 sec. 8.2 with D50 white point. *)
 
 let lab_kappa = 24389.0 /. 27.0
 let lab_epsilon = 216.0 /. 24389.0
@@ -194,7 +194,7 @@ let xyz50_of_lab (l, a, b) =
   let wx, wy, wz = lab_d50_white in
   (wx *. f_lab_inv fx, wy *. f_lab_inv fy, wz *. f_lab_inv fz)
 
-(* OKLab ↔ linear sRGB. CSS Color 4 sec. 8.3: a two-stage matrix with a
+(* OKLab <-> linear sRGB. CSS Color 4 sec. 8.3: a two-stage matrix with a
    cube-root non-linearity sandwiched between the two stages. *)
 
 let m_linear_srgb_to_lms =

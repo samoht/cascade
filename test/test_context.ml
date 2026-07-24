@@ -260,7 +260,7 @@ let test_query_context_boundaries () =
   Alcotest.(check bool)
     "supports declaration is exact on value" false
     (Css.Context.matches_supports ctx (Css.Supports.property "display" "flex"));
-  (* CSS property names are ASCII case-insensitive (CSS Syntax §3.6), so
+  (* CSS property names are ASCII case-insensitive (CSS Syntax sec. 3.6), so
      "Display" and "display" name the same property. *)
   Alcotest.(check bool)
     "supports declaration normalises property case" true
