@@ -1330,6 +1330,14 @@ let vars_of_logical_border_color (value : Properties.logical_border_color) =
   | Pair (start_, end_) -> vars_of_color start_ @ vars_of_color end_
   | _ -> []
 
+let vars_of_logical_border_width (value : Properties.logical_border_width) =
+  match value with
+  | Var v -> [ V v ]
+  | Single w -> vars_of_border_width w
+  | Pair (start_, end_) ->
+      vars_of_border_width start_ @ vars_of_border_width end_
+  | _ -> []
+
 let vars_of_outline (value : Properties.outline) =
   match value with
   | Var v -> [ V v ]
@@ -1868,6 +1876,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_inline_end_color, value -> vars_of_color value
   | Border_inline_color, value -> vars_of_logical_border_color value
   | Border_block_color, value -> vars_of_logical_border_color value
+  | Border_inline_width, value -> vars_of_logical_border_width value
+  | Border_block_width, value -> vars_of_logical_border_width value
   | Border_inline_style, value -> vars_of_border_style value
   | Border_block_style, value -> vars_of_border_style value
   | Border_start_start_radius, value -> vars_of_length value

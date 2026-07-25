@@ -572,6 +572,16 @@ let matrix =
         positives = [ "red"; "red blue"; "currentColor" ];
         negatives = [ "red blue green"; "1px" ];
       };
+      {
+        property = "border-inline-width";
+        positives = [ "1px"; "1px 2px"; "thin"; "medium thick" ];
+        negatives = [ "1px 2px 3px"; "red" ];
+      };
+      {
+        property = "border-block-width";
+        positives = [ "1px"; "1px 2px"; "thin"; "medium thick" ];
+        negatives = [ "1px 2px 3px"; "red" ];
+      };
     ]
   @ rows_for [ "inset" ]
       [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]

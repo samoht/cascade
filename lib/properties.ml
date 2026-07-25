@@ -5070,6 +5070,20 @@ let rec pp_logical_border_color : logical_border_color Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_logical_border_color ctx v
 
+let rec pp_logical_border_width : logical_border_width Pp.t =
+ fun ctx -> function
+  | Single w -> pp_border_width ctx w
+  | Pair (start_, end_) ->
+      pp_border_width ctx start_;
+      Pp.space ctx ();
+      pp_border_width ctx end_
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_logical_border_width ctx v
+
 let rec pp_display : display Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -7148,6 +7162,8 @@ let pp_property : type a. a property Pp.t =
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
   | Border_inline_color -> Pp.string ctx "border-inline-color"
   | Border_block_color -> Pp.string ctx "border-block-color"
+  | Border_inline_width -> Pp.string ctx "border-inline-width"
+  | Border_block_width -> Pp.string ctx "border-block-width"
   | Border_inline_style -> Pp.string ctx "border-inline-style"
   | Border_block_style -> Pp.string ctx "border-block-style"
   | Border_start_start_radius -> Pp.string ctx "border-start-start-radius"
@@ -11698,6 +11714,26 @@ let rec read_logical_border_color t : logical_border_color =
     ]
     ~var:(fun t -> Var (Values.read_var read_logical_border_color t))
     ~default:read_colors t
+
+let rec read_logical_border_width t : logical_border_width =
+  let read_widths t =
+    match
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_border_width t
+    with
+    | [ w ] -> (Single w : logical_border_width)
+    | [ start_; end_ ] -> Pair (start_, end_)
+    | _ -> Cursor.err_expected t "one or two widths"
+  in
+  Cursor.enum_or_var "logical border width"
+    [
+      ("inherit", (Inherit : logical_border_width));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_logical_border_width t))
+    ~default:read_widths t
 
 let rec read_visibility t : visibility =
   Cursor.enum_or_var "visibility"
@@ -18784,6 +18820,8 @@ let read_any_property t =
   | "border-left-color" -> Prop Border_left_color
   | "border-inline-color" -> Prop Border_inline_color
   | "border-block-color" -> Prop Border_block_color
+  | "border-inline-width" -> Prop Border_inline_width
+  | "border-block-width" -> Prop Border_block_width
   | "border-style" -> Prop Border_style
   | "border-top-style" -> Prop Border_top_style
   | "border-right-style" -> Prop Border_right_style
@@ -21002,6 +21040,14 @@ let normalize_border_width (bw : border_width) : border_width =
   | _ when border_width_is_zero bw -> Zero
   | _ -> bw
 
+let normalize_logical_border_width :
+    logical_border_width -> logical_border_width =
+ fun value ->
+  match value with
+  | Single w -> Single (normalize_border_width w)
+  | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
+  | other -> other
+
 let normalize_property_value : type a.
     ?lossless:bool -> ?ctx:Values.calc_ctx -> a property -> a -> a =
  fun ?(lossless = false) ?(ctx = Values.default_calc_ctx) property value ->
@@ -21213,6 +21259,8 @@ let normalize_property_value : type a.
   | Border_inline_end_width -> normalize_border_width value
   | Border_block_start_width -> normalize_border_width value
   | Border_block_end_width -> normalize_border_width value
+  | Border_inline_width -> normalize_logical_border_width value
+  | Border_block_width -> normalize_logical_border_width value
   | Transition_duration -> Values.normalize_duration ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
   | Animation_duration -> Values.normalize_duration ~ctx value
@@ -21379,6 +21427,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_end_color -> pp pp_color
   | Border_inline_color -> pp pp_logical_border_color
   | Border_block_color -> pp pp_logical_border_color
+  | Border_inline_width -> pp pp_logical_border_width
+  | Border_block_width -> pp pp_logical_border_width
   | Border_inline_style -> pp pp_border_style
   | Border_block_style -> pp pp_border_style
   | Border_start_start_radius -> pp pp_length

@@ -1742,6 +1742,18 @@ type logical_border_color =
   | Revert_layer
   | Var of logical_border_color var
 
+(* border-inline-width / border-block-width take one or two <line-width> values,
+   mirroring logical_border_color. *)
+type logical_border_width =
+  | Single of border_width
+  | Pair of border_width * border_width
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_width var
+
 type outline_style =
   | None
   | Solid
@@ -4455,6 +4467,8 @@ type 'a property =
   | Border_inline_end_width : border_width property
   | Border_block_start_width : border_width property
   | Border_block_end_width : border_width property
+  | Border_inline_width : logical_border_width property
+  | Border_block_width : logical_border_width property
   | Border_image : border_image property
   | Border_image_source : background_image property
   | Border_image_slice : border_image_slice property

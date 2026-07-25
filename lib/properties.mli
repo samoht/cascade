@@ -1984,6 +1984,14 @@ val read_logical_border_color : Cursor.t -> logical_border_color
 (** [read_logical_border_color t] is the [logical_border_color] parsed from [t].
 *)
 
+val pp_logical_border_width : logical_border_width Pp.t
+(** [pp_logical_border_width] is the pretty-printer for [logical_border_width].
+*)
+
+val read_logical_border_width : Cursor.t -> logical_border_width
+(** [read_logical_border_width t] is the [logical_border_width] parsed from [t].
+*)
+
 val pp_column_span : column_span Pp.t
 (** [pp_column_span] is the pretty-printer for [column_span]. *)
 
