@@ -1730,6 +1730,16 @@ val border_inline_end_color : color -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-color}
      border-inline-end-color} property. *)
 
+val border_block_start_color : color -> declaration
+(** [border_block_start_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-start-color}
+     border-block-start-color} property. *)
+
+val border_block_end_color : color -> declaration
+(** [border_block_end_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-end-color}
+     border-block-end-color} property. *)
+
 val padding_inline_start : length -> declaration
 (** [padding_inline_start len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start}

@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Add `Css.border_block_start_color` and `Css.border_block_end_color`,
+  the block-axis siblings of the existing inline start/end border colour
+  properties (#199)
 - Add `Css.border_inline_width` and `Css.border_block_width`, the
   logical axis border-width shorthands (one or two `<line-width>`
   values), with the `logical_border_width` type (#198)

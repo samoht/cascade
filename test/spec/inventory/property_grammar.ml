@@ -392,6 +392,8 @@ let matrix =
         "border-left-color";
         "border-inline-start-color";
         "border-inline-end-color";
+        "border-block-start-color";
+        "border-block-end-color";
         "text-decoration-color";
         "-webkit-text-decoration-color";
         "-webkit-tap-highlight-color";
