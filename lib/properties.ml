@@ -7147,6 +7147,7 @@ let pp_property : type a. a property Pp.t =
   | Border_inline_start_color -> Pp.string ctx "border-inline-start-color"
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
   | Border_inline_color -> Pp.string ctx "border-inline-color"
+  | Border_block_color -> Pp.string ctx "border-block-color"
   | Border_inline_style -> Pp.string ctx "border-inline-style"
   | Border_block_style -> Pp.string ctx "border-block-style"
   | Border_start_start_radius -> Pp.string ctx "border-start-start-radius"
@@ -18782,6 +18783,7 @@ let read_any_property t =
   | "border-bottom-color" -> Prop Border_bottom_color
   | "border-left-color" -> Prop Border_left_color
   | "border-inline-color" -> Prop Border_inline_color
+  | "border-block-color" -> Prop Border_block_color
   | "border-style" -> Prop Border_style
   | "border-top-style" -> Prop Border_top_style
   | "border-right-style" -> Prop Border_right_style
@@ -21066,6 +21068,7 @@ let normalize_property_value : type a.
   | Border_inline_start_color -> normalize_color value
   | Border_inline_end_color -> normalize_color value
   | Border_inline_color -> normalize_logical_border_color ~lossless value
+  | Border_block_color -> normalize_logical_border_color ~lossless value
   | Text_decoration_color -> normalize_color value
   | Webkit_text_decoration_color -> normalize_color value
   | Webkit_tap_highlight_color -> normalize_color value
@@ -21375,6 +21378,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_start_color -> pp pp_color
   | Border_inline_end_color -> pp pp_color
   | Border_inline_color -> pp pp_logical_border_color
+  | Border_block_color -> pp pp_logical_border_color
   | Border_inline_style -> pp pp_border_style
   | Border_block_style -> pp pp_border_style
   | Border_start_start_radius -> pp pp_length

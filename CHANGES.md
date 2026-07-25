@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Add `Css.border_block_color`, the block-axis sibling of the existing
+  `Css.border_inline_color`; the `border-block-color` logical property is
+  now typed, parsed, printed and normalised (#197)
 - `Css.inline_vars` resolves `var()` across `@layer` boundaries: a layer
   only orders competing declarations, it never scopes custom-property
   visibility, so a layered stylesheet now inlines like its unlayered
