@@ -1890,6 +1890,8 @@ let spec_remaining_prop_vectors () =
     ];
   check_declaration ~expected:"border-inline-color:red blue"
     ~optimized:"border-inline-color:red #00f" "border-inline-color: red blue";
+  check_declaration ~expected:"border-block-color:red blue"
+    ~optimized:"border-block-color:red #00f" "border-block-color: red blue";
   List.iter
     (fun input -> neg_cursor read_declaration input)
     [
@@ -1911,6 +1913,7 @@ let spec_remaining_prop_vectors () =
       "background-origin: border-box padding-box content-box border-box";
       "background-size: contain cover";
       "border-inline-color: red blue green";
+      "border-block-color: red blue green";
       "border-start-start-radius: 1rem /";
       "text-decoration: underline none";
       "text-underline-position: auto under";
@@ -2265,7 +2268,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 431
+    "property grammar manifest covers every tracked spec property name" 432
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

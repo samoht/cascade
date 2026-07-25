@@ -5249,6 +5249,11 @@ val border_inline_color : logical_border_color -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-color}
      border-inline-color} property. *)
 
+val border_block_color : logical_border_color -> declaration
+(** [border_block_color v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-color}
+     border-block-color} property. *)
+
 val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}

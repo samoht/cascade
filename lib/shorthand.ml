@@ -448,6 +448,8 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Border_inline_end_color -> [ key "border-inline-end-color" ]
   | Border_inline_color ->
       [ key "border-inline-start-color"; key "border-inline-end-color" ]
+  | Border_block_color ->
+      [ key "border-block-start-color"; key "border-block-end-color" ]
   | Border_inline_style ->
       [ key "border-inline-start-style"; key "border-inline-end-style" ]
   | Border_block_style ->

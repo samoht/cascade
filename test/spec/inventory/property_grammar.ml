@@ -567,6 +567,11 @@ let matrix =
         positives = [ "red"; "red blue"; "currentColor" ];
         negatives = [ "red blue green"; "1px" ];
       };
+      {
+        property = "border-block-color";
+        positives = [ "red"; "red blue"; "currentColor" ];
+        negatives = [ "red blue green"; "1px" ];
+      };
     ]
   @ rows_for [ "inset" ]
       [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]

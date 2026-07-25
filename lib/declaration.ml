@@ -395,6 +395,7 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Webkit_tap_highlight_color -> p value
   | Webkit_text_decoration_color -> p value
   | Border_inline_color -> logical_color_uses p value
+  | Border_block_color -> logical_color_uses p value
   | Box_shadow -> shadow_uses_color p value
   | Text_shadow -> List.exists (text_shadow_uses_color p) value
   | Border -> border_uses_color p value
@@ -993,6 +994,8 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
   | Border_inline_end_color -> Some (v Border_inline_end_color (read_color t))
   | Border_inline_color ->
       Some (v Border_inline_color (read_logical_border_color t))
+  | Border_block_color ->
+      Some (v Border_block_color (read_logical_border_color t))
   | Border_inline_style -> Some (v Border_inline_style (read_border_style t))
   | Border_block_style -> Some (v Border_block_style (read_border_style t))
   | _ -> None
@@ -2576,6 +2579,7 @@ let border_left_color value = v Border_left_color value
 let border_inline_start_color value = v Border_inline_start_color value
 let border_inline_end_color value = v Border_inline_end_color value
 let border_inline_color value = v Border_inline_color value
+let border_block_color value = v Border_block_color value
 let border_inline_style value = v Border_inline_style value
 let border_block_style value = v Border_block_style value
 let border_start_start_radius value = v Border_start_start_radius value
