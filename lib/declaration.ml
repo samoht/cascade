@@ -996,6 +996,10 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Border_inline_color (read_logical_border_color t))
   | Border_block_color ->
       Some (v Border_block_color (read_logical_border_color t))
+  | Border_inline_width ->
+      Some (v Border_inline_width (read_logical_border_width t))
+  | Border_block_width ->
+      Some (v Border_block_width (read_logical_border_width t))
   | Border_inline_style -> Some (v Border_inline_style (read_border_style t))
   | Border_block_style -> Some (v Border_block_style (read_border_style t))
   | _ -> None
@@ -2580,6 +2584,8 @@ let border_inline_start_color value = v Border_inline_start_color value
 let border_inline_end_color value = v Border_inline_end_color value
 let border_inline_color value = v Border_inline_color value
 let border_block_color value = v Border_block_color value
+let border_inline_width value = v Border_inline_width value
+let border_block_width value = v Border_block_width value
 let border_inline_style value = v Border_inline_style value
 let border_block_style value = v Border_block_style value
 let border_start_start_radius value = v Border_start_start_radius value

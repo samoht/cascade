@@ -1508,6 +1508,12 @@ val border_inline_color : logical_border_color -> declaration
 val border_block_color : logical_border_color -> declaration
 (** [border_block_color v] is the CSS [border-block-color] property. *)
 
+val border_inline_width : logical_border_width -> declaration
+(** [border_inline_width v] is the CSS [border-inline-width] property. *)
+
+val border_block_width : logical_border_width -> declaration
+(** [border_block_width v] is the CSS [border-block-width] property. *)
+
 val quotes : Properties.quotes -> declaration
 (** [quotes v] is the CSS [quotes] property. *)
 

@@ -5162,6 +5162,22 @@ val logical_border_color : color -> logical_border_color
 val logical_border_colors : color -> color -> logical_border_color
 (** [logical_border_colors start end_] is a two-value logical border color. *)
 
+type logical_border_width = Properties.logical_border_width =
+  | Single of border_width
+  | Pair of border_width * border_width
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_width var
+
+val logical_border_width : border_width -> logical_border_width
+(** [logical_border_width w] is a one-value logical border width. *)
+
+val logical_border_widths : border_width -> border_width -> logical_border_width
+(** [logical_border_widths start end_] is a two-value logical border width. *)
+
 type outline_style = Properties.outline_style =
   | None
   | Solid
@@ -5253,6 +5269,16 @@ val border_block_color : logical_border_color -> declaration
 (** [border_block_color v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-color}
      border-block-color} property. *)
+
+val border_inline_width : logical_border_width -> declaration
+(** [border_inline_width v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-width}
+     border-inline-width} property. *)
+
+val border_block_width : logical_border_width -> declaration
+(** [border_block_width v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-width}
+     border-block-width} property. *)
 
 val border_radius : border_radius -> declaration
 (** [border_radius v] is the

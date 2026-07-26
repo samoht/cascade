@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Add `Css.border_inline_width` and `Css.border_block_width`, the
+  logical axis border-width shorthands (one or two `<line-width>`
+  values), with the `logical_border_width` type (#198)
 - Add `Css.border_block_color`, the block-axis sibling of the existing
   `Css.border_inline_color`; the `border-block-color` logical property is
   now typed, parsed, printed and normalised (#197)
