@@ -1502,6 +1502,13 @@ val border_inline_end_color : color -> declaration
 (** [border_inline_end_color v] is the CSS [border-inline-end-color] property.
 *)
 
+val border_block_start_color : color -> declaration
+(** [border_block_start_color v] is the CSS [border-block-start-color] property.
+*)
+
+val border_block_end_color : color -> declaration
+(** [border_block_end_color v] is the CSS [border-block-end-color] property. *)
+
 val border_inline_color : logical_border_color -> declaration
 (** [border_inline_color v] is the CSS [border-inline-color] property. *)
 

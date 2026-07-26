@@ -7160,6 +7160,8 @@ let pp_property : type a. a property Pp.t =
   | Border_left_color -> Pp.string ctx "border-left-color"
   | Border_inline_start_color -> Pp.string ctx "border-inline-start-color"
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
+  | Border_block_start_color -> Pp.string ctx "border-block-start-color"
+  | Border_block_end_color -> Pp.string ctx "border-block-end-color"
   | Border_inline_color -> Pp.string ctx "border-inline-color"
   | Border_block_color -> Pp.string ctx "border-block-color"
   | Border_inline_width -> Pp.string ctx "border-inline-width"
@@ -19028,6 +19030,8 @@ let read_any_property t =
   | "border-end-end-radius" -> Prop Border_end_end_radius
   | "border-end-start-radius" -> Prop Border_end_start_radius
   | "border-inline-end-color" -> Prop Border_inline_end_color
+  | "border-block-start-color" -> Prop Border_block_start_color
+  | "border-block-end-color" -> Prop Border_block_end_color
   | "border-block-end-width" -> Prop Border_block_end_width
   | "border-block-start-width" -> Prop Border_block_start_width
   | "border-block-style" -> Prop Border_block_style
@@ -21113,6 +21117,8 @@ let normalize_property_value : type a.
   | Border_left_color -> normalize_color value
   | Border_inline_start_color -> normalize_color value
   | Border_inline_end_color -> normalize_color value
+  | Border_block_start_color -> normalize_color value
+  | Border_block_end_color -> normalize_color value
   | Border_inline_color -> normalize_logical_border_color ~lossless value
   | Border_block_color -> normalize_logical_border_color ~lossless value
   | Text_decoration_color -> normalize_color value
@@ -21425,6 +21431,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_left_color -> pp pp_color
   | Border_inline_start_color -> pp pp_color
   | Border_inline_end_color -> pp pp_color
+  | Border_block_start_color -> pp pp_color
+  | Border_block_end_color -> pp pp_color
   | Border_inline_color -> pp pp_logical_border_color
   | Border_block_color -> pp pp_logical_border_color
   | Border_inline_width -> pp pp_logical_border_width

@@ -4486,6 +4486,8 @@ type 'a property =
   | Border_left_color : color property
   | Border_inline_start_color : color property
   | Border_inline_end_color : color property
+  | Border_block_start_color : color property
+  | Border_block_end_color : color property
   | Border_inline_color : logical_border_color property
   | Border_block_color : logical_border_color property
   | Border_inline_style : border_style property

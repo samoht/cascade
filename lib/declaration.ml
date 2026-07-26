@@ -387,6 +387,8 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Border_left_color -> p value
   | Border_inline_start_color -> p value
   | Border_inline_end_color -> p value
+  | Border_block_start_color -> p value
+  | Border_block_end_color -> p value
   | Outline_color -> p value
   | Text_decoration_color -> p value
   | Text_emphasis_color -> p value
@@ -992,6 +994,8 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
   | Border_inline_start_color ->
       Some (v Border_inline_start_color (read_color t))
   | Border_inline_end_color -> Some (v Border_inline_end_color (read_color t))
+  | Border_block_start_color -> Some (v Border_block_start_color (read_color t))
+  | Border_block_end_color -> Some (v Border_block_end_color (read_color t))
   | Border_inline_color ->
       Some (v Border_inline_color (read_logical_border_color t))
   | Border_block_color ->
@@ -1900,6 +1904,7 @@ let is_color_property = function
   | "color" | "background-color" | "border-color" | "border-top-color"
   | "border-right-color" | "border-bottom-color" | "border-left-color"
   | "border-inline-start-color" | "border-inline-end-color"
+  | "border-block-start-color" | "border-block-end-color"
   | "text-decoration-color" | "-webkit-text-decoration-color"
   | "-webkit-tap-highlight-color" | "outline-color" | "accent-color"
   | "caret-color" | "fill" | "stroke" ->
@@ -2581,6 +2586,8 @@ let border_right_color value = v Border_right_color value
 let border_bottom_color value = v Border_bottom_color value
 let border_left_color value = v Border_left_color value
 let border_inline_start_color value = v Border_inline_start_color value
+let border_block_start_color value = v Border_block_start_color value
+let border_block_end_color value = v Border_block_end_color value
 let border_inline_end_color value = v Border_inline_end_color value
 let border_inline_color value = v Border_inline_color value
 let border_block_color value = v Border_block_color value
