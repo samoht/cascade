@@ -264,6 +264,26 @@ val border_block_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
      border-block-style} property. *)
 
+val border_inline_start_style : border_style -> declaration
+(** [border_inline_start_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-style}
+     border-inline-start-style} property. *)
+
+val border_inline_end_style : border_style -> declaration
+(** [border_inline_end_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-style}
+     border-inline-end-style} property. *)
+
+val border_block_start_style : border_style -> declaration
+(** [border_block_start_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-start-style}
+     border-block-start-style} property. *)
+
+val border_block_end_style : border_style -> declaration
+(** [border_block_end_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-end-style}
+     border-block-end-style} property. *)
+
 val border_start_start_radius : length -> declaration
 (** [border_start_start_radius len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-start-start-radius}

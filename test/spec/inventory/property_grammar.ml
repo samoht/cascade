@@ -421,6 +421,10 @@ let matrix =
         "border-left-style";
         "border-inline-style";
         "border-block-style";
+        "border-inline-start-style";
+        "border-inline-end-style";
+        "border-block-start-style";
+        "border-block-end-style";
       ]
       [ "none"; "solid"; "dashed"; "hidden" ]
       [ "solid dashed"; "foo" ]
