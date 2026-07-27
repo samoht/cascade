@@ -1942,6 +1942,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_right_style, value -> vars_of_border_style value
   | Border_bottom_style, value -> vars_of_border_style value
   | Border_left_style, value -> vars_of_border_style value
+  | Border_inline_start_style, value -> vars_of_border_style value
+  | Border_inline_end_style, value -> vars_of_border_style value
+  | Border_block_start_style, value -> vars_of_border_style value
+  | Border_block_end_style, value -> vars_of_border_style value
   (* Font properties *)
   | Font_weight, value -> vars_of_font_weight value
   | Font_family, value -> vars_of_font_family value

@@ -7037,6 +7037,10 @@ let pp_property : type a. a property Pp.t =
   | Border_right_style -> Pp.string ctx "border-right-style"
   | Border_bottom_style -> Pp.string ctx "border-bottom-style"
   | Border_left_style -> Pp.string ctx "border-left-style"
+  | Border_inline_start_style -> Pp.string ctx "border-inline-start-style"
+  | Border_inline_end_style -> Pp.string ctx "border-inline-end-style"
+  | Border_block_start_style -> Pp.string ctx "border-block-start-style"
+  | Border_block_end_style -> Pp.string ctx "border-block-end-style"
   | Padding -> Pp.string ctx "padding"
   | Padding_left -> Pp.string ctx "padding-left"
   | Padding_right -> Pp.string ctx "padding-right"
@@ -18829,6 +18833,10 @@ let read_any_property t =
   | "border-right-style" -> Prop Border_right_style
   | "border-bottom-style" -> Prop Border_bottom_style
   | "border-left-style" -> Prop Border_left_style
+  | "border-inline-start-style" -> Prop Border_inline_start_style
+  | "border-inline-end-style" -> Prop Border_inline_end_style
+  | "border-block-start-style" -> Prop Border_block_start_style
+  | "border-block-end-style" -> Prop Border_block_end_style
   | "border-width" -> Prop Border_width
   | "border-top-width" -> Prop Border_top_width
   | "border-right-width" -> Prop Border_right_width
@@ -21339,6 +21347,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_right_style -> pp pp_border_style
   | Border_bottom_style -> pp pp_border_style
   | Border_left_style -> pp pp_border_style
+  | Border_inline_start_style -> pp pp_border_style
+  | Border_inline_end_style -> pp pp_border_style
+  | Border_block_start_style -> pp pp_border_style
+  | Border_block_end_style -> pp pp_border_style
   | Padding -> pp (pp_box_shorthand pp_length)
   | Padding_left -> pp pp_length
   | Padding_right -> pp pp_length

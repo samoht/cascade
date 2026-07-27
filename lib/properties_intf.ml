@@ -4352,6 +4352,10 @@ type 'a property =
   | Border_right_style : border_style property
   | Border_bottom_style : border_style property
   | Border_left_style : border_style property
+  | Border_inline_start_style : border_style property
+  | Border_inline_end_style : border_style property
+  | Border_block_start_style : border_style property
+  | Border_block_end_style : border_style property
   | Padding : length list property
   | Padding_left : length property
   | Padding_right : length property
