@@ -1,5 +1,48 @@
 ## Unreleased
 
+- `font-stretch` minifies a keyword to the percentage CSS Fonts 4
+  defines it as, which is never longer. The `font` shorthand keeps the
+  keyword, where a percentage is invalid (#206)
+- `--diff=canonical` normalises the space after a top-level comma in a
+  custom-property value, leaving text inside quotes alone. A custom
+  property is an opaque token stream, so a minifier that keeps it as text
+  preserves the author's spacing while one that re-serialises a typed
+  value drops it (#206)
+- `--diff=canonical` drops a declaration that a later rule with the
+  identical selector also writes: same element set, same specificity,
+  later rule, so it never wins. `!important` is left alone, since it
+  changes the winner (#206)
+- `--diff=canonical` pairs rules that match exactly before falling back
+  to the property signature, so an early rule no longer takes the partner
+  a later rule matched exactly (#206)
+- Flattening a nested rule distributes the parent over every branch of a
+  nested selector list, per CSS Nesting 1: `.p { a, b { ... } }` is
+  `.p a, .p b`. The parent was combined with the list as a whole, so the
+  combinator landed on the first branch only and every later branch
+  escaped as a top-level selector matching the whole document (#205)
+- `--diff=canonical` expands every selector-list rule onto its branches
+  in the projection, not only the lists that share a branch with another
+  rule. The canonical form used to depend on how the input happened to
+  group its selectors, so `.a,.b{margin:0}` and `.a{margin:0}.b{margin:0}`
+  compared as different stylesheets (#204)
+- The optimizer lets a rule with nested children absorb a later rule with
+  the same selector, when the nested children and the declarations that
+  would move past them are disjoint. A single nested block used to freeze
+  a rule against every later rule sharing its selector (#203)
+- The optimizer splits a selector list that mixes a vendor pseudo-element
+  with ordinary selectors. A browser that does not know
+  `::-webkit-search-cancel-button` drops the whole rule, and with it the
+  declarations of every other selector in the list (#203)
+- Add `Css.parse_font_family`, the reader for a single family, a generic
+  keyword, or a comma-separated stack, including a `var()` among the
+  entries (#202)
+- Add `Css.parse_list_style_type` and `Css.parse_list_style_image`, the
+  single-value readers behind the `list-style` shorthand (#201)
+- Add `Css.border_inline_start_style`, `Css.border_inline_end_style`,
+  `Css.border_block_start_style` and `Css.border_block_end_style`. The
+  logical start/end longhands were typed for width and colour but not
+  style, so `border-inline-start-style: dashed` parsed as an unsupported
+  property (#200)
 - Add `Css.border_block_start_color` and `Css.border_block_end_color`,
   the block-axis siblings of the existing inline start/end border colour
   properties (#199)
