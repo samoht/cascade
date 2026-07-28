@@ -7929,6 +7929,15 @@ val parse_shadow : string -> shadow option
 (** [parse_shadow s] parses a CSS shadow string, including comma-separated
     multi-shadow values. Returns {!constructor-None} if parsing fails. *)
 
+val parse_list_style_type : string -> list_style_type option
+(** [parse_list_style_type s] parses a CSS [list-style-type] value (a counter
+    style keyword, a string, or [symbols()]). Returns {!constructor-None} if
+    parsing fails. *)
+
+val parse_list_style_image : string -> list_style_image option
+(** [parse_list_style_image s] parses a CSS [list-style-image] value ([none], a
+    [url()], or a gradient). Returns {!constructor-None} if parsing fails. *)
+
 val parse_background_image : string -> background_image list option
 (** [parse_background_image s] parses a CSS background-image value, including
     comma-separated multiple images. Returns {!constructor-None} if parsing
