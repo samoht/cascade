@@ -9878,7 +9878,27 @@ let rec pp_object_view_box : object_view_box Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Fonts 4 §5.3 defines each keyword as a percentage, and the percentage is
+   never longer, so minified output uses it. *)
+let font_stretch_pct = function
+  | Ultra_condensed -> Some 50.
+  | Extra_condensed -> Some 62.5
+  | Condensed -> Some 75.
+  | Semi_condensed -> Some 87.5
+  | Normal -> Some 100.
+  | Semi_expanded -> Some 112.5
+  | Expanded -> Some 125.
+  | Extra_expanded -> Some 150.
+  | Ultra_expanded -> Some 200.
+  | _ -> None
+
 let rec pp_font_stretch : font_stretch Pp.t =
+ fun ctx v ->
+  match if Pp.minified ctx then font_stretch_pct v else None with
+  | Some pct -> Pp.pct ctx pct
+  | None -> pp_font_stretch_keyword ctx v
+
+and pp_font_stretch_keyword : font_stretch Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
@@ -11396,7 +11416,9 @@ let pp_font_prefix ctx style variant weight stretch =
   emit pp_font_style style;
   emit pp_font_variant_css21 variant;
   emit pp_font_weight weight;
-  emit pp_font_stretch stretch;
+  (* The [font] shorthand's stretch component takes only the keywords, so the
+     percentage the standalone property minifies to would be invalid here. *)
+  emit pp_font_stretch_keyword stretch;
   !first
 
 let pp_font_shorthand : font_shorthand Pp.t =

@@ -352,7 +352,52 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
-  let expanded = List.concat_map expand_lists stmts in
+  (* A declaration a later rule with the *identical* selector also writes is
+     dead: same element set, same specificity, later wins. Dropping it lets a
+     sheet that hoisted the declaration into a shared group converge with one
+     that wrote it inline — the hoisted copy survives expansion only to be
+     overridden. Neither may carry [!important], which changes the winner. *)
+  let drop_shadowed_declarations stmts =
+    let key = function
+      | Rule r -> Some (Pp.to_string ~minify:true Selector.pp r.selector)
+      | _ -> None
+    in
+    let later_writes sel prop rest =
+      List.exists
+        (fun stmt ->
+          match (key stmt, stmt) with
+          | Some k, Rule r when k = sel ->
+              List.exists
+                (fun d ->
+                  Declaration.property_name d = prop
+                  && not (Declaration.is_important d))
+                r.declarations
+          | _ -> false)
+        rest
+    in
+    let rec go = function
+      | [] -> []
+      | (Rule r as stmt) :: rest -> (
+          match key stmt with
+          | None -> stmt :: go rest
+          | Some sel ->
+              let kept =
+                List.filter
+                  (fun d ->
+                    Declaration.is_important d
+                    || not (later_writes sel (Declaration.property_name d) rest))
+                  r.declarations
+              in
+              if List.compare_lengths kept r.declarations = 0 then
+                stmt :: go rest
+              else Rule { r with declarations = kept } :: go rest)
+      | stmt :: rest -> stmt :: go rest
+    in
+    go stmts
+  in
+  let expanded =
+    List.concat_map expand_lists stmts |> drop_shadowed_declarations
+  in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function
     | [] -> []
@@ -372,9 +417,73 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   in
   go expanded
 
+(* A custom property is an opaque token stream, so a minifier that treats it as
+   text keeps the spacing the author wrote while one that re-serialises a typed
+   value drops it: [var(--a, var(--b), var(--c))] against
+   [var(--a,var(--b),var(--c))]. The two are the same value, so the projection
+   normalises the space after a top-level comma. Text inside quotes is left
+   alone. *)
+let normalize_custom_value v =
+  let len = String.length v in
+  let buf = Buffer.create len in
+  let rec go i quote =
+    if i >= len then ()
+    else
+      let c = v.[i] in
+      match quote with
+      | Some q ->
+          Buffer.add_char buf c;
+          go (i + 1) (if c = q then None else quote)
+      | None ->
+          if c = '"' || c = '\'' then begin
+            Buffer.add_char buf c;
+            go (i + 1) (Some c)
+          end
+          else if c = ',' then begin
+            Buffer.add_char buf ',';
+            let rec skip j =
+              if j < len && v.[j] = ' ' then skip (j + 1) else j
+            in
+            go (skip (i + 1)) None
+          end
+          else begin
+            Buffer.add_char buf c;
+            go (i + 1) None
+          end
+  in
+  go 0 None;
+  Buffer.contents buf
+
+let rec normalize_custom_values (stmts : statement list) : statement list =
+  List.map
+    (fun stmt ->
+      match stmt with
+      | Rule r ->
+          Rule
+            {
+              r with
+              declarations =
+                List.map
+                  (fun d ->
+                    match Variables.custom_declaration_name d with
+                    | Some name ->
+                        Declaration.custom_property name
+                          (normalize_custom_value
+                             (Declaration.string_of_value ~minify:true d))
+                    | None -> d)
+                  r.declarations;
+              nested = normalize_custom_values r.nested;
+            }
+      | Layer (n, inner) -> Layer (n, normalize_custom_values inner)
+      | Media (c, inner) -> Media (c, normalize_custom_values inner)
+      | Supports (c, inner) -> Supports (c, normalize_custom_values inner)
+      | other -> other)
+    stmts
+
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
+  let normalized = normalize_custom_values stmts in
   let result =
-    canonicalize_block ~parent:(None : Selector.t option) changed stmts
+    canonicalize_block ~parent:(None : Selector.t option) changed normalized
   in
-  if !changed then result else stmts
+  if !changed then result else normalized
