@@ -372,9 +372,73 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   in
   go expanded
 
+(* A custom property is an opaque token stream, so a minifier that treats it as
+   text keeps the spacing the author wrote while one that re-serialises a typed
+   value drops it: [var(--a, var(--b), var(--c))] against
+   [var(--a,var(--b),var(--c))]. The two are the same value, so the projection
+   normalises the space after a top-level comma. Text inside quotes is left
+   alone. *)
+let normalize_custom_value v =
+  let len = String.length v in
+  let buf = Buffer.create len in
+  let rec go i quote =
+    if i >= len then ()
+    else
+      let c = v.[i] in
+      match quote with
+      | Some q ->
+          Buffer.add_char buf c;
+          go (i + 1) (if c = q then None else quote)
+      | None ->
+          if c = '"' || c = '\'' then begin
+            Buffer.add_char buf c;
+            go (i + 1) (Some c)
+          end
+          else if c = ',' then begin
+            Buffer.add_char buf ',';
+            let rec skip j =
+              if j < len && v.[j] = ' ' then skip (j + 1) else j
+            in
+            go (skip (i + 1)) None
+          end
+          else begin
+            Buffer.add_char buf c;
+            go (i + 1) None
+          end
+  in
+  go 0 None;
+  Buffer.contents buf
+
+let rec normalize_custom_values (stmts : statement list) : statement list =
+  List.map
+    (fun stmt ->
+      match stmt with
+      | Rule r ->
+          Rule
+            {
+              r with
+              declarations =
+                List.map
+                  (fun d ->
+                    match Variables.custom_declaration_name d with
+                    | Some name ->
+                        Declaration.custom_property name
+                          (normalize_custom_value
+                             (Declaration.string_of_value ~minify:true d))
+                    | None -> d)
+                  r.declarations;
+              nested = normalize_custom_values r.nested;
+            }
+      | Layer (n, inner) -> Layer (n, normalize_custom_values inner)
+      | Media (c, inner) -> Media (c, normalize_custom_values inner)
+      | Supports (c, inner) -> Supports (c, normalize_custom_values inner)
+      | other -> other)
+    stmts
+
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
+  let normalized = normalize_custom_values stmts in
   let result =
-    canonicalize_block ~parent:(None : Selector.t option) changed stmts
+    canonicalize_block ~parent:(None : Selector.t option) changed normalized
   in
-  if !changed then result else stmts
+  if !changed then result else normalized

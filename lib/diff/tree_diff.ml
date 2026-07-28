@@ -950,19 +950,24 @@ let pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
   | Some result -> Some result
   | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
 
-let pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-    props1 =
-  match try_exact_match rules2_by_key used_rules r1 key1 d1 with
-  | Some (Some result) -> Some result
-  | Some None -> None
-  | None ->
-      pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-        props1
-
 let rules_modified_diff rules1 rules2 =
   let rules2_by_key, rules2_by_props = build_rule_lookup_tables rules2 in
   let used_rules = Hashtbl.create (List.length rules2) in
-
+  (* Claim every exact match first, wherever it sits. Matching in one greedy
+     pass lets an early rule take, through the property fallback, the partner a
+     later rule matches exactly — so a page of [.to-*] gradient rules, all with
+     the same property signature, pairs off by position and every one reports as
+     modified. *)
+  let exact, pending =
+    List.partition_map
+      (fun r1 ->
+        let key1 = selector_key_of_stmt r1 in
+        let d1 = rule_declarations r1 in
+        match try_exact_match rules2_by_key used_rules r1 key1 d1 with
+        | Some pick -> Left pick
+        | None -> Right r1)
+      rules1
+  in
   let rec aux acc = function
     | [] -> List.rev acc
     | r1 :: t1 ->
@@ -970,13 +975,13 @@ let rules_modified_diff rules1 rules2 =
         let d1 = rule_declarations r1 in
         let props1 = decls_signature d1 in
         let pick =
-          pick_modified_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-            props1
+          pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1
+            d1 props1
         in
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
   in
-  aux [] rules1
+  List.filter_map Fun.id exact @ aux [] pending
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
