@@ -1,82 +1,85 @@
 ## Unreleased
 
-- `font-stretch` minifies a keyword to the percentage CSS Fonts 4
-  defines it as, which is never longer. The `font` shorthand keeps the
-  keyword, where a percentage is invalid (#206)
-- `--diff=canonical` normalises the space after a top-level comma in a
-  custom-property value, leaving text inside quotes alone. A custom
-  property is an opaque token stream, so a minifier that keeps it as text
-  preserves the author's spacing while one that re-serialises a typed
-  value drops it (#206)
-- `--diff=canonical` drops a declaration that a later rule with the
-  identical selector also writes: same element set, same specificity,
-  later rule, so it never wins. `!important` is left alone, since it
-  changes the winner (#206)
-- `--diff=canonical` pairs rules that match exactly before falling back
-  to the property signature, so an early rule no longer takes the partner
-  a later rule matched exactly (#206)
+### Nesting
+
 - Flattening a nested rule distributes the parent over every branch of a
   nested selector list, per CSS Nesting 1: `.p { a, b { ... } }` is
   `.p a, .p b`. The parent was combined with the list as a whole, so the
   combinator landed on the first branch only and every later branch
   escaped as a top-level selector matching the whole document (#205)
+- Substituting `&` wraps a complex parent selector in `:is()`, per CSS
+  Nesting 1. Flattening `.a .b { .dark & { ... } }` produced
+  `.dark .a .b`, which matches a different set of elements than
+  `.dark :is(.a .b)` (#194)
+
+### Parsing
+
+- Parse a nested rule whose selector starts with an identifier, such as
+  `h2:where(...)`. CSS Nesting 1 makes that prelude ambiguous with a
+  declaration until the block appears, and the rule was dropped with a
+  warning (#193)
+- Parse the function form of `<general-enclosed>` in media queries, so a
+  grammatical but unrecognised query such as `theme(static)` is kept as
+  never-matching instead of discarding the `@media` block or
+  `@import` (#192)
+
+### Minification
+
+- A rule with nested children absorbs a later rule with the same
+  selector, when the nested children and the declarations that would move
+  past them are disjoint. A single nested block used to freeze a rule
+  against every later rule sharing its selector (#203)
+- A selector list that mixes a vendor pseudo-element with ordinary
+  selectors is split. A browser that does not know
+  `::-webkit-search-cancel-button` drops the whole rule, and with it the
+  declarations of every other selector in the list (#203)
+- A `font-stretch` keyword minifies to the percentage CSS Fonts 4 defines
+  it as, which is never longer. The `font` shorthand keeps the keyword,
+  where a percentage is invalid (#206)
+
+### Custom properties and `@layer`
+
+- `Css.inline_vars` resolves `var()` across `@layer` boundaries, and
+  folds a custom property redefined across layers on the same element to
+  its cascade winner. A layer only orders competing declarations, it
+  never scopes custom-property visibility, so a layered stylesheet now
+  inlines like its unlayered form instead of leaving a live `var()` that
+  could resolve to the wrong definition (#187, #189)
+- `cascade apply` projects rules inside `@layer` onto elements; a fully
+  layered stylesheet (such as Tailwind v4 output) previously inlined
+  nothing (#188)
+
+### New properties and values
+
+- Complete the logical border properties: `Css.border_block_color`,
+  `Css.border_block_start_color` and `Css.border_block_end_color`, the
+  `Css.border_inline_width` and `Css.border_block_width` shorthands (with
+  the `logical_border_width` type), and the start/end style longhands
+  (`Css.border_inline_start_style` and its three siblings). A declaration
+  such as `border-inline-start-style: dashed` used to parse as an
+  unsupported property (#197, #198, #199, #200)
+- Add `Css.parse_font_family`, `Css.parse_list_style_type` and
+  `Css.parse_list_style_image`, the single-value readers behind the
+  `font` and `list-style` shorthands. Reading one of those out of a theme
+  token meant hand-rolling the keyword table, which cannot see a `var()`
+  among the entries (#201, #202)
+- Add `Css.Values.oklch_none_hue` to build achromatic colours with a
+  missing hue component, printed as `oklch(55.6% 0 none)` per CSS
+  Color 4 (#190)
+
+### Canonical diff
+
 - `--diff=canonical` expands every selector-list rule onto its branches
   in the projection, not only the lists that share a branch with another
   rule. The canonical form used to depend on how the input happened to
   group its selectors, so `.a,.b{margin:0}` and `.a{margin:0}.b{margin:0}`
   compared as different stylesheets (#204)
-- The optimizer lets a rule with nested children absorb a later rule with
-  the same selector, when the nested children and the declarations that
-  would move past them are disjoint. A single nested block used to freeze
-  a rule against every later rule sharing its selector (#203)
-- The optimizer splits a selector list that mixes a vendor pseudo-element
-  with ordinary selectors. A browser that does not know
-  `::-webkit-search-cancel-button` drops the whole rule, and with it the
-  declarations of every other selector in the list (#203)
-- Add `Css.parse_font_family`, the reader for a single family, a generic
-  keyword, or a comma-separated stack, including a `var()` among the
-  entries (#202)
-- Add `Css.parse_list_style_type` and `Css.parse_list_style_image`, the
-  single-value readers behind the `list-style` shorthand (#201)
-- Add `Css.border_inline_start_style`, `Css.border_inline_end_style`,
-  `Css.border_block_start_style` and `Css.border_block_end_style`. The
-  logical start/end longhands were typed for width and colour but not
-  style, so `border-inline-start-style: dashed` parsed as an unsupported
-  property (#200)
-- Add `Css.border_block_start_color` and `Css.border_block_end_color`,
-  the block-axis siblings of the existing inline start/end border colour
-  properties (#199)
-- Add `Css.border_inline_width` and `Css.border_block_width`, the
-  logical axis border-width shorthands (one or two `<line-width>`
-  values), with the `logical_border_width` type (#198)
-- Add `Css.border_block_color`, the block-axis sibling of the existing
-  `Css.border_inline_color`; the `border-block-color` logical property is
-  now typed, parsed, printed and normalised (#197)
-- `Css.inline_vars` resolves `var()` across `@layer` boundaries: a layer
-  only orders competing declarations, it never scopes custom-property
-  visibility, so a layered stylesheet now inlines like its unlayered
-  form (#187)
-- `Css.inline_vars` folds a custom property redefined across layers on
-  the same element to its cascade winner, instead of leaving a live
-  `var()` that could resolve to the wrong definition (#189)
-- `cascade apply` projects rules inside `@layer` onto elements; a fully
-  layered stylesheet (such as Tailwind v4 output) previously inlined
-  nothing (#188)
-- Parse a nested rule whose selector starts with an identifier, such as
-  `h2:where(...)`. CSS Nesting 1 makes that prelude ambiguous with a
-  declaration until the block appears, and the rule was dropped with a
-  warning (#193)
-- Wrap a complex parent selector in `:is()` when substituting `&`, per
-  CSS Nesting 1. Flattening `.a .b { .dark & { ... } }` produced
-  `.dark .a .b`, which matches a different set of elements than
-  `.dark :is(.a .b)` (#194)
-- Add `Css.Values.oklch_none_hue` to build achromatic colours with a
-  missing hue component, printed as `oklch(55.6% 0 none)` per CSS
-  Color 4 (#190)
-- Parse the function form of `<general-enclosed>` in media queries, so a
-  grammatical but unrecognised query such as `theme(static)` is kept as
-  never-matching instead of discarding the `@media` block or
-  `@import` (#192)
+- The projection converges on more cascade-equivalent inputs: it
+  normalises the space after a top-level comma in a custom-property value
+  (leaving text inside quotes alone), drops a declaration that a later
+  rule with the identical selector also writes (leaving `!important`
+  alone, since that changes the winner), and pairs rules that match
+  exactly before falling back to the property signature (#206)
 
 ## 1.0.0
 
