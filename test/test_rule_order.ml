@@ -90,12 +90,14 @@ let hoisted_group_converges_with_inline () =
     (canonical
        ".absolute,.sr-only{position:absolute}.sr-only{white-space:nowrap}")
 
-let selector_list_stays_grouped_without_coalesce () =
-  (* A selector-list rule whose branches occur nowhere else has nothing to
-     coalesce with, so it is left grouped rather than split into singletons -
-     splitting would only bloat the projection. *)
+let selector_list_expands_without_coalesce () =
+  (* Every selector-list rule expands onto its branches, whether or not a branch
+     occurs elsewhere. [.a,.b{margin:0}] and [.a{margin:0}.b{margin:0}] are the
+     same stylesheet, so they have to project to the same form; leaving a list
+     with no shared branch grouped made the projection depend on how the input
+     happened to be written. *)
   Alcotest.(check string)
-    "list rule with no shared branch stays grouped" ".a,.b{margin:0}"
+    "a list rule expands onto its branches" ".a{margin:0}.b{margin:0}"
     (canonical ".a,.b{margin:0}")
 
 let selector_list_expands_when_a_branch_is_shared () =
@@ -179,8 +181,8 @@ let suite =
       Alcotest.test_case "layer blocks stay put" `Quick layer_blocks_stay_put;
       Alcotest.test_case "hoisted group converges with inline" `Quick
         hoisted_group_converges_with_inline;
-      Alcotest.test_case "selector list stays grouped without coalesce" `Quick
-        selector_list_stays_grouped_without_coalesce;
+      Alcotest.test_case "selector list expands without coalesce" `Quick
+        selector_list_expands_without_coalesce;
       Alcotest.test_case "selector list expands when a branch is shared" `Quick
         selector_list_expands_when_a_branch_is_shared;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick

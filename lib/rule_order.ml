@@ -171,47 +171,19 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
         (Array.map (fun i -> fst arr.(Rule_graph.Node_id.to_int i)) order)
     end
 
-let branch_key sel = Pp.to_string ~minify:true Selector.pp sel
-
-(* Selector branches that occur in more than one rule of a block: the only
-   branches a later coalesce can fold. Expanding a list rule is only worthwhile
-   when one of its branches is such a shared branch. *)
-let shared_branches (stmts : statement list) : (string, unit) Hashtbl.t =
-  let counts = Hashtbl.create 64 in
-  List.iter
-    (function
-      | Rule r when r.nested = [] && r.merge_key = None ->
-          List.iter
-            (fun sel ->
-              let k = branch_key sel in
-              Hashtbl.replace counts k
-                (1 + Option.value ~default:0 (Hashtbl.find_opt counts k)))
-            (Edge.selectors r.selector)
-      | _ -> ())
-    stmts;
-  let shared = Hashtbl.create 16 in
-  Hashtbl.iter (fun k n -> if n > 1 then Hashtbl.replace shared k ()) counts;
-  shared
-
 (* A grouped rule is the sequence of its per-branch rules, and a hoisted shared
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
    declaration inline in [.sr-only]) only converge once grouping is undone.
-   Expand a selector-list rule into singletons only when a branch is shared with
-   another rule, so a coalesce can fold it; a list whose branches each occur
-   once ([:host,:root]) has nothing to coalesce with, and splitting it only
-   bloats the projection. *)
-let expand_lists shared (stmt : statement) : statement list =
+   Every list expands, whether or not a branch occurs elsewhere: the projection
+   must not depend on how the input happened to group its selectors. *)
+let expand_lists (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (
       match Edge.selectors r.selector with
       | [] | [ _ ] -> [ stmt ]
-      | branches
-        when List.exists
-               (fun sel -> Hashtbl.mem shared (branch_key sel))
-               branches ->
-          List.map (fun selector -> Rule { r with selector }) branches
-      | _ -> [ stmt ])
+      | branches -> List.map (fun selector -> Rule { r with selector }) branches
+      )
   | _ -> [ stmt ]
 
 (* Coalescing two occurrences of a selector concatenates their declarations, so
@@ -380,8 +352,7 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
-  let shared = shared_branches stmts in
-  let expanded = List.concat_map (expand_lists shared) stmts in
+  let expanded = List.concat_map expand_lists stmts in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function
     | [] -> []
