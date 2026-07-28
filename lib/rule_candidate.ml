@@ -81,6 +81,50 @@ let rule_eligible (r : rule) =
    rules too - unlike the factoring passes, which reorder declarations and would
    disturb a later [var()] resolution. [try_rewrite]'s acyclicity check still
    rejects a group whose merge would cross a conflicting (re)definition. *)
+module String_set = Set.Make (String)
+
+(* Merging a run of same-selector rules into the first one moves each later
+   rule's declarations ahead of any nested block an earlier one carries. That
+   only matters for a property the nested block also sets, so a rule with nested
+   children can still take part as long as those children and the declarations
+   that would move past them are disjoint. *)
+let rec nested_property_names acc (stmts : statement list) =
+  List.fold_left
+    (fun acc stmt ->
+      match stmt with
+      | Rule r ->
+          let acc =
+            List.fold_left
+              (fun acc d -> String_set.add (Declaration.property_name d) acc)
+              acc r.declarations
+          in
+          nested_property_names acc r.nested
+      | _ -> acc)
+    acc stmts
+
+let same_selector_eligible (r : rule) =
+  r.merge_key = Option.None
+  && (not (contains_vendor_pseudo_element r.selector))
+  && not (List.exists Shorthand.is_all_declaration r.declarations)
+
+let nested_merge_is_safe (rules : rule list) =
+  let rec go = function
+    | [] | [ _ ] -> true
+    | r :: rest ->
+        (r.nested = []
+        ||
+        let blocked = nested_property_names String_set.empty r.nested in
+        List.for_all
+          (fun (later : rule) ->
+            List.for_all
+              (fun d ->
+                not (String_set.mem (Declaration.property_name d) blocked))
+              later.declarations)
+          rest)
+        && go rest
+  in
+  go rules
+
 let identical_body_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = Option.None
   && (not (contains_vendor_pseudo_element r.selector))
@@ -620,13 +664,13 @@ let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
   let rules = List.map snd rules_with_ids in
   match rules with
   | [] | [ _ ] -> ()
-  | (first : rule) :: _ -> (
+  | (first : rule) :: _ when nested_merge_is_safe rules -> (
       let merged =
         {
           first with
           declarations =
             List.concat_map (fun (r : rule) -> r.declarations) rules;
-          nested = [];
+          nested = List.concat_map (fun (r : rule) -> r.nested) rules;
           merge_key = Option.None;
         }
       in
@@ -636,13 +680,14 @@ let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
       with
       | Option.None -> ()
       | Option.Some c -> candidates := c :: !candidates)
+  | _ -> ()
 
 let same_selector_candidates ?size_cache ?touching ~finalize g =
   let touching = touching_set touching in
   let buckets = Int_table.create 128 in
   List.iter
     (fun (id, rule) ->
-      if rule_eligible rule then
+      if same_selector_eligible rule then
         add_int_bucket buckets (selector_key_hash rule) id)
     (live_rules g);
   let candidates = ref [] in

@@ -1624,6 +1624,55 @@ let c61_adjacent_later_dedup () =
     "adjacent same-selector rules merge and dedupe by source order"
     ".box{display:flex;color:#00f}" output
 
+(* A rule that carries nested children can still absorb a later same-selector
+   rule: the merge moves the later declarations ahead of the nested block, which
+   is only observable for a property the nested block also sets. *)
+let same_selector_merge_past_nested () =
+  let of_string css =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Alcotest.failf "could not parse %s" css
+  in
+  let canon css =
+    Css.Optimize.stylesheet (Css.statements (of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "disjoint nested children do not block the merge"
+    ".a{color:red;padding:1rem;&:hover{background:#00f}}"
+    (canon ".a{color:red;&:hover{background:blue}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "a nested child setting the same property does block it"
+    ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}"
+    (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}")
+
+(* A selector list holding a vendor pseudo-element is invalidated as a whole by
+   a browser that does not know it, so the other selectors silently lose the
+   declarations. The grouping passes refuse to build such a list; one the author
+   wrote is split so the risky branches stand alone. *)
+let vendor_pseudo_list_is_split () =
+  let of_string css =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Alcotest.failf "could not parse %s" css
+  in
+  let canon css =
+    Css.Optimize.stylesheet (Css.statements (of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "the risky branches leave the list"
+    ".i::-webkit-search-cancel-button{display:none}.i::-webkit-search-decoration{display:none}.i::-webkit-search-results-button,.reset{display:none}"
+    (canon
+       ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration,.i::-webkit-search-results-button{display:none}.reset{display:none}");
+  Alcotest.(check string)
+    "a list of only risky branches is left alone"
+    ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration{display:none}"
+    (canon
+       ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration{display:none}")
+
 let c61_no_merge_intervening () =
   (* CSS Cascade 6.1: [.a] and the intervening [.b] tie on specificity (0,1,0),
      so source order is observable for any element matching both. A
@@ -4757,6 +4806,10 @@ module Fuzz = struct
         fuzz_valid_and_no_larger;
       Alcotest.test_case "optimize preserves the cascade" `Slow
         fuzz_cascade_equivalent;
+      Alcotest.test_case "same-selector merge past nested children" `Quick
+        same_selector_merge_past_nested;
+      Alcotest.test_case "vendor pseudo-element list is split" `Quick
+        vendor_pseudo_list_is_split;
       Alcotest.test_case "cascade-neutral permutations stay equivalent" `Slow
         fuzz_neutral_permutation_soundness;
       Alcotest.test_case "shorthand longhand cascade preserved" `Slow
