@@ -1009,6 +1009,21 @@ let public_parse_edges () =
         "partial parser reports invalid rules" 2
         (List.length parsed.warnings)
 
+(* The value parsers the [list-style] shorthand is built from, exposed so a
+   caller can read a single [list-style-type] / [list-style-image]. *)
+let list_style_value_parsers () =
+  let ok what = function
+    | Some _ -> ()
+    | None -> Alcotest.failf "%s should parse" what
+  in
+  ok "square" (Css.parse_list_style_type "square");
+  ok "upper-roman" (Css.parse_list_style_type "upper-roman");
+  ok "url()" (Css.parse_list_style_image "url(/carrot.png)");
+  ok "none" (Css.parse_list_style_image "none");
+  Alcotest.(check bool)
+    "an unknown counter style is rejected" true
+    (Css.parse_list_style_type "nonsense-style" = None)
+
 let suite =
   ( "css",
     [
@@ -1025,6 +1040,8 @@ let suite =
         custom_properties_integration;
       Alcotest.test_case "var(--1A202C) parses" `Quick var_digit_after_dashes;
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+      Alcotest.test_case "list-style value parsers" `Quick
+        list_style_value_parsers;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
       Alcotest.test_case "rules_of_statements" `Quick test_rules_of_statements;

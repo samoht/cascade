@@ -483,6 +483,24 @@ let parse_background_image s =
   | value -> value
   | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
+let parse_list_style_type s =
+  match
+    let r = Cursor.of_string s in
+    let v = Properties.read_list_style_type r in
+    if Cursor.is_done r then Some v else None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
+
+let parse_list_style_image s =
+  match
+    let r = Cursor.of_string s in
+    let v = Properties.read_list_style_image r in
+    if Cursor.is_done r then Some v else None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
+
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
   | _ -> None
