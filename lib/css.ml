@@ -483,6 +483,15 @@ let parse_background_image s =
   | value -> value
   | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
+let parse_font_family s =
+  match
+    let r = Cursor.of_string s in
+    let v = Properties.read_font_family r in
+    if Cursor.is_done r then Some v else None
+  with
+  | value -> value
+  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
+
 let parse_list_style_type s =
   match
     let r = Cursor.of_string s in

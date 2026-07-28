@@ -7929,6 +7929,11 @@ val parse_shadow : string -> shadow option
 (** [parse_shadow s] parses a CSS shadow string, including comma-separated
     multi-shadow values. Returns {!constructor-None} if parsing fails. *)
 
+val parse_font_family : string -> font_family option
+(** [parse_font_family s] parses a CSS [font-family] value: a single family, a
+    generic keyword, or a comma-separated stack. Returns {!constructor-None} if
+    parsing fails. *)
+
 val parse_list_style_type : string -> list_style_type option
 (** [parse_list_style_type s] parses a CSS [list-style-type] value (a counter
     style keyword, a string, or [symbols()]). Returns {!constructor-None} if
