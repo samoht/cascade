@@ -110,12 +110,23 @@ let selector_list_expands_when_a_branch_is_shared () =
 
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
-     same property as both [.a] occurrences, so neither reordering nor folding
-     past it is observable-free; the occurrences stay split in source order. *)
+     same property, so folding the two [.a] occurrences together past it is not
+     observable-free: they stay split, in source order. The first [color] is
+     dropped all the same — a later rule with the *identical* selector writes
+     it, so it never wins for any element. *)
   Alcotest.(check string)
     "conflicting write between occurrences keeps them split"
-    ".a{color:red}.b{color:blue}.a{color:green}"
-    (canonical ".a{color:red}.b{color:blue}.a{color:green}")
+    ".b{color:blue}.a{color:green}"
+    (canonical ".a{color:red}.b{color:blue}.a{color:green}");
+  (* what the rule leaves behind still coalesces *)
+  Alcotest.(check string)
+    "a declaration the later occurrence does not write survives"
+    ".b{color:blue}.a{color:green;margin:0}"
+    (canonical ".a{color:red;margin:0}.b{color:blue}.a{color:green}");
+  (* [!important] changes the winner, so nothing is dead *)
+  Alcotest.(check string)
+    "an important declaration is never shadowed" ".a{color:red!important}"
+    (canonical ".a{color:red!important}.a{color:green}")
 
 let coalesce_drops_exact_duplicates () =
   Alcotest.(check string)

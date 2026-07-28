@@ -352,7 +352,52 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
-  let expanded = List.concat_map expand_lists stmts in
+  (* A declaration a later rule with the *identical* selector also writes is
+     dead: same element set, same specificity, later wins. Dropping it lets a
+     sheet that hoisted the declaration into a shared group converge with one
+     that wrote it inline — the hoisted copy survives expansion only to be
+     overridden. Neither may carry [!important], which changes the winner. *)
+  let drop_shadowed_declarations stmts =
+    let key = function
+      | Rule r -> Some (Pp.to_string ~minify:true Selector.pp r.selector)
+      | _ -> None
+    in
+    let later_writes sel prop rest =
+      List.exists
+        (fun stmt ->
+          match (key stmt, stmt) with
+          | Some k, Rule r when k = sel ->
+              List.exists
+                (fun d ->
+                  Declaration.property_name d = prop
+                  && not (Declaration.is_important d))
+                r.declarations
+          | _ -> false)
+        rest
+    in
+    let rec go = function
+      | [] -> []
+      | (Rule r as stmt) :: rest -> (
+          match key stmt with
+          | None -> stmt :: go rest
+          | Some sel ->
+              let kept =
+                List.filter
+                  (fun d ->
+                    Declaration.is_important d
+                    || not (later_writes sel (Declaration.property_name d) rest))
+                  r.declarations
+              in
+              if List.compare_lengths kept r.declarations = 0 then
+                stmt :: go rest
+              else Rule { r with declarations = kept } :: go rest)
+      | stmt :: rest -> stmt :: go rest
+    in
+    go stmts
+  in
+  let expanded =
+    List.concat_map expand_lists stmts |> drop_shadowed_declarations
+  in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function
     | [] -> []
