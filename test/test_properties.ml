@@ -2113,12 +2113,15 @@ let test_font_family () =
     (Css.Pp.to_string ~minify:true ~enforce_spec:true pp_font_family stack)
 
 let test_font_stretch () =
-  check_font_stretch "normal";
   check_font_stretch "50%";
-  check_font_stretch "ultra-condensed";
-  check_font_stretch "ultra-expanded";
   check_font_stretch "inherit";
-  neg_cursor read_font_stretch "invalid-stretch"
+  neg_cursor read_font_stretch "invalid-stretch";
+  (* CSS Fonts 4 §5.3 defines each keyword as a percentage, never longer, so
+     minified output uses it — but only for the standalone property: the [font]
+     shorthand's stretch component takes the keyword alone. *)
+  check_font_stretch ~expected:"100%" "normal";
+  check_font_stretch ~expected:"50%" "ultra-condensed";
+  check_font_stretch ~expected:"200%" "ultra-expanded"
 
 let test_font_variant_numeric () =
   check_font_variant_numeric "normal";
