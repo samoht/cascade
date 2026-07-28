@@ -1024,6 +1024,22 @@ let list_style_value_parsers () =
     "an unknown counter style is rejected" true
     (Css.parse_list_style_type "nonsense-style" = None)
 
+(* [font-family] takes a stack, and a token defined as one is what a theme feeds
+   back in, so a var() among the entries has to survive the read. *)
+let font_family_value_parser () =
+  let roundtrip s =
+    match Css.parse_font_family s with
+    | None -> Alcotest.failf "%s should parse" s
+    | Some v ->
+        Alcotest.(check string)
+          s s
+          (Pp.to_string Css.Properties.pp_font_family v)
+  in
+  roundtrip "Georgia, serif";
+  roundtrip "ui-sans-serif";
+  roundtrip "var(--font-source-sans-pro), system-ui";
+  roundtrip "var(--font-ubuntu-mono)"
+
 let suite =
   ( "css",
     [
@@ -1042,6 +1058,8 @@ let suite =
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
       Alcotest.test_case "list-style value parsers" `Quick
         list_style_value_parsers;
+      Alcotest.test_case "font-family value parser" `Quick
+        font_family_value_parser;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
       Alcotest.test_case "rules_of_statements" `Quick test_rules_of_statements;
