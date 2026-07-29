@@ -98,6 +98,12 @@
   rule. The canonical form used to depend on how the input happened to
   group its selectors, so `.a,.b{margin:0}` and `.a{margin:0}.b{margin:0}`
   compared as different stylesheets (#204)
+- The projection folds two conditional blocks that share a condition
+  into one, gated by the same interval test that gates folding two
+  occurrences of a selector. Two sheets that split the same `@media`
+  content differently never converged, so the comparator fell back to
+  reporting the block structure positionally: a merge plus a phantom
+  entry for every renumbered block (#211)
 - The projection converges on more cascade-equivalent inputs: it
   normalises the space after a top-level comma in a custom-property value
   (leaving text inside quotes alone), drops a declaration that a later
