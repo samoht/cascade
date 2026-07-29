@@ -449,18 +449,31 @@ let matrix =
         "stroke-width";
         "outline-width";
         "outline-offset";
-        "text-underline-offset";
         "letter-spacing";
         "text-indent";
         "word-spacing";
         "line-height-step";
         "overflow-clip-margin";
         "offset-distance";
-        "perspective";
         "shape-margin";
       ]
       [ "0"; "1px"; "calc(1rem + 2px)" ]
       [ "auto"; "red"; "1px 2px" ]
+  (* CSS Transforms 2 sec. 3: [perspective] takes [none], its initial value. CSS
+     Text Decoration 4 sec. 5: [text-underline-offset] takes [auto] and may be
+     negative. *)
+  @ [
+      {
+        property = "perspective";
+        positives = [ "0"; "1px"; "none"; "calc(1rem + 2px)" ];
+        negatives = [ "auto"; "red"; "1px 2px"; "-1px" ];
+      };
+      {
+        property = "text-underline-offset";
+        positives = [ "0"; "1px"; "auto"; "-2px"; "10%" ];
+        negatives = [ "red"; "1px 2px" ];
+      };
+    ]
   @ rows_for
       [ "margin-left"; "margin-right"; "margin-top"; "margin-bottom" ]
       [ "0"; "1px"; "10%"; "auto"; "anchor-size(width)" ]

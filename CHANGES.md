@@ -1,5 +1,13 @@
 ## Unreleased
 
+### Parsing
+
+- Read `perspective: none` and `text-underline-offset: auto`, and allow a
+  negative `text-underline-offset`. Both keywords are the properties' own
+  grammar (and `none` is `perspective`'s initial value), but the readers took
+  a non-negative length only, so the declaration was dropped with a
+  warning (#212)
+
 ### Nesting
 
 - Flattening a nested rule distributes the parent over every branch of a

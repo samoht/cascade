@@ -643,6 +643,36 @@ let read_normal_or_length name t =
     ~default:(Values.read_length ~with_keywords:false)
     t
 
+(* CSS Transforms 2 sec. 3: [perspective] is [none | <length [0,inf]>]; the
+   keyword is its initial value, so it has to read. *)
+let read_perspective_value t =
+  Cursor.enum "perspective"
+    [
+      ("none", (None : length));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(read_non_negative_length ~with_keywords:false)
+    t
+
+(* CSS Text Decoration 4 sec. 5: [text-underline-offset] is [auto |
+   <length-percentage>], and unlike the lengths above it may be negative. *)
+let read_underline_offset t =
+  Cursor.enum "text-underline-offset"
+    [
+      ("auto", (Auto : length));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(Values.read_length ~with_keywords:false)
+    t
+
 let read_letter_spacing t = read_normal_or_length "letter-spacing" t
 let read_word_spacing t = read_normal_or_length "word-spacing" t
 
@@ -914,7 +944,7 @@ let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
   | Max_block_size ->
       Some (v Max_block_size (read_length_percentage ~allow_negative:false t))
   | Font_size -> Some (v Font_size (Properties.read_font_size t))
-  | Perspective -> Some (v Perspective (read_nn_length_or_global t))
+  | Perspective -> Some (v Perspective (read_perspective_value t))
   | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
   | Line_height_step -> Some (v Line_height_step (read_nn_length_or_global t))
@@ -1034,7 +1064,7 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
   | Text_decoration_style ->
       Some (v Text_decoration_style (read_text_decoration_style t))
   | Text_underline_offset ->
-      Some (v Text_underline_offset (read_nn_length_or_global t))
+      Some (v Text_underline_offset (read_underline_offset t))
   | Text_emphasis -> Some (v Text_emphasis (read_text_emphasis t))
   | Text_emphasis_style ->
       Some (v Text_emphasis_style (read_text_emphasis_style t))
