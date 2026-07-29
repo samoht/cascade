@@ -51,6 +51,17 @@
 - A `font-stretch` keyword minifies to the percentage CSS Fonts 4 defines
   it as, which is never longer. The `font` shorthand keeps the keyword,
   where a percentage is invalid (#206)
+- Adjacent gradient stops of one colour fold into the double-position
+  stop CSS Images 4 defines as their exact equivalent, so
+  `currentColor 0, currentColor 1px` is `currentColor 0 1px` (#214)
+- A `0deg` linear-gradient angle is dropped and the stops reversed, since
+  the default direction is that angle turned 180 degrees. Applies while
+  no stop carries a position, which the reversal would have to mirror,
+  and never to the legacy prefixed gradients, which measure their angle
+  from a different zero (#214)
+- `fill-opacity`, `stroke-opacity`, `stop-opacity` and `flood-opacity`
+  minify as the `<alpha-value>` they are, rather than surviving as opaque
+  unknown-property text: `fill-opacity: 0.1` is `fill-opacity:.1` (#214)
 
 ### Custom properties and `@layer`
 

@@ -72,6 +72,56 @@ let complex_values () =
   decl_optimizes ~prop:"background" ~into:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
 
+  (* CSS Images 4 section 3.4.1 defines [<color> <p1> <p2>] as exactly [<color>
+     <p1>, <color> <p2>], so adjacent stops of one colour fold into a
+     double-position stop. pp holds the pair; the fold is an optimize step. *)
+  check_declaration
+    ~expected:"background:linear-gradient(currentColor 0,currentColor 1px)"
+    "background: linear-gradient(currentColor 0, currentColor 1px);";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(currentColor 0 1px)"
+    "linear-gradient(currentColor 0, currentColor 1px)";
+  (* The colours fold first, so two spellings of one colour still pair up. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 10px)"
+    "linear-gradient(red 0, #f00 10px)";
+  (* A stop without a position is not the same stop repeated: the position it
+     would take is interpolated, so there is nothing to absorb. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red,red 10px)"
+    "linear-gradient(red, red 10px)";
+  (* A stop already carrying both positions absorbs no further neighbour. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 5px,red 10px)"
+    "linear-gradient(red 0 5px, red 10px)";
+
+  (* [0deg] points the gradient line at the top; turning it 180 degrees reaches
+     the default [to bottom] and reversing the stops undoes the turn, so the
+     angle costs nothing but bytes. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,red)"
+    "linear-gradient(0deg, red, blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,red)"
+    "linear-gradient(to top, red, blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,green,red)"
+    "linear-gradient(0deg, red, green, blue)";
+  (* A positioned stop would have to mirror to [100% - p] to survive the
+     reversal, which is not shorter, so the angle stays. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,#00f)"
+    "linear-gradient(0deg, red 0%, blue 100%)";
+  (* An interpolation hint is positional in the same way. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,30%,#00f)"
+    "linear-gradient(0deg, red, 30%, blue)";
+  (* The legacy prefixed gradients measure their angle from a different zero, so
+     the same rewrite would point them elsewhere. *)
+  decl_optimizes ~prop:"background"
+    ~into:"-webkit-linear-gradient(0deg,red,#00f)"
+    "-webkit-linear-gradient(0deg, red, blue)";
+
+  (* The SVG and filter opacities are <alpha-value>, so they minify like
+     [opacity] rather than surviving as opaque unknown-property text. *)
+  check_declaration ~expected:"fill-opacity:.1" "fill-opacity: 0.1;";
+  check_declaration ~expected:"stroke-opacity:1" "stroke-opacity: 1.0;";
+  check_declaration ~expected:"stop-opacity:.5" "stop-opacity: .50;";
+  (* A percentage is the same alpha as the number, and the number is never
+     longer. *)
+  decl_optimizes ~prop:"flood-opacity" ~into:".5" "50%";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time

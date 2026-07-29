@@ -3941,14 +3941,75 @@ let normalize_conic_config (c : conic_gradient_config) =
   if angle == c.angle && position == c.position then c
   else { c with angle; position }
 
+(* CSS Images 4 sec. 3.4.1: [<color> <p1> <p2>] is defined as exactly [<color>
+   <p1>, <color> <p2>], so two adjacent stops of one colour, each carrying a
+   single position, are one stop carrying both. Left to right, so a longer run
+   folds pairwise; a stop already holding two positions has nothing left to
+   absorb. Colours are compared after [normalize_gradient_stop] has
+   canonicalised them, so [red] and [#f00] still fold together. *)
+let rec fold_double_position_stops stops =
+  match stops with
+  | Color_percentage (c1, Option.Some p1, Option.None)
+    :: Color_percentage (c2, Option.Some p2, Option.None)
+    :: rest
+    when c1 = c2 ->
+      Color_percentage (c1, Option.Some p1, Option.Some p2)
+      :: fold_double_position_stops rest
+  | Color_length (c1, Option.Some l1, Option.None)
+    :: Color_length (c2, Option.Some l2, Option.None)
+    :: rest
+    when c1 = c2 ->
+      Color_length (c1, Option.Some l1, Option.Some l2)
+      :: fold_double_position_stops rest
+  | stop :: rest ->
+      let rest' = fold_double_position_stops rest in
+      if rest' == rest then stops else stop :: rest'
+  | [] -> stops
+
+(* [linear-gradient(0deg, A, B)] paints the same pixels as [linear-gradient(B,
+   A)]: turning the gradient line 180 degrees reaches the default [to bottom],
+   and reversing the stops undoes the turn. Only sound when no stop carries a
+   position and no interpolation hint is present, since those would each have to
+   be mirrored to [100% - p], which is longer rather than shorter for lengths.
+   The legacy prefixed gradients measure their angle from a different zero, so
+   they are deliberately not folded here. *)
+let reversible_unpositioned_stops (stops : gradient_stop list) =
+  List.length stops > 1
+  && List.for_all
+       (fun stop ->
+         match stop with
+         | Color_percentage (_, Option.None, Option.None)
+         | Color_length (_, Option.None, Option.None) ->
+             true
+         | _ -> false)
+       stops
+
+let drop_to_top_direction (direction : gradient_direction)
+    (stops : gradient_stop list) =
+  match direction with
+  | Angle a
+    when Values.angle_degrees_opt a = Option.Some 0.
+         && reversible_unpositioned_stops stops ->
+      Option.Some (Default_direction, List.rev stops)
+  | _ -> Option.None
+
 let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
  fun value ->
-  let stops = map_preserve (normalize_gradient_stop ~lossless) in
+  let stops s =
+    fold_double_position_stops
+      (map_preserve (normalize_gradient_stop ~lossless) s)
+  in
   match value with
   | Linear_gradient (d, s) ->
-      preserve_if_equal value
-        (Linear_gradient (normalize_gradient_direction d, stops s))
+      let d = normalize_gradient_direction d in
+      let s = stops s in
+      let d, s =
+        match drop_to_top_direction d s with
+        | Option.Some (d, s) -> (d, s)
+        | Option.None -> (d, s)
+      in
+      preserve_if_equal value (Linear_gradient (d, s))
   | Radial_gradient (c, s) ->
       preserve_if_equal value
         (Radial_gradient (normalize_radial_config c, stops s))
@@ -7181,6 +7242,10 @@ let pp_property : type a. a property Pp.t =
   | Stroke -> Pp.string ctx "stroke"
   | Stroke_width -> Pp.string ctx "stroke-width"
   | Opacity -> Pp.string ctx "opacity"
+  | Fill_opacity -> Pp.string ctx "fill-opacity"
+  | Stroke_opacity -> Pp.string ctx "stroke-opacity"
+  | Stop_opacity -> Pp.string ctx "stop-opacity"
+  | Flood_opacity -> Pp.string ctx "flood-opacity"
   | Mix_blend_mode -> Pp.string ctx "mix-blend-mode"
   | Transition -> Pp.string ctx "transition"
   | Transform -> Pp.string ctx "transform"
@@ -18939,6 +19004,12 @@ let read_any_property t =
   | "align-items" -> Prop Align_items
   | "justify-content" -> Prop Justify_content
   | "opacity" -> Prop Opacity
+  (* SVG 1.1 sec. 11.4 / Filter Effects 1: each is an <alpha-value>, the same
+     number-or-percentage as [opacity]. *)
+  | "fill-opacity" -> Prop Fill_opacity
+  | "stroke-opacity" -> Prop Stroke_opacity
+  | "stop-opacity" -> Prop Stop_opacity
+  | "flood-opacity" -> Prop Flood_opacity
   | "animation-name" -> Prop Animation_name
   | "transform" -> Prop Transform
   | "transform-origin" -> Prop Transform_origin
@@ -21287,6 +21358,10 @@ let normalize_property_value : type a.
           else Custom_value { r with value = Tokens components' }
       | Custom_value _ -> value)
   | Opacity -> normalize_opacity value
+  | Fill_opacity -> normalize_opacity value
+  | Stroke_opacity -> normalize_opacity value
+  | Stop_opacity -> normalize_opacity value
+  | Flood_opacity -> normalize_opacity value
   | Line_height -> normalize_line_height value
   | Vertical_align -> normalize_vertical_align value
   | Border_width -> map_preserve normalize_border_width value
@@ -21430,6 +21505,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Table_layout -> pp pp_table_layout
   | Grid_auto_flow -> pp pp_grid_auto_flow
   | Opacity -> pp pp_opacity
+  | Fill_opacity -> pp pp_opacity
+  | Stroke_opacity -> pp pp_opacity
+  | Stop_opacity -> pp pp_opacity
+  | Flood_opacity -> pp pp_opacity
   | Mix_blend_mode -> pp pp_blend_mode
   | Z_index -> pp pp_z_index
   | Tab_size -> pp pp_tab_size
@@ -22064,6 +22143,10 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Shape_margin -> Some Length_percentage
   | Font_size -> Some Font_size
   | Opacity -> Some Opacity
+  | Fill_opacity -> Some Opacity
+  | Stroke_opacity -> Some Opacity
+  | Stop_opacity -> Some Opacity
+  | Flood_opacity -> Some Opacity
   | Rotate -> Some Rotate
   | Animation_duration -> Some Duration
   | Animation_delay -> Some Duration

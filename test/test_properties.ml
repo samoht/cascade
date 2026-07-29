@@ -2350,10 +2350,13 @@ let test_gradient_direction () =
     decl_optimizes ~prop:"background" ~into
       ("linear-gradient(" ^ dir ^ ",red,#123456)")
   in
-  optimizes ~into:"0deg" "to top";
   optimizes ~into:"90deg" "to right";
   optimizes ~into:"" "to bottom";
   optimizes ~into:"270deg" "to left";
+  (* [to top] is the one side keyword whose angle also disappears: it is the
+     default direction turned 180 degrees, so reversing the stops absorbs it. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#123456,red)"
+    "linear-gradient(to top,red,#123456)";
   neg_cursor read_gradient_direction "invalid-direction"
 
 (* CSS Images 4 sections 6.1-6.3: the gradient prelude is a linear direction, a

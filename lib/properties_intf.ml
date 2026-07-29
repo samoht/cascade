@@ -4501,6 +4501,10 @@ type 'a property =
   | Border_end_start_radius : length property
   | Border_end_end_radius : length property
   | Opacity : opacity property
+  | Fill_opacity : opacity property
+  | Stroke_opacity : opacity property
+  | Stop_opacity : opacity property
+  | Flood_opacity : opacity property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
   | Translate : translate_value property

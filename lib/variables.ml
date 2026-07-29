@@ -2073,6 +2073,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Will_change, value -> vars_of_will_change value
   (* Opacity (typed math) *)
   | Opacity, value -> vars_of_opacity value
+  | Fill_opacity, value -> vars_of_opacity value
+  | Stroke_opacity, value -> vars_of_opacity value
+  | Stop_opacity, value -> vars_of_opacity value
+  | Flood_opacity, value -> vars_of_opacity value
   | Tab_size, value -> vars_of_tab_size value
   | Zoom, value -> vars_of_zoom value
   | Align_content, value -> vars_of_align_content value
