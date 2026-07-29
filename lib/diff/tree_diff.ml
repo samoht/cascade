@@ -630,6 +630,113 @@ let selectors_of_rules rules =
       | None -> None)
     rules
 
+(* Position + selector signature for every block that names at least one
+   rule. *)
+let block_signatures blocks =
+  List.filter_map
+    (fun (pos, rules) ->
+      match selectors_of_rules rules with
+      | [] -> None
+      | selectors -> Some (pos, String.concat ", " selectors))
+    blocks
+
+(* Queue of still-unmatched positions per signature, in ascending order, so
+   repeated signatures pair off one-for-one between the two sides. *)
+let signature_queues blocks =
+  let tbl = Hashtbl.create 64 in
+  List.iter
+    (fun (pos, sign) ->
+      let q = Option.value ~default:[] (Hashtbl.find_opt tbl sign) in
+      Hashtbl.replace tbl sign (pos :: q))
+    (List.rev blocks);
+  tbl
+
+let take_signature tbl sign =
+  match Hashtbl.find_opt tbl sign with
+  | Some (pos :: rest) ->
+      Hashtbl.replace tbl sign rest;
+      Some pos
+  | Some [] | None -> None
+
+type block_pairing = {
+  removed : (int * string) list; (* expected-only blocks *)
+  added : (int * string) list; (* actual-only blocks *)
+  shifts : (int * int) list; (* (delta, run length), expected order *)
+  unchanged : int; (* paired blocks that kept their position *)
+}
+
+(* Group consecutive equal deltas so one insertion upstream reads as a single
+   run rather than one line per renumbered block. *)
+let shift_runs deltas =
+  let flush acc = function Some (d, n) -> (d, n) :: acc | None -> acc in
+  let acc, current =
+    List.fold_left
+      (fun (acc, current) d ->
+        match current with
+        | Some (d', n) when d' = d -> (acc, Some (d, n + 1))
+        | _ -> (flush acc current, Some (d, 1)))
+      ([], None) deltas
+  in
+  List.rev (flush acc current)
+
+let pair_blocks ~expected_blocks ~actual_blocks =
+  let expected = block_signatures expected_blocks in
+  let actual = block_signatures actual_blocks in
+  let queues = signature_queues actual in
+  let matched = Hashtbl.create 64 in
+  let removed, deltas =
+    List.fold_left
+      (fun (removed, deltas) (pos, sign) ->
+        match take_signature queues sign with
+        | None -> ((pos, sign) :: removed, deltas)
+        | Some actual_pos ->
+            Hashtbl.replace matched actual_pos ();
+            (removed, (actual_pos - pos) :: deltas))
+      ([], []) expected
+  in
+  let deltas = List.rev deltas in
+  {
+    removed = List.rev removed;
+    added = List.filter (fun (pos, _) -> not (Hashtbl.mem matched pos)) actual;
+    shifts = shift_runs (List.filter (fun d -> d <> 0) deltas);
+    unchanged = List.length (List.filter (fun d -> d = 0) deltas);
+  }
+
+let pp_block_pairing ~style ~child_prefix buf pairing =
+  let indent = child_indent ~style ~parent_prefix:child_prefix in
+  let pp_block sign style_fn (pos, selectors) =
+    add_strings buf
+      [
+        indent;
+        style_fn
+          (sign ^ " Block at position " ^ string_of_int pos ^ ": " ^ selectors);
+        "\n";
+      ]
+  in
+  List.iter (pp_block "-" (ansi_red ~color:style.color)) pairing.removed;
+  List.iter (pp_block "+" (ansi_green ~color:style.color)) pairing.added;
+  List.iter
+    (fun (delta, n) ->
+      let sign = if delta > 0 then "+" else "-" in
+      add_strings buf
+        [
+          indent;
+          string_of_int n;
+          (if n = 1 then " block shifted by " else " blocks shifted by ");
+          sign;
+          string_of_int (abs delta);
+          "\n";
+        ])
+    pairing.shifts;
+  if pairing.unchanged > 0 then
+    add_strings buf
+      [
+        indent;
+        string_of_int pairing.unchanged;
+        (if pairing.unchanged = 1 then " block unchanged\n"
+         else " blocks unchanged\n");
+      ]
+
 let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
     ~container_type ~condition ~expected_blocks ~actual_blocks =
   let cont_prefix = container_prefix container_type in
@@ -650,25 +757,9 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
   in
   add_strings buf ([ prefix; cont_prefix; " "; condition; " (" ] @ summary);
   Buffer.add_string buf ")\n";
+  let pairing = pair_blocks ~expected_blocks ~actual_blocks in
   pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
-      let indent = child_indent ~style ~parent_prefix:child_prefix in
-      let pp_blocks sign style_fn blocks =
-        List.iter
-          (fun (pos, rules) ->
-            let selectors = selectors_of_rules rules in
-            if selectors <> [] then
-              add_strings buf
-                [
-                  indent;
-                  style_fn
-                    (sign ^ " Block at position " ^ string_of_int pos ^ ": "
-                    ^ String.concat ", " selectors);
-                  "\n";
-                ])
-          blocks
-      in
-      pp_blocks "-" (ansi_red ~color:style.color) expected_blocks;
-      pp_blocks "+" (ansi_green ~color:style.color) actual_blocks)
+      pp_block_pairing ~style ~child_prefix buf pairing)
 
 let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
     container_type condition rules =
