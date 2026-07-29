@@ -23,6 +23,13 @@
   never-matching instead of discarding the `@media` block or
   `@import` (#192)
 
+### Printing
+
+- `background-position` and `mask-position` print one position per layer,
+  comma-separated. The layers were joined with spaces, so
+  `background-position: 30% 50%, 70% 50%` read back as a single four-value
+  position and minified to `30% 70%` (#209)
+
 ### Minification
 
 - A rule with nested children absorbs a later rule with the same
