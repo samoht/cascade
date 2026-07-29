@@ -117,6 +117,12 @@
   rule. The canonical form used to depend on how the input happened to
   group its selectors, so `.a,.b{margin:0}` and `.a{margin:0}.b{margin:0}`
   compared as different stylesheets (#204)
+- The projection merges two rules on one selector at a position between
+  them when neither end can host the merge, so a sheet whose shared
+  declarations were factored into a selector-list rule reaches the same
+  canonical form as one that wrote them inline. Expanding the list left
+  the pair split, and `--diff=canonical` reported the second rule's
+  declarations as missing (#216)
 - The projection folds two conditional blocks that share a condition
   into one, gated by the same interval test that gates folding two
   occurrences of a selector. Two sheets that split the same `@media`
