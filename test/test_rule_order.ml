@@ -176,6 +176,35 @@ let nested_conditionals_participate () =
     "independent rule sorts before the nested block" true
     (String.length (canonical css) > 2 && String.sub (canonical css) 0 2 = ".b")
 
+let same_condition_blocks_fold_together () =
+  (* Two blocks under one condition write one cascade slot, so the projection
+     folds them the way it folds two occurrences of a selector. A sheet whose
+     source kept them apart converges with one that wrote them together. *)
+  let split =
+    "@media print{.a{color:red}}.zzz{order:1}@media print{.b{color:blue}}"
+  in
+  let together = "@media print{.a{color:red}.b{color:blue}}.zzz{order:1}" in
+  Alcotest.(check string)
+    "separated blocks fold together" (canonical together) (canonical split);
+  Alcotest.(check bool)
+    "one block survives" true
+    (String.length (canonical split)
+     - String.length
+         (String.concat "" (String.split_on_char '@' (canonical split)))
+    = 1)
+
+let conflicting_block_fold_is_refused () =
+  (* Folding either way moves a conditional write of [color] on [.a] past an
+     unconditional write of [color] on [.a], which changes the winner when the
+     query matches, so both blocks stay. *)
+  let css =
+    "@media print{.a{color:red}}.a{color:green}@media print{.a{color:blue}}"
+  in
+  Alcotest.(check string)
+    "both blocks stay"
+    (render (statements css))
+    (canonical css)
+
 let suite =
   ( "rule_order",
     [
@@ -210,4 +239,8 @@ let suite =
         block_with_layer_content_is_barrier;
       Alcotest.test_case "nested conditionals participate" `Quick
         nested_conditionals_participate;
+      Alcotest.test_case "same-condition blocks fold together" `Quick
+        same_condition_blocks_fold_together;
+      Alcotest.test_case "conflicting block fold is refused" `Quick
+        conflicting_block_fold_is_refused;
     ] )

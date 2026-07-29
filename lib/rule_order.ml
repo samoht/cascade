@@ -219,21 +219,37 @@ let interval_clear scan ~lo ~hi mems =
   done;
   !ok
 
-let merge scan changed ~from ~into =
-  (match (scan.arr.(from), scan.arr.(into)) with
-  | (Rule rf, _), (Rule ri, _) ->
-      let earlier, later = if from < into then (rf, ri) else (ri, rf) in
+(* The element a merge produces. Two elements only ever pair on an equal
+   [element_key], which is derived from the constructor, so the two sides always
+   match here. A block merge concatenates the bodies in source order and
+   re-canonicalises the result: the two halves were each canonical alone, but
+   their concatenation need not be. *)
+let merged_element ~canon_body scan ~from ~into =
+  let earlier, later = if from < into then (from, into) else (into, from) in
+  match (fst scan.arr.(earlier), fst scan.arr.(later)) with
+  | Rule a, Rule b ->
       let merged =
         {
-          earlier with
+          a with
           declarations =
             canonical_declarations
-              (coalesced_declarations
-                 (earlier.declarations @ later.declarations));
+              (coalesced_declarations (a.declarations @ b.declarations));
         }
       in
-      scan.arr.(into) <- (Rule merged, [ merged ])
-  | _ -> assert false);
+      (Rule merged, [ merged ])
+  | Media (m, ba), Media (_, bb) ->
+      let stmt = Media (m, canon_body (ba @ bb)) in
+      (stmt, Option.value ~default:[] (element_rules stmt))
+  | Supports (c, ba), Supports (_, bb) ->
+      let stmt = Supports (c, canon_body (ba @ bb)) in
+      (stmt, Option.value ~default:[] (element_rules stmt))
+  | Container (n, c, ba), Container (_, _, bb) ->
+      let stmt = Container (n, c, canon_body (ba @ bb)) in
+      (stmt, Option.value ~default:[] (element_rules stmt))
+  | _ -> assert false
+
+let merge ~canon_body scan changed ~from ~into =
+  scan.arr.(into) <- merged_element ~canon_body scan ~from ~into;
   scan.members.(into) <- scan.members.(from) @ scan.members.(into);
   scan.alive.(from) <- false;
   scan.merged_any <- true;
@@ -242,21 +258,48 @@ let merge scan changed ~from ~into =
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
-let try_merge scan changed ~last ~key i j =
+let try_merge ~canon_body scan changed ~last ~key i j =
   if interval_clear scan ~lo:i ~hi:j scan.members.(i) then begin
-    merge scan changed ~from:i ~into:j;
+    merge ~canon_body scan changed ~from:i ~into:j;
     Hashtbl.replace last key j
   end
   else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
-    merge scan changed ~from:j ~into:i
+    merge ~canon_body scan changed ~from:j ~into:i
   else Hashtbl.replace last key j
 
-(* Coalesce same-selector singleton rules within one run. Folding an occurrence
-   into another moves its declarations past every element in between, which is
-   observable only if one of those elements conflicts with the moved rule; the
-   conflict test is the graph's, against every original occurrence already
-   accumulated into the surviving element. *)
-let coalesce ?parent changed (run : (statement * rule list) list) :
+(* What makes two run elements the same cascade slot, so that one can fold into
+   the other. A style rule is keyed by its selector, a conditional block by its
+   kind and condition; the [@]-prefix keeps the two namespaces apart. A block
+   whose interior is not summarisable never became a run element, so it cannot
+   reach here. *)
+let element_key (stmt : statement) =
+  match stmt with
+  | Rule r when r.merge_key = None ->
+      Some (Pp.to_string ~minify:true Selector.pp r.selector)
+  | Media (m, _) -> Some (String.concat "" [ "@media "; Media.to_string m ])
+  | Supports (c, _) ->
+      Some (String.concat "" [ "@supports "; Supports.to_string c ])
+  | Container (name, cond, _) ->
+      Some
+        (String.concat ""
+           [
+             "@container ";
+             Option.value ~default:"" name;
+             " ";
+             (match cond with
+             | Some c -> Container.to_string ~minify:true c
+             | None -> "");
+           ])
+  | _ -> None
+
+(* Coalesce same-slot elements within one run. Folding an occurrence into
+   another moves its writes past every element in between, which is observable
+   only if one of those elements conflicts with what moved; the conflict test is
+   the graph's, against every original occurrence already accumulated into the
+   surviving element. A conditional block stands in the graph for the union of
+   its interior selectors and declarations, a superset of its true edges, so the
+   same test covers a block merge. *)
+let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
     (statement * rule list) list =
   match run with
   | [] | [ _ ] -> run
@@ -276,20 +319,14 @@ let coalesce ?parent changed (run : (statement * rule list) list) :
           merged_any = false;
         }
       in
-      let selector_key i =
-        match arr.(i) with
-        | Rule r, _ when r.merge_key = None ->
-            Some (Pp.to_string ~minify:true Selector.pp r.selector)
-        | _ -> None
-      in
       let last = Hashtbl.create 16 in
       for j = 0 to n - 1 do
-        match selector_key j with
+        match element_key (fst arr.(j)) with
         | None -> ()
         | Some key -> (
             match Hashtbl.find_opt last key with
             | Some i when scan.alive.(i) ->
-                try_merge scan changed ~last ~key i j
+                try_merge ~canon_body scan changed ~last ~key i j
             | _ -> Hashtbl.replace last key j)
       done;
       if not scan.merged_any then run
@@ -300,8 +337,8 @@ let coalesce ?parent changed (run : (statement * rule list) list) :
    apart, enabling a merge the source order hid, so equivalent sheets converge
    regardless of which arrangement they started from. Each merging round removes
    at least one element, so this terminates. *)
-let rec settle ?parent changed (run : (statement * rule list) list) :
-    statement list =
+let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
+    : statement list =
   let stmts = sort_run ?parent changed run in
   let sorted =
     List.filter_map
@@ -311,8 +348,9 @@ let rec settle ?parent changed (run : (statement * rule list) list) :
         | None -> None)
       stmts
   in
-  let coalesced = coalesce ?parent changed sorted in
-  if coalesced == sorted then stmts else settle ?parent changed coalesced
+  let coalesced = coalesce ~canon_body ?parent changed sorted in
+  if coalesced == sorted then stmts
+  else settle ~canon_body ?parent changed coalesced
 
 (* A declaration a later rule with the *identical* selector also writes is dead:
    same element set, same specificity, later wins. Dropping it lets a sheet that
@@ -411,7 +449,8 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
               | [] -> (List.rev acc, [])
             in
             let run, rest = take [ (stmt, rules) ] rest in
-            settle ?parent changed run @ go rest
+            let canon_body = canonicalize_block ~parent changed in
+            settle ~canon_body ?parent changed run @ go rest
         | None -> stmt :: go rest)
   in
   go expanded
