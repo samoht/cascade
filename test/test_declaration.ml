@@ -113,6 +113,15 @@ let complex_values () =
     ~into:"-webkit-linear-gradient(0deg,red,#00f)"
     "-webkit-linear-gradient(0deg, red, blue)";
 
+  (* The SVG and filter opacities are <alpha-value>, so they minify like
+     [opacity] rather than surviving as opaque unknown-property text. *)
+  check_declaration ~expected:"fill-opacity:.1" "fill-opacity: 0.1;";
+  check_declaration ~expected:"stroke-opacity:1" "stroke-opacity: 1.0;";
+  check_declaration ~expected:"stop-opacity:.5" "stop-opacity: .50;";
+  (* A percentage is the same alpha as the number, and the number is never
+     longer. *)
+  decl_optimizes ~prop:"flood-opacity" ~into:".5" "50%";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time

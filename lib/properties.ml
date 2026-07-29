@@ -7242,6 +7242,10 @@ let pp_property : type a. a property Pp.t =
   | Stroke -> Pp.string ctx "stroke"
   | Stroke_width -> Pp.string ctx "stroke-width"
   | Opacity -> Pp.string ctx "opacity"
+  | Fill_opacity -> Pp.string ctx "fill-opacity"
+  | Stroke_opacity -> Pp.string ctx "stroke-opacity"
+  | Stop_opacity -> Pp.string ctx "stop-opacity"
+  | Flood_opacity -> Pp.string ctx "flood-opacity"
   | Mix_blend_mode -> Pp.string ctx "mix-blend-mode"
   | Transition -> Pp.string ctx "transition"
   | Transform -> Pp.string ctx "transform"
@@ -19000,6 +19004,12 @@ let read_any_property t =
   | "align-items" -> Prop Align_items
   | "justify-content" -> Prop Justify_content
   | "opacity" -> Prop Opacity
+  (* SVG 1.1 sec. 11.4 / Filter Effects 1: each is an <alpha-value>, the same
+     number-or-percentage as [opacity]. *)
+  | "fill-opacity" -> Prop Fill_opacity
+  | "stroke-opacity" -> Prop Stroke_opacity
+  | "stop-opacity" -> Prop Stop_opacity
+  | "flood-opacity" -> Prop Flood_opacity
   | "animation-name" -> Prop Animation_name
   | "transform" -> Prop Transform
   | "transform-origin" -> Prop Transform_origin
@@ -21348,6 +21358,10 @@ let normalize_property_value : type a.
           else Custom_value { r with value = Tokens components' }
       | Custom_value _ -> value)
   | Opacity -> normalize_opacity value
+  | Fill_opacity -> normalize_opacity value
+  | Stroke_opacity -> normalize_opacity value
+  | Stop_opacity -> normalize_opacity value
+  | Flood_opacity -> normalize_opacity value
   | Line_height -> normalize_line_height value
   | Vertical_align -> normalize_vertical_align value
   | Border_width -> map_preserve normalize_border_width value
@@ -21491,6 +21505,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Table_layout -> pp pp_table_layout
   | Grid_auto_flow -> pp pp_grid_auto_flow
   | Opacity -> pp pp_opacity
+  | Fill_opacity -> pp pp_opacity
+  | Stroke_opacity -> pp pp_opacity
+  | Stop_opacity -> pp pp_opacity
+  | Flood_opacity -> pp pp_opacity
   | Mix_blend_mode -> pp pp_blend_mode
   | Z_index -> pp pp_z_index
   | Tab_size -> pp pp_tab_size
@@ -22125,6 +22143,10 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Shape_margin -> Some Length_percentage
   | Font_size -> Some Font_size
   | Opacity -> Some Opacity
+  | Fill_opacity -> Some Opacity
+  | Stroke_opacity -> Some Opacity
+  | Stop_opacity -> Some Opacity
+  | Flood_opacity -> Some Opacity
   | Rotate -> Some Rotate
   | Animation_duration -> Some Duration
   | Animation_delay -> Some Duration
