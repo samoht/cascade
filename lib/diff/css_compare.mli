@@ -98,12 +98,47 @@ val as_tree_diff : t -> Tree_diff.t option
     a {!constructor-Tree_diff}; [None] otherwise. *)
 
 val pp :
-  ?expected:string -> ?actual:string -> ?color:bool -> Buffer.t -> t -> unit
-(** [pp ?expected ?actual ?color buf result] formats [result] into [buf], then
-    renders each side's parse warnings. The [expected]/[actual] labels are used
-    in the rendered header and warning lines (defaults: ["Expected"],
-    ["Actual"]). [color] (default [false]) wraps diff markers in ANSI escapes;
-    the caller decides whether the destination supports colour. *)
+  ?expected:string ->
+  ?actual:string ->
+  ?color:bool ->
+  ?depth:int ->
+  Buffer.t ->
+  t ->
+  unit
+(** [pp ?expected ?actual ?color ?depth buf result] renders each side's parse
+    warnings into [buf], then formats [result] below them. Warnings lead because
+    a declaration the parser dropped qualifies every difference that follows.
+    The [expected]/[actual] labels are used in the rendered header and warning
+    lines (defaults: ["Expected"], ["Actual"]). [color] (default [false]) wraps
+    diff markers in ANSI escapes; the caller decides whether the destination
+    supports colour. [depth] bounds the rendered tree levels as in
+    {!Tree_diff.pp} (default: unbounded).
+
+    {!pp_warnings} and {!pp_diff} are the two halves, for callers that need to
+    size or bound the sections independently. *)
+
+val pp_warnings :
+  ?expected:string -> ?actual:string -> ?max:int -> Buffer.t -> t -> unit
+(** [pp_warnings ?expected ?actual ?max buf result] renders only the parse
+    warnings each side accumulated. [max] caps how many are printed per side
+    (default: all); the remainder is reported as a count, so a stylesheet that
+    trips the same unsupported syntax hundreds of times cannot bury the diff
+    those warnings qualify. *)
+
+val pp_diff :
+  ?expected:string ->
+  ?actual:string ->
+  ?color:bool ->
+  ?depth:int ->
+  Buffer.t ->
+  t ->
+  unit
+(** [pp_diff ?expected ?actual ?color ?depth buf result] renders only the
+    difference report, without the parse warnings. *)
+
+val has_warnings : t -> bool
+(** [has_warnings result] is [true] when either side accumulated a parse
+    warning. *)
 
 (** {1:stats Statistics} *)
 

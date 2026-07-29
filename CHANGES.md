@@ -74,6 +74,23 @@
   missing hue component, printed as `oklch(55.6% 0 none)` per CSS
   Color 4 (#190)
 
+### Diff report
+
+- `cascade diff` bounds its report: it prints the whole difference tree
+  while that stays short, and otherwise falls back to the deepest level
+  that fits, with `--depth` to pin a level or ask for the tree in full.
+  A whole-stylesheet comparison used to print every level, so the shape
+  of the change was only reachable by grepping the tree connectors out of
+  the output (#210)
+- Parse warnings print above the difference report instead of below it,
+  capped per side with the remainder counted. A declaration the parser
+  dropped qualifies every difference under it, and a stylesheet that
+  trips one unsupported syntax repeatedly used to bury the report (#210)
+- Conditional blocks that only changed position are reported as a shift
+  run. Merging two same-condition blocks renumbers every block after
+  them, and each was listed twice, once per side, so a single merge read
+  as a wholesale rewrite of the container (#210)
+
 ### Canonical diff
 
 - `--diff=canonical` expands every selector-list rule onto its branches

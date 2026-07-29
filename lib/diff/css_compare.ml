@@ -503,20 +503,37 @@ let stats = compute_stats
 let add_strings b ls = List.iter (Buffer.add_string b) ls
 
 (* Render each side's parse warnings so a declaration the parser dropped never
-   reads as a phantom structural difference on the side that parsed. *)
-let pp_parse_warnings buf label warnings =
+   reads as a phantom structural difference on the side that parsed. Past [max]
+   they are counted rather than printed: a stylesheet that trips the same
+   unsupported syntax hundreds of times would otherwise bury the diff it is
+   meant to qualify. *)
+let pp_parse_warnings ?(max = Stdlib.max_int) buf label warnings =
+  let shown, hidden =
+    let n = List.length warnings in
+    if n <= max then (warnings, 0)
+    else (List.filteri (fun i _ -> i < max) warnings, n - max)
+  in
   List.iter
     (fun w ->
       if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
       then Buffer.add_char buf '\n';
       add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ])
-    warnings
+    shown;
+  if hidden > 0 then
+    add_strings buf
+      [
+        label;
+        ": ";
+        string_of_int hidden;
+        (if hidden = 1 then " more parse warning\n"
+         else " more parse warnings\n");
+      ]
 
-let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
-    = function
+let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
+    ?depth buf = function
   | Tree_diff d ->
       (* Show structural differences *)
-      D.pp ~expected ~actual ~color buf d
+      D.pp ~expected ~actual ~color ?depth buf d
   | String_diff sdiff -> String_diff.pp buf sdiff
   | No_diff _ ->
       (* No output for structurally equivalent files (whether or not the
@@ -544,10 +561,23 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
   | Actual_error e ->
       add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
 
-let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf t =
-  pp_result ~expected ~actual ~color buf t.result;
-  pp_parse_warnings buf expected t.expected_warnings;
-  pp_parse_warnings buf actual t.actual_warnings
+let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
+  pp_parse_warnings ?max buf expected t.expected_warnings;
+  pp_parse_warnings ?max buf actual t.actual_warnings
+
+let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
+
+let pp_diff ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
+    ?depth buf t =
+  pp_result ~expected ~actual ~color ?depth buf t.result
+
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) ?depth buf
+    t =
+  (* Warnings come first: a dropped declaration qualifies every line below it,
+     and trailing them puts that caveat past the end of a long report. *)
+  pp_warnings ~expected ~actual buf t;
+  if has_warnings t then Buffer.add_char buf '\n';
+  pp_diff ~expected ~actual ~color ?depth buf t
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in
@@ -587,7 +617,7 @@ let emit_changes buf stats =
       entries;
     if container > 0 then (
       if entries <> [] then Buffer.add_string buf ", ";
-      add_strings buf [ string_of_int container; " containers" ]);
+      add_change buf container "changed" "container");
     Buffer.add_char buf '\n')
 
 let pp_stats buf stats =
