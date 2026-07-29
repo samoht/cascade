@@ -47,6 +47,7 @@ type ctx
 val ctx_of_scope :
   ?lossless:bool ->
   ?aggressive:bool ->
+  ?factor:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:Ctx.objective ->
@@ -148,6 +149,7 @@ val stylesheet :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
+  ?factor:bool ->
   ?closed_world:bool ->
   ?objective:Ctx.objective ->
   ?prune_unused_custom_props:bool ->

@@ -1,5 +1,15 @@
 ## Unreleased
 
+### Diffing
+
+- `--diff=canonical` skips selector-list factoring. Factoring is input-shape
+  dependent: whether a shared declaration can be lifted depends on how the
+  input grouped its selectors, and once lifted an intervening rule writing the
+  same property can make putting it back unsafe. The same stylesheet written
+  factored and inline therefore canonicalised to different forms, and the
+  difference was reported as a missing declaration (#215)
+- `Css.optimize` takes `?factor` to turn that pass off (#215)
+
 ### Parsing
 
 - Read `perspective: none` and `text-underline-offset: auto`, and allow a

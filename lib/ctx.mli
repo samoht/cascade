@@ -16,6 +16,7 @@ val fragment : t
 val of_scope :
   ?lossless:bool ->
   ?aggressive:bool ->
+  ?factor:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:objective ->
@@ -27,6 +28,7 @@ val of_scope :
 val v :
   ?lossless:bool ->
   ?aggressive:bool ->
+  ?factor:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
   ?objective:objective ->
@@ -44,6 +46,11 @@ val registered : t -> string -> bool
 
 val lossless : t -> bool
 (** Whether lossless value optimization is enabled. *)
+
+val factor : t -> bool
+(** Whether selector-list factoring runs. It is input-shape dependent - whether
+    a shared declaration can be lifted depends on how the input grouped its
+    selectors - so a canonical projection turns it off to stay confluent. *)
 
 val aggressive : t -> bool
 (** Whether expensive optimization passes (notably the global factoring

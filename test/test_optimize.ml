@@ -877,8 +877,30 @@ let test_lossless_declaration_order () =
     ".a{border-top:1px solid red;border-color:#00f}"
     (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
 
+(* Selector-list factoring is input-shape dependent: whether a shared
+   declaration can be lifted depends on how the input grouped its selectors, and
+   once lifted an intervening rule writing the same property can make putting it
+   back unsafe. A canonical projection therefore turns factoring off, so the
+   same stylesheet written factored and inline maps to one form. *)
+let factoring_can_be_disabled () =
+  let src =
+    ".text-xs{font-size:var(--text-xs);line-height:1}.text-xs\\/4{font-size:var(--text-xs);line-height:4}.text-xs\\/5{font-size:var(--text-xs);line-height:5}.text-xs\\/6{font-size:var(--text-xs);line-height:6}.text-xs\\/7{font-size:var(--text-xs);line-height:7}"
+  in
+  let sheet = Css.of_string_exn src in
+  let out ?factor () =
+    Css.to_string ~minify:true (Css.optimize ?factor sheet)
+  in
+  Alcotest.(check bool)
+    "factoring on lifts the shared declaration" true
+    (Astring.String.is_infix ~affix:".text-xs,.text-xs\\/4" (out ()));
+  Alcotest.(check bool)
+    "factoring off leaves each rule alone" false
+    (Astring.String.is_infix ~affix:".text-xs,.text-xs\\/4"
+       (out ~factor:false ()))
+
 let optimize_tests =
   [
+    ("factoring can be disabled", `Quick, factoring_can_be_disabled);
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "var() colour functions preserved",
