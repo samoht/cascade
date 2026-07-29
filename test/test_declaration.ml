@@ -302,7 +302,15 @@ let special_cases () =
   (* Multiple backgrounds *)
   check_declaration ~expected:"background:url(x.png),linear-gradient(red,blue)"
     ~optimized:"background:url(x.png),linear-gradient(red,#00f)"
-    "background: url(x.png), linear-gradient(red, blue);"
+    "background: url(x.png), linear-gradient(red, blue);";
+
+  (* One position per background layer, comma-separated: joining the layers with
+     spaces reads as a single four-value position. *)
+  check_declaration ~expected:"background-position:30% 50%,70% 50%"
+    ~optimized:"background-position:30%,70%"
+    "background-position: 30% 50%, 70% 50%;";
+  check_declaration ~expected:"mask-position:0 0,10px 10px"
+    "mask-position: 0 0, 10px 10px;"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The

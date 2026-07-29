@@ -8035,8 +8035,11 @@ let rec pp_background_size : background_size Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_background_size ctx v
 
+(* CSS Backgrounds 3 sec. 3.6: the value is one position per background layer,
+   comma-separated. It is not a box shorthand, so the layers neither join with
+   spaces nor collapse the way margins do. *)
 let pp_background_position : background_position Pp.t =
- fun ctx positions -> pp_box_shorthand pp_position_value ctx positions
+ fun ctx positions -> Pp.list ~sep:Pp.comma pp_position_value ctx positions
 
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
@@ -9878,8 +9881,8 @@ let rec pp_object_view_box : object_view_box Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* CSS Fonts 4 §5.3 defines each keyword as a percentage, and the percentage is
-   never longer, so minified output uses it. *)
+(* CSS Fonts 4 sec. 5.3 defines each keyword as a percentage, and the percentage
+   is never longer, so minified output uses it. *)
 let font_stretch_pct = function
   | Ultra_condensed -> Some 50.
   | Extra_condensed -> Some 62.5
