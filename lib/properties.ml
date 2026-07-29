@@ -3966,6 +3966,33 @@ let rec fold_double_position_stops stops =
       if rest' == rest then stops else stop :: rest'
   | [] -> stops
 
+(* [linear-gradient(0deg, A, B)] paints the same pixels as [linear-gradient(B,
+   A)]: turning the gradient line 180 degrees reaches the default [to bottom],
+   and reversing the stops undoes the turn. Only sound when no stop carries a
+   position and no interpolation hint is present, since those would each have to
+   be mirrored to [100% - p], which is longer rather than shorter for lengths.
+   The legacy prefixed gradients measure their angle from a different zero, so
+   they are deliberately not folded here. *)
+let reversible_unpositioned_stops (stops : gradient_stop list) =
+  List.length stops > 1
+  && List.for_all
+       (fun stop ->
+         match stop with
+         | Color_percentage (_, Option.None, Option.None)
+         | Color_length (_, Option.None, Option.None) ->
+             true
+         | _ -> false)
+       stops
+
+let drop_to_top_direction (direction : gradient_direction)
+    (stops : gradient_stop list) =
+  match direction with
+  | Angle a
+    when Values.angle_degrees_opt a = Option.Some 0.
+         && reversible_unpositioned_stops stops ->
+      Option.Some (Default_direction, List.rev stops)
+  | _ -> Option.None
+
 let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
  fun value ->
@@ -3975,8 +4002,14 @@ let rec normalize_background_image ?(lossless = false) :
   in
   match value with
   | Linear_gradient (d, s) ->
-      preserve_if_equal value
-        (Linear_gradient (normalize_gradient_direction d, stops s))
+      let d = normalize_gradient_direction d in
+      let s = stops s in
+      let d, s =
+        match drop_to_top_direction d s with
+        | Option.Some (d, s) -> (d, s)
+        | Option.None -> (d, s)
+      in
+      preserve_if_equal value (Linear_gradient (d, s))
   | Radial_gradient (c, s) ->
       preserve_if_equal value
         (Radial_gradient (normalize_radial_config c, stops s))

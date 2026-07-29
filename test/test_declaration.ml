@@ -91,6 +91,28 @@ let complex_values () =
   decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 5px,red 10px)"
     "linear-gradient(red 0 5px, red 10px)";
 
+  (* [0deg] points the gradient line at the top; turning it 180 degrees reaches
+     the default [to bottom] and reversing the stops undoes the turn, so the
+     angle costs nothing but bytes. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,red)"
+    "linear-gradient(0deg, red, blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,red)"
+    "linear-gradient(to top, red, blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,green,red)"
+    "linear-gradient(0deg, red, green, blue)";
+  (* A positioned stop would have to mirror to [100% - p] to survive the
+     reversal, which is not shorter, so the angle stays. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,#00f)"
+    "linear-gradient(0deg, red 0%, blue 100%)";
+  (* An interpolation hint is positional in the same way. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,30%,#00f)"
+    "linear-gradient(0deg, red, 30%, blue)";
+  (* The legacy prefixed gradients measure their angle from a different zero, so
+     the same rewrite would point them elsewhere. *)
+  decl_optimizes ~prop:"background"
+    ~into:"-webkit-linear-gradient(0deg,red,#00f)"
+    "-webkit-linear-gradient(0deg, red, blue)";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
