@@ -205,6 +205,39 @@ let conflicting_block_fold_is_refused () =
     (render (statements css))
     (canonical css)
 
+let merges_at_a_position_between_the_pair () =
+  (* Expanding a selector list leaves two rules on one selector that neither
+     endpoint can host: folding the [font-size] forward would pass
+     [.text-\\[20px\\]], which writes it differently, and folding the
+     [line-height] back would pass [.text-xs], which writes that differently. A
+     position between the two is legal for both, so the pair still converges on
+     the shape an unfactored sheet starts from. *)
+  let factored =
+    ".text-xs,.text-xs\\/4{font-size:var(--text-xs)}.text-xs{line-height:1}.text-xs\\/4{line-height:4}.text-\\[20px\\]{font-size:20px}"
+  in
+  let inline =
+    ".text-xs{font-size:var(--text-xs);line-height:1}.text-xs\\/4{font-size:var(--text-xs);line-height:4}.text-\\[20px\\]{font-size:20px}"
+  in
+  Alcotest.(check string)
+    "factored converges on the inline shape" (canonical inline)
+    (canonical factored)
+
+let merge_across_a_conflicting_write_stays_distinct () =
+  (* The projection must not reach that shape by moving a write past one that
+     observes it. Each pair here differs only by such a move, so the two stay
+     distinct however the run is sorted. *)
+  let differ a b =
+    Alcotest.(check bool)
+      "canonical forms stay distinct" false
+      (String.equal (canonical a) (canonical b))
+  in
+  (* [font-size] folded forward past a different [font-size]. *)
+  differ ".a{font-size:10px}.b{font-size:20px}.a{line-height:2}"
+    ".b{font-size:20px}.a{font-size:10px;line-height:2}";
+  (* [line-height] folded back past a different [line-height]. *)
+  differ ".a{font-size:10px}.c{line-height:1}.a{line-height:2}"
+    ".a{font-size:10px;line-height:2}.c{line-height:1}"
+
 let suite =
   ( "rule_order",
     [
@@ -243,4 +276,8 @@ let suite =
         same_condition_blocks_fold_together;
       Alcotest.test_case "conflicting block fold is refused" `Quick
         conflicting_block_fold_is_refused;
+      Alcotest.test_case "merges at a position between the pair" `Quick
+        merges_at_a_position_between_the_pair;
+      Alcotest.test_case "merge across a conflicting write stays distinct"
+        `Quick merge_across_a_conflicting_write_stays_distinct;
     ] )

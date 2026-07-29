@@ -224,9 +224,8 @@ let interval_clear scan ~lo ~hi mems =
    match here. A block merge concatenates the bodies in source order and
    re-canonicalises the result: the two halves were each canonical alone, but
    their concatenation need not be. *)
-let merged_element ~canon_body scan ~from ~into =
-  let earlier, later = if from < into then (from, into) else (into, from) in
-  match (fst scan.arr.(earlier), fst scan.arr.(later)) with
+let merge_statements ~canon_body earlier later =
+  match (earlier, later) with
   | Rule a, Rule b ->
       let merged =
         {
@@ -247,6 +246,10 @@ let merged_element ~canon_body scan ~from ~into =
       let stmt = Container (n, c, canon_body (ba @ bb)) in
       (stmt, Option.value ~default:[] (element_rules stmt))
   | _ -> assert false
+
+let merged_element ~canon_body scan ~from ~into =
+  let earlier, later = if from < into then (from, into) else (into, from) in
+  merge_statements ~canon_body (fst scan.arr.(earlier)) (fst scan.arr.(later))
 
 let merge ~canon_body scan changed ~from ~into =
   scan.arr.(into) <- merged_element ~canon_body scan ~from ~into;
@@ -332,6 +335,96 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
       if not scan.merged_any then run
       else Array.to_list arr |> List.filteri (fun i _ -> scan.alive.(i))
 
+(* Neither endpoint is always a legal home for a merged pair: folding the
+   earlier occurrence forward can pass a write that observes it, and folding the
+   later one back can pass a different one, so [coalesce] gives up while a
+   position strictly between them remains legal. The earlier occurrence only has
+   to reach that position and the later one only has to come back to it, so each
+   crosses a shorter interval than an endpoint merge would.
+
+   [forward_reach] is how far the earlier occurrence may move down, [back_reach]
+   how far the later one may move up; the merged element is legal at any
+   position they both admit. Taking the earliest keeps the result independent of
+   which end the scan started from. One relocation per pass: each is argued
+   against the current order, so [settle] re-derives the graph before
+   considering another. *)
+(* Elements at [i+1 .. p] end up before the merged element, those at [p+1 .. j-1]
+   after it, so [p = j - 1] is the fold-forward endpoint and [p = i] the
+   fold-back one. [forward_reach] is the largest [p] the earlier occurrence may
+   reach, [back_reach] the smallest the later one may return to. *)
+let forward_reach ~observes i j =
+  let p = ref i in
+  (try
+     for m = i + 1 to j - 1 do
+       if observes m i then raise Exit else p := m
+     done
+   with Exit -> ());
+  !p
+
+let back_reach ~observes i j =
+  let p = ref (j - 1) in
+  (try
+     for m = j - 1 downto i + 1 do
+       if observes m j then raise Exit else p := m - 1
+     done
+   with Exit -> ());
+  !p
+
+(* First same-slot pair, scanning in order, whose two reaches admit a common
+   position, with that position. Taking the earliest keeps the result
+   independent of which end the scan started from. *)
+let first_window ~observes arr =
+  let n = Array.length arr in
+  let last = Hashtbl.create 16 in
+  let found = ref Option.none in
+  let j = ref 0 in
+  while Option.is_none !found && !j < n do
+    (match element_key (fst arr.(!j)) with
+    | None -> ()
+    | Some key -> (
+        match Hashtbl.find_opt last key with
+        | None -> Hashtbl.replace last key !j
+        | Some i ->
+            let lo = back_reach ~observes i !j in
+            if lo <= forward_reach ~observes i !j then
+              found := Option.some (i, !j, lo)
+            else Hashtbl.replace last key !j));
+    incr j
+  done;
+  !found
+
+(* Neither endpoint is always a legal home for a merged pair: folding the
+   earlier occurrence forward can pass a write that observes it, and folding the
+   later one back can pass a different one, so [coalesce] gives up while a
+   position strictly between them remains legal. The earlier occurrence only has
+   to reach that position and the later one only has to come back to it, so each
+   crosses a shorter interval than an endpoint merge would. One relocation per
+   pass: each is argued against the current order, so [settle] re-derives the
+   graph before considering another. *)
+let window_merge ~canon_body ?parent changed
+    (run : (statement * rule list) list) : (statement * rule list) list =
+  match run with
+  | [] | [ _ ] -> run
+  | _ -> (
+      let arr = Array.of_list run in
+      let graph =
+        Rule_graph.of_rules ?parent
+          (List.map (fun (stmt, rules) -> element_node stmt rules) run)
+      in
+      let node i = Rule_graph.Node_id.of_int_exn i in
+      let observes m a = Rule_graph.conflict graph (node m) (node a) in
+      match first_window ~observes arr with
+      | Option.None -> run
+      | Option.Some (i, j, p) ->
+          changed := true;
+          let merged =
+            merge_statements ~canon_body (fst arr.(i)) (fst arr.(j))
+          in
+          let keep lo hi =
+            List.filteri (fun k _ -> k >= lo && k <= hi && k <> i && k <> j) run
+          in
+          keep 0 p @ [ merged ] @ keep (p + 1) (Array.length arr - 1))
+
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
    apart, enabling a merge the source order hid, so equivalent sheets converge
@@ -349,8 +442,11 @@ let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
       stmts
   in
   let coalesced = coalesce ~canon_body ?parent changed sorted in
-  if coalesced == sorted then stmts
-  else settle ~canon_body ?parent changed coalesced
+  if coalesced != sorted then settle ~canon_body ?parent changed coalesced
+  else
+    let widened = window_merge ~canon_body ?parent changed sorted in
+    if widened != sorted then settle ~canon_body ?parent changed widened
+    else stmts
 
 (* A declaration a later rule with the *identical* selector also writes is dead:
    same element set, same specificity, later wins. Dropping it lets a sheet that
