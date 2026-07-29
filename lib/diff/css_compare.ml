@@ -617,7 +617,7 @@ let emit_changes buf stats =
       entries;
     if container > 0 then (
       if entries <> [] then Buffer.add_string buf ", ";
-      add_strings buf [ string_of_int container; " containers" ]);
+      add_change buf container "changed" "container");
     Buffer.add_char buf '\n')
 
 let pp_stats buf stats =
