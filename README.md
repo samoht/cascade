@@ -63,6 +63,13 @@ transforms (deduplication, rule merging, selector grouping, empty-rule
 elimination, nested-rule flattening, shorthand composition, colour
 canonicalisation) and emits minified output.
 
+`calc()` arithmetic folds only when the fold is exactly value-preserving:
+`calc(100/4)` becomes `25`, while `calc(1.75/1.125)` stays as written because
+14/9 has no finite decimal form. Multiplication folds unconditionally, being
+closed over finite decimals; division folds only when the quotient is exact. The
+same rule governs a `calc()` inside a custom-property value, whose token stream
+is otherwise left opaque.
+
 This is a parser/printer round trip, not a byte-preserving formatter: comments
 are discarded during parsing, and empty rules and invalid declarations are
 dropped in both pretty and minified output.
