@@ -3941,10 +3941,38 @@ let normalize_conic_config (c : conic_gradient_config) =
   if angle == c.angle && position == c.position then c
   else { c with angle; position }
 
+(* CSS Images 4 sec. 3.4.1: [<color> <p1> <p2>] is defined as exactly [<color>
+   <p1>, <color> <p2>], so two adjacent stops of one colour, each carrying a
+   single position, are one stop carrying both. Left to right, so a longer run
+   folds pairwise; a stop already holding two positions has nothing left to
+   absorb. Colours are compared after [normalize_gradient_stop] has
+   canonicalised them, so [red] and [#f00] still fold together. *)
+let rec fold_double_position_stops stops =
+  match stops with
+  | Color_percentage (c1, Option.Some p1, Option.None)
+    :: Color_percentage (c2, Option.Some p2, Option.None)
+    :: rest
+    when c1 = c2 ->
+      Color_percentage (c1, Option.Some p1, Option.Some p2)
+      :: fold_double_position_stops rest
+  | Color_length (c1, Option.Some l1, Option.None)
+    :: Color_length (c2, Option.Some l2, Option.None)
+    :: rest
+    when c1 = c2 ->
+      Color_length (c1, Option.Some l1, Option.Some l2)
+      :: fold_double_position_stops rest
+  | stop :: rest ->
+      let rest' = fold_double_position_stops rest in
+      if rest' == rest then stops else stop :: rest'
+  | [] -> stops
+
 let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
  fun value ->
-  let stops = map_preserve (normalize_gradient_stop ~lossless) in
+  let stops s =
+    fold_double_position_stops
+      (map_preserve (normalize_gradient_stop ~lossless) s)
+  in
   match value with
   | Linear_gradient (d, s) ->
       preserve_if_equal value

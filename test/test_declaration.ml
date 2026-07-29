@@ -72,6 +72,25 @@ let complex_values () =
   decl_optimizes ~prop:"background" ~into:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
 
+  (* CSS Images 4 section 3.4.1 defines [<color> <p1> <p2>] as exactly [<color>
+     <p1>, <color> <p2>], so adjacent stops of one colour fold into a
+     double-position stop. pp holds the pair; the fold is an optimize step. *)
+  check_declaration
+    ~expected:"background:linear-gradient(currentColor 0,currentColor 1px)"
+    "background: linear-gradient(currentColor 0, currentColor 1px);";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(currentColor 0 1px)"
+    "linear-gradient(currentColor 0, currentColor 1px)";
+  (* The colours fold first, so two spellings of one colour still pair up. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 10px)"
+    "linear-gradient(red 0, #f00 10px)";
+  (* A stop without a position is not the same stop repeated: the position it
+     would take is interpolated, so there is nothing to absorb. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red,red 10px)"
+    "linear-gradient(red, red 10px)";
+  (* A stop already carrying both positions absorbs no further neighbour. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 5px,red 10px)"
+    "linear-gradient(red 0 5px, red 10px)";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
