@@ -87,10 +87,12 @@ let is_empty d = d.rules = [] && d.containers = []
 type tree_style = {
   use_tree : bool; (* Whether to use tree-style box-drawing characters *)
   color : bool; (* Whether to wrap diff markers in ANSI colors *)
+  depth : int; (* Levels still renderable below the current node *)
 }
 
-let default_style = { use_tree = false; color = false }
-let tree_style = { use_tree = true; color = false }
+let unlimited_depth = max_int
+let default_style = { use_tree = false; color = false; depth = unlimited_depth }
+let tree_style = { use_tree = true; color = false; depth = unlimited_depth }
 
 (* ANSI color helpers. Plain text unless [color] is set: the printers write into
    a [Buffer.t], so tty detection cannot happen here; the caller decides. *)
@@ -122,6 +124,33 @@ let tree_continuation ~style ~is_last ~parent_prefix =
   else
     let continuation = if is_last then "   " else "\u{2502}  " in
     parent_prefix ^ continuation
+
+(* Leaf lines (declarations, block listings) hang off the continuation prefix
+   without a connector of their own. *)
+let child_indent ~style ~parent_prefix =
+  if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
+
+let add_strings buf ls = List.iter (Buffer.add_string buf) ls
+
+let count_lines buf =
+  let n = ref 0 in
+  String.iter (fun c -> if c = '\n' then incr n) (Buffer.contents buf);
+  !n
+
+(* Render a node's children under the depth budget. Past the budget the subtree
+   is still rendered, but only to report how much it hides: a diff that silently
+   stopped at depth N would read as "nothing more to see". *)
+let pp_children ~style ~parent_prefix buf render =
+  if style.depth > 0 then render { style with depth = style.depth - 1 } buf
+  else
+    let sub = Buffer.create 256 in
+    render { style with depth = unlimited_depth } sub;
+    match count_lines sub with
+    | 0 -> ()
+    | n ->
+        let noun = if n = 1 then " more line\n" else " more lines\n" in
+        add_strings buf
+          [ child_indent ~style ~parent_prefix; "..."; string_of_int n; noun ]
 
 (* Print a list of CSS declarations with an action prefix *)
 let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
@@ -307,40 +336,51 @@ let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
     && reorder_is_significant decls1 decls2
   then pp_same_property_reorder buf indent prop_names1 prop_names2
 
+let pp_content_changed_body ~style ~child_prefix buf ~old_declarations
+    ~new_declarations ~property_changes ~added_properties ~removed_properties
+    ~has_any_changes =
+  let indent = child_indent ~style ~parent_prefix:child_prefix in
+  List.iter
+    (fun prop_name ->
+      add_strings buf
+        [ indent; ansi_red ~color:style.color ("- " ^ prop_name); "\n" ])
+    removed_properties;
+  List.iter
+    (fun prop_name ->
+      add_strings buf
+        [ indent; ansi_green ~color:style.color ("+ " ^ prop_name); "\n" ])
+    added_properties;
+  pp_property_diffs ~style ~parent_prefix:child_prefix buf property_changes;
+  pp_reorder ~style ~parent_prefix:child_prefix old_declarations
+    new_declarations buf;
+  if (not has_any_changes) && old_declarations <> new_declarations then
+    let old_count = List.length old_declarations in
+    let new_count = List.length new_declarations in
+    if old_count <> new_count then
+      add_strings buf
+        [
+          indent;
+          "(declaration count: ";
+          string_of_int old_count;
+          " -> ";
+          string_of_int new_count;
+          ")\n";
+        ]
+    else add_strings buf [ indent; "(declarations differ in subtle ways)\n" ]
+
 let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     ~old_declarations ~new_declarations ~property_changes ~added_properties
     ~removed_properties =
-  let indent =
-    if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
-  in
   let has_any_changes =
     property_changes <> [] || added_properties <> [] || removed_properties <> []
   in
   if (not has_any_changes) && old_declarations = new_declarations then ()
   else (
-    Buffer.add_string buf (prefix ^ selector ^ "\n");
-    List.iter
-      (fun prop_name ->
-        Buffer.add_string buf
-          (indent ^ ansi_red ~color:style.color ("- " ^ prop_name) ^ "\n"))
-      removed_properties;
-    List.iter
-      (fun prop_name ->
-        Buffer.add_string buf
-          (indent ^ ansi_green ~color:style.color ("+ " ^ prop_name) ^ "\n"))
-      added_properties;
-    pp_property_diffs ~style ~parent_prefix:child_prefix buf property_changes;
-    pp_reorder ~style ~parent_prefix:child_prefix old_declarations
-      new_declarations buf;
-    if (not has_any_changes) && old_declarations <> new_declarations then
-      let old_count = List.length old_declarations in
-      let new_count = List.length new_declarations in
-      if old_count <> new_count then
-        Buffer.add_string buf
-          (indent ^ "(declaration count: " ^ string_of_int old_count ^ " -> "
-         ^ string_of_int new_count ^ ")\n")
-      else
-        Buffer.add_string buf (indent ^ "(declarations differ in subtle ways)\n"))
+    add_strings buf [ prefix; selector; "\n" ];
+    pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+        pp_content_changed_body ~style ~child_prefix buf ~old_declarations
+          ~new_declarations ~property_changes ~added_properties
+          ~removed_properties ~has_any_changes))
 
 let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
     ~swapped_with =
@@ -366,20 +406,19 @@ let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
   let verb =
     if nf > nt then "merged" else if nf < nt then "split" else "regrouped"
   in
-  Buffer.add_string buf (prefix ^ "selectors " ^ verb ^ "\n");
-  let indent =
-    if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
-  in
-  List.iter
-    (fun s ->
-      Buffer.add_string buf
-        (indent ^ ansi_red ~color:style.color ("- " ^ s) ^ "\n"))
-    from_selectors;
-  List.iter
-    (fun s ->
-      Buffer.add_string buf
-        (indent ^ ansi_green ~color:style.color ("+ " ^ s) ^ "\n"))
-    to_selectors
+  add_strings buf [ prefix; "selectors "; verb; "\n" ];
+  pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+      let indent = child_indent ~style ~parent_prefix:child_prefix in
+      List.iter
+        (fun s ->
+          add_strings buf
+            [ indent; ansi_red ~color:style.color ("- " ^ s); "\n" ])
+        from_selectors;
+      List.iter
+        (fun s ->
+          add_strings buf
+            [ indent; ansi_green ~color:style.color ("+ " ^ s); "\n" ])
+        to_selectors)
 
 let pp_rule_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf (diff : rule_diff) =
@@ -387,14 +426,17 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
   | Added { selector; declarations } ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-      Buffer.add_string buf (prefix ^ selector ^ "\n");
-      pp_declarations ~style ~parent_prefix:child_prefix buf "add" declarations
+      add_strings buf [ prefix; selector; "\n" ];
+      pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+          pp_declarations ~style ~parent_prefix:child_prefix buf "add"
+            declarations)
   | Removed { selector; declarations } ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-      Buffer.add_string buf (prefix ^ selector ^ "\n");
-      pp_declarations ~style ~parent_prefix:child_prefix buf "remove"
-        declarations
+      add_strings buf [ prefix; selector; "\n" ];
+      pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+          pp_declarations ~style ~parent_prefix:child_prefix buf "remove"
+            declarations)
   | Content_changed r ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
@@ -407,22 +449,23 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
   | Selector_changed { old_selector; new_selector; declarations } ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-      Buffer.add_string buf (prefix ^ "selector changed:\n");
-      let indent =
-        if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
-      in
-      Buffer.add_string buf (indent ^ "from: " ^ old_selector ^ "\n");
-      Buffer.add_string buf (indent ^ "to:   " ^ new_selector ^ "\n");
-      if declarations <> [] then
-        pp_declarations ~style ~parent_prefix:child_prefix buf "declarations"
-          declarations
+      add_strings buf [ prefix; "selector changed:\n" ];
+      pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+          let indent = child_indent ~style ~parent_prefix:child_prefix in
+          add_strings buf [ indent; "from: "; old_selector; "\n" ];
+          add_strings buf [ indent; "to:   "; new_selector; "\n" ];
+          if declarations <> [] then
+            pp_declarations ~style ~parent_prefix:child_prefix buf
+              "declarations" declarations)
   | Reordered r -> (
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       match (r.old_declarations, r.new_declarations) with
       | Some old_decls, Some new_decls ->
           let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-          Buffer.add_string buf (prefix ^ r.selector ^ "\n");
-          pp_reorder ~style ~parent_prefix:child_prefix old_decls new_decls buf
+          add_strings buf [ prefix; r.selector; "\n" ];
+          pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+              pp_reorder ~style ~parent_prefix:child_prefix old_decls new_decls
+                buf)
       | _ ->
           pp_position_reorder ~prefix buf ~selector:r.selector
             ~expected_pos:r.expected_pos ~actual_pos:r.actual_pos
@@ -592,55 +635,57 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
   let cont_prefix = container_prefix container_type in
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
   let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-  let indent =
-    if style.use_tree then child_prefix ^ "   " else child_prefix ^ "    "
-  in
-
-  (* Show the merge/split summary *)
   let exp_count = List.length expected_blocks in
   let act_count = List.length actual_blocks in
-
   (* Report block structure changes - this is a meaningful difference even if
      selectors are identical *)
-  if exp_count > act_count then
-    Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
-     ^ " blocks merged into " ^ string_of_int act_count ^ ")\n")
-  else if exp_count < act_count then
-    Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
-     ^ " block split into " ^ string_of_int act_count ^ ")\n")
-  else
-    (* Same count but different positions *)
-    Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
-     ^ " blocks at different positions)\n");
-
-  let pp_blocks sign style_fn blocks =
-    List.iter
-      (fun (pos, rules) ->
-        let selectors = selectors_of_rules rules in
-        if selectors <> [] then
-          Buffer.add_string buf
-            (indent
-            ^ style_fn
-                (sign ^ " Block at position " ^ string_of_int pos ^ ": "
-                ^ String.concat ", " selectors)
-            ^ "\n"))
-      blocks
+  let summary =
+    if exp_count > act_count then
+      [
+        string_of_int exp_count; " blocks merged into "; string_of_int act_count;
+      ]
+    else if exp_count < act_count then
+      [ string_of_int exp_count; " block split into "; string_of_int act_count ]
+    else [ string_of_int exp_count; " blocks at different positions" ]
   in
-  pp_blocks "-" (ansi_red ~color:style.color) expected_blocks;
-  pp_blocks "+" (ansi_green ~color:style.color) actual_blocks
+  add_strings buf ([ prefix; cont_prefix; " "; condition; " (" ] @ summary);
+  Buffer.add_string buf ")\n";
+  pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+      let indent = child_indent ~style ~parent_prefix:child_prefix in
+      let pp_blocks sign style_fn blocks =
+        List.iter
+          (fun (pos, rules) ->
+            let selectors = selectors_of_rules rules in
+            if selectors <> [] then
+              add_strings buf
+                [
+                  indent;
+                  style_fn
+                    (sign ^ " Block at position " ^ string_of_int pos ^ ": "
+                    ^ String.concat ", " selectors);
+                  "\n";
+                ])
+          blocks
+      in
+      pp_blocks "-" (ansi_red ~color:style.color) expected_blocks;
+      pp_blocks "+" (ansi_green ~color:style.color) actual_blocks)
 
 let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
     container_type condition rules =
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
   let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
-  Buffer.add_string buf
-    (prefix
-    ^ container_prefix container_type
-    ^ " " ^ condition ^ " (" ^ label ^ ")\n");
-  pp_container_rules ~style ~parent_prefix:child_prefix ~label buf rules
+  add_strings buf
+    [
+      prefix;
+      container_prefix container_type;
+      " ";
+      condition;
+      " (";
+      label;
+      ")\n";
+    ];
+  pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+      pp_container_rules ~style ~parent_prefix:child_prefix ~label buf rules)
 
 let rec pp_container_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf = function
@@ -661,30 +706,30 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
       let changes_parts = count_rule_changes rule_changes in
-      Buffer.add_string buf (prefix ^ cont_prefix ^ " " ^ condition ^ " ");
+      add_strings buf [ prefix; cont_prefix; " "; condition; " " ];
       if changes_parts <> [] then
-        Buffer.add_string buf ("(" ^ String.concat ", " changes_parts ^ ")\n")
+        add_strings buf [ "("; String.concat ", " changes_parts; ")\n" ]
       else if container_changes = [] then
         Buffer.add_string buf "(position changed)\n"
       else Buffer.add_char buf '\n';
-
-      (* Show rule changes at this level *)
-      List.iteri
-        (fun i rule_diff ->
-          let is_last_item =
-            i = List.length rule_changes - 1 && container_changes = []
-          in
-          pp_rule_diff ~style ~is_last:is_last_item ~parent_prefix:child_prefix
-            buf rule_diff)
-        rule_changes;
-      (* Show nested container changes with increased indentation *)
-      let container_count = List.length container_changes in
-      List.iteri
-        (fun i cont_diff ->
-          let is_last_cont = i = container_count - 1 in
-          pp_container_diff ~style ~is_last:is_last_cont
-            ~parent_prefix:child_prefix buf cont_diff)
-        container_changes
+      pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+          (* Show rule changes at this level *)
+          List.iteri
+            (fun i rule_diff ->
+              let is_last_item =
+                i = List.length rule_changes - 1 && container_changes = []
+              in
+              pp_rule_diff ~style ~is_last:is_last_item
+                ~parent_prefix:child_prefix buf rule_diff)
+            rule_changes;
+          (* Show nested container changes with increased indentation *)
+          let container_count = List.length container_changes in
+          List.iteri
+            (fun i cont_diff ->
+              let is_last_cont = i = container_count - 1 in
+              pp_container_diff ~style ~is_last:is_last_cont
+                ~parent_prefix:child_prefix buf cont_diff)
+            container_changes)
   | Reordered
       { info = { container_type; condition; _ }; expected_pos; actual_pos } ->
       let cont_prefix = container_prefix container_type in
@@ -727,8 +772,8 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
-let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
-    { rules; containers } =
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
+    ?(depth = unlimited_depth) buf { rules; containers } =
   if rules = [] && containers = [] then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
@@ -744,7 +789,8 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) buf
           match diff with Reordered _ -> true | _ -> false)
         rules
     in
-    let style = { tree_style with color } in
+    (* [depth] counts renderable levels; the roots printed here are level 1. *)
+    let style = { tree_style with color; depth = max 0 (depth - 1) } in
     let container_count = List.length containers in
     pp_rule_list ~style ~container_count buf meaningful;
     pp_reordered_section ~style ~container_count buf reordered_rules;
