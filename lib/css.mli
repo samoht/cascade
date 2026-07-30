@@ -7660,8 +7660,11 @@ val canonicalize_rule_order : t -> t
     relative order, and named [@layer] blocks pin the layer order where they
     stand. A run of [@property] rules sorts by name, keeping the last
     registration of each, since CSS Properties and Values API 1 sec. 2 makes
-    registrations for different names order-independent. This is a
-    comparison-side normalisation; {!val-optimize} stays source-stable. *)
+    registrations for different names order-independent. A
+    [@media not all and (X)] block is keyed as the [@media not (X)] that Media
+    Queries 4 makes it equal to, which emission cannot do because a Level 3
+    parser rejects the shorter form. This is a comparison-side normalisation;
+    {!val-optimize} stays source-stable. *)
 
 val optimize :
   ?scope:Optimize.scope ->
