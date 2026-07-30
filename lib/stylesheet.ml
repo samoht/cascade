@@ -3912,3 +3912,12 @@ let pp_import_rule : import_rule Pp.t =
 let read_import_rule (r : Cursor.t) : import_rule =
   Cursor.ws r;
   read_import_prelude ~keep_url_repr:false r
+
+(* A cheap discriminating hash for a rule, folding the hash each declaration
+   already caches. The stdlib structural hash reads only the first few nodes of
+   a rule, so rules sharing a selector collide and any table keyed by one then
+   compares whole rule subtrees on every probe. *)
+let rule_hash (r : rule) =
+  List.fold_left
+    (fun acc d -> (acc * 31) + Declaration.hash d)
+    (Hashtbl.hash r.selector) r.declarations

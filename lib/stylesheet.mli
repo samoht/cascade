@@ -320,3 +320,8 @@ val pp_import_rule : import_rule Pp.t
 
 val read_import_rule : Cursor.t -> import_rule
 (** [read_import_rule r] parses an import rule. *)
+
+val rule_hash : rule -> int
+(** [rule_hash r] is a cheap hash that discriminates rules by their cached
+    declaration hashes. Equal rules hash equally; unequal rules may collide, so
+    callers still confirm with structural equality. *)
