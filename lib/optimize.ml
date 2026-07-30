@@ -211,7 +211,9 @@ let rec statements ?factor_cache ~ctx ~enforce_spec (stmts : statement list) :
         let stmts =
           process_statements ?factor_cache ~ctx ~enforce_spec [] stmts
         in
-        let stmts = synthesize_nesting_statements stmts in
+        let stmts =
+          if Ctx.regroup ctx then synthesize_nesting_statements stmts else stmts
+        in
         let stmts =
           stmts
           |> merge_consecutive_media ~optimize_merged_block
@@ -419,7 +421,7 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec (rules : rule list) : rule list =
      the expensive global factoring fixpoint is likely to buy enough bytes to
      justify the full indexed scheduler walk. *)
   let factored =
-    if Ctx.factor ctx then
+    if Ctx.regroup ctx then
       factor_rules_incremental ?cache:factor_cache ~ctx prepared
     else prepared
   in
@@ -1154,7 +1156,7 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   list_map_preserve prune stmts
 
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
-    ?(enforce_spec = false) ?(aggressive = false) ?(factor = true)
+    ?(enforce_spec = false) ?(aggressive = false) ?(regroup = true)
     ?(closed_world = false) ?(objective = `Transfer)
     ?(prune_unused_custom_props = false) (stylesheet : t) : t =
   Selector_summary.clear_memo ();
@@ -1169,7 +1171,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
-    Ctx.v ~lossless ~aggressive ~factor ~closed_world ~objective ~enforce_spec
+    Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
       ~registered scope
   in
   let result =

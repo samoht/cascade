@@ -877,30 +877,54 @@ let test_lossless_declaration_order () =
     ".a{border-top:1px solid red;border-color:#00f}"
     (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
 
-(* Selector-list factoring is input-shape dependent: whether a shared
-   declaration can be lifted depends on how the input grouped its selectors, and
-   once lifted an intervening rule writing the same property can make putting it
-   back unsafe. A canonical projection therefore turns factoring off, so the
-   same stylesheet written factored and inline maps to one form. *)
-let factoring_can_be_disabled () =
+(* Regrouping - factoring a shared declaration into a selector list, and
+   synthesising nesting from a run of adjacent rules - depends on how the input
+   happened to order its rules: a rule sitting between two others decides
+   whether either applies. A canonical projection therefore turns regrouping
+   off, so the same stylesheet written either way maps to one form. *)
+let regrouping_can_be_disabled () =
   let src =
     ".text-xs{font-size:var(--text-xs);line-height:1}.text-xs\\/4{font-size:var(--text-xs);line-height:4}.text-xs\\/5{font-size:var(--text-xs);line-height:5}.text-xs\\/6{font-size:var(--text-xs);line-height:6}.text-xs\\/7{font-size:var(--text-xs);line-height:7}"
   in
   let sheet = Css.of_string_exn src in
-  let out ?factor () =
-    Css.to_string ~minify:true (Css.optimize ?factor sheet)
+  let out ?regroup () =
+    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
   in
   Alcotest.(check bool)
-    "factoring on lifts the shared declaration" true
+    "regrouping on lifts the shared declaration" true
     (Astring.String.is_infix ~affix:".text-xs,.text-xs\\/4" (out ()));
   Alcotest.(check bool)
-    "factoring off leaves each rule alone" false
+    "regrouping off leaves each rule alone" false
     (Astring.String.is_infix ~affix:".text-xs,.text-xs\\/4"
-       (out ~factor:false ()))
+       (out ~regroup:false ()))
+
+(* The other regrouping pass: two adjacent rules sharing a selector prefix
+   become one nested rule, and whether they are adjacent is exactly what an
+   unrelated rule between them decides. *)
+let nesting_synthesis_can_be_disabled () =
+  let sheet =
+    Css.of_string_exn
+      ".prose:where(:not(.not-prose,.not-prose \
+       *)){color:red;font-size:1rem}.prose:where(:not(.not-prose,.not-prose \
+       *)):where(.dark,.dark *){color:blue;font-size:2rem}"
+  in
+  let out ?regroup () =
+    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
+  in
+  Alcotest.(check bool)
+    "regrouping on nests the second rule" true
+    (Astring.String.is_infix ~affix:"&:where(.dark,.dark *)" (out ()));
+  Alcotest.(check bool)
+    "regrouping off keeps both flat" false
+    (Astring.String.is_infix ~affix:"&:where(.dark,.dark *)"
+       (out ~regroup:false ()))
 
 let optimize_tests =
   [
-    ("factoring can be disabled", `Quick, factoring_can_be_disabled);
+    ("regrouping can be disabled", `Quick, regrouping_can_be_disabled);
+    ( "nesting synthesis can be disabled",
+      `Quick,
+      nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "var() colour functions preserved",

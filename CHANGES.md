@@ -2,13 +2,14 @@
 
 ### Diffing
 
-- `--diff=canonical` skips selector-list factoring. Factoring is input-shape
-  dependent: whether a shared declaration can be lifted depends on how the
-  input grouped its selectors, and once lifted an intervening rule writing the
-  same property can make putting it back unsafe. The same stylesheet written
-  factored and inline therefore canonicalised to different forms, and the
-  difference was reported as a missing declaration (#215)
-- `Css.optimize` takes `?factor` to turn that pass off (#215)
+- `--diff=canonical` skips the rule-regrouping passes: factoring a shared
+  declaration into a selector list, and synthesising nesting from a run of
+  adjacent rules. Both depend on how the input happened to order its rules - a
+  rule sitting between two others decides whether either applies - so the same
+  stylesheet written either way canonicalised to different forms, and the
+  difference was reported as a missing declaration or an added rule
+  (#215, #224)
+- `Css.optimize` takes `?regroup` to turn those passes off (#215, #224)
 
 ### Parsing
 

@@ -6,9 +6,11 @@ type t = {
   registered : string -> bool;
   lossless : bool;
   aggressive : bool;
-  factor : bool;
-      (** Selector-list factoring is input-shape dependent, so a canonical
-          projection turns it off to stay confluent. *)
+  regroup : bool;
+      (** Whether rules may be regrouped: shared declarations factored into a
+          selector list, nesting synthesised from adjacent rules. Both depend on
+          how the input happened to order its rules, so a canonical projection
+          turns them off to stay confluent. *)
   extend_lists : bool;
   closed_world : bool;
   objective : objective;
@@ -25,14 +27,14 @@ let fragment =
     registered = (fun _ -> false);
     lossless = false;
     aggressive = false;
-    factor = true;
+    regroup = true;
     extend_lists = false;
     closed_world = false;
     objective = `Transfer;
     enforce_spec = false;
   }
 
-let of_scope ?(lossless = false) ?(aggressive = false) ?(factor = true)
+let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
     ?(enforce_spec = false) = function
   | Some scope ->
@@ -41,7 +43,7 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(factor = true)
         scope;
         lossless;
         aggressive;
-        factor;
+        regroup;
         extend_lists;
         closed_world;
         objective;
@@ -52,14 +54,14 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(factor = true)
         fragment with
         lossless;
         aggressive;
-        factor;
+        regroup;
         extend_lists;
         closed_world;
         objective;
         enforce_spec;
       }
 
-let v ?(lossless = false) ?(aggressive = false) ?(factor = true)
+let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
     ?(enforce_spec = false) ?(registered = fun _ -> false) scope =
   {
@@ -67,7 +69,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(factor = true)
     registered;
     lossless;
     aggressive;
-    factor;
+    regroup;
     extend_lists;
     closed_world;
     objective;
@@ -78,7 +80,7 @@ let scope t = t.scope
 let registered t = t.registered
 let lossless t = t.lossless
 let aggressive t = t.aggressive
-let factor t = t.factor
+let regroup t = t.regroup
 let extend_lists t = t.extend_lists
 let closed_world t = t.closed_world
 let objective t = t.objective
