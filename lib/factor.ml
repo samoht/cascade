@@ -30,9 +30,32 @@ module Cache_tbl = Hashtbl.Make (struct
       (Hashtbl.hash knobs) rules
 end)
 
-type cache = rule list Cache_tbl.t
+type cache = {
+  memo : rule list Cache_tbl.t;
+  mutable reverted : (int * int) list;
+      (* [(declaration_count, source_units)] of segments whose factoring the
+         transfer gate threw away this run. The pipeline re-presents one segment
+         several times with a rule or two moved, so the exact-match memo misses
+         while the gate's verdict repeats; a segment that matches a reverted one
+         this closely reverts too, and factoring it only to discard the result
+         is the single largest block of wasted work on a large sheet. *)
+}
 
-let cache () = Cache_tbl.create 16
+let cache () = { memo = Cache_tbl.create 16; reverted = [] }
+
+(* Within a fortieth on both axes: far tighter than the drift the pipeline
+   introduces between iterations (a handful of rules in ~2450), and far looser
+   than exact match, which never fires. *)
+let segment_worth_remembering summary =
+  Preflight.declaration_count summary > Preflight.small_declaration_threshold
+
+let near_reverted cache summary =
+  segment_worth_remembering summary
+  &&
+  let close a b = abs (a - b) * 40 <= max a b in
+  let decls = Preflight.declaration_count summary
+  and units = Preflight.source_units summary in
+  List.exists (fun (d, u) -> close d decls && close u units) cache.reverted
 
 (* Cache key over the value-typed knobs that change factoring, built explicitly
    so a {!Ctx.pp} debug-printer change cannot break cache correctness;
@@ -132,7 +155,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in
   match
     match (cache, key) with
-    | Some cache, Some key -> Cache_tbl.find_opt cache key
+    | Some cache, Some key -> Cache_tbl.find_opt cache.memo key
     | _ -> None
   with
   | Some rules -> rules
@@ -141,8 +164,13 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
       let graph =
         Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
       in
+      let known_revert =
+        match cache with
+        | Some cache -> near_reverted cache summary
+        | None -> false
+      in
       let result =
-        if not (should_run_preflight ~ctx summary) then begin
+        if known_revert || not (should_run_preflight ~ctx summary) then begin
           counters.factor_fixpoints_skipped <-
             counters.factor_fixpoints_skipped + 1;
           ordered_rules rules graph
@@ -161,13 +189,23 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
           then begin
             counters.factor_transfer_reverts <-
               counters.factor_transfer_reverts + 1;
+            (* Only a large segment is worth remembering: factoring a small one
+               costs little, so suppressing it saves nothing and risks giving up
+               a grouping the gate would have kept. *)
+            (match cache with
+            | Some cache when segment_worth_remembering summary ->
+                cache.reverted <-
+                  ( Preflight.declaration_count summary,
+                    Preflight.source_units summary )
+                  :: cache.reverted
+            | Some _ | None -> ());
             unfactored
           end
           else factored
         end
       in
       (match (cache, key) with
-      | Some cache, Some key -> Cache_tbl.replace cache key result
+      | Some cache, Some key -> Cache_tbl.replace cache.memo key result
       | _ -> ());
       result
 
