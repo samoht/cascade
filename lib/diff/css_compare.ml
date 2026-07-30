@@ -227,10 +227,12 @@ let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
   try
     Some
       (stylesheet
-      (* Selector-list factoring depends on how the input grouped its selectors,
-         so it is not confluent: the same sheet factored and unfactored would
-         canonicalise differently. The projection skips it. *)
-      |> Css.optimize ~lossless ~factor:false ~prune_unused_custom_props
+      (* Regrouping - factoring a shared declaration into a selector list,
+         synthesising nesting from adjacent rules - depends on how the input
+         happened to order its rules, so it is not confluent: the same sheet
+         written either way would canonicalise differently. The projection skips
+         it. *)
+      |> Css.optimize ~lossless ~regroup:false ~prune_unused_custom_props
       |> Css.canonicalize_rule_order
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None

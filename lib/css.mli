@@ -7667,7 +7667,7 @@ val optimize :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?aggressive:bool ->
-  ?factor:bool ->
+  ?regroup:bool ->
   ?closed_world:bool ->
   ?objective:[ `Raw | `Transfer ] ->
   ?prune_unused_custom_props:bool ->
