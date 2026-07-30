@@ -63,7 +63,18 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       outputs, and compare those outputs. This includes value spellings that
       Cascade canonicalizes as equivalent, such as [transparent] and [#0000] in
       color positions. If the normalized forms differ, the returned diff is
-      reported from those normalized outputs. *)
+      reported from those normalized outputs.
+
+    The projection runs no rewrite whose applicability depends on the order the
+    input happens to put its rules in. Factoring shared declarations into a
+    selector list and synthesising nesting from a run of rules both fire only
+    where the rules are already adjacent, so one stylesheet written two ways
+    reaches two different forms and the comparison reports a difference that is
+    not there. A canonical form cannot depend on the spelling it exists to see
+    past, so [Css.optimize] runs these under [~regroup:true] and the projection
+    does not. Adding a rewrite here means checking it against that: if
+    reordering the input changes whether it applies, it belongs behind
+    [regroup]. *)
 
 val diff :
   ?mode:mode ->
