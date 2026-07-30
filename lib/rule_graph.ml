@@ -75,6 +75,11 @@ type t = {
   selectors : Selector.t list array;
       (** effective selector branches for each node, after applying [parent] *)
   selector_summaries : Selector_summary.t list array;
+  specificities : Selector.specificity list array;
+      (** each node's per-branch specificity, computed once. The order test
+          compares specificity on every candidate pair, and recomputing it
+          allocates a record per branch per comparison, which made it one of the
+          largest allocation sites in the optimizer. *)
   branches : string list array;
   decl_overlaps : decl_overlap list array;
   overlap_keys : Shorthand.overlap_key list array;
@@ -118,28 +123,28 @@ let overlap_key_lists_intersect a b =
   || List.exists (Shorthand.overlap_key_equal broad) b
   || List.exists (fun key -> List.exists (Shorthand.overlap_key_equal key) b) a
 
-let specificity_equal a b =
-  let a = Selector.specificity a in
-  let b = Selector.specificity b in
+let specificity_equal (a : Selector.specificity) (b : Selector.specificity) =
   Int.equal a.ids b.ids
   && Int.equal a.classes b.classes
   && Int.equal a.elements b.elements
 
 let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
-    selectors_b summaries_b =
+    specificities_a selectors_b summaries_b specificities_b =
   List.exists2
-    (fun selector_a summary_a ->
+    (fun selector_a (summary_a, specificity_a) ->
       List.exists2
-        (fun selector_b summary_b ->
-          specificity_equal selector_a selector_b
+        (fun selector_b (summary_b, specificity_b) ->
+          specificity_equal specificity_a specificity_b
           &&
           if closed_world then
             (* the caller asserts no element matches two distinct selectors, so
                only an identical selector still ties on the same element *)
             selector_a = selector_b
           else Selector_summary.may_overlap summary_a summary_b)
-        selectors_b summaries_b)
-    selectors_a summaries_a
+        selectors_b
+        (List.combine summaries_b specificities_b))
+    selectors_a
+    (List.combine summaries_a specificities_a)
 
 (* Canonical, list-order-independent branch strings of a selector: canonicalize
    each comma branch, then sort. [.foo,.bar] and [.bar,.foo] yield the same
@@ -191,7 +196,8 @@ let nodes_conflict_reason t i j =
     overlap_key_lists_intersect t.overlap_keys.(i) t.overlap_keys.(j)
     && decls_order_conflict t.decl_overlaps.(i) t.decl_overlaps.(j)
     && selectors_order_conflict ~closed_world:t.closed_world t.selectors.(i)
-         t.selector_summaries.(i) t.selectors.(j) t.selector_summaries.(j)
+         t.selector_summaries.(i) t.specificities.(i) t.selectors.(j)
+         t.selector_summaries.(j) t.specificities.(j)
   then Option.Some Cascade_conflict
   else Option.None
 
@@ -336,6 +342,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
   let selector_summaries =
     Array.map (List.map Selector_summary.of_selector) selectors
   in
+  let specificities = Array.map (List.map Selector.specificity) selectors in
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps rules in
   let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
@@ -352,6 +359,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       live;
       selectors;
       selector_summaries;
+      specificities;
       branches;
       decl_overlaps;
       overlap_keys;
@@ -565,12 +573,14 @@ let produced_metadata t produced =
   let selector_summaries =
     Array.map (List.map Selector_summary.of_selector) selectors
   in
+  let specificities = Array.map (List.map Selector.specificity) selectors in
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps produced in
   let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
   ( summaries,
     selectors,
     selector_summaries,
+    specificities,
     branches,
     decl_overlaps,
     overlap_keys )
@@ -588,6 +598,7 @@ let rewrite_base t ~consume ~produce :
         let ( p_summaries,
               p_selectors,
               p_selector_summaries,
+              p_specificities,
               p_branches,
               p_decl_overlaps,
               p_overlap_keys ) =
@@ -609,6 +620,8 @@ let rewrite_base t ~consume ~produce :
             selector_summaries =
               append_slack t.selector_summaries ~count:total
                 p_selector_summaries;
+            specificities =
+              append_slack t.specificities ~count:total p_specificities;
             branches = append_slack t.branches ~count:total p_branches;
             decl_overlaps =
               append_slack t.decl_overlaps ~count:total p_decl_overlaps;
