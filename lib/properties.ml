@@ -4465,6 +4465,11 @@ let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
         (Ratio_calc (Values.normalize_number a, Values.normalize_number b))
   | other -> other
 
+(* CSS Grid 2 sec. 7.6: [grid-auto-flow] is [ row | column ] || dense, and an
+   omitted axis means [row], so [row dense] and [dense] are one value. *)
+let normalize_grid_auto_flow : grid_auto_flow -> grid_auto_flow =
+ fun value -> match value with Row_dense -> Dense | other -> other
+
 let normalize_border ?(lossless = false) : border -> border =
  fun value ->
   match value with
@@ -21280,6 +21285,7 @@ let normalize_property_value : type a.
   | Grid -> normalize_grid_template value
   | Grid_auto_columns -> normalize_grid_template value
   | Grid_auto_rows -> normalize_grid_template value
+  | Grid_auto_flow -> normalize_grid_auto_flow value
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
