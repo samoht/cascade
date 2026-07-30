@@ -223,43 +223,41 @@ let css_for_semantic_comparison ?property css =
   | None -> css
   | Some property -> ":root{" ^ property ^ ":" ^ css ^ "}"
 
-let canonical_semantic_css ~strict ~lossless
-    ?(prune_unused_custom_props = false) css =
-  match Css.of_string ~strict css with
-  | Ok { stylesheet; _ } -> (
-      try
-        Some
-          (stylesheet
-          (* Selector-list factoring depends on how the input grouped its
-             selectors, so it is not confluent: the same sheet factored and
-             unfactored would canonicalise differently. The projection skips
-             it. *)
-          |> Css.optimize ~lossless ~factor:false ~prune_unused_custom_props
-          |> Css.canonicalize_rule_order
-          |> Css.to_string ~minify:true ~lossless)
-      with Invalid_argument _ -> None)
-  | Error _ -> None
+let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
+  try
+    Some
+      (stylesheet
+      (* Selector-list factoring depends on how the input grouped its selectors,
+         so it is not confluent: the same sheet factored and unfactored would
+         canonicalise differently. The projection skips it. *)
+      |> Css.optimize ~lossless ~factor:false ~prune_unused_custom_props
+      |> Css.canonicalize_rule_order
+      |> Css.to_string ~minify:true ~lossless)
+  with Invalid_argument _ -> None
 
-let canonical_css ~strict ~lossless ?(prune_unused_custom_props = false) css =
-  canonical_semantic_css ~strict ~lossless ~prune_unused_custom_props css
+(* Parse both sides before canonicalising either. A caller that retries at a
+   different strictness needs only to know that one side failed to parse, and
+   canonicalising the other first is the whole pipeline's work thrown away. *)
+let canonical_both ~strict ~lossless ~prune_unused_custom_props expected actual
+    =
+  match (Css.of_string ~strict expected, Css.of_string ~strict actual) with
+  | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } -> (
+      let canonical =
+        canonical_of_stylesheet ~lossless ~prune_unused_custom_props
+      in
+      match (canonical expected, canonical actual) with
+      | Some expected, Some actual -> Some (expected, actual)
+      | _ -> None)
+  | _ -> None
 
 let canonical_pair ~strict ~lossless expected actual =
-  match
-    ( canonical_css ~strict ~lossless expected,
-      canonical_css ~strict ~lossless actual )
-  with
-  | Some expected_norm, Some actual_norm ->
-      Some (String.equal expected_norm actual_norm)
-  | _ -> None
+  canonical_both ~strict ~lossless ~prune_unused_custom_props:false expected
+    actual
+  |> Option.map (fun (expected, actual) -> String.equal expected actual)
 
 let canonical_diff_inputs ~strict ~lossless ?(prune_unused_custom_props = false)
     expected actual =
-  match
-    ( canonical_css ~strict ~lossless ~prune_unused_custom_props expected,
-      canonical_css ~strict ~lossless ~prune_unused_custom_props actual )
-  with
-  | Some expected, Some actual -> Some (expected, actual)
-  | _ -> None
+  canonical_both ~strict ~lossless ~prune_unused_custom_props expected actual
 
 let canonical_diff_inputs_with_fallback ~lossless
     ?(prune_unused_custom_props = false) expected actual =

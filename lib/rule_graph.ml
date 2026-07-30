@@ -3,6 +3,24 @@
 open Stylesheet
 open Stdlib
 
+(* The declaration-keyed bucket index is probed once per overlap key per node
+   while a graph is built, and a generic [Hashtbl] compares whole declaration
+   subtrees on every probe. The cached [Declaration.hash] buckets in constant
+   time and the structural check runs only when two hashes collide. *)
+module Decl_tbl = Hashtbl.Make (struct
+  type t = Declaration.declaration
+
+  let equal = Shorthand.same_minified_declaration
+  let hash = Declaration.hash
+end)
+
+module Key_tbl = Hashtbl.Make (struct
+  type t = Shorthand.overlap_key
+
+  let equal = Shorthand.overlap_key_equal
+  let hash = Shorthand.overlap_key_hash
+end)
+
 module Node_id = struct
   type t = int
 
@@ -62,10 +80,7 @@ type t = {
           order they were created in (source order for [of_rules], inherited
           order for rewrites). A valid linear extension is any topological order
           of the live sub-graph. *)
-  key_index :
-    ( Shorthand.overlap_key,
-      (Declaration.declaration, node_id list) Hashtbl.t )
-    Hashtbl.t;
+  key_index : node_id list Decl_tbl.t Key_tbl.t;
       (** overlap key -> (declaration writing it -> node ids), so a rewrite
           finds an external node's potential conflicts without scanning every
           node, and {e without even iterating} the nodes that write the same
@@ -284,12 +299,16 @@ let index_add tbl key node =
   Hashtbl.replace tbl key
     (node :: Option.value ~default:[] (Hashtbl.find_opt tbl key))
 
+let decl_index_add tbl key node =
+  Decl_tbl.replace tbl key
+    (node :: Option.value ~default:[] (Decl_tbl.find_opt tbl key))
+
 let key_inner t key =
-  match Hashtbl.find_opt t.key_index key with
+  match Key_tbl.find_opt t.key_index key with
   | Some inner -> inner
   | None ->
-      let inner = Hashtbl.create 4 in
-      Hashtbl.replace t.key_index key inner;
+      let inner = Decl_tbl.create 4 in
+      Key_tbl.replace t.key_index key inner;
       inner
 
 (* Add [node]'s overlap keys (partitioned by the declaration that writes each)
@@ -299,7 +318,7 @@ let index_node t (node : node_id) =
   List.iter
     (fun (ov : decl_overlap) ->
       List.iter
-        (fun key -> index_add (key_inner t key) ov.decl node)
+        (fun key -> decl_index_add (key_inner t key) ov.decl node)
         ov.footprint)
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
@@ -332,7 +351,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Hashtbl.create (max 16 (n * 2));
+      key_index = Key_tbl.create (max 16 (n * 2));
       branch_index = Hashtbl.create (max 16 (n * 2));
     }
   in
@@ -753,9 +772,9 @@ let external_candidates graph ~total ~consumed ~seen p =
       (fun (ov : decl_overlap) ->
         List.iter
           (fun key ->
-            match Hashtbl.find_opt graph.key_index key with
+            match Key_tbl.find_opt graph.key_index key with
             | Some inner ->
-                Hashtbl.iter
+                Decl_tbl.iter
                   (fun decl' ids ->
                     if not (Shorthand.same_minified_declaration ov.decl decl')
                     then push_ids ids)
@@ -765,8 +784,8 @@ let external_candidates graph ~total ~consumed ~seen p =
       graph.decl_overlaps.(p);
     (* The broad key ([all]) conflicts with everything, so collect every node
        under it regardless of declaration. *)
-    (match Hashtbl.find_opt graph.key_index Shorthand.broad_overlap_key with
-    | Some inner -> Hashtbl.iter (fun _ ids -> push_ids ids) inner
+    (match Key_tbl.find_opt graph.key_index Shorthand.broad_overlap_key with
+    | Some inner -> Decl_tbl.iter (fun _ ids -> push_ids ids) inner
     | None -> ());
     List.iter
       (fun b ->
