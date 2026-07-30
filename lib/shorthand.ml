@@ -528,10 +528,19 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Unknown_property name -> [ key name ]
   | property -> [ property_key property ]
 
-let footprint_mem footprint = List.exists (overlap_key_equal footprint)
+(* Spelled as explicit recursion rather than [List.exists (overlap_key_equal
+   footprint)]: the partial application and the closure over [b] each allocate
+   once per element, and this pair sits in the conflict test's inner loop, which
+   made them the two largest allocation sites in the optimizer. *)
+let rec footprint_mem footprint = function
+  | [] -> false
+  | k :: rest -> overlap_key_equal footprint k || footprint_mem footprint rest
 
-let overlap_keys_intersect a b =
-  List.exists (fun footprint -> footprint_mem footprint b) a
+let rec overlap_keys_intersect a b =
+  match a with
+  | [] -> false
+  | footprint :: rest ->
+      footprint_mem footprint b || overlap_keys_intersect rest b
 
 let declaration_overlap_keys decl =
   match unwrap_theme_guard decl with
