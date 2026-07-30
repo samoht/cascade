@@ -50,6 +50,12 @@
 
 ### Minification
 
+- `--minify` no longer re-runs the global factoring fixpoint on a segment
+  whose result the transfer gate has already discarded. The pipeline
+  re-presents one segment across its iterations with a rule or two moved,
+  so the exact-match memo missed and the work repeated; on a large
+  stylesheet that was seventeen runs over 2450 rules, every one thrown
+  away. Output is unchanged (#221)
 - A rule with nested children absorbs a later rule with the same
   selector, when the nested children and the declarations that would move
   past them are disjoint. A single nested block used to freeze a rule
