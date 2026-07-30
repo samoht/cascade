@@ -57,6 +57,11 @@
 
 ### Minification
 
+- A zero angle written in radians canonicalises to `0deg`, so it reaches the
+  folds the other units already reached: `filter: hue-rotate(0rad)` is
+  `filter:hue-rotate()`. Radians are otherwise left alone, since the
+  conversion goes through pi and is not exact, but zero is the same angle in
+  every unit (#229)
 - `stop-color`, `flood-color` and `lighting-color` minify as the `<color>`
   SVG 2 and Filter Effects 1 define them to be, rather than surviving as
   opaque unknown-property text: `stop-color: #ffffff` is

@@ -1525,7 +1525,16 @@ let angle_units () =
   (* deg/turn/grad conversion is an optimize rewrite, not a pp spelling: pp
      holds the authored units, optimize converts to the shortest. *)
   decl_optimizes_to ~held:"transform:skew(.25turn,100grad)"
-    ~into:"transform:skew(90deg,90deg)" "transform: skew(0.25turn, 100grad)"
+    ~into:"transform:skew(90deg,90deg)" "transform: skew(0.25turn, 100grad)";
+  (* A radian converts through pi, so it is never exactly a whole number of
+     degrees - except at zero, which is the same angle in every unit. *)
+  decl_optimizes_to ~held:"transform:rotate(0rad)"
+    ~into:"transform:rotate(0deg)" "transform: rotate(0rad)";
+  decl_optimizes_to ~held:"filter:hue-rotate(0rad)" ~into:"filter:hue-rotate()"
+    "filter: hue-rotate(0rad)";
+  (* hue-rotate() takes [ <angle> | <zero> ]? and means 0 when omitted, so the
+     other zero spellings drop the argument as well. *)
+  decl_optimizes ~prop:"filter" ~into:"hue-rotate()" "hue-rotate(0turn)"
 
 let property_case () =
   (* Property names are ASCII case-insensitive *)
