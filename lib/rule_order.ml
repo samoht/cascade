@@ -357,39 +357,47 @@ let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
    hoisted the declaration into a shared group converge with one that wrote it
    inline - the hoisted copy survives expansion only to be overridden. Neither
    may carry [!important], which changes the winner. *)
+(* One backward pass: [later] holds, per selector, the properties that the
+   statements already walked write without [!important], and those are exactly
+   the statements after the current one. Consulting it is a lookup rather than a
+   rescan of the tail, so no selector is serialised more than once. *)
 let drop_shadowed_declarations stmts =
-  let key = function
-    | Rule r -> Some (Pp.to_string ~minify:true Selector.pp r.selector)
-    | _ -> None
+  let later : (string, (string, unit) Hashtbl.t) Hashtbl.t =
+    Hashtbl.create 64
   in
-  let later_writes sel prop rest =
-    List.exists
-      (fun stmt ->
-        match (key stmt, stmt) with
-        | Some k, Rule r when k = sel ->
-            List.exists
-              (fun d ->
-                Declaration.property_name d = prop
-                && not (Declaration.is_important d))
-              r.declarations
-        | _ -> false)
-      rest
+  let written sel =
+    match Hashtbl.find_opt later sel with
+    | Some props -> props
+    | None ->
+        let props = Hashtbl.create 8 in
+        Hashtbl.replace later sel props;
+        props
+  in
+  let record sel declarations =
+    let props = written sel in
+    List.iter
+      (fun d ->
+        if not (Declaration.is_important d) then
+          Hashtbl.replace props (Declaration.property_name d) ())
+      declarations
   in
   let rec go = function
     | [] -> []
-    | (Rule r as stmt) :: rest -> (
-        match key stmt with
-        | None -> stmt :: go rest
-        | Some sel ->
-            let kept =
-              List.filter
-                (fun d ->
-                  Declaration.is_important d
-                  || not (later_writes sel (Declaration.property_name d) rest))
-                r.declarations
-            in
-            if List.compare_lengths kept r.declarations = 0 then stmt :: go rest
-            else Rule { r with declarations = kept } :: go rest)
+    | (Rule r as stmt) :: rest ->
+        (* The tail first, so [later] describes it by the time [stmt] asks. *)
+        let rest = go rest in
+        let sel = Pp.to_string ~minify:true Selector.pp r.selector in
+        let shadowed = written sel in
+        let kept =
+          List.filter
+            (fun d ->
+              Declaration.is_important d
+              || not (Hashtbl.mem shadowed (Declaration.property_name d)))
+            r.declarations
+        in
+        record sel r.declarations;
+        if List.compare_lengths kept r.declarations = 0 then stmt :: rest
+        else Rule { r with declarations = kept } :: rest
     | stmt :: rest -> stmt :: go rest
   in
   go stmts
