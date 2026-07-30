@@ -63,6 +63,10 @@ type t = {
       (** the enclosing nesting context; every node's overlap is computed on its
           selector expanded against this, and rewrites reuse it so produced
           nodes are indexed the same way as existing ones. *)
+  count : int;
+      (** live extent of the node arrays. They are allocated with slack and
+          appended to in place, so their length is a capacity, not a node count.
+      *)
   rules : rule array;  (** all nodes ever created, dead ones included *)
   summaries : Summary.t array;
       (** declaration-side facts and byte sizes, precomputed once per node *)
@@ -255,7 +259,7 @@ let collect_string_bucket bucket key stamp seen acc =
   |> List.fold_left (add_candidate stamp seen) acc
 
 let source_order_edges t =
-  let n = Array.length t.rules in
+  let n = t.count in
   let succ = Array.make n [] in
   let by_decl_key = Overlap_key_table.create 256 in
   let by_branch = String_table.create 256 in
@@ -341,6 +345,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       generation = 0;
       closed_world;
       parent;
+      count = n;
       rules;
       summaries;
       origin = Array.init n Fun.id;
@@ -360,7 +365,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
   done;
   { t with succ = source_order_edges t }
 
-let node_count t = Array.length t.rules
+let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = Summary.size t.summaries.(i)
 let node_origin t i = t.origin.(i)
@@ -521,6 +526,29 @@ let produced_origins t consume produced_branches =
       |> fun origin -> if origin = max_int then fallback else origin)
     produced_branches
 
+(* [rewrite] has a single caller, which threads one graph and discards the
+   parent as soon as a rewrite is accepted, so a produced graph can extend these
+   append-only arrays in place and share them: the parent's [count] never covers
+   the new slots, and a rejected rewrite simply leaves them to be overwritten by
+   the next attempt. Growing geometrically turns a full copy of every array per
+   rewrite into an amortised append. [live] and [succ] stay copies, since a
+   rewrite mutates both and the parent must not see that. *)
+let append_slack arr ~count (items : 'a array) =
+  let added = Array.length items in
+  let needed = count + added in
+  let arr =
+    if Array.length arr >= needed then arr
+    else begin
+      let grown =
+        Array.make (max needed (2 * max 1 (Array.length arr))) items.(0)
+      in
+      Array.blit arr 0 grown 0 count;
+      grown
+    end
+  in
+  Array.blit items 0 arr count added;
+  arr
+
 let rewrite_live t ~total ~new_n ~consume =
   let live = Array.make new_n false in
   Array.blit t.live 0 live 0 total;
@@ -570,18 +598,25 @@ let rewrite_base t ~consume ~produce :
             generation = t.generation + 1;
             closed_world = t.closed_world;
             parent = t.parent;
-            rules = Array.append t.rules produced;
-            summaries = Array.append t.summaries p_summaries;
+            count = new_n;
+            rules = append_slack t.rules ~count:total produced;
+            summaries = append_slack t.summaries ~count:total p_summaries;
             origin =
-              Array.append t.origin (produced_origins t consume p_branches);
+              append_slack t.origin ~count:total
+                (produced_origins t consume p_branches);
             live = rewrite_live t ~total ~new_n ~consume;
-            selectors = Array.append t.selectors p_selectors;
+            selectors = append_slack t.selectors ~count:total p_selectors;
             selector_summaries =
-              Array.append t.selector_summaries p_selector_summaries;
-            branches = Array.append t.branches p_branches;
-            decl_overlaps = Array.append t.decl_overlaps p_decl_overlaps;
-            overlap_keys = Array.append t.overlap_keys p_overlap_keys;
-            succ = Array.append t.succ (Array.make (Array.length produced) []);
+              append_slack t.selector_summaries ~count:total
+                p_selector_summaries;
+            branches = append_slack t.branches ~count:total p_branches;
+            decl_overlaps =
+              append_slack t.decl_overlaps ~count:total p_decl_overlaps;
+            overlap_keys =
+              append_slack t.overlap_keys ~count:total p_overlap_keys;
+            succ =
+              Array.append (Array.sub t.succ 0 total)
+                (Array.make (Array.length produced) []);
             (* shared with [t]: holds the existing nodes; produced nodes are
                added by {!rewrite} only once the rewrite is accepted, so
                [add_external_edges] below sees the pre-rewrite index. *)

@@ -6,9 +6,33 @@ let counters = Stats.counters
 let rules_pp_size = Size.rules
 let list_map_preserve = Common.List.map_preserve
 
-type cache = (string * rule list, rule list) Hashtbl.t
+(* The memo key carries a whole run of rules. The default structural hash reads
+   only the first handful of nodes in it, so runs sharing a prefix land in one
+   bucket and each probe then compares rule lists in full; folding the cached
+   per-declaration hashes separates the buckets in one cheap integer pass, and
+   the structural check is left to confirm the one entry that matches. *)
+let mix acc x = (acc * 31) + x
 
-let cache () = Hashtbl.create 16
+let rule_hash (r : rule) =
+  List.fold_left
+    (fun acc d -> mix acc (Declaration.hash d))
+    (Hashtbl.hash r.Stylesheet_intf.selector)
+    r.Stylesheet_intf.declarations
+
+module Cache_tbl = Hashtbl.Make (struct
+  type t = string * rule list
+
+  let equal = ( = )
+
+  let hash (knobs, rules) =
+    List.fold_left
+      (fun acc r -> mix acc (rule_hash r))
+      (Hashtbl.hash knobs) rules
+end)
+
+type cache = rule list Cache_tbl.t
+
+let cache () = Cache_tbl.create 16
 
 (* Cache key over the value-typed knobs that change factoring, built explicitly
    so a {!Ctx.pp} debug-printer change cannot break cache correctness;
@@ -108,7 +132,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in
   match
     match (cache, key) with
-    | Some cache, Some key -> Hashtbl.find_opt cache key
+    | Some cache, Some key -> Cache_tbl.find_opt cache key
     | _ -> None
   with
   | Some rules -> rules
@@ -143,7 +167,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
         end
       in
       (match (cache, key) with
-      | Some cache, Some key -> Hashtbl.replace cache key result
+      | Some cache, Some key -> Cache_tbl.replace cache key result
       | _ -> ());
       result
 
