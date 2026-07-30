@@ -33,6 +33,51 @@ let equal_empty () =
     "empty strings equal" true
     (Cascade_diff.Css_compare.equal "" "")
 
+(* CSS Properties and Values API 1 sec. 2: registrations for different names are
+   order-independent, and for the same name the last wins. Two sheets that
+   register the same set differ only in the order they happened to emit them. *)
+let equal_canonical_ignores_property_order () =
+  let a =
+    "@property --z{syntax:\"*\";inherits:false}@property \
+     --a{syntax:\"*\";inherits:false}"
+  in
+  let b =
+    "@property --a{syntax:\"*\";inherits:false}@property \
+     --z{syntax:\"*\";inherits:false}"
+  in
+  Alcotest.(check bool)
+    "@property order is not a difference" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical a b);
+  (* the last registration of a name still wins, so a differing duplicate is a
+     real difference *)
+  Alcotest.(check bool)
+    "a differing duplicate still differs" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@property --a{syntax:\"*\";inherits:false}@property \
+        --a{syntax:\"*\";inherits:true}"
+       "@property --a{syntax:\"*\";inherits:false}");
+  (* @property is valid inside a conditional group rule and inside @layer, which
+     is where a generator emitting a block of registrations puts them *)
+  Alcotest.(check bool)
+    "@property order inside @layer is not a difference" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ("@layer properties{" ^ a ^ "}")
+       ("@layer properties{" ^ b ^ "}"));
+  Alcotest.(check bool)
+    "@property order inside @supports is not a difference" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ("@supports (color:red){" ^ a ^ "}")
+       ("@supports (color:red){" ^ b ^ "}"));
+  (* a run is split by any other statement, so this reordering crosses a barrier
+     and stays a difference *)
+  Alcotest.(check bool)
+    "reordering across an intervening rule still differs" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@property --z{syntax:\"*\";inherits:false}.x{top:0}@property \
+        --a{syntax:\"*\";inherits:false}"
+       "@property --a{syntax:\"*\";inherits:false}.x{top:0}@property \
+        --z{syntax:\"*\";inherits:false}")
+
 let equal_prune_unused_custom_props () =
   let with_bind = ":root{--spacing:.25rem}.top-0{top:0}" in
   let without = ".top-0{top:0}" in
@@ -1098,4 +1143,6 @@ let suite =
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "opt-in prune-unused-custom-props" `Quick
         equal_prune_unused_custom_props;
+      Alcotest.test_case "canonical ignores @property order" `Quick
+        equal_canonical_ignores_property_order;
     ] )

@@ -100,9 +100,10 @@ let strip_tool_header css =
   (* Trim trailing whitespace for consistent comparison *)
   String.trim stripped
 
-(* Note: We do NOT normalize @property order because their order matters for
-   testing property_order values in our implementation. The order of @property
-   rules in @layer properties reflects the intended cascade behavior. *)
+(* The canonical projection sorts a run of [@property] rules by name (see
+   [Css.canonicalize_rule_order]): CSS Properties and Values API 1 sec. 2 makes
+   registrations for different names order-independent. A caller that wants to
+   assert its own emission order should inspect the AST, or use mode [`Tree]. *)
 
 (* Analyze differences between two parsed CSS ASTs, returning structural
    changes *)
@@ -333,7 +334,8 @@ let diff_after_empty_structural ~expected ~actual ~expected_norm ~actual_norm =
   | None -> fallback_to_string_diff ~expected ~actual
 
 let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
-  (* Do NOT normalize @property order - their order matters for tests *)
+  (* Order between [@property] registrations for different names carries no
+     meaning; the canonical projection sorts them. *)
   let expected_norm = expected_ast in
   let actual_norm = actual_ast in
   let structural_diff = tree_diff ~expected:expected_norm ~actual:actual_norm in

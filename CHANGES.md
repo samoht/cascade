@@ -2,6 +2,12 @@
 
 ### Diffing
 
+- `--diff=canonical` sorts a run of `@property` rules by name, keeping the last
+  registration of each, at the top level and inside any block. CSS Properties
+  and Values API 1 sec. 2 makes registrations for different names
+  order-independent and gives the last registration of a name, so two
+  stylesheets registering the same set differed only in the order they happened
+  to emit them (#227)
 - `--diff=canonical` skips the rule-regrouping passes: factoring a shared
   declaration into a selector list, and synthesising nesting from a run of
   adjacent rules. Both depend on how the input happened to order its rules - a
