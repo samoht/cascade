@@ -8,6 +8,23 @@ installed `_opam/bin/cascade` may be stale:
 dune build bin/main.exe
 ```
 
+## `corpus_sweep.sh` -- minify all 504 SatCSS fixtures
+
+```bash
+bench/corpus_sweep.sh                      # every fixture
+bench/corpus_sweep.sh -n 20                # slowest 20 in the summary
+bench/corpus_sweep.sh -b ./old/main.exe    # A/B against another binary
+bench/corpus_sweep.sh -j 4                 # 4 files at a time
+bench/corpus_sweep.sh github guardian      # only matching fixtures
+```
+
+Reports total CPU time, raw and gzip bytes, and the slowest fixtures. Use it
+to check that an optimiser change holds across the corpus: a change measured
+on one or two stylesheets tracks their shape rather than CSS in general. With
+`-b` it interleaves the two binaries file by file, so machine load affects
+both alike, and reports whether their output is byte-identical -- a change
+that moves both the time and the bytes is a trade, not a speedup.
+
 ## `blog_tables.sh` -- every table in the blog post
 
 ```bash
