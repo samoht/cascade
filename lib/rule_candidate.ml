@@ -885,11 +885,17 @@ let group_crosses_external_conflict g ~ids (grouped : rule) =
   match origin_bounds g ids with
   | Option.None -> false
   | Option.Some (min_origin, max_origin) ->
-      live_rules g
-      |> List.exists (fun (external_id, (external_rule : rule)) ->
+      (* Walk the ids, not a freshly built (id, rule) list: this runs once per
+         candidate, so materialising every live rule up front cost more than the
+         scan itself, which usually stops on the first crossing node. The origin
+         range is the cheapest filter, so it goes first. *)
+      Rule_graph.live_nodes g
+      |> List.exists (fun external_id ->
           (not (id_mem external_id ids))
           && crosses_bounds g ~min_origin ~max_origin external_id
-          && selectors_tie_and_overlap grouped.selector external_rule.selector
+          &&
+          let external_rule : rule = Rule_graph.node_rule g external_id in
+          selectors_tie_and_overlap grouped.selector external_rule.selector
           && declarations_cross_order grouped.declarations
                external_rule.declarations)
 
