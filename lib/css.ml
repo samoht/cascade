@@ -878,10 +878,11 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   in
   inline_style_of_declarations ?minify ?mode declarations
 
-let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
+let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive ?factor
     ?closed_world ?objective ?prune_unused_custom_props stylesheet =
   Optimize.stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec
-    ?aggressive ?closed_world ?objective ?prune_unused_custom_props stylesheet
+    ?aggressive ?factor ?closed_world ?objective ?prune_unused_custom_props
+    stylesheet
 
 let flatten_nesting = Optimize.flatten_nesting
 let canonicalize_rule_order = Rule_order.canonicalize

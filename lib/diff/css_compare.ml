@@ -230,7 +230,11 @@ let canonical_semantic_css ~strict ~lossless
       try
         Some
           (stylesheet
-          |> Css.optimize ~lossless ~prune_unused_custom_props
+          (* Selector-list factoring depends on how the input grouped its
+             selectors, so it is not confluent: the same sheet factored and
+             unfactored would canonicalise differently. The projection skips
+             it. *)
+          |> Css.optimize ~lossless ~factor:false ~prune_unused_custom_props
           |> Css.canonicalize_rule_order
           |> Css.to_string ~minify:true ~lossless)
       with Invalid_argument _ -> None)
