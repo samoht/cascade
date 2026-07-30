@@ -7241,6 +7241,9 @@ let pp_property : type a. a property Pp.t =
   | Fill -> Pp.string ctx "fill"
   | Stroke -> Pp.string ctx "stroke"
   | Stroke_width -> Pp.string ctx "stroke-width"
+  | Stop_color -> Pp.string ctx "stop-color"
+  | Flood_color -> Pp.string ctx "flood-color"
+  | Lighting_color -> Pp.string ctx "lighting-color"
   | Opacity -> Pp.string ctx "opacity"
   | Fill_opacity -> Pp.string ctx "fill-opacity"
   | Stroke_opacity -> Pp.string ctx "stroke-opacity"
@@ -19239,6 +19242,11 @@ let read_any_property t =
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
   | "fill" -> Prop Fill
+  (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
+     <color>, so they minify like any other colour-valued property. *)
+  | "stop-color" -> Prop Stop_color
+  | "flood-color" -> Prop Flood_color
+  | "lighting-color" -> Prop Lighting_color
   | "flex-basis" -> Prop Flex_basis
   | "flex-grow" -> Prop Flex_grow
   | "flex-shrink" -> Prop Flex_shrink
@@ -21232,6 +21240,9 @@ let normalize_property_value : type a.
   | Outline_color -> normalize_color value
   | Accent_color -> normalize_color value
   | Caret_color -> normalize_color value
+  | Stop_color -> normalize_color value
+  | Flood_color -> normalize_color value
+  | Lighting_color -> normalize_color value
   | Border -> normalize_border ~lossless value
   | Border_block -> normalize_border ~lossless value
   | Border_block_start -> normalize_border ~lossless value
@@ -21924,6 +21935,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Overscroll_behavior_inline -> pp pp_overscroll_behavior
   | Accent_color -> pp pp_color
   | Caret_color -> pp pp_color
+  | Stop_color -> pp pp_color
+  | Flood_color -> pp pp_color
+  | Lighting_color -> pp pp_color
   | List_style -> pp pp_list_style
   | Font -> pp pp_font
   | Source -> pp pp_font_src
@@ -22204,6 +22218,9 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_decoration_color -> Some Color
   | Accent_color -> Some Color
   | Caret_color -> Some Color
+  | Stop_color -> Some Color
+  | Flood_color -> Some Color
+  | Lighting_color -> Some Color
   | Background_image -> Some Background_images
   | Background -> Some Background
   | Webkit_mask_image -> Some Background_image

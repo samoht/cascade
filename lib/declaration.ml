@@ -394,6 +394,9 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Text_emphasis_color -> p value
   | Accent_color -> p value
   | Caret_color -> p value
+  | Stop_color -> p value
+  | Flood_color -> p value
+  | Lighting_color -> p value
   | Webkit_tap_highlight_color -> p value
   | Webkit_text_decoration_color -> p value
   | Border_inline_color -> logical_color_uses p value
@@ -912,6 +915,9 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
   | Text_emphasis_color -> Some (v Text_emphasis_color (read_color t))
   | Accent_color -> Some (v Accent_color (read_color t))
   | Caret_color -> Some (v Caret_color (read_color t))
+  | Stop_color -> Some (v Stop_color (read_color t))
+  | Flood_color -> Some (v Flood_color (read_color t))
+  | Lighting_color -> Some (v Lighting_color (read_color t))
   | Webkit_tap_highlight_color ->
       Some (v Webkit_tap_highlight_color (read_color t))
   | Webkit_text_decoration_color ->
