@@ -1904,6 +1904,20 @@ let matrix =
         negatives = [ "red"; "4 red" ];
       };
       {
+        property = "vector-effect";
+        positives =
+          [
+            "none";
+            "non-scaling-stroke";
+            "non-scaling-size";
+            "non-rotation";
+            "fixed-position";
+            "non-scaling-stroke screen";
+            "non-scaling-stroke fixed-position";
+          ];
+        negatives = [ "bogus"; "screen"; "none non-scaling-stroke" ];
+      };
+      {
         property = "paint-order";
         positives =
           [

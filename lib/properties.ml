@@ -4393,6 +4393,13 @@ let paint_order_normal : paint_order_keyword list = [ Fill; Stroke; Markers ]
 let paint_order_expand (written : paint_order_keyword list) =
   written @ List.filter (fun k -> not (List.mem k written)) paint_order_normal
 
+(* SVG 2 sec. 7.10: [viewport] is what an omitted space means, so writing it is
+   redundant. *)
+let normalize_vector_effect (value : vector_effect) : vector_effect =
+  match value with
+  | Effects (ks, Some Viewport) -> Effects (ks, Option.None)
+  | _ -> value
+
 let normalize_paint_order (value : paint_order) : paint_order =
   match value with
   | Order written ->
@@ -7324,6 +7331,7 @@ let pp_property : type a. a property Pp.t =
   | Stroke_dashoffset -> Pp.string ctx "stroke-dashoffset"
   | Stroke_dasharray -> Pp.string ctx "stroke-dasharray"
   | Paint_order -> Pp.string ctx "paint-order"
+  | Vector_effect -> Pp.string ctx "vector-effect"
   | Stop_color -> Pp.string ctx "stop-color"
   | Flood_color -> Pp.string ctx "flood-color"
   | Lighting_color -> Pp.string ctx "lighting-color"
@@ -9693,6 +9701,35 @@ let rec pp_nav : nav Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
+
+let pp_vector_effect_keyword : vector_effect_keyword Pp.t =
+ fun ctx -> function
+  | Non_scaling_stroke -> Pp.string ctx "non-scaling-stroke"
+  | Non_scaling_size -> Pp.string ctx "non-scaling-size"
+  | Non_rotation -> Pp.string ctx "non-rotation"
+  | Fixed_position -> Pp.string ctx "fixed-position"
+
+let pp_vector_effect_space : vector_effect_space Pp.t =
+ fun ctx -> function
+  | Viewport -> Pp.string ctx "viewport"
+  | Screen -> Pp.string ctx "screen"
+
+let rec pp_vector_effect : vector_effect Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_vector_effect ctx v
+  | None -> Pp.string ctx "none"
+  | Effects (ks, space) -> (
+      Pp.list ~sep:Pp.space pp_vector_effect_keyword ctx ks;
+      match space with
+      | Some s ->
+          Pp.space ctx ();
+          pp_vector_effect_space ctx s
+      | Option.None -> ())
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_paint_order_keyword : paint_order_keyword Pp.t =
  fun ctx -> function
@@ -15445,6 +15482,62 @@ let read_svg_paint t : svg_paint =
    The limit is a ratio of miter length to stroke width, and that ratio is 1 at
    its smallest, so anything below 1 is out of range. Only a literal can be
    checked here; calc() and var() resolve later. *)
+let vector_effect_keyword_of = function
+  | "non-scaling-stroke" -> Some (Non_scaling_stroke : vector_effect_keyword)
+  | "non-scaling-size" -> Some Non_scaling_size
+  | "non-rotation" -> Some Non_rotation
+  | "fixed-position" -> Some Fixed_position
+  | _ -> Option.None
+
+let vector_effect_space_of = function
+  | "viewport" -> Some (Viewport : vector_effect_space)
+  | "screen" -> Some Screen
+  | _ -> Option.None
+
+let read_vector_effect_keyword t : vector_effect_keyword =
+  let name = Cursor.ident t in
+  match vector_effect_keyword_of name with
+  | Some k -> k
+  | Option.None -> err_invalid_value t "vector-effect" name
+
+let read_vector_effect_space t : vector_effect_space =
+  let name = Cursor.ident t in
+  match vector_effect_space_of name with
+  | Some s -> s
+  | Option.None -> err_invalid_value t "vector-effect" name
+
+(* [ <effect> ]+ then an optional space keyword, so an ident that names a space
+   ends the effect run. *)
+let rec read_vector_effect t : vector_effect =
+  Cursor.enum_or_calls "vector-effect"
+    [
+      ("none", (None : vector_effect));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_vector_effect t)) ]
+    ~default:(fun t ->
+      let rec go acc =
+        Cursor.ws t;
+        match Option.map vector_effect_keyword_of (Cursor.peek_ident t) with
+        | Some (Some k) ->
+            let _ = Cursor.ident t in
+            go (k :: acc)
+        | _ -> List.rev acc
+      in
+      let effects = go [ read_vector_effect_keyword t ] in
+      Cursor.ws t;
+      let space =
+        match Option.map vector_effect_space_of (Cursor.peek_ident t) with
+        | Some (Some _) -> Some (read_vector_effect_space t)
+        | _ -> Option.None
+      in
+      (Effects (effects, space) : vector_effect))
+    t
+
 let paint_order_keyword_of = function
   | "fill" -> Some (Fill : paint_order_keyword)
   | "stroke" -> Some Stroke
@@ -19609,6 +19702,7 @@ let read_any_property t =
   | "stroke-dashoffset" -> Prop Stroke_dashoffset
   | "stroke-dasharray" -> Prop Stroke_dasharray
   | "paint-order" -> Prop Paint_order
+  | "vector-effect" -> Prop Vector_effect
   (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
@@ -21642,6 +21736,7 @@ let normalize_property_value : type a.
   | Stroke_dashoffset -> normalize_stroke_dashoffset ~ctx value
   | Stroke_dasharray -> normalize_stroke_dasharray ~ctx value
   | Paint_order -> normalize_paint_order value
+  | Vector_effect -> normalize_vector_effect value
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis value
   | Flex -> normalize_flex value
@@ -22272,6 +22367,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Stroke_dashoffset -> pp pp_stroke_dashoffset
   | Stroke_dasharray -> pp pp_stroke_dasharray
   | Paint_order -> pp pp_paint_order
+  | Vector_effect -> pp pp_vector_effect
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_combine_upright -> pp pp_text_combine_upright

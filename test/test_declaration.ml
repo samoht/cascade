@@ -169,6 +169,12 @@ let complex_values () =
   decl_optimizes ~prop:"paint-order" ~into:"normal" "fill";
   (* Reordering the tail is load-bearing, so this one keeps both keywords. *)
   decl_optimizes ~prop:"paint-order" ~into:"markers stroke" "markers stroke";
+  (* SVG 2 sec. 7.10 makes [viewport] what an omitted host space means, so
+     writing it is redundant; [screen] is not. *)
+  decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke"
+    "non-scaling-stroke viewport";
+  decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke screen"
+    "non-scaling-stroke screen";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -2395,7 +2401,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 451
+    "property grammar manifest covers every tracked spec property name" 452
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

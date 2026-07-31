@@ -3977,6 +3977,30 @@ type paint_order =
   | Revert_layer
   | Var of paint_order var
 
+(** SVG 2 sec. 7.10 [vector-effect] operand. *)
+type vector_effect_keyword =
+  | Non_scaling_stroke
+  | Non_scaling_size
+  | Non_rotation
+  | Fixed_position
+
+(** SVG 2 sec. 7.10 host coordinate space for a vector effect. [viewport] is
+    what an omitted space means. *)
+type vector_effect_space = Viewport | Screen
+
+(** SVG 2 sec. 7.10 [vector-effect]:
+    [none | [ non-scaling-stroke | non-scaling-size | non-rotation |
+     fixed-position ]+ [ viewport | screen ]?]. *)
+type vector_effect =
+  | None
+  | Effects of vector_effect_keyword list * vector_effect_space option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of vector_effect var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4930,6 +4954,7 @@ type 'a property =
   | Stroke_dashoffset : stroke_dashoffset property
   | Stroke_dasharray : stroke_dasharray property
   | Paint_order : paint_order property
+  | Vector_effect : vector_effect property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property
