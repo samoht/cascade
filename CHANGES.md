@@ -1,66 +1,92 @@
 ## Unreleased
 
-### Diffing
+### Breaking
 
-- `--diff=canonical` keys a `@media not all and (X)` block as the
-  `@media not (X)` that Media Queries 4 sec. 2.1 makes it equal to, since
-  `all` is the identity media type. The two spellings used to compare as a
-  removed container plus an added one. Emission still keeps what it read: a
-  Level 3 parser rejects the shorter form, and an unrecognised query never
-  matches (#231)
-- `--diff=canonical` sorts a run of `@property` rules by name, keeping the last
-  registration of each, at the top level and inside any block. CSS Properties
-  and Values API 1 sec. 2 makes registrations for different names
-  order-independent and gives the last registration of a name, so two
-  stylesheets registering the same set differed only in the order they happened
-  to emit them (#227)
-- `--diff=canonical` skips the rule-regrouping passes: factoring a shared
-  declaration into a selector list, and synthesising nesting from a run of
-  adjacent rules. Both depend on how the input happened to order its rules - a
-  rule sitting between two others decides whether either applies - so the same
-  stylesheet written either way canonicalised to different forms, and the
-  difference was reported as a missing declaration or an added rule
-  (#215, #224)
-- `Css.optimize` takes `?regroup` to turn those passes off (#215, #224)
+- `Css.hex` raises `Invalid_argument` on a string that is not one of `#rgb`,
+  `#rrggbb`, `#rgba` or `#rrggbbaa`, where it used to return opaque black. A
+  bad hex from your own code now fails instead of putting a plausible wrong
+  colour in the output. `Css.hex_opt` returns an option for callers that want
+  to decide. Parsing is unaffected: the declaration reader already warned and
+  dropped (#232)
+- `cascade fmt` and `cascade diff` drop `--memtrace`, and the library drops the
+  `memtrace` dependency, which failed the build outright on a switch without it
+  (#237)
+
+### Minification
+
+- Every SVG presentation property is typed, so its value minifies like any
+  other rather than surviving as opaque text. `stop-color: #ffffff` is
+  `stop-color:#fff`, `fill-opacity: 0.1` is `fill-opacity:.1`,
+  `stroke-miterlimit: 4.0` is `4`, `stroke-dashoffset: 0px` is `0`,
+  `stroke-dasharray: 4, 2` is `4 2`, `paint-order: stroke fill markers` is
+  `stroke` and `fill stroke markers` is `normal`, and
+  `vector-effect: non-scaling-stroke viewport` drops the redundant space
+  keyword. `fill-rule`, `clip-rule`, `stroke-linecap` and `stroke-linejoin`
+  are read as their own keyword grammars, including the Level 2 `miter-clip`
+  and `arcs` joins (#214, #228, #234, #235, #236, #240, #241, #242)
+- `grid-auto-flow: row dense` minifies to `dense`: CSS Grid 2 sec. 7.6 makes
+  `row` the omitted axis, so the two are one value. `column dense` keeps its
+  axis (#230)
+- A zero angle written in radians canonicalises to `0deg` and so reaches the
+  folds the other units already reached, making `filter: hue-rotate(0rad)`
+  into `filter:hue-rotate()`. Other radian values are left alone, since the
+  conversion goes through pi and is not exact (#229)
+- A `font-stretch` keyword minifies to the percentage CSS Fonts 4 defines it
+  as, which is never longer. The `font` shorthand keeps the keyword, where a
+  percentage is invalid (#206)
+- Adjacent gradient stops of one colour fold into the double-position stop CSS
+  Images 4 defines as their exact equivalent, so
+  `currentColor 0, currentColor 1px` is `currentColor 0 1px`. A `0deg`
+  linear-gradient angle is dropped and the stops reversed, since the default
+  direction is that angle turned 180 degrees; this applies only while no stop
+  carries a position, and never to the legacy prefixed gradients, which
+  measure their angle from a different zero (#214)
+- A rule with nested children absorbs a later rule with the same selector when
+  the nested children and the declarations that would move past them are
+  disjoint. A single nested block used to freeze a rule against every later
+  rule sharing its selector (#203)
+- A selector list that mixes a vendor pseudo-element with ordinary selectors is
+  split, so a browser that does not know `::-webkit-search-cancel-button` no
+  longer drops the declarations of every other selector in the list (#203)
+- `--minify` no longer re-runs the global factoring fixpoint on a segment whose
+  result the transfer gate has already discarded. Output is unchanged; on a
+  large stylesheet this was seventeen runs over 2450 rules, every one thrown
+  away (#221)
+- The optimizer reports its factoring decisions at debug level on the
+  `cascade.factor` and `cascade.optimize` sources, so
+  `--log=cascade.factor:debug` shows each fixpoint iteration and every segment
+  the transfer gate reverts or the preflight skips (#239)
 
 ### Parsing
 
 - A non-ASCII identifier is read as any code point at or above U+0080, so a
-  selector such as `.text-\u{2197}` parses instead of being dropped with a
-  warning. `Css.of_string` takes `?enforce_spec` and `cascade` takes
-  `--enforce-spec` to restrict identifiers to the CSS Syntax 3 sec. 4.2 range
-  list, which excludes most BMP symbols. Output is unaffected either way: a
-  code point outside the range list is hex-escaped, so `.text-\u{2197}` and
-  `.text-\2197` read to the same selector and compare equal (#252)
-
+  selector such as `.text-↗` parses instead of being dropped with a warning.
+  `Css.of_string` takes `?enforce_spec` and `cascade` takes `--enforce-spec`
+  to restrict identifiers to the CSS Syntax 3 sec. 4.2 range list. Output is
+  unaffected either way, since a code point outside that list is hex-escaped,
+  so `.text-↗` and `.text-\2197` read to the same selector (#254)
 - Read `perspective: none` and `text-underline-offset: auto`, and allow a
   negative `text-underline-offset`. Both keywords are the properties' own
-  grammar (and `none` is `perspective`'s initial value), but the readers took
-  a non-negative length only, so the declaration was dropped with a
-  warning (#212)
-
-### Nesting
-
-- Flattening a nested rule distributes the parent over every branch of a
-  nested selector list, per CSS Nesting 1: `.p { a, b { ... } }` is
-  `.p a, .p b`. The parent was combined with the list as a whole, so the
-  combinator landed on the first branch only and every later branch
-  escaped as a top-level selector matching the whole document (#205)
-- Substituting `&` wraps a complex parent selector in `:is()`, per CSS
-  Nesting 1. Flattening `.a .b { .dark & { ... } }` produced
-  `.dark .a .b`, which matches a different set of elements than
-  `.dark :is(.a .b)` (#194)
-
-### Parsing
-
+  grammar, but the readers took a non-negative length only, so the declaration
+  was dropped with a warning (#212)
 - Parse a nested rule whose selector starts with an identifier, such as
   `h2:where(...)`. CSS Nesting 1 makes that prelude ambiguous with a
   declaration until the block appears, and the rule was dropped with a
   warning (#193)
 - Parse the function form of `<general-enclosed>` in media queries, so a
   grammatical but unrecognised query such as `theme(static)` is kept as
-  never-matching instead of discarding the `@media` block or
-  `@import` (#192)
+  never-matching instead of discarding the `@media` block or `@import` (#192)
+
+### Nesting
+
+- Flattening a nested rule distributes the parent over every branch of a nested
+  selector list, per CSS Nesting 1: `.p { a, b { ... } }` is `.p a, .p b`. The
+  parent was combined with the list as a whole, so the combinator landed on the
+  first branch only and every later branch escaped as a top-level selector
+  matching the whole document (#205)
+- Substituting `&` wraps a complex parent selector in `:is()`, per CSS
+  Nesting 1. Flattening `.a .b { .dark & { ... } }` produced `.dark .a .b`,
+  which matches a different set of elements than `.dark :is(.a .b)` (#194)
 
 ### Printing
 
@@ -69,162 +95,82 @@
   `background-position: 30% 50%, 70% 50%` read back as a single four-value
   position and minified to `30% 70%` (#209)
 
-### Minification
-
-- The optimizer logs its factoring decisions at debug level on the
-  `cascade.factor` and `cascade.optimize` sources, so
-  `--log=cascade.factor:debug` shows each fixpoint iteration and every segment
-  the transfer gate reverts or the preflight skips. The sources existed and
-  nothing ever wrote to them (#239)
-
-- `grid-auto-flow: row dense` minifies to `dense`. CSS Grid 2 sec. 7.6 gives
-  the property as `[ row | column ] || dense` with `row` as the omitted axis,
-  so the two are one value. `column dense` keeps its axis (#230)
-- A zero angle written in radians canonicalises to `0deg`, so it reaches the
-  folds the other units already reached: `filter: hue-rotate(0rad)` is
-  `filter:hue-rotate()`. Radians are otherwise left alone, since the
-  conversion goes through pi and is not exact, but zero is the same angle in
-  every unit (#229)
-- `stop-color`, `flood-color` and `lighting-color` minify as the `<color>`
-  SVG 2 and Filter Effects 1 define them to be, rather than surviving as
-  opaque unknown-property text: `stop-color: #ffffff` is
-  `stop-color:#fff` (#228)
-- `--minify` no longer re-runs the global factoring fixpoint on a segment
-  whose result the transfer gate has already discarded. The pipeline
-  re-presents one segment across its iterations with a rule or two moved,
-  so the exact-match memo missed and the work repeated; on a large
-  stylesheet that was seventeen runs over 2450 rules, every one thrown
-  away. Output is unchanged (#221)
-- A rule with nested children absorbs a later rule with the same
-  selector, when the nested children and the declarations that would move
-  past them are disjoint. A single nested block used to freeze a rule
-  against every later rule sharing its selector (#203)
-- A selector list that mixes a vendor pseudo-element with ordinary
-  selectors is split. A browser that does not know
-  `::-webkit-search-cancel-button` drops the whole rule, and with it the
-  declarations of every other selector in the list (#203)
-- A `font-stretch` keyword minifies to the percentage CSS Fonts 4 defines
-  it as, which is never longer. The `font` shorthand keeps the keyword,
-  where a percentage is invalid (#206)
-- Adjacent gradient stops of one colour fold into the double-position
-  stop CSS Images 4 defines as their exact equivalent, so
-  `currentColor 0, currentColor 1px` is `currentColor 0 1px` (#214)
-- A `0deg` linear-gradient angle is dropped and the stops reversed, since
-  the default direction is that angle turned 180 degrees. Applies while
-  no stop carries a position, which the reversal would have to mirror,
-  and never to the legacy prefixed gradients, which measure their angle
-  from a different zero (#214)
-- `fill-opacity`, `stroke-opacity`, `stop-opacity` and `flood-opacity`
-  minify as the `<alpha-value>` they are, rather than surviving as opaque
-  unknown-property text: `fill-opacity: 0.1` is `fill-opacity:.1` (#214)
-
-### Custom properties and `@layer`
-
-- `Css.inline_vars` resolves `var()` across `@layer` boundaries, and
-  folds a custom property redefined across layers on the same element to
-  its cascade winner. A layer only orders competing declarations, it
-  never scopes custom-property visibility, so a layered stylesheet now
-  inlines like its unlayered form instead of leaving a live `var()` that
-  could resolve to the wrong definition (#187, #189)
-- `cascade apply` projects rules inside `@layer` onto elements; a fully
-  layered stylesheet (such as Tailwind v4 output) previously inlined
-  nothing (#188)
-
-### Breaking
-
-- `cascade fmt` and `cascade diff` drop `--memtrace`, and the library drops the
-  `memtrace` dependency, which failed the build outright on a switch without
-  it (#237)
-
-- `Css.hex` raises `Invalid_argument` on a string that is not one of `#rgb`,
-  `#rrggbb`, `#rgba` or `#rrggbbaa`. It used to return opaque black, so a
-  caller's own bad hex reached the output as a plausible wrong colour instead
-  of a failure. `Css.hex_opt` is the deciding form for callers that want to
-  handle it. Parsing is unaffected: the declaration reader already warned and
-  dropped (#232)
-
 ### New properties and values
-
-- Read `vector-effect`, the last of the SVG presentation properties that parsed
-  as unknown. SVG 2 sec. 7.10 makes `viewport` what an omitted host space
-  means, so `non-scaling-stroke viewport` minifies to `non-scaling-stroke`;
-  `screen` is kept (#242)
-
-- Read `paint-order`, and minify it to the shortest spelling of the same paint
-  order. SVG 2 sec. 13.7 paints an omitted keyword last in the order `normal`
-  would use, so `paint-order: stroke fill markers` is `stroke` (the
-  specification's own example) and `fill stroke markers` is `normal` (#241)
-
-- Read `stroke-dasharray` and `stroke-dashoffset`. Both parsed as unknown
-  properties, so their lengths kept a zero unit and a trailing zero that every
-  other length property sheds. SVG 2 sec. 13.3 separates dashes by comma
-  and/or whitespace for one flat pattern, so `4, 2` and `4 2` are one value
-  and print with the shorter separator (#240)
-
-- Read `stroke-miterlimit` as the `<number>` SVG 2 sec. 13.3 defines, so it
-  minifies like one (`4.0` is `4`) and a constant `calc()` folds. A value
-  below 1 is out of range, since the limit is a ratio that bottoms out
-  at 1 (#236)
-
-- Read `stroke-linecap` and `stroke-linejoin`, including the SVG 2 sec. 13.3
-  additions `miter-clip` and `arcs`. Both parsed as unknown properties (#235)
-
-- Read `fill-rule` and `clip-rule`, the SVG 2 sec. 13.5 / 14.4 properties that
-  share one `<fill-rule>`. Both parsed as unknown properties, so their values
-  survived as opaque text (#234)
 
 - Complete the logical border properties: `Css.border_block_color`,
   `Css.border_block_start_color` and `Css.border_block_end_color`, the
-  `Css.border_inline_width` and `Css.border_block_width` shorthands (with
-  the `logical_border_width` type), and the start/end style longhands
-  (`Css.border_inline_start_style` and its three siblings). A declaration
-  such as `border-inline-start-style: dashed` used to parse as an
-  unsupported property (#197, #198, #199, #200)
+  `Css.border_inline_width` and `Css.border_block_width` shorthands (with the
+  `logical_border_width` type), and the start/end style longhands
+  (`Css.border_inline_start_style` and its three siblings). A declaration such
+  as `border-inline-start-style: dashed` used to parse as an unsupported
+  property (#197, #198, #199, #200)
 - Add `Css.parse_font_family`, `Css.parse_list_style_type` and
-  `Css.parse_list_style_image`, the single-value readers behind the
-  `font` and `list-style` shorthands. Reading one of those out of a theme
-  token meant hand-rolling the keyword table, which cannot see a `var()`
-  among the entries (#201, #202)
-- Add `Css.Values.oklch_none_hue` to build achromatic colours with a
-  missing hue component, printed as `oklch(55.6% 0 none)` per CSS
-  Color 4 (#190)
+  `Css.parse_list_style_image`, the single-value readers behind the `font` and
+  `list-style` shorthands. Reading one of those out of a theme token meant
+  hand-rolling the keyword table, which cannot see a `var()` among the
+  entries (#201, #202)
+- Add `Css.Values.oklch_none_hue` to build achromatic colours with a missing
+  hue component, printed as `oklch(55.6% 0 none)` per CSS Color 4 (#190)
 
-### Diff report
+### Custom properties and `@layer`
 
-- `cascade diff` bounds its report: it prints the whole difference tree
-  while that stays short, and otherwise falls back to the deepest level
-  that fits, with `--depth` to pin a level or ask for the tree in full.
-  A whole-stylesheet comparison used to print every level, so the shape
-  of the change was only reachable by grepping the tree connectors out of
-  the output (#210)
-- Parse warnings print above the difference report instead of below it,
-  capped per side with the remainder counted. A declaration the parser
-  dropped qualifies every difference under it, and a stylesheet that
-  trips one unsupported syntax repeatedly used to bury the report (#210)
-- Conditional blocks that only changed position are reported as a shift
-  run. Merging two same-condition blocks renumbers every block after
-  them, and each was listed twice, once per side, so a single merge read
-  as a wholesale rewrite of the container (#210)
+- `Css.inline_vars` resolves `var()` across `@layer` boundaries, and folds a
+  custom property redefined across layers on the same element to its cascade
+  winner. A layer only orders competing declarations, it never scopes
+  custom-property visibility, so a layered stylesheet now inlines like its
+  unlayered form instead of leaving a live `var()` that could resolve to the
+  wrong definition (#187, #189)
+- `cascade apply` projects rules inside `@layer` onto elements; a fully layered
+  stylesheet, such as Tailwind v4 output, previously inlined nothing (#188)
 
 ### Canonical diff
 
-- `--diff=canonical` expands every selector-list rule onto its branches
-  in the projection, not only the lists that share a branch with another
-  rule. The canonical form used to depend on how the input happened to
-  group its selectors, so `.a,.b{margin:0}` and `.a{margin:0}.b{margin:0}`
-  compared as different stylesheets (#204)
-- The projection folds two conditional blocks that share a condition
-  into one, gated by the same interval test that gates folding two
-  occurrences of a selector. Two sheets that split the same `@media`
-  content differently never converged, so the comparator fell back to
-  reporting the block structure positionally: a merge plus a phantom
-  entry for every renumbered block (#211)
-- The projection converges on more cascade-equivalent inputs: it
-  normalises the space after a top-level comma in a custom-property value
-  (leaving text inside quotes alone), drops a declaration that a later
-  rule with the identical selector also writes (leaving `!important`
-  alone, since that changes the winner), and pairs rules that match
-  exactly before falling back to the property signature (#206)
+Equivalent stylesheets that differ only in how they were written now compare
+identical, rather than as spurious changes.
+
+- Selector-list rules expand onto their branches, so `.a,.b{margin:0}` and
+  `.a{margin:0}.b{margin:0}` converge; previously the canonical form depended
+  on how the input happened to group its selectors (#204)
+- Two conditional blocks sharing a condition fold into one, gated by the same
+  interval test that gates folding two occurrences of a selector. Two sheets
+  that split the same `@media` content differently never converged, so the
+  comparator fell back to reporting the block structure positionally (#211)
+- A `@media not all and (X)` block is keyed as the `@media not (X)` that Media
+  Queries 4 sec. 2.1 makes it equal to. The two spellings used to compare as a
+  removed container plus an added one. Emission still keeps what it read, since
+  a Level 3 parser rejects the shorter form (#231)
+- A run of `@property` rules is keyed by name, keeping the last registration of
+  each, at the top level and inside any block. Registrations for different
+  names are order-independent, so two stylesheets registering the same set
+  differed only in the order they happened to emit them (#227)
+- The projection skips the rule-regrouping passes, which depend on how the
+  input happened to order its rules, so the same stylesheet written either way
+  no longer canonicalises to different forms. `Css.optimize` takes `?regroup`
+  to turn those passes off (#215, #224)
+- The projection also normalises the space after a top-level comma in a
+  custom-property value, drops a declaration that a later rule with the
+  identical selector also writes (leaving `!important` alone, since that
+  changes the winner), and pairs rules that match exactly before falling back
+  to the property signature (#206)
+
+### Diff report
+
+- `cascade diff` bounds its report: it prints the whole difference tree while
+  that stays short, and otherwise falls back to the deepest level that fits,
+  with `--depth` to pin a level or ask for the tree in full. A whole-stylesheet
+  comparison used to print every level (#210)
+- Every statement of an added or removed container is reported. Statements the
+  renderer could not see as rules, such as a nested `@media`, were dropped
+  without a trace while still being counted, which also put the last-child
+  connector on the wrong entry. A container is no longer counted a second time
+  as a rule difference with an empty selector (#253)
+- Parse warnings print above the difference report instead of below it, capped
+  per side with the remainder counted. A stylesheet that trips one unsupported
+  syntax repeatedly used to bury the report (#210)
+- Conditional blocks that only changed position are reported as a shift run.
+  Merging two same-condition blocks renumbers every block after them, and each
+  was listed twice, once per side, so a single merge read as a wholesale
+  rewrite of the container (#210)
 
 ## 1.0.0
 
