@@ -100,7 +100,6 @@ cat style.css | cascade -                                          # read stdin
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
 | `--profile` | Print per-pass timings of the optimiser to stderr after the run. Useful to triage which pass dominates on a slow input. Has no effect without `--minify`. |
-| `--memtrace=FILE` | Write a memtrace allocation trace to FILE. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
 
 ### Size
