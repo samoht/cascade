@@ -1889,6 +1889,11 @@ let matrix =
         negatives = [ "miter bevel"; "mitre" ];
       };
       {
+        property = "stroke-miterlimit";
+        positives = [ "1"; "4"; "10.5"; "calc(2 * 3)" ];
+        negatives = [ ".5"; "-1"; "4px"; "4 4" ];
+      };
+      {
         property = "unicode-bidi";
         positives = [ "normal"; "embed"; "isolate"; "plaintext" ];
         negatives = [ "normal isolate"; "auto" ];
