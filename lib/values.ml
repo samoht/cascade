@@ -2734,16 +2734,23 @@ let hex_of_byte i =
 
 (* Decode a hex spelling ([#rgb] / [#rrggbb] / [#rgba] / [#rrggbbaa], with or
    without the leading [#]) to its sRGB byte components. Every equivalent
-   spelling decodes to the same node. Invalid input folds to opaque black. *)
+   spelling decodes to the same node. Malformed input raises: there is no colour
+   it denotes, and a caller that guessed one would emit a plausible wrong colour
+   rather than a failure. Use [hex_opt] to decide. *)
+let strip_hash s =
+  if String.length s > 0 && s.[0] = '#' then String.sub s 1 (String.length s - 1)
+  else s
+
+let hex_opt s : color option =
+  match rgba_of_hex (strip_hash s) with
+  | Some (r, g, b, a) -> Some (Hex { r; g; b; a })
+  | None -> Option.None
+
 let hex s : color =
-  let s =
-    if String.length s > 0 && s.[0] = '#' then
-      String.sub s 1 (String.length s - 1)
-    else s
-  in
-  match rgba_of_hex s with
-  | Some (r, g, b, a) -> Hex { r; g; b; a }
-  | None -> Hex { r = 0; g = 0; b = 0; a = 255 }
+  match hex_opt s with
+  | Some c -> c
+  | Option.None ->
+      invalid_arg (String.concat "" [ "Values.hex: not a hex colour: "; s ])
 
 (* CSS Color 4 sec. 4.2.3 [none] sentinel: per-channel folding of a static
    colour to sRGB. Each channel is [Some byte] when the colour resolves

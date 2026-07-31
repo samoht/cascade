@@ -259,6 +259,25 @@ let test_color () =
   check_color ~optimized:"#639" "rebeccapurple";
   check_color ~optimized:"#f0f8ff" "aliceblue";
 
+  (* [hex] is a constructor, not a parser: a string it cannot decode denotes no
+     colour, so it raises rather than handing back one the caller did not ask
+     for. [hex_opt] is the deciding form. *)
+  Alcotest.(check string)
+    "hex accepts a bare spelling" "#fff"
+    (Pp.to_string ~minify:true pp_color (hex "ffffff"));
+  let rejects s =
+    match hex s with _ -> false | exception Invalid_argument _ -> true
+  in
+  Alcotest.(check bool) "hex rejects a bad length" true (rejects "#12345");
+  Alcotest.(check bool) "hex rejects a bad digit" true (rejects "gggggg");
+  Alcotest.(check bool)
+    "hex rejects an over-long spelling" true (rejects "#1234567");
+  Alcotest.(check bool) "hex rejects the empty string" true (rejects "");
+  Alcotest.(check bool) "hex_opt decides instead" true (hex_opt "#12345" = None);
+  Alcotest.(check bool)
+    "hex_opt accepts a good spelling" true
+    (hex_opt "#abc" <> None);
+
   (* Modern color notations. pp preserves the authored function node; the
      equivalent hex form is the optimize+minify oracle. *)
   check_color ~expected:"hsl(180 50% 25%)" ~optimized:"#206060"
