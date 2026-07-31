@@ -1735,12 +1735,65 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
       else reorder_or_content sel1_str decls1 decls2
 
 (* Assemble rule changes (added/removed/modified) between two rule lists *)
+(* One selector, one node. Two rules writing the same selector in a container
+   produced two sibling entries under the same label, one reporting a
+   declaration added and the other a different one removed, which reads as a
+   contradiction rather than as a declaration moving between them. The group
+   collapses to a single before-and-after for that selector.
+
+   Only a group that both gains and loses collapses: several rules added under
+   one selector really are several additions, and merging those would hide the
+   count. *)
+let merge_same_selector_changes (changes : rule_diff list) : rule_diff list =
+  let selector_of : rule_diff -> string option = function
+    | Added { selector; _ }
+    | Removed { selector; _ }
+    | Content_changed { selector; _ } ->
+        Some selector
+    | Reordered _ | Selector_changed _ | Regrouped _ -> None
+  in
+  let sides : rule_diff -> Css.declaration list * Css.declaration list =
+    function
+    | Added { declarations; _ } -> ([], declarations)
+    | Removed { declarations; _ } -> (declarations, [])
+    | Content_changed { old_declarations; new_declarations; _ } ->
+        (old_declarations, new_declarations)
+    | _ -> ([], [])
+  in
+  let gains : rule_diff -> bool = function
+    | Added _ | Content_changed _ -> true
+    | _ -> false
+  in
+  let loses : rule_diff -> bool = function
+    | Removed _ | Content_changed _ -> true
+    | _ -> false
+  in
+  let done_ = Hashtbl.create 8 in
+  List.filter_map
+    (fun diff ->
+      match selector_of diff with
+      | None -> Some diff
+      | Some sel when Hashtbl.mem done_ sel -> None
+      | Some sel -> (
+          let peers = List.filter (fun d -> selector_of d = Some sel) changes in
+          match peers with
+          | _ :: _ :: _ when List.exists gains peers && List.exists loses peers
+            ->
+              Hashtbl.replace done_ sel ();
+              Some
+                (content_changed sel
+                   (List.concat_map (fun d -> fst (sides d)) peers)
+                   (List.concat_map (fun d -> snd (sides d)) peers))
+          | _ -> Some diff))
+    changes
+
 let to_rule_changes rules1 rules2 : rule_diff list =
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   List.filter_map convert_added_rule r_added
   @ List.filter_map convert_removed_rule r_removed
   @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
   @ r_regrouped
+  |> merge_same_selector_changes
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =
