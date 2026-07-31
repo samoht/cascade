@@ -351,11 +351,6 @@ let ordered_ids g ids =
   in
   ids |> Node_set.of_list |> Node_set.elements |> List.sort compare_by_origin
 
-let first_origin g ids =
-  match ordered_ids g ids with
-  | [] -> max_int
-  | id :: _ -> Rule_graph.node_origin g id
-
 let candidate_set_key ids =
   ids |> List.map Rule_graph.Node_id.to_int |> hash_ints
 
@@ -718,13 +713,16 @@ let same_selector_candidates ?size_cache ?touching ~finalize g =
 
 let decl_hash_bucket decl = Declaration.hash decl
 
-let add_decl_bucket buckets decl id =
+(* Each entry carries the smallest origin among its ids, kept up to date as ids
+   arrive. The sort below asks for it once per comparison, so deriving it from
+   the id list there recomputed the same answer O(n log n) times. *)
+let add_decl_bucket ~origin buckets decl id =
   let hash = decl_hash_bucket decl in
   let entries = Int_table.find_opt buckets hash |> Option.value ~default:[] in
   let rec insert acc = function
-    | [] -> List.rev ((decl, [ id ]) :: acc)
-    | (existing, ids) :: rest when same_decl existing decl ->
-        List.rev_append acc ((existing, id :: ids) :: rest)
+    | [] -> List.rev ((decl, [ id ], origin) :: acc)
+    | (existing, ids, least) :: rest when same_decl existing decl ->
+        List.rev_append acc ((existing, id :: ids, Int.min least origin) :: rest)
     | entry :: rest -> insert (entry :: acc) rest
   in
   Int_table.replace buckets hash (insert [] entries)
@@ -734,20 +732,24 @@ let shared_decl_buckets g =
   List.iter
     (fun (id, rule) ->
       if rule_eligible rule then
+        let origin = Rule_graph.node_origin g id in
         unique_decls rule.declarations
-        |> List.iter (fun decl -> add_decl_bucket buckets decl id))
+        |> List.iter (fun decl -> add_decl_bucket ~origin buckets decl id))
     (live_rules g);
   buckets
 
-let shared_decl_buckets_by_origin g buckets =
+let shared_decl_buckets_by_origin buckets =
   Int_table.fold
     (fun _ entries acc ->
-      List.fold_left (fun acc (_, ids) -> ids :: acc) acc entries)
+      List.fold_left
+        (fun acc (_, ids, least) -> (least, ids) :: acc)
+        acc entries)
     buckets []
-  |> List.sort (fun left right ->
-      match Int.compare (first_origin g left) (first_origin g right) with
+  |> List.sort (fun (left_origin, left) (right_origin, right) ->
+      match Int.compare left_origin right_origin with
       | 0 -> Int.compare (List.length left) (List.length right)
       | order -> order)
+  |> List.map snd
 
 let exact_group_key rules common =
   mix_int
@@ -953,7 +955,7 @@ let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
   let buckets = shared_decl_buckets g in
   let seen_groups = Int_table.create 128 in
   let candidates = ref [] in
-  shared_decl_buckets_by_origin g buckets
+  shared_decl_buckets_by_origin buckets
   |> List.iter (fun ids ->
       let ids = ids |> eligible_ids_from_bucket g |> ordered_ids g in
       if touches_any touching ids then
@@ -1028,7 +1030,7 @@ let rec has_property_key key = function
    live in a hash table, so folding them yields the hash's order, and the sort
    below would otherwise leave entries that tie on origin and size in that
    order: the search's choice would follow the hash rather than the input. *)
-let add_property_buckets ~seq buckets id (rule : rule) =
+let add_property_buckets ~seq ~origin buckets id (rule : rule) =
   let add key id =
     let hash = property_key_hash key in
     let entries = Int_table.find_opt buckets hash |> Option.value ~default:[] in
@@ -1036,9 +1038,11 @@ let add_property_buckets ~seq buckets id (rule : rule) =
       | [] ->
           let n = !seq in
           incr seq;
-          List.rev ((key, [ id ], n) :: acc)
-      | (existing, ids, n) :: rest when property_key_equal existing key ->
-          List.rev_append acc ((existing, id :: ids, n) :: rest)
+          List.rev ((key, [ id ], n, origin) :: acc)
+      | (existing, ids, n, least) :: rest when property_key_equal existing key
+        ->
+          List.rev_append acc
+            ((existing, id :: ids, n, Int.min least origin) :: rest)
       | entry :: rest -> insert (entry :: acc) rest
     in
     Int_table.replace buckets hash (insert [] entries)
@@ -1352,19 +1356,23 @@ let default_value_candidates ?size_cache ?touching ~ctx ~finalize g =
   let seq = ref 0 in
   List.iter
     (fun (id, rule) ->
-      if rule_eligible rule then add_property_buckets ~seq buckets id rule)
+      if rule_eligible rule then
+        let origin = Rule_graph.node_origin g id in
+        add_property_buckets ~seq ~origin buckets id rule)
     (live_rules g);
   let seen_groups = Int_table.create 128 in
   let candidates = ref [] in
   Int_table.fold (fun _ entries acc -> List.rev_append entries acc) buckets []
-  |> List.sort (fun (_, left, left_seq) (_, right, right_seq) ->
-      match Int.compare (first_origin g left) (first_origin g right) with
-      | 0 -> (
-          match Int.compare (List.length left) (List.length right) with
-          | 0 -> Int.compare left_seq right_seq
-          | order -> order)
-      | order -> order)
-  |> List.iter (fun (key, ids, _) ->
+  |> List.sort
+       (fun
+         (_, left, left_seq, left_origin) (_, right, right_seq, right_origin) ->
+         match Int.compare left_origin right_origin with
+         | 0 -> (
+             match Int.compare (List.length left) (List.length right) with
+             | 0 -> Int.compare left_seq right_seq
+             | order -> order)
+         | order -> order)
+  |> List.iter (fun (key, ids, _, _) ->
       let ids =
         ids |> Node_set.of_list |> Node_set.elements
         |> List.filter (fun id -> rule_eligible (Rule_graph.node_rule g id))
