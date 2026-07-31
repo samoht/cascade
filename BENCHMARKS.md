@@ -35,6 +35,31 @@ Lightning CSS and esbuild are well over an order of magnitude faster but emit
 0.4-15% more compressed bytes; csso and cssnano sit in the same wall-clock band
 as cascade and emit more bytes.
 
+## Correctness
+
+Smaller output only counts while it still means the same thing. Eliminating a
+non-adjacent duplicate declaration is where that is easy to get wrong, because
+it takes reading the importance flag to know which of the two is dead:
+
+```css
+.a{color:red!important}.b{color:green}.a{color:blue}
+```
+
+The `!important` declaration is the cascade winner, so `color:blue` is the dead
+one. Dropping it is sound; dropping the winner changes what `.a` renders as.
+
+| tool | output | `.a` computes to |
+|---|---|---|
+| cascade `--minify` | `.a{color:red!important}.b{color:green}` | red |
+| esbuild | `.a{color:red!important}.b{color:green}.a{color:#00f}` | red |
+| csso | `.a{color:red!important}.b{color:green}.a{}` | red |
+| lightningcss 1.0.0-alpha.71 | `.b{color:green}.a{color:#00f}` | blue |
+
+Lightning CSS drops the winner, so `.a` renders blue instead of red. Cascade
+drops the dead declaration and the rule it empties, which is both sound and the
+smallest of the four. `test/test_optimize.ml` pins it, along with the three
+mirror cases (a later `!important`, two of them, and neither).
+
 ## Reproducing
 
 The scripts and their requirements (the corpus is regenerated locally, not

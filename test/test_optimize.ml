@@ -882,6 +882,36 @@ let test_lossless_declaration_order () =
    happened to order its rules: a rule sitting between two others decides
    whether either applies. A canonical projection therefore turns regrouping
    off, so the same stylesheet written either way maps to one form. *)
+(* Eliminating a non-adjacent duplicate declaration has to read the importance
+   flag: with an [!important] earlier write in play, the later normal write is
+   the dead one, not the winner. Dropping the wrong one changes what [.a]
+   computes to, and it is the failure mode a peer minifier ships (Lightning CSS
+   1.0.0-alpha.71 emits [.b{color:green}.a{color:#00f}] here, so [.a] resolves
+   to blue rather than red). *)
+let important_survives_non_adjacent_duplicate () =
+  let out src =
+    Css.to_string ~minify:true (Css.optimize (Css.of_string_exn src))
+  in
+  Alcotest.(check string)
+    "the !important winner is kept and the dead write dropped"
+    ".a{color:red!important}.b{color:green}"
+    (out ".a{color:red!important}.b{color:green}.a{color:blue}");
+  (* The mirror image: when the later write carries the flag it is the winner,
+     so the earlier one is what goes. *)
+  Alcotest.(check string)
+    "a later !important wins over an earlier normal write"
+    ".b{color:green}.a{color:#00f!important}"
+    (out ".a{color:red}.b{color:green}.a{color:blue!important}");
+  (* Neither carries the flag, so the plain last-wins rule applies. *)
+  Alcotest.(check string)
+    "without !important the later write wins" ".b{color:green}.a{color:#00f}"
+    (out ".a{color:red}.b{color:green}.a{color:blue}");
+  (* Both carry it, so last-wins applies among them. *)
+  Alcotest.(check string)
+    "between two !important writes the later wins"
+    ".b{color:green}.a{color:#00f!important}"
+    (out ".a{color:red!important}.b{color:green}.a{color:blue!important}")
+
 let regrouping_can_be_disabled () =
   let src =
     ".text-xs{font-size:var(--text-xs);line-height:1}.text-xs\\/4{font-size:var(--text-xs);line-height:4}.text-xs\\/5{font-size:var(--text-xs);line-height:5}.text-xs\\/6{font-size:var(--text-xs);line-height:6}.text-xs\\/7{font-size:var(--text-xs);line-height:7}"
@@ -921,6 +951,9 @@ let nesting_synthesis_can_be_disabled () =
 
 let optimize_tests =
   [
+    ( "!important survives non-adjacent duplicate elimination",
+      `Quick,
+      important_survives_non_adjacent_duplicate );
     ("regrouping can be disabled", `Quick, regrouping_can_be_disabled);
     ( "nesting synthesis can be disabled",
       `Quick,
