@@ -78,8 +78,7 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag
-    ~inline_vars_flag ~keep_vars ~memtrace_path ~profile =
-  Cli_io.start_memtrace memtrace_path;
+    ~inline_vars_flag ~keep_vars ~profile =
   try
     let stylesheet = Cli_io.read_input input_path in
     let stylesheet =
@@ -222,13 +221,6 @@ let keep_vars_arg =
   in
   Arg.(value & opt string "" & info [ "keep-vars" ] ~docv:"NAMES" ~doc)
 
-let memtrace_arg =
-  let doc =
-    "Write a memtrace allocation trace to $(docv). Open it with \
-     [memtrace_hotspots] to see allocation hotspots."
-  in
-  Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
-
 let closed_world_arg =
   let doc =
     "Assume you know the exact HTML and that no element ever matches two \
@@ -273,7 +265,6 @@ let term =
         inline_imports_flag
         inline_vars_flag
         keep_vars_str
-        memtrace_path
         profile
         ()
       ->
@@ -298,11 +289,10 @@ let term =
           ];
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
           ~enforce_spec ~closed_world ~objective ~inline_imports_flag
-          ~inline_vars_flag ~keep_vars ~memtrace_path ~profile)
+          ~inline_vars_flag ~keep_vars ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ closed_world_arg $ objective_arg $ inline_imports_arg
-    $ inline_vars_arg $ keep_vars_arg $ memtrace_arg $ profile_arg
-    $ Cli_log.term)
+    $ inline_vars_arg $ keep_vars_arg $ profile_arg $ Cli_log.term)
 
 let man =
   [

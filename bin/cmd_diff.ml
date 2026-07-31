@@ -123,8 +123,7 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
 
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
-let compare_files file1 file2 style_renderer mode depth opts memtrace_path () =
-  Cli_io.start_memtrace memtrace_path;
+let compare_files file1 file2 style_renderer mode depth opts () =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
@@ -240,13 +239,6 @@ let prune_unused_custom_props_arg =
   in
   Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
 
-let memtrace_arg =
-  let doc =
-    "Write a Memtrace allocation profile to $(docv) covering the diff run. \
-     Open it with [memtrace-viewer] to see allocation hotspots."
-  in
-  Arg.(value & opt (some string) None & info [ "memtrace" ] ~docv:"FILE" ~doc)
-
 let term =
   let open Term in
   let style_renderer_with_env =
@@ -265,7 +257,7 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ depth_arg $ canonical_opts $ memtrace_arg $ Cli_log.term)
+   $ mode_arg $ depth_arg $ canonical_opts $ Cli_log.term)
 
 let man =
   [

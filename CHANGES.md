@@ -118,6 +118,10 @@
 
 ### Breaking
 
+- `cascade fmt` and `cascade diff` drop `--memtrace`, and the library drops the
+  `memtrace` dependency, which failed the build outright on a switch without
+  it (#237)
+
 - `Css.hex` raises `Invalid_argument` on a string that is not one of `#rgb`,
   `#rrggbb`, `#rgba` or `#rrggbbaa`. It used to return opaque black, so a
   caller's own bad hex reached the output as a plausible wrong colour instead

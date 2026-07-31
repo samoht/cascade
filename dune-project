@@ -32,5 +32,4 @@
   uutf
   psq
   logs
-  (cmdliner (>= 1.1.0))
-  memtrace))
+  (cmdliner (>= 1.1.0))))
