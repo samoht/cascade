@@ -390,6 +390,163 @@ let duplicate_condition_blocks_reconcile () =
     "and nothing is added" false
     (Cascade_diff.Tree_diff.has_container_added_of_type `Container d)
 
+(* ===== Declarations redistributed between rules of one selector ===== *)
+
+let rearranged_of (d : Cascade_diff.Tree_diff.t) =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Rearranged { selector; declarations } -> Some (selector, declarations)
+      | _ -> None)
+    d.rules
+
+let render d =
+  let buf = Buffer.create 256 in
+  Cascade_diff.Tree_diff.pp buf d;
+  Buffer.contents buf
+
+let diff_of ~expected ~actual =
+  Cascade_diff.Tree_diff.diff ~expected:(parse expected) ~actual:(parse actual)
+
+(* [.a] writes both declarations on both sides, split over two rules on one and
+   one rule on the other. *)
+let split = ".a{color:red}.b{color:blue}.a{margin:0}"
+let joined = ".a{color:red;margin:0}.b{color:blue}"
+
+let rearranged_reported () =
+  let d = diff_of ~expected:split ~actual:joined in
+  match rearranged_of d with
+  | [ (selector, declarations) ] ->
+      Alcotest.(check string) "the selector that moved" ".a" selector;
+      Alcotest.(check (list string))
+        "carries every declaration it writes" [ "color"; "margin" ]
+        (List.map Css.declaration_name declarations |> List.sort compare)
+  | rs ->
+      Alcotest.failf "expected one rearranged rule, got %d:\n%s"
+        (List.length rs) (render d)
+
+let rearranged_is_a_difference () =
+  let d = diff_of ~expected:split ~actual:joined in
+  Alcotest.(check bool)
+    "a move between rules is still reported, not folded away" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let rearranged_reports_one_node () =
+  (* One selector was named twice, once losing the declaration and once gaining
+     it, which read as an unrelated addition and removal. *)
+  let d = diff_of ~expected:split ~actual:joined in
+  Alcotest.(check int) "one entry for the one selector" 1 (List.length d.rules)
+
+let rearranged_names_the_move () =
+  let out = render (diff_of ~expected:split ~actual:joined) in
+  Alcotest.(check bool)
+    "the report says the declarations moved" true
+    (Astring.String.is_infix ~affix:"moved between rules" out);
+  Alcotest.(check bool)
+    "and shows what moved" true
+    (Astring.String.is_infix ~affix:"margin" out)
+
+let rearranged_same_at_either_depth () =
+  (* Top-level rules and rules inside a container are assembled the same way, so
+     one difference does not report two ways. *)
+  let top = render (diff_of ~expected:split ~actual:joined) in
+  let layered =
+    render
+      (diff_of
+         ~expected:("@layer u{" ^ split ^ "}")
+         ~actual:("@layer u{" ^ joined ^ "}"))
+  in
+  Alcotest.(check bool)
+    "the container report names the move too" true
+    (Astring.String.is_infix ~affix:"moved between rules" layered);
+  Alcotest.(check bool)
+    "and counts it by name rather than as a position change" true
+    (Astring.String.is_infix ~affix:"1 rearranged" layered);
+  Alcotest.(check bool)
+    "the top-level report names it as well" true
+    (Astring.String.is_infix ~affix:"moved between rules" top)
+
+(* These pin the classification against silencing a real difference. *)
+
+let lost_declaration_is_not_a_move () =
+  let d = diff_of ~expected:split ~actual:".a{color:red}.b{color:blue}" in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d));
+  Alcotest.(check bool)
+    "the loss is still reported" true
+    (Astring.String.is_infix ~affix:"- margin" (render d))
+
+let gained_declaration_is_not_a_move () =
+  let d =
+    diff_of ~expected:".a{color:red}.b{color:blue}"
+      ~actual:".a{color:red;margin:0}.b{color:blue}.a{top:0}"
+  in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d));
+  Alcotest.(check bool)
+    "the difference is still reported" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let changed_value_is_not_a_move () =
+  let d =
+    diff_of ~expected:".a{color:red}.b{x:1}.a{margin:0}"
+      ~actual:".a{color:green;margin:0}.b{x:1}"
+  in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d));
+  Alcotest.(check bool)
+    "the value change is named" true
+    (Astring.String.is_infix ~affix:"red -> green" (render d))
+
+let added_important_is_not_a_move () =
+  (* [!important] decides the cascade winner, so the same property and value
+     with it added is not the declaration that left. *)
+  let d =
+    diff_of ~expected:".a{color:red}.b{x:1}.a{margin:0}"
+      ~actual:".a{color:red;margin:0 !important}.b{x:1}"
+  in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d));
+  Alcotest.(check bool)
+    "the change of weight is named" true
+    (Astring.String.is_infix ~affix:"!important" (render d))
+
+let one_of_two_duplicates_lost_is_not_a_move () =
+  (* Declarations are compared as a multiset, so dropping one of two identical
+     ones is a loss even though the property still appears on both sides. *)
+  let d =
+    diff_of ~expected:".a{top:0}.b{x:1}.a{top:0}" ~actual:".a{top:0}.b{x:1}"
+  in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d))
+
+let unrelated_selectors_are_not_a_move () =
+  (* The declaration moves to a different selector, changing what it applies
+     to. *)
+  let d =
+    diff_of ~expected:".a{color:red}.b{margin:0}"
+      ~actual:".a{color:red;margin:0}.b{}"
+  in
+  Alcotest.(check int)
+    "nothing is called a move" 0
+    (List.length (rearranged_of d))
+
+let rearranged_survives_pp_simple () =
+  match rearranged_of (diff_of ~expected:split ~actual:joined) with
+  | [ _ ] ->
+      let d = diff_of ~expected:split ~actual:joined in
+      let buf = Buffer.create 64 in
+      List.iter (Cascade_diff.Tree_diff.pp_rule_diff_simple buf) d.rules;
+      Alcotest.(check bool)
+        "the compact form names it" true
+        (Astring.String.is_infix ~affix:"Rearranged" (Buffer.contents buf))
+  | _ -> Alcotest.fail "expected one rearranged rule"
+
 let suite =
   ( "tree_diff",
     [
@@ -434,6 +591,29 @@ let suite =
         diff_nesting_parent_props_only;
       Alcotest.test_case "duplicate condition blocks reconcile" `Quick
         duplicate_condition_blocks_reconcile;
+      Alcotest.test_case "rearranged reported" `Quick rearranged_reported;
+      Alcotest.test_case "rearranged is a difference" `Quick
+        rearranged_is_a_difference;
+      Alcotest.test_case "rearranged reports one node" `Quick
+        rearranged_reports_one_node;
+      Alcotest.test_case "rearranged names the move" `Quick
+        rearranged_names_the_move;
+      Alcotest.test_case "rearranged same at either depth" `Quick
+        rearranged_same_at_either_depth;
+      Alcotest.test_case "lost declaration is not a move" `Quick
+        lost_declaration_is_not_a_move;
+      Alcotest.test_case "gained declaration is not a move" `Quick
+        gained_declaration_is_not_a_move;
+      Alcotest.test_case "changed value is not a move" `Quick
+        changed_value_is_not_a_move;
+      Alcotest.test_case "added important is not a move" `Quick
+        added_important_is_not_a_move;
+      Alcotest.test_case "one of two duplicates lost is not a move" `Quick
+        one_of_two_duplicates_lost_is_not_a_move;
+      Alcotest.test_case "unrelated selectors are not a move" `Quick
+        unrelated_selectors_are_not_a_move;
+      Alcotest.test_case "rearranged survives pp_rule_diff_simple" `Quick
+        rearranged_survives_pp_simple;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

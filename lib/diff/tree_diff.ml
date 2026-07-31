@@ -37,6 +37,10 @@ type rule_diff =
       old_declarations : Css.declaration list option;
       new_declarations : Css.declaration list option;
     }
+  | Rearranged of { selector : string; declarations : Css.declaration list }
+    (* Every declaration the selector carries survives on both sides, spread
+       differently over the rules that write it. An element that also matches an
+       overlapping selector can resolve differently. *)
   | Regrouped of {
       from_selectors : string list; (* rule selectors in expected *)
       to_selectors : string list; (* rule selectors in actual *)
@@ -159,6 +163,7 @@ let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
     match action with
     | "add" -> "+"
     | "remove" -> "-"
+    | "same" -> " " (* context marker: present on both sides *)
     | _ -> action (* fallback for other actions like "declarations" *)
   in
   (* Properties don't get tree connectors - just indentation continuation *)
@@ -470,6 +475,13 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
           pp_position_reorder ~prefix buf ~selector:r.selector
             ~expected_pos:r.expected_pos ~actual_pos:r.actual_pos
             ~swapped_with:r.swapped_with)
+  | Rearranged { selector; declarations } ->
+      let prefix = tree_prefix ~style ~is_last ~parent_prefix in
+      let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
+      add_strings buf [ prefix; selector; " (moved between rules)\n" ];
+      pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
+          pp_declarations ~style ~parent_prefix:child_prefix buf "same"
+            declarations)
   | Regrouped { from_selectors; to_selectors } ->
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
@@ -490,6 +502,8 @@ let pp_rule_diff_simple buf (diff : rule_diff) =
       Buffer.add_string buf
         ("Reordered(" ^ selector ^ ":" ^ string_of_int expected_pos ^ "->"
        ^ string_of_int actual_pos ^ ")")
+  | Rearranged { selector; _ } ->
+      Buffer.add_string buf ("Rearranged(" ^ selector ^ ")")
   | Regrouped { from_selectors; to_selectors } ->
       Buffer.add_string buf
         ("Regrouped("
@@ -666,6 +680,11 @@ let count_rule_changes (rule_changes : rule_diff list) =
                match diff with Reordered _ -> true | _ -> false)
          in
          if n > 0 then Some (string_of_int n ^ " reordered") else None);
+        (let n =
+           count (fun (diff : rule_diff) ->
+               match diff with Rearranged _ -> true | _ -> false)
+         in
+         if n > 0 then Some (string_of_int n ^ " rearranged") else None);
         (let n =
            count (fun (diff : rule_diff) ->
                match diff with Selector_changed _ -> true | _ -> false)
@@ -1735,6 +1754,55 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
       else reorder_or_content sel1_str decls1 decls2
 
 (* Assemble rule changes (added/removed/modified) between two rule lists *)
+
+(* The selector a change is about, when it names one. *)
+let changed_selector : rule_diff -> string option = function
+  | Added { selector; _ }
+  | Removed { selector; _ }
+  | Content_changed { selector; _ } ->
+      Some selector
+  | Rearranged { selector; _ } -> Some selector
+  | Reordered _ | Selector_changed _ | Regrouped _ -> None
+
+let change_sides : rule_diff -> Css.declaration list * Css.declaration list =
+  function
+  | Added { declarations; _ } -> ([], declarations)
+  | Removed { declarations; _ } -> (declarations, [])
+  | Content_changed { old_declarations; new_declarations; _ } ->
+      (old_declarations, new_declarations)
+  | _ -> ([], [])
+
+let change_gains : rule_diff -> bool = function
+  | Added _ | Content_changed _ -> true
+  | _ -> false
+
+let change_loses : rule_diff -> bool = function
+  | Removed _ | Content_changed _ -> true
+  | _ -> false
+
+(* Every declaration [sel] writes on one side, across all of its rules. *)
+let declarations_of_selector sel stmts =
+  List.concat_map
+    (fun stmt ->
+      match Css.as_rule stmt with
+      | Some (selector, decls, _) when Css.Selector.to_string selector = sel ->
+          decls
+      | _ -> [])
+    stmts
+
+(* Judge on every rule of the selector, not only the differing ones: a
+   declaration a matching rule already carries distinguishes a move from a
+   loss. *)
+let merge_selector_group ~rules1 ~rules2 sel peers =
+  let old_all = declarations_of_selector sel rules1
+  and new_all = declarations_of_selector sel rules2 in
+  if old_all <> [] && decls_signature old_all = decls_signature new_all then
+    Rearranged { selector = sel; declarations = new_all }
+  else
+    content_changed sel
+      (List.concat_map (fun d -> fst (change_sides d)) peers)
+      (List.concat_map (fun d -> snd (change_sides d)) peers)
+
 (* One selector, one node. Two rules writing the same selector in a container
    produced two sibling entries under the same label, one reporting a
    declaration added and the other a different one removed, which reads as a
@@ -1744,46 +1812,24 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
    Only a group that both gains and loses collapses: several rules added under
    one selector really are several additions, and merging those would hide the
    count. *)
-let merge_same_selector_changes (changes : rule_diff list) : rule_diff list =
-  let selector_of : rule_diff -> string option = function
-    | Added { selector; _ }
-    | Removed { selector; _ }
-    | Content_changed { selector; _ } ->
-        Some selector
-    | Reordered _ | Selector_changed _ | Regrouped _ -> None
-  in
-  let sides : rule_diff -> Css.declaration list * Css.declaration list =
-    function
-    | Added { declarations; _ } -> ([], declarations)
-    | Removed { declarations; _ } -> (declarations, [])
-    | Content_changed { old_declarations; new_declarations; _ } ->
-        (old_declarations, new_declarations)
-    | _ -> ([], [])
-  in
-  let gains : rule_diff -> bool = function
-    | Added _ | Content_changed _ -> true
-    | _ -> false
-  in
-  let loses : rule_diff -> bool = function
-    | Removed _ | Content_changed _ -> true
-    | _ -> false
-  in
+let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
+    rule_diff list =
   let done_ = Hashtbl.create 8 in
   List.filter_map
     (fun diff ->
-      match selector_of diff with
+      match changed_selector diff with
       | None -> Some diff
       | Some sel when Hashtbl.mem done_ sel -> None
       | Some sel -> (
-          let peers = List.filter (fun d -> selector_of d = Some sel) changes in
+          let peers =
+            List.filter (fun d -> changed_selector d = Some sel) changes
+          in
           match peers with
-          | _ :: _ :: _ when List.exists gains peers && List.exists loses peers
-            ->
+          | _ :: _ :: _
+            when List.exists change_gains peers
+                 && List.exists change_loses peers ->
               Hashtbl.replace done_ sel ();
-              Some
-                (content_changed sel
-                   (List.concat_map (fun d -> fst (sides d)) peers)
-                   (List.concat_map (fun d -> snd (sides d)) peers))
+              Some (merge_selector_group ~rules1 ~rules2 sel peers)
           | _ -> Some diff))
     changes
 
@@ -1793,7 +1839,7 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   @ List.filter_map convert_removed_rule r_removed
   @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
   @ r_regrouped
-  |> merge_same_selector_changes
+  |> merge_same_selector_changes ~rules1 ~rules2
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =
@@ -2603,13 +2649,10 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
      keeps [rule_diffs] from matching every import on the universal key. *)
   let rules1 = List.filter (fun s -> Css.as_import s = None) all1 in
   let rules2 = List.filter (fun s -> Css.as_import s = None) all2 in
-  let added, removed, modified, regrouped = rule_diffs rules1 rules2 in
-
+  (* Same assembly as inside a container, so a difference reports the same way
+     at either depth. *)
   let rule_changes =
-    List.filter_map convert_added_rule added
-    @ List.filter_map convert_removed_rule removed
-    @ List.filter_map (convert_modified_rule ~rules1 ~rules2) modified
-    @ regrouped @ process_imports all1 all2
+    to_rule_changes rules1 rules2 @ process_imports all1 all2
   in
 
   (* Delegate all container and nested-container diffs to the generic walker *)
