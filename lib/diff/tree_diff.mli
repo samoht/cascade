@@ -38,6 +38,12 @@ type rule_diff =
       old_declarations : Css.declaration list option;
       new_declarations : Css.declaration list option;
     }
+  | Rearranged of { selector : string; declarations : Css.declaration list }
+      (** Every declaration the selector carries survives on both sides, spread
+          differently over the rules that write it. An element that also matches
+          an overlapping selector can resolve differently, since which rule
+          carries a declaration decides where it sits relative to the other
+          selector's rules. *)
   | Regrouped of { from_selectors : string list; to_selectors : string list }
       (** A comma group merged or split across rules with identical
           declarations: the same selectors survive, only the grouping differs.

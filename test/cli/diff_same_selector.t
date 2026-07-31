@@ -1,10 +1,9 @@
 CLI: cascade diff - one node per selector.
 
-A selector written by more than one rule in a container used to produce a
-node per rule, each carrying the same label: one saying a declaration was
-added and another that a different one was removed, which reads as a
-contradiction rather than as the declarations sitting on different rules.
-The group is reported once.
+A selector written by more than one rule reports once. When every declaration
+it writes survives on both sides, spread differently over those rules, the
+entry names the move, where the selector was named twice, once losing a
+declaration and once gaining another.
 
 These two are a reduced Tailwind utilities layer: each utility is a bare
 rule, an @supports rule and another bare rule, and the two sides emit the
@@ -24,8 +23,91 @@ is real and must still be reported.
   
   --- ref.css
   +++ tw.css
-  └─ @layer utilities (1 modified)
-     └─ .drop-shadow-indigo-500
-           - --tw-drop-shadow-color
+  └─ @layer utilities (1 rearranged)
+     └─ .drop-shadow-indigo-500 (moved between rules)
+             --tw-drop-shadow-color color-mix(in oklab,var(--col...tw-drop-shadow-alpha),#0000)
+             --tw-drop-shadow var(--tw-drop-shadow-size)
   
   [1]
+
+
+
+A top-level group reports the same way as one inside a container.
+
+  $ cat > split.css <<'EOF'
+  > .a{color:red}.b{color:blue}.a{margin:0}
+  > EOF
+  $ cat > joined.css <<'EOF'
+  > .a{color:red;margin:0}.b{color:blue}
+  > EOF
+  $ cascade diff --depth=max split.css joined.css
+  CSS: 37 chars vs 40 chars (7.5% diff)
+  Changes: 1 rearranged rule
+  
+  --- split.css
+  +++ joined.css
+  └─ .a (moved between rules)
+          color red
+          margin 0
+  
+  [1]
+
+
+
+  $ cat > split_layer.css <<'EOF'
+  > @layer u{.a{color:red}.b{color:blue}.a{margin:0}}
+  > EOF
+  $ cat > joined_layer.css <<'EOF'
+  > @layer u{.a{color:red;margin:0}.b{color:blue}}
+  > EOF
+  $ cascade diff --depth=max split_layer.css joined_layer.css
+  CSS: 47 chars vs 50 chars (6.0% diff)
+  Changes: 1 changed container
+  
+  --- split_layer.css
+  +++ joined_layer.css
+  └─ @layer u (1 rearranged)
+     └─ .a (moved between rules)
+             color red
+             margin 0
+  
+  [1]
+
+
+
+A declaration that does not survive is reported as a loss.
+
+  $ cat > lost.css <<'EOF'
+  > .a{color:red}.b{color:blue}
+  > EOF
+  $ cascade diff --depth=max split.css lost.css
+  CSS: 28 chars vs 40 chars (30.0% diff)
+  Changes: 1 removed rule
+  
+  --- split.css
+  +++ lost.css
+  └─ .a
+        - margin 0
+  
+  [1]
+
+
+
+The property name appearing on both sides is not enough: a changed value or
+an added !important changes what the selector writes.
+
+  $ cat > weighted.css <<'EOF'
+  > .a{color:red;margin:0 !important}.b{color:blue}
+  > EOF
+  $ cascade diff --depth=max split.css weighted.css
+  CSS: 48 chars vs 40 chars (20.0% diff)
+  Changes: 1 modified rule
+  
+  --- split.css
+  +++ weighted.css
+  └─ .a
+        * margin: 0 -> 0 !important
+  
+  [1]
+
+
