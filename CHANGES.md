@@ -63,6 +63,12 @@
 
 ### Minification
 
+- The optimizer logs its factoring decisions at debug level on the
+  `cascade.factor` and `cascade.optimize` sources, so
+  `--log=cascade.factor:debug` shows each fixpoint iteration and every segment
+  the transfer gate reverts or the preflight skips. The sources existed and
+  nothing ever wrote to them (#239)
+
 - `grid-auto-flow: row dense` minifies to `dense`. CSS Grid 2 sec. 7.6 gives
   the property as `[ row | column ] || dense` with `row` as the omitted axis,
   so the two are one value. `column dense` keeps its axis (#230)
