@@ -1,8 +1,7 @@
 (** Selector/property write edges. *)
 
-type packed_property =
-  | Packed : 'a Properties.property -> packed_property
-      (** Existential wrapper for typed property tags. *)
+(** Existential wrapper for typed property tags. *)
+type packed_property = Packed : 'a Properties.property -> packed_property
 
 type t = {
   summary : Selector_summary.t;

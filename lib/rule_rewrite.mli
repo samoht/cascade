@@ -1,13 +1,13 @@
 (** Local DAG rewrite candidates and byte scoring. *)
 
+(** The family that produced a candidate. Used for deterministic scheduling,
+    debugging, and tests. *)
 type kind =
   | Identical_body
   | Same_selector
   | Exact_shared_declarations
   | Selector_branch_inline
   | Default_factoring
-      (** The family that produced a candidate. Used for deterministic
-          scheduling, debugging, and tests. *)
 
 type candidate = {
   generation : int;

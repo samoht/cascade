@@ -36,11 +36,8 @@ val to_string : t -> string
 (** [to_string t] formats [t] as [[start-end]]. *)
 
 module Path : sig
-  type step =
-    | Mem of string
-    | Nth of int
-    | Label of string
-        (** Path step used to describe a descent into parsed structure. *)
+  (** Path step used to describe a descent into parsed structure. *)
+  type step = Mem of string | Nth of int | Label of string
 
   type t
   (** A root-to-leaf path. *)
