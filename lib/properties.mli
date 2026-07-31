@@ -2277,6 +2277,19 @@ val pp_stroke_miterlimit : stroke_miterlimit Pp.t
 val read_stroke_miterlimit : Cursor.t -> stroke_miterlimit
 (** [read_stroke_miterlimit t] is the [stroke_miterlimit] parsed from [t]. *)
 
+val pp_paint_order_keyword : paint_order_keyword Pp.t
+(** [pp_paint_order_keyword] pretty-prints one [paint-order] operand. *)
+
+val read_paint_order_keyword : Cursor.t -> paint_order_keyword
+(** [read_paint_order_keyword t] is the [paint_order_keyword] parsed from [t].
+*)
+
+val pp_paint_order : paint_order Pp.t
+(** [pp_paint_order] pretty-prints a [paint-order]. *)
+
+val read_paint_order : Cursor.t -> paint_order
+(** [read_paint_order t] is the [paint_order] parsed from [t]. *)
+
 val pp_dash_length : dash_length Pp.t
 (** [pp_dash_length] pretty-prints one SVG dash length. *)
 

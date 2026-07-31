@@ -1904,6 +1904,19 @@ let matrix =
         negatives = [ "red"; "4 red" ];
       };
       {
+        property = "paint-order";
+        positives =
+          [
+            "normal";
+            "fill";
+            "stroke";
+            "markers";
+            "stroke fill";
+            "markers stroke fill";
+          ];
+        negatives = [ "fill fill"; "normal fill"; "bogus"; "fill bogus" ];
+      };
+      {
         property = "unicode-bidi";
         positives = [ "normal"; "embed"; "isolate"; "plaintext" ];
         negatives = [ "normal isolate"; "auto" ];

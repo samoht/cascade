@@ -160,6 +160,15 @@ let complex_values () =
   decl_optimizes ~prop:"stroke-dasharray" ~into:"0 4px" "0px 4px";
   check_declaration ~expected:"stroke-dashoffset:.5px"
     "stroke-dashoffset: 0.50px;";
+  (* SVG 2 sec. 13.7: a keyword left out is painted last, in the order [normal]
+     would use, so the specification's own example is that [paint-order: stroke]
+     equals [paint-order: stroke fill markers]. The shortest spelling is the
+     shortest prefix that expands back to the same order. *)
+  decl_optimizes ~prop:"paint-order" ~into:"stroke" "stroke fill markers";
+  decl_optimizes ~prop:"paint-order" ~into:"normal" "fill stroke markers";
+  decl_optimizes ~prop:"paint-order" ~into:"normal" "fill";
+  (* Reordering the tail is load-bearing, so this one keeps both keywords. *)
+  decl_optimizes ~prop:"paint-order" ~into:"markers stroke" "markers stroke";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -2386,7 +2395,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 450
+    "property grammar manifest covers every tracked spec property name" 451
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

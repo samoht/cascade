@@ -4383,6 +4383,31 @@ let rec numeric_miterlimit_calc_leaves :
           numeric_miterlimit_calc_leaves right )
   | other -> other
 
+(* SVG 2 sec. 13.7: keywords left out are painted last, in the order [normal]
+   would use. So a value denotes the full order [written @ missing-in-normal-
+   order], and the shortest spelling is the shortest prefix of that order which
+   expands back to it. [fill stroke markers] expands from nothing, so it is
+   [normal]; [stroke fill] expands from [stroke]. *)
+let paint_order_normal : paint_order_keyword list = [ Fill; Stroke; Markers ]
+
+let paint_order_expand (written : paint_order_keyword list) =
+  written @ List.filter (fun k -> not (List.mem k written)) paint_order_normal
+
+let normalize_paint_order (value : paint_order) : paint_order =
+  match value with
+  | Order written ->
+      let full = paint_order_expand written in
+      let rec shortest n =
+        if n > List.length full then value
+        else
+          let prefix = List.filteri (fun i _ -> i < n) full in
+          if paint_order_expand prefix = full then
+            if prefix = [] then (Normal : paint_order) else Order prefix
+          else shortest (n + 1)
+      in
+      shortest 0
+  | _ -> value
+
 let normalize_dash_length ~ctx (value : dash_length) : dash_length =
   match value with
   | Number _ -> value
@@ -7298,6 +7323,7 @@ let pp_property : type a. a property Pp.t =
   | Stroke_miterlimit -> Pp.string ctx "stroke-miterlimit"
   | Stroke_dashoffset -> Pp.string ctx "stroke-dashoffset"
   | Stroke_dasharray -> Pp.string ctx "stroke-dasharray"
+  | Paint_order -> Pp.string ctx "paint-order"
   | Stop_color -> Pp.string ctx "stop-color"
   | Flood_color -> Pp.string ctx "flood-color"
   | Lighting_color -> Pp.string ctx "lighting-color"
@@ -9667,6 +9693,23 @@ let rec pp_nav : nav Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
+
+let pp_paint_order_keyword : paint_order_keyword Pp.t =
+ fun ctx -> function
+  | Fill -> Pp.string ctx "fill"
+  | Stroke -> Pp.string ctx "stroke"
+  | Markers -> Pp.string ctx "markers"
+
+let rec pp_paint_order : paint_order Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_paint_order ctx v
+  | Normal -> Pp.string ctx "normal"
+  | Order ks -> Pp.list ~sep:Pp.space pp_paint_order_keyword ctx ks
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_dash_length : dash_length Pp.t =
  fun ctx -> function
@@ -15402,6 +15445,46 @@ let read_svg_paint t : svg_paint =
    The limit is a ratio of miter length to stroke width, and that ratio is 1 at
    its smallest, so anything below 1 is out of range. Only a literal can be
    checked here; calc() and var() resolve later. *)
+let paint_order_keyword_of = function
+  | "fill" -> Some (Fill : paint_order_keyword)
+  | "stroke" -> Some Stroke
+  | "markers" -> Some Markers
+  | _ -> None
+
+let read_paint_order_keyword t : paint_order_keyword =
+  let name = Cursor.ident t in
+  match paint_order_keyword_of name with
+  | Some k -> k
+  | None -> err_invalid_value t "paint-order" name
+
+(* [||] takes each operand at most once, so a repeat ends the list rather than
+   extending it. *)
+let rec read_paint_order t : paint_order =
+  Cursor.enum_or_calls "paint-order"
+    [
+      ("normal", (Normal : paint_order));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_paint_order t)) ]
+    ~default:(fun t ->
+      let rec go acc =
+        if List.length acc = 3 then List.rev acc
+        else begin
+          Cursor.ws t;
+          match Option.map paint_order_keyword_of (Cursor.peek_ident t) with
+          | Some (Some k) when not (List.mem k acc) ->
+              let _ = Cursor.ident t in
+              go (k :: acc)
+          | _ -> List.rev acc
+        end
+      in
+      (Order (go [ read_paint_order_keyword t ]) : paint_order))
+    t
+
 (* A bare number is user units; anything with a unit or a percent sign is a
    <length-percentage>. *)
 let read_dash_length t : dash_length =
@@ -19525,6 +19608,7 @@ let read_any_property t =
   | "stroke-miterlimit" -> Prop Stroke_miterlimit
   | "stroke-dashoffset" -> Prop Stroke_dashoffset
   | "stroke-dasharray" -> Prop Stroke_dasharray
+  | "paint-order" -> Prop Paint_order
   (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
@@ -21557,6 +21641,7 @@ let normalize_property_value : type a.
   | Stroke_miterlimit -> normalize_stroke_miterlimit value
   | Stroke_dashoffset -> normalize_stroke_dashoffset ~ctx value
   | Stroke_dasharray -> normalize_stroke_dasharray ~ctx value
+  | Paint_order -> normalize_paint_order value
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis value
   | Flex -> normalize_flex value
@@ -22186,6 +22271,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Stroke_miterlimit -> pp pp_stroke_miterlimit
   | Stroke_dashoffset -> pp pp_stroke_dashoffset
   | Stroke_dasharray -> pp pp_stroke_dasharray
+  | Paint_order -> pp pp_paint_order
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_combine_upright -> pp pp_text_combine_upright
