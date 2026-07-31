@@ -137,6 +137,11 @@
 
 ### New properties and values
 
+- Read `vector-effect`, the last of the SVG presentation properties that parsed
+  as unknown. SVG 2 sec. 7.10 makes `viewport` what an omitted host space
+  means, so `non-scaling-stroke viewport` minifies to `non-scaling-stroke`;
+  `screen` is kept (#242)
+
 - Read `paint-order`, and minify it to the shortest spelling of the same paint
   order. SVG 2 sec. 13.7 paints an omitted keyword last in the order `normal`
   would use, so `paint-order: stroke fill markers` is `stroke` (the

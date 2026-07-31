@@ -2277,6 +2277,26 @@ val pp_stroke_miterlimit : stroke_miterlimit Pp.t
 val read_stroke_miterlimit : Cursor.t -> stroke_miterlimit
 (** [read_stroke_miterlimit t] is the [stroke_miterlimit] parsed from [t]. *)
 
+val pp_vector_effect_keyword : vector_effect_keyword Pp.t
+(** [pp_vector_effect_keyword] pretty-prints one [vector-effect] operand. *)
+
+val read_vector_effect_keyword : Cursor.t -> vector_effect_keyword
+(** [read_vector_effect_keyword t] is the [vector_effect_keyword] parsed from
+    [t]. *)
+
+val pp_vector_effect_space : vector_effect_space Pp.t
+(** [pp_vector_effect_space] pretty-prints a [vector-effect] host space. *)
+
+val read_vector_effect_space : Cursor.t -> vector_effect_space
+(** [read_vector_effect_space t] is the [vector_effect_space] parsed from [t].
+*)
+
+val pp_vector_effect : vector_effect Pp.t
+(** [pp_vector_effect] pretty-prints a [vector-effect]. *)
+
+val read_vector_effect : Cursor.t -> vector_effect
+(** [read_vector_effect t] is the [vector_effect] parsed from [t]. *)
+
 val pp_paint_order_keyword : paint_order_keyword Pp.t
 (** [pp_paint_order_keyword] pretty-prints one [paint-order] operand. *)
 

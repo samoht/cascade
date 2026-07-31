@@ -1654,6 +1654,7 @@ let read_interaction_value : type a.
   | Stroke_dasharray ->
       Some (v Stroke_dasharray (Properties.read_stroke_dasharray t))
   | Paint_order -> Some (v Paint_order (Properties.read_paint_order t))
+  | Vector_effect -> Some (v Vector_effect (Properties.read_vector_effect t))
   | Unicode_bidi -> Some (v Unicode_bidi (read_unicode_bidi t))
   | Writing_mode -> Some (v Writing_mode (read_writing_mode t))
   | Text_combine_upright ->

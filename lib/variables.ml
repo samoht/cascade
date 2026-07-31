@@ -1742,6 +1742,9 @@ let vars_of_stroke_dasharray (value : Properties.stroke_dasharray) =
 let vars_of_paint_order (value : Properties.paint_order) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_vector_effect (value : Properties.vector_effect) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_css_wide (value : Properties.css_wide) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2187,6 +2190,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Stroke_dashoffset, value -> vars_of_stroke_dashoffset value
   | Stroke_dasharray, value -> vars_of_stroke_dasharray value
   | Paint_order, value -> vars_of_paint_order value
+  | Vector_effect, value -> vars_of_vector_effect value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value
