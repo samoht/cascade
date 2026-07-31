@@ -10,7 +10,7 @@ report stops fitting.
   > .x { color: blue; margin: 1px }
   > EOF
   $ NO_COLOR=1 cascade diff a.css b.css
-  CSS: 32 chars vs 29 chars (10.3% diff)
+  CSS: 29 chars vs 32 chars (10.3% diff)
   Changes: 1 modified rule
   
   --- a.css
@@ -27,7 +27,7 @@ Pinning a depth cuts the tree there and records what it hid, so an
 elided subtree never reads as an empty one.
 
   $ NO_COLOR=1 cascade diff --depth=1 a.css b.css
-  CSS: 32 chars vs 29 chars (10.3% diff)
+  CSS: 29 chars vs 32 chars (10.3% diff)
   Changes: 1 modified rule
   
   --- a.css
@@ -46,7 +46,7 @@ qualifies every difference below it.
   > .x { color: red; width: <value> }
   > EOF
   $ NO_COLOR=1 cascade diff a.css warn.css
-  CSS: 34 chars vs 29 chars (17.2% diff)
+  CSS: 29 chars vs 34 chars (17.2% diff)
   Changes: 1 modified rule
   
   warn.css parse warning: <string>: read_declaration/width: bad value for width: expected one of at [24-25] (in component)

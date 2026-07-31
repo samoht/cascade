@@ -161,6 +161,11 @@ identical, rather than as spurious changes.
 
 ### Diff report
 
+- The size summary lists the two files in the order of the `---` and `+++`
+  headers below it. It printed the second file first, so a comparison that
+  added rules read as a shrink and every percentage was measured against the
+  wrong baseline (#261)
+
 - A selector written by more than one rule is reported once, at the top level
   as well as inside a container. Two rules under one selector produced a node
   each carrying the same label, one saying a declaration was added and the

@@ -18,7 +18,7 @@ is real and must still be reported.
   > @layer utilities{.drop-shadow-sm{--tw-drop-shadow-size:drop-shadow(0 1px 2px var(--tw-drop-shadow-color,#00000026));--tw-drop-shadow:drop-shadow(var(--drop-shadow-sm));filter:var(--tw-blur,)var(--tw-brightness,)var(--tw-contrast,)var(--tw-grayscale,)var(--tw-hue-rotate,)var(--tw-invert,)var(--tw-saturate,)var(--tw-sepia,)var(--tw-drop-shadow,)}.drop-shadow-indigo-500{--tw-drop-shadow-color:oklch(58.5%.233 277.117)}@supports(color:color-mix(in lab,red,red)){.drop-shadow-indigo-500{--tw-drop-shadow-color:color-mix(in oklab,var(--color-indigo-500) var(--tw-drop-shadow-alpha),transparent)}}.drop-shadow-indigo-500{--tw-drop-shadow:var(--tw-drop-shadow-size)}.drop-shadow-blue-500\/50{--tw-drop-shadow-color:#3080ff80}@supports(color:color-mix(in lab,red,red)){.drop-shadow-blue-500\/50{--tw-drop-shadow-color:color-mix(in oklab,color-mix(in oklab,var(--color-blue-500) 50%,transparent) var(--tw-drop-shadow-alpha),transparent)}}.drop-shadow-blue-500\/50{--tw-drop-shadow:var(--tw-drop-shadow-size)}}
   > EOF
   $ cascade diff --diff=canonical --prune-unused-custom-props --depth=max ref.css tw.css
-  CSS: 1003 chars vs 1024 chars (2.1% diff)
+  CSS: 1024 chars vs 1003 chars (2.1% diff)
   Changes: 1 changed container
   
   --- ref.css
@@ -41,7 +41,7 @@ A top-level group reports the same way as one inside a container.
   > .a{color:red;margin:0}.b{color:blue}
   > EOF
   $ cascade diff --depth=max split.css joined.css
-  CSS: 37 chars vs 40 chars (7.5% diff)
+  CSS: 40 chars vs 37 chars (7.5% diff)
   Changes: 1 rearranged rule
   
   --- split.css
@@ -61,7 +61,7 @@ A top-level group reports the same way as one inside a container.
   > @layer u{.a{color:red;margin:0}.b{color:blue}}
   > EOF
   $ cascade diff --depth=max split_layer.css joined_layer.css
-  CSS: 47 chars vs 50 chars (6.0% diff)
+  CSS: 50 chars vs 47 chars (6.0% diff)
   Changes: 1 changed container
   
   --- split_layer.css
@@ -81,7 +81,7 @@ A declaration that does not survive is reported as a loss.
   > .a{color:red}.b{color:blue}
   > EOF
   $ cascade diff --depth=max split.css lost.css
-  CSS: 28 chars vs 40 chars (30.0% diff)
+  CSS: 40 chars vs 28 chars (30.0% diff)
   Changes: 1 removed rule
   
   --- split.css
@@ -100,7 +100,7 @@ an added !important changes what the selector writes.
   > .a{color:red;margin:0 !important}.b{color:blue}
   > EOF
   $ cascade diff --depth=max split.css weighted.css
-  CSS: 48 chars vs 40 chars (20.0% diff)
+  CSS: 40 chars vs 48 chars (20.0% diff)
   Changes: 1 modified rule
   
   --- split.css
