@@ -78,6 +78,27 @@ let equal_canonical_ignores_property_order () =
        "@property --a{syntax:\"*\";inherits:false}.x{top:0}@property \
         --z{syntax:\"*\";inherits:false}")
 
+(* Media Queries 4 sec. 2.1: [all] matches every media type, so [not all and
+   (X)] and [not (X)] are the same query. Equating them is projection-only - a
+   Level 3 parser rejects the shorter form, so emission keeps what it read. *)
+let equal_canonical_media_not_all () =
+  Alcotest.(check bool)
+    "not all and (X) is not a difference against not (X)" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@media not all and (hover){.a{color:red}}"
+       "@media not (hover){.a{color:red}}");
+  (* A media type other than [all] restricts the query, so it stays. *)
+  Alcotest.(check bool)
+    "not screen and (X) still differs from not (X)" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@media not screen and (hover){.a{color:red}}"
+       "@media not (hover){.a{color:red}}");
+  (* Bare [not all] matches nothing, which no condition spells. *)
+  Alcotest.(check bool)
+    "not all still differs from not (X)" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
+
 let equal_prune_unused_custom_props () =
   let with_bind = ":root{--spacing:.25rem}.top-0{top:0}" in
   let without = ".top-0{top:0}" in
@@ -1145,4 +1166,6 @@ let suite =
         equal_prune_unused_custom_props;
       Alcotest.test_case "canonical ignores @property order" `Quick
         equal_canonical_ignores_property_order;
+      Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
+        equal_canonical_media_not_all;
     ] )

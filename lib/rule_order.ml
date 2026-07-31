@@ -580,9 +580,43 @@ let rec sort_property_runs (stmts : statement list) : statement list =
   in
   go [] stmts
 
+(* Media Queries 4 sec. 2.1: [all] matches every media type, so it is the
+   identity in [<media-type> and <condition>] and the Level 3 spelling [not all
+   and (X)] is the same query as the Level 4 [not (X)]. Bare [not all] has no
+   condition form - it matches nothing - so it stays, and the unnegated [all and
+   (X)] never reaches here because {!Optimize} already drops it.
+
+   Projection only. The Level 4 form is eight characters shorter, but a Level 3
+   parser rejects a [not] with no media type and an unrecognised query never
+   matches, so rewriting one to the other on output would silently drop the
+   block in those browsers. *)
+let rec canonical_media (query : Media.t) : Media.t =
+  match query with
+  | Media.Type { prefix = Some Media.Not; type_ = Media.All; trailing = Some c }
+    ->
+      Media.Cond (Media.Not c)
+  | Media.List qs -> Media.List (List.map canonical_media qs)
+  | query -> query
+
+let rec canonical_media_queries (stmts : statement list) : statement list =
+  List.map
+    (fun stmt ->
+      match stmt with
+      | Rule r -> Rule { r with nested = canonical_media_queries r.nested }
+      | Media (q, inner) ->
+          Media (canonical_media q, canonical_media_queries inner)
+      | Layer (n, inner) -> Layer (n, canonical_media_queries inner)
+      | Supports (c, inner) -> Supports (c, canonical_media_queries inner)
+      | Container (n, c, inner) ->
+          Container (n, c, canonical_media_queries inner)
+      | other -> other)
+    stmts
+
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
-  let normalized = sort_property_runs (normalize_custom_values stmts) in
+  let normalized =
+    canonical_media_queries (sort_property_runs (normalize_custom_values stmts))
+  in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized
   in

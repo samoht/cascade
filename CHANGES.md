@@ -2,6 +2,12 @@
 
 ### Diffing
 
+- `--diff=canonical` keys a `@media not all and (X)` block as the
+  `@media not (X)` that Media Queries 4 sec. 2.1 makes it equal to, since
+  `all` is the identity media type. The two spellings used to compare as a
+  removed container plus an added one. Emission still keeps what it read: a
+  Level 3 parser rejects the shorter form, and an unrecognised query never
+  matches (#231)
 - `--diff=canonical` sorts a run of `@property` rules by name, keeping the last
   registration of each, at the top level and inside any block. CSS Properties
   and Values API 1 sec. 2 makes registrations for different names

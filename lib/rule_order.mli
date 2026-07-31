@@ -34,4 +34,9 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     sorts by name, keeping the last registration of each. CSS Properties and
     Values API 1 sec. 2 makes registrations for different names
     order-independent and gives a name its last registration, so the emission
-    order carries no meaning. Every block body is its own run context. *)
+    order carries no meaning. Every block body is its own run context.
+
+    A [@media] query of the Level 3 form [not all and (X)] is rewritten to the
+    Level 4 [not (X)] it is equal to under Media Queries 4 sec. 2.1, since [all]
+    is the identity media type. That direction loses support in a Level 3
+    parser, so it belongs to the projection rather than to emission. *)
