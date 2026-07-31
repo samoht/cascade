@@ -21,7 +21,7 @@ edit.
   > .x { color: blue }
   > EOF
   $ NO_COLOR=1 cascade diff c.css d.css
-  CSS: 19 chars vs 18 chars (5.6% diff)
+  CSS: 18 chars vs 19 chars (5.6% diff)
   Changes: 1 modified rule
   
   --- c.css
@@ -35,7 +35,7 @@ Forcing colour on emits ANSI markers even into a pipe; the default
 resolves to plain off-tty, as the NO_COLOR run above shows.
 
   $ cascade diff --color=always c.css d.css | cat -v | head -5
-  CSS: 19 chars vs 18 chars (5.6% diff)
+  CSS: 18 chars vs 19 chars (5.6% diff)
   Changes: 1 modified rule
   
   ^[[33m---^[[0m ^[[33mc.css^[[0m
@@ -52,7 +52,7 @@ diffing).
   > .x { color: #f00 }
   > EOF
   $ NO_COLOR=1 cascade diff --diff=tree e.css f.css
-  CSS: 19 chars vs 18 chars (5.6% diff)
+  CSS: 18 chars vs 19 chars (5.6% diff)
   Changes: 1 modified rule
   
   --- e.css
@@ -154,7 +154,7 @@ The --diff=string mode falls back to character-level diffing.
   > .x { color: blue }
   > EOF
   $ NO_COLOR=1 cascade diff --diff=string g.css h.css
-  CSS: 19 chars vs 18 chars (5.6% diff)
+  CSS: 18 chars vs 19 chars (5.6% diff)
   No structural differences
   
   Strings differ at position 12 (line 0, col 12)
@@ -169,3 +169,25 @@ The --diff=string mode falls back to character-level diffing.
   [1]
 
 
+
+The size summary lists the two files in the order of the headers below it:
+the first file given, then the second.
+
+  $ cat > one.css <<EOF
+  > .x { color: red }
+  > EOF
+  $ cat > many.css <<EOF
+  > .x { color: red } .y { top: 0 } .z { left: 0 }
+  > EOF
+  $ NO_COLOR=1 cascade diff one.css many.css
+  CSS: 18 chars vs 47 chars (161.1% diff)
+  Changes: 2 added rules
+  
+  --- one.css
+  +++ many.css
+  ├─ .y
+  │     + top 0
+  └─ .z
+        + left 0
+  
+  [1]

@@ -638,12 +638,13 @@ let pp_stats buf stats =
       float_of_int char_diff *. 100.0 /. float_of_int stats.expected_chars
     else 0.0
   in
+  (* Same order as the [---] / [+++] headers below: expected, then actual. *)
   add_strings buf
     [
       "CSS: ";
-      string_of_int stats.actual_chars;
-      " chars vs ";
       string_of_int stats.expected_chars;
+      " chars vs ";
+      string_of_int stats.actual_chars;
       " chars (";
     ];
   add_pct buf char_diff_pct;
