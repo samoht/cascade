@@ -85,6 +85,8 @@ type ident =
   | Enabled
   | Other of string
 
+(** [env(--name)] / [var(...)] / [calc(...)] etc. captured as a function name
+    plus its raw argument body. *)
 type value =
   | Length of Values.length
   | Integer of int
@@ -93,9 +95,10 @@ type value =
   | Resolution_value of float * string
   | Ident of ident
   | Function of string * string
-      (** [env(--name)] / [var(...)] / [calc(...)] etc. captured as a function
-          name plus its raw argument body. *)
 
+(** Media Queries 4 sec. 3.1 [<general-enclosed>]: a grammatical but
+    unrecognised query, kept verbatim. Its result is [unknown], which becomes
+    false wherever a boolean is expected. *)
 type feature =
   | Plain of name * value
   | Boolean of name
@@ -103,9 +106,6 @@ type feature =
   | Range_rev of value * cmp * name
   | Interval of value * cmp * name * cmp * value
   | General_enclosed of string
-      (** Media Queries 4 sec. 3.1 [<general-enclosed>]: a grammatical but
-          unrecognised query, kept verbatim. Its result is [unknown], which
-          becomes false wherever a boolean is expected. *)
 
 type condition =
   | Feature of feature
@@ -116,6 +116,7 @@ type condition =
 type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
 
+(** Comma-separated media query list. *)
 type t =
   | Cond of condition
   | Type of {
@@ -123,7 +124,7 @@ type t =
       type_ : medium;
       trailing : condition option;
     }
-  | List of t list  (** Comma-separated media query list. *)
+  | List of t list
 
 val of_string : string -> t
 (** [of_string s] parses [s] as a media query. *)

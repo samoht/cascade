@@ -136,13 +136,14 @@ type declaration = Declaration.declaration
 type statement = Stylesheet.statement
 (** The type for CSS statements. *)
 
+(** Cascade origins from CSS Cascading and Inheritance. *)
 type cascade_origin = Stylesheet.cascade_origin =
   | User_agent
   | User
   | Author_presentational_hint
   | Author
   | Animation
-  | Transition  (** Cascade origins from CSS Cascading and Inheritance. *)
+  | Transition
 
 val rule :
   selector:Selector.t ->
@@ -613,8 +614,8 @@ val with_fallback : 'a var -> 'a -> 'a var
     you need to reference a variable from another module with a specific
     fallback, without creating a declaration. *)
 
-type any_var = Variables.any_var =
-  | V : 'a var -> any_var  (** The type of CSS variables. *)
+(** The type of CSS variables. *)
+type any_var = Variables.any_var = V : 'a var -> any_var
 
 val vars_of_rules : statement list -> any_var list
 (** [vars_of_rules statements] extracts all CSS variables referenced in rule
@@ -824,8 +825,8 @@ type length = Values.length =
   | Revert_layer
   | Fit_content  (** fit-content keyword *)
   | Fit_content_arg of length
-      (** [fit-content(<length-percentage>)]; the argument is stored via the
-          [length] type because [length] already has a [Pct of float] case for
+      (** [fit-content(<length-percentage>)]; the argument is stored via
+          {!type-length} because that type already has a [Pct of float] case for
           the percentage form. *)
   | Content  (** content keyword *)
   | Contain  (** contain keyword (intrinsic sizing) *)
@@ -1141,13 +1142,14 @@ type percentage = Values.percentage =
   | Var of percentage var
   | Calc of percentage calc (* calc(...) that resolves to a % *)
 
+(** Spec-invalid input preserved verbatim. *)
 type length_percentage = Values.length_percentage =
   | Length of length
   | Pct of float
   | Env of length_percentage env
   | Var of length_percentage var
   | Calc of length_percentage calc
-  | Invalid of invalid_value  (** Spec-invalid input preserved verbatim. *)
+  | Invalid of invalid_value
 
 (** CSS number or percentage values (for properties like scale, brightness) *)
 type number_percentage = Values.number_percentage =
@@ -1404,6 +1406,7 @@ val auto_ratio : float -> float -> aspect_ratio
 (** [auto_ratio width height] is an [aspect-ratio] value such as [auto 16 / 9].
 *)
 
+(** CSS font-feature-settings values *)
 type blend_mode = Properties.blend_mode =
   | Normal
   | Multiply
@@ -1428,8 +1431,9 @@ type blend_mode = Properties.blend_mode =
   | Unset
   | Revert
   | Revert_layer
-  | Var of blend_mode var  (** CSS font-feature-settings values *)
+  | Var of blend_mode var
 
+(** CSS font-variation-settings values *)
 type font_feature_settings = Properties.font_feature_settings =
   | Normal
   | Feature_list of string
@@ -1439,7 +1443,7 @@ type font_feature_settings = Properties.font_feature_settings =
   | Revert
   | Revert_layer
   | String of string
-  | Var of font_feature_settings var  (** CSS font-variation-settings values *)
+  | Var of font_feature_settings var
 
 type font_variation_settings = Properties.font_variation_settings =
   | Normal
@@ -1505,6 +1509,7 @@ type box_sizing = Properties.box_sizing =
   | Revert_layer
   | Var of box_sizing var  (** CSS field sizing values. *)
 
+(** CSS caption side values. *)
 type field_sizing = Properties.field_sizing =
   | Content
   | Fixed
@@ -1513,7 +1518,7 @@ type field_sizing = Properties.field_sizing =
   | Unset
   | Revert
   | Revert_layer
-  | Var of field_sizing var  (** CSS caption side values. *)
+  | Var of field_sizing var
 
 type caption_side = Properties.caption_side =
   | Top
@@ -1861,6 +1866,7 @@ type display = Properties.display =
           3 sec. 2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
   | Var of display var  (** CSS position values. *)
 
+(** CSS visibility values. *)
 type position = Properties.position =
   | Static
   | Relative
@@ -1873,8 +1879,9 @@ type position = Properties.position =
   | Unset
   | Revert
   | Revert_layer
-  | Var of position var  (** CSS visibility values. *)
+  | Var of position var
 
+(** CSS z-index values. *)
 type visibility = Properties.visibility =
   | Visible
   | Hidden
@@ -1884,8 +1891,9 @@ type visibility = Properties.visibility =
   | Unset
   | Revert
   | Revert_layer
-  | Var of visibility var  (** CSS z-index values. *)
+  | Var of visibility var
 
+(** CSS opacity values. *)
 type z_index = Properties.z_index =
   | Auto
   | Index of int
@@ -1895,7 +1903,7 @@ type z_index = Properties.z_index =
   | Unset
   | Revert
   | Revert_layer
-  | Var of z_index var  (** CSS opacity values. *)
+  | Var of z_index var
 
 type opacity = Properties.opacity =
   | Opacity_number of float
@@ -1909,6 +1917,7 @@ type opacity = Properties.opacity =
   | Revert_layer
   | Var of opacity var  (** CSS order values (flexbox order). *)
 
+(** CSS overflow values. *)
 type order = Properties.order =
   | Int of int
   | Calc of order calc
@@ -1917,7 +1926,7 @@ type order = Properties.order =
   | Unset
   | Revert
   | Revert_layer
-  | Var of order var  (** CSS overflow values. *)
+  | Var of order var
 
 type overflow = Properties.overflow =
   | Visible
@@ -2111,6 +2120,7 @@ type page_size_orientation = Properties.page_size_orientation =
   | Landscape
   | Var of page_size_orientation var
 
+(** CSS columns values for multi-column layout. *)
 type page_size = Properties.page_size =
   | Auto
   | Single of length
@@ -2119,7 +2129,7 @@ type page_size = Properties.page_size =
   | Named_oriented of page_size_name * page_size_orientation
   | Oriented of page_size_orientation
   | Inherit
-  | Var of page_size var  (** CSS columns values for multi-column layout. *)
+  | Var of page_size var
 
 type columns_value = Properties.columns_value =
   | Auto
@@ -2724,6 +2734,7 @@ type forced_color_adjust = Properties.forced_color_adjust =
   | Revert_layer
   | Var of forced_color_adjust var  (** CSS background-repeat values. *)
 
+(** CSS background-size values. *)
 type background_repeat = Properties.background_repeat =
   | Repeat
   | Space
@@ -2753,8 +2764,9 @@ type background_repeat = Properties.background_repeat =
   | Unset
   | Revert
   | Revert_layer
-  | Var of background_repeat var  (** CSS background-size values. *)
+  | Var of background_repeat var
 
+(** CSS background-attachment values. *)
 type background_size = Properties.background_size =
   | Auto
   | Cover
@@ -2767,11 +2779,12 @@ type background_size = Properties.background_size =
   | Unset
   | Revert
   | Revert_layer
-  | Var of background_size var  (** CSS background-attachment values. *)
+  | Var of background_size var
 
 val background_size_pair : length -> length -> background_size
 (** [background_size_pair width height] is a two-value [background-size]. *)
 
+(** Color interpolation for gradients *)
 type background_attachment = Properties.background_attachment =
   | Scroll
   | Fixed
@@ -2782,7 +2795,7 @@ type background_attachment = Properties.background_attachment =
   | Unset
   | Revert
   | Revert_layer
-  | Var of background_attachment var  (** Color interpolation for gradients *)
+  | Var of background_attachment var
 
 (** CSS Color 5 section 12: hue-interpolation method for polar color spaces (lch
     / oklch / hsl / hwb). *)
@@ -2792,6 +2805,7 @@ type hue_interpolation_method = Properties.hue_interpolation_method =
   | Increasing
   | Decreasing
 
+(** Gradient direction values *)
 type color_interpolation = Properties.color_interpolation =
   | In_oklab
   | In_oklch of hue_interpolation_method option
@@ -2799,8 +2813,9 @@ type color_interpolation = Properties.color_interpolation =
   | In_hsl of hue_interpolation_method option
   | In_lab
   | In_lch of hue_interpolation_method option
-  | Var of color_interpolation var  (** Gradient direction values *)
+  | Var of color_interpolation var
 
+(** Gradient stop values *)
 type gradient_direction = Properties.gradient_direction =
   | Default_direction
   | To_top
@@ -2813,7 +2828,7 @@ type gradient_direction = Properties.gradient_direction =
   | To_top_left
   | Angle of angle
   | With_interpolation of gradient_direction * color_interpolation
-  | Var of gradient_direction var  (** Gradient stop values *)
+  | Var of gradient_direction var
 
 (** Shape of a radial gradient *)
 type radial_shape = Properties.radial_shape =
@@ -2901,6 +2916,7 @@ val conic_gradient_config :
 (** [conic_gradient_config ?angle ?position ?interpolation ()] builds a
     conic-gradient prefix. *)
 
+(** Per CSS Backgrounds and Borders 3 sec. 5. *)
 type border_radius = Properties.border_radius =
   | Radius of {
       horizontal : length_percentage list;
@@ -2915,7 +2931,7 @@ type border_radius = Properties.border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 sec. 5. *)
+  | Var of border_radius var
 
 val radius : length -> border_radius
 (** [radius len] is a one-value [border-radius] shorthand value.
@@ -3044,6 +3060,7 @@ and cross_fade_option = Properties.cross_fade_option = {
   percent : percentage option;
 }
 
+(** Mask-related types *)
 type background_box = Properties.background_box =
   | Border_box
   | Padding_box
@@ -3055,7 +3072,7 @@ type background_box = Properties.background_box =
   | Unset
   | Revert
   | Revert_layer
-  | Var of background_box var  (** Mask-related types *)
+  | Var of background_box var
 
 type webkit_mask_composite = Properties.webkit_mask_composite =
   | Source_over
@@ -3301,6 +3318,7 @@ type flex_direction = Properties.flex_direction =
   | Revert_layer
   | Var of flex_direction var  (** CSS flex wrap values. *)
 
+(** CSS flex basis values. *)
 type flex_wrap = Properties.flex_wrap =
   | Nowrap
   | Wrap
@@ -3310,7 +3328,7 @@ type flex_wrap = Properties.flex_wrap =
   | Unset
   | Revert
   | Revert_layer
-  | Var of flex_wrap var  (** CSS flex basis values. *)
+  | Var of flex_wrap var
 
 type flex_flow = Properties.flex_flow =
   | Flow of flex_direction option * flex_wrap option
@@ -3331,6 +3349,7 @@ type flex_factor = Properties.flex_factor =
   | Calc of flex_factor calc
   | Var of flex_factor var
 
+(** CSS flex shorthand values. *)
 type flex_basis = Properties.flex_basis =
   | Auto
   | Content
@@ -3390,7 +3409,7 @@ type flex_basis = Properties.flex_basis =
   | Hypot of length list
   | Abs of length
   | Calc of flex_basis calc
-  | Var of flex_basis var  (** CSS flex shorthand values. *)
+  | Var of flex_basis var
 
 type flex = Properties.flex =
   | Initial  (** 0 1 auto *)
@@ -3406,6 +3425,9 @@ type flex = Properties.flex =
   | Full of flex_factor * flex_factor * flex_basis  (** grow shrink basis *)
   | Var of flex var
 
+(** CSS align-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
+     align-content} *)
 type font_size = Properties.font_size =
   | Length of length
   | Pct of float
@@ -3427,10 +3449,10 @@ type font_size = Properties.font_size =
   | Revert
   | Revert_layer
   | Var of font_size var
-      (** CSS align-content values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content}
-           MDN: align-content} *)
 
+(** CSS align-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
+     align-items} *)
 type align_content = Properties.align_content =
   | Normal
   | Baseline
@@ -3469,10 +3491,10 @@ type align_content = Properties.align_content =
   | Revert
   | Revert_layer
   | Var of align_content var
-      (** CSS align-items values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
-           align-items} *)
 
+(** CSS justify-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content} MDN:
+     justify-content} *)
 type align_items = Properties.align_items =
   | Normal
   | Stretch
@@ -3505,10 +3527,10 @@ type align_items = Properties.align_items =
   | Revert
   | Revert_layer
   | Var of align_items var
-      (** CSS justify-content values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
-           MDN: justify-content} *)
 
+(** CSS align-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
+     align-self} *)
 type justify_content = Properties.justify_content =
   | Normal
   | Center
@@ -3540,10 +3562,10 @@ type justify_content = Properties.justify_content =
   | Revert
   | Revert_layer
   | Var of justify_content var
-      (** CSS align-self values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
-           align-self} *)
 
+(** CSS justify-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
+     justify-items} *)
 type align_self = Properties.align_self =
   | Auto
   | Normal
@@ -3576,10 +3598,10 @@ type align_self = Properties.align_self =
   | Revert
   | Revert_layer
   | Var of align_self var
-      (** CSS justify-items values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
-           MDN: justify-items} *)
 
+(** CSS justify-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
+     justify-self} *)
 type justify_items = Properties.justify_items =
   | Normal
   | Stretch
@@ -3624,10 +3646,9 @@ type justify_items = Properties.justify_items =
   | Revert
   | Revert_layer
   | Var of justify_items var
-      (** CSS justify-self values.
-          {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
-           justify-self} *)
 
+(** {2:alignment_properties Alignment Properties}
+    CSS Box Alignment properties for flexbox and grid layouts. *)
 type justify_self = Properties.justify_self =
   | Auto
   | Normal
@@ -3671,8 +3692,6 @@ type justify_self = Properties.justify_self =
   | Revert
   | Revert_layer
   | Var of justify_self var
-      (** {2:alignment_properties Alignment Properties}
-          CSS Box Alignment properties for flexbox and grid layouts. *)
 
 val align_content : align_content -> declaration
 (** [align_content alignment] is the
@@ -3750,6 +3769,7 @@ val order : order -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
+(** CSS gap shorthand type. *)
 type gap = Properties.gap =
   | Lengths of { row_gap : length option; column_gap : length option }
   | Inherit
@@ -3757,7 +3777,7 @@ type gap = Properties.gap =
   | Unset
   | Revert
   | Revert_layer
-  | Var of gap var  (** CSS gap shorthand type. *)
+  | Var of gap var
 
 val gaps : ?column:length -> length -> gap
 (** [gaps row] is a one-value {!val-gap} shorthand value. [gaps ~column row] is
@@ -3848,6 +3868,7 @@ type grid_template = Properties.grid_template =
   | Masonry
   | Var of grid_template var
 
+(** CSS grid line values *)
 type grid_template_areas = Properties.grid_template_areas =
   | No_areas
   | Areas of string
@@ -3856,7 +3877,7 @@ type grid_template_areas = Properties.grid_template_areas =
   | Unset
   | Revert
   | Revert_layer
-  | Var of grid_template_areas var  (** CSS grid line values *)
+  | Var of grid_template_areas var
 
 type grid_line = Properties.grid_line =
   | Auto  (** auto *)
@@ -4062,6 +4083,7 @@ type font_weight = Properties.font_weight =
   | Revert_layer
   | Var of font_weight var  (** CSS text align values. *)
 
+(** CSS text decoration values. *)
 type text_align = Properties.text_align =
   | Left
   | Right
@@ -4076,7 +4098,7 @@ type text_align = Properties.text_align =
   | Unset
   | Revert
   | Revert_layer
-  | Var of text_align var  (** CSS text decoration values. *)
+  | Var of text_align var
 
 type text_decoration_line = Properties.text_decoration_line =
   | None
@@ -4231,6 +4253,7 @@ type text_transform_case = Properties.text_transform_case =
   | Uppercase
   | Lowercase
 
+(** CSS text-size-adjust values (including vendor prefixes). *)
 type text_transform = Properties.text_transform =
   | None
   | Case of text_transform_case
@@ -4245,8 +4268,8 @@ type text_transform = Properties.text_transform =
   | Revert
   | Revert_layer
   | Var of text_transform var
-      (** CSS text-size-adjust values (including vendor prefixes). *)
 
+(** CSS font-family values *)
 type text_size_adjust = Properties.text_size_adjust =
   | None
   | Auto
@@ -4256,8 +4279,10 @@ type text_size_adjust = Properties.text_size_adjust =
   | Unset
   | Revert
   | Revert_layer
-  | Var of text_size_adjust var  (** CSS font-family values *)
+  | Var of text_size_adjust var
 
+(** CSS-wide keyword mixed in a [<custom-ident>#] list, preserved verbatim and
+    dropped by [Optimize.drop_invalid] under minify. *)
 type font_family = Properties.font_family =
   (* Generic CSS font families *)
   | Sans_serif
@@ -4359,8 +4384,6 @@ type font_family = Properties.font_family =
   | List of font_family list
   | Var of font_family var
   | Invalid of invalid_value
-      (** CSS-wide keyword mixed in a [<custom-ident>#] list, preserved verbatim
-          and dropped by [Optimize.drop_invalid] under minify. *)
 
 val font_stack : font_family list -> font_family
 (** [font_stack fonts] is a comma-separated [font-family] stack. *)
@@ -5152,6 +5175,7 @@ type border_shorthand = Properties.border_shorthand = {
 }
 (** CSS border shorthand type. *)
 
+(** CSS outline style values. *)
 type border = Properties.border =
   | Inherit
   | Initial
@@ -5160,7 +5184,7 @@ type border = Properties.border =
   | Revert_layer
   | None
   | Shorthand of border_shorthand
-  | Var of border var  (** CSS outline style values. *)
+  | Var of border var
 
 type logical_border_color = Properties.logical_border_color =
   | Single of color
@@ -5685,6 +5709,7 @@ type steps_direction = Properties.steps_direction =
   | End
   | Var of steps_direction var  (** CSS animation timing function values. *)
 
+(** CSS duration values. *)
 type timing_function = Properties.timing_function =
   | Ease
   | Linear
@@ -5702,7 +5727,7 @@ type timing_function = Properties.timing_function =
   | Unset
   | Revert
   | Revert_layer
-  | Var of timing_function var  (** CSS duration values. *)
+  | Var of timing_function var
 
 type duration = Values.duration =
   | Ms of float  (** milliseconds *)
@@ -5829,6 +5854,7 @@ type animation_fill_mode = Properties.animation_fill_mode =
   | Revert_layer
   | Var of animation_fill_mode var  (** CSS animation direction values *)
 
+(** CSS animation play state values *)
 type animation_direction = Properties.animation_direction =
   | Normal
   | Reverse
@@ -5840,8 +5866,9 @@ type animation_direction = Properties.animation_direction =
   | Unset
   | Revert
   | Revert_layer
-  | Var of animation_direction var  (** CSS animation play state values *)
+  | Var of animation_direction var
 
+(** CSS animation iteration count values *)
 type animation_play_state = Properties.animation_play_state =
   | Running
   | Paused
@@ -5851,7 +5878,7 @@ type animation_play_state = Properties.animation_play_state =
   | Unset
   | Revert
   | Revert_layer
-  | Var of animation_play_state var  (** CSS animation iteration count values *)
+  | Var of animation_play_state var
 
 type animation_iteration_count = Properties.animation_iteration_count =
   | Num of float
@@ -6308,6 +6335,7 @@ val cursor_url : ?hotspot:float * float -> fallback:cursor -> string -> cursor
 (** [cursor_url ?hotspot ~fallback url] is a URL cursor with its required
     fallback. *)
 
+(** CSS resize values. *)
 type user_select = Properties.user_select =
   | None
   | Auto
@@ -6319,8 +6347,9 @@ type user_select = Properties.user_select =
   | Unset
   | Revert
   | Revert_layer
-  | Var of user_select var  (** CSS resize values. *)
+  | Var of user_select var
 
+(** CSS print-color-adjust values. *)
 type resize = Properties.resize =
   | None
   | Both
@@ -6333,7 +6362,7 @@ type resize = Properties.resize =
   | Unset
   | Revert
   | Revert_layer
-  | Var of resize var  (** CSS print-color-adjust values. *)
+  | Var of resize var
 
 type print_color_adjust = Properties.print_color_adjust =
   | Economy
@@ -6623,6 +6652,7 @@ type webkit_box_orient = Properties.webkit_box_orient =
   | Revert_layer
   | Var of webkit_box_orient var  (** CSS -webkit-line-clamp values. *)
 
+(** CSS -webkit-appearance values. *)
 type webkit_line_clamp = Properties.webkit_line_clamp =
   | None
   | Lines of int
@@ -6631,7 +6661,7 @@ type webkit_line_clamp = Properties.webkit_line_clamp =
   | Unset
   | Revert
   | Revert_layer
-  | Var of webkit_line_clamp var  (** CSS -webkit-appearance values. *)
+  | Var of webkit_line_clamp var
 
 type webkit_appearance = Properties.webkit_appearance =
   | None  (** No appearance styling *)
@@ -6652,6 +6682,7 @@ type webkit_appearance = Properties.webkit_appearance =
   | Revert_layer
   | Var of webkit_appearance var  (** CSS -webkit-font-smoothing values. *)
 
+(** CSS -moz-osx-font-smoothing values. *)
 type webkit_font_smoothing = Properties.webkit_font_smoothing =
   | Auto
   | None
@@ -6662,7 +6693,7 @@ type webkit_font_smoothing = Properties.webkit_font_smoothing =
   | Unset
   | Revert
   | Revert_layer
-  | Var of webkit_font_smoothing var  (** CSS -moz-osx-font-smoothing values. *)
+  | Var of webkit_font_smoothing var
 
 type moz_osx_font_smoothing = Properties.moz_osx_font_smoothing =
   | Auto
@@ -6750,6 +6781,7 @@ val list_style_symbol_string : string -> list_style_symbol
 val list_style_symbol_url : string -> list_style_symbol
 (** [list_style_symbol_url value] is a URL symbol for [symbols()]. *)
 
+(** CSS list-style-image values *)
 type list_style_type = Properties.list_style_type =
   | None
   | Disc
@@ -6814,7 +6846,7 @@ type list_style_type = Properties.list_style_type =
   | Unset
   | Revert
   | Revert_layer
-  | Var of list_style_type var  (** CSS list-style-image values *)
+  | Var of list_style_type var
 
 val list_style_string : string -> list_style_type
 (** [list_style_string value] is a string [list-style-type]. *)
@@ -6973,11 +7005,13 @@ type touch_action = Properties.touch_action =
   | Vars of touch_action var list
   | Var of touch_action var  (** CSS scroll-snap-strictness values *)
 
+(** CSS scroll-snap axis values *)
 type scroll_snap_strictness = Properties.scroll_snap_strictness =
   | Mandatory
   | Proximity
-  | Var of scroll_snap_strictness var  (** CSS scroll-snap axis values *)
+  | Var of scroll_snap_strictness var
 
+(** CSS scroll-snap-type values *)
 type scroll_snap_axis = Properties.scroll_snap_axis =
   | None
   | X
@@ -6985,8 +7019,9 @@ type scroll_snap_axis = Properties.scroll_snap_axis =
   | Block
   | Inline
   | Both
-  | Var of scroll_snap_axis var  (** CSS scroll-snap-type values *)
+  | Var of scroll_snap_axis var
 
+(** CSS scroll-snap-align values *)
 type scroll_snap_type = Properties.scroll_snap_type =
   | Axis of scroll_snap_axis (* Just the axis, no strictness *)
   | Axis_with_strictness of
@@ -6997,7 +7032,7 @@ type scroll_snap_type = Properties.scroll_snap_type =
   | Unset
   | Revert
   | Revert_layer
-  | Var of scroll_snap_type var  (** CSS scroll-snap-align values *)
+  | Var of scroll_snap_type var
 
 type scroll_snap_align = Properties.scroll_snap_align =
   | None
@@ -7444,6 +7479,8 @@ val var_ref :
 
 (** {2 CSS [@property] Support} *)
 
+(** Type-safe syntax descriptors for CSS [@property] rules per CSS Properties
+    and Values API 1 sec. 2. *)
 type 'a syntax = 'a Variables.syntax =
   | Length : length syntax
   | Color : color syntax
@@ -7465,8 +7502,6 @@ type 'a syntax = 'a Variables.syntax =
   | Plus : 'a syntax -> 'a list syntax
   | Hash : 'a syntax -> 'a list syntax
   | Ident_keyword : string -> unit syntax
-      (** Type-safe syntax descriptors for CSS [@property] rules per CSS
-          Properties and Values API 1 sec. 2. *)
 
 val property :
   name:string -> 'a syntax -> ?initial_value:'a -> ?inherits:bool -> unit -> t
@@ -7570,13 +7605,11 @@ val custom_declaration_layer : declaration -> string option
 
     Functions for converting CSS structures to string output. *)
 
-type mode = Stylesheet.mode =
-  | Variables
-  | Inline
-      (** Rendering mode for CSS output.
-          - [Variables]: Standard rendering with CSS custom properties support
-          - [Inline]: For inline styles (no at-rules, variables expanded with
-            their values) *)
+(** Rendering mode for CSS output.
+    - [Variables]: Standard rendering with CSS custom properties support
+    - [Inline]: For inline styles (no at-rules, variables expanded with their
+      values) *)
+type mode = Stylesheet.mode = Variables | Inline
 
 val to_string :
   ?minify:bool ->

@@ -103,11 +103,9 @@ val drop_empty_rules : t -> t
 
 (** {1 Edge Model} *)
 
-type packed_property =
-  | Packed : 'a Properties.property -> packed_property
-      (** Existential wrapper that hides the value type of a typed property tag,
-          so properties of different value types can live in the same edge list.
-      *)
+(** Existential wrapper that hides the value type of a typed property tag, so
+    properties of different value types can live in the same edge list. *)
+type packed_property = Packed : 'a Properties.property -> packed_property
 
 type edge = {
   summary : Selector_summary.t;

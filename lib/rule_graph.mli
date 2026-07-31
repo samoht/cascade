@@ -35,14 +35,12 @@ end
 
 type node_id = Node_id.t
 
-type edge_reason =
-  | Cascade_conflict
-  | Shared_branch_pin
-      (** Why one node must precede another in the graph. [Cascade_conflict] is
-          a real order-sensitive cascade dependency. [Shared_branch_pin] is a
-          conservative structural pin used to keep produced selector residuals
-          contiguous. *)
+(** Why one node must precede another in the graph. [Cascade_conflict] is a real
+    order-sensitive cascade dependency. [Shared_branch_pin] is a conservative
+    structural pin used to keep produced selector residuals contiguous. *)
+type edge_reason = Cascade_conflict | Shared_branch_pin
 
+(** Why a graph rewrite was rejected. *)
 type rewrite_error =
   | Empty_consume
   | Empty_produce
@@ -53,7 +51,7 @@ type rewrite_error =
   | New_external_conflict of { produced : node_id; external_ : node_id }
   | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
-  | Cycle  (** Why a graph rewrite was rejected. *)
+  | Cycle
 
 val of_rules :
   ?parent:Selector.t -> ?closed_world:bool -> Stylesheet.rule list -> t

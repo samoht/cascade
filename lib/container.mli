@@ -58,7 +58,8 @@ and scroll_state_query =
   | Either of scroll_state_query * scroll_state_query
   | Negated of scroll_state_query
 
-type kind = Min_width | Other  (** Coarse container condition category. *)
+(** Coarse container condition category. *)
+type kind = Min_width | Other
 
 val kind : t -> kind
 (** [kind t] classifies min-width-only conditions for compatibility helpers. *)
