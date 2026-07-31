@@ -161,6 +161,12 @@ identical, rather than as spurious changes.
 
 ### Diff report
 
+- Blocks sharing a condition are reconciled one for one instead of by whether
+  the condition appears at all. Three `@container` blocks with one condition
+  against two of them reported two changed containers, each inventing an added
+  rule, rather than the one block that was removed. The same pairing decides
+  media, layer and supports blocks (#258)
+
 - `cascade diff` bounds its report: it prints the whole difference tree while
   that stays short, and otherwise falls back to the deepest level that fits,
   with `--depth` to pin a level or ask for the tree in full. A whole-stylesheet

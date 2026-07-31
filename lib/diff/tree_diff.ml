@@ -1004,32 +1004,39 @@ let rule_nested stmt =
 let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
     ~(is_empty_diff : 'item -> 'item -> bool) items1 items2 =
   let items1_keyed = List.map (fun i -> (i, key_of i)) items1 in
-  let items2_keyed = List.map (fun i -> (i, key_of i)) items2 in
-  let find_by_key key items =
-    List.find_opt (fun (_, k) -> key_equal k key) items
+  let items2_keyed = Array.of_list (List.map (fun i -> (i, key_of i)) items2) in
+  (* Each right-hand item is claimed by at most one left-hand item. Testing
+     existence instead would hide a duplicate key entirely: with two blocks
+     carrying one condition and one on the other side, neither counts as added
+     or removed, and the survivor is paired twice, so both pairings report
+     differences that are not there. *)
+  let claimed = Array.make (Array.length items2_keyed) false in
+  let claim key =
+    let rec scan i =
+      if i >= Array.length items2_keyed then None
+      else if (not claimed.(i)) && key_equal (snd items2_keyed.(i)) key then (
+        claimed.(i) <- true;
+        Some (fst items2_keyed.(i)))
+      else scan (i + 1)
+    in
+    scan 0
   in
+  let pairs, removed =
+    List.fold_left
+      (fun (pairs, removed) (item1, key1) ->
+        match claim key1 with
+        | Some item2 -> ((item1, item2) :: pairs, removed)
+        | None -> (pairs, item1 :: removed))
+      ([], []) items1_keyed
+  in
+  let pairs = List.rev pairs and removed = List.rev removed in
   let added =
-    List.filter_map
-      (fun (item2, key2) ->
-        if List.exists (fun (_, k1) -> key_equal k1 key2) items1_keyed then None
-        else Some item2)
-      items2_keyed
-  in
-  let removed =
-    List.filter_map
-      (fun (item1, key1) ->
-        if List.exists (fun (_, k2) -> key_equal key1 k2) items2_keyed then None
-        else Some item1)
-      items1_keyed
+    Array.to_list items2_keyed
+    |> List.filteri (fun i _ -> not claimed.(i))
+    |> List.map fst
   in
   let modified =
-    List.filter_map
-      (fun (item1, key1) ->
-        match find_by_key key1 items2_keyed with
-        | Some (item2, _) when not (is_empty_diff item1 item2) ->
-            Some (item1, item2)
-        | _ -> None)
-      items1_keyed
+    List.filter (fun (item1, item2) -> not (is_empty_diff item1 item2)) pairs
   in
   (added, removed, modified)
 
