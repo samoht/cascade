@@ -2,8 +2,8 @@
 
 open Cascade
 
-let tokens_of css =
-  let lexer = Lexer.of_string css in
+let tokens_of ?enforce_spec css =
+  let lexer = Lexer.of_string ?enforce_spec css in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
@@ -15,8 +15,8 @@ let tokens_of css =
 let pp_tokens kinds =
   String.concat " " (List.map (Css.Pp.to_string Token.pp_kind) kinds)
 
-let check input expected_summary =
-  let got = pp_tokens (tokens_of input) in
+let check ?enforce_spec input expected_summary =
+  let got = pp_tokens (tokens_of ?enforce_spec input) in
   Alcotest.(check string) (Fmt.str "tokenize %S" input) expected_summary got
 
 let check_first_hash input expected_value expected_flag =
@@ -90,9 +90,11 @@ let spec_definitions () =
      decisions before the section 4.3 algorithms run. *)
   check "url(a\x07b)" "<bad-url>";
   check "a\u{00B7}b" "<ident a\u{00B7}b>";
-  (* U+200B is not in the non-ASCII ident ranges, so it should fall through to a
-     single delim token with that code point. *)
-  check "\u{200B}" "<delim '\u{200B}'>"
+  (* U+200B is not in the section 4.2 ranges, so under [~enforce_spec:true] it
+     falls through to a single delim token with that code point. Reading
+     defaults to any code point >= U+0080, where it is an ident. *)
+  check ~enforce_spec:true "\u{200B}" "<delim '\u{200B}'>";
+  check "\u{200B}" "<ident \u{200B}>"
 
 let spec_hash_flags () =
   (* CSS Syntax Level 3 section 4.3.1: hash tokens remember whether the

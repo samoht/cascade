@@ -3,6 +3,11 @@
 type t = {
   input : string;
   len : int;
+  (* Restrict non-ASCII identifiers to the CSS Syntax 3 sec. 4.2 range list
+     rather than accepting any code point >= U+0080. Rides on the reader so
+     every [_at] predicate reaches it without threading a parameter through the
+     tokenizer. *)
+  enforce_spec : bool;
   mutable pos : int;
   mutable saved : int list; (* Stack of saved positions for backtracking *)
   mutable call_stack : string list; (* Stack of parsing contexts for debugging *)
@@ -103,11 +108,19 @@ let preprocess input =
   if (not bom) && not (needs_preprocess input len 0) then input
   else copy_preprocessed input len start
 
-let of_string input =
+let of_string ?(enforce_spec = false) input =
   let input = preprocess input in
-  { input; len = String.length input; pos = 0; saved = []; call_stack = [] }
+  {
+    input;
+    len = String.length input;
+    enforce_spec;
+    pos = 0;
+    saved = [];
+    call_stack = [];
+  }
 
 let source t = t.input
+let enforce_spec t = t.enforce_spec
 let is_done t = t.pos >= t.len
 
 let utf8_byte_length cp =

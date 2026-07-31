@@ -33,8 +33,14 @@ val pp_parse_error : parse_error -> string
 
 (** {1 Core} *)
 
-val of_string : string -> t
-(** [of_string s] creates a parser from an already-decoded UTF-8 string. *)
+val of_string : ?enforce_spec:bool -> string -> t
+(** [of_string s] creates a parser from an already-decoded UTF-8 string.
+    [enforce_spec] (default [false]) restricts non-ASCII identifiers to the CSS
+    Syntax 3 sec. 4.2 range list. *)
+
+val enforce_spec : t -> bool
+(** [enforce_spec t] is the identifier rule [t] was built with; see
+    {!val-of_string}. *)
 
 val source : t -> string
 (** [source t] is the full input string the reader was built from. *)

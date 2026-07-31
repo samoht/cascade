@@ -7662,6 +7662,7 @@ val of_string :
   ?strict:bool ->
   ?filename:string ->
   ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
   string ->
   (parse, Error.t) result
 (** [of_string ?strict css] parses [css] with CSS Syntax 3 section 5.4 recovery.
@@ -7671,10 +7672,20 @@ val of_string :
     [~strict:true] a non-empty {!field-warnings} list collapses to [Error]
     (first warning) - useful in linters and CI gates that want to fail on any
     spec deviation. [?meta] controls diagnostic richness; see {!Loc.meta_level}.
-*)
+
+    [enforce_spec] (default [false]) restricts non-ASCII identifiers to the CSS
+    Syntax 3 sec. 4.2 range list, which excludes most BMP symbols. The default
+    accepts any code point [>= U+0080], so a selector such as [.text-\u{2197}]
+    reads rather than being dropped with a warning. Output is unaffected either
+    way: a code point outside the range list is hex-escaped. *)
 
 val of_string_exn :
-  ?strict:bool -> ?filename:string -> ?meta:Loc.meta_level -> string -> t
+  ?strict:bool ->
+  ?filename:string ->
+  ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
+  string ->
+  t
 (** [of_string_exn ?strict css] parses [css] like {!of_string}, raises
     {!Error.Parse_error} instead of returning [Error], and discards the
     {!field-warnings} list. In non-strict mode warnings are silently dropped;

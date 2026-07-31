@@ -21,7 +21,7 @@ type t = {
 and save = { trace : Token.t list ref; saved_history : Token.t list }
 
 let of_reader reader = { reader; buffer = []; history = []; saves = [] }
-let of_string s = of_reader (Reader.of_string s)
+let of_string ?enforce_spec s = of_reader (Reader.of_string ?enforce_spec s)
 let source t = Reader.source t.reader
 
 (** {1 Tokenization} *)
@@ -33,10 +33,16 @@ let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let is_ws c = c = ' ' || c = '\n' || c = '\t' || c = '\r' || c = '\012'
 let is_newline c = c = '\n' || c = '\r' || c = '\012'
 
-(* CSS Syntax 3 section 4.2 "non-ASCII ident code point" ranges. A sealed check,
-   so a byte-level [>= 0x80] heuristic can't over-accept code points the spec
-   excludes (most symbols, emoji, BMP non-characters). *)
-let is_non_ascii_ident_cp cp =
+(* CSS Syntax 3 section 4.2 "non-ASCII ident code point" ranges: a sealed list
+   that excludes most BMP symbols, among them the arrows.
+
+   Real stylesheets carry those anyway - Tailwind emits [.text-\u{2197}] - and
+   dropping a rule is a worse failure for a minifier than accepting a code point
+   the list omits, so reading takes any code point >= U+0080 by default and this
+   list is what [~enforce_spec:true] selects. Writing is unaffected: a code
+   point outside the list is emitted as a hex escape, which every parser
+   reads. *)
+let spec_non_ascii_ident_cp cp =
   cp = 0xB7
   || (cp >= 0xC0 && cp <= 0xD6)
   || (cp >= 0xD8 && cp <= 0xF6)
@@ -49,6 +55,9 @@ let is_non_ascii_ident_cp cp =
   || (cp >= 0xF900 && cp <= 0xFDCF)
   || (cp >= 0xFDF0 && cp <= 0xFFFD)
   || cp >= 0x10000
+
+let is_non_ascii_ident_cp r cp =
+  (not (Reader.enforce_spec r)) || spec_non_ascii_ident_cp cp
 
 (* [is_name_start_byte] answers the ASCII fast-path only. Callers that have a
    byte [>= 0x80] must decode and consult [is_non_ascii_ident_cp] directly. *)
@@ -64,7 +73,7 @@ let is_name_start_at r offset =
   else
     match Reader.peek_utf8_at r offset with
     | None -> false
-    | Some (cp, _) -> is_non_ascii_ident_cp cp
+    | Some (cp, _) -> is_non_ascii_ident_cp r cp
 
 (* [is_name_at r offset] is ident-start or digit or [-]. *)
 let is_name_at r offset =
@@ -76,7 +85,7 @@ let is_name_at r offset =
   else
     match Reader.peek_utf8_at r offset with
     | None -> false
-    | Some (cp, _) -> is_non_ascii_ident_cp cp
+    | Some (cp, _) -> is_non_ascii_ident_cp r cp
 
 (* Byte-level helpers for hot paths where the caller already has the byte. ASCII
    matches spec; [>= 0x80] is conservative (reject), so callers that may see
@@ -214,7 +223,7 @@ let rec scan_ident_fast r src src_len =
     else
       match Reader.peek_utf8_at r 0 with
       | None -> `End
-      | Some (cp, nbytes) when is_non_ascii_ident_cp cp ->
+      | Some (cp, nbytes) when is_non_ascii_ident_cp r cp ->
           for _ = 1 to nbytes do
             Reader.skip r
           done;

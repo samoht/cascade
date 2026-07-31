@@ -3792,9 +3792,9 @@ let extract_bang_comments (source : string) : (int * string) list =
 
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
    from [Parser.stylesheet] with per-rule typed-validation warnings. *)
-let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
-    : stylesheet * Error.t list =
-  let reader = Reader.of_string source in
+let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
+    ?(enforce_spec = false) (source : string) : stylesheet * Error.t list =
+  let reader = Reader.of_string ~enforce_spec source in
   let out = Parser.stylesheet ~meta reader in
   let sheet, typed_warnings =
     read_stylesheet_of_rules ~source:(Reader.source reader) ~meta out.value
