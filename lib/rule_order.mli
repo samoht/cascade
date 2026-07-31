@@ -28,5 +28,10 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
 (** [canonicalize stmts] reorders each maximal run of consecutive reorderable
     style rules into the canonical order described above. At-rules, nested
     rules, and custom-property rules are barriers: they keep their position and
-    split runs. Returns the input list physically unchanged when no run
-    reorders. *)
+    split runs.
+
+    A run of consecutive [@property] rules is the one at-rule exception: it
+    sorts by name, keeping the last registration of each. CSS Properties and
+    Values API 1 sec. 2 makes registrations for different names
+    order-independent and gives a name its last registration, so the emission
+    order carries no meaning. Every block body is its own run context. *)

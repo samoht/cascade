@@ -526,9 +526,63 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
       | other -> other)
     stmts
 
+(* CSS Properties and Values API 1 sec. 2: registrations for different custom
+   property names are order-independent, and for the same name the last one
+   wins. So a run of [@property] rules canonicalises to that run sorted by name,
+   keeping the last registration of each - two sheets that register the same set
+   then differ only in the order they happened to emit them. A non-registration
+   statement splits a run, since reordering across it is not covered by that
+   argument. *)
+let sort_property_run (run : (string * statement) list) : statement list =
+  let last = Hashtbl.create (List.length run) in
+  List.iteri (fun i (name, _) -> Hashtbl.replace last name i) run;
+  run
+  |> List.filteri (fun i (name, _) -> Hashtbl.find last name = i)
+  |> List.stable_sort (fun (a, _) (b, _) -> String.compare a b)
+  |> List.map snd
+
+let rec sort_property_runs (stmts : statement list) : statement list =
+  let name_of stmt =
+    match stmt with Stylesheet_intf.Property p -> Some p.name | _ -> None
+  in
+  (* [@property] is valid inside a conditional group rule and inside [@layer],
+     so every block body is a run context of its own. *)
+  let descend stmt =
+    let here = sort_property_runs in
+    match stmt with
+    | Layer (n, b) -> Layer (n, here b)
+    | Media (m, b) -> Media (m, here b)
+    | Container (n, c, b) -> Container (n, c, here b)
+    | Supports (s, b) -> Supports (s, here b)
+    | Moz_document (c, b) -> Moz_document (c, here b)
+    | When (c, b) -> When (c, here b)
+    | Else (c, b) -> Else (c, here b)
+    | Starting_style b -> Starting_style (here b)
+    | Origin (o, b) -> Origin (o, here b)
+    | Scope (s, e, b) -> Scope (s, e, here b)
+    | other -> other
+  in
+  let rec go acc = function
+    | [] -> List.rev acc
+    | stmt :: rest -> (
+        match name_of stmt with
+        | None -> go (descend stmt :: acc) rest
+        | Some name ->
+            let rec take run = function
+              | s :: r as l -> (
+                  match name_of s with
+                  | Some n -> take ((n, s) :: run) r
+                  | None -> (List.rev run, l))
+              | [] -> (List.rev run, [])
+            in
+            let run, rest = take [ (name, stmt) ] rest in
+            go (List.rev_append (sort_property_run run) acc) rest)
+  in
+  go [] stmts
+
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
-  let normalized = normalize_custom_values stmts in
+  let normalized = sort_property_runs (normalize_custom_values stmts) in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized
   in

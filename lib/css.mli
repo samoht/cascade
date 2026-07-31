@@ -7658,8 +7658,10 @@ val canonicalize_rule_order : t -> t
     whose transitive content is plain rules moves as one unit, keyed by the
     union of its rules' conflict footprints; conflicting statements keep their
     relative order, and named [@layer] blocks pin the layer order where they
-    stand. This is a comparison-side normalisation; {!val-optimize} stays
-    source-stable. *)
+    stand. A run of [@property] rules sorts by name, keeping the last
+    registration of each, since CSS Properties and Values API 1 sec. 2 makes
+    registrations for different names order-independent. This is a
+    comparison-side normalisation; {!val-optimize} stays source-stable. *)
 
 val optimize :
   ?scope:Optimize.scope ->
