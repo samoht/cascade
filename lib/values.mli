@@ -29,7 +29,14 @@ val string_of_number_percentage : number_percentage -> string
 (** {1 Constructor Functions} *)
 
 val hex : string -> color
-(** [hex s] creates a hex color value. *)
+(** [hex s] is the colour of the hex spelling [s], with or without the leading
+    [#]. Raises [Invalid_argument] when [s] is not one of [#rgb], [#rrggbb],
+    [#rgba] or [#rrggbbaa]: no colour is denoted, and returning one would put a
+    plausible wrong colour into the output. See {!hex_opt} to decide. *)
+
+val hex_opt : string -> color option
+(** [hex_opt s] is {!val-hex} without the exception: the colour when [s] is a
+    hex spelling, and nothing otherwise. *)
 
 val rgb : ?alpha:float -> int -> int -> int -> color
 (** [rgb ?alpha r g b] creates an RGB color with optional alpha. *)

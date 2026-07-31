@@ -1250,7 +1250,13 @@ type color = Values.color =
 
 val hex : string -> color
 (** [hex s] is a hexadecimal color. Accepts with or without leading [#].
-    Examples: [hex "#3b82f6"], [hex "ffffff"]. *)
+    Examples: [hex "#3b82f6"], [hex "ffffff"]. Raises [Invalid_argument] when
+    [s] is not one of [#rgb], [#rrggbb], [#rgba] or [#rrggbbaa]; see
+    {!val-hex_opt} to decide. *)
+
+val hex_opt : string -> color option
+(** [hex_opt s] is {!val-hex} without the exception: the colour when [s] is a
+    hex spelling, and nothing otherwise. *)
 
 val rgb : ?alpha:float -> int -> int -> int -> color
 (** [rgb ?alpha r g b] is an RGB color (0-255 components) with optional alpha.

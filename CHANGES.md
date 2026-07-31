@@ -116,6 +116,15 @@
   layered stylesheet (such as Tailwind v4 output) previously inlined
   nothing (#188)
 
+### Breaking
+
+- `Css.hex` raises `Invalid_argument` on a string that is not one of `#rgb`,
+  `#rrggbb`, `#rgba` or `#rrggbbaa`. It used to return opaque black, so a
+  caller's own bad hex reached the output as a plausible wrong colour instead
+  of a failure. `Css.hex_opt` is the deciding form for callers that want to
+  handle it. Parsing is unaffected: the declaration reader already warned and
+  dropped (#232)
+
 ### New properties and values
 
 - Complete the logical border properties: `Css.border_block_color`,
