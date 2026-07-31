@@ -363,6 +363,33 @@ let diff_selector_group_partial_change () =
 
 (* ===== Suite ===== *)
 
+(* Three blocks carrying one condition against two of them. Testing existence
+   rather than claiming each right-hand block once hides the duplicate: neither
+   side counts as added or removed, and the survivors are paired twice, so the
+   report shows two changed containers inventing an added rule apiece. *)
+let duplicate_condition_blocks_reconcile () =
+  let expected =
+    parse
+      "@container (width>=48rem){.a{color:red}}\n\
+       @container (width>=48rem){.b{color:blue}}\n\
+       @container (width>=48rem){.c{color:lime}}"
+  in
+  let actual =
+    parse
+      "@container (width>=48rem){.a{color:red}}\n\
+       @container (width>=48rem){.b{color:blue}}"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int)
+    "one container difference, not one per duplicate" 1
+    (List.length d.containers);
+  Alcotest.(check bool)
+    "the third block is removed" true
+    (Cascade_diff.Tree_diff.has_container_removed_of_type `Container d);
+  Alcotest.(check bool)
+    "and nothing is added" false
+    (Cascade_diff.Tree_diff.has_container_added_of_type `Container d)
+
 let suite =
   ( "tree_diff",
     [
@@ -405,6 +432,8 @@ let suite =
       Alcotest.test_case "nesting deep" `Quick diff_nesting_deep;
       Alcotest.test_case "nesting only parent props changed" `Quick
         diff_nesting_parent_props_only;
+      Alcotest.test_case "duplicate condition blocks reconcile" `Quick
+        duplicate_condition_blocks_reconcile;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
