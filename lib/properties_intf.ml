@@ -3878,6 +3878,20 @@ type svg_paint =
       (** SVG2 sec. 11.2 [context-stroke] - mirror of [Context_fill]. *)
   | Var of svg_paint var
 
+(** SVG 2 sec. 13.5 / 14.4 [<fill-rule>]: which points count as inside a shape
+    when its subpaths overlap. Shared by [fill-rule] and [clip-rule]; the
+    argument form inside [polygon()] is {!clip_path_fill_rule}, which carries no
+    CSS-wide keywords. *)
+type fill_rule =
+  | Nonzero
+  | Evenodd
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of fill_rule var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4823,6 +4837,8 @@ type 'a property =
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property
+  | Fill_rule : fill_rule property
+  | Clip_rule : fill_rule property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property

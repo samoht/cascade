@@ -135,6 +135,13 @@ let complex_values () =
   decl_optimizes ~prop:"flood-color" ~into:"red" "rgb(255, 0, 0)";
   decl_optimizes ~prop:"stop-color" ~into:"#0000" "rgba(0, 0, 0, 0)";
 
+  (* SVG 2 sec. 13.5 and 14.4 give [fill-rule] and [clip-rule] the same
+     <fill-rule>, which is the keyword pair alone: the argument form inside
+     polygon() is a different production. *)
+  check_declaration ~expected:"fill-rule:evenodd" "fill-rule: evenodd;";
+  check_declaration ~expected:"clip-rule:nonzero" "clip-rule: nonzero;";
+  check_declaration ~expected:"fill-rule:var(--r)" "fill-rule: var(--r);";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
@@ -2360,7 +2367,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 443
+    "property grammar manifest covers every tracked spec property name" 445
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

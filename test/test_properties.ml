@@ -188,6 +188,7 @@ let check_scroll_snap_type =
 
 let check_svg_paint = check_value_cursor "svg-paint" read_svg_paint pp_svg_paint
 let check_direction = check_value_cursor "direction" read_direction pp_direction
+let check_fill_rule = check_value_cursor "fill-rule" read_fill_rule pp_fill_rule
 
 let check_unicode_bidi =
   check_value_cursor "unicode-bidi" read_unicode_bidi pp_unicode_bidi
@@ -2116,8 +2117,8 @@ let test_font_stretch () =
   check_font_stretch "50%";
   check_font_stretch "inherit";
   neg_cursor read_font_stretch "invalid-stretch";
-  (* CSS Fonts 4 §5.3 defines each keyword as a percentage, never longer, so
-     minified output uses it — but only for the standalone property: the [font]
+  (* CSS Fonts 4 sec. 5.3 defines each keyword as a percentage, never longer, so
+     minified output uses it, but only for the standalone property: the [font]
      shorthand's stretch component takes the keyword alone. *)
   check_font_stretch ~expected:"100%" "normal";
   check_font_stretch ~expected:"50%" "ultra-condensed";
@@ -2809,6 +2810,14 @@ let test_direction () =
   check_direction "rtl";
   check_direction "inherit";
   neg_cursor read_direction "invalid-direction"
+
+let test_fill_rule () =
+  check_fill_rule "nonzero";
+  check_fill_rule "evenodd";
+  check_fill_rule "inherit";
+  check_fill_rule "var(--r)";
+  neg_cursor read_fill_rule "even-odd";
+  neg_cursor read_fill_rule "nonzero evenodd"
 
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
@@ -4205,6 +4214,7 @@ let additional_tests =
     test_case "overscroll_behavior" `Quick test_overscroll_behavior;
     test_case "svg_paint" `Quick test_svg_paint;
     test_case "direction" `Quick test_direction;
+    test_case "fill_rule" `Quick test_fill_rule;
     test_case "unicode_bidi" `Quick test_unicode_bidi;
     test_case "writing_mode" `Quick test_writing_mode;
     test_case "webkit_appearance" `Quick test_webkit_appearance;
