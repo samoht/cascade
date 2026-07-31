@@ -566,22 +566,80 @@ let container_prefix = function
   | `Property -> "@property"
   | `Nesting -> "&"
 
-let pp_container_rules ~style ~parent_prefix ~label buf rules =
-  if rules <> [] then
-    let rule_count = List.length rules in
-    List.iteri
-      (fun i stmt ->
-        match Css.as_rule stmt with
-        | Some (selector, _, _) ->
-            let rule_prefix =
-              tree_prefix ~style ~is_last:(i = rule_count - 1) ~parent_prefix
+let describe_statement stmt =
+  let try_desc f = f stmt in
+  let matchers =
+    [
+      (fun s ->
+        Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule s));
+      (fun s ->
+        Option.map
+          (fun (c, _) -> "@media " ^ Css.Media.to_string c)
+          (Css.as_media s));
+      (fun s ->
+        Option.map
+          (fun (n, _) ->
+            match n with Some name -> "@layer " ^ name | None -> "@layer")
+          (Css.as_layer s));
+      (fun s ->
+        Option.map
+          (fun (n, c, _) ->
+            let prefix = match n with Some n -> n ^ " " | None -> "" in
+            let cond_str =
+              match c with Some c -> Css.Container.to_string c | None -> ""
             in
-            Buffer.add_string buf
-              (rule_prefix
-              ^ Css.Selector.to_string selector
-              ^ " (" ^ label ^ ")\n")
-        | None -> ())
-      rules
+            "@container " ^ prefix ^ cond_str)
+          (Css.as_container s));
+      (fun s ->
+        Option.map
+          (fun (c, _) -> "@supports " ^ Css.Supports.to_string c)
+          (Css.as_supports s));
+      (fun s -> Option.map (fun _ -> "@property") (Css.as_property s));
+      (fun s ->
+        Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
+      (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
+    ]
+  in
+  match List.find_map try_desc matchers with
+  | Some desc -> Some desc
+  | None -> Some "(other statement)"
+
+(* The body of a container that was added or removed wholesale. Every statement
+   gets a line, including the ones [Css.as_rule] cannot see: a statement the
+   tree drops silently leaves the reader counting fewer entries than the header
+   claims, and shifts the last-child connector onto the wrong one. *)
+let statement_children stmt =
+  match Css.as_media stmt with
+  | Some (_, body) -> body
+  | None -> (
+      match Css.as_supports stmt with
+      | Some (_, body) -> body
+      | None -> (
+          match Css.as_layer stmt with
+          | Some (_, body) -> body
+          | None -> (
+              match Css.as_container stmt with
+              | Some (_, _, body) -> body
+              | None -> [])))
+
+let rec pp_container_rules ~style ~parent_prefix ~label buf rules =
+  let count = List.length rules in
+  List.iteri
+    (fun i stmt ->
+      let is_last = i = count - 1 in
+      let prefix = tree_prefix ~style ~is_last ~parent_prefix in
+      let desc =
+        Option.value (describe_statement stmt) ~default:"(other statement)"
+      in
+      Buffer.add_string buf (prefix ^ desc ^ " (" ^ label ^ ")\n");
+      match statement_children stmt with
+      | [] -> ()
+      | children ->
+          let parent_prefix =
+            tree_continuation ~style ~is_last ~parent_prefix
+          in
+          pp_container_rules ~style ~parent_prefix ~label buf children)
+    rules
 
 let count_rule_changes (rule_changes : rule_diff list) =
   let count pred = List.length (List.filter pred rule_changes) in
@@ -1092,7 +1150,7 @@ let rules_modified_diff rules1 rules2 =
   let used_rules = Hashtbl.create (List.length rules2) in
   (* Claim every exact match first, wherever it sits. Matching in one greedy
      pass lets an early rule take, through the property fallback, the partner a
-     later rule matches exactly — so a page of [.to-*] gradient rules, all with
+     later rule matches exactly, so a page of [.to-*] gradient rules, all with
      the same property signature, pairs off by position and every one reports as
      modified. *)
   let exact, pending =
@@ -1530,51 +1588,28 @@ let properties_diff decls1 decls2 : declaration list * string list * string list
 
 (* Helper functions for converting rule changes - moved here for mutual
    recursion *)
+(* A container still takes part in the ordering comparison, since swapping a
+   rule with an [@media] is cascade-significant, but [container_changes] is what
+   reports it. Converting it here as well produced a second entry for the same
+   block, with an empty selector because [strings_of_rule] has no rule to
+   name. *)
+let is_container_statement stmt =
+  Css.as_media stmt <> None
+  || Css.as_supports stmt <> None
+  || Css.as_layer stmt <> None
+  || Css.as_container stmt <> None
+
 let convert_added_rule stmt =
-  let sel, decls = strings_of_rule stmt in
-  (Added { selector = sel; declarations = decls } : rule_diff)
+  if is_container_statement stmt then None
+  else
+    let sel, decls = strings_of_rule stmt in
+    Some (Added { selector = sel; declarations = decls } : rule_diff)
 
 let convert_removed_rule stmt =
-  let sel, decls = strings_of_rule stmt in
-  (Removed { selector = sel; declarations = decls } : rule_diff)
-
-let describe_statement stmt =
-  let try_desc f = f stmt in
-  let matchers =
-    [
-      (fun s ->
-        Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule s));
-      (fun s ->
-        Option.map
-          (fun (c, _) -> "@media " ^ Css.Media.to_string c)
-          (Css.as_media s));
-      (fun s ->
-        Option.map
-          (fun (n, _) ->
-            match n with Some name -> "@layer " ^ name | None -> "@layer")
-          (Css.as_layer s));
-      (fun s ->
-        Option.map
-          (fun (n, c, _) ->
-            let prefix = match n with Some n -> n ^ " " | None -> "" in
-            let cond_str =
-              match c with Some c -> Css.Container.to_string c | None -> ""
-            in
-            "@container " ^ prefix ^ cond_str)
-          (Css.as_container s));
-      (fun s ->
-        Option.map
-          (fun (c, _) -> "@supports " ^ Css.Supports.to_string c)
-          (Css.as_supports s));
-      (fun s -> Option.map (fun _ -> "@property") (Css.as_property s));
-      (fun s ->
-        Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
-      (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
-    ]
-  in
-  match List.find_map try_desc matchers with
-  | Some desc -> Some desc
-  | None -> Some "(other statement)"
+  if is_container_statement stmt then None
+  else
+    let sel, decls = strings_of_rule stmt in
+    Some (Removed { selector = sel; declarations = decls } : rule_diff)
 
 let selector_position sel rules =
   let sel_key = selector_key_of_selector sel in
@@ -1695,8 +1730,8 @@ let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
 (* Assemble rule changes (added/removed/modified) between two rule lists *)
 let to_rule_changes rules1 rules2 : rule_diff list =
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
-  List.map convert_added_rule r_added
-  @ List.map convert_removed_rule r_removed
+  List.filter_map convert_added_rule r_added
+  @ List.filter_map convert_removed_rule r_removed
   @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
   @ r_regrouped
 
@@ -2511,8 +2546,8 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   let added, removed, modified, regrouped = rule_diffs rules1 rules2 in
 
   let rule_changes =
-    List.map convert_added_rule added
-    @ List.map convert_removed_rule removed
+    List.filter_map convert_added_rule added
+    @ List.filter_map convert_removed_rule removed
     @ List.filter_map (convert_modified_rule ~rules1 ~rules2) modified
     @ regrouped @ process_imports all1 all2
   in
