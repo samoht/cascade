@@ -362,7 +362,10 @@ let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
    the statements after the current one. Consulting it is a lookup rather than a
    rescan of the tail, so no selector is serialised more than once. *)
 let drop_shadowed_declarations stmts =
-  let later : (string, (string, unit) Hashtbl.t) Hashtbl.t =
+  (* Properties are keyed by their AST identity: two constructors that print
+     alike are different properties, and a name-keyed table would have one
+     shadow the other. *)
+  let later : (string, (Declaration.prop_key, unit) Hashtbl.t) Hashtbl.t =
     Hashtbl.create 64
   in
   let written sel =
@@ -378,7 +381,7 @@ let drop_shadowed_declarations stmts =
     List.iter
       (fun d ->
         if not (Declaration.is_important d) then
-          Hashtbl.replace props (Declaration.property_name d) ())
+          Hashtbl.replace props (Declaration.property_key d) ())
       declarations
   in
   let rec go = function
@@ -392,7 +395,7 @@ let drop_shadowed_declarations stmts =
           List.filter
             (fun d ->
               Declaration.is_important d
-              || not (Hashtbl.mem shadowed (Declaration.property_name d)))
+              || not (Hashtbl.mem shadowed (Declaration.property_key d)))
             r.declarations
         in
         record sel r.declarations;
