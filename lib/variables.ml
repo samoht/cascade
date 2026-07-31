@@ -1724,6 +1724,12 @@ let vars_of_direction (value : Properties.direction) =
 let vars_of_fill_rule (value : Properties.fill_rule) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_stroke_linecap (value : Properties.stroke_linecap) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_stroke_linejoin (value : Properties.stroke_linejoin) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_css_wide (value : Properties.css_wide) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2163,6 +2169,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Direction, value -> vars_of_direction value
   | Fill_rule, value -> vars_of_fill_rule value
   | Clip_rule, value -> vars_of_fill_rule value
+  | Stroke_linecap, value -> vars_of_stroke_linecap value
+  | Stroke_linejoin, value -> vars_of_stroke_linejoin value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value

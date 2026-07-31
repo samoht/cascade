@@ -7248,6 +7248,8 @@ let pp_property : type a. a property Pp.t =
   | Stroke_width -> Pp.string ctx "stroke-width"
   | Fill_rule -> Pp.string ctx "fill-rule"
   | Clip_rule -> Pp.string ctx "clip-rule"
+  | Stroke_linecap -> Pp.string ctx "stroke-linecap"
+  | Stroke_linejoin -> Pp.string ctx "stroke-linejoin"
   | Stop_color -> Pp.string ctx "stop-color"
   | Flood_color -> Pp.string ctx "flood-color"
   | Lighting_color -> Pp.string ctx "lighting-color"
@@ -9617,6 +9619,32 @@ let rec pp_nav : nav Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
+
+let rec pp_stroke_linecap : stroke_linecap Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_linecap ctx v
+  | Butt -> Pp.string ctx "butt"
+  | Round -> Pp.string ctx "round"
+  | Square -> Pp.string ctx "square"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_stroke_linejoin : stroke_linejoin Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_linejoin ctx v
+  | Miter -> Pp.string ctx "miter"
+  | Miter_clip -> Pp.string ctx "miter-clip"
+  | Round -> Pp.string ctx "round"
+  | Bevel -> Pp.string ctx "bevel"
+  | Arcs -> Pp.string ctx "arcs"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_fill_rule : fill_rule Pp.t =
  fun ctx -> function
@@ -15284,6 +15312,38 @@ let read_svg_paint t : svg_paint =
     ]
     t
 
+let rec read_stroke_linecap t : stroke_linecap =
+  Cursor.enum_or_var "stroke-linecap"
+    [
+      ("butt", (Butt : stroke_linecap));
+      ("round", Round);
+      ("square", Square);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_stroke_linecap t))
+    t
+
+let rec read_stroke_linejoin t : stroke_linejoin =
+  Cursor.enum_or_var "stroke-linejoin"
+    [
+      ("miter", (Miter : stroke_linejoin));
+      ("miter-clip", Miter_clip);
+      ("round", Round);
+      ("bevel", Bevel);
+      ("arcs", Arcs);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_stroke_linejoin t))
+    t
+
 let rec read_fill_rule t : fill_rule =
   Cursor.enum_or_var "fill-rule"
     [
@@ -19277,6 +19337,8 @@ let read_any_property t =
   (* SVG 2 sec. 13.5 and 14.4: both take the same <fill-rule>. *)
   | "fill-rule" -> Prop Fill_rule
   | "clip-rule" -> Prop Clip_rule
+  | "stroke-linecap" -> Prop Stroke_linecap
+  | "stroke-linejoin" -> Prop Stroke_linejoin
   (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
@@ -21930,6 +21992,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Direction -> pp pp_direction
   | Fill_rule -> pp pp_fill_rule
   | Clip_rule -> pp pp_fill_rule
+  | Stroke_linecap -> pp pp_stroke_linecap
+  | Stroke_linejoin -> pp pp_stroke_linejoin
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_combine_upright -> pp pp_text_combine_upright

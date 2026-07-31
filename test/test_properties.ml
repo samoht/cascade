@@ -190,6 +190,12 @@ let check_svg_paint = check_value_cursor "svg-paint" read_svg_paint pp_svg_paint
 let check_direction = check_value_cursor "direction" read_direction pp_direction
 let check_fill_rule = check_value_cursor "fill-rule" read_fill_rule pp_fill_rule
 
+let check_stroke_linecap =
+  check_value_cursor "stroke-linecap" read_stroke_linecap pp_stroke_linecap
+
+let check_stroke_linejoin =
+  check_value_cursor "stroke-linejoin" read_stroke_linejoin pp_stroke_linejoin
+
 let check_unicode_bidi =
   check_value_cursor "unicode-bidi" read_unicode_bidi pp_unicode_bidi
 
@@ -2819,6 +2825,21 @@ let test_fill_rule () =
   neg_cursor read_fill_rule "even-odd";
   neg_cursor read_fill_rule "nonzero evenodd"
 
+let test_stroke_linecap () =
+  check_stroke_linecap "butt";
+  check_stroke_linecap "round";
+  check_stroke_linecap "square";
+  check_stroke_linecap "var(--c)";
+  neg_cursor read_stroke_linecap "flat"
+
+let test_stroke_linejoin () =
+  check_stroke_linejoin "miter";
+  check_stroke_linejoin "miter-clip";
+  check_stroke_linejoin "round";
+  check_stroke_linejoin "bevel";
+  check_stroke_linejoin "arcs";
+  neg_cursor read_stroke_linejoin "mitre"
+
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
   check_unicode_bidi "embed";
@@ -4215,6 +4236,8 @@ let additional_tests =
     test_case "svg_paint" `Quick test_svg_paint;
     test_case "direction" `Quick test_direction;
     test_case "fill_rule" `Quick test_fill_rule;
+    test_case "stroke_linecap" `Quick test_stroke_linecap;
+    test_case "stroke_linejoin" `Quick test_stroke_linejoin;
     test_case "unicode_bidi" `Quick test_unicode_bidi;
     test_case "writing_mode" `Quick test_writing_mode;
     test_case "webkit_appearance" `Quick test_webkit_appearance;

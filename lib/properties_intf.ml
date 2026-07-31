@@ -3892,6 +3892,34 @@ type fill_rule =
   | Revert_layer
   | Var of fill_rule var
 
+(** SVG 2 sec. 13.3 [stroke-linecap]: the shape drawn at the ends of an open
+    subpath and at the ends of each dash. *)
+type stroke_linecap =
+  | Butt
+  | Round
+  | Square
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linecap var
+
+(** SVG 2 sec. 13.3 [stroke-linejoin]: the shape drawn where two path segments
+    meet. [miter_clip] and [arcs] are the Level 2 additions. *)
+type stroke_linejoin =
+  | Miter
+  | Miter_clip
+  | Round
+  | Bevel
+  | Arcs
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linejoin var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4839,6 +4867,8 @@ type 'a property =
   | Stroke_width : length property
   | Fill_rule : fill_rule property
   | Clip_rule : fill_rule property
+  | Stroke_linecap : stroke_linecap property
+  | Stroke_linejoin : stroke_linejoin property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property
