@@ -149,6 +149,7 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
 (* Canonical, list-order-independent branch strings of a selector: canonicalize
    each comma branch, then sort. [.foo,.bar] and [.bar,.foo] yield the same
    list. *)
+(* Sorted, which is what lets [share_branch] merge-walk two of these. *)
 let selector_branch_keys selectors =
   selectors
   |> List.map (fun s ->
@@ -158,9 +159,21 @@ let selector_branch_keys selectors =
 (* Two rules share a selector branch when a factoring produced one as a residual
    of the other (e.g. [.a] and [.a,.b]) or they are the same selector. Such
    rules are pinned so a factored group stays contiguous and its declaration
-   order is left to the declaration canonicalization. *)
-let share_branch a b =
-  List.exists (fun branch -> List.exists (String.equal branch) b) a
+   order is left to the declaration canonicalization.
+
+   Both arguments come from [selector_branch_keys], which sorts, so this walks
+   the two in step rather than scanning one per element of the other: linear
+   instead of quadratic, and it allocates nothing, where the nested
+   [List.exists] built a closure per element of the left list and a partial
+   application per pair. *)
+let rec share_branch a b =
+  match (a, b) with
+  | [], _ | _, [] -> false
+  | x :: xs, y :: ys ->
+      let c = String.compare x y in
+      if c = 0 then true
+      else if c < 0 then share_branch xs b
+      else share_branch a ys
 
 let declaration_size decl = Pp.size ~minify:true Declaration.pp_declaration decl
 
