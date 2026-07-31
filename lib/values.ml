@@ -4013,6 +4013,11 @@ let normalize_angle ?(ctx = default_calc_ctx) =
         | Val v -> go v
         | folded -> Calc folded)
     | Deg _ | Turn _ | Grad _ -> angle_shortest a
+    (* [angle_shortest] leaves radians alone because deg/rad conversion goes
+       through pi and so is never exactly value-preserving. Zero is the one
+       radian value that converts exactly, and it is the one that matters: a
+       zero angle is what the grammars let you drop. *)
+    | Rad f when f = 0. -> Deg 0.
     | Rad _ | Var _ | Invalid _ -> a
   in
   go
