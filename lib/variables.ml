@@ -1730,6 +1730,9 @@ let vars_of_stroke_linecap (value : Properties.stroke_linecap) =
 let vars_of_stroke_linejoin (value : Properties.stroke_linejoin) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_stroke_miterlimit (value : Properties.stroke_miterlimit) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_css_wide (value : Properties.css_wide) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2171,6 +2174,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Clip_rule, value -> vars_of_fill_rule value
   | Stroke_linecap, value -> vars_of_stroke_linecap value
   | Stroke_linejoin, value -> vars_of_stroke_linejoin value
+  | Stroke_miterlimit, value -> vars_of_stroke_miterlimit value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value

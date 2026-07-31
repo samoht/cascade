@@ -2271,6 +2271,12 @@ val pp_stroke_linejoin : stroke_linejoin Pp.t
 val read_stroke_linejoin : Cursor.t -> stroke_linejoin
 (** [read_stroke_linejoin t] is the [stroke_linejoin] parsed from [t]. *)
 
+val pp_stroke_miterlimit : stroke_miterlimit Pp.t
+(** [pp_stroke_miterlimit] pretty-prints a [stroke-miterlimit]. *)
+
+val read_stroke_miterlimit : Cursor.t -> stroke_miterlimit
+(** [read_stroke_miterlimit t] is the [stroke_miterlimit] parsed from [t]. *)
+
 val pp_unicode_bidi : unicode_bidi Pp.t
 (** [pp_unicode_bidi] is the pretty-printer for [unicode_bidi]. *)
 

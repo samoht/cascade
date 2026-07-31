@@ -127,6 +127,11 @@
 
 ### New properties and values
 
+- Read `stroke-miterlimit` as the `<number>` SVG 2 sec. 13.3 defines, so it
+  minifies like one (`4.0` is `4`) and a constant `calc()` folds. A value
+  below 1 is out of range, since the limit is a ratio that bottoms out
+  at 1 (#236)
+
 - Read `stroke-linecap` and `stroke-linejoin`, including the SVG 2 sec. 13.3
   additions `miter-clip` and `arcs`. Both parsed as unknown properties (#235)
 

@@ -196,6 +196,10 @@ let check_stroke_linecap =
 let check_stroke_linejoin =
   check_value_cursor "stroke-linejoin" read_stroke_linejoin pp_stroke_linejoin
 
+let check_stroke_miterlimit =
+  check_value_cursor "stroke-miterlimit" read_stroke_miterlimit
+    pp_stroke_miterlimit
+
 let check_unicode_bidi =
   check_value_cursor "unicode-bidi" read_unicode_bidi pp_unicode_bidi
 
@@ -2840,6 +2844,17 @@ let test_stroke_linejoin () =
   check_stroke_linejoin "arcs";
   neg_cursor read_stroke_linejoin "mitre"
 
+let test_stroke_miterlimit () =
+  check_stroke_miterlimit "1";
+  check_stroke_miterlimit "4";
+  check_stroke_miterlimit "10.5";
+  check_stroke_miterlimit "var(--m)";
+  (* The limit is a ratio of miter length to stroke width, which is 1 at its
+     smallest, so the specification makes anything below that invalid. *)
+  neg_cursor read_stroke_miterlimit ".5";
+  neg_cursor read_stroke_miterlimit "-1";
+  neg_cursor read_stroke_miterlimit "4px"
+
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
   check_unicode_bidi "embed";
@@ -4238,6 +4253,7 @@ let additional_tests =
     test_case "fill_rule" `Quick test_fill_rule;
     test_case "stroke_linecap" `Quick test_stroke_linecap;
     test_case "stroke_linejoin" `Quick test_stroke_linejoin;
+    test_case "stroke_miterlimit" `Quick test_stroke_miterlimit;
     test_case "unicode_bidi" `Quick test_unicode_bidi;
     test_case "writing_mode" `Quick test_writing_mode;
     test_case "webkit_appearance" `Quick test_webkit_appearance;

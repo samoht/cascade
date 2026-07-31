@@ -4371,6 +4371,28 @@ let normalize_gap : gap -> gap =
            })
   | other -> other
 
+let rec numeric_miterlimit_calc_leaves :
+    stroke_miterlimit calc -> stroke_miterlimit calc = function
+  | Val (Number n) -> Num n
+  | Nested inner -> Nested (numeric_miterlimit_calc_leaves inner)
+  | Parens inner -> Parens (numeric_miterlimit_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_miterlimit_calc_leaves left,
+          op,
+          numeric_miterlimit_calc_leaves right )
+  | other -> other
+
+let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
+    stroke_miterlimit =
+  match value with
+  | Calc c -> (
+      match eval_calc (numeric_miterlimit_calc_leaves c) with
+      | Num f -> Number f
+      | Val v -> normalize_stroke_miterlimit v
+      | folded -> if folded == c then value else Calc folded)
+  | _ -> value
+
 let rec numeric_flex_factor_calc_leaves : flex_factor calc -> flex_factor calc =
   function
   | Val (Number n) -> Num n
@@ -7250,6 +7272,7 @@ let pp_property : type a. a property Pp.t =
   | Clip_rule -> Pp.string ctx "clip-rule"
   | Stroke_linecap -> Pp.string ctx "stroke-linecap"
   | Stroke_linejoin -> Pp.string ctx "stroke-linejoin"
+  | Stroke_miterlimit -> Pp.string ctx "stroke-miterlimit"
   | Stop_color -> Pp.string ctx "stop-color"
   | Flood_color -> Pp.string ctx "flood-color"
   | Lighting_color -> Pp.string ctx "lighting-color"
@@ -9619,6 +9642,17 @@ let rec pp_nav : nav Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
+
+let rec pp_stroke_miterlimit : stroke_miterlimit Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_miterlimit ctx v
+  | Number value -> Pp.float ctx value
+  | Calc c -> pp_calc pp_stroke_miterlimit ctx c
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_stroke_linecap : stroke_linecap Pp.t =
  fun ctx -> function
@@ -15312,6 +15346,36 @@ let read_svg_paint t : svg_paint =
     ]
     t
 
+(* SVG 2 sec. 13.3: "A value of zero is invalid; a negative value is an error".
+   The limit is a ratio of miter length to stroke width, and that ratio is 1 at
+   its smallest, so anything below 1 is out of range. Only a literal can be
+   checked here; calc() and var() resolve later. *)
+let read_miterlimit_number t =
+  let value =
+    match (Values.read_number t : Values.number) with
+    | Values.Num value -> value
+    | _ -> Cursor.err_invalid t "stroke-miterlimit must resolve to a number"
+  in
+  if value < 1. then Cursor.err_invalid t "stroke-miterlimit below 1";
+  value
+
+let rec read_stroke_miterlimit t : stroke_miterlimit =
+  Cursor.enum_or_calls "stroke-miterlimit"
+    [
+      ("inherit", (Inherit : stroke_miterlimit));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ("var", fun t -> Var (Values.read_var read_stroke_miterlimit t));
+        ("calc", fun t -> Calc (read_calc read_stroke_miterlimit t));
+      ]
+    ~default:(fun t -> (Number (read_miterlimit_number t) : stroke_miterlimit))
+    t
+
 let rec read_stroke_linecap t : stroke_linecap =
   Cursor.enum_or_var "stroke-linecap"
     [
@@ -19339,6 +19403,7 @@ let read_any_property t =
   | "clip-rule" -> Prop Clip_rule
   | "stroke-linecap" -> Prop Stroke_linecap
   | "stroke-linejoin" -> Prop Stroke_linejoin
+  | "stroke-miterlimit" -> Prop Stroke_miterlimit
   (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
@@ -21368,6 +21433,7 @@ let normalize_property_value : type a.
   | Backdrop_filter -> normalize_filter ~lossless value
   | Webkit_backdrop_filter -> normalize_filter ~lossless value
   | Flex_grow -> normalize_flex_factor value
+  | Stroke_miterlimit -> normalize_stroke_miterlimit value
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis value
   | Flex -> normalize_flex value
@@ -21994,6 +22060,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Clip_rule -> pp pp_fill_rule
   | Stroke_linecap -> pp pp_stroke_linecap
   | Stroke_linejoin -> pp pp_stroke_linejoin
+  | Stroke_miterlimit -> pp pp_stroke_miterlimit
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_combine_upright -> pp pp_text_combine_upright

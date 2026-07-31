@@ -3920,6 +3920,18 @@ type stroke_linejoin =
   | Revert_layer
   | Var of stroke_linejoin var
 
+(** SVG 2 sec. 13.3 [stroke-miterlimit]: the ratio at which a miter join is
+    converted to a bevel. The specification makes a value below 1 invalid. *)
+type stroke_miterlimit =
+  | Number of float
+  | Calc of stroke_miterlimit calc
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_miterlimit var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4869,6 +4881,7 @@ type 'a property =
   | Clip_rule : fill_rule property
   | Stroke_linecap : stroke_linecap property
   | Stroke_linejoin : stroke_linejoin property
+  | Stroke_miterlimit : stroke_miterlimit property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property
