@@ -23,6 +23,9 @@ jobs:
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          opam-repositories: |
+            tangled: git+https://tangled.org/gazagnaire.org/opam-overlay.git
+            default: https://github.com/ocaml/opam-repository.git
 
       - run: opam install . --deps-only --with-test
       - run: opam exec -- dune build
@@ -37,6 +40,9 @@ jobs:
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: '5.2'
+          opam-repositories: |
+            tangled: git+https://tangled.org/gazagnaire.org/opam-overlay.git
+            default: https://github.com/ocaml/opam-repository.git
 
       # Resolve every dependency to the oldest version its lower bound allows,
       # so a call that only compiles against a newer API (a deprecated function

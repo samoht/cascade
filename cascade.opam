@@ -28,6 +28,7 @@ depends: [
   "psq"
   "logs"
   "cmdliner" {>= "1.1.0"}
+  "observe"
   "odoc" {with-doc}
 ]
 build: [

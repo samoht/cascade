@@ -118,6 +118,13 @@
 
 ### Breaking
 
+- The CLI takes its logging configuration from observe: `--log=SPEC` in
+  RUST_LOG syntax (also `$CASCADE_LOG`), `--json` with `--log-tag`, `--trace`,
+  and `-vvv` to enable `*.tracing` sources, on top of the `-q` / `-v` that were
+  already there. `cascade diff` drops the `CASCADE_COLOR` environment variable,
+  whose `--color` flag now comes from observe; `--color` itself and `NO_COLOR`
+  are unchanged (#238)
+
 - `cascade fmt` and `cascade diff` drop `--memtrace`, and the library drops the
   `memtrace` dependency, which failed the build outright on a switch without
   it (#237)

@@ -100,7 +100,11 @@ cat style.css | cascade -                                          # read stdin
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
 | `--profile` | Print per-pass timings of the optimiser to stderr after the run. Useful to triage which pass dominates on a slow input. Has no effect without `--minify`. |
-| `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
+| `-q, --quiet` / `-v, --verbose` | Verbosity: `-q` errors only, none warnings, `-v` info, `-vv` debug, `-vvv` also enables `*.tracing` sources. |
+| `--log=SPEC` | RUST_LOG-style logging, a global level with optional per-source overrides (`info,optimize:debug`). Also read from `$CASCADE_LOG`. |
+| `--json` / `--log-tag=K=V` | Emit logs as JSON lines, with repeatable extra fields. |
+| `--trace=FILE` | Write `*.tracing` source output to FILE. |
+| `--color=WHEN` | `auto`, `always` or `never`. `NO_COLOR` overrides it. |
 
 ### Size
 
