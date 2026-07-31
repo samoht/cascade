@@ -99,6 +99,26 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* Filter Effects 1 sec. 8.5 makes an omitted [hue-rotate()] argument 0, and
+   [hue-rotate] names a filter function and nothing else, so the two spellings
+   are one value wherever the stream is substituted. *)
+let canonical_custom_hue_rotate_zero () =
+  Alcotest.(check bool)
+    "hue-rotate() and hue-rotate(0deg) agree in a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{--f:hue-rotate();filter:var(--f)}"
+       ".a{--f:hue-rotate(0deg);filter:var(--f)}");
+  (* Any zero angle, since the unit does not survive normalisation. *)
+  Alcotest.(check bool)
+    "a zero turn agrees too" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a{--f:hue-rotate()}"
+       ".a{--f:hue-rotate(0turn)}");
+  (* A non-zero angle is a different filter. *)
+  Alcotest.(check bool)
+    "a non-zero angle still differs" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a{--f:hue-rotate()}"
+       ".a{--f:hue-rotate(90deg)}")
+
 let equal_prune_unused_custom_props () =
   let with_bind = ":root{--spacing:.25rem}.top-0{top:0}" in
   let without = ".top-0{top:0}" in
@@ -1164,6 +1184,8 @@ let suite =
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "opt-in prune-unused-custom-props" `Quick
         equal_prune_unused_custom_props;
+      Alcotest.test_case "canonical folds a zero hue-rotate in a custom value"
+        `Quick canonical_custom_hue_rotate_zero;
       Alcotest.test_case "canonical ignores @property order" `Quick
         equal_canonical_ignores_property_order;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick

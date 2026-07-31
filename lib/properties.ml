@@ -21141,6 +21141,26 @@ let fold_custom_calc (c : Component.t) ~fallback =
   | Some cs -> cs
   | None -> fallback ()
 
+(* Filter Effects 1 sec. 8.5 gives [hue-rotate()] the argument [[ <angle> |
+   <zero> ]?] and 0 when omitted, so a zero argument is redundant. [hue-rotate]
+   names a filter function and nothing else, so this holds wherever the stream
+   is substituted, which is the same argument that lets a colour function fold
+   here. *)
+let hue_rotate_zero_argument (func : Component.func) =
+  String.lowercase_ascii func.name = "hue-rotate"
+  && func.arguments <> []
+  &&
+  let cur = Cursor.of_string (Parser.to_string_custom func.arguments) in
+  match read_angle_unit_required cur with
+  | exception Cursor.Parse_error _ -> false
+  | angle ->
+      Cursor.is_done cur
+      && Values.angle_degrees_opt (normalize_angle angle) = Some 0.
+
+let drop_function_arguments wrapped =
+  Component.Func
+    { wrapped with node = { wrapped.Component.node with arguments = [] } }
+
 let rec canonicalize_custom_colors_components ~lossless comps =
   let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
   List.concat_map
@@ -21170,6 +21190,9 @@ let rec canonicalize_custom_colors_components ~lossless comps =
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
               ])
+      | Component.Func wrapped
+        when hue_rotate_zero_argument wrapped.Component.node ->
+          [ drop_function_arguments wrapped ]
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let args =

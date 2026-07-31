@@ -14,6 +14,12 @@
 
 ### Minification
 
+- A `hue-rotate()` with a zero argument drops it inside a custom property, the
+  way it already did in `filter` directly. Filter Effects 1 sec. 8.5 makes an
+  omitted argument 0, and `hue-rotate` names a filter function and nothing
+  else, so the two spellings are one value wherever the stream is substituted.
+  `--diff=canonical` reported them as a difference (#257)
+
 - Every SVG presentation property is typed, so its value minifies like any
   other rather than surviving as opaque text. `stop-color: #ffffff` is
   `stop-color:#fff`, `fill-opacity: 0.1` is `fill-opacity:.1`,
