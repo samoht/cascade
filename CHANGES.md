@@ -161,6 +161,12 @@ identical, rather than as spurious changes.
 
 ### Diff report
 
+- A selector written by more than one rule in a container is reported once.
+  Two rules under one selector produced a node each, carrying the same label,
+  one saying a declaration was added and the other that a different one was
+  removed, which reads as a contradiction rather than as the declarations
+  sitting on different rules (#259)
+
 - Blocks sharing a condition are reconciled one for one instead of by whether
   the condition appears at all. Three `@container` blocks with one condition
   against two of them reported two changed containers, each inventing an added
