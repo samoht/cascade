@@ -46,10 +46,15 @@ let decls_size = Size.decls
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 let hash_bool = function false -> 0 | true -> 1
 
+(* [String.iter] would allocate a closure over the accumulator ref on every
+   call; the loop carries it in a parameter instead. *)
 let hash_string s =
-  let hash = ref 0x811c9dc5 in
-  String.iter (fun c -> hash := mix_int !hash (Char.code c)) s;
-  !hash
+  let n = String.length s in
+  let rec go acc i =
+    if i >= n then acc
+    else go (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
+  in
+  go 0x811c9dc5 0
 
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
 
@@ -962,20 +967,25 @@ let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
                       candidates := candidate :: !candidates)));
   !candidates
 
-type property_key = { property_name : string; important : bool; hash : int }
+(* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
+   than on its name: the name only exists as a string once [pp_property] has
+   rendered it through a [Buffer], and this key is rebuilt for every declaration
+   of every rule the candidate search touches. [prop_key] is [[@@unboxed]] over
+   the property constructor, so for the constant constructors that is an
+   immediate, and both equality and [Hashtbl.hash] are structural on it. *)
+type property_key = {
+  prop : Declaration.prop_key;
+  important : bool;
+  hash : int;
+}
 
 let declaration_property_key decl : property_key =
-  let property_name = Declaration.property_name decl in
+  let prop = Declaration.property_key decl in
   let important = Declaration.is_important decl in
-  {
-    property_name;
-    important;
-    hash = mix_int (hash_string property_name) (hash_bool important);
-  }
+  { prop; important; hash = mix_int (Hashtbl.hash prop) (hash_bool important) }
 
 let property_key_equal left right =
-  Bool.equal left.important right.important
-  && String.equal left.property_name right.property_name
+  Bool.equal left.important right.important && left.prop = right.prop
 
 let property_key_hash key = key.hash
 
