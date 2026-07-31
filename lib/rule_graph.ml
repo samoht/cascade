@@ -128,12 +128,24 @@ let specificity_equal (a : Selector.specificity) (b : Selector.specificity) =
   && Int.equal a.classes b.classes
   && Int.equal a.elements b.elements
 
+(* [List.exists2] over a zipped pair needs the zip built first, and the inner
+   one was built inside the outer closure: B's whole tuple list was rebuilt once
+   per element of A. Walking the three parallel lists in step decides the same
+   question and allocates nothing. Lengths match by construction (one entry per
+   selector branch); [invalid_arg] mirrors [List.exists2] if they ever do
+   not. *)
+let rec exists3 f a b c =
+  match (a, b, c) with
+  | [], [], [] -> false
+  | x :: xs, y :: ys, z :: zs -> f x y z || exists3 f xs ys zs
+  | _ -> invalid_arg "Rule_graph.exists3"
+
 let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
     specificities_a selectors_b summaries_b specificities_b =
-  List.exists2
-    (fun selector_a (summary_a, specificity_a) ->
-      List.exists2
-        (fun selector_b (summary_b, specificity_b) ->
+  exists3
+    (fun selector_a summary_a specificity_a ->
+      exists3
+        (fun selector_b summary_b specificity_b ->
           specificity_equal specificity_a specificity_b
           &&
           if closed_world then
@@ -141,10 +153,8 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
                only an identical selector still ties on the same element *)
             selector_a = selector_b
           else Selector_summary.may_overlap summary_a summary_b)
-        selectors_b
-        (List.combine summaries_b specificities_b))
-    selectors_a
-    (List.combine summaries_a specificities_a)
+        selectors_b summaries_b specificities_b)
+    selectors_a summaries_a specificities_a
 
 (* Canonical, list-order-independent branch strings of a selector: canonicalize
    each comma branch, then sort. [.foo,.bar] and [.bar,.foo] yield the same
