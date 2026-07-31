@@ -200,6 +200,13 @@ let check_stroke_miterlimit =
   check_value_cursor "stroke-miterlimit" read_stroke_miterlimit
     pp_stroke_miterlimit
 
+let check_paint_order_keyword =
+  check_value_cursor "paint-order-keyword" read_paint_order_keyword
+    pp_paint_order_keyword
+
+let check_paint_order =
+  check_value_cursor "paint-order" read_paint_order pp_paint_order
+
 let check_dash_length =
   check_value_cursor "dash-length" read_dash_length pp_dash_length
 
@@ -2866,6 +2873,20 @@ let test_stroke_miterlimit () =
   neg_cursor read_stroke_miterlimit "-1";
   neg_cursor read_stroke_miterlimit "4px"
 
+let test_paint_order_keyword () =
+  check_paint_order_keyword "fill";
+  check_paint_order_keyword "stroke";
+  check_paint_order_keyword "markers";
+  neg_cursor read_paint_order_keyword "normal"
+
+let test_paint_order () =
+  check_paint_order "normal";
+  check_paint_order "stroke";
+  check_paint_order "markers stroke";
+  check_paint_order "var(--p)";
+  (* [||] takes each operand at most once. *)
+  neg_cursor read_paint_order "bogus"
+
 let test_dash_length () =
   check_dash_length "4";
   check_dash_length "4px";
@@ -4290,6 +4311,8 @@ let additional_tests =
     test_case "stroke_linecap" `Quick test_stroke_linecap;
     test_case "stroke_linejoin" `Quick test_stroke_linejoin;
     test_case "stroke_miterlimit" `Quick test_stroke_miterlimit;
+    test_case "paint_order_keyword" `Quick test_paint_order_keyword;
+    test_case "paint_order" `Quick test_paint_order;
     test_case "dash_length" `Quick test_dash_length;
     test_case "stroke_dashoffset" `Quick test_stroke_dashoffset;
     test_case "stroke_dasharray" `Quick test_stroke_dasharray;

@@ -137,6 +137,11 @@
 
 ### New properties and values
 
+- Read `paint-order`, and minify it to the shortest spelling of the same paint
+  order. SVG 2 sec. 13.7 paints an omitted keyword last in the order `normal`
+  would use, so `paint-order: stroke fill markers` is `stroke` (the
+  specification's own example) and `fill stroke markers` is `normal` (#241)
+
 - Read `stroke-dasharray` and `stroke-dashoffset`. Both parsed as unknown
   properties, so their lengths kept a zero unit and a trailing zero that every
   other length property sheds. SVG 2 sec. 13.3 separates dashes by comma

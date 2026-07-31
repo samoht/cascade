@@ -3959,6 +3959,24 @@ type stroke_dasharray =
   | Revert_layer
   | Var of stroke_dasharray var
 
+(** SVG 2 sec. 13.7 [paint-order] operand. *)
+type paint_order_keyword = Fill | Stroke | Markers
+
+(** SVG 2 sec. 13.7 [paint-order]: [normal | [ fill || stroke || markers ]]. The
+    written order is the paint order, and any keyword left out is painted last
+    in the order [normal] would use, so a trailing run that already matches
+    [normal] is redundant. Entries are distinct: [||] takes each operand at most
+    once. *)
+type paint_order =
+  | Normal
+  | Order of paint_order_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of paint_order var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4911,6 +4929,7 @@ type 'a property =
   | Stroke_miterlimit : stroke_miterlimit property
   | Stroke_dashoffset : stroke_dashoffset property
   | Stroke_dasharray : stroke_dasharray property
+  | Paint_order : paint_order property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property
