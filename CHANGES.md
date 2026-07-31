@@ -127,6 +127,10 @@
 
 ### New properties and values
 
+- Read `fill-rule` and `clip-rule`, the SVG 2 sec. 13.5 / 14.4 properties that
+  share one `<fill-rule>`. Both parsed as unknown properties, so their values
+  survived as opaque text (#234)
+
 - Complete the logical border properties: `Css.border_block_color`,
   `Css.border_block_start_color` and `Css.border_block_end_color`, the
   `Css.border_inline_width` and `Css.border_block_width` shorthands (with

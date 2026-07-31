@@ -2253,6 +2253,12 @@ val pp_direction : direction Pp.t
 val read_direction : Cursor.t -> direction
 (** [read_direction t] is the [direction] parsed from [t]. *)
 
+val pp_fill_rule : fill_rule Pp.t
+(** [pp_fill_rule] pretty-prints an SVG [<fill-rule>]. *)
+
+val read_fill_rule : Cursor.t -> fill_rule
+(** [read_fill_rule t] is the [fill_rule] parsed from [t]. *)
+
 val pp_unicode_bidi : unicode_bidi Pp.t
 (** [pp_unicode_bidi] is the pretty-printer for [unicode_bidi]. *)
 

@@ -1869,6 +1869,16 @@ let matrix =
         negatives = [ "ltr rtl"; "auto" ];
       };
       {
+        property = "fill-rule";
+        positives = [ "nonzero"; "evenodd" ];
+        negatives = [ "nonzero evenodd"; "even-odd" ];
+      };
+      {
+        property = "clip-rule";
+        positives = [ "nonzero"; "evenodd" ];
+        negatives = [ "nonzero evenodd"; "even-odd" ];
+      };
+      {
         property = "unicode-bidi";
         positives = [ "normal"; "embed"; "isolate"; "plaintext" ];
         negatives = [ "normal isolate"; "auto" ];

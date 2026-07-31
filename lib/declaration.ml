@@ -1642,6 +1642,8 @@ let read_interaction_value : type a.
   | Fill -> Some (v Fill (read_svg_paint t))
   | Stroke -> Some (v Stroke (read_svg_paint t))
   | Direction -> Some (v Direction (read_direction t))
+  | Fill_rule -> Some (v Fill_rule (Properties.read_fill_rule t))
+  | Clip_rule -> Some (v Clip_rule (Properties.read_fill_rule t))
   | Unicode_bidi -> Some (v Unicode_bidi (read_unicode_bidi t))
   | Writing_mode -> Some (v Writing_mode (read_writing_mode t))
   | Text_combine_upright ->

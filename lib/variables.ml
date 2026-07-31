@@ -1721,6 +1721,9 @@ let vars_of_timeline_inset (value : Properties.timeline_inset) =
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_fill_rule (value : Properties.fill_rule) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_css_wide (value : Properties.css_wide) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2158,6 +2161,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Offset_rotate, value -> vars_of_offset_rotate value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
+  | Fill_rule, value -> vars_of_fill_rule value
+  | Clip_rule, value -> vars_of_fill_rule value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value
