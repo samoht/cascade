@@ -149,6 +149,17 @@ let complex_values () =
      it minifies like one and a constant calc() folds. *)
   check_declaration ~expected:"stroke-miterlimit:4" "stroke-miterlimit: 4.0;";
   decl_optimizes ~prop:"stroke-miterlimit" ~into:"6" "calc(2 * 3)";
+  (* SVG 2 sec. 13.3 separates dashes by comma and/or whitespace and the
+     rendered pattern is the flat sequence either way, so both spellings read to
+     one list and print with the shorter separator. *)
+  check_declaration ~expected:"stroke-dasharray:4 2" "stroke-dasharray: 4, 2;";
+  check_declaration ~expected:"stroke-dasharray:none" "stroke-dasharray: none;";
+  (* A dash length is a <length-percentage> or a bare <number> in user units,
+     and it minifies like every other length. *)
+  decl_optimizes ~prop:"stroke-dashoffset" ~into:"0" "0px";
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"0 4px" "0px 4px";
+  check_declaration ~expected:"stroke-dashoffset:.5px"
+    "stroke-dashoffset: 0.50px;";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -2375,7 +2386,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 448
+    "property grammar manifest covers every tracked spec property name" 450
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

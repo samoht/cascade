@@ -200,6 +200,17 @@ let check_stroke_miterlimit =
   check_value_cursor "stroke-miterlimit" read_stroke_miterlimit
     pp_stroke_miterlimit
 
+let check_dash_length =
+  check_value_cursor "dash-length" read_dash_length pp_dash_length
+
+let check_stroke_dashoffset =
+  check_value_cursor "stroke-dashoffset" read_stroke_dashoffset
+    pp_stroke_dashoffset
+
+let check_stroke_dasharray =
+  check_value_cursor "stroke-dasharray" read_stroke_dasharray
+    pp_stroke_dasharray
+
 let check_unicode_bidi =
   check_value_cursor "unicode-bidi" read_unicode_bidi pp_unicode_bidi
 
@@ -2855,6 +2866,31 @@ let test_stroke_miterlimit () =
   neg_cursor read_stroke_miterlimit "-1";
   neg_cursor read_stroke_miterlimit "4px"
 
+let test_dash_length () =
+  check_dash_length "4";
+  check_dash_length "4px";
+  check_dash_length "10%";
+  neg_cursor read_dash_length "red"
+
+let test_stroke_dashoffset () =
+  check_stroke_dashoffset "0";
+  check_stroke_dashoffset "4";
+  check_stroke_dashoffset "4px";
+  check_stroke_dashoffset "10%";
+  check_stroke_dashoffset "var(--o)";
+  neg_cursor read_stroke_dashoffset "none"
+
+let test_stroke_dasharray () =
+  check_stroke_dasharray "none";
+  check_stroke_dasharray "4";
+  check_stroke_dasharray "4 2";
+  check_stroke_dasharray "4px 2px";
+  check_stroke_dasharray "10% 5%";
+  (* Comma and whitespace are the same separator here. *)
+  check_stroke_dasharray ~expected:"4 2" "4, 2";
+  check_stroke_dasharray "var(--d)";
+  neg_cursor read_stroke_dasharray "red"
+
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
   check_unicode_bidi "embed";
@@ -4254,6 +4290,9 @@ let additional_tests =
     test_case "stroke_linecap" `Quick test_stroke_linecap;
     test_case "stroke_linejoin" `Quick test_stroke_linejoin;
     test_case "stroke_miterlimit" `Quick test_stroke_miterlimit;
+    test_case "dash_length" `Quick test_dash_length;
+    test_case "stroke_dashoffset" `Quick test_stroke_dashoffset;
+    test_case "stroke_dasharray" `Quick test_stroke_dasharray;
     test_case "unicode_bidi" `Quick test_unicode_bidi;
     test_case "writing_mode" `Quick test_writing_mode;
     test_case "webkit_appearance" `Quick test_webkit_appearance;

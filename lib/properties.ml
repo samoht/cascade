@@ -4383,6 +4383,29 @@ let rec numeric_miterlimit_calc_leaves :
           numeric_miterlimit_calc_leaves right )
   | other -> other
 
+let normalize_dash_length ~ctx (value : dash_length) : dash_length =
+  match value with
+  | Number _ -> value
+  | Length lp ->
+      let lp' = Values.normalize_length_percentage ~ctx lp in
+      if lp' == lp then value else Length lp'
+
+let normalize_stroke_dashoffset ~ctx (value : stroke_dashoffset) :
+    stroke_dashoffset =
+  match value with
+  | Dash d ->
+      let d' = normalize_dash_length ~ctx d in
+      if d' == d then value else Dash d'
+  | _ -> value
+
+let normalize_stroke_dasharray ~ctx (value : stroke_dasharray) :
+    stroke_dasharray =
+  match value with
+  | Dashes ds ->
+      let ds' = map_preserve (normalize_dash_length ~ctx) ds in
+      if ds' == ds then value else Dashes ds'
+  | _ -> value
+
 let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
     stroke_miterlimit =
   match value with
@@ -7273,6 +7296,8 @@ let pp_property : type a. a property Pp.t =
   | Stroke_linecap -> Pp.string ctx "stroke-linecap"
   | Stroke_linejoin -> Pp.string ctx "stroke-linejoin"
   | Stroke_miterlimit -> Pp.string ctx "stroke-miterlimit"
+  | Stroke_dashoffset -> Pp.string ctx "stroke-dashoffset"
+  | Stroke_dasharray -> Pp.string ctx "stroke-dasharray"
   | Stop_color -> Pp.string ctx "stop-color"
   | Flood_color -> Pp.string ctx "flood-color"
   | Lighting_color -> Pp.string ctx "lighting-color"
@@ -9642,6 +9667,33 @@ let rec pp_nav : nav Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
+
+let pp_dash_length : dash_length Pp.t =
+ fun ctx -> function
+  | Number n -> Pp.float ctx n
+  | Length lp -> Values.pp_length_percentage ctx lp
+
+let rec pp_stroke_dashoffset : stroke_dashoffset Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_dashoffset ctx v
+  | Dash d -> pp_dash_length ctx d
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_stroke_dasharray : stroke_dasharray Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_dasharray ctx v
+  | None -> Pp.string ctx "none"
+  (* Whitespace is the shorter of the two separators the grammar allows. *)
+  | Dashes ds -> Pp.list ~sep:Pp.space pp_dash_length ctx ds
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_stroke_miterlimit : stroke_miterlimit Pp.t =
  fun ctx -> function
@@ -15350,6 +15402,73 @@ let read_svg_paint t : svg_paint =
    The limit is a ratio of miter length to stroke width, and that ratio is 1 at
    its smallest, so anything below 1 is out of range. Only a literal can be
    checked here; calc() and var() resolve later. *)
+(* A bare number is user units; anything with a unit or a percent sign is a
+   <length-percentage>. *)
+let read_dash_length t : dash_length =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
+      Number (Cursor.number t)
+  (* The grammar is <length-percentage> | <number>, with no keyword branch, so
+     the intrinsic-sizing keywords a bare length would accept are out. *)
+  | _ -> Length (Values.read_length_percentage ~with_keywords:false t)
+
+let rec read_stroke_dashoffset t : stroke_dashoffset =
+  Cursor.enum_or_calls "stroke-dashoffset"
+    [
+      ("inherit", (Inherit : stroke_dashoffset));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_dashoffset t)) ]
+    ~default:(fun t -> (Dash (read_dash_length t) : stroke_dashoffset))
+    t
+
+(* The grammar separates dashes by comma and/or whitespace and the rendered
+   pattern is the flat sequence either way, so both spellings read to one
+   list. *)
+let rec read_stroke_dasharray t : stroke_dasharray =
+  Cursor.enum_or_calls "stroke-dasharray"
+    [
+      ("none", (None : stroke_dasharray));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_dasharray t)) ]
+    ~default:(fun t ->
+      (* Only a numeric token continues the pattern. Anything else ends it, so a
+         trailing [;] or [!important] is left for the caller rather than read as
+         another dash. *)
+      let starts_dash t =
+        match Cursor.peek t with
+        | Some
+            (Component.Preserved
+               {
+                 kind =
+                   Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
+                 _;
+               }) ->
+            true
+        | _ -> false
+      in
+      let rec go acc =
+        let acc = read_dash_length t :: acc in
+        Cursor.ws t;
+        if Cursor.peek_comma t then begin
+          Cursor.comma t;
+          Cursor.ws t;
+          go acc
+        end
+        else if starts_dash t then go acc
+        else List.rev acc
+      in
+      (Dashes (go []) : stroke_dasharray))
+    t
+
 let read_miterlimit_number t =
   let value =
     match (Values.read_number t : Values.number) with
@@ -19404,6 +19523,8 @@ let read_any_property t =
   | "stroke-linecap" -> Prop Stroke_linecap
   | "stroke-linejoin" -> Prop Stroke_linejoin
   | "stroke-miterlimit" -> Prop Stroke_miterlimit
+  | "stroke-dashoffset" -> Prop Stroke_dashoffset
+  | "stroke-dasharray" -> Prop Stroke_dasharray
   (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
@@ -21434,6 +21555,8 @@ let normalize_property_value : type a.
   | Webkit_backdrop_filter -> normalize_filter ~lossless value
   | Flex_grow -> normalize_flex_factor value
   | Stroke_miterlimit -> normalize_stroke_miterlimit value
+  | Stroke_dashoffset -> normalize_stroke_dashoffset ~ctx value
+  | Stroke_dasharray -> normalize_stroke_dasharray ~ctx value
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis value
   | Flex -> normalize_flex value
@@ -22061,6 +22184,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Stroke_linecap -> pp pp_stroke_linecap
   | Stroke_linejoin -> pp pp_stroke_linejoin
   | Stroke_miterlimit -> pp pp_stroke_miterlimit
+  | Stroke_dashoffset -> pp pp_stroke_dashoffset
+  | Stroke_dasharray -> pp pp_stroke_dasharray
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_combine_upright -> pp pp_text_combine_upright

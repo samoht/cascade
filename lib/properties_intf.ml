@@ -3932,6 +3932,33 @@ type stroke_miterlimit =
   | Revert_layer
   | Var of stroke_miterlimit var
 
+(** SVG 2 sec. 13.3: one dash length. A bare [<number>] is in user units, which
+    is why this is not plain [length_percentage]. *)
+type dash_length = Number of float | Length of length_percentage
+
+(** SVG 2 sec. 13.3 [stroke-dashoffset]. *)
+type stroke_dashoffset =
+  | Dash of dash_length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dashoffset var
+
+(** SVG 2 sec. 13.3 [stroke-dasharray]: [none] or a dash pattern. The grammar
+    separates entries by comma and/or whitespace and the rendered pattern is the
+    flat sequence either way, so both spellings read to one list. *)
+type stroke_dasharray =
+  | None
+  | Dashes of dash_length list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dasharray var
+
 (* Direction Types *)
 type direction =
   | Ltr
@@ -4882,6 +4909,8 @@ type 'a property =
   | Stroke_linecap : stroke_linecap property
   | Stroke_linejoin : stroke_linejoin property
   | Stroke_miterlimit : stroke_miterlimit property
+  | Stroke_dashoffset : stroke_dashoffset property
+  | Stroke_dasharray : stroke_dasharray property
   | Stop_color : color property
   | Flood_color : color property
   | Lighting_color : color property

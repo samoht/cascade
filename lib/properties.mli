@@ -2277,6 +2277,26 @@ val pp_stroke_miterlimit : stroke_miterlimit Pp.t
 val read_stroke_miterlimit : Cursor.t -> stroke_miterlimit
 (** [read_stroke_miterlimit t] is the [stroke_miterlimit] parsed from [t]. *)
 
+val pp_dash_length : dash_length Pp.t
+(** [pp_dash_length] pretty-prints one SVG dash length. *)
+
+val read_dash_length : Cursor.t -> dash_length
+(** [read_dash_length t] is the [dash_length] parsed from [t]. A bare number is
+    in user units; anything carrying a unit or a percent sign is a
+    [<length-percentage>]. *)
+
+val pp_stroke_dashoffset : stroke_dashoffset Pp.t
+(** [pp_stroke_dashoffset] pretty-prints a [stroke-dashoffset]. *)
+
+val read_stroke_dashoffset : Cursor.t -> stroke_dashoffset
+(** [read_stroke_dashoffset t] is the [stroke_dashoffset] parsed from [t]. *)
+
+val pp_stroke_dasharray : stroke_dasharray Pp.t
+(** [pp_stroke_dasharray] pretty-prints a [stroke-dasharray]. *)
+
+val read_stroke_dasharray : Cursor.t -> stroke_dasharray
+(** [read_stroke_dasharray t] is the [stroke_dasharray] parsed from [t]. *)
+
 val pp_unicode_bidi : unicode_bidi Pp.t
 (** [pp_unicode_bidi] is the pretty-printer for [unicode_bidi]. *)
 
