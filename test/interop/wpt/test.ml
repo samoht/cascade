@@ -301,7 +301,9 @@ let non_ascii_codepoints =
   in
   let ident_accepts cp =
     let css = Fmt.str ".f%soo { color: red; }" (utf8_of_cp cp) in
-    match Cascade.Css.of_string ~strict:false css with
+    (* The range list is what [~enforce_spec:true] selects; reading defaults to
+       any code point >= U+0080, which these counter-tests would not see. *)
+    match Cascade.Css.of_string ~strict:false ~enforce_spec:true css with
     | Ok { Cascade.Css.stylesheet; warnings = _ } ->
         List.length (Cascade.Css.rule_statements stylesheet) = 1
     | Error _ -> false
@@ -334,7 +336,7 @@ let non_ascii_codepoints =
      Test both. *)
   let leads_ident cp =
     let css = Fmt.str "%sfoo { color: red }" (utf8_of_cp cp) in
-    match Cascade.Css.of_string ~strict:false css with
+    match Cascade.Css.of_string ~strict:false ~enforce_spec:true css with
     | Ok r -> List.length (Cascade.Css.rule_statements r.stylesheet) = 1
     | Error _ -> false
   in

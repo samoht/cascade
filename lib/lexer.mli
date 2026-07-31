@@ -13,9 +13,9 @@ type t
 val of_reader : Reader.t -> t
 (** [of_reader r] wraps an existing character reader. *)
 
-val of_string : string -> t
+val of_string : ?enforce_spec:bool -> string -> t
 (** [of_string s] builds a fresh reader from an already-decoded UTF-8 string and
-    wraps it. *)
+    wraps it. [enforce_spec] is passed to {!Reader.of_string}. *)
 
 val source : t -> string
 (** [source t] is the full input string the underlying reader was built from. *)
@@ -50,8 +50,9 @@ val commit : t -> unit
 val is_done : t -> bool
 (** [is_done t] is [true] when no more tokens remain. *)
 
-val is_non_ascii_ident_cp : int -> bool
-(** [is_non_ascii_ident_cp cp] is the CSS Syntax section 4.2 predicate: is [cp]
-    one of the non-ASCII code points allowed inside an ident sequence? Exposed
-    for serialisers that decide whether to emit a code point verbatim or
-    hex-escape it. *)
+val spec_non_ascii_ident_cp : int -> bool
+(** [spec_non_ascii_ident_cp cp] is the CSS Syntax section 4.2 predicate: is
+    [cp] in that section's range list of non-ASCII ident code points? Exposed
+    for serialisers, which hex-escape anything outside it; an escape is read by
+    every parser, so emission stays on this list even though reading accepts any
+    code point [>= U+0080] unless [~enforce_spec:true]. *)

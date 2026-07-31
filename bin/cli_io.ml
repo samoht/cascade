@@ -18,8 +18,8 @@ let read_stdin () =
     Buffer.contents buf
   with End_of_file -> Buffer.contents buf
 
-let parse_css ~filename css =
-  match Css.of_string ~filename css with
+let parse_css ?(enforce_spec = false) ~filename css =
+  match Css.of_string ~filename ~enforce_spec css with
   | Ok { Css.stylesheet; warnings } ->
       List.iter
         (fun w ->
@@ -34,10 +34,10 @@ let parse_css ~filename css =
       Fmt.epr "warning: %s: parse failed, dropping content@." filename;
       Css.empty
 
-let read_input path =
+let read_input ?enforce_spec path =
   let css = if path = "-" then read_stdin () else read_file path in
   let filename = if path = "-" then "<stdin>" else path in
-  parse_css ~filename css
+  parse_css ?enforce_spec ~filename css
 
 let split_comma s =
   String.split_on_char ',' s |> List.map String.trim

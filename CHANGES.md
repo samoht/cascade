@@ -25,6 +25,14 @@
 
 ### Parsing
 
+- A non-ASCII identifier is read as any code point at or above U+0080, so a
+  selector such as `.text-\u{2197}` parses instead of being dropped with a
+  warning. `Css.of_string` takes `?enforce_spec` and `cascade` takes
+  `--enforce-spec` to restrict identifiers to the CSS Syntax 3 sec. 4.2 range
+  list, which excludes most BMP symbols. Output is unaffected either way: a
+  code point outside the range list is hex-escaped, so `.text-\u{2197}` and
+  `.text-\2197` read to the same selector and compare equal (#252)
+
 - Read `perspective: none` and `text-underline-offset: auto`, and allow a
   negative `text-underline-offset`. Both keywords are the properties' own
   grammar (and `none` is `perspective`'s initial value), but the readers took

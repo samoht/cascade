@@ -246,7 +246,10 @@ val read_stylesheet_of_rules :
     snippets. *)
 
 val parse_stylesheet_partial :
-  ?meta:Loc.meta_level -> string -> stylesheet * Error.t list
+  ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
+  string ->
+  stylesheet * Error.t list
 (** [parse_stylesheet_partial ?meta source] runs section 5.3 recovery via
     {!Parser.stylesheet} and then typed-validates each recovered rule via
     {!read_stylesheet_of_rules}. Warnings from both stages are combined in

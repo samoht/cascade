@@ -80,7 +80,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag
     ~inline_vars_flag ~keep_vars ~profile =
   try
-    let stylesheet = Cli_io.read_input input_path in
+    let stylesheet = Cli_io.read_input ~enforce_spec input_path in
     let stylesheet =
       if inline_imports_flag then resolve_inline_imports ~input_path stylesheet
       else stylesheet

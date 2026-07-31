@@ -124,7 +124,7 @@ let escape_ident_emit_cp buf ~needs_leading_escape u =
   if needs_leading_escape then add_hex_escape_cp buf cp
   else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
   else if cp < 0x80 then escape_ident_emit_ascii buf cp
-  else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
+  else if Lexer.spec_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
   else add_hex_escape_cp buf cp
 
 let escape_ident_starts s n =

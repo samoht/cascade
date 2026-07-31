@@ -812,10 +812,12 @@ let vars_of_rules statements =
 type parse = { stylesheet : t; warnings : Error.t list }
 
 let of_string ?(strict = false) ?(filename = "<string>")
-    ?(meta = Loc.default_meta_level) css =
+    ?(meta = Loc.default_meta_level) ?(enforce_spec = false) css =
   let stamp e = Error.with_filename ~filename e in
   try
-    let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
+    let stylesheet, warnings =
+      Stylesheet.parse_stylesheet_partial ~meta ~enforce_spec css
+    in
     let warnings = List.map stamp warnings in
     if strict then
       match warnings with
@@ -824,8 +826,8 @@ let of_string ?(strict = false) ?(filename = "<string>")
     else Ok { stylesheet; warnings }
   with Error.Parse_error error -> Error (stamp error)
 
-let of_string_exn ?strict ?filename ?meta css =
-  match of_string ?strict ?filename ?meta css with
+let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
+  match of_string ?strict ?filename ?meta ?enforce_spec css with
   | Ok { stylesheet; _ } -> stylesheet
   | Error error -> Error.fail error
 
