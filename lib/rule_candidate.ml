@@ -46,10 +46,15 @@ let decls_size = Size.decls
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 let hash_bool = function false -> 0 | true -> 1
 
+(* [String.iter] would allocate a closure over the accumulator ref on every
+   call; the loop carries it in a parameter instead. *)
 let hash_string s =
-  let hash = ref 0x811c9dc5 in
-  String.iter (fun c -> hash := mix_int !hash (Char.code c)) s;
-  !hash
+  let n = String.length s in
+  let rec go acc i =
+    if i >= n then acc
+    else go (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
+  in
+  go 0x811c9dc5 0
 
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
 
@@ -962,20 +967,25 @@ let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
                       candidates := candidate :: !candidates)));
   !candidates
 
-type property_key = { property_name : string; important : bool; hash : int }
+(* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
+   than on its name: the name only exists as a string once [pp_property] has
+   rendered it through a [Buffer], and this key is rebuilt for every declaration
+   of every rule the candidate search touches. [prop_key] is [[@@unboxed]] over
+   the property constructor, so for the constant constructors that is an
+   immediate, and both equality and [Hashtbl.hash] are structural on it. *)
+type property_key = {
+  prop : Declaration.prop_key;
+  important : bool;
+  hash : int;
+}
 
 let declaration_property_key decl : property_key =
-  let property_name = Declaration.property_name decl in
+  let prop = Declaration.property_key decl in
   let important = Declaration.is_important decl in
-  {
-    property_name;
-    important;
-    hash = mix_int (hash_string property_name) (hash_bool important);
-  }
+  { prop; important; hash = mix_int (Hashtbl.hash prop) (hash_bool important) }
 
 let property_key_equal left right =
-  Bool.equal left.important right.important
-  && String.equal left.property_name right.property_name
+  Bool.equal left.important right.important && left.prop = right.prop
 
 let property_key_hash key = key.hash
 
@@ -1007,14 +1017,21 @@ let rec has_property_key key = function
       property_key_equal (declaration_property_key decl) key
       || has_property_key key rest
 
-let add_property_buckets buckets id (rule : rule) =
+(* Each entry carries the order in which its key was first seen. The buckets
+   live in a hash table, so folding them yields the hash's order, and the sort
+   below would otherwise leave entries that tie on origin and size in that
+   order: the search's choice would follow the hash rather than the input. *)
+let add_property_buckets ~seq buckets id (rule : rule) =
   let add key id =
     let hash = property_key_hash key in
     let entries = Int_table.find_opt buckets hash |> Option.value ~default:[] in
     let rec insert acc = function
-      | [] -> List.rev ((key, [ id ]) :: acc)
-      | (existing, ids) :: rest when property_key_equal existing key ->
-          List.rev_append acc ((existing, id :: ids) :: rest)
+      | [] ->
+          let n = !seq in
+          incr seq;
+          List.rev ((key, [ id ], n) :: acc)
+      | (existing, ids, n) :: rest when property_key_equal existing key ->
+          List.rev_append acc ((existing, id :: ids, n) :: rest)
       | entry :: rest -> insert (entry :: acc) rest
     in
     Int_table.replace buckets hash (insert [] entries)
@@ -1325,18 +1342,22 @@ let default_value_candidates ?size_cache ?touching ~ctx ~finalize g =
     | Indexed budget -> Option.Some (indexed_budget_state budget)
   in
   let buckets = Int_table.create 256 in
+  let seq = ref 0 in
   List.iter
     (fun (id, rule) ->
-      if rule_eligible rule then add_property_buckets buckets id rule)
+      if rule_eligible rule then add_property_buckets ~seq buckets id rule)
     (live_rules g);
   let seen_groups = Int_table.create 128 in
   let candidates = ref [] in
   Int_table.fold (fun _ entries acc -> List.rev_append entries acc) buckets []
-  |> List.sort (fun (_, left) (_, right) ->
+  |> List.sort (fun (_, left, left_seq) (_, right, right_seq) ->
       match Int.compare (first_origin g left) (first_origin g right) with
-      | 0 -> Int.compare (List.length left) (List.length right)
+      | 0 -> (
+          match Int.compare (List.length left) (List.length right) with
+          | 0 -> Int.compare left_seq right_seq
+          | order -> order)
       | order -> order)
-  |> List.iter (fun (key, ids) ->
+  |> List.iter (fun (key, ids, _) ->
       let ids =
         ids |> Node_set.of_list |> Node_set.elements
         |> List.filter (fun id -> rule_eligible (Rule_graph.node_rule g id))
