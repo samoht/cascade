@@ -4823,6 +4823,9 @@ type 'a property =
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property
+  | Stop_color : color property
+  | Flood_color : color property
+  | Lighting_color : color property
   | Direction : direction property
   | Unicode_bidi : unicode_bidi property
   | Writing_mode : writing_mode property

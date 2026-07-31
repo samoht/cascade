@@ -1921,6 +1921,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Color properties *)
   | Accent_color, value -> vars_of_color value
   | Caret_color, value -> vars_of_color value
+  | Stop_color, value -> vars_of_color value
+  | Flood_color, value -> vars_of_color value
+  | Lighting_color, value -> vars_of_color value
   (* Rotate property *)
   | Rotate, value -> vars_of_rotate_value value
   (* Duration properties *)

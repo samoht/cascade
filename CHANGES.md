@@ -57,6 +57,10 @@
 
 ### Minification
 
+- `stop-color`, `flood-color` and `lighting-color` minify as the `<color>`
+  SVG 2 and Filter Effects 1 define them to be, rather than surviving as
+  opaque unknown-property text: `stop-color: #ffffff` is
+  `stop-color:#fff` (#228)
 - `--minify` no longer re-runs the global factoring fixpoint on a segment
   whose result the transfer gate has already discarded. The pipeline
   re-presents one segment across its iterations with a rule or two moved,

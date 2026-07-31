@@ -402,6 +402,9 @@ let matrix =
         "stroke";
         "accent-color";
         "caret-color";
+        "stop-color";
+        "flood-color";
+        "lighting-color";
       ]
       [ "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
       [ "1px"; "red blue" ]

@@ -122,6 +122,19 @@ let complex_values () =
      longer. *)
   decl_optimizes ~prop:"flood-opacity" ~into:".5" "50%";
 
+  (* SVG 2 sec. 13.4 and Filter Effects 1 sec. 9.3 / 12.2 make each of these a
+     plain <color>, so they shorten like any other colour-valued property
+     instead of surviving as opaque unknown-property text. *)
+  check_declaration ~expected:"stop-color:#fff" "stop-color: #ffffff;";
+  check_declaration ~expected:"lighting-color:currentColor"
+    "lighting-color: currentColor;";
+  (* Cross-notation folds are node changes, so they belong to the optimizer
+     rather than the printer. *)
+  check_declaration ~expected:"flood-color:rgb(255 0 0)"
+    "flood-color: rgb(255, 0, 0);";
+  decl_optimizes ~prop:"flood-color" ~into:"red" "rgb(255, 0, 0)";
+  decl_optimizes ~prop:"stop-color" ~into:"#0000" "rgba(0, 0, 0, 0)";
+
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
@@ -2330,7 +2343,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 440
+    "property grammar manifest covers every tracked spec property name" 443
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 
