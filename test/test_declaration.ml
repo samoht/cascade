@@ -869,6 +869,14 @@ let grid () =
     "grid-auto-flow: row dense";
   check_declaration ~expected:"grid-auto-flow:column dense"
     "grid-auto-flow: column dense";
+  (* CSS Grid 2 sec. 7.6 gives [ row | column ] || dense with [row] as the
+     omitted axis, so [row dense] and [dense] are one value and the optimizer
+     picks the shorter. The axis is load-bearing on [column dense]. *)
+  decl_optimizes_to ~held:"grid-auto-flow:row dense"
+    ~into:"grid-auto-flow:dense" "grid-auto-flow: row dense";
+  decl_optimizes_to ~held:"grid-auto-flow:row dense"
+    ~into:"grid-auto-flow:dense" "grid-auto-flow: dense row";
+  decl_optimizes ~prop:"grid-auto-flow" ~into:"column dense" "column dense";
 
   (* Grid gaps *)
   check_declaration ~expected:"gap:10px" "gap: 10px";

@@ -57,6 +57,9 @@
 
 ### Minification
 
+- `grid-auto-flow: row dense` minifies to `dense`. CSS Grid 2 sec. 7.6 gives
+  the property as `[ row | column ] || dense` with `row` as the omitted axis,
+  so the two are one value. `column dense` keeps its axis (#230)
 - A zero angle written in radians canonicalises to `0deg`, so it reaches the
   folds the other units already reached: `filter: hue-rotate(0rad)` is
   `filter:hue-rotate()`. Radians are otherwise left alone, since the
