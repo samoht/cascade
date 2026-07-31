@@ -1644,6 +1644,9 @@ let read_interaction_value : type a.
   | Direction -> Some (v Direction (read_direction t))
   | Fill_rule -> Some (v Fill_rule (Properties.read_fill_rule t))
   | Clip_rule -> Some (v Clip_rule (Properties.read_fill_rule t))
+  | Stroke_linecap -> Some (v Stroke_linecap (Properties.read_stroke_linecap t))
+  | Stroke_linejoin ->
+      Some (v Stroke_linejoin (Properties.read_stroke_linejoin t))
   | Unicode_bidi -> Some (v Unicode_bidi (read_unicode_bidi t))
   | Writing_mode -> Some (v Writing_mode (read_writing_mode t))
   | Text_combine_upright ->

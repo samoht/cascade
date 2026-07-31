@@ -1879,6 +1879,16 @@ let matrix =
         negatives = [ "nonzero evenodd"; "even-odd" ];
       };
       {
+        property = "stroke-linecap";
+        positives = [ "butt"; "round"; "square" ];
+        negatives = [ "butt round"; "flat" ];
+      };
+      {
+        property = "stroke-linejoin";
+        positives = [ "miter"; "miter-clip"; "round"; "bevel"; "arcs" ];
+        negatives = [ "miter bevel"; "mitre" ];
+      };
+      {
         property = "unicode-bidi";
         positives = [ "normal"; "embed"; "isolate"; "plaintext" ];
         negatives = [ "normal isolate"; "auto" ];

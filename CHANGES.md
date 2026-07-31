@@ -127,6 +127,9 @@
 
 ### New properties and values
 
+- Read `stroke-linecap` and `stroke-linejoin`, including the SVG 2 sec. 13.3
+  additions `miter-clip` and `arcs`. Both parsed as unknown properties (#235)
+
 - Read `fill-rule` and `clip-rule`, the SVG 2 sec. 13.5 / 14.4 properties that
   share one `<fill-rule>`. Both parsed as unknown properties, so their values
   survived as opaque text (#234)

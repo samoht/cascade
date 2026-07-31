@@ -2259,6 +2259,18 @@ val pp_fill_rule : fill_rule Pp.t
 val read_fill_rule : Cursor.t -> fill_rule
 (** [read_fill_rule t] is the [fill_rule] parsed from [t]. *)
 
+val pp_stroke_linecap : stroke_linecap Pp.t
+(** [pp_stroke_linecap] pretty-prints a [stroke-linecap] keyword. *)
+
+val read_stroke_linecap : Cursor.t -> stroke_linecap
+(** [read_stroke_linecap t] is the [stroke_linecap] parsed from [t]. *)
+
+val pp_stroke_linejoin : stroke_linejoin Pp.t
+(** [pp_stroke_linejoin] pretty-prints a [stroke-linejoin] keyword. *)
+
+val read_stroke_linejoin : Cursor.t -> stroke_linejoin
+(** [read_stroke_linejoin t] is the [stroke_linejoin] parsed from [t]. *)
+
 val pp_unicode_bidi : unicode_bidi Pp.t
 (** [pp_unicode_bidi] is the pretty-printer for [unicode_bidi]. *)
 

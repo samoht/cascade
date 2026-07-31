@@ -141,6 +141,10 @@ let complex_values () =
   check_declaration ~expected:"fill-rule:evenodd" "fill-rule: evenodd;";
   check_declaration ~expected:"clip-rule:nonzero" "clip-rule: nonzero;";
   check_declaration ~expected:"fill-rule:var(--r)" "fill-rule: var(--r);";
+  (* SVG 2 sec. 13.3. [miter-clip] and [arcs] are the Level 2 additions to
+     [stroke-linejoin]; a reader that takes the grammar takes all five. *)
+  check_declaration ~expected:"stroke-linecap:square" "stroke-linecap: square;";
+  check_declaration ~expected:"stroke-linejoin:arcs" "stroke-linejoin: arcs;";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
@@ -2367,7 +2371,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 445
+    "property grammar manifest covers every tracked spec property name" 447
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 
