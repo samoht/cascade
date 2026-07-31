@@ -86,24 +86,32 @@ let rule_eligible (r : rule) =
    rules too - unlike the factoring passes, which reorder declarations and would
    disturb a later [var()] resolution. [try_rewrite]'s acyclicity check still
    rejects a group whose merge would cross a conflicting (re)definition. *)
-module String_set = Set.Make (String)
+(* Keyed on the property's AST identity rather than its printed name: two
+   constructors that print alike are different properties, and building the set
+   from names would merge them. [prop_key] is unboxed over the property
+   constructor, so ordering it is ordering the constructor. *)
+module Prop_set = Set.Make (struct
+  type t = Declaration.prop_key
+
+  let compare = Stdlib.compare
+end)
 
 (* Merging a run of same-selector rules into the first one moves each later
    rule's declarations ahead of any nested block an earlier one carries. That
    only matters for a property the nested block also sets, so a rule with nested
    children can still take part as long as those children and the declarations
    that would move past them are disjoint. *)
-let rec nested_property_names acc (stmts : statement list) =
+let rec nested_property_keys acc (stmts : statement list) =
   List.fold_left
     (fun acc stmt ->
       match stmt with
       | Rule r ->
           let acc =
             List.fold_left
-              (fun acc d -> String_set.add (Declaration.property_name d) acc)
+              (fun acc d -> Prop_set.add (Declaration.property_key d) acc)
               acc r.declarations
           in
-          nested_property_names acc r.nested
+          nested_property_keys acc r.nested
       | _ -> acc)
     acc stmts
 
@@ -118,12 +126,11 @@ let nested_merge_is_safe (rules : rule list) =
     | r :: rest ->
         (r.nested = []
         ||
-        let blocked = nested_property_names String_set.empty r.nested in
+        let blocked = nested_property_keys Prop_set.empty r.nested in
         List.for_all
           (fun (later : rule) ->
             List.for_all
-              (fun d ->
-                not (String_set.mem (Declaration.property_name d) blocked))
+              (fun d -> not (Prop_set.mem (Declaration.property_key d) blocked))
               later.declarations)
           rest)
         && go rest
