@@ -1878,28 +1878,30 @@ let is_safe_nmchar = function
   | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
   | _ -> false
 
+(* Toplevel: [let exception] allocates the constructor on every call, and both
+   of these run once per selector name in the optimizer's inner loops. *)
+exception Char_rejected
+
 let name_is_plain_ascii_ident name =
   let len = String.length name in
   if len = 0 then false
   else if first_needs_hex_escape name then false
   else
-    let exception Not_plain in
     try
       for i = 0 to len - 1 do
-        if not (is_safe_nmchar name.[i]) then raise Not_plain
+        if not (is_safe_nmchar name.[i]) then raise Char_rejected
       done;
       true
-    with Not_plain -> false
+    with Char_rejected -> false
 
 let name_is_ascii name =
   let len = String.length name in
-  let exception Has_non_ascii in
   try
     for i = 0 to len - 1 do
-      if Char.code (String.unsafe_get name i) >= 0x80 then raise Has_non_ascii
+      if Char.code (String.unsafe_get name i) >= 0x80 then raise Char_rejected
     done;
     true
-  with Has_non_ascii -> false
+  with Char_rejected -> false
 
 let escape_selector_name name =
   if String.length name = 0 then ""
