@@ -163,10 +163,10 @@ let rec leaf_rules stmt =
       List.concat_map leaf_rules b
   | _ -> []
 
+(* Only reached once the two declarations are known to share a property, so the
+   property itself is not part of the key. *)
 let decl_value_key d =
-  ( Declaration.property_name d,
-    Declaration.string_of_value ~minify:true d,
-    Declaration.is_important d )
+  (Declaration.string_of_value ~minify:true d, Declaration.is_important d)
 
 (* Two rules whose declarations would reorder unsafely: overlapping selectors
    and a shared property set to a different value. Equal values reorder
@@ -177,10 +177,11 @@ let rules_conflict (r1 : rule) (r2 : rule) =
     (Selector_summary.of_selector r2.selector)
   && List.exists
        (fun a ->
-         let pa = Declaration.property_name a in
          List.exists
            (fun b ->
-             Declaration.property_name b = pa
+             (* [same_property] reads the property off the AST; comparing the
+                printed names would tie two constructors that print alike. *)
+             Declaration.same_property a b
              && decl_value_key a <> decl_value_key b)
            r2.declarations)
        r1.declarations
