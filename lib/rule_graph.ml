@@ -114,14 +114,30 @@ let declarations_conflict left right =
   && Shorthand.declarations_overlap_with_keys left.decl left.footprint
        right.decl right.footprint
 
-let decls_order_conflict d1 d2 =
-  List.exists (fun a -> List.exists (fun b -> declarations_conflict a b) d2) d1
+(* Written as plain recursion rather than nested [List.exists]: the inner
+   closure captured the outer element, so it was rebuilt once per element of the
+   left list, and these run on every candidate pair. *)
+let rec declaration_conflicts_with a = function
+  | [] -> false
+  | b :: rest -> declarations_conflict a b || declaration_conflicts_with a rest
+
+let rec decls_order_conflict d1 d2 =
+  match d1 with
+  | [] -> false
+  | a :: rest -> declaration_conflicts_with a d2 || decls_order_conflict rest d2
+
+let rec overlap_key_in key = function
+  | [] -> false
+  | k :: rest -> Shorthand.overlap_key_equal key k || overlap_key_in key rest
+
+let rec overlap_keys_meet a b =
+  match a with
+  | [] -> false
+  | key :: rest -> overlap_key_in key b || overlap_keys_meet rest b
 
 let overlap_key_lists_intersect a b =
   let broad = Shorthand.broad_overlap_key in
-  List.exists (Shorthand.overlap_key_equal broad) a
-  || List.exists (Shorthand.overlap_key_equal broad) b
-  || List.exists (fun key -> List.exists (Shorthand.overlap_key_equal key) b) a
+  overlap_key_in broad a || overlap_key_in broad b || overlap_keys_meet a b
 
 let specificity_equal (a : Selector.specificity) (b : Selector.specificity) =
   Int.equal a.ids b.ids
