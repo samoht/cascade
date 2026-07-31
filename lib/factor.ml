@@ -2,6 +2,10 @@
 
 open Stylesheet
 
+let src = Logs.Src.create "cascade.factor" ~doc:"Cascade rule factoring"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let counters = Stats.counters
 let rules_pp_size = Size.rules
 let list_map_preserve = Common.List.map_preserve
@@ -120,9 +124,16 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
   (* Both return the input unchanged by physical identity on a no-op, so a
      pointer compare detects change without rendering to CSS. *)
   let changed = rules' != rules in
+  let after_rules = List.length rules' in
   record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
-    ~after_rules:(List.length rules') ~after_bytes ~bytes_saved ~changed
-    ~elapsed;
+    ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed;
+  (* Per fixpoint iteration, not per rule, so the closure cost is noise. The
+     byte columns are only computed under [--profile]; rules and savings are
+     always available. *)
+  Log.debug (fun m ->
+      m "fixpoint %d.%d: %d -> %d rules, %d bytes saved, %.3fs%s" fixpoint
+        local_iteration before_rules after_rules bytes_saved elapsed
+        (if changed then "" else " (no change)"));
   if changed then rules' else rules
 
 (* Stylesheets ship DEFLATE-compressed, so a raw-byte factoring win can grow the
@@ -151,6 +162,25 @@ let factored_grows_transfer ~ctx ~unfactored ~factored =
   Gzip_size.estimate (render_rules factored)
   > before_gz + transfer_gate_margin before_gz
 
+(* The two decisions worth watching from outside: which segments never get
+   factored, and which get factored and then thrown away. The second is the
+   event the preflight cannot yet predict - it scored the segment worth
+   factoring on raw bytes, and the gate then found the compressed size grew. *)
+let log_skip ~known_revert summary =
+  Log.debug (fun m ->
+      m "segment of %d declarations skipped: %s"
+        (Preflight.declaration_count summary)
+        (if known_revert then "matches a segment the gate reverted"
+         else "preflight gain too small"))
+
+let log_transfer_revert ~fixpoint summary =
+  Log.debug (fun m ->
+      m
+        "fixpoint %d reverted: factoring grew the estimated transfer size (%d \
+         declarations)"
+        fixpoint
+        (Preflight.declaration_count summary))
+
 let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in
   match
@@ -173,6 +203,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
         if known_revert || not (should_run_preflight ~ctx summary) then begin
           counters.factor_fixpoints_skipped <-
             counters.factor_fixpoints_skipped + 1;
+          log_skip ~known_revert summary;
           ordered_rules rules graph
         end
         else begin
@@ -189,6 +220,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
           then begin
             counters.factor_transfer_reverts <-
               counters.factor_transfer_reverts + 1;
+            log_transfer_revert ~fixpoint summary;
             (* Only a large segment is worth remembering: factoring a small one
                costs little, so suppressing it saves nothing and risks giving up
                a grouping the gate would have kept. *)

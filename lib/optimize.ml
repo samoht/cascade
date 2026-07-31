@@ -1183,4 +1183,14 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     if prune_unused_custom_props then drop_unused_custom_props result
     else result
   in
-  if lossless then canonicalize_declaration_order result else result
+  let result =
+    if lossless then canonicalize_declaration_order result else result
+  in
+  Log.debug (fun m ->
+      let c = counters in
+      m
+        "optimized: %d factoring fixpoints run, %d skipped, %d reverted by the \
+         transfer gate, %d bytes saved"
+        c.factor_fixpoints_run c.factor_fixpoints_skipped
+        c.factor_transfer_reverts c.factor_bytes_saved);
+  result
