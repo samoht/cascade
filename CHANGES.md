@@ -137,6 +137,12 @@
 
 ### New properties and values
 
+- Read `stroke-dasharray` and `stroke-dashoffset`. Both parsed as unknown
+  properties, so their lengths kept a zero unit and a trailing zero that every
+  other length property sheds. SVG 2 sec. 13.3 separates dashes by comma
+  and/or whitespace for one flat pattern, so `4, 2` and `4 2` are one value
+  and print with the shorter separator (#240)
+
 - Read `stroke-miterlimit` as the `<number>` SVG 2 sec. 13.3 defines, so it
   minifies like one (`4.0` is `4`) and a constant `calc()` folds. A value
   below 1 is out of range, since the limit is a ratio that bottoms out

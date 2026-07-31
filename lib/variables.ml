@@ -1733,6 +1733,12 @@ let vars_of_stroke_linejoin (value : Properties.stroke_linejoin) =
 let vars_of_stroke_miterlimit (value : Properties.stroke_miterlimit) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_stroke_dashoffset (value : Properties.stroke_dashoffset) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_stroke_dasharray (value : Properties.stroke_dasharray) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_css_wide (value : Properties.css_wide) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2175,6 +2181,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Stroke_linecap, value -> vars_of_stroke_linecap value
   | Stroke_linejoin, value -> vars_of_stroke_linejoin value
   | Stroke_miterlimit, value -> vars_of_stroke_miterlimit value
+  | Stroke_dashoffset, value -> vars_of_stroke_dashoffset value
+  | Stroke_dasharray, value -> vars_of_stroke_dasharray value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value

@@ -1649,6 +1649,10 @@ let read_interaction_value : type a.
       Some (v Stroke_linejoin (Properties.read_stroke_linejoin t))
   | Stroke_miterlimit ->
       Some (v Stroke_miterlimit (Properties.read_stroke_miterlimit t))
+  | Stroke_dashoffset ->
+      Some (v Stroke_dashoffset (Properties.read_stroke_dashoffset t))
+  | Stroke_dasharray ->
+      Some (v Stroke_dasharray (Properties.read_stroke_dasharray t))
   | Unicode_bidi -> Some (v Unicode_bidi (read_unicode_bidi t))
   | Writing_mode -> Some (v Writing_mode (read_writing_mode t))
   | Text_combine_upright ->

@@ -1894,6 +1894,16 @@ let matrix =
         negatives = [ ".5"; "-1"; "4px"; "4 4" ];
       };
       {
+        property = "stroke-dashoffset";
+        positives = [ "0"; "4"; "4px"; "10%"; "-2px" ];
+        negatives = [ "none"; "4 2"; "red" ];
+      };
+      {
+        property = "stroke-dasharray";
+        positives = [ "none"; "4"; "4 2"; "4, 2"; "4px 2px"; "10% 5%" ];
+        negatives = [ "red"; "4 red" ];
+      };
+      {
         property = "unicode-bidi";
         positives = [ "normal"; "embed"; "isolate"; "plaintext" ];
         negatives = [ "normal isolate"; "auto" ];
