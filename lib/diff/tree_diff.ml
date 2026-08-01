@@ -1959,18 +1959,6 @@ let detect_block_structure_changes blocks1 blocks2 =
     blocks1;
   block_structure_changed
 
-let only_declaration_reorders rule_changes nested_containers =
-  rule_changes <> []
-  && List.for_all
-       (fun (diff : rule_diff) ->
-         match diff with
-         | Reordered { old_declarations = Some _; new_declarations = Some _; _ }
-           ->
-             true
-         | _ -> false)
-       rule_changes
-  && nested_containers = []
-
 let container_position extract_fn cond stmts =
   let rec go i = function
     | [] -> None
@@ -2415,7 +2403,7 @@ and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
     (* If only position changed with no content changes, report as reordered *)
     if position_changed && rule_changes = [] && nested_containers = [] then
       Some (reordered_container container_type cond rules1 pos1 pos2)
-    else if not (only_declaration_reorders rule_changes nested_containers) then
+    else if rule_changes <> [] || nested_containers <> [] then
       (* Container was modified in content, not just position *)
       Some
         (modified_container container_type cond rules1 rules2 rule_changes
@@ -2522,10 +2510,7 @@ and collect_container_diffs ~container_type ~depth added removed modified =
       let nested_containers =
         nested_differences ~depth:(depth + 1) rules1 rules2
       in
-      if
-        (rule_changes <> [] || nested_containers <> [])
-        && not (only_declaration_reorders rule_changes nested_containers)
-      then
+      if rule_changes <> [] || nested_containers <> [] then
         diffs :=
           Modified
             {

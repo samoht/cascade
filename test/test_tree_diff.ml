@@ -182,6 +182,59 @@ let diff_overlapping_decl_reorder_flagged () =
     "overlapping declaration reorder is not empty" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* The selectors whose declarations were reordered, from every container the
+   diff reports, at any nesting depth. *)
+let rec nested_decl_reorders (c : Cascade_diff.Tree_diff.container_diff) =
+  match c with
+  | Cascade_diff.Tree_diff.Modified { rule_changes; container_changes; _ } ->
+      List.filter_map
+        (fun (r : Cascade_diff.Tree_diff.rule_diff) ->
+          match r with
+          | Cascade_diff.Tree_diff.Reordered
+              { selector; old_declarations = Some _; _ } ->
+              Some selector
+          | _ -> None)
+        rule_changes
+      @ List.concat_map nested_decl_reorders container_changes
+  | _ -> []
+
+let decl_reorders_in_containers d =
+  List.concat_map nested_decl_reorders d.Cascade_diff.Tree_diff.containers
+
+(* An at-rule does not commute the declarations it wraps: a swap that decides
+   the cascade at the top level decides it inside @media, @layer and @supports
+   too. *)
+let significant_reorder_inside wrap () =
+  let expected = parse (wrap ".a { margin: 1px; margin-top: 2px }") in
+  let actual = parse (wrap ".a { margin-top: 2px; margin: 1px }") in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "overlapping reorder inside an at-rule is not empty" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check (list string))
+    "the report names the rule that was reordered" [ ".a" ]
+    (decl_reorders_in_containers d)
+
+let neutral_reorder_inside wrap () =
+  let expected = parse (wrap ".a { color: red; background: blue }") in
+  let actual = parse (wrap ".a { background: blue; color: red }") in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "neutral reorder inside an at-rule is empty" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let in_media body = "@media (min-width: 10px) { " ^ body ^ " }"
+let in_layer body = "@layer base { " ^ body ^ " }"
+let in_supports body = "@supports (color: red) { " ^ body ^ " }"
+let diff_media_decl_reorder_flagged = significant_reorder_inside in_media
+let diff_layer_decl_reorder_flagged = significant_reorder_inside in_layer
+let diff_supports_decl_reorder_flagged = significant_reorder_inside in_supports
+let diff_media_neutral_decl_reorder_empty = neutral_reorder_inside in_media
+let diff_layer_neutral_decl_reorder_empty = neutral_reorder_inside in_layer
+
+let diff_supports_neutral_decl_reorder_empty =
+  neutral_reorder_inside in_supports
+
 (* ===== @property registrations ===== *)
 
 (* The descriptor changes a modified [@property] reports, as "name: expected ->
@@ -733,6 +786,18 @@ let suite =
         diff_neutral_decl_reorder_is_empty;
       Alcotest.test_case "overlapping declaration reorder flagged" `Quick
         diff_overlapping_decl_reorder_flagged;
+      Alcotest.test_case "declaration reorder in media flagged" `Quick
+        diff_media_decl_reorder_flagged;
+      Alcotest.test_case "declaration reorder in layer flagged" `Quick
+        diff_layer_decl_reorder_flagged;
+      Alcotest.test_case "declaration reorder in supports flagged" `Quick
+        diff_supports_decl_reorder_flagged;
+      Alcotest.test_case "neutral declaration reorder in media is empty" `Quick
+        diff_media_neutral_decl_reorder_empty;
+      Alcotest.test_case "neutral declaration reorder in layer is empty" `Quick
+        diff_layer_neutral_decl_reorder_empty;
+      Alcotest.test_case "neutral declaration reorder in supports is empty"
+        `Quick diff_supports_neutral_decl_reorder_empty;
       Alcotest.test_case "property syntax changed" `Quick
         diff_property_syntax_changed;
       Alcotest.test_case "property inherits changed" `Quick
