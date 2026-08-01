@@ -50,7 +50,13 @@ type rule_diff =
 
 type container_info = {
   container_type :
-    [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
+    [ `Media
+    | `Layer
+    | `Supports
+    | `Container
+    | `Property
+    | `Nesting
+    | `At_rule ];
   condition : string;
   rules : Css.statement list;
 }
@@ -67,7 +73,13 @@ type container_diff =
   | Reordered of { info : container_info; expected_pos : int; actual_pos : int }
   | Block_structure_changed of {
       container_type :
-        [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
+        [ `Media
+        | `Layer
+        | `Supports
+        | `Container
+        | `Property
+        | `Nesting
+        | `At_rule ];
       condition : string;
       expected_blocks : (int * Css.statement list) list;
           (** (position, rules) for each block in expected *)
@@ -586,6 +598,13 @@ let container_prefix = function
   | `Container -> "@container"
   | `Property -> "@property"
   | `Nesting -> "&"
+  (* The condition already spells the at-rule out, keyword included. *)
+  | `At_rule -> ""
+
+let container_label container_type condition =
+  match container_prefix container_type with
+  | "" -> condition
+  | prefix -> prefix ^ " " ^ condition
 
 let describe_statement stmt =
   let try_desc f = f stmt in
@@ -823,7 +842,7 @@ let pp_block_pairing ~style ~child_prefix buf pairing =
 
 let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
     ~container_type ~condition ~expected_blocks ~actual_blocks =
-  let cont_prefix = container_prefix container_type in
+  let label = container_label container_type condition in
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
   let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
   let exp_count = List.length expected_blocks in
@@ -839,7 +858,7 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
       [ string_of_int exp_count; " block split into "; string_of_int act_count ]
     else [ string_of_int exp_count; " blocks at different positions" ]
   in
-  add_strings buf ([ prefix; cont_prefix; " "; condition; " (" ] @ summary);
+  add_strings buf ([ prefix; label; " (" ] @ summary);
   Buffer.add_string buf ")\n";
   let pairing = pair_blocks ~expected_blocks ~actual_blocks in
   pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
@@ -850,15 +869,7 @@ let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
   let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
   add_strings buf
-    [
-      prefix;
-      container_prefix container_type;
-      " ";
-      condition;
-      " (";
-      label;
-      ")\n";
-    ];
+    [ prefix; container_label container_type condition; " ("; label; ")\n" ];
   pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
       pp_container_rules ~style ~parent_prefix:child_prefix ~label buf rules)
 
@@ -877,11 +888,10 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
         rule_changes;
         container_changes;
       } ->
-      let cont_prefix = container_prefix container_type in
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
       let changes_parts = count_rule_changes rule_changes in
-      add_strings buf [ prefix; cont_prefix; " "; condition; " " ];
+      add_strings buf [ prefix; container_label container_type condition; " " ];
       if changes_parts <> [] then
         add_strings buf [ "("; String.concat ", " changes_parts; ")\n" ]
       else if container_changes = [] then
@@ -907,12 +917,12 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
             container_changes)
   | Reordered
       { info = { container_type; condition; _ }; expected_pos; actual_pos } ->
-      let cont_prefix = container_prefix container_type in
       let prefix = tree_prefix ~style ~is_last ~parent_prefix in
       Buffer.add_string buf
-        (prefix ^ cont_prefix ^ " " ^ condition ^ " (position "
-       ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
-       ^ string_of_int actual_pos ^ ")\n")
+        (prefix
+        ^ container_label container_type condition
+        ^ " (position " ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
+        ^ string_of_int actual_pos ^ ")\n")
   | Block_structure_changed
       { container_type; condition; expected_blocks; actual_blocks } ->
       pp_block_structure_changed ~style ~is_last ~parent_prefix buf
@@ -1907,7 +1917,121 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
           | _ -> Some diff))
     changes
 
+(* At-rules that carry neither a selector nor a condition the other processors
+   key on: [@page], [@font-face], [@counter-style], [@scope], [@starting-style]
+   and friends. [rule_diffs] gives every one of them the universal selector, so
+   it pairs them without ever reading their bodies. What they hold below the
+   brace decides how a pair is compared. *)
+type at_rule_body =
+  | Block of Css.statement list  (** statements, walked like a container *)
+  | Declarations of Css.declaration list  (** a rule body without a rule *)
+  | Opaque  (** descriptors, compared as the text they print to *)
+
+let at_rule_body (stmt : Css.statement) : at_rule_body option =
+  match stmt with
+  | Starting_style block
+  | Scope (_, _, block)
+  | Moz_document (_, block)
+  | When (_, block)
+  | Else (_, block) ->
+      Some (Block block)
+  | Page (_, decls)
+  (* With margin rules the declarations are only part of the body, so the whole
+     block is compared as text instead. *)
+  | Page_with_margins (_, decls, [])
+  | Position_try (_, decls)
+  | Supports_condition (_, decls) ->
+      Some (Declarations decls)
+  | Font_face _ | Counter_style _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Viewport _ | Webkit_keyframes _
+  | Moz_keyframes _ | Unknown_at_rule _ ->
+      Some Opaque
+  | _ -> None
+
+(* [process_at_rules] owns these statements, so leaving them in the rule diff as
+   well would report one change twice, once against the universal selector. *)
+let is_selectorless_at_rule stmt = at_rule_body stmt <> None
+
+(* The at-rule text split at its block: the head keys the statement, the body is
+   what a descriptor-only at-rule is compared on. *)
+let at_rule_text stmt =
+  let text = Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) in
+  match String.index_opt text '{' with
+  | None -> (String.trim text, "")
+  | Some i ->
+      let head = String.sub text 0 i in
+      let last = String.length text - 1 in
+      let body =
+        if last > i && text.[last] = '}' then
+          String.sub text (i + 1) (last - i - 1)
+        else String.sub text (i + 1) (last - i)
+      in
+      (String.trim head, body)
+
+(* A stylesheet may repeat one at-rule (several [@font-face] blocks, several
+   [@page] rules), so the head alone does not name a block. Number the blocks
+   that share a head and pair them in order. *)
+let at_rule_items stmts =
+  let seen = Hashtbl.create 8 in
+  List.filter_map
+    (fun stmt ->
+      match at_rule_body stmt with
+      | None -> None
+      | Some body ->
+          let head, text = at_rule_text stmt in
+          let n = Option.value ~default:0 (Hashtbl.find_opt seen head) in
+          Hashtbl.replace seen head (n + 1);
+          Some ((head, n), (head, body, text)))
+    stmts
+
+(* The container line already names the at-rule, so these changes carry no
+   selector of their own; a second label would read as a second subject. *)
+
+let at_rule_declarations_change decls1 decls2 =
+  let property_changes, added_properties, removed_properties =
+    properties_diff decls1 decls2
+  in
+  if
+    property_changes = [] && added_properties = [] && removed_properties = []
+    && not (reorder_is_significant decls1 decls2)
+  then None
+  else
+    Some
+      (Content_changed
+         {
+           selector = "";
+           old_declarations = decls1;
+           new_declarations = decls2;
+           property_changes;
+           added_properties;
+           removed_properties;
+         })
+
+(* Descriptors hold neither statements nor declarations, so a pair of them is
+   compared on the text it prints to. *)
+let at_rule_text_change text1 text2 =
+  Content_changed
+    {
+      selector = "";
+      old_declarations = [];
+      new_declarations = [];
+      property_changes =
+        [
+          {
+            property_name = "descriptors";
+            expected_value = text1;
+            actual_value = text2;
+          };
+        ];
+      added_properties = [];
+      removed_properties = [];
+    }
+
 let to_rule_changes rules1 rules2 : rule_diff list =
+  (* [process_at_rules] reads these statements, and a rule diff can only see
+     them as one more universal selector. *)
+  let rules1 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules1 in
+  let rules2 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules2 in
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   let moved = moved_order_keys rules1 rules2 in
   List.filter_map convert_added_rule r_added
@@ -2224,41 +2348,6 @@ let process_nested_keyframes ~depth:_ stmts1 stmts2 =
       modified
   in
   added_diffs @ removed_diffs @ modified_diffs
-
-let process_font_face_rules ~depth:_ stmts1 stmts2 =
-  let items1 = List.filter_map Css.as_font_face stmts1 in
-  let items2 = List.filter_map Css.as_font_face stmts2 in
-  let diffs = ref [] in
-  match (items1, items2) with
-  | [], [] -> []
-  | [], _ ->
-      diffs :=
-        Added { container_type = `Layer; condition = "@font-face"; rules = [] }
-        :: !diffs;
-      !diffs
-  | _, [] ->
-      diffs :=
-        Removed
-          { container_type = `Layer; condition = "@font-face"; rules = [] }
-        :: !diffs;
-      !diffs
-  | descs1 :: _, descs2 :: _ ->
-      if descs1 <> descs2 then
-        diffs :=
-          Modified
-            {
-              info =
-                {
-                  container_type = `Layer;
-                  condition = "@font-face";
-                  rules = [];
-                };
-              actual_rules = [];
-              rule_changes = [];
-              container_changes = [];
-            }
-          :: !diffs;
-      !diffs
 
 let container_condition_string name_opt condition =
   let cond_str =
@@ -2601,6 +2690,51 @@ and process_nested_rules ~depth stmts1 stmts2 =
     items1;
   !diffs
 
+(* Compare one pair of at-rule blocks that occupy the same position under the
+   same head. *)
+and at_rule_pair_diff ~depth (head, body1, text1) (_, body2, text2) =
+  let modified rules actual_rules rule_changes container_changes =
+    Modified
+      {
+        info = { container_type = `At_rule; condition = head; rules };
+        actual_rules;
+        rule_changes;
+        container_changes;
+      }
+  in
+  match (body1, body2) with
+  | Block block1, Block block2 ->
+      let rule_changes = to_rule_changes block1 block2 in
+      let container_changes =
+        nested_differences ~depth:(depth + 1) block1 block2
+      in
+      if rule_changes = [] && container_changes = [] then None
+      else Some (modified block1 block2 rule_changes container_changes)
+  | Declarations decls1, Declarations decls2 ->
+      Option.map
+        (fun change -> modified [] [] [ change ] [])
+        (at_rule_declarations_change decls1 decls2)
+  | Opaque, Opaque when text1 <> text2 ->
+      Some (modified [] [] [ at_rule_text_change text1 text2 ] [])
+  | Block _, _ | Declarations _, _ | Opaque, _ -> None
+
+and process_at_rules ~depth stmts1 stmts2 =
+  let items1 = at_rule_items stmts1 and items2 = at_rule_items stmts2 in
+  let added, removed, pairs =
+    diffs ~key_of:fst ~key_equal:( = )
+      ~is_empty_diff:(fun _ _ -> false)
+      items1 items2
+  in
+  let block_rules = function Block block -> block | _ -> [] in
+  let info (head, body, _) =
+    { container_type = `At_rule; condition = head; rules = block_rules body }
+  in
+  List.map (fun (_, item) -> Added (info item)) added
+  @ List.map (fun (_, item) -> Removed (info item)) removed
+  @ List.filter_map
+      (fun ((_, item1), (_, item2)) -> at_rule_pair_diff ~depth item1 item2)
+      pairs
+
 (* Main recursive function for nested differences *)
 and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
     (stmts2 : Css.statement list) : container_diff list =
@@ -2625,8 +2759,8 @@ and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
     @ process_nested_properties stmts1 stmts2
     (* Process keyframes animations *)
     @ process_nested_keyframes ~depth stmts1 stmts2
-    (* Process font-face rules *)
-    @ process_font_face_rules ~depth stmts1 stmts2
+    (* Process the at-rules that carry no selector of their own *)
+    @ process_at_rules ~depth stmts1 stmts2
 
 (* Check if containers appear at different positions in statement sequence *)
 let detect_container_position_changes stmts1 stmts2 containers =
