@@ -41,6 +41,8 @@
 - `--lossless` keeps a longhand in source order against the shorthand that
   resets it, whether the property is typed or not; moving the pair changed what
   the rule rendered (#267, #270)
+- `--lossless` keeps a colour's alpha exact, like its other channels;
+  `oklch(... / .74567)` printed `/.746` (#278)
 - A selector list mixing a vendor pseudo-element with ordinary selectors is
   split, so a browser that ignores `::-webkit-search-cancel-button` keeps the
   other selectors' declarations (#203)
