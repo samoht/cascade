@@ -174,6 +174,12 @@ identical, rather than as spurious changes.
 
 ### Diff report
 
+- A declaration reorder that decides the cascade is reported inside `@media`,
+  `@layer` and `@supports` too. Every declaration reorder under a container was
+  dropped, and a cascade-neutral one is already no difference before it gets
+  there, so what was dropped was the significant case and `--diff=tree` called
+  the two stylesheets identical (#268)
+
 - An `@property` is compared on its whole body, and the entry names the
   descriptors that differ. Two registrations for one name differing in `syntax`
   or `initial-value` compared equal, so `--diff=canonical` called the
