@@ -19,10 +19,15 @@
   (glob_files *.js))
  (action (progn)))
 
+; The sweep reads the committed CSS corpora, so the rule has to bring them
+; into the build directory it runs in.
+
 (rule
  (alias runtest)
  (deps
   (glob_files *.js)
+  (source_tree ../interop/css-minify-tests/traces/tests)
+  (source_tree ../examples)
   render_diff.exe)
  (action
   (setenv

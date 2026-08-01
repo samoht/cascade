@@ -99,6 +99,32 @@ let node_binary () =
   | Some n when executable n -> Some n
   | Some _ | None -> on_path "node"
 
+(* ===== Files ===== *)
+
+let contains haystack needle =
+  let n = String.length needle and h = String.length haystack in
+  let rec at i =
+    i + n <= h && (String.sub haystack i n = needle || at (i + 1))
+  in
+  n = 0 || at 0
+
+let rec mkdir_p dir =
+  if not (Sys.file_exists dir) then (
+    mkdir_p (Filename.dirname dir);
+    try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ())
+
+let write file contents =
+  let oc = open_out file in
+  output_string oc contents;
+  close_out oc
+
+let read_file file =
+  let ic = open_in_bin file in
+  let n = in_channel_length ic in
+  let s = really_input_string ic n in
+  close_in ic;
+  s
+
 (* ===== Inputs ===== *)
 
 (* One tiny hand-written sheet, kept next to the harness rather than in a
@@ -122,26 +148,172 @@ a[href^="https"], .card p { text-decoration: underline; color: #00f }
 let canary_sheet = {css|.k { row-gap: 9px; gap: 1px }|css}
 let canary_reordered = {css|.k { gap: 1px; row-gap: 9px }|css}
 
+(* [Differs] is the expected-failure marker: the harness fails when the pair it
+   names renders the same, so a fix cannot leave the pin behind. *)
+type expectation = Same | Differs of string
+
 type input = {
   id : string;
   source : string; (* the document is derived from this sheet *)
   sheets : (string * string) list option; (* None: the optimize variants *)
-  expect_diff : bool;
+  expect : expectation;
 }
 
-let sheet id source = { id; source; sheets = None; expect_diff = false }
+(* Inputs the sweep is known to fail. Each is a render change the optimizer
+   makes today; fixing one is its own piece of work, so the sweep pins them here
+   and stays green on everything else. *)
+let known =
+  [
+    ( "corpus-duplicates-0015",
+      "--lossless sorts border-top before border-block, which overwrites it" );
+    ( "corpus-duplicates-0016",
+      "--lossless sorts margin-left before margin-inline-start, which \
+       overwrites it" );
+    ( "corpus-duplicates-0017",
+      "--lossless sorts padding-top before padding-block-start, which \
+       overwrites it" );
+    ("corpus-colors-0046", "--lossless rounds the alpha channel to 3 decimals");
+    ("corpus-colors-0047", "--lossless rounds the alpha channel to 3 decimals");
+    ("corpus-colors-0048", "--lossless rounds the alpha channel to 3 decimals");
+    ("corpus-colors-0049", "--lossless rounds the alpha channel to 3 decimals");
+    ( "corpus-anchor-0002",
+      "position-area: top center folds to top, which Chromium computes as a \
+       different area" );
+  ]
+
+let sheet id source =
+  let expect =
+    match List.assoc_opt id known with
+    | Some reason -> Differs reason
+    | None -> Same
+  in
+  { id; source; sheets = None; expect }
+
+(* The committed corpora sit at a fixed place in the tree; the sweep runs both
+   from the repository root and from the build directory a dune rule gives it,
+   so it looks for them upwards from wherever it started. *)
+let repo_relative rel =
+  let rec up dir fuel =
+    if fuel = 0 then None
+    else if Sys.file_exists (dir // rel) then Some (dir // rel)
+    else
+      let parent = Filename.dirname dir in
+      if parent = dir then None else up parent (fuel - 1)
+  in
+  up (Sys.getcwd ()) 12
+
+let entries dir =
+  match Sys.readdir dir with
+  | exception Sys_error _ -> []
+  | e ->
+      Array.sort compare e;
+      Array.to_list e
+
+(* test/interop/css-minify-tests: 398 small sheets across 28 categories, one
+   [source.css] each. Enough shapes - shorthands, nesting, layers, selectors -
+   that the derived documents cover most of what a browser has to agree on. *)
+let corpus_files () =
+  match
+    repo_relative
+      ("test" // "interop" // "css-minify-tests" // "traces" // "tests")
+  with
+  | None -> []
+  | Some root ->
+      List.concat_map
+        (fun category ->
+          let dir = root // category in
+          if not (try Sys.is_directory dir with Sys_error _ -> false) then []
+          else
+            List.filter_map
+              (fun id ->
+                let file = dir // id // "source.css" in
+                if Sys.file_exists file then
+                  Some ("corpus-" ^ category ^ "-" ^ id, file)
+                else None)
+              (entries dir))
+        (entries root)
+
+(* test/examples: the two committed hand-written sheets, an order of magnitude
+   larger than a corpus case. *)
+let example_files () =
+  match repo_relative ("test" // "examples") with
+  | None -> []
+  | Some dir ->
+      List.filter_map
+        (fun file ->
+          if Filename.check_suffix file ".css" then
+            Some ("example-" ^ Filename.remove_extension file, dir // file)
+          else None)
+        (entries dir)
+
+(* Spread the sample over the whole list rather than taking a prefix, so every
+   category is represented. *)
+let sample n l =
+  let total = List.length l in
+  if n <= 0 || total <= n then l
+  else
+    let step = (total + n - 1) / n in
+    List.filteri (fun i _ -> i mod step = 0) l
+
+let full = ref false
+let seeds = ref None
+let corpus = ref None
+let only = ref None
+
+let usage () =
+  Fmt.pr
+    "usage: render_diff [--full] [--seeds N] [--corpus N] [--only SUBSTRING]@.";
+  exit 0
+
+let parse_args () =
+  let rec loop i =
+    if i < Array.length Sys.argv then (
+      let arg n =
+        if i + 1 < Array.length Sys.argv then Sys.argv.(i + 1) else n
+      in
+      (match Sys.argv.(i) with
+      | "--full" -> full := true
+      | "--seeds" -> seeds := int_of_string_opt (arg "")
+      | "--corpus" -> corpus := int_of_string_opt (arg "")
+      | "--only" -> only := Some (arg "")
+      | "-h" | "--help" -> usage ()
+      | _ -> ());
+      loop (i + 1))
+  in
+  loop 1
 
 let inputs () =
-  [
-    sheet "smoke" smoke_sheet;
-    {
-      id = "canary";
-      source = canary_sheet;
-      sheets =
-        Some [ ("original", canary_sheet); ("reordered", canary_reordered) ];
-      expect_diff = true;
-    };
-  ]
+  parse_args ();
+  (* The whole committed corpus renders in under two seconds, so the default
+     sweep takes all of it; [--full] only widens the generated half. *)
+  let n_seeds =
+    match !seeds with Some n -> n | None -> if !full then 256 else 32
+  in
+  let n_corpus = match !corpus with Some n -> n | None -> 0 in
+  let files = sample n_corpus (corpus_files ()) @ example_files () in
+  let generated =
+    List.init n_seeds (fun i ->
+        sheet
+          ("seed-" ^ string_of_int i)
+          (Css.to_string (Gen_sheet.stylesheet ~seed:i)))
+  in
+  let all =
+    [
+      sheet "smoke" smoke_sheet;
+      {
+        id = "canary";
+        source = canary_sheet;
+        sheets =
+          Some [ ("original", canary_sheet); ("reordered", canary_reordered) ];
+        expect = Differs "gap resets the row gap the longhand set";
+      };
+    ]
+    @ List.map (fun (id, file) -> sheet id (read_file file)) files
+    @ generated
+  in
+  match !only with
+  | None -> all
+  | Some needle -> List.filter (fun i -> contains i.id needle) all
 
 (* ===== Variants ===== *)
 
@@ -158,7 +330,9 @@ let variants sheet =
   [
     ("original", Css.to_string sheet);
     ("optimize", minified);
-    ("lossless", Css.to_string ~minify:true (Css.optimize ~lossless:true sheet));
+    ( "lossless",
+      Css.to_string ~minify:true ~lossless:true
+        (Css.optimize ~lossless:true sheet) );
     ("reparsed", reparsed);
   ]
 
@@ -175,6 +349,29 @@ let canonically_equal prop a b =
     Cascade_diff.Css_compare.equal ~mode:`Canonical (wrap prop a) (wrap prop b)
   with Reader.Parse_error _ | Failure _ | Invalid_argument _ -> false
 
+(* [optimize] without [~lossless] approximates colours by design: it rounds a
+   channel and rewrites a colour into whichever space spells it shortest. Both
+   change what getComputedStyle reports for a colour-valued property, so under
+   the lossy variants such a difference is counted and reported rather than
+   failed. Everything else, and every difference at all under [lossless], is a
+   render change the optimizer must not make. *)
+let lossy variant = variant = "optimize" || variant = "reparsed"
+
+let colour_valued prop =
+  contains prop "color"
+  || List.mem prop
+       [
+         "fill";
+         "stroke";
+         "background-image";
+         "border-image-source";
+         "mask-image";
+         "box-shadow";
+         "text-shadow";
+         "filter";
+         "backdrop-filter";
+       ]
+
 (* ===== Driver protocol ===== *)
 
 type diff = {
@@ -188,6 +385,7 @@ type diff = {
 type result = {
   diffs : diff list;
   candidates : int;
+  approximations : int;
   matched : int;
   unmatched : int;
   rejected : int;
@@ -199,6 +397,7 @@ let empty_result =
   {
     diffs = [];
     candidates = 0;
+    approximations = 0;
     matched = 0;
     unmatched = 0;
     rejected = 0;
@@ -220,6 +419,8 @@ let parse_driver_output lines =
           let r = { r with candidates = r.candidates + 1 } in
           let r =
             if canonically_equal property reference observed then r
+            else if lossy variant && colour_valued property then
+              { r with approximations = r.approximations + 1 }
             else
               {
                 r with
@@ -276,23 +477,6 @@ let run_driver ~node ~chrome ~script ~jobs ~work =
       Error (String.concat "\n" text)
 
 (* ===== Artefacts ===== *)
-
-let rec mkdir_p dir =
-  if not (Sys.file_exists dir) then (
-    mkdir_p (Filename.dirname dir);
-    try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ())
-
-let write file contents =
-  let oc = open_out file in
-  output_string oc contents;
-  close_out oc
-
-let read_file file =
-  let ic = open_in_bin file in
-  let n = in_channel_length ic in
-  let s = really_input_string ic n in
-  close_in ic;
-  s
 
 (* A page that rebuilds the derived document with the builder the driver used,
    so opening the artefact in a browser reproduces the run. *)
@@ -413,6 +597,7 @@ let () =
   let skipped = Hashtbl.create 16 in
   let matched = ref 0 and unmatched = ref 0 and rejected = ref 0 in
   let candidates = ref 0 in
+  let approximations = ref 0 in
   let surviving = ref 0 in
   let canaries = ref 0 in
   let unmatched_shown = ref 0 in
@@ -421,7 +606,7 @@ let () =
       let id = input.id in
       match Hashtbl.find_opt doms id with
       | None -> ()
-      | Some dom ->
+      | Some dom -> (
           selectors := !selectors + Dom_of_css.selectors dom;
           synthesised := !synthesised + Dom_of_css.synthesised dom;
           elements := !elements + Dom_of_css.elements dom;
@@ -437,6 +622,7 @@ let () =
           unmatched := !unmatched + r.unmatched;
           rejected := !rejected + r.rejected;
           candidates := !candidates + r.candidates;
+          approximations := !approximations + r.approximations;
           List.iter
             (fun e -> prerr_endline ("render_diff: " ^ id ^ ": " ^ e))
             r.errors;
@@ -447,30 +633,39 @@ let () =
                 incr unmatched_shown;
                 Fmt.pr "  probe matched no element: %s (%s)@." s id))
             r.unmatched_examples;
-          if input.expect_diff then
-            if r.diffs = [] then (
-              incr failures;
-              Fmt.pr
-                "FAIL %s: the harness saw no difference between two sheets \
-                 that render differently@."
-                id)
-            else incr canaries
-          else if r.diffs <> [] then (
-            surviving := !surviving + List.length r.diffs;
-            incr failures;
-            let dir = root // id in
-            write_artefacts ~dir ~script_dir
-              ~dom:(Json.to_string (Dom_of_css.to_json dom))
-              ~sheets:(Hashtbl.find sheets id) ~diffs:r.diffs;
-            Fmt.pr "FAIL %s: %d computed-style difference(s)@." id
-              (List.length r.diffs);
-            List.iteri
-              (fun i d ->
-                if i < 6 then
-                  Fmt.pr "  [%s] %s %s: %S -> %S@." d.variant d.element
-                    d.property d.reference d.observed)
-              r.diffs;
-            Fmt.pr "  artefacts: %s@." dir))
+          match input.expect with
+          | Differs reason ->
+              if r.diffs = [] then (
+                incr failures;
+                Fmt.pr
+                  "FAIL %s: expected a difference (%s) and saw none; remove \
+                   the pin@."
+                  id reason)
+              else (
+                incr canaries;
+                let dir = root // id in
+                write_artefacts ~dir ~script_dir
+                  ~dom:(Json.to_string (Dom_of_css.to_json dom))
+                  ~sheets:(Hashtbl.find sheets id) ~diffs:r.diffs;
+                Fmt.pr "known %s: %s@." id reason;
+                Fmt.pr "  artefacts: %s@." dir)
+          | Same ->
+              if r.diffs <> [] then (
+                surviving := !surviving + List.length r.diffs;
+                incr failures;
+                let dir = root // id in
+                write_artefacts ~dir ~script_dir
+                  ~dom:(Json.to_string (Dom_of_css.to_json dom))
+                  ~sheets:(Hashtbl.find sheets id) ~diffs:r.diffs;
+                Fmt.pr "FAIL %s: %d computed-style difference(s)@." id
+                  (List.length r.diffs);
+                List.iteri
+                  (fun i d ->
+                    if i < 6 then
+                      Fmt.pr "  [%s] %s %s: %S -> %S@." d.variant d.element
+                        d.property d.reference d.observed)
+                  r.diffs;
+                Fmt.pr "  artefacts: %s@." dir)))
     inputs;
   Fmt.pr
     "render_diff: %d sheet(s), %d selector(s), %d synthesised, %d element(s), \
@@ -479,9 +674,9 @@ let () =
   Fmt.pr "  probes: %d matched, %d unmatched, %d rejected@." !matched !unmatched
     !rejected;
   Fmt.pr
-    "  computed-style candidates: %d, render differences: %d, canaries seen: \
-     %d@."
-    !candidates !surviving !canaries;
+    "  computed-style candidates: %d, lossy colour approximations: %d, render \
+     differences: %d, canaries seen: %d@."
+    !candidates !approximations !surviving !canaries;
   if !unparsed > 0 then Fmt.pr "  unparsed inputs: %d@." !unparsed;
   Hashtbl.fold (fun reason n acc -> (reason, n) :: acc) skipped []
   |> List.sort (fun (_, a) (_, b) -> compare b a)

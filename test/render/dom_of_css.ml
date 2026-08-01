@@ -119,8 +119,18 @@ let check_ns = function
   | Some Selector.None | Some (Selector.Prefix _) ->
       raise (Skip "namespaced selector")
 
+(* createElement rejects anything else, and a selector such as [\\2d foo] does
+   reach the synthesiser as the element name [-foo]. *)
+let valid_tag name =
+  name <> ""
+  && (match name.[0] with 'a' .. 'z' -> true | _ -> false)
+  && String.for_all
+       (function 'a' .. 'z' | '0' .. '9' | '-' -> true | _ -> false)
+       name
+
 let set_tag sp name =
   let name = String.lowercase_ascii name in
+  if not (valid_tag name) then raise (Skip "element name is not an HTML tag");
   match sp.tag with
   | None -> sp.tag <- Some name
   | Some t when t = name -> ()
@@ -208,19 +218,6 @@ let nth_pos sp of_type wrap n =
 
 let filler tag : node =
   { tag; id = None; classes = []; attrs = []; children = [] }
-
-(* The synthesised element carries only what the compound asked for, so a
-   negation holds by construction - except when it rules out the default tag or
-   pins the element away from a position. *)
-let rec negate sp = function
-  | Selector.Element (_, name) ->
-      sp.avoid <- String.lowercase_ascii name :: sp.avoid
-  | Selector.First_child -> if sp.pos = Anywhere then sp.pos <- Nth 2
-  | Selector.Last_child -> if sp.pos = Anywhere then sp.pos <- Nth_last 2
-  | Selector.Compound parts -> List.iter (negate sp) parts
-  | Selector.List l | Selector.Is l | Selector.Where l ->
-      List.iter (negate sp) l
-  | _ -> ()
 
 let node_of_spec sp children : node =
   let children = sp.inner @ children in
@@ -402,6 +399,25 @@ let rec add sp part =
   | Selector.Combined _ | Selector.Relative _ | Selector.List _ ->
       raise (Skip "complex selector inside a compound")
 
+(* The synthesised element carries only what the compound asked for, so a
+   negation holds by construction - except when it rules out the default tag,
+   pins the element away from a position, or negates a state the element has by
+   default. *)
+and negate sp = function
+  | Selector.Element (_, name) ->
+      sp.avoid <- String.lowercase_ascii name :: sp.avoid
+  | Selector.First_child -> if sp.pos = Anywhere then sp.pos <- Nth 2
+  | Selector.Last_child -> if sp.pos = Anywhere then sp.pos <- Nth_last 2
+  | Selector.Enabled ->
+      want_tag sp "input";
+      set_attr sp "disabled" ""
+  | Selector.Dir d -> set_attr sp "dir" (if d = "rtl" then "ltr" else "rtl")
+  | Selector.Not l -> List.iter (add sp) l
+  | Selector.Compound parts -> List.iter (negate sp) parts
+  | Selector.List l | Selector.Is l | Selector.Where l ->
+      List.iter (negate sp) l
+  | _ -> ()
+
 (* :is(a, b) holds when any branch does, so take the first branch that is a
    plain compound; a complex branch would need its own ancestor chain. *)
 and add_branch sp branches =
@@ -499,12 +515,17 @@ let build_fragment sel =
               cur := node_of_spec { sp with inner = [] } kids;
               cur_spec := sp;
               before := []
-          | Some Selector.Next_sibling | Some Selector.Subsequent_sibling ->
-              (match sp.pos with
-              | Last | Only | Nth_last _ ->
-                  raise (Skip "position conflicts with a sibling")
-              | _ -> ());
-              before := node_of_spec sp [] :: !before
+          | Some Selector.Next_sibling | Some Selector.Subsequent_sibling -> (
+              let node = node_of_spec sp [] in
+              let tag = if sp.of_type then node.tag else "span" in
+              (* The siblings are prepended right to left, so the padding an
+                 An+B position needs goes in front of the node itself. *)
+              before :=
+                match sp.pos with
+                | Anywhere | First -> node :: !before
+                | Nth n -> pad (n - 1) tag @ (node :: !before)
+                | Last | Only | Nth_last _ ->
+                    raise (Skip "position conflicts with a sibling"))
           | Some _ -> raise (Skip "legacy combinator"));
           link := comb)
         earlier;
