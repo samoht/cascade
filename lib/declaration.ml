@@ -496,6 +496,28 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
       Pp.to_string ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
+(* Rewrite the value of a custom declaration through [f], which sees its
+   minified serialisation. Everything else the declaration carries - its
+   importance, its cascade layer, its metadata and any theme guard - belongs to
+   the declaration and not to the value, so it is kept: rebuilding with
+   [custom_property] instead silently drops all four. *)
+let rec map_custom_value f decl =
+  match decl with
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value cv;
+        important;
+        _;
+      } ->
+      let value = f (string_of_value ~minify:true decl) in
+      let components = Cursor.remaining (Cursor.of_string value) in
+      v ~important property (Custom_value { cv with value = Tokens components })
+  | Declaration _ -> decl
+  | Theme_guarded g ->
+      let decl' = map_custom_value f g.decl in
+      if decl' == g.decl then decl else theme_guarded ~var_name:g.var_name decl'
+
 (* Byte length of [string_of_value] with no allocation; see
    [property_name_size]. *)
 let rec value_size ?(minify = true) ?(inline = false) decl =
