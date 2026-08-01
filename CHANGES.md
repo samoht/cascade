@@ -14,6 +14,12 @@
 
 ### Minification
 
+- `--lossless` keeps a declaration whose property has no typed spelling in
+  source order against the shorthand that resets it. It sorted
+  `background-position-x` before `background` and `gap` before `grid-row-gap`,
+  changing what the rule rendered, and `--diff=canonical` called the two orders
+  identical for the same reason (#267)
+
 - A `hue-rotate()` with a zero argument drops it inside a custom property, the
   way it already did in `filter` directly. Filter Effects 1 sec. 8.5 makes an
   omitted argument 0, and `hue-rotate` names a filter function and nothing

@@ -547,6 +547,70 @@ let declaration_overlap_keys decl =
   | Declaration { property; _ } -> property_footprint property
   | _ -> [ key (Declaration.property_name decl) ]
 
+(* Every longhand name the typed footprints mention, sorted for binary search.
+   Taken from [property_footprint] itself rather than respelled, so the two
+   cannot drift: every arm not listed here has a footprint that is a subset of
+   one of these families. *)
+let known_footprint_keys =
+  let keys =
+    List.concat
+      [
+        property_footprint Properties.Margin;
+        property_footprint Properties.Margin_inline;
+        property_footprint Properties.Margin_block;
+        property_footprint Properties.Padding;
+        property_footprint Properties.Padding_inline;
+        property_footprint Properties.Padding_block;
+        property_footprint Properties.Inset;
+        property_footprint Properties.Inset_inline;
+        property_footprint Properties.Inset_block;
+        property_footprint Properties.Background;
+        property_footprint Properties.Flex;
+        property_footprint Properties.Flex_flow;
+        property_footprint Properties.Transition;
+        property_footprint Properties.Border;
+        property_footprint Properties.Border_block;
+        property_footprint Properties.Border_inline;
+        property_footprint Properties.Mask;
+        property_footprint Properties.Font;
+      ]
+  in
+  let arr = Array.of_list keys in
+  Array.sort compare arr;
+  arr
+
+let is_known_footprint_key k =
+  let lo = ref 0 and hi = ref (Array.length known_footprint_keys - 1) in
+  let found = ref false in
+  while (not !found) && !lo <= !hi do
+    let mid = (!lo + !hi) / 2 in
+    let v = Array.unsafe_get known_footprint_keys mid in
+    if overlap_key_equal v k then found := true
+    else if v < k then lo := mid + 1
+    else hi := mid - 1
+  done;
+  !found
+
+(* Whether an [Unknown_property] name can be placed in the footprint model. A
+   name a typed footprint mentions writes exactly the slot it names: a typed
+   longhand is recovered under its own name when its value defeats the typed
+   reader ([margin-top:var(--a) var(--b)] parses that way), and it conflicts
+   with the same declarations the typed spelling would. Any other name may be a
+   shorthand, a legacy alias, or a longhand of a family the footprints do not
+   model - [background-position-x] writes part of [background], [grid-row-gap]
+   is [row-gap] - so it has to be treated as touching whatever it is compared
+   against. *)
+let unknown_name_is_placeable name = is_known_footprint_key (key name)
+
+(* Whether one name is the other with a further hyphenated component, the shape
+   a longhand takes under its shorthand. Two placeable names of that shape write
+   a common slot even though neither footprint mentions the other. *)
+let name_extends other name =
+  let n = String.length other in
+  String.length name > n
+  && String.starts_with ~prefix:other name
+  && Char.equal name.[n] '-'
+
 let declarations_overlap_with_keys a a_keys b b_keys =
   match (unwrap_theme_guard a, unwrap_theme_guard b) with
   | ( Declaration { property = Custom_property a; _ },
@@ -554,15 +618,20 @@ let declarations_overlap_with_keys a a_keys b b_keys =
       String.equal a b
   | Declaration { property = Custom_property _; _ }, _ -> false
   | _, Declaration { property = Custom_property _; _ } -> false
-  | ( Declaration { property = Unknown_property a; _ },
-      Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b
-  | Declaration { property = Unknown_property _; _ }, _ -> false
-  | _, Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property = All; _ }, Declaration { property; _ } ->
       not (is_excluded_from_all_reset property)
   | Declaration { property; _ }, Declaration { property = All; _ } ->
       not (is_excluded_from_all_reset property)
+  | ( Declaration { property = Unknown_property a; _ },
+      Declaration { property = Unknown_property b; _ } ) ->
+      String.equal a b || name_extends a b || name_extends b a
+      || not (unknown_name_is_placeable a && unknown_name_is_placeable b)
+  | Declaration { property = Unknown_property name; _ }, Declaration _ ->
+      (not (unknown_name_is_placeable name))
+      || overlap_keys_intersect a_keys b_keys
+  | Declaration _, Declaration { property = Unknown_property name; _ } ->
+      (not (unknown_name_is_placeable name))
+      || overlap_keys_intersect a_keys b_keys
   | Declaration _, Declaration _ -> overlap_keys_intersect a_keys b_keys
   | _ -> false
 
