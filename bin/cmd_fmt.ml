@@ -69,18 +69,22 @@ let resolve_inline_imports ~input_path stylesheet =
   end
   else Cli_inline_imports.run ~base_url:input_path stylesheet
 
+(* Returns the number of bytes written, so the caller can tell a stylesheet that
+   serialised to nothing from one that had nothing to serialise. *)
 let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   let buf = Buffer.create 4096 in
   Css.to_buffer buf ~minify ~lossless ~enforce_spec stylesheet;
   let len = Buffer.length buf in
   if len > 0 && Buffer.nth buf (len - 1) <> '\n' then Buffer.add_char buf '\n';
-  Buffer.output_buffer stdout buf
+  Buffer.output_buffer stdout buf;
+  len
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag
     ~inline_vars_flag ~keep_vars ~profile =
   try
-    let stylesheet = Cli_io.read_input ~enforce_spec input_path in
+    let input = Cli_io.read_input ~enforce_spec input_path in
+    let stylesheet = input.Cli_io.stylesheet in
     let stylesheet =
       if inline_imports_flag then resolve_inline_imports ~input_path stylesheet
       else stylesheet
@@ -101,7 +105,8 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       end
       else stylesheet
     in
-    emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
+    let written = emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet in
+    Cli_io.check_not_all_dropped input ~written;
     if profile then report_profile ()
   with
   | Sys_error msg ->
@@ -309,6 +314,13 @@ let man =
       "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
        $(b,--inline-imports) assumes you control file resolution and \
        $(b,--inline-vars) assumes no runtime mutation of custom properties.";
+    `S Manpage.s_exit_status;
+    `P "$(tname) exits with:";
+    `I ("0", "on success, including a parse that recovered some of the input");
+    `I
+      ( "1",
+        "if the input cannot be read, or if parse recovery dropped everything \
+         and the output would be an empty stylesheet" );
     `S Manpage.s_examples;
     `P "Pretty-print a CSS file:";
     `Pre "  cascade fmt style.css";
