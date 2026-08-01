@@ -2036,7 +2036,6 @@ let spec_remaining_prop_vectors () =
       "overscroll-behavior-inline: contain auto none";
       "scroll-snap-align: start center end";
       "scroll-snap-stop: normal always";
-      "scroll-margin: -1px";
       "columns: 1 2 3";
       "column-rule: solid solid";
       "column-span: all none";
@@ -2441,6 +2440,90 @@ let parse_declaration_case () =
     "invalid value is None" true
     (parse_declaration "mask-type" "definitely-not-a-mask-type" = None)
 
+(* CSS Scroll Snap 1 sec. 5.1: the [scroll-margin] longhands are [<length>],
+   with no [0,inf] range and no "negative values are invalid" clause - that
+   clause belongs to [scroll-padding] alone (sec. 4.2), and the CR changelog
+   records the restriction as applying to [scroll-padding] only. Outsets may
+   therefore be negative, exactly like [margin]. *)
+let scroll_margin_negative () =
+  let props =
+    [
+      "scroll-margin";
+      "scroll-margin-top";
+      "scroll-margin-right";
+      "scroll-margin-bottom";
+      "scroll-margin-left";
+      "scroll-margin-inline";
+      "scroll-margin-inline-start";
+      "scroll-margin-inline-end";
+      "scroll-margin-block";
+      "scroll-margin-block-start";
+      "scroll-margin-block-end";
+    ]
+  in
+  List.iter
+    (fun prop ->
+      (* Minified (no space after the colon) and spaced spellings agree. *)
+      check_declaration ~roundtrip:true ~expected:(prop ^ ":-2vh")
+        (prop ^ ":-2vh");
+      check_declaration ~roundtrip:true ~expected:(prop ^ ":-2vh")
+        (prop ^ ": -2vh");
+      check_declaration ~roundtrip:true ~expected:(prop ^ ":-1px")
+        (prop ^ ": -1px");
+      check_declaration ~roundtrip:true ~expected:(prop ^ ":-.5em")
+        (prop ^ ": -.5em");
+      check_declaration ~roundtrip:true
+        ~expected:(prop ^ ":calc(-1px - 2px)")
+        (prop ^ ": calc(-1px - 2px)");
+      (* Percentages stay invalid: the longhands are [<length>], "Percentages:
+         n/a". *)
+      neg_cursor read_declaration (prop ^ ": -10%");
+      neg_cursor read_declaration (prop ^ ": 10%"))
+    props;
+  (* Multi-value shorthand forms take a negative in any position. *)
+  check_declaration ~roundtrip:true ~expected:"scroll-margin:-1px 2px"
+    "scroll-margin:-1px 2px";
+  check_declaration ~roundtrip:true ~expected:"scroll-margin:1px -2px"
+    "scroll-margin: 1px -2px";
+  check_declaration ~roundtrip:true
+    ~expected:"scroll-margin:-1px -2px -3px -4px"
+    "scroll-margin: -1px -2px -3px -4px";
+  check_declaration ~roundtrip:true ~expected:"scroll-margin-block:-1px -2px"
+    "scroll-margin-block: -1px -2px";
+  check_declaration ~roundtrip:true ~expected:"scroll-margin-inline:-1px -2px"
+    "scroll-margin-inline: -1px -2px";
+  (* Control: [scroll-padding] is [auto | <length-percentage>] with "Negative
+     values are invalid", so its longhands keep rejecting them. *)
+  List.iter
+    (fun prop ->
+      neg_cursor read_declaration (prop ^ ":-2vh");
+      neg_cursor read_declaration (prop ^ ": -2vh"))
+    [
+      "scroll-padding";
+      "scroll-padding-top";
+      "scroll-padding-inline";
+      "scroll-padding-block-end";
+    ]
+
+(* The whole-sheet path must accept the same values without recovering: a
+   swallowed warning is what hid this from [Css.of_string] callers. *)
+let scroll_margin_negative_sheet () =
+  List.iter
+    (fun css ->
+      match Css.of_string ~strict:true css with
+      | Ok { stylesheet; _ } ->
+          Alcotest.(check string)
+            "scroll-margin sheet roundtrip" css
+            (String.trim (Css.to_string ~minify:true stylesheet))
+      | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e))
+    [
+      "a{scroll-margin:-2vh}";
+      "a{scroll-margin:-1px 2px}";
+      "a{scroll-margin-top:-2vh}";
+      "a{scroll-margin-block:-1px -2px}";
+      "a{scroll-margin-inline-start:-1px}";
+    ]
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -2505,6 +2588,9 @@ let declaration_tests =
     test_case "error unclosed block" `Quick error_unclosed_block;
     test_case "unterminated parsing" `Quick unterminated;
     test_case "invalid declarations" `Quick invalid;
+    test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
+    test_case "scroll-margin negative lengths (sheet)" `Quick
+      scroll_margin_negative_sheet;
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
     test_case "spec cascade 3 shorthand properties" `Quick
