@@ -131,6 +131,10 @@
   wrong definition (#187, #189)
 - `cascade apply` projects rules inside `@layer` onto elements; a fully layered
   stylesheet, such as Tailwind v4 output, previously inlined nothing (#188)
+- `Css.vars_of_declarations` reports the `var()` references of the 39 properties
+  a wildcard used to answer with none, so `Css.resolve_theme` emits the theme
+  binding for `inline-size: var(--w)` as it already did for `width: var(--w)`
+  instead of leaving the reference undefined (#266)
 
 ### Canonical diff
 
