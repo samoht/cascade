@@ -886,6 +886,41 @@ let repeated_property_surplus_is_added () =
     "the occurrence with no counterpart is added" [ "color" ]
     (rule_added_properties d)
 
+(* ===== Containers nested past the old recursion cutoff ===== *)
+
+(* The walker recurses on strictly smaller statement lists, so nothing needs a
+   depth cutoff to terminate; one at five levels of at-rule nesting made a leaf
+   difference vanish, verdict and exit code included. *)
+
+let nested_at_rules leaf =
+  "@media (min-width:1px){@supports (display:grid){@media \
+   (min-width:2px){@supports (display:flex){@media (min-width:3px){a{color:"
+  ^ leaf ^ "}}}}}}"
+
+let deeply_nested_leaf_change_reported () =
+  let d =
+    diff_of ~expected:(nested_at_rules "red") ~actual:(nested_at_rules "blue")
+  in
+  Alcotest.(check bool)
+    "a leaf five containers down is still a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let deeply_nested_leaf_change_named () =
+  let d =
+    diff_of ~expected:(nested_at_rules "red") ~actual:(nested_at_rules "blue")
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "and the report names the value that changed" true
+    (string_contains ~needle:"color: red -> blue" s)
+
+let deeply_nested_identical_is_empty () =
+  let css = nested_at_rules "red" in
+  let d = diff_of ~expected:css ~actual:css in
+  Alcotest.(check bool)
+    "identical deep nesting stays empty" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
 let suite =
   ( "tree_diff",
     [
@@ -1002,6 +1037,12 @@ let suite =
         repeated_property_surplus_is_removed;
       Alcotest.test_case "repeated property surplus is added" `Quick
         repeated_property_surplus_is_added;
+      Alcotest.test_case "deeply nested leaf change reported" `Quick
+        deeply_nested_leaf_change_reported;
+      Alcotest.test_case "deeply nested leaf change named" `Quick
+        deeply_nested_leaf_change_named;
+      Alcotest.test_case "deeply nested identical is empty" `Quick
+        deeply_nested_identical_is_empty;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
