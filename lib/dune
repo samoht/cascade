@@ -11,7 +11,8 @@
   prop_writing
   prop_filter
   prop_align
-  prop_flex)
+  prop_flex
+  prop_grid)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
