@@ -161,14 +161,16 @@ identical, rather than as spurious changes.
 
 ### Diff report
 
-- A rule is reported as reordered only when its order against a statement both
-  sides have actually inverted. Order was judged on absolute position, so
-  dropping a rule shifted every statement after it: a rule whose declarations
-  merely commute was reported as moved, and one holding a real declaration
-  reorder had it overwritten by a claim about the rule's position, which is not
-  what changed and drops the declarations the entry needs to name it. A rule
-  that moves past others is now reported once, on the rule that moved, rather
-  than on each rule it passed (#263)
+- An `@property` is compared on its whole body, and the entry names the
+  descriptors that differ. Two registrations for one name differing in `syntax`
+  or `initial-value` compared equal, so `--diff=canonical` called the
+  stylesheets identical, and an `inherits`-only change was reported as a
+  position change (#264)
+
+- A rule is reported as reordered only when it moved against another rule.
+  Dropping a rule shifted every position after it, so an unmoved rule was
+  reported as reordered, and one move was reported on every rule it passed
+  (#263)
 
 - The size summary lists the two files in the order of the `---` and `+++`
   headers below it. It printed the second file first, so a comparison that

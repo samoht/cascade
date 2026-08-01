@@ -182,6 +182,99 @@ let diff_overlapping_decl_reorder_flagged () =
     "overlapping declaration reorder is not empty" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* ===== @property registrations ===== *)
+
+(* The descriptor changes a modified [@property] reports, as "name: expected ->
+   actual". *)
+let property_descriptor_changes d =
+  List.concat_map
+    (fun (c : Cascade_diff.Tree_diff.container_diff) ->
+      match c with
+      | Cascade_diff.Tree_diff.Modified
+          { info = { container_type = `Property; _ }; rule_changes; _ } ->
+          List.concat_map
+            (fun (r : Cascade_diff.Tree_diff.rule_diff) ->
+              match r with
+              | Cascade_diff.Tree_diff.Content_changed { property_changes; _ }
+                ->
+                  List.map
+                    (fun (p : Cascade_diff.Tree_diff.declaration) ->
+                      p.property_name ^ ": " ^ p.expected_value ^ " -> "
+                      ^ p.actual_value)
+                    property_changes
+              | _ -> [])
+            rule_changes
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.containers
+
+let diff_property_syntax_changed () =
+  (* A registration decides how every use of the custom property parses, so a
+     different syntax and initial value is a difference, not a match. *)
+  let expected =
+    parse
+      "@property --x { syntax: '<length>'; inherits: false; initial-value: 0px \
+       }"
+  in
+  let actual =
+    parse
+      "@property --x { syntax: '<color>'; inherits: false; initial-value: red }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "changed registration is not empty" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check (list string))
+    "names both descriptors"
+    [ "syntax: \"<length>\" -> \"<color>\""; "initial-value: 0px -> red" ]
+    (property_descriptor_changes d)
+
+let diff_property_inherits_changed () =
+  (* [inherits] was the one descriptor compared, but the entry carried no change
+     detail and rendered as a position change. *)
+  let expected = parse "@property --x { syntax: '*'; inherits: false }" in
+  let actual = parse "@property --x { syntax: '*'; inherits: true }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check (list string))
+    "names the descriptor that changed"
+    [ "inherits: false -> true" ]
+    (property_descriptor_changes d)
+
+let diff_property_identical_is_empty () =
+  let css =
+    parse
+      "@property --x { syntax: '<length>'; inherits: false; initial-value: 0px \
+       }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected:css ~actual:css in
+  Alcotest.(check bool)
+    "identical registration is empty" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let diff_property_initial_value_added () =
+  let expected = parse "@property --x { syntax: '*'; inherits: false }" in
+  let actual =
+    parse "@property --x { syntax: '*'; inherits: false; initial-value: red }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  let added =
+    List.concat_map
+      (fun (c : Cascade_diff.Tree_diff.container_diff) ->
+        match c with
+        | Cascade_diff.Tree_diff.Modified { rule_changes; _ } ->
+            List.concat_map
+              (fun (r : Cascade_diff.Tree_diff.rule_diff) ->
+                match r with
+                | Cascade_diff.Tree_diff.Content_changed { added_properties; _ }
+                  ->
+                    added_properties
+                | _ -> [])
+              rule_changes
+        | _ -> [])
+      d.containers
+  in
+  Alcotest.(check (list string))
+    "names the descriptor gained" [ "initial-value" ] added
+
 (* ===== Container (media) changes ===== *)
 
 let diff_media_added () =
@@ -640,6 +733,14 @@ let suite =
         diff_neutral_decl_reorder_is_empty;
       Alcotest.test_case "overlapping declaration reorder flagged" `Quick
         diff_overlapping_decl_reorder_flagged;
+      Alcotest.test_case "property syntax changed" `Quick
+        diff_property_syntax_changed;
+      Alcotest.test_case "property inherits changed" `Quick
+        diff_property_inherits_changed;
+      Alcotest.test_case "property identical is empty" `Quick
+        diff_property_identical_is_empty;
+      Alcotest.test_case "property initial-value added" `Quick
+        diff_property_initial_value_added;
       Alcotest.test_case "media added" `Quick diff_media_added;
       Alcotest.test_case "media removed" `Quick diff_media_removed;
       Alcotest.test_case "layer added" `Quick diff_layer_added;
