@@ -74,14 +74,14 @@ let test_sibling_then_descendant () =
   no "descendant of first div" "div+div span" s1;
   yes "subsequent-sibling then child" "div~div>span" s2
 
+let sheet_of css =
+  match Css.of_string css with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e -> Alcotest.failf "parse: %s" (Error.to_string e)
+
 let test_resolve_cascade () =
   let sheet =
-    match
-      Css.of_string
-        "span{color:red}#s2{color:#0f0}div+div>span{font-weight:700}"
-    with
-    | Ok { stylesheet; _ } -> stylesheet
-    | Error e -> Alcotest.failf "parse: %s" (Error.to_string e)
+    sheet_of "span{color:red}#s2{color:#0f0}div+div>span{font-weight:700}"
   in
   let decls = R.resolve sheet s2 in
   let value p =
@@ -99,6 +99,39 @@ let test_resolve_cascade () =
   Alcotest.(check (option string))
     "sibling-combined rule applies" (Some "font-weight:700")
     (value "font-weight")
+
+let resolved_color css =
+  List.find_map
+    (fun d ->
+      if Declaration.property_name d = "color" then
+        Some (Declaration.string_of_declaration ~minify:true d)
+      else None)
+    (R.resolve (sheet_of css) s2)
+
+(* Layer names form a tree (css-cascade-5 sec. 6.4.2): [@layer a.b] creates [a]
+   first and nests [b] inside it, and a later [@layer a.d] is ordered inside [a]
+   too, so it stays before a top-level layer declared in between. *)
+let test_resolve_nested_layers () =
+  Alcotest.(check (option string))
+    "a sublayer comes after its parent" (Some "color:red")
+    (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
+  Alcotest.(check (option string))
+    "a top-level layer sorts after the whole subtree" (Some "color:green")
+    (resolved_color
+       "@layer a.b{span{color:red}}@layer c{span{color:green}}@layer \
+        a.d{span{color:blue}}")
+
+(* Each unnamed [@layer { }] block is a layer of its own, so two of them order
+   like any other pair: the last wins for normal declarations, the first for
+   important ones. *)
+let test_resolve_anonymous_layers () =
+  Alcotest.(check (option string))
+    "the last anonymous layer wins" (Some "color:blue")
+    (resolved_color "@layer{span{color:red}}@layer{span{color:blue}}");
+  Alcotest.(check (option string))
+    "the first wins for important" (Some "color:red!important")
+    (resolved_color
+       "@layer{span{color:red!important}}@layer{span{color:blue!important}}")
 
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
    the element, a rule with no inline form ([:hover]) stays in a <style>
@@ -134,6 +167,10 @@ let suite =
         test_sibling_then_descendant;
       Alcotest.test_case "resolve applies the cascade" `Quick
         test_resolve_cascade;
+      Alcotest.test_case "nested layer names order as a tree" `Quick
+        test_resolve_nested_layers;
+      Alcotest.test_case "anonymous layers are distinct" `Quick
+        test_resolve_anonymous_layers;
       Alcotest.test_case "apply projects a static rule, keeps a dynamic one"
         `Quick test_apply_compute;
     ] )

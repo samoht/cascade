@@ -39,6 +39,10 @@ module Make (N : NODE) : sig
   val resolve : Stylesheet.t -> N.t -> Declaration.declaration list
   (** [resolve sheet node] is the declarations that win for [node] after
       flattening nesting and applying the cascade: selector matching,
-      specificity, source order, then [!important] over normal. Conditional and
-      at-rule groups ([@media], [@layer], ...) are not considered. *)
+      [!important] over normal, then cascade layer, specificity and source
+      order. [@layer] blocks and [@layer a, b;] statements order the layers by
+      first appearance, sublayers included; among normal declarations the last
+      layer wins and an unlayered declaration beats them all, and for
+      [!important] declarations that order reverses. Conditional groups
+      ([@media], [@supports], [@container]) are not considered. *)
 end

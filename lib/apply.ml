@@ -110,15 +110,64 @@ let rec props_of_stmts acc stmts =
 
 (* A [@layer] block applies unconditionally: it only orders competing
    declarations, it does not gate them behind a condition the way
-   @media/@supports/@container do. So its rules can be projected onto elements
-   just like top-level rules - splice their contents in place (recursing into
-   nested layers) instead of keeping the whole block in the un-inlinable
-   <style>. *)
-let rec unwrap_layers stmts =
-  List.concat_map
-    (function
-      | Stylesheet.Layer (_, body) -> unwrap_layers body | other -> [ other ])
-    stmts
+   @media/@supports/@container do. So the properties its rules can override are
+   those of its own un-inlinable rules, exactly as at the top level, while a
+   conditional block contributes all of them. *)
+let rec dynamic_props acc stmts =
+  List.fold_left
+    (fun acc s ->
+      match s with
+      | Stylesheet.Rule r when inlinable (Stylesheet.selector r) -> acc
+      | Stylesheet.Layer (_, b) -> dynamic_props acc b
+      | s -> props_of_stmts acc [ s ])
+    acc stmts
+
+(* Split each statement into the part with no inline form and the part that
+   projects onto elements. A [@layer] block splits like the top level, but the
+   wrapper survives on both sides: the layer decides which of two competing
+   declarations wins, so dropping it would change the result. A layer left with
+   nothing on one side disappears from that side - it has no rule there to
+   order, and removing it does not disturb the relative order of the others. *)
+let rec split ~is_dyn stmts =
+  let keep, inline =
+    List.fold_left
+      (fun (keep, inline) stmt ->
+        match stmt with
+        | Stylesheet.Layer (name, body) ->
+            let k, i = split ~is_dyn body in
+            ( (if k = [] then keep else Stylesheet.Layer (name, k) :: keep),
+              if i = [] then inline else Stylesheet.Layer (name, i) :: inline )
+        | Stylesheet.Layer_decl _ ->
+            (* The statement orders layers on both sides. *)
+            (stmt :: keep, stmt :: inline)
+        | Stylesheet.Rule r when inlinable (Stylesheet.selector r) ->
+            let sel = Stylesheet.selector r
+            and ds = Stylesheet.declarations r in
+            let of_part ds =
+              Stylesheet.Rule (Stylesheet.rule ~selector:sel ds)
+            in
+            let keep =
+              match List.filter is_dyn ds with
+              | [] -> keep
+              | res -> of_part res :: keep
+            in
+            let inline =
+              match List.filter (fun d -> not (is_dyn d)) ds with
+              | [] -> inline
+              | inl -> of_part inl :: inline
+            in
+            (keep, inline)
+        | other -> (other :: keep, inline))
+      ([], []) stmts
+  in
+  (List.rev keep, List.rev inline)
+
+(* Kept rules, for reporting: a [@layer] wrapper is not itself a rule. *)
+let rec count_kept stmts =
+  List.fold_left
+    (fun n -> function
+      | Stylesheet.Layer (_, b) -> n + count_kept b | _ -> n + 1)
+    0 stmts
 
 type 'node assignment = 'node * Declaration.declaration list
 (** The inline-style declarations to write onto a node. *)
@@ -191,54 +240,25 @@ module Make (Node : Resolve.NODE) = struct
     match Css.of_string css with
     | Error _ -> { styles = []; keep_css = ""; kept = 0 }
     | Ok p ->
-        (* Flatten nesting up front, so the static/dynamic split and
-           {!R.resolve} see the same flat rules, then unwrap [@layer] so its
-           rules join the split instead of being kept wholesale. *)
-        let stmts = unwrap_layers (Flatten.block p.Css.stylesheet) in
+        (* Flatten nesting up front, so the split and {!R.resolve} see the same
+           flat rules. *)
+        let stmts = Flatten.block p.Css.stylesheet in
         (* Properties a kept rule can override must stay in the cascade. *)
-        let dyn =
-          props_of_stmts SSet.empty
-            (List.filter
-               (function
-                 | Stylesheet.Rule r -> not (inlinable (Stylesheet.selector r))
-                 | _ -> true)
-               stmts)
-        in
+        let dyn = dynamic_props SSet.empty stmts in
         let is_dyn d =
           SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
         in
-        let inline_rules = ref [] in
-        let keep =
-          List.filter_map
-            (fun stmt ->
-              match stmt with
-              | Stylesheet.Rule r when inlinable (Stylesheet.selector r) -> (
-                  let sel = Stylesheet.selector r
-                  and ds = Stylesheet.declarations r in
-                  (match List.filter (fun d -> not (is_dyn d)) ds with
-                  | [] -> ()
-                  | inl ->
-                      inline_rules :=
-                        Stylesheet.Rule (Stylesheet.rule ~selector:sel inl)
-                        :: !inline_rules);
-                  match List.filter is_dyn ds with
-                  | [] -> None
-                  | res ->
-                      Some (Stylesheet.Rule (Stylesheet.rule ~selector:sel res))
-                  )
-              | other -> Some other)
-            stmts
-        in
+        let keep, inline = split ~is_dyn stmts in
         let keep_css =
           if keep = [] then ""
           else Css.to_string ~minify:true (Stylesheet.v keep)
         in
-        let inline_sheet = Stylesheet.v (List.rev !inline_rules) in
+        let inline_sheet = Stylesheet.v inline in
         let styles =
           List.fold_left
             (fun acc root -> walk ~minimal inline_sheet [] root acc)
             [] roots
           |> List.rev
         in
-        { styles; keep_css; kept = List.length keep }
+        { styles; keep_css; kept = count_kept keep }
 end
