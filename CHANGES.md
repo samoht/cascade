@@ -24,6 +24,9 @@
   block or the `@import` (#192)
 - The eleven `scroll-margin` properties take a negative length, as CSS Scroll
   Snap 1 allows; only `scroll-padding` is non-negative (#280)
+- A `}` ends a declaration value in `Parser.block_contents` instead of being
+  swallowed along with the rest of the block, and a bad string serialises back
+  to source that reads as one instead of vanishing from an at-rule prelude (#284)
 
 ### Printing and nesting
 

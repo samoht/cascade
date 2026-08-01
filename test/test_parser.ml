@@ -404,6 +404,38 @@ let spec_block_flush_stop () =
   | [ `Decls [ { node = { name = "color"; _ }; _ } ] ] -> ()
   | _ -> Alcotest.fail "expected right brace to stop block contents"
 
+let spec_declaration_body_right_brace () =
+  (* CSS Syntax Level 3 section 5.5.7 "consume a list of component values": on a
+     [<}-token>] with [nested] true, return the list. Section 5.5.5 consumes a
+     declaration with [nested] set to true and 5.5.6 forwards that flag, so a
+     right brace ends the declaration value and, because "process" acts on the
+     next token without consuming it, stays available to the caller. *)
+  let block_items css = (Parser.block_contents (Reader.of_string css)).value in
+  (match block_items "a:1} b:2" with
+  | [ `Decls [ { node = { name = "a"; value; _ }; _ } ] ] ->
+      Alcotest.(check string)
+        "right brace ends the declaration value" "1"
+        (Parser.to_string_minified value)
+  | items ->
+      Alcotest.failf "expected one declaration before the right brace, got %d"
+        (List.length items));
+  let decls css = (Parser.list_of_declarations (Reader.of_string css)).value in
+  match decls "a:1} b:2" with
+  | [
+   `Decl { node = { name = "a"; value = first; _ }; _ };
+   `Decl { node = { name = "b"; value = second; _ }; _ };
+  ] ->
+      Alcotest.(check string)
+        "value before the right brace" "1"
+        (Parser.to_string_minified first);
+      Alcotest.(check string)
+        "declaration after the right brace" "2"
+        (Parser.to_string_minified second)
+  | items ->
+      Alcotest.failf
+        "expected the right brace to release the following declaration, got %d"
+        (List.length items)
+
 let spec_block_custom_props () =
   (* CSS Syntax Level 3 section 5.5.5 treats custom-property-shaped input as a
      declaration attempt, so it is not reparsed as a qualified rule. *)
@@ -658,6 +690,55 @@ let spec_serialization_roundtrip_boundaries () =
   Alcotest.(check string)
     "backslash delim serialization" "\\\n"
     (Parser.string_of_components (parse_list "\\"))
+
+let spec_serialization_bad_string_roundtrip () =
+  (* CSS Syntax Level 3 section 9: serialization round-trips through
+     tokenization. A <bad-string-token> carries no text, so - like the
+     <bad-url-token>, which serializes to [url(a b)] - it has to serialize to
+     some source that re-tokenizes as a <bad-string-token> rather than to
+     nothing. Section 4.3.5 only produces one from a newline inside a string,
+     and reconsumes that newline, so the token is always followed by
+     whitespace. *)
+  let list css =
+    (Parser.list_of_component_values (Reader.of_string css)).value
+  in
+  let components = list "\"abc\nx" in
+  (match components with
+  | [
+   Component.Preserved { kind = Token.Bad_string; _ };
+   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Ident "x"; _ };
+  ] ->
+      ()
+  | _ -> Alcotest.fail "expected bad-string, whitespace and ident");
+  let serialized = Parser.string_of_components components in
+  match list serialized with
+  | [
+   Component.Preserved { kind = Token.Bad_string; _ };
+   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Ident "x"; _ };
+  ] ->
+      ()
+  | reparsed ->
+      Alcotest.failf "serialized %S no longer holds a bad string: %d components"
+        serialized (List.length reparsed)
+
+let spec_bad_string_prelude_kept () =
+  (* An at-rule prelude holding a <bad-string-token> must not serialize to an
+     empty prelude: [@media <bad-string>] would silently become an unconditional
+     [@media]. *)
+  let source = "@media \"abc\n{ .a { color: red } }" in
+  match (Parser.stylesheet (Reader.of_string source)).value with
+  | [ Component.At { node = { name = "media"; prelude; _ }; _ } ] -> (
+      let serialized = Parser.to_string_minified prelude in
+      match
+        (Parser.list_of_component_values (Reader.of_string serialized)).value
+      with
+      | Component.Preserved { kind = Token.Bad_string; _ } :: _ -> ()
+      | _ ->
+          Alcotest.failf "prelude %S no longer starts with a bad string"
+            serialized)
+  | _ -> Alcotest.fail "expected a single @media at-rule"
 
 let spec_wpt_unclosed_construct_edges () =
   (* WPT unclosed-constructs vectors at the component parser layer. *)
@@ -1325,6 +1406,8 @@ let suite =
       Alcotest.test_case
         "spec section 5.5.5 block contents custom property edges" `Quick
         spec_block_custom_props;
+      Alcotest.test_case "spec section 5.5.7 declaration body right brace"
+        `Quick spec_declaration_body_right_brace;
       Alcotest.test_case "spec section 5.4.7 parse declaration entry point"
         `Quick spec_parse_declaration_entry_point;
       Alcotest.test_case "spec section 5.4.8 parse component value entry point"
@@ -1342,6 +1425,10 @@ let suite =
         spec_serialization_string_escaping;
       Alcotest.test_case "spec section 9 serialization boundaries" `Quick
         spec_serialization_roundtrip_boundaries;
+      Alcotest.test_case "spec section 9 bad-string serialization" `Quick
+        spec_serialization_bad_string_roundtrip;
+      Alcotest.test_case "spec section 9 bad-string at-rule prelude" `Quick
+        spec_bad_string_prelude_kept;
       Alcotest.test_case "spec WPT unclosed construct edges" `Quick
         spec_wpt_unclosed_construct_edges;
       Alcotest.test_case "spec WPT trailing brace edges" `Quick
