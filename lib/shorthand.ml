@@ -281,6 +281,99 @@ let border_inline_end_keys =
     key "border-inline-end-color";
   ]
 
+(* CSS Backgrounds 3 sec. 6.1: [border-image] resets the five image longhands,
+   and sec. 4.5 makes [border] reset [border-image] in turn. *)
+let border_image_keys =
+  [
+    key "border-image-source";
+    key "border-image-slice";
+    key "border-image-width";
+    key "border-image-outset";
+    key "border-image-repeat";
+  ]
+
+let border_radius_keys =
+  [
+    key "border-top-left-radius";
+    key "border-top-right-radius";
+    key "border-bottom-right-radius";
+    key "border-bottom-left-radius";
+  ]
+
+(* CSS Box Alignment 3 sec. 8.3. The legacy [grid-row-gap] / [grid-column-gap]
+   spellings name the same cascade slots as the modern ones, so each axis
+   carries both names. [grid-gap] itself is deliberately absent: it has no typed
+   spelling, and leaving its name out of every footprint keeps it in the
+   conservative [Unknown_property] path. *)
+let row_gap_keys = [ key "row-gap"; key "grid-row-gap" ]
+let column_gap_keys = [ key "column-gap"; key "grid-column-gap" ]
+
+(* CSS Animations 2 sec. 4 plus Scroll-driven Animations 1 sec. 4.3, which makes
+   [animation] reset [animation-timeline]. [animation-composition] and the
+   [animation-range-*] longhands are not part of the shorthand. *)
+let animation_keys =
+  [
+    key "animation-name";
+    key "animation-duration";
+    key "animation-timing-function";
+    key "animation-delay";
+    key "animation-iteration-count";
+    key "animation-direction";
+    key "animation-fill-mode";
+    key "animation-play-state";
+    key "animation-timeline";
+  ]
+
+let transition_keys =
+  [
+    key "transition-property";
+    key "transition-duration";
+    key "transition-timing-function";
+    key "transition-delay";
+    key "transition-behavior";
+  ]
+
+(* CSS Grid 1 sec. 7.4 and 8.1: [grid-template] resets the three template
+   longhands, and [grid] resets those plus the three [grid-auto-*] ones. *)
+let grid_template_keys =
+  [
+    key "grid-template-rows";
+    key "grid-template-columns";
+    key "grid-template-areas";
+  ]
+
+let grid_auto_keys =
+  [ key "grid-auto-rows"; key "grid-auto-columns"; key "grid-auto-flow" ]
+
+let grid_row_keys = [ key "grid-row-start"; key "grid-row-end" ]
+let grid_column_keys = [ key "grid-column-start"; key "grid-column-end" ]
+
+(* CSS Text Decoration 4 sec. 2.5. [text-underline-offset] and the
+   [text-decoration-skip-*] longhands are outside the shorthand. *)
+let text_decoration_keys =
+  [
+    key "text-decoration-line";
+    key "text-decoration-style";
+    key "text-decoration-color";
+    key "text-decoration-thickness";
+  ]
+
+let scroll_margin_keys =
+  [
+    key "scroll-margin-top";
+    key "scroll-margin-right";
+    key "scroll-margin-bottom";
+    key "scroll-margin-left";
+  ]
+
+let scroll_padding_keys =
+  [
+    key "scroll-padding-top";
+    key "scroll-padding-right";
+    key "scroll-padding-bottom";
+    key "scroll-padding-left";
+  ]
+
 let property_footprint : type a. a Properties.property -> overlap_key list =
   function
   | All -> [ key "*" ]
@@ -357,19 +450,53 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Flex_flow -> [ key "flex-direction"; key "flex-wrap" ]
   | Flex_direction -> [ key "flex-direction" ]
   | Flex_wrap -> [ key "flex-wrap" ]
-  | Transition ->
-      [
-        key "transition-property";
-        key "transition-duration";
-        key "transition-timing-function";
-        key "transition-delay";
-        key "transition-behavior";
-      ]
-  | Transition_property -> [ key "transition-property" ]
-  | Transition_duration -> [ key "transition-duration" ]
-  | Transition_timing_function -> [ key "transition-timing-function" ]
-  | Transition_delay -> [ key "transition-delay" ]
+  (* A vendor-prefixed spelling is an alias of the unprefixed property in every
+     engine that supports it - [deduplicate_declarations] already drops the
+     prefixed copy of an identical twin - so it writes the same cascade slots
+     and carries the same footprint. *)
+  | Transition | Webkit_transition | Moz_transition | O_transition ->
+      transition_keys
+  | Transition_property | Webkit_transition_property | Moz_transition_property
+    ->
+      [ key "transition-property" ]
+  | Transition_duration | Webkit_transition_duration | Moz_transition_duration
+    ->
+      [ key "transition-duration" ]
+  | Transition_timing_function | Webkit_transition_timing_function
+  | Moz_transition_timing_function ->
+      [ key "transition-timing-function" ]
+  | Transition_delay | Webkit_transition_delay | Moz_transition_delay ->
+      [ key "transition-delay" ]
   | Transition_behavior -> [ key "transition-behavior" ]
+  | Animation | Webkit_animation | Moz_animation -> animation_keys
+  | Animation_name | Webkit_animation_name | Moz_animation_name ->
+      [ key "animation-name" ]
+  | Animation_duration | Webkit_animation_duration | Moz_animation_duration ->
+      [ key "animation-duration" ]
+  | Animation_timing_function | Webkit_animation_timing_function
+  | Moz_animation_timing_function ->
+      [ key "animation-timing-function" ]
+  | Animation_delay | Webkit_animation_delay | Moz_animation_delay ->
+      [ key "animation-delay" ]
+  | Animation_iteration_count | Webkit_animation_iteration_count
+  | Moz_animation_iteration_count ->
+      [ key "animation-iteration-count" ]
+  | Animation_direction | Webkit_animation_direction | Moz_animation_direction
+    ->
+      [ key "animation-direction" ]
+  | Animation_fill_mode | Webkit_animation_fill_mode | Moz_animation_fill_mode
+    ->
+      [ key "animation-fill-mode" ]
+  | Animation_play_state | Webkit_animation_play_state
+  | Moz_animation_play_state ->
+      [ key "animation-play-state" ]
+  | Animation_timeline -> [ key "animation-timeline" ]
+  (* Scroll-driven Animations 1 sec. 5.3: [animation-range] is its own
+     shorthand, and [animation] does not reset either end. *)
+  | Animation_range ->
+      [ key "animation-range-start"; key "animation-range-end" ]
+  | Animation_range_start -> [ key "animation-range-start" ]
+  | Animation_range_end -> [ key "animation-range-end" ]
   | Border ->
       [
         key "border-top-width";
@@ -384,8 +511,8 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
         key "border-right-color";
         key "border-bottom-color";
         key "border-left-color";
-        key "border-image";
       ]
+      @ border_image_keys
   | Border_width ->
       [
         key "border-top-width";
@@ -439,7 +566,18 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Border_right_color -> [ key "border-right-color" ]
   | Border_bottom_color -> [ key "border-bottom-color" ]
   | Border_left_color -> [ key "border-left-color" ]
-  | Border_image -> [ key "border-image" ]
+  | Border_image -> border_image_keys
+  | Border_image_source -> [ key "border-image-source" ]
+  | Border_image_slice -> [ key "border-image-slice" ]
+  | Border_image_width -> [ key "border-image-width" ]
+  | Border_image_outset -> [ key "border-image-outset" ]
+  | Border_image_repeat -> [ key "border-image-repeat" ]
+  | Border_radius | Webkit_border_radius | Moz_border_radius ->
+      border_radius_keys
+  | Border_top_left_radius -> [ key "border-top-left-radius" ]
+  | Border_top_right_radius -> [ key "border-top-right-radius" ]
+  | Border_bottom_right_radius -> [ key "border-bottom-right-radius" ]
+  | Border_bottom_left_radius -> [ key "border-bottom-left-radius" ]
   | Border_inline_start_width -> [ key "border-inline-start-width" ]
   | Border_inline_end_width -> [ key "border-inline-end-width" ]
   | Border_block_start_width -> [ key "border-block-start-width" ]
@@ -506,6 +644,8 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
         key "font-size-adjust";
         key "font-kerning";
         key "font-optical-sizing";
+        key "font-language-override";
+        key "font-palette";
       ]
   | Font_style -> [ key "font-style" ]
   | Font_weight -> [ key "font-weight" ]
@@ -524,6 +664,176 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Font_size_adjust -> [ key "font-size-adjust" ]
   | Font_kerning -> [ key "font-kerning" ]
   | Font_optical_sizing -> [ key "font-optical-sizing" ]
+  | Font_language_override -> [ key "font-language-override" ]
+  | Font_palette -> [ key "font-palette" ]
+  (* CSS Fonts 4 sec. 6.6: [font-synthesis] is its own shorthand, outside the
+     set [font] resets. *)
+  | Font_synthesis ->
+      [
+        key "font-synthesis-weight";
+        key "font-synthesis-style";
+        key "font-synthesis-small-caps";
+        key "font-synthesis-position";
+      ]
+  | Font_synthesis_weight -> [ key "font-synthesis-weight" ]
+  | Font_synthesis_style -> [ key "font-synthesis-style" ]
+  | Font_synthesis_small_caps -> [ key "font-synthesis-small-caps" ]
+  | Font_synthesis_position -> [ key "font-synthesis-position" ]
+  | Gap -> row_gap_keys @ column_gap_keys
+  | Row_gap -> row_gap_keys
+  | Column_gap -> column_gap_keys
+  (* CSS UI 4 sec. 6.4: [outline] resets width, style and colour. It leaves
+     [outline-offset] alone - that one is a sibling, not a longhand. *)
+  | Outline -> [ key "outline-width"; key "outline-style"; key "outline-color" ]
+  | Outline_width -> [ key "outline-width" ]
+  | Outline_style -> [ key "outline-style" ]
+  | Outline_color -> [ key "outline-color" ]
+  | Grid -> grid_template_keys @ grid_auto_keys
+  | Grid_template -> grid_template_keys
+  | Grid_template_rows -> [ key "grid-template-rows" ]
+  | Grid_template_columns -> [ key "grid-template-columns" ]
+  | Grid_template_areas -> [ key "grid-template-areas" ]
+  | Grid_auto_rows -> [ key "grid-auto-rows" ]
+  | Grid_auto_columns -> [ key "grid-auto-columns" ]
+  | Grid_auto_flow -> [ key "grid-auto-flow" ]
+  (* CSS Grid 1 sec. 8.4: the placement shorthands reset the four line
+     longhands; [grid] resets none of them. *)
+  | Grid_area -> grid_row_keys @ grid_column_keys
+  | Grid_row -> grid_row_keys
+  | Grid_column -> grid_column_keys
+  | Grid_row_start -> [ key "grid-row-start" ]
+  | Grid_row_end -> [ key "grid-row-end" ]
+  | Grid_column_start -> [ key "grid-column-start" ]
+  | Grid_column_end -> [ key "grid-column-end" ]
+  (* CSS Box Alignment 3 sec. 4.5, 5.5 and 6.5. *)
+  | Place_content -> [ key "align-content"; key "justify-content" ]
+  | Place_items -> [ key "align-items"; key "justify-items" ]
+  | Place_self -> [ key "align-self"; key "justify-self" ]
+  | Align_content | Webkit_align_content -> [ key "align-content" ]
+  | Justify_content | Webkit_justify_content -> [ key "justify-content" ]
+  | Align_items | Webkit_align_items -> [ key "align-items" ]
+  | Justify_items -> [ key "justify-items" ]
+  | Align_self | Webkit_align_self -> [ key "align-self" ]
+  | Justify_self -> [ key "justify-self" ]
+  | Webkit_flex_flow -> [ key "flex-direction"; key "flex-wrap" ]
+  | Webkit_flex_direction -> [ key "flex-direction" ]
+  | Webkit_flex_wrap -> [ key "flex-wrap" ]
+  (* CSS Overflow 3 sec. 3.3. [overflow-block] / [overflow-inline] are the
+     flow-relative pair and keep their own slots, as the other logical families
+     do here. *)
+  | Overflow -> [ key "overflow-x"; key "overflow-y" ]
+  | Overflow_x -> [ key "overflow-x" ]
+  | Overflow_y -> [ key "overflow-y" ]
+  (* CSS Multicol 1 sec. 3.3. *)
+  | Columns -> [ key "column-width"; key "column-count" ]
+  | Column_width -> [ key "column-width" ]
+  | Column_count -> [ key "column-count" ]
+  (* CSS Lists 3 sec. 3.4. *)
+  | List_style ->
+      [
+        key "list-style-type"; key "list-style-position"; key "list-style-image";
+      ]
+  | List_style_type -> [ key "list-style-type" ]
+  | List_style_position -> [ key "list-style-position" ]
+  | List_style_image -> [ key "list-style-image" ]
+  | Text_decoration | Webkit_text_decoration -> text_decoration_keys
+  | Text_decoration_line -> [ key "text-decoration-line" ]
+  | Text_decoration_style -> [ key "text-decoration-style" ]
+  | Text_decoration_color | Webkit_text_decoration_color ->
+      [ key "text-decoration-color" ]
+  | Text_decoration_thickness -> [ key "text-decoration-thickness" ]
+  (* CSS Text Decoration 4 sec. 2.7: [text-decoration-skip] is its own shorthand
+     over the five skip longhands. *)
+  | Text_decoration_skip ->
+      [
+        key "text-decoration-skip-self";
+        key "text-decoration-skip-box";
+        key "text-decoration-skip-inset";
+        key "text-decoration-skip-spaces";
+        key "text-decoration-skip-ink";
+      ]
+  | Text_decoration_skip_self -> [ key "text-decoration-skip-self" ]
+  | Text_decoration_skip_box -> [ key "text-decoration-skip-box" ]
+  | Text_decoration_skip_inset -> [ key "text-decoration-skip-inset" ]
+  | Text_decoration_skip_spaces -> [ key "text-decoration-skip-spaces" ]
+  | Text_decoration_skip_ink -> [ key "text-decoration-skip-ink" ]
+  (* CSS Text Decoration 4 sec. 3.4: [text-emphasis] resets style and colour;
+     [text-emphasis-position] and [text-emphasis-skip] stay independent. *)
+  | Text_emphasis -> [ key "text-emphasis-style"; key "text-emphasis-color" ]
+  | Text_emphasis_style -> [ key "text-emphasis-style" ]
+  | Text_emphasis_color -> [ key "text-emphasis-color" ]
+  (* CSS Sizing 4 sec. 5.2. The block/inline pair is flow-relative. *)
+  | Contain_intrinsic_size ->
+      [ key "contain-intrinsic-width"; key "contain-intrinsic-height" ]
+  | Contain_intrinsic_width -> [ key "contain-intrinsic-width" ]
+  | Contain_intrinsic_height -> [ key "contain-intrinsic-height" ]
+  (* CSS Scroll Snap 1 sec. 5 and 6. *)
+  | Scroll_margin -> scroll_margin_keys
+  | Scroll_margin_top -> [ key "scroll-margin-top" ]
+  | Scroll_margin_right -> [ key "scroll-margin-right" ]
+  | Scroll_margin_bottom -> [ key "scroll-margin-bottom" ]
+  | Scroll_margin_left -> [ key "scroll-margin-left" ]
+  | Scroll_margin_inline ->
+      [ key "scroll-margin-inline-start"; key "scroll-margin-inline-end" ]
+  | Scroll_margin_inline_start -> [ key "scroll-margin-inline-start" ]
+  | Scroll_margin_inline_end -> [ key "scroll-margin-inline-end" ]
+  | Scroll_margin_block ->
+      [ key "scroll-margin-block-start"; key "scroll-margin-block-end" ]
+  | Scroll_margin_block_start -> [ key "scroll-margin-block-start" ]
+  | Scroll_margin_block_end -> [ key "scroll-margin-block-end" ]
+  | Scroll_padding -> scroll_padding_keys
+  | Scroll_padding_top -> [ key "scroll-padding-top" ]
+  | Scroll_padding_right -> [ key "scroll-padding-right" ]
+  | Scroll_padding_bottom -> [ key "scroll-padding-bottom" ]
+  | Scroll_padding_left -> [ key "scroll-padding-left" ]
+  | Scroll_padding_inline ->
+      [ key "scroll-padding-inline-start"; key "scroll-padding-inline-end" ]
+  | Scroll_padding_inline_start -> [ key "scroll-padding-inline-start" ]
+  | Scroll_padding_inline_end -> [ key "scroll-padding-inline-end" ]
+  | Scroll_padding_block ->
+      [ key "scroll-padding-block-start"; key "scroll-padding-block-end" ]
+  | Scroll_padding_block_start -> [ key "scroll-padding-block-start" ]
+  | Scroll_padding_block_end -> [ key "scroll-padding-block-end" ]
+  (* CSS Overscroll Behavior 1 sec. 3. *)
+  | Overscroll_behavior ->
+      [ key "overscroll-behavior-x"; key "overscroll-behavior-y" ]
+  | Overscroll_behavior_x -> [ key "overscroll-behavior-x" ]
+  | Overscroll_behavior_y -> [ key "overscroll-behavior-y" ]
+  (* CSS Contain 3 sec. 4.3. *)
+  | Container -> [ key "container-name"; key "container-type" ]
+  | Container_name -> [ key "container-name" ]
+  | Container_type -> [ key "container-type" ]
+  (* Scroll-driven Animations 1 sec. 4.1 and 4.2. [view-timeline-inset] is not
+     part of [view-timeline]. *)
+  | Scroll_timeline ->
+      [ key "scroll-timeline-name"; key "scroll-timeline-axis" ]
+  | Scroll_timeline_name -> [ key "scroll-timeline-name" ]
+  | Scroll_timeline_axis -> [ key "scroll-timeline-axis" ]
+  | View_timeline -> [ key "view-timeline-name"; key "view-timeline-axis" ]
+  | View_timeline_name -> [ key "view-timeline-name" ]
+  | View_timeline_axis -> [ key "view-timeline-axis" ]
+  (* CSS UI 4 sec. 7.4. *)
+  | Caret -> [ key "caret-color"; key "caret-animation"; key "caret-shape" ]
+  | Caret_color -> [ key "caret-color" ]
+  | Caret_animation -> [ key "caret-animation" ]
+  | Caret_shape -> [ key "caret-shape" ]
+  | Interest_delay -> [ key "interest-delay-start"; key "interest-delay-end" ]
+  | Interest_delay_start -> [ key "interest-delay-start" ]
+  | Interest_delay_end -> [ key "interest-delay-end" ]
+  (* CSS Inline 3 sec. 5.3. *)
+  | Text_box -> [ key "text-box-trim"; key "text-box-edge" ]
+  | Text_box_trim -> [ key "text-box-trim" ]
+  | Text_box_edge -> [ key "text-box-edge" ]
+  (* CSS Text 4 sec. 3 and 5.1: [white-space] and [text-wrap] both reset
+     [text-wrap-mode]. *)
+  | White_space -> [ key "white-space-collapse"; key "text-wrap-mode" ]
+  | Text_wrap -> [ key "text-wrap-mode"; key "text-wrap-style" ]
+  | Text_wrap_mode -> [ key "text-wrap-mode" ]
+  | Text_wrap_style -> [ key "text-wrap-style" ]
+  (* CSS Anchor Positioning 1 sec. 5.4. *)
+  | Position_try -> [ key "position-try-order"; key "position-try-fallbacks" ]
+  | Position_try_order -> [ key "position-try-order" ]
+  | Position_try_fallbacks -> [ key "position-try-fallbacks" ]
   | Custom_property name -> [ key ("--" ^ name) ]
   | Unknown_property name -> [ key name ]
   | property -> [ property_key property ]
@@ -547,33 +857,104 @@ let declaration_overlap_keys decl =
   | Declaration { property; _ } -> property_footprint property
   | _ -> [ key (Declaration.property_name decl) ]
 
-(* Every longhand name the typed footprints mention, sorted for binary search.
-   Taken from [property_footprint] itself rather than respelled, so the two
-   cannot drift: every arm not listed here has a footprint that is a subset of
-   one of these families. *)
+(* The families whose footprints spell out every longhand name the model knows.
+   Every arm of [property_footprint] not listed here has a footprint that is a
+   subset of one of these. Grouped only to keep each list short. *)
+let box_footprint_family_heads =
+  Properties.
+    [
+      Prop Margin;
+      Prop Margin_inline;
+      Prop Margin_block;
+      Prop Padding;
+      Prop Padding_inline;
+      Prop Padding_block;
+      Prop Inset;
+      Prop Inset_inline;
+      Prop Inset_block;
+      Prop Scroll_margin;
+      Prop Scroll_margin_inline;
+      Prop Scroll_margin_block;
+      Prop Scroll_padding;
+      Prop Scroll_padding_inline;
+      Prop Scroll_padding_block;
+    ]
+
+let layout_footprint_family_heads =
+  Properties.
+    [
+      Prop Flex;
+      Prop Flex_flow;
+      Prop Gap;
+      Prop Grid;
+      Prop Grid_area;
+      Prop Place_content;
+      Prop Place_items;
+      Prop Place_self;
+      Prop Overflow;
+      Prop Overscroll_behavior;
+      Prop Columns;
+      Prop Contain_intrinsic_size;
+      Prop Container;
+    ]
+
+let paint_footprint_family_heads =
+  Properties.
+    [
+      Prop Background;
+      Prop Border;
+      Prop Border_block;
+      Prop Border_inline;
+      Prop Border_radius;
+      Prop Mask;
+      Prop Outline;
+      Prop List_style;
+    ]
+
+let text_footprint_family_heads =
+  Properties.
+    [
+      Prop Font;
+      Prop Font_synthesis;
+      Prop Text_decoration;
+      Prop Text_decoration_skip;
+      Prop Text_emphasis;
+      Prop Text_box;
+      Prop Text_wrap;
+      Prop White_space;
+      Prop Caret;
+    ]
+
+let timing_footprint_family_heads =
+  Properties.
+    [
+      Prop Transition;
+      Prop Animation;
+      Prop Animation_range;
+      Prop Scroll_timeline;
+      Prop View_timeline;
+      Prop Interest_delay;
+      Prop Position_try;
+    ]
+
+let footprint_family_heads =
+  List.concat
+    [
+      box_footprint_family_heads;
+      layout_footprint_family_heads;
+      paint_footprint_family_heads;
+      text_footprint_family_heads;
+      timing_footprint_family_heads;
+    ]
+
+(* Every longhand name those footprints mention, sorted for binary search. Taken
+   from [property_footprint] itself rather than respelled, so the two cannot
+   drift. *)
 let known_footprint_keys =
   let keys =
-    List.concat
-      [
-        property_footprint Properties.Margin;
-        property_footprint Properties.Margin_inline;
-        property_footprint Properties.Margin_block;
-        property_footprint Properties.Padding;
-        property_footprint Properties.Padding_inline;
-        property_footprint Properties.Padding_block;
-        property_footprint Properties.Inset;
-        property_footprint Properties.Inset_inline;
-        property_footprint Properties.Inset_block;
-        property_footprint Properties.Background;
-        property_footprint Properties.Flex;
-        property_footprint Properties.Flex_flow;
-        property_footprint Properties.Transition;
-        property_footprint Properties.Border;
-        property_footprint Properties.Border_block;
-        property_footprint Properties.Border_inline;
-        property_footprint Properties.Mask;
-        property_footprint Properties.Font;
-      ]
+    List.concat_map
+      (fun (Properties.Prop p) -> property_footprint p)
+      footprint_family_heads
   in
   let arr = Array.of_list keys in
   Array.sort compare arr;
