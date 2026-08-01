@@ -100,6 +100,9 @@
   comma-separated. The layers were joined with spaces, so
   `background-position: 30% 50%, 70% 50%` read back as a single four-value
   position and minified to `30% 70%` (#209)
+- A non-integer above roughly 4.6e10 prints as a number again:
+  `transform: scale(123456789012.25)` printed `scale(1.2345678.9012e+19)`,
+  which read back as two arguments (#265)
 
 ### New properties and values
 
