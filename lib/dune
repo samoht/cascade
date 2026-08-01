@@ -18,7 +18,8 @@
   prop_mask
   prop_transform
   prop_ui
-  prop_layout)
+  prop_layout
+  prop_box)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
