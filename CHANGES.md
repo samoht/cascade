@@ -107,6 +107,12 @@
   compared occurrence by occurrence; matching by name alone made
   `a{color:red;color:blue}` against `a{color:red;color:green}` report
   `color: blue -> red`, a value neither side holds
+- Containers are compared however deep they nest. The walk stopped at three
+  levels, so a leaf difference under five at-rules was reported as no
+  difference at all, exit code included
+- A container entry with nothing to show under it reads as `(modified, no
+  details)`; it claimed a position change, which only a `Reordered` entry
+  establishes
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second

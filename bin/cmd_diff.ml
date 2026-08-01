@@ -47,8 +47,9 @@ type depth = Fit | Full | Level of int
    [Auto] drops to the deepest level that still fits. *)
 let auto_line_budget = 40
 
-(* [nested_differences] stops recursing at 3, so probing past that only re-walks
-   a tree that cannot grow. *)
+(* The probe renders the report once per level, and the diff tree is as deep as
+   the stylesheet nests. Stop at a level that summarises any report worth
+   summarising; [--depth=max] is the answer for the rest. *)
 let max_probe_depth = 5
 
 let count_lines s =

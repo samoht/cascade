@@ -11,20 +11,22 @@ node it stopped at.
   > @media (min-width:1px){@supports (display:grid){@media (min-width:2px){@supports (display:flex){@media (min-width:3px){a{color:blue}}}}}}
   > EOF
   $ NO_COLOR=1 cascade diff --diff=tree --depth=max deep-a.css deep-b.css
-  CSS: 135 chars vs 136 chars (0.7% diff)
+  CSS: 137 chars vs 138 chars (0.7% diff)
   Changes: 1 changed container
-
+  
   --- deep-a.css
   +++ deep-b.css
-  └─ @media (min-width: 1px)
-     └─ @supports (display: grid)
-        └─ @media (min-width: 2px)
-           └─ @supports (display: flex)
+  └─ @media (min-width: 1px) 
+     └─ @supports (display: grid) 
+        └─ @media (min-width: 2px) 
+           └─ @supports (display: flex) 
               └─ @media (min-width: 3px) (1 modified)
                  └─ a
                        * color: red -> blue
-
+  
   [1]
+
+
 
 The same nesting with no leaf change stays identical.
 
