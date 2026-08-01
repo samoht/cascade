@@ -623,7 +623,7 @@ let read_shape_outside t =
 
 let read_grid_template_list t = read_grid_template t
 
-(* Some properties (shape-margin, scroll-margin, padding, etc.) require a
+(* Some properties (shape-margin, scroll-padding, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
 let read_non_negative_length_percentage t =
@@ -726,6 +726,10 @@ let read_padding_logical_shorthand t =
   in
   Cursor.one_of [ read_global_singleton; read_lengths ] t
 
+(* CSS Scroll Snap 1 sec. 5.1: the [scroll-margin] longhands are [<length>] - an
+   unrestricted range, so an outset may be negative just as a margin may. Only
+   [scroll-padding] (sec. 4.2) says "Negative values are invalid". "Percentages:
+   n/a" still rules a percentage out. *)
 let read_scroll_margin_length t =
   Cursor.enum "scroll-margin length"
     [
@@ -736,7 +740,7 @@ let read_scroll_margin_length t =
       ("revert-layer", Revert_layer);
     ]
     ~default:(fun t ->
-      match read_non_negative_length ~with_keywords:false t with
+      match read_length ~with_keywords:false t with
       | Pct _ -> Cursor.err_invalid t "scroll-margin percentage"
       | length -> length)
     t
