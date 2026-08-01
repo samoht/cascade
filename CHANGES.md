@@ -14,6 +14,14 @@
 
 ### Minification
 
+- `--lossless` keeps a typed shorthand in source order against the longhands it
+  resets. A family that did not spell out what it wrote sorted by text instead,
+  so `row-gap` landed after `gap`, `animation-duration` before `animation` and
+  `outline-color` before `outline`, changing what the rule rendered; `grid`,
+  `place-*`, `overflow`, `border-radius`, `border-image`, `columns`,
+  `list-style`, `text-decoration`, `text-emphasis`, the scroll, timeline and
+  text-box families and the vendor-prefixed spellings did the same (#270)
+
 - `--lossless` keeps a declaration whose property has no typed spelling in
   source order against the shorthand that resets it. It sorted
   `background-position-x` before `background` and `gap` before `grid-row-gap`,
