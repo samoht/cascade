@@ -1021,6 +1021,67 @@ let test_lossless_keeps_shorthand_longhand_order () =
       Alcotest.(check string) name expected (opt input))
     shorthand_longhand_order_cases
 
+(* CSS Logical 1 sec. 2: a flow-relative longhand resolves to a physical side
+   the writing mode picks, so a sheet on its own cannot say whether
+   [margin-inline-start] and [margin-left] name one slot or two. The canonical
+   order therefore has to keep such a pair in source order, in both directions.
+   The first three cases are corpus tests duplicates/0015-0017, each of which a
+   browser renders differently once the pair is swapped. *)
+let logical_physical_order_cases =
+  [
+    ( "border-top before border-block",
+      ".a{border-top:1px solid red;border-block:2px solid red}",
+      ".a{border-top:1px solid red;border-block:2px solid red}" );
+    ( "border-block before border-top",
+      ".a{border-block:2px solid red;border-top:1px solid red}",
+      ".a{border-block:2px solid red;border-top:1px solid red}" );
+    ( "margin-left before margin-inline-start",
+      ".a{margin-left:10px;margin-inline-start:20px}",
+      ".a{margin-left:10px;margin-inline-start:20px}" );
+    ( "margin-inline-start before margin-left",
+      ".a{margin-inline-start:20px;margin-left:10px}",
+      ".a{margin-inline-start:20px;margin-left:10px}" );
+    ( "padding-top before padding-block-start",
+      ".a{padding-top:10px;padding-block-start:20px}",
+      ".a{padding-top:10px;padding-block-start:20px}" );
+    ( "padding-block-start before padding-top",
+      ".a{padding-block-start:20px;padding-top:10px}",
+      ".a{padding-block-start:20px;padding-top:10px}" );
+    (* The inline axis is the horizontal one in [horizontal-tb] and the vertical
+       one in a vertical mode, so a logical border width aliases whichever
+       physical side the mode gives it. *)
+    ( "border-left-width before border-inline-width",
+      ".a{border-left-width:1px;border-inline-width:2px}",
+      ".a{border-left-width:1px;border-inline-width:2px}" );
+    ( "border-inline-width before border-left-width",
+      ".a{border-inline-width:2px;border-left-width:1px}",
+      ".a{border-inline-width:2px;border-left-width:1px}" );
+    (* A logical side also aliases into the physical shorthand that covers every
+       side. *)
+    ( "border before border-block",
+      ".a{border:1px solid red;border-block:2px solid red}",
+      ".a{border:1px solid red;border-block:2px solid red}" );
+    ( "top before inset-inline-start",
+      ".a{top:1px;inset-inline-start:5px}",
+      ".a{top:1px;inset-inline-start:5px}" );
+    ( "scroll-margin-top before scroll-margin-block-start",
+      ".a{scroll-margin-top:1px;scroll-margin-block-start:2px}",
+      ".a{scroll-margin-top:1px;scroll-margin-block-start:2px}" );
+  ]
+
+let test_lossless_keeps_logical_physical_order () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (opt input))
+    logical_physical_order_cases
+
 (* Regrouping - factoring a shared declaration into a selector list, and
    synthesising nesting from a run of adjacent rules - depends on how the input
    happened to order its rules: a rule sitting between two others decides
@@ -1110,6 +1171,9 @@ let optimize_tests =
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );
+    ( "lossless keeps logical physical order",
+      `Quick,
+      test_lossless_keeps_logical_physical_order );
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );
