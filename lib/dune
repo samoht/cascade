@@ -4,7 +4,25 @@
  ; The prop_* modules hold property families that [Properties] includes. They
  ; are private so the split stays invisible: no [Cascade.Prop_*] alias and no
  ; extra odoc page.
- (private_modules prop_common prop_svg)
+ (private_modules
+  prop_common
+  prop_svg
+  prop_multicol
+  prop_writing
+  prop_filter
+  prop_align
+  prop_flex
+  prop_grid
+  prop_image
+  prop_background
+  prop_mask
+  prop_transform
+  prop_ui
+  prop_layout
+  prop_box
+  prop_font
+  prop_text
+  prop_animation)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
