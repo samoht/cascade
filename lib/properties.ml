@@ -2,9 +2,8 @@ open Common
 open Values
 open Syntax
 include Properties_intf
-
-let err_invalid_value ?got t prop_name value =
-  Cursor.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+include Prop_common
+include Prop_svg
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
@@ -194,72 +193,6 @@ let rec read_position t : position =
     ]
     ~var:(fun t -> Var (Values.read_var read_position t))
     t
-
-let rec read_css_wide t : css_wide =
-  Cursor.enum_or_var "css-wide keyword"
-    [
-      ("initial", (Initial : css_wide));
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_css_wide t))
-    t
-
-let rec pp_css_wide : css_wide Pp.t =
- fun ctx -> function
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> Values.pp_var pp_css_wide ctx v
-
-let css_wide_keywords =
-  [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-
-let is_css_wide_keyword value =
-  List.mem (String.lowercase_ascii value) css_wide_keywords
-
-(* CSS Cascade 5 sec. 7.3: a CSS-wide keyword must stand alone, so it is invalid
-   mixed with other tokens (e.g. [font: initial 16px serif]). True when [value]
-   is not itself a lone CSS-wide keyword yet contains one as an identifier. *)
-let value_has_css_wide_mix value =
-  let trimmed = String.trim value in
-  (not (is_css_wide_keyword trimmed))
-  &&
-  let components = Cursor.remaining (Cursor.of_string trimmed) in
-  List.exists
-    (function
-      | Component.Preserved { kind = Token.Ident ident; _ } ->
-          is_css_wide_keyword ident
-      | _ -> false)
-    components
-
-(* Components-form equivalent: skip the round-trip through a string buffer used
-   by [value_has_css_wide_mix] when callers already hold the component list. *)
-let components_have_css_wide_mix components =
-  let non_ws =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
-        | _ -> true)
-      components
-  in
-  let lone_css_wide =
-    match non_ws with
-    | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
-        is_css_wide_keyword ident
-    | _ -> false
-  in
-  (not lone_css_wide)
-  && List.exists
-       (function
-         | Component.Preserved { kind = Token.Ident ident; _ } ->
-             is_css_wide_keyword ident
-         | _ -> false)
-       non_ws
 
 let rec read_flex_direction t : flex_direction =
   Cursor.enum_or_var "flex-direction"
@@ -2630,61 +2563,6 @@ and read_transforms t : transform list =
   then Cursor.err_invalid t "transform none cannot be combined"
   else transforms
 
-let pp_opt_space pp ctx = function
-  | Some v ->
-      Pp.space ctx ();
-      pp ctx v
-  | None -> ()
-
-let pp_keyword s ctx = Pp.string ctx s
-
-(* Read only the body of a url(...) call when used inside enum_calls. The
-   surrounding function name and parentheses are handled by Cursor. *)
-let is_zero_length : length -> bool = function
-  | Zero
-  | Px 0.
-  | Rem 0.
-  | Em 0.
-  | Ex 0.
-  | Cap 0.
-  | Ic 0.
-  | Ric 0.
-  | Rlh 0.
-  | Cm 0.
-  | Mm 0.
-  | Q 0.
-  | In 0.
-  | Pt 0.
-  | Pc 0.
-  | Pct 0.
-  | Vw 0.
-  | Vh 0.
-  | Vmin 0.
-  | Vmax 0.
-  | Vi 0.
-  | Vb 0.
-  | Dvh 0.
-  | Dvw 0.
-  | Dvmin 0.
-  | Dvmax 0.
-  | Lvh 0.
-  | Lvw 0.
-  | Lvmin 0.
-  | Lvmax 0.
-  | Svh 0.
-  | Svw 0.
-  | Svmin 0.
-  | Svmax 0.
-  | Cqw 0.
-  | Cqh 0.
-  | Cqi 0.
-  | Cqb 0.
-  | Cqmin 0.
-  | Cqmax 0.
-  | Dimension { value = 0.; _ } ->
-      true
-  | _ -> false
-
 let pp_color_after_length ctx color =
   Pp.space ctx ();
   pp_color ctx color
@@ -3656,23 +3534,6 @@ let rec pp_border_style : border_style Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_border_style ctx v
 
-(* CSS Box 4 7.1: a 1-to-4 value box shorthand ([margin], [padding],
-   [border-radius] sides, [background-position]) collapses when sides repeat. [a
-   a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. *)
-let collapse_box_shorthand vs =
-  match vs with
-  | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
-  | [ a; b; c; d ] when a = c && b = d -> [ a; b ]
-  | [ a; b; c; d ] when b = d -> [ a; b; c ]
-  | [ a; b; c ] when a = b && b = c -> [ a ]
-  | [ a; b; c ] when a = c -> [ a; b ]
-  | [ a; b ] when a = b -> [ a ]
-  | _ -> vs
-
-let pp_box_shorthand pp ctx vs =
-  let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
-  Pp.list ~sep:Pp.space pp ctx vs
-
 let rec pp_border_radius : border_radius Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_border_radius ctx v
@@ -3690,37 +3551,6 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.char ctx '/';
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
-
-(* Canonicalise a colour to its shortest spelling. The normalize pass only ever
-   visits real declarations, never an [@supports] feature-test condition (those
-   live in the unwalked [Supports] condition), so the static colour-space fold
-   is never suppressed here. *)
-let normalize_color ?(lossless = false) =
-  Values.normalize_color ~lossless ~in_feature_query:false
-
-let preserve_if_equal before after = if after == before then before else after
-
-let map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
-
-let option_map_preserve f opt =
-  match opt with
-  | Option.None -> opt
-  | Option.Some x ->
-      let y = f x in
-      if y == x then opt else Option.Some y
-
-let option_is_phys_same a b =
-  match (a, b) with
-  | Option.None, Option.None -> true
-  | Option.Some a, Option.Some b -> a == b
-  | _ -> false
 
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
@@ -4371,83 +4201,6 @@ let normalize_gap : gap -> gap =
            })
   | other -> other
 
-let rec numeric_miterlimit_calc_leaves :
-    stroke_miterlimit calc -> stroke_miterlimit calc = function
-  | Val (Number n) -> Num n
-  | Nested inner -> Nested (numeric_miterlimit_calc_leaves inner)
-  | Parens inner -> Parens (numeric_miterlimit_calc_leaves inner)
-  | Expr (left, op, right) ->
-      Expr
-        ( numeric_miterlimit_calc_leaves left,
-          op,
-          numeric_miterlimit_calc_leaves right )
-  | other -> other
-
-(* SVG 2 sec. 13.7: keywords left out are painted last, in the order [normal]
-   would use. So a value denotes the full order [written @ missing-in-normal-
-   order], and the shortest spelling is the shortest prefix of that order which
-   expands back to it. [fill stroke markers] expands from nothing, so it is
-   [normal]; [stroke fill] expands from [stroke]. *)
-let paint_order_normal : paint_order_keyword list = [ Fill; Stroke; Markers ]
-
-let paint_order_expand (written : paint_order_keyword list) =
-  written @ List.filter (fun k -> not (List.mem k written)) paint_order_normal
-
-(* SVG 2 sec. 7.10: [viewport] is what an omitted space means, so writing it is
-   redundant. *)
-let normalize_vector_effect (value : vector_effect) : vector_effect =
-  match value with
-  | Effects (ks, Some Viewport) -> Effects (ks, Option.None)
-  | _ -> value
-
-let normalize_paint_order (value : paint_order) : paint_order =
-  match value with
-  | Order written ->
-      let full = paint_order_expand written in
-      let rec shortest n =
-        if n > List.length full then value
-        else
-          let prefix = List.filteri (fun i _ -> i < n) full in
-          if paint_order_expand prefix = full then
-            if prefix = [] then (Normal : paint_order) else Order prefix
-          else shortest (n + 1)
-      in
-      shortest 0
-  | _ -> value
-
-let normalize_dash_length ~ctx (value : dash_length) : dash_length =
-  match value with
-  | Number _ -> value
-  | Length lp ->
-      let lp' = Values.normalize_length_percentage ~ctx lp in
-      if lp' == lp then value else Length lp'
-
-let normalize_stroke_dashoffset ~ctx (value : stroke_dashoffset) :
-    stroke_dashoffset =
-  match value with
-  | Dash d ->
-      let d' = normalize_dash_length ~ctx d in
-      if d' == d then value else Dash d'
-  | _ -> value
-
-let normalize_stroke_dasharray ~ctx (value : stroke_dasharray) :
-    stroke_dasharray =
-  match value with
-  | Dashes ds ->
-      let ds' = map_preserve (normalize_dash_length ~ctx) ds in
-      if ds' == ds then value else Dashes ds'
-  | _ -> value
-
-let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
-    stroke_miterlimit =
-  match value with
-  | Calc c -> (
-      match eval_calc (numeric_miterlimit_calc_leaves c) with
-      | Num f -> Number f
-      | Val v -> normalize_stroke_miterlimit v
-      | folded -> if folded == c then value else Calc folded)
-  | _ -> value
-
 let rec numeric_flex_factor_calc_leaves : flex_factor calc -> flex_factor calc =
   function
   | Val (Number n) -> Num n
@@ -4788,15 +4541,6 @@ let normalize_scrollbar_color ?(lossless = false) :
   | Colors (a, b) ->
       preserve_if_equal value
         (Colors (normalize_color ~lossless a, normalize_color ~lossless b))
-  | other -> other
-
-let rec normalize_svg_paint ?(lossless = false) : svg_paint -> svg_paint =
- fun value ->
-  match value with
-  | Color c -> preserve_if_equal value (Color (normalize_color ~lossless c))
-  | Url (u, fallback) ->
-      preserve_if_equal value
-        (Url (u, option_map_preserve (normalize_svg_paint ~lossless) fallback))
   | other -> other
 
 let length_of_border_width : border_width -> length option = function
@@ -6642,14 +6386,6 @@ let rec pp_list_style_image : list_style_image Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* CSS Lists 3 sec. 4.1: under minify, drop components equal to their longhand
-   initial ([type_: Disc], [position: Outside], [image: None]). When both
-   [type_] and [image] are [None] and [position] is omitted, emit the single
-   [none] keyword. If every component is defaulted, leave [outside] so the value
-   isn't empty. *)
-let drop_default_if ~drop ~is_default v =
-  match v with Some x when drop && is_default x -> Option.None | _ -> v
-
 let pp_list_style_shorthand : list_style_shorthand Pp.t =
  fun ctx { type_; position; image } ->
   let drop = Pp.minified ctx in
@@ -6830,72 +6566,6 @@ let rec pp_grid_area : grid_area Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec eval_number_value : number -> float option = function
-  | Num f -> Some f
-  | Var _ -> None
-  | Calc c -> eval_number_calc c
-  | Round (strategy, value, step) -> (
-      match (eval_number_value value, eval_number_value step) with
-      | Some value, Some step when step <> 0. ->
-          let quotient = value /. step in
-          let rounded =
-            match strategy with
-            | "up" -> Float.ceil quotient
-            | "down" -> Float.floor quotient
-            | "to-zero" -> Float.trunc quotient
-            | _ -> Float.round quotient
-          in
-          Some (rounded *. step)
-      | _ -> None)
-  | Mod (a, b) -> (
-      match (eval_number_value a, eval_number_value b) with
-      | Some a, Some b when b <> 0. -> Some (a -. (Float.floor (a /. b) *. b))
-      | _ -> None)
-  | Rem (a, b) -> (
-      match (eval_number_value a, eval_number_value b) with
-      | Some a, Some b when b <> 0. -> Some (Float.rem a b)
-      | _ -> None)
-  | Hypot (a, b) -> (
-      match (eval_number_value a, eval_number_value b) with
-      | Some a, Some b -> Some (Float.sqrt ((a *. a) +. (b *. b)))
-      | _ -> None)
-  | Pow (a, b) -> (
-      match (eval_number_value a, eval_number_value b) with
-      | Some a, Some b -> Some (a ** b)
-      | _ -> None)
-  | Sqrt v -> Option.map Float.sqrt (eval_number_value v)
-  | Abs v -> Option.map Float.abs (eval_number_value v)
-  | Sign v ->
-      Option.map
-        (fun x -> if x > 0. then 1. else if x < 0. then -1. else 0.)
-        (eval_number_value v)
-  | Sin _ -> None
-
-and eval_number_calc : number calc -> float option = function
-  | Num f -> Some f
-  | Math_const c ->
-      Some
-        (match c with
-        | Pi -> Float.pi
-        | E -> Float.exp 1.
-        | Infinity -> Float.infinity
-        | Neg_infinity -> Float.neg_infinity
-        | Nan -> Float.nan)
-  | Math_fn fn -> Values.eval_math_fn fn
-  | Val v -> eval_number_value v
-  | Var _ | Sibling_index | Sibling_count -> None
-  | Nested inner | Parens inner -> eval_number_calc inner
-  | Expr (left, op, right) -> (
-      match (eval_number_calc left, eval_number_calc right) with
-      | Some left, Some right -> (
-          match op with
-          | Add -> Some (left +. right)
-          | Sub -> Some (left -. right)
-          | Mul -> Some (left *. right)
-          | Div when right <> 0. -> Some (left /. right)
-          | Div -> None)
-      | _ -> None)
 
 let pp_aspect_ratio_number ctx value =
   match (Pp.minified ctx, eval_number_value value) with
@@ -9702,127 +9372,6 @@ let rec pp_nav : nav Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_nav ctx v
 
-let pp_vector_effect_keyword : vector_effect_keyword Pp.t =
- fun ctx -> function
-  | Non_scaling_stroke -> Pp.string ctx "non-scaling-stroke"
-  | Non_scaling_size -> Pp.string ctx "non-scaling-size"
-  | Non_rotation -> Pp.string ctx "non-rotation"
-  | Fixed_position -> Pp.string ctx "fixed-position"
-
-let pp_vector_effect_space : vector_effect_space Pp.t =
- fun ctx -> function
-  | Viewport -> Pp.string ctx "viewport"
-  | Screen -> Pp.string ctx "screen"
-
-let rec pp_vector_effect : vector_effect Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_vector_effect ctx v
-  | None -> Pp.string ctx "none"
-  | Effects (ks, space) -> (
-      Pp.list ~sep:Pp.space pp_vector_effect_keyword ctx ks;
-      match space with
-      | Some s ->
-          Pp.space ctx ();
-          pp_vector_effect_space ctx s
-      | Option.None -> ())
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let pp_paint_order_keyword : paint_order_keyword Pp.t =
- fun ctx -> function
-  | Fill -> Pp.string ctx "fill"
-  | Stroke -> Pp.string ctx "stroke"
-  | Markers -> Pp.string ctx "markers"
-
-let rec pp_paint_order : paint_order Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_paint_order ctx v
-  | Normal -> Pp.string ctx "normal"
-  | Order ks -> Pp.list ~sep:Pp.space pp_paint_order_keyword ctx ks
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let pp_dash_length : dash_length Pp.t =
- fun ctx -> function
-  | Number n -> Pp.float ctx n
-  | Length lp -> Values.pp_length_percentage ctx lp
-
-let rec pp_stroke_dashoffset : stroke_dashoffset Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_stroke_dashoffset ctx v
-  | Dash d -> pp_dash_length ctx d
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_stroke_dasharray : stroke_dasharray Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_stroke_dasharray ctx v
-  | None -> Pp.string ctx "none"
-  (* Whitespace is the shorter of the two separators the grammar allows. *)
-  | Dashes ds -> Pp.list ~sep:Pp.space pp_dash_length ctx ds
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_stroke_miterlimit : stroke_miterlimit Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_stroke_miterlimit ctx v
-  | Number value -> Pp.float ctx value
-  | Calc c -> pp_calc pp_stroke_miterlimit ctx c
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_stroke_linecap : stroke_linecap Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_stroke_linecap ctx v
-  | Butt -> Pp.string ctx "butt"
-  | Round -> Pp.string ctx "round"
-  | Square -> Pp.string ctx "square"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_stroke_linejoin : stroke_linejoin Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_stroke_linejoin ctx v
-  | Miter -> Pp.string ctx "miter"
-  | Miter_clip -> Pp.string ctx "miter-clip"
-  | Round -> Pp.string ctx "round"
-  | Bevel -> Pp.string ctx "bevel"
-  | Arcs -> Pp.string ctx "arcs"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_fill_rule : fill_rule Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_fill_rule ctx v
-  | Nonzero -> Pp.string ctx "nonzero"
-  | Evenodd -> Pp.string ctx "evenodd"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
 let rec pp_direction : direction Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_direction ctx v
@@ -10249,23 +9798,6 @@ let rec pp_font_display : font_display Pp.t =
   | Swap -> Pp.string ctx "swap"
   | Fallback -> Pp.string ctx "fallback"
   | Optional -> Pp.string ctx "optional"
-
-let hex_string n =
-  let rec loop n acc =
-    let digit n =
-      if n < 10 then Char.chr (Char.code '0' + n)
-      else Char.chr (Char.code 'A' + n - 10)
-    in
-    if n = 0 && acc = [] then "0"
-    else if n = 0 then String.of_seq (List.to_seq acc)
-    else loop (n / 16) (digit (n mod 16) :: acc)
-  in
-  loop n []
-
-let padded_hex width n =
-  let hex = hex_string n in
-  if String.length hex >= width then hex
-  else String.make (width - String.length hex) '0' ^ hex
 
 let pp_unicode_range_range ctx start end_ =
   Pp.string ctx "U+";
@@ -11015,26 +10547,6 @@ let rec pp_timing_function : timing_function Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_timing_function ctx v
-
-let rec pp_svg_paint : svg_paint Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_svg_paint ctx v
-  | None -> Pp.string ctx "none"
-  | Inherit -> Pp.string ctx "inherit"
-  | Current_color -> Pp.string ctx "currentcolor"
-  | Color c -> pp_color ctx c
-  | Context_fill -> Pp.string ctx "context-fill"
-  | Context_stroke -> Pp.string ctx "context-stroke"
-  | Url (u, fallback) -> (
-      Pp.url ctx u;
-      match fallback with
-      | None -> ()
-      | Some fb ->
-          (* CSS Syntax 3 sec. 5.4.6: a [url(...)] token closes with [)], so the
-             whitespace before a fallback keyword/colour can be elided under
-             minify. *)
-          Pp.sp ctx ();
-          pp_svg_paint ctx fb)
 
 let rec pp_transition_property_value : transition_property_value Pp.t =
  fun ctx -> function
@@ -15442,281 +14954,6 @@ let rec read_overscroll_behavior t : overscroll_behavior =
     ~var:(fun t -> Var (Values.read_var read_overscroll_behavior t))
     t
 
-let read_svg_paint t : svg_paint =
-  let read_url_with_fallback t =
-    let u = Cursor.url t in
-    (* Empty URLs are invalid in SVG paint context *)
-    if u = "" then Cursor.err t "svg-paint url() must have a non-empty URL";
-    Cursor.ws t;
-    let fb =
-      Cursor.option
-        (fun t ->
-          Cursor.enum "svg-paint-fallback"
-            [ ("none", (None : svg_paint)); ("currentcolor", Current_color) ]
-            ~default:(fun t -> (Color (read_color t) : svg_paint))
-            t)
-        t
-    in
-    Url (u, fb)
-  in
-  (* Bare [url(#grad)] is a single [Token.Url] component; handle before the
-     function/ident dispatch. *)
-  Cursor.one_of
-    [
-      read_url_with_fallback;
-      (fun t ->
-        Cursor.enum_or_calls "svg-paint"
-          [
-            ("none", (None : svg_paint));
-            ("inherit", Inherit);
-            ("currentcolor", Current_color);
-            ("context-fill", Context_fill);
-            ("context-stroke", Context_stroke);
-          ]
-          ~default:(fun t -> (Color (read_color t) : svg_paint))
-          t);
-    ]
-    t
-
-(* SVG 2 sec. 13.3: "A value of zero is invalid; a negative value is an error".
-   The limit is a ratio of miter length to stroke width, and that ratio is 1 at
-   its smallest, so anything below 1 is out of range. Only a literal can be
-   checked here; calc() and var() resolve later. *)
-let vector_effect_keyword_of = function
-  | "non-scaling-stroke" -> Some (Non_scaling_stroke : vector_effect_keyword)
-  | "non-scaling-size" -> Some Non_scaling_size
-  | "non-rotation" -> Some Non_rotation
-  | "fixed-position" -> Some Fixed_position
-  | _ -> Option.None
-
-let vector_effect_space_of = function
-  | "viewport" -> Some (Viewport : vector_effect_space)
-  | "screen" -> Some Screen
-  | _ -> Option.None
-
-let read_vector_effect_keyword t : vector_effect_keyword =
-  let name = Cursor.ident t in
-  match vector_effect_keyword_of name with
-  | Some k -> k
-  | Option.None -> err_invalid_value t "vector-effect" name
-
-let read_vector_effect_space t : vector_effect_space =
-  let name = Cursor.ident t in
-  match vector_effect_space_of name with
-  | Some s -> s
-  | Option.None -> err_invalid_value t "vector-effect" name
-
-(* [ <effect> ]+ then an optional space keyword, so an ident that names a space
-   ends the effect run. *)
-let rec read_vector_effect t : vector_effect =
-  Cursor.enum_or_calls "vector-effect"
-    [
-      ("none", (None : vector_effect));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_vector_effect t)) ]
-    ~default:(fun t ->
-      let rec go acc =
-        Cursor.ws t;
-        match Option.map vector_effect_keyword_of (Cursor.peek_ident t) with
-        | Some (Some k) ->
-            let _ = Cursor.ident t in
-            go (k :: acc)
-        | _ -> List.rev acc
-      in
-      let effects = go [ read_vector_effect_keyword t ] in
-      Cursor.ws t;
-      let space =
-        match Option.map vector_effect_space_of (Cursor.peek_ident t) with
-        | Some (Some _) -> Some (read_vector_effect_space t)
-        | _ -> Option.None
-      in
-      (Effects (effects, space) : vector_effect))
-    t
-
-let paint_order_keyword_of = function
-  | "fill" -> Some (Fill : paint_order_keyword)
-  | "stroke" -> Some Stroke
-  | "markers" -> Some Markers
-  | _ -> None
-
-let read_paint_order_keyword t : paint_order_keyword =
-  let name = Cursor.ident t in
-  match paint_order_keyword_of name with
-  | Some k -> k
-  | None -> err_invalid_value t "paint-order" name
-
-(* [||] takes each operand at most once, so a repeat ends the list rather than
-   extending it. *)
-let rec read_paint_order t : paint_order =
-  Cursor.enum_or_calls "paint-order"
-    [
-      ("normal", (Normal : paint_order));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_paint_order t)) ]
-    ~default:(fun t ->
-      let rec go acc =
-        if List.length acc = 3 then List.rev acc
-        else begin
-          Cursor.ws t;
-          match Option.map paint_order_keyword_of (Cursor.peek_ident t) with
-          | Some (Some k) when not (List.mem k acc) ->
-              let _ = Cursor.ident t in
-              go (k :: acc)
-          | _ -> List.rev acc
-        end
-      in
-      (Order (go [ read_paint_order_keyword t ]) : paint_order))
-    t
-
-(* A bare number is user units; anything with a unit or a percent sign is a
-   <length-percentage>. *)
-let read_dash_length t : dash_length =
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-      Number (Cursor.number t)
-  (* The grammar is <length-percentage> | <number>, with no keyword branch, so
-     the intrinsic-sizing keywords a bare length would accept are out. *)
-  | _ -> Length (Values.read_length_percentage ~with_keywords:false t)
-
-let rec read_stroke_dashoffset t : stroke_dashoffset =
-  Cursor.enum_or_calls "stroke-dashoffset"
-    [
-      ("inherit", (Inherit : stroke_dashoffset));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_dashoffset t)) ]
-    ~default:(fun t -> (Dash (read_dash_length t) : stroke_dashoffset))
-    t
-
-(* The grammar separates dashes by comma and/or whitespace and the rendered
-   pattern is the flat sequence either way, so both spellings read to one
-   list. *)
-let rec read_stroke_dasharray t : stroke_dasharray =
-  Cursor.enum_or_calls "stroke-dasharray"
-    [
-      ("none", (None : stroke_dasharray));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_dasharray t)) ]
-    ~default:(fun t ->
-      (* Only a numeric token continues the pattern. Anything else ends it, so a
-         trailing [;] or [!important] is left for the caller rather than read as
-         another dash. *)
-      let starts_dash t =
-        match Cursor.peek t with
-        | Some
-            (Component.Preserved
-               {
-                 kind =
-                   Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
-                 _;
-               }) ->
-            true
-        | _ -> false
-      in
-      let rec go acc =
-        let acc = read_dash_length t :: acc in
-        Cursor.ws t;
-        if Cursor.peek_comma t then begin
-          Cursor.comma t;
-          Cursor.ws t;
-          go acc
-        end
-        else if starts_dash t then go acc
-        else List.rev acc
-      in
-      (Dashes (go []) : stroke_dasharray))
-    t
-
-let read_miterlimit_number t =
-  let value =
-    match (Values.read_number t : Values.number) with
-    | Values.Num value -> value
-    | _ -> Cursor.err_invalid t "stroke-miterlimit must resolve to a number"
-  in
-  if value < 1. then Cursor.err_invalid t "stroke-miterlimit below 1";
-  value
-
-let rec read_stroke_miterlimit t : stroke_miterlimit =
-  Cursor.enum_or_calls "stroke-miterlimit"
-    [
-      ("inherit", (Inherit : stroke_miterlimit));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_stroke_miterlimit t));
-        ("calc", fun t -> Calc (read_calc read_stroke_miterlimit t));
-      ]
-    ~default:(fun t -> (Number (read_miterlimit_number t) : stroke_miterlimit))
-    t
-
-let rec read_stroke_linecap t : stroke_linecap =
-  Cursor.enum_or_var "stroke-linecap"
-    [
-      ("butt", (Butt : stroke_linecap));
-      ("round", Round);
-      ("square", Square);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_stroke_linecap t))
-    t
-
-let rec read_stroke_linejoin t : stroke_linejoin =
-  Cursor.enum_or_var "stroke-linejoin"
-    [
-      ("miter", (Miter : stroke_linejoin));
-      ("miter-clip", Miter_clip);
-      ("round", Round);
-      ("bevel", Bevel);
-      ("arcs", Arcs);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_stroke_linejoin t))
-    t
-
-let rec read_fill_rule t : fill_rule =
-  Cursor.enum_or_var "fill-rule"
-    [
-      ("nonzero", (Nonzero : fill_rule));
-      ("evenodd", Evenodd);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_fill_rule t))
-    t
-
 let rec read_direction t : direction =
   Cursor.enum_or_var "direction"
     [
@@ -19899,9 +19136,6 @@ let read_any_property t =
 
 (* Helper functions for property types *)
 
-(* RGB color helpers *)
-let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
-
 let shadow ?(inset = false) ?(inset_var : string option)
     ?(inset_var_no_fallback = false) ?(h_offset : length option)
     ?(v_offset : length option) ?(blur : length option)
@@ -19928,7 +19162,6 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
   let v_offset = Option.value v_offset ~default:(Zero : length) in
   (Inset (Body { h_offset; v_offset; blur; spread; color }) : shadow)
 
-let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)
 
 let radial_gradient
@@ -21379,15 +20612,6 @@ let components_of_custom_property_value = function
 
 let pp_custom_property ctx (Custom_value { value; _ }) =
   pp_custom_property_value ctx value
-
-(* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
-   [min-block-size] have [auto] as their initial value (not the generic [0]), so
-   under minify [initial] rewrites to the shorter [auto]. *)
-let pp_length_min_max ctx (v : length_percentage) =
-  let v : length_percentage =
-    match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v
-  in
-  pp_length_percentage ctx v
 
 (* CSS Values 4 sec. 6.5: the [initial] keyword resolves to the property's
    spec-defined initial value at computed time. Under [--minify] swap the

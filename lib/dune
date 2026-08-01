@@ -1,6 +1,10 @@
 (library
  (public_name cascade)
  (name cascade)
+ ; The prop_* modules hold property families that [Properties] includes. They
+ ; are private so the split stays invisible: no [Cascade.Prop_*] alias and no
+ ; extra odoc page.
+ (private_modules prop_common prop_svg)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))

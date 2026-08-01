@@ -1,0 +1,7 @@
+# The prop_* modules are fragments of [Properties]: properties.ml includes them
+# and properties.mli is the interface for the whole family, so a per-fragment
+# .mli would both duplicate that interface and hide the names the include has
+# to re-export.
+[[rules]]
+files = "lib/prop_*.ml"
+exclude = ["E505"]
