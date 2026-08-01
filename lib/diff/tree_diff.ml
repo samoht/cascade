@@ -380,6 +380,13 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
     property_changes <> [] || added_properties <> [] || removed_properties <> []
   in
   if (not has_any_changes) && old_declarations = new_declarations then ()
+  else if selector = "" then
+    (* The parent already named the subject, as it does for an [@property] whose
+       descriptors changed. Repeating it as a child label reads as two entries
+       for one registration. *)
+    pp_content_changed_body ~style ~child_prefix buf ~old_declarations
+      ~new_declarations ~property_changes ~added_properties ~removed_properties
+      ~has_any_changes
   else (
     add_strings buf [ prefix; selector; "\n" ];
     pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
@@ -2012,13 +2019,51 @@ let detect_order_only_change ~container_type added removed items1 items2 =
                })
       | _ -> None
 
+(* The descriptors an [@property] body carries, in the order CSS Properties and
+   Values 1 sec. 2 defines them. The syntax and the initial value are
+   existentially typed and share that existential, so they are compared on the
+   form they serialise to rather than on the value. *)
+let property_descriptors = function
+  | Css.Property_info { syntax; inherits; initial_value; _ } ->
+      ("syntax", Pp.to_string ~minify:true Css.Variables.pp_syntax syntax)
+      :: ("inherits", if inherits then "true" else "false")
+      ::
+      (match initial_value with
+      | None -> []
+      | Some value ->
+          [
+            ( "initial-value",
+              Pp.to_string ~minify:true (Css.Variables.pp_value syntax) value );
+          ])
+
+(* A registration decides how every use of the custom property parses, animates
+   and inherits, so a descriptor that differs is a difference. *)
+let property_descriptor_changes prop1 prop2 =
+  let descs1 = property_descriptors prop1 in
+  let descs2 = property_descriptors prop2 in
+  let changed =
+    List.filter_map
+      (fun (name, expected_value) ->
+        match List.assoc_opt name descs2 with
+        | Some actual_value when actual_value <> expected_value ->
+            Some { property_name = name; expected_value; actual_value }
+        | _ -> None)
+      descs1
+  in
+  let only_in others (name, _) =
+    if List.mem_assoc name others then None else Some name
+  in
+  ( changed,
+    List.filter_map (only_in descs1) descs2,
+    List.filter_map (only_in descs2) descs1 )
+
 let property_diff items1 items2 =
   let key_of (Css.Property_info { name; _ }) = name in
   let key_equal = String.equal in
   let is_empty_diff prop1 prop2 =
-    let (Css.Property_info { name = n1; inherits = i1; _ }) = prop1 in
-    let (Css.Property_info { name = n2; inherits = i2; _ }) = prop2 in
-    n1 = n2 && i1 = i2
+    let (Css.Property_info { name = n1; _ }) = prop1 in
+    let (Css.Property_info { name = n2; _ }) = prop2 in
+    n1 = n2 && property_descriptors prop1 = property_descriptors prop2
   in
   let added, removed, modified_pairs =
     diffs ~key_of ~key_equal ~is_empty_diff items1 items2
@@ -2031,7 +2076,9 @@ let property_diff items1 items2 =
   in
   let modified =
     List.map
-      (fun (Css.Property_info { name; _ }, _) -> (name, [], []))
+      (fun ((Css.Property_info { name; _ } as prop1), prop2) ->
+        let changed, added, removed = property_descriptor_changes prop1 prop2 in
+        (name, changed, added, removed))
       modified_pairs
   in
   (added, removed, modified)
@@ -2244,6 +2291,54 @@ let condition_rules_of_container (name_opt, condition, rules) =
 
 let modified_container_of_pair ((name_opt, condition, rules1), (_, _, rules2)) =
   (container_condition_string name_opt condition, rules1, rules2)
+
+(* Process property rules. An [@property] body holds descriptors, not
+   statements, so there is nothing below it to recurse into. *)
+let process_nested_properties stmts1 stmts2 =
+  let items1 = List.filter_map Css.as_property stmts1 in
+  let items2 = List.filter_map Css.as_property stmts2 in
+  let added, removed, modified = property_diff items1 items2 in
+  let diffs = ref [] in
+  List.iter
+    (fun (name, rules) ->
+      diffs :=
+        Added { container_type = `Property; condition = name; rules } :: !diffs)
+    added;
+  List.iter
+    (fun (name, rules) ->
+      diffs :=
+        Removed { container_type = `Property; condition = name; rules }
+        :: !diffs)
+    removed;
+  List.iter
+    (fun (name, property_changes, added_properties, removed_properties) ->
+      (* The body is reported as the descriptors that changed. Left empty, the
+         renderer has nothing to show and falls back to calling the entry a
+         position change, which is not what differs. *)
+      let rule_changes =
+        [
+          Content_changed
+            {
+              selector = "";
+              old_declarations = [];
+              new_declarations = [];
+              property_changes;
+              added_properties;
+              removed_properties;
+            };
+        ]
+      in
+      diffs :=
+        Modified
+          {
+            info = { container_type = `Property; condition = name; rules = [] };
+            actual_rules = [];
+            rule_changes;
+            container_changes = [];
+          }
+        :: !diffs)
+    modified;
+  !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
 
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
@@ -2477,42 +2572,6 @@ and process_nested_containers_with_name ~depth stmts1 stmts2 =
   collect_container_diffs ~container_type:`Container ~depth added removed
     modified
 
-(* Process property rules *)
-and process_nested_properties ~depth stmts1 stmts2 =
-  let items1 = List.filter_map Css.as_property stmts1 in
-  let items2 = List.filter_map Css.as_property stmts2 in
-  let added, removed, modified = property_diff items1 items2 in
-  let diffs = ref [] in
-  List.iter
-    (fun (name, rules) ->
-      diffs :=
-        Added { container_type = `Property; condition = name; rules } :: !diffs)
-    added;
-  List.iter
-    (fun (name, rules) ->
-      diffs :=
-        Removed { container_type = `Property; condition = name; rules }
-        :: !diffs)
-    removed;
-  List.iter
-    (fun (name, rules1, rules2) ->
-      let rule_changes = to_rule_changes rules1 rules2 in
-      let nested_containers =
-        nested_differences ~depth:(depth + 1) rules1 rules2
-      in
-      diffs :=
-        Modified
-          {
-            info =
-              { container_type = `Property; condition = name; rules = rules1 };
-            actual_rules = rules2;
-            rule_changes;
-            container_changes = nested_containers;
-          }
-        :: !diffs)
-    modified;
-  !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
-
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
 and process_nested_rules ~depth stmts1 stmts2 =
   (* Extract (selector_key, nested_statements) for all rules, including those
@@ -2578,7 +2637,7 @@ and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
     (* Process container queries *)
     @ process_nested_containers_with_name ~depth stmts1 stmts2
     (* Process property declarations *)
-    @ process_nested_properties ~depth stmts1 stmts2
+    @ process_nested_properties stmts1 stmts2
     (* Process keyframes animations *)
     @ process_nested_keyframes ~depth stmts1 stmts2
     (* Process font-face rules *)
