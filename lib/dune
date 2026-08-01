@@ -20,7 +20,8 @@
   prop_ui
   prop_layout
   prop_box
-  prop_font)
+  prop_font
+  prop_text)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
