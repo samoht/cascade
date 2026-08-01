@@ -1,0 +1,36 @@
+; Differential render test: a stylesheet and its optimized forms must compute
+; the same style for every element of a real headless browser. The document is
+; derived from the stylesheet's own selectors, so the rules actually match.
+;
+; The test skips, with status 0, when node or a headless Chromium is missing,
+; or when CASCADE_NO_BROWSER is set, so it never fails a machine without a
+; browser. Run the wider sweep by hand with test/render/run.sh.
+
+(executable
+ (name render_diff)
+ (libraries cascade cascade_diff fmt unix))
+
+; render_diff.exe reads the driver and the DOM builder at run time, so they
+; have to sit next to it in the build directory.
+
+(rule
+ (alias default)
+ (deps
+  (glob_files *.js))
+ (action (progn)))
+
+; The sweep reads the committed CSS corpora, so the rule has to bring them
+; into the build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  (source_tree ../interop/css-minify-tests/traces/tests)
+  (source_tree ../examples)
+  render_diff.exe)
+ (action
+  (setenv
+   CASCADE_RENDER_ARTIFACTS
+   %{workspace_root}/tmp/render-diff
+   (run %{exe:render_diff.exe}))))
