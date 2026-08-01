@@ -111,6 +111,42 @@ let float_rounding_and_trim () =
   check_float_n ~minify:true 3 0.25 ~expected:".25";
   check_float_n ~minify:true 2 0.999 ~expected:"1"
 
+let float_large_decimal () =
+  (* A non-integer whose scaled magnitude passes [max_int] stringifies through
+     exponent notation, and the decimal point is then spliced into what is no
+     longer a pure digit string. Print the magnitude itself instead. *)
+  check_float (1e11 +. 0.5) ~expected:"100000000000";
+  check_float 123456789012.25 ~expected:"123456789012";
+  check_float 999999999999.75 ~expected:"1e12";
+  check_float (-123456789012.25) ~expected:"-123456789012";
+  (* Below the overflow the scaled-integer path stays byte for byte the same. *)
+  check_float (1e10 +. 0.5) ~expected:"10000000000.5"
+
+let float_large_decimal_reparses () =
+  let check_reparse f =
+    let printed = Pp.to_string ~minify:true Pp.float f in
+    match float_of_string_opt printed with
+    | None -> failf "%S is not a number" printed
+    | Some v ->
+        check bool
+          (Fmt.str "%s reads back as %f" printed f)
+          true
+          (Float.abs (v -. f) <= Float.abs f *. 1e-9)
+  in
+  List.iter check_reparse
+    [ 1e11 +. 0.5; 123456789012.25; 999999999999.75; -123456789012.25 ]
+
+let float_large_decimal_in_stylesheet () =
+  let check_sheet name input expected =
+    match of_string input with
+    | Error e -> failf "%s: %s" name (Pp.to_string Error.pp e)
+    | Ok { stylesheet; _ } ->
+        check string name expected (to_string ~minify:true stylesheet)
+  in
+  check_sheet "scale" "a{transform:scale(123456789012.25)}"
+    "a{transform:scale(123456789012)}";
+  check_sheet "opacity" "b{opacity:calc(999999999999.75)}" "b{opacity:1e12}"
+
 let cond_case () =
   let pp = Pp.cond (fun ctx -> not (Pp.minified ctx)) Pp.string Pp.nop in
 
@@ -161,6 +197,11 @@ let suite =
       Alcotest.test_case "float zero nan inf" `Quick float_zero_and_nan_inf;
       Alcotest.test_case "float rounding and trim" `Quick
         float_rounding_and_trim;
+      Alcotest.test_case "float large decimal" `Quick float_large_decimal;
+      Alcotest.test_case "float large decimal reparses" `Quick
+        float_large_decimal_reparses;
+      Alcotest.test_case "float large decimal in stylesheet" `Quick
+        float_large_decimal_in_stylesheet;
       Alcotest.test_case "cond" `Quick cond_case;
       Alcotest.test_case "space if pretty" `Quick space_if_pretty_case;
       Alcotest.test_case "combinations" `Quick combinations;
