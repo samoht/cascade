@@ -116,7 +116,7 @@ let test_resolve_nested_layers () =
     "a sublayer comes after its parent" (Some "color:red")
     (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
   Alcotest.(check (option string))
-    "a top-level layer sorts after the whole subtree" (Some "color:#008000")
+    "a top-level layer sorts after the whole subtree" (Some "color:green")
     (resolved_color
        "@layer a.b{span{color:red}}@layer c{span{color:green}}@layer \
         a.d{span{color:blue}}")

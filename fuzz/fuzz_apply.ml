@@ -30,17 +30,19 @@ let inline_style ds =
   Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables ds
 
 (* Compare two projections structurally: the inline style written onto each node
-   in tree order, plus the kept <style> body and its rule count. *)
+   in tree order, plus the number of rules kept in the <style>. The kept body
+   itself is left out because a kept rule stays inside its layer, so its text
+   differs by the wrapper. *)
 let summary (r : node Apply.result) =
-  (List.map (fun (_, ds) -> inline_style ds) r.styles, r.keep_css, r.kept)
+  (List.map (fun (_, ds) -> inline_style ds) r.styles, r.kept)
 
 let layer name body = String.concat "" [ "@layer "; name; "{"; body; "}" ]
 
 (* A @layer block applies unconditionally, so wrapping author rules in one (or
-   several) layers must not change what [Apply.compute] projects onto the tree
-   or keeps in the <style>: the projection is identical to the unlayered rules.
-   Each class carries a single declaration so no two rules compete, keeping the
-   comparison free of cascade-winner ambiguity between layers. *)
+   several) layers must not change what [Apply.compute] projects onto the tree,
+   nor how many rules it keeps in the <style>. Each class carries a single
+   declaration so no two rules compete, which is what makes the wrapping
+   invisible: layers only decide between competing declarations. *)
 let test_layer_wrapping_invariant buf =
   let k = 1 + (byte_at buf 0 mod 4) in
   let classes =

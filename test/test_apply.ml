@@ -67,7 +67,8 @@ let projects_layered_rule_to_inline_style () =
   | _ -> Alcotest.fail "expected one inline assignment"
 
 (* Inside a layer the static/dynamic split still holds: the plain rule inlines,
-   the stateful one stays in the kept <style>. *)
+   the stateful one stays in the kept <style>, and it stays in its layer because
+   that is what orders it against the other kept rules. *)
 let keeps_stateful_rule_inside_layer_in_css () =
   let n = node ~classes:[ "card" ] "div" in
   let result =
@@ -79,7 +80,7 @@ let keeps_stateful_rule_inside_layer_in_css () =
     | [ (_, decls) ] -> inline_style decls
     | _ -> Alcotest.fail "expected one inline assignment");
   Alcotest.(check string)
-    "kept dynamic rule" ".card:hover{color:blue}" result.keep_css;
+    "kept dynamic rule" "@layer u{.card:hover{color:blue}}" result.keep_css;
   Alcotest.(check int) "kept count" 1 result.kept
 
 (* The inline style [css] projects onto a single [p.x], as a minified

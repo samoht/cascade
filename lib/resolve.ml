@@ -36,6 +36,83 @@ let attr_key : Selector.attr_name -> string = function
   | Selector.Data s -> "data-" ^ s
   | Selector.Aria a -> Aria.to_string a
 
+(* Cascade layers. Layer names form a tree: [@layer a.b] names the sublayer [b]
+   of [a], and so does [@layer a { @layer b { ... } }]. The cascade only needs
+   the flattened pre-order of that tree, so a layer is keyed by its dotted path
+   and the order is a list of paths, oldest first (css-cascade-5 sec. 6.4.2). *)
+
+let parent_layer name =
+  match String.rindex_opt name '.' with
+  | None -> None
+  | Some i -> Some (String.sub name 0 i)
+
+(* Each unnamed [@layer { }] block is a layer of its own, distinct from every
+   other one, so key it by a counter behind a prefix no author can write: NUL
+   never survives tokenisation, css-syntax-3 sec. 3.3 turns it into U+FFFD. *)
+let anonymous_layer n = "\000" ^ string_of_int n
+
+let qualify parent name =
+  match parent with None -> name | Some p -> p ^ "." ^ name
+
+(* A sublayer is ordered inside its parent, not at the end of the sheet: in
+   [@layer a.b {} @layer c {} @layer a.d {}] the layer [a.d] joins [a]'s subtree
+   and so still precedes [c]. *)
+let insert_layer order name =
+  if List.mem name order then order
+  else
+    match parent_layer name with
+    | None -> order @ [ name ]
+    | Some p ->
+        let inside n = n = p || starts n (p ^ ".") in
+        (* [p]'s subtree is contiguous, so the insertion point is just past its
+           last member; [entered] says the scan has reached it. *)
+        let rec insert entered = function
+          | x :: rest when inside x -> x :: insert true rest
+          | rest when entered -> name :: rest
+          | [] -> [ name ]
+          | x :: rest -> x :: insert entered rest
+        in
+        insert false order
+
+(* Naming a sublayer creates its ancestors first, so [@layer a.b] declares [a]
+   then [a.b]. *)
+let declare_layer order name =
+  let rec path n acc =
+    match parent_layer n with None -> n :: acc | Some p -> path p (n :: acc)
+  in
+  List.fold_left insert_layer order (path name [])
+
+(* [layered_rules stmts] is the sheet's layer order together with every rule
+   paired with the layer it sits in ([None] for the unlayered ones), both in
+   source order. An [@layer a, b;] statement declares its names without
+   contributing a rule. *)
+let layered_rules stmts =
+  let anon = ref 0 in
+  let rec go parent acc stmts =
+    List.fold_left
+      (fun (order, rules) stmt ->
+        match stmt with
+        | Stylesheet.Rule r -> (order, (parent, r) :: rules)
+        | Stylesheet.Layer_decl names ->
+            ( List.fold_left
+                (fun order name -> declare_layer order (qualify parent name))
+                order names,
+              rules )
+        | Stylesheet.Layer (name, body) ->
+            let name =
+              match name with
+              | Some n -> qualify parent n
+              | None ->
+                  incr anon;
+                  qualify parent (anonymous_layer !anon)
+            in
+            go (Some name) (declare_layer order name, rules) body
+        | _ -> (order, rules))
+      acc stmts
+  in
+  let order, rules = go None ([], []) stmts in
+  (order, List.rev rules)
+
 module Make (N : NODE) = struct
   let preceding_siblings n =
     match N.parent n with
@@ -149,23 +226,41 @@ module Make (N : NODE) = struct
       let k = Declaration.property_name d in
       (k, d) :: List.remove_assoc k acc
     in
+    let layer_order, rules = layered_rules (Flatten.block sheet) in
     let matched =
-      Flatten.block sheet
-      |> List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None)
-      |> List.mapi (fun i r ->
+      rules
+      |> List.mapi (fun i (layer, r) ->
           let sel = Stylesheet.selector r in
           if matches sel node then
-            Some (matched_specificity sel node, i, Stylesheet.declarations r)
+            Some
+              (layer, matched_specificity sel node, i, Stylesheet.declarations r)
           else None)
       |> List.filter_map Fun.id
-      |> List.stable_sort (fun (s1, i1, _) (s2, i2, _) ->
-          match compare s1 s2 with 0 -> compare i1 i2 | c -> c)
     in
-    let decls = List.concat_map (fun (_, _, ds) -> ds) matched in
-    let normal =
-      List.filter (fun d -> not (Declaration.is_important d)) decls
+    (* The cascade sorting order (css-cascade-5 sec. 6) weighs the layer above
+       specificity and above source order, and its direction depends on
+       importance: among normal declarations the last layer wins and the
+       unlayered ones beat them all, among important ones that reverses. So rank
+       each importance bucket on its own. *)
+    let bucket ~important =
+      matched
+      |> List.filter_map (fun (layer, spec, i, ds) ->
+          match
+            List.filter (fun d -> Declaration.is_important d = important) ds
+          with
+          | [] -> None
+          | ds ->
+              Some
+                ( Stylesheet.cascade_layer_precedence_rank ~layer_order
+                    ~important layer,
+                  spec,
+                  i,
+                  ds ))
+      |> List.stable_sort (fun (l1, s1, i1, _) (l2, s2, i2, _) ->
+          compare (l1, s1, i1) (l2, s2, i2))
+      |> List.concat_map (fun (_, _, _, ds) -> ds)
     in
-    let important = List.filter Declaration.is_important decls in
     (* normal first, then !important, last wins per property *)
-    List.fold_left upsert [] (normal @ important) |> List.rev_map snd
+    List.fold_left upsert [] (bucket ~important:false @ bucket ~important:true)
+    |> List.rev_map snd
 end

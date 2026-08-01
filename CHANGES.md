@@ -77,6 +77,9 @@
   stylesheet inlines like its unlayered form (#187, #189)
 - `cascade apply` projects rules inside `@layer` onto elements; a fully layered
   stylesheet, such as Tailwind v4 output, inlined nothing (#188)
+- `cascade apply` weighs cascade layers instead of ignoring them: an unlayered
+  declaration beats a layered one, `!important` reverses that, and a rule with
+  no inline form stays inside its layer (#283)
 - `Css.vars_of_declarations` reports the `var()` references of 39 properties it
   answered with none, so `Css.resolve_theme` emits the theme binding for
   `inline-size: var(--w)` as it does for `width: var(--w)` (#266)
