@@ -9,7 +9,8 @@
   prop_svg
   prop_multicol
   prop_writing
-  prop_filter)
+  prop_filter
+  prop_align)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
