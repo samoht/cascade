@@ -1684,6 +1684,46 @@ let css_syntax_recovery_structural () =
   check_counts "unclosed block auto-closed"
     ".a { color: red; .b { color: blue }" [ 1 ] 0
 
+(* CSS Syntax 3 sections 4.3.1 and 5.4.2: an unknown at-rule's at-keyword and
+   its prelude are separate tokens, and the whitespace between them is the only
+   thing that keeps them apart. Minified output that drops it turns [@foo bar]
+   into the at-keyword [@foobar], so the printed text no longer re-parses to the
+   value that produced it. Lightning CSS, esbuild, csso, clean-css, and cssnano
+   all keep the space. An at-rule with no prelude has no boundary to preserve
+   and stays unspaced. *)
+let s3431_unknown_at_rule_prelude_separator () =
+  let parse input = read_stylesheet (Cursor.of_string input) in
+  let unknown input =
+    match parse input with
+    | [ Unknown_at_rule { name; prelude; block } ] -> (name, prelude, block)
+    | _ -> Alcotest.failf "expected a single unknown at-rule for %S" input
+  in
+  let roundtrips input =
+    let printed =
+      String.trim (Css.Stylesheet.to_string ~minify:true (parse input))
+    in
+    let at_rule = Alcotest.(triple string string (option string)) in
+    Alcotest.check at_rule (input ^ " roundtrip") (unknown input)
+      (unknown printed);
+    printed
+  in
+  Alcotest.(check string)
+    "block form keeps the at-keyword boundary" "@foo bar{x:1}"
+    (roundtrips "@foo bar{x:1}");
+  Alcotest.(check string)
+    "statement form keeps the at-keyword boundary" "@foo bar;"
+    (roundtrips "@foo bar;");
+  Alcotest.(check string)
+    "multi-token prelude keeps the at-keyword boundary" "@foo bar baz{x:1}"
+    (roundtrips "@foo bar baz{x:1}");
+  (* Control: no prelude, so no separator to emit. *)
+  Alcotest.(check string)
+    "block form without a prelude stays unspaced" "@foo{x:1}"
+    (roundtrips "@foo{x:1}");
+  Alcotest.(check string)
+    "statement form without a prelude stays unspaced" "@foo;"
+    (roundtrips "@foo;")
+
 (* Not a roundtrip test *)
 let test_invalid_functions () =
   expect_parse_error ".btn { color: rgb(300); }";
@@ -6759,6 +6799,9 @@ let additional_tests =
     ( "spec CSS Syntax structural recovery",
       `Quick,
       css_syntax_recovery_structural );
+    ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
+      `Quick,
+      s3431_unknown_at_rule_prelude_separator );
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
     ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);
