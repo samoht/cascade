@@ -1,7 +1,9 @@
-(* css-display-4, css-box-4, css-sizing-4, css-overflow-5 and css-position-3:
-   display, position, the overflow family, intrinsic sizing, aspect-ratio,
-   object-fit / object-view-box, margin-trim, opacity, z-index, order, zoom,
-   float / clear, isolation, table-layout and caption-side.
+(* css-display-4, css-box-4, css-sizing-4, css-overflow-5, css-position-3 and
+   css-shapes-1: display, position, the overflow family (including
+   overflow-clip-margin and its clip box), intrinsic sizing, aspect-ratio,
+   object-fit / object-view-box, margin-trim, opacity, shape-image-threshold,
+   z-index, order, zoom, float / clear, isolation, table-layout and
+   caption-side.
 
    This module has no .mli and is private to the library; [Properties] includes
    it, so every name here stays visible under [Css.Properties] exactly as when
