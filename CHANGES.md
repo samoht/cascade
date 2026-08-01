@@ -103,6 +103,10 @@
 
 ### Diff report
 
+- A rule that writes one property more than once, as a fallback chain does, is
+  compared occurrence by occurrence; matching by name alone made
+  `a{color:red;color:blue}` against `a{color:red;color:green}` report
+  `color: blue -> red`, a value neither side holds
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second

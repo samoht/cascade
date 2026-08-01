@@ -1657,45 +1657,59 @@ let handle_structural_diff rules1 rules2 =
 
 let rule_diffs rules1 rules2 = handle_structural_diff rules1 rules2
 
+(* The values a rule writes for [name], in the order it writes them. *)
+let occurrences_of name props =
+  List.filter_map (fun (p, v) -> if p = name then Some v else None) props
+
+(* The property names of [props], each once, in first-appearance order. *)
+let names_of props =
+  List.fold_left
+    (fun acc (p, _) -> if List.mem p acc then acc else p :: acc)
+    [] props
+  |> List.rev
+
+(* Zip one name's occurrence lists. A rule may write a property several times -
+   a fallback chain is the usual reason - so occurrence n on one side answers
+   occurrence n on the other, and whichever side has more occurrences carries
+   the surplus. Matching by name alone binds every occurrence to the first entry
+   opposite and reports values neither side holds. *)
+let rec zip_occurrences name (modified, added, removed) values1 values2 =
+  match (values1, values2) with
+  | [], [] -> (modified, added, removed)
+  | v1 :: rest1, v2 :: rest2 ->
+      let modified =
+        if v1 = v2 then modified
+        else
+          { property_name = name; expected_value = v1; actual_value = v2 }
+          :: modified
+      in
+      zip_occurrences name (modified, added, removed) rest1 rest2
+  | _ :: rest1, [] ->
+      zip_occurrences name (modified, added, name :: removed) rest1 []
+  | [], _ :: rest2 ->
+      zip_occurrences name (modified, name :: added, removed) [] rest2
+
 (* Helper function to compute property diffs between two declaration lists,
    including added and removed properties *)
 let properties_diff decls1 decls2 : declaration list * string list * string list
     =
   let props1 = List.map decl_to_prop_value decls1 in
   let props2 = List.map decl_to_prop_value decls2 in
-
-  (* Find modified properties *)
-  let modified =
-    List.fold_left
-      (fun acc (p1, v1) ->
-        match List.assoc_opt p1 props2 with
-        | Some v2 when v1 <> v2 ->
-            { property_name = p1; expected_value = v1; actual_value = v2 }
-            :: acc
-        | _ -> acc)
-      [] props1
-    |> List.rev
+  (* Names the expected side writes first, then the ones only the actual side
+     writes, so the report reads in source order. *)
+  let names =
+    let names1 = names_of props1 in
+    names1 @ List.filter (fun p -> not (List.mem p names1)) (names_of props2)
   in
-
-  (* Find added properties (in actual but not in expected) *)
-  let added =
+  let modified, added, removed =
     List.fold_left
-      (fun acc (p2, _v2) ->
-        if not (List.mem_assoc p2 props1) then p2 :: acc else acc)
-      [] props2
-    |> List.rev
+      (fun acc name ->
+        zip_occurrences name acc
+          (occurrences_of name props1)
+          (occurrences_of name props2))
+      ([], [], []) names
   in
-
-  (* Find removed properties (in expected but not in actual) *)
-  let removed =
-    List.fold_left
-      (fun acc (p1, _v1) ->
-        if not (List.mem_assoc p1 props2) then p1 :: acc else acc)
-      [] props1
-    |> List.rev
-  in
-
-  (modified, added, removed)
+  (List.rev modified, List.rev added, List.rev removed)
 
 (* Helper functions for converting rule changes - moved here for mutual
    recursion *)
