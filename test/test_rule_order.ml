@@ -36,6 +36,41 @@ let custom_property_position_converges () =
     "definition before the user" want
     (canonical ":root{--b:1}.x{filter:blur(var(--b))}")
 
+let custom_property_importance_survives () =
+  (* Cascade 5 sec. 6.2: an important declaration beats a normal one whatever
+     the order, so [!important] on a custom property is cascade-significant and
+     the projection has to carry it over. *)
+  Alcotest.(check string)
+    "important is kept" ":root{--x:red!important}"
+    (canonical ":root{--x:red !important}");
+  Alcotest.(check bool)
+    "an important definition does not project like a normal one" true
+    (canonical ":root{--x:red !important}" <> canonical ":root{--x:red}")
+
+let custom_property_layer_and_meta_survive () =
+  (* A custom declaration also carries the cascade layer it was written in and
+     its caller metadata. The projection rebuilds the declaration from its
+     value, so both have to be carried over with it. *)
+  let inject, project = Css.meta () in
+  let decl, _ =
+    Css.var ~layer:"theme" ~meta:(inject "tag") "x" Css.Length (Css.Rem 1.)
+  in
+  let projected =
+    Rule_order.canonicalize
+      [ Css.rule ~selector:(Selector.of_string ":root") [ decl ] ]
+  in
+  match List.filter_map Css.statement_declarations projected with
+  | [ [ d ] ] ->
+      Alcotest.(check (option string))
+        "layer survives" (Some "theme")
+        (Declaration.custom_declaration_layer d);
+      Alcotest.(check (option string))
+        "meta survives" (Some "tag")
+        (Option.bind (Declaration.meta_of_declaration d) project)
+  | ds ->
+      Alcotest.failf "expected one rule holding one declaration, got %d rules"
+        (List.length ds)
+
 let media_and_independent_rule_converge () =
   (* A conditional block whose rules cannot conflict with a neighbouring rule
      reorders with it, so both source orderings reach one canonical form. *)
@@ -112,7 +147,7 @@ let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
      observable-free: they stay split, in source order. The first [color] is
-     dropped all the same — a later rule with the *identical* selector writes
+     dropped all the same - a later rule with the *identical* selector writes
      it, so it never wins for any element. *)
   Alcotest.(check string)
     "conflicting write between occurrences keeps them split"
@@ -214,6 +249,10 @@ let suite =
         keeps_conflicting_rules_in_source_order;
       Alcotest.test_case "custom-property position converges" `Quick
         custom_property_position_converges;
+      Alcotest.test_case "custom-property importance survives" `Quick
+        custom_property_importance_survives;
+      Alcotest.test_case "custom-property layer and meta survive" `Quick
+        custom_property_layer_and_meta_survive;
       Alcotest.test_case "media and independent rule converge" `Quick
         media_and_independent_rule_converge;
       Alcotest.test_case "media conflict keeps source order" `Quick

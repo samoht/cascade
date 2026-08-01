@@ -119,6 +119,25 @@ let canonical_custom_hue_rotate_zero () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a{--f:hue-rotate()}"
        ".a{--f:hue-rotate(90deg)}")
 
+(* Cascade 5 sec. 6.2: an important custom property beats a later normal one, so
+   the flag is part of what the declaration means and two sheets that disagree
+   about it are different sheets. *)
+let canonical_important_custom_property_distinct () =
+  Alcotest.(check bool)
+    "an important custom property differs from a normal one" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ":root{--x:red!important}"
+       ":root{--x:red}");
+  (* the same importance on both sides is not a difference *)
+  Alcotest.(check bool)
+    "matching important custom properties agree" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ":root{--x:red!important}"
+       ":root{--x:red !important}");
+  (* the flag also decides which of two definitions of one name survives *)
+  Alcotest.(check bool)
+    "an important definition is not shadowed by a later normal one" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ":root{--x:red!important}:root{--x:blue}" ":root{--x:blue}")
+
 let equal_prune_unused_custom_props () =
   let with_bind = ":root{--spacing:.25rem}.top-0{top:0}" in
   let without = ".top-0{top:0}" in
@@ -1213,6 +1232,8 @@ let suite =
         equal_prune_unused_custom_props;
       Alcotest.test_case "canonical folds a zero hue-rotate in a custom value"
         `Quick canonical_custom_hue_rotate_zero;
+      Alcotest.test_case "canonical keeps custom-property importance" `Quick
+        canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
         equal_canonical_ignores_property_order;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
