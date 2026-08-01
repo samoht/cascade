@@ -885,6 +885,53 @@ let pp_stats_does_not_crash () =
     "pp_stats produces output" true
     (String.length output > 0)
 
+(* The counters only ever count a tree diff, so they read zero on every result
+   that never reached one: a comparison that fell through to strings, and a side
+   whose content the parser discarded. Announcing that as an absence of
+   structural differences states a conclusion the comparator never drew. *)
+
+let rendered_stats ?mode expected actual =
+  let result = Cascade_diff.Css_compare.diff ?mode expected actual in
+  let s =
+    Cascade_diff.Css_compare.stats ~expected_str:expected ~actual_str:actual
+      result
+  in
+  let buf = Buffer.create 256 in
+  Cascade_diff.Css_compare.pp_stats buf s;
+  Buffer.contents buf
+
+let zero_counters_do_not_claim_equivalence () =
+  (* The stray braces are dropped with a parse warning, so both sides reach the
+     same AST and the report falls through to a string diff. *)
+  let output = rendered_stats "a{color:red}" "a{color:red}}}}" in
+  Alcotest.(check bool)
+    "does not claim the two sheets match structurally" false
+    (contains_substring output "No structural differences");
+  Alcotest.(check bool)
+    "says the changes were not classified" true
+    (contains_substring output "none classified structurally")
+
+let zero_counters_unparsed_do_not_claim_equivalence () =
+  (* Mode [`String] never parses, so the counters read zero over two sheets that
+     paint differently. *)
+  let output = rendered_stats ~mode:`String "a{color:red}" "a{color:blue}" in
+  Alcotest.(check bool)
+    "a comparison that never parsed is not an absence of differences" false
+    (contains_substring output "No structural differences")
+
+(* Canonical mode keeps the two canonical forms on [No_diff] when the structural
+   comparator saw no difference but the bytes still diverge - here an empty
+   layer-order pin the projection does not fold away. *)
+let canonical_byte_residual_is_recorded () =
+  let result =
+    Cascade_diff.Css_compare.diff ~mode:`Canonical "@layer a;@layer a{x{top:0}}"
+      "@layer a{x{top:0}}"
+  in
+  match result.Cascade_diff.Css_compare.result with
+  | Cascade_diff.Css_compare.No_diff { canonical_byte_diff = Some (e, a) } ->
+      Alcotest.(check bool) "the two forms differ" true (e <> a)
+  | _ -> Alcotest.fail "expected No_diff carrying a canonical byte difference"
+
 (* ===== diff tests ===== *)
 
 let diff_auto () =
@@ -1217,6 +1264,12 @@ let suite =
       Alcotest.test_case "stats with tree diff" `Quick stats_with_tree_diff;
       Alcotest.test_case "pp_stats does not crash" `Quick
         pp_stats_does_not_crash;
+      Alcotest.test_case "zero counters do not claim equivalence" `Quick
+        zero_counters_do_not_claim_equivalence;
+      Alcotest.test_case "zero counters unparsed do not claim equivalence"
+        `Quick zero_counters_unparsed_do_not_claim_equivalence;
+      Alcotest.test_case "canonical byte residual is recorded" `Quick
+        canonical_byte_residual_is_recorded;
       Alcotest.test_case "diff auto" `Quick diff_auto;
       Alcotest.test_case "diff tree" `Quick diff_tree;
       Alcotest.test_case "diff string" `Quick diff_string;
