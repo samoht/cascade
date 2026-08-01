@@ -323,12 +323,18 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
       let d = max_decimals + min 24 (max 0 leading_zeros) in
       (d, floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
   in
-  let s =
-    if scaled <= float_of_int max_int then string_of_int (int_of_float scaled)
-    else string_of_float scaled
-  in
-  let s = trim_decimal_suffix s in
-  format_decimal ~drop_leading_zero s max_decimals is_neg
+  if scaled > float_of_int max_int then
+    (* [format_decimal] splices the decimal point into what it takes for a pure
+       digit string, but a scaled magnitude past [max_int] only stringifies
+       through exponent notation. Print the magnitude itself, the way
+       [format_integer] does over the same range. *)
+    let s =
+      trim_decimal_suffix (string_of_float abs_f) |> strip_exponent_plus
+    in
+    if is_neg then "-" ^ s else s
+  else
+    let s = string_of_int (int_of_float scaled) in
+    format_decimal ~drop_leading_zero s max_decimals is_neg
 
 let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
