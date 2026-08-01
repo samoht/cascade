@@ -817,6 +817,75 @@ let font_face_added_reported () =
     "an added @font-face is a difference" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* ===== One property written more than once in a rule ===== *)
+
+(* A fallback chain writes one property several times, so a rule holds one value
+   per occurrence and occurrence n on one side answers occurrence n on the
+   other. Matching by name alone binds every occurrence to the first entry
+   opposite, which names values neither side holds. *)
+
+let rule_property_changes d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { property_changes; _ } ->
+          List.map
+            (fun (p : Cascade_diff.Tree_diff.declaration) ->
+              p.property_name ^ ": " ^ p.expected_value ^ " -> "
+              ^ p.actual_value)
+            property_changes
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let rule_added_properties d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { added_properties; _ } -> added_properties
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let rule_removed_properties d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { removed_properties; _ } -> removed_properties
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let repeated_property_pairs_by_occurrence () =
+  let d =
+    diff_of ~expected:"a{color:red;color:blue}"
+      ~actual:"a{color:red;color:green}"
+  in
+  Alcotest.(check (list string))
+    "the occurrence that changed, against its counterpart"
+    [ "color: blue -> green" ] (rule_property_changes d)
+
+let repeated_property_pairs_every_occurrence () =
+  let d =
+    diff_of ~expected:"a{color:teal;color:red}"
+      ~actual:"a{color:green;color:blue}"
+  in
+  Alcotest.(check (list string))
+    "each occurrence against the one at its own index"
+    [ "color: teal -> green"; "color: red -> blue" ]
+    (rule_property_changes d)
+
+let repeated_property_surplus_is_removed () =
+  let d = diff_of ~expected:"a{color:red;color:blue}" ~actual:"a{color:red}" in
+  Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
+  Alcotest.(check (list string))
+    "the occurrence with no counterpart is removed" [ "color" ]
+    (rule_removed_properties d)
+
+let repeated_property_surplus_is_added () =
+  let d = diff_of ~expected:"a{color:red}" ~actual:"a{color:red;color:blue}" in
+  Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
+  Alcotest.(check (list string))
+    "the occurrence with no counterpart is added" [ "color" ]
+    (rule_added_properties d)
+
 let suite =
   ( "tree_diff",
     [
@@ -925,6 +994,14 @@ let suite =
       Alcotest.test_case "@page removed reported" `Quick page_removed_reported;
       Alcotest.test_case "@font-face added reported" `Quick
         font_face_added_reported;
+      Alcotest.test_case "repeated property pairs by occurrence" `Quick
+        repeated_property_pairs_by_occurrence;
+      Alcotest.test_case "repeated property pairs every occurrence" `Quick
+        repeated_property_pairs_every_occurrence;
+      Alcotest.test_case "repeated property surplus is removed" `Quick
+        repeated_property_surplus_is_removed;
+      Alcotest.test_case "repeated property surplus is added" `Quick
+        repeated_property_surplus_is_added;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
