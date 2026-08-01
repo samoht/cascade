@@ -130,6 +130,13 @@
 - Add `Css.Values.oklch_none_hue` for an achromatic colour with a missing hue,
   printed as `oklch(55.6% 0 none)` (#190)
 
+### Testing
+
+- `dune test` renders a stylesheet and its optimized forms in a headless
+  browser and compares the computed style of every element, on a document
+  derived from the stylesheet's own selectors; it skips where no browser is
+  installed
+
 ## 1.0.0
 
 First public release. Cascade was extracted from the [tw](https://github.com/samoht/tw)
