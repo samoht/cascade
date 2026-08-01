@@ -172,10 +172,6 @@ let known =
     ( "corpus-duplicates-0017",
       "--lossless sorts padding-top before padding-block-start, which \
        overwrites it" );
-    ("corpus-colors-0046", "--lossless rounds the alpha channel to 3 decimals");
-    ("corpus-colors-0047", "--lossless rounds the alpha channel to 3 decimals");
-    ("corpus-colors-0048", "--lossless rounds the alpha channel to 3 decimals");
-    ("corpus-colors-0049", "--lossless rounds the alpha channel to 3 decimals");
     ( "corpus-anchor-0002",
       "position-area: top center folds to top, which Chromium computes as a \
        different area" );

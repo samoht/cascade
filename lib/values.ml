@@ -3604,8 +3604,12 @@ let rec pp_alpha : alpha Pp.t =
   | Num f ->
       (* CSSOM serialisation (CSS Values 4 sec. 6.7.2) drops a leading zero on
          fractional numbers: emit [.25] not [0.25] in both modes. Under minify,
-         round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB). *)
-      let max_decimals = if Pp.minified ctx then 3 else 8 in
+         round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB); alpha
+         is a colour channel, so [lossless] opts out of that fold like the other
+         channels. *)
+      let max_decimals =
+        if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8
+      in
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
   | Pct f ->
       Pp.float ctx f;

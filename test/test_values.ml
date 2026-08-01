@@ -418,6 +418,35 @@ let lossless_color () =
   check_value_cursor "color" read_color pp_color ~minify:false
     ~expected:"oklch(55.2% .016 285.938)" "oklch(55.2% 0.016 285.938)"
 
+(* Alpha is a colour channel like any other, so --lossless suppresses its
+   rounding too: every colour function keeps the authored 0.74567. *)
+let lossless_alpha () =
+  decl_lossless ~prop:"color" ~into:"rgb(10 20 30/.74567)"
+    "rgb(10 20 30 / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"hsl(200 50% 40%/.74567)"
+    "hsl(200 50% 40% / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"hwb(200 20% 30%/.74567)"
+    "hwb(200 20% 30% / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"oklch(.55432 .12276 180.4567/.74567)"
+    "oklch(0.55432 0.12276 180.4567 / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"lch(54.321 100.456 274.456/.74567)"
+    "lch(54.321 100.456 274.456 / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"oklab(.65432-.23456 .18901/.74567)"
+    "oklab(0.65432 -0.23456 0.18901 / 0.74567)";
+  decl_lossless ~prop:"color" ~into:"lab(54.321-60.456 70.789/.74567)"
+    "lab(54.321 -60.456 70.789 / 0.74567)";
+  decl_lossless ~prop:"color"
+    ~into:"color(display-p3 .97654 .12345 .01789/.74567)"
+    "color(display-p3 0.97654 0.12345 0.01789 / 0.74567)";
+  (* Control: plain minify keeps the 3-decimal alpha fold. It is a deliberate
+     minification - sRGB alpha resolves to 1/255 ~ 0.004 - and only --lossless
+     opts out of it. *)
+  decl_optimizes ~prop:"color" ~into:"#0a141ebe" "rgb(10 20 30 / 0.74567)";
+  decl_optimizes ~prop:"color" ~into:"oklch(.554 .123 180.457/.746)"
+    "oklch(0.55432 0.12276 180.4567 / 0.74567)";
+  decl_optimizes ~prop:"color" ~into:"color(display-p3 .977 .123 .018/.746)"
+    "color(display-p3 0.97654 0.12345 0.01789 / 0.74567)"
+
 let test_angle () =
   (* pp holds the authored angle unit verbatim: the unit is part of the value
      node and cross-unit conversion is lossy (1rad has no exact degree
@@ -1246,6 +1275,7 @@ let value_tests =
     test_case "length" `Quick test_length;
     test_case "color" `Quick test_color;
     test_case "lossless color" `Quick lossless_color;
+    test_case "lossless alpha" `Quick lossless_alpha;
     test_case "angle" `Quick test_angle;
     test_case "duration" `Quick test_duration;
     test_case "percentage" `Quick test_percentage;
