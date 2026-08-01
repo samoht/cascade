@@ -17,7 +17,10 @@ val declarations_overlap :
 (** [declarations_overlap a b] is [true] when [a] and [b] may write at least one
     common cascade slot after shorthand expansion. Unlike
     {!val-declaration_covers}, this relation is symmetric: [border-top] and
-    [border-color] overlap because both write [border-top-color]. *)
+    [border-color] overlap because both write [border-top-color]. A
+    flow-relative property overlaps every physical property of its family, since
+    the writing mode of the elements the stylesheet will match decides which
+    physical side it resolves to. *)
 
 type overlap_key
 (** Precomputed declaration-overlap key used by the rule graph. *)

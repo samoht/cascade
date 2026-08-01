@@ -374,7 +374,8 @@ let scroll_padding_keys =
     key "scroll-padding-left";
   ]
 
-let property_footprint : type a. a Properties.property -> overlap_key list =
+(* The slots a property names, before flow-relative aliasing. *)
+let property_slots : type a. a Properties.property -> overlap_key list =
   function
   | All -> [ key "*" ]
   | Margin ->
@@ -718,12 +719,12 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Webkit_flex_flow -> [ key "flex-direction"; key "flex-wrap" ]
   | Webkit_flex_direction -> [ key "flex-direction" ]
   | Webkit_flex_wrap -> [ key "flex-wrap" ]
-  (* CSS Overflow 3 sec. 3.3. [overflow-block] / [overflow-inline] are the
-     flow-relative pair and keep their own slots, as the other logical families
-     do here. *)
+  (* CSS Overflow 3 sec. 3.3. *)
   | Overflow -> [ key "overflow-x"; key "overflow-y" ]
   | Overflow_x -> [ key "overflow-x" ]
   | Overflow_y -> [ key "overflow-y" ]
+  | Overflow_block -> [ key "overflow-block" ]
+  | Overflow_inline -> [ key "overflow-inline" ]
   (* CSS Multicol 1 sec. 3.3. *)
   | Columns -> [ key "column-width"; key "column-count" ]
   | Column_width -> [ key "column-width" ]
@@ -837,6 +838,88 @@ let property_footprint : type a. a Properties.property -> overlap_key list =
   | Custom_property name -> [ key ("--" ^ name) ]
   | Unknown_property name -> [ key name ]
   | property -> [ property_key property ]
+
+(* CSS Logical 1 sec. 2 and 4: a flow-relative longhand resolves to a physical
+   side that the writing mode and the text direction pick, so
+   [margin-inline-start] writes [margin-left] under one mode and [margin-right]
+   under another. A stylesheet does not carry the mode of the elements it will
+   match, so each logical family is paired here with the physical family it
+   resolves into, and every logical slot takes the whole physical set. The two
+   logical slots of one family then look like they share a slot, which the
+   perpendicular axes never do; that direction of the approximation costs only a
+   pair kept in source order, and it leaves the physical sides - the common case
+   - naming one slot each. *)
+let logical_alias_families =
+  Properties.
+    [
+      ([ Prop Margin_inline; Prop Margin_block ], Prop Margin);
+      ([ Prop Padding_inline; Prop Padding_block ], Prop Padding);
+      ([ Prop Inset_inline; Prop Inset_block ], Prop Inset);
+      ([ Prop Border_inline_width; Prop Border_block_width ], Prop Border_width);
+      ([ Prop Border_inline_style; Prop Border_block_style ], Prop Border_style);
+      ([ Prop Border_inline_color; Prop Border_block_color ], Prop Border_color);
+      ( [ Prop Scroll_margin_inline; Prop Scroll_margin_block ],
+        Prop Scroll_margin );
+      ( [ Prop Scroll_padding_inline; Prop Scroll_padding_block ],
+        Prop Scroll_padding );
+      ([ Prop Overflow_block; Prop Overflow_inline ], Prop Overflow);
+    ]
+
+(* Each logical slot paired with the physical slots it may alias, sorted for
+   binary search. One family shares a single physical list across its slots, so
+   [add_logical_aliases] can fold the repeats away by physical equality. *)
+let logical_alias_index =
+  let entries =
+    List.concat_map
+      (fun (logical, physical) ->
+        let physical_slots =
+          match physical with Properties.Prop p -> property_slots p
+        in
+        List.concat_map
+          (fun l ->
+            let slots = match l with Properties.Prop p -> property_slots p in
+            List.map (fun k -> (k, physical_slots)) slots)
+          logical)
+      logical_alias_families
+  in
+  let arr = Array.of_list entries in
+  Array.sort (fun (a, _) (b, _) -> compare a b) arr;
+  arr
+
+(* The physical slots [k] may alias, empty when [k] is not a flow-relative slot.
+   Spelled as a search over a sorted array rather than a hashtable lookup: this
+   runs once per footprint key, and an option per key would allocate in the
+   optimizer's hottest path. *)
+let logical_alias_slots k =
+  let lo = ref 0 and hi = ref (Array.length logical_alias_index - 1) in
+  let physical = ref [] in
+  let searching = ref true in
+  while !searching && !lo <= !hi do
+    let mid = (!lo + !hi) / 2 in
+    let v, slots = Array.unsafe_get logical_alias_index mid in
+    if overlap_key_equal v k then (
+      physical := slots;
+      searching := false)
+    else if v < k then lo := mid + 1
+    else hi := mid - 1
+  done;
+  !physical
+
+let add_logical_aliases slots =
+  let rec collect acc = function
+    | [] -> acc
+    | k :: rest -> (
+        match logical_alias_slots k with
+        | [] -> collect acc rest
+        | physical when List.memq physical acc -> collect acc rest
+        | physical -> collect (physical :: acc) rest)
+  in
+  match collect [] slots with
+  | [] -> slots
+  | groups -> List.concat (slots :: groups)
+
+let property_footprint : type a. a Properties.property -> overlap_key list =
+ fun property -> add_logical_aliases (property_slots property)
 
 (* Spelled as explicit recursion rather than [List.exists (overlap_key_equal
    footprint)]: the partial application and the closure over [b] each allocate
@@ -973,13 +1056,15 @@ let is_known_footprint_key k =
   !found
 
 (* Whether an [Unknown_property] name can be placed in the footprint model. A
-   name a typed footprint mentions writes exactly the slot it names: a typed
-   longhand is recovered under its own name when its value defeats the typed
-   reader ([margin-top:var(--a) var(--b)] parses that way), and it conflicts
-   with the same declarations the typed spelling would. Any other name may be a
-   shorthand, a legacy alias, or a longhand of a family the footprints do not
-   model - [background-position-x] writes part of [background], [grid-row-gap]
-   is [row-gap] - so it has to be treated as touching whatever it is compared
+   name a typed footprint mentions writes the slot it names and, for a
+   flow-relative name, the physical slots [add_logical_aliases] gives it: a
+   typed longhand is recovered under its own name when its value defeats the
+   typed reader ([margin-top:var(--a) var(--b)] parses that way), and it
+   conflicts with the same declarations the typed spelling would - the name
+   carries the same footprint either way. Any other name may be a shorthand, a
+   legacy alias, or a longhand of a family the footprints do not model -
+   [background-position-x] writes part of [background], [grid-row-gap] is
+   [row-gap] - so it has to be treated as touching whatever it is compared
    against. *)
 let unknown_name_is_placeable name = is_known_footprint_key (key name)
 

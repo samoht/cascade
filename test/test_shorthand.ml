@@ -133,6 +133,93 @@ let test_shorthand_reset_boundaries () =
     (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
        (decl "grid-row:1/2"))
 
+let test_logical_physical_overlap () =
+  (* CSS Logical 1 sec. 2: a flow-relative longhand resolves to a physical side
+     the writing mode picks, so [margin-inline-start] is [margin-left] in one
+     mode and [margin-right] in another. A sheet does not say which, so the pair
+     may write a common slot and their order has to stand. *)
+  Alcotest.(check bool)
+    "an inline-start margin overlaps the left margin" true
+    (Shorthand.declarations_overlap
+       (decl "margin-inline-start:20px")
+       (decl "margin-left:10px"));
+  Alcotest.(check bool)
+    "the relation is symmetric" true
+    (Shorthand.declarations_overlap (decl "margin-left:10px")
+       (decl "margin-inline-start:20px"));
+  Alcotest.(check bool)
+    "the same longhand overlaps the right margin too" true
+    (Shorthand.declarations_overlap
+       (decl "margin-inline-start:20px")
+       (decl "margin-right:10px"));
+  Alcotest.(check bool)
+    "a logical longhand overlaps the physical shorthand" true
+    (Shorthand.declarations_overlap (decl "margin:0")
+       (decl "margin-inline-start:20px"));
+  Alcotest.(check bool)
+    "a block-start padding overlaps the top padding" true
+    (Shorthand.declarations_overlap
+       (decl "padding-block-start:20px")
+       (decl "padding-top:10px"));
+  Alcotest.(check bool)
+    "an inline-start inset overlaps the top offset" true
+    (Shorthand.declarations_overlap
+       (decl "inset-inline-start:5px")
+       (decl "top:1px"));
+  Alcotest.(check bool)
+    "a logical border side overlaps a physical one" true
+    (Shorthand.declarations_overlap
+       (decl "border-block:2px solid red")
+       (decl "border-top:1px solid red"));
+  Alcotest.(check bool)
+    "a logical border side overlaps the border shorthand" true
+    (Shorthand.declarations_overlap
+       (decl "border-block:2px solid red")
+       (decl "border:1px solid red"));
+  Alcotest.(check bool)
+    "a logical border width overlaps a physical border width" true
+    (Shorthand.declarations_overlap
+       (decl "border-inline-width:2px")
+       (decl "border-left-width:1px"));
+  Alcotest.(check bool)
+    "a logical scroll margin overlaps a physical one" true
+    (Shorthand.declarations_overlap
+       (decl "scroll-margin-block-start:2px")
+       (decl "scroll-margin-top:1px"));
+  (* A recovered longhand keeps the aliasing: its value defeated the typed
+     reader, not the cascade slot it writes. *)
+  Alcotest.(check bool)
+    "a recovered logical longhand overlaps its physical side" true
+    (Shorthand.declarations_overlap
+       (decl "margin-inline-start:var(--a) var(--b)")
+       (decl "margin-left:10px"));
+  (* The block and inline axes are perpendicular in every writing mode, so two
+     logical longhands of one family never resolve to a common side. The model
+     says they may: it gives each logical slot the family's whole physical set,
+     which is the price of leaving the physical sides one slot each. Overlap is
+     the safe answer either way - it keeps the pair in source order. *)
+  Alcotest.(check bool)
+    "two perpendicular logical longhands are conservatively overlapping" true
+    (Shorthand.declarations_overlap
+       (decl "margin-inline-start:20px")
+       (decl "margin-block-start:10px"));
+  (* Two physical sides are two slots whatever the writing mode. *)
+  Alcotest.(check bool)
+    "two physical sides stay disjoint" false
+    (Shorthand.declarations_overlap (decl "margin-top:1px")
+       (decl "margin-bottom:2px"));
+  (* Aliasing is within a family: a margin never resolves to a padding. *)
+  Alcotest.(check bool)
+    "a logical margin and a physical padding are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "margin-inline-start:20px")
+       (decl "padding-left:10px"));
+  Alcotest.(check bool)
+    "a logical border width and a border colour are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "border-inline-width:2px")
+       (decl "border-left-color:red"))
+
 let test_intentionally_duplicated_properties () =
   Alcotest.(check bool)
     "content duplicates are preserved" true
@@ -334,6 +421,8 @@ let suite =
       Alcotest.test_case "vendor alias overlap" `Quick test_vendor_alias_overlap;
       Alcotest.test_case "shorthand reset boundaries" `Quick
         test_shorthand_reset_boundaries;
+      Alcotest.test_case "logical physical overlap" `Quick
+        test_logical_physical_overlap;
       Alcotest.test_case "intentionally duplicated properties" `Quick
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick
