@@ -1009,6 +1009,22 @@ let public_parse_edges () =
         "partial parser reports invalid rules" 2
         (List.length parsed.warnings)
 
+(* A newline inside a string produces a <bad-string-token>. In an at-rule
+   prelude that token used to serialize to nothing, so [@media <bad-string>]
+   reached the media-condition reader as an empty condition: the rule kept its
+   body but lost its condition, with no diagnostic. *)
+let public_bad_string_prelude_edges () =
+  match of_string "@media \"abc\n{ .a { color: red } }" with
+  | Error err ->
+      Alcotest.failf "lenient parse rejected recoverable CSS: %s"
+        (Cascade.Error.to_string err)
+  | Ok parsed ->
+      Alcotest.(check bool)
+        "the lost media condition is reported" true (parsed.warnings <> []);
+      Alcotest.(check bool)
+        "no unconditional @media is emitted" false
+        (Astring.String.is_infix ~affix:"@media{" (minify parsed.stylesheet))
+
 (* The value parsers the [list-style] shorthand is built from, exposed so a
    caller can read a single [list-style-type] / [list-style-image]. *)
 let list_style_value_parsers () =
@@ -1086,4 +1102,6 @@ let suite =
       Alcotest.test_case "public theme var rendering" `Quick
         public_theme_var_rendering_edges;
       Alcotest.test_case "public parse recovery edges" `Quick public_parse_edges;
+      Alcotest.test_case "public bad-string prelude edges" `Quick
+        public_bad_string_prelude_edges;
     ] )
