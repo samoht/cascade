@@ -11,6 +11,10 @@
 - `cascade fmt` and `cascade diff` drop `--memtrace`, and the library drops the
   `memtrace` dependency, which failed the build outright on a switch without it
   (#237)
+- A parse failure in `cascade fmt` is an error, not a warning: the command
+  exits 1 instead of writing an empty stylesheet and reporting success, so
+  `cascade fmt src.css > dist.css` no longer hands a build a 0-byte file with a
+  green exit status (#273)
 
 ### Minification
 
