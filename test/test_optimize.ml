@@ -905,6 +905,122 @@ let test_lossless_keeps_unknown_property_order () =
     ".a{margin:0;margin-top:var(--a) var(--b)}"
     (opt ".a{margin:0;margin-top:var(--a) var(--b)}")
 
+(* A typed shorthand and the typed longhands it resets write common cascade
+   slots, so the canonical order has to keep them in source order. Each case is
+   one family whose two declarations render differently when swapped; the
+   expected string is the source order with value normalisation applied. *)
+let shorthand_longhand_order_cases =
+  [
+    ("gap", ".a{row-gap:9px;gap:1px}", ".a{row-gap:9px;gap:1px}");
+    ( "animation",
+      ".a{animation:x 1s;animation-duration:2s}",
+      ".a{animation:x 1s;animation-duration:2s}" );
+    ( "animation-range",
+      ".a{animation-range:normal;animation-range-start:10%}",
+      ".a{animation-range:normal;animation-range-start:10%}" );
+    ( "outline",
+      ".a{outline:1px solid red;outline-color:blue}",
+      ".a{outline:1px solid red;outline-color:#00f}" );
+    ( "grid",
+      ".a{grid:auto/auto;grid-template-columns:1fr}",
+      ".a{grid:auto/auto;grid-template-columns:1fr}" );
+    ( "grid-template",
+      ".a{grid-template:auto/auto;grid-template-areas:\"a\"}",
+      ".a{grid-template:auto/auto;grid-template-areas:\"a\"}" );
+    ( "grid-row",
+      ".a{grid-row:1/2;grid-row-start:3}",
+      ".a{grid-row:1/2;grid-row-start:3}" );
+    ( "place-content",
+      ".a{place-content:center;align-content:start}",
+      ".a{place-content:center;align-content:start}" );
+    ( "overflow",
+      ".a{overflow:hidden;overflow-x:visible}",
+      ".a{overflow:hidden;overflow-x:visible}" );
+    ( "border-radius",
+      ".a{border-top-left-radius:8px;border-radius:4px}",
+      ".a{border-top-left-radius:8px;border-radius:4px}" );
+    ( "border resets border-image",
+      ".a{border:1px solid red;border-image-source:url(a)}",
+      ".a{border:1px solid red;border-image-source:url(a)}" );
+    ( "border-image",
+      ".a{border-image:none;border-image-repeat:round}",
+      ".a{border-image:none;border-image-repeat:round}" );
+    ( "columns",
+      ".a{columns:2;column-width:10em}",
+      ".a{columns:2;column-width:10em}" );
+    ( "list-style",
+      ".a{list-style:none;list-style-type:disc}",
+      ".a{list-style:none;list-style-type:disc}" );
+    ( "text-decoration",
+      ".a{text-decoration:underline;text-decoration-color:red}",
+      ".a{text-decoration:underline;text-decoration-color:red}" );
+    ( "text-decoration-skip",
+      ".a{text-decoration-skip:none;text-decoration-skip-ink:auto}",
+      ".a{text-decoration-skip:none;text-decoration-skip-ink:auto}" );
+    ( "text-emphasis",
+      ".a{text-emphasis:dot;text-emphasis-color:red}",
+      ".a{text-emphasis:dot;text-emphasis-color:red}" );
+    ( "font resets font-language-override",
+      ".a{font:12px a;font-language-override:normal}",
+      ".a{font:12px a;font-language-override:normal}" );
+    ( "font resets font-palette",
+      ".a{font:12px a;font-palette:dark}",
+      ".a{font:12px a;font-palette:dark}" );
+    ( "font-synthesis",
+      ".a{font-synthesis:none;font-synthesis-weight:auto}",
+      ".a{font-synthesis:none;font-synthesis-weight:auto}" );
+    ( "contain-intrinsic-size",
+      ".a{contain-intrinsic-width:20px;contain-intrinsic-size:10px}",
+      ".a{contain-intrinsic-width:20px;contain-intrinsic-size:10px}" );
+    ( "scroll-margin",
+      ".a{scroll-margin:1px;scroll-margin-top:2px}",
+      ".a{scroll-margin:1px;scroll-margin-top:2px}" );
+    ( "scroll-padding",
+      ".a{scroll-padding:1px;scroll-padding-left:2px}",
+      ".a{scroll-padding:1px;scroll-padding-left:2px}" );
+    ( "overscroll-behavior",
+      ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}",
+      ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}" );
+    ( "container",
+      ".a{container:a/size;container-type:normal}",
+      ".a{container:a/size;container-type:normal}" );
+    ( "scroll-timeline",
+      ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}",
+      ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}" );
+    ( "view-timeline",
+      ".a{view-timeline:--a block;view-timeline-axis:inline}",
+      ".a{view-timeline:--a block;view-timeline-axis:inline}" );
+    ("caret", ".a{caret:red;caret-shape:bar}", ".a{caret:red;caret-shape:bar}");
+    ( "text-box",
+      ".a{text-box:trim-both cap alphabetic;text-box-edge:auto}",
+      ".a{text-box:trim-both cap alphabetic;text-box-edge:auto}" );
+    ( "text-wrap",
+      ".a{text-wrap:balance;text-wrap-mode:nowrap}",
+      ".a{text-wrap:balance;text-wrap-mode:nowrap}" );
+    ( "white-space resets text-wrap-mode",
+      ".a{white-space:pre;text-wrap-mode:wrap}",
+      ".a{white-space:pre;text-wrap-mode:wrap}" );
+    ( "interest-delay",
+      ".a{interest-delay:1s;interest-delay-start:2s}",
+      ".a{interest-delay:1s;interest-delay-start:2s}" );
+    ( "position-try",
+      ".a{position-try:--a;position-try-order:most-width}",
+      ".a{position-try:--a;position-try-order:most-width}" );
+  ]
+
+let test_lossless_keeps_shorthand_longhand_order () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (opt input))
+    shorthand_longhand_order_cases
+
 (* Regrouping - factoring a shared declaration into a selector list, and
    synthesising nesting from a run of adjacent rules - depends on how the input
    happened to order its rules: a rule sitting between two others decides
@@ -991,6 +1107,9 @@ let optimize_tests =
     ( "lossless keeps unknown property order",
       `Quick,
       test_lossless_keeps_unknown_property_order );
+    ( "lossless keeps shorthand longhand order",
+      `Quick,
+      test_lossless_keeps_shorthand_longhand_order );
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );

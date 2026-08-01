@@ -1043,6 +1043,16 @@ let canonical_unknown_longhand_order () =
     (equal ~mode:`Canonical ".a{background:red;background-position-x:10px}"
        ".a{background:red;background-position-x:10px}")
 
+(* [gap] resets [row-gap], so the two orders give the rule a different row gap
+   and the canonical projection must keep them apart. *)
+let canonical_typed_longhand_order () =
+  Alcotest.(check bool)
+    "a longhand swapped past the shorthand that resets it is a difference" false
+    (equal ~mode:`Canonical ".a{row-gap:9px;gap:1px}" ".a{gap:1px;row-gap:9px}");
+  Alcotest.(check bool)
+    "the same order is still equal" true
+    (equal ~mode:`Canonical ".a{row-gap:9px;gap:1px}" ".a{row-gap:9px;gap:1px}")
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -1059,6 +1069,8 @@ let suite =
         canonical_same_selector_merge_across_intervening_rules;
       Alcotest.test_case "canonical unknown longhand order" `Quick
         canonical_unknown_longhand_order;
+      Alcotest.test_case "canonical typed longhand order" `Quick
+        canonical_typed_longhand_order;
       Alcotest.test_case "equal identical" `Quick equal_identical;
       Alcotest.test_case "equal different" `Quick equal_different;
       Alcotest.test_case "equal empty" `Quick equal_empty;

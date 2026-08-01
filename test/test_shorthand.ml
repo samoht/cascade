@@ -78,6 +78,61 @@ let test_unknown_property_overlap () =
     (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
        (decl "--brand:red"))
 
+let test_vendor_alias_overlap () =
+  (* A vendor-prefixed spelling is an alias of the unprefixed property, so the
+     prefixed shorthand resets the unprefixed longhands. *)
+  Alcotest.(check bool)
+    "a prefixed animation shorthand overlaps an unprefixed longhand" true
+    (Shorthand.declarations_overlap
+       (decl "-webkit-animation:x 1s")
+       (decl "animation-duration:2s"));
+  Alcotest.(check bool)
+    "a prefixed transition shorthand overlaps an unprefixed longhand" true
+    (Shorthand.declarations_overlap
+       (decl "-webkit-transition:all 1s")
+       (decl "transition-duration:2s"));
+  Alcotest.(check bool)
+    "a prefixed text-decoration overlaps its unprefixed longhand" true
+    (Shorthand.declarations_overlap
+       (decl "-webkit-text-decoration:underline")
+       (decl "text-decoration-color:red"))
+
+let test_shorthand_reset_boundaries () =
+  (* CSS UI 4 sec. 6.4: [outline] resets width, style and colour, and leaves
+     [outline-offset] alone. *)
+  Alcotest.(check bool)
+    "outline overlaps its colour longhand" true
+    (Shorthand.declarations_overlap
+       (decl "outline:1px solid red")
+       (decl "outline-color:blue"));
+  Alcotest.(check bool)
+    "outline and outline-offset are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "outline:1px solid red")
+       (decl "outline-offset:2px"));
+  (* CSS Text Decoration 4 sec. 3.4: [text-emphasis] resets style and colour,
+     not position. *)
+  Alcotest.(check bool)
+    "text-emphasis and its position longhand are disjoint" false
+    (Shorthand.declarations_overlap (decl "text-emphasis:dot")
+       (decl "text-emphasis-position:over"));
+  (* CSS Grid 1 sec. 7.4: [grid] resets the template and auto tracks, not the
+     placement longhands. *)
+  Alcotest.(check bool)
+    "grid overlaps a template longhand" true
+    (Shorthand.declarations_overlap (decl "grid:auto/auto")
+       (decl "grid-template-columns:1fr"));
+  Alcotest.(check bool)
+    "grid and a placement longhand are disjoint" false
+    (Shorthand.declarations_overlap (decl "grid:auto/auto")
+       (decl "grid-row-start:2"));
+  (* The legacy gap alias belongs to the gap family, not the grid placement one,
+     even though the names share a prefix. *)
+  Alcotest.(check bool)
+    "a legacy gap alias and a grid row shorthand are disjoint" false
+    (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
+       (decl "grid-row:1/2"))
+
 let test_intentionally_duplicated_properties () =
   Alcotest.(check bool)
     "content duplicates are preserved" true
@@ -276,6 +331,9 @@ let suite =
         test_declaration_covers_reset_boundaries;
       Alcotest.test_case "unknown property overlap" `Quick
         test_unknown_property_overlap;
+      Alcotest.test_case "vendor alias overlap" `Quick test_vendor_alias_overlap;
+      Alcotest.test_case "shorthand reset boundaries" `Quick
+        test_shorthand_reset_boundaries;
       Alcotest.test_case "intentionally duplicated properties" `Quick
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick
