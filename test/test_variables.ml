@@ -125,6 +125,92 @@ let spec_vars_of_property_matrix () =
       ("z-index", "z-index: var(--spec-z-index)");
     ]
 
+(* CSS Custom Properties L1 sec. 3: a var() reference is a reference whatever
+   property holds it. A logical property, a shorthand taking a length list and a
+   position-valued property each carry the reference exactly as their physical
+   or longhand twin does. *)
+let spec_vars_of_property_logical_matrix () =
+  let check property_name declaration =
+    let decl = Css.Declaration.of_string declaration in
+    let vars = vars_of_declarations [ decl ] in
+    Alcotest.(check int) property_name 1 (List.length vars)
+  in
+  List.iter
+    (fun (property_name, declaration) -> check property_name declaration)
+    [
+      ("inline-size", "inline-size: var(--spec-inline-size)");
+      ("min-inline-size", "min-inline-size: var(--spec-min-inline-size)");
+      ("max-inline-size", "max-inline-size: var(--spec-max-inline-size)");
+      ("block-size", "block-size: var(--spec-block-size)");
+      ("min-block-size", "min-block-size: var(--spec-min-block-size)");
+      ("max-block-size", "max-block-size: var(--spec-max-block-size)");
+      ("inset", "inset: var(--spec-inset)");
+      ("inset-inline", "inset-inline: var(--spec-inset-inline)");
+      ( "inset-inline-start",
+        "inset-inline-start: var(--spec-inset-inline-start)" );
+      ("inset-inline-end", "inset-inline-end: var(--spec-inset-inline-end)");
+      ("inset-block", "inset-block: var(--spec-inset-block)");
+      ("inset-block-start", "inset-block-start: var(--spec-inset-block-start)");
+      ("inset-block-end", "inset-block-end: var(--spec-inset-block-end)");
+      ("scroll-margin-inline", "scroll-margin-inline: var(--spec-sm-inline)");
+      ( "scroll-margin-inline-start",
+        "scroll-margin-inline-start: var(--spec-sm-inline-start)" );
+      ( "scroll-margin-inline-end",
+        "scroll-margin-inline-end: var(--spec-sm-inline-end)" );
+      ("scroll-margin-block", "scroll-margin-block: var(--spec-sm-block)");
+      ( "scroll-margin-block-start",
+        "scroll-margin-block-start: var(--spec-sm-block-start)" );
+      ( "scroll-margin-block-end",
+        "scroll-margin-block-end: var(--spec-sm-block-end)" );
+      ("scroll-padding-inline", "scroll-padding-inline: var(--spec-sp-inline)");
+      ( "scroll-padding-inline-start",
+        "scroll-padding-inline-start: var(--spec-sp-inline-start)" );
+      ( "scroll-padding-inline-end",
+        "scroll-padding-inline-end: var(--spec-sp-inline-end)" );
+      ("scroll-padding-block", "scroll-padding-block: var(--spec-sp-block)");
+      ( "scroll-padding-block-start",
+        "scroll-padding-block-start: var(--spec-sp-block-start)" );
+      ( "scroll-padding-block-end",
+        "scroll-padding-block-end: var(--spec-sp-block-end)" );
+      ("background-position", "background-position: var(--spec-bg-position)");
+      ("mask-position", "mask-position: var(--spec-mask-position)");
+      ( "-webkit-mask-position",
+        "-webkit-mask-position: var(--spec-webkit-mask-position)" );
+      ("text-emphasis-color", "text-emphasis-color: var(--spec-te-color)");
+      ("text-underline-offset", "text-underline-offset: var(--spec-tu-offset)");
+      ("shape-margin", "shape-margin: var(--spec-shape-margin)");
+      ("shape-outside", "shape-outside: var(--spec-shape-outside)");
+      ("line-height-step", "line-height-step: var(--spec-line-height-step)");
+      ("offset-distance", "offset-distance: var(--spec-offset-distance)");
+      ("transition-property", "transition-property: var(--spec-transition-prop)");
+      ("place-self", "place-self: var(--spec-place-self)");
+    ]
+
+(* CSS Custom Properties L1 sec. 3: [resolve_theme] emits a root definition for
+   every var() the sheet references and the theme resolves. A logical property
+   holding the reference must get the same binding as its physical twin, or the
+   emitted sheet carries an undefined var(). *)
+let spec_theme_binding_for_logical_property () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.singleton "w" in
+  let theme_defaults = function "w" -> Some "10px" | _ -> None in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme ~theme_defaults
+    |> Css.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "width emits the theme binding" ":root{--w:10px}.a{width:var(--w)}"
+    (render ".a { width: var(--w) }");
+  Alcotest.(check string)
+    "inline-size emits the theme binding"
+    ":root{--w:10px}.a{inline-size:var(--w)}"
+    (render ".a { inline-size: var(--w) }")
+
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
@@ -393,6 +479,12 @@ let tests =
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);
+    ( "spec vars of property logical matrix",
+      `Quick,
+      spec_vars_of_property_logical_matrix );
+    ( "spec theme binding for logical property",
+      `Quick,
+      spec_theme_binding_for_logical_property );
     ("vars of declarations", `Quick, test_vars_of_declarations);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);
