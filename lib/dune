@@ -10,7 +10,8 @@
   prop_multicol
   prop_writing
   prop_filter
-  prop_align)
+  prop_align
+  prop_flex)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
