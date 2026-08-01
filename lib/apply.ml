@@ -88,24 +88,26 @@ let decl_value d =
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s
 
-(* Every property a kept (conditional / stateful) rule can set, recursing into
-   @media / @supports / @container / @layer blocks. *)
+let add_props acc ds =
+  List.fold_left
+    (fun acc d ->
+      SSet.add (String.lowercase_ascii (Declaration.property_name d)) acc)
+    acc ds
+
+(* Every property a kept (conditional / stateful) rule can set. The descent goes
+   through {!Stylesheet.statement_children}, so every block at-rule is covered:
+   a property missed here is one an inline style could override, and the kept
+   rule would lose a fight it wins in the browser. *)
 let rec props_of_stmts acc stmts =
   List.fold_left
     (fun acc s ->
-      match s with
-      | Stylesheet.Rule r ->
-          List.fold_left
-            (fun a d ->
-              SSet.add (String.lowercase_ascii (Declaration.property_name d)) a)
-            acc
-            (Stylesheet.declarations r)
-      | Stylesheet.Media (_, b)
-      | Stylesheet.Supports (_, b)
-      | Stylesheet.Layer (_, b) ->
-          props_of_stmts acc b
-      | Stylesheet.Container (_, _, b) -> props_of_stmts acc b
-      | _ -> acc)
+      let acc =
+        match s with
+        | Stylesheet.Rule r -> add_props acc (Stylesheet.declarations r)
+        | Stylesheet.Declarations ds -> add_props acc ds
+        | _ -> acc
+      in
+      props_of_stmts acc (Stylesheet.statement_children s))
     acc stmts
 
 (* A [@layer] block applies unconditionally: it only orders competing

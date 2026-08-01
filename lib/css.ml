@@ -549,17 +549,7 @@ let map_container_block f = function
   | Origin (origin, content) -> Some (Origin (origin, f content))
   | _ -> None
 
-let statement_children = function
-  | Rule rule -> rule.nested
-  | Layer (_, nested)
-  | Media (_, nested)
-  | Supports (_, nested)
-  | Origin (_, nested)
-  | Starting_style nested
-  | Scope (_, _, nested) ->
-      nested
-  | Container (_, _, nested) -> nested
-  | _ -> []
+let statement_children = Stylesheet.statement_children
 
 let rec map f stmts =
   List.map

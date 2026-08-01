@@ -102,6 +102,9 @@
 - `cascade apply` weighs cascade layers instead of ignoring them: an unlayered
   declaration beats a layered one, `!important` reverses that, and a rule with
   no inline form stays inside its layer (#283)
+- `cascade apply` leaves a declaration in the stylesheet when a rule inside
+  `@scope`, `@starting-style`, `@when`, `@else` or `@-moz-document` sets the
+  same property; it moved inline, above the rule that was kept
 - `Css.vars_of_declarations` reports the `var()` references of 39 properties it
   answered with none, so `Css.resolve_theme` emits the theme binding for
   `inline-size: var(--w)` as it does for `width: var(--w)` (#266)

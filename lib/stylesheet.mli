@@ -217,6 +217,16 @@ val declarations : rule -> declaration list
 val nested : rule -> statement list
 (** [nested rule] returns the nested statements of a rule. *)
 
+val statement_children : statement -> block
+(** [statement_children stmt] is the block [stmt] wraps: a rule's nested
+    statements, the body of a grouping at-rule ([@media], [@supports],
+    [@container], [@layer], [@scope], [@starting-style], [@when], [@else],
+    [@-moz-document], and the [Origin] wrapper), and [[]] for a statement that
+    holds no statements of its own. It is the one place that knows which
+    at-rules nest, so a traversal written on top of it cannot miss one: the
+    match is exhaustive, and a block at-rule added to the AST later does not
+    compile until it is listed here. *)
+
 (** {1 Reading/Parsing} *)
 
 val read_rule : ?nested:bool -> Cursor.t -> rule
