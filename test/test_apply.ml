@@ -5,6 +5,7 @@ type node = {
   id : string option;
   classes : string list;
   attrs : (string * string) list;
+  mutable parent : node option;
   children : node list;
 }
 
@@ -16,14 +17,16 @@ module Node = struct
   let id n = n.id
   let classes n = n.classes
   let attribute n key = List.assoc_opt key n.attrs
-  let parent _ = None
+  let parent n = n.parent
   let children n = n.children
 end
 
 module A = Apply.Make (Node)
 
 let node ?id ?(classes = []) ?(attrs = []) ?(children = []) name =
-  { name; id; classes; attrs; children }
+  let n = { name; id; classes; attrs; parent = None; children } in
+  List.iter (fun c -> c.parent <- Some n) children;
+  n
 
 let inline_style decls =
   Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables decls
@@ -150,6 +153,85 @@ let non_competing_layers_both_project () =
     "both layers contribute" "color:red;margin:0"
     (projected "@layer a{.x{color:red}}@layer b{.x{margin:0}}")
 
+(* The whole split of [css] over [roots]: the style attribute written onto [n],
+   the <style> body kept beside it, and the count of kept rules. *)
+let check_split name ?roots ~css ~inline ~keep ~kept n =
+  let result = A.compute ~css (Option.value roots ~default:[ n ]) in
+  let decls =
+    match List.find_opt (fun (m, _) -> Node.equal m n) result.styles with
+    | Some (_, decls) -> decls
+    | None -> Alcotest.failf "%s: no assignment for the node" name
+  in
+  Alcotest.(check string) (name ^ ": inline style") inline (inline_style decls);
+  Alcotest.(check string) (name ^ ": kept css") keep result.keep_css;
+  Alcotest.(check int) (name ^ ": kept rules") kept result.kept
+
+(* A [@scope] block gates its rules on where the element sits in the tree, so it
+   has no inline form and stays in the sheet. The properties it sets therefore
+   count as dynamic: moving the competing declaration into the style attribute
+   would place it above the kept rule, which is not where the author put it. *)
+let keeps_property_a_scoped_rule_sets () =
+  check_split "scoped" ~css:".x{color:red}@scope(.root){.x{color:blue}}"
+    ~inline:"" ~keep:".x{color:red}@scope(.root){.x{color:blue}}" ~kept:2
+    (node ~classes:[ "x" ] "p")
+
+(* Same for [@starting-style]: its declarations apply for the frame in which the
+   element is inserted, which no style attribute can express. *)
+let keeps_property_a_starting_style_rule_sets () =
+  check_split "starting-style"
+    ~css:".x{color:red}@starting-style{.x{color:blue}}" ~inline:""
+    ~keep:".x{color:red}@starting-style{.x{color:blue}}" ~kept:2
+    (node ~classes:[ "x" ] "p")
+
+(* A control for both: a conditional block that sets another property competes
+   with nothing, so the split is unchanged. *)
+let non_competing_scoped_rule_still_inlines () =
+  check_split "scoped, other property"
+    ~css:".x{color:red}@scope(.root){.x{margin:0}}" ~inline:"color:red"
+    ~keep:"@scope(.root){.x{margin:0}}" ~kept:1
+    (node ~classes:[ "x" ] "p")
+
+(* The matcher compares attribute values verbatim, so it cannot represent the
+   [i] case flag. A selector it cannot represent has to stay in the sheet:
+   inlining it drops it from the sheet, and it then matches nobody, so the
+   declaration is lost. *)
+let keeps_rule_with_attribute_case_flag () =
+  check_split "case-insensitive attribute" ~css:"p[data-k=\"X\" i]{color:red}"
+    ~inline:"" ~keep:"p[data-k=X i]{color:red}" ~kept:1
+    (node ~attrs:[ ("data-k", "x") ] "p")
+
+(* The control: without the flag the selector is representable, so it projects
+   onto the element and leaves nothing behind. *)
+let projects_attribute_rule_to_inline_style () =
+  check_split "attribute" ~css:"p[data-k=\"X\"]{color:red}" ~inline:"color:red"
+    ~keep:"" ~kept:0
+    (node ~attrs:[ ("data-k", "X") ] "p")
+
+(* Namespaces are not modelled either, so the matcher would answer for [svg|p]
+   what it answers for [p] and paint an HTML paragraph. *)
+let keeps_rule_with_namespaced_element () =
+  check_split "namespaced element"
+    ~css:"@namespace svg url(http://www.w3.org/2000/svg);svg|p{color:red}"
+    ~inline:""
+    ~keep:"@namespace svg url(http://www.w3.org/2000/svg);svg|p{color:red}"
+    ~kept:1 (node "p")
+
+(* [>>>] is a legacy shadow-piercing combinator with no tree relation behind it,
+   so the matcher has no answer for it and the rule stays in the sheet. *)
+let keeps_rule_with_shadow_piercing_combinator () =
+  let span = node "span" in
+  let root = node ~children:[ node ~children:[ span ] "div" ] "section" in
+  check_split "shadow-piercing" ~roots:[ root ] ~css:"div>>>span{color:red}"
+    ~inline:"" ~keep:"div>>>span{color:red}" ~kept:1 span
+
+(* The control: the descendant combinator is modelled, so the same shape of rule
+   projects onto the span. *)
+let projects_descendant_combinator_rule () =
+  let span = node "span" in
+  let root = node ~children:[ node ~children:[ span ] "div" ] "section" in
+  check_split "descendant" ~roots:[ root ] ~css:"div span{color:red}"
+    ~inline:"color:red" ~keep:"" ~kept:0 span
+
 let invalid_css_is_empty () =
   let result = A.compute ~css:"a{" [ node "div" ] in
   Alcotest.(check string)
@@ -182,5 +264,21 @@ let suite =
         layer_outranks_specificity;
       Alcotest.test_case "non-competing layers both project" `Quick
         non_competing_layers_both_project;
+      Alcotest.test_case "keeps the property a scoped rule sets" `Quick
+        keeps_property_a_scoped_rule_sets;
+      Alcotest.test_case "keeps the property a starting-style rule sets" `Quick
+        keeps_property_a_starting_style_rule_sets;
+      Alcotest.test_case "non-competing scoped rule still inlines" `Quick
+        non_competing_scoped_rule_still_inlines;
+      Alcotest.test_case "keeps a rule with an attribute case flag" `Quick
+        keeps_rule_with_attribute_case_flag;
+      Alcotest.test_case "projects an attribute rule to inline style" `Quick
+        projects_attribute_rule_to_inline_style;
+      Alcotest.test_case "keeps a rule with a namespaced element" `Quick
+        keeps_rule_with_namespaced_element;
+      Alcotest.test_case "keeps a rule with a shadow-piercing combinator" `Quick
+        keeps_rule_with_shadow_piercing_combinator;
+      Alcotest.test_case "projects a descendant combinator rule" `Quick
+        projects_descendant_combinator_rule;
       Alcotest.test_case "invalid css is empty" `Quick invalid_css_is_empty;
     ] )
