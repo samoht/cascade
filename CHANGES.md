@@ -43,6 +43,9 @@
   the rule rendered (#267, #270)
 - `--lossless` keeps a colour's alpha exact, like its other channels;
   `oklch(... / .74567)` printed `/.746` (#278)
+- `--lossless` keeps a flow-relative property in source order against a
+  physical one of the same family, since the writing mode decides which
+  physical side it resolves to (#277)
 - A selector list mixing a vendor pseudo-element with ordinary selectors is
   split, so a browser that ignores `::-webkit-search-cancel-button` keeps the
   other selectors' declarations (#203)

@@ -194,9 +194,12 @@ let test_logical_physical_overlap () =
        (decl "margin-inline-start:var(--a) var(--b)")
        (decl "margin-left:10px"));
   (* The block and inline axes are perpendicular in every writing mode, so two
-     logical longhands of one family never resolve to a common side. *)
+     logical longhands of one family never resolve to a common side. The model
+     says they may: it gives each logical slot the family's whole physical set,
+     which is the price of leaving the physical sides one slot each. Overlap is
+     the safe answer either way - it keeps the pair in source order. *)
   Alcotest.(check bool)
-    "two perpendicular logical longhands are disjoint" false
+    "two perpendicular logical longhands are conservatively overlapping" true
     (Shorthand.declarations_overlap
        (decl "margin-inline-start:20px")
        (decl "margin-block-start:10px"));

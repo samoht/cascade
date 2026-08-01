@@ -164,14 +164,6 @@ type input = {
    and stays green on everything else. *)
 let known =
   [
-    ( "corpus-duplicates-0015",
-      "--lossless sorts border-top before border-block, which overwrites it" );
-    ( "corpus-duplicates-0016",
-      "--lossless sorts margin-left before margin-inline-start, which \
-       overwrites it" );
-    ( "corpus-duplicates-0017",
-      "--lossless sorts padding-top before padding-block-start, which \
-       overwrites it" );
     ( "corpus-anchor-0002",
       "position-area: top center folds to top, which Chromium computes as a \
        different area" );
