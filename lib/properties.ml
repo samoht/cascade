@@ -5,12 +5,12 @@ include Prop_common
 include Prop_svg
 include Prop_multicol
 include Prop_writing
-include Prop_filter
 include Prop_align
 include Prop_flex
 include Prop_grid
 include Prop_image
 include Prop_background
+include Prop_filter
 include Prop_mask
 include Prop_transform
 include Prop_ui
@@ -19,57 +19,6 @@ include Prop_box
 include Prop_font
 include Prop_text
 include Prop_animation
-
-(* pp_box_shadow removed - use pp_shadow with List constructor *)
-
-let rec pp_filter : filter Pp.t =
- fun ctx -> function
-  | None -> Pp.string ctx "none"
-  | Blur l -> Pp.call "blur" pp_length ctx l
-  | Brightness n ->
-      Pp.call "brightness" (pp_number_percentage ~always:true) ctx n
-  | Contrast n -> Pp.call "contrast" (pp_number_percentage ~always:true) ctx n
-  | Drop_shadow s -> Pp.call "drop-shadow" pp_shadow ctx s
-  | Grayscale n -> Pp.call "grayscale" (pp_number_percentage ~always:true) ctx n
-  | Hue_rotate (Deg 0.) when Pp.minified ctx -> Pp.string ctx "hue-rotate()"
-  | Hue_rotate a -> Pp.call "hue-rotate" pp_angle ctx a
-  | Invert n -> Pp.call "invert" (pp_number_percentage ~always:true) ctx n
-  | Opacity n -> Pp.call "opacity" (pp_number_percentage ~always:true) ctx n
-  | Saturate n -> Pp.call "saturate" (pp_number_percentage ~always:true) ctx n
-  | Sepia n -> Pp.call "sepia" (pp_number_percentage ~always:true) ctx n
-  | Url url -> Pp.url ctx url
-  | List filters ->
-      let sep = if Pp.minified ctx then Pp.nop else Pp.space in
-      Pp.list ~sep pp_filter ctx filters
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_filter ctx v
-
-(* pp_font_families is no longer needed since Fonts is now part of
-   font_family *)
-
-let rec normalize_filter ?(lossless = false) : filter -> filter =
- fun value ->
-  let np = Values.normalize_number_percentage in
-  match value with
-  | Drop_shadow s ->
-      preserve_if_equal value (Drop_shadow (normalize_shadow ~lossless s))
-  | Hue_rotate a ->
-      preserve_if_equal value (Hue_rotate (Values.normalize_angle a))
-  | Brightness x -> preserve_if_equal value (Brightness (np x))
-  | Contrast x -> preserve_if_equal value (Contrast (np x))
-  | Grayscale x -> preserve_if_equal value (Grayscale (np x))
-  | Invert x -> preserve_if_equal value (Invert (np x))
-  | Opacity x -> preserve_if_equal value (Opacity (np x))
-  | Saturate x -> preserve_if_equal value (Saturate (np x))
-  | Sepia x -> preserve_if_equal value (Sepia (np x))
-  | List filters ->
-      preserve_if_equal value
-        (List (map_preserve (normalize_filter ~lossless) filters))
-  | other -> other
 
 let pp_list_style_symbol_sep ctx first (symbol : list_style_symbol) =
   if !first then first := false
@@ -1261,101 +1210,6 @@ let rec read_quotes t : quotes =
     ]
     ~calls:[ ("var", read_var') ]
     ~default:read_pairs t
-
-module Filter = struct
-  let read_brightness t : filter =
-    Cursor.call "brightness" t (fun t ->
-        Brightness (Values.read_number_percentage t))
-
-  let read_contrast t : filter =
-    Cursor.call "contrast" t (fun t ->
-        Contrast (Values.read_number_percentage t))
-
-  let read_grayscale t : filter =
-    Cursor.call "grayscale" t (fun t : filter ->
-        Grayscale (Values.read_number_percentage t))
-
-  let read_hue_rotate t : filter =
-    Cursor.call "hue-rotate" t (fun t ->
-        if Cursor.is_done t then Hue_rotate (Deg 0.)
-        else Hue_rotate (read_angle t))
-
-  let read_invert t : filter =
-    Cursor.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
-
-  let read_opacity t : filter =
-    Cursor.call "opacity" t (fun t : filter ->
-        Opacity (Values.read_number_percentage t))
-
-  let read_saturate t : filter =
-    Cursor.call "saturate" t (fun t ->
-        Saturate (Values.read_number_percentage t))
-
-  let read_sepia t : filter =
-    Cursor.call "sepia" t (fun t -> Sepia (Values.read_number_percentage t))
-
-  let read_drop_shadow t : filter =
-    Cursor.call "drop-shadow" t (fun t ->
-        let read_var t : filter = Drop_shadow (Var (read_var Shadow.read t)) in
-        let read_shadow t : filter = Drop_shadow (Shadow.read t) in
-        Cursor.one_of [ read_var; read_shadow ] t)
-end
-
-let rec read_filter_item t : filter =
-  let read_var t : filter = Var (read_var read_filter t) in
-  (* [<filter-value-list>] mixes filter functions with a bare [<url>] reference
-     to an SVG filter. [url(#id)] tokenises as a url-token, not a [url(]
-     function, so it is read via [Cursor.url] (which handles both that and the
-     quoted [url("#id")] form) and backtracks to the function dispatch. *)
-  let read_url t = (Url (Cursor.url t) : filter) in
-  Cursor.one_of
-    [
-      read_url;
-      (fun t ->
-        Cursor.enum_or_calls "filter"
-          [ ("none", (None : filter)) ]
-          ~calls:
-            [
-              ("blur", read_blur);
-              ("brightness", Filter.read_brightness);
-              ("contrast", Filter.read_contrast);
-              ("grayscale", Filter.read_grayscale);
-              ("hue-rotate", Filter.read_hue_rotate);
-              ("invert", Filter.read_invert);
-              ("opacity", Filter.read_opacity);
-              ("saturate", Filter.read_saturate);
-              ("sepia", Filter.read_sepia);
-              ("drop-shadow", Filter.read_drop_shadow);
-              ("var", read_var);
-            ]
-          t);
-    ]
-    t
-
-and read_filter t : filter =
-  let read_filter_list t =
-    let filters, _ = Cursor.many read_filter_item t in
-    match filters with
-    | [] -> err_invalid_value t "filter" "expected filter function(s)"
-    | [ f ] -> f
-    | fs
-      when List.exists
-             (fun (value : filter) ->
-               match value with None -> true | _ -> false)
-             fs ->
-        err_invalid_value t "filter" "none cannot be combined"
-    | fs -> List fs
-  in
-  Cursor.enum "filter"
-    [
-      ("none", (None : filter));
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~default:read_filter_list t
 
 let read_any_property t =
   (* CSS property names are case-insensitive per Syntax sec. 3.3. *)
