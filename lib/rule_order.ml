@@ -513,13 +513,7 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
               r with
               declarations =
                 List.map
-                  (fun d ->
-                    match Variables.custom_declaration_name d with
-                    | Some name ->
-                        Declaration.custom_property name
-                          (normalize_custom_value
-                             (Declaration.string_of_value ~minify:true d))
-                    | None -> d)
+                  (Declaration.map_custom_value normalize_custom_value)
                   r.declarations;
               nested = normalize_custom_values r.nested;
             }

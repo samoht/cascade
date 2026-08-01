@@ -179,6 +179,10 @@ identical, rather than as spurious changes.
   identical selector also writes (leaving `!important` alone, since that
   changes the winner), and pairs rules that match exactly before falling back
   to the property signature (#206)
+- A custom property keeps its `!important`, its layer and its metadata through
+  the projection, which rebuilt the declaration from its value alone. An
+  important custom property beats a later normal one, so `--diff=canonical`
+  called two sheets that disagreed about the flag identical (#271)
 
 ### Diff report
 

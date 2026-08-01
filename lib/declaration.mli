@@ -54,6 +54,12 @@ val parse_declaration : ?layer:string -> string -> string -> declaration option
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
+val map_custom_value : (string -> string) -> declaration -> declaration
+(** [map_custom_value f d] is [d] with its custom-property value replaced by
+    [f]'s rewrite of the minified serialisation. The importance, layer, metadata
+    and theme guard of [d] are kept; any other declaration passes through
+    unchanged. *)
+
 val unquote_custom_font_strings : declaration -> declaration
 (** [unquote_custom_font_strings d] rewrites a quoted multi-word [<string>] in a
     custom-property token stream as the equivalent unquoted [<ident>] sequence.
