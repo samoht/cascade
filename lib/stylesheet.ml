@@ -445,8 +445,12 @@ let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
      [escape_ident] so the serialized [\6 T] re-tokenizes back to the same
      at-keyword token. *)
   Pp.string ctx (Parser.escape_ident name);
+  (* CSS Syntax 3 sec. 4.3.1: the at-keyword consumes an ident sequence, so the
+     whitespace before the prelude is the only thing keeping them apart. It is a
+     hard space, not layout - minifying [@foo bar] to [@foobar] names a
+     different at-rule. *)
   if prelude <> "" then (
-    Pp.sp ctx ();
+    Pp.space ctx ();
     Pp.string ctx prelude);
   match block with
   | None -> Pp.semicolon ctx ()

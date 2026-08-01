@@ -117,6 +117,8 @@
 - A non-integer above roughly 4.6e10 prints as a number again:
   `transform: scale(123456789012.25)` printed `scale(1.2345678.9012e+19)`,
   which read back as two arguments (#265)
+- An unknown at-rule keeps the space before its prelude under `--minify`:
+  `@foo bar {x:1}` printed `@foobar{x:1}`, a different at-rule (#272)
 
 ### New properties and values
 
