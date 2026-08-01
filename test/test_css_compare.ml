@@ -1030,6 +1030,19 @@ let canonical_same_selector_merge_across_intervening_rules () =
     "canonical diff reconciles split/merged same-selector forms rules" true
     (equal ~mode:`Canonical merged split)
 
+(* A property with no typed spelling still writes cascade slots: [background]
+   resets the X position [background-position-x] set, so the two orders render
+   differently and the canonical projection must keep them apart. *)
+let canonical_unknown_longhand_order () =
+  Alcotest.(check bool)
+    "an unknown longhand swapped past its shorthand is a difference" false
+    (equal ~mode:`Canonical ".a{background:red;background-position-x:10px}"
+       ".a{background-position-x:10px;background:red}");
+  Alcotest.(check bool)
+    "the same order is still equal" true
+    (equal ~mode:`Canonical ".a{background:red;background-position-x:10px}"
+       ".a{background:red;background-position-x:10px}")
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -1044,6 +1057,8 @@ let suite =
       Alcotest.test_case
         "canonical same-selector merge across intervening rules" `Quick
         canonical_same_selector_merge_across_intervening_rules;
+      Alcotest.test_case "canonical unknown longhand order" `Quick
+        canonical_unknown_longhand_order;
       Alcotest.test_case "equal identical" `Quick equal_identical;
       Alcotest.test_case "equal different" `Quick equal_different;
       Alcotest.test_case "equal empty" `Quick equal_empty;

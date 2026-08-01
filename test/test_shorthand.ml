@@ -33,6 +33,51 @@ let test_declaration_covers_reset_boundaries () =
        (decl "border:1px solid red")
        (decl "border-top-width:2px"))
 
+let test_unknown_property_overlap () =
+  (* A property with no typed spelling still writes cascade slots. Judging it
+     disjoint from everything lets the canonical declaration order move it past
+     a shorthand that resets it, which changes what the rule renders. *)
+  Alcotest.(check bool)
+    "an unknown longhand overlaps the shorthand that resets it" true
+    (Shorthand.declarations_overlap (decl "background:red")
+       (decl "background-position-x:10px"));
+  Alcotest.(check bool)
+    "the relation is symmetric" true
+    (Shorthand.declarations_overlap
+       (decl "background-position-x:10px")
+       (decl "background:red"));
+  (* [grid-row-gap] is the legacy alias of [row-gap], which [gap] resets. *)
+  Alcotest.(check bool)
+    "an unknown legacy alias overlaps the shorthand it aliases into" true
+    (Shorthand.declarations_overlap (decl "grid-row-gap:9px") (decl "gap:1px"));
+  (* Two names with no typed spelling can still be a shorthand/longhand pair:
+     [grid-gap] is the legacy alias of [gap] and resets [grid-row-gap]. *)
+  Alcotest.(check bool)
+    "two unknown names may be a shorthand and its longhand" true
+    (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
+       (decl "grid-gap:1px"));
+  (* A typed longhand whose value defeats the typed reader is recovered under
+     its own name, so the name is one the footprints know. *)
+  Alcotest.(check bool)
+    "a recovered typed longhand overlaps its shorthand" true
+    (Shorthand.declarations_overlap (decl "margin:0")
+       (decl "margin-top:var(--a) var(--b)"));
+  (* A known longhand name outside the shorthand's footprint stays disjoint. *)
+  Alcotest.(check bool)
+    "a recovered longhand of another family is disjoint" false
+    (Shorthand.declarations_overlap (decl "padding:0")
+       (decl "margin-top:var(--a) var(--b)"));
+  (* CSS Cascade 5 sec. 7.2: [all] resets unknown properties. *)
+  Alcotest.(check bool)
+    "all overlaps an unknown property" true
+    (Shorthand.declarations_overlap (decl "all:initial")
+       (decl "grid-row-gap:9px"));
+  (* Custom properties are their own cascade slots. *)
+  Alcotest.(check bool)
+    "an unknown property and a custom property are disjoint" false
+    (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
+       (decl "--brand:red"))
+
 let test_intentionally_duplicated_properties () =
   Alcotest.(check bool)
     "content duplicates are preserved" true
@@ -229,6 +274,8 @@ let suite =
     [
       Alcotest.test_case "declaration coverage reset boundaries" `Quick
         test_declaration_covers_reset_boundaries;
+      Alcotest.test_case "unknown property overlap" `Quick
+        test_unknown_property_overlap;
       Alcotest.test_case "intentionally duplicated properties" `Quick
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick

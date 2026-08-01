@@ -877,6 +877,34 @@ let test_lossless_declaration_order () =
     ".a{border-top:1px solid red;border-color:#00f}"
     (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
 
+let test_lossless_keeps_unknown_property_order () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* A property with no typed spelling still writes cascade slots, so the
+     canonical order must not move it past a shorthand that resets it:
+     [background] resets the X position the longhand set. *)
+  Alcotest.(check string)
+    "an unknown longhand stays after its shorthand"
+    ".a{background:red;background-position-x:10px}"
+    (opt ".a{background:red;background-position-x:10px}");
+  (* [grid-row-gap] is the legacy alias of [row-gap]; moving it after [gap]
+     would make the row gap 9px instead of 1px. *)
+  Alcotest.(check string)
+    "a legacy alias stays before the shorthand that resets it"
+    ".a{grid-row-gap:9px;gap:1px}"
+    (opt ".a{grid-row-gap:9px;gap:1px}");
+  (* A typed longhand whose value defeats the typed reader is recovered as an
+     unknown property under its own name, and is just as order-dependent. *)
+  Alcotest.(check string)
+    "a recovered typed longhand stays after its shorthand"
+    ".a{margin:0;margin-top:var(--a) var(--b)}"
+    (opt ".a{margin:0;margin-top:var(--a) var(--b)}")
+
 (* Regrouping - factoring a shared declaration into a selector list, and
    synthesising nesting from a run of adjacent rules - depends on how the input
    happened to order its rules: a rule sitting between two others decides
@@ -960,6 +988,9 @@ let optimize_tests =
       nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
+    ( "lossless keeps unknown property order",
+      `Quick,
+      test_lossless_keeps_unknown_property_order );
     ( "var() colour functions preserved",
       `Quick,
       test_var_color_functions_preserved );
