@@ -1255,9 +1255,77 @@ let build_selector_map rules =
     [] rules
   |> List.rev
 
-let selector_in_list sel_key remaining =
-  (* Check if selector key exists in remaining list *)
-  List.exists (fun (s, _) -> selector_key_of_selector s = sel_key) remaining
+(* A container takes part in the ordering comparison too: swapping a rule with
+   an [@media] that writes the same property flips the cascade winner. *)
+type order_key = Rule_order of Css.Selector.t | Block_order of string
+
+let order_key_of_stmt stmt =
+  match Css.as_rule stmt with
+  | Some (sel, _, _) -> Some (Rule_order (selector_key_of_selector sel))
+  | None -> Option.map (fun desc -> Block_order desc) (describe_statement stmt)
+
+(* Order keys in first-occurrence order. *)
+let order_keys_in_order stmts =
+  let seen = Hashtbl.create (List.length stmts) in
+  List.filter_map
+    (fun stmt ->
+      match order_key_of_stmt stmt with
+      | Some key when not (Hashtbl.mem seen key) ->
+          Hashtbl.add seen key ();
+          Some key
+      | _ -> None)
+    stmts
+
+(* Positions of one longest increasing subsequence of [ranks], by patience
+   sorting: [tails.(l)] is the position ending the smallest subsequence of
+   length [l + 1] seen so far, and [prev] chains each position to its
+   predecessor. *)
+let increasing_subsequence ranks =
+  let n = Array.length ranks in
+  let tails = Array.make n 0 in
+  let prev = Array.make n (-1) in
+  let len = ref 0 in
+  for i = 0 to n - 1 do
+    let lo = ref 0 and hi = ref !len in
+    while !lo < !hi do
+      let mid = (!lo + !hi) / 2 in
+      if ranks.(tails.(mid)) < ranks.(i) then lo := mid + 1 else hi := mid
+    done;
+    let pos = !lo in
+    prev.(i) <- (if pos > 0 then tails.(pos - 1) else -1);
+    tails.(pos) <- i;
+    if pos = !len then incr len
+  done;
+  let members = Array.make n false in
+  (if !len > 0 then
+     let i = ref tails.(!len - 1) in
+     while !i >= 0 do
+       members.(!i) <- true;
+       i := prev.(!i)
+     done);
+  members
+
+(* Statements whose order against the rest actually inverted. Judged on the
+   statements both sides share, since one the other side never had shifts every
+   absolute position after it without transposing anything: comparing positions
+   on each side reports the whole tail of the stylesheet as reordered whenever a
+   rule is added or dropped. Anchoring on a longest order-preserving matching of
+   that common sequence also keeps one move to one entry, where comparing rank
+   pairwise would name every statement the move passed. *)
+let moved_order_keys stmts1 stmts2 =
+  let keys2 = order_keys_in_order stmts2 in
+  let rank2 = Hashtbl.create (List.length keys2) in
+  List.iteri (fun i key -> Hashtbl.replace rank2 key i) keys2;
+  let common = List.filter (Hashtbl.mem rank2) (order_keys_in_order stmts1) in
+  let ranks = Array.of_list (List.map (Hashtbl.find rank2) common) in
+  let anchored = increasing_subsequence ranks in
+  let moved = Hashtbl.create (Array.length ranks) in
+  List.iteri
+    (fun i key -> if not anchored.(i) then Hashtbl.replace moved key ())
+    common;
+  moved
+
+let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
 
 (* Locate matching declarations in map2 for a given selector key *)
 let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
@@ -1275,7 +1343,7 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
       | Some (s, d) -> (d, Some s)
       | None -> (decls2, None))
 
-let add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
+let add_ordering_issue ~moved map2 acc sel1 decls1 sel2 decls2 =
   let sel1_key = selector_key_of_selector sel1 in
   let sel2_key = selector_key_of_selector sel2 in
   if sel1_key = sel2_key then
@@ -1284,9 +1352,10 @@ let add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
        flips. *)
     if decls_signature decls1 = decls_signature decls2 then acc
     else (sel1, sel2, decls1, decls2) :: acc
-  else if
-    selector_in_list sel1_key remaining2 && selector_in_list sel2_key remaining1
-  then
+  else if selector_moved moved sel1_key then
+    (* Report the selector that moved, not the ones it displaced: a rule pulled
+       to the front sits opposite a different selector at every position it
+       passed, and pairing on that named each of them instead. *)
     let decls1_from_map2, sel2_opt =
       matching_decls_in_map2 sel1_key decls1 map2 decls2
     in
@@ -1297,7 +1366,7 @@ let add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2 decls2 =
 (* no-op: pure rule ordering is handled in handle_structural_diff via
    has_ordering_changes/ordering_diff *)
 
-let ordering_diff rules1 rules2 =
+let ordering_diff ~moved rules1 rules2 =
   let map1 = build_selector_map rules1 in
   let map2 = build_selector_map rules2 in
 
@@ -1305,10 +1374,7 @@ let ordering_diff rules1 rules2 =
     match (remaining1, remaining2) with
     | [], [] -> List.rev acc
     | (sel1, decls1) :: rest1, (sel2, decls2) :: rest2 ->
-        let acc =
-          add_ordering_issue map2 remaining1 remaining2 acc sel1 decls1 sel2
-            decls2
-        in
+        let acc = add_ordering_issue ~moved map2 acc sel1 decls1 sel2 decls2 in
         find_ordering_issues acc rest1 rest2
     | _, _ -> List.rev acc
   in
@@ -1564,7 +1630,9 @@ let handle_structural_diff rules1 rules2 =
   in
 
   let modified_with_order =
-    if has_ordering_changes then ordering_diff rules1 rules2 @ modified
+    if has_ordering_changes then
+      let moved = moved_order_keys rules1 rules2 in
+      ordering_diff ~moved rules1 rules2 @ modified
     else modified
   in
 
@@ -1679,10 +1747,9 @@ let reordered ~rules1 ~rules2 sel1 sel2 selector : rule_diff =
      }
     : rule_diff)
 
-let position_changed ~rules1 ~rules2 sel1 sel2 =
-  let expected_pos = selector_position sel1 rules1 in
-  let actual_pos = selector_position sel2 rules2 in
-  expected_pos <> actual_pos
+(* The change is reported under [sel1], so [sel1] is what has to have moved. *)
+let position_changed ~moved sel1 =
+  selector_moved moved (selector_key_of_selector sel1)
 
 let is_pure_decl_reordering decls1 decls2 =
   let property_changes, added_props, removed_props =
@@ -1712,10 +1779,10 @@ let decls_str_equal d1 d2 =
        (fun x y -> decl_to_prop_value x = decl_to_prop_value y)
        d1 d2
 
-let convert_modified_rule ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
+let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
   let sel1_str = Css.Selector.to_string sel1 in
   let sel2_str = Css.Selector.to_string sel2 in
-  let position_changed () = position_changed ~rules1 ~rules2 sel1 sel2 in
+  let position_changed () = position_changed ~moved sel1 in
   let reordered selector = reordered ~rules1 ~rules2 sel1 sel2 selector in
   let reorder_or_content selector d1 d2 =
     if position_changed () then Some (reordered selector)
@@ -1835,9 +1902,10 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
 
 let to_rule_changes rules1 rules2 : rule_diff list =
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
+  let moved = moved_order_keys rules1 rules2 in
   List.filter_map convert_added_rule r_added
   @ List.filter_map convert_removed_rule r_removed
-  @ List.filter_map (convert_modified_rule ~rules1 ~rules2) r_modified
+  @ List.filter_map (convert_modified_rule ~moved ~rules1 ~rules2) r_modified
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
 

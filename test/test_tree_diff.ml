@@ -101,6 +101,68 @@ let diff_rule_reordered () =
   in
   Alcotest.(check bool) "has Reordered" true has_reordered
 
+let reorders d =
+  List.filter
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with Cascade_diff.Tree_diff.Reordered _ -> true | _ -> false)
+    d.Cascade_diff.Tree_diff.rules
+
+let diff_swap_reports_one_reorder () =
+  let expected = parse ".a { color: red } .b { margin: 0 }" in
+  let actual = parse ".b { margin: 0 } .a { color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int) "one reorder for one swap" 1 (List.length (reorders d))
+
+let diff_move_names_the_rule_that_moved () =
+  (* [.d] jumps to the front. The three rules it passed kept their order against
+     each other, so naming them reports one move three times over. *)
+  let expected =
+    parse
+      ".a { color: red } .b { margin: 0 } .c { padding: 0 } .d { border: 0 }"
+  in
+  let actual =
+    parse
+      ".d { border: 0 } .a { color: red } .b { margin: 0 } .c { padding: 0 }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  let moved =
+    List.filter_map
+      (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+        match diff with
+        | Cascade_diff.Tree_diff.Reordered { selector; _ } -> Some selector
+        | _ -> None)
+      d.rules
+  in
+  Alcotest.(check (list string)) "only the mover is named" [ ".d" ] moved
+
+let diff_dropped_rules_are_not_a_reorder () =
+  (* Dropping the leading rules shifts every position after them. Nothing was
+     transposed, so the survivors are unchanged and their cascade-neutral
+     declaration reorder stays the non-difference it is. *)
+  let expected =
+    parse ".x { color: red } .y { color: red } .d { color: red; margin: 0 }"
+  in
+  let actual = parse ".d { margin: 0; color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int) "no reorder from the shift" 0 (List.length (reorders d))
+
+let diff_dropped_rules_keep_the_decl_reorder () =
+  (* Same shift, but [.d] does hold a cascade-significant declaration swap. The
+     shift used to overwrite it with a claim about the rule's position, which
+     drops the declarations the report needs to name it. *)
+  let expected =
+    parse
+      ".x { color: red } .y { color: red } .d { margin: 0; margin-top: 1px }"
+  in
+  let actual = parse ".d { margin-top: 1px; margin: 0 }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  match reorders d with
+  | [ Cascade_diff.Tree_diff.Reordered { old_declarations; _ } ] ->
+      Alcotest.(check bool)
+        "the reorder is about declarations" true (old_declarations <> None)
+  | rs ->
+      Alcotest.failf "expected one declaration reorder, got %d" (List.length rs)
+
 let diff_neutral_decl_reorder_is_empty () =
   (* Disjoint declarations commute, so reordering them is no difference. *)
   let expected = parse ".a { color: red; background: blue }" in
@@ -566,6 +628,14 @@ let suite =
       Alcotest.test_case "property added to rule" `Quick
         diff_rule_added_property;
       Alcotest.test_case "rule reordered" `Quick diff_rule_reordered;
+      Alcotest.test_case "swap reports one reorder" `Quick
+        diff_swap_reports_one_reorder;
+      Alcotest.test_case "move names the rule that moved" `Quick
+        diff_move_names_the_rule_that_moved;
+      Alcotest.test_case "dropped rules are not a reorder" `Quick
+        diff_dropped_rules_are_not_a_reorder;
+      Alcotest.test_case "dropped rules keep the declaration reorder" `Quick
+        diff_dropped_rules_keep_the_decl_reorder;
       Alcotest.test_case "neutral declaration reorder is empty" `Quick
         diff_neutral_decl_reorder_is_empty;
       Alcotest.test_case "overlapping declaration reorder flagged" `Quick
