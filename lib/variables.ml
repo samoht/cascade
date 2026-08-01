@@ -1832,6 +1832,86 @@ let vars_of_list_style (value : Properties.list_style) : any_var list =
       @ opt vars_of_list_style_image image
   | _ -> []
 
+(* CSS Variables L1 sec. 3: a custom property's value can itself reference other
+   custom properties. A [Typed] value embeds real [var] handles, so recurse via
+   the kind; a raw [Tokens] value carries refs as [var()] functions in the
+   stream, recovered structurally by {!vars_of_token_stream}. *)
+let vars_of_kind : type a. a kind -> a -> any_var list =
+ fun kind value ->
+  match kind with
+  | Length -> vars_of_length value
+  | Color -> vars_of_color value
+  | Rgb -> vars_of_rgb value
+  | Number -> vars_of_number_value value
+  | Int -> []
+  | Float -> []
+  | Percentage -> vars_of_percentage value
+  | Length_percentage -> vars_of_length_percentage value
+  | Number_percentage -> []
+  | Opacity -> []
+  | Value -> []
+  | Duration -> vars_of_duration value
+  | Aspect_ratio -> vars_of_aspect_ratio value
+  | Border_style -> vars_of_border_style value
+  | Outline_style -> []
+  | Border -> vars_of_border value
+  | Font_weight -> vars_of_font_weight value
+  | Font_size -> vars_of_font_size value
+  | Line_height -> vars_of_line_height value
+  | Font_family -> vars_of_font_family value
+  | Font_feature_settings -> vars_of_font_feature_settings value
+  | Font_variation_settings -> vars_of_font_variation_settings value
+  | Numeric -> vars_of_font_variant_numeric value
+  | Font_variant_numeric_token -> []
+  | Blend_mode -> vars_of_blend_mode value
+  | Scroll_snap_strictness -> vars_of_scroll_snap_strictness value
+  | Angle -> vars_of_angle value
+  | Rotate -> vars_of_rotate_value value
+  | Scale -> vars_of_scale value
+  | Shadow -> vars_of_shadow value
+  | Box_shadow -> vars_of_shadow value
+  | Content -> vars_of_content value
+  | Gradient_stop -> vars_of_gradient_stop value
+  | Gradient_direction -> vars_of_gradient_direction value
+  | Gradient_position -> vars_of_gradient_position value
+  | Animation -> vars_of_animation value
+  | Timing_function -> []
+  | Transform -> vars_of_transform value
+  | Touch_action -> []
+  | Transition_property_value -> vars_of_transition_property_value value
+  | Background_image -> vars_of_background_image value
+  | Z_index -> []
+  | Filter -> vars_of_filter value
+  | Font_src -> []
+
+(* The structural scans return each name with its leading [--]; [Values.var_ref]
+   re-adds it, so strip the prefix before rebuilding the handle. *)
+let vars_of_ref_names names : any_var list =
+  List.rev_map
+    (fun name ->
+      let bare =
+        if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+          String.sub name 2 (String.length name - 2)
+        else name
+      in
+      V (Values.var_ref bare))
+    names
+
+(* Names referenced via real [var()] functions in an opaque token stream. *)
+let vars_of_token_stream (components : Component.t list) : any_var list =
+  vars_of_ref_names (var_refs_in_components [] components)
+
+(* Names referenced by a property whose value the reader keeps as raw text. The
+   text never went through a typed parser, so a [var()] in it is recoverable
+   only by re-tokenising, exactly as for an opaque custom-property stream. *)
+let vars_of_value_string (value : string) : any_var list =
+  vars_of_ref_names (var_refs_in_value_string value)
+
+let vars_of_custom_property_value : custom_property_value -> any_var list =
+  function
+  | Typed { kind; value } -> vars_of_kind kind value
+  | Tokens components -> vars_of_token_stream components
+
 (* Extract variables from CSS property values using type-specific extraction
    functions *)
 let vars_of_property : type a. a property -> a -> any_var list =
@@ -2383,79 +2463,60 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_inline, value -> vars_of_border value
   | Border_inline_start, value -> vars_of_border value
   | Border_inline_end, value -> vars_of_border value
-  (* Default case for all other properties *)
-  | _ -> []
-
-(* CSS Variables L1 sec. 3: a custom property's value can itself reference other
-   custom properties. A [Typed] value embeds real [var] handles, so recurse via
-   the kind; a raw [Tokens] value carries refs as [var()] functions in the
-   stream, recovered structurally by {!vars_of_token_stream}. *)
-let vars_of_kind : type a. a kind -> a -> any_var list =
- fun kind value ->
-  match kind with
-  | Length -> vars_of_length value
-  | Color -> vars_of_color value
-  | Rgb -> vars_of_rgb value
-  | Number -> vars_of_number_value value
-  | Int -> []
-  | Float -> []
-  | Percentage -> vars_of_percentage value
-  | Length_percentage -> vars_of_length_percentage value
-  | Number_percentage -> []
-  | Opacity -> []
-  | Value -> []
-  | Duration -> vars_of_duration value
-  | Aspect_ratio -> vars_of_aspect_ratio value
-  | Border_style -> vars_of_border_style value
-  | Outline_style -> []
-  | Border -> vars_of_border value
-  | Font_weight -> vars_of_font_weight value
-  | Font_size -> vars_of_font_size value
-  | Line_height -> vars_of_line_height value
-  | Font_family -> vars_of_font_family value
-  | Font_feature_settings -> vars_of_font_feature_settings value
-  | Font_variation_settings -> vars_of_font_variation_settings value
-  | Numeric -> vars_of_font_variant_numeric value
-  | Font_variant_numeric_token -> []
-  | Blend_mode -> vars_of_blend_mode value
-  | Scroll_snap_strictness -> vars_of_scroll_snap_strictness value
-  | Angle -> vars_of_angle value
-  | Rotate -> vars_of_rotate_value value
-  | Scale -> vars_of_scale value
-  | Shadow -> vars_of_shadow value
-  | Box_shadow -> vars_of_shadow value
-  | Content -> vars_of_content value
-  | Gradient_stop -> vars_of_gradient_stop value
-  | Gradient_direction -> vars_of_gradient_direction value
-  | Gradient_position -> vars_of_gradient_position value
-  | Animation -> vars_of_animation value
-  | Timing_function -> []
-  | Transform -> vars_of_transform value
-  | Touch_action -> []
-  | Transition_property_value -> vars_of_transition_property_value value
-  | Background_image -> vars_of_background_image value
-  | Z_index -> []
-  | Filter -> vars_of_filter value
-  | Font_src -> []
-
-(* Names referenced via real [var()] functions in an opaque token stream. The
-   structural scan returns each name with its leading [--]; [Values.var_ref]
-   re-adds it, so strip the prefix before rebuilding the handle. *)
-let vars_of_token_stream (components : Component.t list) : any_var list =
-  List.rev_map
-    (fun name ->
-      let bare =
-        if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-          String.sub name 2 (String.length name - 2)
-        else name
-      in
-      V (Values.var_ref bare))
-    (var_refs_in_components [] components)
-
-let vars_of_custom_property_value : custom_property_value -> any_var list =
-  function
-  | Typed { kind; value } -> vars_of_kind kind value
-  | Tokens components -> vars_of_token_stream components
+  (* Logical sizing longhands (CSS Logical 1 sec. 4.2): the same
+     <length-percentage> as the physical property each maps to. *)
+  | Inline_size, value -> vars_of_length_percentage value
+  | Min_inline_size, value -> vars_of_length_percentage value
+  | Max_inline_size, value -> vars_of_length_percentage value
+  | Block_size, value -> vars_of_length_percentage value
+  | Min_block_size, value -> vars_of_length_percentage value
+  | Max_block_size, value -> vars_of_length_percentage value
+  (* [inset] and its logical longhands hold a length list, like [top]. *)
+  | Inset, value -> vars_of_length_list value
+  | Inset_inline, value -> vars_of_length_list value
+  | Inset_inline_start, value -> vars_of_length_list value
+  | Inset_inline_end, value -> vars_of_length_list value
+  | Inset_block, value -> vars_of_length_list value
+  | Inset_block_start, value -> vars_of_length_list value
+  | Inset_block_end, value -> vars_of_length_list value
+  (* Logical scroll-margin / scroll-padding, matching the physical arms: the
+     two-value forms hold a list, the single-side longhands one length. *)
+  | Scroll_margin_inline, value -> vars_of_length_list value
+  | Scroll_margin_inline_start, value -> vars_of_length value
+  | Scroll_margin_inline_end, value -> vars_of_length value
+  | Scroll_margin_block, value -> vars_of_length_list value
+  | Scroll_margin_block_start, value -> vars_of_length value
+  | Scroll_margin_block_end, value -> vars_of_length value
+  | Scroll_padding_inline, value -> vars_of_length_list value
+  | Scroll_padding_inline_start, value -> vars_of_length value
+  | Scroll_padding_inline_end, value -> vars_of_length value
+  | Scroll_padding_block, value -> vars_of_length_list value
+  | Scroll_padding_block_start, value -> vars_of_length value
+  | Scroll_padding_block_end, value -> vars_of_length value
+  (* One position per background / mask layer, as for [object-position]. *)
+  | Background_position, value -> List.concat_map vars_of_position_value value
+  | Mask_position, value -> List.concat_map vars_of_position_value value
+  | Webkit_mask_position, value -> List.concat_map vars_of_position_value value
+  (* Remaining typed longhands. *)
+  | Text_emphasis_color, value -> vars_of_color value
+  | Text_underline_offset, value -> vars_of_length value
+  | Shape_margin, value -> vars_of_length_percentage value
+  | Line_height_step, value -> vars_of_length value
+  | Offset_distance, value -> vars_of_length_percentage value
+  | Transition_property, value -> vars_of_transition_property_list value
+  (* CSS Box Alignment 3 sec. 6.5: a one-value [place-self] sets both, so the
+     reader stores the [var()] in each half; the dedup collapses them. *)
+  | Place_self, (align, justify) ->
+      vars_of_align_self align @ vars_of_justify_self justify
+  (* CSS Backgrounds 3 sec. 6.2: [border-image-slice] is numbers, percentages
+     and the [fill] keyword, none of which carries a var handle. *)
+  | Border_image_slice, _ -> []
+  (* [shape-outside] and an unrecognised property are held as raw text and an
+     opaque token stream respectively; scan both structurally. *)
+  | Shape_outside, value -> vars_of_value_string value
+  | Unknown_property _, value -> vars_of_token_stream value
+  | Custom_property _, Custom_value { value; _ } ->
+      vars_of_custom_property_value value
 
 let rec extract_vars_of_declaration : declaration -> any_var list = function
   | Declaration
