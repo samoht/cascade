@@ -99,6 +99,41 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* CSS Color 4 sec. 10: [color(srgb r g b)] scales each channel by 255, so
+   [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour in two spellings.
+   [--lossless] keeps a modern colour function on output, which leaves the
+   projection reading the spelling as a difference. The fold is exact-only: a
+   channel that does not land on a whole byte, and a colour in another gamut,
+   stay distinct. *)
+let equal_canonical_lossless_exact_srgb () =
+  let equal a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true a b
+  in
+  Alcotest.(check bool)
+    "color(srgb 1 0 0) is rgb(255 0 0)" true
+    (equal ".a{color:color(srgb 1 0 0)}" ".a{color:rgb(255,0,0)}");
+  Alcotest.(check bool)
+    "color(srgb 1 0 0) is #f00" true
+    (equal ".a{color:color(srgb 1 0 0)}" ".a{color:#f00}");
+  Alcotest.(check bool)
+    "color(srgb .2 .4 .6) is rgb(51 102 153)" true
+    (equal ".a{color:color(srgb .2 .4 .6)}" ".a{color:rgb(51,102,153)}");
+  Alcotest.(check bool)
+    "the alpha scales exactly too" true
+    (equal ".a{color:color(srgb 1 0 0/.5)}" ".a{color:rgba(255,0,0,.5)}");
+  (* display-p3 red is a different colour, not a different spelling. *)
+  Alcotest.(check bool)
+    "color(display-p3 1 0 0) still differs from rgb(255 0 0)" false
+    (equal ".a{color:color(display-p3 1 0 0)}" ".a{color:rgb(255,0,0)}");
+  (* One byte off is a difference, and .501 does not scale to a whole byte, so
+     neither folds onto the other. *)
+  Alcotest.(check bool)
+    "color(srgb 1 0 0) still differs from rgb(254 0 0)" false
+    (equal ".a{color:color(srgb 1 0 0)}" ".a{color:rgb(254,0,0)}");
+  Alcotest.(check bool)
+    "an off-grid channel keeps its function" false
+    (equal ".a{color:color(srgb .501 0 0)}" ".a{color:maroon}")
+
 (* Filter Effects 1 sec. 8.5 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
    are one value wherever the stream is substituted. *)
@@ -1313,4 +1348,6 @@ let suite =
         equal_canonical_ignores_property_order;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical lossless equates exact srgb spellings"
+        `Quick equal_canonical_lossless_exact_srgb;
     ] )
