@@ -52,11 +52,20 @@ type rule_diff =
 
 type container_info = {
   container_type :
-    [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
+    [ `Media
+    | `Layer
+    | `Supports
+    | `Container
+    | `Property
+    | `Nesting
+    | `At_rule ];
   condition : string;
   rules : Css.statement list; (* Rules within this container *)
 }
-(** Container rule information. *)
+(** Container rule information. [`At_rule] covers the at-rules that carry no
+    selector and no condition of their own ([@page], [@font-face],
+    [@counter-style], [@scope], [@starting-style], ...); their [condition] is
+    the at-rule text up to the block. *)
 
 (** Container changes. *)
 type container_diff =
@@ -71,7 +80,13 @@ type container_diff =
   | Reordered of { info : container_info; expected_pos : int; actual_pos : int }
   | Block_structure_changed of {
       container_type :
-        [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
+        [ `Media
+        | `Layer
+        | `Supports
+        | `Container
+        | `Property
+        | `Nesting
+        | `At_rule ];
       condition : string;
       expected_blocks : (int * Css.statement list) list;
           (** (position, rules) for each block in expected *)
@@ -125,21 +140,21 @@ val single_rule_diff : t -> rule_diff option
     rule change, [None] otherwise. *)
 
 val count_containers_by_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   int
 (** [count_containers_by_type container_type diff] counts containers of the
     given type in [diff]. *)
 
 val has_container_added_of_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   bool
 (** [has_container_added_of_type container_type diff] returns [true] if [diff]
     contains added containers of the given type. *)
 
 val has_container_removed_of_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   bool
 (** [has_container_removed_of_type container_type diff] returns [true] if [diff]

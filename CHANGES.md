@@ -179,6 +179,10 @@ identical, rather than as spurious changes.
   dropped, and a cascade-neutral one is already no difference before it gets
   there, so what was dropped was the significant case and `--diff=tree` called
   the two stylesheets identical (#268)
+- The at-rules that carry no selector are compared on their bodies, each block
+  keyed by its own text and repeated blocks paired in order. A change confined
+  to a `@page`, `@starting-style`, `@counter-style`, `@scope` or any but the
+  first `@font-face` was reported as no difference at all (#269)
 
 - An `@property` is compared on its whole body, and the entry names the
   descriptors that differ. Two registrations for one name differing in `syntax`
