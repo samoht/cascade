@@ -755,6 +755,68 @@ let rearranged_survives_pp_simple () =
         (Astring.String.is_infix ~affix:"Rearranged" (Buffer.contents buf))
   | _ -> Alcotest.fail "expected one rearranged rule"
 
+(* ===== At-rules that carry no selector ===== *)
+
+(* These at-rules have no selector to pair on, so a change confined to the body
+   is only seen if the at-rule is a diff subject in its own right. *)
+
+let at_rule_change ~name ~affix ~expected ~actual () =
+  let d = diff_of ~expected ~actual in
+  Alcotest.(check bool)
+    (name ^ " body change is a difference")
+    false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    (name ^ " is named in the report")
+    true
+    (Astring.String.is_infix ~affix (render d))
+
+let page_body_change_reported =
+  at_rule_change ~name:"@page" ~affix:"@page" ~expected:"@page{margin:1cm}"
+    ~actual:"@page{margin:2cm}"
+
+let starting_style_body_change_reported =
+  at_rule_change ~name:"@starting-style" ~affix:"@starting-style"
+    ~expected:"@starting-style{a{color:red}}"
+    ~actual:"@starting-style{a{color:blue}}"
+
+let counter_style_body_change_reported =
+  at_rule_change ~name:"@counter-style" ~affix:"@counter-style"
+    ~expected:"@counter-style c{system:cyclic;symbols:\"a\"}"
+    ~actual:"@counter-style c{system:cyclic;symbols:\"b\"}"
+
+let scope_body_change_reported =
+  at_rule_change ~name:"@scope" ~affix:"@scope"
+    ~expected:"@scope(.r){a{color:red}}" ~actual:"@scope(.r){a{color:blue}}"
+
+(* Repeated blocks of one at-rule pair positionally; reading only the first pair
+   leaves every later block unchecked. *)
+let repeated_font_face_change_reported =
+  at_rule_change ~name:"@font-face" ~affix:"@font-face"
+    ~expected:
+      "@font-face{font-family:F;src:url(1)}@font-face{font-family:G;src:url(2)}"
+    ~actual:
+      "@font-face{font-family:F;src:url(1)}@font-face{font-family:G;src:url(3)}"
+
+(* Adding or dropping a whole block stays a difference. *)
+
+let page_removed_reported () =
+  let d =
+    diff_of ~expected:"@page{margin:1cm}.a{color:red}" ~actual:".a{color:red}"
+  in
+  Alcotest.(check bool)
+    "a dropped @page is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let font_face_added_reported () =
+  let d =
+    diff_of ~expected:".a{color:red}"
+      ~actual:"@font-face{font-family:F;src:url(1)}.a{color:red}"
+  in
+  Alcotest.(check bool)
+    "an added @font-face is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 let suite =
   ( "tree_diff",
     [
@@ -850,6 +912,19 @@ let suite =
         unrelated_selectors_are_not_a_move;
       Alcotest.test_case "rearranged survives pp_rule_diff_simple" `Quick
         rearranged_survives_pp_simple;
+      Alcotest.test_case "@page body change reported" `Quick
+        page_body_change_reported;
+      Alcotest.test_case "@starting-style body change reported" `Quick
+        starting_style_body_change_reported;
+      Alcotest.test_case "@counter-style body change reported" `Quick
+        counter_style_body_change_reported;
+      Alcotest.test_case "@scope body change reported" `Quick
+        scope_body_change_reported;
+      Alcotest.test_case "repeated @font-face change reported" `Quick
+        repeated_font_face_change_reported;
+      Alcotest.test_case "@page removed reported" `Quick page_removed_reported;
+      Alcotest.test_case "@font-face added reported" `Quick
+        font_face_added_reported;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
