@@ -6295,11 +6295,6 @@ let rec read_container_name (t : Cursor.t) : container_name =
      t
     : container_name)
 
-let read_dashed_ident t =
-  let ident = Cursor.ident ~keep_case:true t in
-  if String.length ident >= 2 && ident.[0] = '-' && ident.[1] = '-' then ident
-  else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)
-
 let rec read_anchor_name (t : Cursor.t) : anchor_name =
   let keywords : (string * anchor_name) list =
     [
