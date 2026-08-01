@@ -12,7 +12,8 @@
   prop_filter
   prop_align
   prop_flex
-  prop_grid)
+  prop_grid
+  prop_image)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
