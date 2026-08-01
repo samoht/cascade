@@ -14,7 +14,8 @@
   prop_flex
   prop_grid
   prop_image
-  prop_background)
+  prop_background
+  prop_mask)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
