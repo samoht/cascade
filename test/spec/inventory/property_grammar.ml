@@ -498,13 +498,16 @@ let matrix =
       ]
       [ "0"; "1px"; "10%"; "auto" ]
       [ "red"; "1px 2px" ]
+    (* CSS Scroll Snap 1 sec. 5.1: the scroll-margin longhands are [<length>]
+       with no [0,inf] range, so negatives are valid; percentages are not
+       ("Percentages: n/a"). Contrast scroll-padding just below. *)
   @ rows_for [ "scroll-margin" ]
-      [ "0"; "1px"; "1px 2px"; "1px 2px 3px 4px" ]
-      [ "auto"; "10%"; "red"; "1px 2px 3px 4px 5px" ]
+      [ "0"; "1px"; "-1px"; "1px 2px"; "-1px -2px"; "1px 2px 3px 4px" ]
+      [ "auto"; "10%"; "-10%"; "red"; "1px 2px 3px 4px 5px" ]
   @ rows_for
       [ "scroll-margin-inline"; "scroll-margin-block" ]
-      [ "0"; "1px"; "1px 2px" ]
-      [ "auto"; "10%"; "red"; "1px 2px 3px" ]
+      [ "0"; "1px"; "-1px"; "1px 2px"; "-1px -2px" ]
+      [ "auto"; "10%"; "-10%"; "red"; "1px 2px 3px" ]
   @ rows_for
       [
         "scroll-margin-top";
@@ -516,8 +519,8 @@ let matrix =
         "scroll-margin-block-start";
         "scroll-margin-block-end";
       ]
-      [ "0"; "1px" ]
-      [ "auto"; "10%"; "red"; "1px 2px" ]
+      [ "0"; "1px"; "-1px" ]
+      [ "auto"; "10%"; "-10%"; "red"; "1px 2px" ]
   @ rows_for [ "scroll-padding" ]
       [ "auto"; "0"; "1px"; "10%"; "1px 2px"; "1px 2px 3px 4px" ]
       [ "red"; "1px 2px 3px 4px 5px"; "auto auto auto auto auto"; "-1px" ]

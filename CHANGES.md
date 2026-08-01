@@ -22,6 +22,8 @@
   `h2:where(...)` (#193); and an unrecognised media query such as
   `theme(static)`, kept as never-matching instead of discarding the `@media`
   block or the `@import` (#192)
+- The eleven `scroll-margin` properties take a negative length, as CSS Scroll
+  Snap 1 allows; only `scroll-padding` is non-negative (#280)
 
 ### Printing and nesting
 
