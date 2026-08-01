@@ -15,7 +15,8 @@
   prop_grid
   prop_image
   prop_background
-  prop_mask)
+  prop_mask
+  prop_transform)
  (flags
   (:standard -w -9))
  (libraries uutf psq logs unix))
