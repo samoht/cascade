@@ -14,7 +14,7 @@
   exited 0 when the structural walk reached no difference, which left a missing
   normalisation key and a blind spot in the walk both reading as success.
   ``Css_compare.equal ~mode:`Canonical`` answers on the same bytes, and
-  `Css_compare.No_diff` no longer carries the two canonical forms
+  `Css_compare.No_diff` no longer carries the two canonical forms (#290)
 
 ### Parsing
 
@@ -110,7 +110,7 @@
   `<ident>` sequence it unquotes to, the same family name under CSS Fonts 4
   sec. 15.3: `--font-sans: ui-sans-serif, "Noto Color Emoji"` and
   `--font-sans: ui-sans-serif, Noto Color Emoji` reach one form. The structural
-  comparator already folded the two together; the projection did not
+  comparator already folded the two together; the projection did not (#290)
 
 ### Diff report
 
@@ -129,9 +129,9 @@
   claimed equivalence over a comparison that fell through to a string diff, and
   over a side whose content the parser discarded (#285)
 - A canonical-form difference the structural walk did not reach is printed as
-  `Canonical forms differ:` above a string diff of the two forms
+  `Canonical forms differ:` above a string diff of the two forms (#290)
 - A string diff names the two sides with the labels it was given, so `cascade
-  diff` heads it with the two file names instead of `Expected` and `Actual`
+  diff` heads it with the two file names instead of `Expected` and `Actual` (#290)
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second

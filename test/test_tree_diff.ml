@@ -921,9 +921,30 @@ let deeply_nested_identical_is_empty () =
     "identical deep nesting stays empty" true
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* Known gap, pinned rather than fixed here. An empty [@layer] statement pins
+   the layer order at the point it stands, so [@layer a;] ahead of a [@layer b]
+   block makes [a] the weaker layer, and dropping it makes [b] weaker instead.
+   The walk pairs the two [@layer] blocks and finds their bodies equal, so it
+   reports nothing over two sheets that resolve a conflict the opposite way.
+   Canonical mode catches the pair on the bytes; the fix belongs in the walk. *)
+let layer_order_pin_is_not_reported () =
+  let expected = parse "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let actual = parse "@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the layer-order difference is not reported structurally" true
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "canonical mode reports it" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}"
+       "@layer b{y{top:1px}}@layer a{x{top:0}}")
+
 let suite =
   ( "tree_diff",
     [
+      Alcotest.test_case "layer-order pin is not reported" `Quick
+        layer_order_pin_is_not_reported;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
