@@ -921,30 +921,70 @@ let deeply_nested_identical_is_empty () =
     "identical deep nesting stays empty" true
     (Cascade_diff.Tree_diff.is_empty d)
 
-(* Known gap, pinned rather than fixed here. An empty [@layer] statement pins
-   the layer order at the point it stands, so [@layer a;] ahead of a [@layer b]
-   block makes [a] the weaker layer, and dropping it makes [b] weaker instead.
-   The walk pairs the two [@layer] blocks and finds their bodies equal, so it
-   reports nothing over two sheets that resolve a conflict the opposite way.
-   Canonical mode catches the pair on the bytes; the fix belongs in the walk. *)
-let layer_order_pin_is_not_reported () =
+(* ===== Cascade layer order ===== *)
+
+(* An empty [@layer] statement pins the layer order at the point it stands, so
+   [@layer a;] ahead of a [@layer b] block makes [a] the weaker layer, and
+   dropping it makes [b] weaker instead. The two sheets hold the same two
+   [@layer] blocks with the same bodies, so nothing but the declared order tells
+   them apart, and they resolve a conflict between [a] and [b] the opposite
+   way. *)
+let layer_order_pin_is_reported () =
   let expected = parse "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}" in
   let actual = parse "@layer b{y{top:1px}}@layer a{x{top:0}}" in
   let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
   Alcotest.(check bool)
-    "the layer-order difference is not reported structurally" true
+    "dropping the pin swaps the two layers" false
     (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
   Alcotest.(check bool)
-    "canonical mode reports it" false
+    "and the report names the pair that swapped" true
+    (string_contains ~needle:"b now precedes a" s);
+  Alcotest.(check bool)
+    "canonical mode reports it too" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}"
        "@layer b{y{top:1px}}@layer a{x{top:0}}")
 
+(* Same order, two spellings of the pin: [@layer a;@layer b;] and [@layer a,b;]
+   both declare [a] weaker than [b]. Nothing changed, so the report stays
+   quiet. *)
+let layer_order_declared_two_ways_is_quiet () =
+  let expected =
+    parse "@layer a;@layer b;@layer b{y{top:1px}}@layer a{x{top:0}}"
+  in
+  let actual = parse "@layer a,b;@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "one order written two ways is no difference" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* A sublayer sorts inside its parent, so [@layer a.b;] pins [a.b] ahead of the
+   [a.c] that the block below declares first. Dropping the pin swaps the two
+   sublayers while leaving [a] itself, and both bodies, where they were. *)
+let nested_layer_order_pin_is_reported () =
+  let expected =
+    parse "@layer a.b;@layer a{@layer c{x{top:0}}@layer b{y{top:1px}}}"
+  in
+  let actual = parse "@layer a{@layer c{x{top:0}}@layer b{y{top:1px}}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the sublayers swapped" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
+  Alcotest.(check bool)
+    "and the report names them by their dotted paths" true
+    (string_contains ~needle:"a.c now precedes a.b" s)
+
 let suite =
   ( "tree_diff",
     [
-      Alcotest.test_case "layer-order pin is not reported" `Quick
-        layer_order_pin_is_not_reported;
+      Alcotest.test_case "layer-order pin reported" `Quick
+        layer_order_pin_is_reported;
+      Alcotest.test_case "one layer order written two ways is quiet" `Quick
+        layer_order_declared_two_ways_is_quiet;
+      Alcotest.test_case "nested layer-order pin reported" `Quick
+        nested_layer_order_pin_is_reported;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
