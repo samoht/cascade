@@ -919,18 +919,38 @@ let zero_counters_unparsed_do_not_claim_equivalence () =
     "a comparison that never parsed is not an absence of differences" false
     (contains_substring output "No structural differences")
 
-(* Canonical mode keeps the two canonical forms on [No_diff] when the structural
-   comparator saw no difference but the bytes still diverge - here an empty
-   layer-order pin the projection does not fold away. *)
-let canonical_byte_residual_is_recorded () =
-  let result =
-    Cascade_diff.Css_compare.diff ~mode:`Canonical "@layer a;@layer a{x{top:0}}"
-      "@layer a{x{top:0}}"
-  in
-  match result.Cascade_diff.Css_compare.result with
-  | Cascade_diff.Css_compare.No_diff { canonical_byte_diff = Some (e, a) } ->
-      Alcotest.(check bool) "the two forms differ" true (e <> a)
-  | _ -> Alcotest.fail "expected No_diff carrying a canonical byte difference"
+(* The canonical minified form is the verdict in [`Canonical] mode: two sheets
+   whose canonical bytes differ differ, whether or not the tree diff reached the
+   divergence. Here an empty layer-order pin the projection does not fold away -
+   either a normalisation key the projection is missing or a blind spot in the
+   tree diff, and both are findings. *)
+let canonical_byte_residual_is_a_difference () =
+  let pinned = "@layer a;@layer a{x{top:0}}" in
+  let unpinned = "@layer a{x{top:0}}" in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Canonical pinned unpinned in
+  (match result.Cascade_diff.Css_compare.result with
+  | Cascade_diff.Css_compare.String_diff _ -> ()
+  | _ ->
+      Alcotest.fail
+        "expected a string diff of the two differing canonical forms");
+  Alcotest.(check bool)
+    "the equality answer follows the bytes" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical pinned unpinned)
+
+let canonical_byte_equal_is_no_diff () =
+  (* The converse: once the two sheets reach one canonical form, the spelling
+     they started from is immaterial and the verdict is equality. [equal] is
+     [true] only on {!No_diff}, so it pins the constructor too. *)
+  let spaced = ".x { color: red }" in
+  let tight = ".x{color:red}" in
+  Alcotest.(check bool)
+    "the equality answer follows the bytes" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical spaced tight);
+  Alcotest.(check bool)
+    "no tree diff is reported over one canonical form" true
+    (Option.is_none
+       (Cascade_diff.Css_compare.as_tree_diff
+          (Cascade_diff.Css_compare.diff ~mode:`Canonical spaced tight)))
 
 (* ===== diff tests ===== *)
 
@@ -1268,8 +1288,10 @@ let suite =
         zero_counters_do_not_claim_equivalence;
       Alcotest.test_case "zero counters unparsed do not claim equivalence"
         `Quick zero_counters_unparsed_do_not_claim_equivalence;
-      Alcotest.test_case "canonical byte residual is recorded" `Quick
-        canonical_byte_residual_is_recorded;
+      Alcotest.test_case "canonical byte residual is a difference" `Quick
+        canonical_byte_residual_is_a_difference;
+      Alcotest.test_case "canonical byte equality is no diff" `Quick
+        canonical_byte_equal_is_no_diff;
       Alcotest.test_case "diff auto" `Quick diff_auto;
       Alcotest.test_case "diff tree" `Quick diff_tree;
       Alcotest.test_case "diff string" `Quick diff_string;

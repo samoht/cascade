@@ -1,10 +1,9 @@
-CLI: cascade diff - canonical mode's residual byte difference.
+CLI: cascade diff - canonical mode's byte verdict.
 
-Two sheets the structural comparator calls equivalent can still
-canonicalise to different bytes: here an empty layer-order pin the
-projection does not fold away. Tree-diff is the authoritative answer, so
-the verdict stays equivalence and the exit code stays 0, but the report
-names the divergence rather than dropping it.
+The canonical minified form is what canonical mode compares, so two sheets
+that reach different bytes differ even when the tree diff walked past the
+divergence. Here an empty layer-order pin the projection does not fold
+away: the report shows the two canonical forms and the exit code is 1.
 
   $ cat > pinned.css <<EOF
   > @layer a;@layer a{x{top:0}}
@@ -12,21 +11,13 @@ names the divergence rather than dropping it.
   $ cat > unpinned.css <<EOF
   > @layer a{x{top:0}}
   > EOF
-  $ cascade diff --diff=canonical pinned.css unpinned.css
-  CSS files are equivalent
-  Canonical minified forms still differ (--depth=max shows it)
+  $ NO_COLOR=1 cascade diff --diff=canonical pinned.css unpinned.css
+  CSS: 28 chars vs 19 chars (32.1% diff)
+  Changes: none classified structurally (see report below)
+  Canonical forms differ:
 
-  $ cascade diff --diff=canonical pinned.css unpinned.css > /dev/null; echo $?
-  0
-
-Under --depth=max the two canonical forms are shown.
-
-  $ NO_COLOR=1 cascade diff --diff=canonical --depth=max pinned.css unpinned.css
-  CSS files are equivalent
-  Canonical minified forms still differ:
-  
   Strings differ at position 8 (line 0, col 8)
-  
+
   --- pinned.css
   +++ unpinned.css
   @@ position 8 @@
@@ -34,9 +25,13 @@ Under --depth=max the two canonical forms are shown.
   +@layer a{x{top:0}}
            ^
 
+  [1]
 
+  $ cascade diff --diff=canonical pinned.css unpinned.css > /dev/null; echo $?
+  1
 
-A canonical comparison whose bytes do match keeps the plain verdict.
+Two sheets that reach the same canonical form are equal whatever they were
+spelled like.
 
   $ cat > same-a.css <<EOF
   > .x { color: red }
