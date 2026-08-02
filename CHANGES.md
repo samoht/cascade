@@ -9,6 +9,12 @@
   `memtrace` dependency (#237)
 - A parse failure that drops every rule makes `cascade fmt` exit 1 instead of
   writing an empty stylesheet with a green status (#273)
+- `cascade diff --diff=canonical` exits 1 whenever the two canonical forms
+  differ, and prints the difference. It called such a pair equivalent and
+  exited 0 when the structural walk reached no difference, which left a missing
+  normalisation key and a blind spot in the walk both reading as success.
+  ``Css_compare.equal ~mode:`Canonical`` answers on the same bytes, and
+  `Css_compare.No_diff` no longer carries the two canonical forms (#290)
 
 ### Parsing
 
@@ -103,9 +109,32 @@
 - A custom property keeps its `!important`, its layer and its metadata through
   the projection, so the differ no longer calls two sheets that disagree about
   the flag identical (#271)
+- It rewrites a quoted multi-word font name in a custom property as the
+  `<ident>` sequence it unquotes to, the same family name under CSS Fonts 4
+  sec. 15.3: `--font-sans: ui-sans-serif, "Noto Color Emoji"` and
+  `--font-sans: ui-sans-serif, Noto Color Emoji` reach one form. The structural
+  comparator already folded the two together; the projection did not (#290)
 
 ### Diff report
 
+- A rule that writes one property more than once, as a fallback chain does, is
+  compared occurrence by occurrence; matching by name alone made
+  `a{color:red;color:blue}` against `a{color:red;color:green}` report
+  `color: blue -> red`, a value neither side holds (#285)
+- Containers are compared however deep they nest. The walk stopped at three
+  levels, so a leaf difference under five at-rules was reported as no
+  difference at all, exit code included (#285)
+- A container entry with nothing to show under it reads as `(modified, no
+  details)`; it claimed a position change, which only a `Reordered` entry
+  establishes (#285)
+- A comparison that classified nothing says so: `Changes: none classified
+  structurally (see report below)`. It read `No structural differences`, which
+  claimed equivalence over a comparison that fell through to a string diff, and
+  over a side whose content the parser discarded (#285)
+- A canonical-form difference the structural walk did not reach is printed as
+  `Canonical forms differ:` above a string diff of the two forms (#290)
+- A string diff names the two sides with the labels it was given, so `cascade
+  diff` heads it with the two file names instead of `Expected` and `Actual` (#290)
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second

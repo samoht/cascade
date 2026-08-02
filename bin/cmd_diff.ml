@@ -47,8 +47,9 @@ type depth = Fit | Full | Level of int
    [Auto] drops to the deepest level that still fits. *)
 let auto_line_budget = 40
 
-(* [nested_differences] stops recursing at 3, so probing past that only re-walks
-   a tree that cannot grow. *)
+(* The probe renders the report once per level, and the diff tree is as deep as
+   the stylesheet nests. Stop at a level that summarises any report worth
+   summarising; [--depth=max] is the answer for the rest. *)
 let max_probe_depth = 5
 
 let count_lines s =
@@ -96,7 +97,15 @@ let render_at_depth ~color ~file1 ~file2 ~depth result =
         let level, body = fit_depth render in
         (body, Some level)
 
-let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
+(* Canonical mode compares the two canonical minified forms, so the text under a
+   string diff there is those forms and not the files as written. Say which. *)
+let canonical_forms_note mode result =
+  match (mode, result) with
+  | Canonical, Cascade_diff.Css_compare.String_diff _ ->
+      "Canonical forms differ:\n"
+  | _ -> ""
+
+let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth ~mode result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
@@ -105,6 +114,8 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
   in
   let buf = Buffer.create 1024 in
   Cascade_diff.Css_compare.pp_stats buf stats;
+  Buffer.add_string buf
+    (canonical_forms_note mode result.Cascade_diff.Css_compare.result);
   Buffer.add_char buf '\n';
   Buffer.add_string buf (render_warnings ~file1 ~file2 ~max:max_warnings result);
   let body, elided_at = render_at_depth ~color ~file1 ~file2 ~depth result in
@@ -147,7 +158,7 @@ let compare_files file1 file2 style_renderer mode depth opts () =
             ~css2
         in
         match result.Cascade_diff.Css_compare.result with
-        | No_diff _ ->
+        | No_diff ->
             (* Equal ASTs can still hide parse-dropped declarations; show the
                warnings so the equality verdict is honest about them. *)
             let max =
@@ -160,7 +171,8 @@ let compare_files file1 file2 style_renderer mode depth opts () =
             Ok ()
         | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
         | Actual_error _ ->
-            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result;
+            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth ~mode
+              result;
             (* Differing inputs are a result, not a usage error: exit 1 as
                documented, distinct from cmdliner's reserved error codes. *)
             Stdlib.exit 1)
@@ -300,7 +312,11 @@ let man =
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
     `I ("0", "if the CSS files are identical");
-    `I ("1", "if the CSS files differ");
+    `I
+      ( "1",
+        "if the CSS files differ. Under $(b,--diff=canonical) that is any \
+         difference between their canonical forms, whether or not the \
+         structural walk reached it" );
     `I ("124", "on command-line errors or unreadable input files");
     `S Manpage.s_examples;
     `P "Compare two CSS files:";

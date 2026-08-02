@@ -124,7 +124,7 @@ usable as a CI check.
 `--diff=MODE` controls what counts as "no difference":
 
 - `auto` (default): structural diff; falls back to a string diff when the
-  parsed structures match but the strings don't, so cosmetic differences
+  parsed structures match but the strings don't, so formatting differences
   (whitespace, comment position) still surface.
 - `tree`: structural diff only; formatting-only differences collapse to
   "identical".

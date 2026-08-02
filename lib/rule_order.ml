@@ -503,6 +503,16 @@ let normalize_custom_value v =
   go 0 None;
   Buffer.contents buf
 
+(* A multi-word font name spells the same family quoted or as the bare ident
+   sequence it unquotes to (CSS Fonts 4 sec. 15.3), and a custom property
+   holding a font stack substitutes either form identically into [font-family].
+   Emission keeps whichever the author wrote, so the projection folds the quoted
+   form onto the ident sequence - the same normalisation the structural
+   comparator applies through {!Css.declaration_value_for_equivalence}. *)
+let normalize_custom_declaration d =
+  Declaration.unquote_custom_font_strings
+    (Declaration.map_custom_value normalize_custom_value d)
+
 let rec normalize_custom_values (stmts : statement list) : statement list =
   List.map
     (fun stmt ->
@@ -512,9 +522,7 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
             {
               r with
               declarations =
-                List.map
-                  (Declaration.map_custom_value normalize_custom_value)
-                  r.declarations;
+                List.map normalize_custom_declaration r.declarations;
               nested = normalize_custom_values r.nested;
             }
       | Layer (n, inner) -> Layer (n, normalize_custom_values inner)

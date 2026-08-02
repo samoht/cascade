@@ -817,9 +817,134 @@ let font_face_added_reported () =
     "an added @font-face is a difference" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* ===== One property written more than once in a rule ===== *)
+
+(* A fallback chain writes one property several times, so a rule holds one value
+   per occurrence and occurrence n on one side answers occurrence n on the
+   other. Matching by name alone binds every occurrence to the first entry
+   opposite, which names values neither side holds. *)
+
+let rule_property_changes d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { property_changes; _ } ->
+          List.map
+            (fun (p : Cascade_diff.Tree_diff.declaration) ->
+              p.property_name ^ ": " ^ p.expected_value ^ " -> "
+              ^ p.actual_value)
+            property_changes
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let rule_added_properties d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { added_properties; _ } -> added_properties
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let rule_removed_properties d =
+  List.concat_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Content_changed { removed_properties; _ } -> removed_properties
+      | _ -> [])
+    d.Cascade_diff.Tree_diff.rules
+
+let repeated_property_pairs_by_occurrence () =
+  let d =
+    diff_of ~expected:"a{color:red;color:blue}"
+      ~actual:"a{color:red;color:green}"
+  in
+  Alcotest.(check (list string))
+    "the occurrence that changed, against its counterpart"
+    [ "color: blue -> green" ] (rule_property_changes d)
+
+let repeated_property_pairs_every_occurrence () =
+  let d =
+    diff_of ~expected:"a{color:teal;color:red}"
+      ~actual:"a{color:green;color:blue}"
+  in
+  Alcotest.(check (list string))
+    "each occurrence against the one at its own index"
+    [ "color: teal -> green"; "color: red -> blue" ]
+    (rule_property_changes d)
+
+let repeated_property_surplus_is_removed () =
+  let d = diff_of ~expected:"a{color:red;color:blue}" ~actual:"a{color:red}" in
+  Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
+  Alcotest.(check (list string))
+    "the occurrence with no counterpart is removed" [ "color" ]
+    (rule_removed_properties d)
+
+let repeated_property_surplus_is_added () =
+  let d = diff_of ~expected:"a{color:red}" ~actual:"a{color:red;color:blue}" in
+  Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
+  Alcotest.(check (list string))
+    "the occurrence with no counterpart is added" [ "color" ]
+    (rule_added_properties d)
+
+(* ===== Containers nested past the old recursion cutoff ===== *)
+
+(* The walker recurses on strictly smaller statement lists, so nothing needs a
+   depth cutoff to terminate; one at five levels of at-rule nesting made a leaf
+   difference vanish, verdict and exit code included. *)
+
+let nested_at_rules leaf =
+  "@media (min-width:1px){@supports (display:grid){@media \
+   (min-width:2px){@supports (display:flex){@media (min-width:3px){a{color:"
+  ^ leaf ^ "}}}}}}"
+
+let deeply_nested_leaf_change_reported () =
+  let d =
+    diff_of ~expected:(nested_at_rules "red") ~actual:(nested_at_rules "blue")
+  in
+  Alcotest.(check bool)
+    "a leaf five containers down is still a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let deeply_nested_leaf_change_named () =
+  let d =
+    diff_of ~expected:(nested_at_rules "red") ~actual:(nested_at_rules "blue")
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "and the report names the value that changed" true
+    (string_contains ~needle:"color: red -> blue" s)
+
+let deeply_nested_identical_is_empty () =
+  let css = nested_at_rules "red" in
+  let d = diff_of ~expected:css ~actual:css in
+  Alcotest.(check bool)
+    "identical deep nesting stays empty" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* Known gap, pinned rather than fixed here. An empty [@layer] statement pins
+   the layer order at the point it stands, so [@layer a;] ahead of a [@layer b]
+   block makes [a] the weaker layer, and dropping it makes [b] weaker instead.
+   The walk pairs the two [@layer] blocks and finds their bodies equal, so it
+   reports nothing over two sheets that resolve a conflict the opposite way.
+   Canonical mode catches the pair on the bytes; the fix belongs in the walk. *)
+let layer_order_pin_is_not_reported () =
+  let expected = parse "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let actual = parse "@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the layer-order difference is not reported structurally" true
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "canonical mode reports it" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}"
+       "@layer b{y{top:1px}}@layer a{x{top:0}}")
+
 let suite =
   ( "tree_diff",
     [
+      Alcotest.test_case "layer-order pin is not reported" `Quick
+        layer_order_pin_is_not_reported;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
@@ -925,6 +1050,20 @@ let suite =
       Alcotest.test_case "@page removed reported" `Quick page_removed_reported;
       Alcotest.test_case "@font-face added reported" `Quick
         font_face_added_reported;
+      Alcotest.test_case "repeated property pairs by occurrence" `Quick
+        repeated_property_pairs_by_occurrence;
+      Alcotest.test_case "repeated property pairs every occurrence" `Quick
+        repeated_property_pairs_every_occurrence;
+      Alcotest.test_case "repeated property surplus is removed" `Quick
+        repeated_property_surplus_is_removed;
+      Alcotest.test_case "repeated property surplus is added" `Quick
+        repeated_property_surplus_is_added;
+      Alcotest.test_case "deeply nested leaf change reported" `Quick
+        deeply_nested_leaf_change_reported;
+      Alcotest.test_case "deeply nested leaf change named" `Quick
+        deeply_nested_leaf_change_named;
+      Alcotest.test_case "deeply nested identical is empty" `Quick
+        deeply_nested_identical_is_empty;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

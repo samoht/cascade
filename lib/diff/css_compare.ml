@@ -298,14 +298,7 @@ let equivalent_value ?lossless ~property a b =
 type result =
   | Tree_diff of Tree_diff.t (* CSS AST differences found *)
   | String_diff of String_diff.t (* No structural diff but strings differ *)
-  | No_diff of { canonical_byte_diff : (string * string) option }
-      (** Structurally equivalent. [canonical_byte_diff = None] means the two
-          inputs were bytewise equal (after header strip / canonical minify).
-          [Some (expected, actual)] means the structural comparator (tree-diff
-          in [`Canonical] mode) found no difference but the canonical minified
-          forms still differed - i.e. a canonical-pass gap to chip away at in
-          future. The two strings let maintainers inspect what cascade hasn't
-          normalised yet. *)
+  | No_diff (* No difference under the selected mode *)
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
@@ -345,7 +338,7 @@ let diff_two_parsed ~expected ~actual ~expected_ast ~actual_ast =
 
 let diff_auto ~expected ~actual ~expected_parse ~actual_parse =
   (* First check if original strings are identical *)
-  if expected = actual then No_diff { canonical_byte_diff = None }
+  if expected = actual then No_diff
   else
     match (expected_parse, actual_parse) with
     | ( Ok { Css.stylesheet = expected_ast; _ },
@@ -355,6 +348,11 @@ let diff_auto ~expected ~actual ~expected_parse ~actual_parse =
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
+(* The two canonical forms already differ, so this only picks how to say it: the
+   tree diff when its walk reaches the divergence, the bytes themselves when it
+   does not. A tree diff that comes back empty over two differing canonical
+   forms is a blind spot in the walk, and the string diff of the forms is what
+   names it. *)
 let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
     ~expected_canon ~actual_canon =
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
@@ -363,13 +361,13 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
         tree_diff ~expected:expected_ast ~actual:actual_ast
       in
       if is_empty structural_diff then
-        No_diff { canonical_byte_diff = Some (expected_canon, actual_canon) }
+        fallback_to_string_diff ~expected:expected_canon ~actual:actual_canon
       else Tree_diff structural_diff
   | _ -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
 
 let diff_canonical ~lossless ~prune_unused_custom_props ~expected ~actual
     ~expected_parse ~actual_parse =
-  if expected = actual then No_diff { canonical_byte_diff = None }
+  if expected = actual then No_diff
   else
     match
       canonical_diff_inputs_with_fallback ~lossless ~prune_unused_custom_props
@@ -377,27 +375,22 @@ let diff_canonical ~lossless ~prune_unused_custom_props ~expected ~actual
     with
     | None -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
     | Some (expected_canon, actual_canon) ->
-        if String.equal expected_canon actual_canon then
-          No_diff { canonical_byte_diff = None }
+        (* The canonical form is what this mode compares: equivalent inputs
+           reach one form, so two forms that differ are two different
+           stylesheets or one projection missing a normalisation key. Either is
+           a difference here, and either is a finding - the key is added to the
+           projection, the blind spot fixed in the walk. *)
+        if String.equal expected_canon actual_canon then No_diff
         else
-          (* Tree-diff is the authoritative semantic comparator in Canonical
-             mode; canonical-minified byte equality is a fast-path sufficient
-             condition, not a necessary one. When the structural diff is empty,
-             the inputs ARE equivalent - cascade's canonical pass just hasn't
-             (yet) collapsed those particular textual variants (tool headers,
-             [@layer a, b;] vs split-form, empty layer-order pins, whitespace
-             inside [url()], ...). Expose the canonical byte forms on [No_diff]
-             so maintainers can spot which canonical-pass gap to chip away at
-             next, without ever overriding the structural answer. *)
           diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
             ~expected_canon ~actual_canon
 
 let diff_string ~expected ~actual =
-  if expected = actual then No_diff { canonical_byte_diff = None }
+  if expected = actual then No_diff
   else
     match String_diff.diff ~expected actual with
     | Some sdiff -> String_diff sdiff
-    | None -> No_diff { canonical_byte_diff = None }
+    | None -> No_diff
 
 let diff_tree ~expected_parse ~actual_parse =
   match (expected_parse, actual_parse) with
@@ -406,8 +399,7 @@ let diff_tree ~expected_parse ~actual_parse =
       let structural_diff =
         tree_diff ~expected:expected_ast ~actual:actual_ast
       in
-      if is_empty structural_diff then No_diff { canonical_byte_diff = None }
-      else Tree_diff structural_diff
+      if is_empty structural_diff then No_diff else Tree_diff structural_diff
   | Error e1, Error e2 -> Both_errors (e1, e2)
   | Ok _, Error e -> Actual_error e
   | Error e, Ok _ -> Expected_error e
@@ -421,11 +413,7 @@ let diff ?(mode = `Auto) ?(lossless = false)
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then
-    {
-      result = No_diff { canonical_byte_diff = None };
-      expected_warnings = [];
-      actual_warnings = [];
-    }
+    { result = No_diff; expected_warnings = []; actual_warnings = [] }
   else
     match mode with
     | `String ->
@@ -453,14 +441,14 @@ let diff ?(mode = `Auto) ?(lossless = false)
 
 let equal ?mode ?lossless ?prune_unused_custom_props a b =
   match (diff ?mode ?lossless ?prune_unused_custom_props a b).result with
-  | No_diff _ -> true
+  | No_diff -> true
   | _ -> false
 
 let as_tree_diff t =
   match t.result with
   | Tree_diff d -> Some d
-  | String_diff _ | No_diff _ | Both_errors _ | Expected_error _
-  | Actual_error _ ->
+  | String_diff _ | No_diff | Both_errors _ | Expected_error _ | Actual_error _
+    ->
       None
 
 (* Compute statistics from diff results *)
@@ -544,11 +532,9 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
   | Tree_diff d ->
       (* Show structural differences *)
       D.pp ~expected ~actual ~color ?depth buf d
-  | String_diff sdiff -> String_diff.pp buf sdiff
-  | No_diff _ ->
-      (* No output for structurally equivalent files (whether or not the
-         canonical-minified bytes also matched). *)
-      ()
+  | String_diff sdiff ->
+      String_diff.pp ~expected_label:expected ~actual_label:actual buf sdiff
+  | No_diff -> ()
   | Both_errors (e1, e2) ->
       let err1 = Error.to_string e1 in
       let err2 = Error.to_string e2 in
@@ -617,8 +603,14 @@ let emit_changes buf stats =
     |> List.filter (fun (n, _, _) -> n > 0)
   in
   let container = stats.container_changes in
+  (* Every counter above comes from a tree diff, so they all read zero on the
+     results that never reached one: a comparison that fell through to the
+     string diff, a side whose content the parser discarded, a parse error. The
+     line says what it knows - nothing was classified - and leaves the verdict
+     to the report under it. *)
   if entries = [] && container = 0 then
-    Buffer.add_string buf "No structural differences\n"
+    Buffer.add_string buf
+      "Changes: none classified structurally (see report below)\n"
   else (
     Buffer.add_string buf "Changes: ";
     List.iteri

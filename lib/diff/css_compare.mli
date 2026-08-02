@@ -11,7 +11,20 @@
     leading-/trailing-zero normalisations, optimizer-preserved shorthand
     choices, and other choices the optimizer and pretty-printer make; it does
     {b not} reason about browser computed values or cascade-affecting rule
-    reorderings. *)
+    reorderings.
+
+    Those bytes are the verdict in mode [`Canonical]. Canonical means equivalent
+    inputs project to one form, so two canonical forms that differ are either
+    two different stylesheets or one projection missing a normalisation key -
+    and the comparison reports a difference either way. The tree diff explains a
+    difference (which rule, which declaration, which value); it does not
+    overrule the bytes. A byte difference it walked past comes back as a
+    {!constructor-String_diff} of the two canonical forms.
+
+    Both causes are findings, not tolerances. A missing key is fixed by adding
+    the key to the projection (its normalisations are listed under
+    {!Cascade.Css.canonicalize_rule_order}); a difference the tree diff cannot
+    see is fixed in {!module-Tree_diff}. *)
 
 open Cascade
 
@@ -25,16 +38,7 @@ type result =
   | Tree_diff of Tree_diff.t  (** Structural AST differences. *)
   | String_diff of String_diff.t
       (** Strings differ but no structural change was detected. *)
-  | No_diff of { canonical_byte_diff : (string * string) option }
-      (** Structurally equivalent under the selected {!mode}.
-          [canonical_byte_diff = None] means the inputs were bytewise equal
-          (after header strip / canonical minify). [Some (expected, actual)]
-          appears under [`Canonical] when the structural comparator found no
-          difference but the canonical-minified bytes still differed - i.e.
-          cascade's canonical pass hasn't (yet) collapsed those textual
-          variants. The two strings let maintainers inspect which gap to chip
-          away at; callers matching [No_diff _] get the right equality answer
-          either way. *)
+  | No_diff  (** No difference under the selected {!mode}. *)
   | Both_errors of Error.t * Error.t
   | Expected_error of Error.t
   | Actual_error of Error.t
@@ -62,8 +66,9 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
     - [`Canonical] -- parse both stylesheets, serialize optimized minified
       outputs, and compare those outputs. This includes value spellings that
       Cascade canonicalizes as equivalent, such as [transparent] and [#0000] in
-      color positions. If the normalized forms differ, the returned diff is
-      reported from those normalized outputs.
+      color positions. Equal outputs are {!No_diff}; differing outputs are a
+      difference, reported as a tree diff of the two when the walk reaches it
+      and as a string diff of them when it does not.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a
@@ -102,7 +107,8 @@ val equal :
   string ->
   string ->
   bool
-(** [equal ?mode a b] is [true] iff [diff ?mode a b] is {!No_diff}. *)
+(** [equal ?mode a b] is [true] iff [diff ?mode a b] is {!No_diff}. Under
+    [`Canonical] that is exactly byte equality of the two canonical forms. *)
 
 val as_tree_diff : t -> Tree_diff.t option
 (** [as_tree_diff result] returns the underlying [Tree_diff.t] when [result] is

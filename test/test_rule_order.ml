@@ -71,6 +71,28 @@ let custom_property_layer_and_meta_survive () =
       Alcotest.failf "expected one rule holding one declaration, got %d rules"
         (List.length ds)
 
+let custom_property_font_name_quoting_converges () =
+  (* CSS Fonts 4 sec. 15.3: a multi-word family name spells the same family
+     quoted or as the ident sequence it unquotes to, and a custom property
+     holding a font stack substitutes either form identically into
+     [font-family]. Emission keeps whichever the author wrote, so only the
+     projection can bring the two spellings together. *)
+  let quoted =
+    {|:root{--font-sans:ui-sans-serif,system-ui,"Noto Color Emoji"}|}
+  in
+  let unquoted =
+    ":root{--font-sans:ui-sans-serif,system-ui,Noto Color Emoji}"
+  in
+  Alcotest.(check string)
+    "the quoted spelling folds onto the ident sequence" (canonical unquoted)
+    (canonical quoted);
+  (* Gated on a generic family being present: without one the property is
+     type-unknown, and a single-word string could be a [<custom-ident>] some
+     other substitution context reads as a string. *)
+  Alcotest.(check bool)
+    "a single-word string stays opaque" true
+    (canonical {|.a{--x:"foo"}|} <> canonical ".a{--x:foo}")
+
 let media_and_independent_rule_converge () =
   (* A conditional block whose rules cannot conflict with a neighbouring rule
      reorders with it, so both source orderings reach one canonical form. *)
@@ -253,6 +275,8 @@ let suite =
         custom_property_importance_survives;
       Alcotest.test_case "custom-property layer and meta survive" `Quick
         custom_property_layer_and_meta_survive;
+      Alcotest.test_case "custom-property font-name quoting converges" `Quick
+        custom_property_font_name_quoting_converges;
       Alcotest.test_case "media and independent rule converge" `Quick
         media_and_independent_rule_converge;
       Alcotest.test_case "media conflict keeps source order" `Quick

@@ -895,7 +895,10 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
       if changes_parts <> [] then
         add_strings buf [ "("; String.concat ", " changes_parts; ")\n" ]
       else if container_changes = [] then
-        Buffer.add_string buf "(position changed)\n"
+        (* A [Modified] carrying neither a rule nor a container change says only
+           that the container differs. Calling it a position change names a
+           difference nobody established; [Reordered] is what reports one. *)
+        Buffer.add_string buf "(modified, no details)\n"
       else Buffer.add_char buf '\n';
       pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
           (* Show rule changes at this level *)
@@ -1657,45 +1660,59 @@ let handle_structural_diff rules1 rules2 =
 
 let rule_diffs rules1 rules2 = handle_structural_diff rules1 rules2
 
+(* The values a rule writes for [name], in the order it writes them. *)
+let occurrences_of name props =
+  List.filter_map (fun (p, v) -> if p = name then Some v else None) props
+
+(* The property names of [props], each once, in first-appearance order. *)
+let names_of props =
+  List.fold_left
+    (fun acc (p, _) -> if List.mem p acc then acc else p :: acc)
+    [] props
+  |> List.rev
+
+(* Zip one name's occurrence lists. A rule may write a property several times -
+   a fallback chain is the usual reason - so occurrence n on one side answers
+   occurrence n on the other, and whichever side has more occurrences carries
+   the surplus. Matching by name alone binds every occurrence to the first entry
+   opposite and reports values neither side holds. *)
+let rec zip_occurrences name (modified, added, removed) values1 values2 =
+  match (values1, values2) with
+  | [], [] -> (modified, added, removed)
+  | v1 :: rest1, v2 :: rest2 ->
+      let modified =
+        if v1 = v2 then modified
+        else
+          { property_name = name; expected_value = v1; actual_value = v2 }
+          :: modified
+      in
+      zip_occurrences name (modified, added, removed) rest1 rest2
+  | _ :: rest1, [] ->
+      zip_occurrences name (modified, added, name :: removed) rest1 []
+  | [], _ :: rest2 ->
+      zip_occurrences name (modified, name :: added, removed) [] rest2
+
 (* Helper function to compute property diffs between two declaration lists,
    including added and removed properties *)
 let properties_diff decls1 decls2 : declaration list * string list * string list
     =
   let props1 = List.map decl_to_prop_value decls1 in
   let props2 = List.map decl_to_prop_value decls2 in
-
-  (* Find modified properties *)
-  let modified =
-    List.fold_left
-      (fun acc (p1, v1) ->
-        match List.assoc_opt p1 props2 with
-        | Some v2 when v1 <> v2 ->
-            { property_name = p1; expected_value = v1; actual_value = v2 }
-            :: acc
-        | _ -> acc)
-      [] props1
-    |> List.rev
+  (* Names the expected side writes first, then the ones only the actual side
+     writes, so the report reads in source order. *)
+  let names =
+    let names1 = names_of props1 in
+    names1 @ List.filter (fun p -> not (List.mem p names1)) (names_of props2)
   in
-
-  (* Find added properties (in actual but not in expected) *)
-  let added =
+  let modified, added, removed =
     List.fold_left
-      (fun acc (p2, _v2) ->
-        if not (List.mem_assoc p2 props1) then p2 :: acc else acc)
-      [] props2
-    |> List.rev
+      (fun acc name ->
+        zip_occurrences name acc
+          (occurrences_of name props1)
+          (occurrences_of name props2))
+      ([], [], []) names
   in
-
-  (* Find removed properties (in expected but not in actual) *)
-  let removed =
-    List.fold_left
-      (fun acc (p1, _v1) ->
-        if not (List.mem_assoc p1 props2) then p1 :: acc else acc)
-      [] props1
-    |> List.rev
-  in
-
-  (modified, added, removed)
+  (List.rev modified, List.rev added, List.rev removed)
 
 (* Helper functions for converting rule changes - moved here for mutual
    recursion *)
@@ -2317,7 +2334,7 @@ let keyframes_diff items1 items2 =
   in
   diffs ~key_of ~key_equal ~is_empty_diff items1 items2
 
-let process_nested_keyframes ~depth:_ stmts1 stmts2 =
+let process_nested_keyframes stmts1 stmts2 =
   let items1 = List.filter_map Css.as_keyframes stmts1 in
   let items2 = List.filter_map Css.as_keyframes stmts2 in
   let added, removed, modified = keyframes_diff items1 items2 in
@@ -2431,7 +2448,7 @@ let rec media_condition_differs rules_list1 rules_list2 =
   let has_immediate =
     added_r <> [] || removed_r <> [] || modified_r <> [] || regrouped_r <> []
   in
-  let has_nested = nested_differences ~depth:1 all_rules1 all_rules2 <> [] in
+  let has_nested = nested_differences all_rules1 all_rules2 <> [] in
   if has_immediate || has_nested || block_count_differs then
     Some (all_rules1, all_rules2)
   else None
@@ -2470,16 +2487,14 @@ and media_diff items1 items2 =
     groups2;
   (!added, !removed, !modified)
 
-and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
-    ~stmts2 ~block_structure_changed cond rules1 rules2 =
+and process_modified_container ~container_type ~extract_fn ~stmts1 ~stmts2
+    ~block_structure_changed cond rules1 rules2 =
   (* Skip if this condition has a block structure change *)
   if Hashtbl.mem block_structure_changed cond then None
   else
     let rule_changes = to_rule_changes rules1 rules2 in
     (* Recursively check deeper nesting *)
-    let nested_containers =
-      nested_differences ~depth:(depth + 1) rules1 rules2
-    in
+    let nested_containers = nested_differences rules1 rules2 in
     (* Check for position changes within parent container *)
     let pos1 =
       container_position extract_fn cond stmts1 |> Option.value ~default:(-1)
@@ -2499,8 +2514,8 @@ and process_modified_container ~container_type ~extract_fn ~depth ~stmts1
            nested_containers)
     else None
 
-and process_nested_containers ~container_type ~extract_fn ~diff_fn ~depth stmts1
-    stmts2 =
+and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
+    =
   let items_with_pos1 = extract_items_with_positions extract_fn stmts1 in
   let items_with_pos2 = extract_items_with_positions extract_fn stmts2 in
   let block_structure_changed =
@@ -2530,8 +2545,8 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn ~depth stmts1
   List.iter
     (fun (cond, rules1, rules2) ->
       match
-        process_modified_container ~container_type ~extract_fn ~depth ~stmts1
-          ~stmts2 ~block_structure_changed cond rules1 rules2
+        process_modified_container ~container_type ~extract_fn ~stmts1 ~stmts2
+          ~block_structure_changed cond rules1 rules2
       with
       | Some diff -> diffs := diff :: !diffs
       | None -> ())
@@ -2556,7 +2571,7 @@ and layer_diff items1 items2 =
     if has_immediate_diffs then false
     else
       (* Also check for nested differences *)
-      let nested_diffs = nested_differences ~depth:1 rules1 rules2 in
+      let nested_diffs = nested_differences rules1 rules2 in
       nested_diffs = []
   in
   let added, removed, modified_pairs =
@@ -2583,7 +2598,7 @@ and layer_diff items1 items2 =
 
 (* Shared helper: collect added/removed container diffs and process modified
    containers with the standard rule-change + nesting logic. *)
-and collect_container_diffs ~container_type ~depth added removed modified =
+and collect_container_diffs ~container_type added removed modified =
   let diffs = ref [] in
   List.iter
     (fun (condition, rules) ->
@@ -2596,9 +2611,7 @@ and collect_container_diffs ~container_type ~depth added removed modified =
   List.iter
     (fun (condition, rules1, rules2) ->
       let rule_changes = to_rule_changes rules1 rules2 in
-      let nested_containers =
-        nested_differences ~depth:(depth + 1) rules1 rules2
-      in
+      let nested_containers = nested_differences rules1 rules2 in
       if rule_changes <> [] || nested_containers <> [] then
         diffs :=
           Modified
@@ -2613,17 +2626,16 @@ and collect_container_diffs ~container_type ~depth added removed modified =
   !diffs
 
 (* Process layers separately due to different type signature *)
-and process_nested_layers ~depth stmts1 stmts2 =
+and process_nested_layers stmts1 stmts2 =
   let items1 = List.filter_map Css.as_layer stmts1 in
   let items2 = List.filter_map Css.as_layer stmts2 in
   let added, removed, modified = layer_diff items1 items2 in
-  collect_container_diffs ~container_type:`Layer ~depth added removed modified
+  collect_container_diffs ~container_type:`Layer added removed modified
 
 and container_has_no_diff (_, _, rules1) (_, _, rules2) =
   let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
   let has_immediate_diffs = a_r <> [] || r_r <> [] || m_r <> [] || rg_r <> [] in
-  if has_immediate_diffs then false
-  else nested_differences ~depth:1 rules1 rules2 = []
+  if has_immediate_diffs then false else nested_differences rules1 rules2 = []
 
 (* Container diff function for @container rules *)
 and container_diff items1 items2 =
@@ -2639,15 +2651,14 @@ and container_diff items1 items2 =
   (added, removed, modified)
 
 (* Process container rules *)
-and process_nested_containers_with_name ~depth stmts1 stmts2 =
+and process_nested_containers_with_name stmts1 stmts2 =
   let items1 = List.filter_map Css.as_container stmts1 in
   let items2 = List.filter_map Css.as_container stmts2 in
   let added, removed, modified = container_diff items1 items2 in
-  collect_container_diffs ~container_type:`Container ~depth added removed
-    modified
+  collect_container_diffs ~container_type:`Container added removed modified
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
-and process_nested_rules ~depth stmts1 stmts2 =
+and process_nested_rules stmts1 stmts2 =
   (* Extract (selector_key, nested_statements) for all rules, including those
      with empty nesting. This allows detecting when nesting is added/removed. *)
   let extract_nesting stmts =
@@ -2667,9 +2678,7 @@ and process_nested_rules ~depth stmts1 stmts2 =
       match List.find_opt (fun (s, _) -> s = sel1) items2 with
       | Some (_, nested2) when nested1 <> nested2 ->
           let rule_changes = to_rule_changes nested1 nested2 in
-          let nested_containers =
-            nested_differences ~depth:(depth + 1) nested1 nested2
-          in
+          let nested_containers = nested_differences nested1 nested2 in
           if rule_changes <> [] || nested_containers <> [] then
             diffs :=
               Modified
@@ -2692,7 +2701,7 @@ and process_nested_rules ~depth stmts1 stmts2 =
 
 (* Compare one pair of at-rule blocks that occupy the same position under the
    same head. *)
-and at_rule_pair_diff ~depth (head, body1, text1) (_, body2, text2) =
+and at_rule_pair_diff (head, body1, text1) (_, body2, text2) =
   let modified rules actual_rules rule_changes container_changes =
     Modified
       {
@@ -2705,9 +2714,7 @@ and at_rule_pair_diff ~depth (head, body1, text1) (_, body2, text2) =
   match (body1, body2) with
   | Block block1, Block block2 ->
       let rule_changes = to_rule_changes block1 block2 in
-      let container_changes =
-        nested_differences ~depth:(depth + 1) block1 block2
-      in
+      let container_changes = nested_differences block1 block2 in
       if rule_changes = [] && container_changes = [] then None
       else Some (modified block1 block2 rule_changes container_changes)
   | Declarations decls1, Declarations decls2 ->
@@ -2718,7 +2725,7 @@ and at_rule_pair_diff ~depth (head, body1, text1) (_, body2, text2) =
       Some (modified [] [] [ at_rule_text_change text1 text2 ] [])
   | Block _, _ | Declarations _, _ | Opaque, _ -> None
 
-and process_at_rules ~depth stmts1 stmts2 =
+and process_at_rules stmts1 stmts2 =
   let items1 = at_rule_items stmts1 and items2 = at_rule_items stmts2 in
   let added, removed, pairs =
     diffs ~key_of:fst ~key_equal:( = )
@@ -2732,35 +2739,37 @@ and process_at_rules ~depth stmts1 stmts2 =
   List.map (fun (_, item) -> Added (info item)) added
   @ List.map (fun (_, item) -> Removed (info item)) removed
   @ List.filter_map
-      (fun ((_, item1), (_, item2)) -> at_rule_pair_diff ~depth item1 item2)
+      (fun ((_, item1), (_, item2)) -> at_rule_pair_diff item1 item2)
       pairs
 
 (* Main recursive function for nested differences *)
-and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
+(* Every branch below recurses on the statements of a block, which is a strictly
+   smaller list than the one holding it, so the walk terminates on the depth of
+   the stylesheet. A cutoff here is a cutoff of the answer: the detection
+   helpers ([media_condition_differs], [layer_diff]'s [is_empty_diff],
+   [container_has_no_diff]) call back in to decide whether a container differs
+   at all, so a container past the cutoff was reported as identical, verdict and
+   exit code included. *)
+and nested_differences (stmts1 : Css.statement list)
     (stmts2 : Css.statement list) : container_diff list =
-  if depth > 3 then [] (* Prevent infinite recursion *)
-  else
-    (* Process CSS nesting (& .foo { ... } inside rules) *)
-    process_nested_rules ~depth stmts1 stmts2
-    (* Process media queries *)
-    @ process_nested_containers ~container_type:`Media
-        ~extract_fn:extract_media_as_string ~diff_fn:media_diff ~depth stmts1
-        stmts2
-    (* Process layers - different type signature *)
-    @ process_nested_layers ~depth stmts1 stmts2
-    (* Process supports - reuses media_diff since they have the same
-       structure *)
-    @ process_nested_containers ~container_type:`Supports
-        ~extract_fn:extract_supports_as_string ~diff_fn:media_diff ~depth stmts1
-        stmts2
-    (* Process container queries *)
-    @ process_nested_containers_with_name ~depth stmts1 stmts2
-    (* Process property declarations *)
-    @ process_nested_properties stmts1 stmts2
-    (* Process keyframes animations *)
-    @ process_nested_keyframes ~depth stmts1 stmts2
-    (* Process the at-rules that carry no selector of their own *)
-    @ process_at_rules ~depth stmts1 stmts2
+  (* Process CSS nesting (& .foo { ... } inside rules) *)
+  process_nested_rules stmts1 stmts2
+  (* Process media queries *)
+  @ process_nested_containers ~container_type:`Media
+      ~extract_fn:extract_media_as_string ~diff_fn:media_diff stmts1 stmts2
+  (* Process layers - different type signature *)
+  @ process_nested_layers stmts1 stmts2
+  (* Process supports - reuses media_diff since they have the same structure *)
+  @ process_nested_containers ~container_type:`Supports
+      ~extract_fn:extract_supports_as_string ~diff_fn:media_diff stmts1 stmts2
+  (* Process container queries *)
+  @ process_nested_containers_with_name stmts1 stmts2
+  (* Process property declarations *)
+  @ process_nested_properties stmts1 stmts2
+  (* Process keyframes animations *)
+  @ process_nested_keyframes stmts1 stmts2
+  (* Process the at-rules that carry no selector of their own *)
+  @ process_at_rules stmts1 stmts2
 
 (* Check if containers appear at different positions in statement sequence *)
 let detect_container_position_changes stmts1 stmts2 containers =
@@ -2903,7 +2912,7 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
 
   (* Delegate all container and nested-container diffs to the generic walker *)
   let containers =
-    let base_containers = nested_differences ~depth:0 all1 all2 in
+    let base_containers = nested_differences all1 all2 in
     detect_container_position_changes all1 all2 base_containers
   in
 

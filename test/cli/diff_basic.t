@@ -155,12 +155,12 @@ The --diff=string mode falls back to character-level diffing.
   > EOF
   $ NO_COLOR=1 cascade diff --diff=string g.css h.css
   CSS: 18 chars vs 19 chars (5.6% diff)
-  No structural differences
+  Changes: none classified structurally (see report below)
   
   Strings differ at position 12 (line 0, col 12)
   
-  --- Expected
-  +++ Actual
+  --- g.css
+  +++ h.css
   @@ position 12 @@
   -.x { color: red }
   +.x { color: blue }
