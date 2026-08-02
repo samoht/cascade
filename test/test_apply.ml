@@ -32,9 +32,16 @@ let node ?id ?(classes = []) ?(attrs = []) ?(children = []) name =
 let inline_style decls =
   Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables decls
 
+(* [A.compute] takes a parsed sheet, so the fixtures parse here. They are all
+   meant to parse; one that does not is a broken test, not a case under test. *)
+let parse css =
+  match Css.of_string css with
+  | Ok p -> p.Css.stylesheet
+  | Error e -> Alcotest.failf "fixture did not parse: %s" (Error.to_string e)
+
 let projects_static_rule_to_inline_style () =
   let n = node ~classes:[ "card" ] "div" in
-  let result = A.compute ~css:".card{color:red;margin:0}" [ n ] in
+  let result = A.compute ~sheet:(parse ".card{color:red;margin:0}") [ n ] in
   match result.styles with
   | [ (node, decls) ] ->
       Alcotest.(check bool) "same node" true (Node.equal node n);
@@ -46,7 +53,9 @@ let projects_static_rule_to_inline_style () =
 
 let keeps_stateful_rule_in_css () =
   let n = node ~classes:[ "card" ] "div" in
-  let result = A.compute ~css:".card{margin:0}.card:hover{color:blue}" [ n ] in
+  let result =
+    A.compute ~sheet:(parse ".card{margin:0}.card:hover{color:blue}") [ n ]
+  in
   Alcotest.(check string)
     "inline static rule" "margin:0"
     (match result.styles with
@@ -60,7 +69,9 @@ let keeps_stateful_rule_in_css () =
    just like top-level ones instead of being kept wholesale in a <style>. *)
 let projects_layered_rule_to_inline_style () =
   let n = node ~classes:[ "card" ] "div" in
-  let result = A.compute ~css:"@layer u{.card{color:red;margin:0}}" [ n ] in
+  let result =
+    A.compute ~sheet:(parse "@layer u{.card{color:red;margin:0}}") [ n ]
+  in
   match result.styles with
   | [ (node, decls) ] ->
       Alcotest.(check bool) "same node" true (Node.equal node n);
@@ -76,7 +87,9 @@ let projects_layered_rule_to_inline_style () =
 let keeps_stateful_rule_inside_layer_in_css () =
   let n = node ~classes:[ "card" ] "div" in
   let result =
-    A.compute ~css:"@layer u{.card{margin:0}.card:hover{color:blue}}" [ n ]
+    A.compute
+      ~sheet:(parse "@layer u{.card{margin:0}.card:hover{color:blue}}")
+      [ n ]
   in
   Alcotest.(check string)
     "inline static rule" "margin:0"
@@ -91,7 +104,7 @@ let keeps_stateful_rule_inside_layer_in_css () =
    declaration list. *)
 let projected css =
   let n = node ~classes:[ "x" ] "p" in
-  let result = A.compute ~css [ n ] in
+  let result = A.compute ~sheet:(parse css) [ n ] in
   match result.styles with
   | [ (_, decls) ] -> inline_style decls
   | _ -> Alcotest.fail "expected one inline assignment"
@@ -157,7 +170,9 @@ let non_competing_layers_both_project () =
 (* The whole split of [css] over [roots]: the style attribute written onto [n],
    the <style> body kept beside it, and the count of kept rules. *)
 let check_split name ?roots ~css ~inline ~keep ~kept n =
-  let result = A.compute ~css (Option.value roots ~default:[ n ]) in
+  let result =
+    A.compute ~sheet:(parse css) (Option.value roots ~default:[ n ])
+  in
   let decls =
     match List.find_opt (fun (m, _) -> Node.equal m n) result.styles with
     | Some (_, decls) -> decls
@@ -243,7 +258,9 @@ let kept_counts_the_rules_a_media_block_holds () =
   let n = node ~classes:[ "a" ] "p" in
   let result =
     A.compute
-      ~css:"@media(min-width:10px){.a{color:red}.b{color:blue}.c{color:green}}"
+      ~sheet:
+        (parse
+           "@media(min-width:10px){.a{color:red}.b{color:blue}.c{color:green}}")
       [ n ]
   in
   Alcotest.(check int) "kept rules" 3 result.kept
@@ -253,19 +270,43 @@ let kept_counts_the_rules_a_media_block_holds () =
 let kept_counts_a_rule_less_at_rule_once () =
   let n = node ~classes:[ "a" ] "p" in
   let result =
-    A.compute ~css:"@font-face{font-family:x;src:url(a.woff2)}" [ n ]
+    A.compute ~sheet:(parse "@font-face{font-family:x;src:url(a.woff2)}") [ n ]
   in
   Alcotest.(check int) "kept rules" 1 result.kept
 
-let invalid_css_is_empty () =
-  let result = A.compute ~css:"a{" [ node "div" ] in
-  Alcotest.(check string)
-    "inline declarations" ""
-    (match result.styles with
-    | [ (_, decls) ] -> inline_style decls
-    | _ -> Alcotest.fail "expected one inline assignment");
-  Alcotest.(check string) "kept css" "" result.keep_css;
-  Alcotest.(check int) "kept count" 0 result.kept
+(* A stylesheet the parser had to recover and an empty one project onto exactly
+   the same nothing, so the projection cannot be what tells them apart. Taking a
+   parsed sheet leaves that to {!Css.of_string}, whose warnings the caller reads
+   before any of this runs; parsing the CSS text here would swallow them and
+   report both as the same empty result. ["a{"] is neither case: CSS Syntax 3
+   sec. 5.4 closes the block at EOF, so it is a valid rule with no
+   declarations. *)
+let invalid_css_is_not_empty_css () =
+  let warnings css =
+    match Css.of_string css with
+    | Ok p -> p.Css.warnings
+    | Error e ->
+        Alcotest.failf "unexpected fatal parse error: %s" (Error.to_string e)
+  in
+  Alcotest.(check bool)
+    "recovered CSS carries diagnostics" true
+    (warnings "@@@@ }}} {{{ !!! ;;;" <> []);
+  Alcotest.(check bool) "empty CSS carries none" true (warnings "" = []);
+  Alcotest.(check bool)
+    "a block closed at EOF carries none either" true
+    (warnings "a{" = []);
+  List.iter
+    (fun css ->
+      let result = A.compute ~sheet:(parse css) [ node "div" ] in
+      Alcotest.(check string)
+        ("inline declarations: " ^ css)
+        ""
+        (match result.styles with
+        | [ (_, decls) ] -> inline_style decls
+        | _ -> Alcotest.fail "expected one inline assignment");
+      Alcotest.(check string) ("kept css: " ^ css) "" result.keep_css;
+      Alcotest.(check int) ("kept count: " ^ css) 0 result.kept)
+    [ "@@@@ }}} {{{ !!! ;;;"; ""; "a{" ]
 
 let suite =
   ( "apply",
@@ -309,5 +350,6 @@ let suite =
         kept_counts_the_rules_a_media_block_holds;
       Alcotest.test_case "kept counts a rule-less at-rule once" `Quick
         kept_counts_a_rule_less_at_rule_once;
-      Alcotest.test_case "invalid css is empty" `Quick invalid_css_is_empty;
+      Alcotest.test_case "invalid css is not empty css" `Quick
+        invalid_css_is_not_empty_css;
     ] )

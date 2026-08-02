@@ -227,29 +227,25 @@ module Make (Node : Resolve.NODE) = struct
         acc (Node.children node)
     end
 
-  let compute ?(minimal = false) ~css roots =
-    match Css.of_string css with
-    | Error _ -> { styles = []; keep_css = ""; kept = 0 }
-    | Ok p ->
-        (* Flatten nesting up front, so the split and {!R.resolve} see the same
-           flat rules. *)
-        let stmts = Flatten.block p.Css.stylesheet in
-        (* Properties a kept rule can override must stay in the cascade. *)
-        let dyn = dynamic_props SSet.empty stmts in
-        let is_dyn d =
-          SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
-        in
-        let keep, inline = split ~is_dyn stmts in
-        let keep_css =
-          if keep = [] then ""
-          else Css.to_string ~minify:true (Stylesheet.v keep)
-        in
-        let inline_sheet = Stylesheet.v inline in
-        let styles =
-          List.fold_left
-            (fun acc root -> walk ~minimal inline_sheet [] root acc)
-            [] roots
-          |> List.rev
-        in
-        { styles; keep_css; kept = count_kept keep }
+  let compute ?(minimal = false) ~sheet roots =
+    (* Flatten nesting up front, so the split and {!R.resolve} see the same flat
+       rules. *)
+    let stmts = Flatten.block sheet in
+    (* Properties a kept rule can override must stay in the cascade. *)
+    let dyn = dynamic_props SSet.empty stmts in
+    let is_dyn d =
+      SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
+    in
+    let keep, inline = split ~is_dyn stmts in
+    let keep_css =
+      if keep = [] then "" else Css.to_string ~minify:true (Stylesheet.v keep)
+    in
+    let inline_sheet = Stylesheet.v inline in
+    let styles =
+      List.fold_left
+        (fun acc root -> walk ~minimal inline_sheet [] root acc)
+        [] roots
+      |> List.rev
+    in
+    { styles; keep_css; kept = count_kept keep }
 end

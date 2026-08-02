@@ -30,6 +30,13 @@ let color buf i = pick [ "#abc"; "#123"; "#f00"; "#00f"; "red"; "blue" ] buf i
 let inline_style ds =
   Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables ds
 
+(* [A.compute] takes a parsed sheet. The generator only assembles well-formed
+   rules, so a fatal parse error is a bug in the generator, not a finding. *)
+let parse css =
+  match Css.of_string css with
+  | Ok p -> p.Css.stylesheet
+  | Error e -> fail (Error.to_string e)
+
 (* Compare two projections structurally: the inline style written onto each node
    in tree order, plus the number of rules kept in the <style>. The kept body
    itself is left out because a kept rule stays inside its layer, so its text
@@ -75,8 +82,8 @@ let test_layer_wrapping_invariant buf =
           layer "states" hover_rule;
         ]
   in
-  let r0 = summary (A.compute ~css:reference roots) in
-  let r1 = summary (A.compute ~css:layered roots) in
+  let r0 = summary (A.compute ~sheet:(parse reference) roots) in
+  let r1 = summary (A.compute ~sheet:(parse layered) roots) in
   if r0 <> r1 then fail "layer wrapping changed the projected styles"
 
 let suite =

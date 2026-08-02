@@ -23,6 +23,11 @@
   replaced the multi-pass fixpoint (#288)
 - `Resolve.NODE` gains `text_children`, the data of a node's direct child text
   nodes, which `:empty` needs (#286)
+- `Apply.Make(...).compute` takes `~sheet:Stylesheet.t` instead of
+  `~css:string`. It parsed the text itself and answered an empty result when
+  the parse failed, so a caller could not tell invalid CSS from empty CSS; the
+  parse, and the warnings `Css.of_string` collects with it, now stay with the
+  caller
 
 ### Parsing
 

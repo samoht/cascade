@@ -53,9 +53,14 @@ let inline_html ~minimal ~html ~extra =
     |> String.concat "\n"
   in
   let css = page_css ^ "\n" ^ extra in
+  let sheet =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Cascade.Stylesheet.empty_stylesheet
+  in
   let roots = Soup.children soup |> Soup.elements |> Soup.to_list in
   let { Cascade.Apply.styles; keep_css; kept } =
-    Apply.compute ~minimal ~css roots
+    Apply.compute ~minimal ~sheet roots
   in
   List.iter (fun (node, decls) -> style_node node decls) styles;
   (* the static rules now live on the elements; keep only the un-inlinable

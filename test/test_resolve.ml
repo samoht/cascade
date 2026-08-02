@@ -203,9 +203,12 @@ let test_resolve_anonymous_layers () =
    block. *)
 let test_apply_compute () =
   let module A = Apply.Make (Node) in
-  let result : tree Apply.result =
-    A.compute ~css:"#s2{font-weight:700}#s2:hover{color:#00f}" [ section ]
+  let sheet =
+    match Css.of_string "#s2{font-weight:700}#s2:hover{color:#00f}" with
+    | Ok p -> p.Css.stylesheet
+    | Error e -> Alcotest.failf "fixture did not parse: %s" (Error.to_string e)
   in
+  let result : tree Apply.result = A.compute ~sheet [ section ] in
   let s2_decls =
     List.find_map
       (fun (n, decls) -> if Node.equal n s2 then Some decls else None)
