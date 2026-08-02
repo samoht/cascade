@@ -19,6 +19,10 @@ type t = {
           vendor-prefixed declaration whose unprefixed twin modern browsers
           support. On: keep every prefix (spec-literal, maximal compatibility).
       *)
+  stats : Stats.t;
+      (** Profiling recorder for the run this context belongs to. Carried here
+          because every pass that counts anything already takes a context, and a
+          context is built per run, so two runs cannot share a recorder. *)
 }
 
 let fragment =
@@ -32,38 +36,31 @@ let fragment =
     closed_world = false;
     objective = `Transfer;
     enforce_spec = false;
+    stats = Stats.v ();
   }
 
 let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) = function
-  | Some scope ->
-      {
-        fragment with
-        scope;
-        lossless;
-        aggressive;
-        regroup;
-        extend_lists;
-        closed_world;
-        objective;
-        enforce_spec;
-      }
-  | None ->
-      {
-        fragment with
-        lossless;
-        aggressive;
-        regroup;
-        extend_lists;
-        closed_world;
-        objective;
-        enforce_spec;
-      }
+    ?(enforce_spec = false) ?stats scope =
+  let stats = match stats with Some stats -> stats | None -> Stats.v () in
+  let scope = match scope with Some scope -> scope | None -> fragment.scope in
+  {
+    fragment with
+    scope;
+    lossless;
+    aggressive;
+    regroup;
+    extend_lists;
+    closed_world;
+    objective;
+    enforce_spec;
+    stats;
+  }
 
 let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) ?(registered = fun _ -> false) scope =
+    ?(enforce_spec = false) ?(registered = fun _ -> false) ?stats scope =
+  let stats = match stats with Some stats -> stats | None -> Stats.v () in
   {
     scope;
     registered;
@@ -74,6 +71,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     closed_world;
     objective;
     enforce_spec;
+    stats;
   }
 
 let scope t = t.scope
@@ -85,6 +83,7 @@ let extend_lists t = t.extend_lists
 let closed_world t = t.closed_world
 let objective t = t.objective
 let enforce_spec t = t.enforce_spec
+let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
 
 let pp_scope ctx = function

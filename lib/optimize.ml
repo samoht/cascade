@@ -63,48 +63,6 @@ let deduplicate_declarations = Shorthand.deduplicate_declarations
 let single_rule_without_nested = Rule.single
 let finalize_rule_without_nested = Rule.finalize
 
-(* Per-pass and global counters for the --profile CLI flag. Reset at each
-   [Optimize.stylesheet] entry; bumped from the hot loops below. *)
-type pass_stat = Stats.pass_stat = {
-  mutable time : float;
-  mutable calls : int;
-  mutable changes : int;
-  mutable rules_in : int;
-  mutable rules_out : int;
-}
-
-let pass_times = Stats.pass_times
-let set_profile = Stats.set_profile
-
-type iteration_stat = Stats.iteration_stat = {
-  fixpoint : int;
-  iteration : int;
-  local_iteration : int;
-  before_rules : int;
-  after_rules : int;
-  before_bytes : int;
-  after_bytes : int;
-  bytes_saved : int;
-  active_passes : int;
-  changed_passes : int;
-  elapsed : float;
-}
-
-let iteration_stats = Stats.iteration_stats
-
-type counters = Stats.counters = {
-  mutable iterations : int;
-  mutable factor_fixpoints_run : int;
-  mutable marginal_stops : int;
-  mutable factor_fixpoints_skipped : int;
-  mutable factor_preflight_gain : int;
-  mutable factor_bytes_saved : int;
-  mutable factor_transfer_reverts : int;
-}
-
-let counters = Stats.counters
-let reset_counters () = Stats.reset ()
-
 (** {1 Statement Optimization} *)
 
 let merge_consecutive_layers = Block.merge_consecutive_layers
@@ -1158,9 +1116,8 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
 let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) ?(regroup = true)
     ?(closed_world = false) ?(objective = `Transfer)
-    ?(prune_unused_custom_props = false) (stylesheet : t) : t =
+    ?(prune_unused_custom_props = false) ?stats (stylesheet : t) : t =
   Selector_summary.clear_memo ();
-  reset_counters ();
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
@@ -1172,7 +1129,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
-      ~registered scope
+      ~registered ?stats scope
   in
   let result =
     run_pipeline
@@ -1187,7 +1144,7 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     if lossless then canonicalize_declaration_order result else result
   in
   Log.debug (fun m ->
-      let c = counters in
+      let c = (Stats.snapshot (Ctx.stats ctx)).counters in
       m
         "optimized: %d factoring fixpoints run, %d skipped, %d reverted by the \
          transfer gate, %d bytes saved"

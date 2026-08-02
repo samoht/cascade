@@ -6,7 +6,6 @@ let src = Logs.Src.create "cascade.factor" ~doc:"Cascade rule factoring"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
-let counters = Stats.counters
 let rules_pp_size = Size.rules
 let list_map_preserve = Common.List.map_preserve
 
@@ -98,34 +97,34 @@ let ordered_rules rules graph =
 let should_run_preflight ~ctx summary =
   if Preflight.declaration_count summary > Preflight.small_declaration_threshold
   then
-    counters.factor_preflight_gain <-
-      counters.factor_preflight_gain + Preflight.estimated_gain summary;
+    Stats.add_preflight_gain (Ctx.stats ctx) (Preflight.estimated_gain summary);
   Preflight.useful summary || Ctx.aggressive ctx
 
-let record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
-    ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed =
-  Stats.record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
-    ~after_rules ~after_bytes ~bytes_saved ~active_passes:1
+let record_iteration stats ~fixpoint ~local_iteration ~before_rules
+    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed =
+  Stats.record_iteration stats ~fixpoint ~local_iteration ~before_rules
+    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~active_passes:1
     ~changed_passes:(if changed then 1 else 0)
     ~elapsed
 
 let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
-  counters.iterations <- counters.iterations + 1;
-  Stats.reset_saving ();
+  let stats = Ctx.stats ctx in
+  Stats.reset_saving stats;
   let before_rules = List.length rules in
-  let before_bytes = if Stats.profile () then rules_pp_size rules else 0 in
+  let profile = Stats.profile stats in
+  let before_bytes = if profile then rules_pp_size rules else 0 in
   let started_at = Unix.gettimeofday () in
   let graph = Rule_scheduler.run ~ctx ~finalize graph in
   let ordered = ordered_rules rules graph in
   let rules' = list_map_preserve finalize ordered in
-  let after_bytes = if Stats.profile () then rules_pp_size rules' else 0 in
+  let after_bytes = if profile then rules_pp_size rules' else 0 in
   let elapsed = Unix.gettimeofday () -. started_at in
-  let bytes_saved = Stats.saving () in
+  let bytes_saved = Stats.saving stats in
   (* Both return the input unchanged by physical identity on a no-op, so a
      pointer compare detects change without rendering to CSS. *)
   let changed = rules' != rules in
   let after_rules = List.length rules' in
-  record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
+  record_iteration stats ~fixpoint ~local_iteration ~before_rules ~before_bytes
     ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed;
   (* Per fixpoint iteration, not per rule, so the closure cost is noise. The
      byte columns are only computed under [--profile]; rules and savings are
@@ -190,6 +189,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
   with
   | Some rules -> rules
   | None ->
+      let stats = Ctx.stats ctx in
       let summary = Preflight.summarize rules in
       let graph =
         Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
@@ -201,14 +201,12 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
       in
       let result =
         if known_revert || not (should_run_preflight ~ctx summary) then begin
-          counters.factor_fixpoints_skipped <-
-            counters.factor_fixpoints_skipped + 1;
+          Stats.skip_fixpoint stats;
           log_skip ~known_revert summary;
           ordered_rules rules graph
         end
         else begin
-          counters.factor_fixpoints_run <- counters.factor_fixpoints_run + 1;
-          let fixpoint = counters.factor_fixpoints_run in
+          let fixpoint = Stats.start_fixpoint stats in
           let unfactored = ordered_rules rules graph in
           let factored =
             optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
@@ -218,8 +216,7 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
             factored != rules
             && factored_grows_transfer ~ctx ~unfactored ~factored
           then begin
-            counters.factor_transfer_reverts <-
-              counters.factor_transfer_reverts + 1;
+            Stats.revert_fixpoint stats;
             log_transfer_revert ~fixpoint summary;
             (* Only a large segment is worth remembering: factoring a small one
                costs little, so suppressing it saves nothing and risks giving up

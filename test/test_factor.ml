@@ -47,20 +47,22 @@ let test_run_reaches_fixpoint_with_finalizer () =
     ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
     (render optimized)
 
+let fixpoints_run stats = (Stats.snapshot stats).counters.factor_fixpoints_run
+
 let test_cache_reuses_identical_rule_run () =
-  Stats.reset ();
+  let stats = Stats.v () in
+  let ctx = Ctx.v ~stats `Fragment in
   let cache = Factor.cache () in
   let input =
     rules
       ".a{display:flex;margin:1px}.b{display:flex;margin:2px}.c{display:flex;margin:3px}"
   in
-  let finalize = Rule.finalize ~ctx:Ctx.fragment in
-  let first = Factor.run ~cache ~ctx:Ctx.fragment ~finalize input in
-  let fixpoints = Stats.counters.factor_fixpoints_run in
-  ignore (Factor.run ~cache ~ctx:Ctx.fragment ~finalize input);
+  let finalize = Rule.finalize ~ctx in
+  let first = Factor.run ~cache ~ctx ~finalize input in
+  let fixpoints = fixpoints_run stats in
+  ignore (Factor.run ~cache ~ctx ~finalize input);
   Alcotest.(check int)
-    "cached run does not start another fixpoint" fixpoints
-    Stats.counters.factor_fixpoints_run;
+    "cached run does not start another fixpoint" fixpoints (fixpoints_run stats);
   Alcotest.(check string)
     "first run still optimizes"
     ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
