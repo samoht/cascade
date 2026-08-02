@@ -52,10 +52,10 @@
 - A hex colour folds to its name whenever the name is no longer, which the
   hand-copied inversion table missed for `bisque`, `indigo`, `orchid`,
   `salmon`, `sienna`, `tomato` and `violet`: `#ffe4c4` stayed hex where
-  `#f0ffff` already became `azure`
+  `#f0ffff` already became `azure` (#289)
 - `Css.Values.read_color_name` reads every name `pp_color_name` prints, not 21
   of the 148, and `grey` reads as `Grey` rather than the `Gray` that prints
-  `gray`
+  `gray` (#289)
 - `--lossless` keeps a longhand in source order against the shorthand that
   resets it, whether the property is typed or not; moving the pair changed what
   the rule rendered (#267, #270)
@@ -121,6 +121,11 @@
   sec. 15.3: `--font-sans: ui-sans-serif, "Noto Color Emoji"` and
   `--font-sans: ui-sans-serif, Noto Color Emoji` reach one form. The structural
   comparator already folded the two together; the projection did not (#290)
+- Under `--lossless` it keys a `color(srgb ...)` whose channels land on whole
+  bytes as the `rgb()` spelling of the same colour, so `color(srgb 1 0 0)` and
+  `rgb(255 0 0)` stop reading as a difference. Exact conversions only:
+  `color(display-p3 1 0 0)` and an off-grid channel stay distinct, and the
+  printer still emits the function that was written (#289)
 
 ### Diff report
 

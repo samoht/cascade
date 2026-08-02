@@ -2629,6 +2629,28 @@ let exact_rgb_to_srgb_bytes c : (int * int * int * int) option =
   | Transparent -> Some (0, 0, 0, 0)
   | _ -> None
 
+(* CSS Color 4 sec. 10: [color(srgb r g b)] is [rgb()] with its channels scaled
+   to [0..1], so the two functions spell one colour exactly when every channel
+   lands on a whole byte. No other [color()] space converts to sRGB without a
+   transfer function or a matrix, so nothing else here is exact; a channel
+   outside the gamut, a [none] and a [var()] are all left alone. *)
+let exact_srgb_function_channels c : (int * int * int * alpha) option =
+  let byte : component -> int option = function
+    | Num f when f >= 0. && f <= 1. ->
+        let b = f *. 255. in
+        if Float.is_integer b then Some (Float.to_int b) else None
+    | Pct f when f >= 0. && f <= 100. ->
+        let b = f *. 255. /. 100. in
+        if Float.is_integer b then Some (Float.to_int b) else None
+    | _ -> None
+  in
+  match c with
+  | Color { space = Srgb; components = [ r; g; b ]; alpha } -> (
+      match (byte r, byte g, byte b) with
+      | Some r, Some g, Some b -> Some (r, g, b, alpha)
+      | _ -> None)
+  | _ -> None
+
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
    per-component weights and an [alpha] multiplier. [p1] / [p2] are in [0..100];
    missing values are normalised by the caller. *)
@@ -7145,13 +7167,33 @@ let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
       else Some (num f)
   | other -> other
 
-let normalize_static_modern_color ~in_feature_query ~lossless c =
+let normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c =
   let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
     | Some ab -> canonical_color_of_hex r g b ab
     | Option.None -> c
   in
-  if in_feature_query || lossless then drop_full_alpha c
+  (* A feature query asks whether the browser parses the function that was
+     written, so the spelling is the point there and no fold applies. *)
+  if in_feature_query then drop_full_alpha c
+  else if lossless then
+    match
+      if exact_srgb then exact_srgb_function_channels c else Option.None
+    with
+    | Some (r, g, b, alpha) -> (
+        match exact_alpha_value_byte alpha with
+        | Some a -> canonical_color_of_hex r g b a
+        | Option.None ->
+            (* The channels are exact but the alpha is not a whole byte, so
+               [rgb()] is as far as the fold goes: it is the same spelling the
+               lossless path leaves an authored [rgb()] in. *)
+            drop_full_alpha
+              (Rgba
+                 {
+                   rgb = Channels { r = Int r; g = Int g; b = Int b };
+                   a = alpha;
+                 }))
+    | Option.None -> drop_full_alpha c
   else
     match static_color_to_linear_srgb c with
     | Some (linear, alpha_f) -> (
@@ -7239,19 +7281,23 @@ let round_lab_family_axes ~lossless (c : color) : color =
    [@supports] tests). The sRGB fold runs on the authored coefficients first;
    [round_lab_family_axes] then rounds only what survives in its own colour
    space. *)
-let rec normalize_color ?(lossless = false) ~in_feature_query (c : color) :
-    color =
+let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
+    ~in_feature_query (c : color) : color =
+  let normalize_color ?(lossless = lossless) =
+    normalize_color ~lossless ~exact_srgb
+  in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   let static_fold () =
     round_lab_family_axes ~lossless
-      (normalize_static_modern_color ~in_feature_query ~lossless c)
+      (normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c)
   in
   match c with
   | Oklch { l = Some _; c = Some _; _ } -> static_fold ()
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  | Color _ -> normalize_static_modern_color ~in_feature_query ~lossless c
+  | Color _ ->
+      normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       normalize_hex_color c r g b a
   | Named orig_name -> normalize_named_color c orig_name

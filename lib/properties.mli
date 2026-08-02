@@ -11,12 +11,21 @@ val pp_property_value : ('a property * 'a) Pp.t
     value. *)
 
 val normalize_property_value :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> 'a property -> 'a -> 'a
+  ?lossless:bool ->
+  ?exact_srgb:bool ->
+  ?ctx:Values.calc_ctx ->
+  'a property ->
+  'a ->
+  'a
 (** [normalize_property_value ?lossless prop value] applies semantic
     (equivalence) canonicalisation to [value] so the optimizer holds a canonical
     AST and the pretty-printer stays a pure serialiser. Identity for properties
     whose folds have not yet migrated out of [pp]. [lossless] disables colour
-    approximation while keeping exact colour canonicalisation. *)
+    approximation while keeping exact colour canonicalisation.
+
+    [exact_srgb] is {!Values.normalize_color}'s flag of the same name, applied
+    to the properties whose whole value is a colour. It is for the canonical
+    diff projection only. *)
 
 val normalize_custom_property_value :
   ?lossless:bool ->
