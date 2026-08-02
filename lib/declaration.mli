@@ -21,10 +21,16 @@ val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
 val normalize :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
+  ?lossless:bool ->
+  ?exact_srgb:bool ->
+  ?ctx:Values.calc_ctx ->
+  declaration ->
+  declaration
 (** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
     the optimizer holds a canonical declaration and the pretty-printer stays a
-    pure serialiser. [lossless] disables colour approximation. *)
+    pure serialiser. [lossless] disables colour approximation. [exact_srgb] is
+    {!Properties.normalize_property_value}'s flag of the same name, for the
+    canonical diff projection only. *)
 
 val string_of_declaration : ?minify:bool -> declaration -> string
 (** [string_of_declaration ~minify decl] converts a declaration to its string

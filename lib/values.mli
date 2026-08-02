@@ -251,14 +251,21 @@ val normalize_duration : ?ctx:calc_ctx -> duration -> duration
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. *)
 
-val normalize_color : ?lossless:bool -> in_feature_query:bool -> color -> color
+val normalize_color :
+  ?lossless:bool -> ?exact_srgb:bool -> in_feature_query:bool -> color -> color
 (** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
     shortest spelling: a static colour in any space folds through sRGB to
     hex/named, hex shortens, and named<->hex picks the shorter.
     [in_feature_query] keeps a colour untouched inside an [@supports] test,
     where the exact spelling is the capability being probed. [lossless] disables
     lossy static colour-space and color-mix folds while preserving exact
-    named/hex and byte-exact rgb folds. *)
+    named/hex and byte-exact rgb folds.
+
+    [exact_srgb] (default [false], and only consulted under [lossless])
+    additionally folds a [color(srgb ...)] whose channels all land on a whole
+    byte, the one [color()] conversion that loses nothing. It exists for the
+    canonical diff projection, where [color(srgb 1 0 0)] and [rgb(255 0 0)] must
+    not read as a difference; emission leaves the authored function alone. *)
 
 val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
@@ -271,7 +278,10 @@ val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)
 
 val read_color_name : Cursor.t -> color_name
-(** [read_color_name] reads a {!type-color_name} value. *)
+(** [read_color_name] reads a {!type-color_name} value: every name
+    {!pp_color_name} prints, matched case-insensitively, and read back as the
+    constructor that prints it, so [grey] is [Grey] and not the [Gray] that
+    prints [gray]. *)
 
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)

@@ -865,6 +865,189 @@ let test_color_name () =
   neg_cursor read_color_name "123";
   neg_cursor read_color_name ""
 
+(* CSS Color 4 sec. 6.1, the whole named-colour set, written out here rather
+   than derived from the library so it can serve as the oracle: every name
+   [pp_color_name] prints must read back through [read_color_name], and must
+   read back as the constructor that prints it - [grey] is [Grey], not the
+   [Gray] that prints [gray]. *)
+let css_color_names =
+  [
+    "red";
+    "blue";
+    "green";
+    "white";
+    "black";
+    "yellow";
+    "cyan";
+    "magenta";
+    "gray";
+    "grey";
+    "orange";
+    "purple";
+    "pink";
+    "silver";
+    "maroon";
+    "fuchsia";
+    "lime";
+    "olive";
+    "navy";
+    "teal";
+    "aqua";
+    "aliceblue";
+    "antiquewhite";
+    "aquamarine";
+    "azure";
+    "beige";
+    "bisque";
+    "blanchedalmond";
+    "blueviolet";
+    "brown";
+    "burlywood";
+    "cadetblue";
+    "chartreuse";
+    "chocolate";
+    "coral";
+    "cornflowerblue";
+    "cornsilk";
+    "crimson";
+    "darkblue";
+    "darkcyan";
+    "darkgoldenrod";
+    "darkgray";
+    "darkgreen";
+    "darkgrey";
+    "darkkhaki";
+    "darkmagenta";
+    "darkolivegreen";
+    "darkorange";
+    "darkorchid";
+    "darkred";
+    "darksalmon";
+    "darkseagreen";
+    "darkslateblue";
+    "darkslategray";
+    "darkslategrey";
+    "darkturquoise";
+    "darkviolet";
+    "deeppink";
+    "deepskyblue";
+    "dimgray";
+    "dimgrey";
+    "dodgerblue";
+    "firebrick";
+    "floralwhite";
+    "forestgreen";
+    "gainsboro";
+    "ghostwhite";
+    "gold";
+    "goldenrod";
+    "greenyellow";
+    "honeydew";
+    "hotpink";
+    "indianred";
+    "indigo";
+    "ivory";
+    "khaki";
+    "lavender";
+    "lavenderblush";
+    "lawngreen";
+    "lemonchiffon";
+    "lightblue";
+    "lightcoral";
+    "lightcyan";
+    "lightgoldenrodyellow";
+    "lightgray";
+    "lightgreen";
+    "lightgrey";
+    "lightpink";
+    "lightsalmon";
+    "lightseagreen";
+    "lightskyblue";
+    "lightslategray";
+    "lightslategrey";
+    "lightsteelblue";
+    "lightyellow";
+    "limegreen";
+    "linen";
+    "mediumaquamarine";
+    "mediumblue";
+    "mediumorchid";
+    "mediumpurple";
+    "mediumseagreen";
+    "mediumslateblue";
+    "mediumspringgreen";
+    "mediumturquoise";
+    "mediumvioletred";
+    "midnightblue";
+    "mintcream";
+    "mistyrose";
+    "moccasin";
+    "navajowhite";
+    "oldlace";
+    "olivedrab";
+    "orangered";
+    "orchid";
+    "palegoldenrod";
+    "palegreen";
+    "paleturquoise";
+    "palevioletred";
+    "papayawhip";
+    "peachpuff";
+    "peru";
+    "plum";
+    "powderblue";
+    "rebeccapurple";
+    "rosybrown";
+    "royalblue";
+    "saddlebrown";
+    "salmon";
+    "sandybrown";
+    "seagreen";
+    "seashell";
+    "sienna";
+    "skyblue";
+    "slateblue";
+    "slategray";
+    "slategrey";
+    "snow";
+    "springgreen";
+    "steelblue";
+    "tan";
+    "thistle";
+    "tomato";
+    "turquoise";
+    "violet";
+    "wheat";
+    "whitesmoke";
+    "yellowgreen";
+  ]
+
+let color_name_totality () =
+  Alcotest.(check int)
+    "the oracle lists every CSS named colour" 148
+    (List.length css_color_names);
+  List.iter (fun name -> check_color_name ~roundtrip:true name) css_color_names
+
+(* [minify_color] keeps the name when it is no longer than the [#hex] it would
+   print instead, so a six-letter name always beats a six-digit hex. The
+   inversion has to agree: these seven fold, the equal-length ties below it do
+   not. *)
+let hex_folds_to_shorter_name () =
+  check_color ~optimized:"bisque" "#ffe4c4";
+  check_color ~optimized:"indigo" "#4b0082";
+  check_color ~optimized:"orchid" "#da70d6";
+  check_color ~optimized:"salmon" "#fa8072";
+  check_color ~optimized:"sienna" "#a0522d";
+  check_color ~optimized:"tomato" "#ff6347";
+  check_color ~optimized:"violet" "#ee82ee";
+  (* The same colour written as a function reaches the fold too. *)
+  check_color ~optimized:"bisque" "rgb(255 228 196)";
+  (* A name longer than its hex keeps the hex: the tie is not broken the other
+     way. *)
+  check_color "#00f";
+  check_color "#f0f";
+  check_color "#a9a9a9"
+
 let test_alpha () =
   (* pp preserves percentage alpha spelling; optimize owns percentage->number
      conversion in colour contexts. *)
@@ -1303,6 +1486,8 @@ let value_tests =
     test_case "color_space" `Quick test_color_space;
     test_case "hue" `Quick test_hue;
     test_case "color_name" `Quick test_color_name;
+    test_case "color_name totality" `Quick color_name_totality;
+    test_case "hex folds to a shorter name" `Quick hex_folds_to_shorter_name;
     test_case "alpha" `Quick test_alpha;
     test_case "hue_interpolation" `Quick test_hue_interpolation;
     test_case "calc_op" `Quick test_calc_op;

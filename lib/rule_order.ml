@@ -531,6 +531,42 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
       | other -> other)
     stmts
 
+(* CSS Color 4 sec. 10: [color(srgb r g b)] scales each channel by 255, so
+   [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour written two ways. Under
+   [--lossless] the optimizer keeps whichever function the author used, which
+   leaves the projection reading the spelling as a difference. Fold the
+   exactly-representable ones so it does not.
+
+   Projection only, and only when the fold fires: the declaration is compared
+   against the same normalisation without the flag, and kept as written unless
+   the colour actually moved. So no other value fold rides along, and the
+   emitted form is untouched - the two spellings are not interchangeable on
+   output, since [color()] needs a browser that parses it. *)
+let canonical_color_spelling decl =
+  let folded = Declaration.normalize ~lossless:true ~exact_srgb:true decl in
+  if folded == decl then decl
+  else if folded = Declaration.normalize ~lossless:true decl then decl
+  else folded
+
+let rec canonical_color_spellings (stmts : statement list) : statement list =
+  List.map
+    (fun stmt ->
+      match stmt with
+      | Rule r ->
+          Rule
+            {
+              r with
+              declarations = List.map canonical_color_spelling r.declarations;
+              nested = canonical_color_spellings r.nested;
+            }
+      | Layer (n, inner) -> Layer (n, canonical_color_spellings inner)
+      | Media (c, inner) -> Media (c, canonical_color_spellings inner)
+      | Supports (c, inner) -> Supports (c, canonical_color_spellings inner)
+      | Container (n, c, inner) ->
+          Container (n, c, canonical_color_spellings inner)
+      | other -> other)
+    stmts
+
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
    property names are order-independent, and for the same name the last one
    wins. So a run of [@property] rules canonicalises to that run sorted by name,
@@ -620,7 +656,9 @@ let rec canonical_media_queries (stmts : statement list) : statement list =
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
   let normalized =
-    canonical_media_queries (sort_property_runs (normalize_custom_values stmts))
+    canonical_media_queries
+      (sort_property_runs
+         (canonical_color_spellings (normalize_custom_values stmts)))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized

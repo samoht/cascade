@@ -7713,8 +7713,11 @@ val canonicalize_rule_order : t -> t
     registrations for different names order-independent. A
     [@media not all and (X)] block is keyed as the [@media not (X)] that Media
     Queries 4 makes it equal to, which emission cannot do because a Level 3
-    parser rejects the shorter form. This is a comparison-side normalisation;
-    {!val-optimize} stays source-stable. *)
+    parser rejects the shorter form. A [color(srgb ...)] whose channels all land
+    on a whole byte is keyed as the [rgb()] spelling of the same colour, which
+    emission cannot do either because [color()] needs a browser that parses it.
+    This is a comparison-side normalisation; {!val-optimize} stays
+    source-stable. *)
 
 val optimize :
   ?scope:Optimize.scope ->

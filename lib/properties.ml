@@ -2317,10 +2317,16 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
   strip_after_close_paren comps'
 
 let normalize_property_value : type a.
-    ?lossless:bool -> ?ctx:Values.calc_ctx -> a property -> a -> a =
- fun ?(lossless = false) ?(ctx = Values.default_calc_ctx) property value ->
+    ?lossless:bool ->
+    ?exact_srgb:bool ->
+    ?ctx:Values.calc_ctx ->
+    a property ->
+    a ->
+    a =
+ fun ?(lossless = false) ?(exact_srgb = false) ?(ctx = Values.default_calc_ctx)
+     property value ->
   let normalize_color =
-    Values.normalize_color ~lossless ~in_feature_query:false
+    Values.normalize_color ~lossless ~exact_srgb ~in_feature_query:false
   in
   (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
      semantic rewrite, so it belongs here, not in pp. *)
