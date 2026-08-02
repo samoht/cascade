@@ -235,6 +235,28 @@ let projects_descendant_combinator_rule () =
   check_split "descendant" ~roots:[ root ] ~css:"div span{color:red}"
     ~inline:"color:red" ~keep:"" ~kept:0 span
 
+(* [kept] is reported to the user as a number of rules, so a grouping at-rule
+   contributes the rules inside it rather than counting once for its wrapper: a
+   @media block holding three rules keeps three rules out of the inline
+   projection. *)
+let kept_counts_the_rules_a_media_block_holds () =
+  let n = node ~classes:[ "a" ] "p" in
+  let result =
+    A.compute
+      ~css:"@media(min-width:10px){.a{color:red}.b{color:blue}.c{color:green}}"
+      [ n ]
+  in
+  Alcotest.(check int) "kept rules" 3 result.kept
+
+(* An at-rule that holds no rules of its own is itself the one thing kept, so it
+   counts once. *)
+let kept_counts_a_rule_less_at_rule_once () =
+  let n = node ~classes:[ "a" ] "p" in
+  let result =
+    A.compute ~css:"@font-face{font-family:x;src:url(a.woff2)}" [ n ]
+  in
+  Alcotest.(check int) "kept rules" 1 result.kept
+
 let invalid_css_is_empty () =
   let result = A.compute ~css:"a{" [ node "div" ] in
   Alcotest.(check string)
@@ -283,5 +305,9 @@ let suite =
         keeps_rule_with_shadow_piercing_combinator;
       Alcotest.test_case "projects a descendant combinator rule" `Quick
         projects_descendant_combinator_rule;
+      Alcotest.test_case "kept counts the rules a media block holds" `Quick
+        kept_counts_the_rules_a_media_block_holds;
+      Alcotest.test_case "kept counts a rule-less at-rule once" `Quick
+        kept_counts_a_rule_less_at_rule_once;
       Alcotest.test_case "invalid css is empty" `Quick invalid_css_is_empty;
     ] )
