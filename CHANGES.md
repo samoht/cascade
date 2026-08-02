@@ -49,6 +49,13 @@
 
 ### Minification
 
+- A hex colour folds to its name whenever the name is no longer, which the
+  hand-copied inversion table missed for `bisque`, `indigo`, `orchid`,
+  `salmon`, `sienna`, `tomato` and `violet`: `#ffe4c4` stayed hex where
+  `#f0ffff` already became `azure`
+- `Css.Values.read_color_name` reads every name `pp_color_name` prints, not 21
+  of the 148, and `grey` reads as `Grey` rather than the `Gray` that prints
+  `gray`
 - `--lossless` keeps a longhand in source order against the shorthand that
   resets it, whether the property is typed or not; moving the pair changed what
   the rule rendered (#267, #270)

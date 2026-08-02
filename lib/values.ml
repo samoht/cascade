@@ -36,166 +36,261 @@ let read_system_color_of_string keyword : color option =
   | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
   | _ -> None
 
+(* CSS Color 4 sec. 6.1 and 6.4: the named colours, each with its canonical CSS
+   spelling and its sRGB bytes. This list is the only place either is written
+   down. [pp_color_name], [color_name_hex], the colour-keyword reader,
+   [read_color_name] and the hex inversion all derive from it, so a name and its
+   bytes cannot drift apart and every view covers the same 148 colours. Hex is
+   stored in its shortest spelling ([rrggbb] folded to [rgb]), which is what
+   [hex_string_of_bytes] produces, so the inversion keys on it directly.
+
+   A colour with two names lists the canonical spelling first ([gray] before
+   [grey], [cyan] before [aqua]); the hex inversion keeps the first row. *)
+let color_table : (color_name * string * string) list =
+  [
+    (Red, "red", "f00");
+    (Blue, "blue", "00f");
+    (Green, "green", "008000");
+    (White, "white", "fff");
+    (Black, "black", "000");
+    (Yellow, "yellow", "ff0");
+    (Cyan, "cyan", "0ff");
+    (Magenta, "magenta", "f0f");
+    (Gray, "gray", "808080");
+    (Grey, "grey", "808080");
+    (Orange, "orange", "ffa500");
+    (Purple, "purple", "800080");
+    (Pink, "pink", "ffc0cb");
+    (Silver, "silver", "c0c0c0");
+    (Maroon, "maroon", "800000");
+    (Fuchsia, "fuchsia", "f0f");
+    (Lime, "lime", "0f0");
+    (Olive, "olive", "808000");
+    (Navy, "navy", "000080");
+    (Teal, "teal", "008080");
+    (Aqua, "aqua", "0ff");
+    (Alice_blue, "aliceblue", "f0f8ff");
+    (Antique_white, "antiquewhite", "faebd7");
+    (Aquamarine, "aquamarine", "7fffd4");
+    (Azure, "azure", "f0ffff");
+    (Beige, "beige", "f5f5dc");
+    (Bisque, "bisque", "ffe4c4");
+    (Blanched_almond, "blanchedalmond", "ffebcd");
+    (Blue_violet, "blueviolet", "8a2be2");
+    (Brown, "brown", "a52a2a");
+    (Burlywood, "burlywood", "deb887");
+    (Cadet_blue, "cadetblue", "5f9ea0");
+    (Chartreuse, "chartreuse", "7fff00");
+    (Chocolate, "chocolate", "d2691e");
+    (Coral, "coral", "ff7f50");
+    (Cornflower_blue, "cornflowerblue", "6495ed");
+    (Cornsilk, "cornsilk", "fff8dc");
+    (Crimson, "crimson", "dc143c");
+    (Dark_blue, "darkblue", "00008b");
+    (Dark_cyan, "darkcyan", "008b8b");
+    (Dark_goldenrod, "darkgoldenrod", "b8860b");
+    (Dark_gray, "darkgray", "a9a9a9");
+    (Dark_green, "darkgreen", "006400");
+    (Dark_grey, "darkgrey", "a9a9a9");
+    (Dark_khaki, "darkkhaki", "bdb76b");
+    (Dark_magenta, "darkmagenta", "8b008b");
+    (Dark_olive_green, "darkolivegreen", "556b2f");
+    (Dark_orange, "darkorange", "ff8c00");
+    (Dark_orchid, "darkorchid", "9932cc");
+    (Dark_red, "darkred", "8b0000");
+    (Dark_salmon, "darksalmon", "e9967a");
+    (Dark_sea_green, "darkseagreen", "8fbc8f");
+    (Dark_slate_blue, "darkslateblue", "483d8b");
+    (Dark_slate_gray, "darkslategray", "2f4f4f");
+    (Dark_slate_grey, "darkslategrey", "2f4f4f");
+    (Dark_turquoise, "darkturquoise", "00ced1");
+    (Dark_violet, "darkviolet", "9400d3");
+    (Deep_pink, "deeppink", "ff1493");
+    (Deep_sky_blue, "deepskyblue", "00bfff");
+    (Dim_gray, "dimgray", "696969");
+    (Dim_grey, "dimgrey", "696969");
+    (Dodger_blue, "dodgerblue", "1e90ff");
+    (Firebrick, "firebrick", "b22222");
+    (Floral_white, "floralwhite", "fffaf0");
+    (Forest_green, "forestgreen", "228b22");
+    (Gainsboro, "gainsboro", "dcdcdc");
+    (Ghost_white, "ghostwhite", "f8f8ff");
+    (Gold, "gold", "ffd700");
+    (Goldenrod, "goldenrod", "daa520");
+    (Green_yellow, "greenyellow", "adff2f");
+    (Honeydew, "honeydew", "f0fff0");
+    (Hot_pink, "hotpink", "ff69b4");
+    (Indian_red, "indianred", "cd5c5c");
+    (Indigo, "indigo", "4b0082");
+    (Ivory, "ivory", "fffff0");
+    (Khaki, "khaki", "f0e68c");
+    (Lavender, "lavender", "e6e6fa");
+    (Lavender_blush, "lavenderblush", "fff0f5");
+    (Lawn_green, "lawngreen", "7cfc00");
+    (Lemon_chiffon, "lemonchiffon", "fffacd");
+    (Light_blue, "lightblue", "add8e6");
+    (Light_coral, "lightcoral", "f08080");
+    (Light_cyan, "lightcyan", "e0ffff");
+    (Light_goldenrod_yellow, "lightgoldenrodyellow", "fafad2");
+    (Light_gray, "lightgray", "d3d3d3");
+    (Light_green, "lightgreen", "90ee90");
+    (Light_grey, "lightgrey", "d3d3d3");
+    (Light_pink, "lightpink", "ffb6c1");
+    (Light_salmon, "lightsalmon", "ffa07a");
+    (Light_sea_green, "lightseagreen", "20b2aa");
+    (Light_sky_blue, "lightskyblue", "87cefa");
+    (Light_slate_gray, "lightslategray", "789");
+    (Light_slate_grey, "lightslategrey", "789");
+    (Light_steel_blue, "lightsteelblue", "b0c4de");
+    (Light_yellow, "lightyellow", "ffffe0");
+    (Lime_green, "limegreen", "32cd32");
+    (Linen, "linen", "faf0e6");
+    (Medium_aquamarine, "mediumaquamarine", "66cdaa");
+    (Medium_blue, "mediumblue", "0000cd");
+    (Medium_orchid, "mediumorchid", "ba55d3");
+    (Medium_purple, "mediumpurple", "9370db");
+    (Medium_sea_green, "mediumseagreen", "3cb371");
+    (Medium_slate_blue, "mediumslateblue", "7b68ee");
+    (Medium_spring_green, "mediumspringgreen", "00fa9a");
+    (Medium_turquoise, "mediumturquoise", "48d1cc");
+    (Medium_violet_red, "mediumvioletred", "c71585");
+    (Midnight_blue, "midnightblue", "191970");
+    (Mint_cream, "mintcream", "f5fffa");
+    (Misty_rose, "mistyrose", "ffe4e1");
+    (Moccasin, "moccasin", "ffe4b5");
+    (Navajo_white, "navajowhite", "ffdead");
+    (Old_lace, "oldlace", "fdf5e6");
+    (Olive_drab, "olivedrab", "6b8e23");
+    (Orange_red, "orangered", "ff4500");
+    (Orchid, "orchid", "da70d6");
+    (Pale_goldenrod, "palegoldenrod", "eee8aa");
+    (Pale_green, "palegreen", "98fb98");
+    (Pale_turquoise, "paleturquoise", "afeeee");
+    (Pale_violet_red, "palevioletred", "db7093");
+    (Papaya_whip, "papayawhip", "ffefd5");
+    (Peach_puff, "peachpuff", "ffdab9");
+    (Peru, "peru", "cd853f");
+    (Plum, "plum", "dda0dd");
+    (Powder_blue, "powderblue", "b0e0e6");
+    (Rebecca_purple, "rebeccapurple", "663399");
+    (Rosy_brown, "rosybrown", "bc8f8f");
+    (Royal_blue, "royalblue", "4169e1");
+    (Saddle_brown, "saddlebrown", "8b4513");
+    (Salmon, "salmon", "fa8072");
+    (Sandy_brown, "sandybrown", "f4a460");
+    (Sea_green, "seagreen", "2e8b57");
+    (Sea_shell, "seashell", "fff5ee");
+    (Sienna, "sienna", "a0522d");
+    (Sky_blue, "skyblue", "87ceeb");
+    (Slate_blue, "slateblue", "6a5acd");
+    (Slate_gray, "slategray", "708090");
+    (Slate_grey, "slategrey", "708090");
+    (Snow, "snow", "fffafa");
+    (Spring_green, "springgreen", "00ff7f");
+    (Steel_blue, "steelblue", "4682b4");
+    (Tan, "tan", "d2b48c");
+    (Thistle, "thistle", "d8bfd8");
+    (Tomato, "tomato", "ff6347");
+    (Turquoise, "turquoise", "40e0d0");
+    (Violet, "violet", "ee82ee");
+    (Wheat, "wheat", "f5deb3");
+    (White_smoke, "whitesmoke", "f5f5f5");
+    (Yellow_green, "yellowgreen", "9acd32");
+  ]
+
+(* Not called. [color_table] is a list, so a constructor with no row would be a
+   lookup miss at run time; this match turns adding a [color_name] into a build
+   error here, beside the table that needs the new row. *)
+let _color_table_covers_color_name : color_name -> unit = function
+  | Red | Blue | Green | White | Black | Yellow | Cyan | Magenta | Gray | Grey
+  | Orange | Purple | Pink | Silver | Maroon | Fuchsia | Lime | Olive | Navy
+  | Teal | Aqua | Alice_blue | Antique_white | Aquamarine | Azure | Beige
+  | Bisque | Blanched_almond | Blue_violet | Brown | Burlywood | Cadet_blue
+  | Chartreuse | Chocolate | Coral | Cornflower_blue | Cornsilk | Crimson
+  | Dark_blue | Dark_cyan | Dark_goldenrod | Dark_gray | Dark_green | Dark_grey
+  | Dark_khaki | Dark_magenta | Dark_olive_green | Dark_orange | Dark_orchid
+  | Dark_red | Dark_salmon | Dark_sea_green | Dark_slate_blue | Dark_slate_gray
+  | Dark_slate_grey | Dark_turquoise | Dark_violet | Deep_pink | Deep_sky_blue
+  | Dim_gray | Dim_grey | Dodger_blue | Firebrick | Floral_white | Forest_green
+  | Gainsboro | Ghost_white | Gold | Goldenrod | Green_yellow | Honeydew
+  | Hot_pink | Indian_red | Indigo | Ivory | Khaki | Lavender | Lavender_blush
+  | Lawn_green | Lemon_chiffon | Light_blue | Light_coral | Light_cyan
+  | Light_goldenrod_yellow | Light_gray | Light_green | Light_grey | Light_pink
+  | Light_salmon | Light_sea_green | Light_sky_blue | Light_slate_gray
+  | Light_slate_grey | Light_steel_blue | Light_yellow | Lime_green | Linen
+  | Medium_aquamarine | Medium_blue | Medium_orchid | Medium_purple
+  | Medium_sea_green | Medium_slate_blue | Medium_spring_green
+  | Medium_turquoise | Medium_violet_red | Midnight_blue | Mint_cream
+  | Misty_rose | Moccasin | Navajo_white | Old_lace | Olive_drab | Orange_red
+  | Orchid | Pale_goldenrod | Pale_green | Pale_turquoise | Pale_violet_red
+  | Papaya_whip | Peach_puff | Peru | Plum | Powder_blue | Rebecca_purple
+  | Rosy_brown | Royal_blue | Saddle_brown | Salmon | Sandy_brown | Sea_green
+  | Sea_shell | Sienna | Sky_blue | Slate_blue | Slate_gray | Slate_grey | Snow
+  | Spring_green | Steel_blue | Tan | Thistle | Tomato | Turquoise | Violet
+  | Wheat | White_smoke | Yellow_green ->
+      ()
+
+(* Shortest spelling of one colour. The name wins only when it is no longer than
+   the [#hex] beside it, so [bisque] beats [#ffe4c4] while [blue] loses to
+   [#00f]. [minify_color] and the hex inversion are the two directions of this
+   single choice, which is why both read it from here. *)
+let color_name_is_shortest ~name ~hex =
+  String.length name < String.length hex + 1
+
+let color_table_index : (color_name, string * string) Hashtbl.t =
+  let tbl = Hashtbl.create 211 in
+  List.iter
+    (fun (c, name, hex) -> Hashtbl.replace tbl c (name, hex))
+    color_table;
+  tbl
+
+(** Convert a named color to its hex equivalent (name, hex_value). Returns the
+    shortest representation matching Lightning CSS behavior. *)
+let color_name_hex (c : color_name) : string * string =
+  match Hashtbl.find_opt color_table_index c with
+  | Some row -> row
+  | None -> ("", "")
+
+let color_name_by_spelling : (string, color_name) Hashtbl.t =
+  let tbl = Hashtbl.create 211 in
+  List.iter (fun (c, name, _) -> Hashtbl.replace tbl name c) color_table;
+  tbl
+
+(* [name] must already be lower-cased: a colour keyword is
+   ASCII-case-insensitive, but every caller folds the case before it gets
+   here. *)
+let color_name_of_string name = Hashtbl.find_opt color_name_by_spelling name
+
+(* Reverse of [color_name_hex], restricted to the colours whose name is the
+   shortest spelling: inverting any of the others would hand back a longer
+   answer than the hex it was given. *)
+let color_name_by_hex : (string, color_name) Hashtbl.t =
+  let tbl = Hashtbl.create 61 in
+  List.iter
+    (fun (c, name, hex) ->
+      if color_name_is_shortest ~name ~hex && not (Hashtbl.mem tbl hex) then
+        Hashtbl.add tbl hex c)
+    color_table;
+  tbl
+
+let color_name_of_hex hex =
+  Hashtbl.find_opt color_name_by_hex (String.lowercase_ascii hex)
+
 let read_color_keyword_of_string keyword : color option =
   match keyword with
   | "transparent" -> Some Transparent
   | "currentcolor" -> Some Current
   | "auto" -> Some Auto
   | "inherit" -> Some Inherit
-  | "red" -> Some (Named Red)
-  | "green" -> Some (Named Green)
-  | "blue" -> Some (Named Blue)
-  | "white" -> Some (Named White)
-  | "black" -> Some (Named Black)
-  | "gray" -> Some (Named Gray)
-  | "grey" -> Some (Named Grey)
-  | "silver" -> Some (Named Silver)
-  | "maroon" -> Some (Named Maroon)
-  | "yellow" -> Some (Named Yellow)
-  | "olive" -> Some (Named Olive)
-  | "lime" -> Some (Named Lime)
-  | "aqua" -> Some (Named Aqua)
-  | "cyan" -> Some (Named Cyan)
-  | "teal" -> Some (Named Teal)
-  | "navy" -> Some (Named Navy)
-  | "fuchsia" -> Some (Named Fuchsia)
-  | "magenta" -> Some (Named Magenta)
-  | "purple" -> Some (Named Purple)
-  | "orange" -> Some (Named Orange)
-  | "pink" -> Some (Named Pink)
-  | "aliceblue" -> Some (Named Alice_blue)
-  | "antiquewhite" -> Some (Named Antique_white)
-  | "aquamarine" -> Some (Named Aquamarine)
-  | "azure" -> Some (Named Azure)
-  | "beige" -> Some (Named Beige)
-  | "bisque" -> Some (Named Bisque)
-  | "blanchedalmond" -> Some (Named Blanched_almond)
-  | "blueviolet" -> Some (Named Blue_violet)
-  | "brown" -> Some (Named Brown)
-  | "burlywood" -> Some (Named Burlywood)
-  | "cadetblue" -> Some (Named Cadet_blue)
-  | "chartreuse" -> Some (Named Chartreuse)
-  | "chocolate" -> Some (Named Chocolate)
-  | "coral" -> Some (Named Coral)
-  | "cornflowerblue" -> Some (Named Cornflower_blue)
-  | "cornsilk" -> Some (Named Cornsilk)
-  | "crimson" -> Some (Named Crimson)
-  | "darkblue" -> Some (Named Dark_blue)
-  | "darkcyan" -> Some (Named Dark_cyan)
-  | "darkgoldenrod" -> Some (Named Dark_goldenrod)
-  | "darkgray" -> Some (Named Dark_gray)
-  | "darkgreen" -> Some (Named Dark_green)
-  | "darkgrey" -> Some (Named Dark_grey)
-  | "darkkhaki" -> Some (Named Dark_khaki)
-  | "darkmagenta" -> Some (Named Dark_magenta)
-  | "darkolivegreen" -> Some (Named Dark_olive_green)
-  | "darkorange" -> Some (Named Dark_orange)
-  | "darkorchid" -> Some (Named Dark_orchid)
-  | "darkred" -> Some (Named Dark_red)
-  | "darksalmon" -> Some (Named Dark_salmon)
-  | "darkseagreen" -> Some (Named Dark_sea_green)
-  | "darkslateblue" -> Some (Named Dark_slate_blue)
-  | "darkslategray" -> Some (Named Dark_slate_gray)
-  | "darkslategrey" -> Some (Named Dark_slate_grey)
-  | "darkturquoise" -> Some (Named Dark_turquoise)
-  | "darkviolet" -> Some (Named Dark_violet)
-  | "deeppink" -> Some (Named Deep_pink)
-  | "deepskyblue" -> Some (Named Deep_sky_blue)
-  | "dimgray" -> Some (Named Dim_gray)
-  | "dimgrey" -> Some (Named Dim_grey)
-  | "dodgerblue" -> Some (Named Dodger_blue)
-  | "firebrick" -> Some (Named Firebrick)
-  | "floralwhite" -> Some (Named Floral_white)
-  | "forestgreen" -> Some (Named Forest_green)
-  | "gainsboro" -> Some (Named Gainsboro)
-  | "ghostwhite" -> Some (Named Ghost_white)
-  | "gold" -> Some (Named Gold)
-  | "goldenrod" -> Some (Named Goldenrod)
-  | "greenyellow" -> Some (Named Green_yellow)
-  | "honeydew" -> Some (Named Honeydew)
-  | "hotpink" -> Some (Named Hot_pink)
-  | "indianred" -> Some (Named Indian_red)
-  | "indigo" -> Some (Named Indigo)
-  | "ivory" -> Some (Named Ivory)
-  | "khaki" -> Some (Named Khaki)
-  | "lavender" -> Some (Named Lavender)
-  | "lavenderblush" -> Some (Named Lavender_blush)
-  | "lawngreen" -> Some (Named Lawn_green)
-  | "lemonchiffon" -> Some (Named Lemon_chiffon)
-  | "lightblue" -> Some (Named Light_blue)
-  | "lightcoral" -> Some (Named Light_coral)
-  | "lightcyan" -> Some (Named Light_cyan)
-  | "lightgoldenrodyellow" -> Some (Named Light_goldenrod_yellow)
-  | "lightgray" -> Some (Named Light_gray)
-  | "lightgreen" -> Some (Named Light_green)
-  | "lightgrey" -> Some (Named Light_grey)
-  | "lightpink" -> Some (Named Light_pink)
-  | "lightsalmon" -> Some (Named Light_salmon)
-  | "lightseagreen" -> Some (Named Light_sea_green)
-  | "lightskyblue" -> Some (Named Light_sky_blue)
-  | "lightslategray" -> Some (Named Light_slate_gray)
-  | "lightslategrey" -> Some (Named Light_slate_grey)
-  | "lightsteelblue" -> Some (Named Light_steel_blue)
-  | "lightyellow" -> Some (Named Light_yellow)
-  | "limegreen" -> Some (Named Lime_green)
-  | "linen" -> Some (Named Linen)
-  | "mediumaquamarine" -> Some (Named Medium_aquamarine)
-  | "mediumblue" -> Some (Named Medium_blue)
-  | "mediumorchid" -> Some (Named Medium_orchid)
-  | "mediumpurple" -> Some (Named Medium_purple)
-  | "mediumseagreen" -> Some (Named Medium_sea_green)
-  | "mediumslateblue" -> Some (Named Medium_slate_blue)
-  | "mediumspringgreen" -> Some (Named Medium_spring_green)
-  | "mediumturquoise" -> Some (Named Medium_turquoise)
-  | "mediumvioletred" -> Some (Named Medium_violet_red)
-  | "midnightblue" -> Some (Named Midnight_blue)
-  | "mintcream" -> Some (Named Mint_cream)
-  | "mistyrose" -> Some (Named Misty_rose)
-  | "moccasin" -> Some (Named Moccasin)
-  | "navajowhite" -> Some (Named Navajo_white)
-  | "oldlace" -> Some (Named Old_lace)
-  | "olivedrab" -> Some (Named Olive_drab)
-  | "orangered" -> Some (Named Orange_red)
-  | "orchid" -> Some (Named Orchid)
-  | "palegoldenrod" -> Some (Named Pale_goldenrod)
-  | "palegreen" -> Some (Named Pale_green)
-  | "paleturquoise" -> Some (Named Pale_turquoise)
-  | "palevioletred" -> Some (Named Pale_violet_red)
-  | "papayawhip" -> Some (Named Papaya_whip)
-  | "peachpuff" -> Some (Named Peach_puff)
-  | "peru" -> Some (Named Peru)
-  | "plum" -> Some (Named Plum)
-  | "powderblue" -> Some (Named Powder_blue)
-  | "rebeccapurple" -> Some (Named Rebecca_purple)
-  | "rosybrown" -> Some (Named Rosy_brown)
-  | "royalblue" -> Some (Named Royal_blue)
-  | "saddlebrown" -> Some (Named Saddle_brown)
-  | "salmon" -> Some (Named Salmon)
-  | "sandybrown" -> Some (Named Sandy_brown)
-  | "seagreen" -> Some (Named Sea_green)
-  | "seashell" -> Some (Named Sea_shell)
-  | "sienna" -> Some (Named Sienna)
-  | "skyblue" -> Some (Named Sky_blue)
-  | "slateblue" -> Some (Named Slate_blue)
-  | "slategray" -> Some (Named Slate_gray)
-  | "slategrey" -> Some (Named Slate_grey)
-  | "snow" -> Some (Named Snow)
-  | "springgreen" -> Some (Named Spring_green)
-  | "steelblue" -> Some (Named Steel_blue)
-  | "tan" -> Some (Named Tan)
-  | "thistle" -> Some (Named Thistle)
-  | "tomato" -> Some (Named Tomato)
-  | "turquoise" -> Some (Named Turquoise)
-  | "violet" -> Some (Named Violet)
-  | "wheat" -> Some (Named Wheat)
-  | "whitesmoke" -> Some (Named White_smoke)
-  | "yellowgreen" -> Some (Named Yellow_green)
   | "initial" -> Some Initial
   | "unset" -> Some Unset
   | "revert" -> Some Revert
   | "revert-layer" -> Some Revert_layer
-  (* CSS system colors - case-insensitive matching *)
-  | _ -> read_system_color_of_string keyword
+  | _ -> (
+      match color_name_of_string keyword with
+      | Some name -> Some (Named name)
+      (* CSS system colors - case-insensitive matching *)
+      | None -> read_system_color_of_string keyword)
 
 (* Inside a custom-property body, colour keywords ([transparent], named colours,
    ...) are ASCII-case-insensitive idents whose canonical spelling is
@@ -2062,312 +2157,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_presolved (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
- fun ctx -> function
-  | Red -> Pp.string ctx "red"
-  | Blue -> Pp.string ctx "blue"
-  | Green -> Pp.string ctx "green"
-  | White -> Pp.string ctx "white"
-  | Black -> Pp.string ctx "black"
-  | Yellow -> Pp.string ctx "yellow"
-  | Cyan -> Pp.string ctx "cyan"
-  | Magenta -> Pp.string ctx "magenta"
-  | Gray -> Pp.string ctx "gray"
-  | Grey -> Pp.string ctx "grey"
-  | Orange -> Pp.string ctx "orange"
-  | Purple -> Pp.string ctx "purple"
-  | Pink -> Pp.string ctx "pink"
-  | Silver -> Pp.string ctx "silver"
-  | Maroon -> Pp.string ctx "maroon"
-  | Fuchsia -> Pp.string ctx "fuchsia"
-  | Lime -> Pp.string ctx "lime"
-  | Olive -> Pp.string ctx "olive"
-  | Navy -> Pp.string ctx "navy"
-  | Teal -> Pp.string ctx "teal"
-  | Aqua -> Pp.string ctx "aqua"
-  | Alice_blue -> Pp.string ctx "aliceblue"
-  | Antique_white -> Pp.string ctx "antiquewhite"
-  | Aquamarine -> Pp.string ctx "aquamarine"
-  | Azure -> Pp.string ctx "azure"
-  | Beige -> Pp.string ctx "beige"
-  | Bisque -> Pp.string ctx "bisque"
-  | Blanched_almond -> Pp.string ctx "blanchedalmond"
-  | Blue_violet -> Pp.string ctx "blueviolet"
-  | Brown -> Pp.string ctx "brown"
-  | Burlywood -> Pp.string ctx "burlywood"
-  | Cadet_blue -> Pp.string ctx "cadetblue"
-  | Chartreuse -> Pp.string ctx "chartreuse"
-  | Chocolate -> Pp.string ctx "chocolate"
-  | Coral -> Pp.string ctx "coral"
-  | Cornflower_blue -> Pp.string ctx "cornflowerblue"
-  | Cornsilk -> Pp.string ctx "cornsilk"
-  | Crimson -> Pp.string ctx "crimson"
-  | Dark_blue -> Pp.string ctx "darkblue"
-  | Dark_cyan -> Pp.string ctx "darkcyan"
-  | Dark_goldenrod -> Pp.string ctx "darkgoldenrod"
-  | Dark_gray -> Pp.string ctx "darkgray"
-  | Dark_green -> Pp.string ctx "darkgreen"
-  | Dark_grey -> Pp.string ctx "darkgrey"
-  | Dark_khaki -> Pp.string ctx "darkkhaki"
-  | Dark_magenta -> Pp.string ctx "darkmagenta"
-  | Dark_olive_green -> Pp.string ctx "darkolivegreen"
-  | Dark_orange -> Pp.string ctx "darkorange"
-  | Dark_orchid -> Pp.string ctx "darkorchid"
-  | Dark_red -> Pp.string ctx "darkred"
-  | Dark_salmon -> Pp.string ctx "darksalmon"
-  | Dark_sea_green -> Pp.string ctx "darkseagreen"
-  | Dark_slate_blue -> Pp.string ctx "darkslateblue"
-  | Dark_slate_gray -> Pp.string ctx "darkslategray"
-  | Dark_slate_grey -> Pp.string ctx "darkslategrey"
-  | Dark_turquoise -> Pp.string ctx "darkturquoise"
-  | Dark_violet -> Pp.string ctx "darkviolet"
-  | Deep_pink -> Pp.string ctx "deeppink"
-  | Deep_sky_blue -> Pp.string ctx "deepskyblue"
-  | Dim_gray -> Pp.string ctx "dimgray"
-  | Dim_grey -> Pp.string ctx "dimgrey"
-  | Dodger_blue -> Pp.string ctx "dodgerblue"
-  | Firebrick -> Pp.string ctx "firebrick"
-  | Floral_white -> Pp.string ctx "floralwhite"
-  | Forest_green -> Pp.string ctx "forestgreen"
-  | Gainsboro -> Pp.string ctx "gainsboro"
-  | Ghost_white -> Pp.string ctx "ghostwhite"
-  | Gold -> Pp.string ctx "gold"
-  | Goldenrod -> Pp.string ctx "goldenrod"
-  | Green_yellow -> Pp.string ctx "greenyellow"
-  | Honeydew -> Pp.string ctx "honeydew"
-  | Hot_pink -> Pp.string ctx "hotpink"
-  | Indian_red -> Pp.string ctx "indianred"
-  | Indigo -> Pp.string ctx "indigo"
-  | Ivory -> Pp.string ctx "ivory"
-  | Khaki -> Pp.string ctx "khaki"
-  | Lavender -> Pp.string ctx "lavender"
-  | Lavender_blush -> Pp.string ctx "lavenderblush"
-  | Lawn_green -> Pp.string ctx "lawngreen"
-  | Lemon_chiffon -> Pp.string ctx "lemonchiffon"
-  | Light_blue -> Pp.string ctx "lightblue"
-  | Light_coral -> Pp.string ctx "lightcoral"
-  | Light_cyan -> Pp.string ctx "lightcyan"
-  | Light_goldenrod_yellow -> Pp.string ctx "lightgoldenrodyellow"
-  | Light_gray -> Pp.string ctx "lightgray"
-  | Light_green -> Pp.string ctx "lightgreen"
-  | Light_grey -> Pp.string ctx "lightgrey"
-  | Light_pink -> Pp.string ctx "lightpink"
-  | Light_salmon -> Pp.string ctx "lightsalmon"
-  | Light_sea_green -> Pp.string ctx "lightseagreen"
-  | Light_sky_blue -> Pp.string ctx "lightskyblue"
-  | Light_slate_gray -> Pp.string ctx "lightslategray"
-  | Light_slate_grey -> Pp.string ctx "lightslategrey"
-  | Light_steel_blue -> Pp.string ctx "lightsteelblue"
-  | Light_yellow -> Pp.string ctx "lightyellow"
-  | Lime_green -> Pp.string ctx "limegreen"
-  | Linen -> Pp.string ctx "linen"
-  | Medium_aquamarine -> Pp.string ctx "mediumaquamarine"
-  | Medium_blue -> Pp.string ctx "mediumblue"
-  | Medium_orchid -> Pp.string ctx "mediumorchid"
-  | Medium_purple -> Pp.string ctx "mediumpurple"
-  | Medium_sea_green -> Pp.string ctx "mediumseagreen"
-  | Medium_slate_blue -> Pp.string ctx "mediumslateblue"
-  | Medium_spring_green -> Pp.string ctx "mediumspringgreen"
-  | Medium_turquoise -> Pp.string ctx "mediumturquoise"
-  | Medium_violet_red -> Pp.string ctx "mediumvioletred"
-  | Midnight_blue -> Pp.string ctx "midnightblue"
-  | Mint_cream -> Pp.string ctx "mintcream"
-  | Misty_rose -> Pp.string ctx "mistyrose"
-  | Moccasin -> Pp.string ctx "moccasin"
-  | Navajo_white -> Pp.string ctx "navajowhite"
-  | Old_lace -> Pp.string ctx "oldlace"
-  | Olive_drab -> Pp.string ctx "olivedrab"
-  | Orange_red -> Pp.string ctx "orangered"
-  | Orchid -> Pp.string ctx "orchid"
-  | Pale_goldenrod -> Pp.string ctx "palegoldenrod"
-  | Pale_green -> Pp.string ctx "palegreen"
-  | Pale_turquoise -> Pp.string ctx "paleturquoise"
-  | Pale_violet_red -> Pp.string ctx "palevioletred"
-  | Papaya_whip -> Pp.string ctx "papayawhip"
-  | Peach_puff -> Pp.string ctx "peachpuff"
-  | Peru -> Pp.string ctx "peru"
-  | Plum -> Pp.string ctx "plum"
-  | Powder_blue -> Pp.string ctx "powderblue"
-  | Rebecca_purple -> Pp.string ctx "rebeccapurple"
-  | Rosy_brown -> Pp.string ctx "rosybrown"
-  | Royal_blue -> Pp.string ctx "royalblue"
-  | Saddle_brown -> Pp.string ctx "saddlebrown"
-  | Salmon -> Pp.string ctx "salmon"
-  | Sandy_brown -> Pp.string ctx "sandybrown"
-  | Sea_green -> Pp.string ctx "seagreen"
-  | Sea_shell -> Pp.string ctx "seashell"
-  | Sienna -> Pp.string ctx "sienna"
-  | Sky_blue -> Pp.string ctx "skyblue"
-  | Slate_blue -> Pp.string ctx "slateblue"
-  | Slate_gray -> Pp.string ctx "slategray"
-  | Slate_grey -> Pp.string ctx "slategrey"
-  | Snow -> Pp.string ctx "snow"
-  | Spring_green -> Pp.string ctx "springgreen"
-  | Steel_blue -> Pp.string ctx "steelblue"
-  | Tan -> Pp.string ctx "tan"
-  | Thistle -> Pp.string ctx "thistle"
-  | Tomato -> Pp.string ctx "tomato"
-  | Turquoise -> Pp.string ctx "turquoise"
-  | Violet -> Pp.string ctx "violet"
-  | Wheat -> Pp.string ctx "wheat"
-  | White_smoke -> Pp.string ctx "whitesmoke"
-  | Yellow_green -> Pp.string ctx "yellowgreen"
-
-(* CSS Color 4 sec. 6.4: every named colour has a canonical sRGB byte triple.
-   Minify routes [Named n] through this table for the shortest spelling (name vs
-   [#hex]). Hex is stored shortest ([shorten_hex] folds [rrggbb] to [rgb]), so
-   [pp_color]'s back-conversion is a no-op. *)
-
-(** Convert a named color to its hex equivalent (name, hex_value). Returns the
-    shortest representation matching Lightning CSS behavior. *)
-let color_name_hex : color_name -> string * string = function
-  | Red -> ("red", "f00")
-  | Blue -> ("blue", "00f")
-  | Green -> ("green", "008000")
-  | White -> ("white", "fff")
-  | Black -> ("black", "000")
-  | Yellow -> ("yellow", "ff0")
-  | Cyan -> ("cyan", "0ff")
-  | Magenta -> ("magenta", "f0f")
-  | Gray -> ("gray", "808080")
-  | Grey -> ("grey", "808080")
-  | Orange -> ("orange", "ffa500")
-  | Purple -> ("purple", "800080")
-  | Pink -> ("pink", "ffc0cb")
-  | Silver -> ("silver", "c0c0c0")
-  | Maroon -> ("maroon", "800000")
-  | Fuchsia -> ("fuchsia", "f0f")
-  | Lime -> ("lime", "0f0")
-  | Olive -> ("olive", "808000")
-  | Navy -> ("navy", "000080")
-  | Teal -> ("teal", "008080")
-  | Aqua -> ("aqua", "0ff")
-  | Alice_blue -> ("aliceblue", "f0f8ff")
-  | Antique_white -> ("antiquewhite", "faebd7")
-  | Aquamarine -> ("aquamarine", "7fffd4")
-  | Azure -> ("azure", "f0ffff")
-  | Beige -> ("beige", "f5f5dc")
-  | Bisque -> ("bisque", "ffe4c4")
-  | Blanched_almond -> ("blanchedalmond", "ffebcd")
-  | Blue_violet -> ("blueviolet", "8a2be2")
-  | Brown -> ("brown", "a52a2a")
-  | Burlywood -> ("burlywood", "deb887")
-  | Cadet_blue -> ("cadetblue", "5f9ea0")
-  | Chartreuse -> ("chartreuse", "7fff00")
-  | Chocolate -> ("chocolate", "d2691e")
-  | Coral -> ("coral", "ff7f50")
-  | Cornflower_blue -> ("cornflowerblue", "6495ed")
-  | Cornsilk -> ("cornsilk", "fff8dc")
-  | Crimson -> ("crimson", "dc143c")
-  | Dark_blue -> ("darkblue", "00008b")
-  | Dark_cyan -> ("darkcyan", "008b8b")
-  | Dark_goldenrod -> ("darkgoldenrod", "b8860b")
-  | Dark_gray -> ("darkgray", "a9a9a9")
-  | Dark_green -> ("darkgreen", "006400")
-  | Dark_grey -> ("darkgrey", "a9a9a9")
-  | Dark_khaki -> ("darkkhaki", "bdb76b")
-  | Dark_magenta -> ("darkmagenta", "8b008b")
-  | Dark_olive_green -> ("darkolivegreen", "556b2f")
-  | Dark_orange -> ("darkorange", "ff8c00")
-  | Dark_orchid -> ("darkorchid", "9932cc")
-  | Dark_red -> ("darkred", "8b0000")
-  | Dark_salmon -> ("darksalmon", "e9967a")
-  | Dark_sea_green -> ("darkseagreen", "8fbc8f")
-  | Dark_slate_blue -> ("darkslateblue", "483d8b")
-  | Dark_slate_gray -> ("darkslategray", "2f4f4f")
-  | Dark_slate_grey -> ("darkslategrey", "2f4f4f")
-  | Dark_turquoise -> ("darkturquoise", "00ced1")
-  | Dark_violet -> ("darkviolet", "9400d3")
-  | Deep_pink -> ("deeppink", "ff1493")
-  | Deep_sky_blue -> ("deepskyblue", "00bfff")
-  | Dim_gray -> ("dimgray", "696969")
-  | Dim_grey -> ("dimgrey", "696969")
-  | Dodger_blue -> ("dodgerblue", "1e90ff")
-  | Firebrick -> ("firebrick", "b22222")
-  | Floral_white -> ("floralwhite", "fffaf0")
-  | Forest_green -> ("forestgreen", "228b22")
-  | Gainsboro -> ("gainsboro", "dcdcdc")
-  | Ghost_white -> ("ghostwhite", "f8f8ff")
-  | Gold -> ("gold", "ffd700")
-  | Goldenrod -> ("goldenrod", "daa520")
-  | Green_yellow -> ("greenyellow", "adff2f")
-  | Honeydew -> ("honeydew", "f0fff0")
-  | Hot_pink -> ("hotpink", "ff69b4")
-  | Indian_red -> ("indianred", "cd5c5c")
-  | Indigo -> ("indigo", "4b0082")
-  | Ivory -> ("ivory", "fffff0")
-  | Khaki -> ("khaki", "f0e68c")
-  | Lavender -> ("lavender", "e6e6fa")
-  | Lavender_blush -> ("lavenderblush", "fff0f5")
-  | Lawn_green -> ("lawngreen", "7cfc00")
-  | Lemon_chiffon -> ("lemonchiffon", "fffacd")
-  | Light_blue -> ("lightblue", "add8e6")
-  | Light_coral -> ("lightcoral", "f08080")
-  | Light_cyan -> ("lightcyan", "e0ffff")
-  | Light_goldenrod_yellow -> ("lightgoldenrodyellow", "fafad2")
-  | Light_gray -> ("lightgray", "d3d3d3")
-  | Light_green -> ("lightgreen", "90ee90")
-  | Light_grey -> ("lightgrey", "d3d3d3")
-  | Light_pink -> ("lightpink", "ffb6c1")
-  | Light_salmon -> ("lightsalmon", "ffa07a")
-  | Light_sea_green -> ("lightseagreen", "20b2aa")
-  | Light_sky_blue -> ("lightskyblue", "87cefa")
-  | Light_slate_gray -> ("lightslategray", "789")
-  | Light_slate_grey -> ("lightslategrey", "789")
-  | Light_steel_blue -> ("lightsteelblue", "b0c4de")
-  | Light_yellow -> ("lightyellow", "ffffe0")
-  | Lime_green -> ("limegreen", "32cd32")
-  | Linen -> ("linen", "faf0e6")
-  | Medium_aquamarine -> ("mediumaquamarine", "66cdaa")
-  | Medium_blue -> ("mediumblue", "0000cd")
-  | Medium_orchid -> ("mediumorchid", "ba55d3")
-  | Medium_purple -> ("mediumpurple", "9370db")
-  | Medium_sea_green -> ("mediumseagreen", "3cb371")
-  | Medium_slate_blue -> ("mediumslateblue", "7b68ee")
-  | Medium_spring_green -> ("mediumspringgreen", "00fa9a")
-  | Medium_turquoise -> ("mediumturquoise", "48d1cc")
-  | Medium_violet_red -> ("mediumvioletred", "c71585")
-  | Midnight_blue -> ("midnightblue", "191970")
-  | Mint_cream -> ("mintcream", "f5fffa")
-  | Misty_rose -> ("mistyrose", "ffe4e1")
-  | Moccasin -> ("moccasin", "ffe4b5")
-  | Navajo_white -> ("navajowhite", "ffdead")
-  | Old_lace -> ("oldlace", "fdf5e6")
-  | Olive_drab -> ("olivedrab", "6b8e23")
-  | Orange_red -> ("orangered", "ff4500")
-  | Orchid -> ("orchid", "da70d6")
-  | Pale_goldenrod -> ("palegoldenrod", "eee8aa")
-  | Pale_green -> ("palegreen", "98fb98")
-  | Pale_turquoise -> ("paleturquoise", "afeeee")
-  | Pale_violet_red -> ("palevioletred", "db7093")
-  | Papaya_whip -> ("papayawhip", "ffefd5")
-  | Peach_puff -> ("peachpuff", "ffdab9")
-  | Peru -> ("peru", "cd853f")
-  | Plum -> ("plum", "dda0dd")
-  | Powder_blue -> ("powderblue", "b0e0e6")
-  | Rebecca_purple -> ("rebeccapurple", "663399")
-  | Rosy_brown -> ("rosybrown", "bc8f8f")
-  | Royal_blue -> ("royalblue", "4169e1")
-  | Saddle_brown -> ("saddlebrown", "8b4513")
-  | Salmon -> ("salmon", "fa8072")
-  | Sandy_brown -> ("sandybrown", "f4a460")
-  | Sea_green -> ("seagreen", "2e8b57")
-  | Sea_shell -> ("seashell", "fff5ee")
-  | Sienna -> ("sienna", "a0522d")
-  | Sky_blue -> ("skyblue", "87ceeb")
-  | Slate_blue -> ("slateblue", "6a5acd")
-  | Slate_gray -> ("slategray", "708090")
-  | Slate_grey -> ("slategrey", "708090")
-  | Snow -> ("snow", "fffafa")
-  | Spring_green -> ("springgreen", "00ff7f")
-  | Steel_blue -> ("steelblue", "4682b4")
-  | Tan -> ("tan", "d2b48c")
-  | Thistle -> ("thistle", "d8bfd8")
-  | Tomato -> ("tomato", "ff6347")
-  | Turquoise -> ("turquoise", "40e0d0")
-  | Violet -> ("violet", "ee82ee")
-  | Wheat -> ("wheat", "f5deb3")
-  | White_smoke -> ("whitesmoke", "f5f5f5")
-  | Yellow_green -> ("yellowgreen", "9acd32")
+ fun ctx name -> Pp.string ctx (fst (color_name_hex name))
 
 (* The body of a [Relative_rgb] is stored as a verbatim string of the form
    ["from <origin> r g b/<alpha>"], because the channels and alpha are part of
@@ -3377,43 +3167,6 @@ let color_mix_percentages (percent1 : percentage option)
   | Some _, Some _ -> (
       match (f1, f2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None)
 
-(* Reverse of [color_name_hex] for the named-color set whose hex form is short
-   enough to be a candidate. The map is keyed on the shortened hex spelling so
-   [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
-let named_for_hex value =
-  match String.lowercase_ascii value with
-  | "f00" -> Some "red"
-  | "00f" -> Some "blue"
-  | "008000" -> Some "green"
-  | "fff" -> Some "white"
-  | "000" -> Some "black"
-  | "ff0" -> Some "yellow"
-  | "0ff" -> Some "cyan"
-  | "f0f" -> Some "magenta"
-  | "808080" -> Some "gray"
-  | "ffa500" -> Some "orange"
-  | "800080" -> Some "purple"
-  | "ffc0cb" -> Some "pink"
-  | "c0c0c0" -> Some "silver"
-  | "800000" -> Some "maroon"
-  | "808000" -> Some "olive"
-  | "000080" -> Some "navy"
-  | "008080" -> Some "teal"
-  | "f0ffff" -> Some "azure"
-  | "f5f5dc" -> Some "beige"
-  | "a52a2a" -> Some "brown"
-  | "ff7f50" -> Some "coral"
-  | "ffd700" -> Some "gold"
-  | "fffff0" -> Some "ivory"
-  | "f0e68c" -> Some "khaki"
-  | "faf0e6" -> Some "linen"
-  | "cd853f" -> Some "peru"
-  | "dda0dd" -> Some "plum"
-  | "fffafa" -> Some "snow"
-  | "d2b48c" -> Some "tan"
-  | "f5deb3" -> Some "wheat"
-  | _ -> None
-
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
 let shorten_hex value =
@@ -3474,17 +3227,13 @@ let hex_string_of_bytes r g b a =
   else shorten_hex (String.concat "" [ rgb; hex_of_byte a ])
 
 let minify_color : color -> color = function
-  | Named n ->
+  | Named n -> (
       let name, hex = color_name_hex n in
-      let hex_len =
-        String.length hex + 1
-        (* # prefix *)
-      in
-      if hex <> "" && hex_len <= String.length name then
+      if hex = "" || color_name_is_shortest ~name ~hex then Named n
+      else
         match rgba_of_hex hex with
         | Some (r, g, b, a) -> Hex { r; g; b; a }
-        | None -> Named n
-      else Named n
+        | None -> Named n)
   | c -> c
 
 (* CSS Color 4 sec. 11 normalises system colour keywords to lowercase ASCII. *)
@@ -7250,41 +6999,18 @@ let rec read_number_percentage t : number_percentage =
 let read_color_name t : color_name =
   Cursor.ws t;
   let s = Cursor.ident t in
-  match String.lowercase_ascii s with
-  | "red" -> Red
-  | "blue" -> Blue
-  | "green" -> Green
-  | "white" -> White
-  | "black" -> Black
-  | "yellow" -> Yellow
-  | "cyan" -> Cyan
-  | "magenta" -> Magenta
-  | "gray" | "grey" -> Gray
-  | "orange" -> Orange
-  | "purple" -> Purple
-  | "pink" -> Pink
-  | "silver" -> Silver
-  | "maroon" -> Maroon
-  | "fuchsia" -> Fuchsia
-  | "lime" -> Lime
-  | "olive" -> Olive
-  | "navy" -> Navy
-  | "teal" -> Teal
-  | "aqua" -> Aqua
-  | "rebeccapurple" -> Rebecca_purple
-  | _ -> Cursor.err_invalid t ("color name: " ^ s)
+  match color_name_of_string (String.lowercase_ascii s) with
+  | Some name -> name
+  | None -> Cursor.err_invalid t ("color name: " ^ s)
 
-(* Shortest spelling of a hex value as a [color]: shorten, then pick the named
-   form when it is strictly shorter (the [pp_hex_color] choice, as an AST
-   rewrite producing a [color] instead of printing). *)
+(* Shortest spelling of a hex value as a [color]: shorten, then take the named
+   form when the table has one, which it holds only for the colours whose name
+   is the shorter spelling (the [pp_hex_color] choice, as an AST rewrite
+   producing a [color] instead of printing). *)
 let canonical_color_of_hex r g b a : color =
-  let shortened = hex_string_of_bytes r g b a in
-  match named_for_hex shortened with
-  | Some name when String.length name < String.length shortened + 1 ->
-      Option.value
-        (read_color_keyword_of_string name)
-        ~default:(Hex { r; g; b; a })
-  | _ -> Hex { r; g; b; a }
+  match color_name_of_hex (hex_string_of_bytes r g b a) with
+  | Some name -> Named name
+  | None -> Hex { r; g; b; a }
 
 (* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
    a [var()] channel). CSS Color 4 sec. 4.1: a fully-opaque [/ 1] / [/ 100%] is

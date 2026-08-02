@@ -271,7 +271,10 @@ val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)
 
 val read_color_name : Cursor.t -> color_name
-(** [read_color_name] reads a {!type-color_name} value. *)
+(** [read_color_name] reads a {!type-color_name} value: every name
+    {!pp_color_name} prints, matched case-insensitively, and read back as the
+    constructor that prints it, so [grey] is [Grey] and not the [Gray] that
+    prints [gray]. *)
 
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)
