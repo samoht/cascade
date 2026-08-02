@@ -7726,6 +7726,7 @@ val optimize :
   ?closed_world:bool ->
   ?objective:[ `Raw | `Transfer ] ->
   ?prune_unused_custom_props:bool ->
+  ?stats:Stats.t ->
   t ->
   t
 (** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
@@ -7770,7 +7771,10 @@ val optimize :
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a
     complete stylesheet with no out-of-band reader (another stylesheet, or
-    [getComputedStyle]), the same closed-world assumption as {!inline_vars}. *)
+    [getComputedStyle]), the same closed-world assumption as {!inline_vars}.
+
+    [stats] records what this run did; read it back with {!Stats.snapshot}.
+    Without it the run counts into a recorder of its own that nobody reads. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

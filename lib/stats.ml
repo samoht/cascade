@@ -1,23 +1,3 @@
-type pass_stat = {
-  mutable time : float;
-  mutable calls : int;
-  mutable changes : int;
-  mutable rules_in : int;
-  mutable rules_out : int;
-}
-
-let pass_times : (string, pass_stat) Hashtbl.t = Hashtbl.create 16
-let profile_enabled = ref false
-let set_profile enabled = profile_enabled := enabled
-let profile () = !profile_enabled
-let factor_saving = ref 0
-
-let add_saving saving =
-  if saving > 0 then factor_saving := !factor_saving + saving
-
-let reset_saving () = factor_saving := 0
-let saving () = !factor_saving
-
 type iteration_stat = {
   fixpoint : int;
   iteration : int;
@@ -32,48 +12,86 @@ type iteration_stat = {
   elapsed : float;
 }
 
-let iteration_stats_rev = ref []
-let iteration_stats () = !iteration_stats_rev
-
-let pass name =
-  match Hashtbl.find_opt pass_times name with
-  | Some s -> s
-  | None ->
-      let s =
-        { time = 0.0; calls = 0; changes = 0; rules_in = 0; rules_out = 0 }
-      in
-      Hashtbl.add pass_times name s;
-      s
-
 type counters = {
-  mutable iterations : int;
-  mutable factor_fixpoints_run : int;
-  mutable marginal_stops : int;
-  mutable factor_fixpoints_skipped : int;
-  mutable factor_preflight_gain : int;
-  mutable factor_bytes_saved : int;
-  mutable factor_transfer_reverts : int;
+  iterations : int;
+  factor_fixpoints_run : int;
+  factor_fixpoints_skipped : int;
+  factor_preflight_gain : int;
+  factor_bytes_saved : int;
+  factor_transfer_reverts : int;
 }
 
-let counters =
+type snapshot = { counters : counters; iteration_stats : iteration_stat list }
+
+type t = {
+  profile : bool;
+  mutable counters : counters;
+  mutable iteration_stats_rev : iteration_stat list;
+  mutable saving : int;
+}
+
+let no_counters =
   {
     iterations = 0;
     factor_fixpoints_run = 0;
-    marginal_stops = 0;
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
     factor_transfer_reverts = 0;
   }
 
-let record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
+let v ?(profile = false) () =
+  { profile; counters = no_counters; iteration_stats_rev = []; saving = 0 }
+
+let profile t = t.profile
+
+let snapshot t =
+  { counters = t.counters; iteration_stats = t.iteration_stats_rev }
+
+let add_saving t saving = if saving > 0 then t.saving <- t.saving + saving
+let reset_saving t = t.saving <- 0
+let saving t = t.saving
+
+let start_fixpoint t =
+  let run = t.counters.factor_fixpoints_run + 1 in
+  t.counters <- { t.counters with factor_fixpoints_run = run };
+  run
+
+let skip_fixpoint t =
+  t.counters <-
+    {
+      t.counters with
+      factor_fixpoints_skipped = t.counters.factor_fixpoints_skipped + 1;
+    }
+
+let revert_fixpoint t =
+  t.counters <-
+    {
+      t.counters with
+      factor_transfer_reverts = t.counters.factor_transfer_reverts + 1;
+    }
+
+let add_preflight_gain t gain =
+  t.counters <-
+    {
+      t.counters with
+      factor_preflight_gain = t.counters.factor_preflight_gain + gain;
+    }
+
+let record_iteration t ~fixpoint ~local_iteration ~before_rules ~before_bytes
     ~after_rules ~after_bytes ~bytes_saved ~active_passes ~changed_passes
     ~elapsed =
-  counters.factor_bytes_saved <- counters.factor_bytes_saved + bytes_saved;
-  iteration_stats_rev :=
+  let iteration = t.counters.iterations + 1 in
+  t.counters <-
+    {
+      t.counters with
+      iterations = iteration;
+      factor_bytes_saved = t.counters.factor_bytes_saved + bytes_saved;
+    };
+  t.iteration_stats_rev <-
     {
       fixpoint;
-      iteration = counters.iterations;
+      iteration;
       local_iteration;
       before_rules;
       after_rules;
@@ -84,16 +102,4 @@ let record_iteration ~fixpoint ~local_iteration ~before_rules ~before_bytes
       changed_passes;
       elapsed;
     }
-    :: !iteration_stats_rev
-
-let reset () =
-  Hashtbl.reset pass_times;
-  iteration_stats_rev := [];
-  factor_saving := 0;
-  counters.iterations <- 0;
-  counters.factor_fixpoints_run <- 0;
-  counters.marginal_stops <- 0;
-  counters.factor_fixpoints_skipped <- 0;
-  counters.factor_preflight_gain <- 0;
-  counters.factor_bytes_saved <- 0;
-  counters.factor_transfer_reverts <- 0
+    :: t.iteration_stats_rev

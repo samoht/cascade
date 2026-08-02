@@ -1,64 +1,38 @@
 open Cascade
 open Cmdliner
 
-let profile_entries () =
-  let module S = Cascade.Stats in
-  let total = ref 0.0 in
-  let entries =
-    Hashtbl.fold
-      (fun name s acc ->
-        total := !total +. s.S.time;
-        (name, s) :: acc)
-      S.pass_times []
-  in
-  let entries =
-    List.sort (fun (_, a) (_, b) -> compare b.S.time a.S.time) entries
-  in
-  (!total, entries)
-
-let print_iteration_profile () =
-  let module S = Cascade.Stats in
-  match S.iteration_stats () with
+let print_iteration_profile (report : Stats.snapshot) =
+  match report.iteration_stats with
   | [] -> ()
   | iteration_stats ->
       Fmt.epr "  %-3s %-4s %-4s %9s %9s %9s %9s %7s %7s %8s@." "fp" "iter"
         "giter" "rules_in" "rules_out" "bytes_in" "saved" "passes" "chg" "time";
       List.iter
-        (fun (s : S.iteration_stat) ->
+        (fun (s : Stats.iteration_stat) ->
           Fmt.epr "  %-3d %-4d %-4d %9d %9d %9d %9d %7d %7d %7.3fs@." s.fixpoint
             s.local_iteration s.iteration s.before_rules s.after_rules
             s.before_bytes s.bytes_saved s.active_passes s.changed_passes
             s.elapsed)
         (List.rev iteration_stats)
 
-let print_pass_profile entries =
-  let module S = Cascade.Stats in
-  Fmt.epr "  %-22s %8s %6s %6s %9s %9s@." "pass" "time" "calls" "chg" "rules_in"
-    "rules_out";
-  List.iter
-    (fun (name, s) ->
-      Fmt.epr "  %-22s %7.3fs %6d %6d %9d %9d@." name s.S.time s.S.calls
-        s.S.changes s.S.rules_in s.S.rules_out)
-    entries
-
-let print_factor_profile_footer () =
-  let module S = Cascade.Stats in
-  Fmt.epr "@.factor stops: %d marginal, committed savings: %d bytes@."
-    S.counters.marginal_stops S.counters.factor_bytes_saved;
+let print_factor_profile_footer (counters : Stats.counters) =
+  Fmt.epr "@.factor committed savings: %d bytes@." counters.factor_bytes_saved;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
-    S.counters.factor_fixpoints_skipped S.counters.factor_preflight_gain;
-  if S.counters.factor_transfer_reverts > 0 then
+    counters.factor_fixpoints_skipped counters.factor_preflight_gain;
+  if counters.factor_transfer_reverts > 0 then
     Fmt.epr "factor transfer gate: %d segments reverted@."
-      S.counters.factor_transfer_reverts
+      counters.factor_transfer_reverts
 
-let report_profile () =
-  let module S = Cascade.Stats in
-  let total, entries = profile_entries () in
+let report_profile (report : Stats.snapshot) =
+  let total =
+    List.fold_left
+      (fun total (s : Stats.iteration_stat) -> total +. s.elapsed)
+      0.0 report.iteration_stats
+  in
   Fmt.epr "factor fixpoint (%d runs, %d iterations, total %.3fs):@."
-    S.counters.factor_fixpoints_run S.counters.iterations total;
-  print_iteration_profile ();
-  print_pass_profile entries;
-  print_factor_profile_footer ()
+    report.counters.factor_fixpoints_run report.counters.iterations total;
+  print_iteration_profile report;
+  print_factor_profile_footer report.counters
 
 let resolve_inline_imports ~input_path stylesheet =
   if input_path = "-" then begin
@@ -93,21 +67,20 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       if inline_vars_flag then Cli_inline_vars.run ~keep_vars stylesheet
       else stylesheet
     in
+    let stats = Stats.v ~profile () in
     let stylesheet =
-      if minify then begin
-        Cascade.Stats.set_profile profile;
+      if minify then
         (* Raw output ships uncompressed, so the aggressive global-factoring
            fixpoint is worth its cost only here: under the transfer objective
            its extra raw-byte wins grow gzip and get discarded anyway. *)
         let aggressive = objective = `Raw in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
-          ~closed_world ~objective stylesheet
-      end
+          ~closed_world ~objective ~stats stylesheet
       else stylesheet
     in
     let written = emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet in
     Cli_io.check_not_all_dropped input ~written;
-    if profile then report_profile ()
+    if profile then report_profile (Stats.snapshot stats)
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
@@ -240,9 +213,9 @@ let closed_world_arg =
 
 let profile_arg =
   let doc =
-    "Print per-pass timings of the optimizer factoring fixpoint to stderr \
-     after the run. Use to triage which pass dominates on a slow input. Has no \
-     effect without $(b,--minify)."
+    "Print per-iteration timings of the optimizer factoring fixpoint to stderr \
+     after the run. Use to triage which input shape dominates a slow run. Has \
+     no effect without $(b,--minify)."
   in
   Arg.(value & flag & info [ "profile" ] ~doc)
 

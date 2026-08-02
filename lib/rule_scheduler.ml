@@ -133,7 +133,7 @@ let run ~ctx ~finalize graph =
               with
               | Error _ -> loop iteration refreshed graph next_key queue
               | Ok graph' ->
-                  Stats.add_saving candidate.saving;
+                  Stats.add_saving (Ctx.stats ctx) candidate.saving;
                   (* Refresh affected-neighborhood candidates per commit only
                      for small graphs; on large graphs the cumulative per-commit
                      enumeration cost dominates, so defer to drain-time

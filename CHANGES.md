@@ -15,6 +15,12 @@
   normalisation key and a blind spot in the walk both reading as success.
   ``Css_compare.equal ~mode:`Canonical`` answers on the same bytes, and
   `Css_compare.No_diff` no longer carries the two canonical forms (#290)
+- Optimizer profiling is per run: `Css.optimize` and `Optimize.stylesheet` take
+  `?stats:Stats.t` and `Stats.snapshot` reads back an immutable record.
+  `Optimize.counters`, `Optimize.pass_times`, `Optimize.iteration_stats` and
+  `Optimize.set_profile` are gone, along with the per-pass table and the
+  marginal-stop counter, which no pass had written since the DAG scheduler
+  replaced the multi-pass fixpoint (#288)
 
 ### Parsing
 
