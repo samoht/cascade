@@ -825,7 +825,7 @@ let test_declared_order_stable buf =
   let important =
     List.map (fun (d : Css.Stylesheet.declared_value) -> d.important) colors
   in
-  if orders <> [ 0; 2 ] then
+  if not (List.equal Int.equal orders [ 0; 2 ]) then
     failf "declared color source order changed: %s"
       (String.concat "," (List.map string_of_int orders));
   if important <> [ false; true ] then
@@ -1282,7 +1282,7 @@ let test_recovery_keeps_rules buf =
     recovered_css "recovery keeps sibling rules" css
   in
   let counts = recovered_declaration_counts stylesheet in
-  if counts <> [ 1; 0; 1 ] then
+  if not (List.equal Int.equal counts [ 1; 0; 1 ]) then
     failf "CSS Syntax recovery changed rule/declaration shape: %S" css;
   if warnings = [] then failf "recovery emitted no warning: %S" css
 
@@ -1302,7 +1302,7 @@ let test_recovery_invalid_rule_boundary buf =
     recovered_css "invalid rule boundary recovery" css
   in
   let counts = recovered_declaration_counts stylesheet in
-  if counts <> [ 1; 1 ] then
+  if not (List.equal Int.equal counts [ 1; 1 ]) then
     failf "CSS Syntax invalid-rule recovery did not preserve sibling rules: %S"
       css;
   if warnings = [] then failf "invalid rule emitted no warning: %S" css
@@ -1319,7 +1319,7 @@ let test_recovery_bad_declaration buf =
     recovered_css "bad declaration recovery" css
   in
   let counts = recovered_declaration_counts stylesheet in
-  if counts <> [ 1 ] then
+  if not (List.equal Int.equal counts [ 1 ]) then
     failf "CSS Syntax recovery dropped valid declaration after invalid one: %S"
       css;
   if warnings = [] then failf "bad declaration emitted no warning: %S" css

@@ -452,9 +452,9 @@ let assert_document_lookup ctx class_name id attr =
 
 let assert_document_fields (ctx : Css.Context.document) =
   if ctx.element <> Some "div" then fail "document context lost element";
-  if ctx.pseudo_classes <> [ "hover" ] then
+  if not (List.equal String.equal ctx.pseudo_classes [ "hover" ]) then
     fail "document context lost pseudo-class list";
-  if ctx.pseudo_elements <> [ "before" ] then
+  if not (List.equal String.equal ctx.pseudo_elements [ "before" ]) then
     fail "document context lost pseudo-element list"
 
 let test_document_context buf =
@@ -514,7 +514,8 @@ let assert_query_supports ctx =
 
 let assert_query_fields (ctx : Css.Context.query) =
   if ctx.media_type <> Some "screen" then fail "query context lost media type";
-  if ctx.supports <> query_supports then fail "query context lost supports list";
+  if not (List.equal Css.Supports.equal ctx.supports query_supports) then
+    fail "query context lost supports list";
   if ctx.container_name <> Some "card" then
     fail "query context lost container name"
 
