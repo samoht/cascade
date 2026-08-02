@@ -29,12 +29,54 @@ module type NODE = sig
 
   val children : t -> t list
   (** The child elements, in document order. *)
+
+  val text_children : t -> string list
+  (** The data of the node's direct child text nodes, in document order, and
+      [[]] for an element that holds none. Only text counts: a comment or a
+      processing instruction is not a text node and must not be reported here,
+      since neither affects whether the element is [:empty] (selectors-4 sec.
+      13.2). A backend that answers [[]] for an element that does hold text
+      makes that element match [:empty]. *)
 end
 
+(** What the matcher can say about a selector and a node.
+
+    Selectors 4 describes far more than a matcher with no document behind it can
+    decide, so the negative answer is split in two. [Unsupported] is not "does
+    not match": it says this library has no model for the selector, and a caller
+    must not read it as the selector having been ruled out. *)
+type match_result =
+  | Matches  (** The selector matches the node. *)
+  | No_match  (** The selector is modelled and does not match the node. *)
+  | Unsupported
+      (** The selector is outside what the matcher models, so neither answer is
+          available, for any node. *)
+
+val supported : Selector.t -> bool
+(** [supported sel] is whether the matcher has a model for [sel], that is,
+    whether {!Make.match_selector} answers it with something other than
+    {!constructor-Unsupported}. The answer is a fact about [sel] alone, which is
+    why it needs no node.
+
+    Modelled: the universal, type, class, id and attribute selectors, each
+    without a namespace and, for an attribute, without a case flag; [:root],
+    [:empty], [:first-child], [:last-child], [:only-child]; the descendant,
+    child and sibling combinators; and [:is()], [:where()], [:not()] and
+    selector lists over those - a list is only as modelled as its least modelled
+    branch. Everything else, every stateful pseudo-class and every
+    pseudo-element among it, is not. *)
+
 module Make (N : NODE) : sig
+  val match_selector : Selector.t -> N.t -> match_result
+  (** [match_selector sel node] is what the matcher can say about [sel] and
+      [node]. It is [Unsupported] exactly when [sel] is not {!supported}, for
+      every [node]. *)
+
   val matches : Selector.t -> N.t -> bool
-  (** [matches sel node] is whether [sel] matches [node]. Stateful and generated
-      forms ([:hover], [::before], unknown pseudo-classes, ...) never match. *)
+  (** [matches sel node] is whether [sel] is known to match [node], that is,
+      whether {!match_selector} is [Matches]. It folds [Unsupported] in with
+      [No_match], so a caller that has to tell the two apart wants
+      {!match_selector}. *)
 
   val resolve : Stylesheet.t -> N.t -> Declaration.declaration list
   (** [resolve sheet node] is the declarations that win for [node] after

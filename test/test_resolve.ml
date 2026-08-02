@@ -6,16 +6,18 @@ type tree = {
   tname : string;
   tid : string option;
   tclasses : string list;
+  ttext : string list;
   mutable tparent : tree option;
   tchildren : tree list;
 }
 
-let elt ?id ?(classes = []) name children =
+let elt ?id ?(classes = []) ?(text = []) name children =
   let t =
     {
       tname = name;
       tid = id;
       tclasses = classes;
+      ttext = text;
       tparent = None;
       tchildren = children;
     }
@@ -33,6 +35,7 @@ module Node = struct
   let attribute _ _ = None
   let parent t = t.tparent
   let children t = t.tchildren
+  let text_children t = t.ttext
 end
 
 module R = Resolve.Make (Node)
@@ -73,6 +76,68 @@ let test_sibling_then_descendant () =
   yes "sibling then descendant" "div+div span" s2;
   no "descendant of first div" "div+div span" s1;
   yes "subsequent-sibling then child" "div~div>span" s2
+
+let match_result =
+  Alcotest.testable
+    (fun ppf -> function
+      | Resolve.Matches -> Fmt.string ppf "Matches"
+      | Resolve.No_match -> Fmt.string ppf "No_match"
+      | Resolve.Unsupported -> Fmt.string ppf "Unsupported")
+    ( = )
+
+let answers name expected s n =
+  Alcotest.check match_result name expected (R.match_selector (sel s) n)
+
+(* A selector the matcher has no model for is not a selector that fails to
+   match: the caller has to be able to tell the two apart, or it drops a rule it
+   only failed to understand. *)
+let test_unsupported_is_not_no_match () =
+  answers "a modelled hit" Resolve.Matches "span" s2;
+  answers "a modelled miss" Resolve.No_match "div" s2;
+  answers "stateful" Resolve.Unsupported "span:hover" s2;
+  answers "pseudo-element" Resolve.Unsupported "span::before" s2;
+  answers "attribute case flag" Resolve.Unsupported "[id=\"S2\" i]" s2;
+  answers "namespaced type" Resolve.Unsupported "*|span" s2;
+  answers "shadow-piercing combinator" Resolve.Unsupported "div>>>span" s2;
+  (* One unsupported part carries the whole selector, whichever side of the
+     compound, list or negation it sits on, and whether or not the rest
+     matches. *)
+  answers "compound" Resolve.Unsupported "span:hover" s2;
+  answers "list" Resolve.Unsupported "span,div:hover" s2;
+  answers "negation" Resolve.Unsupported ":not(:hover)" s2;
+  answers "left of a combinator" Resolve.Unsupported "div:hover span" s2;
+  answers "left of a combinator that missed" Resolve.Unsupported "p:hover span"
+    s2
+
+(* {!Resolve.supported} is the same answer without a node, which is what lets
+   {!Apply} decide whether a rule may leave the stylesheet. *)
+let test_supported_needs_no_node () =
+  let check name expected s =
+    Alcotest.(check bool) name expected (Resolve.supported (sel s))
+  in
+  check "class" true ".c";
+  check "attribute" true "[data-k=\"X\"]";
+  check "structural" true "p:empty";
+  check "descendant" true "div span";
+  check "attribute case flag" false "[data-k=\"X\" i]";
+  check "namespaced attribute" false "[svg|href]";
+  check "shadow-piercing combinator" false "div>>>span";
+  check "stateful" false ":hover";
+  check "one bad branch spoils the list" false "span,div:hover"
+
+(* selectors-4 sec. 13.2: [:empty] is "an element that has no children except,
+   optionally, document white space characters". White space alone leaves an
+   element empty, any other text does not, and U+00A0 is not document white
+   space (css-text-4 sec. 4.3) - the spec lists [<div>&nbsp;</div>] among the
+   elements [div:empty] does not represent. *)
+let test_empty_counts_text_children () =
+  yes "no children at all" ":empty" (elt "p" []);
+  yes "spaces, tabs and newlines" ":empty" (elt ~text:[ " \t\n" ] "p" []);
+  no "a text child" ":empty" (elt ~text:[ "text" ] "p" []);
+  no "a text child beside white space" ":empty"
+    (elt ~text:[ " "; "text" ] "p" []);
+  no "a no-break space" ":empty" (elt ~text:[ "\u{00a0}" ] "p" []);
+  no "an element child" ":empty" (elt "p" [ elt "span" [] ])
 
 let sheet_of css =
   match Css.of_string css with
@@ -165,6 +230,12 @@ let suite =
       Alcotest.test_case "single combinator" `Quick test_single_combinator;
       Alcotest.test_case "sibling then descendant/child" `Quick
         test_sibling_then_descendant;
+      Alcotest.test_case "unsupported is not no-match" `Quick
+        test_unsupported_is_not_no_match;
+      Alcotest.test_case "supported needs no node" `Quick
+        test_supported_needs_no_node;
+      Alcotest.test_case "empty counts text children" `Quick
+        test_empty_counts_text_children;
       Alcotest.test_case "resolve applies the cascade" `Quick
         test_resolve_cascade;
       Alcotest.test_case "nested layer names order as a tree" `Quick

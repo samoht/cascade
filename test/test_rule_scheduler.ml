@@ -38,6 +38,7 @@ module Node = struct
   let attribute _ _ = None
   let parent _ = None
   let children _ = []
+  let text_children _ = []
 end
 
 module R = Resolve.Make (Node)

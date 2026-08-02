@@ -20,6 +20,15 @@ module Node = struct
   let attribute n k = Soup.attribute k n
   let parent = Soup.parent
   let children n = Soup.children n |> Soup.elements |> Soup.to_list
+
+  (* [children] is the element children the structural selectors count; text is
+     reported apart because [:empty] counts that too. [Soup.texts] of a text
+     node is its own data and of a comment is nothing, so skipping the element
+     children leaves exactly the text that bears on emptiness. *)
+  let text_children n =
+    Soup.children n |> Soup.to_list
+    |> List.concat_map (fun c ->
+        match Soup.element c with Some _ -> [] | None -> Soup.texts c)
 end
 
 module Apply = Cascade.Apply.Make (Node)

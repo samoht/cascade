@@ -7,24 +7,13 @@
 
 module SSet = Set.Make (String)
 
-(* Selectors that can be written as an inline style (no state / condition). *)
-let inlinable (sel : Selector.t) =
-  let rec ok = function
-    | Selector.Universal _ | Selector.Element _ | Selector.Class _
-    | Selector.Id _ | Selector.Attribute _ | Selector.Root
-    | Selector.First_child | Selector.Last_child | Selector.Only_child
-    | Selector.Empty ->
-        true
-    | Selector.Compound ps
-    | Selector.List ps
-    | Selector.Is ps
-    | Selector.Where ps
-    | Selector.Not ps ->
-        List.for_all ok ps
-    | Selector.Combined (a, _, b) -> ok a && ok b
-    | _ -> false
-  in
-  ok sel
+(* Selectors that can be written as an inline style: no state, no condition -
+   and nothing the matcher cannot decide. Inlining a rule takes it out of the
+   stylesheet, so a selector {!Resolve.supported} does not cover would leave its
+   declarations nowhere at all: matched by nobody here, and gone from the sheet
+   the browser reads. Deriving the set from the matcher is what stops the two
+   from parting ways. *)
+let inlinable = Resolve.supported
 
 (* Elements that never carry inline styles ([html] is stylable so :root custom
    properties land on it). *)

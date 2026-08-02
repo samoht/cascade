@@ -19,6 +19,7 @@ module Node = struct
   let attribute n key = List.assoc_opt key n.attrs
   let parent n = n.parent
   let children n = n.children
+  let text_children _ = []
 end
 
 module A = Apply.Make (Node)
@@ -213,8 +214,10 @@ let keeps_rule_with_namespaced_element () =
   check_split "namespaced element"
     ~css:"@namespace svg url(http://www.w3.org/2000/svg);svg|p{color:red}"
     ~inline:""
-    ~keep:"@namespace svg url(http://www.w3.org/2000/svg);svg|p{color:red}"
-    ~kept:1 (node "p")
+      (* The minified printer writes the namespace URL as a string, and the
+         [@namespace] statement counts towards the kept statements. *)
+    ~keep:"@namespace svg\"http://www.w3.org/2000/svg\";svg|p{color:red}"
+    ~kept:2 (node "p")
 
 (* [>>>] is a legacy shadow-piercing combinator with no tree relation behind it,
    so the matcher has no answer for it and the rule stays in the sheet. *)

@@ -16,6 +16,7 @@ module Node = struct
   let attribute _ _ = None
   let parent _ = None
   let children n = n.children
+  let text_children _ = []
 end
 
 module A = Apply.Make (Node)

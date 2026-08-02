@@ -21,6 +21,8 @@
   `Optimize.set_profile` are gone, along with the per-pass table and the
   marginal-stop counter, which no pass had written since the DAG scheduler
   replaced the multi-pass fixpoint (#288)
+- `Resolve.NODE` gains `text_children`, the data of a node's direct child text
+  nodes, which `:empty` needs (#286)
 
 ### Parsing
 
@@ -104,7 +106,11 @@
   no inline form stays inside its layer (#283)
 - `cascade apply` leaves a declaration in the stylesheet when a rule inside
   `@scope`, `@starting-style`, `@when`, `@else` or `@-moz-document` sets the
-  same property; it moved inline, above the rule that was kept
+  same property; it moved inline, above the rule that was kept (#286)
+- `cascade apply` only inlines a rule whose selector its matcher can represent,
+  so `[data-k="X" i]`, a namespaced selector and the `>>>` and `||` combinators
+  stay in the stylesheet rather than being inlined onto nobody and dropped, and
+  `:empty` counts an element's text: `<p>text</p>` is not empty (#286)
 - `Css.vars_of_declarations` reports the `var()` references of 39 properties it
   answered with none, so `Css.resolve_theme` emits the theme binding for
   `inline-size: var(--w)` as it does for `width: var(--w)` (#266)
