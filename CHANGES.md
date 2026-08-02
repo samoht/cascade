@@ -159,6 +159,10 @@
 - The cascade layer order the two sheets declare is compared, and the report
   names the layer pairs that swapped. Dropping an `@layer a;` pin, which makes
   the other layer the weaker one, read as no difference at all
+- Every entry the report prints names what it is about. A `@property` or
+  `@keyframes` surplus reached the rule level, which has no rule to name and
+  printed a bare tree connector while still counting the entry towards the
+  summary; `@charset`, `@namespace` and `@layer a, b;` had no name at all
 - A container that changed places is reported whether or not its body changed,
   on the same order keys the rule level uses. Three absolute-index distances
   gated it before, so swapping an `@media` with the rule below it - which

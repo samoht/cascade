@@ -654,6 +654,22 @@ let describe_statement stmt =
       (fun s ->
         Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
       (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
+      (* The statements that carry neither a selector nor a block. Naming them
+         apart also keeps them apart in the order keys, where one shared "(other
+         statement)" made a [@charset] and a [@namespace] the same statement. *)
+      (fun (s : Css.statement) ->
+        match s with
+        | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
+        | Namespace (prefix, _) ->
+            Some
+              ("@namespace"
+              ^ (match prefix with Some p -> " " ^ p | None -> "")
+              ^ ";")
+        (* The semicolon is what tells a layer-order pin from the block of the
+           same name: [@layer a;] ahead of [@layer a { ... }] is a second
+           statement, not the block again. *)
+        | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
+        | _ -> None);
     ]
   in
   match List.find_map try_desc matchers with
@@ -1056,13 +1072,33 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
 
 (* ===== Tree Diff Computation Functions ===== *)
 
+(* The text a statement prints to, cut at its block, for the statements no
+   selector names: [@charset "UTF-8";], [@layer a, b;], [@namespace ...]. An
+   entry with no name cannot be classified, so it corrupts every count the
+   summary derives from the same list, and it renders as a bare tree
+   connector. *)
+let statement_head stmt =
+  let text =
+    Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) |> String.trim
+  in
+  let head =
+    match String.index_opt text '{' with
+    | Some i -> String.trim (String.sub text 0 i)
+    | None -> text
+  in
+  if head = "" then
+    Option.value ~default:"(other statement)" (describe_statement stmt)
+  else head
+
 (* Helper to extract rule information from statements *)
 let strings_of_rule stmt =
   match Css.as_rule stmt with
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None -> ("", [])
+  | None ->
+      ( statement_head stmt,
+        Option.value ~default:[] (Css.statement_declarations stmt) )
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
@@ -1810,9 +1846,8 @@ let properties_diff decls1 decls2 : declaration list * string list * string list
    recursion *)
 (* A container still takes part in the ordering comparison, since swapping a
    rule with an [@media] is cascade-significant, but [container_changes] is what
-   reports it. Converting it here as well produced a second entry for the same
-   block, with an empty selector because [strings_of_rule] has no rule to
-   name. *)
+   reports it. Converting it here as well gives a second entry for the same
+   block. *)
 let is_container_statement stmt =
   Css.as_media stmt <> None
   || Css.as_supports stmt <> None
@@ -2061,6 +2096,18 @@ let at_rule_body (stmt : Css.statement) : at_rule_body option =
    well would report one change twice, once against the universal selector. *)
 let is_selectorless_at_rule stmt = at_rule_body stmt <> None
 
+(* Every statement a processor of its own reads and names.
+   [selector_key_of_stmt] gives all of them the universal selector, so the rule
+   matcher pairs a [@property] with a [@keyframes] with a [@media] and hands
+   whichever it has one too many of to the report, where nothing can name it.
+   Containers are the exception and stay: [moved_order_keys] reads their
+   position, and [convert_added_rule]/[convert_removed_rule] keep them out of
+   the entries. *)
+let is_reported_by_own_processor stmt =
+  is_selectorless_at_rule stmt
+  || Css.as_property stmt <> None
+  || Css.as_keyframes stmt <> None
+
 (* The at-rule text split at its block: the head keys the statement, the body is
    what a descriptor-only at-rule is compared on. *)
 let at_rule_text stmt =
@@ -2137,10 +2184,12 @@ let at_rule_text_change text1 text2 =
     }
 
 let to_rule_changes rules1 rules2 : rule_diff list =
-  (* [process_at_rules] reads these statements, and a rule diff can only see
-     them as one more universal selector. *)
-  let rules1 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules1 in
-  let rules2 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules2 in
+  let rules1 =
+    List.filter (fun s -> not (is_reported_by_own_processor s)) rules1
+  in
+  let rules2 =
+    List.filter (fun s -> not (is_reported_by_own_processor s)) rules2
+  in
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   let moved = moved_order_keys rules1 rules2 in
   List.filter_map convert_added_rule r_added
