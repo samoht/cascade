@@ -94,7 +94,30 @@ type container_diff =
           (** (position, rules) for each block in actual *)
     }
 
-type t = { rules : rule_diff list; containers : container_diff list }
+type layer_order_diff = {
+  expected_order : string list;
+  actual_order : string list;
+  swapped : (string * string) list;
+}
+(** The cascade layer order the two sheets declare, when they declare it
+    differently. Layers are named by the dotted paths of
+    {!Cascade.Resolve.layer_order}, weakest first, restricted to the layers both
+    sheets declare: one side declaring a layer the other does not is reported as
+    the [@layer] block that came or went, not as an order change.
+
+    [swapped] holds the pairs [(weaker, stronger)] that [expected_order]
+    declares in that order and [actual_order] the other way round - the layers
+    whose conflicts the two sheets resolve differently. It is never empty.
+
+    The order compared is the sheet's own, so a layer declared inside a
+    conditional group is not part of it, as in {!Cascade.Resolve.layer_order}.
+*)
+
+type t = {
+  rules : rule_diff list;
+  containers : container_diff list;
+  layer_order : layer_order_diff option;
+}
 (** Structured CSS differences. *)
 
 val is_empty : t -> bool

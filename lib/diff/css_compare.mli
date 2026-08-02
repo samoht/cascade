@@ -171,8 +171,11 @@ type stats = {
   rearranged_rules : int;
   regrouped_rules : int;
   container_changes : int;
+  layer_order_swaps : int;
 }
-(** Summary of differences extracted from a {!t}. *)
+(** Summary of differences extracted from a {!t}. [layer_order_swaps] counts the
+    pairs of cascade layers the two sheets declare in the opposite relative
+    order, as {!Tree_diff.type-layer_order_diff} reports them. *)
 
 val stats : expected_str:string -> actual_str:string -> t -> stats
 (** [stats ~expected_str ~actual_str result] computes a {!type-stats} record

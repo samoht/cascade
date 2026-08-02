@@ -156,6 +156,9 @@
 
 ### Diff report
 
+- The cascade layer order the two sheets declare is compared, and the report
+  names the layer pairs that swapped. Dropping an `@layer a;` pin, which makes
+  the other layer the weaker one, read as no difference at all
 - A rule that writes one property more than once, as a fallback chain does, is
   compared occurrence by occurrence; matching by name alone made
   `a{color:red;color:blue}` against `a{color:red;color:green}` report

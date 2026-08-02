@@ -87,15 +87,31 @@ type container_diff =
           (** (position, rules) for each block in actual *)
     }
 
-type t = { rules : rule_diff list; containers : container_diff list }
+type layer_order_diff = {
+  expected_order : string list;
+  actual_order : string list;
+  swapped : (string * string) list;
+}
+
+type t = {
+  rules : rule_diff list;
+  containers : container_diff list;
+  layer_order : layer_order_diff option;
+}
 
 (* ===== Constants ===== *)
 
 let default_truncation_length = String_diff.default_max_width
 
+(* How many swapped layer pairs the report names before counting the rest. A
+   reversed order of n layers inverts n(n-1)/2 pairs, and reading the first few
+   is enough to place the change. *)
+let max_layer_swaps = 5
+
 (* ===== Helper Functions ===== *)
 
-let is_empty d = d.rules = [] && d.containers = []
+let is_empty d =
+  d.rules = [] && d.containers = [] && Option.is_none d.layer_order
 
 (* ===== Pretty Printing Functions ===== *)
 
@@ -960,9 +976,61 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
+(* A layer path is keyed for the cascade, not for reading: an anonymous [@layer
+   { }] block is a segment starting with U+0000, which a report has to name some
+   other way. *)
+let layer_path_name path =
+  String.split_on_char '.' path
+  |> List.map (fun segment ->
+      if String.length segment > 0 && segment.[0] = '\000' then
+        "(anonymous " ^ String.sub segment 1 (String.length segment - 1) ^ ")"
+      else segment)
+  |> String.concat "."
+
+let layer_path_list paths = String.concat ", " (List.map layer_path_name paths)
+
+let pp_layer_swaps ~style buf swapped =
+  let line ~is_last text =
+    add_strings buf
+      [ tree_prefix ~style ~is_last ~parent_prefix:""; text; "\n" ]
+  in
+  List.iteri
+    (fun i (weaker, stronger) ->
+      if i < max_layer_swaps then
+        line ~is_last:false
+          (layer_path_name stronger ^ " now precedes " ^ layer_path_name weaker))
+    swapped;
+  match List.length swapped - max_layer_swaps with
+  | hidden when hidden > 0 ->
+      let noun = if hidden = 1 then " more pair\n" else " more pairs\n" in
+      add_strings buf
+        [
+          tree_prefix ~style ~is_last:false ~parent_prefix:"";
+          "...";
+          string_of_int hidden;
+          noun;
+        ]
+  | _ -> ()
+
+let pp_layer_order_section ~style buf = function
+  | None -> ()
+  | Some { expected_order; actual_order; swapped } ->
+      Buffer.add_string buf "Cascade layer order changed:\n";
+      pp_children ~style ~parent_prefix:"" buf (fun style buf ->
+          pp_layer_swaps ~style buf swapped;
+          add_strings buf
+            [
+              tree_prefix ~style ~is_last:true ~parent_prefix:"";
+              "order: ";
+              ansi_red ~color:style.color (layer_path_list expected_order);
+              " -> ";
+              ansi_green ~color:style.color (layer_path_list actual_order);
+              "\n";
+            ])
+
 let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?(depth = unlimited_depth) buf { rules; containers } =
-  if rules = [] && containers = [] then
+    ?(depth = unlimited_depth) buf { rules; containers; layer_order } =
+  if rules = [] && containers = [] && Option.is_none layer_order then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
        @layer)\n\
@@ -980,6 +1048,8 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
     (* [depth] counts renderable levels; the roots printed here are level 1. *)
     let style = { tree_style with color; depth = max 0 (depth - 1) } in
     let container_count = List.length containers in
+    (* The layer order leads: it decides which of the rules below it wins. *)
+    pp_layer_order_section ~style buf layer_order;
     pp_rule_list ~style ~container_count buf meaningful;
     pp_reordered_section ~style ~container_count buf reordered_rules;
     pp_containers_section ~style buf containers)
@@ -2897,6 +2967,60 @@ let process_imports stmts1 stmts2 : rule_diff list =
         (fun s -> (Added { selector = s; declarations = [] } : rule_diff))
         (multiset_remove_each ~remove:l1 l2)
 
+(* Cascade layer order. Two sheets can hold the same [@layer] blocks with the
+   same bodies and still resolve a conflict between two layers the opposite way,
+   because a layer's strength comes from where its name is first declared, not
+   from where its rules stand: an [@layer a;] statement ahead of the blocks pins
+   [a] as the weaker layer wherever its block ends up. Nothing else in the walk
+   reads that, so compare the declared orders here. *)
+
+(* A layer only one side declares is the rule and container walk's business: it
+   reports the [@layer] block that came or went. What only the order shows is a
+   pair of layers both sides declare in the opposite relative order, so restrict
+   each order to the shared names before comparing. *)
+let shared_layer_order order other =
+  List.filter (fun name -> List.exists (String.equal name) other) order
+
+(* The pairs [(weaker, stronger)] that [expected] declares weaker-then-stronger
+   and [actual] the other way round. Both lists hold the same names, so a
+   position lookup in [actual] settles each pair. *)
+let swapped_layer_pairs ~expected ~actual =
+  let positions = Hashtbl.create 16 in
+  List.iteri (fun i name -> Hashtbl.replace positions name i) actual;
+  let position name =
+    match Hashtbl.find_opt positions name with Some i -> i | None -> -1
+  in
+  let rec pairs = function
+    | [] -> []
+    | earlier :: rest ->
+        List.filter_map
+          (fun later ->
+            if position later < position earlier then Some (earlier, later)
+            else None)
+          rest
+        @ pairs rest
+  in
+  pairs expected
+
+(* [Resolve.layer_order] keys a sheet's layers by dotted path, so the two orders
+   compare across spellings: [@layer a.b] and [@layer a { @layer b }] reach the
+   same path, and an [@layer a, b;] statement declares its names the same way a
+   block does. *)
+let layer_order_diff stmts1 stmts2 =
+  let order1 = Resolve.layer_order stmts1 in
+  let order2 = Resolve.layer_order stmts2 in
+  let expected_order = shared_layer_order order1 order2 in
+  let actual_order = shared_layer_order order2 order1 in
+  if List.equal String.equal expected_order actual_order then None
+  else
+    Some
+      {
+        expected_order;
+        actual_order;
+        swapped =
+          swapped_layer_pairs ~expected:expected_order ~actual:actual_order;
+      }
+
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   let all1 = Css.statements expected in
   let all2 = Css.statements actual in
@@ -2916,4 +3040,4 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
     detect_container_position_changes all1 all2 base_containers
   in
 
-  { rules = rule_changes; containers }
+  { rules = rule_changes; containers; layer_order = layer_order_diff all1 all2 }
