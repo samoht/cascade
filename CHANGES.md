@@ -9,6 +9,12 @@
   `memtrace` dependency (#237)
 - A parse failure that drops every rule makes `cascade fmt` exit 1 instead of
   writing an empty stylesheet with a green status (#273)
+- `cascade diff --diff=canonical` exits 1 whenever the two canonical forms
+  differ, and prints the difference. It called such a pair equivalent and
+  exited 0 when the structural walk reached no difference, which left a missing
+  normalisation key and a blind spot in the walk both reading as success.
+  ``Css_compare.equal ~mode:`Canonical`` answers on the same bytes, and
+  `Css_compare.No_diff` no longer carries the two canonical forms
 
 ### Parsing
 
@@ -122,9 +128,10 @@
   structurally (see report below)`. It read `No structural differences`, which
   claimed equivalence over a comparison that fell through to a string diff, and
   over a side whose content the parser discarded (#285)
-- `cascade diff --diff=canonical` reports the canonical byte difference it
-  records when the structural comparison finds none: the verdict reads `CSS
-  files are equivalent` and `--depth=max` shows the two canonical forms (#285)
+- A canonical-form difference the structural walk did not reach is printed as
+  `Canonical forms differ:` above a string diff of the two forms
+- A string diff names the two sides with the labels it was given, so `cascade
+  diff` heads it with the two file names instead of `Expected` and `Actual`
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second

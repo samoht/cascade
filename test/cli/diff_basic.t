@@ -159,8 +159,8 @@ The --diff=string mode falls back to character-level diffing.
   
   Strings differ at position 12 (line 0, col 12)
   
-  --- Expected
-  +++ Actual
+  --- g.css
+  +++ h.css
   @@ position 12 @@
   -.x { color: red }
   +.x { color: blue }

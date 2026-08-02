@@ -97,7 +97,15 @@ let render_at_depth ~color ~file1 ~file2 ~depth result =
         let level, body = fit_depth render in
         (body, Some level)
 
-let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
+(* Canonical mode compares the two canonical minified forms, so the text under a
+   string diff there is those forms and not the files as written. Say which. *)
+let canonical_forms_note mode result =
+  match (mode, result) with
+  | Canonical, Cascade_diff.Css_compare.String_diff _ ->
+      "Canonical forms differ:\n"
+  | _ -> ""
+
+let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth ~mode result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
@@ -106,6 +114,8 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
   in
   let buf = Buffer.create 1024 in
   Cascade_diff.Css_compare.pp_stats buf stats;
+  Buffer.add_string buf
+    (canonical_forms_note mode result.Cascade_diff.Css_compare.result);
   Buffer.add_char buf '\n';
   Buffer.add_string buf (render_warnings ~file1 ~file2 ~max:max_warnings result);
   let body, elided_at = render_at_depth ~color ~file1 ~file2 ~depth result in
@@ -121,29 +131,6 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
           "; use --depth=max for the full report)\n";
         ]);
   print_string (Buffer.contents buf)
-
-(* Canonical mode can find the two sheets equivalent and still hold two
-   different canonical minified forms: a tool banner, a split [@layer] form, an
-   empty layer-order pin, whitespace inside [url()]. Tree-diff is the
-   authoritative comparator here - but dropping it left no trace of a
-   canonical-pass gap anyone could act on. *)
-let print_canonical_residual ~file1 ~file2 ~depth (expected_canon, actual_canon)
-    =
-  match depth with
-  | Fit | Level _ ->
-      Fmt.pr "Canonical minified forms still differ (--depth=max shows it)@."
-  | Full ->
-      Fmt.pr "Canonical minified forms still differ:@.";
-      let buf = Buffer.create 512 in
-      (match
-         Cascade_diff.String_diff.diff ~expected:expected_canon actual_canon
-       with
-      | Some sdiff ->
-          Buffer.add_char buf '\n';
-          Cascade_diff.String_diff.pp ~expected_label:file1 ~actual_label:file2
-            buf sdiff
-      | None -> ());
-      print_string (Buffer.contents buf)
 
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
@@ -171,7 +158,7 @@ let compare_files file1 file2 style_renderer mode depth opts () =
             ~css2
         in
         match result.Cascade_diff.Css_compare.result with
-        | No_diff { canonical_byte_diff } ->
+        | No_diff ->
             (* Equal ASTs can still hide parse-dropped declarations; show the
                warnings so the equality verdict is honest about them. *)
             let max =
@@ -180,15 +167,12 @@ let compare_files file1 file2 style_renderer mode depth opts () =
               | Fit | Level _ -> Some auto_warning_budget
             in
             print_string (render_warnings ~file1 ~file2 ~max result);
-            (match canonical_byte_diff with
-            | None -> Fmt.pr "CSS files are identical@."
-            | Some forms ->
-                Fmt.pr "CSS files are equivalent@.";
-                print_canonical_residual ~file1 ~file2 ~depth forms);
+            Fmt.pr "CSS files are identical@.";
             Ok ()
         | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
         | Actual_error _ ->
-            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result;
+            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth ~mode
+              result;
             (* Differing inputs are a result, not a usage error: exit 1 as
                documented, distinct from cmdliner's reserved error codes. *)
             Stdlib.exit 1)
@@ -327,11 +311,12 @@ let man =
          values stay functional. No effect outside canonical mode." );
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
+    `I ("0", "if the CSS files are identical");
     `I
-      ( "0",
-        "if the CSS files are identical, or structurally equivalent with a \
-         canonical byte difference the report names" );
-    `I ("1", "if the CSS files differ");
+      ( "1",
+        "if the CSS files differ. Under $(b,--diff=canonical) that is any \
+         difference between their canonical forms, whether or not the \
+         structural walk reached it" );
     `I ("124", "on command-line errors or unreadable input files");
     `S Manpage.s_examples;
     `P "Compare two CSS files:";

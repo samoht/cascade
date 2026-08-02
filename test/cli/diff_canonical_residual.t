@@ -15,16 +15,16 @@ away: the report shows the two canonical forms and the exit code is 1.
   CSS: 28 chars vs 19 chars (32.1% diff)
   Changes: none classified structurally (see report below)
   Canonical forms differ:
-
+  
   Strings differ at position 8 (line 0, col 8)
-
+  
   --- pinned.css
   +++ unpinned.css
   @@ position 8 @@
   -@layer a;@layer a{x{top:0}}
   +@layer a{x{top:0}}
            ^
-
+  
   [1]
 
   $ cascade diff --diff=canonical pinned.css unpinned.css > /dev/null; echo $?
