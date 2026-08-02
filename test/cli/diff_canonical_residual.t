@@ -14,7 +14,7 @@ names the divergence rather than dropping it.
   > EOF
   $ cascade diff --diff=canonical pinned.css unpinned.css
   CSS files are equivalent
-  Canonical minified forms still differ (cosmetic; --depth=max shows it)
+  Canonical minified forms still differ (--depth=max shows it)
 
   $ cascade diff --diff=canonical pinned.css unpinned.css > /dev/null; echo $?
   0
@@ -24,15 +24,17 @@ Under --depth=max the two canonical forms are shown.
   $ NO_COLOR=1 cascade diff --diff=canonical --depth=max pinned.css unpinned.css
   CSS files are equivalent
   Canonical minified forms still differ:
-
+  
   Strings differ at position 8 (line 0, col 8)
-
+  
   --- pinned.css
   +++ unpinned.css
   @@ position 8 @@
   -@layer a;@layer a{x{top:0}}
   +@layer a{x{top:0}}
            ^
+
+
 
 A canonical comparison whose bytes do match keeps the plain verdict.
 

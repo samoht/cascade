@@ -122,6 +122,29 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth result =
         ]);
   print_string (Buffer.contents buf)
 
+(* Canonical mode can find the two sheets equivalent and still hold two
+   different canonical minified forms: a tool banner, a split [@layer] form, an
+   empty layer-order pin, whitespace inside [url()]. Tree-diff is the
+   authoritative comparator here - but dropping it left no trace of a
+   canonical-pass gap anyone could act on. *)
+let print_canonical_residual ~file1 ~file2 ~depth (expected_canon, actual_canon)
+    =
+  match depth with
+  | Fit | Level _ ->
+      Fmt.pr "Canonical minified forms still differ (--depth=max shows it)@."
+  | Full ->
+      Fmt.pr "Canonical minified forms still differ:@.";
+      let buf = Buffer.create 512 in
+      (match
+         Cascade_diff.String_diff.diff ~expected:expected_canon actual_canon
+       with
+      | Some sdiff ->
+          Buffer.add_char buf '\n';
+          Cascade_diff.String_diff.pp ~expected_label:file1 ~actual_label:file2
+            buf sdiff
+      | None -> ());
+      print_string (Buffer.contents buf)
+
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
 let compare_files file1 file2 style_renderer mode depth opts () =
@@ -148,7 +171,7 @@ let compare_files file1 file2 style_renderer mode depth opts () =
             ~css2
         in
         match result.Cascade_diff.Css_compare.result with
-        | No_diff _ ->
+        | No_diff { canonical_byte_diff } ->
             (* Equal ASTs can still hide parse-dropped declarations; show the
                warnings so the equality verdict is honest about them. *)
             let max =
@@ -157,7 +180,11 @@ let compare_files file1 file2 style_renderer mode depth opts () =
               | Fit | Level _ -> Some auto_warning_budget
             in
             print_string (render_warnings ~file1 ~file2 ~max result);
-            Fmt.pr "CSS files are identical@.";
+            (match canonical_byte_diff with
+            | None -> Fmt.pr "CSS files are identical@."
+            | Some forms ->
+                Fmt.pr "CSS files are equivalent@.";
+                print_canonical_residual ~file1 ~file2 ~depth forms);
             Ok ()
         | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
         | Actual_error _ ->
@@ -300,7 +327,10 @@ let man =
          values stay functional. No effect outside canonical mode." );
     `S Manpage.s_exit_status;
     `P "$(tname) exits with:";
-    `I ("0", "if the CSS files are identical");
+    `I
+      ( "0",
+        "if the CSS files are identical, or structurally equivalent with a \
+         canonical byte difference the report names" );
     `I ("1", "if the CSS files differ");
     `I ("124", "on command-line errors or unreadable input files");
     `S Manpage.s_examples;

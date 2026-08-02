@@ -617,8 +617,14 @@ let emit_changes buf stats =
     |> List.filter (fun (n, _, _) -> n > 0)
   in
   let container = stats.container_changes in
+  (* Every counter above comes from a tree diff, so they all read zero on the
+     results that never reached one: a comparison that fell through to the
+     string diff, a side whose content the parser discarded, a parse error. The
+     line says what it knows - nothing was classified - and leaves the verdict
+     to the report under it. *)
   if entries = [] && container = 0 then
-    Buffer.add_string buf "No structural differences\n"
+    Buffer.add_string buf
+      "Changes: none classified structurally (see report below)\n"
   else (
     Buffer.add_string buf "Changes: ";
     List.iteri

@@ -106,13 +106,20 @@
 - A rule that writes one property more than once, as a fallback chain does, is
   compared occurrence by occurrence; matching by name alone made
   `a{color:red;color:blue}` against `a{color:red;color:green}` report
-  `color: blue -> red`, a value neither side holds
+  `color: blue -> red`, a value neither side holds (#285)
 - Containers are compared however deep they nest. The walk stopped at three
   levels, so a leaf difference under five at-rules was reported as no
-  difference at all, exit code included
+  difference at all, exit code included (#285)
 - A container entry with nothing to show under it reads as `(modified, no
   details)`; it claimed a position change, which only a `Reordered` entry
-  establishes
+  establishes (#285)
+- A comparison that classified nothing says so: `Changes: none classified
+  structurally (see report below)`. It read `No structural differences`, which
+  claimed equivalence over a comparison that fell through to a string diff, and
+  over a side whose content the parser discarded (#285)
+- `cascade diff --diff=canonical` reports the canonical byte difference it
+  records when the structural comparison finds none: the verdict reads `CSS
+  files are equivalent` and `--depth=max` shows the two canonical forms (#285)
 - A declaration reorder that decides the cascade is reported inside `@media`,
   `@layer` and `@supports` (#268), and the at-rules that carry no selector -
   `@page`, `@starting-style`, `@counter-style`, `@scope`, a second
