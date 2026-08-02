@@ -28,11 +28,13 @@
   the parse failed, so a caller could not tell invalid CSS from empty CSS; the
   parse, and the warnings `Css.of_string` collects with it, now stay with the
   caller
+- `Apply.result.kept` counts the rules it says it counts. A block at-rule
+  counted once for its wrapper, so a `@media` holding three rules reported one (#287)
 - `cascade apply` exits 1 when a `<style>` block or the supplementary
   stylesheet parses to nothing, and leaves such a block in the page instead of
   deleting it. It used to delete the block and exit 0, shipping an unstyled
   page under a green status. A supplementary stylesheet that cannot be read is
-  an error rather than no stylesheet at all
+  an error rather than no stylesheet at all (#287)
 
 ### Parsing
 

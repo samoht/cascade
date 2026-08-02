@@ -153,11 +153,19 @@ let rec split ~is_dyn stmts =
   in
   (List.rev keep, List.rev inline)
 
-(* Kept rules, for reporting: a [@layer] wrapper is not itself a rule. *)
+(* Kept rules, for reporting. A block at-rule is not itself a rule: what it
+   keeps out of the inline projection is the rules it holds, so a [@media] with
+   three rules kept three. One that holds no statements of its own - a
+   [@font-face], a [@keyframes], a [@layer] statement - is itself the one thing
+   kept, so it counts once. *)
 let rec count_kept stmts =
   List.fold_left
-    (fun n -> function
-      | Stylesheet.Layer (_, b) -> n + count_kept b | _ -> n + 1)
+    (fun n s ->
+      let inner = count_kept (Stylesheet.statement_children s) in
+      match s with
+      | Stylesheet.Rule _ -> n + 1 + inner
+      | _ when inner = 0 -> n + 1
+      | _ -> n + inner)
     0 stmts
 
 type 'node assignment = 'node * Declaration.declaration list
@@ -168,7 +176,7 @@ type 'node result = {
       (** Each element with the declarations to set on its [style] attribute. *)
   keep_css : string;
       (** The rules with no inline form, serialised as a [<style>] body. *)
-  kept : int;  (** Count of kept rules, for reporting. *)
+  kept : int;  (** How many rules [keep_css] holds, for reporting. *)
 }
 
 module Make (Node : Resolve.NODE) = struct

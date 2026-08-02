@@ -13,7 +13,11 @@ type 'node result = {
   keep_css : string;
       (** The rules with no inline form, serialised as a minified [<style>]
           body, or [""] when there are none. *)
-  kept : int;  (** Count of kept rules, for reporting. *)
+  kept : int;
+      (** How many rules {!field-keep_css} holds, for reporting. A block at-rule
+          contributes the rules inside it rather than itself; one that holds no
+          statements of its own ([@font-face], [@keyframes]) counts as the one
+          thing it keeps. *)
 }
 
 module Make (Node : Resolve.NODE) : sig
