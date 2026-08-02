@@ -84,6 +84,9 @@
 - `--lossless` keeps a flow-relative property in source order against a
   physical one of the same family, since the writing mode decides which
   physical side it resolves to (#277)
+- A vendor-prefixed value repeated with `!important` collapses to the later
+  declaration; only a genuine value difference is kept as a legacy fallback.
+  `display:-webkit-box;display:-webkit-box!important` survived as both
 - A selector list mixing a vendor pseudo-element with ordinary selectors is
   split, so a browser that ignores `::-webkit-search-cancel-button` keeps the
   other selectors' declarations (#203)
