@@ -1,6 +1,66 @@
 open Cascade
 module S = Stats
 
+let sheet css =
+  match Css.of_string css with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+let rules css =
+  List.filter_map
+    (function Stylesheet.Rule r -> Some r | _ -> None)
+    (Css.statements (sheet css))
+
+(* Three rules sharing [display:flex]: enough for the preflight to rate the
+   factoring worth running, so a run over them reports a fixpoint. *)
+let factorable =
+  ".a{display:flex;margin:1px}.b{display:flex;margin:2px}.c{display:flex;margin:3px}"
+
+(* Counters reported for one factoring run over [css]. [nest] runs from the
+   finalizer the scheduler applies to each produced rule, so whatever it does
+   happens in the middle of this run. *)
+let run_counters ?(nest = fun () -> ()) css =
+  S.reset ();
+  let ctx = Ctx.fragment in
+  let finalize r =
+    nest ();
+    Rule.finalize ~ctx r
+  in
+  ignore (Factor.run ~ctx ~finalize (rules css));
+  S.counters
+
+let optimize_counters css =
+  ignore (Css.optimize (sheet css));
+  S.counters
+
+(* An optimization started while another is running has its own work to count.
+   Neither run may see the other's numbers, whether they interleave through a
+   callback the outer run makes (here) or across threads. *)
+let test_nested_run_keeps_its_counts_to_itself () =
+  let alone = (run_counters factorable).factor_fixpoints_run in
+  let fired = ref false in
+  let nest () =
+    if not !fired then begin
+      fired := true;
+      ignore (Css.optimize (sheet factorable))
+    end
+  in
+  let nested = (run_counters ~nest factorable).factor_fixpoints_run in
+  Alcotest.(check int)
+    "an optimization nested in the finalizer leaves the outer count alone" alone
+    nested
+
+(* What a run hands back describes that run. A later optimization - the
+   caller's, or one started by a library the caller passed the report to -
+   cannot rewrite it. *)
+let test_report_survives_a_later_run () =
+  let report = optimize_counters factorable in
+  let fixpoints = report.factor_fixpoints_run in
+  ignore (optimize_counters ".a{color:red}");
+  Alcotest.(check int)
+    "the first run's report still describes the first run" fixpoints
+    report.factor_fixpoints_run
+
 let check_zeroed_counters label =
   Alcotest.(check int) (label ^ " iterations") 0 S.counters.iterations;
   Alcotest.(check int)
@@ -103,6 +163,10 @@ let test_reset_clears_mutable_state () =
 let suite =
   ( "stats",
     [
+      Alcotest.test_case "nested run keeps its counts to itself" `Quick
+        test_nested_run_keeps_its_counts_to_itself;
+      Alcotest.test_case "report survives a later run" `Quick
+        test_report_survives_a_later_run;
       Alcotest.test_case "pass bucket reuse and reset" `Quick
         test_pass_bucket_reuse_and_reset;
       Alcotest.test_case "profile flag and savings" `Quick
