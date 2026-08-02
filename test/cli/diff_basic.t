@@ -143,6 +143,26 @@ stays ordered: swapping it with the rule is a real difference.
   
   [1]
 
+The same swap the other way round, with the block ahead of the rule. Which
+of the two the walk names is its own choice; what may not happen is calling
+the pair identical.
+
+  $ NO_COLOR=1 cascade diff --diff=tree before.css after.css > /dev/null; echo $?
+  1
+  $ NO_COLOR=1 cascade diff --diff=tree after.css before.css > /dev/null; echo $?
+  1
+
+  $ cat > swap-a.css <<EOF
+  > @media (min-width:10px){a{color:red}}a{color:blue}
+  > EOF
+  $ cat > swap-b.css <<EOF
+  > a{color:blue}@media (min-width:10px){a{color:red}}
+  > EOF
+  $ NO_COLOR=1 cascade diff --diff=tree swap-a.css swap-b.css > /dev/null; echo $?
+  1
+  $ NO_COLOR=1 cascade diff --diff=canonical swap-a.css swap-b.css > /dev/null; echo $?
+  1
+
 
 
 The --diff=string mode falls back to character-level diffing.

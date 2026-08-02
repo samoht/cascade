@@ -921,6 +921,130 @@ let deeply_nested_identical_is_empty () =
     "identical deep nesting stays empty" true
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* ===== Container position ===== *)
+
+(* The container names carried by every [Reordered] container entry, at any
+   depth. *)
+let rec container_reorders (c : Cascade_diff.Tree_diff.container_diff) =
+  match c with
+  | Reordered { info = { condition; _ }; _ } -> [ condition ]
+  | Modified { container_changes; _ } ->
+      List.concat_map container_reorders container_changes
+  | Added _ | Removed _ | Block_structure_changed _ -> []
+
+let reordered_containers d =
+  List.concat_map container_reorders d.Cascade_diff.Tree_diff.containers
+
+(* Source order decides the winner between a conditional block and a rule that
+   writes the same property on the same selector, so swapping the two is a
+   difference whichever side the block starts on. *)
+let media_swapped_with_rule_is_reported () =
+  let d =
+    diff_of ~expected:"@media (min-width:10px){a{color:red}}a{color:blue}"
+      ~actual:"a{color:blue}@media (min-width:10px){a{color:red}}"
+  in
+  Alcotest.(check bool)
+    "swapping a block with a rule is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* The mirror image of the case above, which the rule-level ordering already
+   caught: both directions must report, and neither may report twice. *)
+let rule_swapped_with_media_is_reported () =
+  let d =
+    diff_of ~expected:"a{color:blue}@media (min-width:10px){a{color:red}}"
+      ~actual:"@media (min-width:10px){a{color:red}}a{color:blue}"
+  in
+  Alcotest.(check bool)
+    "the swap is a difference in the other direction too" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* Control. Inserting a rule ahead of a block shifts its absolute index without
+   moving it past anything, so the block did not move and must stay quiet. *)
+let insertion_ahead_of_media_is_not_a_move () =
+  let d =
+    diff_of ~expected:"a{color:red}@media print{.b{top:0}}"
+      ~actual:"a{color:red}.c{left:0}@media print{.b{top:0}}"
+  in
+  Alcotest.(check (list string))
+    "an insertion is not a container move" [] (reordered_containers d)
+
+(* Control. Same, with the insertion far enough ahead to shift the block past
+   any fixed distance: absolute index is not the coordinate. *)
+let distant_insertion_is_not_a_move () =
+  let filler n =
+    String.concat ""
+      (List.init n (fun i ->
+           let s = string_of_int i in
+           ".f" ^ s ^ "{order:" ^ s ^ "}"))
+  in
+  let d =
+    diff_of
+      ~expected:("a{color:red}" ^ "@media print{.b{top:0}}")
+      ~actual:("a{color:red}" ^ filler 12 ^ "@media print{.b{top:0}}")
+  in
+  Alcotest.(check (list string))
+    "twelve insertions are still not a container move" []
+    (reordered_containers d)
+
+(* ===== Entries the report cannot name ===== *)
+
+(* The names every rule-level entry claiming an addition or a removal carries.
+   An entry with no name cannot be classified, so it corrupts the counts the
+   summary prints from the same list. *)
+let added_or_removed_names d =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Added { selector; _ } | Removed { selector; _ } -> Some selector
+      | _ -> None)
+    d.Cascade_diff.Tree_diff.rules
+
+(* [@property] has a container processor of its own, which names the block it
+   dropped; the rule level has no rule to name and prints a bare tree
+   connector. *)
+let removed_property_rule_is_named () =
+  let d =
+    diff_of ~expected:"@property --a{syntax:\"*\";inherits:false}.x{color:red}"
+      ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping a registration is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check (list string))
+    "no rule-level entry without a name" [] (added_or_removed_names d)
+
+let removed_keyframes_is_named () =
+  let d =
+    diff_of ~expected:"@keyframes k{from{opacity:0}}.x{color:red}"
+      ~actual:".x{color:red}"
+  in
+  Alcotest.(check (list string))
+    "no rule-level entry without a name" [] (added_or_removed_names d)
+
+(* Nothing else reports a [@charset], so the rule level has to keep it - and
+   name it. *)
+let removed_charset_is_named () =
+  let d =
+    diff_of ~expected:"@charset \"UTF-8\";.x{color:red}" ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping the charset is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the entry names what was dropped" true
+    (string_contains ~needle:"@charset" (render d))
+
+let removed_layer_statement_is_named () =
+  let d =
+    diff_of ~expected:"@layer a,b;.x{color:red}" ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping the layer order is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the entry names what was dropped" true
+    (string_contains ~needle:"@layer" (render d))
+
 (* ===== Cascade layer order ===== *)
 
 (* An empty [@layer] statement pins the layer order at the point it stands, so
@@ -985,6 +1109,22 @@ let suite =
         layer_order_declared_two_ways_is_quiet;
       Alcotest.test_case "nested layer-order pin reported" `Quick
         nested_layer_order_pin_is_reported;
+      Alcotest.test_case "media swapped with rule is reported" `Quick
+        media_swapped_with_rule_is_reported;
+      Alcotest.test_case "rule swapped with media is reported" `Quick
+        rule_swapped_with_media_is_reported;
+      Alcotest.test_case "insertion ahead of media is not a move" `Quick
+        insertion_ahead_of_media_is_not_a_move;
+      Alcotest.test_case "distant insertion is not a move" `Quick
+        distant_insertion_is_not_a_move;
+      Alcotest.test_case "removed property rule is named" `Quick
+        removed_property_rule_is_named;
+      Alcotest.test_case "removed keyframes is named" `Quick
+        removed_keyframes_is_named;
+      Alcotest.test_case "removed charset is named" `Quick
+        removed_charset_is_named;
+      Alcotest.test_case "removed layer statement is named" `Quick
+        removed_layer_statement_is_named;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
