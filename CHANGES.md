@@ -73,6 +73,7 @@
 
 ### Minification
 
+- `--lossless` preserves logical sizing and corner aliases in source order.
 - A hex colour folds to its name whenever the name is no longer, which the
   hand-copied inversion table missed for `bisque`, `indigo`, `orchid`,
   `salmon`, `sienna`, `tomato` and `violet`: `#ffe4c4` stayed hex where

@@ -1067,6 +1067,37 @@ let logical_physical_order_cases =
     ( "scroll-margin-top before scroll-margin-block-start",
       ".a{scroll-margin-top:1px;scroll-margin-block-start:2px}",
       ".a{scroll-margin-top:1px;scroll-margin-block-start:2px}" );
+    (* CSS Logical 1 sec. 4.4: the sizing family aliases the same way, with no
+       physical shorthand covering the two axes. *)
+    ( "width before inline-size",
+      ".a{width:10px;inline-size:20px}",
+      ".a{width:10px;inline-size:20px}" );
+    ( "inline-size before width",
+      ".a{inline-size:20px;width:10px}",
+      ".a{inline-size:20px;width:10px}" );
+    ( "height before block-size",
+      ".a{height:10px;block-size:20px}",
+      ".a{height:10px;block-size:20px}" );
+    ( "min-width before min-inline-size",
+      ".a{min-width:10px;min-inline-size:20px}",
+      ".a{min-width:10px;min-inline-size:20px}" );
+    ( "max-width before max-inline-size",
+      ".a{max-width:10px;max-inline-size:20px}",
+      ".a{max-width:10px;max-inline-size:20px}" );
+    (* CSS Logical 1 sec. 4.3: a flow-relative corner resolves to whichever
+       physical corner the writing mode and the direction give it. *)
+    ( "border-top-left-radius before border-start-start-radius",
+      ".a{border-top-left-radius:1px;border-start-start-radius:2px}",
+      ".a{border-top-left-radius:1px;border-start-start-radius:2px}" );
+    ( "border-start-start-radius before border-top-left-radius",
+      ".a{border-start-start-radius:2px;border-top-left-radius:1px}",
+      ".a{border-start-start-radius:2px;border-top-left-radius:1px}" );
+    ( "contain-intrinsic-width before contain-intrinsic-inline-size",
+      ".a{contain-intrinsic-width:1px;contain-intrinsic-inline-size:2px}",
+      ".a{contain-intrinsic-width:1px;contain-intrinsic-inline-size:2px}" );
+    ( "overscroll-behavior-x before overscroll-behavior-inline",
+      ".a{overscroll-behavior-x:none;overscroll-behavior-inline:contain}",
+      ".a{overscroll-behavior-x:none;overscroll-behavior-inline:contain}" );
   ]
 
 let test_lossless_keeps_logical_physical_order () =
