@@ -2524,6 +2524,68 @@ let scroll_margin_negative_sheet () =
       "a{scroll-margin-inline-start:-1px}";
     ]
 
+(* A declaration the reader rejects is dropped from the sheet with nothing but a
+   warning, so every reader gap needs a whole-sheet pin too. *)
+let check_sheet_roundtrip name css =
+  match Css.of_string ~strict:true css with
+  | Ok { stylesheet; _ } ->
+      Alcotest.(check string)
+        (name ^ " sheet roundtrip")
+        css
+        (String.trim (Css.to_string ~minify:true stylesheet))
+  | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+
+(* CSS Shapes 1 sec. 2: [shape-outside] is [none | [<basic-shape> ||
+   <shape-box>] | <image>]. The reader only looked at the first component and
+   only knew [none], [circle()] and [inset()] there, so a reference box, a
+   box/shape pair, the other basic shapes and an image were all rejected and the
+   declaration dropped. *)
+let shape_outside_grammar () =
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [
+      "shape-outside:none";
+      "shape-outside:inherit";
+      "shape-outside:var(--shape)";
+      (* <basic-shape> *)
+      "shape-outside:circle(50%)";
+      "shape-outside:circle()";
+      "shape-outside:circle(50% at 20% 30%)";
+      "shape-outside:ellipse(closest-side farthest-side at 10px 20px)";
+      "shape-outside:inset(10px round 2px)";
+      "shape-outside:polygon(0 0,100% 0,100% 100%)";
+      "shape-outside:xywh(0 0 100% 100%)";
+      (* <shape-box> on its own, and either order in the [||] pair *)
+      "shape-outside:margin-box";
+      "shape-outside:content-box";
+      "shape-outside:circle() border-box";
+      "shape-outside:padding-box circle(50%)";
+      (* <image> *)
+      "shape-outside:url(shape.png)";
+      "shape-outside:linear-gradient(red,blue)";
+    ];
+  (* Controls: an unknown keyword is no part of the grammar, [none] and a box
+     are alternatives rather than a [||] pair, the box appears once, and
+     [<shape-box>] excludes the three SVG boxes [<geometry-box>] adds. *)
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "shape-outside:not-a-shape";
+      "shape-outside:none margin-box";
+      "shape-outside:margin-box border-box";
+      "shape-outside:circle(50%) fill-box";
+    ]
+
+let shape_outside_sheet () =
+  List.iter
+    (check_sheet_roundtrip "shape-outside")
+    [
+      "a{shape-outside:none}";
+      "a{shape-outside:margin-box}";
+      "a{shape-outside:circle(50%) content-box}";
+      "a{shape-outside:url(shape.png)}";
+    ]
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -2591,6 +2653,8 @@ let declaration_tests =
     test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
     test_case "scroll-margin negative lengths (sheet)" `Quick
       scroll_margin_negative_sheet;
+    test_case "shape-outside grammar" `Quick shape_outside_grammar;
+    test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
     test_case "spec cascade 3 shorthand properties" `Quick
