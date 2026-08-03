@@ -38,6 +38,10 @@
 
 ### Parsing
 
+- `shape-outside` reads its whole grammar. Only `none`, `circle()`, a non-empty
+  `inset()` and the CSS-wide keywords were accepted, so `margin-box`,
+  `circle(50%) content-box`, `url(shape.png)` and every other basic shape were
+  rejected and the declaration dropped
 - An identifier takes any code point at or above U+0080, so a selector such as
   `.text-↗` parses. `Css.of_string` takes `?enforce_spec` and `cascade` takes
   `--enforce-spec` to restrict identifiers to the CSS Syntax 3 range list;
