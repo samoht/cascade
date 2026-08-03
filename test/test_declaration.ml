@@ -2586,6 +2586,96 @@ let shape_outside_sheet () =
       "a{shape-outside:url(shape.png)}";
     ]
 
+(* Vendor-prefixed properties with a typed constructor need a reader arm as
+   well: without one the dispatch falls through to "unsupported property reader"
+   and the declaration is dropped. Each takes the same value type as the
+   unprefixed property, so each reads with the unprefixed reader. *)
+let vendor_prefixed_shorthands () =
+  let values =
+    [
+      ("animation", "spin 1s");
+      ("animation-delay", "1s");
+      ("animation-direction", "reverse");
+      ("animation-duration", "2s");
+      ("animation-fill-mode", "forwards");
+      ("animation-iteration-count", "infinite");
+      ("animation-name", "spin");
+      ("animation-play-state", "paused");
+      ("animation-timing-function", "ease-in");
+      ("transition", "all .3s");
+      ("transition-delay", "1s");
+      ("transition-duration", "2s");
+      ("transition-property", "opacity");
+      ("transition-timing-function", "linear");
+      ("border-radius", "4px");
+      ("box-shadow", "0 1px 2px #000");
+      ("background-size", "cover");
+      ("flex-direction", "column");
+      ("flex-flow", "row wrap");
+      ("flex-wrap", "wrap");
+      ("justify-content", "space-between");
+      ("align-content", "center");
+      ("align-items", "center");
+      ("align-self", "flex-end");
+    ]
+  in
+  let prefixed prefix names =
+    List.filter_map
+      (fun (name, value) ->
+        if List.mem name names then Some (prefix ^ name ^ ":" ^ value) else None)
+      values
+  in
+  let cases =
+    prefixed "-webkit-"
+      [
+        "animation-delay";
+        "animation-direction";
+        "animation-duration";
+        "animation-fill-mode";
+        "animation-iteration-count";
+        "animation-name";
+        "animation-play-state";
+        "animation-timing-function";
+        "transition-delay";
+        "transition-duration";
+        "transition-property";
+        "transition-timing-function";
+        "border-radius";
+        "box-shadow";
+        "background-size";
+        "flex-direction";
+        "flex-flow";
+        "flex-wrap";
+        "justify-content";
+        "align-content";
+        "align-items";
+        "align-self";
+      ]
+    @ prefixed "-moz-"
+        [
+          "animation";
+          "animation-delay";
+          "animation-direction";
+          "animation-duration";
+          "animation-fill-mode";
+          "animation-iteration-count";
+          "animation-name";
+          "animation-play-state";
+          "animation-timing-function";
+          "transition";
+          "transition-delay";
+          "transition-duration";
+          "transition-property";
+          "transition-timing-function";
+          "border-radius";
+          "box-shadow";
+        ]
+  in
+  List.iter (fun css -> check_declaration ~roundtrip:true css) cases;
+  List.iter
+    (fun css -> check_sheet_roundtrip "vendor prefix" ("a{" ^ css ^ "}"))
+    cases
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -2611,6 +2701,8 @@ let declaration_tests =
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
     test_case "vendor prefixes" `Quick vendor_prefixes;
+    test_case "vendor-prefixed shorthand readers" `Quick
+      vendor_prefixed_shorthands;
     (* Property value categories *)
     test_case "colors" `Quick colors;
     test_case "color functions" `Quick color_functions;

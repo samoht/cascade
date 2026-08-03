@@ -1166,6 +1166,77 @@ let read_flex_effect_value : type a.
   | Color_scheme -> Some (v Color_scheme (read_color_scheme t))
   | _ -> None
 
+let read_vendor_alias_value : type a.
+    a property -> Cursor.t -> declaration option =
+ fun prop t ->
+  match prop with
+  | Webkit_transition_delay ->
+      Some (v Webkit_transition_delay (read_duration_list read_time t))
+  | Webkit_transition_duration ->
+      Some (v Webkit_transition_duration (read_duration_list read_duration t))
+  | Webkit_transition_property ->
+      Some (v Webkit_transition_property (read_transition_property t))
+  | Webkit_transition_timing_function ->
+      Some (v Webkit_transition_timing_function (read_timing_function_list t))
+  | Webkit_animation_delay ->
+      Some (v Webkit_animation_delay (read_duration_list read_time t))
+  | Webkit_animation_duration ->
+      Some (v Webkit_animation_duration (read_duration_list read_duration t))
+  | Webkit_animation_direction ->
+      Some (v Webkit_animation_direction (read_animation_direction t))
+  | Webkit_animation_iteration_count ->
+      Some
+        (v Webkit_animation_iteration_count (read_animation_iteration_count t))
+  | Webkit_animation_name ->
+      Some (v Webkit_animation_name (read_animation_name t))
+  | Webkit_animation_timing_function ->
+      Some (v Webkit_animation_timing_function (read_timing_function_list t))
+  | Webkit_animation_fill_mode ->
+      Some (v Webkit_animation_fill_mode (read_animation_fill_mode t))
+  | Webkit_animation_play_state ->
+      Some (v Webkit_animation_play_state (read_animation_play_state t))
+  | Webkit_flex_direction ->
+      Some (v Webkit_flex_direction (read_flex_direction t))
+  | Webkit_flex_wrap -> Some (v Webkit_flex_wrap (read_flex_wrap t))
+  | Webkit_flex_flow -> Some (v Webkit_flex_flow (read_flex_flow t))
+  | Webkit_justify_content ->
+      Some (v Webkit_justify_content (read_justify_content t))
+  | Webkit_align_content -> Some (v Webkit_align_content (read_align_content t))
+  | Webkit_align_items -> Some (v Webkit_align_items (read_align_items t))
+  | Webkit_align_self -> Some (v Webkit_align_self (read_align_self t))
+  | Webkit_border_radius -> Some (v Webkit_border_radius (read_border_radius t))
+  | Webkit_box_shadow -> Some (v Webkit_box_shadow (read_shadow t))
+  | Webkit_background_size ->
+      Some (v Webkit_background_size (read_background_size_list t))
+  | Moz_animation -> Some (v Moz_animation (read_animations t))
+  | Moz_animation_delay ->
+      Some (v Moz_animation_delay (read_duration_list read_time t))
+  | Moz_animation_duration ->
+      Some (v Moz_animation_duration (read_duration_list read_duration t))
+  | Moz_animation_direction ->
+      Some (v Moz_animation_direction (read_animation_direction t))
+  | Moz_animation_iteration_count ->
+      Some (v Moz_animation_iteration_count (read_animation_iteration_count t))
+  | Moz_animation_name -> Some (v Moz_animation_name (read_animation_name t))
+  | Moz_animation_timing_function ->
+      Some (v Moz_animation_timing_function (read_timing_function_list t))
+  | Moz_animation_fill_mode ->
+      Some (v Moz_animation_fill_mode (read_animation_fill_mode t))
+  | Moz_animation_play_state ->
+      Some (v Moz_animation_play_state (read_animation_play_state t))
+  | Moz_transition -> Some (v Moz_transition (read_transitions t))
+  | Moz_transition_delay ->
+      Some (v Moz_transition_delay (read_duration_list read_time t))
+  | Moz_transition_duration ->
+      Some (v Moz_transition_duration (read_duration_list read_duration t))
+  | Moz_transition_property ->
+      Some (v Moz_transition_property (read_transition_property t))
+  | Moz_transition_timing_function ->
+      Some (v Moz_transition_timing_function (read_timing_function_list t))
+  | Moz_border_radius -> Some (v Moz_border_radius (read_border_radius t))
+  | Moz_box_shadow -> Some (v Moz_box_shadow (read_shadow t))
+  | _ -> None
+
 let read_background_value : type a. a property -> Cursor.t -> declaration option
     =
  fun prop t ->
@@ -1786,6 +1857,7 @@ let read_value_readers =
     { read_value_opt = read_box_edge_value };
     { read_value_opt = read_type_value };
     { read_value_opt = read_flex_effect_value };
+    { read_value_opt = read_vendor_alias_value };
     { read_value_opt = read_background_value };
     { read_value_opt = read_grid_value };
     { read_value_opt = read_shadow_content_value };
