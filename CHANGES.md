@@ -21,6 +21,20 @@
   `Optimize.set_profile` are gone, along with the per-pass table and the
   marginal-stop counter, which no pass had written since the DAG scheduler
   replaced the multi-pass fixpoint (#288)
+- `Resolve.NODE` gains `text_children`, the data of a node's direct child text
+  nodes, which `:empty` needs (#286)
+- `Apply.Make(...).compute` takes `~sheet:Stylesheet.t` instead of
+  `~css:string`. It parsed the text itself and answered an empty result when
+  the parse failed, so a caller could not tell invalid CSS from empty CSS; the
+  parse, and the warnings `Css.of_string` collects with it, now stay with the
+  caller
+- `Apply.result.kept` counts the rules it says it counts. A block at-rule
+  counted once for its wrapper, so a `@media` holding three rules reported one (#287)
+- `cascade apply` exits 1 when a `<style>` block or the supplementary
+  stylesheet parses to nothing, and leaves such a block in the page instead of
+  deleting it. It used to delete the block and exit 0, shipping an unstyled
+  page under a green status. A supplementary stylesheet that cannot be read is
+  an error rather than no stylesheet at all (#287)
 
 ### Parsing
 
@@ -102,6 +116,13 @@
 - `cascade apply` weighs cascade layers instead of ignoring them: an unlayered
   declaration beats a layered one, `!important` reverses that, and a rule with
   no inline form stays inside its layer (#283)
+- `cascade apply` leaves a declaration in the stylesheet when a rule inside
+  `@scope`, `@starting-style`, `@when`, `@else` or `@-moz-document` sets the
+  same property; it moved inline, above the rule that was kept (#286)
+- `cascade apply` only inlines a rule whose selector its matcher can represent,
+  so `[data-k="X" i]`, a namespaced selector and the `>>>` and `||` combinators
+  stay in the stylesheet rather than being inlined onto nobody and dropped, and
+  `:empty` counts an element's text: `<p>text</p>` is not empty (#286)
 - `Css.vars_of_declarations` reports the `var()` references of 39 properties it
   answered with none, so `Css.resolve_theme` emits the theme binding for
   `inline-size: var(--w)` as it does for `width: var(--w)` (#266)

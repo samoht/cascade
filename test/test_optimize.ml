@@ -4652,6 +4652,7 @@ module Fuzz = struct
     let attribute _ _ : string option = None
     let parent _ : node option = None
     let children _ = []
+    let text_children _ = []
   end
 
   module R = Resolve.Make (Node)

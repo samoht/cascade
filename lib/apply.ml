@@ -7,24 +7,13 @@
 
 module SSet = Set.Make (String)
 
-(* Selectors that can be written as an inline style (no state / condition). *)
-let inlinable (sel : Selector.t) =
-  let rec ok = function
-    | Selector.Universal _ | Selector.Element _ | Selector.Class _
-    | Selector.Id _ | Selector.Attribute _ | Selector.Root
-    | Selector.First_child | Selector.Last_child | Selector.Only_child
-    | Selector.Empty ->
-        true
-    | Selector.Compound ps
-    | Selector.List ps
-    | Selector.Is ps
-    | Selector.Where ps
-    | Selector.Not ps ->
-        List.for_all ok ps
-    | Selector.Combined (a, _, b) -> ok a && ok b
-    | _ -> false
-  in
-  ok sel
+(* Selectors that can be written as an inline style: no state, no condition -
+   and nothing the matcher cannot decide. Inlining a rule takes it out of the
+   stylesheet, so a selector {!Resolve.supported} does not cover would leave its
+   declarations nowhere at all: matched by nobody here, and gone from the sheet
+   the browser reads. Deriving the set from the matcher is what stops the two
+   from parting ways. *)
+let inlinable = Resolve.supported
 
 (* Elements that never carry inline styles ([html] is stylable so :root custom
    properties land on it). *)
@@ -88,24 +77,26 @@ let decl_value d =
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s
 
-(* Every property a kept (conditional / stateful) rule can set, recursing into
-   @media / @supports / @container / @layer blocks. *)
+let add_props acc ds =
+  List.fold_left
+    (fun acc d ->
+      SSet.add (String.lowercase_ascii (Declaration.property_name d)) acc)
+    acc ds
+
+(* Every property a kept (conditional / stateful) rule can set. The descent goes
+   through {!Stylesheet.statement_children}, so every block at-rule is covered:
+   a property missed here is one an inline style could override, and the kept
+   rule would lose a fight it wins in the browser. *)
 let rec props_of_stmts acc stmts =
   List.fold_left
     (fun acc s ->
-      match s with
-      | Stylesheet.Rule r ->
-          List.fold_left
-            (fun a d ->
-              SSet.add (String.lowercase_ascii (Declaration.property_name d)) a)
-            acc
-            (Stylesheet.declarations r)
-      | Stylesheet.Media (_, b)
-      | Stylesheet.Supports (_, b)
-      | Stylesheet.Layer (_, b) ->
-          props_of_stmts acc b
-      | Stylesheet.Container (_, _, b) -> props_of_stmts acc b
-      | _ -> acc)
+      let acc =
+        match s with
+        | Stylesheet.Rule r -> add_props acc (Stylesheet.declarations r)
+        | Stylesheet.Declarations ds -> add_props acc ds
+        | _ -> acc
+      in
+      props_of_stmts acc (Stylesheet.statement_children s))
     acc stmts
 
 (* A [@layer] block applies unconditionally: it only orders competing
@@ -162,11 +153,19 @@ let rec split ~is_dyn stmts =
   in
   (List.rev keep, List.rev inline)
 
-(* Kept rules, for reporting: a [@layer] wrapper is not itself a rule. *)
+(* Kept rules, for reporting. A block at-rule is not itself a rule: what it
+   keeps out of the inline projection is the rules it holds, so a [@media] with
+   three rules kept three. One that holds no statements of its own - a
+   [@font-face], a [@keyframes], a [@layer] statement - is itself the one thing
+   kept, so it counts once. *)
 let rec count_kept stmts =
   List.fold_left
-    (fun n -> function
-      | Stylesheet.Layer (_, b) -> n + count_kept b | _ -> n + 1)
+    (fun n s ->
+      let inner = count_kept (Stylesheet.statement_children s) in
+      match s with
+      | Stylesheet.Rule _ -> n + 1 + inner
+      | _ when inner = 0 -> n + 1
+      | _ -> n + inner)
     0 stmts
 
 type 'node assignment = 'node * Declaration.declaration list
@@ -177,7 +176,7 @@ type 'node result = {
       (** Each element with the declarations to set on its [style] attribute. *)
   keep_css : string;
       (** The rules with no inline form, serialised as a [<style>] body. *)
-  kept : int;  (** Count of kept rules, for reporting. *)
+  kept : int;  (** How many rules [keep_css] holds, for reporting. *)
 }
 
 module Make (Node : Resolve.NODE) = struct
@@ -236,29 +235,25 @@ module Make (Node : Resolve.NODE) = struct
         acc (Node.children node)
     end
 
-  let compute ?(minimal = false) ~css roots =
-    match Css.of_string css with
-    | Error _ -> { styles = []; keep_css = ""; kept = 0 }
-    | Ok p ->
-        (* Flatten nesting up front, so the split and {!R.resolve} see the same
-           flat rules. *)
-        let stmts = Flatten.block p.Css.stylesheet in
-        (* Properties a kept rule can override must stay in the cascade. *)
-        let dyn = dynamic_props SSet.empty stmts in
-        let is_dyn d =
-          SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
-        in
-        let keep, inline = split ~is_dyn stmts in
-        let keep_css =
-          if keep = [] then ""
-          else Css.to_string ~minify:true (Stylesheet.v keep)
-        in
-        let inline_sheet = Stylesheet.v inline in
-        let styles =
-          List.fold_left
-            (fun acc root -> walk ~minimal inline_sheet [] root acc)
-            [] roots
-          |> List.rev
-        in
-        { styles; keep_css; kept = count_kept keep }
+  let compute ?(minimal = false) ~sheet roots =
+    (* Flatten nesting up front, so the split and {!R.resolve} see the same flat
+       rules. *)
+    let stmts = Flatten.block sheet in
+    (* Properties a kept rule can override must stay in the cascade. *)
+    let dyn = dynamic_props SSet.empty stmts in
+    let is_dyn d =
+      SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
+    in
+    let keep, inline = split ~is_dyn stmts in
+    let keep_css =
+      if keep = [] then "" else Css.to_string ~minify:true (Stylesheet.v keep)
+    in
+    let inline_sheet = Stylesheet.v inline in
+    let styles =
+      List.fold_left
+        (fun acc root -> walk ~minimal inline_sheet [] root acc)
+        [] roots
+      |> List.rev
+    in
+    { styles; keep_css; kept = count_kept keep }
 end

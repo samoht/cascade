@@ -8,7 +8,34 @@ module type NODE = sig
   val attribute : t -> string -> string option
   val parent : t -> t option
   val children : t -> t list
+  val text_children : t -> string list
 end
+
+type match_result = Matches | No_match | Unsupported
+
+let of_bool b = if b then Matches else No_match
+
+(* [Unsupported] beats both answers in every combining form. That is what keeps
+   it a fact about the selector alone: were a compound to settle on [No_match]
+   because one part failed before an unsupported part was looked at, the same
+   selector would come back unsupported against one node and merely unmatched
+   against another, and {!supported} could not exist. *)
+let conj a b =
+  match (a, b) with
+  | Unsupported, _ | _, Unsupported -> Unsupported
+  | No_match, _ | _, No_match -> No_match
+  | Matches, Matches -> Matches
+
+let disj a b =
+  match (a, b) with
+  | Unsupported, _ | _, Unsupported -> Unsupported
+  | Matches, _ | _, Matches -> Matches
+  | No_match, No_match -> No_match
+
+let negate = function
+  | Matches -> No_match
+  | No_match -> Matches
+  | Unsupported -> Unsupported
 
 let ci a b = String.lowercase_ascii a = String.lowercase_ascii b
 let words s = String.split_on_char ' ' s |> List.filter (( <> ) "")
@@ -157,52 +184,108 @@ module Make (N : NODE) = struct
         | Selector.Hyphen_list s | Selector.Hyphen_list_quoted (s, _) ->
             v = s || starts v (s ^ "-"))
 
-  let rec matches (sel : Selector.t) n : bool =
-    match sel with
-    | Selector.Universal _ -> true
-    | Selector.Element (_, name) -> (
-        match N.name n with Some nm -> ci nm name | None -> false)
-    | Selector.Class c -> List.mem c (N.classes n)
-    | Selector.Id i -> N.id n = Some i
-    | Selector.Attribute (_, name, m, _) -> attr_matches n name m
-    | Selector.Compound ps -> List.for_all (fun p -> matches p n) ps
-    | Selector.List ss | Selector.Is ss | Selector.Where ss ->
-        List.exists (fun s -> matches s n) ss
-    | Selector.Not ss -> not (List.exists (fun s -> matches s n) ss)
-    | Selector.Combined _ -> anchors sel n <> []
-    | Selector.Root -> N.parent n = None
-    | Selector.First_child -> is_first n
-    | Selector.Last_child -> is_last n
-    | Selector.Only_child -> is_first n && is_last n
-    | Selector.Empty -> N.children n = []
-    (* stateful / generated / unknown forms cannot be matched statically *)
+  (* selectors-4 sec. 13.2: [:empty] represents "an element that has no children
+     except, optionally, document white space characters", counting "only
+     element nodes and content nodes ... whose data has a non-zero length", so a
+     comment or a processing instruction never makes an element non-empty and
+     never reaches {!NODE.text_children}. Document white space characters are
+     spaces (U+0020), tabs (U+0009) and segment breaks (css-text-4 sec. 4.3);
+     carriage returns and form feeds become segment breaks when the document is
+     parsed. U+00A0 is none of them, which is why the spec lists
+     [<div>&nbsp;</div>] among the elements [div:empty] does not represent. *)
+  let is_document_white_space = function
+    | ' ' | '\t' | '\n' | '\r' | '\012' -> true
     | _ -> false
+
+  let is_empty n =
+    N.children n = []
+    && List.for_all (String.for_all is_document_white_space) (N.text_children n)
+
+  (* Selectors 4 is far wider than a matcher with no document behind it can
+     decide, so the answer has three values. [Unsupported] is not "does not
+     match": it is "this library has no model for this selector", and a caller
+     must not read it as a negative - {!Apply} keeps such a rule in the
+     stylesheet rather than inline it and drop it. Every arm returning it does
+     so without consulting the node, which is what {!supported} rests on. *)
+  let rec match_selector (sel : Selector.t) n : match_result =
+    match sel with
+    | Selector.Universal None -> Matches
+    | Selector.Element (None, name) ->
+        of_bool (match N.name n with Some nm -> ci nm name | None -> false)
+    | Selector.Class c -> of_bool (List.mem c (N.classes n))
+    | Selector.Id i -> of_bool (N.id n = Some i)
+    | Selector.Attribute (None, name, m, None) ->
+        of_bool (attr_matches n name m)
+    | Selector.Compound ps ->
+        List.fold_left (fun acc p -> conj acc (match_selector p n)) Matches ps
+    | Selector.List ss | Selector.Is ss | Selector.Where ss -> any ss n
+    | Selector.Not ss -> negate (any ss n)
+    | Selector.Combined _ -> (
+        match anchors sel n with
+        | None -> Unsupported
+        | Some [] -> No_match
+        | Some (_ :: _) -> Matches)
+    | Selector.Root -> of_bool (N.parent n = None)
+    | Selector.First_child -> of_bool (is_first n)
+    | Selector.Last_child -> of_bool (is_last n)
+    | Selector.Only_child -> of_bool (is_first n && is_last n)
+    | Selector.Empty -> of_bool (is_empty n)
+    (* A namespace, an attribute case flag, and every stateful, generated or
+       tree-external form. The values compared above are verbatim, so [i] and
+       [s] would both be ignored, and no node here carries a namespace. *)
+    | _ -> Unsupported
+
+  and any ss n =
+    List.fold_left (fun acc s -> disj acc (match_selector s n)) No_match ss
 
   (* [Selector] is right-leaning: [a b > c] is [Combined (a, Descendant,
      Combined (b, Child, c))], so the rightmost compound (the subject) sits at
      the bottom of [right] and each combinator joins its [left] compound to the
      compound *after* it, not to the subject. [anchors sel n] returns the nodes
      where [sel]'s leftmost compound matches when [sel] matches with subject [n]
-     (empty = no match): [right] must match [n], then for every node [a] that
-     [right]'s leftmost compound anchored at, [left] must be [comb]-related to
-     [a]. Threading the anchor this way is what the old subject-only
-     [combinator] missed for any selector with two or more combinators. *)
+     ([Some []] = no match, [None] = no model): [right] must match [n], then for
+     every node [a] that [right]'s leftmost compound anchored at, [left] must be
+     [comb]-related to [a]. Threading the anchor this way is what the old
+     subject-only [combinator] missed for any selector with two or more
+     combinators. *)
   and anchors sel n =
     match sel with
-    | Selector.Combined (left, comb, right) ->
-        anchors right n |> List.concat_map (related left comb)
-    | _ -> if matches sel n then [ n ] else []
+    | Selector.Combined (left, comb, right) -> (
+        (* [left] is asked for its own support, separately from whether [right]
+           found an anchor: stopping at an empty anchor list would let the node
+           decide whether the selector is supported. *)
+        match (anchors right n, match_selector left n, relation comb) with
+        | Some found, left_answer, Some related when left_answer <> Unsupported
+          ->
+            Some (List.concat_map (related left) found)
+        | _ -> None)
+    | _ -> (
+        match match_selector sel n with
+        | Unsupported -> None
+        | No_match -> Some []
+        | Matches -> Some [ n ])
 
-  and related left comb a =
+  (* [None] for a combinator that is not a relation between two nodes of this
+     tree: [||] picks a cell out of the column it belongs to, and the legacy
+     [>>>] and [/deep/] cross a shadow boundary the tree does not have. *)
+  and relation comb =
+    let hits left x = match_selector left x = Matches in
     match comb with
-    | Selector.Descendant -> List.filter (matches left) (ancestors a)
-    | Selector.Child -> (
-        match N.parent a with Some p when matches left p -> [ p ] | _ -> [])
-    | Selector.Next_sibling -> (
-        match imm_pred a with Some s when matches left s -> [ s ] | _ -> [])
+    | Selector.Descendant ->
+        Some (fun left a -> List.filter (hits left) (ancestors a))
+    | Selector.Child ->
+        Some
+          (fun left a ->
+            match N.parent a with Some p when hits left p -> [ p ] | _ -> [])
+    | Selector.Next_sibling ->
+        Some
+          (fun left a ->
+            match imm_pred a with Some s when hits left s -> [ s ] | _ -> [])
     | Selector.Subsequent_sibling ->
-        List.filter (matches left) (preceding_siblings a)
-    | _ -> []
+        Some (fun left a -> List.filter (hits left) (preceding_siblings a))
+    | Selector.Column | Selector.Shadow_piercing | Selector.Shadow_deep -> None
+
+  let matches sel n = match_selector sel n = Matches
 
   (* A selector list has no single specificity: a rule [s1, s2 {...}] cascades
      as if duplicated per branch, so the specificity that applies to [node] is
@@ -264,3 +347,25 @@ module Make (N : NODE) = struct
     List.fold_left upsert [] (bucket ~important:false @ bucket ~important:true)
     |> List.rev_map snd
 end
+
+(* The capability side of the matcher, read off the matcher rather than restated
+   beside it: a second list of the forms it models would be free to drift from
+   the first, and every selector it then wrongly called supported would be one a
+   caller inlines and drops. [Unsupported] never depends on the node, so any
+   node settles the question - this one has nothing on it at all. *)
+module Probe = struct
+  type t = unit
+
+  let equal () () = true
+  let name () = None
+  let id () = None
+  let classes () = []
+  let attribute () _ = None
+  let parent () = None
+  let children () = []
+  let text_children () = []
+end
+
+module Probe_matcher = Make (Probe)
+
+let supported sel = Probe_matcher.match_selector sel () <> Unsupported

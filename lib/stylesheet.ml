@@ -249,6 +249,30 @@ let selector (rule : rule) = rule.selector
 let declarations (rule : rule) = rule.declarations
 let nested (rule : rule) = rule.nested
 
+(* Listed one by one rather than closed with a wildcard: a traversal that
+   descends through this function is only as complete as this match, and a
+   wildcard would silently hide the next block at-rule from every caller. *)
+let statement_children = function
+  | Rule rule -> rule.nested
+  | Layer (_, block)
+  | Media (_, block)
+  | Container (_, _, block)
+  | Supports (_, block)
+  | Moz_document (_, block)
+  | When (_, block)
+  | Else (_, block)
+  | Starting_style block
+  | Origin (_, block)
+  | Scope (_, _, block) ->
+      block
+  | Property _ -> []
+  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      []
+
 (** {1 Pretty Printing} *)
 
 let pp_property_rule : 'a property_rule Pp.t =

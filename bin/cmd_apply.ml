@@ -20,6 +20,15 @@ module Node = struct
   let attribute n k = Soup.attribute k n
   let parent = Soup.parent
   let children n = Soup.children n |> Soup.elements |> Soup.to_list
+
+  (* [children] is the element children the structural selectors count; text is
+     reported apart because [:empty] counts that too. [Soup.texts] of a text
+     node is its own data and of a comment is nothing, so skipping the element
+     children leaves exactly the text that bears on emptiness. *)
+  let text_children n =
+    Soup.children n |> Soup.to_list
+    |> List.concat_map (fun c ->
+        match Soup.element c with Some _ -> [] | None -> Soup.texts c)
 end
 
 module Apply = Cascade.Apply.Make (Node)
@@ -37,21 +46,57 @@ let style_node node = function
         (Sheet.inline_style_of_declarations ~minify:true ~mode:Variables decls)
         node
 
-let inline_html ~minimal ~html ~extra =
+(* Prefix every line of a multi-line diagnostic so a downstream [grep -v
+   "warning"] filters the whole entry, not just the first line. *)
+let report_warning w =
+  Cascade.Error.to_string w |> String.split_on_char '\n'
+  |> List.iter (fun line -> Fmt.epr "warning: %s@." line)
+
+(* [Some sheet] is CSS the projection can use. [None] is a source the parser
+   could not turn into any: a fatal syntax error, or - keyed as in [cascade fmt]
+   - a recovery that left nothing to serialise from an input that had something
+   to drop. Neither is a source that was legitimately empty, which parses
+   without a word and contributes nothing. [note] says what the caller does
+   about the loss. *)
+let parse_source ~filename ~note css =
+  match Css.of_string ~filename css with
+  | Error e ->
+      Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
+      None
+  | Ok { Css.stylesheet; warnings } ->
+      List.iter report_warning warnings;
+      if warnings <> [] && Css.to_string ~minify:true stylesheet = "" then begin
+        Fmt.epr "Error: %s: parse dropped every rule%s@." filename note;
+        None
+      end
+      else Some stylesheet
+
+let inline_html ~minimal ~filename ~html ~extra =
   let soup = Soup.parse html in
-  let page_css =
-    Soup.select "style" soup |> Soup.to_list |> List.concat_map Soup.texts
-    |> String.concat "\n"
+  (* Each <style> block parses on its own, which is how a browser reads them
+     too, so a block the parser cannot use is known apart from the rest. *)
+  let blocks =
+    Soup.select "style" soup |> Soup.to_list
+    |> List.mapi (fun i node ->
+        let filename = Fmt.str "%s:<style>#%d" filename (i + 1) in
+        let css = String.concat "" (Soup.texts node) in
+        (node, parse_source ~filename ~note:"; keeping the block verbatim" css))
   in
-  let css = page_css ^ "\n" ^ extra in
+  let sheet =
+    List.concat_map (fun (_, s) -> Option.value s ~default:[]) blocks @ extra
+  in
   let roots = Soup.children soup |> Soup.elements |> Soup.to_list in
   let { Cascade.Apply.styles; keep_css; kept } =
-    Apply.compute ~minimal ~css roots
+    Apply.compute ~minimal ~sheet roots
   in
   List.iter (fun (node, decls) -> style_node node decls) styles;
-  (* the static rules now live on the elements; keep only the un-inlinable
-     ones. *)
-  Soup.select "style" soup |> Soup.iter Soup.delete;
+  (* The static rules now live on the elements, so the blocks they came from go.
+     A block the parser could not use stays exactly where it was: deleting it
+     would ship a page with neither the inline styles it should have had nor the
+     CSS text a browser might still make something of. *)
+  List.iter
+    (fun (node, sheet) -> if Option.is_some sheet then Soup.delete node)
+    blocks;
   (if keep_css <> "" then
      let style = Soup.create_element ~inner_text:keep_css "style" in
      match Soup.select_one "head" soup with
@@ -60,7 +105,8 @@ let inline_html ~minimal ~html ~extra =
          match Soup.select_one "html" soup with
          | Some h -> Soup.prepend_child h style
          | None -> ()));
-  (Soup.to_string soup, kept)
+  let lost = List.exists (fun (_, s) -> Option.is_none s) blocks in
+  (Soup.to_string soup, kept, lost)
 
 (* ---------- cmdliner ---------- *)
 let read_file path =
@@ -71,19 +117,33 @@ let read_file path =
     Ok s
   with Sys_error msg -> err_msg "Error reading %s: %s" path msg
 
+(* Cmdliner's [file] conv only checks that the path exists, so a directory or a
+   file with no read permission reaches the command. That is a usage error, and
+   it stops the run before it writes a page silently missing those styles - a
+   stylesheet nobody can read is not the same thing as no stylesheet. A file
+   that reads but does not parse is reported and the page is still written,
+   without it. *)
+let read_extra = function
+  | None -> Ok (Some Sheet.empty_stylesheet)
+  | Some f -> Result.map (parse_source ~filename:f ~note:"") (read_file f)
+
 let run minimal html_file css_file () =
-  match read_file html_file with
-  | Error _ as e -> e
-  | Ok html ->
-      let extra =
-        match css_file with
-        | Some f -> ( match read_file f with Ok s -> s | Error _ -> "")
-        | None -> ""
+  match
+    Result.bind (read_file html_file) (fun html ->
+        Result.map (fun extra -> (html, extra)) (read_extra css_file))
+  with
+  | Error e -> Error e
+  | Ok (html, extra) ->
+      let out, kept, lost =
+        inline_html ~minimal ~filename:html_file ~html
+          ~extra:(Option.value extra ~default:Sheet.empty_stylesheet)
       in
-      let out, kept = inline_html ~minimal ~html ~extra in
       if kept > 0 then
         Fmt.epr "Kept %d rule(s) with no inline form in a <style> block.@." kept;
       print_string out;
+      (* CSS that went missing is a result, not a usage error: exit 1, distinct
+         from cmdliner's reserved codes, so a build can gate on it. *)
+      if lost || Option.is_none extra then Stdlib.exit 1;
       Ok ()
 
 let html_arg =
@@ -119,6 +179,17 @@ let cmd =
         "Rules that have no inline form ($(b,:hover), media queries, \
          pseudo-elements, $(b,@keyframes)) cannot be projected onto an element \
          and are kept in a single $(b,<style>) block.";
+      `P
+        "A $(b,<style>) block the parser cannot use is left in the page \
+         exactly as it was, rather than deleted along with the blocks that \
+         were projected.";
+      `S Manpage.s_exit_status;
+      `P "$(tname) exits with:";
+      `I ("0", "on success, including a parse that recovered some of the input");
+      `I
+        ( "1",
+          "if a $(b,<style>) block or $(i,EXTRA.css) parsed to nothing; the \
+           page is still written, without those styles" );
     ]
   in
   Cmd.v (Cmd.info "apply" ~doc ~man) Term.(term_result term)
