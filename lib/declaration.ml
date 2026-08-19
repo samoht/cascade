@@ -579,28 +579,50 @@ let read_text_decoration_lines t =
   if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
   lines
 
+(* CSS Shapes 1 sec. 2.2: [<shape-box>] is [<visual-box> | margin-box], so the
+   three SVG boxes [<geometry-box>] adds are not valid here. *)
+let check_shape_box t (box : clip_geometry_box) =
+  match box with
+  | Margin_box | Border_box | Padding_box | Content_box -> ()
+  | Fill_box | Stroke_box | View_box ->
+      Cursor.err_invalid t "shape-outside takes a <shape-box>"
+
+(* [read_clip_path] reads [<basic-shape> || <geometry-box>], the same double-bar
+   pair shape-outside uses, along with [none], [url()] and the CSS-wide
+   keywords. Shapes 1 sec. 2 differs on two points, checked here: the box is a
+   [<shape-box>], and everything outside [<basic-shape>] is an alternative to
+   the pair rather than a member of it. *)
+let check_shape_outside_shape t =
+  let is_basic_shape (shape : clip_path) =
+    match shape with
+    | Clip_path_inset _ | Clip_path_circle _ | Clip_path_ellipse _
+    | Clip_path_polygon _ | Clip_path_path _ | Clip_path_shape _
+    | Clip_path_xywh _ | Clip_path_rect _ ->
+        true
+    (* A shape the [clip_path] reader kept verbatim as spec-invalid: the raw
+       text survives here too rather than costing the whole declaration. *)
+    | Invalid _ -> true
+    | _ -> false
+  in
+  match read_clip_path t with
+  | Clip_path_box box -> check_shape_box t box
+  | Clip_path_with_box { shape; box; _ } when is_basic_shape shape ->
+      check_shape_box t box
+  | Clip_path_with_box _ ->
+      Cursor.err_invalid t "shape-outside pairs a <shape-box> with a shape"
+  | _ -> ()
+
+(* CSS Shapes 1 sec. 2: [shape-outside] is [none | [<basic-shape> ||
+   <shape-box>] | <image>]. The value is the raw source text ([Shape_outside :
+   string property]): typing it would mean a sum of the [clip_path] shapes and
+   the whole [background_image] type for [<image>], so the reader validates the
+   grammar and hands the text back verbatim. *)
 let read_shape_outside t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  let accept_single () =
-    Cursor.skip t;
-    Cursor.expect_eof t;
-    raw
+  let read_shape_image t =
+    ignore (read_background_image t : background_image)
   in
-  let accept_var () =
-    let _ : string var =
-      Values.read_var
-        (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)
-        t
-    in
-    Cursor.expect_eof t;
-    raw
-  in
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident keyword; _ })
-    when Properties.is_css_wide_keyword keyword ->
-      accept_single ()
-  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
-      accept_single ()
+  (match Cursor.peek t with
   | Some
       (Component.Func
          { node = { name = "var"; terminated = true; arguments = []; _ }; _ })
@@ -608,19 +630,22 @@ let read_shape_outside t =
       Cursor.err_invalid t "empty var()"
   | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
     ->
-      accept_var ()
-  | Some (Component.Func { node = { name = "circle"; terminated; _ }; _ })
-    when terminated ->
-      (* CSS Shapes 1 section 3.1: [circle()] is valid (both [<shape-radius>]
-         and [at <position>] are optional). *)
-      accept_single ()
-  | Some
-      (Component.Func { node = { name = "inset"; arguments; terminated }; _ })
-    when terminated && arguments <> [] ->
-      accept_single ()
-  | Some (Component.Func { node = { name = "inset"; _ }; _ }) ->
-      Cursor.err_invalid t "empty basic shape"
-  | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
+      let _ : string var =
+        Values.read_var
+          (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)
+          t
+      in
+      ()
+  | _ ->
+      Cursor.one_of
+        [
+          check_shape_outside_shape;
+          read_shape_image;
+          (fun t -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw));
+        ]
+        t);
+  Cursor.expect_eof t;
+  raw
 
 let read_grid_template_list t = read_grid_template t
 

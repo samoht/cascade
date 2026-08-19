@@ -3426,9 +3426,14 @@ let property_covered_by_important kept decl =
 
 let same_property = Declaration.same_property
 
+(* Rebuilt through the smart constructors: they recompute the cached
+   [Declaration.hash] over the new payload, and a record update would leave it
+   fingerprinting the importance that was just cleared. *)
 let rec without_importance = function
-  | Declaration r -> Declaration { r with important = false }
-  | Theme_guarded t -> Theme_guarded { t with decl = without_importance t.decl }
+  | Declaration { property; value; _ } ->
+      Declaration.v ~important:false property value
+  | Theme_guarded { var_name; decl; _ } ->
+      Declaration.theme_guarded ~var_name (without_importance decl)
 
 (* Value equality ignoring importance. Every caller establishes [same_property]
    first, so the two declarations share a value type and this is a structural

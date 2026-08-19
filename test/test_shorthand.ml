@@ -411,6 +411,29 @@ let test_deduplicate_keeps_legacy_fallbacks () =
     ]
     (decl_strings result)
 
+let test_same_value_ignores_importance () =
+  Alcotest.(check bool)
+    "importance alone does not change the value" true
+    (Shorthand.same_value
+       (decl "display:-webkit-box")
+       (decl "display:-webkit-box!important"));
+  Alcotest.(check bool)
+    "the same holds under a theme guard" true
+    (Shorthand.same_value
+       (Declaration.theme_guarded ~var_name:"--x" (decl "display:-webkit-box"))
+       (Declaration.theme_guarded ~var_name:"--x"
+          (decl "display:-webkit-box!important")));
+  (* Equal values are not a vendor fallback, so the earlier declaration is
+     dropped even though the later one adds [!important]. *)
+  let result =
+    ".a{display:-webkit-box;display:-webkit-box!important}" |> decls
+    |> Shorthand.deduplicate_declarations
+  in
+  Alcotest.(check (list string))
+    "a vendor value repeated with !important collapses"
+    [ "display:-webkit-box!important" ]
+    (decl_strings result)
+
 let suite =
   ( "shorthand",
     [
@@ -443,4 +466,6 @@ let suite =
         test_stylesheet_scope_prior_longhand_guard;
       Alcotest.test_case "deduplicate keeps legacy fallbacks" `Quick
         test_deduplicate_keeps_legacy_fallbacks;
+      Alcotest.test_case "same value ignores importance" `Quick
+        test_same_value_ignores_importance;
     ] )

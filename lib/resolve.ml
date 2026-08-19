@@ -140,6 +140,8 @@ let layered_rules stmts =
   let order, rules = go None ([], []) stmts in
   (order, List.rev rules)
 
+let layer_order stmts = fst (layered_rules stmts)
+
 module Make (N : NODE) = struct
   let preceding_siblings n =
     match N.parent n with

@@ -87,15 +87,31 @@ type container_diff =
           (** (position, rules) for each block in actual *)
     }
 
-type t = { rules : rule_diff list; containers : container_diff list }
+type layer_order_diff = {
+  expected_order : string list;
+  actual_order : string list;
+  swapped : (string * string) list;
+}
+
+type t = {
+  rules : rule_diff list;
+  containers : container_diff list;
+  layer_order : layer_order_diff option;
+}
 
 (* ===== Constants ===== *)
 
 let default_truncation_length = String_diff.default_max_width
 
+(* How many swapped layer pairs the report names before counting the rest. A
+   reversed order of n layers inverts n(n-1)/2 pairs, and reading the first few
+   is enough to place the change. *)
+let max_layer_swaps = 5
+
 (* ===== Helper Functions ===== *)
 
-let is_empty d = d.rules = [] && d.containers = []
+let is_empty d =
+  d.rules = [] && d.containers = [] && Option.is_none d.layer_order
 
 (* ===== Pretty Printing Functions ===== *)
 
@@ -638,6 +654,22 @@ let describe_statement stmt =
       (fun s ->
         Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
       (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
+      (* The statements that carry neither a selector nor a block. Naming them
+         apart also keeps them apart in the order keys, where one shared "(other
+         statement)" made a [@charset] and a [@namespace] the same statement. *)
+      (fun (s : Css.statement) ->
+        match s with
+        | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
+        | Namespace (prefix, _) ->
+            Some
+              ("@namespace"
+              ^ (match prefix with Some p -> " " ^ p | None -> "")
+              ^ ";")
+        (* The semicolon is what tells a layer-order pin from the block of the
+           same name: [@layer a;] ahead of [@layer a { ... }] is a second
+           statement, not the block again. *)
+        | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
+        | _ -> None);
     ]
   in
   match List.find_map try_desc matchers with
@@ -960,9 +992,61 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
+(* A layer path is keyed for the cascade, not for reading: an anonymous [@layer
+   { }] block is a segment starting with U+0000, which a report has to name some
+   other way. *)
+let layer_path_name path =
+  String.split_on_char '.' path
+  |> List.map (fun segment ->
+      if String.length segment > 0 && segment.[0] = '\000' then
+        "(anonymous " ^ String.sub segment 1 (String.length segment - 1) ^ ")"
+      else segment)
+  |> String.concat "."
+
+let layer_path_list paths = String.concat ", " (List.map layer_path_name paths)
+
+let pp_layer_swaps ~style buf swapped =
+  let line ~is_last text =
+    add_strings buf
+      [ tree_prefix ~style ~is_last ~parent_prefix:""; text; "\n" ]
+  in
+  List.iteri
+    (fun i (weaker, stronger) ->
+      if i < max_layer_swaps then
+        line ~is_last:false
+          (layer_path_name stronger ^ " now precedes " ^ layer_path_name weaker))
+    swapped;
+  match List.length swapped - max_layer_swaps with
+  | hidden when hidden > 0 ->
+      let noun = if hidden = 1 then " more pair\n" else " more pairs\n" in
+      add_strings buf
+        [
+          tree_prefix ~style ~is_last:false ~parent_prefix:"";
+          "...";
+          string_of_int hidden;
+          noun;
+        ]
+  | _ -> ()
+
+let pp_layer_order_section ~style buf = function
+  | None -> ()
+  | Some { expected_order; actual_order; swapped } ->
+      Buffer.add_string buf "Cascade layer order changed:\n";
+      pp_children ~style ~parent_prefix:"" buf (fun style buf ->
+          pp_layer_swaps ~style buf swapped;
+          add_strings buf
+            [
+              tree_prefix ~style ~is_last:true ~parent_prefix:"";
+              "order: ";
+              ansi_red ~color:style.color (layer_path_list expected_order);
+              " -> ";
+              ansi_green ~color:style.color (layer_path_list actual_order);
+              "\n";
+            ])
+
 let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?(depth = unlimited_depth) buf { rules; containers } =
-  if rules = [] && containers = [] then
+    ?(depth = unlimited_depth) buf { rules; containers; layer_order } =
+  if rules = [] && containers = [] && Option.is_none layer_order then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
        @layer)\n\
@@ -980,11 +1064,31 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
     (* [depth] counts renderable levels; the roots printed here are level 1. *)
     let style = { tree_style with color; depth = max 0 (depth - 1) } in
     let container_count = List.length containers in
+    (* The layer order leads: it decides which of the rules below it wins. *)
+    pp_layer_order_section ~style buf layer_order;
     pp_rule_list ~style ~container_count buf meaningful;
     pp_reordered_section ~style ~container_count buf reordered_rules;
     pp_containers_section ~style buf containers)
 
 (* ===== Tree Diff Computation Functions ===== *)
+
+(* The text a statement prints to, cut at its block, for the statements no
+   selector names: [@charset "UTF-8";], [@layer a, b;], [@namespace ...]. An
+   entry with no name cannot be classified, so it corrupts every count the
+   summary derives from the same list, and it renders as a bare tree
+   connector. *)
+let statement_head stmt =
+  let text =
+    Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) |> String.trim
+  in
+  let head =
+    match String.index_opt text '{' with
+    | Some i -> String.trim (String.sub text 0 i)
+    | None -> text
+  in
+  if head = "" then
+    Option.value ~default:"(other statement)" (describe_statement stmt)
+  else head
 
 (* Helper to extract rule information from statements *)
 let strings_of_rule stmt =
@@ -992,7 +1096,9 @@ let strings_of_rule stmt =
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None -> ("", [])
+  | None ->
+      ( statement_head stmt,
+        Option.value ~default:[] (Css.statement_declarations stmt) )
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
@@ -1346,6 +1452,28 @@ let moved_order_keys stmts1 stmts2 =
   moved
 
 let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
+
+(* The conditions of the containers that changed places against the rest of the
+   enclosing statement list, judged on the same key space as the rule ordering.
+   The absolute index a container sits at is not that coordinate: one statement
+   inserted ahead of a block renumbers it and everything after it without
+   transposing anything, which is why the index comparisons this replaces
+   carried a slack distance and still answered the wrong question on both sides
+   of it. [moved_order_keys] anchors on a longest order-preserving matching of
+   the statements both sides share, so an insertion moves nothing at any
+   distance and a block that swapped with a rule or another block moves even by
+   one position. *)
+let moved_conditions ~condition_of stmts1 stmts2 =
+  let moved = moved_order_keys stmts1 stmts2 in
+  let conds = Hashtbl.create 8 in
+  List.iter
+    (fun stmt ->
+      match (condition_of stmt, order_key_of_stmt stmt) with
+      | Some cond, Some key when Hashtbl.mem moved key ->
+          Hashtbl.replace conds cond ()
+      | _ -> ())
+    stmts1;
+  conds
 
 (* Locate matching declarations in map2 for a given selector key *)
 let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
@@ -1718,9 +1846,8 @@ let properties_diff decls1 decls2 : declaration list * string list * string list
    recursion *)
 (* A container still takes part in the ordering comparison, since swapping a
    rule with an [@media] is cascade-significant, but [container_changes] is what
-   reports it. Converting it here as well produced a second entry for the same
-   block, with an empty selector because [strings_of_rule] has no rule to
-   name. *)
+   reports it. Converting it here as well gives a second entry for the same
+   block. *)
 let is_container_statement stmt =
   Css.as_media stmt <> None
   || Css.as_supports stmt <> None
@@ -1969,6 +2096,18 @@ let at_rule_body (stmt : Css.statement) : at_rule_body option =
    well would report one change twice, once against the universal selector. *)
 let is_selectorless_at_rule stmt = at_rule_body stmt <> None
 
+(* Every statement a processor of its own reads and names.
+   [selector_key_of_stmt] gives all of them the universal selector, so the rule
+   matcher pairs a [@property] with a [@keyframes] with a [@media] and hands
+   whichever it has one too many of to the report, where nothing can name it.
+   Containers are the exception and stay: [moved_order_keys] reads their
+   position, and [convert_added_rule]/[convert_removed_rule] keep them out of
+   the entries. *)
+let is_reported_by_own_processor stmt =
+  is_selectorless_at_rule stmt
+  || Css.as_property stmt <> None
+  || Css.as_keyframes stmt <> None
+
 (* The at-rule text split at its block: the head keys the statement, the body is
    what a descriptor-only at-rule is compared on. *)
 let at_rule_text stmt =
@@ -2045,10 +2184,12 @@ let at_rule_text_change text1 text2 =
     }
 
 let to_rule_changes rules1 rules2 : rule_diff list =
-  (* [process_at_rules] reads these statements, and a rule diff can only see
-     them as one more universal selector. *)
-  let rules1 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules1 in
-  let rules2 = List.filter (fun s -> not (is_selectorless_at_rule s)) rules2 in
+  let rules1 =
+    List.filter (fun s -> not (is_reported_by_own_processor s)) rules1
+  in
+  let rules2 =
+    List.filter (fun s -> not (is_reported_by_own_processor s)) rules2
+  in
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   let moved = moved_order_keys rules1 rules2 in
   List.filter_map convert_added_rule r_added
@@ -2076,36 +2217,30 @@ let group_by_condition items =
     items;
   tbl
 
-let block_positions_differ blocks1_list blocks2_list =
-  List.length blocks1_list = List.length blocks2_list
-  &&
-  let pos1_list = List.map fst blocks1_list in
-  let pos2_list = List.map fst blocks2_list in
-  List.exists2 (fun p1 p2 -> abs (p1 - p2) > 10) pos1_list pos2_list
-
-let block_structure_differs blocks1_list blocks2_list =
-  List.length blocks1_list <> List.length blocks2_list
-  || block_positions_differ blocks1_list blocks2_list
-
+(* Two sides holding a different number of blocks under one condition split or
+   merged them. Where those blocks sit is a separate question, and one
+   [moved_conditions] answers: comparing their absolute indices here reported
+   the whole tail of a stylesheet as restructured whenever a block was inserted
+   ahead of it, which is what the slack distance was there to hide. *)
 let detect_block_structure_changes blocks1 blocks2 =
   let block_structure_changed = Hashtbl.create 16 in
   Hashtbl.iter
     (fun cond blocks1_list ->
       match Hashtbl.find_opt blocks2 cond with
       | Some blocks2_list ->
-          if block_structure_differs blocks1_list blocks2_list then
+          if List.length blocks1_list <> List.length blocks2_list then
             Hashtbl.replace block_structure_changed cond
               (blocks1_list, blocks2_list)
       | _ -> ())
     blocks1;
   block_structure_changed
 
-let container_position extract_fn cond stmts =
+let condition_position ~condition_of cond stmts =
   let rec go i = function
     | [] -> None
     | stmt :: rest -> (
-        match extract_fn stmt with
-        | Some (c, _) when c = cond -> Some i
+        match condition_of stmt with
+        | Some c when c = cond -> Some i
         | _ -> go (i + 1) rest)
   in
   go 0 stmts
@@ -2117,6 +2252,33 @@ let reordered_container container_type cond rules1 pos1 pos2 =
       expected_pos = pos1;
       actual_pos = pos2;
     }
+
+(* The entry for a container that changed places, naming where it went. *)
+let container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond rules =
+  match
+    ( condition_position ~condition_of cond stmts1,
+      condition_position ~condition_of cond stmts2 )
+  with
+  | Some pos1, Some pos2 ->
+      Some (reordered_container container_type cond rules pos1 pos2)
+  | None, _ | _, None -> None
+
+(* One entry per container that only changed places. [reported] holds the
+   conditions an entry already names, so a block that also changed content is
+   named once, by the entry that says what changed, and a condition several
+   blocks share is named once for the group. Every condition both sides hold is
+   asked, not only the ones whose bodies differ: a block that kept its body and
+   swapped with the rule below it changes which declaration wins. *)
+let container_reorders ~container_type ~condition_of ~moved_conds ~reported
+    ~stmts1 ~stmts2 items =
+  List.filter_map
+    (fun (cond, rules) ->
+      if (not (Hashtbl.mem moved_conds cond)) || Hashtbl.mem reported cond then
+        None
+      else (
+        Hashtbl.replace reported cond ();
+        container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond rules))
+    items
 
 let modified_container container_type cond rules1 rules2 rule_changes
     nested_containers =
@@ -2278,6 +2440,13 @@ let extract_supports_as_string stmt =
   | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
   | None -> None
 
+(* The name [layer_diff] keys a layer on: an anonymous [@layer { ... }] has
+   none, so it keys on the empty string like every other anonymous one. *)
+let extract_layer_name stmt =
+  match Css.as_layer stmt with
+  | Some (name_opt, rules) -> Some (Option.value ~default:"" name_opt, rules)
+  | None -> None
+
 let keyframes_container_info name =
   { container_type = `Layer; condition = "@keyframes " ^ name; rules = [] }
 
@@ -2383,6 +2552,9 @@ let container_key (name_opt, condition, _) =
 let condition_rules_of_container (name_opt, condition, rules) =
   (container_condition_string name_opt condition, rules)
 
+let extract_container_as_string stmt =
+  Option.map condition_rules_of_container (Css.as_container stmt)
+
 let modified_container_of_pair ((name_opt, condition, rules1), (_, _, rules2)) =
   (container_condition_string name_opt condition, rules1, rules2)
 
@@ -2487,35 +2659,27 @@ and media_diff items1 items2 =
     groups2;
   (!added, !removed, !modified)
 
-and process_modified_container ~container_type ~extract_fn ~stmts1 ~stmts2
-    ~block_structure_changed cond rules1 rules2 =
+and process_modified_container ~container_type ~condition_of ~moved_conds
+    ~stmts1 ~stmts2 ~block_structure_changed ~reported cond rules1 rules2 =
   (* Skip if this condition has a block structure change *)
   if Hashtbl.mem block_structure_changed cond then None
   else
     let rule_changes = to_rule_changes rules1 rules2 in
     (* Recursively check deeper nesting *)
     let nested_containers = nested_differences rules1 rules2 in
-    (* Check for position changes within parent container *)
-    let pos1 =
-      container_position extract_fn cond stmts1 |> Option.value ~default:(-1)
-    in
-    let pos2 =
-      container_position extract_fn cond stmts2 |> Option.value ~default:(-1)
-    in
-    let position_changed = pos1 >= 0 && pos2 >= 0 && abs (pos2 - pos1) > 3 in
-
-    (* If only position changed with no content changes, report as reordered *)
-    if position_changed && rule_changes = [] && nested_containers = [] then
-      Some (reordered_container container_type cond rules1 pos1 pos2)
-    else if rule_changes <> [] || nested_containers <> [] then
+    Hashtbl.replace reported cond ();
+    if rule_changes <> [] || nested_containers <> [] then
       (* Container was modified in content, not just position *)
       Some
         (modified_container container_type cond rules1 rules2 rule_changes
            nested_containers)
+    else if Hashtbl.mem moved_conds cond then
+      container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond rules1
     else None
 
 and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
     =
+  let condition_of stmt = Option.map fst (extract_fn stmt) in
   let items_with_pos1 = extract_items_with_positions extract_fn stmts1 in
   let items_with_pos2 = extract_items_with_positions extract_fn stmts2 in
   let block_structure_changed =
@@ -2523,12 +2687,15 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
       (group_by_condition items_with_pos1)
       (group_by_condition items_with_pos2)
   in
+  let moved_conds = moved_conditions ~condition_of stmts1 stmts2 in
+  let reported = Hashtbl.create 8 in
   let items1 = List.filter_map extract_fn stmts1 in
   let items2 = List.filter_map extract_fn stmts2 in
   let added, removed, modified = diff_fn items1 items2 in
   let diffs = ref [] in
   Hashtbl.iter
     (fun cond (expected_blocks, actual_blocks) ->
+      Hashtbl.replace reported cond ();
       diffs :=
         Block_structure_changed
           { container_type; condition = cond; expected_blocks; actual_blocks }
@@ -2536,21 +2703,27 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
     block_structure_changed;
   List.iter
     (fun (cond, rules) ->
+      Hashtbl.replace reported cond ();
       diffs := Added { container_type; condition = cond; rules } :: !diffs)
     added;
   List.iter
     (fun (cond, rules) ->
+      Hashtbl.replace reported cond ();
       diffs := Removed { container_type; condition = cond; rules } :: !diffs)
     removed;
   List.iter
     (fun (cond, rules1, rules2) ->
       match
-        process_modified_container ~container_type ~extract_fn ~stmts1 ~stmts2
-          ~block_structure_changed cond rules1 rules2
+        process_modified_container ~container_type ~condition_of ~moved_conds
+          ~stmts1 ~stmts2 ~block_structure_changed ~reported cond rules1 rules2
       with
       | Some diff -> diffs := diff :: !diffs
       | None -> ())
     modified;
+  diffs :=
+    container_reorders ~container_type ~condition_of ~moved_conds ~reported
+      ~stmts1 ~stmts2 items1
+    @ !diffs;
   (if !diffs = [] then
      match
        detect_order_only_change ~container_type added removed items1 items2
@@ -2597,21 +2770,30 @@ and layer_diff items1 items2 =
   (added, removed, modified)
 
 (* Shared helper: collect added/removed container diffs and process modified
-   containers with the standard rule-change + nesting logic. *)
-and collect_container_diffs ~container_type added removed modified =
+   containers with the standard rule-change + nesting logic. [extract_fn] names
+   the containers in the enclosing statement list, which is what decides whether
+   one of them moved. *)
+and collect_container_diffs ~container_type ~extract_fn ~stmts1 ~stmts2 added
+    removed modified =
+  let condition_of stmt = Option.map fst (extract_fn stmt) in
+  let moved_conds = moved_conditions ~condition_of stmts1 stmts2 in
+  let reported = Hashtbl.create 8 in
   let diffs = ref [] in
   List.iter
     (fun (condition, rules) ->
+      Hashtbl.replace reported condition ();
       diffs := Added { container_type; condition; rules } :: !diffs)
     added;
   List.iter
     (fun (condition, rules) ->
+      Hashtbl.replace reported condition ();
       diffs := Removed { container_type; condition; rules } :: !diffs)
     removed;
   List.iter
     (fun (condition, rules1, rules2) ->
       let rule_changes = to_rule_changes rules1 rules2 in
       let nested_containers = nested_differences rules1 rules2 in
+      Hashtbl.replace reported condition ();
       if rule_changes <> [] || nested_containers <> [] then
         diffs :=
           Modified
@@ -2621,16 +2803,27 @@ and collect_container_diffs ~container_type added removed modified =
               rule_changes;
               container_changes = nested_containers;
             }
-          :: !diffs)
+          :: !diffs
+      else if Hashtbl.mem moved_conds condition then
+        match
+          container_moved ~container_type ~condition_of ~stmts1 ~stmts2
+            condition rules1
+        with
+        | Some diff -> diffs := diff :: !diffs
+        | None -> ())
     modified;
-  !diffs
+  container_reorders ~container_type ~condition_of ~moved_conds ~reported
+    ~stmts1 ~stmts2
+    (List.filter_map extract_fn stmts1)
+  @ !diffs
 
 (* Process layers separately due to different type signature *)
 and process_nested_layers stmts1 stmts2 =
   let items1 = List.filter_map Css.as_layer stmts1 in
   let items2 = List.filter_map Css.as_layer stmts2 in
   let added, removed, modified = layer_diff items1 items2 in
-  collect_container_diffs ~container_type:`Layer added removed modified
+  collect_container_diffs ~container_type:`Layer ~extract_fn:extract_layer_name
+    ~stmts1 ~stmts2 added removed modified
 
 and container_has_no_diff (_, _, rules1) (_, _, rules2) =
   let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
@@ -2655,7 +2848,9 @@ and process_nested_containers_with_name stmts1 stmts2 =
   let items1 = List.filter_map Css.as_container stmts1 in
   let items2 = List.filter_map Css.as_container stmts2 in
   let added, removed, modified = container_diff items1 items2 in
-  collect_container_diffs ~container_type:`Container added removed modified
+  collect_container_diffs ~container_type:`Container
+    ~extract_fn:extract_container_as_string ~stmts1 ~stmts2 added removed
+    modified
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
 and process_nested_rules stmts1 stmts2 =
@@ -2771,55 +2966,6 @@ and nested_differences (stmts1 : Css.statement list)
   (* Process the at-rules that carry no selector of their own *)
   @ process_at_rules stmts1 stmts2
 
-(* Check if containers appear at different positions in statement sequence *)
-let detect_container_position_changes stmts1 stmts2 containers =
-  (* Build position maps for @media containers *)
-  let build_media_position_map stmts =
-    List.mapi
-      (fun i stmt ->
-        match Css.as_media stmt with
-        | Some (cond, _) -> Some (Css.Media.to_string cond, i)
-        | None -> None)
-      stmts
-    |> List.filter_map (fun x -> x)
-    |> List.fold_left
-         (fun acc (cond, pos) ->
-           let existing = try List.assoc cond acc with Not_found -> [] in
-           (cond, pos :: existing) :: List.remove_assoc cond acc)
-         []
-  in
-
-  let pos_map1 = build_media_position_map stmts1 in
-  let pos_map2 = build_media_position_map stmts2 in
-
-  (* Enhance container_diffs with position info *)
-  List.map
-    (function
-      | Modified
-          ({
-             info = { container_type = `Media; condition; _ };
-             rule_changes;
-             container_changes;
-             _;
-           } as cm)
-        when rule_changes = [] && container_changes = [] ->
-          (* No content changes - check if position changed *)
-          let pos1 =
-            try List.assoc condition pos_map1 |> List.hd
-            with Not_found | Failure _ -> -1
-          in
-          let pos2 =
-            try List.assoc condition pos_map2 |> List.hd
-            with Not_found | Failure _ -> -1
-          in
-          if pos1 >= 0 && pos2 >= 0 && abs (pos2 - pos1) > 5 then
-            (* Significant position change - report as structure difference *)
-            Modified
-              { cm with info = { cm.info with rules = [] }; actual_rules = [] }
-          else Modified cm
-      | other -> other)
-    containers
-
 (* Main diff function *)
 (* @import and the other selectorless leaf rules collapse onto the universal
    selector key in [rule_diffs], so two distinct imports match as identical and
@@ -2897,6 +3043,60 @@ let process_imports stmts1 stmts2 : rule_diff list =
         (fun s -> (Added { selector = s; declarations = [] } : rule_diff))
         (multiset_remove_each ~remove:l1 l2)
 
+(* Cascade layer order. Two sheets can hold the same [@layer] blocks with the
+   same bodies and still resolve a conflict between two layers the opposite way,
+   because a layer's strength comes from where its name is first declared, not
+   from where its rules stand: an [@layer a;] statement ahead of the blocks pins
+   [a] as the weaker layer wherever its block ends up. Nothing else in the walk
+   reads that, so compare the declared orders here. *)
+
+(* A layer only one side declares is the rule and container walk's business: it
+   reports the [@layer] block that came or went. What only the order shows is a
+   pair of layers both sides declare in the opposite relative order, so restrict
+   each order to the shared names before comparing. *)
+let shared_layer_order order other =
+  List.filter (fun name -> List.exists (String.equal name) other) order
+
+(* The pairs [(weaker, stronger)] that [expected] declares weaker-then-stronger
+   and [actual] the other way round. Both lists hold the same names, so a
+   position lookup in [actual] settles each pair. *)
+let swapped_layer_pairs ~expected ~actual =
+  let positions = Hashtbl.create 16 in
+  List.iteri (fun i name -> Hashtbl.replace positions name i) actual;
+  let position name =
+    match Hashtbl.find_opt positions name with Some i -> i | None -> -1
+  in
+  let rec pairs = function
+    | [] -> []
+    | earlier :: rest ->
+        List.filter_map
+          (fun later ->
+            if position later < position earlier then Some (earlier, later)
+            else None)
+          rest
+        @ pairs rest
+  in
+  pairs expected
+
+(* [Resolve.layer_order] keys a sheet's layers by dotted path, so the two orders
+   compare across spellings: [@layer a.b] and [@layer a { @layer b }] reach the
+   same path, and an [@layer a, b;] statement declares its names the same way a
+   block does. *)
+let layer_order_diff stmts1 stmts2 =
+  let order1 = Resolve.layer_order stmts1 in
+  let order2 = Resolve.layer_order stmts2 in
+  let expected_order = shared_layer_order order1 order2 in
+  let actual_order = shared_layer_order order2 order1 in
+  if List.equal String.equal expected_order actual_order then None
+  else
+    Some
+      {
+        expected_order;
+        actual_order;
+        swapped =
+          swapped_layer_pairs ~expected:expected_order ~actual:actual_order;
+      }
+
 let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   let all1 = Css.statements expected in
   let all2 = Css.statements actual in
@@ -2911,9 +3111,5 @@ let diff ~(expected : Css.t) ~(actual : Css.t) : t =
   in
 
   (* Delegate all container and nested-container diffs to the generic walker *)
-  let containers =
-    let base_containers = nested_differences all1 all2 in
-    detect_container_position_changes all1 all2 base_containers
-  in
-
-  { rules = rule_changes; containers }
+  let containers = nested_differences all1 all2 in
+  { rules = rule_changes; containers; layer_order = layer_order_diff all1 all2 }

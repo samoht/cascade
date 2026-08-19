@@ -66,6 +66,21 @@ val supported : Selector.t -> bool
     branch. Everything else, every stateful pseudo-class and every
     pseudo-element among it, is not. *)
 
+val layer_order : Stylesheet.t -> string list
+(** [layer_order sheet] is the cascade layer order [sheet] declares, weakest
+    first, as one dotted path per layer: [a.b] is the sublayer [b] of [a],
+    however it was written ([@layer a.b] or [@layer a { @layer b }]). Layers
+    come in order of first appearance with each sublayer inside its parent's run
+    (css-cascade-5 sec. 6.4.2), and an [@layer a, b;] statement declares its
+    names there just as a block does. Every anonymous [@layer { ... }] block is
+    a layer of its own, keyed by a path holding a U+0000 that no author can
+    write - a caller that prints these paths has to spell those out itself.
+    Layers declared inside a conditional group are not counted, as
+    {!Make.resolve} does not consider such groups either.
+
+    This is the [~layer_order] that {!Stylesheet.cascade_layer_precedence_rank}
+    expects. *)
+
 module Make (N : NODE) : sig
   val match_selector : Selector.t -> N.t -> match_result
   (** [match_selector sel node] is what the matcher can say about [sel] and

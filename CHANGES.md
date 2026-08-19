@@ -38,6 +38,10 @@
 
 ### Parsing
 
+- `shape-outside` reads its whole grammar. Only `none`, `circle()`, a non-empty
+  `inset()` and the CSS-wide keywords were accepted, so `margin-box`,
+  `circle(50%) content-box`, `url(shape.png)` and every other basic shape were
+  rejected and the declaration dropped
 - An identifier takes any code point at or above U+0080, so a selector such as
   `.text-↗` parses. `Css.of_string` takes `?enforce_spec` and `cascade` takes
   `--enforce-spec` to restrict identifiers to the CSS Syntax 3 range list;
@@ -84,6 +88,9 @@
 - `--lossless` keeps a flow-relative property in source order against a
   physical one of the same family, since the writing mode decides which
   physical side it resolves to (#277)
+- A vendor-prefixed value repeated with `!important` collapses to the later
+  declaration; only a genuine value difference is kept as a legacy fallback.
+  `display:-webkit-box;display:-webkit-box!important` survived as both
 - A selector list mixing a vendor pseudo-element with ordinary selectors is
   split, so a browser that ignores `::-webkit-search-cancel-button` keeps the
   other selectors' declarations (#203)
@@ -156,6 +163,18 @@
 
 ### Diff report
 
+- The cascade layer order the two sheets declare is compared, and the report
+  names the layer pairs that swapped. Dropping an `@layer a;` pin, which makes
+  the other layer the weaker one, read as no difference at all
+- Every entry the report prints names what it is about. A `@property` or
+  `@keyframes` surplus reached the rule level, which has no rule to name and
+  printed a bare tree connector while still counting the entry towards the
+  summary; `@charset`, `@namespace` and `@layer a, b;` had no name at all
+- A container that changed places is reported whether or not its body changed,
+  on the same order keys the rule level uses. Three absolute-index distances
+  gated it before, so swapping an `@media` with the rule below it - which
+  changes which declaration wins above the breakpoint - printed `CSS files are
+  identical` and exited 0
 - A rule that writes one property more than once, as a fallback chain does, is
   compared occurrence by occurrence; matching by name alone made
   `a{color:red;color:blue}` against `a{color:red;color:green}` report

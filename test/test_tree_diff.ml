@@ -921,30 +921,210 @@ let deeply_nested_identical_is_empty () =
     "identical deep nesting stays empty" true
     (Cascade_diff.Tree_diff.is_empty d)
 
-(* Known gap, pinned rather than fixed here. An empty [@layer] statement pins
-   the layer order at the point it stands, so [@layer a;] ahead of a [@layer b]
-   block makes [a] the weaker layer, and dropping it makes [b] weaker instead.
-   The walk pairs the two [@layer] blocks and finds their bodies equal, so it
-   reports nothing over two sheets that resolve a conflict the opposite way.
-   Canonical mode catches the pair on the bytes; the fix belongs in the walk. *)
-let layer_order_pin_is_not_reported () =
+(* ===== Container position ===== *)
+
+(* The container names carried by every [Reordered] container entry, at any
+   depth. *)
+let rec container_reorders (c : Cascade_diff.Tree_diff.container_diff) =
+  match c with
+  | Reordered { info = { condition; _ }; _ } -> [ condition ]
+  | Modified { container_changes; _ } ->
+      List.concat_map container_reorders container_changes
+  | Added _ | Removed _ | Block_structure_changed _ -> []
+
+let reordered_containers d =
+  List.concat_map container_reorders d.Cascade_diff.Tree_diff.containers
+
+(* Source order decides the winner between a conditional block and a rule that
+   writes the same property on the same selector, so swapping the two is a
+   difference whichever side the block starts on. *)
+let media_swapped_with_rule_is_reported () =
+  let d =
+    diff_of ~expected:"@media (min-width:10px){a{color:red}}a{color:blue}"
+      ~actual:"a{color:blue}@media (min-width:10px){a{color:red}}"
+  in
+  Alcotest.(check bool)
+    "swapping a block with a rule is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* The mirror image of the case above, which the rule-level ordering already
+   caught: both directions must report, and neither may report twice. *)
+let rule_swapped_with_media_is_reported () =
+  let d =
+    diff_of ~expected:"a{color:blue}@media (min-width:10px){a{color:red}}"
+      ~actual:"@media (min-width:10px){a{color:red}}a{color:blue}"
+  in
+  Alcotest.(check bool)
+    "the swap is a difference in the other direction too" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* Control. Inserting a rule ahead of a block shifts its absolute index without
+   moving it past anything, so the block did not move and must stay quiet. *)
+let insertion_ahead_of_media_is_not_a_move () =
+  let d =
+    diff_of ~expected:"a{color:red}@media print{.b{top:0}}"
+      ~actual:"a{color:red}.c{left:0}@media print{.b{top:0}}"
+  in
+  Alcotest.(check (list string))
+    "an insertion is not a container move" [] (reordered_containers d)
+
+(* Control. Same, with the insertion far enough ahead to shift the block past
+   any fixed distance: absolute index is not the coordinate. *)
+let distant_insertion_is_not_a_move () =
+  let filler n =
+    String.concat ""
+      (List.init n (fun i ->
+           let s = string_of_int i in
+           ".f" ^ s ^ "{order:" ^ s ^ "}"))
+  in
+  let d =
+    diff_of
+      ~expected:("a{color:red}" ^ "@media print{.b{top:0}}")
+      ~actual:("a{color:red}" ^ filler 12 ^ "@media print{.b{top:0}}")
+  in
+  Alcotest.(check (list string))
+    "twelve insertions are still not a container move" []
+    (reordered_containers d)
+
+(* ===== Entries the report cannot name ===== *)
+
+(* The names every rule-level entry claiming an addition or a removal carries.
+   An entry with no name cannot be classified, so it corrupts the counts the
+   summary prints from the same list. *)
+let added_or_removed_names d =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Added { selector; _ } | Removed { selector; _ } -> Some selector
+      | _ -> None)
+    d.Cascade_diff.Tree_diff.rules
+
+(* [@property] has a container processor of its own, which names the block it
+   dropped; the rule level has no rule to name and prints a bare tree
+   connector. *)
+let removed_property_rule_is_named () =
+  let d =
+    diff_of ~expected:"@property --a{syntax:\"*\";inherits:false}.x{color:red}"
+      ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping a registration is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check (list string))
+    "no rule-level entry without a name" [] (added_or_removed_names d)
+
+let removed_keyframes_is_named () =
+  let d =
+    diff_of ~expected:"@keyframes k{from{opacity:0}}.x{color:red}"
+      ~actual:".x{color:red}"
+  in
+  Alcotest.(check (list string))
+    "no rule-level entry without a name" [] (added_or_removed_names d)
+
+(* Nothing else reports a [@charset], so the rule level has to keep it - and
+   name it. *)
+let removed_charset_is_named () =
+  let d =
+    diff_of ~expected:"@charset \"UTF-8\";.x{color:red}" ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping the charset is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the entry names what was dropped" true
+    (string_contains ~needle:"@charset" (render d))
+
+let removed_layer_statement_is_named () =
+  let d =
+    diff_of ~expected:"@layer a,b;.x{color:red}" ~actual:".x{color:red}"
+  in
+  Alcotest.(check bool)
+    "dropping the layer order is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the entry names what was dropped" true
+    (string_contains ~needle:"@layer" (render d))
+
+(* ===== Cascade layer order ===== *)
+
+(* An empty [@layer] statement pins the layer order at the point it stands, so
+   [@layer a;] ahead of a [@layer b] block makes [a] the weaker layer, and
+   dropping it makes [b] weaker instead. The two sheets hold the same two
+   [@layer] blocks with the same bodies, so nothing but the declared order tells
+   them apart, and they resolve a conflict between [a] and [b] the opposite
+   way. *)
+let layer_order_pin_is_reported () =
   let expected = parse "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}" in
   let actual = parse "@layer b{y{top:1px}}@layer a{x{top:0}}" in
   let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
   Alcotest.(check bool)
-    "the layer-order difference is not reported structurally" true
+    "dropping the pin swaps the two layers" false
     (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
   Alcotest.(check bool)
-    "canonical mode reports it" false
+    "and the report names the pair that swapped" true
+    (string_contains ~needle:"b now precedes a" s);
+  Alcotest.(check bool)
+    "canonical mode reports it too" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@layer a;@layer b{y{top:1px}}@layer a{x{top:0}}"
        "@layer b{y{top:1px}}@layer a{x{top:0}}")
 
+(* Same order, two spellings of the pin: [@layer a;@layer b;] and [@layer a,b;]
+   both declare [a] weaker than [b]. Nothing changed, so the report stays
+   quiet. *)
+let layer_order_declared_two_ways_is_quiet () =
+  let expected =
+    parse "@layer a;@layer b;@layer b{y{top:1px}}@layer a{x{top:0}}"
+  in
+  let actual = parse "@layer a,b;@layer b{y{top:1px}}@layer a{x{top:0}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "one order written two ways is no difference" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
+(* A sublayer sorts inside its parent, so [@layer a.b;] pins [a.b] ahead of the
+   [a.c] that the block below declares first. Dropping the pin swaps the two
+   sublayers while leaving [a] itself, and both bodies, where they were. *)
+let nested_layer_order_pin_is_reported () =
+  let expected =
+    parse "@layer a.b;@layer a{@layer c{x{top:0}}@layer b{y{top:1px}}}"
+  in
+  let actual = parse "@layer a{@layer c{x{top:0}}@layer b{y{top:1px}}}" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the sublayers swapped" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  let s = render d in
+  Alcotest.(check bool)
+    "and the report names them by their dotted paths" true
+    (string_contains ~needle:"a.c now precedes a.b" s)
+
 let suite =
   ( "tree_diff",
     [
-      Alcotest.test_case "layer-order pin is not reported" `Quick
-        layer_order_pin_is_not_reported;
+      Alcotest.test_case "layer-order pin reported" `Quick
+        layer_order_pin_is_reported;
+      Alcotest.test_case "one layer order written two ways is quiet" `Quick
+        layer_order_declared_two_ways_is_quiet;
+      Alcotest.test_case "nested layer-order pin reported" `Quick
+        nested_layer_order_pin_is_reported;
+      Alcotest.test_case "media swapped with rule is reported" `Quick
+        media_swapped_with_rule_is_reported;
+      Alcotest.test_case "rule swapped with media is reported" `Quick
+        rule_swapped_with_media_is_reported;
+      Alcotest.test_case "insertion ahead of media is not a move" `Quick
+        insertion_ahead_of_media_is_not_a_move;
+      Alcotest.test_case "distant insertion is not a move" `Quick
+        distant_insertion_is_not_a_move;
+      Alcotest.test_case "removed property rule is named" `Quick
+        removed_property_rule_is_named;
+      Alcotest.test_case "removed keyframes is named" `Quick
+        removed_keyframes_is_named;
+      Alcotest.test_case "removed charset is named" `Quick
+        removed_charset_is_named;
+      Alcotest.test_case "removed layer statement is named" `Quick
+        removed_layer_statement_is_named;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick

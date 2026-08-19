@@ -1517,14 +1517,16 @@ let normalize_pairs =
    collapse it to one canonical node and pp alone must stay a fixed point.
    (Whether pp keeps these textually distinct depends on which forms the parser
    canonicalizes, so that side is asserted only for the colour/calc pairs, where
-   the node distinction is certain.) *)
+   the node distinction is certain.) The basic-shape pairs use [clip-path]:
+   [shape-outside] holds its value as raw text, so nothing about it is
+   normalized. *)
 let gradient_shape_pairs =
   [
     ( "a{background:linear-gradient(to top,red,blue)}",
       "a{background:linear-gradient(0deg,red,blue)}" );
     ("a{clip-path:circle(closest-side at center)}", "a{clip-path:circle()}");
-    ( "a{shape-outside:ellipse(closest-side closest-side at center)}",
-      "a{shape-outside:ellipse()}" );
+    ( "a{clip-path:ellipse(closest-side closest-side at center)}",
+      "a{clip-path:ellipse()}" );
   ]
 
 let assert_pp_keeps_distinct pairs =

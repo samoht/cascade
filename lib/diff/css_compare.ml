@@ -26,6 +26,7 @@ type stats = {
   rearranged_rules : int;
   regrouped_rules : int;
   container_changes : int;
+  layer_order_swaps : int;
 }
 
 (* ===== Helper Functions ===== *)
@@ -218,7 +219,7 @@ let build_reorder_diff expected_css actual_css =
   let diffs = ref [] in
   Hashtbl.iter (collect_key_diffs ~tbl2 ~diffs) tbl1;
   if !diffs = [] then None
-  else Some D.{ rules = List.rev !diffs; containers = [] }
+  else Some D.{ rules = List.rev !diffs; containers = []; layer_order = None }
 
 let css_for_semantic_comparison ?property css =
   match property with
@@ -479,6 +480,10 @@ let compute_stats ~expected_str ~actual_str diff_result =
         regrouped_rules =
           count_rule_type (function D.Regrouped _ -> true | _ -> false);
         container_changes = List.length d.containers;
+        layer_order_swaps =
+          (match d.layer_order with
+          | None -> 0
+          | Some { swapped; _ } -> List.length swapped);
       }
   | _ ->
       (* For non-tree diffs, just return character stats *)
@@ -494,6 +499,7 @@ let compute_stats ~expected_str ~actual_str diff_result =
         rearranged_rules = 0;
         regrouped_rules = 0;
         container_changes = 0;
+        layer_order_swaps = 0;
       }
 
 (* Alias for compute_stats *)
@@ -603,12 +609,13 @@ let emit_changes buf stats =
     |> List.filter (fun (n, _, _) -> n > 0)
   in
   let container = stats.container_changes in
+  let layers = stats.layer_order_swaps in
   (* Every counter above comes from a tree diff, so they all read zero on the
      results that never reached one: a comparison that fell through to the
      string diff, a side whose content the parser discarded, a parse error. The
      line says what it knows - nothing was classified - and leaves the verdict
      to the report under it. *)
-  if entries = [] && container = 0 then
+  if entries = [] && container = 0 && layers = 0 then
     Buffer.add_string buf
       "Changes: none classified structurally (see report below)\n"
   else (
@@ -621,6 +628,9 @@ let emit_changes buf stats =
     if container > 0 then (
       if entries <> [] then Buffer.add_string buf ", ";
       add_change buf container "changed" "container");
+    if layers > 0 then (
+      if entries <> [] || container > 0 then Buffer.add_string buf ", ";
+      add_change buf layers "swapped" "layer pair");
     Buffer.add_char buf '\n')
 
 let pp_stats buf stats =
