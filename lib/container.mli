@@ -87,6 +87,10 @@ val of_string : string -> t
 (** [of_string s] parses a container condition. Raises [Failure] for malformed
     conditions. *)
 
+val of_components : Component.t list -> t
+(** [of_components components] parses an already-tokenized container condition.
+    Raises [Failure] for malformed conditions. *)
+
 val feature : string -> Media.value -> t
 (** [feature name value] is the typed container feature query constructed via
     {!Media.val-feature}. *)

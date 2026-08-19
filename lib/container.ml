@@ -236,42 +236,70 @@ let rec components_have_var (components : Component.t list) =
       | Component.Preserved _ -> false)
     components
 
-let contains_var_function s =
-  Cursor.of_string s |> Cursor.remaining |> components_have_var
+let is_whitespace_component = function
+  | Component.Preserved { kind = Token.Whitespace; _ } -> true
+  | _ -> false
 
-let unresolved_media_feature s =
-  let s = String.trim s in
-  let len = String.length s in
-  if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then
-    let body = String.sub s 1 (len - 2) in
-    match String.index_opt body ':' with
-    | Some colon ->
-        let name = String.sub body 0 colon |> String.trim in
-        let value =
-          String.sub body (colon + 1) (String.length body - colon - 1)
-          |> String.trim
-        in
-        if name <> "" && value <> "" && contains_var_function value then
-          Some
-            (Feature_query
-               (Media.Cond
-                  (Media.Feature
-                     (Media.Plain
-                        ( Media.name_of_string name,
-                          Media.Ident (Media.ident_of_string value) )))))
-        else None
-    | None -> None
-  else None
+let rec drop_leading_whitespace = function
+  | component :: rest when is_whitespace_component component ->
+      drop_leading_whitespace rest
+  | components -> components
 
-let first_non_ws s =
-  let rec loop i =
-    if i >= String.length s then None
-    else
-      match s.[i] with
-      | ' ' | '\t' | '\n' | '\r' | '\012' -> loop (i + 1)
-      | c -> Some (i, c)
+let trim_components components =
+  components |> drop_leading_whitespace |> List.rev |> drop_leading_whitespace
+  |> List.rev
+
+let components_empty = function [] -> true | _ :: _ -> false
+
+let ident_component = function
+  | Component.Preserved { kind = Token.Ident name; _ } -> Some name
+  | _ -> None
+
+let ident_is word component =
+  match ident_component component with
+  | Some name -> String.equal (String.lowercase_ascii name) word
+  | None -> false
+
+let split_keyword word components =
+  let rec loop before = function
+    | [] -> None
+    | component :: after when ident_is word component ->
+        Some (trim_components (List.rev before), trim_components after)
+    | component :: after -> loop (component :: before) after
   in
-  loop
+  loop [] components
+
+let has_keyword word components = Option.is_some (split_keyword word components)
+
+let single_paren_body components =
+  match trim_components components with
+  | [
+   Component.Block { node = { opening = Token.Paren; value; closed = true }; _ };
+  ] ->
+      Some value
+  | _ -> None
+
+let is_condition_function = function
+  | Component.Func { node = { name; terminated = true; _ }; _ } ->
+      List.mem (String.lowercase_ascii name) [ "style"; "scroll-state" ]
+  | _ -> false
+
+let is_query_operand components =
+  match trim_components components with
+  | [
+   Component.Block { node = { opening = Token.Paren; closed = true; _ }; _ };
+  ] ->
+      true
+  | [ component ] -> is_condition_function component
+  | _ -> false
+
+let starts_query = function
+  | Component.Block { node = { opening = Token.Paren; closed = true; _ }; _ }
+    :: _ ->
+      true
+  | component :: _ when is_condition_function component -> true
+  | first :: _ when ident_is "not" first -> true
+  | _ -> false
 
 (* CSS Containment 3 section 4: [<container-name>] excludes the keywords [none],
    [and], [not], [or]; without this guard [Container.of_string "not (width)"]
@@ -281,25 +309,13 @@ let is_reserved_container_name name =
   | "none" | "and" | "not" | "or" -> true
   | _ -> false
 
-let split_named s =
-  let s = String.trim s in
-  let len = String.length s in
-  let rec ident_end i =
-    if i < len && is_ascii_ident_continue s.[i] then ident_end (i + 1) else i
-  in
-  if len = 0 || not (is_ascii_ident_start s.[0]) then None
-  else
-    let stop = ident_end 0 in
-    let name = String.sub s 0 stop in
-    if is_reserved_container_name name then None
-    else
-      match first_non_ws s stop with
-      | Some (i, ('(' | 's')) when stop > 0 && i > stop ->
-          Some (name, String.sub s i (len - i))
-      | _ -> None
-
-let ident_component = function
-  | Component.Preserved { kind = Token.Ident name; _ } -> Some name
+let split_named_components components =
+  match drop_leading_whitespace components with
+  | Component.Preserved { kind = Token.Ident name; _ }
+    :: (Component.Preserved { kind = Token.Whitespace; _ } :: _ as after)
+    when not (is_reserved_container_name name) ->
+      let query = trim_components after in
+      if starts_query query then Some (name, query) else None
   | _ -> None
 
 let is_custom_property name =
@@ -369,10 +385,7 @@ let style_leaf_boolean components =
       | _ -> failwith "invalid style() container query")
   | _ -> failwith "invalid style() container query"
 
-let style_leaf_body body =
-  let body = String.trim body in
-  if body = "" then failwith "empty style() container query";
-  let components = Cursor.remaining (Cursor.of_string body) in
+let style_leaf_components components =
   match split_top_level_colon components with
   | Some (name_components, value) ->
       style_leaf_declaration name_components value
@@ -381,74 +394,37 @@ let style_leaf_body body =
       | Some query -> query
       | None -> style_leaf_boolean components)
 
-let top_level_word s word =
-  let len = String.length s in
-  let wlen = String.length word in
-  let depth = ref 0 in
-  let result = ref None in
-  let i = ref 0 in
-  let is_boundary i =
-    i < 0 || i >= len || not (is_ascii_ident_continue s.[i])
-  in
-  while !result = None && !i + wlen <= len do
-    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
-    if
-      !depth = 0
-      && String.sub s !i wlen = word
-      && is_boundary (!i - 1)
-      && is_boundary (!i + wlen)
-    then result := Some !i;
-    incr i
-  done;
-  !result
+let rec style_query_components components =
+  let components = trim_components components in
+  if components_empty components then failwith "empty style() container query";
+  match split_top_level_colon components with
+  | Some _ -> style_leaf_components components
+  | None -> (
+      let level, unwrapped =
+        match single_paren_body components with
+        | Some body -> (trim_components body, true)
+        | None -> (components, false)
+      in
+      if has_keyword "and" level && has_keyword "or" level then
+        failwith "mixed style() operators require grouping"
+      else
+        match split_keyword "or" level with
+        | Some (lhs, rhs) ->
+            Any (style_query_components lhs, style_query_components rhs)
+        | None -> (
+            match split_keyword "and" level with
+            | Some (lhs, rhs) ->
+                All (style_query_components lhs, style_query_components rhs)
+            | None -> (
+                match level with
+                | first :: rest when ident_is "not" first ->
+                    Neg (style_query_components rest)
+                | _ when unwrapped -> style_query_components level
+                | _ -> style_leaf_components components)))
 
-let has_top_level_word s word = Option.is_some (top_level_word s word)
-
-let outer_parens_wrap_all s =
-  let len = String.length s in
-  let rec loop depth i =
-    if i >= len - 1 then true
-    else
-      match s.[i] with
-      | '(' -> loop (depth + 1) (i + 1)
-      | ')' when depth = 0 -> false
-      | ')' -> loop (depth - 1) (i + 1)
-      | _ -> loop depth (i + 1)
-  in
-  len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
-
-let rec strip_outer_parens s =
-  let s = String.trim s in
-  if outer_parens_wrap_all s then
-    String.sub s 1 (String.length s - 2) |> strip_outer_parens
-  else s
-
-let rec style_query_body body =
-  let body = strip_outer_parens body in
-  if String.length body >= 4 && String.sub body 0 4 = "not " then
-    Neg
-      (style_query_body
-         (String.sub body 4 (String.length body - 4) |> String.trim))
-  else if has_top_level_word body "and" && has_top_level_word body "or" then
-    failwith "mixed style() operators require grouping"
-  else
-    match top_level_word body "or" with
-    | Some i ->
-        let lhs = String.sub body 0 i in
-        let rhs = String.sub body (i + 2) (String.length body - i - 2) in
-        Any (style_query_body lhs, style_query_body rhs)
-    | None -> (
-        match top_level_word body "and" with
-        | Some i ->
-            let lhs = String.sub body 0 i in
-            let rhs = String.sub body (i + 3) (String.length body - i - 3) in
-            All (style_query_body lhs, style_query_body rhs)
-        | None -> style_leaf_body body)
-
-let style_body ~uppercase body =
-  let body = String.trim body in
-  if body = "" then failwith "empty style() container query";
-  try Style { query = style_query_body body; uppercase }
+let style_body ~uppercase components =
+  let body = string_of_components components in
+  try Style { query = style_query_components components; uppercase }
   with Failure msg -> failwith (msg ^ ": " ^ body)
 
 let scroll_state_value_allowed name value =
@@ -477,63 +453,73 @@ let scroll_state_value_allowed name value =
       | _ -> false)
   | _ -> false
 
-let scroll_state_query_leaf body =
-  match String.split_on_char ':' body with
-  | [ name; value ] ->
-      let name = String.trim name in
-      let value = String.trim value in
-      if scroll_state_value_allowed name value then State { name; value }
-      else failwith "invalid scroll-state() container query"
-  | _ -> failwith "invalid scroll-state() container query"
+let scroll_state_query_leaf components =
+  match split_top_level_colon components with
+  | Some (name_components, value_components) -> (
+      match
+        (style_strip_ws name_components, style_strip_ws value_components)
+      with
+      | [ name_component ], [ value_component ] -> (
+          match
+            (ident_component name_component, ident_component value_component)
+          with
+          | Some name, Some value ->
+              let name = String.lowercase_ascii name in
+              let value = String.lowercase_ascii value in
+              if scroll_state_value_allowed name value then
+                State { name; value }
+              else failwith "invalid scroll-state() container query"
+          | Some _, None | None, Some _ | None, None ->
+              failwith "invalid scroll-state() container query")
+      | _ -> failwith "invalid scroll-state() container query")
+  | None -> failwith "invalid scroll-state() container query"
 
-let rec scroll_state_query_body body =
-  let body = strip_outer_parens body in
-  if String.length body >= 4 && String.sub body 0 4 = "not " then
-    Negated
-      (scroll_state_query_body
-         (String.sub body 4 (String.length body - 4) |> String.trim))
-  else if has_top_level_word body "and" && has_top_level_word body "or" then
-    failwith "mixed scroll-state() operators require grouping"
-  else
-    match top_level_word body "or" with
-    | Some i ->
-        let lhs = String.sub body 0 i in
-        let rhs = String.sub body (i + 2) (String.length body - i - 2) in
-        Either (scroll_state_query_body lhs, scroll_state_query_body rhs)
-    | None -> (
-        match top_level_word body "and" with
-        | Some i ->
-            let lhs = String.sub body 0 i in
-            let rhs = String.sub body (i + 3) (String.length body - i - 3) in
-            Both (scroll_state_query_body lhs, scroll_state_query_body rhs)
-        | None -> scroll_state_query_leaf body)
+let rec scroll_state_query_components components =
+  let components = trim_components components in
+  if components_empty components then
+    failwith "empty scroll-state() container query";
+  match split_top_level_colon components with
+  | Some _ -> scroll_state_query_leaf components
+  | None -> (
+      let level, unwrapped =
+        match single_paren_body components with
+        | Some body -> (trim_components body, true)
+        | None -> (components, false)
+      in
+      if has_keyword "and" level && has_keyword "or" level then
+        failwith "mixed scroll-state() operators require grouping"
+      else
+        match split_keyword "or" level with
+        | Some (lhs, rhs) ->
+            Either
+              ( scroll_state_query_components lhs,
+                scroll_state_query_components rhs )
+        | None -> (
+            match split_keyword "and" level with
+            | Some (lhs, rhs) ->
+                Both
+                  ( scroll_state_query_components lhs,
+                    scroll_state_query_components rhs )
+            | None -> (
+                match level with
+                | first :: rest when ident_is "not" first ->
+                    Negated (scroll_state_query_components rest)
+                | _ when unwrapped -> scroll_state_query_components level
+                | _ -> scroll_state_query_leaf components)))
 
-let scroll_state_body ~uppercase body =
-  let body = String.trim body in
-  if body = "" then failwith "empty scroll-state() container query";
-  try Scroll_state { query = scroll_state_query_body body; uppercase }
+let scroll_state_body ~uppercase components =
+  let body = string_of_components components in
+  try
+    Scroll_state { query = scroll_state_query_components components; uppercase }
   with Failure msg -> failwith (msg ^ ": " ^ body)
 
 type query_surface =
-  | Style_func of { canonical_name : bool; body : string }
-  | Scroll_state_func of { canonical_name : bool; body : string }
+  | Style_func of { canonical_name : bool; arguments : Component.t list }
+  | Scroll_state_func of { canonical_name : bool; arguments : Component.t list }
   | Parenthesized_feature
   | Other_query
 
-type balance = Balanced | Unbalanced
 type range_direction = Lt_range | Gt_range
-
-let paren_balance raw =
-  let rec loop depth i =
-    if i = String.length raw then if depth = 0 then Balanced else Unbalanced
-    else
-      match raw.[i] with
-      | '(' -> loop (depth + 1) (i + 1)
-      | ')' when depth > 0 -> loop (depth - 1) (i + 1)
-      | ')' -> Unbalanced
-      | _ -> loop depth (i + 1)
-  in
-  loop 0 0
 
 let range_direction_of_component = function
   | Component.Preserved { kind = Token.Delim "<"; _ } -> Some Lt_range
@@ -575,32 +561,27 @@ let has_dangling_range_operator cvs =
   | Component.Preserved { kind = Token.Delim ("<" | ">"); _ } :: _ -> true
   | _ -> false
 
-let classify_query_surface raw =
-  match paren_balance raw with
-  | Unbalanced -> failwith "unmatched container query parentheses"
-  | Balanced -> (
-      let cursor = Cursor.of_string raw in
-      match Cursor.remaining cursor with
-      | [ Component.Func { node = { name; arguments; terminated }; _ } ] -> (
-          if not terminated then failwith "unmatched container query function";
-          let lower = String.lowercase_ascii name in
-          let canonical_name = name = lower in
-          let body = Cursor.string_of_components ~trim:true arguments in
-          match lower with
-          | "style" -> Style_func { canonical_name; body }
-          | "scroll-state" -> Scroll_state_func { canonical_name; body }
-          | _ -> Other_query)
-      | [
-       Component.Block
-         { node = { opening = Token.Paren; value = _ :: _ as value; _ }; _ };
-      ] ->
-          let value = strip_ws value in
-          if has_dangling_range_operator value then
-            failwith "dangling range operator in container query";
-          if has_opposing_interval_components value then
-            failwith "opposing interval operators in container query";
-          Parenthesized_feature
+let classify_query_surface components =
+  match trim_components components with
+  | [ Component.Func { node = { name; arguments; terminated }; _ } ] -> (
+      if not terminated then failwith "unmatched container query function";
+      let lower = String.lowercase_ascii name in
+      let canonical_name = name = lower in
+      match lower with
+      | "style" -> Style_func { canonical_name; arguments }
+      | "scroll-state" -> Scroll_state_func { canonical_name; arguments }
       | _ -> Other_query)
+  | [ Component.Block { node = { opening = Token.Paren; value; closed }; _ } ]
+    ->
+      if not closed then failwith "unmatched container query parentheses";
+      let value = strip_ws value in
+      if components_empty value then Other_query
+      else if has_dangling_range_operator value then
+        failwith "dangling range operator in container query"
+      else if has_opposing_interval_components value then
+        failwith "opposing interval operators in container query"
+      else Parenthesized_feature
+  | _ -> Other_query
 
 (* Lift a typed [Media.t] into a [Feature_query]. The container parser only
    accepts single-feature media leaves at this point (compound forms are peeled
@@ -611,28 +592,61 @@ let single_feature_of_media (media : Media.t) =
   | Media.Cond (Media.Feature _) -> Some media
   | Media.Cond _ | Media.List _ | Media.Type _ -> None
 
-let specific_of_string raw =
-  let raw = String.trim raw in
-  if raw = "" then failwith "empty container query";
-  match classify_query_surface raw with
-  | Style_func { canonical_name; body } ->
-      style_body ~uppercase:(not canonical_name) body
-  | Scroll_state_func { canonical_name; body } ->
-      scroll_state_body ~uppercase:(not canonical_name) body
+let specific_of_components components =
+  if trim_components components |> components_empty then
+    failwith "empty container query";
+  match classify_query_surface components with
+  | Style_func { canonical_name; arguments } ->
+      style_body ~uppercase:(not canonical_name) arguments
+  | Scroll_state_func { canonical_name; arguments } ->
+      scroll_state_body ~uppercase:(not canonical_name) arguments
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
-let atom_of_string s =
-  let s = String.trim s in
-  let stripped = strip_outer_parens s in
+let unresolved_media_feature components =
+  match trim_components components with
+  | [
+   Component.Block { node = { opening = Token.Paren; value; closed = true }; _ };
+  ] -> (
+      match split_top_level_colon value with
+      | Some (name_components, value_components) -> (
+          match style_strip_ws name_components with
+          | [ name_component ] -> (
+              match ident_component name_component with
+              | Some name
+                when (not
+                        (trim_components value_components |> components_empty))
+                     && components_have_var value_components ->
+                  let value = string_of_components value_components in
+                  Some
+                    (Feature_query
+                       (Media.Cond
+                          (Media.Feature
+                             (Media.Plain
+                                ( Media.name_of_string name,
+                                  Media.Ident (Media.ident_of_string value) )))))
+              | Some _ | None -> None)
+          | _ -> None)
+      | None -> None)
+  | _ -> None
+
+let rec strip_outer_components components =
+  match single_paren_body components with
+  | Some body -> strip_outer_components body
+  | None -> trim_components components
+
+let atom_of_components components =
+  let components = trim_components components in
+  let stripped = strip_outer_components components in
   match classify_query_surface stripped with
-  | _ when String.contains s 'v' && contains_var_function s -> (
-      match unresolved_media_feature s with
+  | _ when components_have_var components -> (
+      match unresolved_media_feature components with
       | Some query -> query
-      | None -> specific_of_string s)
-  | Style_func _ | Scroll_state_func _ -> specific_of_string stripped
+      | None -> specific_of_components stripped)
+  | Style_func _ | Scroll_state_func _ -> specific_of_components stripped
   | Parenthesized_feature | Other_query -> (
-      match Media.of_string_strict s with
+      let source = string_of_components components in
+      match Media.of_string_strict source with
       | Media.Cond (Media.Feature (Media.Plain (Media.Min Media.Width, value)))
         as media -> (
           match value with
@@ -644,57 +658,42 @@ let atom_of_string s =
           match single_feature_of_media media with
           | Some f -> Feature_query f
           | None -> failwith "not a container feature query")
-      | exception Failure _ -> specific_of_string s)
+      | exception Failure _ -> specific_of_components stripped)
 
-let rec unnamed_query_not s stripped =
-  if String.length stripped >= 4 && String.sub stripped 0 4 = "not " then
-    (* CSS Containment 3 sec. 4 and Conditional Rules: [not] takes exactly one
-       [<query-in-parens>], so [not not (x)] is a parse error. The operand is a
-       parenthesised compound condition or a [style()] / [scroll-state()]
-       function; the latter carry their own parentheses, so they need no extra
-       wrapping ([not style(--a)] is valid, not just [not (style(--a))]). *)
-    let inner =
-      String.trim (String.sub stripped 4 (String.length stripped - 4))
-    in
-    let is_function_operand =
-      match classify_query_surface inner with
-      | Style_func _ | Scroll_state_func _ -> true
-      | Parenthesized_feature | Other_query -> false
-      | exception Failure _ -> false
-    in
-    if String.length inner = 0 || (inner.[0] <> '(' && not is_function_operand)
-    then failwith "container query: 'not' requires a query-in-parens operand"
-    else Not (unnamed_of_string inner)
-  else atom_of_string s
-
-and unnamed_of_string s =
-  let s = String.trim s in
-  let stripped = strip_outer_parens s in
-  if has_top_level_word stripped "and" && has_top_level_word stripped "or" then
+let rec unnamed_of_components components =
+  let components = trim_components components in
+  if components_empty components then failwith "empty container query";
+  let level =
+    match single_paren_body components with
+    | Some body when Option.is_none (split_top_level_colon body) ->
+        trim_components body
+    | Some _ | None -> components
+  in
+  if has_keyword "and" level && has_keyword "or" level then
     failwith "mixed container query operators require grouping"
   else
-    match top_level_word stripped "or" with
-    | Some i ->
-        let lhs = String.sub stripped 0 i in
-        let rhs =
-          String.sub stripped (i + 2) (String.length stripped - i - 2)
-        in
-        Or (unnamed_of_string lhs, unnamed_of_string rhs)
+    match split_keyword "or" level with
+    | Some (lhs, rhs) ->
+        Or (unnamed_of_components lhs, unnamed_of_components rhs)
     | None -> (
-        match top_level_word stripped "and" with
-        | Some i ->
-            let lhs = String.sub stripped 0 i in
-            let rhs =
-              String.sub stripped (i + 3) (String.length stripped - i - 3)
-            in
-            And (unnamed_of_string lhs, unnamed_of_string rhs)
-        | None -> unnamed_query_not s stripped)
+        match split_keyword "and" level with
+        | Some (lhs, rhs) ->
+            And (unnamed_of_components lhs, unnamed_of_components rhs)
+        | None -> (
+            match level with
+            | first :: rest when ident_is "not" first ->
+                if not (is_query_operand rest) then
+                  failwith
+                    "container query: 'not' requires a query-in-parens operand";
+                Not (unnamed_of_components rest)
+            | _ -> atom_of_components components))
 
-let of_string s =
-  match split_named s with
-  | Some (name, raw) -> Named (name, unnamed_of_string raw)
-  | None -> unnamed_of_string s
+let of_components components =
+  match split_named_components components with
+  | Some (name, query) -> Named (name, unnamed_of_components query)
+  | None -> unnamed_of_components components
 
+let of_string s = Cursor.of_string s |> Cursor.remaining |> of_components
 let feature name value = Feature_query (Media.feature name value)
 
 let style ?value prop =

@@ -3236,12 +3236,13 @@ and read_container (r : Cursor.t) : statement =
     | other -> other
   in
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let condition_components = Cursor.drain_until_block r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition : Container.t option =
-    if condition_str = "" then Option.None
+    if Cursor.of_components condition_components |> Cursor.is_done then
+      Option.None
     else
-      match Container.of_string condition_str with
+      match Container.of_components condition_components with
       | condition -> Some condition
       | exception Failure msg -> Cursor.err_invalid r msg
   in
