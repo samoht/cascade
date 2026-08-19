@@ -1258,6 +1258,17 @@ let test_loader_context_contract () =
   check_resolved_url "absolute URL remains absolute" ~loader
     ~expected:"https://cdn.example.test/site.css"
     "https://cdn.example.test/site.css";
+  check_resolved_url "data URL remains absolute" ~loader
+    ~expected:"data:image/png;base64,x" "data:image/png;base64,x";
+  check_resolved_url "scheme-relative URL inherits scheme" ~loader
+    ~expected:"https://cdn.example.test/site.css" "//cdn.example.test/site.css";
+  check_resolved_url "query reference keeps base path" ~loader
+    ~expected:"https://example.test/css/app.css?v=1" "?v=1";
+  check_resolved_url "fragment reference keeps base path" ~loader
+    ~expected:"https://example.test/css/app.css#icon" "#icon";
+  check_resolved_url "scheme matching is case-insensitive" ~loader
+    ~expected:"https://cdn.example.test/site.css"
+    "HTTPS://cdn.example.test/site.css";
   check_url_error "relative URL without base is unresolved"
     ~loader:Css.Context.empty_loader "theme.css";
   check_import_loaded "loads same-directory import" ~loader

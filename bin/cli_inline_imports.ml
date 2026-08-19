@@ -5,14 +5,7 @@ open Cascade
 (* CSS allows [@import url("foo.css?v=1")] and [#fragment]. The host filesystem
    doesn't, so strip them before opening the file. *)
 let strip_url_suffix = Syntax.strip_url_suffix
-
-let is_remote url =
-  let starts_with prefix =
-    String.length url >= String.length prefix
-    && String.sub url 0 (String.length prefix) = prefix
-  in
-  starts_with "http://" || starts_with "https://" || starts_with "data:"
-  || starts_with "//"
+let is_remote = Syntax.is_remote_url
 
 (* Walk the parsed stylesheet, follow every [@import] URL on disk and parse each
    referenced file once, recursing through transitive imports. The resulting
@@ -21,9 +14,10 @@ let cache_resolved imports resolved =
   if Hashtbl.mem imports resolved then None
   else
     try
-      let content = Cli_io.read_file resolved in
+      let filename = Syntax.url_file_path resolved in
+      let content = Cli_io.read_file filename in
       Hashtbl.add imports resolved content;
-      Some (Cli_io.parse_css ~filename:resolved content)
+      Some (Cli_io.parse_css ~filename content)
     with Sys_error msg ->
       Fmt.epr "warning: cannot read %s: %s@." resolved msg;
       None

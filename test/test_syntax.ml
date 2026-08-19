@@ -43,7 +43,27 @@ let strip_url_suffix () =
     (Syntax.strip_url_suffix "foo.css#top");
   Alcotest.(check string)
     "both" "foo.css"
-    (Syntax.strip_url_suffix "foo.css?v=1#top")
+    (Syntax.strip_url_suffix "foo.css?v=1#top");
+  Alcotest.(check string)
+    "encoded delimiters stay in path" "foo%3Fbar%23baz.css"
+    (Syntax.strip_url_suffix "foo%3Fbar%23baz.css?v=1#top");
+  Alcotest.(check string)
+    "space is encoded" "foo%20bar.css"
+    (Syntax.strip_url_suffix "foo bar.css")
+
+let url_file_path () =
+  Alcotest.(check string)
+    "encoded path becomes filesystem path" "foo?bar#baz.css"
+    (Syntax.url_file_path "foo%3Fbar%23baz.css?v=1#top");
+  Alcotest.(check string)
+    "encoded space becomes filesystem space" "foo bar.css"
+    (Syntax.url_file_path "foo%20bar.css")
+
+let remote_url () =
+  check_true "https" (Syntax.is_remote_url "HTTPS://example.test/a.css");
+  check_true "data" (Syntax.is_remote_url "data:text/css,a{}");
+  check_true "authority" (Syntax.is_remote_url "//example.test/a.css");
+  check_false "relative" (Syntax.is_remote_url "a.css")
 
 let suite =
   ( "syntax",
@@ -54,4 +74,6 @@ let suite =
       Alcotest.test_case "is_hex" `Quick is_hex;
       Alcotest.test_case "url_needs_quotes" `Quick url_needs_quotes;
       Alcotest.test_case "strip_url_suffix" `Quick strip_url_suffix;
+      Alcotest.test_case "url_file_path" `Quick url_file_path;
+      Alcotest.test_case "remote_url" `Quick remote_url;
     ] )

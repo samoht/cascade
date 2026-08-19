@@ -30,6 +30,7 @@
   (fmt (>= 0.10.0))
   base-unix
   uutf
+  uri
   psq
   logs
   (cmdliner (>= 1.1.0))))
