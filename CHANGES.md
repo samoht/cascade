@@ -40,6 +40,8 @@
 
 ### Parsing
 
+- `Reader.peek_utf8_at` returns `None` for negative and out-of-range offsets
+  instead of indexing outside the input (#308)
 - URL references use RFC 3986 resolution, preserving data, scheme-relative,
   query-only and fragment-only URLs (#304)
 - Container conditions parse component values directly, so strings and escaped

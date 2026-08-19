@@ -66,6 +66,20 @@ let basic () =
   ignore (char r);
   Alcotest.(check bool) "done after read" true (is_done r)
 
+let utf8_peek_bounds () =
+  let r = of_string "ab" in
+  skip r;
+  let position = position r in
+  Alcotest.(check (option (pair int int)))
+    "negative offset" None (peek_utf8_at r (-1));
+  Alcotest.(check (option (pair int int)))
+    "past end" None (peek_utf8_at r max_int);
+  Alcotest.(check (option (pair int int)))
+    "current byte"
+    (Some (Char.code 'b', 1))
+    (peek_utf8_at r 0);
+  Alcotest.(check int) "does not advance" position (Reader.position r)
+
 (* Test string operations *)
 let string_ops () =
   (* peek_string *)
@@ -1469,6 +1483,7 @@ let suite =
     [
       (* Basic operations *)
       test_case "basic" `Quick basic;
+      test_case "UTF-8 peek bounds" `Quick utf8_peek_bounds;
       test_case "string" `Quick string_ops;
       test_case "whitespace" `Quick whitespace;
       test_case "comments" `Quick comments;

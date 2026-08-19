@@ -155,9 +155,9 @@ let first_utf8_chunk_at input p len =
       !result
 
 let peek_utf8_at t offset =
-  let p = t.pos + offset in
-  if p >= t.len then None
+  if offset < 0 || offset >= t.len - t.pos then None
   else
+    let p = t.pos + offset in
     let b = Char.code (String.unsafe_get t.input p) in
     if b < 0x80 then Some (b, 1)
     else
