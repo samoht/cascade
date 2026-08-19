@@ -425,7 +425,8 @@ let rec style_query_components components =
 let style_body ~uppercase components =
   let body = string_of_components components in
   try Style { query = style_query_components components; uppercase }
-  with Failure msg -> failwith (msg ^ ": " ^ body)
+  with Failure msg ->
+    failwith (if String.equal body "" then msg else msg ^ ": " ^ body)
 
 let scroll_state_value_allowed name value =
   match name with
@@ -511,7 +512,8 @@ let scroll_state_body ~uppercase components =
   let body = string_of_components components in
   try
     Scroll_state { query = scroll_state_query_components components; uppercase }
-  with Failure msg -> failwith (msg ^ ": " ^ body)
+  with Failure msg ->
+    failwith (if String.equal body "" then msg else msg ^ ": " ^ body)
 
 type query_surface =
   | Style_func of { canonical_name : bool; arguments : Component.t list }
